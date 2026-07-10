@@ -19,16 +19,17 @@ package authenticators
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/MicahParks/jwkset"
 	"github.com/MicahParks/keyfunc/v3"
-	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
@@ -68,7 +69,13 @@ func newJWTAuthenticatorWithJWKS(config *models.AuthConfig, logger *slog.Logger,
 		// Create JWKS storage with custom validation options to skip X5TS256 validation
 		// This is required for some OIDC providers like Asgardeo that may have X5TS256 mismatches
 		ctx := context.Background()
+		jwksHTTPClient := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: config.JWTConfig.InsecureSkipVerifyTLS}, //nolint:gosec
+			},
+		}
 		storageOptions := jwkset.HTTPClientStorageOptions{
+			Client:          jwksHTTPClient,
 			Ctx:             ctx,
 			RefreshInterval: 10 * time.Minute,
 			ValidateOptions: jwkset.JWKValidateOptions{
@@ -100,9 +107,9 @@ func newJWTAuthenticatorWithJWKS(config *models.AuthConfig, logger *slog.Logger,
 }
 
 // Authenticate verifies JWT token from context
-func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
+func (j *JWTAuthenticator) Authenticate(r *http.Request) (*AuthResult, error) {
 	// Extract bearer token from Authorization header
-	authHeader := ctx.GetHeader(constants.AuthorizationHeader)
+	authHeader := r.Header.Get(constants.AuthorizationHeader)
 	if authHeader == "" {
 		return nil, errors.New("authorization header missing")
 	}
@@ -114,11 +121,18 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 	}
 
 	claims := jwt.MapClaims{}
-	validatedToken, err := jwt.ParseWithClaims(tokenString, claims, j.jwks.Keyfunc)
+	leeway := 60 * time.Second
+	if j.config.JWTConfig.JWTLeeway != nil {
+		leeway = *j.config.JWTConfig.JWTLeeway
+	}
+	validatedToken, err := jwt.ParseWithClaims(tokenString, claims, j.jwks.Keyfunc, jwt.WithLeeway(leeway))
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, ErrExpiredToken
+		}
+		if errors.Is(err, jwt.ErrTokenNotValidYet) {
+			return nil, fmt.Errorf("%w: token not yet valid (clock skew?)", ErrInvalidToken)
 		}
 		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
 	}
@@ -138,14 +152,21 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 		}
 	}
 
-	// Validate audience if configured
-	if j.config.JWTConfig.Audience != nil && *j.config.JWTConfig.Audience != "" {
+	// Validate audience if configured. The token is accepted when its "aud"
+	// claim contains at least one of the configured audiences.
+	if j.config.JWTConfig.Audience != nil && len(*j.config.JWTConfig.Audience) > 0 {
 		audience, err := claims.GetAudience()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get audience: %w", err)
 		}
-		validAudience := slices.Contains(audience, *j.config.JWTConfig.Audience)
-		if !validAudience {
+		matched := false
+		for _, expected := range *j.config.JWTConfig.Audience {
+			if expected != "" && slices.Contains(audience, expected) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
 			return nil, errors.New("invalid audience")
 		}
 	}
@@ -153,9 +174,10 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 	// If no role claim is configured, set flag to skip authorization
 	// This allows authentication-only mode where all authenticated users can access resources
 	var permissions []string
+	skipAuthz := false
 	if j.config.JWTConfig.ScopeClaim == "" {
 		j.logger.Debug("No role claim configured, setting skip_authz flag")
-		ctx.Set(constants.AuthzSkipKey, true)
+		skipAuthz = true
 		permissions = []string{}
 	} else {
 		permissions = j.resolvePermissions(claims)
@@ -165,12 +187,12 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 		return nil, fmt.Errorf("failed to get subject: %w", err)
 	}
 	return &AuthResult{
-		Success: true,
-		UserID:  subject,
-		Roles:   permissions,
-		Claims:  claims,
+		Success:           true,
+		UserID:            subject,
+		Roles:             permissions,
+		Claims:            claims,
+		SkipAuthorization: skipAuthz,
 	}, nil
-
 }
 
 func (j *JWTAuthenticator) resolvePermissions(claims jwt.MapClaims) []string {
@@ -238,18 +260,18 @@ func (j *JWTAuthenticator) resolvePermissions(claims jwt.MapClaims) []string {
 	return permissions
 }
 
+
 // Name returns the authenticator name
 func (j *JWTAuthenticator) Name() string {
 	return "JWTAuthenticator"
 }
 
 // CanHandle checks if credentials in context are JWTCredentials
-func (j *JWTAuthenticator) CanHandle(ctx *gin.Context) bool {
-	authHeader := ctx.GetHeader(constants.AuthorizationHeader)
+func (j *JWTAuthenticator) CanHandle(r *http.Request) bool {
+	authHeader := r.Header.Get(constants.AuthorizationHeader)
 	if authHeader == "" {
 		return false
 	}
-	// Determine auth type from header
 	canHandle := strings.HasPrefix(authHeader, constants.BearerPrefix)
 	j.logger.Debug("can handle token", slog.Bool("canHandle", canHandle))
 	return canHandle

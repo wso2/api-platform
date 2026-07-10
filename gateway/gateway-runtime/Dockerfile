@@ -24,7 +24,7 @@
 ARG ENVOY_VERSION=v1.38.0
 
 # Stage 1: Builder Base
-FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS builder-base
 ARG BUILDARCH
 ARG VERSION=unknown
 ARG GIT_COMMIT=unknown
@@ -89,6 +89,8 @@ ENV ENABLE_DEBUG=${ENABLE_DEBUG}
 COPY --from=sdk-core go.mod /api-platform/sdk/core/
 
 # Download common dependencies (cached by go.mod/go.sum changes)
+# httpkit go.mod must be present before downloading — common/go.mod has a replace directive pointing to ../httpkit
+COPY --from=httpkit go.mod /api-platform/httpkit/
 COPY --from=common go.mod go.sum /api-platform/common/
 WORKDIR /api-platform/common
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -106,6 +108,7 @@ COPY python-executor/ /api-platform/gateway/gateway-runtime/python-executor/
 COPY --from=sdk-python . /api-platform/sdk-python
 COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=common . /api-platform/common
+COPY --from=httpkit . /api-platform/httpkit
 COPY --from=system-policies . /api-platform/gateway/system-policies/
 COPY --from=dev-policies . /api-platform/gateway/dev-policies/
 COPY --from=target build.yaml /api-platform/gateway/build.yaml
@@ -178,7 +181,7 @@ RUN if [ "$PYTHON_SDK_SOURCE" = "local" ]; then \
 RUN pip3 freeze --path /app/python-libs > /app/python-libs/requirements-lock.txt
 
 # Stage 3b: dlv installer (builds dlv for the debug stage)
-FROM golang:1.26.2-bookworm AS debug-dlv-builder
+FROM golang:1.26.5-bookworm AS debug-dlv-builder
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go install github.com/go-delve/delve/cmd/dlv@v1.26.0

@@ -1,0 +1,198 @@
+<section class="section mb-4">
+    <div class="container-fluid">
+        <div class="petstore-showcase mb-4">
+            <style>
+                .petstore-showcase {
+                    position: relative;
+                    background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+                    border-radius: 28px;
+                    padding: 32px 28px;
+                    overflow: hidden;
+                }
+                .petstore-showcase::after {
+                    content: '';
+                    position: absolute;
+                    top: -40px;
+                    right: -40px;
+                    width: 200px;
+                    height: 200px;
+                    background: rgba(59, 130, 246, 0.16);
+                    border-radius: 50%;
+                    z-index: 0;
+                }
+                .petstore-showcase-card {
+                    position: relative;
+                    z-index: 1;
+                }
+                .petstore-showcase-title {
+                    font-size: 2rem;
+                    font-weight: 800;
+                    color: #0f172a;
+                    margin-bottom: 16px;
+                }
+                .petstore-showcase-copy {
+                    color: #334155;
+                    font-size: 1rem;
+                    line-height: 1.75;
+                    margin-bottom: 24px;
+                }
+                .petstore-showcase-features {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                    gap: 16px;
+                }
+                .petstore-showcase-item {
+                    background: #ffffff;
+                    border-radius: 20px;
+                    border: 1px solid rgba(148, 163, 184, 0.18);
+                    padding: 18px;
+                    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+                }
+                .petstore-showcase-label {
+                    font-size: 0.9rem;
+                    font-weight: 700;
+                    color: #2563eb;
+                    margin-bottom: 10px;
+                    display: inline-block;
+                }
+                .petstore-showcase-summary {
+                    margin: 0;
+                    color: #475569;
+                    line-height: 1.8;
+                }
+                .petstore-showcase-actions {
+                    margin-top: 26px;
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 12px;
+                }
+                .petstore-showcase-button {
+                    padding: 12px 22px;
+                    border-radius: 999px;
+                    font-weight: 700;
+                    text-decoration: none;
+                }
+                .petstore-showcase-button-primary {
+                    background: #2563eb;
+                    color: #ffffff;
+                }
+                .petstore-showcase-button-secondary {
+                    background: #e0f2fe;
+                    color: #0f172a;
+                }
+                @media (max-width: 768px) {
+                    .petstore-showcase { padding: 24px; }
+                }
+            </style>
+            <div class="petstore-showcase-card">
+                <p class="petstore-showcase-copy">Welcome to Petstore, a playful API experience built like a pet shop website. Browse pets, place orders, and manage user accounts with a friendly API page that feels like a real retail storefront.</p>
+                <div class="petstore-showcase-features">
+                    <div class="petstore-showcase-item">
+                        <div class="petstore-showcase-label">Pet catalog</div>
+                        <p class="petstore-showcase-summary">Display pets by status with search and filtering so developers can build “find a pet” experiences.</p>
+                    </div>
+                    <div class="petstore-showcase-item">
+                        <div class="petstore-showcase-label">Order journey</div>
+                        <p class="petstore-showcase-summary">Simulate the full shopping flow from adding pets to placing and tracking orders.</p>
+                    </div>
+                    <div class="petstore-showcase-item">
+                        <div class="petstore-showcase-label">User management</div>
+                        <p class="petstore-showcase-summary">Create, update, and manage users so the API feels like a polished customer portal.</p>
+                    </div>
+                </div>
+                <div class="petstore-showcase-actions">
+                    <a id="petstore-spec-link" href="#" class="petstore-showcase-button petstore-showcase-button-primary">Open API Spec</a>
+                    <a id="petstore-guides-link" href="#" class="petstore-showcase-button petstore-showcase-button-secondary">View Guides</a>
+                </div>
+            </div>
+        </div>
+        <script>
+            (function() {
+                const basePath = window.location.pathname.replace(/\/?$/, '');
+                const apiBase = basePath.endsWith('/api') ? basePath : basePath;
+                const specLink = document.getElementById('petstore-spec-link');
+                const guidesLink = document.getElementById('petstore-guides-link');
+                if (specLink) {
+                    specLink.href = `${apiBase}/docs/specification`;
+                }
+                if (guidesLink) {
+                    guidesLink.href = `${apiBase}/docs/Other/overview`;
+                }
+            })();
+        </script>
+
+        <div class="defaultapi-section">
+            <div class="container-header mb-4">Endpoints</div>
+            <div class="defaultapi-endpoint-row col-12 col-xl-9">
+                <div class="defaultapi-endpoint-content">
+                    <span class="defaultapi-development-label">Production Endpoint</span>
+                    <div class="defaultapi-endpoint-url-container d-flex">
+                        <pre id="token_api_prod_url" class="defaultapi-endpoint-url token-text mb-0">https://petstore.swagger.io/v2</pre>
+                        <a class="copy-button" aria-label="Copy token" type="button" onclick="copyToken('api_prod_url')">
+                            <i class="bi bi-copy"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="defaultapi-endpoint-row col-12 col-xl-9">
+                <div class="defaultapi-endpoint-content">
+                    <span class="defaultapi-development-label">Sandbox Endpoint</span>
+                    <div class="defaultapi-endpoint-url-container d-flex">
+                        <pre id="token_api_dev_url" class="defaultapi-endpoint-url token-text mb-0">https://petstore.swagger.io/v2</pre>
+                        <a class="copy-button" aria-label="Copy token" type="button" onclick="copyToken('api_dev_url')">
+                            <i class="bi bi-copy"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="defaultapi-section">
+                <div class="container-header mb-4">Scopes</div>
+                <span class="api-span-tag">read:pets</span>
+                <span class="api-span-tag">write:pets</span>
+            </div>
+
+            <div class="defaultapi-section">
+                <div class="container-header mb-4">Resources</div>
+                <div class="defaultapi-resources col-12">
+                    <div class="defaultapi-resource-item defaultapi-resource-item-GET">
+                        <div class="defaultapi-http-method defaultapi-http-method-GET">GET</div>
+                        <div class="defaultapi-resource-path">/pet/findByStatus</div>
+                        <div class="defaultapi-resource-summary">Finds pets by status.</div>
+                    </div>
+                    <div class="defaultapi-resource-item defaultapi-resource-item-POST">
+                        <div class="defaultapi-http-method defaultapi-http-method-POST">POST</div>
+                        <div class="defaultapi-resource-path">/pet</div>
+                        <div class="defaultapi-resource-summary">Add a new pet to the store.</div>
+                    </div>
+                    <div class="defaultapi-resource-item defaultapi-resource-item-GET">
+                        <div class="defaultapi-http-method defaultapi-http-method-GET">GET</div>
+                        <div class="defaultapi-resource-path">/store/order/{orderId}</div>
+                        <div class="defaultapi-resource-summary">Find purchase order by ID.</div>
+                    </div>
+                    <div class="defaultapi-resource-item defaultapi-resource-item-POST">
+                        <div class="defaultapi-http-method defaultapi-http-method-POST">POST</div>
+                        <div class="defaultapi-resource-path">/user</div>
+                        <div class="defaultapi-resource-summary">Create a new user.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="defaultapi-section">
+            <div class="container-header mb-4">FAQ</div>
+            <div class="faq-item">
+                <p class="faq-question">How do I access API docs?</p>
+                <p class="faq-answer">Use the "View API Documentation" button above to open the interactive Swagger specification.</p>
+            </div>
+            <div class="faq-item">
+                <p class="faq-question">What authentication methods are supported?</p>
+                <p class="faq-answer">This API supports API key authentication via the `api_key` header and OAuth2 implicit flow with `petstore_auth`.</p>
+            </div>
+            <div class="faq-item">
+                <p class="faq-question">What resources are available?</p>
+                <p class="faq-answer">You can manage pets, view inventory, place orders, and create or update users using the REST endpoints.</p>
+            </div>
+        </div>
+    </div>
+</section>

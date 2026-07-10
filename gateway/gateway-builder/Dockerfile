@@ -17,7 +17,7 @@
 # --------------------------------------------------------------------
 
 # Gateway Builder Image
-FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS builder
 ARG TARGETARCH
 
 # Build arguments for version information
@@ -37,6 +37,8 @@ WORKDIR /workspace
 
 # Copy common (needed for go.mod replace directive)
 COPY --from=common . /workspace/common
+# httpkit must be present before downloading — common/go.mod has a replace directive pointing to ../httpkit
+COPY --from=httpkit . /workspace/httpkit
 
 # Pre-download Go dependencies for common
 WORKDIR /workspace/common
@@ -74,12 +76,13 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o /usr/local/bin/gateway-builder \
     ./cmd/builder
 
-FROM golang:1.26.2-bookworm
+FROM golang:1.26.5-bookworm
 
-# Install runtime dependencies
+# Install runtime dependencies (upgrade first to pull in Debian security fixes)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
+    apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
     git \
     make \
     ca-certificates \
@@ -95,6 +98,7 @@ COPY --from=policy-engine . /api-platform/gateway/gateway-runtime/policy-engine
 COPY --from=python-executor . /api-platform/gateway/gateway-runtime/python-executor
 COPY --from=system-policies . /api-platform/gateway/system-policies
 COPY --from=common . /api-platform/common
+COPY --from=httpkit . /api-platform/httpkit
 COPY --from=sdk-core . /api-platform/sdk/core
 COPY --from=sdk-python . /api-platform/sdk-python
 COPY --from=target LICENSE /app/LICENSE

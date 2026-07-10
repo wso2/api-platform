@@ -19,7 +19,7 @@ Create an API manifest file using the appropriate `kind`. The file **must** be n
 
 ```yaml
 # api.yaml
-apiVersion: devportal.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: RestApi   # RestApi | WS | GraphQL | SOAP | WebSubApi
 
 metadata:
@@ -30,7 +30,6 @@ spec:
   displayName: Order API
   version: v1.0
   description: Create and manage customer orders
-  provider: WSO2
   status: PUBLISHED
 
   tags:
@@ -40,7 +39,7 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies:
+  subscriptionPlans:
     - Bronze
     - Gold
     - Unlimited
@@ -63,7 +62,7 @@ For an MCP server, use `mcp.yaml` instead:
 
 ```yaml
 # mcp.yaml
-apiVersion: devportal.api-platform.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: MCP
 
 metadata:
@@ -74,13 +73,12 @@ spec:
   displayName: My MCP Server
   version: 1.0.0
   description: MCP server exposing AI tools.
-  provider: WSO2
   status: PUBLISHED
 
   labels:
     - default
 
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
 
   visibility: PUBLIC
@@ -97,28 +95,34 @@ spec:
 
 ## Step 2 — Upload the API
 
+> **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
+> ```bash
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
+>   -d "username=admin&password=admin" | jq -r .token)
+> ```
+
 Send the manifest and definition together as a multipart upload:
 
 ```bash
 # REST API with OpenAPI definition
-curl -X POST "http://localhost:3000/organizations/{orgId}/apis" \
-  -u admin:admin \
+curl -k -X POST "https://localhost:3000/api/v0.9/apis" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "api=@api.yaml" \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"
 ```
 
 ```bash
 # GraphQL API
-curl -X POST "http://localhost:3000/organizations/{orgId}/apis" \
-  -u admin:admin \
+curl -k -X POST "https://localhost:3000/api/v0.9/apis" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "api=@api.yaml" \
   -F "apiDefinition=@schema.graphql;type=application/graphql"
 ```
 
 ```bash
-# MCP server
-curl -X POST "http://localhost:3000/organizations/{orgId}/apis" \
-  -u admin:admin \
+# MCP server (note: MCP servers are created under /mcp-servers, not /apis)
+curl -k -X POST "https://localhost:3000/api/v0.9/mcp-servers" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "api=@mcp.yaml" \
   -F "apiDefinition=@mcp-spec.yaml;type=application/yaml"
 ```
@@ -130,41 +134,43 @@ curl -X POST "http://localhost:3000/organizations/{orgId}/apis" \
 | `spec.displayName` | Yes | Display name shown in the catalog |
 | `spec.version` | Yes | Version string (e.g. `v1.0`, `2.3`) |
 | `spec.description` | No | Short description shown in the catalog listing |
-| `spec.provider` | No | Provider name (e.g. `WSO2`) |
-| `spec.status` | No | `PUBLISHED` (default) or `PROTOTYPED` |
+| `spec.status` | No | `PUBLISHED` (default) or `DEPRECATED` |
 | `spec.tags` | No | Tags for search and filtering |
 | `spec.labels` | No | Labels that control which views the API appears in |
-| `spec.subscriptionPolicies` | No | Names of subscription plans available for this API |
+| `spec.subscriptionPlans` | No | Names of subscription plans available for this API |
 | `spec.visibility` | No | `PUBLIC` (visible to all) or `PRIVATE` (restricted) |
 | `spec.visibleGroups` | No | Groups that can see a `PRIVATE` API |
 | `spec.endpoints.productionUrl` | No | Production gateway URL |
 | `spec.endpoints.sandboxUrl` | No | Sandbox gateway URL |
 | `spec.businessInformation` | No | Business and technical owner contact details |
-| `spec.gatewayType` | No | Gateway type identifier — used to route webhook events to the matching gateway subscriber |
 
 The response includes the `apiId` needed for subsequent steps.
 
-## Step 3 — Upload the API Definition Separately (Optional)
+## Step 3 — Update the API Definition (Optional)
 
-If you need to update the definition file independently of the manifest:
+`PUT /apis/{apiId}` replaces the definition file, but it always requires the metadata alongside it. Include `apiMetadata` with at least `id` (matching the API's existing handle), `name`, and `endPoints`, together with the new definition file:
 
 ```bash
 # OpenAPI YAML
-curl -X POST \
-  "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
-  -u admin:admin \
+curl -k -X PUT \
+  "https://localhost:3000/api/v0.9/apis/{apiId}" \
+  -H "Authorization: Bearer $TOKEN" \
+  -F 'apiMetadata={"id":"{apiId}","name":"Order API","endPoints":{"productionURL":"https://api.example.com/orders","sandboxURL":"https://sandbox.example.com/orders"}}' \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"
 ```
 
 ```bash
 # AsyncAPI YAML
-curl -X POST \
-  "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
-  -u admin:admin \
+curl -k -X PUT \
+  "https://localhost:3000/api/v0.9/apis/{apiId}" \
+  -H "Authorization: Bearer $TOKEN" \
+  -F 'apiMetadata={"id":"{apiId}","name":"Order API","endPoints":{"productionURL":"https://api.example.com/orders","sandboxURL":"https://sandbox.example.com/orders"}}' \
   -F "apiDefinition=@asyncapi.yaml;type=application/yaml"
 ```
 
 The uploaded definition is shown in the API's **Try-Out** tab and is exposed at the machine-readable spec endpoint for AI agent consumption.
+
+> **Note:** `POST`/`PUT /apis/{apiId}/assets` is a different endpoint used to upload the API's static content package (landing-page assets and documents) — see [API Content and Docs](api-content-and-docs.md). It does not accept the API definition file.
 
 ## Step 4 — Add Documentation Content (Optional)
 
@@ -172,7 +178,7 @@ Add landing page content and documentation sections to give developers context a
 
 ## Access Control Patterns
 
-The portal supports three distinct consumption patterns. The pattern is determined by the combination of `spec.subscriptionPolicies` in the API manifest and the `securitySchemes` (and optional extension headers) in the OpenAPI definition.
+The portal supports three distinct consumption patterns. The pattern is determined by the combination of `spec.subscriptionPlans` in the API manifest and the `securitySchemes` (and optional extension headers) in the OpenAPI definition.
 
 ---
 
@@ -184,8 +190,7 @@ The consumer generates an API key from the portal and uses it directly to invoke
 
 ```yaml
 spec:
-  gatewayType: wso2/api-platform
-  subscriptionPolicies: []   # no subscription required
+  subscriptionPlans: []   # no subscription required
 ```
 
 **`openapi.yaml`** (relevant excerpt)
@@ -211,8 +216,7 @@ The consumer subscribes to a plan and then generates an API key bound to that AP
 
 ```yaml
 spec:
-  gatewayType: wso2/api-platform
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
     - Bronze
 ```
@@ -240,8 +244,7 @@ The consumer subscribes to a plan and generates an API key. They also receive a 
 
 ```yaml
 spec:
-  gatewayType: wso2/api-platform
-  subscriptionPolicies:
+  subscriptionPlans:
     - Gold
     - Silver
     - Bronze
@@ -272,7 +275,7 @@ Consumers subscribe to a plan (receiving a subscription token), generate an API 
 
 ### Summary
 
-| Pattern | `subscriptionPolicies` | `securitySchemes` | `x-header-type: subscription-token` |
+| Pattern | `subscriptionPlans` | `securitySchemes` | `x-header-type: subscription-token` |
 |---|---|---|---|
 | API key only | `[]` | `apiKey` | No |
 | API key + direct subscription | one or more plans | `apiKey` | No |
@@ -282,7 +285,7 @@ Consumers subscribe to a plan (receiving a subscription token), generate an API 
 
 ```yaml
 # api-update.yaml
-apiVersion: devportal.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: RestApi
 
 metadata:
@@ -293,22 +296,22 @@ spec:
   labels:
     - default
     - ecommerce
-  subscriptionPolicies:
+  subscriptionPlans:
     - Bronze
     - Gold
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/organizations/{orgId}/apis/{apiId} \
-  -u admin:admin \
+curl -k -X PUT https://localhost:3000/api/v0.9/apis/{apiId} \
+  -H "Authorization: Bearer $TOKEN" \
   -F "api=@api-update.yaml"
 ```
 
 ## Delete an API
 
 ```bash
-curl -X DELETE http://localhost:3000/organizations/{orgId}/apis/{apiId} \
-  -u admin:admin
+curl -k -X DELETE https://localhost:3000/api/v0.9/apis/{apiId} \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 > **Note:** Deleting an API removes it from the catalog immediately. Existing subscriptions to the API are not automatically cancelled — notify subscribers before deletion.
@@ -316,19 +319,19 @@ curl -X DELETE http://localhost:3000/organizations/{orgId}/apis/{apiId} \
 ## List APIs
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/apis -u admin:admin
+curl -k https://localhost:3000/api/v0.9/apis -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get an API
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/apis/{apiId} -u admin:admin
+curl -k https://localhost:3000/api/v0.9/apis/{apiId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Related
 
 - [API Content and Docs](api-content-and-docs.md) — upload landing page content and documentation
-- [Subscription Plans](../administer/subscription-plans.md) — create the plans referenced in `spec.subscriptionPolicies`
+- [Subscription Plans](../administer/subscription-plans.md) — create the plans referenced in `spec.subscriptionPlans`
 - [Manage Views](../administer/manage-views.md) — configure labels and views
 - [API Workflows](manage-api-workflows.md) — publish multi-step workflows for this API
 - [Consume with API Key](../consume-an-api/consume-with-api-key.md) — developer view of generating API keys

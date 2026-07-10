@@ -18,40 +18,45 @@
 # Global build arguments
 ARG PORT=9243
 
+# Set EXPERIMENTAL=true to include the event-gateway plugin.
+# The resulting image should be tagged with a "-experimental" suffix.
+ARG EXPERIMENTAL=false
+
 # Build stage
-FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS builder
 ARG TARGETARCH
 
 # Build arguments for version information
 ARG VERSION=0.0.1-SNAPSHOT
 ARG GIT_COMMIT=unknown
+ARG EXPERIMENTAL=false
 
 WORKDIR /build
 
-# Install build dependencies for SQLite (CGO requirement)
-# Install cross-compilation toolchains based on target architecture
+# CGO is required for mattn/go-sqlite3; install cross-compile toolchains.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libc6-dev \
     libsqlite3-dev \
     && if [ "$TARGETARCH" = "amd64" ]; then \
-        apt-get install -y --no-install-recommends gcc-x86-64-linux-gnu libc6-dev-amd64-cross; \
-    elif [ "$TARGETARCH" = "arm64" ]; then \
-        apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross; \
-    fi \
+           apt-get install -y --no-install-recommends gcc-x86-64-linux-gnu libc6-dev-amd64-cross; \
+       elif [ "$TARGETARCH" = "arm64" ]; then \
+           apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross; \
+       fi \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy go mod files for dependencies (needed for go.mod replace directive)
+# Copy go mod files for dependencies (needed for go.mod replace directives)
 COPY --from=common go.mod go.sum /common/
+COPY --from=httpkit go.mod go.sum /httpkit/
 
-COPY src/go.mod src/go.sum ./
+# Fetch dependencies before copying full source for better layer caching.
+COPY go.mod go.sum ./
 RUN go mod download
 
 COPY --from=common . /common
-COPY src/ ./
+COPY --from=httpkit . /httpkit
+COPY . ./
 
-# Build the binary with CGO enabled (required for mattn/go-sqlite3)
-# Set CC for cross-compilation based on target architecture
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
         export CC=x86_64-linux-gnu-gcc; \
     elif [ "$TARGETARCH" = "arm64" ]; then \
@@ -59,27 +64,33 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     else \
         export CC=gcc; \
     fi && \
+    BUILD_TAGS="" && \
+    if [ "$EXPERIMENTAL" = "true" ]; then BUILD_TAGS="-tags experimental"; fi && \
     CGO_ENABLED=1 \
     GOOS=linux \
     GOARCH=${TARGETARCH} \
     go build -a \
-    -ldflags "-X main.Version=${VERSION} \
-              -X main.GitCommit=${GIT_COMMIT} \
-              -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    -o platform-api ./cmd/main.go
+        ${BUILD_TAGS} \
+        -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT}" \
+        -o platform-api ./cmd/main.go
 
-# Stage 2: Create minimal runtime image
-# Using Ubuntu 24.04 for glibc compatibility with builder stage
+###########################
+# Runtime Stage           #
+###########################
 FROM ubuntu:24.04
 
+ARG PORT
+ARG EXPERIMENTAL=false
 ARG USERNAME=wso2
 ARG USER_UID=10001
 ARG USER_GID=$USER_UID
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    wget \
+LABEL org.opencontainers.image.experimental="${EXPERIMENTAL}"
+
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -88,24 +99,31 @@ RUN groupadd -g $USER_UID appgroup && \
     useradd -u $USER_UID -g appgroup -s /bin/bash -m $USERNAME
 
 COPY --from=builder /build/platform-api .
-RUN mkdir -p /app/data && \
-    chown -R wso2:appgroup /app
-COPY src/internal/database/schema.sql ./schema.sql
-COPY src/internal/database/schema.postgres.sql ./schema.postgres.sql
-COPY src/internal/database/schema.sqlite.sql ./schema.sqlite.sql
-COPY src/resources/default-llm-provider-templates ./default-llm-provider-templates
 
-ARG PORT
+# Schema files, LLM provider templates and OpenAPI spec.
+# These are copied to the same relative locations the binary expects by default
+# (see config.defaultConfig), so no DB_SCHEMA_PATH / LLM_TEMPLATE_DEFINITIONS_PATH
+# env overrides are needed. Any of them can still be overridden via config.toml.
+COPY internal/database/schema.sql            ./internal/database/schema.sql
+COPY internal/database/schema.postgres.sql   ./internal/database/schema.postgres.sql
+COPY internal/database/schema.sqlserver.sql  ./internal/database/schema.sqlserver.sql
+COPY internal/database/schema.sqlite.sql     ./internal/database/schema.sqlite.sql
+COPY resources/default-llm-provider-templates ./resources/default-llm-provider-templates
+COPY resources/openapi.yaml                  ./resources/openapi.yaml
+
+RUN mkdir -p /app/data /app/data/certs && \
+    chown -R wso2:appgroup /app
+
 EXPOSE ${PORT}
 
-ENV DRIVER=sqlite3
 ENV LOG_LEVEL=INFO
-ENV DB_SCHEMA_PATH=./schema.sql
-ENV LLM_TEMPLATE_DEFINITIONS_PATH=./default-llm-provider-templates
-# For SQLite: configured via DATABASE_DB_PATH to avoid clashing with OS PATH
-ENV DATABASE_DB_PATH=/app/data/api_platform.db
 ENV PORT=${PORT}
+# Database driver, paths, and TLS cert dir are NOT baked as env vars: the binary's
+# compiled defaults (sqlite3 at ./data/api_platform.db, certs at ./data/certs,
+# schema/templates/openapi under the relative paths mirrored above) already resolve
+# correctly against WORKDIR /app. Override any of them in config.toml — e.g. set
+# [database] driver = "postgres" — without an env var silently shadowing the file.
 
 USER $USERNAME
 
-CMD ["./platform-api"]
+ENTRYPOINT ["./platform-api"]

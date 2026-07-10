@@ -1,0 +1,38 @@
+version: "3.9"
+
+# Three WireMock containers, one per MCP backend (CRM, Orders, KB).
+# Each container binds to 0.0.0.0:8080 internally.
+# setup.sh connects them to the WSO2 AI Gateway's Docker network so the gateway
+# can reach them by container name: http://crm-mcp:8080, http://orders-mcp:8080, etc.
+# The host port mappings (8001→8080 etc.) are for local debugging only.
+
+services:
+  crm-mcp:
+    image: wiremock/wiremock:3.3.1
+    container_name: crm-mcp
+    volumes:
+      - ./wiremock/crm:/home/wiremock 
+    command: --global-response-templating --port 8080
+    ports:
+      - "8001:8080"
+    restart: unless-stopped
+
+  orders-mcp:
+    image: wiremock/wiremock:3.3.1
+    container_name: orders-mcp
+    volumes:
+      - ./wiremock/orders:/home/wiremock
+    command: --global-response-templating --port 8080
+    ports:
+      - "8002:8080"
+    restart: unless-stopped
+
+  kb-mcp:
+    image: wiremock/wiremock:3.3.1
+    container_name: kb-mcp
+    volumes:
+      - ./wiremock/kb:/home/wiremock
+    command: --global-response-templating --port 8080
+    ports:
+      - "8003:8080"
+    restart: unless-stopped

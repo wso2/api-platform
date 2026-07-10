@@ -22,12 +22,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/MicahParks/jwkset"
-	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/wso2/api-platform/common/constants"
@@ -241,7 +239,6 @@ func TestJWTAuthenticator_ResolvePermissions_InvalidClaimType(t *testing.T) {
 }
 
 func TestJWTAuthenticator_Authenticate_ExpiredTokenRejected_WithIssuerValidation(t *testing.T) {
-	gin.SetMode(gin.TestMode)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	issuer := "https://issuer.example.com"
 
@@ -262,12 +259,9 @@ func TestJWTAuthenticator_Authenticate_ExpiredTokenRejected_WithIssuerValidation
 		jwks:   staticKeyfunc{key: secret},
 	}
 
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
 	req, _ := http.NewRequest("GET", "/", nil)
 	req.Header.Set(constants.AuthorizationHeader, constants.BearerPrefix+tokenString)
-	c.Request = req
 
-	_, err = a.Authenticate(c)
+	_, err = a.Authenticate(req)
 	assert.ErrorIs(t, err, ErrExpiredToken)
 }

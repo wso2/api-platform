@@ -26,7 +26,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -34,6 +33,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
+	"github.com/wso2/go-httpkit/httputil"
 )
 
 // convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance.
@@ -62,15 +62,15 @@ func convertAPIPolicy(p api.Policy, attachedTo policy.Level, resolvedVersion str
 
 // CreateMCPProxy implements ServerInterface.CreateMCPProxy
 // (POST /mcp-proxies)
-func (s *APIServer) CreateMCPProxy(c *gin.Context) {
+func (s *APIServer) CreateMCPProxy(w http.ResponseWriter, r *http.Request) {
 	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
+	log := middleware.GetLogger(r, s.logger)
 
 	// Read request body
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Error("Failed to read request body", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
 		})
@@ -78,12 +78,12 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	}
 
 	// Get correlation ID from context
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
 	// Deploy MCP configuration using the utility service
 	result, err := s.mcpDeploymentService.CreateMCPProxy(utils.MCPDeploymentParams{
 		Data:          body,
-		ContentType:   c.GetHeader("Content-Type"),
+		ContentType:   r.Header.Get("Content-Type"),
 		ID:            "", // Empty to generate new UUID
 		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
@@ -92,16 +92,16 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 
 	if err != nil {
 		log.Error("Failed to deploy MCP proxy configuration", slog.Any("error", err))
-		if mapRenderError(c, "create", err) {
+		if mapRenderError(w, "create", err) {
 			return
 		}
 		if storage.IsConflictError(err) {
-			c.JSON(http.StatusConflict, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
 		} else {
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
@@ -113,36 +113,27 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 
 	mcp, err := rematerializeMCPProxyConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to get stored MCP configuration",
 		})
 		return
 	}
 
-	c.JSON(http.StatusCreated, buildResourceResponseFromStored(mcp, cfg))
-
-	if result.IsStale {
-		return
-	}
-
-	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentPushEnabled {
-		go s.waitForDeploymentAndPush(cfg.UUID, correlationID, log)
-	}
-
+	httputil.WriteJSON(w, http.StatusCreated, buildResourceResponseFromStored(mcp, cfg))
 }
 
 // ListMCPProxies implements ServerInterface.ListMCPProxies
 // (GET /mcp-proxies)
-func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesParams) {
+func (s *APIServer) ListMCPProxies(w http.ResponseWriter, r *http.Request, params api.ListMCPProxiesParams) {
 	if (params.DisplayName != nil && *params.DisplayName != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
-		s.SearchDeployments(c, string(api.MCPProxyConfigurationKindMcp))
+		s.SearchDeployments(w, r, string(api.MCPProxyConfigurationKindMcp))
 		return
 	}
 	configs, err := s.mcpDeploymentService.ListMCPProxies()
 	if err != nil {
 		s.logger.Error("Failed to list MCP proxies", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to list MCP proxies",
 		})
@@ -156,7 +147,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		// value may be a plain map when it round-trips through the database).
 		mcp, err := rematerializeMCPProxyConfig(s.logger, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to get stored MCP configuration",
 			})
@@ -165,7 +156,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		items = append(items, buildResourceResponseFromStored(mcp, cfg))
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":     "success",
 		"count":      len(items),
 		"mcpProxies": items,
@@ -174,16 +165,16 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 
 // GetMCPProxyById implements ServerInterface.GetMCPProxyById
 // (GET /mcp-proxies/{id})
-func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
+func (s *APIServer) GetMCPProxyById(w http.ResponseWriter, r *http.Request, id string) {
 	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
+	log := middleware.GetLogger(r, s.logger)
 
 	handle := id
 
 	cfg, err := s.mcpDeploymentService.GetMCPProxyByHandle(handle)
 	if err != nil {
 		if storage.IsDatabaseUnavailableError(err) {
-			c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, api.ErrorResponse{
 				Status:  "error",
 				Message: "Database storage not available",
 			})
@@ -192,7 +183,7 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 		if strings.Contains(err.Error(), "not found") {
 			log.Warn("MCP proxy configuration not found",
 				slog.String("handle", handle))
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("MCP proxy configuration with handle '%s' not found", handle),
 			})
@@ -202,7 +193,7 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 		log.Error("Failed to retrieve MCP proxy configuration",
 			slog.String("handle", handle),
 			slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to retrieve MCP proxy configuration",
 		})
@@ -216,7 +207,7 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 			slog.String("expected", string(api.MCPProxyConfigurationKindMcp)),
 			slog.String("actual", cfg.Kind),
 			slog.String("handle", handle))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Configuration with handle '%s' is not of kind MCP", handle),
 		})
@@ -227,29 +218,29 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 	// can attach the server-managed Status field and emit a strongly-typed body.
 	mcp, err := rematerializeMCPProxyConfig(log, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to retrieve MCP proxy configuration",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, buildResourceResponseFromStored(mcp, cfg))
+	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(mcp, cfg))
 }
 
 // UpdateMCPProxy implements ServerInterface.UpdateMCPProxy
 // (PUT /mcp-proxies/{handle})
-func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
+func (s *APIServer) UpdateMCPProxy(w http.ResponseWriter, r *http.Request, id string) {
 	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
+	log := middleware.GetLogger(r, s.logger)
 
 	handle := id
 
 	// Read request body
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Error("Failed to read request body", slog.Any("error", err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
 		})
@@ -257,24 +248,24 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	}
 
 	// Get correlation ID
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
 	// Delegate to service update wrapper
 	updated, err := s.mcpDeploymentService.UpdateMCPProxy(handle, utils.MCPDeploymentParams{
 		Data:          body,
-		ContentType:   c.GetHeader("Content-Type"),
+		ContentType:   r.Header.Get("Content-Type"),
 		Origin:        models.OriginGatewayAPI,
 		CorrelationID: correlationID,
 		Logger:        log,
 	}, log)
 
 	if err != nil {
-		if mapRenderError(c, "update", err) {
+		if mapRenderError(w, "update", err) {
 			return
 		}
 		log.Warn("MCP proxy configuration not found",
 			slog.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("MCP configuration with handle '%s' not found", handle),
 		})
@@ -287,38 +278,38 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 
 	mcp, err := rematerializeMCPProxyConfig(log, updated.UUID, updated.DisplayName, updated.SourceConfiguration)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to get stored MCP configuration",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, buildResourceResponseFromStored(mcp, updated))
+	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(mcp, updated))
 }
 
 // DeleteMCPProxy implements ServerInterface.DeleteMCPProxy
 // (DELETE /mcp-proxies/{handle})
-func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
+func (s *APIServer) DeleteMCPProxy(w http.ResponseWriter, r *http.Request, id string) {
 	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
+	log := middleware.GetLogger(r, s.logger)
 
 	handle := id
 	// Get correlation ID from context
-	correlationID := middleware.GetCorrelationID(c)
+	correlationID := middleware.GetCorrelationID(r)
 
 	cfg, err := s.mcpDeploymentService.DeleteMCPProxy(handle, correlationID, log)
 	if err != nil {
 		log.Warn("Failed to delete MCP proxy configuration", slog.String("handle", handle), slog.Any("error", err))
 		// Check if it's a not found error
 		if strings.Contains(err.Error(), "not found") {
-			c.JSON(http.StatusNotFound, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: err.Error(),
 		})
@@ -329,7 +320,10 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 		slog.String("id", cfg.UUID),
 		slog.String("handle", handle))
 
-	c.JSON(http.StatusOK, gin.H{
+	// Notify the control plane so the artifact is marked undeployed (not deleted).
+	s.pushArtifactUndeploy(cfg, log)
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
 		"message": "MCP proxy configuration deleted successfully",
 		"id":      handle,

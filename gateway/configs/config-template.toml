@@ -68,6 +68,29 @@ conn_max_lifetime = "30m"
 conn_max_idle_time = "5m"
 application_name = "gateway-controller"
 
+[controller.storage.database]
+# Global DB configuration used by sqlserver (and future SQL backends).
+# For sqlite and postgres, legacy [controller.storage.sqlite]/[controller.storage.postgres]
+# sections are still supported for backward compatibility.
+driver = "sqlserver"
+# Optional DSN. If set, host/port/database/user/password are ignored.
+# dsn = "sqlserver://user:password@localhost:1433?database=gateway&encrypt=true"
+host = "localhost"
+port = 1433
+database = "gateway"
+user = "gateway"
+password = ""
+connect_timeout = "5s"
+max_open_conns = 25
+max_idle_conns = 5
+conn_max_lifetime = "30m"
+conn_max_idle_time = "5m"
+application_name = "gateway-controller"
+
+[controller.storage.database.options]
+encrypt = "true" # disable, false, true, strict
+trust_server_certificate = "false"
+
 [controller.policies]
 # Directory containing policy definitions
 definitions_path = "./default-policies"
@@ -306,6 +329,17 @@ pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 [immutable_gateway]
 enabled = false
 artifacts_dir = "/etc/api-platform-gateway/immutable_gateway/artifacts"
+
+# =============================================================================
+# MCP CONFIGURATION
+# =============================================================================
+
+[mcp]
+# When true, restores the legacy behaviour of appending the "/mcp" resource path to the
+# MCP backend upstream (i.e. "<context>/mcp" is forwarded to "<upstream>/mcp"). The
+# default (false) forwards to exactly the configured upstream path. Enable this only if
+# existing MCP API definitions rely on the "/mcp" suffix being appended to the backend.
+append_resource_path_to_backend = false
 
 # =============================================================================
 # TRACING CONFIGURATION

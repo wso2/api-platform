@@ -21,20 +21,18 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
-const adminDao = require('../dao/admin');
-const IdentityProviderDTO = require("../dto/identityProvider");
+const orgDao = require('../dao/organizationDao');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const adminService = require('../services/adminService');
 const apiMetadataService = require('../services/apiMetadataService');
 const devPortalService = require('../services/devportalService');
 
-const filePrefix = config.pathToContent;
 
 
 const loadOrgSettingsPage = async (req, res) => {
 
-    let orgID;
+    let orgId;
     const completeTemplatePath = path.join(require.main.filename, '..', 'pages', 'configure', 'page.hbs');
     const layoutPath = path.join(require.main.filename, '..', 'pages', 'layout', 'main.hbs');
 
@@ -45,50 +43,27 @@ const loadOrgSettingsPage = async (req, res) => {
     let layoutResponse = "";
     let views;
     try {
-        if (config.mode === constants.DEV_MODE) {
-            const retrievedIDP = await getMockIdentityProvider();
-            templateContent.idp = retrievedIDP;
-            views = [{
-                'name': 'Default'
-            }];
-            templateContent.createIDP = true;
-            templateContent.content = true;
-            templateContent.orgContent = true;
-            templateContent.views = views;
-            templateContent.apiProviders = getMockAPIProviders();
-        } else {
-            let orgName = req.params.orgName;
-            templateContent.loggedOrg = orgName;
-            orgID = await adminDao.getOrgId(orgName);
-            templateContent.orgID = orgID;
+        let orgName = req.params.orgName;
+        templateContent.loggedOrg = orgName;
+        orgId = await orgDao.getId(orgName);
+        templateContent.orgId = orgId;
 
-            const organizations = await adminService.getAllOrganizations();
-            if (organizations.length > 0) {
-                templateContent.organizations = organizations;
-            }
-            const retrievedIDP = await adminDao.getIdentityProvider(orgID);
-            if (retrievedIDP.length > 0) {
-                templateContent.idp = new IdentityProviderDTO(retrievedIDP[0]);
-            } else {
-                templateContent.createIDP = true;
-            }
-            templateContent.viewCreate = true;
-            const views = await apiMetadataService.getViewsFromDB(orgID);
-            if (views.length > 0) {
-                templateContent.content = true;
-                templateContent.views = views;
-                templateContent.viewCreate = false;
-                templateContent.orgContent = false;
-            }
-            const orgLabels = await apiMetadataService.getOrgLabels(orgID);
-            templateContent.orgLabels = orgLabels;
-            const apiProviders = await getAPIProviders(orgID);
-            if (apiProviders.length > 0) {
-                templateContent.apiProviders = apiProviders;
-            }
-
-            templateContent.profile = req.user;
+        const organizations = await adminService.getAllOrganizations();
+        if (organizations.length > 0) {
+            templateContent.organizations = organizations;
         }
+        templateContent.viewCreate = true;
+        const views = await apiMetadataService.getViewsFromDB(orgId);
+        if (views.length > 0) {
+            templateContent.content = true;
+            templateContent.views = views;
+            templateContent.viewCreate = false;
+            templateContent.orgContent = false;
+        }
+        const orgLabels = await apiMetadataService.getOrgLabels(orgId);
+        templateContent.orgLabels = orgLabels;
+
+        templateContent.profile = req.user;
         layoutResponse = fs.readFileSync(layoutPath, constants.CHARSET_UTF8);
         const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
         let html = await renderGivenTemplate(templateResponse, layoutResponse, templateContent);
@@ -103,44 +78,19 @@ const loadOrgSettingsPage = async (req, res) => {
 }
 
 
-async function getMockAPIProviders() {
-
-    const mockAPIProvidersDataPath = path.join(process.cwd(), filePrefix + '../mock/APIProviders/APIProviders.json');
-    const mockAPIProvidersData = JSON.parse(fs.readFileSync(mockAPIProvidersDataPath, 'utf-8'));
-    return mockAPIProvidersData;
-}
-
-async function getAPIProviders(orgID) {
-
-    const apiProviders = await adminService.getAllProviders(orgID);
-    return apiProviders;
-}
-
-async function getMockIdentityProvider() {
-
-    const mockIdentityProviderDataPath = path.join(process.cwd(), filePrefix + '../mock/IdentityProvider/identityProvider.json');
-    const mockIDPaData = JSON.parse(fs.readFileSync(mockIdentityProviderDataPath, 'utf-8'));
-    return mockIDPaData;
-}
-
 const loadPortalPage = async (req, res) => {
 
     let templateContent = {};
     try {
-        if (config.mode === constants.DEV_MODE) {
-            const organizations = await getMockOrganizations();
+        templateContent = {
+            'profile': req.user
+        }
+        //fetch all created organizations
+        const organizations = await adminService.getAllOrganizations();
+        let orgs = organizations.length;
+        if (orgs !== 0) {
             templateContent.organizations = organizations;
-        } else {
-            templateContent = {
-                'profile': req.user
-            }
-            //fetch all created organizations
-            const organizations = await adminService.getAllOrganizations();
-            let orgs = organizations.length;
-            if (orgs !== 0) {
-                templateContent.organizations = organizations;
-                templateContent.create = true;
-            }
+            templateContent.create = true;
         }
         const completeTemplatePath = path.join(require.main.filename, '..', 'pages', 'portal', 'page.hbs');
         const layoutPath = path.join(require.main.filename, '..', 'pages', 'layout', 'main.hbs');
@@ -160,24 +110,19 @@ const loadPortalPage = async (req, res) => {
 const loadEditOrganizationPage = async (req, res) => {
 
     let templateContent = {};
-    let orgID = "";
+    let orgId = "";
     try {
-        if (config.mode === constants.DEV_MODE) {
-            const organizations = await getMockOrganizations();
-            templateContent.organizations = organizations;
-        } else {
-            const orgName = req.params.orgName;
-            if (req.params.orgId !== 'create') {
-                orgID = await adminDao.getOrgId(orgName);
+        const orgName = req.params.orgName;
+        if (req.params.orgId !== 'create') {
+            orgId = await orgDao.getId(orgName);
 
-                //orgID = req.params.orgId;
-                const organization = await devPortalService.getOrganizationDetails(orgID);
-                templateContent = {
-                    'orgID': orgID,
-                    'profile': req.user,
-                    'organization': organization,
-                    'edit': true
-                }
+            //orgId = req.params.orgId;
+            const organization = await devPortalService.getOrganizationDetails(orgId);
+            templateContent = {
+                'orgId': orgId,
+                'profile': req.user,
+                'organization': organization,
+                'edit': true
             }
         }
         const completeTemplatePath = path.join(require.main.filename, '..', 'pages', 'edit-organization', 'page.hbs');
@@ -213,13 +158,6 @@ const loadCreateOrganizationPage = async (req, res) => {
     }
 }
 
-async function getMockOrganizations() {
-
-    const mockOrganizationPath = path.join(process.cwd(), filePrefix + '../mock/Organization',
-        '/organizations.json');
-    const mockOrgData = JSON.parse(fs.readFileSync(mockOrganizationPath, 'utf-8'));
-    return mockOrgData;
-}
 
 module.exports = {
     loadOrgSettingsPage,

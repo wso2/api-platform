@@ -11,6 +11,10 @@ metadata:
   name: {{ include "gateway-operator.fullname" . }}-selfsigned-issuer
   labels:
     {{- include "gateway-operator.componentLabels" (list . "controller" dict) | nindent 4 }}
+  {{- with (include "gateway-operator.annotations" (list . dict)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
 spec:
   selfSigned: {}
 {{- end }}

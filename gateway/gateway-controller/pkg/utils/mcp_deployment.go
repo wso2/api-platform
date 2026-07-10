@@ -67,6 +67,11 @@ type MCPDeploymentService struct {
 	eventHub        eventhub.EventHub
 	gatewayID       string
 	secretResolver  funcs.SecretResolver
+
+	// controlPlaneClient and deploymentPushEnabled drive the DP->CP push performed when a
+	// gateway-originated MCP proxy is created here including via the immutable-gateway loader.
+	controlPlaneClient    ArtifactPusher
+	deploymentPushEnabled bool
 }
 
 // NewMCPDeploymentService creates a new MCP deployment service
@@ -97,6 +102,15 @@ func NewMCPDeploymentService(
 		gatewayID:       trimmedGatewayID,
 		secretResolver:  secretResolver,
 	}
+}
+
+// SetControlPlanePusher wires the control-plane push dependency used to forward
+// gateway-created MCP proxies to the control plane (DP->CP). It is set on the instances that
+// serve gateway-originated creates (the REST handlers' service and the immutable loader's
+// service), and left unset on the control plane client's internal service.
+func (s *MCPDeploymentService) SetControlPlanePusher(pusher ArtifactPusher, pushEnabled bool) {
+	s.controlPlaneClient = pusher
+	s.deploymentPushEnabled = pushEnabled
 }
 
 // HydrateStoredMCPConfig rebuilds the derived RestAPI form for a stored MCP
@@ -248,6 +262,7 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		DesiredState:        mcpDesiredState,
 		DeploymentID:        params.DeploymentID,
 		Origin:              params.Origin,
+		CPSyncStatus:        cpSyncStatusForOrigin(params.Origin),
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          deployedAt,
@@ -393,7 +408,12 @@ func (s *MCPDeploymentService) GetMCPProxyByHandle(handle string) (*models.Store
 
 // CreateMCPProxy is a convenience wrapper around DeployMCPConfiguration for creating MCP proxies
 func (s *MCPDeploymentService) CreateMCPProxy(params MCPDeploymentParams) (*APIDeploymentResult, error) {
-	return s.DeployMCPConfiguration(params)
+	result, err := s.DeployMCPConfiguration(params)
+	if err != nil {
+		return nil, err
+	}
+	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
+	return result, nil
 }
 
 // UpdateMCPProxy updates an existing MCP proxy identified by its handle.
@@ -423,6 +443,7 @@ func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymen
 	if err != nil {
 		return nil, err
 	}
+	s.pushDeployableArtifact(res, params.CorrelationID, params.Logger)
 	return res.StoredConfig, nil
 }
 
@@ -506,4 +527,20 @@ func (s *MCPDeploymentService) UndeployMCPProxy(
 	}
 	s.publishMCPProxyEvent("UPDATE", updated.UUID, correlationID, logger)
 	return &updated, nil
+}
+
+// pushDeployableArtifact forwards a freshly created or updated, gateway-originated MCP proxy
+// to the control plane once it finishes deploying.
+func (s *MCPDeploymentService) pushDeployableArtifact(result *APIDeploymentResult, correlationID string, log *slog.Logger) {
+	if result == nil || result.IsStale || result.StoredConfig == nil {
+		return
+	}
+	if result.StoredConfig.Origin == models.OriginGatewayAPI && s.canPushToControlPlane() {
+		go waitForDeploymentAndPush(s.store, s.controlPlaneClient, result.StoredConfig.UUID, correlationID, result.StoredConfig.DeployedAt, log)
+	}
+}
+
+// canPushToControlPlane reports whether a DP->CP push should be attempted now.
+func (s *MCPDeploymentService) canPushToControlPlane() bool {
+	return s.deploymentPushEnabled && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected()
 }

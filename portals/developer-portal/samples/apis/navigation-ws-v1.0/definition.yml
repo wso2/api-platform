@@ -1,0 +1,110 @@
+asyncapi: 2.6.0
+info:
+  title: Navigation API
+  version: v1.0
+  description: Real-time vehicle navigation and live route tracking over WebSocket.
+
+servers:
+  production:
+    url: wss://navigation.example.com/ws
+    protocol: wss
+    description: Production WebSocket server
+  sandbox:
+    url: ws://localhost:8081/ws
+    protocol: ws
+    description: Local sandbox server
+
+channels:
+  /route:
+    description: Navigation channel for sending requests and receiving live route updates.
+    publish:
+      summary: Request navigation from origin to destination
+      operationId: requestNavigation
+      message:
+        $ref: '#/components/messages/NavigationRequest'
+    subscribe:
+      summary: Receive live route updates and re-routing events
+      operationId: receiveRouteUpdate
+      message:
+        oneOf:
+          - $ref: '#/components/messages/RouteUpdate'
+          - $ref: '#/components/messages/RerouteEvent'
+
+components:
+  messages:
+    NavigationRequest:
+      name: NavigationRequest
+      summary: Start navigation between two points
+      payload:
+        type: object
+        required:
+          - origin
+          - destination
+        properties:
+          requestId:
+            type: string
+            description: Client-generated ID to correlate updates with this request
+          origin:
+            $ref: '#/components/schemas/Coordinate'
+          destination:
+            $ref: '#/components/schemas/Coordinate'
+          mode:
+            type: string
+            enum: [driving, cycling, walking]
+            default: driving
+
+    RouteUpdate:
+      name: RouteUpdate
+      summary: Incremental route progress update
+      payload:
+        type: object
+        properties:
+          requestId:
+            type: string
+          step:
+            type: integer
+            description: Current step index in the route
+          instruction:
+            type: string
+            description: Human-readable turn instruction (e.g. "Turn left onto High Street")
+          coordinates:
+            type: array
+            items:
+              $ref: '#/components/schemas/Coordinate'
+          distanceRemainingMeters:
+            type: integer
+          estimatedArrival:
+            type: string
+            format: date-time
+
+    RerouteEvent:
+      name: RerouteEvent
+      summary: Emitted when the route is recalculated due to deviation
+      payload:
+        type: object
+        properties:
+          requestId:
+            type: string
+          reason:
+            type: string
+            enum: [off_route, traffic, road_closed]
+          newRoute:
+            type: array
+            items:
+              $ref: '#/components/schemas/Coordinate'
+
+  schemas:
+    Coordinate:
+      type: object
+      required:
+        - lat
+        - lng
+      properties:
+        lat:
+          type: number
+          format: double
+          description: Latitude in decimal degrees
+        lng:
+          type: number
+          format: double
+          description: Longitude in decimal degrees

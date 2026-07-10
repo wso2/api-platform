@@ -13,23 +13,145 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   pr-check:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: '1.26.2'
+          go-version: '1.26.5'
           cache-dependency-path: '**/go.sum'
 
       - name: Go build
         run: go build ./cmd/main.go
-        working-directory: platform-api/src
+        working-directory: platform-api
 
       - name: Run tests
         run: make test
         working-directory: platform-api
+
+      - name: Cross-database integration tests (SQLite)
+        run: IT_DB=sqlite go test -tags integration -count=1 ./internal/integration/...
+        working-directory: platform-api
+
+  pr-check-postgres:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: platform_api_it
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d platform_api_it"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      IT_DB: postgres
+      IT_DB_HOST: localhost
+      IT_DB_PORT: 5432
+      IT_DB_USER: postgres
+      IT_DB_PASSWORD: postgres
+      IT_DB_NAME: platform_api_it
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Cross-database integration tests (PostgreSQL)
+        run: go test -tags integration -count=1 -v ./internal/integration/...
+        working-directory: platform-api
+
+  pr-check-sqlserver:
+    runs-on: ubuntu-24.04
+    env:
+      IT_DB: sqlserver
+      IT_DB_HOST: 127.0.0.1
+      IT_DB_PORT: 1433
+      IT_DB_USER: sa
+      IT_DB_NAME: platform_api_it
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Start SQL Server
+        run: |
+          set -euo pipefail
+
+          # Generate the SA password at runtime instead of using a committed
+          # literal or a stored secret. A runtime value avoids secret-scanner
+          # false positives and secret-handling pitfalls (e.g. a stray trailing
+          # newline) that silently fail SQL Server's password policy at init.
+          SA_PASSWORD="Aa1$(openssl rand -hex 16)"
+          echo "::add-mask::$SA_PASSWORD"
+          echo "IT_DB_PASSWORD=$SA_PASSWORD" >> "$GITHUB_ENV"
+
+          docker run -d --name sqlserver \
+            -e ACCEPT_EULA=Y \
+            -e MSSQL_PID=Developer \
+            -e MSSQL_SA_PASSWORD="$SA_PASSWORD" \
+            -p 1433:1433 \
+            mcr.microsoft.com/mssql/server:2022-latest
+
+      - name: Build with SQL Server configuration
+        run: go build ./cmd/main.go
+        working-directory: platform-api
+
+      - name: Wait for SQL Server to be ready
+        run: |
+          set -euo pipefail
+          echo "Waiting for SQL Server to accept connections (up to 3 minutes)..."
+          for i in $(seq 1 36); do
+            if docker exec sqlserver /opt/mssql-tools18/bin/sqlcmd \
+                 -C -S localhost -U sa -P "$IT_DB_PASSWORD" \
+                 -Q "SELECT 1" -b 2>/dev/null; then
+              echo "SQL Server ready after $(((i - 1) * 5))s"
+              exit 0
+            fi
+            echo "Not ready yet (${i}/36), waiting 5s..."
+            sleep 5
+          done
+          echo "=== SQL Server container logs ==="
+          docker logs sqlserver 2>&1 || true
+          echo "ERROR: SQL Server did not start within 3 minutes"
+          exit 1
+
+      # The harness creates the test database itself, then exercises the real
+      # schema, pagination and delete cascades against SQL Server.
+      - name: Cross-database integration tests (SQL Server)
+        run: go test -tags integration -count=1 -v ./internal/integration/...
+        working-directory: platform-api
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          echo "=== Docker containers ==="
+          docker ps -a
+          echo "=== SQL Server logs ==="
+          docker logs sqlserver 2>&1 || echo "(container not found)"

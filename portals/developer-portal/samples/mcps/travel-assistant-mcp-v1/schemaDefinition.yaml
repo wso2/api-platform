@@ -1,0 +1,109 @@
+- type: TOOL
+  name: search_flights
+  description: Find available flights for a given origin, destination, and travel date.
+  inputSchema:
+    type: object
+    properties:
+      from:
+        type: string
+        description: IATA code of the departure airport (e.g. CMB, SIN, LHR)
+      to:
+        type: string
+        description: IATA code of the arrival airport (e.g. JFK, DXB, SYD)
+      date:
+        type: string
+        format: date
+        description: Travel date in YYYY-MM-DD format
+      cabinClass:
+        type: string
+        enum: [ECONOMY, BUSINESS, FIRST]
+        description: Preferred cabin class
+    required:
+      - from
+      - to
+      - date
+
+- type: TOOL
+  name: search_hotels
+  description: Find available hotels in a city for a given check-in date and duration.
+  inputSchema:
+    type: object
+    properties:
+      city:
+        type: string
+        description: City name or airport code for the hotel search
+      checkIn:
+        type: string
+        format: date
+        description: Check-in date in YYYY-MM-DD format
+      nights:
+        type: integer
+        minimum: 1
+        description: Number of nights to stay
+      maxPricePerNight:
+        type: number
+        description: Maximum acceptable price per night in USD
+    required:
+      - city
+      - checkIn
+
+- type: TOOL
+  name: book_trip
+  description: Book a flight and optionally a hotel for the specified traveller.
+  inputSchema:
+    type: object
+    properties:
+      flightId:
+        type: string
+        description: Flight identifier returned by search_flights
+      hotelId:
+        type: string
+        description: Hotel identifier returned by search_hotels (optional)
+      passengerName:
+        type: string
+        description: Full name of the primary passenger
+      passengerEmail:
+        type: string
+        format: email
+        description: Contact email for booking confirmation
+    required:
+      - flightId
+      - passengerName
+      - passengerEmail
+
+- type: RESOURCE
+  name: airport-codes
+  description: Reference list of IATA airport codes and their corresponding city and country names.
+  uri: resource://travel/airport-codes
+  mimeType: application/json
+
+- type: RESOURCE
+  name: supported-airlines
+  description: List of airline carriers supported by this MCP server, including their names and IATA codes.
+  uri: resource://travel/supported-airlines
+  mimeType: application/json
+
+- type: PROMPT
+  name: plan-trip
+  description: Generate a complete travel itinerary for a destination given traveller preferences.
+  arguments:
+    - name: destination
+      description: The city or country to travel to
+      required: true
+    - name: duration
+      description: Number of days for the trip
+      required: true
+    - name: budget
+      description: Approximate total budget in USD
+      required: false
+    - name: interests
+      description: Comma-separated list of interests (e.g. culture, food, adventure)
+      required: false
+
+- type: PROMPT
+  name: summarize-booking
+  description: Produce a human-readable summary of a completed booking for the traveller.
+  arguments:
+    - name: bookingId
+      description: The booking reference returned by book_trip
+      required: true

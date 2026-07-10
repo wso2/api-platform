@@ -1,0 +1,30 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Override layered on top of docker-compose.test.yaml to run the gateway-controller
+# with control-plane sync DISABLED. The gateway still connects to the control plane
+# (mock-platform-api) over the WebSocket, but deployment_sync_enabled=false means it
+# must NOT push gateway-originated artifacts up. Used by the dp-to-cp-sync-disabled IT
+# (dp-to-cp-testing.md items 1-2). Combine the two files via COMPOSE_FILE, e.g.:
+#   COMPOSE_FILE=docker-compose.test.yaml:docker-compose.test.dp-nosync.override.yaml
+# (see the `test-dp-to-cp-nosync` Makefile target). Docker Compose merges each
+# service's environment by key, so this only adds the one flag.
+services:
+  gateway-controller:
+    environment:
+      - APIP_GW_CONTROLLER_CONTROLPLANE_DEPLOYMENT_SYNC_ENABLED=false

@@ -1,0 +1,52 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package subplan
+
+import "github.com/spf13/cobra"
+
+const (
+	SubPlanCmdLiteral = "sub-plan"
+	SubPlanCmdExample = `# List subscription plans
+ap devportal sub-plan list
+
+# Get a subscription plan by policy ID
+ap devportal sub-plan get --policy-id gold
+
+# Create or update subscription plan(s) with:
+#   ap devportal apply -f sub_plan.yaml`
+)
+
+// SubPlanCmd represents the DevPortal subscription plan command group.
+// It maps to the "Subscription Policies" tag of the DevPortal REST API
+// (docs/devportal-openapi-spec-v1.yaml).
+var SubPlanCmd = &cobra.Command{
+	Use:     SubPlanCmdLiteral,
+	Short:   "Manage DevPortal subscription plans",
+	Long:    "This command allows you to manage subscription plans on the WSO2 API Platform DevPortal.",
+	Example: SubPlanCmdExample,
+	Run: func(cmd *cobra.Command, args []string) {
+		cmd.Help()
+	},
+}
+
+func init() {
+	SubPlanCmd.AddCommand(listCmd)
+	SubPlanCmd.AddCommand(getCmd)
+	SubPlanCmd.AddCommand(deleteCmd)
+}

@@ -24,6 +24,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/config"
+	"github.com/wso2/api-platform/cli/utils"
 )
 
 const (
@@ -45,6 +46,12 @@ var currentCmd = &cobra.Command{
 	},
 }
 
+var currentPlatform string
+
+func init() {
+	utils.AddStringFlag(currentCmd, utils.FlagPlatform, &currentPlatform, "", "Platform name")
+}
+
 func runCurrentCommand() error {
 	// Load existing config
 	cfg, err := config.LoadConfig()
@@ -53,13 +60,14 @@ func runCurrentCommand() error {
 	}
 
 	// Get active gateway
-	gateway, err := cfg.GetActiveGateway()
+	resolvedPlatform := cfg.ResolvePlatform(currentPlatform)
+	gateway, err := cfg.GetActiveGatewayFromPlatform(resolvedPlatform)
 	if err != nil {
 		return err
 	}
 
 	// Display gateway info
-	fmt.Printf("Current gateway: %s - %s (auth: %s)\n", gateway.Name, gateway.Server, gateway.Auth)
+	fmt.Printf("Current gateway: %s - %s (platform: %s, auth: %s)\n", gateway.Name, gateway.Server, resolvedPlatform, gateway.Auth.Type)
 
 	return nil
 }

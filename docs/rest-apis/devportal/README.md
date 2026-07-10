@@ -1,16 +1,16 @@
 
-<h1 id="wso2-api-developer-portal-core-devportal-routes">WSO2 API Developer Portal Core - Devportal Routes v1.0.0</h1>
+<h1 id="wso2-api-developer-portal-core-devportal-routes">WSO2 API Developer Portal Core - Devportal Routes v0.9.0</h1>
 
-Fine-grained Developer Portal API for managing organizations, identity providers, providers,
-API metadata and content, applications, subscriptions, application credentials, and API flows.
+Fine-grained Developer Portal API for managing organizations,
+API metadata and content, applications, subscriptions, application appKeyMappings, and API flows.
 
-All paths are served under the `/devportal` base path. Operations declare the least-privilege
-OAuth2 scopes required for each resource action.
+All resources, including organization lifecycle endpoints
+(`/api/v0.9/organizations`, `/api/v0.9/organizations/{orgId}`), are served under `/api/v0.9`.
+Operations declare the least-privilege OAuth2 scopes required for each resource action.
 
 Base URLs:
-* <a href="http://localhost:3000/devportal">http://localhost:3000/devportal</a>
-* <a href="https://localhost:{port}/devportal">https://localhost:{port}/devportal</a>
-    * **port** -  Default: 9443
+* <a href="https://localhost:3000/api/v0.9">https://localhost:3000/api/v0.9</a>
+* <a href="http://localhost:3000/api/v0.9">http://localhost:3000/api/v0.9</a>
 
 ## Table of Contents
 
@@ -24,27 +24,11 @@ Base URLs:
 - [Get an organization](organizations.md#get-an-organization)
 - [Delete an organization](organizations.md#delete-an-organization)
 
-### [Identity Providers](identity-providers.md)
-
-- [Create an identity provider](identity-providers.md#create-an-identity-provider)
-- [Update an identity provider](identity-providers.md#update-an-identity-provider)
-- [Get an identity provider](identity-providers.md#get-an-identity-provider)
-- [Delete an identity provider](identity-providers.md#delete-an-identity-provider)
-
 ### [Organization Content](organization-content.md)
 
-- [Upload organization layout content](organization-content.md#upload-organization-layout-content)
-- [Replace organization layout content](organization-content.md#replace-organization-layout-content)
-- [Get a single organization layout asset](organization-content.md#get-a-single-organization-layout-asset)
-- [Delete organization layout content](organization-content.md#delete-organization-layout-content)
-- [List organization layout assets by file type](organization-content.md#list-organization-layout-assets-by-file-type)
-
-### [Providers](providers.md)
-
-- [Create a provider](providers.md#create-a-provider)
-- [Update a provider](providers.md#update-a-provider)
-- [Get providers](providers.md#get-providers)
-- [Delete a provider](providers.md#delete-a-provider)
+- [Get a theme asset](organization-content.md#get-a-theme-asset)
+- [Apply a theme](organization-content.md#apply-a-theme)
+- [Reset theme to defaults](organization-content.md#reset-theme-to-defaults)
 
 ### [APIs](apis.md)
 
@@ -61,27 +45,53 @@ Base URLs:
 - [Get an API content file](api-content.md#get-an-api-content-file)
 - [Delete API content files](api-content.md#delete-api-content-files)
 
-### [Subscription Policies](subscription-policies.md)
+### [MCP Servers](mcp-servers.md)
 
-- [Create subscription policies](subscription-policies.md#create-subscription-policies)
-- [Upsert subscription policies](subscription-policies.md#upsert-subscription-policies)
-- [Get a subscription policy](subscription-policies.md#get-a-subscription-policy)
-- [Delete a subscription policy](subscription-policies.md#delete-a-subscription-policy)
+- [Create MCP server metadata](mcp-servers.md#create-mcp-server-metadata)
+- [List MCP server metadata](mcp-servers.md#list-mcp-server-metadata)
+- [Get MCP server metadata](mcp-servers.md#get-mcp-server-metadata)
+- [Update MCP server metadata](mcp-servers.md#update-mcp-server-metadata)
+- [Delete MCP server metadata](mcp-servers.md#delete-mcp-server-metadata)
+
+### [MCP Server Content](mcp-server-content.md)
+
+- [Upload MCP server content](mcp-server-content.md#upload-mcp-server-content)
+- [Replace MCP server content](mcp-server-content.md#replace-mcp-server-content)
+- [Get an MCP server content file](mcp-server-content.md#get-an-mcp-server-content-file)
+- [Delete MCP server content files](mcp-server-content.md#delete-mcp-server-content-files)
+
+### [MCP Server Keys](mcp-server-keys.md)
+
+- [Generate an MCP server API key](mcp-server-keys.md#generate-an-mcp-server-api-key)
+- [List MCP server API keys](mcp-server-keys.md#list-mcp-server-api-keys)
+- [Regenerate an MCP server API key](mcp-server-keys.md#regenerate-an-mcp-server-api-key)
+- [Revoke an MCP server API key](mcp-server-keys.md#revoke-an-mcp-server-api-key)
+- [Associate an MCP server API key with an application](mcp-server-keys.md#associate-an-mcp-server-api-key-with-an-application)
+- [Remove an MCP server API key's application association](mcp-server-keys.md#remove-an-mcp-server-api-keys-application-association)
+
+### [Subscription Plans](subscription-plans.md)
+
+- [List subscription plans](subscription-plans.md#list-subscription-plans)
+- [Create subscription plans](subscription-plans.md#create-subscription-plans)
+- [Upsert subscription plans](subscription-plans.md#upsert-subscription-plans)
+- [Get a subscription plan](subscription-plans.md#get-a-subscription-plan)
+- [Delete a subscription plan](subscription-plans.md#delete-a-subscription-plan)
 
 ### [Labels](labels.md)
 
-- [Create labels](labels.md#create-labels)
-- [Upsert labels](labels.md#upsert-labels)
+- [Create a label](labels.md#create-a-label)
 - [List labels](labels.md#list-labels)
-- [Delete labels](labels.md#delete-labels)
+- [Get a label](labels.md#get-a-label)
+- [Update a label](labels.md#update-a-label)
+- [Delete a label](labels.md#delete-a-label)
 
 ### [Applications](applications.md)
 
-- [Import an application](applications.md#import-an-application)
-- [Create an application for the authenticated user's organization](applications.md#create-an-application-for-the-authenticated-users-organization)
-- [Update an application for the authenticated user](applications.md#update-an-application-for-the-authenticated-user)
-- [Delete an application for the authenticated user](applications.md#delete-an-application-for-the-authenticated-user)
-- [Reset application throttle policy](applications.md#reset-application-throttle-policy)
+- [List applications for the authenticated user](applications.md#list-applications-for-the-authenticated-user)
+- [Create an application](applications.md#create-an-application)
+- [Get an application](applications.md#get-an-application)
+- [Update an application](applications.md#update-an-application)
+- [Delete an application](applications.md#delete-an-application)
 
 ### [Subscriptions](subscriptions.md)
 
@@ -90,6 +100,8 @@ Base URLs:
 - [Get a subscription](subscriptions.md#get-a-subscription)
 - [Update a subscription](subscriptions.md#update-a-subscription)
 - [Delete a subscription](subscriptions.md#delete-a-subscription)
+- [Change subscription plan](subscriptions.md#change-subscription-plan)
+- [Regenerate subscription token](subscriptions.md#regenerate-subscription-token)
 
 ### [API Keys](api-keys.md)
 
@@ -97,6 +109,9 @@ Base URLs:
 - [List API keys](api-keys.md#list-api-keys)
 - [Regenerate an API key](api-keys.md#regenerate-an-api-key)
 - [Revoke an API key](api-keys.md#revoke-an-api-key)
+- [Associate an API key with an application](api-keys.md#associate-an-api-key-with-an-application)
+- [Remove an API key's application association](api-keys.md#remove-an-api-keys-application-association)
+- [List API keys associated with an application](api-keys.md#list-api-keys-associated-with-an-application)
 
 ### [Views](views.md)
 
@@ -108,32 +123,23 @@ Base URLs:
 
 ### [Application Keys](application-keys.md)
 
-- [Generate OAuth keys for a Developer Portal application](application-keys.md#generate-oauth-keys-for-a-developer-portal-application)
+- [Map an OAuth client_id to a Developer Portal application](application-keys.md#map-an-oauth-clientid-to-a-developer-portal-application)
 - [Generate an OAuth access token](application-keys.md#generate-an-oauth-access-token)
-- [Revoke OAuth keys](application-keys.md#revoke-oauth-keys)
-- [Update OAuth keys](application-keys.md#update-oauth-keys)
-- [Clean up OAuth key artifacts](application-keys.md#clean-up-oauth-key-artifacts)
+- [Remove an OAuth client_id mapping](application-keys.md#remove-an-oauth-clientid-mapping)
 
-### [API Flows](api-flows.md)
+### [API Workflows](api-workflows.md)
 
-- [Create an API flow](api-flows.md#create-an-api-flow)
-- [List API flows](api-flows.md#list-api-flows)
-- [Get an API flow](api-flows.md#get-an-api-flow)
-- [Update an API flow](api-flows.md#update-an-api-flow)
-- [Delete an API flow](api-flows.md#delete-an-api-flow)
-- [Generate an API flow agent prompt](api-flows.md#generate-an-api-flow-agent-prompt)
-
-### [Utilities](utilities.md)
-
-- [Create a temporary Arazzo file](utilities.md#create-a-temporary-arazzo-file)
-
-### [Authentication](authentication.md)
+- [Create an API workflow](api-workflows.md#create-an-api-workflow)
+- [List API workflows](api-workflows.md#list-api-workflows)
+- [Get an API workflow](api-workflows.md#get-an-api-workflow)
+- [Update an API workflow](api-workflows.md#update-an-api-workflow)
+- [Delete an API workflow](api-workflows.md#delete-an-api-workflow)
+- [Generate an API workflow agent prompt](api-workflows.md#generate-an-api-workflow-agent-prompt)
 
 ### [Key Managers](key-managers.md)
 
 - [Create a key manager](key-managers.md#create-a-key-manager)
 - [List key managers](key-managers.md#list-key-managers)
-- [List available key managers for developers](key-managers.md#list-available-key-managers-for-developers)
 - [Get a key manager](key-managers.md#get-a-key-manager)
 - [Update a key manager](key-managers.md#update-a-key-manager)
 - [Delete a key manager](key-managers.md#delete-a-key-manager)
@@ -142,7 +148,15 @@ Base URLs:
 
 - [List webhook events](webhook-events.md#list-webhook-events)
 - [Get a webhook event](webhook-events.md#get-a-webhook-event)
-- [Retry a failed webhook delivery](webhook-events.md#retry-a-failed-webhook-delivery)
+
+### [Webhook Subscribers](webhook-subscribers.md)
+
+- [Create a webhook subscriber](webhook-subscribers.md#create-a-webhook-subscriber)
+- [List webhook subscribers](webhook-subscribers.md#list-webhook-subscribers)
+- [Get a webhook subscriber](webhook-subscribers.md#get-a-webhook-subscriber)
+- [Update a webhook subscriber](webhook-subscribers.md#update-a-webhook-subscriber)
+- [Delete a webhook subscriber](webhook-subscribers.md#delete-a-webhook-subscriber)
+- [List recent deliveries for a webhook subscriber](webhook-subscribers.md#list-recent-deliveries-for-a-webhook-subscriber)
 
 ### [Schemas](schemas.md)
 

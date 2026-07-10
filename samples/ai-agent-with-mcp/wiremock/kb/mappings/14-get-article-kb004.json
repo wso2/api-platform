@@ -1,0 +1,18 @@
+{
+  "name": "kb-get-article-kb004",
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "url": "/mcp",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$[?(@.method == 'tools/call')]" },
+      { "matchesJsonPath": "$[?(@.params.name == 'get_article')]" },
+      { "matchesJsonPath": "$[?(@.params.arguments.article_id == 'KB-004')]" }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "bodyFileName": "kb-article-kb004.json"
+  }
+}

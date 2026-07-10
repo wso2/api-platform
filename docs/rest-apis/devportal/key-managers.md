@@ -4,13 +4,13 @@
 
 <a id="opIdcreateKeyManager"></a>
 
-`POST /organizations/{orgId}/key-managers`
+`POST /key-managers`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/key-managers \
+curl -X POST https://localhost:3000/api/v0.9/key-managers \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -19,59 +19,26 @@ curl -X POST http://localhost:3000/devportal/organizations/{orgId}/key-managers 
 
 ```
 
-Creates a key manager configuration for the organization. Accepts either a `application/json` body or a `multipart/form-data` upload with a `keymanager` field containing the KeyManager YAML file. The `adminClientId` and `adminClientSecret` are encrypted at rest using AES-256-GCM.
+Creates a key manager configuration for the organization. If `id` is omitted, the service generates one from the display name. Accepts either a `application/json` body or a `multipart/form-data` upload with a `keymanager` field containing the KeyManager YAML file. OAuth applications are created directly in the key manager itself, outside the portal — the portal only needs the token endpoint to proxy `client_appKeyMappings` token requests.
 
 > Payload
 
 ```json
 {
-  "name": "Asgardeo",
+  "displayName": "Asgardeo",
+  "id": "asgardeo-prod",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "adminClientId": "<client-id>",
-  "adminClientSecret": "<client-secret>",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 ```
 
 ```yaml
-name: Asgardeo
+displayName: Asgardeo
+id: asgardeo-prod
 type: ASGARDEO
 enabled: true
 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
-clientRegistrationEndpoint: https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register
-issuer: https://api.asgardeo.io/t/myorg/oauth2/token
-jwksURL: https://api.asgardeo.io/t/myorg/oauth2/jwks
-adminClientId: <client-id>
-adminClientSecret: <client-secret>
-supportedGrantTypes:
-  - client_credentials
-  - authorization_code
-  - refresh_token
-supportedScopes:
-  - openid
-  - profile
-additionalProperties:
-  authorizeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/authorize
-  revokeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/revoke
-  logoutEndpoint: https://api.asgardeo.io/t/myorg/oidc/logout
 
 ```
 
@@ -87,7 +54,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[KeyManagerRequest](schemas.md#schemakeymanagerrequest)|false|Key manager configuration payload. Submit as `application/json` or as `multipart/form-data` with a `keymanager` field containing a KeyManager YAML file.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -95,29 +61,16 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "km-uuid-12345",
+  "id": "asgardeo-prod",
+  "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
 
@@ -126,18 +79,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -151,9 +110,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "Conflict"
 }
 ```
 
@@ -161,9 +120,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -173,29 +132,42 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Key manager configuration response.|[KeyManagerResponseSchema](schemas.md#schemakeymanagerresponseschema)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="create-a-key-manager-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
+
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|201|Location|string|uri|URL of the created key manager.|
 
 ## List key managers
 
 <a id="opIdgetKeyManagers"></a>
 
-`GET /organizations/{orgId}/key-managers`
+`GET /key-managers`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/key-managers \
+curl -X GET https://localhost:3000/api/v0.9/key-managers \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Returns all key manager configurations for the organization. Admin credentials are never included in the response.
+Returns key manager configurations for the organization. Admins receive the full configuration for every key manager, including disabled ones; other callers receive the minimal, developer-facing view of enabled key managers only, with no admin credentials. Admin appKeyMappings are never included in the response.
 
 ### Authentication
 
@@ -208,49 +180,43 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
+|limit|query|integer|false|Maximum number of records to return.|
+|offset|query|integer|false|Number of records to skip before returning results.|
 
 > Example responses
 
 > 200 Response
 
 ```json
-[
-  {
-    "id": "km-uuid-12345",
-    "orgId": "org-12345",
-    "name": "Asgardeo",
-    "type": "ASGARDEO",
-    "enabled": true,
-    "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-    "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-    "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-    "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-    "supportedGrantTypes": [
-      "client_credentials",
-      "authorization_code",
-      "refresh_token"
-    ],
-    "supportedScopes": [
-      "openid",
-      "profile"
-    ],
-    "additionalProperties": {
-      "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-      "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-      "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
+{
+  "list": [
+    {
+      "id": "asgardeo-prod",
+      "displayName": "Asgardeo",
+      "orgId": "org-12345",
+      "type": "ASGARDEO",
+      "enabled": true,
+      "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
+      "createdBy": "alice@example.com",
+      "createdAt": "2026-05-07T08:30:00Z",
+      "updatedAt": "2026-05-07T08:30:00Z"
     }
+  ],
+  "pagination": {
+    "total": 42,
+    "limit": 20,
+    "offset": 0
   }
-]
+}
 ```
 
 > 500 Response
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -258,7 +224,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of key manager configurations.|Inline|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of key manager configurations. Admins receive KeyManagerResponseSchema items; other callers receive the minimal KeyManagerPublicResponseSchema items.|Inline|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="list-key-managers-responseschema">Response Schema</h3>
@@ -267,19 +233,42 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|[[KeyManagerResponseSchema](schemas.md#schemakeymanagerresponseschema)]|false|none|[Key manager configuration. Admin credentials are never included.]|
-|» id|string|false|none|Key manager UUID.|
-|» orgId|string|false|none|none|
-|» name|string|false|none|none|
-|» type|string|false|none|none|
-|» enabled|boolean|false|none|none|
-|» tokenEndpoint|string(uri)|false|none|none|
-|» clientRegistrationEndpoint|string(uri)|false|none|none|
-|» issuer|string(uri)¦null|false|none|none|
-|» jwksURL|string(uri)¦null|false|none|none|
-|» supportedGrantTypes|[string]|false|none|none|
-|» supportedScopes|[string]|false|none|none|
-|» additionalProperties|object|false|none|none|
+|» list|[anyOf]|false|none|none|
+
+*anyOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[KeyManagerResponseSchema](schemas.md#schemakeymanagerresponseschema)|false|none|Key manager configuration.|
+|»»» id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
+|»»» displayName|string|false|none|none|
+|»»» orgId|string|false|none|none|
+|»»» type|string|false|none|none|
+|»»» enabled|boolean|false|none|none|
+|»»» tokenEndpoint|string(uri)|false|none|none|
+|»»» createdBy|string|false|none|Identity of the user who created this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|»»» updatedBy|string|false|none|Identity of the user who last updated this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|»»» createdAt|string(date-time)|false|none|none|
+|»»» updatedAt|string(date-time)|false|none|none|
+
+*or*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[KeyManagerPublicResponseSchema](schemas.md#schemakeymanagerpublicresponseschema)|false|none|Minimal developer-facing key manager view.|
+|»»» id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
+|»»» displayName|string|false|none|none|
+|»»» type|string|false|none|none|
+|»»» tokenEndpoint|string(uri)|false|none|none|
+
+*continued*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
+|»» total|integer|true|none|Total number of records matching the query.|
+|»» limit|integer|true|none|Maximum number of records returned in this response.|
+|»» offset|integer|true|none|Number of records skipped before this page.|
 
 #### Enumerated Values
 
@@ -289,97 +278,6 @@ Status Code **200**
 |type|WSO2IS|
 |type|KEYCLOAK|
 |type|GENERIC_OIDC|
-
-## List available key managers for developers
-
-<a id="opIdgetAvailableKeyManagers"></a>
-
-`GET /organizations/{orgId}/key-managers/discover`
-
-> Code samples
-
-```shell
-
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/key-managers/discover \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
-
-```
-
-Returns the minimal public view of enabled key managers. This is the developer-facing endpoint used when generating application keys — no admin credentials or internal endpoints are exposed.
-
-### Authentication
-
-<aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
-
-</aside>
-
-<h3 id="list-available-key-managers-for-developers-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|orgId|path|string|true|none|
-
-> Example responses
-
-> 200 Response
-
-```json
-[
-  {
-    "id": "km-uuid-12345",
-    "name": "Asgardeo",
-    "type": "ASGARDEO",
-    "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-    "supportedGrantTypes": [
-      "client_credentials",
-      "authorization_code"
-    ],
-    "supportedScopes": [
-      "openid",
-      "profile"
-    ]
-  }
-]
-```
-
-> 500 Response
-
-```json
-{
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
-}
-```
-
-<h3 id="list-available-key-managers-for-developers-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of enabled key managers (developer-facing, minimal view).|Inline|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="list-available-key-managers-for-developers-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|[[KeyManagerPublicResponseSchema](schemas.md#schemakeymanagerpublicresponseschema)]|false|none|[Minimal developer-facing key manager view. No admin credentials or DCR endpoints.]|
-|» id|string|false|none|none|
-|» name|string|false|none|none|
-|» type|string|false|none|none|
-|» tokenEndpoint|string(uri)|false|none|none|
-|» supportedGrantTypes|[string]|false|none|none|
-|» supportedScopes|[string]|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
 |type|ASGARDEO|
 |type|WSO2IS|
 |type|KEYCLOAK|
@@ -389,13 +287,13 @@ Status Code **200**
 
 <a id="opIdgetKeyManager"></a>
 
-`GET /organizations/{orgId}/key-managers/{kmId}`
+`GET /key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/key-managers/{kmId} \
+curl -X GET https://localhost:3000/api/v0.9/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -415,8 +313,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
-|kmId|path|string|true|Key manager ID (UUID).|
+|kmId|path|string|true|The key manager's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
 
@@ -424,29 +321,16 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "km-uuid-12345",
+  "id": "asgardeo-prod",
+  "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
 
@@ -454,9 +338,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -464,9 +348,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -482,13 +366,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <a id="opIdupdateKeyManager"></a>
 
-`PUT /organizations/{orgId}/key-managers/{kmId}`
+`PUT /key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/key-managers/{kmId} \
+curl -X PUT https://localhost:3000/api/v0.9/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -503,53 +387,20 @@ Updates an existing key manager configuration. Accepts either a `application/jso
 
 ```json
 {
-  "name": "Asgardeo",
+  "displayName": "Asgardeo",
+  "id": "asgardeo-prod",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "adminClientId": "<client-id>",
-  "adminClientSecret": "<client-secret>",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 ```
 
 ```yaml
-name: Asgardeo
+displayName: Asgardeo
+id: asgardeo-prod
 type: ASGARDEO
 enabled: true
 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
-clientRegistrationEndpoint: https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register
-issuer: https://api.asgardeo.io/t/myorg/oauth2/token
-jwksURL: https://api.asgardeo.io/t/myorg/oauth2/jwks
-adminClientId: <client-id>
-adminClientSecret: <client-secret>
-supportedGrantTypes:
-  - client_credentials
-  - authorization_code
-  - refresh_token
-supportedScopes:
-  - openid
-  - profile
-additionalProperties:
-  authorizeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/authorize
-  revokeEndpoint: https://api.asgardeo.io/t/myorg/oauth2/revoke
-  logoutEndpoint: https://api.asgardeo.io/t/myorg/oidc/logout
 
 ```
 
@@ -565,8 +416,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[KeyManagerUpdateRequest](schemas.md#schemakeymanagerupdaterequest)|false|Key manager update payload. All fields are optional; only supplied fields are updated. Submit as `application/json` or as `multipart/form-data` with a `keymanager` field containing a KeyManager YAML file.|
-|orgId|path|string|true|none|
-|kmId|path|string|true|Key manager ID (UUID).|
+|kmId|path|string|true|The key manager's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
 
@@ -574,29 +424,16 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "id": "km-uuid-12345",
+  "id": "asgardeo-prod",
+  "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 ```
 
@@ -605,18 +442,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -630,9 +473,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -640,9 +483,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "Conflict"
 }
 ```
 
@@ -650,9 +493,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -663,22 +506,29 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Key manager configuration response.|[KeyManagerResponseSchema](schemas.md#schemakeymanagerresponseschema)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="update-a-key-manager-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
 
 ## Delete a key manager
 
 <a id="opIddeleteKeyManager"></a>
 
-`DELETE /organizations/{orgId}/key-managers/{kmId}`
+`DELETE /key-managers/{kmId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/organizations/{orgId}/key-managers/{kmId} \
+curl -X DELETE https://localhost:3000/api/v0.9/key-managers/{kmId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -698,8 +548,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
-|kmId|path|string|true|Key manager ID (UUID).|
+|kmId|path|string|true|The key manager's handle (its `id` in request/response payloads), not the internal database uuid.|
 
 > Example responses
 
@@ -707,9 +556,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -717,9 +566,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 

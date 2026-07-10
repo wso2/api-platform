@@ -24,89 +24,67 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
-	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
 )
 
 func TestAuthMiddleware_NoAuthenticatorsConfigured_AllowsAllRequests(t *testing.T) {
-	// Scenario: Both basic.enabled and idp.enabled are false
-	// Middleware should enable no-auth mode and allow all requests.
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
 	config := models.AuthConfig{
 		BasicAuth: &models.BasicAuth{Enabled: false},
 		JWTConfig: &models.IDPConfig{Enabled: false},
 	}
 
-	middleware, err := AuthMiddleware(config, logger)
+	mw, err := AuthMiddleware(config, logger)
 	assert.NoError(t, err)
 
-	router.Use(middleware)
-	router.GET("/api/test", func(c *gin.Context) {
-		skipAuthz, exists := c.Get(constants.AuthzSkipKey)
-		assert.True(t, exists)
-		assert.True(t, skipAuthz.(bool))
-		packed, exists := c.Get(constants.AuthContextKey)
-		assert.True(t, exists)
-		ac, ok := packed.(models.AuthContext)
-		assert.True(t, ok)
-		assert.True(t, ac.Authenticated)
-		c.JSON(http.StatusOK, gin.H{"message": "success"})
-	})
+	var gotSkip bool
+	var gotCtx models.AuthContext
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSkip = GetAuthzSkip(r)
+		gotCtx, _ = GetAuthContext(r)
+		w.WriteHeader(http.StatusOK)
+	}))
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/test", nil)
-	router.ServeHTTP(w, req)
+	handler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "success")
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, gotSkip)
+	assert.True(t, gotCtx.Authenticated)
 }
 
 func TestAuthMiddleware_JWTEnabled_MissingJWKS_FailsAtCreation(t *testing.T) {
-	// Scenario: JWT is enabled but JWKS URL is not configured.
-	// Should fail at middleware creation time (startup), not per-request.
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
 	config := models.AuthConfig{
 		JWTConfig: &models.IDPConfig{
 			Enabled:   true,
 			IssuerURL: "https://issuer.example.com",
-			JWKSUrl:   "", // triggers constructor error deterministically
+			JWKSUrl:   "",
 		},
 	}
-
 	_, err := AuthMiddleware(config, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to initialize JWT authenticator")
 }
 
 func TestAuthMiddleware_JWTEnabled_NoIssuer_MissingJWKS_FailsAtCreation(t *testing.T) {
-	// Scenario: JWT is enabled, issuer is not provided, but JWKS URL is also missing.
-	// Should fail at middleware creation time, since issuer is required.
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
 	config := models.AuthConfig{
 		JWTConfig: &models.IDPConfig{
 			Enabled:   true,
-			IssuerURL: "", // issuer is required
-			JWKSUrl:   "", // but JWKS is required
+			IssuerURL: "",
+			JWKSUrl:   "",
 		},
 	}
-
 	_, err := AuthMiddleware(config, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to initialize JWT authenticator")
 }
 
 func TestAuthMiddleware_JWTEnabled_NoIssuer_WithJWKS_FailsAtCreation(t *testing.T) {
-	// Scenario: JWT is enabled and JWKS is configured, but issuer is missing.
-	// Should fail at middleware creation time, since issuer is required.
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
 	config := models.AuthConfig{
 		JWTConfig: &models.IDPConfig{
 			Enabled:   true,
@@ -114,120 +92,87 @@ func TestAuthMiddleware_JWTEnabled_NoIssuer_WithJWKS_FailsAtCreation(t *testing.
 			JWKSUrl:   "https://jwks.example.com/keys",
 		},
 	}
-
 	_, err := AuthMiddleware(config, logger)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to initialize JWT authenticator")
 }
 
 func TestAuthMiddleware_BasicAuthEnabled_NoCredentials_Unauthorized(t *testing.T) {
-	// Scenario: Basic auth is enabled, but no credentials provided
-	// Should return 401 Unauthorized
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
 	config := models.AuthConfig{
 		BasicAuth: &models.BasicAuth{
 			Enabled: true,
 			Users: []models.User{
-				{
-					Username: "testuser",
-					Password: "testpass",
-					Roles:    []string{"developer"},
-				},
+				{Username: "testuser", Password: "testpass", Roles: []string{"developer"}},
 			},
 		},
-		JWTConfig: &models.IDPConfig{
-			Enabled: false,
-		},
+		JWTConfig: &models.IDPConfig{Enabled: false},
 	}
 
-	middleware, err := AuthMiddleware(config, logger)
+	mw, err := AuthMiddleware(config, logger)
 	assert.NoError(t, err)
 
-	router.Use(middleware)
-	router.GET("/api/protected", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "protected"})
-	})
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/protected", nil)
-	// No Authorization header
-	router.ServeHTTP(w, req)
+	handler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
-	assert.Contains(t, w.Body.String(), "no valid authentication credentials provided")
+	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+	assert.Contains(t, rr.Body.String(), "no valid authentication credentials provided")
 }
 
 func TestAuthMiddleware_SkipPaths_NoAuthRequired(t *testing.T) {
-	// Scenario: Path is in SkipPaths, should bypass authentication even if auth is enabled
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
 	config := models.AuthConfig{
 		BasicAuth: &models.BasicAuth{
 			Enabled: true,
 			Users: []models.User{
-				{
-					Username: "testuser",
-					Password: "testpass",
-					Roles:    []string{"developer"},
-				},
+				{Username: "testuser", Password: "testpass", Roles: []string{"developer"}},
 			},
 		},
 		SkipPaths: []string{"/health", "/metrics"},
 	}
 
-	middleware, err := AuthMiddleware(config, logger)
+	mw, err := AuthMiddleware(config, logger)
 	assert.NoError(t, err)
 
-	router.Use(middleware)
-	router.GET("/health", func(c *gin.Context) {
-		skipAuthz, exists := c.Get(constants.AuthzSkipKey)
-		assert.True(t, exists)
-		assert.True(t, skipAuthz.(bool))
-		c.JSON(http.StatusOK, gin.H{"message": "healthy"})
-	})
+	var gotSkip bool
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSkip = GetAuthzSkip(r)
+		w.WriteHeader(http.StatusOK)
+	}))
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/health", nil)
-	router.ServeHTTP(w, req)
+	handler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "healthy")
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, gotSkip)
 }
 
 func TestAuthMiddleware_NilBasicAuth_NilJWTConfig_AllowsAllRequests(t *testing.T) {
-	// Scenario: Auth configs are nil (not just disabled)
-	// Middleware should enable no-auth mode and allow all requests.
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
 	config := models.AuthConfig{BasicAuth: nil, JWTConfig: nil}
 
-	middleware, err := AuthMiddleware(config, logger)
+	mw, err := AuthMiddleware(config, logger)
 	assert.NoError(t, err)
 
-	router.Use(middleware)
-	router.GET("/api/open", func(c *gin.Context) {
-		skipAuthz, exists := c.Get(constants.AuthzSkipKey)
-		assert.True(t, exists)
-		assert.True(t, skipAuthz.(bool))
-		packed, exists := c.Get(constants.AuthContextKey)
-		assert.True(t, exists)
-		ac, ok := packed.(models.AuthContext)
-		assert.True(t, ok)
-		assert.True(t, ac.Authenticated)
-		c.JSON(http.StatusOK, gin.H{"message": "open access"})
-	})
+	var gotSkip bool
+	var gotCtx models.AuthContext
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSkip = GetAuthzSkip(r)
+		gotCtx, _ = GetAuthContext(r)
+		w.WriteHeader(http.StatusOK)
+	}))
 
-	w := httptest.NewRecorder()
+	rr := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/api/open", nil)
-	router.ServeHTTP(w, req)
+	handler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "open access")
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, gotSkip)
+	assert.True(t, gotCtx.Authenticated)
 }

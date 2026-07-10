@@ -6,7 +6,11 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ include "gateway-operator.fullname" . }}-controller-data
   labels:
-    {{- include "gateway-operator.componentLabels" (list . "controller" dict) | nindent 4 }}
+    {{- include "gateway-operator.componentLabels" (list . "controller" $persistence.labels) | nindent 4 }}
+  {{- with (include "gateway-operator.annotations" (list . $persistence.annotations)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
 spec:
   accessModes:
     {{- range $persistence.accessModes }}

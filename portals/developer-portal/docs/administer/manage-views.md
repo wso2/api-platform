@@ -10,92 +10,69 @@ https://<host>/<orgHandle>/views/<viewName>
 
 ## Create a View
 
-```yaml
-# view.yaml
-name: internal
-displayName: Internal Developer Portal
-labels:
-  - internal
-  - platform
+> **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
+> ```bash
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
+>   -d "username=admin&password=admin" | jq -r .token)
+> ```
+
+```json
+// view.json
+{
+  "id": "internal",
+  "displayName": "Internal Developer Portal",
+  "labels": ["internal", "platform"]
+}
 ```
 
 ```bash
-curl -X POST http://localhost:3000/organizations/{orgId}/views \
-  -H "Content-Type: application/yaml" \
-  -u admin:admin \
-  --data-binary @view.yaml
+curl -k -X POST https://localhost:3000/api/v0.9/views \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-binary @view.json
 ```
 
 | Field | Required | Description |
 |---|---|---|
-| `name` | Yes | URL-safe identifier used in the view URL (lowercase, no spaces) |
-| `labels` | Yes | List of label names; only APIs with at least one matching label appear in this view |
-| `displayName` | No | Human-friendly name shown in the portal header. Defaults to `name` if omitted |
+| `id` | Yes | URL-safe identifier used in the view URL (lowercase, no spaces) |
+| `labels` | Yes | List of label names (at least one); only APIs with at least one matching label appear in this view |
+| `displayName` | No | Human-friendly name shown in the portal header. Defaults to `id` if omitted |
 
 ## List Views
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/views -u admin:admin
+curl -k https://localhost:3000/api/v0.9/views -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a View
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/views/{name} -u admin:admin
+curl -k https://localhost:3000/api/v0.9/views/{viewId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Update a View
 
-The update request uses incremental label changes via `addedLabels` and `removedLabels` rather than replacing the full label list:
+The update request takes the full desired label set via `labels` — labels present in the list are attached and any others currently attached are detached. Omit `labels` to leave the view's labels unchanged:
 
-```yaml
-# view-update.yaml
-displayName: Internal Developer Portal v2
-addedLabels:
-  - experimental
-removedLabels: []
+```json
+// view-update.json
+{
+  "displayName": "Internal Developer Portal v2",
+  "labels": ["internal", "platform", "experimental"]
+}
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/organizations/{orgId}/views/{name} \
-  -H "Content-Type: application/yaml" \
-  -u admin:admin \
-  --data-binary @view-update.yaml
+curl -k -X PUT https://localhost:3000/api/v0.9/views/{viewId} \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-binary @view-update.json
 ```
 
 ## Delete a View
 
 ```bash
-curl -X DELETE http://localhost:3000/organizations/{orgId}/views/{name} -u admin:admin
-```
-
----
-
-## Upload a Custom Layout
-
-A layout is a set of Handlebars (`.hbs`) template files that define the page structure for a view. Upload a custom layout to give a view its own branding independent of the theme color settings.
-
-```bash
-curl -X POST "http://localhost:3000/organizations/{orgId}/views/{name}/layout" \
-  -u admin:admin \
-  -F "zipFile=@my-layout.zip"
-```
-
-The ZIP file should contain `.hbs` template files following the portal's page structure (see [Theming](theming/org-level-theming.md) for details on the template format).
-
-To update an existing layout:
-
-```bash
-curl -X PUT "http://localhost:3000/organizations/{orgId}/views/{name}/layout" \
-  -u admin:admin \
-  -F "zipFile=@my-layout-v2.zip"
-```
-
-To remove a custom layout and revert to the default:
-
-```bash
-curl -X DELETE "http://localhost:3000/organizations/{orgId}/views/{name}/layout/template" \
-  -u admin:admin
+curl -k -X DELETE https://localhost:3000/api/v0.9/views/{viewId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
@@ -104,57 +81,64 @@ curl -X DELETE "http://localhost:3000/organizations/{orgId}/views/{name}/layout/
 
 Labels are tags you assign to APIs to control which views they appear in. An API with the label `internal` will only appear in views that include `internal` in their label list.
 
-### Create Labels
+### Create a Label
 
-Labels are submitted as a JSON array (no YAML format for labels):
+Labels are created one at a time as a JSON object:
 
 ```json
-// labels.json
-[
-  {"name": "internal", "displayName": "Internal"},
-  {"name": "partner", "displayName": "Partner"}
-]
+// label.json
+{
+  "id": "internal",
+  "displayName": "Internal"
+}
 ```
 
 ```bash
-curl -X POST http://localhost:3000/organizations/{orgId}/labels \
+curl -k -X POST https://localhost:3000/api/v0.9/labels \
   -H "Content-Type: application/json" \
-  -u admin:admin \
-  --data-binary @labels.json
+  -H "Authorization: Bearer $TOKEN" \
+  --data-binary @label.json
 ```
 
 | Field | Required | Description |
 |---|---|---|
-| `name` | Yes | URL-safe label identifier (lowercase, no spaces) |
+| `id` | Yes | URL-safe label identifier (lowercase, no spaces), stored as-is |
 | `displayName` | Yes | Human-friendly label name shown in the portal UI |
 
 ### List Labels
 
 ```bash
-curl http://localhost:3000/organizations/{orgId}/labels -u admin:admin
+curl -k https://localhost:3000/api/v0.9/labels -H "Authorization: Bearer $TOKEN"
 ```
 
-### Update Labels
+### Get a Label
+
+```bash
+curl -k https://localhost:3000/api/v0.9/labels/{labelId} -H "Authorization: Bearer $TOKEN"
+```
+
+### Update a Label
 
 ```json
-// labels-update.json
-[
-  {"name": "internal", "displayName": "Internal Teams"}
-]
+// label-update.json
+{
+  "id": "internal",
+  "displayName": "Internal Teams"
+}
 ```
 
 ```bash
-curl -X PUT http://localhost:3000/organizations/{orgId}/labels \
+curl -k -X PUT https://localhost:3000/api/v0.9/labels/{labelId} \
   -H "Content-Type: application/json" \
-  -u admin:admin \
-  --data-binary @labels-update.json
+  -H "Authorization: Bearer $TOKEN" \
+  --data-binary @label-update.json
 ```
 
 ### Delete a Label
 
 ```bash
-curl -X DELETE "http://localhost:3000/organizations/{orgId}/labels?labelName=internal" \
-  -u admin:admin
+curl -k -X DELETE "https://localhost:3000/api/v0.9/labels/{labelId}" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 > **Note:** Deleting a label does not remove it from APIs that already have it assigned. Update each API to remove the label reference if needed.

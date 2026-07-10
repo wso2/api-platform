@@ -10,42 +10,56 @@
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR ANY
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
  * KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations
  * under the License.
  -->
 
-<head>
-  <link rel='stylesheet' href='/technical-styles/subscriptions.css' />
-  <link rel='stylesheet' href='/technical-styles/api-keys.css' />
-  <script src='/technical-scripts/api-keys-page.js' defer></script>
-</head>
-<main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiKeysNav=showApiKeysNav showApiWorkflowsNav=showApiWorkflowsNav }}
-    <div class="content">
-        <div class="container-fluid subscriptions-container api-keys-page">
-            <div class="container-header mb-4 d-flex flex-wrap align-items-center justify-content-between gap-2">
-                <span>API Keys</span>
-                {{#unless isReadOnlyMode}}
-                {{#unless apiKeysLoadError}}
-                <button type="button" class="common-btn-primary btn-sm" id="btn-open-generate-api-key" data-bs-toggle="modal" data-bs-target="#generateApiKeyModal">
-                    Generate API Key
-                </button>
-                {{/unless}}
-                {{/unless}}
-            </div>
-            <div id="api-keys-config" class="d-none"
-                data-org-id="{{orgID}}"
-                data-api-id="{{apiMetadata.apiID}}"
-                data-read-only="{{#if isReadOnlyMode}}true{{else}}false{{/if}}"
-                data-load-error="{{#if apiKeysLoadError}}true{{else}}false{{/if}}"
-                data-csrf-token="{{csrfToken}}">
-            </div>
-            {{> api-key-list }}
-        </div>
-    </div>
-    {{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
-    {{> alert }}
-</main>
+{{#pageHead}}
+  <link rel="stylesheet" href="/styles/api-keys.css">
+{{/pageHead}}
+{{#pageScripts}}
+  <script src="/technical-scripts/api-keys-page.js" defer></script>
+{{/pageScripts}}
+
+<div class="page-container">
+<div id="api-keys-config" style="display:none"
+    data-org-id="{{orgId}}"
+    data-api-id="{{apiMetadata.id}}"
+    data-read-only="{{#if isReadOnlyMode}}true{{else}}false{{/if}}"
+    data-load-error="{{#if apiKeysLoadError}}true{{else}}false{{/if}}"
+    data-applications="{{json applications}}"
+    data-selected-app-id="{{selectedAppId}}"
+    data-csrf-token="{{csrfToken}}">
+</div>
+
+<nav class="dp-breadcrumb">
+  <a class="dp-breadcrumb-item" href="{{baseUrl}}/apis">APIs</a>
+  <i class="bi bi-chevron-right dp-breadcrumb-sep"></i>
+  <a class="dp-breadcrumb-item" href="{{baseUrl}}/api/{{apiMetadata.id}}">{{or apiMetadata.apiTitle apiMetadata.name}}</a>
+  <i class="bi bi-chevron-right dp-breadcrumb-sep"></i>
+  <span class="dp-breadcrumb-current">API Keys</span>
+</nav>
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title">API Keys</h1>
+    <p class="page-desc">API keys authenticate requests to the {{or apiMetadata.apiTitle apiMetadata.name}}. Generate a key, then use it as a bearer token or <code class="ak-inline-code">apikey</code> header.</p>
+  </div>
+  {{#if apiKeys.length}}
+  {{#unless isReadOnlyMode}}
+  {{#unless apiKeysLoadError}}
+  <button type="button" class="dp-btn dp-btn--primary" id="btn-open-generate-api-key">
+    <i class="bi bi-plus"></i> Generate API key
+  </button>
+  {{/unless}}
+  {{/unless}}
+  {{/if}}
+</div>
+
+{{> api-key-list }}
+
+{{> alert }}
+
+</div>

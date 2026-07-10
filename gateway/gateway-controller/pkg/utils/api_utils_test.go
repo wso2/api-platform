@@ -37,6 +37,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
@@ -214,74 +215,150 @@ func TestAPIUtilsService_SaveAPIDefinition(t *testing.T) {
 	})
 }
 
-func TestAPIUtilsService_PushAPIDeployment(t *testing.T) {
+// readPushedArtifacts parses a bulk import request: the multipart "artifacts" zip part, whose
+// artifacts.json entry holds the JSON array of ImportArtifactRequest.
+func readPushedArtifacts(t *testing.T, r *http.Request) []ImportArtifactRequest {
+	t.Helper()
+	require.NoError(t, r.ParseMultipartForm(10<<20))
+	file, _, err := r.FormFile("artifacts")
+	require.NoError(t, err)
+	defer file.Close()
+	zipBytes, err := io.ReadAll(file)
+	require.NoError(t, err)
+	zr, err := zip.NewReader(bytes.NewReader(zipBytes), int64(len(zipBytes)))
+	require.NoError(t, err)
+	for _, f := range zr.File {
+		if f.Name != gatewayArtifactsZipEntry {
+			continue
+		}
+		rc, err := f.Open()
+		require.NoError(t, err)
+		defer rc.Close()
+		data, err := io.ReadAll(rc)
+		require.NoError(t, err)
+		var reqs []ImportArtifactRequest
+		require.NoError(t, json.Unmarshal(data, &reqs))
+		return reqs
+	}
+	t.Fatalf("multipart zip missing %s", gatewayArtifactsZipEntry)
+	return nil
+}
+
+func TestAPIUtilsService_PushArtifact(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	// Helper function to create minimal test StoredConfig
-	createTestStoredConfig := func() *models.StoredConfig {
+	// Helper function to create a minimal test StoredConfig whose Configuration is the
+	// gateway artifact CR (apiVersion/kind/metadata/spec), as actually stored.
+	createTestStoredConfig := func(kind string) *models.StoredConfig {
+		md := api.Metadata{Name: "weather-api"}
+		// A well-formed project-scoped CR carries the project as a metadata annotation.
+		if kind != models.KindLlmProvider && kind != models.KindLlmProviderTemplate {
+			md.Annotations = &map[string]string{commonconstants.AnnotationProjectID: "weather-project"}
+		}
 		return &models.StoredConfig{
 			UUID:         "0000-test-api-0000-000000000000",
-			Kind:         "RestApi",
+			Kind:         kind,
+			Handle:       "weather-api",
+			DisplayName:  "Weather API",
+			Version:      "v1.0",
 			DesiredState: models.StateDeployed,
 			Origin:       models.OriginGatewayAPI,
 			CreatedAt:    time.Now(),
 			UpdatedAt:    time.Now(),
-			// Configuration will be marshaled in the HTTP request body
-			Configuration: api.RestAPI{},
+			Configuration: api.RestAPI{
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				Kind:       api.RestAPIKindRestApi,
+				Metadata:   md,
+				Spec:       api.APIConfigData{Version: "v1.0"},
+			},
+			SourceConfiguration: api.RestAPI{
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				Kind:       api.RestAPIKindRestApi,
+				Metadata:   md,
+				Spec:       api.APIConfigData{Version: "v1.0"},
+			},
 		}
 	}
 
-	t.Run("Successful push", func(t *testing.T) {
+	t.Run("Successful push targets the bulk import endpoint with a zipped multipart body", func(t *testing.T) {
 		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "POST", r.Method)
-			assert.Equal(t, "/apis/0000-test-api-0000-000000000000/gateway-deployments", r.URL.Path)
+			assert.Equal(t, "/artifacts/import-gateway-artifacts", r.URL.Path)
 			assert.Equal(t, "test-token", r.Header.Get("api-key"))
-			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			assert.True(t, strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data"),
+				"expected multipart/form-data, got %q", r.Header.Get("Content-Type"))
 
-			// Verify request body contains expected fields
-			body, err := io.ReadAll(r.Body)
-			require.NoError(t, err)
-			var notification APIDeploymentPush
-			err = json.Unmarshal(body, &notification)
-			require.NoError(t, err)
-			assert.Equal(t, "0000-test-api-0000-000000000000", notification.ID)
+			reqs := readPushedArtifacts(t, r)
+			require.Len(t, reqs, 1)
+			req := reqs[0]
+			assert.Equal(t, "0000-test-api-0000-000000000000", req.DPID)
+			// configuration is the gateway artifact CR itself.
+			assert.Equal(t, "RestApi", req.Configuration["kind"])
+			md, _ := req.Configuration["metadata"].(map[string]interface{})
+			assert.Equal(t, "weather-api", md["name"])
+			// Project-scoped kind carries its project via the project-id annotation (from the CR; never defaulted).
+			anns, _ := md["annotations"].(map[string]interface{})
+			assert.Equal(t, "weather-project", anns[commonconstants.AnnotationProjectID])
+			assert.Equal(t, "deployed", req.Status)
 
-			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte(`{"status": "deployed"}`))
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"total":1,"success":1,"failed":0,"artifacts":{"0000-test-api-0000-000000000000":{"id":"0000-test-api-0000-000000000000","origin":"gateway_api","status":"deployed"}}}`))
 		}))
 		defer server.Close()
 
-		cfg := PlatformAPIConfig{
-			BaseURL: server.URL,
-			Token:   "test-token",
-		}
-		svc := NewAPIUtilsService(cfg, logger)
+		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, logger)
+		cpArtifactID, err := svc.PushArtifact("0000-test-api-0000-000000000000", createTestStoredConfig("RestApi"), "")
+		assert.NoError(t, err)
+		// The CP-minted artifact UUID from the per-dpid result is returned to the caller.
+		assert.Equal(t, "0000-test-api-0000-000000000000", cpArtifactID)
+	})
 
-		// Actually call the method
-		err := svc.PushAPIDeployment("0000-test-api-0000-000000000000", createTestStoredConfig(), "")
+	t.Run("Org-level kind omits project", func(t *testing.T) {
+		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/artifacts/import-gateway-artifacts", r.URL.Path)
+			reqs := readPushedArtifacts(t, r)
+			require.Len(t, reqs, 1)
+			req := reqs[0]
+			// Organization-level kinds carry no project annotation.
+			md, _ := req.Configuration["metadata"].(map[string]interface{})
+			anns, _ := md["annotations"].(map[string]interface{})
+			_, hasProject := anns[commonconstants.AnnotationProjectID]
+			assert.False(t, hasProject, "org-level kind must not carry a project annotation")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"total":1,"success":1,"failed":0,"artifacts":{"0000-test-api-0000-000000000000":{"id":"cp-llm-1","origin":"gateway_api","status":"deployed"}}}`))
+		}))
+		defer server.Close()
+
+		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, logger)
+		_, err := svc.PushArtifact("0000-test-api-0000-000000000000", createTestStoredConfig("LlmProvider"), "")
 		assert.NoError(t, err)
 	})
 
-	t.Run("With deployment ID", func(t *testing.T) {
+	t.Run("Template push carries UpdatedAt as the deployedAt watermark", func(t *testing.T) {
+		// Templates have no deployment lifecycle so DeployedAt is nil; the push must
+		// still send a non-nil deployedAt (= UpdatedAt), otherwise the CP treats
+		// every template UPDATE as stale (IsNewerDeployment(nil, …) == false) and
+		// silently skips it.
+		var got ImportArtifactRequest
 		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			assert.Equal(t, "POST", r.Method)
-			assert.Equal(t, "/apis/0000-test-api-0000-000000000000/gateway-deployments", r.URL.Path)
-			assert.Contains(t, r.URL.RawQuery, "deploymentId=rev-123")
-			assert.Equal(t, "test-token", r.Header.Get("api-key"))
-			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			reqs := readPushedArtifacts(t, r)
+			require.Len(t, reqs, 1)
+			got = reqs[0]
 			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"total":1,"success":1,"failed":0,"artifacts":{"0000-test-api-0000-000000000000":{"id":"cp-tmpl-1","origin":"gateway_api","status":"deployed"}}}`))
 		}))
 		defer server.Close()
 
-		cfg := PlatformAPIConfig{
-			BaseURL: server.URL,
-			Token:   "test-token",
-		}
-		svc := NewAPIUtilsService(cfg, logger)
+		cfg := createTestStoredConfig(models.KindLlmProviderTemplate)
+		cfg.DeployedAt = nil // templates never set DeployedAt
 
-		// Actually call the method with deployment ID
-		err := svc.PushAPIDeployment("0000-test-api-0000-000000000000", createTestStoredConfig(), "rev-123")
-		assert.NoError(t, err)
+		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, logger)
+		_, err := svc.PushArtifact(cfg.UUID, cfg, "")
+		require.NoError(t, err)
+
+		require.NotNil(t, got.DeployedAt, "template push must carry a deployedAt watermark")
+		assert.True(t, got.DeployedAt.Equal(cfg.UpdatedAt.UTC()),
+			"template deployedAt should equal UpdatedAt; got %v want %v", got.DeployedAt, cfg.UpdatedAt.UTC())
 	})
 
 	t.Run("HTTP error response", func(t *testing.T) {
@@ -291,16 +368,39 @@ func TestAPIUtilsService_PushAPIDeployment(t *testing.T) {
 		}))
 		defer server.Close()
 
-		cfg := PlatformAPIConfig{
-			BaseURL: server.URL,
-			Token:   "test-token",
-		}
-		svc := NewAPIUtilsService(cfg, logger)
-
-		// Should return error for non-success status
-		err := svc.PushAPIDeployment("0000-test-api-0000-000000000000", createTestStoredConfig(), "")
+		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, logger)
+		_, err := svc.PushArtifact("0000-test-api-0000-000000000000", createTestStoredConfig("RestApi"), "")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "500")
+	})
+
+	t.Run("Project-scoped kind without a project annotation fails the push (no defaulting)", func(t *testing.T) {
+		// Server must never be hit: the push fails before any HTTP request.
+		hit := false
+		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hit = true
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server.Close()
+
+		cfg := &models.StoredConfig{
+			UUID:         "0000-test-api-0000-000000000000",
+			Kind:         models.KindRestApi,
+			DesiredState: models.StateDeployed,
+			Origin:       models.OriginGatewayAPI,
+			Configuration: api.RestAPI{
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				Kind:       api.RestAPIKindRestApi,
+				Metadata:   api.Metadata{Name: "no-project-api"}, // no project annotation
+				Spec:       api.APIConfigData{Version: "v1.0"},
+			},
+		}
+
+		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, logger)
+		_, err := svc.PushArtifact(cfg.UUID, cfg, "")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "project")
+		assert.False(t, hit, "no request should be sent when the project annotation is missing")
 	})
 }
 
@@ -689,20 +789,30 @@ func TestAPIUtilsService_ExtractDeploymentsFromBatchZip(t *testing.T) {
 	})
 }
 
-// Test for JSON marshaling of APIDeploymentPush
-func TestAPIDeploymentPush_JSON(t *testing.T) {
+// Test for JSON marshaling of the generic artifact import request body, where the
+// configuration is the gateway artifact CR.
+func TestImportArtifactRequest_JSON(t *testing.T) {
 	now := time.Now()
-	notification := APIDeploymentPush{
-		ID:                "0000-test-id-0000-000000000000",
-		Status:            "DEPLOYED",
-		CreatedAt:         now,
-		UpdatedAt:         now,
-		DeployedAt:        &now,
-		ProjectIdentifier: "default",
+	req := ImportArtifactRequest{
+		DPID:   "0000-test-id-0000-000000000000",
+		Status: "deployed",
+		Configuration: map[string]interface{}{
+			"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+			"kind":       "RestApi",
+			"metadata": map[string]interface{}{
+				"name":        "weather-api",
+				"annotations": map[string]interface{}{commonconstants.AnnotationProjectID: "default"},
+			},
+		},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+		DeployedAt: &now,
 	}
 
-	data, err := json.Marshal(notification)
+	data, err := json.Marshal(req)
 	assert.NoError(t, err)
-	assert.Contains(t, string(data), `"id":"0000-test-id-0000-000000000000"`)
-	assert.Contains(t, string(data), `"status":"DEPLOYED"`)
+	assert.Contains(t, string(data), `"dpid":"0000-test-id-0000-000000000000"`)
+	assert.Contains(t, string(data), `"status":"deployed"`)
+	assert.Contains(t, string(data), `"kind":"RestApi"`)
+	assert.Contains(t, string(data), `"name":"weather-api"`)
 }

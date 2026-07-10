@@ -28,7 +28,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: mcp-non-existing-policy-test
@@ -38,7 +38,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpnonexistingpolicy
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: non-existing-policy
                   version: v1
@@ -55,7 +55,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: mcp-auth-test
@@ -65,7 +65,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpauth
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-auth
                   version: v1
@@ -98,7 +98,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: mcp-auth-valid-token-test
@@ -108,7 +108,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpvalidtoken
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-auth
                   version: v1
@@ -138,7 +138,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: mcp-auth-tools-only-test
@@ -148,7 +148,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcptoolsonly
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-auth
                   version: v1
@@ -185,7 +185,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: mcp-authz-test
@@ -195,7 +195,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpauthz
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-auth
                   version: v1
@@ -243,7 +243,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: mcp-authz-valid-token-test
@@ -253,7 +253,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpauthzvalidtoken
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-auth
                   version: v1
@@ -294,7 +294,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: mcp-acl-test
@@ -304,7 +304,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpacl
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-acl-list
                   version: v1
@@ -334,7 +334,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Given I authenticate using basic auth as "admin"
         When I update the MCP proxy "mcp-acl-test" with:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: mcp-acl-test
@@ -344,7 +344,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpacl
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-acl-list
                   version: v1
@@ -379,7 +379,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: mcp-rewrite-test
@@ -389,7 +389,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcprewrite
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-rewrite
                   version: v1
@@ -443,7 +443,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: mcp-ratelimit-tool-test
@@ -453,7 +453,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpratelimittool
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-ratelimit
                   version: v1
@@ -510,7 +510,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: mcp-ratelimit-method-test
@@ -520,7 +520,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpratelimitmethod
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-ratelimit
                   version: v1
@@ -577,7 +577,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
             """
-            apiVersion: gateway.api-platform.wso2.com/v1alpha1
+            apiVersion: gateway.api-platform.wso2.com/v1
             kind: Mcp
             metadata:
               name: mcp-cors-test
@@ -587,7 +587,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpcors
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: cors
                   version: v1

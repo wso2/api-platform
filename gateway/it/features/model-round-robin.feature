@@ -15,7 +15,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: Basic round-robin with two models
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-two-models
@@ -79,7 +79,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: Round-robin with three models
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-three-models
@@ -141,7 +141,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: Round-robin with four models
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-four-models
@@ -207,7 +207,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: Model selection with header location
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-header-loc
@@ -272,7 +272,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: Model selection with query parameter location
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-query-loc
@@ -325,7 +325,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: Model selection with path parameter location
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-path-loc
@@ -384,7 +384,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: Model selection with nested JSONPath
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-nested-jsonpath
@@ -443,7 +443,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: Suspend model on 5xx error with recovery
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-suspend-5xx
@@ -508,7 +508,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: Suspend model on 429 rate limit error
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-suspend-429
@@ -565,7 +565,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: All models suspended returns 503
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-all-suspended
@@ -625,7 +625,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: No suspension when suspendDuration is 0
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-no-suspend
@@ -686,7 +686,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: Handle empty request body
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-empty-body
@@ -726,7 +726,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: Handle invalid JSON in request body
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-invalid-json
@@ -767,7 +767,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: Handle invalid JSONPath
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-inv-jsonpath
@@ -808,7 +808,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: Handle missing model field in payload
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-missing-model
@@ -849,7 +849,7 @@ Feature: Model Round-Robin Load Balancing Policy
   Scenario: High availability with automatic failover
     When I deploy an API with the following configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: rrr-ha-failover

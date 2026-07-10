@@ -11,7 +11,7 @@ Feature: Analytics - Basic Event Capture
   Scenario: REST API request generates analytics event
     Given I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: test-analytics-api
@@ -26,6 +26,7 @@ Feature: Analytics - Basic Event Capture
           - method: GET
             path: /info
       """
+    And I wait for policy snapshot sync
     When I send a GET request to "http://localhost:8080/analytics-test/v1/info"
     Then the response status code should be 200
     And I wait 5 seconds for analytics to be published
@@ -37,7 +38,7 @@ Feature: Analytics - Basic Event Capture
   Scenario: Analytics event contains API metadata
     Given I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: metadata-test-api
@@ -52,6 +53,7 @@ Feature: Analytics - Basic Event Capture
           - method: POST
             path: /data
       """
+    And I wait for policy snapshot sync
     When I send a POST request to "http://localhost:8080/metadata-test/v2/data" with body:
       """
       {"test": "data"}
@@ -67,7 +69,7 @@ Feature: Analytics - Basic Event Capture
   Scenario: Multiple requests generate multiple analytics events
     Given I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: multi-request-api
@@ -82,6 +84,7 @@ Feature: Analytics - Basic Event Capture
           - method: GET
             path: /ping
       """
+    And I wait for policy snapshot sync
     When I send a GET request to "http://localhost:8080/multi-test/v1/ping"
     And I send a GET request to "http://localhost:8080/multi-test/v1/ping"
     And I send a GET request to "http://localhost:8080/multi-test/v1/ping"

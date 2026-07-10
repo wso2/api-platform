@@ -20,7 +20,9 @@
 # Uses the gateway-runtime container (Router + Policy Engine combined)
 # Build coverage images with: make build-gateway-runtime-coverage
 
-# NOTE: gateway-controller and gateway-runtime are duplicated in docker-compose.test.yaml — keep in sync.
+# NOTE: gateway-controller and gateway-runtime are duplicated in docker-compose.test.yaml
+# for the single-controller baseline. This Postgres compose intentionally adds
+# gateway-controller-xds to exercise Postgres/EventHub replica sync.
 
 services:
   # Mock platform-api for subscription-validation IT (mimics platform-api WebSocket events)
@@ -70,8 +72,8 @@ services:
   gateway-controller:
     container_name: it-gateway-controller
     image: ghcr.io/wso2/api-platform/gateway-controller-coverage:test
-    mem_limit: 1000m
-    mem_reservation: 1000m
+    mem_limit: 500m
+    mem_reservation: 500m
     cpus: 0.5
     command: ["-config", "/etc/gateway-controller/config.toml"]
     ports:
@@ -109,7 +111,53 @@ services:
       mock-platform-api:
         condition: service_started
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9092/api/admin/v0.9/health || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9092/api/admin/v1/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - it-gateway-runtime-network
+
+  # Runtime-facing gateway-controller replica. The integration tests continue to
+  # send management REST calls to gateway-controller above; this controller only
+  # serves xDS to gateway-runtime after synchronizing through Postgres/EventHub.
+  gateway-controller-xds:
+    container_name: it-gateway-controller-xds
+    image: ghcr.io/wso2/api-platform/gateway-controller-coverage:test
+    mem_limit: 500m
+    mem_reservation: 500m
+    cpus: 0.5
+    command: ["-config", "/etc/gateway-controller/config.toml"]
+    ports:
+      # Admin API only. The IT sends management REST calls to gateway-controller
+      # above; this port is exposed solely so the policy-snapshot xDS-sync probe
+      # can query the version of the controller that actually feeds gateway-runtime.
+      - "9093:9092"
+    environment:
+      - APIP_GW_CONTROLLER_STORAGE_TYPE=postgres
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST=postgres
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT=5432
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_DATABASE=gateway_test
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_USER=gateway
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD=gateway
+      - APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE=disable
+      - APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
+      - GOCOVERDIR=/coverage
+      # Used by template-functions IT to verify {{ env "..." }} resolution in spec fields
+      - IT_TEMPLATE_PATH=/anything
+    volumes:
+      - controller-data-tests:/app/data
+      - ./it-aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro
+      - ./test-config.toml:/etc/gateway-controller/config.toml:ro
+      - ../gateway-controller/certificates:/app/certificates
+      - ../gateway-controller/listener-certs:/app/listener-certs:ro
+      - ./coverage/gateway-controller:/coverage
+    depends_on:
+      gateway-controller:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:9092/api/admin/v1/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -121,7 +169,7 @@ services:
     container_name: it-gateway-runtime
     image: ghcr.io/wso2/api-platform/gateway-runtime-coverage:test
     mem_limit: 2000m
-    mem_reservation: 2000m
+    mem_reservation: 1500m
     cpus: 1
     command: ["--pol.config", "/etc/policy-engine/config.toml"]
     ports:
@@ -133,7 +181,7 @@ services:
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
     environment:
-      - GATEWAY_CONTROLLER_HOST=it-gateway-controller
+      - GATEWAY_CONTROLLER_HOST=it-gateway-controller-xds
       - LOG_LEVEL=info
       # Override AWS Bedrock Runtime endpoint for testing with mock service
       - AWS_ENDPOINT_URL_BEDROCK_RUNTIME=http://mock-aws-bedrock-guardrail:8080
@@ -142,7 +190,7 @@ services:
       - ./coverage/gateway-runtime:/coverage
       - ./test-config.toml:/etc/policy-engine/config.toml:ro
     depends_on:
-      gateway-controller:
+      gateway-controller-xds:
         condition: service_healthy
       mock-openapi:
         condition: service_healthy

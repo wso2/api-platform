@@ -694,6 +694,56 @@ func TestTranslator_WildcardUpstreamRewrite(t *testing.T) {
 	}
 }
 
+// TestTranslator_MCPUpstreamRewrite verifies that for MCP proxies the gateway-facing "/mcp"
+// resource is forwarded to EXACTLY the configured upstream URL path — the "/mcp" segment is
+// not appended to the backend. The upstream is expected to be the full MCP endpoint URL, and
+// some backends don't serve a "/mcp" sub-path. Regression test for the double-"/mcp" bug.
+func TestTranslator_MCPUpstreamRewrite(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	mcpKind := string(models.KindMcp)
+	mcpPath := constants.MCP_RESOURCE_PATH
+
+	tests := []struct {
+		name         string
+		apiKind      string
+		context      string
+		path         string
+		upstreamPath string
+		request      string
+		wantUpstream string
+	}{
+		// Upstream already points at the backend's "/mcp" endpoint: forward there as-is,
+		// do NOT produce "/mcp/mcp".
+		{"mcp endpoint upstream", mcpKind, "/mcpauth", mcpPath, "/mcp", "/mcpauth/mcp", "/mcp"},
+		// Upstream has no path (e.g. http://backend:3001): forward to root, not "/mcp".
+		{"root upstream", mcpKind, "/mcpauth", mcpPath, "", "/mcpauth/mcp", "/"},
+		// Upstream serves MCP at a custom path: forward to exactly that path.
+		{"custom path upstream", mcpKind, "/mcpauth", mcpPath, "/api/v1/mcp-server", "/mcpauth/mcp", "/api/v1/mcp-server"},
+		// Trailing slash on the gateway-facing request is accepted and rewrites the same way.
+		{"trailing slash request", mcpKind, "/mcpauth", mcpPath, "/mcp", "/mcpauth/mcp/", "/mcp"},
+		// Non-MCP kind with a "/mcp" operation path keeps the standard behavior (path preserved
+		// on the upstream) — the special-casing is scoped to MCP proxies only.
+		{"non-mcp kind unaffected", "http/rest", "/mcpauth", mcpPath, "/base", "/mcpauth/mcp", "/base/mcp"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := translator.createRoute(
+				"test-id", "TestMCP", "v1.0", tt.context,
+				"POST", tt.path, "test-cluster", tt.upstreamPath,
+				"localhost", tt.apiKind, "", "", nil, "", nil,
+				false, nil,
+			)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
+		})
+	}
+}
+
 // TestTranslator_WildcardUpstreamRewriteFromRDC verifies the same prefix-preserving behavior on
 // the RuntimeDeployConfig path (createRouteFromRDC), which the policy/runtime xDS pipeline uses.
 func TestTranslator_WildcardUpstreamRewriteFromRDC(t *testing.T) {
@@ -732,6 +782,114 @@ func TestTranslator_WildcardUpstreamRewriteFromRDC(t *testing.T) {
 				Upstream:        models.RouteUpstream{ClusterKey: "main"},
 			}
 			r := translator.createRouteFromRDC("GET|"+tt.fullPath+"|", rdcRoute, rdc)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
+		})
+	}
+}
+
+// TestTranslator_MCPUpstreamRewriteFromRDC verifies the MCP "/mcp"-not-appended behavior on the
+// RuntimeDeployConfig path (createRouteFromRDC), which the policy/runtime xDS pipeline uses.
+func TestTranslator_MCPUpstreamRewriteFromRDC(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	mcpPath := constants.MCP_RESOURCE_PATH
+
+	tests := []struct {
+		name         string
+		kind         string
+		fullPath     string
+		basePath     string
+		request      string
+		wantUpstream string
+	}{
+		{"mcp endpoint upstream", string(models.KindMcp), "/mcpauth" + mcpPath, "/mcp", "/mcpauth/mcp", "/mcp"},
+		{"root upstream", string(models.KindMcp), "/mcpauth" + mcpPath, "", "/mcpauth/mcp", "/"},
+		{"custom path upstream", string(models.KindMcp), "/mcpauth" + mcpPath, "/api/v1/mcp-server", "/mcpauth/mcp", "/api/v1/mcp-server"},
+		{"trailing slash request", string(models.KindMcp), "/mcpauth" + mcpPath, "/mcp", "/mcpauth/mcp/", "/mcp"},
+		// Non-MCP kind keeps the standard behavior (operation path preserved on the upstream).
+		{"non-mcp kind unaffected", string(models.KindRestApi), "/mcpauth" + mcpPath, "/base", "/mcpauth/mcp", "/base/mcp"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdc := &models.RuntimeDeployConfig{
+				Metadata: models.Metadata{Kind: tt.kind},
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"main": {BasePath: tt.basePath, Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+				},
+			}
+			rdcRoute := &models.Route{
+				Method:          "POST",
+				Path:            tt.fullPath,
+				OperationPath:   mcpPath,
+				AutoHostRewrite: true,
+				Upstream:        models.RouteUpstream{ClusterKey: "main"},
+			}
+			r := translator.createRouteFromRDC("POST|"+tt.fullPath+"|", rdcRoute, rdc)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
+		})
+	}
+}
+
+// TestTranslator_MCPAppendResourcePathToBackend verifies that when
+// mcp.append_resource_path_to_backend is enabled, MCP "/mcp" routes fall back to the
+// legacy behaviour of appending "/mcp" to the backend upstream path. This preserves
+// compatibility for MCP API definitions authored against the previous gateway version.
+func TestTranslator_MCPAppendResourcePathToBackend(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.MCP.AppendResourcePathToBackend = true
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	mcpKind := string(models.KindMcp)
+	mcpPath := constants.MCP_RESOURCE_PATH
+
+	tests := []struct {
+		name         string
+		context      string
+		upstreamPath string
+		request      string
+		wantUpstream string
+	}{
+		// Legacy behaviour: "/mcp" IS appended to the configured upstream path.
+		{"root upstream", "/mcpauth", "", "/mcpauth/mcp", "/mcp"},
+		{"base-path upstream", "/mcpauth", "/api/v2", "/mcpauth/mcp", "/api/v2/mcp"},
+		{"trailing slash request", "/mcpauth", "/api/v2", "/mcpauth/mcp/", "/api/v2/mcp/"},
+	}
+
+	for _, tt := range tests {
+		t.Run("createRoute/"+tt.name, func(t *testing.T) {
+			r := translator.createRoute(
+				"test-id", "TestMCP", "v1.0", tt.context,
+				"POST", mcpPath, "test-cluster", tt.upstreamPath,
+				"localhost", mcpKind, "", "", nil, "", nil,
+				false, nil,
+			)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
+		})
+
+		t.Run("createRouteFromRDC/"+tt.name, func(t *testing.T) {
+			rdc := &models.RuntimeDeployConfig{
+				Metadata: models.Metadata{Kind: mcpKind},
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"main": {BasePath: tt.upstreamPath, Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+				},
+			}
+			rdcRoute := &models.Route{
+				Method:          "POST",
+				Path:            tt.context + mcpPath,
+				OperationPath:   mcpPath,
+				AutoHostRewrite: true,
+				Upstream:        models.RouteUpstream{ClusterKey: "main"},
+			}
+			r := translator.createRouteFromRDC("POST|"+tt.context+mcpPath+"|", rdcRoute, rdc)
 			require.NotNil(t, r)
 			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
 		})
@@ -1998,7 +2156,7 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 					Annotations: &map[string]string{"gateway.api-platform.wso2.com/project-id": "proj-123"},
 				},
 				Kind:       api.WebSubAPIKindWebSubApi,
-				ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+				ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1,
 				Spec: api.WebhookAPIData{
 					DisplayName: "WebSub Test API",
 					Version:     "v1.0",
@@ -2038,7 +2196,7 @@ func TestTranslator_TranslateAsyncAPIConfig(t *testing.T) {
 			Configuration: api.WebSubAPI{
 				Metadata:   api.Metadata{Name: "websub-invalid"},
 				Kind:       api.WebSubAPIKindWebSubApi,
-				ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+				ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1,
 				Spec: api.WebhookAPIData{
 					DisplayName: "WebSub Invalid",
 					Version:     "v1.0",

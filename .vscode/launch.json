@@ -18,12 +18,15 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${workspaceFolder}/platform-api/src/cmd",
-            "cwd": "${workspaceFolder}/platform-api/src",
+            "program": "${workspaceFolder}/platform-api/cmd",
+            "cwd": "${workspaceFolder}/platform-api",
+            "args": [
+                "-config", "${workspaceFolder}/platform-api/config/config.toml",
+            ],
             "env": {
                 // Database configuration
                 "DATABASE_DRIVER": "sqlite3",
-                "DATABASE_DB_PATH": "${workspaceFolder}/platform-api/src/data/api_platform.db",
+                "DATABASE_DB_PATH": "${workspaceFolder}/platform-api/data/api_platform.db",
                 "DATABASE_EXECUTE_SCHEMA_DDL": "true",
                 "DB_SCHEMA_PATH": "./internal/database/schema.sqlite.sql",
                 // JWT - skip signature validation in development
@@ -209,5 +212,14 @@
                 // },
             ],
         },
+        {
+            "name": "Developer Portal",
+            "type": "node",
+            "request": "launch",
+            "program": "${workspaceFolder}/portals/developer-portal/src/server.js",
+            "cwd": "${workspaceFolder}/portals/developer-portal",
+            "console": "integratedTerminal",
+            "skipFiles": ["<node_internals>/**"]
+        }
     ]
 }

@@ -38,6 +38,9 @@ node_modules/
 *.tsbuildinfo
 next-env.d.ts
 
+# Vite cache                                                                                                                
+.vite/   
+
 # Build and output directories
 build/
 dist/
@@ -143,8 +146,16 @@ cli/src/tests/target/
 
 # Component specific patterns
 # Platform API
-platform-api/src/data
-platform-api/src/resources/openapi_with_binding.yaml
+platform-api/data
+platform-api/resources/openapi_with_binding.yaml
+platform-api/cmd/cmd
+# Compiled platform-api binary (produced by `go build` in src/)
+platform-api/main
+# Secret/key material and local working-tree checkouts that must never be committed
+platform-api/config/data/
+platform-api/src/
+**/*.key
+**/certs/*.pem
 
 # Gateway
 gateway/gateway-runtime/target
@@ -157,6 +168,8 @@ dev-policies/
 .github/prompts
 
 gateway/target/
+
+portals/ai-workspace/docker-compose.yaml
 
 # Devportal
 portals/developer-portal/target/

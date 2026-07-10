@@ -1,0 +1,34 @@
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
+kind: GraphQL
+
+metadata:
+  name: countries-graphql-v1.0
+
+spec:
+  type: GRAPHQL
+  displayName: Countries GraphQL API
+  version: v1.0
+  description: Explore country data — continents, languages, currencies, and more — via a public GraphQL endpoint.
+  status: PUBLISHED
+
+  tags:
+    - graphql
+    - countries
+    - geography
+
+  labels:
+    - default
+
+  subscriptionPlans: []
+
+  agentVisibility: VISIBLE
+
+  businessInformation:
+    businessOwner: Trevor Blades
+    businessOwnerEmail: hello@trevorblades.com
+    technicalOwner: Trevor Blades
+    technicalOwnerEmail: hello@trevorblades.com
+
+  endpoints:
+    productionUrl: https://countries.trevorblades.com/graphql
+    sandboxUrl: https://countries.trevorblades.com/graphql

@@ -1,6 +1,6 @@
 # Stage 1: Build the Go application
 # Using Debian-based image for better cross-compilation support
-FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS builder
 ARG TARGETARCH
 ARG VERSION=0.0.1-SNAPSHOT
 ARG GIT_COMMIT=unknown
@@ -32,6 +32,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # is only invalidated when dependencies change, not when source code changes.
 COPY --from=sdk-core go.mod /sdk/core/
 COPY --from=common go.mod go.sum /common/
+COPY --from=httpkit go.mod go.sum /httpkit/
 
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -39,6 +40,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 COPY --from=sdk-core . /sdk/core
 COPY --from=common . /common
+COPY --from=httpkit . /httpkit
 COPY . ./
 
 # Build with CGO (required for SQLite), set CC for cross-compilation, add -cover/-gcflags if enabled
@@ -76,7 +78,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Stage: debug (select with --target debug; NOT part of the default build)
 # Full Go image needed to install dlv via go install; acceptable for dev-only use.
 # Runs as root — dlv requires ptrace; container security settings handle isolation.
-FROM golang:1.26.2-bookworm AS debug
+FROM golang:1.26.5-bookworm AS debug
 WORKDIR /app
 
 # Install dlv (Delve debugger)

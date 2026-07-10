@@ -134,57 +134,31 @@ func (m *Moesif) Publish(event *dto.Event) {
 		uri = event.Operation.APIResourceTemplate
 	}
 
-	// Build request headers: prefer dynamic headers from event.Properties["requestHeaders"]
-	// if present; otherwise, fall back to the existing hardcoded headers.
-	defaultReqHeaders := map[string]interface{}{
-		"User-Agent":   event.UserAgentHeader,
-		"Content-Type": "-",
-	}
-
-	defaultRspHeaders := map[string]interface{}{
-		"Vary":          "Accept-Encoding",
-		"Pragma":        "no-cache",
-		"Expires":       "-1",
-		"Content-Type":  "-",
-		"Cache-Control": "no-cache",
-	}
-
-	headers := defaultReqHeaders
+	// Headers are only published when the analytics-header-filter policy is configured
+	// and has emitted the (already allow/deny filtered) header set into event metadata.
+	// When it is not configured, no headers are sent at all.
+	headers := map[string]interface{}{}
 	if rawReqHeaders, ok := event.Properties["requestHeaders"]; ok && rawReqHeaders != nil {
 		slog.Debug("Request headers (PUBLISHER): ", "requestHeaders", rawReqHeaders)
 		if jsonStr, ok := rawReqHeaders.(string); ok {
 			var hMap map[string]interface{}
 			if err := json.Unmarshal([]byte(jsonStr), &hMap); err == nil && len(hMap) > 0 {
 				slog.Debug("Unmarshalled hMap (PUBLISHER): ", "requestHeaders", hMap)
-				merged := make(map[string]interface{})
-				for k, v := range defaultReqHeaders {
-					merged[k] = v
-				}
-				for k, v := range hMap {
-					merged[k] = v
-				}
-				headers = merged
+				headers = hMap
 			} else if err != nil {
 				slog.Warn("Failed to unmarshal request headers", "error", err)
 			}
 		}
 	}
 
-	rspHeaders := defaultRspHeaders
+	rspHeaders := map[string]interface{}{}
 	if rawRspHeaders, ok := event.Properties["responseHeaders"]; ok && rawRspHeaders != nil {
 		slog.Debug("Response headers (PUBLISHER): ", "responseHeaders", rawRspHeaders)
 		if jsonStr, ok := rawRspHeaders.(string); ok {
 			var hMap map[string]interface{}
 			if err := json.Unmarshal([]byte(jsonStr), &hMap); err == nil && len(hMap) > 0 {
 				slog.Debug("Unmarshalled hMap (PUBLISHER): ", "responseHeaders", hMap)
-				merged := make(map[string]interface{})
-				for k, v := range defaultRspHeaders {
-					merged[k] = v
-				}
-				for k, v := range hMap {
-					merged[k] = v
-				}
-				rspHeaders = merged
+				rspHeaders = hMap
 			} else if err != nil {
 				slog.Warn("Failed to unmarshal response headers", "error", err)
 			}
@@ -274,6 +248,11 @@ func (m *Moesif) Publish(event *dto.Event) {
 	// responseSize
 	if responseSize, ok := event.Properties["responseSize"]; ok && responseSize != nil {
 		metadataMap["responseSize"] = responseSize
+	}
+
+	// requestSize
+	if requestSize, ok := event.Properties["requestSize"]; ok && requestSize != nil {
+		metadataMap["requestSize"] = requestSize
 	}
 
 	// Advanced latency info

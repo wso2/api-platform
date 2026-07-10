@@ -45,7 +45,7 @@ data:
     reconnect_initial = {{ $gc.controlplane.reconnect_initial | quote }}
     reconnect_max = {{ $gc.controlplane.reconnect_max | quote }}
     polling_interval = {{ $gc.controlplane.polling_interval | quote }}
-    deployment_push_enabled = {{ $gc.controlplane.deployment_push_enabled }}
+    deployment_sync_enabled = {{ $gc.controlplane.deployment_sync_enabled }}
     sync_batch_size = {{ $gc.controlplane.sync_batch_size }}
 
     {{- range $gc.encryption.providers }}
@@ -81,7 +81,11 @@ data:
     {{- if $gc.auth.idp.role_mapping }}
     [controller.auth.idp.role_mapping]
     {{- range $key, $value := $gc.auth.idp.role_mapping }}
+    {{- if kindIs "slice" $value }}
+    {{ $key }} = [{{- range $i, $v := $value }}{{- if gt $i 0 }}, {{ end }}{{ $v | quote }}{{- end }}]
+    {{- else }}
     {{ $key }} = {{ $value | quote }}
+    {{- end }}
     {{- end }}
     {{- end }}
     {{- end }}

@@ -4,13 +4,13 @@
 
 <a id="opIdaddView"></a>
 
-`POST /organizations/{orgId}/views`
+`POST /views`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/views \
+curl -X POST https://localhost:3000/api/v0.9/views \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -19,13 +19,13 @@ curl -X POST http://localhost:3000/devportal/organizations/{orgId}/views \
 
 ```
 
-Creates a Developer Portal view for an organization and associates it with the supplied label names. If `displayName` is omitted, the service stores the view name as the display name.
+Creates a Developer Portal view for an organization and associates it with the supplied label names. If `name` is omitted, the service stores the view's handle as its name.
 
 > Payload
 
 ```json
 {
-  "name": "partner-apis",
+  "id": "partner-apis",
   "displayName": "Partner APIs",
   "labels": [
     "partner",
@@ -46,7 +46,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|[ViewCreateRequest](schemas.md#schemaviewcreaterequest)|true|View creation payload with the label names that should be visible in the view.|
-|orgId|path|string|true|none|
 
 > Example responses
 
@@ -63,18 +62,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -88,9 +93,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "Conflict"
 }
 ```
 
@@ -98,9 +103,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -110,22 +115,29 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="create-a-view-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
 
 ## List views
 
 <a id="opIdgetAllViews"></a>
 
-`GET /organizations/{orgId}/views`
+`GET /views`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/views \
+curl -X GET https://localhost:3000/api/v0.9/views \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -145,30 +157,35 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
+|limit|query|integer|false|Maximum number of records to return.|
+|offset|query|integer|false|Number of records to skip before returning results.|
 
 > Example responses
 
 > 200 Response
 
 ```json
-[
-  {
-    "name": "default",
-    "displayName": "Default",
-    "labels": [
-      "default"
-    ]
-  },
-  {
-    "name": "partner-apis",
-    "displayName": "Partner APIs",
-    "labels": [
-      "partner",
-      "public"
-    ]
+{
+  "list": [
+    {
+      "id": "partner-apis",
+      "displayName": "Partner APIs",
+      "labels": [
+        "partner",
+        "public"
+      ],
+      "createdBy": "alice@example.com",
+      "updatedBy": "alice@example.com",
+      "createdAt": "2019-08-24T14:15:22Z",
+      "updatedAt": "2019-08-24T14:15:22Z"
+    }
+  ],
+  "pagination": {
+    "total": 42,
+    "limit": 20,
+    "offset": 0
   }
-]
+}
 ```
 
 > 404 Response
@@ -181,9 +198,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -201,22 +218,30 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|[[ViewResponse](schemas.md#schemaviewresponse)]|false|none|none|
-|» name|string|true|none|none|
-|» displayName|string|true|none|none|
-|» labels|[string]|true|none|none|
+|» list|[[ViewResponse](schemas.md#schemaviewresponse)]|false|none|none|
+|»» id|string|true|none|The view's handle (unique per org). Not the internal database uuid.|
+|»» displayName|string|true|none|none|
+|»» labels|[string]|true|none|none|
+|»» createdBy|string|false|none|Identity of the user who created this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|»» updatedBy|string|false|none|Identity of the user who last updated this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|»» createdAt|string(date-time)|false|none|none|
+|»» updatedAt|string(date-time)|false|none|none|
+|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
+|»» total|integer|true|none|Total number of records matching the query.|
+|»» limit|integer|true|none|Maximum number of records returned in this response.|
+|»» offset|integer|true|none|Number of records skipped before this page.|
 
 ## Update a view
 
 <a id="opIdupdateView"></a>
 
-`PUT /organizations/{orgId}/views/{name}`
+`PUT /views/{viewId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/views/{name} \
+curl -X PUT https://localhost:3000/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -225,18 +250,16 @@ curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/views/{name} \
 
 ```
 
-Updates the view display name and label associations. `addedLabels` are attached to the view and `removedLabels` are detached. The service returns the accepted request payload.
+Updates the view display name and/or label associations. When `labels` is supplied, it fully replaces the view's label set — labels present in the list are attached and any others are detached. The service returns the accepted request payload.
 
 > Payload
 
 ```json
 {
   "displayName": "Partner and Public APIs",
-  "addedLabels": [
+  "labels": [
+    "partner",
     "premium"
-  ],
-  "removedLabels": [
-    "internal"
   ]
 }
 ```
@@ -252,9 +275,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[ViewUpdateRequest](schemas.md#schemaviewupdaterequest)|true|View update payload. Include only the display-name or label changes that should be applied.|
-|orgId|path|string|true|none|
-|name|path|string|true|none|
+|body|body|[ViewUpdateRequest](schemas.md#schemaviewupdaterequest)|true|View update payload. Include only the display name or label changes that should be applied.|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
 
@@ -263,11 +285,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 {
   "displayName": "Partner and Public APIs",
-  "addedLabels": [
+  "labels": [
+    "partner",
     "premium"
-  ],
-  "removedLabels": [
-    "internal"
   ]
 }
 ```
@@ -277,18 +297,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -302,9 +328,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -312,9 +338,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "Conflict"
 }
 ```
 
@@ -322,9 +348,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -335,29 +361,36 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Echo of the accepted view update payload.|[ViewUpdateRequest](schemas.md#schemaviewupdaterequest)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="update-a-view-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
 
 ## Get a view
 
 <a id="opIdgetView"></a>
 
-`GET /organizations/{orgId}/views/{name}`
+`GET /views/{viewId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/views/{name} \
+curl -X GET https://localhost:3000/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Retrieves one view by name, including the label names attached to that view.
+Retrieves one view by its `viewId` handle, including the label names attached to that view.
 
 ### Authentication
 
@@ -370,8 +403,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
-|name|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
 
@@ -379,12 +411,16 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "name": "partner-apis",
+  "id": "partner-apis",
   "displayName": "Partner APIs",
   "labels": [
     "partner",
     "public"
-  ]
+  ],
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z",
+  "updatedAt": "2026-05-07T08:30:00Z"
 }
 ```
 
@@ -393,18 +429,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -424,9 +466,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -441,24 +483,31 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <h3 id="get-a-view-responseschema">Response Schema</h3>
 
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
+
 ## Delete a view
 
 <a id="opIddeleteView"></a>
 
-`DELETE /organizations/{orgId}/views/{name}`
+`DELETE /views/{viewId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/organizations/{orgId}/views/{name} \
+curl -X DELETE https://localhost:3000/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Deletes a view by name. A missing view is returned as a not-found error.
+Deletes a view by its `viewId` handle. A missing view is returned as a not-found error.
 
 ### Authentication
 
@@ -471,8 +520,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
-|name|path|string|true|none|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses
 
@@ -481,18 +529,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -506,9 +560,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -516,9 +570,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -532,3 +586,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="delete-a-view-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|

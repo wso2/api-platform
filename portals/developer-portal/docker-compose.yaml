@@ -23,9 +23,19 @@
 #       diverge: uses `build: .` here vs pre-built GHCR image in distribution.
 #
 # Quick start:
-#   docker compose up
-#   Then open https://localhost:3000/ACME/views/default  (accept the self-signed cert warning)
-#   Login: admin / admin  (or developer / developer)
+#   1. Copy configs/config-platform-api.toml.example to configs/config-platform-api.toml
+#      and adjust users/org as needed.
+#   2. Build the Platform API image from source (../../platform-api):
+#        cd ../../platform-api && make build
+#      Required — the published 0.10.0 image on ghcr.io predates the /auth/login
+#      endpoint that the username/password login form here uses.
+#   3. docker compose up
+#   4. Open https://localhost:3000/default/views/default  (accept the self-signed cert warning)
+#      Login with a user defined in configs/config-platform-api.toml (default: admin / admin)
+#
+# Secrets:
+#   Set AUTH_JWT_SECRET_KEY in your shell or in a .env file to persist login sessions
+#   across Platform API restarts. When unset a random key is generated at startup.
 #
 # TLS:
 #   A self-signed certificate is generated automatically on first start and stored
@@ -35,78 +45,104 @@
 #     - ./my-certs:/app/certs:ro
 #   and ensure it contains server.crt and server.key.
 #
+# Database:
+#   SQLite is used by default — no external database required.
+#   To switch to PostgreSQL, run with the postgres override file:
+#     docker compose -f docker-compose.yaml -f docker-compose.postgres.yaml up
+#
 # Configuration:
-#   Edit configs/config.yaml (copied from sample.config.yaml) to customise settings.
-#   Every config value can be overridden with a DP_* env var.
+#   Edit configs/config.toml to customise devportal settings.
+#   Edit configs/config-platform-api.toml to customise Platform API settings (users, org, etc.).
+#   Every devportal config value can be overridden with an APIP_DP_* env var.
 #   Create a .env file at the project root for persistent overrides.
-#   See sample.config.yaml for the full list of settings.
+#
+# Demo mode (on by default):
+#   demo=false docker compose up
+#   Disables the "Seed sample APIs" button in Settings and the onboarding prompt.
 
 services:
-  postgres:
-    image: postgres:16
+  # ── Platform API (Go HTTPS backend — handles local auth) ────────────────────
+  platform-api:
+    image: ghcr.io/wso2/api-platform/platform-api:0.11.0
+    container_name: platform-api
+    restart: unless-stopped
+    command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
-      POSTGRES_USER: devportal
-      POSTGRES_PASSWORD: devportal
-      POSTGRES_DB: devportal
+      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      # SQL files in this directory run automatically on first DB start
-      - ./database:/docker-entrypoint-initdb.d:ro
+      - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
+      - platform-api-data:/app/data
+    ports:
+      - "9243:9243"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U devportal -d devportal"]
-      interval: 10s
+      test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
+      interval: 30s
       timeout: 5s
-      retries: 10
-      start_period: 15s
-    networks:
-      - devportal-network
+      start_period: 20s
+      retries: 3
 
   devportal:
     build: .
-    image: ghcr.io/wso2/api-platform/developer-portal:0.1.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-beta-SNAPSHOT
+    depends_on:
+      platform-api:
+        condition: service_healthy
     ports:
       - "3000:3000"
-    depends_on:
-      postgres:
-        condition: service_healthy
     volumes:
-      # Mount config from the configs/ directory (copy of sample.config.yaml).
-      - ./configs/config.yaml:/app/configs/config.yaml:ro
+      # Mount config from the configs/ directory.
+      - ./configs/config.toml:/app/configs/config.toml:ro
+      # Persist the SQLite database across container restarts.
+      - sqlite_data:/app/data
       # Persist the auto-generated TLS certificate across container restarts.
       # To use your own cert, replace with: - ./my-certs:/app/certs:ro
       - certs_data:/app/certs
     environment:
-      # Database — point to the postgres service above
-      DP_DB_HOST: postgres
-      DP_DB_PORT: 5432
-      DP_DB_DIALECT: postgres
-      DP_DB_USERNAME: devportal
-      DP_DB_PASSWORD: devportal
-      DP_DB_DATABASE: devportal
+      # ── Database: SQLite (default) ───────────────────────────────────────────
+      APIP_DP_DATABASE_FILE: /app/data/devportal.db
+
+      # ── Database: PostgreSQL (optional) ─────────────────────────────────────
+      # APIP_DP_DATABASE_TYPE: postgres
+      # APIP_DP_DATABASE_HOST: postgres
+      # APIP_DP_DATABASE_PORT: 5432
+      # APIP_DP_DATABASE_USERNAME: devportal
+      # APIP_DP_DATABASE_PASSWORD: devportal
+      # APIP_DP_DATABASE_NAME: devportal
 
       # HTTPS — a self-signed cert is generated automatically on first start.
-      # To switch back to plain HTTP, set DP_ADVANCED_HTTP=true and DP_BASEURL=http://localhost:3000.
-      DP_ADVANCED_HTTP: "false"
-      DP_BASEURL: "https://localhost:3000"
-      DP_SERVERCERTS_PATHTOCERT: "/app/certs/server.crt"
-      DP_SERVERCERTS_PATHTOPK: "/app/certs/server.key"
-      DP_SERVERCERTS_PATHTOCA: "/app/certs/server.crt"
+      # To switch back to plain HTTP, set APIP_DP_TLS_ENABLED=false and APIP_DP_SERVER_BASEURL=http://localhost:3000.
+      APIP_DP_TLS_ENABLED: "true"
+      APIP_DP_SERVER_BASEURL: "https://localhost:3000"
+      APIP_DP_TLS_CERTFILE: "/app/certs/server.crt"
+      APIP_DP_TLS_KEYFILE: "/app/certs/server.key"
+      APIP_DP_TLS_CAFILE: "/app/certs/server.crt"
 
-      # Auto-generate default subscription plans for every new org
-      DP_GENERATEDEFAULTSUBPOLICIES: "true"
+      # Demo mode — on by default. When enabled, the Settings > Manage APIs page
+      # shows a "Seed sample APIs" button and admins get a one-time onboarding
+      # prompt to deploy sample APIs/MCPs. Disable with:
+      #   demo=false docker compose up
+      APIP_DP_DEMO_ENABLED: "${demo:-true}"
 
       # Log to console only (no rotating log files)
-      DP_LOGGING_CONSOLEONLY: "true"
+      APIP_DP_LOGGING_CONSOLEONLY: "true"
+
+      # Platform API — used for local auth credential validation.
+      # Set APIP_DP_PLATFORMAPI_JWTSECRET to the same value as AUTH_JWT_SECRET_KEY so
+      # the devportal can verify Platform API JWTs locally (no per-request login call).
+      APIP_DP_PLATFORMAPI_BASEURL: "https://platform-api:9243"
+      APIP_DP_PLATFORMAPI_JWTSECRET: ${AUTH_JWT_SECRET_KEY:-}
+      APIP_DP_PLATFORMAPI_INSECURE: "true"   # Platform API uses a self-signed cert in this dev setup
+
+      # AES-256-GCM key for encrypting subscription tokens and webhook secrets at rest.
+      # Generate once with: openssl rand -hex 32
+      # Store in .env as: APIP_DP_SECURITY_ENCRYPTIONKEY=<64-char hex>
+      # Must remain stable across restarts — changing it makes existing encrypted data unreadable.
+      APIP_DP_SECURITY_ENCRYPTIONKEY: ${APIP_DP_SECURITY_ENCRYPTIONKEY:-}
     env_file:
       - path: .env
         required: false   # Optional — create a .env file to add your own overrides
-    networks:
-      - devportal-network
 
 volumes:
-  postgres_data:
+  sqlite_data:
   certs_data:
-
-networks:
-  devportal-network:
-    driver: bridge
+  platform-api-data:

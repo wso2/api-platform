@@ -21,18 +21,22 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('./config/logger');
 const { config } = require('./config/configLoader');
-const constants = require('./utils/constants');
 const webhookDispatcher = require('./services/webhooks/dispatcher');
 const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
+const sequelize = require('./db/sequelizeConfig');
+const { seedDefaultOrg } = require('./services/seederService');
 const app = require('./app');
 
-const PORT = process.env.PORT || config.defaultPort;
+const liveReload = process.env.NODE_ENV === 'development' ? require('./liveReload') : null;
+
+const PORT = process.env.PORT || config.server.port;
 
 function startBackgroundServices() {
+    if (config.designMode?.enabled) return;
     try {
         webhookDispatcher.start();
         webhookDeliveryWorker.start();
-        logger.info('Webhook dispatcher and delivery worker started');
+        logger.info('Services: webhook dispatcher + delivery worker started ✓');
     } catch (error) {
         logger.warn('Could not start webhook workers', {
             error: error.message,
@@ -41,36 +45,78 @@ function startBackgroundServices() {
     }
 }
 
-function logStartupInfo() {
-    logger.info(`Developer Portal V2 is running on port ${PORT}`);
-    logger.info(`Mode: ${config.mode}`);
+// Prints a startup banner horizontally centered in an 80-column terminal, with
+// blank-line padding above and below the title — matches ai-workspace/bff/main.go's
+// printBanner(). Written directly to stdout (not through the structured logger) so
+// timestamp/level prefixes don't break the centering.
+function printBanner(visitUrl) {
+    const termWidth = 80;
+    const lines = [
+        '='.repeat(40),
+        '',
+        '',
+        'Developer Portal Started',
+        '',
+        `Visit Portal: ${visitUrl}`,
+        '',
+        '',
+        '='.repeat(40),
+    ];
+    console.log();
+    for (const line of lines) {
+        const pad = Math.max(0, Math.floor((termWidth - line.length) / 2));
+        console.log(' '.repeat(pad) + line);
+    }
+    console.log();
+}
 
-    if (config.mode === constants.DEV_MODE) {
-        logger.info('⚠️  Since you are in DEV mode, ensure default content is available at configured pathToContent ' +
-            'and mock folder must exist in root directory');
+function logStartupBanner() {
+    const orgSegment = config.designMode?.enabled ? '' : `/${config.organization.defaultName || '<organization>'}`;
+    // The bare org URL redirects server-side to /views/default (orgContentRoute.js) —
+    // shorter and avoids baking view-naming details into the banner.
+    const visitUrl = `${config.server.baseUrl}${orgSegment}`;
+    printBanner(visitUrl);
+    logger.info('Developer Portal started', { visitUrl });
+
+    if (config.demo?.enabled) {
+        logger.warn(
+            'DEMO MODE is ENABLED (APIP_DP_DEMO_ENABLED=true) — sample APIs/MCPs can be seeded ' +
+            'via Settings > Manage APIs or the onboarding overlay. Do not enable this in ' +
+            'production deployments.'
+        );
+    }
+}
+
+async function onListening() {
+    startBackgroundServices();
+    await seedDefaultOrg().catch(err =>
+        logger.error('Unexpected error during default org seeding', { error: err.message })
+    );
+    logStartupBanner();
+}
+
+let server;
+
+async function startServer() {
+    logger.info('Developer Portal starting...');
+    // Sync database schema for SQLite in production mode
+    if (config.database.type === 'sqlite' && !config.designMode?.enabled) {
+        await sequelize.sync();
+        logger.info('Database: SQLite schema synced ✓');
     }
 
-    const visitUrl = config.baseUrl + (config.mode === constants.DEV_MODE ? "/views/default" : "/<organization>/views/default");
-    logger.info(`Visit ${visitUrl}`);
-}
-
-function onListening() {
-    logStartupInfo();
-    startBackgroundServices();
-}
-
-if (config.advanced.http) {
-    http.createServer(app).listen(PORT, '0.0.0.0', onListening);
-} else {
+    if (!config.tls.enabled || config.designMode?.enabled) {
+        server = http.createServer(app).listen(PORT, '0.0.0.0', onListening);
+    } else {
     try {
-        const certPath = path.resolve(config.serverCerts.pathToCert);
-        const keyPath = path.resolve(config.serverCerts.pathToPK);
+        const certPath = path.resolve(config.tls.certFile);
+        const keyPath = path.resolve(config.tls.keyFile);
 
         const serverCert = fs.readFileSync(certPath);
         const serverKey = fs.readFileSync(keyPath);
-        const caCert = fs.readFileSync(path.resolve(config.serverCerts.pathToCA));
+        const caCert = fs.readFileSync(path.resolve(config.tls.caFile));
 
-        https.createServer({
+        server = https.createServer({
             key: serverKey,
             cert: serverCert,
             ca: caCert,
@@ -86,7 +132,10 @@ if (config.advanced.http) {
         });
         process.exit(1);
     }
+    }
 }
+
+startServer();
 
 // Handle Uncaught Exceptions
 process.on('uncaughtException', (err) => {
@@ -95,6 +144,7 @@ process.on('uncaughtException', (err) => {
         stack: err.stack,
         type: 'uncaughtException'
     });
+    process.exit(1);
 });
 
 // Handle Unhandled Rejections
@@ -104,6 +154,7 @@ process.on('unhandledRejection', (reason, promise) => {
         promise: promise?.toString(),
         type: 'unhandledRejection'
     });
+    process.exit(1);
 });
 
 // Graceful shutdown handlers
@@ -113,9 +164,30 @@ const gracefulShutdown = (signal) => {
         message: `Received ${signal}. Gracefully shutting down...`
     });
 
-    logger.info('Application shutdown complete');
-    process.exit(0);
+    const done = () => {
+        logger.info('Application shutdown complete');
+        process.exit(0);
+    };
+
+    if (server) {
+        // Close keep-alive connections immediately so server.close() doesn't hang
+        server.closeAllConnections();
+        server.close(done);
+    } else {
+        done();
+    }
+
+    // Force-exit after 3 s if graceful close hangs (e.g. long-polling connections)
+    setTimeout(() => {
+        logger.warn('Graceful shutdown timed out — forcing exit');
+        process.exit(1);
+    }, 3000).unref();
 };
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+// nodemon sends SIGUSR2 to restart; process.once so the next spawned process can re-register
+process.once('SIGUSR2', () => {
+    if (liveReload) liveReload.notify();
+    gracefulShutdown('SIGUSR2');
+});

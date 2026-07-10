@@ -26,7 +26,9 @@ help: ## Show available targets
 	@echo 'Event Gateway Integration Tests'
 	@echo ''
 	@echo 'Usage:'
-	@echo '  make test                  Run the full integration test suite'
+	@echo '  make test                  Run the full integration test suite (SQLite)'
+	@echo '  make test-postgres         Run the full integration test suite with PostgreSQL'
+	@echo '  make test-sqlserver        Run the full integration test suite with SQL Server'
 	@echo '  make test-health           Run only health-check scenarios'
 	@echo '  make test-websub           Run only WebSub management scenarios'
 	@echo '  make test-e2e              Run only end-to-end WebSub flow scenarios'
@@ -38,6 +40,14 @@ help: ## Show available targets
 .PHONY: test
 test: ## Run all integration tests
 	go test -v -timeout 10m ./...
+
+.PHONY: test-postgres
+test-postgres: ## Run integration tests with PostgreSQL backend
+	IT_COMPOSE_FILE=../docker-compose.test.postgres.yaml go test -v -timeout 10m ./...
+
+.PHONY: test-sqlserver
+test-sqlserver: ## Run integration tests with SQL Server backend
+	IT_COMPOSE_FILE=../docker-compose.test.sqlserver.yaml go test -v -timeout 10m ./...
 
 .PHONY: test-health
 test-health: ## Run health check feature only

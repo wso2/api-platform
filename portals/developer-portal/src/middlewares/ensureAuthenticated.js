@@ -1,4 +1,3 @@
-/* eslint-disable no-undef */
 /*
  * Copyright (c) 2024, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
@@ -19,18 +18,30 @@
 const minimatch = require('minimatch');
 const constants = require('../utils/constants');
 const { config } = require('../config/configLoader');
-const adminDao = require('../dao/admin');
+const orgDao = require('../dao/organizationDao');
 const { validationResult } = require('express-validator');
-const { jwtVerify, createRemoteJWKSet, importX509 } = require('jose');
+const { jwtVerify, createRemoteJWKSet } = require('jose');
 const util = require('../utils/util');
 const { CustomError } = require('../utils/errors/customErrors');
-const IdentityProviderDTO = require("../dto/identityProvider");
 const jwt = require('jsonwebtoken');
-const axios = require('axios');
 const logger = require('../config/logger');
-const qs = require('qs');
+const { extractPlatformJwtClaims } = require('../utils/platformJwt');
+const { accessTokenPresent, refreshAccessToken, verifyWithCertificate } = require('../utils/tokenUtil');
+const { resolveUserUuid } = require('./authMiddleware');
 
-function enforceSecuirty(scope) {
+// System page-access gates (constants.js) merged with any deployer-supplied additions
+// (config.pageAccessRules, via config.toml) — the config side only ever adds patterns,
+// never replaces the fixed system list. Computed once; config is static after startup.
+const AUTHENTICATED_PAGES = [
+    ...constants.ROUTE.SYSTEM_AUTHENTICATED_PAGES,
+    ...(config.pageAccessRules?.authenticated || []),
+];
+const AUTHORIZED_PAGES = [
+    ...constants.ROUTE.SYSTEM_AUTHORIZED_PAGES,
+    ...(config.pageAccessRules?.authorized || []),
+];
+
+function enforceSecurity(scope) {
     return async function (req, res, next) {
         try {
             const rules = util.validateRequestParameters();
@@ -41,40 +52,28 @@ function enforceSecuirty(scope) {
             if (!errors.isEmpty()) {
                 return res.status(400).json(util.getErrors(errors));
             }
-            // Config-auth users: authenticated with no token — allow through directly
-            if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.identityProvider?.clientId) {
-                return next();
+            // Local auth users: validate dp:* scope from platform JWT
+            if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.idp?.clientId) {
+                const platformToken = req.user[constants.ACCESS_TOKEN];
+                if (!platformToken) return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
+                const tokenScopes = extractPlatformJwtClaims(platformToken, null)?.scopes ?? [];
+                if (!scope || tokenScopes.includes(scope)) return next();
+                return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
             }
             const token = accessTokenPresent(req);
-            const hasBasicAuth = !token && !config.identityProvider?.clientId &&
-                req.headers.authorization?.toLowerCase().startsWith('basic ');
             if (token) {
-                //check user belongs to organization
-                if (req.user && req.user[constants.ROLES.ORGANIZATION_CLAIM] !== req.user[constants.ORG_IDENTIFIER]) {
-                    //check if exchanged token has organization identifier
-                    //const decodedToken = req.user.exchangeToken ? jwt.decode(req.user.exchangeToken) : null;
+                if (req.user && req.user[constants.ORG_IDENTIFIER] && req.user[constants.ROLES.ORGANIZATION_CLAIM] !== req.user[constants.ORG_IDENTIFIER]) {
                     const authorizedOrgs = req.user.authorizedOrgs;
                     if ((authorizedOrgs && !(authorizedOrgs.includes(req.user[constants.ORG_IDENTIFIER]))) || !authorizedOrgs) {
-                        const err = new Error('Authentication required');
-                        err.status = 401; // Unauthorized
+                        const err = new Error('Forbidden');
+                        err.status = 403;
                         return next(err);
                     }
                 }
-                // TODO: Implement organization extraction logic
-                validateAuthentication(scope)(req, res, next);
-                //set user ID
                 const decodedAccessToken = jwt.decode(token);
-                req[constants.USER_ID] = decodedAccessToken[constants.USER_ID];
-            } else if (hasBasicAuth) {
-                validateAuthentication(scope)(req, res, next);
-            } else if (config.advanced.apiKey.enabled) {
-                // Communcation with API KEY
-                if (req.headers.organization) {
-                    const organization = req.headers.organization;
-                    if (organization) {
-                        req.params.orgId = organization;
-                    }
-                }
+                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
+                return validateAuthentication(scope)(req, res, next);
+            } else if (config.security.serviceApiKey.enabled) {
                 enforceAPIKey(req, res, next);
             } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
                 enforceMTLS(req, res, next);
@@ -91,15 +90,11 @@ function enforceSecuirty(scope) {
     }
 }
 
-function accessTokenPresent(req) {
-    if (req.user) {
-        return req.user[constants.ACCESS_TOKEN];
-    }
-    const auth = req.headers.authorization;
-    if (auth && auth.toLowerCase().startsWith('bearer ')) {
-        return auth.split(' ')[1];
-    }
-    return null;
+// Checks whether a role claim value (string or array) contains an exact role name.
+function hasRole(roleClaimValue, roleName) {
+    if (!roleClaimValue || !roleName) return false;
+    if (Array.isArray(roleClaimValue)) return roleClaimValue.includes(roleName);
+    return String(roleClaimValue).split(/[\s,]+/).includes(roleName);
 }
 
 const ensurePermission = (currentPage, role, req) => {
@@ -109,20 +104,44 @@ const ensurePermission = (currentPage, role, req) => {
         superAdminRole = req.user[constants.ROLES.SUPER_ADMIN];
         subscriberRole = req.user[constants.ROLES.SUBSCRIBER];
         if (constants.ROUTE.DEVPORTAL_CONFIGURE.some(pattern => minimatch.minimatch(currentPage, pattern))) {
-            return role.includes(superAdminRole) || role.includes(adminRole);
+            return hasRole(role, superAdminRole) || hasRole(role, adminRole);
         } else if (constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
-            return role.includes(superAdminRole);
-        } else if (config.authorizedPages.some(pattern => minimatch.minimatch(currentPage, pattern))) {
-            return role.includes(subscriberRole) || role.includes(adminRole) || role.includes(superAdminRole);
+            return hasRole(role, superAdminRole);
+        } else if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(currentPage, pattern))) {
+            return hasRole(role, subscriberRole) || hasRole(role, adminRole) || hasRole(role, superAdminRole);
         }
     }
     return false;
 }
 
+// Rejects requests whose path contains traversal or encoded-separator sequences.
+// Checked on the path only; query strings may legitimately contain dots.
+const ENCODED_SEPARATOR_RE = /%2f|%5c|%00/i;
+function hasTraversalSequence(originalUrl) {
+    const rawUrl = originalUrl || '';
+    const rawPath = rawUrl.split('?')[0];
+    if (rawUrl.includes('\0') || rawPath.includes('\\')) return true;
+    // Encoded separators are always suspicious in a path.
+    if (ENCODED_SEPARATOR_RE.test(rawPath)) return true;
+    // Decode once (originalUrl is raw — Express does not decode it) so mixed-encoding
+    // dot segments (.., .%2e, %2e., %2e%2e) all normalize to '..' before the check.
+    let decodedPath;
+    try {
+        decodedPath = decodeURIComponent(rawPath);
+    } catch {
+        return true; // malformed percent-encoding — fail closed
+    }
+    return decodedPath.includes('..') || decodedPath.includes('\\') || decodedPath.includes('\0');
+}
+
 const ensureAuthenticated = async (req, res, next) => {
-    let adminRole = config.adminRole;
-    let superAdminRole = config.superAdminRole;
-    let subscriberRole = config.subscriberRole;
+    if (hasTraversalSequence(req.originalUrl)) {
+        logger.warn('Rejected request with path-traversal sequence', { operation: 'ensureAuthenticated' });
+        return res.status(400).json({ error: 'bad_request', message: 'Invalid request path.' });
+    }
+    let adminRole = config.idp?.roles?.admin;
+    let superAdminRole = config.idp?.roles?.superAdmin;
+    let subscriberRole = config.idp?.roles?.subscriber;
     const rules = util.validateRequestParameters();
     for (let validation of rules) {
         await validation.run(req);
@@ -136,45 +155,53 @@ const ensureAuthenticated = async (req, res, next) => {
             req.user[constants.ORG_IDENTIFIER] = req.user.userOrg;
         }
     }
-    if ((req.originalUrl != '/favicon.ico' | req.originalUrl != '/images') &&
-        config.authenticatedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
-        //fetch role details from DB
-        let orgID;
-        if (req.params.orgName) {
-            orgID = req.params.orgName;
+    // Resolve the acting user's internal UUID for every authenticated request, not just
+    // pages gated by authenticatedPages below — resolveActor() (used for created_by/updated_by
+    // audit columns and "my resources" filters like subscriptions) must return the same
+    // identity here as it does on /api/v0.9 REST routes, where authResolver always resolves it.
+    if (req.isAuthenticated() && req.user && !req[constants.USER_ID]) {
+        if (req.user.isLocalAuth && !config.idp?.clientId) {
+            req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
         } else {
-            orgID = req.params.orgId;
+            const earlyToken = accessTokenPresent(req);
+            if (earlyToken) {
+                const earlyDecoded = jwt.decode(earlyToken);
+                req[constants.USER_ID] = await resolveUserUuid(req, earlyDecoded?.[constants.USER_ID]);
+            }
         }
+    }
+    if (req.originalUrl !== '/favicon.ico' && req.originalUrl !== '/images' &&
+        AUTHENTICATED_PAGES.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+        const orgId = req.params.orgName;
         let orgDetails;
-        if (!(orgID === undefined)) {
-            orgDetails = await adminDao.getOrganization(orgID);
-            adminRole = orgDetails.ADMIN_ROLE || adminRole;
-            superAdminRole = orgDetails.SUPER_ADMIN_ROLE || superAdminRole;
-            subscriberRole = orgDetails.SUBSCRIBER_ROLE || subscriberRole;
-            organizationClaimName = orgDetails.ORGANIZATION_CLAIM_NAME || config.orgIDClaim;
+        if (orgId !== undefined) {
+            orgDetails = await orgDao.get(orgId);
         }
         let role;
         logger.debug("Request authentication status", { isAuthenticated: req.isAuthenticated() });
         if (req.isAuthenticated()) {
             // Config-auth: skip all token/exchange checks; roles already in session
-            if (req.user && req.user.isLocalAuth && !config.identityProvider?.clientId) {
-                req[constants.USER_ID] = req.user[constants.USER_ID];
-                if (config.authorizedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+            if (req.user && req.user.isLocalAuth && !config.idp?.clientId) {
+                req.orgId = req.orgId || orgDetails?.uuid;
+                req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
+                if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
                     if (req.user) {
                         req.user[constants.ROLES.ADMIN] = adminRole;
                         req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
                         req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
                         if (orgDetails) {
-                            req.user[constants.ORG_ID] = orgDetails.ORG_ID;
-                            req.user[constants.ORG_IDENTIFIER] = orgDetails.ORGANIZATION_IDENTIFIER;
+                            req.user[constants.ORG_UUID] = orgDetails.uuid;
+                            req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                         }
                     }
-                    if (!config.advanced.disabledRoleValidation) {
+                    if (config.security.roleValidation) {
                         role = req.user[constants.ROLES.ROLE_CLAIM];
                         if (ensurePermission(req.originalUrl, role, req)) {
                             return next();
                         } else {
-                            return res.status(403).send("User unauthorized");
+                            const err = new Error('Forbidden');
+                            err.status = 403;
+                            return next(err);
                         }
                     }
                 }
@@ -183,82 +210,47 @@ const ensureAuthenticated = async (req, res, next) => {
             const token = accessTokenPresent(req);
             if (token) {
                 const decodedAccessToken = jwt.decode(token);
-                req[constants.USER_ID] = decodedAccessToken[constants.USER_ID];
+                req.orgId = req.orgId || orgDetails?.uuid;
+                req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
             }
-            if (config.authorizedPages.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+            if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
                 role = req.user[constants.ROLES.ROLE_CLAIM];
-                //add organization ID to request
                 if (req.user) {
-                    //add details to session
                     req.user[constants.ROLES.ADMIN] = adminRole;
                     req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
                     req.user[constants.ROLES.SUBSCRIBER] = subscriberRole;
                     if (orgDetails) {
-                        req.user[constants.ORG_ID] = orgDetails.ORG_ID;
-                        req.user[constants.ORG_IDENTIFIER] = orgDetails.ORGANIZATION_IDENTIFIER;
+                        req.user[constants.ORG_UUID] = orgDetails.uuid;
+                        req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                     }
                 }
-                //verify user belongs to organization
                 const isMatch = constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern));
-
                 if (!isMatch) {
-                    if (req.user && req.user[constants.ROLES.ORGANIZATION_CLAIM] !== req.user[constants.ORG_IDENTIFIER]) {
-                        //check if exchanged token has organization identifier
-                        //const decodedToken = req.user.exchangeToken ? jwt.decode(req.user.exchangeToken) : null;
-                        const allowedOrgs = req.user.authorizedOrgs;
-                        logger.debug("User authorized organization", { userOrg: req.user.userOrg });
-                        if (req.user.userOrg !== req.user[constants.ORG_IDENTIFIER]) {
-                            if (allowedOrgs && (allowedOrgs.includes(req.user[constants.ORG_IDENTIFIER]))) {
-                                try {
-                                    const exchangedToken = await util.tokenExchanger(req.user[constants.EXCHANGE_TOKEN], req.user[constants.ORG_IDENTIFIER]);
-                                    const decodedExchangedToken = jwt.decode(exchangedToken);
-                                    const userOrg = decodedExchangedToken.organization.uuid;
-
-                                    req.user[constants.EXCHANGE_TOKEN] = exchangedToken;
-                                    req.user['userOrg'] = userOrg;
-                                    req.user[constants.ROLES.ORGANIZATION_CLAIM] = userOrg;
-                                    req.user[constants.ORG_IDENTIFIER] = userOrg;
-
-                                    // Re-derive isAdmin from the freshly exchanged token's scope
-                                    // OR with the existing role-based admin check to preserve fallback
-                                    const freshScopes = (decodedExchangedToken?.scope || '').split(' ');
-                                    const freshScopeHasAdmin = freshScopes.includes(config.advanced.tokenExchanger.admin_scope || "apim:admin");
-                                    const roleBasedAdmin = role && (role.includes(adminRole) || role.includes(superAdminRole));
-                                    req.user.isAdmin = freshScopeHasAdmin || roleBasedAdmin;
-                                } catch (error) {
-                                    logger.error("Error during token exchange", { error: error.message, stack: error.stack, operation: "tokenExchange" });
-                                    const err = new Error('Authentication required');
-                                    err.status = 401; // Unauthorized
-                                    return next(err);
-                                }
-                            } else {
-                                const err = new Error('Authentication required');
-                                err.status = 401; // Unauthorized
-                                return next(err);
-                            }
-                        }
-
+                    const orgIdentifier = orgDetails?.idp_ref_id;
+                    const tokenOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
+                    if (orgIdentifier && tokenOrgClaim && tokenOrgClaim !== orgIdentifier) {
+                        const err = new Error('Forbidden');
+                        err.status = 403;
+                        return next(err);
                     }
                 }
-                if (!config.advanced.disabledRoleValidation) {
+                if (config.security.roleValidation) {
                     if (ensurePermission(req.originalUrl, role, req)) {
                         return next();
                     } else {
-                        if (req.params.orgName === undefined) {
-                            return res.send("User unauthorized");
-                        } else {
-                            return res.send("User unauthorized");
-                        }
+                        const err = new Error('Forbidden');
+                        err.status = 403;
+                        return next(err);
                     }
                 }
             }
             return next();
         } else {
-            await req.session.save(async (err) => {
+            req.session.returnTo = req.originalUrl || `/${req.params.orgName}`;
+            req.session.save((err) => {
                 if (err) {
-                    return res.status(500).send('Internal Server Error');
+                    logger.error('Session save failed before login redirect', { error: err.message });
                 }
-                req.session.returnTo = req.originalUrl || `/${req.params.orgName}`;
                 if (req.params.orgName) {
                     res.redirect(`/${req.params.orgName}/views/${req.params.viewName}/login`);
                 } else {
@@ -267,12 +259,6 @@ const ensureAuthenticated = async (req, res, next) => {
             });
         }
     } else {
-        if (req.isAuthenticated()) {
-            const token = accessTokenPresent(req);
-            if (token && config.identityProvider.jwksURL) {
-                await validateWithJWKS(token, config.identityProvider.jwksURL, req);
-            }
-        }
         return next();
     };
 };
@@ -287,163 +273,62 @@ function validateAuthentication(scope) {
         if (!errors.isEmpty()) {
             return res.status(400).json(util.getErrors(errors));
         }
-        // Config-auth users have no JWT to validate — allow through
-        if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.identityProvider?.clientId) {
-            return next();
-        }
-        let IDP, valid, scopes, orgId, response;
-        if (req.params.orgName) {
-            orgId = await adminDao.getOrgId(req.params.orgName);
+        let IDP, valid, scopes;
+        IDP = config.idp || {};
+
+        let accessToken;
+        if (req.isAuthenticated() && req.user) {
+            accessToken = req.user[constants.ACCESS_TOKEN];
         } else {
-            orgId = req.params.orgId;
-        }
-        if (orgId) {
-            response = await adminDao.getIdentityProvider(orgId);
-            if (response.length !== 0) {
-                //login from super IDP
-                IDP = new IdentityProviderDTO(response[0].dataValues);
-            } else {
-                IDP = config.identityProvider || {};
-            }
-        } else {
-            IDP = config.identityProvider || {};
+            accessToken = req.headers.authorization && req.headers.authorization.split(' ')[1];
         }
 
-        let accessToken, basicHeader;
-        //if IDP present, fetch bearer token else use basic header
-        if (IDP.clientId !== "") {
-            if (req.isAuthenticated() && req.user) {
-                accessToken = req.user[constants.ACCESS_TOKEN];
-            } else {
-                accessToken = req.headers.authorization && req.headers.authorization.split(' ')[1];
-            }
-            //fetch certificate or JWKS URL
-            if (IDP.certificate) {
-                const pemKey = IDP.certificate;
-                const publicKey = await importX509(pemKey, 'RS256');
-                [valid, scopes] = await validateWithCert(accessToken, publicKey);
-            } else {
-                if (IDP.jwksURL) {
-                    [valid, scopes] = await validateWithJWKS(accessToken, IDP.jwksURL, req);
-                } else {
-                    valid = false;
-                }
-            }
-            if (!config.advanced.disableScopeValidation && valid) {
-                if (scopes.split(" ").includes(scope)) {
-                    return next();
-                } else {
-                    if (req.user) {
-                        return res.redirect('login');
-                    } else {
-                        return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
-                    }
-                }
-            } else {
-                if (req.user) {
-                    return next();
-                } else {
-                    return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
-                }
-            }
+        if (IDP.certificate) {
+            ({ valid, scopes } = await verifyWithCertificate(accessToken, IDP.certificate));
+        } else if (IDP.jwksUrl) {
+            ({ valid, scopes } = await validateWithJwks(accessToken, IDP.jwksUrl, req));
         } else {
-            if (req.isAuthenticated() && req.user) {
-                basicHeader = req.user[constants.BASIC_HEADER];
-            } else {
-                basicHeader = req.headers.authorization && req.headers.authorization.split(' ')[1];
-            }
-            valid = await validateBasicAuth(basicHeader);
-            if (valid) {
+            valid = false;
+        }
+
+        if (valid) {
+            if (String(scopes || '').split(' ').includes(scope)) {
                 return next();
-            } else {
-                if (req.user) {
-                    return res.redirect('login');
-                } else {
-                    return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
-                }
             }
+            return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
         }
+        if (req.user) {
+            return res.redirect('login');
+        }
+        return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
     }
 }
 
-const validateWithCert = async (token, publicKey) => {
-
-    try {
-        const { payload } = await jwtVerify(token, publicKey);
-        return [true, payload.scope];
-    } catch (err) {
-        logger.error("Invalid token", { error: err.message, operation: "tokenValidation" });
-        return [false, ""];
-    }
-}
-
-const validateWithJWKS = async (token, jwksURL, req) => {
-
+const validateWithJwks = async (token, jwksURL, req) => {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
-        const { payload } = await jwtVerify(token, jwks);
-        return [true, payload.scope];
+        const jwtVerifyOptions = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
+        if (config.idp?.issuer) jwtVerifyOptions.issuer = config.idp.issuer;
+        if (config.idp?.audience) jwtVerifyOptions.audience = config.idp.audience;
+        const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);
+        return { valid: true, scopes: payload.scope || '' };
     } catch (err) {
         logger.error("Invalid token", { error: err.message, stack: err.stack, operation: "tokenValidation" });
         if (err.code === 'ERR_JWT_EXPIRED' && req.user && req.user.refreshToken) {
-            // Token expired, refresh it
             try {
                 logger.info("Access token expired, triggering refresh token flow");
                 const response = await refreshAccessToken(req.user.refreshToken);
                 req.user[constants.ACCESS_TOKEN] = response.access_token;
                 req.user[constants.REFRESH_TOKEN] = response.refresh_token;
-                req.user[constants.EXCHANGE_TOKEN] = await util.tokenExchanger(response.access_token, req.user.returnTo.split("/")[1]);
-                
-                return [true, response.scope || ""];
+                return { valid: true, scopes: response.scope || '' };
             } catch (error) {
-                req.user =  null;
                 logger.error("Error refreshing access token", { error: error.message, stack: error.stack, operation: "refreshToken" });
-                return [false, ""];           
+                return { valid: false, scopes: '' };
             }
-        } else {
-            logger.error("Token validation error", { error: err.message, operation: "tokenValidation" });
-            return [false, ""];
         }
+        return { valid: false, scopes: '' };
     }
-}
-
-async function refreshAccessToken(refreshToken) {
-    try {
-        const data = qs.stringify({
-            grant_type: 'refresh_token',
-            refresh_token: refreshToken,
-            client_id: config.identityProvider.clientId,
-        });
-        const response = await axios.post(config.identityProvider.tokenURL, data, {
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
-        });
-        return response.data
-
-    } catch (err) {
-        logger.error('Token refresh error', { 
-            error: err.response?.data || err.message, 
-            operation: 'tokenRefresh'
-        });
-        throw err;
-    }
-}
-
-const validateBasicAuth = async (basicHeader) => {
-
-    let valid = false;
-    const base64Decoded = Buffer.from(basicHeader, 'base64').toString('utf-8');
-    const [username, password] = base64Decoded.split(':');
-    const users = config.defaultAuth?.users || [];
-    for (let user of users) {
-        if (username === user.username && password === user.password) {
-            valid = true;
-            break;
-        }
-    }
-    return valid;
-}
+};
 
 const enforceMTLS = (req, res, next) => {
     const clientCert = req.socket?.getPeerCertificate?.(true);
@@ -467,27 +352,22 @@ const enforceMTLS = (req, res, next) => {
 };
 
 const enforceAPIKey = (req, res, next) => {
-    const keyType = config.advanced?.apiKey?.keyType;
+    const keyType = config.security?.serviceApiKey?.headerName;
 
-    if (!keyType || !config.advanced?.apiKey?.keyValue) {
+    if (!keyType || !config.security?.serviceApiKey?.value) {
         return res.status(500).json({ error: "Server configuration error" });
     }
 
     const apiKey = req.headers[keyType.toLowerCase()];
 
-    if (!apiKey || apiKey !== config.advanced?.apiKey?.keyValue) {
+    if (!apiKey || apiKey !== config.security?.serviceApiKey?.value) {
         return res.status(401).json({ error: "Unauthorized: API key is invalid or not found" });
     }
     return next();
 };
 
-function getNestedValue(obj, path) {
-    return path.split('.').reduce((acc, key) => acc?.[key], obj);
-}
-
-
 module.exports = {
     ensureAuthenticated,
     validateAuthentication,
-    enforceSecuirty
+    enforceSecurity
 }

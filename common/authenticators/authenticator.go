@@ -19,8 +19,7 @@ package authenticators
 
 import (
 	"errors"
-
-	"github.com/gin-gonic/gin"
+	"net/http"
 )
 
 var (
@@ -33,21 +32,22 @@ type Credentials interface{}
 
 // AuthResult contains the result of an authentication attempt
 type AuthResult struct {
-	Success      bool
-	UserID       string
-	Roles        []string
-	Claims       map[string]interface{}
-	ErrorMessage string
+	Success           bool
+	UserID            string
+	Roles             []string
+	Claims            map[string]interface{}
+	ErrorMessage      string
+	SkipAuthorization bool // when true the authz middleware skips role checks
 }
 
 // Authenticator defines the interface for authentication methods
 type Authenticator interface {
 	// Authenticate verifies the provided credentials
-	Authenticate(ctx *gin.Context) (*AuthResult, error)
+	Authenticate(r *http.Request) (*AuthResult, error)
 
 	// Name returns the name of the authenticator
 	Name() string
 
 	// CanHandle checks if this authenticator can handle the given credentials
-	CanHandle(ctx *gin.Context) bool
+	CanHandle(r *http.Request) bool
 }

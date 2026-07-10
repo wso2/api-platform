@@ -2,15 +2,15 @@
 
 ## Create API metadata
 
-<a id="opIdcreateAPIMetadata"></a>
+<a id="opIdcreateApiMetadata"></a>
 
-`POST /organizations/{orgId}/apis`
+`POST /apis`
 
 > Code samples
 
 ```shell
 
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/apis \
+curl -X POST https://localhost:3000/api/v0.9/apis \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -19,7 +19,8 @@ curl -X POST http://localhost:3000/devportal/organizations/{orgId}/apis \
 
 ```
 
-Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file, or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The service also stores labels, subscription policy mappings, image metadata, and schema definitions for MCP or GraphQL APIs when provided.
+Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml` / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`, `status`, `agentVisibility`, `tags`, `labels`, `referenceId`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`. The service also stores labels, subscription plan mappings, image metadata, and schema definitions for GraphQL APIs when provided. Via the JSON `apiMetadata` field, `type` is required — an omitted type is rejected with `400` (via YAML, an omitted `spec.type` defaults to `REST`). MCP servers must be created via `POST /api/v0.9/mcp-servers` instead — a request whose resolved `type` is `MCP` is rejected with `400`.
+`subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is a string array (`["Gold", "Silver"]`). In the JSON `apiMetadata` field it is an object array where only `id` is used (`[{"id":"Gold"}]`); extra fields such as `planId`, `displayName`, or `requestCount` are ignored.
 
 > Payload
 
@@ -28,11 +29,11 @@ api: string
 apiDefinition: string
 artifact: string
 schemaDefinition: string
-apiMetadata: '{"apiInfo":{"apiName":"Weather
-  API","apiVersion":"v1","apiDescription":"Weather forecast
-  API","apiType":"REST","visibility":"PUBLIC","provider":"WSO2","apiStatus":"PUBLISHED","tags":["weather"],
-  "labels":["default"]},"endPoints":{"productionURL":"https://api.example.com/weather",
-  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPolicies":[{"policyName":"Gold"}]}'
+apiMetadata: '{"name":"Weather API","version":"v1","description":"Weather
+  forecast API","type":"REST","agentVisibility":"VISIBLE",
+  "status":"PUBLISHED","tags":["weather"],"labels":["default"],"endPoints":{
+  "productionURL":"https://api.example.com/weather",
+  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"id":"Gold"}]}'
 
 ```
 
@@ -52,8 +53,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied.|
-|orgId|path|string|true|none|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields: `name`, `version`, `description`, `type`, `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes the API's stored handle; when the API is created from a YAML artifact instead, the handle is always taken from `metadata.name`.|
 
 > Example responses
 
@@ -61,39 +61,28 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiID": "api-7f4c2a6b",
-  "apiReferenceID": "cp-api-12345",
-  "apiHandle": "weather-api-v1",
-  "provider": "WSO2",
-  "dataSource": "DEVPORTAL",
-  "apiInfo": {
-    "apiName": "Weather API",
-    "apiTitle": "Weather Forecast API",
-    "apiVersion": "v1",
-    "apiDescription": "Weather forecast API.",
-    "apiType": "REST",
-    "visibility": "PUBLIC",
-    "agentVisibility": "VISIBLE",
-    "gatewayVendor": "wso2",
-    "tokenBasedSubscriptionEnabled": false,
-    "gatewayType": null,
-    "tags": [
-      "weather"
-    ],
-    "labels": [
-      "default"
-    ]
-  },
+  "id": "weather-api-v1",
+  "refId": "cp-api-12345",
+  "name": "Weather API",
+  "apiTitle": "Weather Forecast API",
+  "version": "v1",
+  "status": "PUBLISHED",
+  "description": "Weather forecast API.",
+  "type": "REST",
+  "agentVisibility": "VISIBLE",
+  "tags": [
+    "weather"
+  ],
+  "labels": [
+    "default"
+  ],
   "endPoints": {
     "productionURL": "https://api.example.com/weather",
     "sandboxURL": "https://sandbox.example.com/weather"
   },
-  "subscriptionPolicies": [
+  "subscriptionPlans": [
     {
-      "policyID": "policy-gold",
-      "policyName": "Gold",
-      "displayName": "Gold",
-      "requestCount": 10000
+      "id": "Gold"
     }
   ]
 }
@@ -104,18 +93,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -129,9 +124,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -139,9 +134,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "Conflict"
 }
 ```
 
@@ -149,9 +144,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -162,29 +157,42 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Created API metadata payload returned by the service.|[ApiMetadataCreateResponse](schemas.md#schemaapimetadatacreateresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="create-api-metadata-responseschema">Response Schema</h3>
 
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
+
+### Response Headers
+
+|Status|Header|Type|Format|Description|
+|---|---|---|---|---|
+|201|Location|string|uri|URL of the created API metadata resource.|
+
 ## List API metadata
 
-<a id="opIdgetAllAPIMetadataForOrganization"></a>
+<a id="opIdgetAllApiMetadataForOrganization"></a>
 
-`GET /organizations/{orgId}/apis`
+`GET /apis`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/apis \
+curl -X GET https://localhost:3000/api/v0.9/apis \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
 
 ```
 
-Lists API metadata for an organization. The service supports exact filters by API name, version, and tags, free-text search with `query`, group filtering, and view filtering. Unknown query parameters are rejected.
+Lists API metadata for an organization. The service supports exact filters by API name, version, and tags, free-text search with `query`, and view filtering. Unknown query parameters are rejected. MCP-typed records are never returned here — use `GET /api/v0.9/mcp-servers`.
 
 ### Authentication
 
@@ -200,43 +208,42 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |query|query|string|false|Free-text API metadata search term.|
 |apiName|query|string|false|Exact API name filter.|
 |version|query|string|false|Exact API version filter.|
-|tags|query|string|false|Exact API tags filter used by the metadata DAO.|
-|groups|query|string|false|Space-separated visible groups used for API visibility filtering.|
+|tags|query|string|false|Comma-separated tag names. Matches APIs tagged with any of the given names.|
 |view|query|string|false|Developer Portal view name used to filter visible APIs.|
-|orgId|path|string|true|none|
+|limit|query|integer|false|Maximum number of records to return.|
+|offset|query|integer|false|Number of records to skip before returning results.|
 
 > Example responses
 
 > 200 Response
 
 ```json
-[
-  {
-    "apiID": "api-7f4c2a6b",
-    "apiReferenceID": "cp-api-12345",
-    "apiHandle": "weather-api-v1",
-    "provider": "WSO2",
-    "dataSource": "DEVPORTAL",
-    "apiInfo": {
-      "apiName": "Weather API",
-      "apiVersion": "v1",
-      "apiDescription": "Weather forecast API.",
-      "apiType": "REST",
-      "visibility": "PUBLIC",
+{
+  "list": [
+    {
+      "id": "weather-api-v1",
+      "refId": "cp-api-12345",
+      "name": "Weather API",
+      "version": "v1",
+      "status": "PUBLISHED",
+      "description": "Weather forecast API.",
+      "type": "REST",
       "agentVisibility": "VISIBLE",
-      "gatewayVendor": "wso2",
-      "tokenBasedSubscriptionEnabled": false,
-      "gatewayType": null,
       "labels": [
         "default"
-      ]
-    },
-    "endPoints": {
-      "sandboxURL": "https://sandbox.example.com/weather",
-      "productionURL": "https://api.example.com/weather"
+      ],
+      "endPoints": {
+        "sandboxURL": "https://sandbox.example.com/weather",
+        "productionURL": "https://api.example.com/weather"
+      }
     }
+  ],
+  "pagination": {
+    "total": 1,
+    "limit": 20,
+    "offset": 0
   }
-]
+}
 ```
 
 > Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
@@ -244,18 +251,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -269,9 +282,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -289,76 +302,129 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|[[ApiMetadataResponse](schemas.md#schemaapimetadataresponse)]|false|none|none|
-|» apiID|string|false|none|none|
-|» apiReferenceID|string|false|none|none|
-|» apiHandle|string|false|none|none|
-|» provider|string|false|none|none|
-|» dataSource|string|false|none|none|
-|» policyID|string|false|none|none|
-|» apiInfo|[ApiInfoResponse](schemas.md#schemaapiinforesponse)|false|none|none|
-|»» apiName|string|false|none|none|
-|»» apiTitle|string¦null|false|none|none|
-|»» remotes|[object]|false|none|none|
-|»» apiVersion|string|false|none|none|
-|»» apiDescription|string|false|none|none|
-|»» apiType|string|false|none|none|
-|»» visibility|string|false|none|none|
-|»» agentVisibility|string|false|none|none|
-|»» gatewayVendor|string|false|none|none|
-|»» tokenBasedSubscriptionEnabled|boolean|false|none|none|
-|»» gatewayType|string¦null|false|none|none|
-|»» addedLabels|[string]|false|none|none|
-|»» removedLabels|[string]|false|none|none|
-|»» visibleGroups|[string]|false|none|none|
-|»» owners|[ApiOwnersResponse](schemas.md#schemaapiownersresponse)|false|none|none|
-|»»» technicalOwner|string|false|none|none|
-|»»» businessOwner|string|false|none|none|
-|»»» businessOwnerEmail|string|false|none|none|
-|»»» technicalOwnerEmail|string|false|none|none|
-|»» apiImageMetadata|[ApiImageMetadataResponse](schemas.md#schemaapiimagemetadataresponse)|false|none|none|
-|»»» **additionalProperties**|string|false|none|none|
-|»» tags|[string]|false|none|none|
-|»» labels|[string]|false|none|none|
-|» endPoints|[ApiEndpointsResponse](schemas.md#schemaapiendpointsresponse)|false|none|none|
-|»» sandboxURL|string|false|none|none|
-|»» productionURL|string|false|none|none|
-|» subscriptionPolicies|[[SubscriptionPolicyResponse](schemas.md#schemasubscriptionpolicyresponse)]|false|none|none|
-|»» policyID|string|false|none|none|
-|»» policyName|string|false|none|none|
-|»» displayName|string|false|none|none|
-|»» description|string|false|none|none|
-|»» requestCount|any|false|none|none|
+|» list|[allOf]|false|none|none|
+
+*allOf*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|[ApiInfoResponse](schemas.md#schemaapiinforesponse)|false|none|Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.|
+|»»» name|string|false|none|none|
+|»»» apiTitle|string¦null|false|none|none|
+|»»» remotes|[object]|false|none|none|
+|»»» version|string|false|none|none|
+|»»» status|string|false|none|API lifecycle status.|
+|»»» description|string|false|none|none|
+|»»» type|string|false|none|The stored/returned type constant (src/utils/constants.js API_TYPE) — distinct from the request-time keyword accepted on create/update (see `type` in ApiMetadataMultipartBody: REST, SOAP, MCP, WS, WEBSUB, GRAPHQL). REST maps to `RestApi` and WEBSUB maps to `WebSubApi`; the rest are returned unchanged.|
+|»»» referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back.|
+|»»» agentVisibility|string|false|none|none|
+|»»» addedLabels|[string]|false|none|none|
+|»»» removedLabels|[string]|false|none|none|
+|»»» owners|[ApiOwnersResponse](schemas.md#schemaapiownersresponse)|false|none|none|
+|»»»» technicalOwner|string|false|none|none|
+|»»»» businessOwner|string|false|none|none|
+|»»»» businessOwnerEmail|string|false|none|none|
+|»»»» technicalOwnerEmail|string|false|none|none|
+|»»» apiImageMetadata|[ApiImageMetadataResponse](schemas.md#schemaapiimagemetadataresponse)|false|none|none|
+|»»»» **additionalProperties**|string|false|none|none|
+|»»» tags|[string]|false|none|none|
+|»»» labels|[string]|false|none|none|
+
+*and*
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|»» *anonymous*|object|false|none|none|
+|»»» id|string|false|none|The API's handle (unique per org). Not the internal database uuid.|
+|»»» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|»»» dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
+|»»» planId|string|false|none|none|
+|»»» endPoints|[ApiEndpointsResponse](schemas.md#schemaapiendpointsresponse)|false|none|none|
+|»»»» sandboxURL|string|false|none|none|
+|»»»» productionURL|string|false|none|none|
+|»»» subscriptionPlans|[[SubscriptionPlanResponse](schemas.md#schemasubscriptionplanresponse)]|false|none|none|
+|»»»» id|string|false|none|The plan's handle (unique per org). Not the internal database uuid.|
+|»»»» displayName|string|false|none|none|
+|»»»» description|string|false|none|none|
+|»»»» limits|[object]|false|none|Rate/quota limits enforced for this plan. Empty when the plan is unlimited.|
+|»»»»» limitType|string|false|none|none|
+|»»»»» limitCount|any|false|none|Returned as a string when the stored count exceeds the safe integer range, otherwise a number. Unlimited plans have no limit entries — the `limits` array is empty.|
 
 *oneOf*
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|»»» *anonymous*|integer|false|none|none|
+|»»»»»» *anonymous*|integer|false|none|none|
 
 *xor*
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|»»» *anonymous*|string|false|none|none|
+|»»»»»» *anonymous*|string|false|none|none|
 
 *continued*
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|»» orgID|string|false|none|none|
+|»»»»» timeUnit|string¦null|false|none|none|
+|»»»»» timeAmount|integer|false|none|none|
+|»»»» refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
+|»»»» orgId|string|false|none|none|
+|»»»» createdBy|string|false|none|Identity of the user who created this subscription plan, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|»»»» updatedBy|string|false|none|Identity of the user who last updated this subscription plan, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|»»»» createdAt|string(date-time)|false|none|none|
+|»»»» updatedAt|string(date-time)|false|none|none|
+|»»» createdBy|string|false|none|Identity of the user who created this API, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|»»» updatedBy|string|false|none|Identity of the user who last updated this API, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|»»» createdAt|string(date-time)|false|none|none|
+|»»» updatedAt|string(date-time)|false|none|none|
+|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
+|»» total|integer|true|none|Total number of records matching the query.|
+|»» limit|integer|true|none|Maximum number of records returned in this response.|
+|»» offset|integer|true|none|Number of records skipped before this page.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|PUBLISHED|
+|status|DEPRECATED|
+|type|RestApi|
+|type|SOAP|
+|type|Mcp|
+|type|WS|
+|type|WebSubApi|
+|type|GRAPHQL|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
+|limitType|REQUEST_COUNT|
+|limitType|EVENT_COUNT|
+|limitType|BANDWIDTH|
+|limitType|TOTAL_TOKEN_COUNT|
+|timeUnit|MINUTE|
+|timeUnit|HOUR|
+|timeUnit|DAY|
+|timeUnit|MONTH|
+|timeUnit|null|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
 
 ## Get API metadata
 
-<a id="opIdgetAPIMetadata"></a>
+<a id="opIdgetApiMetadata"></a>
 
-`GET /organizations/{orgId}/apis/{apiId}`
+`GET /apis/{apiId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/apis/{apiId} \
+curl -X GET https://localhost:3000/api/v0.9/apis/{apiId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -378,8 +444,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -387,39 +452,32 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiID": "api-7f4c2a6b",
-  "apiReferenceID": "cp-api-12345",
-  "apiHandle": "weather-api-v1",
-  "provider": "WSO2",
-  "dataSource": "DEVPORTAL",
-  "apiInfo": {
-    "apiName": "Weather API",
-    "apiTitle": "Weather Forecast API",
-    "remotes": [],
-    "apiVersion": "v1",
-    "apiDescription": "Weather forecast API.",
-    "apiType": "REST",
-    "visibility": "PUBLIC",
-    "agentVisibility": "VISIBLE",
-    "gatewayVendor": "wso2",
-    "tokenBasedSubscriptionEnabled": false,
-    "gatewayType": null,
-    "labels": [
-      "default"
-    ]
-  },
+  "id": "weather-api-v1",
+  "refId": "cp-api-12345",
+  "name": "Weather API",
+  "apiTitle": "Weather Forecast API",
+  "remotes": [],
+  "version": "v1",
+  "status": "PUBLISHED",
+  "description": "Weather forecast API.",
+  "type": "REST",
+  "agentVisibility": "VISIBLE",
+  "labels": [
+    "default"
+  ],
   "endPoints": {
     "sandboxURL": "https://sandbox.example.com/weather",
     "productionURL": "https://api.example.com/weather"
   },
-  "subscriptionPolicies": [
+  "subscriptionPlans": [
     {
-      "policyID": "policy-gold",
-      "policyName": "Gold",
-      "displayName": "Gold",
-      "requestCount": 10000
+      "id": "Gold"
     }
-  ]
+  ],
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z",
+  "updatedAt": "2026-05-07T08:30:00Z"
 }
 ```
 
@@ -428,18 +486,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -459,9 +523,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -476,17 +540,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 <h3 id="get-api-metadata-responseschema">Response Schema</h3>
 
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
+
 ## Update API metadata
 
-<a id="opIdupdateAPIMetadata"></a>
+<a id="opIdupdateApiMetadata"></a>
 
-`PUT /organizations/{orgId}/apis/{apiId}`
+`PUT /apis/{apiId}`
 
 > Code samples
 
 ```shell
 
-curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/apis/{apiId} \
+curl -X PUT https://localhost:3000/api/v0.9/apis/{apiId} \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -495,7 +566,7 @@ curl -X PUT http://localhost:3000/devportal/organizations/{orgId}/apis/{apiId} \
 
 ```
 
-Updates Developer Portal API metadata and its stored definition. The update flow can also adjust label mappings, subscription policy mappings, schema definitions, and image metadata. Status changes to unpublished are rejected when active subscriptions exist.
+Updates Developer Portal API metadata and its stored definition. Accepts the same YAML spec fields and `apiMetadata` JSON format as the create operation. The update flow can also adjust label mappings, subscription plan mappings, schema definitions, and image metadata. Status changes to unpublished are rejected when active subscriptions exist. `type` is required (see the create operation) and is immutable — it must match the API's existing type; a different value is rejected with `409`.
 
 > Payload
 
@@ -504,11 +575,11 @@ api: string
 apiDefinition: string
 artifact: string
 schemaDefinition: string
-apiMetadata: '{"apiInfo":{"apiName":"Weather
-  API","apiVersion":"v1","apiDescription":"Weather forecast
-  API","apiType":"REST","visibility":"PUBLIC","provider":"WSO2","apiStatus":"PUBLISHED","tags":["weather"],
-  "labels":["default"]},"endPoints":{"productionURL":"https://api.example.com/weather",
-  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPolicies":[{"policyName":"Gold"}]}'
+apiMetadata: '{"name":"Weather API","version":"v1","description":"Weather
+  forecast API","type":"REST","agentVisibility":"VISIBLE",
+  "status":"PUBLISHED","tags":["weather"],"labels":["default"],"endPoints":{
+  "productionURL":"https://api.example.com/weather",
+  "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"id":"Gold"}]}'
 
 ```
 
@@ -528,9 +599,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
 |» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
-|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied.|
-|orgId|path|string|true|none|
-|apiId|path|string|true|none|
+|» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields: `name`, `version`, `description`, `type`, `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes the API's stored handle; when the API is created from a YAML artifact instead, the handle is always taken from `metadata.name`.|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -538,39 +608,32 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "apiID": "api-7f4c2a6b",
-  "apiReferenceID": "cp-api-12345",
-  "apiHandle": "weather-api-v1",
-  "provider": "WSO2",
-  "dataSource": "DEVPORTAL",
-  "apiInfo": {
-    "apiName": "Weather API",
-    "apiTitle": "Weather Forecast API",
-    "remotes": [],
-    "apiVersion": "v1",
-    "apiDescription": "Weather forecast API.",
-    "apiType": "REST",
-    "visibility": "PUBLIC",
-    "agentVisibility": "VISIBLE",
-    "gatewayVendor": "wso2",
-    "tokenBasedSubscriptionEnabled": false,
-    "gatewayType": null,
-    "labels": [
-      "default"
-    ]
-  },
+  "id": "weather-api-v1",
+  "refId": "cp-api-12345",
+  "name": "Weather API",
+  "apiTitle": "Weather Forecast API",
+  "remotes": [],
+  "version": "v1",
+  "status": "PUBLISHED",
+  "description": "Weather forecast API.",
+  "type": "REST",
+  "agentVisibility": "VISIBLE",
+  "labels": [
+    "default"
+  ],
   "endPoints": {
     "sandboxURL": "https://sandbox.example.com/weather",
     "productionURL": "https://api.example.com/weather"
   },
-  "subscriptionPolicies": [
+  "subscriptionPlans": [
     {
-      "policyID": "policy-gold",
-      "policyName": "Gold",
-      "displayName": "Gold",
-      "requestCount": 10000
+      "id": "Gold"
     }
-  ]
+  ],
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z",
+  "updatedAt": "2026-05-07T08:30:00Z"
 }
 ```
 
@@ -579,18 +642,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -604,9 +673,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -614,9 +683,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "Conflict"
 }
 ```
 
@@ -624,9 +693,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -637,22 +706,29 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|API metadata DTO returned by the service.|[ApiMetadataResponse](schemas.md#schemaapimetadataresponse)|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="update-api-metadata-responseschema">Response Schema</h3>
 
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
+
 ## Delete API metadata
 
-<a id="opIddeleteAPIMetadata"></a>
+<a id="opIddeleteApiMetadata"></a>
 
-`DELETE /organizations/{orgId}/apis/{apiId}`
+`DELETE /apis/{apiId}`
 
 > Code samples
 
 ```shell
 
-curl -X DELETE http://localhost:3000/devportal/organizations/{orgId}/apis/{apiId} \
+curl -X DELETE https://localhost:3000/api/v0.9/apis/{apiId} \
   -u {username}:{password} \
   -H 'Accept: text/plain' \
   -H 'Authorization: Bearer {access-token}'
@@ -672,8 +748,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
-|apiId|path|string|true|none|
+|apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
 > Example responses
 
@@ -688,18 +763,24 @@ This operation requires <strong>Basic Auth</strong> authentication.
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "Invalid value"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
   }
 ]
 ```
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Missing required parameter: 'orgId'"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
 }
 ```
 
@@ -713,9 +794,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -723,9 +804,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
-  "message": "Conflict",
-  "description": "Organization already exists"
+  "status": "error",
+  "code": "CONFLICT",
+  "message": "Conflict"
 }
 ```
 
@@ -733,9 +814,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -746,7 +827,14 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Plain text success response.|string|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|Duplicate organization data conflicts with an existing record.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="delete-api-metadata-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|

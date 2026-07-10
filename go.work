@@ -1,6 +1,7 @@
-go 1.26.2
+go 1.26.5
 
 use (
+	./httpkit
 	./cli/it
 	./cli/src
 	./common
@@ -15,9 +16,11 @@ use (
 	./gateway/sample-policies/transform-payload-case
 	./gateway/system-policies/analytics
 	./kubernetes/gateway-operator
-	./platform-api/src
+	./platform-api
+	./portals/ai-workspace/bff
 	./samples/sample-service
 	./sdk/ai
 	./sdk/core
+	./tests/integration-e2e
 	./tests/mock-servers/mock-platform-api
 )

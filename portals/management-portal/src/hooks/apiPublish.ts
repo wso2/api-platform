@@ -78,7 +78,7 @@ const normalizePublication = (item: any): ApiPublicationWithPortal => ({
 export const useApiPublishApi = () => {
   const fetchPublications = useCallback(async (apiId: string): Promise<ApiPublicationWithPortal[]> => {
     const { token, baseUrl } = getApiConfig();
-    const response = await fetch(`${baseUrl}/api/v1/apis/${apiId}/publications`, {
+    const response = await fetch(`${baseUrl}/api/v0.9/apis/${apiId}/publications`, {
       method: "GET",
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -95,7 +95,7 @@ export const useApiPublishApi = () => {
   const publishApiToDevPortal = useCallback(async (apiId: string, payload: ApiPublishPayload): Promise<PublishResponse> => {
     const { token, baseUrl } = getApiConfig();
 
-    const response = await fetch(`${baseUrl}/api/v1/apis/${apiId}/devportals/publish`, {
+    const response = await fetch(`${baseUrl}/api/v0.9/rest-apis/${apiId}/publications`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -116,14 +116,11 @@ export const useApiPublishApi = () => {
   const unpublishApiFromDevPortal = useCallback(async (apiId: string, devPortalId: string): Promise<UnpublishResponse> => {
     const { token, baseUrl } = getApiConfig();
 
-    // Assume unpublish endpoint follows this shape; adjust if backend differs
-    const response = await fetch(`${baseUrl}/api/v1/apis/${apiId}/devportals/${devPortalId}/unpublish`, {
-      method: "POST",
+    const response = await fetch(`${baseUrl}/api/v0.9/rest-apis/${apiId}/publications/${devPortalId}`, {
+      method: "DELETE",
       headers: {
         Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
       },
-      body: JSON.stringify({ devPortalId }),
     });
 
     if (!response.ok) {

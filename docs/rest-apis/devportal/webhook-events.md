@@ -4,13 +4,13 @@
 
 <a id="opIdlistWebhookEvents"></a>
 
-`GET /organizations/{orgId}/events`
+`GET /webhook-events`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/events \
+curl -X GET https://localhost:3000/api/v0.9/webhook-events \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -31,9 +31,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |status|query|string|false|Filter events by status.|
-|limit|query|integer|false|none|
-|offset|query|integer|false|none|
-|orgId|path|string|true|none|
+|limit|query|integer|false|Maximum number of records to return.|
+|offset|query|integer|false|Number of records to skip before returning results.|
 
 #### Enumerated Values
 
@@ -50,13 +49,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "total": 0,
-  "events": [
+  "list": [
     {
       "eventId": "evt-abc123",
       "eventType": "apikey.generated",
       "orgId": "org-default",
-      "gatewayType": "default",
       "aggregateType": "apikey",
       "aggregateId": "key-12345",
       "status": "ALL_DELIVERED",
@@ -67,7 +64,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
           "subscriberId": "sub-xyz789",
           "targetUrl": "https://example.com/webhook",
           "status": "DELIVERED",
-          "attemptCount": 1,
           "lastHttpStatus": 200,
           "lastError": "string",
           "lastAttemptAt": "2019-08-24T14:15:22Z",
@@ -75,7 +71,12 @@ This operation requires <strong>Basic Auth</strong> authentication.
         }
       ]
     }
-  ]
+  ],
+  "pagination": {
+    "total": 42,
+    "limit": 20,
+    "offset": 0
+  }
 }
 ```
 
@@ -83,9 +84,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "403",
-  "message": "Forbidden",
-  "description": "Write operations are disabled in read-only mode"
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "Write operations are disabled in read-only mode."
 }
 ```
 
@@ -93,9 +94,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -113,12 +114,10 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» total|integer|false|none|Total number of events matching the query.|
-|» events|[[WebhookEvent](schemas.md#schemawebhookevent)]|false|none|[A webhook event with its delivery rows.]|
+|» list|[[WebhookEvent](schemas.md#schemawebhookevent)]|false|none|[A webhook event with its delivery rows.]|
 |»» eventId|string|false|none|none|
 |»» eventType|string|false|none|none|
 |»» orgId|string|false|none|none|
-|»» gatewayType|string¦null|false|none|none|
 |»» aggregateType|string|false|none|none|
 |»» aggregateId|string|false|none|none|
 |»» status|string|false|none|none|
@@ -128,11 +127,14 @@ Status Code **200**
 |»»» subscriberId|string|false|none|none|
 |»»» targetUrl|string¦null|false|none|none|
 |»»» status|string|false|none|none|
-|»»» attemptCount|integer|false|none|none|
 |»»» lastHttpStatus|integer¦null|false|none|none|
 |»»» lastError|string¦null|false|none|none|
 |»»» lastAttemptAt|string(date-time)¦null|false|none|none|
 |»»» deliveredAt|string(date-time)¦null|false|none|none|
+|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
+|»» total|integer|true|none|Total number of records matching the query.|
+|»» limit|integer|true|none|Maximum number of records returned in this response.|
+|»» offset|integer|true|none|Number of records skipped before this page.|
 
 #### Enumerated Values
 
@@ -146,19 +148,18 @@ Status Code **200**
 |status|IN_FLIGHT|
 |status|DELIVERED|
 |status|FAILED|
-|status|DEAD_LETTERED|
 
 ## Get a webhook event
 
 <a id="opIdgetWebhookEvent"></a>
 
-`GET /organizations/{orgId}/events/{eventId}`
+`GET /webhook-events/{eventId}`
 
 > Code samples
 
 ```shell
 
-curl -X GET http://localhost:3000/devportal/organizations/{orgId}/events/{eventId} \
+curl -X GET https://localhost:3000/api/v0.9/webhook-events/{eventId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -178,7 +179,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|orgId|path|string|true|none|
 |eventId|path|string|true|Webhook event identifier.|
 
 > Example responses
@@ -190,7 +190,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "eventId": "evt-abc123",
   "eventType": "apikey.generated",
   "orgId": "org-default",
-  "gatewayType": "default",
   "aggregateType": "apikey",
   "aggregateId": "key-12345",
   "status": "ALL_DELIVERED",
@@ -201,7 +200,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "subscriberId": "sub-xyz789",
       "targetUrl": "https://example.com/webhook",
       "status": "DELIVERED",
-      "attemptCount": 1,
       "lastHttpStatus": 200,
       "lastError": "string",
       "lastAttemptAt": "2019-08-24T14:15:22Z",
@@ -215,9 +213,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "403",
-  "message": "Forbidden",
-  "description": "Write operations are disabled in read-only mode"
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "Write operations are disabled in read-only mode."
 }
 ```
 
@@ -225,9 +223,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -235,9 +233,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
 }
 ```
 
@@ -249,93 +247,3 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-## Retry a failed webhook delivery
-
-<a id="opIdretryWebhookDelivery"></a>
-
-`POST /organizations/{orgId}/deliveries/{deliveryId}/retry`
-
-> Code samples
-
-```shell
-
-curl -X POST http://localhost:3000/devportal/organizations/{orgId}/deliveries/{deliveryId}/retry \
-  -u {username}:{password} \
-  -H 'Accept: application/json' \
-  -H 'Authorization: Bearer {access-token}'
-
-```
-
-Resets a `DEAD_LETTERED` or `FAILED` delivery back to `PENDING` so the delivery worker retries it immediately. Requires dp:delivery_manage scope.
-
-### Authentication
-
-<aside class="warning">
-This operation requires <strong>Basic Auth</strong> authentication.
-
-</aside>
-
-<h3 id="retry-a-failed-webhook-delivery-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|orgId|path|string|true|none|
-|deliveryId|path|string|true|Webhook delivery identifier.|
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "message": "Delivery queued for retry"
-}
-```
-
-> 403 Response
-
-```json
-{
-  "code": "403",
-  "message": "Forbidden",
-  "description": "Write operations are disabled in read-only mode"
-}
-```
-
-> 404 Response
-
-```json
-{
-  "code": "404",
-  "message": "Resource Not Found",
-  "description": "Organization not found"
-}
-```
-
-> 500 Response
-
-```json
-{
-  "code": "500",
-  "message": "Internal Server Error",
-  "description": "Internal Server Error"
-}
-```
-
-<h3 id="retry-a-failed-webhook-delivery-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Delivery queued for retry.|Inline|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
-
-<h3 id="retry-a-failed-webhook-delivery-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» message|string|false|none|none|

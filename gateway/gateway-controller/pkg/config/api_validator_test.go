@@ -93,7 +93,7 @@ func TestAPIValidator_ValidateAPIVersion(t *testing.T) {
 	}{
 		{
 			name:       "Valid API version",
-			apiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			apiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
 			wantError:  false,
 		},
 		{
@@ -688,7 +688,7 @@ func TestAPIValidator_ValidatePathParametersForAsyncAPIs(t *testing.T) {
 
 func createValidRestAPIConfig() *api.RestAPI {
 	return &api.RestAPI{
-		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.RestAPIKindRestApi,
 		Metadata: api.Metadata{
 			Name: "test-api",
@@ -714,7 +714,7 @@ func createValidRestAPIConfig() *api.RestAPI {
 
 func createValidWebSubAPIConfig() *api.WebSubAPI {
 	return &api.WebSubAPI{
-		ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.WebSubAPIKindWebSubApi,
 		Metadata: api.Metadata{
 			Name: "test-websub",

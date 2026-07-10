@@ -12,17 +12,17 @@ For end-user documentation, see [docs/](docs/).
 
 ## Prerequisites
 
-- **Node.js** v22.0.0
+- **Node.js** v23 (or v22+)
 - **Make**
-- **PostgreSQL** 16
 - **Docker + Docker Compose** (for the Docker-based workflow)
-- **psql** (required to run schema/seed scripts manually)
+
+> **PostgreSQL** is optional. The portal uses SQLite by default. See [Database setup](#4-database-setup) if you need PostgreSQL.
 
 ---
 
 ## Quick Start (Docker Compose)
 
-The fastest way to get the portal running — no local Node or PostgreSQL install required.
+The fastest way to get the portal running — no local Node install required.
 
 ### Build
 
@@ -34,42 +34,108 @@ make build
 ### Run
 
 ```bash
-mkdir -p configs && cp sample.config.yaml configs/config.yaml
+mkdir -p configs && cp configs/config.toml.example configs/config.toml
 docker compose up
 ```
 
-Then open **https://localhost:3000/ACME/views/default**
+Then open **https://localhost:3000/default/views/default**
 
 > **Browser warning:** A self-signed TLS certificate is generated automatically on first start. Click **Advanced → Proceed** (Chrome) or **Accept the Risk** (Firefox) to continue.
 
-Default local users: `admin` / `admin` and `developer` / `developer`
+Default credentials: `admin` / `admin` (defined in `configs/config-platform-api.toml`)
 
 What happens automatically on first start:
-- PostgreSQL starts and the DB schema is applied (`database/01-schema.postgres.sql`)
-- A default **ACME** org, view, labels, and subscription plans are seeded (`database/02-seed_org.postgres.sql`)
+- The DB schema is applied and the database is initialised automatically
+- A default **default** org, view, labels, and subscription plans are seeded automatically on startup (controlled by `organization.default_name` in config)
 - A self-signed TLS certificate is generated and stored in the `certs_data` Docker volume
 
 ### Test
 
 ```bash
-# Run Cypress integration tests headlessly inside Docker
+# Run the Cypress UI E2E suite headlessly inside Docker
 make it
+
+# Run the REST API suite (Jest + Supertest)
+make -C it test-rest-api
 
 # Open Cypress interactive UI — requires the portal running locally first
 make it-open
 ```
 
-For integration test details, see [it/README.md](it/README.md).
+Both suites also run on pull requests via the
+[Developer Portal Integration Test](../../.github/workflows/devportal-integration-test.yml)
+GitHub Actions workflow. For integration test details, see [it/README.md](it/README.md).
 
 ### Clean
 
 ```bash
-# Stop and remove containers, volumes, and the postgres data volume
+# Stop and remove containers and volumes
 docker compose down -v
 
 # Remove build artifacts and distribution zips
 make clean
 ```
+
+---
+
+## Makefile Targets
+
+Run `make help` to see the full list. Summary:
+
+### Build
+
+| Target | Description |
+|--------|-------------|
+| `make build` | Build the developer-portal Docker image (local, current arch) |
+| `make build-and-push-multiarch` | Build and push a multi-arch image (`linux/amd64`, `linux/arm64`) to GHCR |
+
+### Distribution
+
+| Target | Description |
+|--------|-------------|
+| `make dist` | Build standalone distribution zip (`target/wso2apip-developer-portal-<VERSION>.zip`) |
+| `make clean-dist` | Remove distribution staging directory and zip |
+
+### Version Management
+
+| Target | Description |
+|--------|-------------|
+| `make version-set VERSION=X` | Set version and update all artifacts |
+| `make version-bump-patch` | Bump patch version (e.g. `1.0.0` → `1.0.1`) |
+| `make version-bump-minor` | Bump minor version (e.g. `1.0.0` → `1.1.0`) |
+| `make version-bump-major` | Bump major version (e.g. `1.0.0` → `2.0.0`) |
+| `make version-bump-next-dev` | Bump to next minor dev version with `-SNAPSHOT` suffix |
+| `make version-get-release` | Print release version (strips `-SNAPSHOT` suffix) |
+
+### Integration Tests
+
+| Target | Description |
+|--------|-------------|
+| `make it` | Run the Cypress UI E2E suite against SQLite (headless, in Docker) |
+| `make it-postgres` | Run the Cypress UI E2E suite against PostgreSQL (headless, in Docker) |
+| `make it-open` | Open Cypress interactive UI (requires the portal running locally) |
+| `make -C it test-rest-api` | Run the REST API suite (Jest + Supertest) against SQLite |
+| `make -C it test-rest-api-postgres` | Run the REST API suite against PostgreSQL |
+
+See [it/README.md](it/README.md) for the full list of test commands and suite details.
+
+### Database
+
+| Target | Description |
+|--------|-------------|
+| `make generate-ddl` | Generate DDL schema files from Sequelize models for all supported dialects |
+
+### Docs
+
+| Target | Description |
+|--------|-------------|
+| `make generate-apidocs` | Generate REST API docs from the OpenAPI spec |
+
+### Clean
+
+| Target | Description |
+|--------|-------------|
+| `make clean` | Remove all build artifacts |
 
 ---
 
@@ -80,50 +146,50 @@ Use this for active development, custom IdP configuration, or when you prefer to
 ### 1. Create config file
 
 ```bash
-mkdir -p configs && cp sample.config.yaml configs/config.yaml
+mkdir -p configs && cp configs/config.toml.example configs/config.toml
 ```
 
-`configs/config.yaml` is your local config file (not committed to git). See [Configuration reference](#configuration-reference) below for all available settings.
+`configs/config.toml` is your local config file (not committed to git). See [Configuration reference](#configuration-reference) below for all available settings.
 
 ### 2. Configure HTTP mode (optional)
 
-Open `configs/config.yaml` and confirm these are set (they are the defaults in `sample.config.yaml`):
+Open `configs/config.toml` and confirm these are set (they are the defaults in `configs/config.toml.example`):
 
-```yaml
-advanced:
-  http: true
-baseUrl: "http://localhost:3000"
-defaultPort: 3000
+```toml
+[tls]
+enabled = false
+
+[server]
+base_url = "http://localhost:3000"
+port = 3000
 ```
 
 ### 3. Configure the Identity Provider (optional)
 
-The portal's login flow requires a valid OAuth2/OIDC provider. Update the `identityProvider` block in `configs/config.yaml`:
+The portal's login flow requires a valid OAuth2/OIDC provider. Update the `[idp]` block in `configs/config.toml`:
 
-```yaml
-identityProvider:
-  issuer: "https://<your-idp>/oauth2/token"
-  authorizationURL: "https://<your-idp>/oauth2/authorize"
-  tokenURL: "https://<your-idp>/oauth2/token"
-  userInfoURL: "https://<your-idp>/oauth2/userinfo"
-  jwksURL: "https://<your-idp>/oauth2/jwks"
-  clientId: "<your-client-id>"
-  callbackURL: "http://localhost:3000/<orgHandle>/callback"
+```toml
+[idp]
+issuer = "https://<your-idp>/oauth2/token"
+authorization_url = "https://<your-idp>/oauth2/authorize"
+token_url = "https://<your-idp>/oauth2/token"
+user_info_url = "https://<your-idp>/oauth2/userinfo"
+jwks_url = "https://<your-idp>/oauth2/jwks"
+client_id = "<your-client-id>"
+callback_url = "http://localhost:3000/<handle>/callback"
 ```
 
-For local exploration you can skip IdP setup by using the built-in local users instead (see [Local auth](#local-auth)).
+For local exploration you can skip IdP setup by using the Platform API sidecar instead (see [Local auth](#local-auth)).
 
 ### 4. Database setup
 
-#### Create the database
+#### SQLite (default — no setup required)
 
-Create a new database in your local PostgreSQL instancec with,
+The portal uses SQLite out of the box. The database file is created automatically at the path configured by `database.file` (default: `./devportal.db`). No installation or schema migration step is needed.
 
-```bash
-createdb -h <HOST> -U <USER> devportal
-```
+#### PostgreSQL (optional)
 
-Or spin up PostgreSQL with Docker.
+To use PostgreSQL instead, spin up an instance:
 
 ```bash
 docker run --name devportal-postgres \
@@ -134,40 +200,24 @@ docker run --name devportal-postgres \
   -d postgres:16
 ```
 
-#### Update DB config in `configs/config.yaml`
+Then update the `[database]` block in `configs/config.toml`:
 
-```yaml
-db:
-  host: "localhost"
-  port: 5432
-  database: "devportal"
-  username: "postgres"
-  password: "postgres"
-  dialect: "postgres"
+```toml
+[database]
+type = "postgres"
+host = "localhost"
+port = 5432
+name = "devportal"
+username = "postgres"
+password = "postgres"
 ```
 
-In Production setup, you can set the password via `DP_DB_PASSWORD` enviornment variable.
-
-#### Apply the schema
-
-> ⚠️ This drops and recreates all tables. Don't run against a database you can't reset.
-
-```bash
-psql -h <HOST> -p <PORT> -U <USER> -d devportal -f database/01-schema.postgres.sql
-```
+In production, set the password via the `APIP_DP_DATABASE_PASSWORD` environment variable instead of storing it in the config file.
 
 ### 5. Seed default organization
 
-```bash
-psql -h <HOST> -p <PORT> -U <USER> -d devportal -f database/02-seed_org.postgres.sql
-```
-
-> **Note:**
->
-> Use the following command to pass the DB password non-interactively.
-> ```bash
-> PGPASSWORD=<DB_PASSWORD> ./seeders/seed-apis.sh
-> ```
+The default organization is seeded automatically on startup when `organization.default_name` is set in config (or via `APIP_DP_ORGANIZATION_DEFAULTNAME` env var).
+No manual step is required.
 
 ### 6. Install and run
 
@@ -176,76 +226,86 @@ npm install
 npm start
 ```
 
-### 7. Seed sample APIs (optional)
+Open **http://localhost:3000/default/views/default**
 
+---
+
+## Seed Sample APIs (optional)
+
+Seeds a set of sample APIs into the default organisation. Works with both the Docker Compose and `npm start` workflows.
+
+Get a Bearer token first, then pass it via `DEVPORTAL_TOKEN`:
+
+**npm start (HTTP):**
 ```bash
-sh ./seeders/seed-apis.sh
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
+  -d "username=admin&password=admin" | jq -r .token)
+DEVPORTAL_URL=http://localhost:3000 DEVPORTAL_TOKEN=$TOKEN ./seeders/seed-apis.sh
 ```
 
-> **Note:**
-> 
-> Use the following command to pass variables to the script.
-> ```bash
-> DEVPORTAL_URL=https://localhost:3000 ORG_ID=1ba42a09-45c0-40f8-a1bf-e4aa7cde1575 DEVPORTAL_CREDENTIALS=admin:admin ./seeders/seed-apis.sh
-> ```
-
-Open **http://localhost:3000/ACME/views/default**
+**Docker Compose (HTTPS):**
+```bash
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
+  -d "username=admin&password=admin" | jq -r .token)
+DEVPORTAL_URL=https://localhost:3000 DEVPORTAL_TOKEN=$TOKEN ./seeders/seed-apis.sh
+```
 
 ---
 
 ## Configuration Reference
 
-All settings live in `configs/config.yaml`. Every setting can also be overridden with a `DP_*` environment variable.
+All settings live in `configs/config.toml`. Every setting can also be overridden with an `APIP_DP_*` environment variable.
 
-The full annotated list of settings is in [`sample.config.yaml`](sample.config.yaml).
+The full annotated list of settings is in [`configs/config.toml.example`](configs/config.toml.example).
 
 ### Local auth
 
-For quick exploration without an IdP, the portal includes built-in local users enabled by default in `sample.config.yaml`:
+For quick exploration without an IdP, the portal delegates credential validation to a Platform API sidecar. Users, bcrypt-hashed passwords, and `dp:*` scopes are defined in `configs/config-platform-api.toml` (copy from `configs/config-platform-api.toml.example`):
 
-```yaml
-defaultAuth:
-  users:
-    - username: "admin"
-      password: "admin"
-      roles: ["admin"]
-      orgClaimName: "ACME"
-      organizationIdentifier: "ACME"
-    - username: "developer"
-      password: "developer"
-      roles: ["Internal/subscriber"]
-      orgClaimName: "ACME"
-      organizationIdentifier: "ACME"
+```toml
+[[auth.file_based.users]]
+username      = "admin"
+password_hash = "$2y$10$..."   # bcrypt hash — generate with: htpasswd -bnBC 12 "" <pw> | tr -d ':\n'
+scopes        = "dp:org_manage dp:api_manage ..."
 ```
 
-Remove or empty the `users` list in production.
+The portal config (or `APIP_DP_PLATFORMAPI_*` env vars) must point to the Platform API. Docker Compose sets these automatically:
+
+```toml
+[platform_api]
+base_url = "https://platform-api:9243"   # env: APIP_DP_PLATFORMAPI_BASEURL
+jwt_secret = ""                           # same as AUTH_JWT_SECRET_KEY — env: APIP_DP_PLATFORMAPI_JWTSECRET
+insecure = false                          # set true when Platform API uses a self-signed cert
+```
+
+For production, configure an OIDC identity provider per organization instead of local auth.
 
 ### Environment variable overrides
 
-Every config key can be overridden with a `DP_*` environment variable. You can place these in a `.env` file at the project root.
+Every config key can be overridden with an `APIP_DP_*` environment variable. You can place these in a `.env` file at the project root.
 
 **Convention:**
-- Prefix: `DP_`
+- Prefix: `APIP_DP_`
 - `_` separates nesting levels (one token = one config object level)
 - `__` represents a literal underscore within a key name
-- Tokens are matched case-insensitively against config keys
+- Tokens are matched case-insensitively against config keys (matched against the camelCase struct produced from the TOML's snake_case keys)
 
 | Env var | Config path |
 |---------|-------------|
-| `DP_DB_HOST` | `config.db.host` |
-| `DP_DB_PORT` | `config.db.port` |
-| `DP_ADVANCED_HTTP` | `config.advanced.http` |
-| `DP_IDENTITYPROVIDER_CLIENTID` | `config.identityProvider.clientId` |
-| `DP_IDENTITYPROVIDER_ISSUER` | `config.identityProvider.issuer` |
-| `DP_BASEURL` | `config.baseUrl` |
-| `DP_DEFAULTPORT` | `config.defaultPort` |
-| `DP_ADVANCED_DBSSLDIALECTOPTION` | `config.advanced.dbSslDialectOption` |
+| `APIP_DP_DATABASE_HOST` | `config.database.host` |
+| `APIP_DP_DATABASE_PORT` | `config.database.port` |
+| `APIP_DP_TLS_ENABLED` | `config.tls.enabled` |
+| `APIP_DP_IDP_CLIENTID` | `config.idp.clientId` |
+| `APIP_DP_IDP_ISSUER` | `config.idp.issuer` |
+| `APIP_DP_SERVER_BASEURL` | `config.server.baseUrl` |
+| `APIP_DP_SERVER_PORT` | `config.server.port` |
+| `APIP_DP_DATABASE_SSL_ENABLED` | `config.database.ssl.enabled` |
 
 `.env` example:
 ```dotenv
-DP_DB_HOST=my-postgres-host
-DP_SECRETS_DBSECRET=my-secret-password
-DP_IDENTITYPROVIDER_CLIENTID=my-client-id
+APIP_DP_DATABASE_HOST=my-postgres-host
+APIP_DP_DATABASE_PASSWORD=my-secret-password
+APIP_DP_IDP_CLIENTID=my-client-id
 ```
 
 ---
@@ -256,7 +316,7 @@ Create an API manifest file and an OpenAPI definition, then upload them:
 
 ```yaml
 # api.yaml
-apiVersion: devportal.api-platform.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: RestApi
 
 metadata:
@@ -267,9 +327,7 @@ spec:
   displayName: Ping API
   version: v1.0
   description: Sample HTTP echo/probe API. Requires API key authentication. No subscription plans.
-  provider: WSO2
   status: PUBLISHED
-  gatewayType: wso2/api-platform
   referenceID: ping-api-v1.0
 
   tags:
@@ -279,7 +337,7 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies: []
+  subscriptionPlans: []
 
   visibility: PUBLIC
   visibleGroups: []
@@ -375,22 +433,29 @@ paths:
 ```
 
 ```bash
-curl -sk -X POST "https://localhost:3000/devportal/organizations/1ba42a09-45c0-40f8-a1bf-e4aa7cde1575/apis" \           ✔
-   -u admin:admin \
-   -F "api=@api.yaml;type=application/yaml" \
-   -F "apiDefinition=@openapi.yaml;type=application/yaml" -k
+# Get a Bearer token
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
+  -d "username=admin&password=admin" | jq -r .token)
+
+# Get the default org UUID
+ORG_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \
+  https://localhost:3000/organizations | jq -r '.[0].id')
+
+# Create the API
+curl -sk -X POST "https://localhost:3000/api/v0.9/apis" \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "api=@api.yaml;type=application/yaml" \
+  -F "apiDefinition=@openapi.yaml;type=application/yaml"
 ```
 
 Refresh the portal — the Ping API now appears in the catalog. Click it to view the documentation and try-out console.
-
-> **Tip:** For `orgId` you can use the org handle (`ACME`) or the UUID returned when the organization was created.
 
 ## What was just created?
 
 | Resource | Value |
 |---|---|
-| Organization | `ACME` |
+| Organization | `default` |
 | Default view | `default` |
-| Portal URL | `http://localhost:3000/ACME/views/default` |
+| Portal URL | `https://localhost:3000/default/views/default` |
 | Admin credentials | `admin` / `admin` (local auth) |
 | Sample API | `Ping API` visible in the catalog |

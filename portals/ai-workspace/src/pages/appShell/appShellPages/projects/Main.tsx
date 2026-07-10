@@ -1,0 +1,82 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import React, { useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { PageContent, Stack, Typography } from '@wso2/oxygen-ui';
+import { useAppShell } from '../../../../contexts/AppShellContext';
+import AILoader from '../../../../Components/AILoader';
+import { buildProjectPath } from '../../../../utils/projectRouting';
+import { FormattedMessage } from 'react-intl';
+
+export default function ProjectPage(): JSX.Element {
+  const navigate = useNavigate();
+  const { projectId } = useParams<{ projectId: string }>();
+  const {
+    projectsForCurrentOrganization,
+    setCurrentProject,
+    isProjectsLoading,
+    currentOrganization,
+  } = useAppShell();
+
+  useEffect(() => {
+    if (!projectId || isProjectsLoading) return;
+    const match = projectsForCurrentOrganization.find(
+      (project) => project.id === projectId
+    );
+    if (match) {
+      setCurrentProject(match);
+      navigate(buildProjectPath(currentOrganization, match, '/home'), {
+        replace: true,
+      });
+    }
+  }, [
+    projectId,
+    isProjectsLoading,
+    projectsForCurrentOrganization,
+    setCurrentProject,
+    navigate,
+  ]);
+
+  if (isProjectsLoading) {
+    return (
+      <PageContent fullWidth>
+        <Stack spacing={2} alignItems="center" sx={{ py: 6 }}>
+          <AILoader />
+          <Typography variant="body2" color="text.secondary">
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.projects.Main.loading.project"
+              defaultMessage={'Loading project...'}
+            />
+          </Typography>
+        </Stack>
+      </PageContent>
+    );
+  }
+
+  return (
+    <PageContent fullWidth>
+      <Typography variant="body2" color="text.secondary">
+        <FormattedMessage
+          id="aiWorkspace.pages.appShell.appShellPages.projects.Main.project.not.found.please.select.another.project"
+          defaultMessage={'Project not found. Please select another project.'}
+        />
+      </Typography>
+    </PageContent>
+  );
+}

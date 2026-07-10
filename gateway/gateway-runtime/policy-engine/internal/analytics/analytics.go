@@ -415,15 +415,26 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	event.Properties["userName"] = userName
 	event.Properties["commonName"] = "N/A"
 	event.Properties["apiContext"] = extendedAPI.APIContext
-	if logEntry.Response != nil {
+	// Resolve responseContentType for all API kinds. The analytics system policy captures
+	// it from the response headers into analytics metadata (response_content_type) because
+	// the Envoy access log does not carry response headers. Prefer that value; fall back to
+	// the access-log header if present, then to Unknown.
+	responseContentType := Unknown
+	if ct, ok := keyValuePairsFromMetadata["response_content_type"]; ok && ct != "" {
+		responseContentType = ct
+	} else if logEntry.Response != nil {
 		if contentTypeHeader := logEntry.Response.GetResponseHeaders()["content-type"]; contentTypeHeader != "" {
-			event.Properties["responseContentType"] = contentTypeHeader
-		} else {
-			event.Properties["responseContentType"] = Unknown
+			responseContentType = contentTypeHeader
 		}
+	}
+	event.Properties["responseContentType"] = responseContentType
+	if logEntry.Response != nil {
 		event.Properties["responseSize"] = logEntry.Response.ResponseBodyBytes
-	} else {
-		event.Properties["responseContentType"] = Unknown
+	}
+
+	// requestSize is common to all API kinds; mirror responseSize using the Envoy access-log byte count.
+	if request != nil {
+		event.Properties["requestSize"] = request.GetRequestBodyBytes()
 	}
 
 	//Adding request and response headers for the analytics event
@@ -451,7 +462,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	if keyValuePairsFromMetadata[APITypeKey] != "" && keyValuePairsFromMetadata[APITypeKey] == "Mcp" {
 		mcpAnalytics := make(map[string]interface{})
 		if mcpSessionID, ok := keyValuePairsFromMetadata["mcp_session_id"]; ok && mcpSessionID != "" {
-			mcpAnalytics["mcp_session_id"] = mcpSessionID
+			mcpAnalytics["sessionId"] = mcpSessionID
 		}
 		if mcpRequestProps, ok := keyValuePairsFromMetadata["mcp_request_properties"]; ok && mcpRequestProps != "" {
 			// Parse the JSON string into a map

@@ -24,12 +24,6 @@
             <i class="bi bi-key"></i> Credentials
         </button>
         <button class="mk-km-tab" type="button" role="tab"
-            id="tab-btn-config-{{kmId}}-{{keyType}}"
-            data-bs-toggle="tab" data-bs-target="#tab-config-{{kmId}}-{{keyType}}"
-            aria-controls="tab-config-{{kmId}}-{{keyType}}" aria-selected="false">
-            <i class="bi bi-gear"></i> Configuration
-        </button>
-        <button class="mk-km-tab" type="button" role="tab"
             id="tab-btn-token-{{kmId}}-{{keyType}}"
             data-bs-toggle="tab" data-bs-target="#tab-token-{{kmId}}-{{keyType}}"
             aria-controls="tab-token-{{kmId}}-{{keyType}}" aria-selected="false">
@@ -58,9 +52,10 @@
                             <input type="text" id="consumer-key-{{kmId}}-{{keyType}}-view"
                                 class="mk-input" name="consumerKey-{{keyType}}"
                                 value="{{keys.consumerKey}}" readonly disabled />
-                            <button class="mk-icon-btn"
+                            <button class="mk-icon-btn copy-btn"
                                 onclick="copyConsumerKey('consumer-key-{{kmId}}-{{keyType}}-view')" title="Copy">
-                                <i class="bi bi-clipboard"></i>
+                                <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+                                <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                             </button>
                         </div>
                         <input type="hidden" id="app-ref-{{kmId}}-{{keyType}}" name="appRefId" value="{{keys.appRefId}}" />
@@ -82,186 +77,6 @@
                     </button>
                 </div>
             </div>
-        </div>
-
-        {{!-- ── Configuration tab ── --}}
-        <div class="tab-pane fade" id="tab-config-{{kmId}}-{{keyType}}"
-            role="tabpanel" aria-labelledby="tab-btn-config-{{kmId}}-{{keyType}}" tabindex="0">
-
-            {{!-- Read-only view --}}
-            <div id="configView-{{kmId}}-{{keyType}}">
-                <div class="mk-config-body">
-                    {{!-- Grant types --}}
-                    {{#if keys.supportedGrantTypes}}
-                    <div class="mk-config-row">
-                        <span class="mk-config-label">Grant types</span>
-                        <div class="mk-config-value mk-meta-grants">
-                            {{#let "supported" keys.supportedGrantTypes}}
-                            {{#each ../availableGrantTypes}}
-                            {{#if (contains ../supported name)}}
-                            <span class="mk-grant-pill">{{label}}</span>
-                            {{/if}}
-                            {{/each}}
-                            {{/let}}
-                        </div>
-                    </div>
-                    {{/if}}
-                    {{!-- Callback URL --}}
-                    {{#if keys.callbackUrl}}
-                    <div class="mk-config-row">
-                        <span class="mk-config-label">Callback URL</span>
-                        <code class="mk-config-code">{{keys.callbackUrl}}</code>
-                    </div>
-                    {{/if}}
-                    {{!-- Additional key manager properties (read-only) --}}
-                    {{#if applicationConfiguration}}
-                    {{#let "additionalProperties" (conditionalIf keys.additionalProperties keys.additionalProperties [])}}
-                    {{#each ../applicationConfiguration}}
-                    <div class="mk-config-row">
-                        <span class="mk-config-label">{{label}}</span>
-                        <div class="mk-config-value">
-                            {{#if (eq type "checkbox")}}
-                                <span class="mk-grant-pill">
-                                    {{#if (getValue ../additionalProperties name)}}Enabled{{else}}Disabled{{/if}}
-                                </span>
-                            {{else}}
-                                {{#if (eq type "select")}}
-                                    {{#if multiple}}
-                                        {{#each (getValue ../additionalProperties name)}}
-                                        <span class="mk-grant-pill">{{this}}</span>
-                                        {{/each}}
-                                    {{else}}
-                                        <span class="mk-config-text">{{conditionalIf (getValue ../additionalProperties name) (getValue ../additionalProperties name) default}}</span>
-                                    {{/if}}
-                                {{else}}
-                                    <span class="mk-config-text">{{conditionalIf (getValue ../additionalProperties name) (getValue ../additionalProperties name) default}}</span>
-                                {{/if}}
-                            {{/if}}
-                        </div>
-                    </div>
-                    {{/each}}
-                    {{/let}}
-                    {{/if}}
-                </div>
-                <div class="mk-config-footer">
-                    <span class="mk-config-note">Changes to grant types or callback URL take effect on the next token request.</span>
-                    {{#unless isReadOnlyMode}}
-                    <button class="mk-btn-primary mk-btn-sm"
-                        id="editConfigBtn-{{kmId}}-{{keyType}}"
-                        onclick="startEditConfiguration('{{kmId}}', '{{keyType}}')">
-                        <i class="bi bi-gear"></i> Edit configuration
-                    </button>
-                    {{/unless}}
-                </div>
-            </div>
-
-            {{!-- Inline edit form (hidden by default) --}}
-            <div id="configEdit-{{kmId}}-{{keyType}}" style="display:none">
-                <form id="inlineConfigForm-{{kmId}}-{{keyType}}" class="mk-edit-form">
-
-                    {{!-- Grant types --}}
-                    <div class="mk-edit-section">
-                        <label class="mk-edit-label">Grant types <span class="text-danger">*</span></label>
-                        <div class="mk-grant-grid">
-                            {{#let "supportedGrantTypes" keys.supportedGrantTypes}}
-                            {{#each ../availableGrantTypes}}
-                            <label class="mk-grant-card" for="grant-type-edit-{{name}}-{{../kmId}}-{{../keyType}}">
-                                <input type="checkbox"
-                                    id="grant-type-edit-{{name}}-{{../kmId}}-{{../keyType}}"
-                                    name="grantTypes" value="{{name}}"
-                                    {{#if (contains ../supportedGrantTypes name)}} checked {{else}}
-                                        {{#unless ../supportedGrantTypes.length}}
-                                        {{#if (eq name "client_credentials")}} checked {{/if}}
-                                        {{/unless}}
-                                    {{/if}} />
-                                <span>{{label}}</span>
-                            </label>
-                            {{/each}}
-                            {{/let}}
-                        </div>
-                    </div>
-
-                    {{!-- Callback URL --}}
-                    <div class="mk-edit-section" id="callback-url-row-{{keyType}}">
-                        <label class="mk-edit-label">Callback URL</label>
-                        <input type="url" name="callbackURL" class="mk-edit-input"
-                            placeholder="https://your-app.com/callback"
-                            value="{{keys.callbackUrl}}" />
-                    </div>
-
-                    {{!-- Additional key manager properties --}}
-                    {{#if applicationConfiguration}}
-                    {{#let "additionalProperties" (conditionalIf keys.additionalProperties keys.additionalProperties [])}}
-                    <div class="mk-edit-props-grid">
-                    {{#each ../applicationConfiguration}}
-                        {{#if (eq type "checkbox")}}
-                        {{!-- Checkboxes span full width --}}
-                        <div class="mk-edit-section mk-edit-full-width">
-                            <label class="mk-edit-label" for="addprop-{{name}}-{{../../keyType}}">
-                                {{label}}
-                            </label>
-                            <div class="mk-check-item">
-                                <input type="checkbox" name="additionalProperties.{{name}}"
-                                    id="addprop-{{name}}-{{../../keyType}}"
-                                    value="true" {{#if (getValue ../additionalProperties name)}}checked{{/if}} />
-                                {{#if tooltip}}<span class="mk-field-hint mk-check-hint">{{tooltip}}</span>{{/if}}
-                            </div>
-                        </div>
-                        {{else}}
-                        <div class="mk-edit-section">
-                            <label class="mk-edit-label" for="addprop-{{name}}-{{../../keyType}}">
-                                {{label}}{{#if required}} <span class="text-danger">*</span>{{/if}}
-                            </label>
-                            {{#if (eq type "select")}}
-                                {{#if multiple}}
-                                <select name="additionalProperties.{{name}}"
-                                    id="addprop-{{name}}-{{../../keyType}}"
-                                    class="mk-edit-input" multiple>
-                                    {{#each values}}
-                                    <option {{#in this values=(getValue ../../additionalProperties ../name)}}selected{{/in}}>{{this}}</option>
-                                    {{/each}}
-                                </select>
-                                {{else}}
-                                <select name="additionalProperties.{{name}}"
-                                    id="addprop-{{name}}-{{../../keyType}}"
-                                    class="mk-edit-input" {{#if required}}required{{/if}}>
-                                    {{#each values}}
-                                    <option value="{{this}}" {{#if (eq (getValue ../../additionalProperties ../name) this)}}selected{{/if}}>{{this}}</option>
-                                    {{/each}}
-                                </select>
-                                {{/if}}
-                            {{else}}
-                            <input type="text" name="additionalProperties.{{{name}}}"
-                                id="addprop-{{name}}-{{../../keyType}}"
-                                class="mk-edit-input"
-                                value="{{conditionalIf (getValue ../additionalProperties name) (getValue ../additionalProperties name) default}}"
-                                {{#if required}}required{{/if}} />
-                            {{/if}}
-                            {{#if tooltip}}<div class="mk-field-hint">{{tooltip}}</div>{{/if}}
-                        </div>
-                        {{/if}}
-                    {{/each}}
-                    </div>
-                    {{/let}}
-                    {{/if}}
-
-                </form>
-                <div class="mk-config-footer">
-                    <span></span>
-                    <div class="mk-footer-actions">
-                        <button class="mk-btn-outline mk-btn-sm"
-                            onclick="cancelEditConfiguration('{{kmId}}', '{{keyType}}')">
-                            Cancel
-                        </button>
-                        <button class="mk-btn-primary mk-btn-sm"
-                            id="saveConfigBtn-{{kmId}}-{{keyType}}"
-                            onclick="saveInlineKeyConfig('{{kmId}}', '{{keyType}}', '{{appId}}', '{{kmName}}', '{{keys.keyMappingId}}', '{{keys.clientName}}', '{{keys.consumerKey}}')">
-                            <i class="bi bi-check2"></i> Save changes
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div id="keyUpdateErrorContainer-{{keyType}}" class="mk-error" style="display:none"></div>
         </div>
 
         {{!-- ── Generate Token tab ── --}}
@@ -320,11 +135,12 @@
                     </div>
                 </div>
                 <div class="mk-code-block">
-                    <button class="mk-curl-copy-btn"
+                    <button class="mk-curl-copy-btn copy-btn"
                         data-endpoint="{{tokenEndpoint}}"
                         aria-label="Copy cURL command"
                         onclick="copyRealCurl(this)">
-                        <i class="bi bi-copy"></i>
+                        <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+                        <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
                     </button>
                     <code id="curl_{{kmName}}_{{keyType}}">curl -k -X POST &lt;TOKEN_ENDPOINT_URL&gt; -d "grant_type=client_credentials" -H "Authorization: Basic Base64(&lt;CONSUMER_KEY&gt;:&lt;CONSUMER_SECRET&gt;)"</code>
                 </div>
@@ -335,28 +151,31 @@
 
     <div id="keyGenerationErrorContainer-{{keyType}}" class="mk-error" style="display:none"></div>
 
-    {{!-- Empty state --}}
+    {{!-- Empty state — paste an externally-created client_id --}}
     <div class="mk-km-empty" id="generateKeyContainer-{{keyType}}"
         style="{{#if keys.consumerKey}}display:none{{/if}}">
         <div class="mk-empty-icon-wrap {{#if isSandbox}}mk-empty-icon-sandbox{{/if}}">
             <i class="bi bi-key"></i>
         </div>
-        <p class="mk-empty-title">No credentials generated yet</p>
+        <p class="mk-empty-title">No client ID linked yet</p>
         <p class="mk-empty-desc">
-            {{#if isSandbox}}
-            Generate sandbox credentials to test your application's authentication before going live.
-            {{else}}
-            Generate credentials to start authenticating your application with the production environment.
-            {{/if}}
+            Create an OAuth application directly in <strong>{{kmName}}</strong>, then paste its client ID below to
+            link it to this application.
         </p>
-        <button data-cyid="generateKey-{{keyType}}" id="generateKeyBtn-{{keyType}}"
-            class="mk-btn-primary {{#if isSandbox}}mk-btn-sandbox{{/if}} {{#if isReadOnlyMode}}disabled{{/if}}"
-            style="{{#if isReadOnlyMode}}pointer-events:none;opacity:.5{{/if}}"
-            onclick="generateApplicationKey('keysview-{{kmId}}-{{keyType}}', '{{appId}}', '{{keyType}}', '{{kmName}}', '{{appName}}', '[]', '{{orgID}}', 'consumer-key-{{kmId}}-{{keyType}}', 'consumer-secret-{{kmId}}-{{keyType}}')">
-            <span class="button-normal-state"><i class="bi bi-key me-1"></i>Generate Credentials</span>
-            <span class="button-loading-state" style="display:none">
-                <span class="spinner-border spinner-border-sm me-1" role="status"></span>Generating…
-            </span>
-        </button>
+        <div id="addClientIdError-{{kmId}}-{{keyType}}" class="mk-error" style="display:none"></div>
+        <div class="mk-add-clientid-row">
+            <input type="text" class="mk-input" id="addClientIdInput-{{kmId}}-{{keyType}}"
+                placeholder="Paste client ID" {{#if isReadOnlyMode}}disabled{{/if}} />
+            <button data-cyid="addClientId-{{keyType}}" id="addClientIdBtn-{{kmId}}-{{keyType}}"
+                class="mk-btn-primary {{#if isSandbox}}mk-btn-sandbox{{/if}} {{#if isReadOnlyMode}}disabled{{/if}}"
+                style="{{#if isReadOnlyMode}}pointer-events:none;opacity:.5{{/if}}"
+                {{#if isReadOnlyMode}}disabled{{/if}}
+                onclick="addClientId('{{kmId}}', '{{keyType}}', '{{appId}}', '{{orgId}}', '{{kmName}}')">
+                <span class="button-normal-state"><i class="bi bi-plus-lg me-1"></i>Add</span>
+                <span class="button-loading-state" style="display:none">
+                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>Adding…
+                </span>
+            </button>
+        </div>
     </div>
 </div>

@@ -1,62 +1,66 @@
-<head>
+{{#pageHead}}
   <link rel='stylesheet' href='/technical-styles/overview.css' />
-</head>
+{{/pageHead}}
+
+<nav class="dp-breadcrumb">
+  <a class="dp-breadcrumb-item" href="{{baseUrl}}/applications">Applications</a>
+  <i class="bi bi-chevron-right dp-breadcrumb-sep"></i>
+  <span class="dp-breadcrumb-current">{{applicationMetadata.displayName}}</span>
+</nav>
 
 <section class="section mt-0 mb-6">
-  <div class="container-fluid">
-    <div class="app-overview-card d-flex justify-content-between align-items-start">
-      <div class="me-5 w-75">
-        {{#applicationMetadata}}
-        <div class="d-flex align-items-center edit-container mb-2">
-          <h3 class="app-overview-title" id="applicationName" data-original="{{name}}">{{name}}</h3>
-          <button class="btn btn-sm edit-inline-btn {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}"
-            id="editNameBtn" title="Edit name">
-            <i class="bi bi-pencil"></i>
+  <div class="app-overview-card d-flex justify-content-between align-items-start">
+    <div class="me-5 w-75">
+      {{#applicationMetadata}}
+      <div class="d-flex align-items-center edit-container mb-2">
+        <h3 class="app-overview-title" id="applicationName" data-original="{{displayName}}">{{displayName}}</h3>
+        <button class="btn btn-sm edit-inline-btn {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}"
+          id="editNameBtn" title="Edit name">
+          <i class="bi bi-pencil"></i>
+        </button>
+        <div class="edit-actions" id="nameEditActions" style="display: none;">
+          <button class="btn btn-sm common-btn-primary save-btn" id="saveNameBtn" title="Save">
+            <span class="button-normal-state"><i class="bi bi-check"></i></span>
+            <span class="button-loading-state" style="display: none;">
+              <span class="spinner-border spinner-border-sm" role="status"></span>
+            </span>
           </button>
-          <div class="edit-actions" id="nameEditActions" style="display: none;">
-            <button class="btn btn-sm common-btn-primary save-btn" id="saveNameBtn" title="Save">
-              <span class="button-normal-state"><i class="bi bi-check"></i></span>
-              <span class="button-loading-state" style="display: none;">
-                <span class="spinner-border spinner-border-sm" role="status"></span>
-              </span>
-            </button>
-            <button class="btn btn-sm common-btn-outlined cancel-btn" id="cancelNameBtn" title="Cancel"><i
-                class="bi bi-x"></i></button>
-          </div>
+          <button class="btn btn-sm common-btn-outlined cancel-btn" id="cancelNameBtn" title="Cancel"><i
+              class="bi bi-x"></i></button>
         </div>
-        <div id="nameEditError" class="edit-error-message mb-2" style="display: none;"></div>
-        <div class="d-flex align-items-center edit-container mb-2">
-          {{#if description}}
-          <p class="app-description mb-0" id="applicationDescription" data-original="{{description}}">{{description}}
-          </p>
-          <button class="btn btn-sm edit-inline-btn {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}"
-            id="editDescriptionBtn" title="Edit description">
-            <i class="bi bi-pencil"></i>
-          </button>
-          {{else}}
-          <button class="btn btn-sm common-btn-link p-0 {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}"
-            id="editDescriptionBtn" title="Add description">
-            <i class="bi bi-plus"></i> Add description
-          </button>
-          <p class="app-description" id="applicationDescription" data-original="{{null}}"></p>
-          {{/if}}
-          <div class="edit-actions" id="descriptionEditActions" style="display: none;">
-            <button class="btn btn-sm common-btn-primary save-btn" id="saveDescriptionBtn" title="Save">
-              <span class="button-normal-state"><i class="bi bi-check"></i></span>
-              <span class="button-loading-state" style="display: none;">
-                <span class="spinner-border spinner-border-sm" role="status"></span>
-              </span>
-            </button>
-            <button class="btn btn-sm common-btn-outlined cancel-btn" id="cancelDescriptionBtn" title="Cancel"><i
-                class="bi bi-x"></i></button>
-          </div>
-        </div>
-        <div id="descriptionEditError" class="edit-error-message" style="display: none;"></div>
       </div>
-      {{/applicationMetadata}}
-
-
+      <div id="nameEditError" class="edit-error-message mb-2" style="display: none;"></div>
+      <div class="d-flex align-items-center edit-container mb-2">
+        {{#if description}}
+        <p class="app-description mb-0" id="applicationDescription" data-original="{{description}}">{{description}}
+        </p>
+        <button class="btn btn-sm edit-inline-btn {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}"
+          id="editDescriptionBtn" title="Edit description">
+          <i class="bi bi-pencil"></i>
+        </button>
+        {{else}}
+        <button class="btn btn-sm common-btn-link p-0 {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}"
+          id="editDescriptionBtn" title="Add description">
+          <i class="bi bi-plus"></i> Add description
+        </button>
+        <p class="app-description" id="applicationDescription" data-original="{{null}}"></p>
+        {{/if}}
+        <div class="edit-actions" id="descriptionEditActions" style="display: none;">
+          <button class="btn btn-sm common-btn-primary save-btn" id="saveDescriptionBtn" title="Save">
+            <span class="button-normal-state"><i class="bi bi-check"></i></span>
+            <span class="button-loading-state" style="display: none;">
+              <span class="spinner-border spinner-border-sm" role="status"></span>
+            </span>
+          </button>
+          <button class="btn btn-sm common-btn-outlined cancel-btn" id="cancelDescriptionBtn" title="Cancel"><i
+              class="bi bi-x"></i></button>
+        </div>
+      </div>
+      <div id="descriptionEditError" class="edit-error-message" style="display: none;"></div>
     </div>
+    {{/applicationMetadata}}
+
+
   </div>
   <form id="inlineEditForm" data-application-id="{{applicationMetadata.id}}" style="display: none;"></form>
 </section>

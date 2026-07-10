@@ -1,0 +1,36 @@
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
+kind: MCP
+
+metadata:
+  name: travel-assistant-mcp-v1
+
+spec:
+  type: MCP
+  displayName: Travel Assistant MCP
+  version: 1.0.0
+  description: MCP server for travel planning tools.
+  status: PUBLISHED
+
+  tags:
+    - mcp
+    - ai-agent
+    - travel
+
+  labels:
+    - default
+
+  subscriptionPlans:
+    - Gold
+    - Bronze
+
+  agentVisibility: VISIBLE
+
+  businessInformation:
+    businessOwner: API Team
+    businessOwnerEmail: api-team@example.com
+    technicalOwner: Platform Team
+    technicalOwnerEmail: platform-team@example.com
+
+  endpoints:
+    productionUrl: https://your-mcp-host.example.com
+    sandboxUrl: https://your-mcp-host.example.com

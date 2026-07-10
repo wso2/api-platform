@@ -16,143 +16,167 @@
  * under the License.
  */
 const { Sequelize, DataTypes } = require('sequelize');
-const sequelize = require('../db/sequelize');
-const Provider = require('./provider');
-const View = require('./views');
+const sequelize = require('../db/sequelizeConfig');
+const View = require('./view');
 
-const Organization = sequelize.define('DP_ORGANIZATION', {
-    ORG_ID: {
-        type: DataTypes.UUID,
+const Organization = sequelize.define('dp_organization', {
+    uuid: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    ORG_NAME: {
+    display_name: {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true
     },
-    BUSINESS_OWNER: {
+    business_owner: {
         type: DataTypes.STRING,
         allowNull: true,
     },
-    BUSINESS_OWNER_CONTACT: {
+    business_owner_contact: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    BUSINESS_OWNER_EMAIL: {
+    business_owner_email: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    ORG_HANDLE: {
+    handle: {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true
     },
-    ROLE_CLAIM_NAME: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
-    ORGANIZATION_CLAIM_NAME: {
-        type: DataTypes.STRING,
-        allowNull: true
-    },
-    ORGANIZATION_IDENTIFIER: {
+    idp_ref_id: {
         type: DataTypes.STRING,
         allowNull: false
     },
-    ADMIN_ROLE: {
+    cp_ref_id: {
         type: DataTypes.STRING,
         allowNull: true
     },
-    SUPER_ADMIN_ROLE: {
-        type: DataTypes.STRING,
-        allowNull: true
+    configuration: {
+        type: DataTypes.JSONB,
+        allowNull: false
     },
-    SUBSCRIBER_ROLE: {
+    created_by: {
         type: DataTypes.STRING,
-        allowNull: true
+        allowNull: false
     },
-    GROUPS_CLAIM_NAME: {
+    created_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
+    updated_by: {
         type: DataTypes.STRING,
-        allowNull: true
-    },   
-    ORG_CONFIG: {
-        type: DataTypes.JSON,
-        allowNull: true
+        allowNull: false
+    },
+    updated_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
     },
 }, {
     timestamps: false,
-    tableName: 'DP_ORGANIZATION',
+    tableName: 'dp_organizations',
     returning: true
 });
 
-const OrgContent = sequelize.define('DP_ORGANIZATION_ASSETS', {
-    ASSET_ID: {
-        type: DataTypes.UUID,
+const OrgContent = sequelize.define('dp_organization_asset', {
+    uuid: {
+        type: DataTypes.STRING(40),
         defaultValue: Sequelize.UUIDV4,
         primaryKey: true
     },
-    FILE_NAME: {
+    file_name: {
         type: DataTypes.STRING,
         allowNull: false,
     },
-    FILE_CONTENT: {
+    file_content: {
         type: DataTypes.BLOB,
         allowNull: false,
     },
-    FILE_TYPE: {
+    file_type: {
+        type: DataTypes.STRING(20),
+        allowNull: false,
+    },
+    file_path: {
         type: DataTypes.STRING,
         allowNull: false,
     },
-    FILE_PATH: {
+    org_uuid: {
+        type: DataTypes.STRING(40),
+        allowNull: false,
+        foreignKey: true,
+    },
+    view_uuid: {
+        type: DataTypes.STRING(40),
+        allowNull: false,
+    },
+    created_by: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: false
     },
-    ORG_ID: {
-        type: DataTypes.UUID,
+    created_at: {
+        type: DataTypes.DATE,
         allowNull: false,
-        forignKey: true,
+        defaultValue: Sequelize.NOW
     },
-    VIEW_ID: {
-        type: DataTypes.UUID,
-        allowNull: true,
-    }
+    updated_by: {
+        type: DataTypes.STRING,
+        allowNull: false
+    },
+    updated_at: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
+    },
 }, {
     timestamps: false,
-    tableName: 'DP_ORGANIZATION_ASSETS'
-}, {
+    tableName: 'dp_organization_assets',
     indexes: [
         {
+            name: 'uq_organization_asset_type_name_path_org_view',
             unique: true,
-            fields: ['FILE_TYPE', 'FILE_NAME', 'FILE_PATH', 'ORG_ID']
+            fields: ['file_type', 'file_name', 'file_path', 'org_uuid', 'view_uuid']
+        },
+        {
+            name: 'idx_organization_asset_org_uuid',
+            fields: ['org_uuid']
+        },
+        {
+            name: 'idx_organization_asset_view_uuid',
+            fields: ['view_uuid']
         }
     ]
 });
 
 OrgContent.belongsTo(Organization, {
-    foreignKey: 'ORG_ID',
+    foreignKey: 'org_uuid',
 });
 
 Organization.hasMany(OrgContent, {
-    foreignKey: 'ORG_ID',
+    foreignKey: 'org_uuid',
     onDelete: 'CASCADE',
 });
 
-Provider.belongsTo(Organization, {
-    foreignKey: 'ORG_ID',
+View.belongsTo(Organization, {
+    foreignKey: 'org_uuid',
 });
 
-Organization.hasMany(Provider, {
-    foreignKey: 'ORG_ID',
+Organization.hasMany(View, {
+    foreignKey: 'org_uuid',
     onDelete: 'CASCADE',
 });
 
 View.hasOne(OrgContent, {
-    foreignKey: 'VIEW_ID',
+    foreignKey: 'view_uuid',
+    onDelete: 'CASCADE',
 });
 
 OrgContent.belongsTo(View, {
-    foreignKey: 'VIEW_ID',
+    foreignKey: 'view_uuid',
     onDelete: 'CASCADE'
 });
 

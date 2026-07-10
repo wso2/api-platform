@@ -17,6 +17,9 @@
  */
 
 const logger = require('../config/logger');
+const auditDao = require('../dao/auditDao');
+const util = require('../utils/util');
+const constants = require('../utils/constants');
 
 /**
  * Middleware for audit logging user interactions
@@ -51,6 +54,9 @@ function auditMiddleware(options = {}) {
 
             // Create and log audit log entry
             const auditEntry = {
+                userId: req.user ? (req.user[constants.USER_ID] || 'unknown') : 'anonymous',
+                sessionId: req.sessionID || 'no-session',
+                ip: getClientIP(req),
                 requestBody: Object.keys(sanitizedBody).length > 0 ? sanitizedBody : "",
                 queryParams: Object.keys(req.query || {}).length > 0 ? req.query : "",
             };
@@ -106,12 +112,17 @@ function sanitizeObject(obj, sensitiveFields) {
  * Enhanced audit logging for specific actions
  * @param {string} action - Action being performed
  * @param {Object} req - Express request object
- * @param {Object} additionalData - Additional data to include in audit log
+ * @param {Object} additionalData - Additional data to include in audit log.
+ *   Include `resourceUuid`/`resourceType` to also persist a dp_audit row —
+ *   both those and an org uuid (req.orgId, or `orgUuid` for org-lifecycle
+ *   actions where req.orgId isn't populated, e.g. creating a brand new org)
+ *   are required, mirroring platform-api's audit table, which only tracks
+ *   resource-scoped mutations.
  */
 function logUserAction(action, req, additionalData = {}) {
-    const userId = req.user ? req.user.id || req.user.username || 'unknown' : 'anonymous';
+    const userId = req.user ? (req.user[constants.USER_ID] || 'unknown') : 'anonymous';
     const sessionId = req.sessionID || 'no-session';
-    
+
     const auditEntry = {
         action: action,
         userId: userId,
@@ -120,6 +131,15 @@ function logUserAction(action, req, additionalData = {}) {
         ...additionalData
     };
     logger.audit(`USER_ACTION: ${action} - User: ${userId}`, auditEntry);
+
+    // Best-effort DB persistence — never blocks or fails the caller's response,
+    // mirroring platform-api's ignored-error `_ = auditRepo.Record(...)` pattern.
+    const { resourceUuid, resourceType, orgUuid } = additionalData;
+    const auditOrgUuid = orgUuid || req.orgId;
+    if (resourceUuid && auditOrgUuid) {
+        auditDao.record(action, resourceUuid, resourceType, auditOrgUuid, util.resolveActor(req))
+            .catch((err) => logger.warn('Failed to persist dp_audit record', { error: err.message, action }));
+    }
 }
 
 module.exports = {

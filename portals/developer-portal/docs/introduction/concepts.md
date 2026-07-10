@@ -6,10 +6,10 @@ This page explains the key building blocks of the Developer Portal and how they 
 
 An **organization** is the top-level multi-tenant unit. Each organization gets its own branded space in the portal, and its APIs, applications, subscriptions, and users are isolated from other organizations.
 
-The organization name appears in every portal URL:
+The organization's handle appears in every portal URL:
 
 ```
-https://<host>/<orgName>/views/<viewName>
+https://<host>/<orgHandle>/views/<viewName>
 ```
 
 Users are automatically routed to their organization when they sign in, based on a claim in their identity provider (IdP) token.
@@ -21,7 +21,7 @@ A **view** is a filtered, branded subset of an organization's APIs. An organizat
 Each view has its own URL:
 
 ```
-https://<host>/<orgName>/views/<viewName>
+https://<host>/<orgHandle>/views/<viewName>
 ```
 
 Views can have their own layout (HTML/CSS template) for independent branding.
@@ -45,21 +45,17 @@ Each API can have its own landing page content, documentation sections, icon, an
 
 ## Subscription Plan
 
-A **subscription plan** (also called a subscription policy) is a named usage tier that controls how much of an API a developer can consume. Plans are attached to APIs during publishing, and developers choose a plan when subscribing.
+A **subscription plan** is a named usage tier that controls how much of an API a developer can consume. Plans are attached to APIs during publishing, and developers choose a plan when subscribing.
 
-Plans can define:
-- Rate limits (requests per minute/hour)
-- Quota (requests per day/month)
+Plans can define rate limits — a request count (or event count, for async APIs) per time window (minute, hour, day, or month).
 
-Example plans: `Free`, `Basic`, `Gold`, `Enterprise`.
-
-> **Note:** When `generateDefaultSubPolicies: true` is set in the config (the default), four standard plans (`Bronze`, `Silver`, `Gold`, `Unlimited`) are automatically created for every new organization.
+> **Note:** When `generateDefaultSubPlans: true` is set in the config (the default), five standard plans (`Bronze`, `Silver`, `Gold`, `Unlimited`, `AsyncUnlimited`) are automatically created for every new organization.
 
 ## Application
 
-An **application** is a logical container — representing a mobile app, web app, device, or script — that a developer creates in the portal. Applications are used to generate OAuth2 consumer key/secret pairs for OAuth2-secured APIs.
+An **application** is a logical container — representing a mobile app, web app, device, or script — that a developer creates in the portal. For OAuth2-secured APIs, an application holds the client ID(s) that link to OAuth applications created directly in a key manager; the portal never generates or stores consumer key/secret pairs.
 
-A developer can have multiple applications with independent OAuth2 credentials. For example, a developer might have a `MyApp-Production` application and a `MyApp-Staging` application with separate credentials.
+A developer can have multiple applications, each with independent OAuth2 client IDs. For example, a developer might have a `MyApp-Production` application and a `MyApp-Staging` application linked to separate OAuth applications in the key manager.
 
 > **Note:** Applications are not required for API subscriptions or API key generation. Subscriptions are made directly to an API, and API keys are bound to an API — not to an application.
 
@@ -79,15 +75,15 @@ API keys can be:
 - **Regenerated** — rotate the key (invalidates the old key)
 - **Revoked** — permanently invalidate the key
 
-Key lifecycle events (generate, regenerate, revoke) are delivered in real-time to the API Gateway via [webhooks](../administer/gateway-integration.md) so the gateway can enforce access immediately.
+Key lifecycle events (generate, regenerate, revoke) are published in real-time as [webhooks](../administer/webhook-integration.md) to your configured subscriber endpoint(s), so whatever system you have listening — typically a handler in front of your API Gateway — can enforce access immediately.
 
 ## OAuth2 Credentials
 
-For APIs that use OAuth2, developers generate a **consumer key** and **consumer secret** for their application. These credentials are used to obtain access tokens from the [key manager](../administer/key-manager-integration.md).
+For APIs that use OAuth2, developers create an OAuth application directly in a [key manager](../administer/key-manager-integration.md), then link the resulting **client ID** to an application in the portal. The portal never sees or stores the client secret — it's supplied by the developer each time they generate an access token, and the portal proxies that token request to the key manager.
 
 ## Key Manager
 
-A **key manager** is the OAuth2 authorization server configured for an organization. It issues consumer key/secret pairs and validates access tokens presented to the API Gateway. You can configure one or more key managers per organization.
+A **key manager** is an external OAuth2 authorization server configured for an organization. Developers create and own their OAuth applications there; the portal only stores a reference to the client ID and proxies `client_credentials` token requests to the key manager's token endpoint. You can configure one or more key managers per organization.
 
 ## API Workflow
 
@@ -97,6 +93,6 @@ Workflows appear in the **API Workflows** section of the portal and are also exp
 
 ## Webhook Subscriber
 
-A **webhook subscriber** is an external system — typically the API Gateway — that receives real-time event notifications from the portal. When a developer generates an API key or changes a subscription, the portal fires a signed HTTP POST to all configured subscribers.
+A **webhook subscriber** is an HTTPS endpoint you register to receive real-time event notifications from the portal. When a developer generates an API key or changes a subscription, the portal fires a signed HTTP POST to all matching subscribers; what the subscriber does with that event — e.g. propagating the change to an API Gateway — is entirely up to whatever you run behind that endpoint.
 
-See [Gateway Integration](../administer/gateway-integration.md) for configuration details.
+See [Webhook Integration](../administer/webhook-integration.md) for configuration details.

@@ -16,16 +16,10 @@
  * under the License.
  */
  -->
-<head>
-  <script src='/technical-scripts/add-application-form.js' defer></script>
+{{#pageScripts}}
   <script src='/technical-scripts/subscription.js' defer></script>
   <script src='/technical-scripts/subscription-modal.js' defer></script>
-</head>
-<main>
-    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
-    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode showApiWorkflowsNav=showApiWorkflowsNav }}
-    {{> api-listing }}
-    {{> create-app }}
-    {{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
-    {{> alert }}
-</main>
+{{/pageScripts}}
+{{> api-listing }}
+{{> warning modalTitle="Confirm" modalMessage="" modalFunction="" }}
+{{> alert }}

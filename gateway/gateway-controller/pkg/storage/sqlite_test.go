@@ -78,7 +78,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	var version int
 	err = storage.db.QueryRow("PRAGMA user_version").Scan(&version)
 	assert.NilError(t, err)
-	assert.Equal(t, version, 3) // Current schema version
+	assert.Equal(t, version, 4) // Current schema version
 
 	// Verify tables exist
 	tables := []string{
@@ -128,7 +128,7 @@ func TestSQLiteStorage_RejectsUnsupportedSchemaVersion(t *testing.T) {
 	// Reopen — should fail with unsupported version error
 	_, err = NewStorage(BackendConfig{Type: "sqlite", SQLitePath: dbPath}, logger)
 	assert.Assert(t, err != nil)
-	assert.ErrorContains(t, err, "failed to initialize schema: unsupported schema version 5, expected 3; delete the database to recreate")
+	assert.ErrorContains(t, err, "failed to initialize schema: unsupported schema version 5, expected 4; delete the database to recreate")
 }
 
 func TestSQLiteStorage_DeleteConfig_NotFound(t *testing.T) {
@@ -249,6 +249,58 @@ func TestSQLiteStorage_GetConfig_Success(t *testing.T) {
 	assert.Equal(t, retrievedConfig.DesiredState, originalConfig.DesiredState)
 }
 
+func TestSQLiteStorage_DataVersion_RoundTrip(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// A v1 RestAPI with no DataVersion set should be computed to "1.0" on write.
+	cfg := createTestStoredConfig()
+	cfg.DataVersion = ""
+	err := storage.SaveConfig(cfg)
+	assert.NilError(t, err)
+	assert.Equal(t, cfg.DataVersion, "1.0") // ensureDataVersion populated it in place
+
+	retrieved, err := storage.GetConfig(cfg.UUID)
+	assert.NilError(t, err)
+	assert.Equal(t, retrieved.DataVersion, "1.0")
+}
+
+func TestSQLiteStorage_DataVersion_PreservesExplicitValue(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// An explicitly-set DataVersion (e.g. a future minor bump) must not be overwritten.
+	cfg := createTestStoredConfig()
+	cfg.DataVersion = "1.3"
+	err := storage.SaveConfig(cfg)
+	assert.NilError(t, err)
+
+	retrieved, err := storage.GetConfig(cfg.UUID)
+	assert.NilError(t, err)
+	assert.Equal(t, retrieved.DataVersion, "1.3")
+}
+
+func TestSQLiteStorage_DataVersion_FallsBackWhenApiVersionMissing(t *testing.T) {
+	storage := setupTestStorage(t)
+	defer storage.db.Close()
+
+	// A config whose configuration carries no recognisable apiVersion falls back to "1.0".
+	cfg := createTestStoredConfig()
+	cfg.DataVersion = ""
+	cfg.Configuration = api.RestAPI{
+		Kind:     api.RestAPIKindRestApi,
+		Metadata: api.Metadata{Name: cfg.Handle},
+		Spec:     api.APIConfigData{DisplayName: cfg.DisplayName, Version: "v1.0.0", Context: "/fallback"},
+	}
+	cfg.SourceConfiguration = cfg.Configuration
+	err := storage.SaveConfig(cfg)
+	assert.NilError(t, err)
+
+	retrieved, err := storage.GetConfig(cfg.UUID)
+	assert.NilError(t, err)
+	assert.Equal(t, retrieved.DataVersion, "1.0")
+}
+
 func TestSQLiteStorage_GetConfig_JSONUnmarshalError(t *testing.T) {
 	storage := setupTestStorage(t)
 	defer storage.db.Close()
@@ -280,7 +332,7 @@ func TestSQLiteStorage_GetAllConfigs_Success(t *testing.T) {
 	config1 := createTestStoredConfig()
 	config1.UUID = "config1"
 	config1.Configuration = api.RestAPI{
-		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: "0000-test-api-1-0000-000000000000"},
 		Spec: api.APIConfigData{
@@ -293,7 +345,7 @@ func TestSQLiteStorage_GetAllConfigs_Success(t *testing.T) {
 	config2 := createTestStoredConfig()
 	config2.UUID = "config2"
 	config2.Configuration = api.RestAPI{
-		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: "test-api-2"},
 		Spec: api.APIConfigData{
@@ -376,7 +428,7 @@ func TestSQLiteStorage_GetAllConfigsByKind_Success(t *testing.T) {
 	apiConfig.UUID = "api-config"
 	apiConfig.Kind = "RestApi"
 	apiConfig.Configuration = api.RestAPI{
-		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: "test-api-kind"},
 		Spec: api.APIConfigData{
@@ -390,7 +442,7 @@ func TestSQLiteStorage_GetAllConfigsByKind_Success(t *testing.T) {
 	llmConfig.UUID = "llm-config"
 	llmConfig.Kind = "LlmProvider"
 	llmConfig.Configuration = api.RestAPI{
-		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: "test-llm-kind"},
 		Spec: api.APIConfigData{
@@ -400,7 +452,7 @@ func TestSQLiteStorage_GetAllConfigsByKind_Success(t *testing.T) {
 		},
 	}
 	llmConfig.SourceConfiguration = api.LLMProviderConfiguration{
-		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.LLMProviderConfigurationKindLlmProvider,
 		Metadata:   api.Metadata{Name: "test-llm-kind"},
 	}
@@ -1145,7 +1197,7 @@ func setupTestStorage(t *testing.T) *sqlStore {
 func createTestStoredConfig() *models.StoredConfig {
 	configCounter++
 	apiConfig := api.RestAPI{
-		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
 		Kind:       api.RestAPIKindRestApi,
 		Metadata:   api.Metadata{Name: fmt.Sprintf("test-api-%d", configCounter)},
 		Spec: api.APIConfigData{
@@ -1174,7 +1226,7 @@ func createTestLLMProviderTemplate() *models.StoredLLMProviderTemplate {
 	return &models.StoredLLMProviderTemplate{
 		UUID: fmt.Sprintf("test-template-%d", llmTemplateCounter),
 		Configuration: api.LLMProviderTemplate{
-			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
 			Metadata:   api.Metadata{Name: fmt.Sprintf("test-template-%d", llmTemplateCounter)},
 			Spec: api.LLMProviderTemplateData{
@@ -1308,6 +1360,64 @@ func TestSQLiteStorage_UpsertConfig(t *testing.T) {
 		assert.NilError(t, err)
 		assert.Equal(t, "dep-current", retrieved.DeploymentID)
 		assert.Equal(t, models.StateDeployed, retrieved.DesiredState)
+	})
+
+	t.Run("Update re-marks gateway-origin cp_sync_status pending and preserves cp_artifact_id", func(t *testing.T) {
+		// Regression for #2475: an update made while the DP->CP push is disabled must flip
+		// the row back to pending so the reconnect reconciliation re-syncs it. Previously
+		// cp_sync_status was written on INSERT only and left stale ("success") on update.
+		cfg := createTestStoredConfig() // Origin gateway_api
+		olderTime := time.Now().Add(-1 * time.Hour)
+		cfg.DeployedAt = &olderTime
+		cfg.CPSyncStatus = models.CPSyncStatusPending // cpSyncStatusForOrigin(gateway_api)
+
+		updated, err := storage.UpsertConfig(cfg)
+		assert.NilError(t, err)
+		assert.Assert(t, updated)
+
+		// Simulate a successful DP->CP push: status success, CP UUID recorded.
+		assert.NilError(t, storage.UpdateCPSyncStatus(cfg.UUID, "cp-uuid-123", models.CPSyncStatusSuccess, ""))
+
+		// A later update (newer deployed_at), as the deploy path builds it — carrying
+		// pending for a gateway-origin artifact.
+		newerTime := time.Now()
+		cfg.DeployedAt = &newerTime
+		cfg.DisplayName = "Updated Name"
+		cfg.CPSyncStatus = models.CPSyncStatusPending
+
+		updated, err = storage.UpsertConfig(cfg)
+		assert.NilError(t, err)
+		assert.Assert(t, updated)
+
+		retrieved, err := storage.GetConfig(cfg.UUID)
+		assert.NilError(t, err)
+		assert.Equal(t, models.CPSyncStatusPending, retrieved.CPSyncStatus)
+		// The CP UUID from the prior successful sync is preserved (not wiped by the update).
+		assert.Equal(t, "cp-uuid-123", retrieved.CPArtifactID)
+	})
+
+	t.Run("Update keeps cp_sync_status NULL for control-plane-origin", func(t *testing.T) {
+		cfg := createTestStoredConfig()
+		cfg.Origin = models.OriginControlPlane
+		cfg.CPSyncStatus = "" // cpSyncStatusForOrigin(control_plane) => NULL, never pushed back
+		olderTime := time.Now().Add(-1 * time.Hour)
+		cfg.DeployedAt = &olderTime
+
+		updated, err := storage.UpsertConfig(cfg)
+		assert.NilError(t, err)
+		assert.Assert(t, updated)
+
+		newerTime := time.Now()
+		cfg.DeployedAt = &newerTime
+		cfg.DisplayName = "Updated CP Name"
+
+		updated, err = storage.UpsertConfig(cfg)
+		assert.NilError(t, err)
+		assert.Assert(t, updated)
+
+		retrieved, err := storage.GetConfig(cfg.UUID)
+		assert.NilError(t, err)
+		assert.Equal(t, models.CPSyncStatus(""), retrieved.CPSyncStatus)
 	})
 
 	t.Run("Missing handle returns error", func(t *testing.T) {

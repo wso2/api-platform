@@ -90,7 +90,7 @@ func newMockStorageForDeletion() *mockStorageForDeletion {
 		secrets:        make(map[string]*models.Secret),
 		webhookSecrets: make(map[string]*models.WebhookSecret),
 		subscriptions:  make(map[string]*models.Subscription),
-		apiKeysByUUID: make(map[string]*models.APIKey),
+		apiKeysByUUID:  make(map[string]*models.APIKey),
 	}
 }
 
@@ -635,6 +635,17 @@ func (m *mockStorageForDeletion) GetPendingBottomUpAPIs() ([]*models.StoredConfi
 	return pending, nil
 }
 
+func (m *mockStorageForDeletion) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error) {
+	var pending []*models.StoredConfig
+	for _, config := range m.configs {
+		if config.Origin == models.OriginGatewayAPI &&
+			(config.CPSyncStatus == models.CPSyncStatusPending || config.CPSyncStatus == models.CPSyncStatusFailed) {
+			pending = append(pending, config)
+		}
+	}
+	return pending, nil
+}
+
 // Helper to create test API config for deletion tests
 func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 	// Create a complete API configuration so deletion flow can properly process it
@@ -647,7 +658,7 @@ func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 		Origin:       models.OriginGatewayAPI,
 		Kind:         "API",
 		Configuration: api.RestAPI{
-			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1,
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
 			Kind:       api.RestAPIKindRestApi,
 			Metadata: api.Metadata{
 				Name: apiID,
@@ -991,6 +1002,36 @@ func TestClient_findAPIConfig(t *testing.T) {
 		_, err := client.findAPIConfig("non-existent")
 		if !storage.IsNotFoundError(err) {
 			t.Errorf("Expected ErrNotFound for non-existent API, got: %v", err)
+		}
+	})
+
+	t.Run("Falls back to cp_artifact_id for bottom-up synced artifact", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+		store := storage.NewConfigStore()
+		db := newMockStorageForDeletion()
+
+		// A gateway-originated (bottom-up / DP->CP synced) artifact keeps its
+		// locally-generated UUID and records the control-plane UUID as
+		// cp_artifact_id. The control plane refers to it by that CP UUID.
+		localUUID := "local-dp-uuid"
+		cpUUID := "019f2628-c926-7f0d-9822-c22c0563be73"
+		cfg := createTestAPIConfigForDeletion(localUUID)
+		cfg.CPArtifactID = cpUUID
+		db.SaveConfig(cfg)
+
+		client := &Client{
+			logger: logger,
+			store:  store,
+			db:     db,
+		}
+
+		// Looking up by the CP UUID must resolve to the local row, not miss.
+		got, err := client.findAPIConfig(cpUUID)
+		if err != nil {
+			t.Fatalf("expected cp_artifact_id fallback to resolve, got error: %v", err)
+		}
+		if got.UUID != localUUID {
+			t.Errorf("expected local UUID %s, got %s", localUUID, got.UUID)
 		}
 	})
 

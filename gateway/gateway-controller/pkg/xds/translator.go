@@ -174,6 +174,14 @@ func (t *Translator) GetCertStore() *certstore.CertStore {
 	return t.certStore
 }
 
+// appendMCPResourcePathToBackend reports whether the legacy behaviour of appending the
+// "/mcp" resource path to the MCP backend upstream is enabled via configuration. When
+// enabled, MCP "/mcp" routes fall through to the standard rewrite (which preserves the
+// operation path on the upstream), matching the previous gateway version's behaviour.
+func (t *Translator) appendMCPResourcePathToBackend() bool {
+	return t.config != nil && t.config.MCP.AppendResourcePathToBackend
+}
+
 // SetTransformers sets the kind-to-transformer map used by TranslateConfigs.
 // When a transformer is available for a config's kind, the translator will
 // produce a RuntimeDeployConfig first, then convert it to Envoy resources.
@@ -228,6 +236,15 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	isWildcardPath := strings.HasSuffix(operationPath, "/*")
 	hasParams := strings.Contains(operationPath, "{")
 	isRootPath := operationPath == "/"
+
+	// For MCP proxies the "/mcp" path is only the gateway-facing endpoint marker; it must
+	// NOT be appended to the backend. The upstream is expected to be the full MCP endpoint
+	// URL, so the request is forwarded to exactly the configured upstream path. See below.
+	// When mcp.append_resource_path_to_backend is enabled, this special-casing is skipped so
+	// the route falls back to the legacy behaviour of appending "/mcp" to the upstream.
+	isMCPResourceRoute := rdc.Metadata.Kind == string(models.KindMcp) &&
+		operationPath == constants.MCP_RESOURCE_PATH &&
+		!t.appendMCPResourcePathToBackend()
 
 	var pathSpecifier *route.RouteMatch_SafeRegex
 	if isWildcardPath {
@@ -336,7 +353,23 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	contextWithVersion := strings.TrimSuffix(fullPath, operationPath)
 
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
-	if isRootPath {
+	if isMCPResourceRoute {
+		// MCP "/mcp" resource: the whole gateway-facing path ("<context>/mcp") maps to
+		// exactly the configured upstream URL path. We deliberately do NOT append "/mcp"
+		// to the backend, because some MCP backends serve at a different path (or root)
+		// and don't support a "/mcp" sub-path. When the upstream has no path, forward to
+		// "/".
+		mcpSubstitution := upstreamPath
+		if mcpSubstitution == "" {
+			mcpSubstitution = "/"
+		}
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
+			},
+			Substitution: mcpSubstitution,
+		}
+	} else if isRootPath {
 		// Root path ("/") matches both /ctx and /ctx/. Using a non-capturing pattern
 		// avoids an empty capture group when the trailing slash is absent, which would
 		// produce an empty rewritten path. Always normalize to upstreamPath+"/".
@@ -1769,6 +1802,16 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	// Check if path is the root path "/" (should match both /ctx and /ctx/)
 	isRootPath := path == "/"
 
+	// Check if this is the "/mcp" resource of an MCP proxy. For MCP proxies the "/mcp"
+	// path is only the gateway-facing endpoint marker; it must NOT be appended to the
+	// backend. The upstream is expected to be the full MCP endpoint URL, so the request
+	// is forwarded to exactly the configured upstream path. See below for the rewrite.
+	// When mcp.append_resource_path_to_backend is enabled, this special-casing is skipped so
+	// the route falls back to the legacy behaviour of appending "/mcp" to the upstream.
+	isMCPResourceRoute := apiKind == string(models.KindMcp) &&
+		path == constants.MCP_RESOURCE_PATH &&
+		!t.appendMCPResourcePathToBackend()
+
 	var pathSpecifier *route.RouteMatch_SafeRegex
 	if isWildcardPath {
 		// For wildcard paths, require end-of-string or a slash after the prefix to avoid
@@ -1891,7 +1934,23 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	// "/*" catch-all (empty literal prefix) and "/" root are unaffected. See issue #2071.
 	contextWithVersion := ConstructFullPath(context, apiVersion, "")
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
-	if isRootPath {
+	if isMCPResourceRoute {
+		// MCP "/mcp" resource: the whole gateway-facing path ("<context>/mcp") maps to
+		// exactly the configured upstream URL path. We deliberately do NOT append "/mcp"
+		// to the backend, because some MCP backends serve at a different path (or root)
+		// and don't support a "/mcp" sub-path. When the upstream has no path, forward to
+		// "/".
+		mcpSubstitution := upstreamPath
+		if mcpSubstitution == "" {
+			mcpSubstitution = "/"
+		}
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
+			},
+			Substitution: mcpSubstitution,
+		}
+	} else if isRootPath {
 		// Root path ("/") matches both /ctx and /ctx/. Using a non-capturing pattern
 		// avoids an empty capture group when the trailing slash is absent, which would
 		// produce an empty rewritten path. Always normalize to upstreamPath+"/".

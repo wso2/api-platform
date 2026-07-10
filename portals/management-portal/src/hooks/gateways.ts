@@ -77,7 +77,7 @@ export const useGatewaysApi = () => {
   const createGateway = useCallback(
     async (payload: CreateGatewayPayload): Promise<Gateway> => {
       const { token, baseUrl } = getApiConfig();
-      const response = await fetch(`${baseUrl}/api/v1/gateways`, {
+      const response = await fetch(`${baseUrl}/api/v0.9/gateways`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -109,7 +109,7 @@ export const useGatewaysApi = () => {
   const fetchGateways = useCallback(async (): Promise<Gateway[]> => {
     const { token, baseUrl } = getApiConfig();
 
-    const response = await fetch(`${baseUrl}/api/v1/gateways`, {
+    const response = await fetch(`${baseUrl}/api/v0.9/gateways`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -131,7 +131,7 @@ export const useGatewaysApi = () => {
     async (gatewayId: string): Promise<Gateway> => {
       const { token, baseUrl } = getApiConfig();
 
-      const response = await fetch(`${baseUrl}/api/v1/gateways/${gatewayId}`, {
+      const response = await fetch(`${baseUrl}/api/v0.9/gateways/${gatewayId}`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -155,7 +155,7 @@ export const useGatewaysApi = () => {
     async (gatewayId: string): Promise<void> => {
       const { token, baseUrl } = getApiConfig();
 
-      const response = await fetch(`${baseUrl}/api/v1/gateways/${gatewayId}`, {
+      const response = await fetch(`${baseUrl}/api/v0.9/gateways/${gatewayId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -178,7 +178,7 @@ export const useGatewaysApi = () => {
       const { token, baseUrl } = getApiConfig();
 
       const response = await fetch(
-        `${baseUrl}/api/v1/gateways/${payload.gatewayId}`,
+        `${baseUrl}/api/v0.9/gateways/${payload.gatewayId}`,
         {
           method: "DELETE",
           headers: {
@@ -204,7 +204,7 @@ export const useGatewaysApi = () => {
       const { token, baseUrl } = getApiConfig();
 
       const response = await fetch(
-        `${baseUrl}/api/v1/gateways/${gatewayId}/tokens`,
+        `${baseUrl}/api/v0.9/gateways/${gatewayId}/tokens`,
         {
           method: "POST",
           headers: {
@@ -230,7 +230,7 @@ export const useGatewaysApi = () => {
   const fetchGatewayStatuses = useCallback(
     async (gatewayId?: string): Promise<GatewayStatus[]> => {
       const { token, baseUrl } = getApiConfig();
-      const url = new URL(`${baseUrl}/api/v1/status/gateways`);
+      const url = new URL(`${baseUrl}/api/v0.9/gateways`);
       if (gatewayId) url.searchParams.set("gatewayId", gatewayId);
 
       const response = await fetch(url.toString(), {

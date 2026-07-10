@@ -15,7 +15,7 @@ import (
 
 // AdminAPIBasePath is the URL prefix under which the gateway-controller admin API
 // is served. It must stay in sync with `servers.url` in api/admin-openapi.yaml.
-const AdminAPIBasePath = "/api/admin/v0.9"
+const AdminAPIBasePath = "/api/admin/v1"
 
 type apiServer interface {
 	BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigDumpResponse, error)

@@ -33,7 +33,10 @@ const (
 ap gateway remove --name dev`
 )
 
-var removeName string
+var (
+	removeName     string
+	removePlatform string
+)
 
 var removeCmd = &cobra.Command{
 	Use:     RemoveCmdLiteral,
@@ -50,6 +53,7 @@ var removeCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(removeCmd, utils.FlagName, &removeName, "", "Name of the gateway to remove (required)")
+	utils.AddStringFlag(removeCmd, utils.FlagPlatform, &removePlatform, "", "Platform name")
 	removeCmd.MarkFlagRequired(utils.FlagName)
 }
 
@@ -61,10 +65,12 @@ func runRemoveCommand() error {
 	}
 
 	// Check if this is the active gateway
-	wasActive := cfg.ActiveGateway == removeName
+	resolvedPlatform := cfg.ResolvePlatform(removePlatform)
+	platform := cfg.Platforms[resolvedPlatform]
+	wasActive := platform != nil && platform.ActiveGateway == removeName
 
 	// Remove gateway
-	if err := cfg.RemoveGateway(removeName); err != nil {
+	if err := cfg.RemoveGatewayFromPlatform(resolvedPlatform, removeName); err != nil {
 		return err
 	}
 
@@ -77,8 +83,8 @@ func runRemoveCommand() error {
 
 	// Warn if the removed gateway was active
 	if wasActive {
-		fmt.Println("⚠️  Warning: You have removed the current active gateway.")
-		fmt.Println("   Use 'ap gateway use --name <name>' to set a new active gateway.")
+		fmt.Println("Warning: You have removed the current active gateway.")
+		fmt.Println("Use 'ap gateway use --display-name <name> --platform <platform>' to set a new active gateway.")
 	}
 
 	return nil

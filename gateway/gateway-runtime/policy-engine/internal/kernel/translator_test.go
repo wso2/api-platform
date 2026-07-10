@@ -85,6 +85,40 @@ func TestBuildHeaderMutationFromOps_SingleAppend(t *testing.T) {
 	assert.Equal(t, "x-multi", result.SetHeaders[0].Header.Key)
 }
 
+func TestAddAppendHeaderOps_ProducesAppendOps(t *testing.T) {
+	headerOps := map[string][]*headerOp{}
+	addAppendHeaderOps(headerOps, map[string][]string{
+		"X-Header-Add": {"add-appends-values"},
+	})
+
+	// Header name is lower-cased and the op is "append" (preserves existing values).
+	require.Len(t, headerOps["x-header-add"], 1)
+	assert.Equal(t, "append", headerOps["x-header-add"][0].opType)
+	assert.Equal(t, "add-appends-values", headerOps["x-header-add"][0].value)
+
+	// End-to-end: an append op next to a pre-existing client value must use
+	// APPEND_IF_EXISTS_OR_ADD so Envoy keeps the original value.
+	result := buildHeaderMutationFromOps(headerOps)
+	require.Len(t, result.SetHeaders, 1)
+	assert.Equal(t, corev3.HeaderValueOption_APPEND_IF_EXISTS_OR_ADD, result.SetHeaders[0].AppendAction)
+	// Envoy's ext_proc (through at least v1.38) only honors the deprecated `append`
+	// BoolValue, not append_action — without it the mutation is applied as overwrite.
+	require.NotNil(t, result.SetHeaders[0].Append)
+	assert.True(t, result.SetHeaders[0].Append.GetValue())
+}
+
+func TestAddAppendHeaderOps_MultipleValuesAndNilNoop(t *testing.T) {
+	headerOps := map[string][]*headerOp{}
+	// Multiple values for one header → one append op each.
+	addAppendHeaderOps(headerOps, map[string][]string{"X-Multi": {"a", "b"}})
+	require.Len(t, headerOps["x-multi"], 2)
+
+	// nil/empty map is a no-op (set/remove-only policies are unaffected).
+	before := len(headerOps)
+	addAppendHeaderOps(headerOps, nil)
+	assert.Equal(t, before, len(headerOps))
+}
+
 func TestBuildHeaderMutationFromOps_SetThenAppend(t *testing.T) {
 	ops := map[string][]*headerOp{
 		"x-header": {
@@ -99,6 +133,11 @@ func TestBuildHeaderMutationFromOps_SetThenAppend(t *testing.T) {
 	require.NotNil(t, result)
 	// Should have set + 2 appends = 3 entries
 	require.Len(t, result.SetHeaders, 3)
+	// The set entry must replace (deprecated `append` unset/false); the append
+	// entries must carry append=true for ext_proc to preserve prior values.
+	assert.False(t, result.SetHeaders[0].Append.GetValue())
+	assert.True(t, result.SetHeaders[1].Append.GetValue())
+	assert.True(t, result.SetHeaders[2].Append.GetValue())
 }
 
 func TestBuildHeaderMutationFromOps_SetAfterSet(t *testing.T) {

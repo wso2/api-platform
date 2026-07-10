@@ -29,7 +29,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.2'
+          go-version: '1.26.5'
           cache-dependency-path: '**/go.sum'
 
       - name: Set up QEMU
@@ -59,9 +59,7 @@ jobs:
           IMG=${{ env.DOCKER_REGISTRY }}/gateway-operator:${{ env.VERSION }} make docker-build
 
       - name: Build Mock JWKS image
-        run: |
-          cd tests/mock-servers/mock-jwks
-          docker build -t ${{ env.DOCKER_REGISTRY }}/mock-jwks:${{ env.VERSION }} .
+        run: make -C tests/mock-servers build MOCKS=mock-jwks DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }}
 
       - name: Load images into Kind
         run: |
@@ -323,9 +321,10 @@ jobs:
 
                     # Storage configuration
                     storage:
-                      # Storage type: "sqlite", "postgres" (future), or "memory"
+                      # Storage type: "sqlite", "postgres", "sqlserver", or "memory"
                       # - sqlite: Use SQLite embedded database for persistence
-                      # - postgres: Use PostgreSQL database for persistence (future support)
+                      # - postgres: Use PostgreSQL database for persistence
+                      # - sqlserver: Use SQL Server database for persistence
                       # - memory: No persistent storage, all configs lost on restart (useful for testing)
                       type: sqlite
 
@@ -690,7 +689,7 @@ jobs:
                     priorityClassName: ""
                     livenessProbe:
                       httpGet:
-                        path: /api/admin/v0.9/health
+                        path: /api/admin/v1/health
                         port: admin
                       initialDelaySeconds: 10
                       periodSeconds: 10
@@ -698,7 +697,7 @@ jobs:
                       failureThreshold: 3
                     readinessProbe:
                       httpGet:
-                        path: /api/admin/v0.9/health
+                        path: /api/admin/v1/health
                         port: admin
                       initialDelaySeconds: 5
                       periodSeconds: 5
@@ -1114,7 +1113,7 @@ jobs:
           API_READY=""
           for i in $(seq 1 60); do
             API_STATUS=$(curl -s -o /tmp/subscription-precheck-body.txt -w "%{http_code}" -u admin:admin \
-              "http://localhost:9090/api/management/v0.9/rest-apis/hello-sub-api" || true)
+              "http://localhost:9090/api/management/v1/rest-apis/hello-sub-api" || true)
             if [ "${API_STATUS}" = "200" ]; then
               API_READY="yes"
               echo "hello-sub-api is resolvable via management API"
@@ -1328,7 +1327,7 @@ jobs:
           PF_PID=$!
           sleep 5
 
-          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9092/api/admin/v0.9/health)
+          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9092/api/admin/v1/health)
           echo "Controller Health Status: $HEALTH_STATUS"
           
           kill $PF_PID || true

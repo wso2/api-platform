@@ -15,34 +15,32 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const eventDao = require('../dao/event');
+const eventDao = require('../dao/eventDao');
 const logger = require('../config/logger');
 
 function formatDelivery(d) {
     return {
-        deliveryId: d.DELIVERY_ID,
-        subscriberId: d.SUBSCRIBER_ID,
-        targetUrl: d.TARGET_URL || null,
-        status: d.STATUS,
-        attemptCount: d.ATTEMPT_COUNT,
-        lastHttpStatus: d.LAST_HTTP_STATUS || null,
-        lastError: d.LAST_ERROR || null,
-        lastAttemptAt: d.LAST_ATTEMPT_AT || null,
-        deliveredAt: d.DELIVERED_AT || null,
+        deliveryId: d.uuid,
+        subscriberId: d.subscriber_id,
+        targetUrl: d.target_url || null,
+        status: d.status,
+        lastHttpStatus: d.last_http_status || null,
+        lastError: d.last_error || null,
+        lastAttemptAt: d.last_attempt_at || null,
+        deliveredAt: d.delivered_at || null,
     };
 }
 
 function formatEvent(row) {
-    const deliveries = (row.DP_EVENT_DELIVERIES || []).map(formatDelivery);
+    const deliveries = (row.dp_event_deliveries || []).map(formatDelivery);
     return {
-        eventId: row.EVENT_ID,
-        eventType: row.EVENT_TYPE,
-        orgId: row.ORG_ID,
-        gatewayType: row.GATEWAY_TYPE || null,
-        aggregateType: row.AGGREGATE_TYPE,
-        aggregateId: row.AGGREGATE_ID,
-        status: row.STATUS,
-        occurredAt: row.OCCURRED_AT,
+        eventId: row.uuid,
+        eventType: row.type,
+        orgId: row.org_uuid,
+        aggregateType: row.aggregate_type,
+        aggregateId: row.aggregate_uuid,
+        status: row.status,
+        occurredAt: row.occurred_at,
         deliveries,
     };
 }
@@ -53,18 +51,23 @@ function formatEvent(row) {
  */
 async function listEvents(req, res) {
     try {
-        const { orgId } = req.params;
-        const { status, limit = '50', offset = '0' } = req.query;
-        const result = await eventDao.listEvents({
+        const orgId = req.orgId;
+        const { status, limit = '20', offset = '0' } = req.query;
+        const parsedLimit = Math.max(1, Math.min(parseInt(limit, 10) || 20, 100));
+        const parsedOffset = Math.max(0, parseInt(offset, 10) || 0);
+        const result = await eventDao.list({
             orgId,
             status: status || undefined,
-            limit: Math.min(parseInt(limit, 10) || 50, 200),
-            offset: parseInt(offset, 10) || 0
+            limit: parsedLimit,
+            offset: parsedOffset,
         });
-        res.json({ total: result.count, events: result.rows.map(formatEvent) });
+        res.json({
+            list: result.rows.map(formatEvent),
+            pagination: { total: result.count, limit: parsedLimit, offset: parsedOffset },
+        });
     } catch (err) {
-        logger.error('[webhookAdmin] listEvents error', { error: err.message });
-        res.status(500).json({ message: err.message });
+        logger.error('Failed to list events', { error: err.message });
+        res.status(500).json({ message: 'Failed to list events' });
     }
 }
 
@@ -73,32 +76,15 @@ async function listEvents(req, res) {
  */
 async function getEvent(req, res) {
     try {
-        const event = await eventDao.getEvent(req.params.eventId);
-        if (!event || event.ORG_ID !== req.params.orgId) {
+        const event = await eventDao.get(req.params.eventId);
+        if (!event || event.org_uuid !== req.orgId) {
             return res.status(404).json({ message: 'Event not found' });
         }
         res.json(formatEvent(event));
     } catch (err) {
-        logger.error('[webhookAdmin] getEvent error', { error: err.message });
-        res.status(500).json({ message: err.message });
+        logger.error('Failed to get event', { error: err.message });
+        res.status(500).json({ message: 'Failed to get event' });
     }
 }
 
-/**
- * POST /organizations/:orgId/admin/deliveries/:deliveryId/retry
- * Resets a DEAD_LETTERED / FAILED delivery to PENDING so the worker retries it.
- * Note: for apikey.* events the encrypted_key was already stored in the delivery row,
- * so replay works — only new generate/regenerate events expose a new plaintext key.
- */
-async function retryDelivery(req, res) {
-    try {
-        const ok = await eventDao.retryDelivery(req.params.deliveryId, req.params.orgId);
-        if (!ok) return res.status(404).json({ message: 'Delivery not found or not in a retryable state' });
-        res.json({ message: 'Delivery queued for retry' });
-    } catch (err) {
-        logger.error('[webhookAdmin] retryDelivery error', { error: err.message });
-        res.status(500).json({ message: err.message });
-    }
-}
-
-module.exports = { listEvents, getEvent, retryDelivery };
+module.exports = { listEvents, getEvent };

@@ -20,7 +20,7 @@
 # Uses event-gateway-builder to compile the event-gateway binary with embedded policies
 
 # Stage 1: Builder Base — compile the event-gateway-builder tool
-FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS builder-base
 ARG BUILDARCH
 ARG VERSION=unknown
 ARG GIT_COMMIT=unknown
@@ -62,6 +62,9 @@ COPY --from=sdk-core go.mod /api-platform/sdk/core/
 # Copy analytics go.mod for policy-engine replace directive
 COPY --from=analytics go.mod /api-platform/gateway/system-policies/analytics/
 
+# Copy httpkit go.mod for common's replace directive
+COPY --from=httpkit go.mod /api-platform/httpkit/
+
 # Download common dependencies (cached by go.mod/go.sum changes)
 COPY --from=common go.mod go.sum /api-platform/common/
 WORKDIR /api-platform/common
@@ -83,6 +86,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Copy all source files
 COPY . /api-platform/event-gateway/gateway-runtime/
 COPY --from=sdk-core . /api-platform/sdk/core
+COPY --from=httpkit . /api-platform/httpkit
 COPY --from=common . /api-platform/common
 COPY --from=analytics . /api-platform/gateway/system-policies/analytics
 COPY --from=policy-engine . /api-platform/gateway/gateway-runtime/policy-engine
@@ -102,7 +106,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -out-dir /api-platform/output
 
 # Stage 3: Minimal runtime image
-FROM alpine:3.22
+FROM alpine:3.24
 
 ARG VERSION=unknown
 

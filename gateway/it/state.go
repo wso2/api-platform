@@ -34,20 +34,27 @@ type AuthUser struct {
 
 // Config holds configuration for the test suite
 type Config struct {
-	GatewayControllerURL       string
-	GatewayControllerAdminURL  string
-	RouterURL                  string
-	PolicyEngineURL            string
-	SampleBackendURL           string
-	EchoBackendURL             string
-	MockJWKSURL                string
-	MockAzureContentSafetyURL  string
-	MockAWSBedrockGuardrailURL string
-	MockEmbeddingProviderURL   string
-	MockPlatformAPIURL         string
-	RedisURL                   string
-	HTTPTimeout                time.Duration
-	Users                      map[string]AuthUser
+	GatewayControllerURL      string
+	GatewayControllerAdminURL string
+	// PolicySnapshotControllerAdminURL is the admin base URL probed for the
+	// policy-chain xDS-sync version. It targets the controller that feeds xDS to
+	// gateway-runtime, which in the two-controller Postgres topology is
+	// gateway-controller-xds rather than the management controller. When
+	// empty, waitForPolicySnapshotSync falls back to GatewayControllerAdminURL
+	// (single-controller topologies and unit tests).
+	PolicySnapshotControllerAdminURL string
+	RouterURL                        string
+	PolicyEngineURL                  string
+	SampleBackendURL                 string
+	EchoBackendURL                   string
+	MockJWKSURL                      string
+	MockAzureContentSafetyURL        string
+	MockAWSBedrockGuardrailURL       string
+	MockEmbeddingProviderURL         string
+	MockPlatformAPIURL               string
+	RedisURL                         string
+	HTTPTimeout                      time.Duration
+	Users                            map[string]AuthUser
 }
 
 // MockPlatformAPIPort is the port for mock-platform-api inject endpoint
@@ -71,12 +78,12 @@ const RedisPort = "6379"
 // GatewayManagementAPIBasePath is the URL prefix under which the gateway-controller
 // management API is served. Must stay in sync with `servers.url` in
 // gateway/gateway-controller/api/management-openapi.yaml.
-const GatewayManagementAPIBasePath = "/api/management/v0.9"
+const GatewayManagementAPIBasePath = "/api/management/v1"
 
 // GatewayAdminAPIBasePath is the URL prefix under which the gateway-controller
 // admin API is served. Must stay in sync with `servers.url` in
 // gateway/gateway-controller/api/admin-openapi.yaml.
-const GatewayAdminAPIBasePath = "/api/admin/v0.9"
+const GatewayAdminAPIBasePath = "/api/admin/v1"
 
 // DefaultConfig returns the default test configuration
 func DefaultConfig() *Config {

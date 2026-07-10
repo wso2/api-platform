@@ -49,12 +49,12 @@ function hasBearerAuthorization(req) {
 }
 
 function hasConfiguredApiKey(req) {
-    if (!config.advanced?.apiKey?.enabled || !config.advanced.apiKey.keyType) {
+    if (!config.security?.serviceApiKey?.enabled || !config.security.serviceApiKey.headerName || !config.security.serviceApiKey.value) {
         return false;
     }
-    const keyType = config.advanced.apiKey.keyType;
-    const lower = keyType.toLowerCase();
-    return Boolean(req.headers[lower] || req.headers[keyType]);
+    const keyType = config.security.serviceApiKey.headerName;
+    const sentKey = req.headers[keyType.toLowerCase()] || req.headers[keyType];
+    return sentKey === config.security.serviceApiKey.value;
 }
 
 function hasMTLSClient(req) {

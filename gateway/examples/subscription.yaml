@@ -13,7 +13,7 @@
 # stored in the CR; the operator forwards it to the gateway which only
 # persists its hash. The gateway-issued UUID is recorded in .status.id and
 # used for subsequent update/delete calls.
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Subscription
 metadata:
   name: petstore-acme-bronze

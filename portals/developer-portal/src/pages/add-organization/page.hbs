@@ -1,7 +1,9 @@
-<head>
-    <link rel="stylesheet" href="/technical-styles/settings.css">
-     <script src='/technical-scripts/create-org.js' defer></script>
-</head>
+{{#pageHead}}
+<link rel="stylesheet" href="/technical-styles/settings.css">
+{{/pageHead}}
+{{#pageScripts}}
+<script src='/technical-scripts/create-org.js' defer></script>
+{{/pageScripts}}
 <section>
     {{> add-organization-form }}
     {{> alert }}

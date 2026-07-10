@@ -30,6 +30,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check tag does not already exist
+        run: |
+          TAG="helm-gateway-operator-${{ inputs.version }}"
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
+            echo "::error::Tag '$TAG' already exists. Bump the version or delete the tag first."
+            exit 1
+          fi
+          echo "Tag '$TAG' is free. Proceeding."
+
+      - name: Validate image tag matches appVersion
+        working-directory: ${{ env.CHART_PATH }}
+        run: |
+          APP_VERSION="${{ inputs.appVersion }}"
+          OPERATOR_TAG=$(yq '.image.tag' values.yaml)
+
+          echo "App Version: $APP_VERSION"
+          echo "Operator image tag: $OPERATOR_TAG"
+
+          if [ "$OPERATOR_TAG" != "$APP_VERSION" ]; then
+            echo "::error::gateway-operator image tag '$OPERATOR_TAG' does not match appVersion '$APP_VERSION' in values.yaml"
+            echo "::error::Please update the image tag in ${{ env.CHART_PATH }}/values.yaml to match the appVersion '$APP_VERSION' before releasing."
+            exit 1
+          fi
+
+          echo "✅ Operator image tag matches appVersion '$APP_VERSION'"
+
       - name: Install Helm
         uses: azure/setup-helm@v4
         with:

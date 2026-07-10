@@ -1,0 +1,53 @@
+{
+  "name": "@wso2-enterprise/ai-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test:e2e": "CYPRESS_BASE_URL=${CYPRESS_BASE_URL:-https://host.docker.internal:5380} docker run --rm --add-host=host.docker.internal:host-gateway -v \"$(pwd):/e2e\" -w /e2e -e CYPRESS_BASE_URL cypress/included:13.17.0 cypress run --headless --browser electron --config-file cypress.config.js",
+    "test:e2e:local": "cypress run --headless --config-file cypress.config.js",
+    "test:e2e:open": "CYPRESS_BASE_URL=${CYPRESS_BASE_URL:-https://localhost:5380} cypress open --e2e --config-file cypress.config.js"
+  },
+  "dependencies": {
+    "@babel/runtime-corejs3": "7.29.0",
+    "@emotion/react": "11.14.0",
+    "@emotion/styled": "11.14.1",
+    "@monaco-editor/react": "4.7.0",
+    "@mui/material": "7.3.4",
+    "@mui/system": "7.3.8",
+    "@mui/x-charts": "8.14.0",
+    "@mui/x-data-grid": "8.27.1",
+    "@mui/x-date-pickers": "8.27.0",
+    "@mui/x-tree-view": "8.27.1",
+    "@wso2/oxygen-ui": "0.5.0",
+    "@wso2/oxygen-ui-icons-react": "0.5.0",
+    "date-fns": "4.1.0",
+    "install": "0.13.0",
+    "js-yaml": "4.1.1",
+    "lucide-react": "0.545.0",
+    "moesif-browser-js": "1.8.13",
+    "monaco-editor": "0.55.1",
+    "oidc-client-ts": "^3.5.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-intl": "8.1.3",
+    "react-oidc-context": "^3.3.1",
+    "react-router-dom": "6.30.3",
+    "swagger-ui-react": "5.32.6",
+    "yaml": "2.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.33",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-basic-ssl": "1.2.0",
+    "@vitejs/plugin-react": "5.1.4",
+    "cypress": "13.17.0",
+    "typescript": "5.9.3",
+    "vite": "5.4.21"
+  }
+}

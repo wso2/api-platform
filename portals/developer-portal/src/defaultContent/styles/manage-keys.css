@@ -20,7 +20,7 @@
 
   .keys-section .key-btn {
     width: 100%;
-    padding: 14px 0;
+    padding: 0.875rem 0;
     text-align: center;
     font-weight: 500;
     background: var(--secondary-bg-color);
@@ -28,8 +28,8 @@
     border-bottom: none;
     color: var(--main-text-color);
     border-radius: 0;
-    border-top-left-radius: 12px;
-    border-top-right-radius: 12px;
+    border-top-left-radius: 0.75rem;
+    border-top-right-radius: 0.75rem;
     position: relative;
     transition: all 0.2s ease;
     opacity: 0.7;
@@ -48,8 +48,8 @@
   .keys-section .key-btn.active {
     background: var(--main-bg-color);
     z-index: 3;
-    border-top-left-radius: 12px;
-    border-top-right-radius: 12px;
+    border-top-left-radius: 0.75rem;
+    border-top-right-radius: 0.75rem;
     border: 1px solid var(--bs-gray-200);
     border-bottom: none;
     color: var(--primary-main-color);
@@ -62,9 +62,9 @@
 
   .keys-section #keysTabContent {
     background: var(--main-bg-color);
-    padding: 24px;
+    padding: 1.5rem;
     border: 1px solid var(--bs-gray-200);
-    border-radius: 0 0 12px 12px;
+    border-radius: 0 0 0.75rem 0.75rem;
     box-shadow:
       -4px 0 8px var(--bs-gray-200),
        4px 0 8px var(--bs-gray-200),
@@ -72,7 +72,7 @@
   }
 
 .keys-section .key-action-buttons-row {
-    gap: 8px;
+    gap: 0.5rem;
 }
 
 /* Accordion Headers - Changed from primary color to neutral with subtle accent */
@@ -151,7 +151,7 @@
 }
 
 .keys-section .app-table-container {
-    border-radius: 8px;
+    border-radius: 0.5rem;
     overflow: hidden;
     border: 1px solid var(--bs-gray-300);
     background: var(--secondary-bg-color);
@@ -202,7 +202,7 @@
 
 .keys-section button[id^="generateKeyBtn-"][data-cyid^="generateKey-"]:hover {
     background-color: var(--primary-light-color) !important;
-    transform: translateY(-1px) !important;
+    transform: translateY(-0.0625rem) !important;
 }
 
 .keys-section button[id^="generateKeyBtn-"][data-cyid^="generateKey-"]:active {
@@ -215,7 +215,7 @@
 
 /* API Key Name Modal - already specific enough, but add scoping for consistency */
 .api-key-name-modal-dialog {
-    max-width: 480px;
+    max-width: 30rem;
     width: 100%;
 }
 
@@ -292,7 +292,7 @@
 }
 
 .keys-section .password-toggle-container .form-control {
-    padding-right: 80px;
+    padding-right: 5rem;
 }
 
 .keys-section .password-toggle-btn,
@@ -315,7 +315,7 @@
 /* Improved spacing and visual hierarchy */
 .keys-section .accordion-item {
     border: 1px solid var(--bs-gray-300);
-    border-radius: 8px;
+    border-radius: 0.5rem;
     overflow: hidden;
     transition: border-color 0.2s ease;
 }
@@ -339,7 +339,7 @@
 
 /* Standardize API key action button sizes and alignment */
 .keys-section .api-key-actions button {
-    min-width: 130px;
+    min-width: 8.125rem;
     /* padding: 0.425rem 1rem !important; */
     /* font-size: 0.875rem; */
     text-align: center;

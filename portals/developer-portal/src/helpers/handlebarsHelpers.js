@@ -34,7 +34,7 @@ const helpers = {
         return array.filter(item => item && (shouldInclude ? item[property] === value : item[property] !== value));
     },
     contains: (array, value) => array && array.includes(value),
-    getSubIDs: (subAPIs) => JSON.stringify(subAPIs.map(api => api.subID)),
+    getSubIDs: (subAPIs) => JSON.stringify(subAPIs.map(api => api.subId)),
     every: function (array, key, options) {
         if (!Array.isArray(array)) return options.inverse(this);
         return array.every(item => item[key]);
@@ -44,8 +44,23 @@ const helpers = {
         return array.some(item => item[key]);
     },
 
+    // URL helpers
+    urlEncode: (value) => encodeURIComponent(value ?? ''),
+
     // JSON helpers
     json: (context) => JSON.stringify(context ?? null),
+    // For embedding JSON inside HTML double-quoted attributes
+    jsonAttr: (context) => new Handlebars.SafeString(Handlebars.escapeExpression(JSON.stringify(context ?? null))),
+
+    // Subscription plan limit display helpers
+    limitTypeLabel: (type) => {
+        const map = { REQUEST_COUNT: 'req', EVENT_COUNT: 'events', BANDWIDTH: 'bytes', TOTAL_TOKEN_COUNT: 'tokens' };
+        return map[String(type)] || String(type || '').toLowerCase().replace(/_/g, ' ');
+    },
+    timeUnitLabel: (unit) => {
+        const map = { MINUTE: 'min', HOUR: 'hr', DAY: 'day', MONTH: 'mo' };
+        return map[String(unit)] || String(unit || '').toLowerCase();
+    },
     jsonBeautify: (context) => typeof context === 'string' ? context : JSON.stringify(context ?? {}, null, 2),
     jsonSafeSubscriptions: function (context) {
         try {
@@ -107,10 +122,21 @@ const helpers = {
 
     // Display / formatting helpers
     isMiddle: (index, length) => index === Math.floor(length / 2),
-    isFederatedAPI: (gatewayVendor) => typeof gatewayVendor === 'string' && constants.FEDERATED_GATEWAY_VENDORS.includes(gatewayVendor),
     maskToken: (token) => (!token || token.length <= 4) ? '****' : '****' + token.slice(-4),
-    isCurrentPlan: (policyName, subs) => Array.isArray(subs) && !!policyName && subs.some(s => s.subscriptionPlanName === policyName),
+    isCurrentPlan: (planName, subs) => Array.isArray(subs) && !!planName && subs.some(s => (s.policyName || s.subscriptionPlanName) === planName),
     currentYear: () => new Date().getFullYear(),
+    pageHead: function(options) {
+        if (this.slots) {
+            this.slots.head = (this.slots.head || '') + options.fn(this);
+        }
+        return '';
+    },
+    pageScripts: function(options) {
+        if (this.slots) {
+            this.slots.scripts = (this.slots.scripts || '') + options.fn(this);
+        }
+        return '';
+    },
     formatExpiresAt:  function (value) {
         // Accepts ISO-8601 strings, Unix seconds, or Unix milliseconds
         if (value == null || value === '') return '';

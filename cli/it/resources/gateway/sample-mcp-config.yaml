@@ -17,7 +17,7 @@
 # --------------------------------------------------------------------
 
 # Sample MCP configuration for CLI integration tests
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Mcp
 metadata:
   name: test-mcp-v1.0

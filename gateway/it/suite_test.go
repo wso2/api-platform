@@ -138,11 +138,15 @@ func getFeaturePaths() []string {
 		"features/subscription-validation.feature",
 		"features/subscription-analytics.feature",
 		"features/llm-cost-based-ratelimit.feature",
+		"features/llm-provider-wide-ratelimit.feature",
 		"features/log-message.feature",
 		"features/route-path-matching.feature",
 		"features/http-method-case.feature",
 		"features/secrets.feature",
 		"features/template-functions.feature",
+		// Runs late: it restarts the gateway-controller (reject/reconnect scenario), so keep it
+		// after features that assume an uninterrupted controller. Verifies the DP->CP artifact push.
+		"features/dp-to-cp.feature",
 		// These tests require different gateway configurations and are not included in the default suite run.
 		// "features/vhost-routing-single.feature", // cd it && make test-vhosts-single
 		// "features/vhost-routing-multi.feature", // cd it && make test-vhosts-multi
@@ -199,10 +203,10 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 		}
 
 		// Create and start compose manager
-		composeFile := getComposeFilePath()
-		log.Printf("Using compose file: %s", composeFile)
+		composeFiles := getComposeFilePaths()
+		log.Printf("Using compose file(s): %s", strings.Join(composeFiles, ", "))
 		var err error
-		composeManager, err = NewComposeManager(composeFile)
+		composeManager, err = NewComposeManager(composeFiles...)
 		if err != nil {
 			log.Fatalf("Failed to create compose manager: %v", err)
 		}
@@ -213,6 +217,17 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 
 		// Initialize global test state
 		testState = NewTestState()
+
+		// In the two-controller Postgres topology, gateway-runtime is fed xDS by
+		// gateway-controller-xds, so the policy-snapshot version probe must
+		// target that controller's admin API (host port 9093) rather than the
+		// management controller. The Makefile sets IT_GATEWAY_CONTROLLER_HA
+		// for that topology; otherwise this is empty and waitForPolicySnapshotSync
+		// falls back to the management controller (single-controller, unit tests).
+		if url := policySnapshotControllerAdminURL(); url != "" {
+			testState.Config.PolicySnapshotControllerAdminURL = url
+			log.Printf("%s=true; policy-snapshot probe target: %s", envRuntimeControllerXDS, url)
+		}
 
 		// Initialize common step handlers
 		httpSteps = steps.NewHTTPSteps(testState.HTTPClient, map[string]string{
@@ -334,6 +349,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterSubscriptionSteps(ctx, testState, httpSteps)
 		RegisterSecretSteps(ctx, testState, httpSteps)
 		RegisterTemplateSteps(ctx, testState, httpSteps)
+		RegisterDPToCPSteps(ctx, testState)
 	}
 
 	// Register common HTTP and assertion steps
@@ -345,29 +361,27 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	}
 }
 
-// getComposeFilePath returns the path to docker-compose.test.yaml
-func getComposeFilePath() string {
-	// Try to find compose file relative to this test file
-	// When running tests, the working directory is the package directory
-	candidates := []string{
-		"docker-compose.test.yaml",
-		filepath.Join(".", "docker-compose.test.yaml"),
-	}
-
-	// Also check COMPOSE_FILE env var
-	if envFile := os.Getenv("COMPOSE_FILE"); envFile != "" {
-		candidates = append([]string{envFile}, candidates...)
-	}
-
-	for _, candidate := range candidates {
-		if _, err := os.Stat(candidate); err == nil {
-			absPath, _ := filepath.Abs(candidate)
-			return absPath
+// getComposeFilePaths returns the compose file(s) for the test stack. COMPOSE_FILE may
+// name a single file or several separated by the OS path-list separator (":") — mirroring
+// docker compose's own COMPOSE_FILE handling — so a base stack (docker-compose.test.yaml)
+// can be layered with a small override file (e.g. docker-compose.test.dp-nosync.override.yaml)
+// that only changes a service's env. Falls back to the default single file.
+func getComposeFilePaths() []string {
+	if envFile := strings.TrimSpace(os.Getenv("COMPOSE_FILE")); envFile != "" {
+		var files []string
+		for _, p := range strings.Split(envFile, string(os.PathListSeparator)) {
+			if p = strings.TrimSpace(p); p != "" {
+				files = append(files, p)
+			}
+		}
+		if len(files) > 0 {
+			return files
 		}
 	}
 
-	// Default to relative path
-	return "docker-compose.test.yaml"
+	// Default: the base compose file. NewComposeManager resolves it to an absolute
+	// path (relative to the package working directory) and validates that it exists.
+	return []string{"docker-compose.test.yaml"}
 }
 
 // checkColimaAndSetupEnv detects if colima is used and sets up environment variables

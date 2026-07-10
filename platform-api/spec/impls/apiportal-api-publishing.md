@@ -25,13 +25,13 @@ Environment variables in `config/config.go`:
 
 ### 1. Publish API to API Portal
 
-**Endpoint**: `POST /api/v1/apis/{apiId}/api-portals/publish`
+**Endpoint**: `POST /api/v0.9/apis/{apiId}/api-portals/publish`
 
 **Description**: Publishes an API to the API portal. If the API already exists, it will be unpublished and republished to update metadata.
 
 **Request**:
 ```bash
-curl --location --request POST 'https://localhost:9243/api/v1/apis/1f01c9b2-440b-4cfe-bf48-f8f168062df4/api-portals/publish' \
+curl --location --request POST 'https://localhost:9243/api/v0.9/apis/1f01c9b2-440b-4cfe-bf48-f8f168062df4/api-portals/publish' \
 --header 'Authorization: Bearer <token>'
 ```
 
@@ -54,13 +54,13 @@ curl --location --request POST 'https://localhost:9243/api/v1/apis/1f01c9b2-440b
 
 ### 2. Unpublish API from API Portal
 
-**Endpoint**: `POST /api/v1/apis/{apiId}/api-portals/unpublish`
+**Endpoint**: `POST /api/v0.9/apis/{apiId}/api-portals/unpublish`
 
 **Description**: Removes an API from the API portal.
 
 **Request**:
 ```bash
-curl --location --request POST 'https://localhost:9243/api/v1/apis/1f01c9b2-440b-4cfe-bf48-f8f168062df4/api-portals/unpublish' \
+curl --location --request POST 'https://localhost:9243/api/v0.9/apis/1f01c9b2-440b-4cfe-bf48-f8f168062df4/api-portals/unpublish' \
 --header 'Authorization: Bearer <token>' 
 ```
 

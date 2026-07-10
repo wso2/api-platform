@@ -26,10 +26,16 @@ At least one of `web/` or `docs/` must be present in the ZIP.
 
 ## Upload API Content
 
+> **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
+> ```bash
+> TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
+>   -d "username=admin&password=admin" | jq -r .token)
+> ```
+
 ```bash
-curl -X POST \
-  "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
-  -u admin:admin \
+curl -k -X POST \
+  "https://localhost:3000/api/v0.9/apis/{apiId}/assets" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "apiContent=@my-api-content.zip" \
   -F 'imageMetadata={"api-icon":"api-icon.png"}'
 ```
@@ -37,9 +43,9 @@ curl -X POST \
 To update existing content, use `PUT`:
 
 ```bash
-curl -X PUT \
-  "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
-  -u admin:admin \
+curl -k -X PUT \
+  "https://localhost:3000/api/v0.9/apis/{apiId}/assets" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "apiContent=@my-api-content-v2.zip" \
   -F 'imageMetadata={"api-icon":"api-icon.png"}'
 ```
@@ -64,7 +70,7 @@ A Handlebars template gives you full control over the landing page HTML. Images 
   <div class="api-overview">
     <h1>Order API</h1>
     <p>Create and manage customer orders.</p>
-    <img src="{{apiMetadata.apiInfo.apiImageMetadata.banner}}" alt="Banner" />
+    <img src="{{apiMetadata.apiImageMetadata.banner}}" alt="Banner" />
   </div>
 </section>
 ```
@@ -73,10 +79,11 @@ Available Handlebars variables:
 
 | Variable | Description |
 |---|---|
-| `{{apiMetadata.apiInfo.apiName}}` | API display name |
-| `{{apiMetadata.apiInfo.apiVersion}}` | API version string |
-| `{{apiMetadata.apiInfo.apiDescription}}` | API description |
-| `{{apiMetadata.apiInfo.apiImageMetadata.<tag>}}` | URL of an image uploaded with the given tag name |
+| `{{apiMetadata.name}}` | API display name |
+| `{{apiMetadata.version}}` | API version string |
+| `{{apiMetadata.description}}` | API description |
+| `{{apiMetadata.type}}` | API type (`REST`, `SOAP`, `MCP`, `WS`, `WEBSUB`, `GRAPHQL`) |
+| `{{apiMetadata.apiImageMetadata.<tag>}}` | URL of an image uploaded with the given tag name |
 
 ### Markdown (`.md`)
 
@@ -130,18 +137,20 @@ curl https://api.example.com/orders \
 To link to externally hosted documentation (rather than uploaded files), pass `docMetadata` as a JSON string:
 
 ```bash
-curl -X POST \
-  "http://localhost:3000/organizations/{orgId}/apis/{apiId}/content" \
-  -u admin:admin \
+curl -k -X POST \
+  "https://localhost:3000/api/v0.9/apis/{apiId}/assets" \
+  -H "Authorization: Bearer $TOKEN" \
   -F "apiContent=@my-api-content.zip" \
   -F 'docMetadata=[{"name":"External Guide","url":"https://docs.example.com/guide","type":"LINK"}]'
 ```
 
 ## Get API Content
 
+Retrieving content requires both a `type` (`web`, `document`, `image`, or `link`) and a `fileName` query parameter to select a single stored file:
+
 ```bash
-curl http://localhost:3000/organizations/{orgId}/apis/{apiId}/content \
-  -u admin:admin
+curl -k "https://localhost:3000/api/v0.9/apis/{apiId}/assets?type=document&fileName=getting-started.md" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Related

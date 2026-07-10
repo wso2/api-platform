@@ -20,7 +20,9 @@
 
 const path = require('path');
 const fs = require('fs');
-const yaml = require('js-yaml');
+const crypto = require('crypto');
+const toml = require('smol-toml');
+const { DEFAULTS } = require('./configDefaults');
 
 // Load .env file if present (silently ignored if absent)
 try {
@@ -28,87 +30,54 @@ try {
 } catch (_) {}
 
 /**
- * Load the base config from config.yaml.
- * Returns an empty object if the file does not exist, so env vars alone can drive the app.
+ * Recursively convert snake_case keys to camelCase (e.g. "base_url" -> "baseUrl").
+ * Applied to the parsed TOML tree so config.toml can use snake_case while the
+ * in-code struct and every consumer use camelCase.
  */
-function loadBaseConfig() {
-    const yamlPath = path.join(process.cwd(), 'configs', 'config.yaml');
+function snakeToCamel(key) {
+    return key.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+}
 
-    if (fs.existsSync(yamlPath)) {
-        const raw = fs.readFileSync(yamlPath, 'utf8');
-        return yaml.load(raw) || {};
+function snakeToCamelDeep(value) {
+    if (Array.isArray(value)) {
+        return value.map(snakeToCamelDeep);
+    }
+    if (value !== null && typeof value === 'object') {
+        const out = {};
+        for (const [k, v] of Object.entries(value)) {
+            out[snakeToCamel(k)] = snakeToCamelDeep(v);
+        }
+        return out;
+    }
+    return value;
+}
+
+/**
+ * Load configs/config.toml (snake_case), converted to camelCase.
+ * Returns an empty object if the file does not exist, so DEFAULTS + env vars
+ * alone can drive the app.
+ */
+function loadTomlConfig() {
+    const tomlPath = path.join(process.cwd(), 'configs', 'config.toml');
+
+    if (fs.existsSync(tomlPath)) {
+        const raw = fs.readFileSync(tomlPath, 'utf8');
+        return snakeToCamelDeep(toml.parse(raw));
     }
     return {};
 }
 
 /**
- * Minimal defaults so the app never crashes on missing top-level config sections
- * when no config.yaml is mounted (e.g. in the IT test environment where all
- * values are supplied via DP_* environment variables).
+ * Deep-merge src into dst (src wins on conflicts) — used to layer config.toml
+ * over a clone of DEFAULTS.
  */
-const CONFIG_DEFAULTS = {
-    defaultPort: 3000,
-    mode: 'production',
-    baseUrl: 'http://localhost:3000',
-    db: {
-        host: 'localhost',
-        port: 5432,
-        database: 'devportal',
-        username: 'postgres',
-        password: '',
-        dialect: 'postgres',
-    },
-    advanced: {
-        http: true,
-        dbSslDialectOption: false,
-        resourceLoadFromBaseUrl: false,
-        disabledRoleValidation: true,
-        disableOrgCallback: true,
-        disableScopeValidation: true,
-        disableSilentSSO: false,
-        encryptionKey: '',
-        apiKey: {
-            enabled: false,
-            keyType: 'x-wso2-api-key',
-            keyValue: '',
-        },
-        tokenExchanger: {
-            enabled: false,
-        },
-        openApiValidator: {
-            validateResponses: 'off',
-        },
-    },
-    controlPlane: {
-        enabled: false,
-        url: '',
-        graphqlURL: '',
-        gwUrl: '',
-        disableCertValidation: true,
-        pathToCertificate: '',
-    },
-    logging: {
-        consoleOnly: true,
-    },
-    serverCerts: {
-        pathToCert: '',
-        pathToPk: '',
-        pathToCA: '',
-    },
-    authorizedPages: [],
-    authenticatedPages: [],
-};
-
-/**
- * Deep-merge src into dst (dst wins on conflicts).
- * Only sets keys from src that are missing in dst.
- */
-function mergeDefaults(dst, src) {
+function mergeOver(dst, src) {
     for (const [k, v] of Object.entries(src)) {
-        if (dst[k] === undefined || dst[k] === null) {
+        if (v !== null && typeof v === 'object' && !Array.isArray(v) &&
+            dst[k] !== null && typeof dst[k] === 'object' && !Array.isArray(dst[k])) {
+            mergeOver(dst[k], v);
+        } else {
             dst[k] = v;
-        } else if (typeof v === 'object' && !Array.isArray(v) && typeof dst[k] === 'object' && !Array.isArray(dst[k])) {
-            mergeDefaults(dst[k], v);
         }
     }
     return dst;
@@ -158,26 +127,28 @@ function coerceValue(value) {
 }
 
 /**
- * Apply DP_* environment variable overrides onto the config object.
+ * Apply APIP_DP_* environment variable overrides onto the config object.
  *
  * Convention:
- *   - Prefix: DP_
+ *   - Prefix: APIP_DP_
  *   - _ separates nesting levels (one token per config object level)
  *   - __ represents a literal underscore within a key name
  *   - Tokens are matched case-insensitively against existing config keys
  *
  * Examples:
- *   DP_DB_HOST             → config.db.host
- *   DP_IDENTITYPROVIDER_CLIENTID → config.identityProvider.clientId
- *   DP_DB_PASSWORD                      → config.db.password
- *   DP_ADVANCED_APIKEY_KEYVALUE         → config.advanced.apiKey.keyValue
- *   DP_TELEMETRY_AZUREINSIGHTSCONNECTIONSTRING → config.telemetry.azureInsightsConnectionString
+ *   APIP_DP_DATABASE_HOST                        → config.database.host
+ *   APIP_DP_IDP_CLIENTID                         → config.idp.clientId
+ *   APIP_DP_DATABASE_PASSWORD                    → config.database.password
+ *   APIP_DP_SECURITY_SERVICEAPIKEY_VALUE         → config.security.serviceApiKey.value
+ *   APIP_DP_WEBHOOKS_DELIVERY_SIGNATURETOLERANCESEC → config.webhooks.delivery.signatureToleranceSec
  */
+const ENV_PREFIX = 'APIP_DP_';
+
 function applyEnvOverrides(config) {
     const PLACEHOLDER = '\x00';
     for (const [key, value] of Object.entries(process.env)) {
-        if (!key.startsWith('DP_')) continue;
-        const withoutPrefix = key.slice(3); // remove DP_
+        if (!key.startsWith(ENV_PREFIX)) continue;
+        const withoutPrefix = key.slice(ENV_PREFIX.length);
         // Escape __ → placeholder, split on _, restore placeholder → _
         const tokens = withoutPrefix
             .replace(/__/g, PLACEHOLDER)
@@ -187,31 +158,18 @@ function applyEnvOverrides(config) {
     }
 }
 
-const config = loadBaseConfig();
-mergeDefaults(config, CONFIG_DEFAULTS);
+// Precedence: DEFAULTS (source of truth) → configs/config.toml → APIP_DP_* env vars.
+const config = mergeOver(JSON.parse(JSON.stringify(DEFAULTS)), loadTomlConfig());
 applyEnvOverrides(config);
 
-// Webhook subscriber secrets/key paths can be supplied via env vars:
-// DP_WEBHOOK_SECRET_<SUBSCRIBER_ID_UPPERCASED_UNDERSCORED>=<secret>
-// DP_WEBHOOK_PUBKEY_PATH_<SUBSCRIBER_ID_UPPERCASED_UNDERSCORED>=<path-to-pem-file>
-const webhookSubscribers = config.webhooks && config.webhooks.subscribers;
-if (Array.isArray(webhookSubscribers)) {
-    for (const sub of webhookSubscribers) {
-        if (!sub.id) continue;
-        const envKey = 'DP_WEBHOOK_SECRET_' + sub.id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-        if (process.env[envKey]) sub.secret = process.env[envKey];
-        const pubKeyPathEnv = 'DP_WEBHOOK_PUBKEY_PATH_' + sub.id.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-        if (process.env[pubKeyPathEnv]) sub.publicKeyPath = process.env[pubKeyPathEnv];
-    }
-
-    for (const sub of webhookSubscribers) {
-        if (!sub.publicKeyPath) continue;
-        try {
-            sub.publicKey = fs.readFileSync(sub.publicKeyPath, 'utf8');
-        } catch (err) {
-            throw new Error(`[configLoader] Failed to read webhook public key for subscriber '${sub.id}' from '${sub.publicKeyPath}': ${err.message}`);
-        }
-    }
+if (!config.security.encryptionKey || !/^[0-9a-fA-F]{64}$/.test(config.security.encryptionKey)) {
+    config.security.encryptionKey = crypto.randomBytes(32).toString('hex');
+    // Use process.stderr directly — logger is not yet initialised at this point
+    process.stderr.write(
+        '[WARN] security.encryptionKey is not set — generated an ephemeral key. ' +
+        'Encrypted data (subscription tokens, webhook secrets) will be unreadable after restart. ' +
+        'Set APIP_DP_SECURITY_ENCRYPTIONKEY in your .env file to persist it.\n'
+    );
 }
 
 module.exports = { config };

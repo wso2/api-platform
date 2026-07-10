@@ -52,7 +52,7 @@ func TestVhostMaterializationOnDeploy(t *testing.T) {
 	const sandboxDefault = "*-sandbox.gw.example.com"
 
 	makeYAML := func(name, vhostBlock string) []byte {
-		yaml := fmt.Sprintf(`apiVersion: gateway.api-platform.wso2.com/v1alpha1
+		yaml := fmt.Sprintf(`apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: %s

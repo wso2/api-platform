@@ -96,10 +96,10 @@ func (v *APIValidator) validateRestAPIConfiguration(config *api.RestAPI) []Valid
 	}
 
 	// Validate version
-	if config.ApiVersion != api.RestAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 {
+	if config.ApiVersion != api.RestAPIApiVersionGatewayApiPlatformWso2Comv1 {
 		errors = append(errors, ValidationError{
 			Field:   "version",
-			Message: "Unsupported API version (must be 'gateway.api-platform.wso2.com/v1alpha1')",
+			Message: "Unsupported API version (must be 'gateway.api-platform.wso2.com/v1')",
 		})
 	}
 
@@ -131,10 +131,10 @@ func (v *APIValidator) validateWebSubAPIConfiguration(config *api.WebSubAPI) []V
 	}
 
 	// Validate version
-	if config.ApiVersion != api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1alpha1 {
+	if config.ApiVersion != api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1 {
 		errors = append(errors, ValidationError{
 			Field:   "version",
-			Message: "Unsupported API version (must be 'gateway.api-platform.wso2.com/v1alpha1')",
+			Message: "Unsupported API version (must be 'gateway.api-platform.wso2.com/v1')",
 		})
 	}
 
@@ -339,6 +339,22 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 					errors = append(errors, ValidationError{
 						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
 						Message: "URL must not include a path; set the base path in upstreamDefinitions[].basePath instead",
+					})
+				}
+
+				// A query string or fragment is not part of the upstream cluster
+				// (host[:port] only), so it would be silently dropped. Reject it.
+				if parsedURL.RawQuery != "" || parsedURL.ForceQuery {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+						Message: "URL must not include a query string; only host[:port] is used",
+					})
+				}
+
+				if parsedURL.Fragment != "" {
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+						Message: "URL must not include a fragment; only host[:port] is used",
 					})
 				}
 			}

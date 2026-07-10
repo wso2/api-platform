@@ -1,0 +1,1938 @@
+openapi: 3.1.1
+info:
+  title: Gateway Internal API
+  description: |
+    Internal APIs for gateway services to retrieve API configurations and deployments.
+    These APIs are used by gateways to fetch API definitions for their organization from the control plane.
+
+  version: 1.0.0
+  contact:
+    name: WSO2 API Platform Team
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://localhost:9243/api/internal/v1
+    description: Development server
+  - url: https://api-platform.wso2.com/api/internal/v1
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /apis/{apiId}:
+    get:
+      summary: Get specific API by ID
+      description: |
+        Retrieves a specific API configuration by its UUID for the authenticated gateway's organization.
+        Returns a ZIP file containing the YAML definition for the requested API.
+      operationId: getAPIById
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the API
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved API
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+              example: |
+                Binary ZIP file containing API YAML configuration
+          headers:
+            Content-Disposition:
+              description: Attachment filename for the ZIP file
+              schema:
+                type: string
+                example: 'attachment; filename="api-550e8400-e29b-41d4-a716-446655440000.zip"'
+            Content-Length:
+              description: Size of the ZIP file in bytes
+              schema:
+                type: integer
+                example: 2048
+        '400':
+          description: Bad request - Invalid API ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "API ID is required"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "API not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                get_api_failed:
+                  summary: Failed to retrieve API
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to get API"
+                zip_creation_failed:
+                  summary: Failed to create ZIP package
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to create API package"
+
+  /llm-providers/{providerId}:
+    get:
+      summary: Get specific LLM Provider by ID
+      description: |
+        Retrieves a specific LLM Provider configuration by its UUID for the authenticated gateway's organization.
+        Returns a ZIP file containing the YAML definition for the requested LLM Provider.
+      operationId: getLLMProviderById
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the LLM Provider
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved LLM Provider
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+              example: |
+                Binary ZIP file containing LLM Provider YAML configuration
+          headers:
+            Content-Disposition:
+              description: Attachment filename for the ZIP file
+              schema:
+                type: string
+                example: 'attachment; filename="llm-provider-550e8400-e29b-41d4-a716-446655440000.zip"'
+            Content-Length:
+              description: Size of the ZIP file in bytes
+              schema:
+                type: integer
+                example: 2048
+        '400':
+          description: Bad request - Invalid LLM Provider ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Invalid UUID for providerId"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: LLM Provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "LLM Provider not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                get_llm_provider_failed:
+                  summary: Failed to retrieve LLM Provider
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to get LLM Provider"
+                zip_creation_failed:
+                  summary: Failed to create ZIP package
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to create LLM Provider package"
+
+  /apis/api-keys:
+    get:
+      summary: Get all API keys for REST API artifacts deployed on the gateway
+      description: |
+        Retrieves all API keys for every REST API artifact currently deployed on the
+        authenticated gateway. When the optional `issuer` query parameter is provided
+        only keys whose issuer field matches are returned.
+      operationId: getRestAPIAPIKeys
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: issuer
+          in: query
+          required: false
+          description: Filter keys by issuer. When omitted all keys are returned.
+          schema:
+            type: string
+            example: "api-platform-devportal"
+      responses:
+        '200':
+          description: Successfully retrieved API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InternalAPIKeyItem'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to get API keys"
+
+  /llm-providers/api-keys:
+    get:
+      summary: Get all API keys for LLM Provider artifacts deployed on the gateway
+      description: |
+        Retrieves all API keys for every LLM Provider artifact currently deployed on the
+        authenticated gateway. When the optional `issuer` query parameter is provided
+        only keys whose issuer field matches are returned.
+      operationId: getLLMProviderAPIKeys
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: issuer
+          in: query
+          required: false
+          description: Filter keys by issuer. When omitted all keys are returned.
+          schema:
+            type: string
+            example: "api-platform-devportal"
+      responses:
+        '200':
+          description: Successfully retrieved API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InternalAPIKeyItem'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to get API keys"
+
+  /llm-proxies/{proxyId}:
+    get:
+      summary: Get specific LLM Proxy by ID
+      description: |
+        Retrieves a specific LLM Proxy configuration by its UUID for the authenticated gateway's organization.
+        Returns a ZIP file containing the YAML definition for the requested LLM Proxy.
+      operationId: getLLMProxyById
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: proxyId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the LLM Proxy
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved LLM Proxy
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+              example: |
+                Binary ZIP file containing LLM Proxy YAML configuration
+          headers:
+            Content-Disposition:
+              description: Attachment filename for the ZIP file
+              schema:
+                type: string
+                example: 'attachment; filename="llm-proxy-550e8400-e29b-41d4-a716-446655440000.zip"'
+            Content-Length:
+              description: Size of the ZIP file in bytes
+              schema:
+                type: integer
+                example: 2048
+        '400':
+          description: Bad request - Invalid LLM Proxy ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Invalid UUID for proxyId"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: LLM Proxy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "LLM Proxy not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                get_llm_proxy_failed:
+                  summary: Failed to retrieve LLM Proxy
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to get LLM Proxy"
+                zip_creation_failed:
+                  summary: Failed to create ZIP package
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to create LLM Proxy package"
+
+  /llm-proxies/api-keys:
+    get:
+      summary: Get all API keys for LLM Proxy artifacts deployed on the gateway
+      description: |
+        Retrieves all API keys for every LLM Proxy artifact currently deployed on the
+        authenticated gateway. When the optional `issuer` query parameter is provided
+        only keys whose issuer field matches are returned.
+      operationId: getLLMProxyAPIKeys
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: issuer
+          in: query
+          required: false
+          description: Filter keys by issuer. When omitted all keys are returned.
+          schema:
+            type: string
+            example: "api-platform-devportal"
+      responses:
+        '200':
+          description: Successfully retrieved API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InternalAPIKeyItem'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to get API keys"
+
+  /mcp-proxies/{proxyId}:
+    get:
+      summary: Get specific MCP Proxy by ID
+      description: |
+        Retrieves a specific MCP Proxy configuration by its UUID for the authenticated gateway's organization.
+        Returns a ZIP file containing the YAML definition for the requested MCP Proxy.
+      operationId: getMCPProxyById
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: proxyId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the MCP Proxy
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved MCP Proxy
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+              example: |
+                Binary ZIP file containing MCP Proxy YAML configuration
+          headers:
+            Content-Disposition:
+              description: Attachment filename for the ZIP file
+              schema:
+                type: string
+                example: 'attachment; filename="mcp-proxy-550e8400-e29b-41d4-a716-446655440000.zip"'
+            Content-Length:
+              description: Size of the ZIP file in bytes
+              schema:
+                type: integer
+                example: 2048
+        '400':
+          description: Bad request - Invalid MCP Proxy ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Invalid UUID for proxyId"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: MCP Proxy not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "MCP Proxy not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                get_mcp_proxy_failed:
+                  summary: Failed to retrieve MCP Proxy
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to get MCP Proxy"
+                zip_creation_failed:
+                  summary: Failed to create ZIP package
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to create MCP Proxy package"
+
+  # ==========================================
+  # WebSub API Endpoints
+  # ==========================================
+
+  /websub-apis/{apiId}:
+    get:
+      summary: Get specific WebSub API by ID
+      description: |
+        Retrieves a specific WebSub API configuration by its UUID for the authenticated gateway's organization.
+        Returns a ZIP file containing the YAML definition for the requested WebSub API.
+      operationId: getWebSubAPIById
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the WebSub API
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved WebSub API
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+              example: |
+                Binary ZIP file containing WebSub API YAML configuration
+          headers:
+            Content-Disposition:
+              description: Attachment filename for the ZIP file
+              schema:
+                type: string
+                example: 'attachment; filename="websub-api-550e8400-e29b-41d4-a716-446655440000.zip"'
+            Content-Length:
+              description: Size of the ZIP file in bytes
+              schema:
+                type: integer
+                example: 2048
+        '400':
+          description: Bad request - Invalid WebSub API ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Invalid UUID for apiId"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: WebSub API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                not_found:
+                  summary: WebSub API not found
+                  value:
+                    code: 404
+                    message: "Not Found"
+                    description: "WebSub API not found"
+                no_active_deployment:
+                  summary: No active deployment
+                  value:
+                    code: 404
+                    message: "Not Found"
+                    description: "No active deployment found for this WebSub API on this gateway"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                get_websub_api_failed:
+                  summary: Failed to retrieve WebSub API
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to get WebSub API"
+                zip_creation_failed:
+                  summary: Failed to create ZIP package
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to create WebSub API package"
+
+  /websub-apis/{apiId}/secrets:
+    get:
+      summary: Get HMAC secrets for a WebSub API
+      description: |
+        Returns all active HMAC secrets (with plaintext values) for the specified WebSub API.
+        This endpoint is exclusively for gateway-controller to load secrets into the envoy secret store.
+        The plaintext values are decrypted server-side and must only be used internally by the gateway.
+      operationId: getWebSubAPIHmacSecrets
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the WebSub API
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved HMAC secrets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayHmacSecretsResponse'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebSub API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: HMAC secret management is not configured on this server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ==========================================
+  # Gateway Deployment Sync Endpoints
+  # ==========================================
+
+  /deployments:
+    get:
+      summary: List deployments for a gateway
+      description: |
+        Returns the list of deployments that should be active on a gateway.
+        Used by gateways to compare local state with platform-api state during startup sync.
+        
+        The gateway is identified from the API key token validation.
+        
+        Results are ordered by artifact kind to ensure dependencies are processed correctly:
+        1. RestApi (no dependencies)
+        2. LlmProvider (no dependencies)
+        3. LlmProxy (depends on LlmProvider)
+        4. Mcp (no dependencies)
+        
+        **Authentication**: Requires `api-key` header with a valid gateway token.
+      operationId: GetGatewayDeployments
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: |
+            ISO 8601 timestamp. When provided, returns only deployments updated after this timestamp.
+            Used for incremental sync to avoid fetching all deployments on every request.
+          schema:
+            type: string
+            format: date-time
+          example: "2026-03-04T10:00:00Z"
+      responses:
+        '200':
+          description: List of deployments for the gateway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayDeploymentsResponse'
+        '400':
+          description: Bad request - Invalid since parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Invalid 'since' parameter. Expected ISO 8601 format."
+        '401':
+          description: Unauthorized - Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: Gateway not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "Gateway not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to get deployments"
+
+  /deployments/fetch-batch:
+    post:
+      summary: Batch fetch deployment content
+      description: |
+        Fetches multiple deployment artifacts in a single request.
+        Returns a TAR.GZ archive containing deployment content organized by deployment ID.
+        
+        The gateway is identified from the API key token validation.
+        
+        **Archive Structure:**
+        ```
+        batch.tar.gz
+        ├── {deploymentId-1}/
+        │   └── api-{artifactId}.yaml           # RestApi
+        ├── {deploymentId-2}/
+        │   └── llm-provider-{artifactId}.yaml  # LlmProvider
+        ├── {deploymentId-3}/
+        │   └── llm-proxy-{artifactId}.yaml     # LlmProxy
+        └── {deploymentId-N}/
+            └── mcp-proxy-{artifactId}.yaml     # Mcp
+        ```
+        
+        The filename prefix is determined by the artifact kind:
+        - `api-{artifactId}.yaml` for `RestApi`
+        - `llm-provider-{artifactId}.yaml` for `LlmProvider`
+        - `llm-proxy-{artifactId}.yaml` for `LlmProxy`
+        - `mcp-proxy-{artifactId}.yaml` for `Mcp`
+        
+        This endpoint is used by gateways to efficiently fetch
+        multiple deployment artifacts that need to be updated locally.
+        
+        **Authentication**: Requires `api-key` header with a valid gateway token.
+      operationId: BatchFetchDeployments
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: Accept
+          in: header
+          required: true
+          description: Must be `application/x-tar+gzip`
+          schema:
+            type: string
+            enum:
+              - application/x-tar+gzip
+      requestBody:
+        description: List of deployment IDs to fetch
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeploymentsBatchFetchRequest'
+      responses:
+        '200':
+          description: TAR.GZ archive containing deployment content
+          content:
+            application/x-tar+gzip:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              description: Attachment filename for the TAR.GZ archive
+              schema:
+                type: string
+                example: 'attachment; filename="deployments-batch.tar.gz"'
+            Content-Length:
+              description: Size of the TAR.GZ archive in bytes
+              schema:
+                type: integer
+        '400':
+          description: Bad request - Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Invalid request body"
+        '401':
+          description: Unauthorized - Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: Gateway not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "Gateway not found"
+        '406':
+          description: Not Acceptable - Accept header must be application/x-tar+gzip
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 406
+                message: "Not Acceptable"
+                description: "This endpoint only supports Accept: application/x-tar+gzip"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to fetch deployment content"
+
+  /gateways/{gatewayId}/manifest:
+    post:
+      summary: Push gateway policy manifest
+      description: |
+        Called by the gateway controller immediately after connecting to the platform API.
+        Stores the full list of policies installed on the gateway. All policies are recorded
+        with name, version, and isCustomPolicy. Custom policies additionally include their
+        full policy definition schema (parameters and systemParameters).
+
+        **Authentication**: Requires `api-key` header with a valid gateway token. The gateway
+        ID in the path must match the gateway associated with the token.
+      operationId: PushGatewayManifest
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: gatewayId
+          in: path
+          required: true
+          description: UUID of the gateway pushing the manifest
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - policies
+              properties:
+                policies:
+                  type: array
+                  description: All policies installed on the gateway.
+                  maxItems: 1000
+                  items:
+                    type: object
+                    required:
+                      - name
+                      - version
+                    properties:
+                      name:
+                        type: string
+                        description: Unique policy name
+                        example: "set-wso2-headers"
+                      version:
+                        type: string
+                        description: Semantic version of the policy
+                        example: "v0.8.0"
+                      displayName:
+                        type: string
+                        description: Display name of the policy
+                        example: "Set WSO2 Headers"
+                      description:
+                        type: string
+                        description: Human-readable description of the policy
+                      isCustomPolicy:
+                        type: boolean
+                        description: Whether this is a user-installed custom policy
+                        example: true
+                      parameters:
+                        type: object
+                        description: JSON Schema for the policy's user-configurable parameters. Present for custom policies.
+                        maxProperties: 200
+                        additionalProperties: true
+                      systemParameters:
+                        type: object
+                        description: JSON Schema for the policy's system-level parameters. Present for custom policies.
+                        maxProperties: 200
+                        additionalProperties: true
+      responses:
+        '204':
+          description: Manifest stored successfully
+        '400':
+          description: Bad request - invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Gateway ID mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+  /subscription-plans:
+    get:
+      summary: List subscription plans
+      description: |
+        Retrieves all subscription plans for the authenticated gateway's organization.
+        Used by gateways to bulk-sync subscription plans on startup and reconnect.
+
+        Each plan includes an `etag` field — a deterministic UUIDv7 derived from
+        `id + updatedAt` — that the gateway uses as the EventHub correlation ID
+        for replica-sync deduplication.
+
+        **Authentication**: Requires `api-key` header with a valid gateway token.
+      operationId: getSubscriptionPlans
+      tags:
+        - Gateway Internal APIs
+      responses:
+        '200':
+          description: Successfully retrieved subscription plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GatewaySubscriptionPlanInfo'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to get subscription plans"
+
+  /apis/{apiId}/subscriptions:
+    get:
+      summary: List subscriptions for an API
+      description: |
+        Retrieves all subscriptions for a specific API deployed on the authenticated gateway.
+        Used by gateways to bulk-sync subscriptions on startup and reconnect.
+
+        The gateway must have an active deployment for the requested API; otherwise
+        a 403 Forbidden is returned.
+
+        Each subscription includes an `etag` field — a deterministic UUIDv7 derived from
+        `id + updatedAt` — that the gateway uses as the EventHub correlation ID
+        for replica-sync deduplication.
+
+        **Authentication**: Requires `api-key` header with a valid gateway token.
+      operationId: getSubscriptionsForAPI
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the API
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved subscriptions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GatewaySubscriptionInfo'
+        '400':
+          description: Bad request - API ID missing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "API ID is required"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - API not deployed on this gateway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 403
+                message: "Forbidden"
+                description: "API is not deployed on this gateway"
+        '404':
+          description: API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "API not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to get subscriptions"
+
+  /artifacts/exists:
+    post:
+      summary: Check artifact existence
+      description: |
+        Checks which of the provided artifact UUIDs still exist on the platform.
+        Used by the gateway during sync to distinguish orphaned artifacts (deleted on platform)
+        from artifacts that exist but have no active deployment. This prevents the gateway from
+        deleting API keys and subscriptions for artifacts that are still valid on the platform.
+      operationId: checkArtifactsExist
+      tags:
+        - Gateway Internal APIs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArtifactsExistRequest'
+      responses:
+        '200':
+          description: Successfully checked artifact existence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactsExistResponse'
+              example:
+                artifacts:
+                  - artifactId: "550e8400-e29b-41d4-a716-446655440000"
+                    exists: true
+                  - artifactId: "660e8400-e29b-41d4-a716-446655440001"
+                    exists: true
+                  - artifactId: "770e8400-e29b-41d4-a716-446655440002"
+                    exists: false
+        '400':
+          description: Bad request - invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "Invalid request body: artifactIds is required and must be a non-empty array"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 500
+                message: "Internal Server Error"
+                description: "Failed to check artifact existence"
+
+  /artifacts/import-gateway-artifacts:
+    post:
+      summary: Import (push) gateway-created artifacts to the control plane
+      description: |
+        Generic bulk DP->CP push endpoint. A gateway pushes a list of artifacts it
+        created/updated (REST API, LLM Provider, LLM Provider Template, LLM Proxy, MCP Proxy,
+        ...). The control plane creates or updates each and marks it read-only with origin
+        "gateway_api". Each artifact's kind is identified by configuration.kind and routed to
+        the matching importer. Project is required for project-scoped kinds (RestApi, LlmProxy,
+        Mcp) — supplied via the "gateway.api-platform.wso2.com/project-id" metadata annotation —
+        and ignored for organization-level kinds (LlmProvider, LlmProviderTemplate). The
+        project is never defaulted.
+        Processing is continue-on-error: each artifact's outcome is recorded against its dpid
+        and a failure on one artifact does not abort the rest. Artifact-level failures — an
+        unsupported kind, a project-scoped push with no project, a project that does not exist
+        in the organization, or a handle already used by a different kind — are reported per
+        dpid (with an `error` message) inside a 200 response, not as a non-2xx status. Only a
+        malformed request (invalid multipart form or zip, empty or oversized upload) or an
+        unauthenticated caller returns a non-2xx status.
+      operationId: importGatewayArtifacts
+      tags:
+        - Gateway Internal APIs
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - artifacts
+                - total
+              properties:
+                artifacts:
+                  type: string
+                  format: binary
+                  description: >-
+                    A zip archive containing a single `artifacts.json` file: a JSON array of
+                    ImportGatewayArtifactRequest objects. The gateway orders the artifacts by
+                    dependency (LLMProviderTemplate, LLMProvider, LLMProxy, MCPProxy, RestApi, ...)
+                    before zipping.
+                total:
+                  type: integer
+                  description: Total number of artifacts in the zip (advisory; used for a sanity check).
+                  example: 3
+      responses:
+        '200':
+          description: >-
+            Batch processed. Each artifact's result is returned keyed by its dpid, with
+            total/success/failed counts. Per-artifact failures are reported here (with an
+            `error` message), not as a non-2xx status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportGatewayArtifactsResponse'
+        '400':
+          description: >-
+            Bad request - malformed request (invalid multipart form or zip, or an empty/oversized
+            upload). Per-artifact failures are not reported here; they appear in the 200 response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: api-key
+      description: |
+        API key for gateway authentication. This key is used to identify and authenticate 
+        the gateway making the request. The key should be provided in the 'api-key' header.
+
+  parameters:
+    apiID:
+      name: apiId
+      in: path
+      description: |
+        **API ID** consisting of the **UUID** of the API.
+      required: true
+      schema:
+        type: string
+        format: uuid
+        example: ivbda7385-chs529-63bf-8bd2-7437690
+
+    revisionId-Q:
+      name: revisionId
+      in: query
+      description: |
+        Revision ID of an API
+      schema:
+        type: string
+        format: uuid
+        example: crer4354-jui52345-245vd-93fvk-137063
+
+  schemas:
+    # ==========================================
+    # Gateway Deployment Sync Schemas
+    # ==========================================
+
+    GatewayDeploymentInfo:
+      type: object
+      description: Information about a single deployment for a gateway
+      required:
+        - artifactId
+        - deploymentId
+        - kind
+        - state
+        - deployedAt
+        - etag
+      properties:
+        artifactId:
+          type: string
+          description: Artifact identifier (REST API, LLM Provider, or LLM Proxy handle)
+          example: "weather-api"
+        deploymentId:
+          type: string
+          description: Unique deployment artifact ID
+          example: "dep-789"
+        kind:
+          type: string
+          description: Artifact type
+          enum:
+            - RestApi
+            - LlmProvider
+            - LlmProxy
+            - Mcp
+          example: "RestApi"
+        state:
+          type: string
+          description: Deployment state
+          enum:
+            - DEPLOYED
+            - UNDEPLOYED
+          example: "DEPLOYED"
+        deployedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the deployment action was performed
+          example: "2026-03-04T10:30:00Z"
+        etag:
+          type: string
+          format: uuid
+          description: >
+            Deterministic UUIDv7 derived from deploymentId + deployedAt.
+            Used as the primary key in the gateway event table for
+            EventHub-based HA synchronization. Enables natural deduplication
+            between WebSocket events and sync responses.
+          example: "019575a0-1234-7abc-8def-1234567890ab"
+
+    GatewayDeploymentsResponse:
+      type: object
+      description: Response containing list of deployments for a gateway
+      required:
+        - deployments
+      properties:
+        deployments:
+          type: array
+          description: List of deployments ordered by kind (RestApi -> LlmProvider -> LlmProxy -> Mcp)
+          items:
+            $ref: '#/components/schemas/GatewayDeploymentInfo'
+
+    DeploymentsBatchFetchRequest:
+      type: object
+      description: Request body for batch fetching deployment content
+      required:
+        - deploymentIds
+      properties:
+        deploymentIds:
+          type: array
+          description: List of deployment IDs to fetch content for
+          items:
+            type: string
+          example: ["dep-789", "dep-456", "dep-111"]
+
+    # ==========================================
+    # Subscription Sync Schemas
+    # ==========================================
+
+    GatewaySubscriptionPlanInfo:
+      type: object
+      description: Subscription plan information for gateway sync
+      required:
+        - id
+        - planName
+        - stopOnQuotaReach
+        - status
+        - createdAt
+        - updatedAt
+        - etag
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the subscription plan
+        planName:
+          type: string
+          description: Human-readable name of the plan
+          example: "Gold Plan"
+        stopOnQuotaReach:
+          type: boolean
+          description: Whether to stop serving requests when quota is reached
+        throttleLimitCount:
+          type: integer
+          description: Maximum number of requests allowed in the throttle window
+          example: 1000
+        throttleLimitUnit:
+          type: string
+          description: Time unit for the throttle window
+          enum:
+            - Min
+            - Hour
+            - Day
+            - Month
+          example: "Hour"
+        expiryTime:
+          type: string
+          format: date-time
+          description: When the plan expires (optional)
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - INACTIVE
+          example: "ACTIVE"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        etag:
+          type: string
+          format: uuid
+          description: >
+            Deterministic UUIDv7 derived from id + updatedAt.
+            Used as the EventHub correlation ID for replica-sync deduplication.
+          example: "019575a0-1234-7abc-8def-1234567890ab"
+
+    GatewaySubscriptionInfo:
+      type: object
+      description: Subscription information for gateway sync
+      required:
+        - id
+        - apiId
+        - subscriptionToken
+        - status
+        - createdAt
+        - updatedAt
+        - etag
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the subscription
+        apiId:
+          type: string
+          format: uuid
+          description: UUID of the subscribed API
+        applicationId:
+          type: string
+          format: uuid
+          description: UUID of the subscribing application (optional)
+        subscriptionToken:
+          type: string
+          description: Token used to authenticate subscription requests
+        subscriptionPlanId:
+          type: string
+          format: uuid
+          description: UUID of the associated subscription plan (optional)
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - INACTIVE
+            - REVOKED
+          example: "ACTIVE"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        etag:
+          type: string
+          format: uuid
+          description: >
+            Deterministic UUIDv7 derived from id + updatedAt.
+            Used as the EventHub correlation ID for replica-sync deduplication.
+          example: "019575a0-5678-7def-8abc-abcdef012345"
+
+    # ==========================================
+    # API Deployment Notification Schemas
+    # ==========================================
+
+    ImportGatewayArtifactRequest:
+      title: Gateway artifact import request
+      description: Generic DP->CP push body for any artifact kind.
+      type: object
+      required:
+        - dpid
+        - configuration
+        - status
+      properties:
+        dpid:
+          type: string
+          description: >-
+            Data-plane (gateway) artifact UUID. The control plane does NOT reuse it as the
+            CP artifact UUID — it mints its own and returns it in the response. It is the key
+            under which this artifact's result is returned in the bulk response; artifacts are
+            matched in the CP by handle.
+          format: uuid
+          example: 01234567-0123-0123-0123-012345678901
+        configuration:
+          $ref: '#/components/schemas/ArtifactImportConfig'
+        status:
+          type: string
+          description: Artifact status on the gateway.
+          enum:
+            - pending
+            - deployed
+            - failed
+            - undeployed
+          example: deployed
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-06-15T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-06-15T10:30:00Z"
+        deployedAt:
+          type: string
+          format: date-time
+          example: "2026-06-15T10:45:00Z"
+        properties:
+          type: object
+          additionalProperties: true
+          description: Open-ended bag for future extensions.
+
+    ArtifactImportConfig:
+      type: object
+      description: |
+        The gateway artifact custom resource (CR) exactly as deployed to the gateway,
+        in the standard k8s shape (apiVersion / kind / metadata / spec). `kind` is the
+        discriminator that selects the artifact type; `spec` conforms to that kind's
+        schema as defined by the gateway management API:
+          - RestApi              -> RestAPI.spec (APIConfigData)
+          - LlmProvider          -> LLMProviderConfiguration.spec (LLMProviderConfigData)
+          - LlmProviderTemplate  -> LLMProviderTemplate.spec (LLMProviderTemplateData)
+          - LlmProxy             -> LLMProxyConfiguration.spec (LLMProxyConfigData)
+          - Mcp                  -> MCPProxyConfiguration.spec (MCPProxyConfigData)
+        The set of kinds is extensible: new artifact kinds register a handler in the
+        control plane without changing this contract.
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: Artifact spec version (e.g. gateway.api-platform.wso2.com/v1alpha1).
+          example: gateway.api-platform.wso2.com/v1alpha1
+        kind:
+          type: string
+          description: Artifact kind discriminator; routes to the matching importer. Open to future kinds.
+          enum:
+            - RestApi
+            - LlmProvider
+            - LlmProviderTemplate
+            - LlmProxy
+            - Mcp
+          example: RestApi
+        metadata:
+          $ref: '#/components/schemas/ArtifactImportMetadata'
+        spec:
+          type: object
+          additionalProperties: true
+          description: The kind-specific artifact spec, matching the gateway CR schema for `kind`.
+
+    ArtifactImportMetadata:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: URL-safe artifact identifier (handle).
+          example: weather-api
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          description: Kubernetes-style labels for organizing/selecting artifacts.
+        annotations:
+          type: object
+          additionalProperties:
+            type: string
+          description: |
+            Kubernetes-style annotations. The project is conveyed here via the
+            "gateway.api-platform.wso2.com/project-id" annotation. Required for project-scoped
+            kinds (RestApi, LlmProxy, Mcp); ignored for organization-level kinds (LlmProvider,
+            LlmProviderTemplate).
+          example:
+            gateway.api-platform.wso2.com/project-id: weather-project
+
+    ImportGatewayArtifactsResponse:
+      type: object
+      required:
+        - total
+        - success
+        - failed
+        - artifacts
+      properties:
+        total:
+          type: integer
+          description: Total number of artifacts in the request.
+          example: 3
+        success:
+          type: integer
+          description: Number of artifacts imported successfully.
+          example: 2
+        failed:
+          type: integer
+          description: Number of artifacts that failed to import.
+          example: 1
+        artifacts:
+          type: object
+          description: Per-artifact result keyed by the artifact's data-plane UUID (dpid).
+          additionalProperties:
+            $ref: '#/components/schemas/ImportGatewayArtifactResponse'
+          example:
+            01234567-0123-0123-0123-012345678901:
+              id: 89abcdef-89ab-89ab-89ab-89abcdef0123
+              status: deployed
+              origin: gateway_api
+            fedcba98-7654-3210-fedc-ba9876543210:
+              status: failed
+              origin: gateway_api
+              error: "project \"weather-project\" does not exist in org"
+
+    ImportGatewayArtifactResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: >-
+            Control-plane artifact UUID, minted by the CP (it does not reuse the data-plane
+            UUID) and reused on subsequent pushes matched by handle. The gateway records
+            this as the artifact's cp_artifact_id. Empty when the artifact failed to import.
+          format: uuid
+          example: 01234567-0123-0123-0123-012345678901
+        status:
+          type: string
+          example: deployed
+        origin:
+          type: string
+          description: Always "gateway_api" for imported artifacts.
+          example: gateway_api
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deployedAt:
+          type: string
+          format: date-time
+        deployedVersion:
+          type: string
+          example: v1.0
+        error:
+          type: string
+          description: Failure reason when this artifact could not be imported; absent on success.
+          example: "project \"weather-project\" does not exist in org"
+
+    InternalAPIKeyItem:
+      type: object
+      description: API key associated with an LLM Provider, LLM Proxy, or REST API artifact (used by /llm-providers/api-keys, /llm-proxies/api-keys, and /apis/api-keys)
+      required:
+        - etag
+        - uuid
+        - name
+        - maskedApiKey
+        - apiKeyHashes
+        - artifactUuid
+        - status
+        - createdAt
+        - createdBy
+        - updatedAt
+        - source
+      properties:
+        etag:
+          type: string
+          format: uuid
+          description: >
+            Stable UUID v7-formatted identifier representing the current state of the
+            API key, derived deterministically from (artifactUuid, name, updatedAt).
+            Changes on every update, ensuring uniqueness as the primary key in the
+            event table.
+          example: "01948c3e-d2b4-7f3a-9e1b-4a2c8f0d5e6b"
+        uuid:
+          type: string
+          description: Unique identifier of the API key
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        name:
+          type: string
+          description: Human-readable name of the API key
+          example: "my-api-key"
+        maskedApiKey:
+          type: string
+          description: Masked version of the API key for display purposes
+          example: "sk-****************************abcd"
+        apiKeyHashes:
+          type: object
+          description: Map of algorithm name to hash value for the API key
+          additionalProperties:
+            type: string
+          example:
+            sha256: "abc123..."
+        artifactUuid:
+          type: string
+          description: UUID of the artifact (LLM Provider or LLM Proxy) this key belongs to
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        status:
+          type: string
+          description: Status of the API key
+          example: "active"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the API key was created
+          example: "2026-01-01T10:00:00Z"
+        createdBy:
+          type: string
+          description: Identifier of the user who created the API key
+          example: "user@example.com"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the API key was last updated
+          example: "2026-01-02T10:00:00Z"
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Expiry timestamp of the API key, or null if it does not expire
+          example: "2027-01-01T00:00:00Z"
+        source:
+          type: string
+          description: Source of the API key (always "external")
+          example: "external"
+        externalRefId:
+          type: string
+          nullable: true
+          description: External reference ID (always null)
+          example: null
+        issuer:
+          type: string
+          nullable: true
+          description: Issuer of the API key, if applicable
+          example: "api-platform-devportal"
+
+    GatewayHmacSecretInfo:
+      type: object
+      description: A single HMAC secret entry returned to the gateway-controller. Contains the plaintext value.
+      required:
+        - name
+        - secret
+      properties:
+        name:
+          type: string
+          description: URL-safe slug identifying the secret.
+          example: github-webhook
+        secret:
+          type: string
+          description: Plaintext HMAC secret value for use in signature verification.
+          example: whsec_a3f2c1e4b5d6789012345678901234567890abcdef1234567890abcdef12345678
+
+    GatewayHmacSecretsResponse:
+      type: object
+      description: Response for GET /websub-apis/{apiId}/secrets
+      required:
+        - artifactId
+        - secrets
+      properties:
+        artifactId:
+          type: string
+          format: uuid
+          description: UUID of the WebSub API artifact.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        secrets:
+          type: array
+          items:
+            $ref: '#/components/schemas/GatewayHmacSecretInfo'
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          description: HTTP status code
+          example: 400
+        message:
+          type: string
+          description: Error message
+          example: "Bad Request"
+        description:
+          type: string
+          description: Detailed error description
+          example: "API ID is required"
+      description: Standard error response format used across all endpoints
+
+    ArtifactsExistRequest:
+      type: object
+      description: Request body for checking artifact existence
+      required:
+        - artifactIds
+      properties:
+        artifactIds:
+          type: array
+          description: List of artifact UUIDs to check
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+          example:
+            - "550e8400-e29b-41d4-a716-446655440000"
+            - "660e8400-e29b-41d4-a716-446655440001"
+            - "770e8400-e29b-41d4-a716-446655440002"
+
+    ArtifactsExistResponse:
+      type: object
+      description: |
+        Response containing the existence status of each requested artifact.
+        Each requested artifact ID is returned with a boolean indicating whether it
+        still exists on the platform. Artifacts with `exists: false` have been deleted
+        and can be safely removed from the gateway.
+      required:
+        - artifacts
+      properties:
+        artifacts:
+          type: array
+          description: Existence status for each requested artifact
+          items:
+            $ref: '#/components/schemas/ArtifactExistenceInfo'
+
+    ArtifactExistenceInfo:
+      type: object
+      description: Existence status of a single artifact
+      required:
+        - artifactId
+        - exists
+      properties:
+        artifactId:
+          type: string
+          format: uuid
+          description: The artifact UUID that was checked
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        exists:
+          type: boolean
+          description: Whether the artifact still exists on the platform
+          example: true
+
+tags:
+  - name: Gateway Internal APIs
+    description: |
+      Internal APIs used by gateways to retrieve API configurations and deployment artifacts.
+      These endpoints are secured with API key authentication and are intended for use by 
+      registered gateways within the platform.

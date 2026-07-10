@@ -7,7 +7,7 @@ The Developer Portal is a self-hosted, multi-tenant web application where API pu
 | Section | Audience | What you'll find |
 |---|---|---|
 | [Introduction](introduction/what-is-developer-portal.md) | Everyone | Overview, quick start, and core concepts |
-| [Administer](administer/manage-organizations.md) | Admins / Operators | Organizations, views, subscription plans, gateway and key manager integration, theming |
+| [Administer](administer/manage-organizations.md) | Admins / Operators | Organizations, views, subscription plans, gateway and key manager integration, theming, design mode, IDP authentication |
 | [Publish APIs](publish-apis/publishing-apis.md) | API Publishers / Admins | Registering APIs, uploading definitions and docs, managing API workflows |
 | [Discover APIs](discover-apis/search-apis.md) | Developers | Searching the API catalog, reading documentation, AI agent discovery |
 | [Consume an API](consume-an-api/subscriptions.md) | Developers | Subscribing to APIs, generating API keys and OAuth2 credentials |
@@ -18,12 +18,15 @@ The Developer Portal is a self-hosted, multi-tenant web application where API pu
 **Setting up the portal for the first time**
 1. [Quick Start](introduction/quick-start.md)
 2. [Manage Organizations](administer/manage-organizations.md)
-3. [Identity Provider](administer/manage-organizations.md#identity-provider-configuration)
-4. [Manage Views](administer/manage-views.md)
-5. [Subscription Plans](administer/subscription-plans.md)
-6. [Gateway Integration](administer/gateway-integration.md)
-7. [Key Manager Integration](administer/key-manager-integration.md)
-8. [Publish APIs](publish-apis/publishing-apis.md)
+3. [Manage Views](administer/manage-views.md)
+4. [Subscription Plans](administer/subscription-plans.md)
+5. [Webhook Integration](administer/webhook-integration.md)
+6. [Key Manager Integration](administer/key-manager-integration.md)
+7. [Publish APIs](publish-apis/publishing-apis.md)
+
+**Configuring IDP authentication (Asgardeo)**
+1. [Asgardeo Setup](administer/asgardeo-setup.md)
+2. [Get a Bearer Token via curl](administer/api-token-curl.md)
 
 **As a developer consuming APIs**
 1. [What is the Developer Portal?](introduction/what-is-developer-portal.md)

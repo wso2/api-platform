@@ -17,7 +17,8 @@
  */
 /* eslint-disable no-undef */
 const adminService = require('../services/adminService');
-const adminDao = require('../dao/admin');
+const orgDao = require('../dao/organizationDao');
+const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const util = require('../utils/util');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -33,45 +34,40 @@ const getOrganization = async (req, res) => {
 };
 
 const getOrganizationDetails = async (orgId) => {
-    const organization = await adminDao.getOrganization(orgId);
+    const organization = await orgDao.get(orgId);
+    const audit = await userIdpReferenceDao.buildSingleAuditFields(organization);
     return {
-        orgId: organization.ORG_ID,
-        orgName: organization.ORG_NAME,
-        businessOwner: organization.BUSINESS_OWNER,
-        businessOwnerContact: organization.BUSINESS_OWNER_CONTACT,
-        businessOwnerEmail: organization.BUSINESS_OWNER_EMAIL,
-        orgHandle: organization.ORG_HANDLE,
-        roleClaimName: organization.ROLE_CLAIM_NAME,
-        groupsClaimName: organization.GROUPS_CLAIM_NAME,
-        organizationClaimName: organization.ORGANIZATION_CLAIM_NAME,
-        organizationIdentifier: organization.ORGANIZATION_IDENTIFIER,
-        adminRole: organization.ADMIN_ROLE,
-        superAdminRole: organization.SUPER_ADMIN_ROLE,
-        subscriberRole: organization.SUBSCRIBER_ROLE,
-        groupClaimName: organization.GROUP_CLAIM_NAME,
-        orgConfiguration: organization.ORG_CONFIG,
+        id: organization.handle,
+        displayName: organization.display_name,
+        businessOwner: organization.business_owner,
+        businessOwnerContact: organization.business_owner_contact,
+        businessOwnerEmail: organization.business_owner_email,
+        idpRefId: organization.idp_ref_id,
+        cpRefId: organization.cp_ref_id,
+        configuration: organization.configuration,
+        ...audit,
     };
 }
 
 const getOrgContent = async (req, res) => {
     try {
         if (req.query.fileType && req.query.fileName) {
-            const asset = await adminService.getOrgContent(req.params.orgId, req.params.viewName, req.query.fileType, req.query.fileName, req.query.filePath);
+            const asset = await adminService.getOrgContent(req.orgId, req.params.viewId, req.query.fileType, req.query.fileName, req.query.filePath);
             if (asset) {
-                const contentType = asset ? retrieveContentType(asset.FILE_NAME, asset.FILE_TYPE) : "";
+                const contentType = asset ? retrieveContentType(asset.file_name, asset.file_type) : "";
                 res.set(constants.MIME_TYPES.CONYEMT_TYPE, contentType);
-                return res.status(200).send(Buffer.isBuffer(asset.FILE_CONTENT) ? asset.FILE_CONTENT : constants.CHARSET_UTF8);
+                return res.status(200).send(Buffer.isBuffer(asset.file_content) ? asset.file_content : constants.CHARSET_UTF8);
             } else {
                 return res.status(404).send('Not Found');
             }
         } else if (req.params.fileType) {
-            const assets = await adminService.getOrgContent(req.params.orgId, req.params.viewName, req.params.fileType);
+            const assets = await adminService.getOrgContent(req.orgId, req.params.viewId, req.params.fileType);
             const results = [];
             for (const asset of assets) {
                 const resp = {
-                    orgId: asset.ORG_ID,
-                    fileName: asset.FILE_NAME,
-                    fileContent: asset.FILE_CONTENT ? asset.FILE_CONTENT.toString(constants.CHARSET_UTF8) : null
+                    id: asset.org_uuid,
+                    fileName: asset.file_name,
+                    fileContent: asset.file_content ? asset.file_content.toString(constants.CHARSET_UTF8) : null
                 };
                 results.push(resp);
             }
@@ -83,8 +79,8 @@ const getOrgContent = async (req, res) => {
         logger.error('Error while fetching organization content', {
             error: error.message,
             stack: error.stack,
-            orgId: req.params.orgId,
-            viewName: req.params.viewName
+            orgId: req.orgId,
+            viewId: req.params.viewId
         });
         res.status(404).send(error.message);
     }

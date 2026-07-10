@@ -21,6 +21,7 @@ package it
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -38,6 +39,10 @@ const (
 	// Present in docker-compose.test.postgres.yaml only. Has psql built-in.
 	postgresContainer = "it-postgres"
 
+	// sqlserverContainer is the SQL Server service used by the sqlserver compose.
+	// Present in docker-compose.test.sqlserver.yaml only. Has sqlcmd built-in.
+	sqlserverContainer = "it-sqlserver"
+
 	// gatewayDBPath is the SQLite database path inside dbReaderContainer.
 	gatewayDBPath = "/data/gateway.db"
 
@@ -45,6 +50,15 @@ const (
 	// docker-compose.test.postgres.yaml.
 	postgresDB   = "gateway_test"
 	postgresUser = "gateway"
+
+	// sqlserverDB / sqlserverUser match the credentials in
+	// docker-compose.test.sqlserver.yaml. The SA password is read from the
+	// MSSQL_SA_PASSWORD env var, falling back to the same default the compose
+	// file uses so local runs work without exporting it.
+	sqlserverDB              = "gateway_test"
+	sqlserverUser            = "sa"
+	sqlserverDefaultPassword = "Gateway_Strong!Pass123"
+	sqlcmdPath               = "/opt/mssql-tools18/bin/sqlcmd"
 
 	// defaultDBQueryTimeout caps the time allowed for a query (including
 	// retries) so a stuck reader container can't hang a scenario.
@@ -90,6 +104,8 @@ func detectDBDriver(ctx context.Context) string {
 		detected = "sqlite"
 	} else if containerRunning(ctx, postgresContainer) {
 		detected = "postgres"
+	} else if containerRunning(ctx, sqlserverContainer) {
+		detected = "sqlserver"
 	}
 
 	if detected != "" {
@@ -112,6 +128,24 @@ func containerRunning(ctx context.Context, name string) bool {
 		return false
 	}
 	return strings.TrimSpace(string(out)) == "true"
+}
+
+// envRuntimeControllerXDS is set (via the Makefile, see test-postgres) for the
+// two-controller Postgres topology, where gateway-runtime is fed xDS by
+// gateway-controller-xds rather than the management controller.
+const envRuntimeControllerXDS = "IT_GATEWAY_CONTROLLER_HA"
+
+// policySnapshotControllerAdminURL returns the admin base URL the policy-chain
+// xDS-sync probe should target, or "" to use the default management controller.
+// When IT_GATEWAY_CONTROLLER_HA=true it points at the runtime-facing
+// controller (host port 9093), whose policy-chain version the policy engine
+// echoes. Returning "" lets waitForPolicySnapshotSync fall back to the
+// management controller (single-controller topologies and unit tests).
+func policySnapshotControllerAdminURL() string {
+	if os.Getenv(envRuntimeControllerXDS) == "true" {
+		return fmt.Sprintf("http://localhost:%s%s", GatewayControllerRuntimeAdminPort, GatewayAdminAPIBasePath)
+	}
+	return ""
 }
 
 // queryStoredConfiguration runs a SELECT against one of the per-resource-type
@@ -163,8 +197,23 @@ func executeQuery(ctx context.Context, query string) (string, error) {
 		// -A unaligned, -t tuples-only, -X no .psqlrc — produces just the value.
 		cmd = exec.CommandContext(ctx, "docker", "exec", postgresContainer,
 			"psql", "-U", postgresUser, "-d", postgresDB, "-AtX", "-c", query)
+	case "sqlserver":
+		// -h -1 no headers; -y 8000 widens the variable-length column display from
+		// sqlcmd's 256-char default to its maximum so the NVARCHAR(MAX) configuration
+		// JSON isn't truncated (test configs are far smaller than 8000); -w 65535
+		// stops long lines from wrapping; -b exits non-zero on error; -C trusts the
+		// self-signed server cert. (-y 0 / -W are rejected alongside -h/-y, and the
+		// caller already TrimSpaces, so neither is used.)
+		pw := os.Getenv("MSSQL_SA_PASSWORD")
+		if pw == "" {
+			pw = sqlserverDefaultPassword
+		}
+		cmd = exec.CommandContext(ctx, "docker", "exec", sqlserverContainer,
+			sqlcmdPath, "-C", "-S", "localhost", "-U", sqlserverUser, "-P", pw,
+			"-d", sqlserverDB, "-h", "-1", "-y", "8000", "-w", "65535", "-b",
+			"-Q", "SET NOCOUNT ON; "+query)
 	default:
-		return "", fmt.Errorf("no DB reader container is running (looked for %q and %q)", dbReaderContainer, postgresContainer)
+		return "", fmt.Errorf("no DB reader container is running (looked for %q, %q and %q)", dbReaderContainer, postgresContainer, sqlserverContainer)
 	}
 
 	out, err := cmd.CombinedOutput()

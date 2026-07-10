@@ -20,6 +20,7 @@ package restapi
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/cmd/gateway/restapi/apikey"
 )
 
 const (
@@ -44,4 +45,5 @@ func init() {
 	APICmd.AddCommand(listCmd)
 	APICmd.AddCommand(getCmd)
 	APICmd.AddCommand(deleteCmd)
+	APICmd.AddCommand(apikey.APIKeyCmd)
 }

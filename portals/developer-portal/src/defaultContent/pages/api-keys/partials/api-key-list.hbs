@@ -1,148 +1,213 @@
 {{#if apiKeysLoadError}}
-<div class="alert alert-danger" role="alert">
-    <strong>Unable to load API keys.</strong> Refresh the page or try again later. Generate, regenerate, and revoke are disabled until the list loads successfully.
+<div style="background:#fdeaea;border:1px solid #f5c2c2;border-radius:0.5rem;padding:1rem 1.25rem;font-size:0.875rem;color:#c62828;margin-top:0.5rem;">
+  <strong>Unable to load API keys.</strong> Refresh the page or try again later. Generate, regenerate, and revoke are disabled until the list loads successfully.
 </div>
 {{else}}
-<div class="text-center text-muted py-5" id="no-api-keys" style="{{#if apiKeys.length}}display:none;{{/if}}">
-    <i class="bi bi-key" style="font-size: 3rem;"></i>
-    <p class="mt-3">No API keys found for this API.</p>
-    {{#unless isReadOnlyMode}}
-    <p class="small">Generate a key to authenticate requests to this API.</p>
-    {{/unless}}
+
+{{#if applications.length}}
+<div class="ak-filter-row" style="display:flex;align-items:center;gap:0.625rem;margin:1rem 0;">
+  <label for="ak-app-filter" style="font-size:0.8125rem;font-weight:600;color:#52607a;">Filter by app</label>
+  <select id="ak-app-filter" class="ak-form-input" style="width:auto;min-width:12rem;">
+    <option value="">All apps</option>
+    {{#each applications}}
+    <option value="{{this.appId}}" {{#if (eq this.appId @root.selectedAppId)}}selected{{/if}}>{{this.displayName}}</option>
+    {{/each}}
+  </select>
 </div>
 {{/if}}
+
+<div class="dp-empty" id="no-api-keys" {{#if apiKeys.length}}style="display:none;"{{/if}}>
+  <span class="dp-empty-icon"><i class="bi bi-key-fill"></i></span>
+  {{#if selectedAppId}}
+  <h2 class="dp-empty-title">No API keys for this app</h2>
+  <p class="dp-empty-desc">No keys are associated with the selected app. Try a different app, or clear the filter to see all keys.</p>
+  {{else}}
+  <h2 class="dp-empty-title">No API keys yet</h2>
+  <p class="dp-empty-desc">Generate a key to authenticate requests to this API. You can revoke or regenerate it at any time.</p>
+  {{#unless isReadOnlyMode}}
+  <button type="button" class="dp-btn dp-btn--primary dp-btn--lg" id="btn-open-generate-api-key-empty" style="margin-top:1.5rem;">
+    <i class="bi bi-plus"></i> Generate API key
+  </button>
+  {{/unless}}
+  {{/if}}
+</div>
+
 {{#if apiKeys.length}}
-<div class="app-table-container api-keys-table-wrap my-3">
-    <table class="app-table" id="api-keys-table">
-        <thead>
-            <tr>
-                <th class="app-th">Name</th>
-                <th class="app-th">Key</th>
-                <th class="app-th">Status</th>
-                <th class="app-th">Expires</th>
-                <th class="app-th" style="min-width: 280px;">Key Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{#each apiKeys}}
-            <tr class="data-row" id="api-key-row-{{@index}}">
-                <td class="app-td">{{this.name}}</td>
-                <td class="app-td">
-                    <code class="masked-api-key">{{this.maskedApiKey}}</code>
-                </td>
-                <td class="app-td">
-                    <span class="badge {{#if (eq this.status 'active')}}bg-success{{else}}bg-secondary{{/if}}">{{this.status}}</span>
-                </td>
-                <td class="app-td">
-                    {{#if this.expiresAt}}
-                    <span class="text-nowrap">{{formatExpiresAt this.expiresAt}}</span>
-                    {{else}}
-                    <span class="text-muted">&mdash;</span>
-                    {{/if}}
-                </td>
-                <td class="app-td">
-                    {{#unless @root.isReadOnlyMode}}
-                    <div class="api-key-actions">
-                        <button type="button"
-                            class="common-btn-outlined btn-sm me-1 btn-regenerate-key {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                            data-key-id="{{this.keyId}}" data-key-name="{{this.name}}">
-                            <span class="button-normal-state">
-                                <i class="bi bi-key me-1"></i> Regenerate
-                            </span>
-                        </button>
-                        <button type="button"
-                            class="common-btn-outlined btn-sm api-key-revoke btn-revoke-key {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-                            data-key-id="{{this.keyId}}">
-                            <span class="button-normal-state">
-                                <i class="bi bi-key me-1"></i> Revoke
-                            </span>
-                        </button>
-                    </div>
-                    {{else}}
-                    <span class="text-muted small">Read only</span>
-                    {{/unless}}
-                </td>
-            </tr>
-            {{/each}}
-        </tbody>
-    </table>
+<div class="ak-tablewrap" id="api-keys-table-wrap">
+  <table class="ak-table" id="api-keys-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Key</th>
+        <th>Status</th>
+        <th>Expires</th>
+        <th>Application</th>
+        <th class="ak-th-right">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{#each apiKeys}}
+      <tr id="api-key-row-{{@index}}">
+        <td><span class="ak-key-name">{{this.displayName}}</span></td>
+        <td><span class="ak-key-masked">••••••••</span></td>
+        <td>
+          <span class="ak-status {{#if (eq this.status 'active')}}ak-status--active{{else}}ak-status--inactive{{/if}}">
+            <span class="ak-status-dot"></span>{{this.status}}
+          </span>
+        </td>
+        <td class="ak-expires">{{#if this.expiresAt}}{{formatExpiresAt this.expiresAt}}{{else}}Never{{/if}}</td>
+        <td class="ak-app">{{#if this.appDisplayName}}{{this.appDisplayName}}{{else}}-{{/if}}</td>
+        <td>
+          {{#unless @root.isReadOnlyMode}}
+          <div class="ak-actions">
+            <button type="button" class="ak-btn-app btn-app-key"
+              data-key-id="{{this.id}}" data-key-name="{{this.displayName}}"
+              data-app-id="{{this.appId}}" data-app-display-name="{{this.appDisplayName}}"
+              {{#unless (eq this.status 'active')}}disabled title="Key is revoked"{{/unless}}>
+              <i class="bi bi-grid"></i> {{#if this.appDisplayName}}Change app{{else}}Associate app{{/if}}
+            </button>
+            <button type="button" class="ak-btn-regen btn-regenerate-key"
+              data-key-id="{{this.id}}" data-key-name="{{this.displayName}}"
+              {{#unless (eq this.status 'active')}}disabled title="Key is revoked"{{/unless}}>
+              <i class="bi bi-arrow-clockwise"></i> Regenerate
+            </button>
+            <button type="button" class="ak-btn-revoke btn-revoke-key"
+              data-key-id="{{this.id}}" data-key-name="{{this.displayName}}"
+              {{#unless (eq this.status 'active')}}disabled title="Key is already revoked"{{/unless}}>
+              <i class="bi bi-slash-circle"></i> Revoke
+            </button>
+          </div>
+          {{else}}
+          <span style="font-size:0.8125rem;color:#8a98a6;text-align:right;display:block;">Read only</span>
+          {{/unless}}
+        </td>
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>
 </div>
 {{/if}}
 
-{{#unless apiKeysLoadError}}
 {{#unless isReadOnlyMode}}
-<div class="modal fade" id="generateApiKeyModal" tabindex="-1" aria-labelledby="generateApiKeyModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="generateApiKeyModalLabel">Generate API Key</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label for="api-key-name" class="form-label">Name <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" id="api-key-name" placeholder="my-key-01" autocomplete="off" />
-                    <div class="form-text">Lowercase letters, numbers, hyphens and underscores (URL-safe).</div>
-                </div>
-                <div class="mb-0">
-                    <label for="api-key-expires" class="form-label">Expires at (optional)</label>
-                    <input type="datetime-local" class="form-control" id="api-key-expires" />
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="common-btn-primary btn-sm" id="btn-submit-generate-api-key">Generate</button>
-            </div>
-        </div>
+
+<!-- Generate modal -->
+<div class="ak-overlay" id="generateApiKeyModal">
+  <div class="ak-modal">
+    <div class="ak-modal-head">
+      <h2 class="ak-modal-title">Generate API key</h2>
+      <button type="button" class="ak-modal-close" id="ak-gen-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
     </div>
+    <div class="ak-modal-body">
+      <div class="ak-form-group">
+        <label for="api-key-name">Name <span class="ak-required">*</span></label>
+        <input type="text" id="api-key-name" class="ak-form-input" placeholder="my-key-01" maxlength="128" autocomplete="off" />
+        <div class="ak-form-hint">Lowercase letters, numbers, hyphens and underscores (URL-safe).</div>
+      </div>
+      <div class="ak-form-group">
+        <label for="api-key-expires">Expires at</label>
+        <input type="datetime-local" id="api-key-expires" class="ak-form-input ak-form-input--date" />
+      </div>
+    </div>
+    <div class="ak-modal-footer">
+      <button type="button" class="dp-btn dp-btn--outline" id="ak-gen-cancel">Cancel</button>
+      <button type="button" class="dp-btn dp-btn--primary" id="btn-submit-generate-api-key">Generate</button>
+    </div>
+  </div>
 </div>
 
-<div class="modal fade" id="regenerateApiKeyModal" tabindex="-1" aria-labelledby="regenerateApiKeyModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="regenerateApiKeyModalLabel">Regenerate API Key</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p class="small text-muted">The previous key will stop working immediately after regeneration.</p>
-                <input type="hidden" id="regenerate-key-id" value="" />
-                <div class="mb-3">
-                    <label for="regenerate-api-key-name" class="form-label">Name <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" id="regenerate-api-key-name" autocomplete="off" />
-                </div>
-                <div class="mb-0">
-                    <label for="regenerate-api-key-expires" class="form-label">Expires at (optional)</label>
-                    <input type="datetime-local" class="form-control" id="regenerate-api-key-expires" />
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="common-btn-primary btn-sm" id="btn-submit-regenerate-api-key">Regenerate</button>
-            </div>
-        </div>
+<!-- Regenerate modal -->
+<div class="ak-overlay" id="regenerateApiKeyModal">
+  <div class="ak-modal">
+    <div class="ak-modal-head">
+      <h2 class="ak-modal-title">Regenerate API key</h2>
+      <button type="button" class="ak-modal-close" id="ak-regen-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
     </div>
+    <div class="ak-modal-body">
+      <p style="margin:0;font-size:0.8125rem;line-height:1.5;color:#56657a;">The previous key will stop working immediately after regeneration.</p>
+      <input type="hidden" id="regenerate-key-id" value="" />
+      <div class="ak-form-group">
+        <label for="regenerate-api-key-name">Name</label>
+        <input type="text" id="regenerate-api-key-name" class="ak-form-input" autocomplete="off" disabled />
+      </div>
+      <div class="ak-form-group">
+        <label for="regenerate-api-key-expires">Expires at <span style="font-weight:400;color:#9aa3af;">— optional</span></label>
+        <input type="datetime-local" id="regenerate-api-key-expires" class="ak-form-input ak-form-input--date" />
+      </div>
+    </div>
+    <div class="ak-modal-footer">
+      <button type="button" class="dp-btn dp-btn--outline" id="ak-regen-cancel">Cancel</button>
+      <button type="button" class="dp-btn dp-btn--primary" id="btn-submit-regenerate-api-key">Regenerate</button>
+    </div>
+  </div>
 </div>
 
-<div class="modal fade" id="showApiKeySecretModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">API Key generated</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p class="small text-warning">Copy this key now. You will not be able to see the full value again.</p>
-                <div class="input-group">
-                    <input type="text" class="form-control font-monospace" id="api-key-secret-value" readonly />
-                    <button class="btn btn-outline-secondary" type="button" id="btn-copy-api-key-secret">Copy</button>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="common-btn-primary btn-sm" data-bs-dismiss="modal">Done</button>
-            </div>
-        </div>
+<!-- Key generated modal -->
+<div class="ak-overlay" id="showApiKeySecretModal">
+  <div class="ak-modal ak-modal--lg ak-modal--secret">
+    <button type="button" class="ak-modal-close ak-secret-close-abs" id="ak-secret-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+    <div class="ak-secret-hero">
+      <div class="ak-secret-success-icon"><i class="bi bi-check-lg"></i></div>
+      <h2 class="ak-secret-hero-title">API key generated</h2>
+      <p class="ak-secret-hero-subtitle">Key <strong id="ak-secret-key-name"></strong> was generated successfully.</p>
     </div>
+    <div class="ak-modal-body">
+      <div class="ak-secret-key-label"><i class="bi bi-key"></i> Secret key</div>
+      <div class="ak-key-field">
+        <code class="ak-key-code" id="api-key-secret-value"></code>
+        <button type="button" class="copy-btn ak-copy-btn ak-copy-btn--abs" id="btn-copy-api-key-secret">
+          <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+          <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
+        </button>
+      </div>
+      <div class="ak-warning-amber">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <span>Copy this key now. For your security, the full value is shown only once and can't be retrieved after closing.</span>
+      </div>
+    </div>
+    <div class="ak-modal-footer">
+      <button type="button" class="dp-btn dp-btn--primary" id="ak-secret-done">Done</button>
+    </div>
+  </div>
 </div>
+
+<!-- Associate app modal -->
+<div class="ak-overlay" id="ak-app-modal">
+  <div class="ak-modal">
+    <div class="ak-modal-head">
+      <h2 class="ak-modal-title">Associate with an app</h2>
+      <button type="button" class="ak-modal-close" id="ak-app-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="ak-modal-body">
+      <p style="margin:0 0 0.75rem;font-size:0.8125rem;line-height:1.5;color:#56657a;">Optional — used for usage analytics only. It has no effect on this key's validity.</p>
+      <input type="hidden" id="ak-app-key-id" value="" />
+      <div class="ak-form-group">
+        <label for="ak-app-select">App</label>
+        <select id="ak-app-select" class="ak-form-input">
+          <option value="">— None —</option>
+        </select>
+      </div>
+    </div>
+    <div class="ak-modal-footer">
+      <button type="button" class="dp-btn dp-btn--outline" id="ak-app-cancel">Cancel</button>
+      <button type="button" class="dp-btn dp-btn--primary" id="btn-submit-app-association">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Revoke confirmation modal -->
+<div class="ak-overlay" id="ak-revoke-modal">
+  <div class="ak-revoke-modal">
+    <div class="ak-revoke-head">
+      <span class="ak-revoke-icon"><i class="bi bi-slash-circle"></i></span>
+      <h2 class="ak-revoke-title">Revoke API key</h2>
+    </div>
+    <p class="ak-revoke-body">Are you sure you want to revoke <strong id="ak-revoke-name"></strong>? Requests using this key will immediately stop working. This action can't be undone.</p>
+    <div class="ak-revoke-footer">
+      <button type="button" class="dp-btn dp-btn--outline" id="ak-revoke-cancel">Cancel</button>
+      <button type="button" class="dp-btn dp-btn--primary" id="ak-revoke-confirm" style="background:#c62828;">Revoke key</button>
+    </div>
+  </div>
+</div>
+
 {{/unless}}
-{{/unless}}
+{{/if}}

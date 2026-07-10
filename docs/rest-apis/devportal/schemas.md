@@ -1,5 +1,31 @@
 # Schemas
 
+<h2 id="tocS_Pagination">Pagination</h2>
+
+<a id="schemapagination"></a>
+<a id="schema_Pagination"></a>
+<a id="tocSpagination"></a>
+<a id="tocspagination"></a>
+
+```json
+{
+  "total": 42,
+  "limit": 20,
+  "offset": 0
+}
+
+```
+
+Standard pagination metadata returned with collection responses.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|total|integer|true|none|Total number of records matching the query.|
+|limit|integer|true|none|Maximum number of records returned in this response.|
+|offset|integer|true|none|Number of records skipped before this page.|
+
 <h2 id="tocS_MessageResponse">MessageResponse</h2>
 
 <a id="schemamessageresponse"></a>
@@ -89,9 +115,15 @@ xor
 
 ```json
 {
-  "code": "string",
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
   "message": "string",
-  "description": "string"
+  "errors": [
+    {
+      "field": "string",
+      "message": "string"
+    }
+  ]
 }
 
 ```
@@ -100,26 +132,44 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|code|any|true|none|HTTP status code returned by the error handler.|
+|status|string|true|none|Always "error" for error responses.|
+|code|string|true|none|Machine-readable SCREAMING_SNAKE_CASE catalog code.|
+|message|string|true|none|Human-readable error message.|
+|errors|[object]|false|none|Optional per-field validation errors.|
+|» field|string|true|none|none|
+|» message|string|true|none|none|
 
-oneOf
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+
+<h2 id="tocS_SimpleErrorResponse">SimpleErrorResponse</h2>
+
+<a id="schemasimpleerrorresponse"></a>
+<a id="schema_SimpleErrorResponse"></a>
+<a id="tocSsimpleerrorresponse"></a>
+<a id="tocssimpleerrorresponse"></a>
+
+```json
+{
+  "code": "404",
+  "message": "Not Found",
+  "description": "Subscription not found"
+}
+
+```
+
+Ad hoc error shape used by the Subscriptions and API Keys handlers, which build error bodies inline instead of going through the shared error formatter. `code` is the HTTP status code as a string, not a catalog code.
+
+### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» *anonymous*|string|false|none|none|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|integer|false|none|none|
-
-continued
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
+|code|string|true|none|none|
 |message|string|true|none|none|
-|description|string|true|none|none|
+|description|string¦null|false|none|none|
 
 <h2 id="tocS_ValidationErrorList">ValidationErrorList</h2>
 
@@ -131,9 +181,15 @@ continued
 ```json
 [
   {
-    "code": "400",
-    "message": "input validation failed",
-    "description": "string"
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "string",
+        "message": "string"
+      }
+    ]
   }
 ]
 
@@ -154,9 +210,15 @@ continued
 
 ```json
 {
-  "code": "400",
-  "message": "input validation failed",
-  "description": "string"
+  "status": "error",
+  "code": "COMMON_VALIDATION_ERROR",
+  "message": "Input validation failed.",
+  "errors": [
+    {
+      "field": "string",
+      "message": "string"
+    }
+  ]
 }
 
 ```
@@ -165,9 +227,18 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|code|string|true|none|none|
+|status|string|true|none|none|
+|code|string|true|none|Machine-readable catalog code.|
 |message|string|true|none|none|
-|description|string|true|none|none|
+|errors|[object]|false|none|Per-field validation errors.|
+|» field|string|true|none|none|
+|» message|string|true|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
 
 <h2 id="tocS_OrganizationResponse">OrganizationResponse</h2>
 
@@ -178,21 +249,18 @@ continued
 
 ```json
 {
-  "orgId": "string",
-  "orgName": "string",
+  "id": "acme",
+  "displayName": "Acme Corporation",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
-  "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string",
-  "groupClaimName": "string",
-  "orgConfiguration": {}
+  "idpRefId": "string",
+  "cpRefId": "string",
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  },
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 
 ```
@@ -201,111 +269,25 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|orgId|string|false|none|none|
-|orgName|string|false|none|none|
+|id|string|false|none|The organization's handle (unique). Not the internal database uuid.|
+|displayName|string|false|none|none|
 |businessOwner|string¦null|false|none|none|
 |businessOwnerContact|string¦null|false|none|none|
 |businessOwnerEmail|string(email)¦null|false|none|none|
-|orgHandle|string|false|none|none|
-|roleClaimName|string|false|none|none|
-|groupsClaimName|string|false|none|none|
-|organizationClaimName|string|false|none|none|
-|organizationIdentifier|string|false|none|none|
-|adminRole|string|false|none|none|
-|subscriberRole|string|false|none|none|
-|superAdminRole|string¦null|false|none|none|
-|groupClaimName|string¦null|false|none|none|
-|orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
+|idpRefId|string|false|none|The organization claim value asserted by the configured Identity Provider at SSO login. On every login, the portal matches the authenticated user's org claim against this value to resolve which organization they belong to — it must exactly match the IDP's claim, or login fails for that org's users. Distinct from `cpRefId`, which is unrelated to authentication.|
+|cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
+|configuration|object|false|none|Organization portal configuration. Always includes `devportalMode`; may contain additional free-form keys set by the caller.|
+|» devportalMode|string|false|none|Controls the mode of the developer portal.|
+|createdAt|string(date-time)¦null|false|none|none|
+|updatedAt|string(date-time)¦null|false|none|none|
 
-<h2 id="tocS_OrganizationListItemResponse">OrganizationListItemResponse</h2>
+#### Enumerated Values
 
-<a id="schemaorganizationlistitemresponse"></a>
-<a id="schema_OrganizationListItemResponse"></a>
-<a id="tocSorganizationlistitemresponse"></a>
-<a id="tocsorganizationlistitemresponse"></a>
-
-```json
-{
-  "orgID": "string",
-  "orgName": "string",
-  "businessOwner": "string",
-  "businessOwnerContact": "string",
-  "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
-  "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string",
-  "orgConfiguration": {}
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|orgID|string|false|none|none|
-|orgName|string|false|none|none|
-|businessOwner|string¦null|false|none|none|
-|businessOwnerContact|string¦null|false|none|none|
-|businessOwnerEmail|string(email)¦null|false|none|none|
-|orgHandle|string|false|none|none|
-|roleClaimName|string|false|none|none|
-|groupsClaimName|string|false|none|none|
-|organizationClaimName|string|false|none|none|
-|organizationIdentifier|string|false|none|none|
-|adminRole|string|false|none|none|
-|subscriberRole|string|false|none|none|
-|superAdminRole|string¦null|false|none|none|
-|orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
-
-<h2 id="tocS_IdentityProviderResponse">IdentityProviderResponse</h2>
-
-<a id="schemaidentityproviderresponse"></a>
-<a id="schema_IdentityProviderResponse"></a>
-<a id="tocSidentityproviderresponse"></a>
-<a id="tocsidentityproviderresponse"></a>
-
-```json
-{
-  "name": "string",
-  "issuer": "string",
-  "authorizationURL": "http://example.com",
-  "tokenURL": "http://example.com",
-  "clientId": "string",
-  "callbackURL": "http://example.com",
-  "scope": "string",
-  "logoutURL": "http://example.com",
-  "logoutRedirectURI": "http://example.com",
-  "userInfoURL": "http://example.com",
-  "signUpURL": "http://example.com",
-  "jwksURL": "http://example.com",
-  "certificate": "string"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|name|string|false|none|none|
-|issuer|string|false|none|none|
-|authorizationURL|string(uri)|false|none|none|
-|tokenURL|string(uri)|false|none|none|
-|clientId|string|false|none|none|
-|callbackURL|string(uri)|false|none|none|
-|scope|string¦null|false|none|none|
-|logoutURL|string(uri)|false|none|none|
-|logoutRedirectURI|string(uri)|false|none|none|
-|userInfoURL|string(uri)|false|none|none|
-|signUpURL|string(uri)|false|none|none|
-|jwksURL|string(uri)|false|none|none|
-|certificate|string|false|none|none|
+|Property|Value|
+|---|---|
+|devportalMode|DEFAULT|
+|devportalMode|MCP_SERVERS_ONLY|
+|devportalMode|APIS_ONLY|
 
 <h2 id="tocS_OrganizationContentUploadResponse">OrganizationContentUploadResponse</h2>
 
@@ -316,7 +298,7 @@ continued
 
 ```json
 {
-  "orgId": "string",
+  "id": "string",
   "fileName": "string"
 }
 
@@ -326,7 +308,7 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|orgId|string|true|none|none|
+|id|string|true|none|none|
 |fileName|string|true|none|Original ZIP file name uploaded in the `file` multipart field.|
 
 <h2 id="tocS_OrganizationContentListItemResponse">OrganizationContentListItemResponse</h2>
@@ -338,7 +320,7 @@ continued
 
 ```json
 {
-  "orgId": "string",
+  "id": "string",
   "fileName": "string",
   "fileContent": "string"
 }
@@ -349,55 +331,9 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|orgId|string|false|none|none|
+|id|string|false|none|none|
 |fileName|string|false|none|none|
 |fileContent|string¦null|false|none|UTF-8 content string returned for stored organization content records.|
-
-<h2 id="tocS_ProviderResponse">ProviderResponse</h2>
-
-<a id="schemaproviderresponse"></a>
-<a id="schema_ProviderResponse"></a>
-<a id="tocSproviderresponse"></a>
-<a id="tocsproviderresponse"></a>
-
-```json
-{
-  "orgId": "string",
-  "name": "string",
-  "providerURL": "http://example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|orgId|string|true|none|none|
-|name|string|true|none|none|
-|providerURL|string(uri)|true|none|none|
-
-<h2 id="tocS_ProviderLookupItemResponse">ProviderLookupItemResponse</h2>
-
-<a id="schemaproviderlookupitemresponse"></a>
-<a id="schema_ProviderLookupItemResponse"></a>
-<a id="tocSproviderlookupitemresponse"></a>
-<a id="tocsproviderlookupitemresponse"></a>
-
-```json
-{
-  "name": "string",
-  "providerURL": "http://example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|name|string|true|none|none|
-|providerURL|string(uri)|true|none|none|
 
 <h2 id="tocS_ApiMetadataCreateResponse">ApiMetadataCreateResponse</h2>
 
@@ -408,63 +344,64 @@ continued
 
 ```json
 {
-  "apiID": "string",
-  "apiReferenceID": "string",
-  "apiHandle": "string",
-  "provider": "string",
-  "dataSource": "string",
-  "apiInfo": {
-    "apiName": "string",
-    "apiTitle": "string",
-    "remotes": [
-      {}
-    ],
-    "apiVersion": "string",
-    "apiDescription": "string",
-    "apiType": "string",
-    "visibility": "string",
-    "agentVisibility": "string",
-    "gatewayVendor": "string",
-    "tokenBasedSubscriptionEnabled": true,
-    "gatewayType": "string",
-    "addedLabels": [
-      "string"
-    ],
-    "removedLabels": [
-      "string"
-    ],
-    "visibleGroups": [
-      "string"
-    ],
-    "owners": {
-      "technicalOwner": "string",
-      "businessOwner": "string",
-      "businessOwnerEmail": "string",
-      "technicalOwnerEmail": "string"
-    },
-    "apiImageMetadata": {
-      "property1": "string",
-      "property2": "string"
-    },
-    "tags": [
-      "string"
-    ],
-    "labels": [
-      "string"
-    ]
+  "name": "string",
+  "apiTitle": "string",
+  "remotes": [
+    {}
+  ],
+  "version": "string",
+  "status": "PUBLISHED",
+  "description": "string",
+  "type": "RestApi",
+  "referenceId": "string",
+  "agentVisibility": "VISIBLE",
+  "addedLabels": [
+    "string"
+  ],
+  "removedLabels": [
+    "string"
+  ],
+  "owners": {
+    "technicalOwner": "string",
+    "businessOwner": "string",
+    "businessOwnerEmail": "string",
+    "technicalOwnerEmail": "string"
   },
+  "apiImageMetadata": {
+    "property1": "string",
+    "property2": "string"
+  },
+  "tags": [
+    "string"
+  ],
+  "labels": [
+    "string"
+  ],
+  "id": "string",
+  "refId": "string",
   "endPoints": {
     "sandboxURL": "string",
     "productionURL": "string"
   },
-  "subscriptionPolicies": [
+  "subscriptionPlans": [
     {
-      "policyID": "string",
-      "policyName": "string",
+      "id": "string",
       "displayName": "string",
       "description": "string",
-      "requestCount": 0,
-      "orgID": "string"
+      "limits": [
+        {
+          "limitType": "REQUEST_COUNT",
+          "limitCount": 10000,
+          "timeUnit": "MINUTE",
+          "timeAmount": 1
+        }
+      ],
+      "refId": "string",
+      "orgId": "string",
+      "createdBy": "alice@example.com",
+      "updatedBy": "alice@example.com",
+      "createdAt": "2019-08-24T14:15:22Z",
+      "updatedAt": "2019-08-24T14:15:22Z"
     }
   ]
 }
@@ -473,16 +410,21 @@ continued
 
 ### Properties
 
+allOf
+
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiID|string|false|none|none|
-|apiReferenceID|string|false|none|none|
-|apiHandle|string|false|none|none|
-|provider|string|false|none|none|
-|dataSource|string|false|none|none|
-|apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
-|endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
-|subscriptionPolicies|[[SubscriptionPolicyResponse](#schemasubscriptionpolicyresponse)]|false|none|none|
+|*anonymous*|[ApiInfoResponse](#schemaapiinforesponse)|false|none|Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» id|string|false|none|The API's handle (unique per org). Not the internal database uuid.|
+|» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|» endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
+|» subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
 
 <h2 id="tocS_ApiMetadataResponse">ApiMetadataResponse</h2>
 
@@ -493,83 +435,99 @@ continued
 
 ```json
 {
-  "apiID": "string",
-  "apiReferenceID": "string",
-  "apiHandle": "string",
-  "provider": "string",
-  "dataSource": "string",
-  "policyID": "string",
-  "apiInfo": {
-    "apiName": "string",
-    "apiTitle": "string",
-    "remotes": [
-      {}
-    ],
-    "apiVersion": "string",
-    "apiDescription": "string",
-    "apiType": "string",
-    "visibility": "string",
-    "agentVisibility": "string",
-    "gatewayVendor": "string",
-    "tokenBasedSubscriptionEnabled": true,
-    "gatewayType": "string",
-    "addedLabels": [
-      "string"
-    ],
-    "removedLabels": [
-      "string"
-    ],
-    "visibleGroups": [
-      "string"
-    ],
-    "owners": {
-      "technicalOwner": "string",
-      "businessOwner": "string",
-      "businessOwnerEmail": "string",
-      "technicalOwnerEmail": "string"
-    },
-    "apiImageMetadata": {
-      "property1": "string",
-      "property2": "string"
-    },
-    "tags": [
-      "string"
-    ],
-    "labels": [
-      "string"
-    ]
+  "name": "string",
+  "apiTitle": "string",
+  "remotes": [
+    {}
+  ],
+  "version": "string",
+  "status": "PUBLISHED",
+  "description": "string",
+  "type": "RestApi",
+  "referenceId": "string",
+  "agentVisibility": "VISIBLE",
+  "addedLabels": [
+    "string"
+  ],
+  "removedLabels": [
+    "string"
+  ],
+  "owners": {
+    "technicalOwner": "string",
+    "businessOwner": "string",
+    "businessOwnerEmail": "string",
+    "technicalOwnerEmail": "string"
   },
+  "apiImageMetadata": {
+    "property1": "string",
+    "property2": "string"
+  },
+  "tags": [
+    "string"
+  ],
+  "labels": [
+    "string"
+  ],
+  "id": "string",
+  "refId": "string",
+  "dataSource": "string",
+  "planId": "string",
   "endPoints": {
     "sandboxURL": "string",
     "productionURL": "string"
   },
-  "subscriptionPolicies": [
+  "subscriptionPlans": [
     {
-      "policyID": "string",
-      "policyName": "string",
+      "id": "string",
       "displayName": "string",
       "description": "string",
-      "requestCount": 0,
-      "orgID": "string"
+      "limits": [
+        {
+          "limitType": "REQUEST_COUNT",
+          "limitCount": 10000,
+          "timeUnit": "MINUTE",
+          "timeAmount": 1
+        }
+      ],
+      "refId": "string",
+      "orgId": "string",
+      "createdBy": "alice@example.com",
+      "updatedBy": "alice@example.com",
+      "createdAt": "2019-08-24T14:15:22Z",
+      "updatedAt": "2019-08-24T14:15:22Z"
     }
-  ]
+  ],
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z",
+  "updatedAt": "2026-05-07T08:30:00Z"
 }
 
 ```
 
 ### Properties
 
+allOf
+
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiID|string|false|none|none|
-|apiReferenceID|string|false|none|none|
-|apiHandle|string|false|none|none|
-|provider|string|false|none|none|
-|dataSource|string|false|none|none|
-|policyID|string|false|none|none|
-|apiInfo|[ApiInfoResponse](#schemaapiinforesponse)|false|none|none|
-|endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
-|subscriptionPolicies|[[SubscriptionPolicyResponse](#schemasubscriptionpolicyresponse)]|false|none|none|
+|*anonymous*|[ApiInfoResponse](#schemaapiinforesponse)|false|none|Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» id|string|false|none|The API's handle (unique per org). Not the internal database uuid.|
+|» refId|string¦null|false|none|Platform API (Control Plane) reference ID for this API. Used for MCP registry visibility filtering and included in outbound webhook event payloads. Null/absent for APIs that exist only in the Developer Portal and are not registered with the Platform API — e.g. MCP servers published via the registry.|
+|» dataSource|string¦null|false|none|Indicates which content matched the search term: `METADATA` if the match was in the API's own metadata, or a content type (e.g. a value from the API Content `type` field) if the match was inside an uploaded content file. Only computed by getAllApiMetadataForOrganization when both the `query` search parameter is supplied and the database is PostgreSQL — absent on SQLite (the dev default) and absent from every other operation (get/create/update single API).|
+|» planId|string|false|none|none|
+|» endPoints|[ApiEndpointsResponse](#schemaapiendpointsresponse)|false|none|none|
+|» subscriptionPlans|[[SubscriptionPlanResponse](#schemasubscriptionplanresponse)]|false|none|none|
+|» createdBy|string|false|none|Identity of the user who created this API, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|» updatedBy|string|false|none|Identity of the user who last updated this API, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|» createdAt|string(date-time)|false|none|none|
+|» updatedAt|string(date-time)|false|none|none|
 
 <h2 id="tocS_ApiInfoResponse">ApiInfoResponse</h2>
 
@@ -580,26 +538,21 @@ continued
 
 ```json
 {
-  "apiName": "string",
+  "name": "string",
   "apiTitle": "string",
   "remotes": [
     {}
   ],
-  "apiVersion": "string",
-  "apiDescription": "string",
-  "apiType": "string",
-  "visibility": "string",
-  "agentVisibility": "string",
-  "gatewayVendor": "string",
-  "tokenBasedSubscriptionEnabled": true,
-  "gatewayType": "string",
+  "version": "string",
+  "status": "PUBLISHED",
+  "description": "string",
+  "type": "RestApi",
+  "referenceId": "string",
+  "agentVisibility": "VISIBLE",
   "addedLabels": [
     "string"
   ],
   "removedLabels": [
-    "string"
-  ],
-  "visibleGroups": [
     "string"
   ],
   "owners": {
@@ -622,28 +575,42 @@ continued
 
 ```
 
+Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.
+
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiName|string|false|none|none|
+|name|string|false|none|none|
 |apiTitle|string¦null|false|none|none|
 |remotes|[object]|false|none|none|
-|apiVersion|string|false|none|none|
-|apiDescription|string|false|none|none|
-|apiType|string|false|none|none|
-|visibility|string|false|none|none|
+|version|string|false|none|none|
+|status|string|false|none|API lifecycle status.|
+|description|string|false|none|none|
+|type|string|false|none|The stored/returned type constant (src/utils/constants.js API_TYPE) — distinct from the request-time keyword accepted on create/update (see `type` in ApiMetadataMultipartBody: REST, SOAP, MCP, WS, WEBSUB, GRAPHQL). REST maps to `RestApi` and WEBSUB maps to `WebSubApi`; the rest are returned unchanged.|
+|referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back.|
 |agentVisibility|string|false|none|none|
-|gatewayVendor|string|false|none|none|
-|tokenBasedSubscriptionEnabled|boolean|false|none|none|
-|gatewayType|string¦null|false|none|none|
 |addedLabels|[string]|false|none|none|
 |removedLabels|[string]|false|none|none|
-|visibleGroups|[string]|false|none|none|
 |owners|[ApiOwnersResponse](#schemaapiownersresponse)|false|none|none|
 |apiImageMetadata|[ApiImageMetadataResponse](#schemaapiimagemetadataresponse)|false|none|none|
 |tags|[string]|false|none|none|
 |labels|[string]|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|PUBLISHED|
+|status|DEPRECATED|
+|type|RestApi|
+|type|SOAP|
+|type|Mcp|
+|type|WS|
+|type|WebSubApi|
+|type|GRAPHQL|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 
 <h2 id="tocS_ApiOwnersResponse">ApiOwnersResponse</h2>
 
@@ -714,21 +681,32 @@ continued
 |---|---|---|---|---|
 |**additionalProperties**|string|false|none|none|
 
-<h2 id="tocS_SubscriptionPolicyResponse">SubscriptionPolicyResponse</h2>
+<h2 id="tocS_SubscriptionPlanResponse">SubscriptionPlanResponse</h2>
 
-<a id="schemasubscriptionpolicyresponse"></a>
-<a id="schema_SubscriptionPolicyResponse"></a>
-<a id="tocSsubscriptionpolicyresponse"></a>
-<a id="tocssubscriptionpolicyresponse"></a>
+<a id="schemasubscriptionplanresponse"></a>
+<a id="schema_SubscriptionPlanResponse"></a>
+<a id="tocSsubscriptionplanresponse"></a>
+<a id="tocssubscriptionplanresponse"></a>
 
 ```json
 {
-  "policyID": "string",
-  "policyName": "string",
+  "id": "string",
   "displayName": "string",
   "description": "string",
-  "requestCount": 0,
-  "orgID": "string"
+  "limits": [
+    {
+      "limitType": "REQUEST_COUNT",
+      "limitCount": 10000,
+      "timeUnit": "MINUTE",
+      "timeAmount": 1
+    }
+  ],
+  "refId": "string",
+  "orgId": "string",
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 
 ```
@@ -737,29 +715,51 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|policyID|string|false|none|none|
-|policyName|string|false|none|none|
+|id|string|false|none|The plan's handle (unique per org). Not the internal database uuid.|
 |displayName|string|false|none|none|
 |description|string|false|none|none|
-|requestCount|any|false|none|none|
+|limits|[object]|false|none|Rate/quota limits enforced for this plan. Empty when the plan is unlimited.|
+|» limitType|string|false|none|none|
+|» limitCount|any|false|none|Returned as a string when the stored count exceeds the safe integer range, otherwise a number. Unlimited plans have no limit entries — the `limits` array is empty.|
 
 oneOf
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» *anonymous*|integer|false|none|none|
+|»» *anonymous*|integer|false|none|none|
 
 xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|» *anonymous*|string|false|none|none|
+|»» *anonymous*|string|false|none|none|
 
 continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|orgID|string|false|none|none|
+|» timeUnit|string¦null|false|none|none|
+|» timeAmount|integer|false|none|none|
+|refId|string¦null|false|none|Platform API subscription plan UUID associated with this plan.|
+|orgId|string|false|none|none|
+|createdBy|string|false|none|Identity of the user who created this subscription plan, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|updatedBy|string|false|none|Identity of the user who last updated this subscription plan, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|createdAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|limitType|REQUEST_COUNT|
+|limitType|EVENT_COUNT|
+|limitType|BANDWIDTH|
+|limitType|TOTAL_TOKEN_COUNT|
+|timeUnit|MINUTE|
+|timeUnit|HOUR|
+|timeUnit|DAY|
+|timeUnit|MONTH|
+|timeUnit|null|
 
 <h2 id="tocS_LabelResponse">LabelResponse</h2>
 
@@ -770,7 +770,7 @@ continued
 
 ```json
 {
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 
@@ -780,7 +780,7 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|false|none|none|
+|id|string|false|none|The label's handle (unique per org). Not the internal database uuid.|
 |displayName|string|false|none|none|
 
 <h2 id="tocS_ApplicationResponse">ApplicationResponse</h2>
@@ -792,17 +792,20 @@ continued
 
 ```json
 {
-  "id": "app-12345",
-  "name": "Weather App",
+  "id": "my-weather-app",
+  "displayName": "Weather App",
   "description": "Application used to call Weather APIs.",
-  "type": "WEB",
-  "appMap": [
+  "appKeyMappings": [
     {
-      "appRefID": "cp-app-98765",
-      "token": "OAUTH",
-      "shared": true
+      "asClientId": "asgardeo-client-abc123",
+      "kmId": "km-uuid-12345",
+      "type": "PRODUCTION"
     }
-  ]
+  ],
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2026-05-07T08:30:00Z",
+  "updatedAt": "2026-05-07T08:30:00Z"
 }
 
 ```
@@ -811,11 +814,14 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
-|name|string|false|none|none|
+|id|string|false|none|The application's handle (unique per org). Not the internal database uuid.|
+|displayName|string|false|none|none|
 |description|string|false|none|none|
-|type|string|false|none|none|
-|appMap|[[ApplicationKeyMappingSummary](#schemaapplicationkeymappingsummary)]|false|none|none|
+|appKeyMappings|[[ApplicationKeyMappingSummary](#schemaapplicationkeymappingsummary)]|false|none|[OAuth client ID mapping entry attached to an application.]|
+|createdBy|string|false|none|Identity of the user who created this application, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|updatedBy|string|false|none|Identity of the user who last updated this application, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|createdAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
 
 <h2 id="tocS_ApplicationKeyMappingSummary">ApplicationKeyMappingSummary</h2>
 
@@ -826,51 +832,29 @@ continued
 
 ```json
 {
-  "appRefID": "cp-app-98765",
-  "token": "OAUTH",
-  "shared": true
+  "asClientId": "asgardeo-client-abc123",
+  "kmId": "km-uuid-12345",
+  "type": "PRODUCTION"
 }
 
 ```
+
+OAuth client ID mapping entry attached to an application.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|appRefID|string|false|none|none|
-|token|string|false|none|none|
-|shared|boolean|false|none|none|
-
-<h2 id="tocS_ApplicationImportResponse">ApplicationImportResponse</h2>
-
-<a id="schemaapplicationimportresponse"></a>
-<a id="schema_ApplicationImportResponse"></a>
-<a id="tocSapplicationimportresponse"></a>
-<a id="tocsapplicationimportresponse"></a>
-
-```json
-{
-  "status": "Success",
-  "failedSubscriptions": [
-    {}
-  ]
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|true|none|none|
-|failedSubscriptions|[object]|false|none|none|
+|asClientId|string|false|none|OAuth client ID, created directly in the key manager and linked to this application.|
+|kmId|string|false|none|UUID of the key manager this client ID is linked to.|
+|type|string|false|none|Key type for this mapping.|
 
 #### Enumerated Values
 
 |Property|Value|
 |---|---|
-|status|Success|
-|status|Incomplete|
+|type|PRODUCTION|
+|type|SANDBOX|
 
 <h2 id="tocS_ViewResponse">ViewResponse</h2>
 
@@ -881,12 +865,16 @@ continued
 
 ```json
 {
-  "name": "partner-apis",
+  "id": "partner-apis",
   "displayName": "Partner APIs",
   "labels": [
     "partner",
     "public"
-  ]
+  ],
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 
 ```
@@ -895,9 +883,13 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|id|string|true|none|The view's handle (unique per org). Not the internal database uuid.|
 |displayName|string|true|none|none|
 |labels|[string]|true|none|none|
+|createdBy|string|false|none|Identity of the user who created this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|updatedBy|string|false|none|Identity of the user who last updated this view, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|createdAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
 
 <h2 id="tocS_OrganizationCreateRequest">OrganizationCreateRequest</h2>
 
@@ -908,18 +900,16 @@ continued
 
 ```json
 {
-  "orgName": "string",
+  "displayName": "Acme Corporation",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
-  "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string"
+  "id": "acme",
+  "idpRefId": "string",
+  "cpRefId": "string",
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 
 ```
@@ -928,18 +918,23 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|orgName|string|true|none|none|
+|displayName|string|true|none|none|
 |businessOwner|string|false|none|none|
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
-|orgHandle|string|true|none|Public organization handle used in portal URLs.|
-|roleClaimName|string|true|none|none|
-|groupsClaimName|string|true|none|none|
-|organizationClaimName|string|true|none|none|
-|organizationIdentifier|string|true|none|none|
-|adminRole|string|true|none|none|
-|subscriberRole|string|true|none|none|
-|superAdminRole|string|true|none|none|
+|id|string|true|none|Desired handle for the organization (unique), stored as-is. Used in portal URLs.|
+|idpRefId|string|true|none|The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.|
+|cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
+|configuration|object|false|none|none|
+|» devportalMode|string|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|devportalMode|DEFAULT|
+|devportalMode|MCP_SERVERS_ONLY|
+|devportalMode|APIS_ONLY|
 
 <h2 id="tocS_OrganizationUpdateRequest">OrganizationUpdateRequest</h2>
 
@@ -950,19 +945,16 @@ continued
 
 ```json
 {
-  "orgName": "string",
+  "displayName": "Acme Corporation",
   "businessOwner": "string",
   "businessOwnerContact": "string",
   "businessOwnerEmail": "user@example.com",
-  "orgHandle": "string",
-  "roleClaimName": "string",
-  "groupsClaimName": "string",
-  "organizationClaimName": "string",
-  "organizationIdentifier": "string",
-  "adminRole": "string",
-  "subscriberRole": "string",
-  "superAdminRole": "string",
-  "orgConfiguration": {}
+  "id": "acme",
+  "idpRefId": "string",
+  "cpRefId": "string",
+  "configuration": {
+    "devportalMode": "DEFAULT"
+  }
 }
 
 ```
@@ -971,103 +963,45 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|orgName|string|true|none|none|
+|displayName|string|true|none|none|
 |businessOwner|string|false|none|none|
 |businessOwnerContact|string|false|none|none|
 |businessOwnerEmail|string(email)|false|none|none|
-|orgHandle|string|true|none|none|
-|roleClaimName|string|true|none|none|
-|groupsClaimName|string|true|none|none|
-|organizationClaimName|string|true|none|none|
-|organizationIdentifier|string|true|none|none|
-|adminRole|string|true|none|none|
-|subscriberRole|string|true|none|none|
-|superAdminRole|string|true|none|none|
-|orgConfiguration|[GenericObject](#schemagenericobject)|false|none|none|
+|id|string|true|none|Desired handle for the organization (unique), stored as-is. Used in portal URLs.|
+|idpRefId|string|true|none|The organization claim value asserted by the configured Identity Provider at SSO login. Must exactly match the IDP's org claim for that org's users, or login will fail. Distinct from `cpRefId`.|
+|cpRefId|string¦null|false|none|Control Plane reference ID, included in outbound webhook event payloads. Not used for authentication.|
+|configuration|object|false|none|none|
+|» devportalMode|string|false|none|none|
 
-<h2 id="tocS_IdentityProviderRequest">IdentityProviderRequest</h2>
+#### Enumerated Values
 
-<a id="schemaidentityproviderrequest"></a>
-<a id="schema_IdentityProviderRequest"></a>
-<a id="tocSidentityproviderrequest"></a>
-<a id="tocsidentityproviderrequest"></a>
+|Property|Value|
+|---|---|
+|devportalMode|DEFAULT|
+|devportalMode|MCP_SERVERS_ONLY|
+|devportalMode|APIS_ONLY|
 
-```json
-{
-  "issuer": "string",
-  "name": "string",
-  "authorizationURL": "http://example.com",
-  "tokenURL": "http://example.com",
-  "userInfoURL": "http://example.com",
-  "clientId": "string",
-  "callbackURL": "http://example.com",
-  "signUpURL": "http://example.com",
-  "logoutURL": "http://example.com",
-  "logoutRedirectURI": "http://example.com",
-  "scope": "string",
-  "jwksURL": "http://example.com",
-  "certificate": "string"
-}
+<h2 id="tocS_SubscriptionPlanRequest">SubscriptionPlanRequest</h2>
 
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|issuer|string|true|none|none|
-|name|string|true|none|none|
-|authorizationURL|string(uri)|true|none|none|
-|tokenURL|string(uri)|true|none|none|
-|userInfoURL|string(uri)|false|none|none|
-|clientId|string|true|none|none|
-|callbackURL|string(uri)|true|none|none|
-|signUpURL|string(uri)|false|none|none|
-|logoutURL|string(uri)|true|none|none|
-|logoutRedirectURI|string(uri)|true|none|none|
-|scope|string|false|none|none|
-|jwksURL|string(uri)|false|none|none|
-|certificate|string|false|none|none|
-
-<h2 id="tocS_ProviderRequest">ProviderRequest</h2>
-
-<a id="schemaproviderrequest"></a>
-<a id="schema_ProviderRequest"></a>
-<a id="tocSproviderrequest"></a>
-<a id="tocsproviderrequest"></a>
+<a id="schemasubscriptionplanrequest"></a>
+<a id="schema_SubscriptionPlanRequest"></a>
+<a id="tocSsubscriptionplanrequest"></a>
+<a id="tocssubscriptionplanrequest"></a>
 
 ```json
 {
-  "name": "string",
-  "providerURL": "http://example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|name|string|true|none|none|
-|providerURL|string(uri)|true|none|none|
-
-<h2 id="tocS_SubscriptionPolicyRequest">SubscriptionPolicyRequest</h2>
-
-<a id="schemasubscriptionpolicyrequest"></a>
-<a id="schema_SubscriptionPolicyRequest"></a>
-<a id="tocSsubscriptionpolicyrequest"></a>
-<a id="tocssubscriptionpolicyrequest"></a>
-
-```json
-{
-  "policyId": "string",
-  "policyID": "string",
-  "policyName": "string",
+  "id": "Gold",
+  "refId": "string",
   "displayName": "string",
   "description": "string",
-  "type": "requestcount",
-  "requestCount": 0,
-  "eventCount": 0
+  "limits": [
+    {
+      "limitType": "REQUEST_COUNT",
+      "limitCount": 10000,
+      "timeUnit": "MINUTE",
+      "timeAmount": 1
+    }
+  ]
 }
 
 ```
@@ -1076,13 +1010,17 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|policyId|string|false|none|Optional external/APIM policy UUID.|
-|policyID|string|false|none|Alternative casing accepted by the DAO.|
-|policyName|string|true|none|none|
+|id|string|true|none|Desired handle for the plan (unique per org), stored as-is. When the plan is created from a SubscriptionPlan YAML artifact instead, the handle is always taken from `metadata.name`.|
+|refId|string|false|none|Platform API subscription plan UUID to associate with this plan.|
 |displayName|string|true|none|none|
 |description|string|false|none|none|
-|type|string|true|none|Service accepts case-insensitive `requestcount` or `eventcount`.|
-|requestCount|any|false|none|Required for request-count policies. Use -1 for unlimited.|
+|limits|[object]|false|none|Rate/quota limits enforced for this plan. Omit or leave empty for an unlimited plan. Replaces the whole limit set on update.|
+|» limitType|string|false|none|none|
+|» limitCount|integer|true|none|Use -1 for unlimited, otherwise a positive number.|
+|» timeUnit|string¦null|false|none|Omit for a limit with no time window.|
+|» timeAmount|integer|false|none|Size of the time window, in `timeUnit` units.|
+|type|string|false|none|Legacy shorthand accepted only via SubscriptionPlan/SubscriptionPlanList YAML upload (`multipart/form-data`); converted into `limits` before storage. Ignored for JSON requests — use `limits` instead.|
+|requestCount|any|false|none|Legacy YAML shorthand paired with `type: requestcount`. Use -1 for unlimited.|
 
 oneOf
 
@@ -1100,7 +1038,7 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|eventCount|any|false|none|Required for event-count policies. Use -1 for unlimited.|
+|eventCount|any|false|none|Legacy YAML shorthand paired with `type: eventcount`. Use -1 for unlimited.|
 
 oneOf
 
@@ -1118,6 +1056,15 @@ xor
 
 |Property|Value|
 |---|---|
+|limitType|REQUEST_COUNT|
+|limitType|EVENT_COUNT|
+|limitType|BANDWIDTH|
+|limitType|TOTAL_TOKEN_COUNT|
+|timeUnit|MINUTE|
+|timeUnit|HOUR|
+|timeUnit|DAY|
+|timeUnit|MONTH|
+|timeUnit|null|
 |type|requestcount|
 |type|eventcount|
 
@@ -1130,7 +1077,7 @@ xor
 
 ```json
 {
-  "name": "premium",
+  "id": "premium",
   "displayName": "Premium APIs"
 }
 
@@ -1140,7 +1087,7 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|id|string|true|none|Desired handle for the label (unique per org), stored as-is.|
 |displayName|string|true|none|none|
 
 <h2 id="tocS_ApplicationRequest">ApplicationRequest</h2>
@@ -1152,9 +1099,9 @@ xor
 
 ```json
 {
-  "name": "Weather App",
-  "description": "Application used to call Weather APIs.",
-  "type": "WEB"
+  "displayName": "Weather App",
+  "id": "my-weather-app",
+  "description": "Application used to call Weather APIs."
 }
 
 ```
@@ -1163,29 +1110,9 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|displayName|string|true|none|none|
+|id|string|false|none|Immutable, org-scoped slug for the application, stored as its handle. Optional — defaults to the application's `displayName` when omitted.|
 |description|string|true|none|none|
-|type|string|false|none|none|
-
-<h2 id="tocS_ResetThrottlePolicyRequest">ResetThrottlePolicyRequest</h2>
-
-<a id="schemaresetthrottlepolicyrequest"></a>
-<a id="schema_ResetThrottlePolicyRequest"></a>
-<a id="tocSresetthrottlepolicyrequest"></a>
-<a id="tocsresetthrottlepolicyrequest"></a>
-
-```json
-{
-  "userName": "alice@example.com"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|userName|string|true|none|User name whose application throttle policy should be reset in the control plane.|
 
 <h2 id="tocS_SubscriptionCreateRequest">SubscriptionCreateRequest</h2>
 
@@ -1196,9 +1123,8 @@ xor
 
 ```json
 {
-  "apiId": "api-7f4c2a6b",
-  "subscriptionPlanName": "Gold",
-  "applicationId": "cp-app-98765"
+  "apiId": "weather-api-v1",
+  "subscriptionPlanId": "Gold"
 }
 
 ```
@@ -1208,8 +1134,7 @@ xor
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |apiId|string|true|none|Developer Portal API ID.|
-|subscriptionPlanName|string|false|none|Optional subscription plan name to use in the control plane.|
-|applicationId|string|false|none|Optional control-plane application ID.|
+|subscriptionPlanId|string|true|none|Developer Portal subscription plan ID.|
 
 <h2 id="tocS_SubscriptionUpdateRequest">SubscriptionUpdateRequest</h2>
 
@@ -1238,6 +1163,28 @@ xor
 |status|ACTIVE|
 |status|INACTIVE|
 
+<h2 id="tocS_SubscriptionChangePlanRequest">SubscriptionChangePlanRequest</h2>
+
+<a id="schemasubscriptionchangeplanrequest"></a>
+<a id="schema_SubscriptionChangePlanRequest"></a>
+<a id="tocSsubscriptionchangeplanrequest"></a>
+<a id="tocssubscriptionchangeplanrequest"></a>
+
+```json
+{
+  "apiId": "weather-api-v1",
+  "planId": "Gold"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiId|string|false|none|Developer Portal API ID the subscription belongs to. Optional — if provided, it is validated against the API derived from the existing subscription record and the request is rejected with 400 if they don't match. It is never used as a fallback: if the API cannot be derived from the subscription record, the request fails with 400 regardless of this value.|
+|planId|string|true|none|Developer Portal subscription plan ID to switch to.|
+
 <h2 id="tocS_SubscriptionResponse">SubscriptionResponse</h2>
 
 <a id="schemasubscriptionresponse"></a>
@@ -1248,35 +1195,33 @@ xor
 ```json
 {
   "subscriptionId": "sub-12345",
-  "id": "sub-12345",
-  "apiId": "cp-api-12345",
-  "apiName": "Weather API",
-  "applicationId": "cp-app-98765",
-  "applicationName": "Weather App",
+  "apiId": "weather-api-v1",
+  "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
-  "createdTime": "2019-08-24T14:15:22Z",
-  "updatedTime": "2019-08-24T14:15:22Z"
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 
 ```
 
-Subscription payload returned by the control plane.
+Subscription payload.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |subscriptionId|string|false|none|none|
-|id|string|false|none|Alternative subscription identifier used by some control-plane responses.|
-|apiId|string|false|none|Control-plane API reference ID.|
-|apiName|string|false|none|none|
-|applicationId|string|false|none|none|
-|applicationName|string|false|none|none|
+|apiId|string|false|none|Developer Portal API ID.|
+|subscriptionToken|string¦null|false|none|Plaintext subscription token, decrypted on every read (not just on create). Null if decryption fails (e.g. the encryption key changed since the token was stored).|
 |subscriptionPlanName|string|false|none|none|
 |status|string|false|none|none|
-|createdTime|string(date-time)|false|none|none|
-|updatedTime|string(date-time)|false|none|none|
+|createdBy|string|false|none|Identity of the user who created the subscription, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|updatedBy|string|false|none|Identity of the user who last updated the subscription, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|createdAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
 
 #### Enumerated Values
 
@@ -1284,9 +1229,6 @@ Subscription payload returned by the control plane.
 |---|---|
 |status|ACTIVE|
 |status|INACTIVE|
-|status|ON_HOLD|
-|status|REJECTED|
-|status|TIER_UPDATE_PENDING|
 
 <h2 id="tocS_ApiKeyRequest">ApiKeyRequest</h2>
 
@@ -1297,9 +1239,10 @@ Subscription payload returned by the control plane.
 
 ```json
 {
-  "apiId": "api-7f4c2a6b",
-  "name": "weather_prod_key",
+  "id": "weather_prod_key",
+  "displayName": "Weather Prod Key",
   "subscriptionId": "sub-abc123",
+  "appId": "my-weather-app",
   "expiresAt": "2026-12-31T23:59:59Z"
 }
 
@@ -1309,9 +1252,10 @@ Subscription payload returned by the control plane.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiId|string|true|none|Developer Portal API ID.|
-|name|string|true|none|none|
+|id|string|true|none|none|
+|displayName|string|false|none|Optional human-readable name for the key. Defaults to `id` when omitted.|
 |subscriptionId|string|false|none|Optional subscription ID to associate the key with.|
+|appId|string|false|none|Optional application ID to associate the key with, for analytics attribution only — it has no effect on the key's validity or authorization. Must belong to the same organization and be owned by the caller.|
 |expiresAt|any|false|none|Optional ISO-8601 datetime with timezone, epoch seconds, or epoch milliseconds.|
 
 oneOf
@@ -1336,8 +1280,11 @@ xor
 ```json
 {
   "keyId": "key-12345",
-  "name": "weather_prod_key",
-  "apiId": "api-7f4c2a6b",
+  "id": "weather_prod_key",
+  "displayName": "Weather Prod Key",
+  "apiId": "weather-api-v1",
+  "appId": "my-weather-app",
+  "appDisplayName": "My Mobile App",
   "status": "ACTIVE",
   "expiresAt": "2026-12-31T23:59:59Z",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -1353,8 +1300,11 @@ API key metadata returned by list operations. Secret material is omitted.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |keyId|string|false|none|Developer Portal key identifier.|
-|name|string|false|none|none|
+|id|string|false|none|none|
+|displayName|string|false|none|none|
 |apiId|string|false|none|Developer Portal API ID the key belongs to.|
+|appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
+|appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
 |status|string|false|none|none|
 |expiresAt|string(date-time)¦null|false|none|none|
 |createdAt|string(date-time)|false|none|none|
@@ -1377,46 +1327,49 @@ API key metadata returned by list operations. Secret material is omitted.
 ```json
 {
   "keyId": "key-12345",
-  "name": "weather_prod_key",
-  "apiId": "api-7f4c2a6b",
-  "status": "ACTIVE",
+  "id": "weather_prod_key",
+  "displayName": "Weather Prod Key",
+  "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
   "expiresAt": "2026-12-31T23:59:59Z",
-  "createdAt": "2019-08-24T14:15:22Z",
-  "revokedAt": "2019-08-24T14:15:22Z",
-  "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ"
+  "status": "ACTIVE"
 }
 
 ```
 
+API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these six fields.
+
 ### Properties
 
-allOf
-
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|*anonymous*|[ApiKeyMetadataResponse](#schemaapikeymetadataresponse)|false|none|API key metadata returned by list operations. Secret material is omitted.|
+|keyId|string|false|none|Developer Portal key identifier.|
+|id|string|false|none|none|
+|displayName|string|false|none|none|
+|key|string|false|none|One-time plaintext API key secret.|
+|expiresAt|string(date-time)¦null|false|none|none|
+|status|string|false|none|none|
 
-and
+#### Enumerated Values
 
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|object|false|none|API key response returned by generate/regenerate. The plaintext secret is returned exactly once and never persisted — store it securely.|
-|» key|string|false|none|One-time plaintext API key secret.|
+|Property|Value|
+|---|---|
+|status|ACTIVE|
+|status|REVOKED|
 
-<h2 id="tocS_SubscriptionRequest">SubscriptionRequest</h2>
+<h2 id="tocS_ApiKeyApplicationResponse">ApiKeyApplicationResponse</h2>
 
-<a id="schemasubscriptionrequest"></a>
-<a id="schema_SubscriptionRequest"></a>
-<a id="tocSsubscriptionrequest"></a>
-<a id="tocssubscriptionrequest"></a>
+<a id="schemaapikeyapplicationresponse"></a>
+<a id="schema_ApiKeyApplicationResponse"></a>
+<a id="tocSapikeyapplicationresponse"></a>
+<a id="tocsapikeyapplicationresponse"></a>
 
 ```json
 {
-  "applicationID": "app-12345",
-  "apiId": "api-7f4c2a6b",
-  "apiReferenceID": "cp-api-12345",
-  "policyId": "policy-gold",
-  "policyName": "Gold"
+  "keyId": "key-12345",
+  "application": {
+    "id": "my-weather-app",
+    "displayName": "My Mobile App"
+  }
 }
 
 ```
@@ -1425,11 +1378,10 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|applicationID|string|true|none|Developer Portal application ID.|
-|apiId|string|true|none|Developer Portal API ID.|
-|apiReferenceID|string|false|none|Control-plane API reference ID, used when a CP subscription is created or updated.|
-|policyId|string|true|none|Developer Portal subscription policy ID.|
-|policyName|string|false|none|Subscription policy name used as throttling policy in the control plane.|
+|keyId|string|false|none|none|
+|application|object|false|none|none|
+|» id|string|false|none|none|
+|» displayName|string|false|none|none|
 
 <h2 id="tocS_KeyManagerRequest">KeyManagerRequest</h2>
 
@@ -1440,29 +1392,11 @@ and
 
 ```json
 {
-  "name": "Asgardeo",
+  "displayName": "Asgardeo",
+  "id": "asgardeo-prod",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "adminClientId": "<client-id>",
-  "adminClientSecret": "<client-secret>",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 
 ```
@@ -1471,18 +1405,11 @@ and
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|Unique name within the organization.|
+|displayName|string|true|none|none|
+|id|string|false|none|Desired handle for the key manager (unique per org), stored as-is. Optional — defaults to the key manager's `displayName` when omitted.|
 |type|string|true|none|none|
 |enabled|boolean|false|none|none|
-|tokenEndpoint|string(uri)|true|none|OAuth2 token endpoint. Used to obtain admin tokens and proxy developer token requests.|
-|clientRegistrationEndpoint|string(uri)|true|none|DCR endpoint used to create, update, and delete OAuth clients on behalf of developers.|
-|issuer|string(uri)|false|none|Issuer identifier. Used as a string to validate the `iss` claim in tokens issued by this KM. For Asgardeo and WSO2 IS this is the same URL as `tokenEndpoint`.|
-|jwksURL|string(uri)|false|none|JWKS endpoint. Consumers and gateways fetch public keys from here to verify token signatures.|
-|adminClientId|string|true|none|Client ID of the admin application used for DCR operations. Stored encrypted.|
-|adminClientSecret|string|true|none|Client secret of the admin application. Stored encrypted; never returned in responses.|
-|supportedGrantTypes|[string]|false|none|none|
-|supportedScopes|[string]|false|none|none|
-|additionalProperties|object|false|none|AS-specific extra configuration. For Asgardeo: `authorizeEndpoint`, `revokeEndpoint`, `logoutEndpoint`. For Keycloak: `realm`, `revokeEndpoint`, `logoutEndpoint`.|
+|tokenEndpoint|string(uri)|true|none|OAuth2 token endpoint. The OAuth application itself must be created directly in this key manager; the portal only proxies `client_appKeyMappings` token requests to this endpoint.|
 
 #### Enumerated Values
 
@@ -1502,29 +1429,11 @@ and
 
 ```json
 {
-  "name": "Asgardeo",
+  "displayName": "Asgardeo",
+  "id": "asgardeo-prod",
   "type": "ASGARDEO",
   "enabled": true,
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "adminClientId": "<client-id>",
-  "adminClientSecret": "<client-secret>",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 
 ```
@@ -1535,18 +1444,11 @@ Partial update payload for a key manager. All fields are optional; only supplied
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|false|none|Unique name within the organization.|
+|displayName|string|false|none|none|
+|id|string|false|none|Desired handle for the key manager (unique per org), stored as-is.|
 |type|string|false|none|none|
 |enabled|boolean|false|none|none|
-|tokenEndpoint|string(uri)|false|none|OAuth2 token endpoint. Used to obtain admin tokens and proxy developer token requests.|
-|clientRegistrationEndpoint|string(uri)|false|none|DCR endpoint used to create, update, and delete OAuth clients on behalf of developers.|
-|issuer|string(uri)|false|none|Issuer identifier. Used as a string to validate the `iss` claim in tokens issued by this KM. For Asgardeo and WSO2 IS this is the same URL as `tokenEndpoint`.|
-|jwksURL|string(uri)|false|none|JWKS endpoint. Consumers and gateways fetch public keys from here to verify token signatures.|
-|adminClientId|string|false|none|Client ID of the admin application used for DCR operations. Stored encrypted.|
-|adminClientSecret|string|false|none|Client secret of the admin application. Stored encrypted; never returned in responses.|
-|supportedGrantTypes|[string]|false|none|none|
-|supportedScopes|[string]|false|none|none|
-|additionalProperties|object|false|none|AS-specific extra configuration. For Asgardeo: `authorizeEndpoint`, `revokeEndpoint`, `logoutEndpoint`. For Keycloak: `realm`, `revokeEndpoint`, `logoutEndpoint`.|
+|tokenEndpoint|string(uri)|false|none|none|
 
 #### Enumerated Values
 
@@ -1566,51 +1468,36 @@ Partial update payload for a key manager. All fields are optional; only supplied
 
 ```json
 {
-  "id": "km-uuid-12345",
+  "id": "asgardeo-prod",
+  "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "name": "Asgardeo",
   "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "clientRegistrationEndpoint": "https://api.asgardeo.io/t/myorg/api/identity/oauth2/dcr/v1.1/register",
-  "issuer": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "jwksURL": "https://api.asgardeo.io/t/myorg/oauth2/jwks",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code",
-    "refresh_token"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ],
-  "additionalProperties": {
-    "authorizeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/authorize",
-    "revokeEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/revoke",
-    "logoutEndpoint": "https://api.asgardeo.io/t/myorg/oidc/logout"
-  }
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 
 ```
 
-Key manager configuration. Admin credentials are never included.
+Key manager configuration.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|Key manager UUID.|
+|id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
+|displayName|string|false|none|none|
 |orgId|string|false|none|none|
-|name|string|false|none|none|
 |type|string|false|none|none|
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
-|clientRegistrationEndpoint|string(uri)|false|none|none|
-|issuer|string(uri)¦null|false|none|none|
-|jwksURL|string(uri)¦null|false|none|none|
-|supportedGrantTypes|[string]|false|none|none|
-|supportedScopes|[string]|false|none|none|
-|additionalProperties|object|false|none|none|
+|createdBy|string|false|none|Identity of the user who created this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|updatedBy|string|false|none|Identity of the user who last updated this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|createdAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
 
 #### Enumerated Values
 
@@ -1630,34 +1517,24 @@ Key manager configuration. Admin credentials are never included.
 
 ```json
 {
-  "id": "km-uuid-12345",
-  "name": "Asgardeo",
+  "id": "asgardeo-prod",
+  "displayName": "Asgardeo",
   "type": "ASGARDEO",
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "authorization_code"
-  ],
-  "supportedScopes": [
-    "openid",
-    "profile"
-  ]
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 
 ```
 
-Minimal developer-facing key manager view. No admin credentials or DCR endpoints.
+Minimal developer-facing key manager view.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|id|string|false|none|none|
-|name|string|false|none|none|
+|id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
+|displayName|string|false|none|none|
 |type|string|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
-|supportedGrantTypes|[string]|false|none|none|
-|supportedScopes|[string]|false|none|none|
 
 #### Enumerated Values
 
@@ -1667,6 +1544,137 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
 |type|WSO2IS|
 |type|KEYCLOAK|
 |type|GENERIC_OIDC|
+
+<h2 id="tocS_WebhookSubscriberRequest">WebhookSubscriberRequest</h2>
+
+<a id="schemawebhooksubscriberrequest"></a>
+<a id="schema_WebhookSubscriberRequest"></a>
+<a id="tocSwebhooksubscriberrequest"></a>
+<a id="tocswebhooksubscriberrequest"></a>
+
+```json
+{
+  "id": "production-gateway",
+  "displayName": "Production Gateway",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
+  "secret": "<shared-secret>",
+  "publicKey": "string",
+  "events": [
+    "apikey.*",
+    "subscription.*"
+  ],
+  "enabled": true,
+  "timeoutMs": 5000
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|true|none|Desired handle for the webhook subscriber (unique per org), stored as-is.|
+|displayName|string|false|none|Optional display name. Defaults to the handle when omitted.|
+|targetUrl|string(uri)|true|none|Target URL events are POSTed to. Must be unique within the organization.|
+|secret|string|false|none|Shared secret used to sign outgoing payloads (HMAC). Stored encrypted; never returned in responses.|
+|publicKey|string|false|none|PEM-encoded public key. When set, secret event payloads (apikey.*, subscription.*) are additionally encrypted to this key so only the subscriber can read the plaintext key.|
+|events|[string]|false|none|Glob-style event type allowlist (only a trailing `*` wildcard is supported, e.g. `apikey.*`). Omit or leave empty to receive all event types.|
+|enabled|boolean|false|none|none|
+|timeoutMs|integer|false|none|none|
+
+<h2 id="tocS_WebhookSubscriberResponseSchema">WebhookSubscriberResponseSchema</h2>
+
+<a id="schemawebhooksubscriberresponseschema"></a>
+<a id="schema_WebhookSubscriberResponseSchema"></a>
+<a id="tocSwebhooksubscriberresponseschema"></a>
+<a id="tocswebhooksubscriberresponseschema"></a>
+
+```json
+{
+  "id": "production-gateway",
+  "orgId": "org-12345",
+  "displayName": "Production Gateway",
+  "targetUrl": "https://gateway.example.com/devportal-webhook",
+  "enabled": true,
+  "events": [
+    "apikey.*",
+    "subscription.*"
+  ],
+  "timeoutMs": 5000,
+  "hasSecret": true,
+  "hasPublicKey": false,
+  "createdBy": "alice@example.com",
+  "updatedBy": "alice@example.com",
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
+}
+
+```
+
+Webhook subscriber configuration. The secret is never included.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|false|none|The webhook subscriber's handle (unique per org). Not the internal database uuid.|
+|orgId|string|false|none|none|
+|displayName|string|false|none|none|
+|targetUrl|string(uri)|false|none|none|
+|enabled|boolean|false|none|none|
+|events|[string]|false|none|none|
+|timeoutMs|integer|false|none|none|
+|hasSecret|boolean|false|none|Whether a secret is configured for HMAC-signing outgoing payloads.|
+|hasPublicKey|boolean|false|none|Whether a public key is configured for envelope-encrypting secret event payloads.|
+|createdBy|string|false|none|Identity of the user who created this webhook subscriber, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
+|updatedBy|string|false|none|Identity of the user who last updated this webhook subscriber, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
+|createdAt|string(date-time)|false|none|none|
+|updatedAt|string(date-time)|false|none|none|
+
+<h2 id="tocS_WebhookSubscriberDeliverySummary">WebhookSubscriberDeliverySummary</h2>
+
+<a id="schemawebhooksubscriberdeliverysummary"></a>
+<a id="schema_WebhookSubscriberDeliverySummary"></a>
+<a id="tocSwebhooksubscriberdeliverysummary"></a>
+<a id="tocswebhooksubscriberdeliverysummary"></a>
+
+```json
+{
+  "deliveryId": "del-abc123",
+  "eventType": "apikey.generated",
+  "occurredAt": "2019-08-24T14:15:22Z",
+  "status": "DELIVERED",
+  "lastHttpStatus": 200,
+  "lastError": "string",
+  "lastAttemptAt": "2019-08-24T14:15:22Z",
+  "deliveredAt": "2019-08-24T14:15:22Z"
+}
+
+```
+
+A single delivery attempt made to a webhook subscriber.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|deliveryId|string|false|none|none|
+|eventType|string¦null|false|none|none|
+|occurredAt|string(date-time)¦null|false|none|none|
+|status|string|false|none|none|
+|lastHttpStatus|integer¦null|false|none|none|
+|lastError|string¦null|false|none|none|
+|lastAttemptAt|string(date-time)¦null|false|none|none|
+|deliveredAt|string(date-time)¦null|false|none|none|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|PENDING|
+|status|IN_FLIGHT|
+|status|DELIVERED|
+|status|FAILED|
 
 <h2 id="tocS_AppKeyMappingRequest">AppKeyMappingRequest</h2>
 
@@ -1678,19 +1686,8 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
 ```json
 {
   "keyManager": "Resident Key Manager",
-  "keyType": "PRODUCTION",
-  "grantTypesToBeSupported": [
-    "client_credentials",
-    "refresh_token"
-  ],
-  "callbackUrl": "https://app.example.com/callback",
-  "scopes": [
-    "default"
-  ],
-  "additionalProperties": {
-    "application_access_token_expiry_time": "3600",
-    "user_access_token_expiry_time": "3600"
-  }
+  "type": "PRODUCTION",
+  "consumerKey": "consumer-key-123"
 }
 
 ```
@@ -1700,155 +1697,15 @@ Minimal developer-facing key manager view. No admin credentials or DCR endpoints
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |keyManager|string|true|none|none|
-|keyType|string|true|none|none|
-|grantTypesToBeSupported|[string]|false|none|none|
-|callbackUrl|string(uri)|false|none|none|
-|scopes|[string]|false|none|none|
-|additionalProperties|object|false|none|none|
+|type|string|false|none|none|
+|consumerKey|string|true|none|The OAuth client_id, created directly in the key manager. The portal does not store or persist the client secret — it is supplied per-request when generating a token and is only seen transiently during that request.|
 
 #### Enumerated Values
 
 |Property|Value|
 |---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
-
-<h2 id="tocS_AppKeyMappingCreateResponse">AppKeyMappingCreateResponse</h2>
-
-<a id="schemaappkeymappingcreateresponse"></a>
-<a id="schema_AppKeyMappingCreateResponse"></a>
-<a id="tocSappkeymappingcreateresponse"></a>
-<a id="tocsappkeymappingcreateresponse"></a>
-
-```json
-{
-  "keyMappingId": "km-12345",
-  "keyManager": "Resident Key Manager",
-  "keyType": "PRODUCTION",
-  "consumerKey": "consumer-key-123",
-  "consumerSecret": "consumer-secret-abc",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "refresh_token"
-  ],
-  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
-  "appRefId": "cp-app-98765",
-  "subscriptionScopes": [
-    "weather.read",
-    "weather.write"
-  ]
-}
-
-```
-
-Control-plane OAuth key generation or mapped-key response. Exact fields can vary by key manager; the Developer Portal always adds `appRefId` and normalized `subscriptionScopes`.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|keyMappingId|string|false|none|none|
-|keyManager|string|false|none|none|
-|keyType|string|false|none|none|
-|consumerKey|string|false|none|none|
-|consumerSecret|string|false|none|none|
-|supportedGrantTypes|[string]|false|none|none|
-|tokenEndpoint|string(uri)|false|none|Token endpoint of the key manager. Populated in decoupled mode.|
-|appRefId|string|false|none|Control-plane application reference ID.|
-|subscriptionScopes|[string]|false|none|Scope keys available through the application's subscriptions.|
-
-<h2 id="tocS_AppKeyMappingListResponse">AppKeyMappingListResponse</h2>
-
-<a id="schemaappkeymappinglistresponse"></a>
-<a id="schema_AppKeyMappingListResponse"></a>
-<a id="tocSappkeymappinglistresponse"></a>
-<a id="tocsappkeymappinglistresponse"></a>
-
-```json
-{
-  "APP_ID": "app-12345",
-  "ORG_ID": "org-12345",
-  "CREATED_BY": "user-12345",
-  "NAME": "Weather App",
-  "DESCRIPTION": "Application used to call Weather APIs.",
-  "TYPE": "WEB",
-  "DP_APP_KEY_MAPPINGs": [
-    {
-      "MAPPING_ID": "map-12345",
-      "APP_ID": "app-12345",
-      "ORG_ID": "org-12345",
-      "KM_ID": "3f6c1b2a-4d5e-4f7a-8b9c-0d1e2f3a4b5c",
-      "AS_CLIENT_ID": "asgardeo-client-abc123",
-      "KEY_TYPE": "PRODUCTION",
-      "ADDITIONAL_PROPERTIES": {
-        "client_name": "my-app",
-        "grant_types": [
-          "client_credentials"
-        ]
-      }
-    }
-  ]
-}
-
-```
-
-Application row with included key mapping rows as returned by Sequelize.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|APP_ID|string|false|none|none|
-|ORG_ID|string|false|none|none|
-|CREATED_BY|string|false|none|none|
-|NAME|string|false|none|none|
-|DESCRIPTION|string|false|none|none|
-|TYPE|string|false|none|none|
-|DP_APP_KEY_MAPPINGs|[[AppKeyMappingRowResponse](#schemaappkeymappingrowresponse)]|false|none|none|
-
-<h2 id="tocS_AppKeyMappingRowResponse">AppKeyMappingRowResponse</h2>
-
-<a id="schemaappkeymappingrowresponse"></a>
-<a id="schema_AppKeyMappingRowResponse"></a>
-<a id="tocSappkeymappingrowresponse"></a>
-<a id="tocsappkeymappingrowresponse"></a>
-
-```json
-{
-  "MAPPING_ID": "map-12345",
-  "APP_ID": "app-12345",
-  "ORG_ID": "org-12345",
-  "KM_ID": "3f6c1b2a-4d5e-4f7a-8b9c-0d1e2f3a4b5c",
-  "AS_CLIENT_ID": "asgardeo-client-abc123",
-  "KEY_TYPE": "PRODUCTION",
-  "ADDITIONAL_PROPERTIES": {
-    "client_name": "my-app",
-    "grant_types": [
-      "client_credentials"
-    ]
-  }
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|MAPPING_ID|string|false|none|none|
-|APP_ID|string|false|none|none|
-|ORG_ID|string|false|none|none|
-|KM_ID|string(uuid)¦null|false|none|UUID of the key manager that issued credentials for this mapping.|
-|AS_CLIENT_ID|string¦null|false|none|Authorization Server client ID registered via DCR.|
-|KEY_TYPE|string|false|none|Key type for this mapping. Used to separate production and sandbox keys in the UI.|
-|ADDITIONAL_PROPERTIES|object¦null|false|none|AS-specific extra properties returned during DCR (e.g. token endpoint, grant types).|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|KEY_TYPE|PRODUCTION|
-|KEY_TYPE|SANDBOX|
+|type|PRODUCTION|
+|type|SANDBOX|
 
 <h2 id="tocS_ViewCreateRequest">ViewCreateRequest</h2>
 
@@ -1859,7 +1716,7 @@ Application row with included key mapping rows as returned by Sequelize.
 
 ```json
 {
-  "name": "partner-apis",
+  "id": "partner-apis",
   "displayName": "Partner APIs",
   "labels": [
     "partner",
@@ -1873,8 +1730,8 @@ Application row with included key mapping rows as returned by Sequelize.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
-|displayName|string|false|none|Optional display name. Defaults to `name` when omitted.|
+|id|string|true|none|Desired handle for the view (unique per org), stored as-is.|
+|displayName|string|false|none|Optional display name. Defaults to the handle when omitted.|
 |labels|[string]|true|none|Label names to attach to the view.|
 
 <h2 id="tocS_ViewUpdateRequest">ViewUpdateRequest</h2>
@@ -1887,11 +1744,9 @@ Application row with included key mapping rows as returned by Sequelize.
 ```json
 {
   "displayName": "Partner and Public APIs",
-  "addedLabels": [
+  "labels": [
+    "partner",
     "premium"
-  ],
-  "removedLabels": [
-    "internal"
   ]
 }
 
@@ -1902,99 +1757,7 @@ Application row with included key mapping rows as returned by Sequelize.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |displayName|string|false|none|none|
-|addedLabels|[string]|false|none|Label names to attach to the view.|
-|removedLabels|[string]|false|none|Label names to detach from the view.|
-
-<h2 id="tocS_ApiKeyGenerateRequest">ApiKeyGenerateRequest</h2>
-
-<a id="schemaapikeygeneraterequest"></a>
-<a id="schema_ApiKeyGenerateRequest"></a>
-<a id="tocSapikeygeneraterequest"></a>
-<a id="tocsapikeygeneraterequest"></a>
-
-```json
-{
-  "apiId": "cp-api-12345",
-  "applicationId": "cp-app-98765",
-  "devportalAppId": "app-12345",
-  "projectID": "project-12345",
-  "keyType": "PRODUCTION",
-  "name": "weather-prod-key",
-  "subscriptionPlan": "string"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|apiId|string|true|none|Control-plane API reference ID.|
-|applicationId|string|false|none|Existing control-plane application ID, if one already exists.|
-|devportalAppId|string|true|none|Developer Portal application ID.|
-|projectID|string|true|none|Project ID used to resolve environment templates.|
-|keyType|string|true|none|none|
-|name|string|false|none|Optional API key name. When omitted, the service generates a name from API handle, application reference, and key type.|
-|subscriptionPlan|any|false|none|Subscription plan or policy details forwarded when a control-plane subscription must be created.|
-
-oneOf
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|string|false|none|none|
-
-xor
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|» *anonymous*|[GenericObject](#schemagenericobject)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
-
-<h2 id="tocS_ApplicationKeysGenerateRequest">ApplicationKeysGenerateRequest</h2>
-
-<a id="schemaapplicationkeysgeneraterequest"></a>
-<a id="schema_ApplicationKeysGenerateRequest"></a>
-<a id="tocSapplicationkeysgeneraterequest"></a>
-<a id="tocsapplicationkeysgeneraterequest"></a>
-
-```json
-{
-  "keyType": "PRODUCTION",
-  "keyManager": "Resident Key Manager",
-  "grantTypesToBeSupported": [
-    "client_credentials",
-    "refresh_token"
-  ],
-  "callbackUrl": "https://app.example.com/callback",
-  "additionalProperties": {}
-}
-
-```
-
-OAuth key generation payload accepted by the control-plane application key endpoint.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|keyType|string|false|none|none|
-|keyManager|string|false|none|none|
-|grantTypesToBeSupported|[string]|false|none|none|
-|callbackUrl|string(uri)|false|none|none|
-|additionalProperties|object|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
+|labels|[string]|false|none|Full desired set of label names for the view. Labels present here but not currently attached are attached; labels currently attached but absent here are detached. Omit to leave labels unchanged.|
 
 <h2 id="tocS_OAuthGenerateTokenRequest">OAuthGenerateTokenRequest</h2>
 
@@ -2014,120 +1777,15 @@ OAuth key generation payload accepted by the control-plane application key endpo
 
 ```
 
-OAuth access token generation payload. In decoupled mode `consumerSecret` is required — the portal uses it to call the AS token endpoint directly. In control-plane mode the body is proxied as-is.
+OAuth access token generation payload. `consumerSecret` is required — the portal uses it to call the Authorization Server token endpoint directly.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|consumerSecret|string|false|none|Client secret for the OAuth application. Required in decoupled (non-control-plane) mode. Not stored by the portal — the caller must supply it on each token generation request.|
+|consumerSecret|string|true|none|Client secret for the OAuth application. Not stored by the portal — the caller must supply it on each token generation request.|
 |scopes|[string]|false|none|none|
 |validityPeriod|integer|false|none|none|
-
-<h2 id="tocS_OAuthKeyUpdateRequest">OAuthKeyUpdateRequest</h2>
-
-<a id="schemaoauthkeyupdaterequest"></a>
-<a id="schema_OAuthKeyUpdateRequest"></a>
-<a id="tocSoauthkeyupdaterequest"></a>
-<a id="tocsoauthkeyupdaterequest"></a>
-
-```json
-{
-  "supportedGrantTypes": [
-    "client_credentials",
-    "refresh_token"
-  ],
-  "callbackUrl": "https://app.example.com/new-callback",
-  "additionalProperties": {}
-}
-
-```
-
-OAuth key update payload accepted by the control plane.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|supportedGrantTypes|[string]|false|none|none|
-|callbackUrl|string(uri)|false|none|none|
-|additionalProperties|object|false|none|none|
-
-<h2 id="tocS_OAuthKeyCleanUpRequest">OAuthKeyCleanUpRequest</h2>
-
-<a id="schemaoauthkeycleanuprequest"></a>
-<a id="schema_OAuthKeyCleanUpRequest"></a>
-<a id="tocSoauthkeycleanuprequest"></a>
-<a id="tocsoauthkeycleanuprequest"></a>
-
-```json
-{
-  "keyType": "PRODUCTION",
-  "keyManager": "Resident Key Manager"
-}
-
-```
-
-OAuth cleanup payload accepted by the control plane.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|keyType|string|false|none|none|
-|keyManager|string|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
-
-<h2 id="tocS_ApplicationApiKeyResponse">ApplicationApiKeyResponse</h2>
-
-<a id="schemaapplicationapikeyresponse"></a>
-<a id="schema_ApplicationApiKeyResponse"></a>
-<a id="tocSapplicationapikeyresponse"></a>
-<a id="tocsapplicationapikeyresponse"></a>
-
-```json
-{
-  "id": "api-key-12345",
-  "apiKeyId": "api-key-12345",
-  "name": "weather-prod-key",
-  "keyType": "PRODUCTION",
-  "apiId": "cp-api-12345",
-  "applicationId": "cp-app-98765",
-  "apiKey": "generated-api-key-value",
-  "token": "generated-api-key-value",
-  "appRefId": "cp-app-98765"
-}
-
-```
-
-API key payload returned by the control plane. The Developer Portal adds `appRefId` for generation responses.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|id|string|false|none|none|
-|apiKeyId|string|false|none|none|
-|name|string|false|none|none|
-|keyType|string|false|none|none|
-|apiId|string|false|none|none|
-|applicationId|string|false|none|none|
-|apiKey|string|false|none|Generated API key secret.|
-|token|string|false|none|Alternative generated key field used by some control-plane responses.|
-|appRefId|string|false|none|Control-plane application reference ID added by Developer Portal generation flow.|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|keyType|PRODUCTION|
-|keyType|SANDBOX|
 
 <h2 id="tocS_ApplicationOAuthKeyResponse">ApplicationOAuthKeyResponse</h2>
 
@@ -2140,19 +1798,14 @@ API key payload returned by the control plane. The Developer Portal adds `appRef
 {
   "keyMappingId": "km-12345",
   "keyManager": "Resident Key Manager",
-  "keyType": "PRODUCTION",
+  "type": "PRODUCTION",
   "consumerKey": "consumer-key-123",
-  "consumerSecret": "consumer-secret-abc",
-  "supportedGrantTypes": [
-    "client_credentials",
-    "refresh_token"
-  ],
-  "callbackUrl": "https://app.example.com/callback"
+  "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 
 ```
 
-OAuth key payload returned by the control plane.
+OAuth key mapping payload.
 
 ### Properties
 
@@ -2160,11 +1813,9 @@ OAuth key payload returned by the control plane.
 |---|---|---|---|---|
 |keyMappingId|string|false|none|none|
 |keyManager|string|false|none|none|
-|keyType|string|false|none|none|
+|type|string|false|none|none|
 |consumerKey|string|false|none|none|
-|consumerSecret|string|false|none|none|
-|supportedGrantTypes|[string]|false|none|none|
-|callbackUrl|string(uri)|false|none|none|
+|tokenEndpoint|string(uri)|false|none|none|
 
 <h2 id="tocS_OAuthTokenResponse">OAuthTokenResponse</h2>
 
@@ -2175,58 +1826,36 @@ OAuth key payload returned by the control plane.
 
 ```json
 {
-  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.example",
-  "token_type": "Bearer",
-  "expires_in": 3600,
-  "scope": "weather.read"
+  "accessToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.example",
+  "validityTime": 3600,
+  "tokenScopes": [
+    "weather.read"
+  ]
 }
 
 ```
+
+Access token response proxied from the key manager's token endpoint. Field names are the portal's own camelCase, not the underlying OAuth2 token response's snake_case.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|access_token|string|false|none|none|
-|token_type|string|false|none|none|
-|expires_in|integer|false|none|none|
-|scope|string|false|none|none|
+|accessToken|string|false|none|none|
+|validityTime|integer¦null|false|none|Token lifetime in seconds, as reported by the key manager (`expires_in`).|
+|tokenScopes|[string]|false|none|none|
 
-<h2 id="tocS_ControllerErrorResponse">ControllerErrorResponse</h2>
+<h2 id="tocS_APIWorkflowCreateResponse">APIWorkflowCreateResponse</h2>
 
-<a id="schemacontrollererrorresponse"></a>
-<a id="schema_ControllerErrorResponse"></a>
-<a id="tocScontrollererrorresponse"></a>
-<a id="tocscontrollererrorresponse"></a>
-
-```json
-{
-  "error": "InternalServerError",
-  "message": "An unexpected error occurred",
-  "description": "string"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|error|string|false|none|none|
-|message|string|false|none|none|
-|description|string|false|none|none|
-
-<h2 id="tocS_APIFlowCreateResponse">APIFlowCreateResponse</h2>
-
-<a id="schemaapiflowcreateresponse"></a>
-<a id="schema_APIFlowCreateResponse"></a>
-<a id="tocSapiflowcreateresponse"></a>
-<a id="tocsapiflowcreateresponse"></a>
+<a id="schemaapiworkflowcreateresponse"></a>
+<a id="schema_APIWorkflowCreateResponse"></a>
+<a id="tocSapiworkflowcreateresponse"></a>
+<a id="tocsapiworkflowcreateresponse"></a>
 
 ```json
 {
-  "apiFlowId": "flow-12345",
-  "name": "Weather onboarding",
+  "id": "workflow-12345",
+  "displayName": "Weather onboarding",
   "status": "PUBLISHED"
 }
 
@@ -2236,32 +1865,39 @@ OAuth key payload returned by the control plane.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiFlowId|string|false|none|none|
-|name|string|false|none|none|
+|id|string|false|none|none|
+|displayName|string|false|none|none|
 |status|string|false|none|none|
 
-<h2 id="tocS_APIFlowResponse">APIFlowResponse</h2>
+#### Enumerated Values
 
-<a id="schemaapiflowresponse"></a>
-<a id="schema_APIFlowResponse"></a>
-<a id="tocSapiflowresponse"></a>
-<a id="tocsapiflowresponse"></a>
+|Property|Value|
+|---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+
+<h2 id="tocS_APIWorkflowResponse">APIWorkflowResponse</h2>
+
+<a id="schemaapiworkflowresponse"></a>
+<a id="schema_APIWorkflowResponse"></a>
+<a id="tocSapiworkflowresponse"></a>
+<a id="tocsapiworkflowresponse"></a>
 
 ```json
 {
-  "apiFlowId": "flow-12345",
-  "name": "Weather onboarding",
-  "handle": "weather-onboarding",
+  "id": "workflow-12345",
+  "displayName": "Weather onboarding",
   "description": "string",
   "agentPrompt": "string",
   "status": "PUBLISHED",
-  "visibility": "PUBLIC",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
-  "apiFlowDefinition": "string",
+  "apiWorkflowDefinition": "string",
   "markdownContent": "string",
   "createdAt": "May 7, 2026",
-  "updatedAt": "string"
+  "updatedAt": "string",
+  "createdBy": "string",
+  "updatedBy": "string"
 }
 
 ```
@@ -2270,33 +1906,37 @@ OAuth key payload returned by the control plane.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiFlowId|string|false|none|none|
-|name|string|false|none|none|
-|handle|string|false|none|none|
+|id|string|false|none|The workflow's handle (unique per org and view). Not the internal database uuid.|
+|displayName|string|false|none|none|
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
-|apiFlowDefinition|string¦null|false|none|none|
+|apiWorkflowDefinition|string¦null|false|none|none|
 |markdownContent|string¦null|false|none|none|
 |createdAt|string|false|none|none|
 |updatedAt|string¦null|false|none|none|
+|createdBy|string¦null|false|none|none|
+|updatedBy|string¦null|false|none|none|
 
 #### Enumerated Values
 
 |Property|Value|
 |---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 |contentType|ARAZZO|
 |contentType|MD|
 
-<h2 id="tocS_APIFlowPromptResponse">APIFlowPromptResponse</h2>
+<h2 id="tocS_APIWorkflowPromptResponse">APIWorkflowPromptResponse</h2>
 
-<a id="schemaapiflowpromptresponse"></a>
-<a id="schema_APIFlowPromptResponse"></a>
-<a id="tocSapiflowpromptresponse"></a>
-<a id="tocsapiflowpromptresponse"></a>
+<a id="schemaapiworkflowpromptresponse"></a>
+<a id="schema_APIWorkflowPromptResponse"></a>
+<a id="tocSapiworkflowpromptresponse"></a>
+<a id="tocsapiworkflowpromptresponse"></a>
 
 ```json
 {
@@ -2311,44 +1951,23 @@ OAuth key payload returned by the control plane.
 |---|---|---|---|---|
 |agentPrompt|string|false|none|none|
 
-<h2 id="tocS_TempArazzoFileResponse">TempArazzoFileResponse</h2>
+<h2 id="tocS_APIWorkflowCreateRequest">APIWorkflowCreateRequest</h2>
 
-<a id="schematemparazzofileresponse"></a>
-<a id="schema_TempArazzoFileResponse"></a>
-<a id="tocStemparazzofileresponse"></a>
-<a id="tocstemparazzofileresponse"></a>
-
-```json
-{
-  "path": "/tmp/arazzo-abc123/workflow.arazzo.yaml"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|path|string|false|none|none|
-
-<h2 id="tocS_APIFlowCreateRequest">APIFlowCreateRequest</h2>
-
-<a id="schemaapiflowcreaterequest"></a>
-<a id="schema_APIFlowCreateRequest"></a>
-<a id="tocSapiflowcreaterequest"></a>
-<a id="tocsapiflowcreaterequest"></a>
+<a id="schemaapiworkflowcreaterequest"></a>
+<a id="schema_APIWorkflowCreateRequest"></a>
+<a id="tocSapiworkflowcreaterequest"></a>
+<a id="tocsapiworkflowcreaterequest"></a>
 
 ```json
 {
-  "name": "Weather onboarding",
-  "handle": "weather-onboarding",
+  "displayName": "Weather onboarding",
+  "id": "weather-onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "agentPrompt": "Follow this workflow to onboard a Weather API user.",
   "status": "PUBLISHED",
-  "visibility": "PUBLIC",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
-  "apiFlowDefinition": {},
+  "apiWorkflowDefinition": {},
   "markdownContent": "string"
 }
 
@@ -2358,15 +1977,14 @@ OAuth key payload returned by the control plane.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
-|handle|string|false|none|none|
+|displayName|string|true|none|none|
+|id|string|false|none|Desired handle for the workflow (unique per org and view), stored as-is.|
 |description|string|true|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
-|apiFlowDefinition|any|false|none|JSON/YAML Arazzo content when `contentType` is `ARAZZO`.|
+|apiWorkflowDefinition|any|false|none|JSON/YAML Arazzo content when `contentType` is `ARAZZO`.|
 
 oneOf
 
@@ -2390,27 +2008,30 @@ continued
 
 |Property|Value|
 |---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 |contentType|ARAZZO|
 |contentType|MD|
 
-<h2 id="tocS_APIFlowUpdateRequest">APIFlowUpdateRequest</h2>
+<h2 id="tocS_APIWorkflowUpdateRequest">APIWorkflowUpdateRequest</h2>
 
-<a id="schemaapiflowupdaterequest"></a>
-<a id="schema_APIFlowUpdateRequest"></a>
-<a id="tocSapiflowupdaterequest"></a>
-<a id="tocsapiflowupdaterequest"></a>
+<a id="schemaapiworkflowupdaterequest"></a>
+<a id="schema_APIWorkflowUpdateRequest"></a>
+<a id="tocSapiworkflowupdaterequest"></a>
+<a id="tocsapiworkflowupdaterequest"></a>
 
 ```json
 {
-  "name": "Weather onboarding v2",
-  "handle": "weather-onboarding-v2",
+  "displayName": "Weather onboarding v2",
+  "id": "weather-onboarding-v2",
   "description": "Updated Weather API onboarding workflow.",
   "agentPrompt": "string",
   "status": "PUBLISHED",
-  "visibility": "PUBLIC",
   "agentVisibility": "VISIBLE",
   "contentType": "ARAZZO",
-  "apiFlowDefinition": {},
+  "apiWorkflowDefinition": {},
   "markdownContent": "string"
 }
 
@@ -2420,15 +2041,14 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|false|none|none|
-|handle|string|false|none|none|
+|displayName|string|false|none|none|
+|id|string|false|none|Desired handle for the workflow (unique per org and view), stored as-is.|
 |description|string|false|none|none|
 |agentPrompt|string|false|none|none|
 |status|string|false|none|none|
-|visibility|string|false|none|none|
 |agentVisibility|string|false|none|none|
 |contentType|string|false|none|none|
-|apiFlowDefinition|any|false|none|none|
+|apiWorkflowDefinition|any|false|none|none|
 
 oneOf
 
@@ -2452,26 +2072,30 @@ continued
 
 |Property|Value|
 |---|---|
+|status|DRAFT|
+|status|PUBLISHED|
+|agentVisibility|VISIBLE|
+|agentVisibility|HIDDEN|
 |contentType|ARAZZO|
 |contentType|MD|
 
-<h2 id="tocS_APIFlowPromptRequest">APIFlowPromptRequest</h2>
+<h2 id="tocS_APIWorkflowPromptRequest">APIWorkflowPromptRequest</h2>
 
-<a id="schemaapiflowpromptrequest"></a>
-<a id="schema_APIFlowPromptRequest"></a>
-<a id="tocSapiflowpromptrequest"></a>
-<a id="tocsapiflowpromptrequest"></a>
+<a id="schemaapiworkflowpromptrequest"></a>
+<a id="schema_APIWorkflowPromptRequest"></a>
+<a id="tocSapiworkflowpromptrequest"></a>
+<a id="tocsapiworkflowpromptrequest"></a>
 
 ```json
 {
-  "name": "Weather onboarding",
+  "displayName": "Weather onboarding",
   "description": "Guides users through the Weather API onboarding workflow.",
   "apis": [
     {}
   ],
   "orgHandle": "acme",
   "viewName": "default",
-  "handle": "weather-onboarding"
+  "id": "weather-onboarding"
 }
 
 ```
@@ -2480,56 +2104,12 @@ continued
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|name|string|true|none|none|
+|displayName|string|true|none|none|
 |description|string|true|none|none|
 |apis|[object]|false|none|none|
 |orgHandle|string|false|none|none|
 |viewName|string|false|none|none|
-|handle|string|false|none|none|
-
-<h2 id="tocS_LoginRequest">LoginRequest</h2>
-
-<a id="schemaloginrequest"></a>
-<a id="schema_LoginRequest"></a>
-<a id="tocSloginrequest"></a>
-<a id="tocsloginrequest"></a>
-
-```json
-{
-  "username": "string",
-  "password": "pa$$word"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|username|string|true|none|none|
-|password|string(password)|true|none|none|
-
-<h2 id="tocS_TempArazzoFileRequest">TempArazzoFileRequest</h2>
-
-<a id="schematemparazzofilerequest"></a>
-<a id="schema_TempArazzoFileRequest"></a>
-<a id="tocStemparazzofilerequest"></a>
-<a id="tocstemparazzofilerequest"></a>
-
-```json
-{
-  "content": "arazzo: 1.0.1\ninfo:\n  title: Weather onboarding\n  version: 1.0.0\nworkflows: []\n",
-  "filename": "workflow.arazzo.yaml"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|content|string|true|none|Arazzo YAML content to write to a temporary file.|
-|filename|string|false|none|none|
+|id|string|false|none|The workflow's (would-be) handle, used only to build the workflow detail URL referenced in the generated prompt.|
 
 <h2 id="tocS_WebhookEventDelivery">WebhookEventDelivery</h2>
 
@@ -2544,7 +2124,6 @@ continued
   "subscriberId": "sub-xyz789",
   "targetUrl": "https://example.com/webhook",
   "status": "DELIVERED",
-  "attemptCount": 1,
   "lastHttpStatus": 200,
   "lastError": "string",
   "lastAttemptAt": "2019-08-24T14:15:22Z",
@@ -2563,7 +2142,6 @@ A single webhook delivery attempt.
 |subscriberId|string|false|none|none|
 |targetUrl|string¦null|false|none|none|
 |status|string|false|none|none|
-|attemptCount|integer|false|none|none|
 |lastHttpStatus|integer¦null|false|none|none|
 |lastError|string¦null|false|none|none|
 |lastAttemptAt|string(date-time)¦null|false|none|none|
@@ -2577,7 +2155,6 @@ A single webhook delivery attempt.
 |status|IN_FLIGHT|
 |status|DELIVERED|
 |status|FAILED|
-|status|DEAD_LETTERED|
 
 <h2 id="tocS_WebhookEvent">WebhookEvent</h2>
 
@@ -2591,7 +2168,6 @@ A single webhook delivery attempt.
   "eventId": "evt-abc123",
   "eventType": "apikey.generated",
   "orgId": "org-default",
-  "gatewayType": "default",
   "aggregateType": "apikey",
   "aggregateId": "key-12345",
   "status": "ALL_DELIVERED",
@@ -2602,7 +2178,6 @@ A single webhook delivery attempt.
       "subscriberId": "sub-xyz789",
       "targetUrl": "https://example.com/webhook",
       "status": "DELIVERED",
-      "attemptCount": 1,
       "lastHttpStatus": 200,
       "lastError": "string",
       "lastAttemptAt": "2019-08-24T14:15:22Z",
@@ -2622,7 +2197,6 @@ A webhook event with its delivery rows.
 |eventId|string|false|none|none|
 |eventType|string|false|none|none|
 |orgId|string|false|none|none|
-|gatewayType|string¦null|false|none|none|
 |aggregateType|string|false|none|none|
 |aggregateId|string|false|none|none|
 |status|string|false|none|none|

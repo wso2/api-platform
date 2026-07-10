@@ -35,13 +35,15 @@ type RequestHeaderAction interface {
 // UpstreamRequestHeaderModifications continues the request to upstream with the
 // specified header and routing modifications. Returned when no short-circuit is needed.
 type UpstreamRequestHeaderModifications struct {
-	HeadersToSet    map[string]string // overwrite header (last write wins)
-	HeadersToRemove []string          // remove by name (case-insensitive)
+	HeadersToSet    map[string]string   // overwrite header (last write wins)
+	HeadersToAppend map[string][]string // append value(s), preserving any existing values
+	HeadersToRemove []string            // remove by name (case-insensitive)
 
 	// Routing mutations — applied before the request is forwarded to upstream.
 	// These are valid at the header phase because routing decisions do not require
 	// the request body to be available.
 	UpstreamName            *string             // route to a named upstream definition (nil = no change)
+	UpstreamSlot            *UpstreamSlot       // route to the API's main or sandbox upstream slot instead of the slot implied by the current vhost (nil = no change); requesting a slot the API doesn't have configured is a no-op (logged, not an error)
 	Path                    *string             // rewrite the request path (nil = no change)
 	Host                    *string             // rewrite the :authority header (nil = no change)
 	Method                  *string             // rewrite the request method (nil = no change)
@@ -68,8 +70,9 @@ type ResponseHeaderAction interface {
 // DownstreamResponseHeaderModifications continues with the specified response header
 // modifications applied before the response is forwarded to the client.
 type DownstreamResponseHeaderModifications struct {
-	HeadersToSet    map[string]string // overwrite header (last write wins)
-	HeadersToRemove []string          // remove by name (case-insensitive)
+	HeadersToSet    map[string]string   // overwrite header (last write wins)
+	HeadersToAppend map[string][]string // append value(s), preserving any existing values
+	HeadersToRemove []string            // remove by name (case-insensitive)
 
 	AnalyticsMetadata     map[string]any            // custom analytics metadata
 	DynamicMetadata       map[string]map[string]any // dynamic metadata by namespace
@@ -105,11 +108,13 @@ type RequestAction interface {
 type UpstreamRequestModifications struct {
 	Body []byte // nil = passthrough; []byte{} = clear body
 
-	HeadersToSet    map[string]string // overwrite header (last write wins)
-	HeadersToRemove []string          // remove by name (case-insensitive)
+	HeadersToSet    map[string]string   // overwrite header (last write wins)
+	HeadersToAppend map[string][]string // append value(s), preserving any existing values
+	HeadersToRemove []string            // remove by name (case-insensitive)
 
 	// Routing mutations — applied before the request is forwarded to upstream.
 	UpstreamName            *string             // route to a named upstream definition (nil = no change)
+	UpstreamSlot            *UpstreamSlot       // route to the API's main or sandbox upstream slot instead of the slot implied by the current vhost (nil = no change); requesting a slot the API doesn't have configured is a no-op (logged, not an error)
 	Path                    *string             // rewrite the request path (nil = no change)
 	Host                    *string             // rewrite the :authority header (nil = no change)
 	Method                  *string             // rewrite the request method (nil = no change)
@@ -145,8 +150,9 @@ type DownstreamResponseModifications struct {
 	Body       []byte // nil = passthrough; []byte{} = clear body
 	StatusCode *int   // nil = no change
 
-	HeadersToSet    map[string]string // overwrite header (last write wins)
-	HeadersToRemove []string          // remove by name (case-insensitive)
+	HeadersToSet    map[string]string   // overwrite header (last write wins)
+	HeadersToAppend map[string][]string // append value(s), preserving any existing values
+	HeadersToRemove []string            // remove by name (case-insensitive)
 
 	AnalyticsMetadata     map[string]any            // custom analytics metadata
 	DynamicMetadata       map[string]map[string]any // dynamic metadata by namespace

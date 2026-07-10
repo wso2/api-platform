@@ -81,7 +81,7 @@ Feature: LLM Proxy Management Operations
     When I send a PUT request to the "gateway-controller" service at "/llm-proxies/non-existent-proxy-update" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "LlmProxy",
         "metadata": {
           "name": "non-existent-proxy-update"
@@ -103,7 +103,7 @@ Feature: LLM Proxy Management Operations
     When I send a POST request to the "gateway-controller" service at "/llm-proxies" with body:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "LlmProxy",
         "metadata": {
           "name": "invalid-proxy"
@@ -122,7 +122,7 @@ Feature: LLM Proxy Management Operations
     # First, create the LLM provider that the proxy will reference
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: lifecycle-test-provider
@@ -143,7 +143,7 @@ Feature: LLM Proxy Management Operations
     # Create LLM proxy referencing the provider
     When I deploy this LLM proxy configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProxy
       metadata:
         name: lifecycle-llm-proxy
@@ -165,7 +165,7 @@ Feature: LLM Proxy Management Operations
     # Update the LLM proxy
     When I update the LLM proxy "lifecycle-llm-proxy" with:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProxy
       metadata:
         name: lifecycle-llm-proxy
@@ -197,7 +197,7 @@ Feature: LLM Proxy Management Operations
     # First, create the LLM provider
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: list-test-provider
@@ -218,7 +218,7 @@ Feature: LLM Proxy Management Operations
     # Create LLM proxy
     When I deploy this LLM proxy configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProxy
       metadata:
         name: list-test-llm-proxy
@@ -254,7 +254,7 @@ Feature: LLM Proxy Management Operations
   Scenario: Create LLM proxy referencing non-existent provider
     When I deploy this LLM proxy configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProxy
       metadata:
         name: orphan-llm-proxy
@@ -266,6 +266,49 @@ Feature: LLM Proxy Management Operations
       """
     Then the response should be a client error
     And the response should be valid JSON
+
+  Scenario: Create LLM proxy referencing a non-existent policy version is rejected
+    # First create the provider the proxy references
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: proxy-policy-provider
+      spec:
+        displayName: Proxy Policy Provider
+        version: v1.0
+        template: openai
+        upstream:
+          url: https://mock-openapi-https:9443/openai/v1
+          auth:
+            type: api-key
+            header: Authorization
+            value: Bearer sk-test-key
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: bad-policy-version-proxy
+      spec:
+        displayName: Bad Policy Version Proxy
+        version: v1.0
+        provider:
+          id: proxy-policy-provider
+        globalPolicies:
+          - name: basic-ratelimit
+            version: v999
+      """
+    Then the response should be a client error
+    And the response should be valid JSON
+    # Cleanup
+    When I delete the LLM provider "proxy-policy-provider"
+    Then the response status code should be 200
 
   Scenario: Update LLM proxy with invalid JSON body returns error
     When I send a PUT request to the "gateway-controller" service at "/llm-proxies/some-proxy" with body:
@@ -281,7 +324,7 @@ Feature: LLM Proxy Management Operations
     # First, create the LLM provider
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: filter-llm-provider
@@ -302,7 +345,7 @@ Feature: LLM Proxy Management Operations
     # Create LLM proxy with unique displayName
     When I deploy this LLM proxy configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProxy
       metadata:
         name: unique-displayname-proxy
@@ -329,7 +372,7 @@ Feature: LLM Proxy Management Operations
     # First, create the LLM provider
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: version-filter-provider
@@ -350,7 +393,7 @@ Feature: LLM Proxy Management Operations
     # Create LLM proxy with specific version
     When I deploy this LLM proxy configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProxy
       metadata:
         name: version-filter-proxy
@@ -386,7 +429,7 @@ Feature: LLM Proxy Management Operations
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: invoke-proxy-provider
@@ -409,7 +452,7 @@ Feature: LLM Proxy Management Operations
     # Create LLM proxy with context path
     When I deploy this LLM proxy configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProxy
       metadata:
         name: invoke-test-proxy
@@ -450,7 +493,7 @@ Feature: LLM Proxy Management Operations
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: acl-proxy-provider
@@ -476,7 +519,7 @@ Feature: LLM Proxy Management Operations
     # Create LLM proxy
     When I deploy this LLM proxy configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProxy
       metadata:
         name: acl-invoke-proxy
@@ -514,7 +557,7 @@ Feature: LLM Proxy Management Operations
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: multi-request-provider
@@ -537,7 +580,7 @@ Feature: LLM Proxy Management Operations
     # Create LLM proxy
     When I deploy this LLM proxy configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProxy
       metadata:
         name: multi-request-proxy

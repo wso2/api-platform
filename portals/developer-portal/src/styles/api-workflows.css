@@ -1,4 +1,4 @@
-/* ===== API Flows — Gallery Page ===== */
+/* ===== API Workflows — Gallery Page ===== */
 
 .flows-section {
     display: flex;
@@ -390,7 +390,7 @@
     color: var(--danger-color);
 }
 
-/* ===== API Flow — Detail Page ===== */
+/* ===== API Workflow — Detail Page ===== */
 
 .flow-detail-section {
     display: flex;

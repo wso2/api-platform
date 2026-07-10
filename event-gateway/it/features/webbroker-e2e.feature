@@ -38,7 +38,7 @@ Feature: WebBroker End-to-End Flow
     When I create a WebBroker API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebBrokerApi",
         "metadata": { "name": "stock-trading-conn-v1.0" },
         "spec": {
@@ -91,7 +91,7 @@ Feature: WebBroker End-to-End Flow
     When I create a WebBroker API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebBrokerApi",
         "metadata": { "name": "stock-trading-echo-v1.0" },
         "spec": {
@@ -148,7 +148,7 @@ Feature: WebBroker End-to-End Flow
     When I create a WebBroker API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebBrokerApi",
         "metadata": { "name": "stock-trading-pprod-v1.0" },
         "spec": {
@@ -203,7 +203,7 @@ Feature: WebBroker End-to-End Flow
     When I create a WebBroker API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebBrokerApi",
         "metadata": { "name": "stock-trading-pcons-v1.0" },
         "spec": {
@@ -261,7 +261,7 @@ Feature: WebBroker End-to-End Flow
     When I create a WebBroker API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebBrokerApi",
         "metadata": { "name": "stock-trading-auth-rej-v1.0" },
         "spec": {
@@ -315,7 +315,7 @@ Feature: WebBroker End-to-End Flow
     When I create a WebBroker API with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "WebBrokerApi",
         "metadata": { "name": "stock-trading-auth-ok-v1.0" },
         "spec": {

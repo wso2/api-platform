@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine
 
-go 1.26.2
+go 1.26.5
 
 require (
 	github.com/andybalholm/brotli v1.2.0
@@ -11,12 +11,12 @@ require (
 	github.com/knadh/koanf/parsers/toml/v2 v2.2.0
 	github.com/knadh/koanf/providers/env v1.1.0
 	github.com/knadh/koanf/providers/file v1.2.1
-	github.com/knadh/koanf/v2 v2.3.0
+	github.com/knadh/koanf/v2 v2.3.2
 	github.com/moesif/moesifapi-go v1.1.5
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/testify v1.11.1
 	github.com/wso2/api-platform/common v0.0.0-20260326194347-3d85c50eae71
-	github.com/wso2/api-platform/sdk/core v0.2.12
+	github.com/wso2/api-platform/sdk/core v0.2.15
 	go.opentelemetry.io/otel v1.41.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.41.0
 	go.opentelemetry.io/otel/sdk v1.41.0

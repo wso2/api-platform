@@ -175,9 +175,9 @@ func TestPublish_WithInvalidRequestHeaders(t *testing.T) {
 	moesif.Publish(event)
 
 	assert.Len(t, moesif.events, 1)
-	// Should fall back to default headers
+	// Invalid JSON: no headers configured -> no headers published (no defaults).
 	headers := moesif.events[0].Request.Headers.(map[string]interface{})
-	assert.Equal(t, "test-agent", headers["User-Agent"])
+	assert.Empty(t, headers)
 }
 
 func TestPublish_WithEmptyRequestHeaders(t *testing.T) {
@@ -189,9 +189,9 @@ func TestPublish_WithEmptyRequestHeaders(t *testing.T) {
 	moesif.Publish(event)
 
 	assert.Len(t, moesif.events, 1)
-	// Empty JSON object should fall back to default headers
+	// Empty JSON object -> no headers published (no defaults).
 	headers := moesif.events[0].Request.Headers.(map[string]interface{})
-	assert.Equal(t, "test-agent", headers["User-Agent"])
+	assert.Empty(t, headers)
 }
 
 func TestPublish_WithResponseHeaders(t *testing.T) {
@@ -217,9 +217,25 @@ func TestPublish_WithInvalidResponseHeaders(t *testing.T) {
 	moesif.Publish(event)
 
 	assert.Len(t, moesif.events, 1)
-	// Should fall back to default headers
+	// Invalid JSON: no headers configured -> no headers published (no defaults).
 	headers := moesif.events[0].Response.Headers.(map[string]interface{})
-	assert.Equal(t, "no-cache", headers["Cache-Control"])
+	assert.Empty(t, headers)
+}
+
+func TestPublish_NoHeadersConfigured(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+
+	event := createBaseEvent()
+	// No requestHeaders/responseHeaders in event properties (analytics-header-filter
+	// policy not configured) -> both header sets must be empty.
+
+	moesif.Publish(event)
+
+	assert.Len(t, moesif.events, 1)
+	reqHeaders := moesif.events[0].Request.Headers.(map[string]interface{})
+	rspHeaders := moesif.events[0].Response.Headers.(map[string]interface{})
+	assert.Empty(t, reqHeaders)
+	assert.Empty(t, rspHeaders)
 }
 
 func TestPublish_LlmProviderWithAIMetadata(t *testing.T) {
@@ -424,9 +440,9 @@ func TestPublish_RequestHeadersNonString(t *testing.T) {
 	moesif.Publish(event)
 
 	assert.Len(t, moesif.events, 1)
-	// Should use default headers
+	// Non-string value -> no headers configured -> no headers published (no defaults).
 	headers := moesif.events[0].Request.Headers.(map[string]interface{})
-	assert.Equal(t, "test-agent", headers["User-Agent"])
+	assert.Empty(t, headers)
 }
 
 func TestPublish_ResponseHeadersNonString(t *testing.T) {
@@ -439,9 +455,9 @@ func TestPublish_ResponseHeadersNonString(t *testing.T) {
 	moesif.Publish(event)
 
 	assert.Len(t, moesif.events, 1)
-	// Should use default headers
+	// Non-string value -> no headers configured -> no headers published (no defaults).
 	headers := moesif.events[0].Response.Headers.(map[string]interface{})
-	assert.Equal(t, "no-cache", headers["Cache-Control"])
+	assert.Empty(t, headers)
 }
 
 func TestPublish_MetadataContainsAPIInfo(t *testing.T) {

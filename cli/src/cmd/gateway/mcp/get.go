@@ -54,7 +54,7 @@ var getCmd = &cobra.Command{
 	Long:    "Retrieves a specific MCP by ID or by name and version, with optional output formatting.",
 	Example: GetCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runGetCommand(); err != nil {
+		if err := runGetCommand(cmd); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -62,6 +62,7 @@ var getCmd = &cobra.Command{
 }
 
 func init() {
+	gateway.AddSelectionFlags(getCmd)
 	utils.AddStringFlag(getCmd, utils.FlagID, &getMCPID, "", "MCP ID (handle)")
 	utils.AddStringFlag(getCmd, utils.FlagName, &getMCPName, "", "MCP name")
 	utils.AddStringFlag(getCmd, utils.FlagVersion, &getMCPVersion, "", "MCP version")
@@ -75,7 +76,7 @@ func init() {
 // reason about the resource shape without repeating the map type everywhere.
 type MCPGetResponse map[string]interface{}
 
-func runGetCommand() error {
+func runGetCommand(cmd *cobra.Command) error {
 	// Validate flags
 	if getMCPID == "" && getMCPName == "" {
 		return fmt.Errorf("either --id or --name (with --version) must be specified")
@@ -96,7 +97,7 @@ func runGetCommand() error {
 	}
 
 	// Create a client for the active gateway
-	client, err := gateway.NewClientForActive()
+	client, err := gateway.NewClientFromCommand(cmd)
 	if err != nil {
 		return err
 	}

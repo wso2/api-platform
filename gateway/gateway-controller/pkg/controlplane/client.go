@@ -40,12 +40,14 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/common/eventhub"
+	"github.com/wso2/api-platform/common/webhooksecret"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -95,45 +97,60 @@ type ConnectionState struct {
 // ControlPlaneClient interface defines the methods needed from the control plane client
 type ControlPlaneClient interface {
 	IsConnected() bool
-	PushAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error
+	PushArtifact(apiID string, apiConfig *models.StoredConfig, deploymentID string) error
 	SyncArtifactsToOnPremAPIM(apimConfig *utils.APIMConfig) error
 	IsOnPrem() bool
 	GetAPIMConfig() *utils.APIMConfig
 }
 
+// secretSyncer is the narrow interface the sync loop needs from the secrets service.
+// *secrets.SecretService satisfies this interface.
+type secretSyncer interface {
+	UpsertFromPlatform(handle, displayName, plaintext string) error
+}
+
 // Client manages the WebSocket connection to the control plane
 type Client struct {
-	config                      config.ControlPlaneConfig
-	logger                      *slog.Logger
-	state                       *ConnectionState
-	ctx                         context.Context
-	cancel                      context.CancelFunc
-	stopChan                    chan struct{}
-	wg                          sync.WaitGroup
-	writeMu                     sync.Mutex // serializes writes to the WebSocket connection
-	store                       *storage.ConfigStore
-	db                          storage.Storage
-	snapshotManager             *xds.SnapshotManager
-	parser                      *config.Parser
-	validator                   config.Validator
-	deploymentService           *utils.APIDeploymentService
-	apiUtilsService             *utils.APIUtilsService
-	apiKeyService               *utils.APIKeyService
-	llmDeploymentService        *utils.LLMDeploymentService
-	mcpDeploymentService        *utils.MCPDeploymentService
-	apiKeyXDSManager            utils.XDSManager
-	apiKeyStore                 *storage.APIKeyStore
-	routerConfig                *config.RouterConfig
-	policyManager               *policyxds.PolicyManager
-	systemConfig                *config.Config
-	policyDefinitions           map[string]models.PolicyDefinition
-	subscriptionSnapshotUpdater utils.SubscriptionSnapshotUpdater
-	subscriptionResourceService *utils.SubscriptionResourceService
-	eventHub                    eventhub.EventHub
-	gatewayID                   string
-	gatewayPath                 string      // cached gateway path from well-known discovery
-	syncOnce                    sync.Once   // ensures deployment sync runs only on first connect
-	isFirstConnect              atomic.Bool // true on first connect, flipped to false after
+	config                       config.ControlPlaneConfig
+	logger                       *slog.Logger
+	state                        *ConnectionState
+	ctx                          context.Context
+	cancel                       context.CancelFunc
+	stopChan                     chan struct{}
+	wg                           sync.WaitGroup
+	writeMu                      sync.Mutex // serializes writes to the WebSocket connection
+	store                        *storage.ConfigStore
+	db                           storage.Storage
+	snapshotManager              *xds.SnapshotManager
+	parser                       *config.Parser
+	validator                    config.Validator
+	deploymentService            *utils.APIDeploymentService
+	apiUtilsService              *utils.APIUtilsService
+	apiKeyService                *utils.APIKeyService
+	llmDeploymentService         *utils.LLMDeploymentService
+	mcpDeploymentService         *utils.MCPDeploymentService
+	apiKeyXDSManager             utils.XDSManager
+	apiKeyStore                  *storage.APIKeyStore
+	routerConfig                 *config.RouterConfig
+	policyManager                *policyxds.PolicyManager
+	systemConfig                 *config.Config
+	policyDefinitions            map[string]models.PolicyDefinition
+	subscriptionSnapshotUpdater  utils.SubscriptionSnapshotUpdater
+	subscriptionResourceService  *utils.SubscriptionResourceService
+	eventHub                     eventhub.EventHub
+	gatewayID                    string
+	gatewayPath                  string      // cached gateway path from well-known discovery
+	syncOnce                     sync.Once   // ensures deployment sync runs only on first connect
+	isFirstConnect               atomic.Bool // true on first connect, flipped to false after
+	webhookSecretStore           *webhooksecret.WebhookSecretStore
+	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager
+	secretSyncer                 secretSyncer
+	secretHashCache              sync.Map // handle → last-known Platform API hash (string)
+
+	// DP->CP push retry tuning.
+	pushMaxAttempts   int
+	pushRetryBaseWait time.Duration
+	pushRetryMaxWait  time.Duration
 }
 
 // NewClient creates a new control plane client
@@ -156,6 +173,8 @@ func NewClient(
 	subSnapshotManager utils.SubscriptionSnapshotUpdater,
 	eventHubInstance eventhub.EventHub,
 	secretResolver funcs.SecretResolver,
+	webhookSecretStore *webhooksecret.WebhookSecretStore,
+	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager,
 ) *Client {
 	if db == nil {
 		panic("control plane client requires non-nil storage")
@@ -178,25 +197,27 @@ func NewClient(
 	subscriptionResourceService := utils.NewSubscriptionResourceService(db, subSnapshotManager, eventHubInstance, gatewayID)
 
 	client := &Client{
-		config:                      cfg,
-		logger:                      logger,
-		store:                       store,
-		db:                          db,
-		snapshotManager:             snapshotManager,
-		parser:                      config.NewParser(),
-		validator:                   validator,
-		deploymentService:           deploymentService,
-		apiKeyService:               apiKeyService,
-		apiKeyXDSManager:            apiKeyXDSManager,
-		apiKeyStore:                 apiKeyStore,
-		routerConfig:                routerConfig,
-		policyManager:               policyManager,
-		systemConfig:                systemConfig,
-		policyDefinitions:           policyDefinitions,
-		subscriptionSnapshotUpdater: subSnapshotManager,
-		subscriptionResourceService: subscriptionResourceService,
-		eventHub:                    eventHubInstance,
-		gatewayID:                   gatewayID,
+		config:                       cfg,
+		logger:                       logger,
+		store:                        store,
+		db:                           db,
+		snapshotManager:              snapshotManager,
+		parser:                       config.NewParser(),
+		validator:                    validator,
+		deploymentService:            deploymentService,
+		apiKeyService:                apiKeyService,
+		apiKeyXDSManager:             apiKeyXDSManager,
+		apiKeyStore:                  apiKeyStore,
+		routerConfig:                 routerConfig,
+		policyManager:                policyManager,
+		systemConfig:                 systemConfig,
+		policyDefinitions:            policyDefinitions,
+		subscriptionSnapshotUpdater:  subSnapshotManager,
+		subscriptionResourceService:  subscriptionResourceService,
+		eventHub:                     eventHubInstance,
+		gatewayID:                    gatewayID,
+		webhookSecretStore:           webhookSecretStore,
+		webhookSecretSnapshotManager: webhookSecretSnapshotManager,
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,
@@ -211,6 +232,12 @@ func NewClient(
 	}
 
 	client.isFirstConnect.Store(true)
+
+	// If the secretResolver also satisfies secretSyncer, store it so syncSecrets can
+	// upsert Platform API-sourced secrets into local encrypted storage.
+	if ss, ok := secretResolver.(secretSyncer); ok {
+		client.secretSyncer = ss
+	}
 
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
@@ -439,13 +466,20 @@ func (c *Client) Connect() error {
 		c.wg.Add(1)
 		go func(gwID string) {
 			defer c.wg.Done()
-			c.syncDeployments(gwID)
+			// Sync secrets before deployments so {{ secret "..." }} placeholders
+			// in API configs resolve correctly during the first render pass.
+			c.syncSecrets()
+			if c.config.DeploymentSyncEnabled {
+				c.syncDeployments(gwID)
+			}
 			// Bottom-up sync: push gateway-created APIs to on-prem control plane
-			if c.IsOnPrem() {
+			if c.IsOnPrem() && c.config.DeploymentSyncEnabled {
 				if err := c.SyncArtifactsToOnPremAPIM(c.GetAPIMConfig()); err != nil {
 					c.logger.Error("Failed to sync artifacts to on-prem APIM", slog.Any("error", err))
 				}
 			}
+			// Push gateway-originated artifacts up to the platform-API control plane.
+			c.PushGatewayArtifactsToControlPlane()
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)
 			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
@@ -460,11 +494,17 @@ func (c *Client) Connect() error {
 		go func(gwID string) {
 			defer c.wg.Done()
 			// Bottom-up sync on reconnect
-			if c.IsOnPrem() {
+			if c.IsOnPrem() && c.config.DeploymentSyncEnabled {
 				if err := c.SyncArtifactsToOnPremAPIM(c.GetAPIMConfig()); err != nil {
 					c.logger.Error("Failed to sync artifacts to on-prem APIM", slog.Any("error", err))
 				}
 			}
+			// Re-sync secrets on reconnect so any rotated or newly added secrets
+			// are picked up. Hash-based change detection ensures only changed
+			// secrets trigger a plaintext fetch.
+			c.syncSecrets()
+			// Push gateway-originated artifacts up to the platform-API control plane.
+			c.PushGatewayArtifactsToControlPlane()
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)
 			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
@@ -901,19 +941,19 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 	}
 }
 
+// onPremSupportedAPIKeyKinds lists the artifact kinds for which the on-prem APIM control plane
+// exposes an API-key backfill endpoint. LLM, WebSub, and WebBroker kinds are cloud-only.
+var onPremSupportedAPIKeyKinds = map[string]bool{
+	models.KindRestApi: true,
+}
+
 // syncAPIKeysForExistingArtifacts performs a one-time bulk sync of API keys for all
 // currently known RestApi, WebSubApi, LlmProvider, and LlmProxy artifacts after the WebSocket connection
 // is established. Upserts fetched keys into the DB, reconciles deletions per artifact,
 // then reloads the in-memory store and refreshes the xDS snapshot once.
+// For on-prem control planes only KindRestApi is synced; other kinds are skipped because
+// the corresponding backfill endpoints do not exist in carbon-apimgt for now.
 func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
-	// Skip for on-prem control planes
-	if c.isOnPrem() {
-		c.logger.Debug("Skipping API Key bulk sync: on-prem control plane detected",
-			slog.String("gateway_id", gatewayID),
-		)
-		return
-	}
-
 	if c.apiUtilsService == nil || c.store == nil || c.apiKeyStore == nil {
 		return
 	}
@@ -946,6 +986,14 @@ func (c *Client) syncAPIKeysForExistingArtifacts(gatewayID string) {
 	}
 
 	for _, kind := range []string{models.KindRestApi, models.KindWebSubApi, models.KindWebBrokerApi, models.KindLlmProvider, models.KindLlmProxy} {
+		// On-prem APIM only exposes backfill endpoints for RestApi keys.
+		if c.isOnPrem() && !onPremSupportedAPIKeyKinds[kind] {
+			c.logger.Debug("Skipping API key bulk sync for kind: not supported by on-prem control plane",
+				slog.String("kind", kind),
+				slog.String("gateway_id", gatewayID),
+			)
+			continue
+		}
 		select {
 		case <-c.ctx.Done():
 			c.logger.Info("Stopping API key bulk sync due to client context cancellation")
@@ -1301,6 +1349,8 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleWebSubAPIUndeployedEvent(event)
 	case "websub.deleted":
 		c.handleWebSubAPIDeletedEvent(event)
+	case "websub.hmacsecret.created", "websub.hmacsecret.updated", "websub.hmacsecret.deleted":
+		c.handleWebSubAPIHmacSecretEvent(event)
 	case "webbroker.deployed":
 		c.handleWebBrokerAPIDeployedEvent(event)
 	case "webbroker.undeployed":
@@ -1348,8 +1398,15 @@ func (c *Client) fetchAndDeployAPI(apiID, deploymentID string, deployedAt *time.
 		)
 	}
 
-	// Create API configuration from YAML using the deployment service
-	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deploymentID, deployedAt, correlationID, c.deploymentService)
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, correlationID)
+
+	// Create API configuration from YAML using the deployment service. Reuse the
+	// existing local UUID for a bottom-up (DP->CP) synced API so the control-plane
+	// deploy is an in-place update; the fetch above still addresses the definition
+	// by the control-plane UUID (apiID).
+	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, c.resolveLocalArtifactID(apiID), deploymentID, deployedAt, correlationID, c.deploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create API from YAML",
 			slog.String("api_id", apiID),
@@ -1588,15 +1645,47 @@ func (c *Client) handleAPIUndeployedEvent(event map[string]interface{}) {
 }
 
 // findAPIConfig checks if an API exists in the database.
+//
+// The incoming apiID is a control-plane UUID. For control-plane-originated
+// artifacts it matches the local UUID directly. For bottom-up (DP->CP) synced
+// artifacts — Fall back to that CP UUID and the gateway UUID mapping so events
+// addressed by the control-plane UUID resolve to the local row. Mirrors
+// APIKeyService.getArtifactConfigByID.
 func (c *Client) findAPIConfig(apiID string) (*models.StoredConfig, error) {
 	config, err := c.db.GetConfig(apiID)
+	if err == nil {
+		return config, nil
+	}
+	if !storage.IsNotFoundError(err) {
+		return nil, fmt.Errorf("database error while fetching config: %w", err)
+	}
+	// Fallback: incoming UUID may be the control-plane UUID for a bottom-up
+	// synced artifact. Look it up by cp_artifact_id.
+	config, err = c.db.GetConfigByCPArtifactID(apiID)
 	if err == nil {
 		return config, nil
 	}
 	if storage.IsNotFoundError(err) {
 		return nil, storage.ErrNotFound
 	}
-	return nil, fmt.Errorf("database error while fetching config: %w", err)
+	return nil, fmt.Errorf("database error while fetching config by cp id: %w", err)
+}
+
+// resolveLocalArtifactID maps a control-plane artifact UUID to the local UUID the
+// gateway stores it under. They are identical for control-plane-originated
+// artifacts, but a bottom-up (DP->CP) synced artifact keeps its locally-generated
+// UUID and records the control-plane UUID as cp_artifact_id.
+func (c *Client) resolveLocalArtifactID(id string) string {
+	existing, err := c.findAPIConfig(id)
+	switch {
+	case err == nil && existing != nil:
+		return existing.UUID
+	case err != nil && !storage.IsNotFoundError(err):
+		c.logger.Error("Failed to resolve local artifact ID; falling back to control-plane UUID",
+			slog.String("artifact_id", id),
+			slog.Any("error", err))
+	}
+	return id
 }
 
 // removePolicyConfiguration removes runtime config from the policy engine.
@@ -1909,12 +1998,20 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
+
+	// Reuse the existing local UUID for a bottom-up (DP->CP) synced proxy so the
+	// control-plane deploy is an in-place update
+	deployProxyID := c.resolveLocalArtifactID(proxyID)
+
 	// Create LLM proxy configuration from YAML using the deployment service
 	llmProxyPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if llmProxyPerformedAt.IsZero() {
 		llmProxyPerformedAt = time.Now().Truncate(time.Millisecond)
 	}
-	result, err := c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, proxyID, deployedEvent.Payload.DeploymentID, &llmProxyPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
+	result, err := c.apiUtilsService.CreateLLMProxyFromYAML(yamlData, deployProxyID, deployedEvent.Payload.DeploymentID, &llmProxyPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create LLM proxy from YAML",
 			slog.String("proxy_id", proxyID),
@@ -2013,12 +2110,21 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering. Secrets created after the last startup/reconnect
+	// sync are not yet cached, so we fetch them on demand here.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
+
+	// Reuse the existing local UUID for a bottom-up (DP->CP) synced provider so
+	// the control-plane deploy is an in-place update
+	deployProviderID := c.resolveLocalArtifactID(providerID)
+
 	// Create LLM provider configuration from YAML using the deployment service
 	llmProviderPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if llmProviderPerformedAt.IsZero() {
 		llmProviderPerformedAt = time.Now().Truncate(time.Millisecond)
 	}
-	result, err := c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, providerID, deployedEvent.Payload.DeploymentID, &llmProviderPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
+	result, err := c.apiUtilsService.CreateLLMProviderFromYAML(yamlData, deployProviderID, deployedEvent.Payload.DeploymentID, &llmProviderPerformedAt, deployedEvent.CorrelationID, c.llmDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create LLM provider from YAML",
 			slog.String("provider_id", providerID),
@@ -2470,6 +2576,77 @@ func (c *Client) handleLLMProxyDeletedEvent(event map[string]interface{}) {
 	)
 }
 
+// syncHmacSecretsForArtifact fetches all platform-managed HMAC secrets for a WebSub API
+// artifact from platform-API and loads them into the in-memory webhook secret store.
+// It replaces any previously loaded secrets for this artifact atomically (clear then re-add).
+func (c *Client) syncHmacSecretsForArtifact(artifactID string) {
+	if c.webhookSecretStore == nil {
+		return
+	}
+
+	secrets, err := c.apiUtilsService.FetchWebSubAPIHmacSecrets(artifactID)
+	if err != nil {
+		c.logger.Warn("Failed to fetch platform HMAC secrets for WebSub API",
+			slog.String("artifact_id", artifactID),
+			slog.Any("error", err))
+		return
+	}
+
+	if err := c.webhookSecretStore.RemoveAllByAPI(artifactID); err != nil {
+		c.logger.Warn("Failed to clear existing HMAC secrets for WebSub API",
+			slog.String("artifact_id", artifactID),
+			slog.Any("error", err))
+		return
+	}
+
+	for _, s := range secrets {
+		if err := c.webhookSecretStore.Store(artifactID, s.Name, s.Plaintext); err != nil {
+			c.logger.Warn("Failed to store platform HMAC secret in memory",
+				slog.String("artifact_id", artifactID),
+				slog.String("secret_name", s.Name),
+				slog.Any("error", err))
+		}
+	}
+
+	if c.webhookSecretSnapshotManager != nil {
+		if err := c.webhookSecretSnapshotManager.RefreshSnapshot(); err != nil {
+			c.logger.Warn("Failed to refresh webhook secret xDS snapshot after platform sync",
+				slog.String("artifact_id", artifactID),
+				slog.Any("error", err))
+		}
+	}
+
+	c.logger.Info("Loaded platform HMAC secrets for WebSub API",
+		slog.String("artifact_id", artifactID),
+		slog.Int("count", len(secrets)))
+}
+
+// cleanupHmacSecretsForArtifact removes all in-memory HMAC secrets for an artifact and
+// refreshes the xDS snapshot. Called on WebSub API deletion (found and not-found paths).
+func (c *Client) cleanupHmacSecretsForArtifact(artifactID string) {
+	if c.webhookSecretStore == nil {
+		return
+	}
+	if err := c.webhookSecretStore.RemoveAllByAPI(artifactID); err != nil {
+		c.logger.Warn("Failed to remove HMAC secrets from store during WebSub API cleanup",
+			slog.String("artifact_id", artifactID),
+			slog.Any("error", err))
+	}
+	if c.webhookSecretSnapshotManager != nil {
+		if err := c.webhookSecretSnapshotManager.RefreshSnapshot(); err != nil {
+			c.logger.Warn("Failed to refresh webhook secret xDS snapshot after WebSub API cleanup",
+				slog.String("artifact_id", artifactID),
+				slog.Any("error", err))
+		}
+	}
+}
+
+// platformHmacSecretEventPayload is the payload for websub.hmacsecret.* events.
+type platformHmacSecretEventPayload struct {
+	ArtifactUUID string `json:"artifactUuid"`
+	SecretName   string `json:"secretName"`
+}
+
 func (c *Client) handleWebSubAPIDeployedEvent(event map[string]any) {
 	c.logger.Debug("WebSub API Deployment Event",
 		slog.Any("payload", event["payload"]),
@@ -2528,11 +2705,17 @@ func (c *Client) handleWebSubAPIDeployedEvent(event map[string]any) {
 		return
 	}
 
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
+
 	performedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if performedAt.IsZero() {
 		performedAt = time.Now().Truncate(time.Millisecond)
 	}
-	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID, c.deploymentService)
+	// Reuse the existing local UUID for a bottom-up (DP->CP) synced API so the
+	// control-plane deploy is an in-place update
+	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, c.resolveLocalArtifactID(apiID), deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID, c.deploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create WebSub API from YAML",
 			slog.String("api_id", apiID),
@@ -2549,6 +2732,11 @@ func (c *Client) handleWebSubAPIDeployedEvent(event map[string]any) {
 			slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
 		)
 		return
+	}
+
+	// Load platform-managed HMAC secrets into the webhook secret store.
+	if result.StoredConfig != nil {
+		c.syncHmacSecretsForArtifact(result.StoredConfig.UUID)
 	}
 
 	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "websub", "deploy", "success",
@@ -2702,6 +2890,7 @@ func (c *Client) handleWebSubAPIDeletedEvent(event map[string]any) {
 			c.logger.Warn("WebSub API configuration not found for deletion",
 				slog.String("api_id", apiID),
 			)
+			c.cleanupHmacSecretsForArtifact(apiID)
 			return
 		}
 		c.logger.Error("Failed to fetch WebSub API configuration for deletion",
@@ -2713,6 +2902,7 @@ func (c *Client) handleWebSubAPIDeletedEvent(event map[string]any) {
 	}
 
 	c.performFullAPIDeletion(apiID, apiConfig, deletedEvent.CorrelationID)
+	c.cleanupHmacSecretsForArtifact(apiConfig.UUID)
 }
 
 func (c *Client) handleWebBrokerAPIDeployedEvent(event map[string]any) {
@@ -2773,11 +2963,17 @@ func (c *Client) handleWebBrokerAPIDeployedEvent(event map[string]any) {
 		return
 	}
 
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
+
 	performedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if performedAt.IsZero() {
 		performedAt = time.Now().Truncate(time.Millisecond)
 	}
-	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID, c.deploymentService)
+	// Reuse the existing local UUID for a bottom-up (DP->CP) synced API so the
+	// control-plane deploy is an in-place update
+	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, c.resolveLocalArtifactID(apiID), deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID, c.deploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create WebBroker API from YAML",
 			slog.String("api_id", apiID),
@@ -3031,12 +3227,20 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 		return
 	}
 
+	// Ensure any {{ secret "handle" }} references in the YAML are in local
+	// storage before rendering.
+	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
+
+	// Reuse the existing local UUID for a bottom-up (DP->CP) synced proxy so the
+	// control-plane deploy is an in-place update
+	deployProxyID := c.resolveLocalArtifactID(proxyID)
+
 	// Create MCP proxy configuration from YAML using the deployment service
 	mcpPerformedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
 	if mcpPerformedAt.IsZero() {
 		mcpPerformedAt = time.Now().Truncate(time.Millisecond)
 	}
-	result, err := c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, proxyID, deployedEvent.Payload.DeploymentID, &mcpPerformedAt, deployedEvent.CorrelationID, c.mcpDeploymentService)
+	result, err := c.apiUtilsService.CreateMCPProxyFromYAML(yamlData, deployProxyID, deployedEvent.Payload.DeploymentID, &mcpPerformedAt, deployedEvent.CorrelationID, c.mcpDeploymentService)
 	if err != nil {
 		c.logger.Error("Failed to create MCP proxy from YAML",
 			slog.String("proxy_id", proxyID),
@@ -4088,16 +4292,171 @@ func (c *Client) IsConnected() bool {
 	return c.state.Current == Connected && c.state.Conn != nil
 }
 
-// PushAPIDeployment pushes API deployment details to the control plane
-func (c *Client) PushAPIDeployment(apiID string, apiConfig *models.StoredConfig, deploymentID string) error {
+// DP->CP push retry policy. The push to the control plane is retried with exponential
+// backoff so a transient control-plane hiccup does not strand an artifact as unsynced until
+// the next gateway restart. After all attempts are exhausted the failure is recorded
+// (cp_sync_status=failed) and retried again on the next (re)connect.
+const (
+	pushArtifactMaxAttempts   = 5
+	pushArtifactRetryBaseWait = 1 * time.Second
+	pushArtifactRetryMaxWait  = 30 * time.Second
+)
+
+// PushArtifact pushes a gateway-created/updated artifact of any kind to the control plane.
+// The control plane mints its own artifact UUID and returns it; this records it (and the
+// sync outcome) on the artifact's row as cp_artifact_id / cp_sync_status / cp_sync_info,
+// mirroring the on-prem APIM bottom-up sync.
+func (c *Client) PushArtifact(apiID string, apiConfig *models.StoredConfig, deploymentID string) error {
 	// Check if connected to control plane
 	if !c.IsConnected() {
-		c.logger.Debug("Not connected to control plane, skipping API deployment push",
-			slog.String("api_id", apiID))
+		c.logger.Debug("Not connected to control plane, skipping artifact push",
+			slog.String("artifact_id", apiID))
 		return nil
 	}
 
-	return c.apiUtilsService.PushAPIDeployment(apiID, apiConfig, deploymentID)
+	cpArtifactID, err := c.pushArtifactWithRetry(apiID, apiConfig, deploymentID)
+	c.recordArtifactSyncStatus(apiConfig, cpArtifactID, err)
+	return err
+}
+
+// pushArtifactWithRetry performs the DP->CP push, retrying transient failures up to
+// pushArtifactMaxAttempts times with exponential backoff (capped at pushArtifactRetryMaxWait).
+// It returns the control-plane artifact UUID from the first successful attempt, or the last
+// error after all attempts are exhausted. The backoff is abandoned early if the client is
+// shutting down (c.ctx cancelled).
+func (c *Client) pushArtifactWithRetry(apiID string, apiConfig *models.StoredConfig, deploymentID string) (string, error) {
+	maxAttempts := pushArtifactMaxAttempts
+	if c.pushMaxAttempts > 0 {
+		maxAttempts = c.pushMaxAttempts
+	}
+	wait := pushArtifactRetryBaseWait
+	if c.pushRetryBaseWait > 0 {
+		wait = c.pushRetryBaseWait
+	}
+	maxWait := pushArtifactRetryMaxWait
+	if c.pushRetryMaxWait > 0 {
+		maxWait = c.pushRetryMaxWait
+	}
+
+	var cpArtifactID string
+	var lastErr error
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		cpArtifactID, lastErr = c.apiUtilsService.PushArtifact(apiID, apiConfig, deploymentID)
+		if lastErr == nil {
+			if attempt > 1 {
+				c.logger.Info("DP->CP artifact push succeeded after retry",
+					slog.String("artifact_id", apiID), slog.Int("attempt", attempt))
+			}
+			return cpArtifactID, nil
+		}
+
+		c.logger.Warn("DP->CP artifact push attempt failed",
+			slog.String("artifact_id", apiID),
+			slog.String("kind", apiConfig.Kind),
+			slog.Int("attempt", attempt),
+			slog.Int("max_attempts", maxAttempts),
+			slog.Any("error", lastErr))
+
+		if attempt == maxAttempts {
+			break
+		}
+
+		// Back off before the next attempt, but bail out promptly on shutdown.
+		select {
+		case <-time.After(wait):
+		case <-c.ctx.Done():
+			c.logger.Debug("DP->CP artifact push retry abandoned: client shutting down",
+				slog.String("artifact_id", apiID))
+			return cpArtifactID, lastErr
+		}
+		if wait *= 2; wait > maxWait {
+			wait = maxWait
+		}
+	}
+
+	c.logger.Error("DP->CP artifact push failed after all retries",
+		slog.String("artifact_id", apiID),
+		slog.String("kind", apiConfig.Kind),
+		slog.Int("attempts", maxAttempts),
+		slog.Any("error", lastErr))
+	return cpArtifactID, lastErr
+}
+
+// pushArtifactsWithRetry performs the bulk DP->CP push, retrying transport-level failures up to
+// pushArtifactMaxAttempts times with exponential backoff. Per-artifact import failures are
+// reported inside the returned response (Error per dpid), not as an error, and are not retried
+// here — they are reconciled by the caller and re-attempted on the next (re)connect.
+func (c *Client) pushArtifactsWithRetry(configs []*models.StoredConfig) (*utils.ImportArtifactsResponse, error) {
+	maxAttempts := pushArtifactMaxAttempts
+	if c.pushMaxAttempts > 0 {
+		maxAttempts = c.pushMaxAttempts
+	}
+	wait := pushArtifactRetryBaseWait
+	if c.pushRetryBaseWait > 0 {
+		wait = c.pushRetryBaseWait
+	}
+	maxWait := pushArtifactRetryMaxWait
+	if c.pushRetryMaxWait > 0 {
+		maxWait = c.pushRetryMaxWait
+	}
+
+	var resp *utils.ImportArtifactsResponse
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		resp, lastErr = c.apiUtilsService.PushArtifacts(configs)
+		if lastErr == nil {
+			if attempt > 1 {
+				c.logger.Info("DP->CP bulk artifact push succeeded after retry", slog.Int("attempt", attempt))
+			}
+			return resp, nil
+		}
+		c.logger.Warn("DP->CP bulk artifact push attempt failed",
+			slog.Int("attempt", attempt), slog.Int("max_attempts", maxAttempts),
+			slog.Int("count", len(configs)), slog.Any("error", lastErr))
+		if attempt == maxAttempts {
+			break
+		}
+		select {
+		case <-time.After(wait):
+		case <-c.ctx.Done():
+			c.logger.Debug("DP->CP bulk artifact push retry abandoned: client shutting down")
+			return resp, lastErr
+		}
+		if wait *= 2; wait > maxWait {
+			wait = maxWait
+		}
+	}
+	c.logger.Error("DP->CP bulk artifact push failed after all retries",
+		slog.Int("attempts", maxAttempts), slog.Any("error", lastErr))
+	return resp, lastErr
+}
+
+// recordArtifactSyncStatus persists the outcome of a DP->CP push on the artifact's row
+// (cp_sync_status / cp_sync_info / cp_artifact_id), mirroring the on-prem APIM bottom-up
+// sync. On success it stores the control-plane UUID; on failure it preserves the prior
+// cp_artifact_id and records the error detail. It is best-effort bookkeeping and only
+// applies to gateway-originated artifacts that still have a row (i.e. not undeploy/delete
+// pushes, where the artifact is being removed from the gateway).
+func (c *Client) recordArtifactSyncStatus(cfg *models.StoredConfig, cpArtifactID string, pushErr error) {
+	if c.db == nil || cfg == nil || cfg.Origin != models.OriginGatewayAPI || cfg.DesiredState == models.StateUndeployed {
+		return
+	}
+	if pushErr != nil {
+		if dbErr := c.db.UpdateCPSyncStatus(cfg.UUID, cfg.CPArtifactID, models.CPSyncStatusFailed, pushErr.Error()); dbErr != nil {
+			c.logger.Debug("Failed to record artifact CP sync failure",
+				slog.String("artifact_id", cfg.UUID), slog.Any("error", dbErr))
+		}
+		return
+	}
+	effectiveCPArtifactID := cpArtifactID
+	if effectiveCPArtifactID == "" {
+		effectiveCPArtifactID = cfg.CPArtifactID
+	}
+	if dbErr := c.db.UpdateCPSyncStatus(cfg.UUID, effectiveCPArtifactID, models.CPSyncStatusSuccess, ""); dbErr != nil {
+		c.logger.Debug("Failed to record artifact CP sync success",
+			slog.String("artifact_id", cfg.UUID), slog.Any("error", dbErr))
+	}
 }
 
 // getWebSocketURL constructs the base WebSocket URL from configuration (cloud default; on-prem may override via well-known).
@@ -4235,4 +4594,30 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 		slog.String("gateway_id", gatewayID),
 		slog.Int("policy_count", len(policies)),
 	)
+}
+
+// handleWebSubAPIHmacSecretEvent handles websub.hmacsecret.created/updated/deleted events
+// from platform-API. It re-syncs all platform-managed HMAC secrets for the affected artifact.
+func (c *Client) handleWebSubAPIHmacSecretEvent(event map[string]any) {
+	payloadRaw, _ := event["payload"]
+	payloadBytes, err := json.Marshal(payloadRaw)
+	if err != nil {
+		c.logger.Error("Failed to marshal HMAC secret event payload", slog.Any("error", err))
+		return
+	}
+	var payload platformHmacSecretEventPayload
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		c.logger.Error("Failed to parse HMAC secret event payload", slog.Any("error", err))
+		return
+	}
+	if payload.ArtifactUUID == "" {
+		c.logger.Warn("HMAC secret event missing artifactUuid, skipping")
+		return
+	}
+	c.logger.Info("Processing platform HMAC secret event",
+		slog.Any("type", event["type"]),
+		slog.String("artifact_uuid", payload.ArtifactUUID),
+		slog.String("secret_name", payload.SecretName),
+	)
+	c.syncHmacSecretsForArtifact(payload.ArtifactUUID)
 }

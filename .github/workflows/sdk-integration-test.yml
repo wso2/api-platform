@@ -23,7 +23,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.2'
+          go-version: '1.26.5'
           cache-dependency-path: '**/go.sum'
 
       - name: Set up Docker Buildx
@@ -45,11 +45,7 @@ jobs:
           make build-coverage VERSION=test
 
       - name: Build mock server images
-        run: |
-          for mock in mock-jwks mock-azure-content-safety mock-aws-bedrock-guardrail mock-embedding-provider mock-analytics-collector; do
-            echo "Building $mock..."
-            docker build -t ghcr.io/wso2/api-platform/$mock:latest tests/mock-servers/$mock
-          done
+        run: make -C tests/mock-servers build
 
       - name: Build sample-service
         run: |

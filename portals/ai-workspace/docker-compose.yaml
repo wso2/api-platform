@@ -1,0 +1,145 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the
+# License at http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+#
+# AI Workspace + Platform API — standalone release compose file.
+#
+# Configuration:
+#   Edit configs/config.toml for AI Workspace settings.
+#   Edit configs/config-platform-api.toml for Platform API settings.
+#   Set the environment variables below for secrets — either export them
+#   in your shell, or create a .env file next to this file:
+#
+#     AUTH_JWT_SECRET_KEY=<long-random-string>
+#     PLATFORM_SECRET_ENCRYPTION_KEY=$(openssl rand -hex 32)   # stable key for persistent secrets
+#
+# Authentication:
+#   Out of the box the stack uses file-based auth (login admin / admin) — no
+#   configuration needed. To delegate to any OIDC provider, uncomment the OIDC
+#   blocks on both services below and set the OIDC_* values in your shell or a
+#   .env file. See README.md → "Testing with an IDP locally" (worked example:
+#   Asgardeo).
+#
+# Usage:
+#   docker compose up -d
+#
+# Ports:
+#   AI Workspace  →  https://localhost:5380
+#   Platform API  →  https://localhost:9243
+#
+# TLS certificates (optional — avoids browser trust warnings):
+#   Both services fall back to a self-signed certificate when no cert is mounted.
+#   To use your own certificate, uncomment the volume lines under each service
+#   and place your files in a certs/ directory next to this file:
+#
+#     certs/
+#       ai-workspace.crt   ← PEM certificate (or full chain)
+#       ai-workspace.key   ← PEM private key
+#       platform-api.crt   ← PEM certificate (or full chain)
+#       platform-api.key   ← PEM private key
+# --------------------------------------------------------------------
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Platform API  (Go HTTPS backend)
+  # ---------------------------------------------------------------------------
+  platform-api:
+    image: ghcr.io/wso2/api-platform/platform-api:0.11.0
+    container_name: platform-api
+    restart: unless-stopped
+    command: ["-config", "/etc/platform-api/config-platform-api.toml"]
+    environment:
+      # Secrets — set these in your shell or in a .env file next to this file.
+      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-}
+      - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=${DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY:-}
+      - APIP_DEMO_MODE=${APIP_DEMO_MODE:-true}
+      # Encryption key for secrets stored in the database (64 hex chars = 32 bytes).
+      # If unset, a random key is generated on startup — encrypted secrets will be
+      # unreadable after a container restart. Set a stable value for persistent deployments:
+      #   export PLATFORM_SECRET_ENCRYPTION_KEY=$(openssl rand -hex 32)
+      - PLATFORM_SECRET_ENCRYPTION_KEY=${PLATFORM_SECRET_ENCRYPTION_KEY:-}
+      # ── OIDC IDP — uncomment to validate tokens against any OIDC provider's
+      # JWKS instead of file-based auth. Set the OIDC_* values in .env. Claim
+      # overrides are optional (default: organization / org_name / org_handle).
+      # - AUTH_IDP_ENABLED=true
+      # - AUTH_JWT_ENABLED=false
+      # - AUTH_FILE_BASED_ENABLED=false
+      # - AUTH_IDP_JWKS_URL=${OIDC_JWKS_URL:-}
+      # - AUTH_IDP_ISSUER=${OIDC_ISSUER:-}
+      # - AUTH_IDP_AUDIENCE=${OIDC_AUDIENCE:-}
+      # - AUTH_IDP_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME=${OIDC_ORG_ID_CLAIM:-}
+      # - AUTH_IDP_CLAIM_MAPPINGS_ORG_NAME_CLAIM_NAME=${OIDC_ORG_NAME_CLAIM:-}
+      # - AUTH_IDP_CLAIM_MAPPINGS_ORG_HANDLE_CLAIM_NAME=${OIDC_ORG_HANDLE_CLAIM:-}
+    volumes:
+      - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
+      - platform-api-data:/app/data
+      # Optional: mount your own TLS certificate to remove the browser trust warning.
+      # The file names must match exactly (cert.pem / key.pem).
+      # - ./resources/certs/platform-api.crt:/app/data/certs/cert.pem:ro
+      # - ./resources/certs/platform-api.key:/app/data/certs/key.pem:ro
+    ports:
+      - "9243:9243"
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  # ---------------------------------------------------------------------------
+  # AI Workspace  (React SPA served by the Go BFF)
+  #
+  # The BFF serves the SPA, proxies all browser→backend traffic same-origin, and
+  # owns authentication. Tokens live in the BFF session (HttpOnly cookie); the
+  # browser never holds a token.
+  # ---------------------------------------------------------------------------
+  ai-workspace:
+    image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-alpha-SNAPSHOT
+    container_name: ai-workspace
+    restart: unless-stopped
+    depends_on:
+      platform-api:
+        condition: service_healthy
+    environment:
+      # The BFF talks to the Platform API over the internal compose network.
+      - PLATFORM_API_URL=https://platform-api:9243
+      - PLATFORM_API_TLS_SKIP_VERIFY=true
+      - SESSION_STORE=memory
+      - COOKIE_SECURE=true
+      - COOKIE_SAMESITE=lax
+      - BFF_TLS_SELF_SIGNED=true
+      # ── OIDC — uncomment to delegate login to any OIDC provider. The BFF is a
+      # confidential client (holds the secret, never sent to the browser). Set
+      # the OIDC_* values in .env; keep the IDP block above in sync.
+      # - VITE_AUTH_MODE=oidc
+      # - OIDC_ISSUER=${OIDC_ISSUER:-}
+      # - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      # - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      # - OIDC_REDIRECT_URL=${OIDC_REDIRECT_URL:-https://localhost:5380/api/auth/callback}
+      # - OIDC_POST_LOGOUT_REDIRECT_URL=${OIDC_POST_LOGOUT_REDIRECT_URL:-https://localhost:5380/login}
+      # - OIDC_SCOPES=${OIDC_SCOPES:-openid profile email ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read ap:secret:manage}
+    volumes:
+      - ./configs/config.toml:/etc/ai-workspace/config.toml:ro
+      # Optional: mount your own TLS certificate to remove the browser trust warning.
+      # The file names must match exactly (tls.crt / tls.key).
+      # - ./certs/ai-workspace.crt:/etc/ai-workspace/tls/tls.crt:ro
+      # - ./certs/ai-workspace.key:/etc/ai-workspace/tls/tls.key:ro
+    ports:
+      - "5380:5380"
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:5380/healthz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  platform-api-data:
+    driver: local

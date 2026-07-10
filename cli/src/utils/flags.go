@@ -22,12 +22,16 @@ import "github.com/spf13/cobra"
 
 const (
 	FlagName                   = "display-name"
+	FlagType                   = "type"
+	FlagContext                = "context"
 	FlagServer                 = "server"
 	FlagAdminServer            = "admin-server"
 	FlagAuth                   = "auth"
 	FlagUsername               = "username"
 	FlagPassword               = "password"
 	FlagToken                  = "token"
+	FlagAPIKey                 = "api-key"
+	FlagPlatform               = "platform"
 	FlagNoInteractive          = "no-interactive"
 	FlagPasswordEnv            = "password-env"
 	FlagOutput                 = "output"
@@ -35,6 +39,10 @@ const (
 	FlagFormat                 = "format"
 	FlagVersion                = "version"
 	FlagID                     = "id"
+	FlagLimit                  = "limit"
+	FlagOffset                 = "offset"
+	FlagAPIID                  = "api-id"
+	FlagSubID                  = "sub-id"
 	FlagConfirm                = "confirm"
 	FlagDockerRegistry         = "docker-registry"
 	FlagImageTag               = "image-tag"
@@ -42,6 +50,41 @@ const (
 	FlagGatewayControllerImage = "gateway-controller-base-image"
 	FlagRouterBaseImage        = "router-base-image"
 	FlagHeader                 = "header"
+	FlagPolicyId               = "policy-id"
+	FlagOrgID                  = "org"
+	FlagView                   = "view"
+	FlagRequestCount           = "request-count"
+	FlagEventCount             = "event-count"
+	FlagPricingModel           = "pricing-model"
+	FlagBillingPeriod          = "billing-period"
+	FlagFlatAmount             = "flat-amount"
+	FlagUnitAmount             = "unit-amount"
+	FlagCurrency               = "currency"
+	FlagInsecure               = "insecure"
+	FlagStatus                 = "status"
+	FlagApplicationID          = "application-id"
+	FlagSubscriptionPlan       = "subscription-plan"
+	FlagAPIKeyID               = "api-key-id"
+	FlagKeyName                = "key-name"
+	FlagExpiresAt              = "expires-at"
+	FlagPropertyName           = "name"
+	FlagAppID                  = "app-id"
+	FlagDescription            = "description"
+	FlagGateway                = "gateway"
+	FlagPlanName               = "plan-name"
+	FlagBillingPlan            = "billing-plan"
+	FlagStopOnQuotaReach       = "stop-on-quota-reach"
+	FlagThrottleLimitCount     = "throttle-limit-count"
+	FlagThrottleLimitUnit      = "throttle-limit-unit"
+	FlagExpiryTime             = "expiry-time"
+	FlagSubscriptionPlanID     = "subscription-plan-id"
+	FlagSubscriptionToken      = "subscription-token"
+	FlagBillingCustomerID      = "billing-customer-id"
+	FlagBillingSubscriptionID  = "billing-subscription-id"
+	FlagReferenceID            = "reference-id"
+	FlagGatewayType            = "gateway-type"
+	FlagProjectID              = "project-id"
+	FlagEnvFile                = "env-file"
 )
 
 var shortFlags = map[string]string{
@@ -74,5 +117,13 @@ func AddBoolFlag(cmd *cobra.Command, flagName string, p *bool, defaultValue bool
 		cmd.Flags().BoolVarP(p, flagName, short, defaultValue, usage)
 	} else {
 		cmd.Flags().BoolVar(p, flagName, defaultValue, usage)
+	}
+}
+
+func AddIntFlag(cmd *cobra.Command, flagName string, p *int, defaultValue int, usage string) {
+	if short, hasShort := shortFlags[flagName]; hasShort {
+		cmd.Flags().IntVarP(p, flagName, short, defaultValue, usage)
+	} else {
+		cmd.Flags().IntVar(p, flagName, defaultValue, usage)
 	}
 }

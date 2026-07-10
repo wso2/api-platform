@@ -334,6 +334,168 @@ func TestMultipleSubscribers(t *testing.T) {
 	}
 }
 
+// TestCursorResetOnLastUnsubscribe verifies that knownVersion is cleared when the
+// final subscriber for a gateway is removed, so the next poll detects a version
+// mismatch and fetches events. lastPolled is preserved so the reconnecting gateway
+// replays from its last delivery point rather than only the 120 s skew window,
+// ensuring events missed during a longer disconnect are not silently dropped.
+func TestCursorResetOnLastUnsubscribe(t *testing.T) {
+	db := setupTestDB(t)
+	logger := testLogger()
+
+	backend := NewSQLBackend(db, logger, DefaultSQLBackendConfig())
+	require.NoError(t, backend.prepareStatements())
+	t.Cleanup(func() { _ = backend.Close() })
+
+	require.NoError(t, backend.RegisterGateway("test-org"))
+
+	ch1, err := backend.Subscribe("test-org")
+	require.NoError(t, err)
+	ch2, err := backend.Subscribe("test-org")
+	require.NoError(t, err)
+
+	// Advance the cursor by publishing + polling.
+	require.NoError(t, backend.Publish("test-org", Event{
+		OriginatedTimestamp: time.Now(),
+		EventType:           EventTypeAPI,
+		Action:              "CREATE",
+		EntityID:            "api-1",
+		EventData:           "{}",
+	}))
+	backend.pollGateways()
+	<-ch1
+	<-ch2
+
+	gw, err := backend.registry.get("test-org")
+	require.NoError(t, err)
+	require.NotEmpty(t, gw.knownVersion, "cursor should be advanced after poll")
+	require.NotZero(t, gw.lastPolled, "lastPolled should be non-zero after poll")
+
+	savedLastPolled := gw.lastPolled
+
+	// Removing one of two subscribers must NOT reset the cursor.
+	require.NoError(t, backend.Unsubscribe("test-org", ch1))
+	assert.NotEmpty(t, gw.knownVersion, "cursor must not reset while a second subscriber remains")
+
+	// Removing the last subscriber must clear knownVersion (to force version-mismatch
+	// detection on reconnect) but must preserve lastPolled (to replay missed events
+	// from the last delivery point, not just the 120 s skew window).
+	require.NoError(t, backend.Unsubscribe("test-org", ch2))
+	assert.Empty(t, gw.knownVersion, "knownVersion must be reset when last subscriber leaves")
+	assert.Equal(t, savedLastPolled, gw.lastPolled, "lastPolled must be preserved so missed events are replayed on reconnect")
+}
+
+// TestPollSkipsGatewayWithNoSubscribers verifies that pollGatewayWithState
+// returns without advancing the cursor when a gateway has no active subscribers.
+// This prevents the poll from re-advancing a just-reset cursor during the window
+// between the last unsubscribe and the next gateway reconnect.
+func TestPollSkipsGatewayWithNoSubscribers(t *testing.T) {
+	db := setupTestDB(t)
+	logger := testLogger()
+
+	backend := NewSQLBackend(db, logger, DefaultSQLBackendConfig())
+	require.NoError(t, backend.prepareStatements())
+	t.Cleanup(func() { _ = backend.Close() })
+
+	require.NoError(t, backend.RegisterGateway("test-org"))
+
+	// Publish an event so the DB has a non-empty version_id.
+	require.NoError(t, backend.Publish("test-org", Event{
+		OriginatedTimestamp: time.Now(),
+		EventType:           EventTypeAPI,
+		Action:              "CREATE",
+		EntityID:            "api-1",
+		EventData:           "{}",
+	}))
+
+	gw, err := backend.registry.get("test-org")
+	require.NoError(t, err)
+
+	// No subscriber registered — poll must leave the cursor untouched.
+	var dbState GatewayState
+	require.NoError(t, backend.getGatewayStateStmt.QueryRow("test-org").Scan(
+		&dbState.GatewayID, &dbState.VersionID, &dbState.UpdatedAt,
+	))
+	require.NotEmpty(t, dbState.VersionID)
+
+	backend.pollGatewayWithState(gw, dbState)
+
+	assert.Empty(t, gw.knownVersion, "cursor must not advance with no subscribers")
+	assert.Zero(t, gw.lastPolled, "lastPolled must not advance with no subscribers")
+}
+
+// TestReplayOnReconnectAfterSendFailure is an end-to-end regression test for the
+// "permanently stale gateway" scenario:
+//  1. Subscribe, publish, poll → first event delivered and cursor advanced.
+//  2. Simulate disconnect: unsubscribe clears knownVersion but preserves lastPolled.
+//  3. Publish a second event while disconnected.
+//  4. Re-subscribe and poll → version mismatch triggers fetch from lastPolled,
+//     replaying both entity-first (boundary overlap) and entity-second.
+func TestReplayOnReconnectAfterSendFailure(t *testing.T) {
+	db := setupTestDB(t)
+	logger := testLogger()
+
+	cfg := DefaultSQLBackendConfig()
+	cfg.PollInterval = 50 * time.Millisecond
+	backend := NewSQLBackend(db, logger, cfg)
+	require.NoError(t, backend.prepareStatements())
+	t.Cleanup(func() { _ = backend.Close() })
+
+	require.NoError(t, backend.RegisterGateway("test-org"))
+
+	ch, err := backend.Subscribe("test-org")
+	require.NoError(t, err)
+
+	require.NoError(t, backend.Publish("test-org", Event{
+		OriginatedTimestamp: time.Now(),
+		EventType:           EventTypeAPI,
+		Action:              "CREATE",
+		EntityID:            "entity-first",
+		EventData:           "{}",
+	}))
+	backend.pollGateways()
+	<-ch // consumed — simulates successful first delivery
+
+	gw, err := backend.registry.get("test-org")
+	require.NoError(t, err)
+	savedLastPolled := gw.lastPolled
+	require.NotZero(t, savedLastPolled)
+
+	// "Send failure" path: unsubscribe clears knownVersion, preserves lastPolled.
+	require.NoError(t, backend.Unsubscribe("test-org", ch))
+	assert.Empty(t, gw.knownVersion)
+	assert.Equal(t, savedLastPolled, gw.lastPolled, "lastPolled must be preserved so reconnect replays from last delivery")
+
+	// Second event published while disconnected.
+	require.NoError(t, backend.Publish("test-org", Event{
+		OriginatedTimestamp: time.Now(),
+		EventType:           EventTypeAPI,
+		Action:              "UPDATE",
+		EntityID:            "entity-second",
+		EventData:           "{}",
+	}))
+
+	// Re-subscribe (gateway reconnect).
+	ch2, err := backend.Subscribe("test-org")
+	require.NoError(t, err)
+
+	// Poll detects version mismatch and fetches events from lastPolled onward.
+	// entity-second must be delivered; entity-first may replay at the boundary.
+	backend.pollGateways()
+
+	received := map[string]bool{}
+	deadline := time.After(2 * time.Second)
+	for !received["entity-second"] {
+		select {
+		case evt := <-ch2:
+			received[evt.EntityID] = true
+		case <-deadline:
+			t.Fatalf("timed out: received %v, entity-second must be replayed after reconnect", received)
+		}
+	}
+	assert.True(t, received["entity-second"], "entity-second must be replayed after reconnect")
+}
+
 func TestUnsubscribeRemovesOnlySpecificSubscriber(t *testing.T) {
 	db := setupTestDB(t)
 	logger := testLogger()
@@ -688,6 +850,37 @@ func TestPollGatewayWithStateKeepsBoundaryOverlapEvents(t *testing.T) {
 		t.Fatalf("unexpected additional event delivered: %s", evt.EntityID)
 	case <-time.After(150 * time.Millisecond):
 	}
+}
+
+func TestPublishCreatesGatewayStateWhenNotRegistered(t *testing.T) {
+	db := setupTestDB(t)
+	logger := testLogger()
+
+	hub := New(db, logger, DefaultConfig())
+	require.NoError(t, hub.Initialize())
+	defer hub.Close()
+
+	// Intentionally skip RegisterGateway — simulates a resource mutation that
+	// fires before the gateway WebSocket has connected.
+	event := Event{
+		GatewayID:           "unregistered-gw",
+		OriginatedTimestamp: time.Now(),
+		EventType:           EventTypeAPI,
+		Action:              "CREATE",
+		EntityID:            "api-1",
+		EventData:           `{}`,
+	}
+	require.NoError(t, hub.PublishEvent("unregistered-gw", event))
+
+	var gatewayID string
+	err := db.QueryRow("SELECT gateway_id FROM gateway_states WHERE gateway_id = ?", "unregistered-gw").Scan(&gatewayID)
+	require.NoError(t, err)
+	assert.Equal(t, "unregistered-gw", gatewayID)
+
+	var eventCount int
+	err = db.QueryRow("SELECT COUNT(*) FROM events WHERE gateway_id = ?", "unregistered-gw").Scan(&eventCount)
+	require.NoError(t, err)
+	assert.Equal(t, 1, eventCount)
 }
 
 func TestPollGatewayWithStateRetriesDeferredEventsFromLastDeliveredTimestamp(t *testing.T) {

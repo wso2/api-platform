@@ -1,0 +1,68 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+#
+# Platform API file-based auth config for the developer-portal backend IT
+# suite. Modeled on ../../configs/config-platform-api.toml.example, with three
+# accounts (admin / publisher / developer, password == username) instead of
+# just admin, so tests exercise real role-scoped authorization rather than the
+# devportal-it-test-key API key bypass.
+#
+# Regenerate a password hash: htpasswd -bnBC 10 "" <password> | tr -d ':\n'
+# --------------------------------------------------------------------
+
+log_level = "INFO"
+port      = "9243"
+
+[database]
+driver = "sqlite3"
+path   = "/app/data/platform-api-it.db"
+
+[auth.jwt]
+enabled = true
+issuer  = "platform-api-it"
+
+[auth.idp]
+enabled = false
+
+[auth.file_based]
+enabled = true
+
+[auth.file_based.organization]
+id           = "default"
+display_name = "Default"
+region       = "us"
+
+# Full access — organization management plus every resource area.
+[[auth.file_based.users]]
+username      = "admin"
+password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
+scopes        = "dp:org_read dp:org_create dp:org_update dp:org_manage dp:org_delete dp:org_content_read dp:org_content_write dp:org_content_manage dp:org_content_delete dp:api_read dp:api_create dp:api_update dp:api_manage dp:api_delete dp:api_content_read dp:api_content_write dp:api_content_manage dp:api_content_delete dp:mcp_read dp:mcp_create dp:mcp_update dp:mcp_manage dp:mcp_delete dp:api_key_create dp:api_key_read dp:api_key_update dp:api_key_manage dp:api_key_revoke dp:mcp_key_create dp:mcp_key_read dp:mcp_key_update dp:mcp_key_manage dp:mcp_key_revoke dp:api_workflow_create dp:api_workflow_read dp:api_workflow_update dp:api_workflow_delete dp:api_workflow_manage dp:app_create dp:app_read dp:app_update dp:app_manage dp:app_delete dp:app_key_create dp:app_key_manage dp:app_key_revoke dp:app_key_mapping_read dp:app_key_mapping_write dp:app_key_mapping_manage dp:subscription_create dp:subscription_read dp:subscription_update dp:subscription_manage dp:subscription_delete dp:sub_plan_create dp:sub_plan_read dp:sub_plan_update dp:sub_plan_manage dp:sub_plan_delete dp:km_create dp:km_read dp:km_update dp:km_manage dp:km_delete dp:view_create dp:view_read dp:view_update dp:view_manage dp:view_delete dp:label_create dp:label_read dp:label_update dp:label_manage dp:label_delete dp:webhook_subscriber_create dp:webhook_subscriber_read dp:webhook_subscriber_update dp:webhook_subscriber_delete dp:webhook_subscriber_manage dp:event_read dp:delivery_manage"
+
+# Content/config manager — APIs, MCP servers, key managers, subscription
+# plans, views/labels, webhook subscribers, API workflows. No org management,
+# no application ownership (that's the developer's).
+[[auth.file_based.users]]
+username      = "publisher"
+password_hash = "$2y$10$BN9I5oPs34clNmhlO0CX0uDMKMnh9xkczGGmuLiInXSe/KOF5wqFW"
+scopes        = "dp:org_read dp:api_read dp:api_create dp:api_update dp:api_manage dp:api_delete dp:api_content_read dp:api_content_write dp:api_content_manage dp:api_content_delete dp:mcp_read dp:mcp_create dp:mcp_update dp:mcp_manage dp:mcp_delete dp:api_key_create dp:api_key_read dp:api_key_update dp:api_key_manage dp:api_key_revoke dp:mcp_key_create dp:mcp_key_read dp:mcp_key_update dp:mcp_key_manage dp:mcp_key_revoke dp:api_workflow_create dp:api_workflow_read dp:api_workflow_update dp:api_workflow_delete dp:api_workflow_manage dp:sub_plan_create dp:sub_plan_read dp:sub_plan_update dp:sub_plan_manage dp:sub_plan_delete dp:km_create dp:km_read dp:km_update dp:km_manage dp:km_delete dp:view_create dp:view_read dp:view_update dp:view_manage dp:view_delete dp:label_create dp:label_read dp:label_update dp:label_manage dp:label_delete dp:webhook_subscriber_create dp:webhook_subscriber_read dp:webhook_subscriber_update dp:webhook_subscriber_delete dp:webhook_subscriber_manage dp:event_read"
+
+# Portal end-user — read APIs/MCP servers, own applications, subscriptions,
+# and API keys. No org, key-manager, view/label, or webhook-subscriber management.
+[[auth.file_based.users]]
+username      = "developer"
+password_hash = "$2y$10$jX3o2E5jF4i3EOgoyJ0k.uegbDYmsmFNDfIxnvcZgTNJifAPjgKKK"
+scopes        = "dp:org_read dp:api_read dp:api_content_read dp:mcp_read dp:api_key_create dp:api_key_read dp:api_key_update dp:api_key_manage dp:api_key_revoke dp:app_create dp:app_read dp:app_update dp:app_manage dp:app_delete dp:app_key_create dp:app_key_manage dp:app_key_revoke dp:app_key_mapping_read dp:app_key_mapping_write dp:app_key_mapping_manage dp:subscription_create dp:subscription_read dp:subscription_update dp:subscription_manage dp:subscription_delete dp:sub_plan_read dp:view_read dp:label_read"
+
+[tls]
+cert_dir = "/app/data/certs"
+
+[default_devportal]
+enabled = false

@@ -94,9 +94,11 @@ eslint.config.mjs
 
 config*.json
 secret*.json
-config*.yaml
 resources/default-layout
 resources/mock
 
-config.yaml
 .env
+configs/config-platform-api.toml
+
+# Test reports
+it/reports/*

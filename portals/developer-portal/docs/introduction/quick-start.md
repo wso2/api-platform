@@ -16,13 +16,17 @@ git clone https://github.com/wso2/api-platform.git
 cd api-platform/portals/developer-portal/
 ```
 
-### 2. Create a configuration file
+### 2. Create configuration files
 
-Copy the sample configuration and set the minimum required values:
+Copy both sample configuration files:
 
 ```bash
-mkdir -p configs && cp sample.config.yaml configs/config.yaml
+mkdir -p configs
+cp configs/config.toml.example configs/config.toml
+cp configs/config-platform-api.toml.example configs/config-platform-api.toml
 ```
+
+`config.toml` controls the Developer Portal itself. `config-platform-api.toml` configures the Platform API sidecar that validates login credentials and issues signed tokens. The default credentials in the example file are `admin` / `admin`.
 
 ### 3. Start the portal
 
@@ -30,19 +34,19 @@ mkdir -p configs && cp sample.config.yaml configs/config.yaml
 docker compose up
 ```
 
-Docker Compose starts PostgreSQL and the Developer Portal. On first boot the database schema and a default organization (`ACME`) with a `default` view are created automatically.
+This starts the Developer Portal in demo mode (SQLite by default). On first boot the database schema and a default organization (`default`) with a `default` view are created automatically.
 
 ### 4. Open the portal
 
 Navigate to:
 
 ```
-http://localhost:3000/ACME/views/default
+https://localhost:3000/default/views/default
 ```
 
-Sign in with `admin` / `admin` (or the credentials you set in `defaultAuth`).
+Sign in with `admin` / `admin` (the credentials defined in `configs/config-platform-api.toml`).
 
-You should see the default API catalog page.
+You should see the default API catalog page. Since demo mode is on, you'll get a one-time onboarding prompt offering to deploy a set of sample APIs/MCPs — this is optional and can be skipped. You can also trigger it later from **Settings → Manage APIs → Seed sample APIs**.
 
 ### 5. Publish your first API
 
@@ -50,7 +54,7 @@ Create an API manifest file and an OpenAPI definition, then upload them:
 
 ```yaml
 # api.yaml
-apiVersion: devportal.api-platform.wso2.com/v1
+apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: RestApi
 
 metadata:
@@ -61,9 +65,7 @@ spec:
   displayName: Ping API
   version: v1.0
   description: Sample HTTP echo/probe API. Requires API key authentication. No subscription plans.
-  provider: WSO2
   status: PUBLISHED
-  gatewayType: wso2/api-platform
   referenceID: ping-api-v1.0
 
   tags:
@@ -73,7 +75,7 @@ spec:
   labels:
     - default
 
-  subscriptionPolicies: []
+  subscriptionPlans: []
 
   visibility: PUBLIC
   visibleGroups: []
@@ -168,11 +170,19 @@ paths:
 
 ```
 
+Scripts and CLI tools authenticate with a Bearer token obtained directly from the Platform API. Get one once, then reuse it until it expires:
+
 ```bash
-curl -sk -X POST "https://localhost:3000/devportal/organizations/1ba42a09-45c0-40f8-a1bf-e4aa7cde1575/apis" \           ✔
-   -u admin:admin \
-   -F "api=@api.yaml;type=application/yaml" \
-   -F "apiDefinition=@openapi.yaml;type=application/yaml" -k
+# Get a token from the Platform API (runs alongside the devportal)
+# Basic auth against the Platform API is only available in demo mode
+TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
+  -d "username=admin&password=admin" | jq -r .token)
+
+# Publish the API (the token's org_handle claim scopes this to the "default" org)
+curl -sk -X POST "https://localhost:3000/api/v0.9/apis" \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "api=@api.yaml;type=application/yaml" \
+  -F "apiDefinition=@openapi.yaml;type=application/yaml"
 ```
 
 Refresh the portal — the Ping API now appears in the catalog. Click it to view the documentation and try-out console.
@@ -181,10 +191,10 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 
 | Resource | Value |
 |---|---|
-| Organization | `ACME` |
+| Organization | `default` |
 | Default view | `default` |
-| Portal URL | `http://localhost:3000/ACME/views/default` |
-| Admin credentials | `admin` / `admin` (local auth) |
+| Portal URL | `https://localhost:3000/default/views/default` |
+| Admin credentials | `admin` / `admin` (Platform API — see `configs/config-platform-api.toml`) |
 | Sample API | `Ping API` visible in the catalog |
 
 ## Next steps
@@ -196,4 +206,4 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 | Register and publish your first API | [Publish APIs](../publish-apis/publishing-apis.md) |
 | Set up subscription plans | [Subscription Plans](../administer/subscription-plans.md) |
 | Customize the portal look and feel | [Theming](../administer/theming/org-level-theming.md) |
-| Connect to the API Gateway | [Gateway Integration](../administer/gateway-integration.md) |
+| Notify your gateway of key/subscription changes | [Webhook Integration](../administer/webhook-integration.md) |

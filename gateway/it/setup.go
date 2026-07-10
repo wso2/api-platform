@@ -51,6 +51,12 @@ const (
 	// GatewayControllerAdminPort is the controller admin HTTP port
 	GatewayControllerAdminPort = "9092"
 
+	// GatewayControllerRuntimeAdminPort is the host port mapped to the
+	// runtime-facing controller's admin HTTP port (container 9092) in the
+	// two-controller Postgres topology (docker-compose.test.postgres.yaml).
+	// It is queried only for the policy-snapshot xDS-sync probe.
+	GatewayControllerRuntimeAdminPort = "9093"
+
 	// RouterPort is the HTTP traffic port for the router
 	RouterPort = "8080"
 
@@ -75,7 +81,7 @@ type ServiceHealth struct {
 // Uses testcontainers-go compose module for reliable container management
 type ComposeManager struct {
 	compose       tc.ComposeStack
-	composeFile   string
+	composeFiles  []string
 	projectName   string
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -85,17 +91,26 @@ type ComposeManager struct {
 	isShutdown    bool
 }
 
-// NewComposeManager creates a new ComposeManager with the given compose file
-func NewComposeManager(composeFile string) (*ComposeManager, error) {
-	// Resolve absolute path
-	absPath, err := filepath.Abs(composeFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve compose file path: %w", err)
+// NewComposeManager creates a new ComposeManager from one or more compose files.
+// Multiple files are layered in order (later files override earlier ones), so a base
+// stack can be combined with a small override file (e.g. to flip a single env var)
+// without duplicating the whole compose definition.
+func NewComposeManager(composeFiles ...string) (*ComposeManager, error) {
+	if len(composeFiles) == 0 {
+		return nil, fmt.Errorf("no compose files provided")
 	}
 
-	// Check if file exists
-	if _, err := os.Stat(absPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("compose file not found: %s", absPath)
+	// Resolve and validate every file up front.
+	absPaths := make([]string, 0, len(composeFiles))
+	for _, f := range composeFiles {
+		absPath, err := filepath.Abs(f)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve compose file path %q: %w", f, err)
+		}
+		if _, err := os.Stat(absPath); err != nil {
+			return nil, fmt.Errorf("compose file %q is not accessible: %w", absPath, err)
+		}
+		absPaths = append(absPaths, absPath)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -106,7 +121,7 @@ func NewComposeManager(composeFile string) (*ComposeManager, error) {
 	// This ensures we can later query logs using the same project identifier
 	compose, err := tc.NewDockerComposeWith(
 		tc.StackIdentifier(projectName),
-		tc.WithStackFiles(absPath),
+		tc.WithStackFiles(absPaths...),
 	)
 	if err != nil {
 		cancel()
@@ -114,12 +129,12 @@ func NewComposeManager(composeFile string) (*ComposeManager, error) {
 	}
 
 	cm := &ComposeManager{
-		compose:     compose,
-		composeFile: absPath,
-		projectName: projectName,
-		ctx:         ctx,
-		cancel:      cancel,
-		signalChan:  make(chan os.Signal, 1),
+		compose:      compose,
+		composeFiles: absPaths,
+		projectName:  projectName,
+		ctx:          ctx,
+		cancel:       cancel,
+		signalChan:   make(chan os.Signal, 1),
 	}
 
 	// Setup signal handling for graceful cleanup
@@ -294,11 +309,22 @@ func (cm *ComposeManager) Cleanup() {
 	})
 }
 
+// composeFileFlags expands the manager's compose files into repeated "-f <file>"
+// arguments for direct `docker compose` invocations.
+func (cm *ComposeManager) composeFileFlags() []string {
+	flags := make([]string, 0, len(cm.composeFiles)*2)
+	for _, f := range cm.composeFiles {
+		flags = append(flags, "-f", f)
+	}
+	return flags
+}
+
 // gracefulStop sends SIGTERM to containers via docker-compose stop
 func (cm *ComposeManager) gracefulStop(ctx context.Context) error {
 	// Use docker-compose stop which sends SIGTERM and waits for graceful shutdown
 	// The -t flag specifies the timeout in seconds before sending SIGKILL
-	args := []string{"compose", "-p", cm.projectName, "-f", cm.composeFile, "stop", "-t", "15"}
+	args := append([]string{"compose", "-p", cm.projectName}, cm.composeFileFlags()...)
+	args = append(args, "stop", "-t", "15")
 	cmd := execCommandContext(ctx, "docker", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -315,7 +341,8 @@ func (cm *ComposeManager) RestartService(service string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	args := []string{"compose", "-p", cm.projectName, "-f", cm.composeFile, "restart", service}
+	args := append([]string{"compose", "-p", cm.projectName}, cm.composeFileFlags()...)
+	args = append(args, "restart", service)
 	cmd := execCommandContext(ctx, "docker", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -385,7 +412,8 @@ func (cm *ComposeManager) DumpLogs(outputFile string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	args := []string{"compose", "-p", cm.projectName, "-f", cm.composeFile, "logs", "--no-color", "--timestamps"}
+	args := append([]string{"compose", "-p", cm.projectName}, cm.composeFileFlags()...)
+	args = append(args, "logs", "--no-color", "--timestamps")
 	cmd := execCommandContext(ctx, "docker", args...)
 
 	// Give some time for containers to flush logs
@@ -425,15 +453,16 @@ func CheckPortsAvailable() error {
 	ports := []string{
 		GatewayControllerPort, // 9090
 		GatewayControllerAdminPort,
-		RouterPort,     // 8080
-		"8443",         // HTTPS
-		EnvoyAdminPort, // 9901
-		"9002",         // Policy engine
-		"9080",         // Sample backend
-		"3001",         // MCP server backend
-		"18000",        // xDS gRPC
-		"18001",        // xDS gRPC
-		"8082",         // Mock JWKS server
+		GatewayControllerRuntimeAdminPort, // 9093
+		RouterPort,                        // 8080
+		"8443",                            // HTTPS
+		EnvoyAdminPort,                    // 9901
+		"9002",                            // Policy engine
+		"9080",                            // Sample backend
+		"3001",                            // MCP server backend
+		"18000",                           // xDS gRPC
+		"18001",                           // xDS gRPC
+		"8082",                            // Mock JWKS server
 	}
 
 	var conflicts []string

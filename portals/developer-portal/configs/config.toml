@@ -1,0 +1,29 @@
+# Developer Portal Configuration
+#
+# Only settings that differ from the built-in defaults need to be listed here —
+# see configs/config-template.toml for the full list of available keys and
+# their default values.
+#
+# Precedence (lowest to highest):
+#   1. Built-in defaults
+#   2. This file (configs/config.toml)
+#   3. APIP_DP_* environment variables
+#
+# Every setting can also be overridden via an APIP_DP_* environment variable:
+#
+#   Convention: APIP_DP_<LEVEL1>_<LEVEL2>_...
+#   - Each underscore-separated token maps to one config level (case-insensitive)
+#   - Double underscores (__) represent a literal underscore within a key name
+#   - Keys in this file are snake_case; the matching env token is the camelCase
+#     struct key collapsed to a single uppercase word (e.g. base_url -> BASEURL)
+#
+#   Examples:
+#     APIP_DP_DATABASE_HOST=myhost                    -> database.host
+#     APIP_DP_DATABASE_PASSWORD=pass                  -> database.password
+#     APIP_DP_IDP_CLIENTID=abc                        -> idp.clientId
+#     APIP_DP_SECURITY_SERVICEAPIKEY_VALUE=secret     -> security.serviceApiKey.value
+#     APIP_DP_WEBHOOKS_DELIVERY_SIGNATURETOLERANCESEC -> webhooks.delivery.signatureToleranceSec
+#
+# You can place env var overrides in a .env file at the project root.
+#
+# Nothing overridden yet — every setting is at its built-in default.

@@ -1,0 +1,116 @@
+# Role-to-scope mapping for IDP role mode (auth.idp.validation_mode: role).
+#
+# Each entry maps an IDP role name (as it appears in the token claim configured
+# by auth.idp.roles_claim_path) to the list of platform scopes that role grants.
+# When a token carries multiple roles, the effective scopes are the union of all
+# role entries — most-permissive wins.
+#
+# Supported IDPs:
+#   Asgardeo  — set roles_claim_path: roles
+#   Keycloak  — set roles_claim_path: realm_access.roles  (or resource_access.<client>.roles)
+#   Microsoft Entra ID — set roles_claim_path: roles
+#
+# Scope convention:
+#   ap:<resource>:manage  — full access to all actions on that resource (covers read/create/update/delete)
+#   ap:<resource>:<subresource>:manage — full access to the subresource only, not the parent resource
+#
+# This file requires a server restart to take effect.
+
+roles:
+  - name: platform-admin
+    scopes:
+      - ap:api_key:read
+      - ap:organization:manage
+      - ap:project:manage
+      - ap:gateway:manage
+      - ap:gateway_custom_policy:manage
+      - ap:rest_api:manage
+      - ap:application:manage
+      - ap:subscription:manage
+      - ap:subscription_plan:manage
+      - ap:llm_template:manage
+      - ap:llm_provider:manage
+      - ap:llm_proxy:manage
+      - ap:mcp_proxy:manage
+      - ap:websub_api:manage
+      - ap:webbroker_api:manage
+
+  - name: platform-operator
+    scopes:
+      - ap:api_key:read
+      - ap:organization:read
+      - ap:project:read
+      - ap:gateway:manage
+      - ap:gateway_custom_policy:manage
+      - ap:subscription_plan:manage
+      - ap:llm_template:manage
+      - ap:rest_api:read
+      - ap:rest_api:deployment:read
+      - ap:application:read
+      - ap:application:api_key:read
+      - ap:application:association:read
+      - ap:application:association:api_key:read
+      - ap:subscription:read
+      - ap:llm_provider:read
+      - ap:llm_provider:deployment:read
+      - ap:llm_provider:api_key:read
+      - ap:llm_proxy:read
+      - ap:llm_proxy:deployment:read
+      - ap:llm_proxy:api_key:read
+      - ap:mcp_proxy:read
+      - ap:mcp_proxy:deployment:read
+      - ap:websub_api:read
+      - ap:websub_api:deployment:read
+      - ap:webbroker_api:read
+      - ap:webbroker_api:deployment:read
+
+  - name: platform-developer
+    scopes:
+      - ap:api_key:read
+      - ap:organization:read
+      - ap:project:manage
+      - ap:gateway:read
+      - ap:gateway:artifact:read
+      - ap:gateway:manifest:read
+      - ap:gateway_custom_policy:read
+      - ap:rest_api:manage
+      - ap:application:manage
+      - ap:subscription:manage
+      - ap:subscription_plan:read
+      - ap:llm_template:read
+      - ap:llm_provider:manage
+      - ap:llm_proxy:manage
+      - ap:mcp_proxy:manage
+      - ap:websub_api:manage
+      - ap:webbroker_api:manage
+
+  - name: platform-viewer
+    scopes:
+      - ap:api_key:read
+      - ap:organization:read
+      - ap:project:read
+      - ap:gateway:read
+      - ap:gateway:artifact:read
+      - ap:gateway:manifest:read
+      - ap:gateway_custom_policy:read
+      - ap:rest_api:read
+      - ap:rest_api:deployment:read
+      - ap:application:read
+      - ap:application:api_key:read
+      - ap:application:association:read
+      - ap:application:association:api_key:read
+      - ap:subscription:read
+      - ap:subscription_plan:read
+      - ap:llm_template:read
+      - ap:llm_provider:read
+      - ap:llm_provider:deployment:read
+      - ap:llm_provider:api_key:read
+      - ap:llm_proxy:read
+      - ap:llm_proxy:deployment:read
+      - ap:llm_proxy:api_key:read
+      - ap:mcp_proxy:read
+      - ap:mcp_proxy:deployment:read
+      - ap:websub_api:read
+      - ap:websub_api:deployment:read
+      - ap:webbroker_api:read
+      - ap:webbroker_api:deployment:read

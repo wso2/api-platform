@@ -1,5 +1,4 @@
 import { useCallback } from "react";
-import { getApiConfig } from "./apiConfig";
 
 /* ---------------- Types ---------------- */
 
@@ -60,116 +59,47 @@ export type ApiSummary = {
   operations?: unknown[];
 };
 
-/* ---------------- Helpers ---------------- */
-
-const parseError = async (res: Response) => {
-  let body = "";
-  try {
-    body = await res.text();
-    try {
-      const json = JSON.parse(body);
-      if (json?.message)
-        return `${res.status} ${res.statusText} — ${json.message}`;
-      if (json?.error?.message)
-        return `${res.status} ${res.statusText} — ${json.error.message}`;
-    } catch {
-      /* not json */
-    }
-  } catch {
-    /* ignore */
-  }
-  return `${res.status} ${res.statusText}${body ? ` ${body}` : ""}`;
-};
-
-const authedFetch = async (path: string, init?: RequestInit) => {
-  const { token, baseUrl } = getApiConfig();
-  const res = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(init?.headers || {}),
-    },
-  });
-  return res;
-};
-
-const normalizeBranches = (resp: GitBranchesResponse): GitBranch[] =>
-  (resp.branches ?? []).map((b) => ({
-    name: b.name,
-    isDefault:
-      typeof b.isDefault === "boolean"
-        ? b.isDefault
-        : String(b.isDefault).toLowerCase() === "true",
-  }));
-
 /* ---------------- Hook ---------------- */
 
+// Importing APIs from a Git repository (and the supporting Git repository
+// browsing endpoints) is no longer supported by the platform. These actions
+// now return a "not supported" response instead of calling the backend.
+const NOT_SUPPORTED_MESSAGE =
+  "Importing APIs from a Git repository is no longer supported.";
+
 export const useGithubAPICreation = () => {
-  /** POST: git/repo/fetch-branches */
+  /** No longer supported: git/repo/fetch-branches */
   const fetchBranches = useCallback(
     async (
-      repoUrl: string,
-      provider: GitProvider = "github",
-      opts?: { signal?: AbortSignal }
+      _repoUrl: string,
+      _provider: GitProvider = "github",
+      _opts?: { signal?: AbortSignal }
     ): Promise<GitBranch[]> => {
-      const res = await authedFetch(`/api/v1/git/repo/fetch-branches`, {
-        method: "POST",
-        body: JSON.stringify({ repoUrl, provider }),
-        signal: opts?.signal,
-      });
-      if (!res.ok) {
-        throw new Error(`Failed to fetch branches: ${await parseError(res)}`);
-      }
-      const json = (await res.json()) as GitBranchesResponse;
-      return normalizeBranches(json);
+      throw new Error(NOT_SUPPORTED_MESSAGE);
     },
     []
   );
 
-  /** POST: git/repo/branch/fetch-content */
+  /** No longer supported: git/repo/branch/fetch-content */
   const fetchBranchContent = useCallback(
     async (
-      repoUrl: string,
-      provider: GitProvider,
-      branch: string,
-      opts?: { signal?: AbortSignal }
+      _repoUrl: string,
+      _provider: GitProvider,
+      _branch: string,
+      _opts?: { signal?: AbortSignal }
     ): Promise<GitFetchContentResponse> => {
-      const res = await authedFetch(`/api/v1/git/repo/branch/fetch-content`, {
-        method: "POST",
-        body: JSON.stringify({ repoUrl, provider, branch }),
-        signal: opts?.signal,
-      });
-      if (!res.ok) {
-        throw new Error(
-          `Failed to fetch branch content: ${await parseError(res)}`
-        );
-      }
-      const json = (await res.json()) as GitFetchContentResponse;
-      return json;
+      throw new Error(NOT_SUPPORTED_MESSAGE);
     },
     []
   );
 
-  /** POST: /api/v1/import/api-project */
+  /** No longer supported: /api/v0.9/api-projects/import */
   const importApiProject = useCallback(
     async (
-      payload: ImportApiProjectRequest,
-      opts?: { signal?: AbortSignal }
+      _payload: ImportApiProjectRequest,
+      _opts?: { signal?: AbortSignal }
     ): Promise<ApiSummary> => {
-      const res = await authedFetch(`/api/v1/import/api-project`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-        signal: opts?.signal,
-      });
-      if (!res.ok) {
-        throw new Error(
-          `Failed to import API project: ${await parseError(res)}`
-        );
-      }
-      const json = (await res.json()) as ApiSummary;
-      return json;
+      throw new Error(NOT_SUPPORTED_MESSAGE);
     },
     []
   );

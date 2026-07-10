@@ -16,10 +16,12 @@
 # under the License.
 # --------------------------------------------------------------------
 
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: Mcp
 metadata:
   name: everything-mcp-v1.0
+  annotations:
+    "gateway.api-platform.wso2.com/project-id": "Default"
 spec:
   displayName: Everything
   version: v1.0

@@ -17,13 +17,16 @@
  */
 /* eslint-disable no-undef */
 const { Sequelize, Op } = require('sequelize');
-const sequelize = require('../db/sequelize');
+const sequelize = require('../db/sequelizeConfig');
 const { APIMetadata } = require('../models/apiMetadata');
-const apiDao = require('../dao/apiMetadata');
-const adminDao = require('../dao/admin');
-const ServerResponseDTO = require('../dto/mcpServer');
+const apiDao = require('../dao/apiDao');
+const apiFileDao = require('../dao/apiFileDao');
+const labelDao = require('../dao/labelDao');
+const orgDao = require('../dao/organizationDao');
+const ServerResponseDTO = require('../dto/mcpServerDto');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
+const util = require('../utils/util');
 
 const MCP_STATUSES = ['active', 'deprecated', 'deleted'];
 const SERVER_NAME_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
@@ -53,14 +56,14 @@ function unescapeParam(str) {
 
 
 async function findRowByServerIdentifier(orgId, serverIdentifier, version, transaction) {
-    const baseWhere = { ORG_ID: orgId, API_TYPE: constants.API_TYPE.MCP, REFERENCE_ID: null };
-    if (version) baseWhere.API_VERSION = version;
+    const baseWhere = { org_uuid: orgId, type: constants.API_TYPE.MCP, ref_id: null };
+    if (version) baseWhere.version = version;
 
     const byProxyId = await APIMetadata.findOne({
         where: {
             ...baseWhere,
             [Op.and]: sequelize.where(
-                sequelize.literal("\"METADATA_SEARCH\"->'apiInfo'->>'proxyId'"),
+                sequelize.literal("metadata_search->>'proxyId'"),
                 serverIdentifier
             )
         },
@@ -69,7 +72,7 @@ async function findRowByServerIdentifier(orgId, serverIdentifier, version, trans
     if (byProxyId) return byProxyId;
 
     const byApiName = await APIMetadata.findOne({
-        where: { ...baseWhere, API_NAME: serverIdentifier },
+        where: { ...baseWhere, name: serverIdentifier },
         transaction
     });
     if (byApiName) return byApiName;
@@ -82,7 +85,7 @@ async function findRowByServerIdentifier(orgId, serverIdentifier, version, trans
                 where: {
                     ...baseWhere,
                     [Op.and]: sequelize.where(
-                        sequelize.literal("\"METADATA_SEARCH\"->'apiInfo'->>'proxyId'"),
+                        sequelize.literal("metadata_search->>'proxyId'"),
                         bareHandle
                     )
                 },
@@ -91,7 +94,7 @@ async function findRowByServerIdentifier(orgId, serverIdentifier, version, trans
             if (proxyIdData) return proxyIdData;
 
             return APIMetadata.findOne({
-                where: { ...baseWhere, API_NAME: bareHandle },
+                where: { ...baseWhere, name: bareHandle },
                 transaction
             });
         }
@@ -160,7 +163,7 @@ function handleUnexpectedError(res, error, operation, fallbackMessage) {
  * Throws Sequelize.EmptyResultError if org not found.
  */
 async function resolveOrgId(orgHandle) {
-    return adminDao.getOrgId(orgHandle);
+    return orgDao.getId(orgHandle);
 }
 
 
@@ -178,7 +181,7 @@ function deriveApiHandle(name, orgHandle) {
 }
 
 /**
- * Builds the apiMetadata shape expected by apiDao.createAPIMetadata / updateAPIMetadata.
+ * Builds the apiMetadata shape expected by apiDao.create / apiDao.update.
  */
 function buildApiMetadataPayload(name, version, description, remotes, title, publishedAt, updatedAt, proxyId, orgHandle) {
     const normalizedRemotes = (Array.isArray(remotes) ? remotes : []).map(r => ({
@@ -188,23 +191,18 @@ function buildApiMetadataPayload(name, version, description, remotes, title, pub
     const primaryUrl = normalizedRemotes.length > 0 ? normalizedRemotes[0].url : '';
     const apiHandle = deriveApiHandle(name, orgHandle);
     return {
-        apiInfo: {
-            referenceID: null,
-            provider: 'WSO2',
-            apiName: name,
-            apiHandle,
-            apiTitle: title || null,
-            apiDescription: description || `${name} MCP proxy`,
-            apiVersion: version,
-            apiType: constants.API_TYPE.MCP,
-            apiStatus: 'PUBLISHED',
-            visibility: 'PUBLIC',
-            gatewayType: null,
-            remotes: normalizedRemotes,
-            publishedAt: publishedAt || null,
-            updatedAt: updatedAt || null,
-            proxyId: proxyId || null
-        },
+        referenceId: null,
+        name: name,
+        handle: apiHandle,
+        apiTitle: title || null,
+        description: description || `${name} MCP proxy`,
+        version: version,
+        type: constants.API_TYPE.MCP,
+        status: 'PUBLISHED',
+        remotes: normalizedRemotes,
+        publishedAt: publishedAt || null,
+        updatedAt: updatedAt || null,
+        proxyId: proxyId || null,
         endPoints: {
             productionURL: primaryUrl,
             sandboxURL: null
@@ -213,12 +211,12 @@ function buildApiMetadataPayload(name, version, description, remotes, title, pub
 }
 
 /**
- * Parses schema content from a DP_API_CONTENT row's API_FILE buffer.
+ * Parses schema content from a DP_API_CONTENT row's FILE_CONTENT buffer.
  */
 function parseSchema(contentRow) {
     if (!contentRow) return null;
     try {
-        const raw = contentRow.API_FILE;
+        const raw = contentRow.file_content;
         const str = Buffer.isBuffer(raw) ? raw.toString('utf-8') : String(raw);
         return JSON.parse(str);
     } catch (e) {
@@ -249,15 +247,15 @@ const listServers = async (req, res) => {
             }
         }
 
-        const where = { ORG_ID: orgId, API_TYPE: constants.API_TYPE.MCP };
+        const where = { org_uuid: orgId, type: constants.API_TYPE.MCP };
         if (!includeDeleted) {
-            where.STATUS = { [Op.ne]: 'DELETED' };
+            where.status = { [Op.ne]: 'DELETED' };
         }
         if (search) {
             where[Op.or] = [
-                { API_NAME: { [Op.iLike]: `%${search}%` } },
+                { name: { [Op.iLike]: `%${search}%` } },
                 sequelize.where(
-                    sequelize.literal("\"METADATA_SEARCH\"->'apiInfo'->>'proxyId'"),
+                    sequelize.literal("metadata_search->>'proxyId'"),
                     { [Op.iLike]: `%${search}%` }
                 )
             ];
@@ -265,7 +263,7 @@ const listServers = async (req, res) => {
 
         const rows = await APIMetadata.findAll({
             where,
-            order: [[sequelize.literal("(\"METADATA_SEARCH\"->'apiInfo'->>'publishedAt')"), 'DESC NULLS LAST']],
+            order: [[sequelize.literal("(metadata_search->>'publishedAt')"), 'DESC NULLS LAST']],
             limit: limit + 1,
             offset: currentOffset
         });
@@ -293,26 +291,26 @@ const listVersions = async (req, res) => {
         const serverIdentifier = unescapeParam(decodeURIComponent(req.params.serverName));
         const includeDeleted = parseBool(req.query.include_deleted, false);
 
-        const baseWhere = { ORG_ID: orgId, API_TYPE: constants.API_TYPE.MCP };
+        const baseWhere = { org_uuid: orgId, type: constants.API_TYPE.MCP };
         if (!includeDeleted) {
-            baseWhere.STATUS = { [Op.ne]: 'DELETED' };
+            baseWhere.status = { [Op.ne]: 'DELETED' };
         }
 
         let rows = await APIMetadata.findAll({
             where: {
                 ...baseWhere,
                 [Op.and]: sequelize.where(
-                    sequelize.literal("\"METADATA_SEARCH\"->'apiInfo'->>'proxyId'"),
+                    sequelize.literal("metadata_search->>'proxyId'"),
                     serverIdentifier
                 )
             },
-            order: [[sequelize.literal("(\"METADATA_SEARCH\"->'apiInfo'->>'publishedAt')"), 'DESC NULLS LAST']]
+            order: [[sequelize.literal("(metadata_search->>'publishedAt')"), 'DESC NULLS LAST']]
         });
 
         if (rows.length === 0) {
             rows = await APIMetadata.findAll({
-                where: { ...baseWhere, API_NAME: serverIdentifier },
-                order: [[sequelize.literal("(\"METADATA_SEARCH\"->'apiInfo'->>'publishedAt')"), 'DESC NULLS LAST']]
+                where: { ...baseWhere, name: serverIdentifier },
+                order: [[sequelize.literal("(metadata_search->>'publishedAt')"), 'DESC NULLS LAST']]
             });
         }
 
@@ -340,12 +338,12 @@ const getVersion = async (req, res) => {
         if (!row) {
             return sendError(res, 404, 'Server not found');
         }
-        if (!parseBool(req.query.include_deleted, false) && row.STATUS === 'DELETED') {
+        if (!parseBool(req.query.include_deleted, false) && row.status === 'DELETED') {
             return sendError(res, 404, 'Server not found');
         }
 
-        const schemaContent = await apiDao.getAPIDoc(
-            constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, row.API_ID, null
+        const schemaContent = await apiFileDao.getDoc(
+            constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, row.uuid, null
         );
         const schema = parseSchema(schemaContent);
 
@@ -361,6 +359,7 @@ const publishServer = async (req, res) => {
     try {
         const orgHandle = req.params.orgHandle;
         const detail = req.body;
+        const userId = util.resolveActor(req);
 
         const validationError = validateServerDetail(detail);
         if (validationError) {
@@ -389,11 +388,11 @@ const publishServer = async (req, res) => {
             if (proxyId) {
                 existing = await APIMetadata.findOne({
                     where: {
-                        ORG_ID: orgId,
-                        API_TYPE: constants.API_TYPE.MCP,
-                        API_VERSION: version,
+                        org_uuid: orgId,
+                        type: constants.API_TYPE.MCP,
+                        version: version,
                         [Op.and]: sequelize.where(
-                            sequelize.literal("\"METADATA_SEARCH\"->'apiInfo'->>'proxyId'"),
+                            sequelize.literal("metadata_search->>'proxyId'"),
                             proxyId
                         )
                     },
@@ -403,32 +402,32 @@ const publishServer = async (req, res) => {
 
             if (!existing) {
                 existing = await APIMetadata.findOne({
-                    where: { ORG_ID: orgId, API_TYPE: constants.API_TYPE.MCP, API_NAME: name, API_VERSION: version },
+                    where: { org_uuid: orgId, type: constants.API_TYPE.MCP, name: name, version: version },
                     transaction: t
                 });
             }
 
             if (existing) {
-                existingApiId = existing.API_ID;
-                const existingPublishedAt = existing.METADATA_SEARCH?.apiInfo?.publishedAt || now;
+                existingApiId = existing.uuid;
+                const existingPublishedAt = existing.metadata_search?.publishedAt || now;
                 const apiMetadataPayload = buildApiMetadataPayload(name, version, description, remotes, title, existingPublishedAt, now, proxyId, orgHandle);
-                await apiDao.updateAPIMetadata(orgId, existing.API_ID, apiMetadataPayload, t);
-                await apiDao.createAPILabelMapping(orgId, existing.API_ID, ['default'], t);
+                await apiDao.update(orgId, existing.uuid, apiMetadataPayload, userId, t);
+                await labelDao.createApiMapping(orgId, existing.uuid, ['default'], userId, t);
                 if (schemaBuffer) {
-                    await apiDao.updateOrCreateAPIFiles(
+                    await apiFileDao.upsertMany(
                         [{ content: schemaBuffer, fileName: SCHEMA_FILE_NAME, type: constants.DOC_TYPES.SCHEMA_DEFINITION }],
-                        existing.API_ID, orgId, t
+                        existing.uuid, orgId, userId, t
                     );
                 }
-                row = await APIMetadata.findOne({ where: { API_ID: existing.API_ID }, transaction: t });
+                row = await APIMetadata.findOne({ where: { uuid: existing.uuid }, transaction: t });
             } else {
                 const apiMetadataPayload = buildApiMetadataPayload(name, version, description, remotes, title, now, now, proxyId, orgHandle);
-                const created_row = await apiDao.createAPIMetadata(orgId, apiMetadataPayload, t);
-                const apiId = created_row.dataValues.API_ID;
-                await apiDao.createAPILabelMapping(orgId, apiId, ['default'], t);
+                const created_row = await apiDao.create(orgId, apiMetadataPayload, userId, t);
+                const apiId = created_row.dataValues.uuid;
+                await labelDao.createApiMapping(orgId, apiId, ['default'], userId, t);
                 const newSchemaBuffer = schemaBuffer || Buffer.from(JSON.stringify({ tools: [], resources: [], prompts: [] }), 'utf-8');
-                await apiDao.storeAPIFile(newSchemaBuffer, SCHEMA_FILE_NAME, apiId, constants.DOC_TYPES.SCHEMA_DEFINITION, t);
-                row = await APIMetadata.findOne({ where: { API_ID: apiId }, transaction: t });
+                await apiFileDao.store(newSchemaBuffer, SCHEMA_FILE_NAME, apiId, constants.DOC_TYPES.SCHEMA_DEFINITION, userId, t);
+                row = await APIMetadata.findOne({ where: { uuid: apiId }, transaction: t });
                 created = true;
             }
         });
@@ -438,7 +437,7 @@ const publishServer = async (req, res) => {
         if (choreoMeta) {
             schema = { tools, resources, prompts };
         } else if (existingApiId) {
-            const schemaContent = await apiDao.getAPIDoc(constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, existingApiId, null);
+            const schemaContent = await apiFileDao.getDoc(constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, existingApiId, null);
             schema = parseSchema(schemaContent);
         } else {
             schema = { tools: [], resources: [], prompts: [] };
@@ -456,6 +455,7 @@ const updateVersion = async (req, res) => {
         const serverIdentifier = unescapeParam(decodeURIComponent(req.params.serverName));
         const version = unescapeParam(decodeURIComponent(req.params.version));
         const detail = req.body;
+        const userId = util.resolveActor(req);
 
         const validationError = validateServerDetail(detail);
         if (validationError) {
@@ -482,19 +482,19 @@ const updateVersion = async (req, res) => {
             const existing = await findRowByServerIdentifier(orgId, serverIdentifier, version, t);
             if (!existing) return;
 
-            updatedApiId = existing.API_ID;
-            const existingPublishedAt = existing.METADATA_SEARCH?.apiInfo?.publishedAt || new Date().toISOString();
-            const existingProxyId = proxyId || existing.METADATA_SEARCH?.apiInfo?.proxyId || null;
-            const apiMetadataPayload = buildApiMetadataPayload(existing.API_NAME, version, description, remotes, title, existingPublishedAt, new Date().toISOString(), existingProxyId, orgHandle);
-            await apiDao.updateAPIMetadata(orgId, existing.API_ID, apiMetadataPayload, t);
-            await apiDao.createAPILabelMapping(orgId, existing.API_ID, ['default'], t);
+            updatedApiId = existing.uuid;
+            const existingPublishedAt = existing.metadata_search?.publishedAt || new Date().toISOString();
+            const existingProxyId = proxyId || existing.metadata_search?.proxyId || null;
+            const apiMetadataPayload = buildApiMetadataPayload(existing.name, version, description, remotes, title, existingPublishedAt, new Date().toISOString(), existingProxyId, orgHandle);
+            await apiDao.update(orgId, existing.uuid, apiMetadataPayload, userId, t);
+            await labelDao.createApiMapping(orgId, existing.uuid, ['default'], userId, t);
             if (schemaBuffer) {
-                await apiDao.updateOrCreateAPIFiles(
+                await apiFileDao.upsertMany(
                     [{ content: schemaBuffer, fileName: SCHEMA_FILE_NAME, type: constants.DOC_TYPES.SCHEMA_DEFINITION }],
-                    existing.API_ID, orgId, t
+                    existing.uuid, orgId, userId, t
                 );
             }
-            row = await APIMetadata.findOne({ where: { API_ID: existing.API_ID }, transaction: t });
+            row = await APIMetadata.findOne({ where: { uuid: existing.uuid }, transaction: t });
         });
 
         if (!row) {
@@ -504,7 +504,7 @@ const updateVersion = async (req, res) => {
         if (choreoMeta) {
             schema = { tools, resources, prompts };
         } else {
-            const schemaContent = await apiDao.getAPIDoc(constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, updatedApiId, null);
+            const schemaContent = await apiFileDao.getDoc(constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, updatedApiId, null);
             schema = parseSchema(schemaContent);
         }
         return res.status(200).json(new ServerResponseDTO(row, schema));
@@ -526,10 +526,10 @@ const deleteVersion = async (req, res) => {
         }
 
         await APIMetadata.update(
-            { STATUS: 'DELETED' },
-            { where: { API_ID: existing.API_ID, ORG_ID: orgId } }
+            { status: 'DELETED', updated_by: util.resolveActor(req), updated_at: new Date() },
+            { where: { uuid: existing.uuid, org_uuid: orgId } }
         );
-        const deleted = await APIMetadata.findOne({ where: { API_ID: existing.API_ID } });
+        const deleted = await APIMetadata.findOne({ where: { uuid: existing.uuid } });
         logger.info('MCP server deleted', { serverIdentifier, version, orgHandle });
         return res.status(200).json(new ServerResponseDTO(deleted));
     } catch (error) {
@@ -555,15 +555,15 @@ const updateVersionStatus = async (req, res) => {
         }
 
         const dbStatus = REGISTRY_TO_DB_STATUS[status];
-        if (existing.STATUS === dbStatus) {
+        if (existing.status === dbStatus) {
             return sendError(res, 400, `No changes to apply: status is already ${status}`);
         }
 
         await APIMetadata.update(
-            { STATUS: dbStatus },
-            { where: { API_ID: existing.API_ID, ORG_ID: orgId } }
+            { status: dbStatus, updated_by: util.resolveActor(req), updated_at: new Date() },
+            { where: { uuid: existing.uuid, org_uuid: orgId } }
         );
-        const updated = await APIMetadata.findOne({ where: { API_ID: existing.API_ID } });
+        const updated = await APIMetadata.findOne({ where: { uuid: existing.uuid } });
         return res.status(200).json(new ServerResponseDTO(updated));
     } catch (error) {
         return handleUnexpectedError(res, error, 'updateVersionStatus', 'Failed to update server status');
@@ -584,34 +584,34 @@ const updateAllVersionsStatus = async (req, res) => {
         const dbStatus = REGISTRY_TO_DB_STATUS[status];
         let updated;
 
-        // Build proxyId condition, fall back to API_NAME match
+        // Build proxyId condition, fall back to NAME match
         const proxyIdCondition = sequelize.where(
-            sequelize.literal("\"METADATA_SEARCH\"->>'apiInfo'->>'proxyId'"),
+            sequelize.literal("metadata_search->>'proxyId'"),
             serverIdentifier
         );
 
         await sequelize.transaction(async (t) => {
             let existing = await APIMetadata.findAll({
-                where: { ORG_ID: orgId, API_TYPE: constants.API_TYPE.MCP, REFERENCE_ID: null, [Op.and]: proxyIdCondition },
+                where: { org_uuid: orgId, type: constants.API_TYPE.MCP, ref_id: null, [Op.and]: proxyIdCondition },
                 lock: t.LOCK.UPDATE,
                 transaction: t
             });
             if (existing.length === 0) {
                 existing = await APIMetadata.findAll({
-                    where: { ORG_ID: orgId, API_TYPE: constants.API_TYPE.MCP, REFERENCE_ID: null, API_NAME: serverIdentifier },
+                    where: { org_uuid: orgId, type: constants.API_TYPE.MCP, ref_id: null, name: serverIdentifier },
                     lock: t.LOCK.UPDATE,
                     transaction: t
                 });
             }
             if (existing.length === 0) return;
 
-            const ids = existing.map(r => r.API_ID);
+            const ids = existing.map(r => r.uuid);
             await APIMetadata.update(
-                { STATUS: dbStatus },
-                { where: { API_ID: { [Op.in]: ids }, ORG_ID: orgId }, transaction: t }
+                { status: dbStatus, updated_by: util.resolveActor(req), updated_at: new Date() },
+                { where: { uuid: { [Op.in]: ids }, org_uuid: orgId }, transaction: t }
             );
             updated = await APIMetadata.findAll({
-                where: { API_ID: { [Op.in]: ids } },
+                where: { uuid: { [Op.in]: ids } },
                 transaction: t
             });
         });

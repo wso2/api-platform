@@ -44,6 +44,8 @@ function encryptToSubscriber(publicKeyPem, plaintext) {
     const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
     const tag = cipher.getAuthTag();
 
+    // TODO(pqc): migrate — RSA-OAEP is quantum-vulnerable; move to a hybrid
+    // (e.g. X25519 + ML-KEM-768) key wrap once subscriber keys support it.
     const wrappedKey = crypto.publicEncrypt(
         { key: publicKeyPem, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
         aesKey
@@ -65,6 +67,8 @@ function encryptToSubscriber(publicKeyPem, plaintext) {
  * @returns {string}
  */
 function decryptFromEnvelope(privateKeyPem, envelope) {
+    // TODO(pqc): migrate — RSA-OAEP is quantum-vulnerable (mirror of the wrap in
+    // encryptToSubscriber; migrate both together).
     const aesKey = crypto.privateDecrypt(
         { key: privateKeyPem, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
         Buffer.from(envelope.wrappedKey, 'base64')
@@ -72,7 +76,10 @@ function decryptFromEnvelope(privateKeyPem, envelope) {
 
     const decipher = crypto.createDecipheriv('aes-256-gcm', aesKey, Buffer.from(envelope.iv, 'base64'));
     decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
-    return decipher.update(Buffer.from(envelope.ciphertext, 'base64')) + decipher.final('utf8');
+    return Buffer.concat([
+        decipher.update(Buffer.from(envelope.ciphertext, 'base64')),
+        decipher.final()
+    ]).toString('utf8');
 }
 
 module.exports = { encryptToSubscriber, decryptFromEnvelope };

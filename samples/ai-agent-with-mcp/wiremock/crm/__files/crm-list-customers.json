@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":{{jsonPath request.body '$.id'}},"result":{"content":[{"type":"text","text":"[{\"id\":\"C-4821\",\"name\":\"John Smith\",\"tier\":\"gold\"},{\"id\":\"C-1001\",\"name\":\"Priya Nair\",\"tier\":\"silver\"},{\"id\":\"C-2200\",\"name\":\"Marco Russo\",\"tier\":\"basic\"}]"}],"isError":false}}

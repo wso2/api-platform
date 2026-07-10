@@ -31,6 +31,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check tag does not already exist
+        run: |
+          TAG="helm-gateway-${{ inputs.version }}"
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
+            echo "::error::Tag '$TAG' already exists. Bump the version or delete the tag first."
+            exit 1
+          fi
+          echo "Tag '$TAG' is free. Proceeding."
+
       - name: Validate image tags match appVersion
         working-directory: ${{ env.CHART_PATH }}
         run: |

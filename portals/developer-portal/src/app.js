@@ -20,37 +20,35 @@ const express = require('express');
 const { engine } = require('express-handlebars');
 const passport = require('passport');
 const session = require('express-session');
-const pgSession = require('connect-pg-simple')(session);
 const path = require('path');
 const logger = require('./config/logger');
 const { auditMiddleware } = require('./middlewares/auditLogger');
-const authRoute = require('./routes/authRoute');
-const orgContent = require('./routes/orgContentRoute');
-const apiContent = require('./routes/apiContentRoute');
-const applicationContent = require('./routes/applicationsContentRoute');
-const customContent = require('./routes/customPageRoute');
-const subscriptionsContent = require('./routes/subscriptionsContentRoute');
-const mcpRegistryRoute = require('./routes/mcpRegistryRoute');
+const authRoute = require('./routes/pages/authRoute');
+const orgContent = require('./routes/pages/orgContentRoute');
+const apiContent = require('./routes/pages/apiContentRoute');
+const applicationContent = require('./routes/pages/applicationsContentRoute');
+const customContent = require('./routes/pages/customPageRoute');
+const subscriptionsContent = require('./routes/pages/subscriptionsContentRoute');
+const mcpRegistryRoute = require('./routes/pages/mcpRegistryRoute');
 const { config } = require('./config/configLoader');
 const Handlebars = require('handlebars');
 const constants = require("./utils/constants");
-const designRoute = require('./routes/designModeRoute');
-const settingsRoute = require('./routes/configureRoute');
-const apiFlowsRoute = require('./routes/apiFlowsRoute');
+const designRoute = require('./routes/pages/designModeRoute');
+const settingsRoute = require('./routes/pages/settingsRoute');
+const apiWorkflowsRoute = require('./routes/pages/apiWorkflowsRoute');
 const { v4: uuidv4 } = require('uuid');
 const util = require('./utils/util');
-const pool = require('./db/pool');
+const sessionStore = require('./db/sessionStoreConfig');
 const { registerHelpers } = require('./helpers/handlebarsHelpers');
-const { configurePassport } = require('./middlewares/passport');
+const { configurePassport } = require('./middlewares/passportConfig');
 
 const app = express();
+// Do not advertise Express in response headers.
+app.disable('x-powered-by');
 // const secret = crypto.randomBytes(64).toString('hex');
 const sessionSecret = 'my-secret';
-const filePrefix = config.pathToContent;
 
 const SERVER_ID = uuidv4();
-
-logger.info(`Starting server with ID: ${SERVER_ID}`);
 
 app.engine('.hbs', engine({
     extname: '.hbs'
@@ -61,17 +59,12 @@ app.set('view engine', 'hbs');
 registerHelpers();
 
 app.use(session({
-    store: new pgSession({
-        pool: pool,
-        tableName: 'session',
-        pruneSessionInterval: 3600,
-        debug: (message) => logger.debug('Session store debug', { message }),
-    }),
+    store: sessionStore,
     secret: sessionSecret,
     resave: false,
     saveUninitialized: true,
     cookie: {
-        secure: !config.advanced.http,
+        secure: config.tls.enabled && !config.designMode?.enabled,
         maxAge: 60 * 60 * 1000,
     },
 }));
@@ -87,7 +80,7 @@ app.get('/robots.txt', (req, res) => {
 });
 
 app.get('/llms.txt', (req, res) => {
-    const baseUrl = config.baseUrl;
+    const baseUrl = config.server.baseUrl;
     res.type('text/plain').send(
         `# API Developer Portal — AI Agent Entry Point\n\n` +
         `This portal provides APIs, MCP servers, and API workflows organized by organization and view.\n` +
@@ -101,8 +94,10 @@ app.get('/llms.txt', (req, res) => {
     );
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Bound JSON/urlencoded body size (config-sourced).
+const bodyLimit = config.uploads?.maxBytes || 10485760;
+app.use(express.json({ limit: bodyLimit }));
+app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
 
 // Add audit logging middleware
 app.use(auditMiddleware({
@@ -130,6 +125,11 @@ configurePassport(SERVER_ID);
 app.use(constants.ROUTE.TECHNICAL_STYLES, express.static(path.join(require.main.filename, '../styles')));
 app.use(constants.ROUTE.TECHNICAL_SCRIPTS, express.static(path.join(require.main.filename, '../scripts')));
 
+// Dev live-reload SSE endpoint — must be registered before org-resolution routes
+if (process.env.NODE_ENV === 'development') {
+    require('./liveReload').setup(app);
+}
+
 // Redirect unrecognised root-level paths (e.g. /robots.txt, /sitemap.xml) before
 // the /:orgName route can treat them as org IDs.
 app.use((req, res, next) => {
@@ -143,20 +143,30 @@ app.use((req, res, next) => {
 //backend routes
 // Spec-driven devportal router (express-openapi-validator): request validation +
 // fine-grained OAuth2 scope enforcement, dispatching by operationId to
-// src/openapi/handlers. Mounted at root since spec paths are root-relative
-// (/o/{orgId}/devportal/v1/..., /applications, /login, ...). Registered before the
-// page route tree so unmatched requests fall through to it.
-const devportalApiRouter = require('./openapi/devportalApiRouter');
+// src/routes/api/handlers (/api/v0.9/..., /organizations, /login, ...).
+// Registered before the page route tree so unmatched requests fall through to it.
+const devportalApiRouter = require('./routes/api/devportalApiRouter');
 app.use(constants.ROUTE.DEFAULT, devportalApiRouter);
 
 // MCP Server Registry (OpenAPI v0.1)
 app.use('/registry/:orgHandle', mcpRegistryRoute);
 app.use('/:orgHandle/registry', mcpRegistryRoute);
 
-if (config.mode === constants.DEV_MODE) {
-    app.use(constants.ROUTE.STYLES, express.static(path.join(process.cwd(), filePrefix + 'styles')));
-    app.use(constants.ROUTE.IMAGES, express.static(path.join(process.cwd(), filePrefix + 'images')));
-    app.use(constants.ROUTE.MOCK, express.static(path.join(process.cwd(), filePrefix + 'mock')));
+if (config.designMode?.enabled) {
+    const sampleApiLoader = require('./utils/sampleApiLoader');
+    const layoutPath = config.designMode.pathToLayout;
+    // Serve styles/images from pathToLayout first, fall back to src/defaultContent/
+    app.use(constants.ROUTE.STYLES, express.static(path.resolve(process.cwd(), layoutPath, 'styles')));
+    app.use(constants.ROUTE.STYLES, express.static(path.join(process.cwd(), './src/defaultContent/styles')));
+    app.use(constants.ROUTE.IMAGES, express.static(path.resolve(process.cwd(), layoutPath, 'images')));
+    app.use(constants.ROUTE.IMAGES, express.static(path.join(process.cwd(), './src/defaultContent/images')));
+    app.use(constants.ROUTE.MOCK, express.static(path.join(process.cwd(), config.designMode.apiSamplesPath)));
+    // Serve API definition files by resolving the handle to the actual directory
+    app.get('/mock/:apiHandle/definition.yml', (req, res) => {
+        const content = sampleApiLoader.getDefinition(req.params.apiHandle, config.designMode.apiSamplesPath);
+        if (!content) return res.status(404).send('Not found');
+        res.type('text/yaml').send(content);
+    });
     app.use(constants.ROUTE.DEFAULT, designRoute);
 } else {
     app.use(constants.ROUTE.STYLES, express.static(path.join(process.cwd(), './src/defaultContent/' + 'styles')));
@@ -166,47 +176,56 @@ if (config.mode === constants.DEV_MODE) {
     app.use(constants.ROUTE.DEFAULT, applicationContent);
     app.use(constants.ROUTE.DEFAULT, orgContent);
     app.use(constants.ROUTE.DEFAULT, settingsRoute);
-    app.use(constants.ROUTE.DEFAULT, apiFlowsRoute);
+    app.use(constants.ROUTE.DEFAULT, apiWorkflowsRoute);
     app.use(constants.ROUTE.DEFAULT, subscriptionsContent);
     app.use(constants.ROUTE.DEFAULT, customContent);
 }
 
 
-app.use((req, res) => {
-    res.redirect('/');
+// 404 catch-all — must come after all page routes
+app.use((req, res, next) => {
+    const err = new Error('Not Found');
+    err.status = 404;
+    next(err);
 });
 
-app.use( (err, req, res, next) => {
-    Handlebars.registerPartial('header', '');
-    Handlebars.registerPartial('sidebar', '');
-    logger.error('Application error', { 
-        error: err.message, 
-        stack: err.stack,
-        url: req.url,
-        method: req.method,
-        operation: 'expressErrorHandler'
-    });
-    let templateContent = {
-        devportalMode: 'DEFAULT',
-        baseUrl: '/' + req.originalUrl?.split('/')[1] + '/' + constants.ROUTE.VIEWS_PATH + "default",
-        errorMessage: "Oops! Something went wrong",
-        profile: typeof req.isAuthenticated === 'function' && req.isAuthenticated() ? req.user : null,
-    }
-    let html = "";
-    if (err.status === 401) {
-        req.session.destroy((err) => {
-            if (err) {
-                return res.status(500).send("Logout failed");
-            }
+// Central error handler
+app.use((err, req, res, next) => {
+    if (res.headersSent) return;
+    const status = err.status || 500;
+
+    if (status >= 500) {
+        logger.error('Application error', {
+            error: err.message,
+            stack: err.stack,
+            url: req.url,
+            method: req.method,
+            operation: 'expressErrorHandler'
         });
-        templateContent.errorMessage = constants.ERROR_MESSAGE.COMMON_AUTH_ERROR_MESSAGE;
-        html = util.renderTemplate('../pages/error-page/page.hbs', 'src/pages/error-layout/main.hbs', templateContent, true);
-    } else {
-        html = util.renderTemplate('../pages/error-page/page.hbs', 'src/pages/error-layout/main.hbs', templateContent, true);
     }
-    res.status(err.status || 500).send(`
-      ${html}
-    `);
+
+    // Destroy session on auth errors
+    if (status === 401 && req.session) {
+        req.session.destroy(() => {});
+    }
+
+    // Ensure chrome partials exist — registered by registerPartials for normal requests,
+    // but may be absent for early-pipeline errors (unmatched route, startup crash).
+    ['header', 'sidebar', 'footer', 'delete-confirmation'].forEach(name => {
+        if (!Handlebars.partials[name]) Handlebars.registerPartial(name, '');
+    });
+
+    const errorType = status === 404 ? '404' : status === 403 ? '403' : '500';
+    const baseUrl = '/' + (req.originalUrl?.split('/')[1] || '') + constants.ROUTE.VIEWS_PATH + 'default';
+    const templateContent = {
+        devportalMode: 'DEFAULT',
+        baseUrl,
+        errorType,
+        profile: typeof req.isAuthenticated === 'function' && req.isAuthenticated() ? req.user : null,
+    };
+
+    const html = util.renderTemplate('../pages/error-page/page.hbs', './src/defaultContent/layout/main.hbs', templateContent, true);
+    res.status(status).send(html);
 });
 
 

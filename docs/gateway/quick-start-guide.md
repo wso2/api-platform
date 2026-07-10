@@ -22,14 +22,14 @@ Replace `${version}` with the API Platform Gateway release version you want to r
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway/v1.1.0/wso2apip-api-gateway-1.1.0.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway/v1.2.0-M1/wso2apip-api-gateway-1.2.0-M1.zip
 
 # Unzip the downloaded distribution.
-unzip wso2apip-api-gateway-1.1.0.zip
+unzip wso2apip-api-gateway-1.2.0-M1.zip
 
 
 # Start the complete stack
-cd wso2apip-api-gateway-1.1.0/
+cd wso2apip-api-gateway-1.2.0-M1/
 docker compose up -d
 
 # Verify gateway controller admin endpoint is running
@@ -40,7 +40,7 @@ curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
   -u admin:admin \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: reading-list-api-v1.0

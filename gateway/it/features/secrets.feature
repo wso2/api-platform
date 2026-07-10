@@ -31,7 +31,7 @@ Feature: Secret Management Operations
     When I create a secret with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "Secret",
         "metadata": {
           "name": "test-secret-1"
@@ -63,7 +63,7 @@ Feature: Secret Management Operations
     When I create a secret with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "Secret",
         "metadata": {
           "name": "special-secret"
@@ -86,7 +86,7 @@ Feature: Secret Management Operations
     When I create a secret with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "Secret",
         "metadata": {
           "name": "long-secret"
@@ -111,7 +111,7 @@ Feature: Secret Management Operations
     When I create a secret with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "Secret",
         "spec": {
           "displayName": "No Name Secret",
@@ -128,7 +128,7 @@ Feature: Secret Management Operations
     When I create a secret with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "Secret",
         "metadata": {
           "name": "no-value-secret"
@@ -147,7 +147,7 @@ Feature: Secret Management Operations
     Given I create a secret with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "Secret",
         "metadata": {
           "name": "duplicate-secret"
@@ -163,7 +163,7 @@ Feature: Secret Management Operations
     When I create a secret with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "Secret",
         "metadata": {
           "name": "duplicate-secret"
@@ -188,7 +188,7 @@ Feature: Secret Management Operations
     Given I create a secret with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "Secret",
         "metadata": {
           "name": "get-test-secret"
@@ -214,7 +214,7 @@ Feature: Secret Management Operations
     Given I create a secret with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "Secret",
         "metadata": {
           "name": "list-test-secret"
@@ -249,7 +249,7 @@ Feature: Secret Management Operations
     Given I create a secret with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "Secret",
         "metadata": {
           "name": "update-test-secret"
@@ -265,7 +265,7 @@ Feature: Secret Management Operations
     When I update the secret "update-test-secret" with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "Secret",
         "metadata": {
           "name": "update-test-secret"
@@ -301,7 +301,7 @@ Feature: Secret Management Operations
     When I update the secret "non-existent-secret-12345" with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "Secret",
         "metadata": {
           "name": "non-existent-secret-12345"
@@ -323,7 +323,7 @@ Feature: Secret Management Operations
     Given I create a secret with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "Secret",
         "metadata": {
           "name": "delete-test-secret"
@@ -354,7 +354,7 @@ Feature: Secret Management Operations
 
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1
         kind: LlmProvider
         metadata:
           name: invoke-auth-provider-secret
@@ -401,7 +401,7 @@ Feature: Secret Management Operations
     When I create a secret with the following configuration:
       """
       {
-        "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+        "apiVersion": "gateway.api-platform.wso2.com/v1",
         "kind": "Secret",
         "metadata": {
           "name": "upstream-secret-special"
@@ -419,7 +419,7 @@ Feature: Secret Management Operations
 
     When I create this LLM provider:
         """
-        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        apiVersion: gateway.api-platform.wso2.com/v1
         kind: LlmProvider
         metadata:
           name: invoke-auth-provider-special-secret
@@ -468,7 +468,7 @@ Feature: Secret Management Operations
   Scenario: Create LLM Provider with a secret that does not exist
     When I create this LLM provider:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: LlmProvider
       metadata:
         name: invalid-secret-llm-provider

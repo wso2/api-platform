@@ -5,6 +5,11 @@
 # Changes: Added new gateway properties (isCritical, isAIGateway, description, vhost, isActive),
 # added gateway status endpoint for polling, updated all response schemas to include new fields.
 # Replaced isAIGateway boolean with functionalityType enum for better extensibility.
+#
+# UPDATED: July 1, 2026
+# Changes: Replaced the single `vhost` string with `endpoints`, an array of full URL strings.
+# Gateways can now expose multiple network endpoints; each is persisted in a `gateway_endpoints`
+# child table rather than a single column on `gateways`.
 
 paths:
   /gateways:
@@ -296,7 +301,7 @@ components:
       required:
         - name
         - displayName
-        - vhost
+        - endpoints
         - isCritical
         - functionalityType
       properties:
@@ -318,12 +323,16 @@ components:
           maxLength: 500
           description: Optional gateway description
           example: "Primary production gateway for API traffic"
-        vhost:
-          type: string
-          minLength: 1
-          maxLength: 253
-          description: Virtual host for the gateway
-          example: "api.example.com"
+        endpoints:
+          type: array
+          description: Network endpoints exposed by this gateway, each as a full URL string
+          minItems: 1
+          items:
+            type: string
+            maxLength: 255
+          example:
+            - "https://api.example.com:8443/api/v1"
+            - "wss://events.example.com:8444"
         isCritical:
           type: boolean
           description: Indicates if the gateway is critical for operations
@@ -360,10 +369,16 @@ components:
           type: string
           description: Gateway description
           example: "Primary production gateway for API traffic"
-        vhost:
-          type: string
-          description: Virtual host for the gateway
-          example: "api.example.com"
+        endpoints:
+          type: array
+          description: Network endpoints exposed by this gateway, each as a full URL string
+          minItems: 1
+          items:
+            type: string
+            maxLength: 255
+          example:
+            - "https://api.example.com:8443/api/v1"
+            - "wss://events.example.com:8444"
         isCritical:
           type: boolean
           description: Indicates if the gateway is critical for operations

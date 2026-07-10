@@ -1,0 +1,1312 @@
+openapi: "3.0.3"
+info:
+  title: Event Gateway Plugin API
+  version: "0.9"
+  description: >
+    WebSub and WebBroker API management endpoints provided by the
+    eventgateway compile-time plugin.
+paths:
+  /api/v0.9/websub-apis:
+    post:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:create
+            - ap:websub_api:manage
+      responses:
+        '201':
+          description: WebSub API created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:read
+            - ap:websub_api:manage
+      responses:
+        '200':
+          description: WebSub APIs retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/websub-apis/{apiId}:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:read
+            - ap:websub_api:manage
+      responses:
+        '200':
+          description: WebSub API retrieved successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:update
+            - ap:websub_api:manage
+      responses:
+        '200':
+          description: WebSub API updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:delete
+            - ap:websub_api:manage
+      responses:
+        '204':
+          description: WebSub API deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/websub-apis/{apiId}/publications:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:publication:create
+            - ap:websub_api:manage
+      responses:
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /api/v0.9/websub-apis/{apiId}/publications/{devportalId}:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: devportalId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:publication:delete
+            - ap:websub_api:manage
+      responses:
+        '501':
+          $ref: '#/components/responses/NotImplemented'
+
+  /api/v0.9/websub-apis/{apiId}/deployments:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:deployment:create
+            - ap:websub_api:deployment:manage
+      responses:
+        '201':
+          description: WebSub API deployment created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:deployment:read
+            - ap:websub_api:deployment:manage
+      responses:
+        '200':
+          description: WebSub API deployments retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/websub-apis/{apiId}/deployments/{deploymentId}:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: deploymentId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:deployment:read
+            - ap:websub_api:deployment:manage
+      responses:
+        '200':
+          description: WebSub API deployment retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:deployment:delete
+            - ap:websub_api:deployment:manage
+      responses:
+        '204':
+          description: WebSub API deployment deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/websub-apis/{apiId}/deployments/{deploymentId}/undeploy:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: deploymentId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:deployment:undeploy
+            - ap:websub_api:deployment:manage
+      responses:
+        '200':
+          description: WebSub API deployment undeployed successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/websub-apis/{apiId}/deployments/{deploymentId}/restore:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: deploymentId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:deployment:restore
+            - ap:websub_api:deployment:manage
+      responses:
+        '200':
+          description: WebSub API deployment restored successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/websub-apis/{apiId}/api-keys:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:api_key:create
+            - ap:websub_api:api_key:manage
+      responses:
+        '201':
+          description: WebSub API key created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v0.9/websub-apis/{apiId}/api-keys/{keyName}:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: keyName
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:api_key:update
+            - ap:websub_api:api_key:manage
+      responses:
+        '200':
+          description: WebSub API key updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:api_key:delete
+            - ap:websub_api:api_key:manage
+      responses:
+        '204':
+          description: WebSub API key deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/websub-apis/{apiId}/secrets:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:hmac_secret:create
+            - ap:websub_api:manage
+      responses:
+        '201':
+          description: HMAC secret created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    get:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:hmac_secret:read
+            - ap:websub_api:manage
+      responses:
+        '200':
+          description: HMAC secrets retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/websub-apis/{apiId}/secrets/{secretName}:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: secretName
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:hmac_secret:delete
+            - ap:websub_api:manage
+      responses:
+        '204':
+          description: HMAC secret deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/websub-apis/{apiId}/secrets/{secretName}/regenerate:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: secretName
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:websub_api:hmac_secret:regenerate
+            - ap:websub_api:manage
+      responses:
+        '200':
+          description: HMAC secret regenerated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/webbroker-apis:
+    post:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:webbroker_api:create
+            - ap:webbroker_api:manage
+      responses:
+        '201':
+          description: WebBroker API created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:webbroker_api:read
+            - ap:webbroker_api:manage
+      responses:
+        '200':
+          description: WebBroker APIs retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/webbroker-apis/{apiId}:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:webbroker_api:read
+            - ap:webbroker_api:manage
+      responses:
+        '200':
+          description: WebBroker API retrieved successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    put:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:webbroker_api:update
+            - ap:webbroker_api:manage
+      responses:
+        '200':
+          description: WebBroker API updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:webbroker_api:delete
+            - ap:webbroker_api:manage
+      responses:
+        '204':
+          description: WebBroker API deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/webbroker-apis/{apiId}/deployments:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:webbroker_api:deployment:create
+            - ap:webbroker_api:deployment:manage
+      responses:
+        '201':
+          description: WebBroker API deployment created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:webbroker_api:deployment:read
+            - ap:webbroker_api:deployment:manage
+      responses:
+        '200':
+          description: WebBroker API deployments retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/webbroker-apis/{apiId}/deployments/{deploymentId}:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: deploymentId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:webbroker_api:deployment:read
+            - ap:webbroker_api:deployment:manage
+      responses:
+        '200':
+          description: WebBroker API deployment retrieved successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:webbroker_api:deployment:delete
+            - ap:webbroker_api:deployment:manage
+      responses:
+        '204':
+          description: WebBroker API deployment deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/webbroker-apis/{apiId}/deployments/{deploymentId}/undeploy:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: deploymentId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:webbroker_api:deployment:undeploy
+            - ap:webbroker_api:deployment:manage
+      responses:
+        '200':
+          description: WebBroker API deployment undeployed successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/webbroker-apis/{apiId}/deployments/{deploymentId}/restore:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: deploymentId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:webbroker_api:deployment:restore
+            - ap:webbroker_api:deployment:manage
+      responses:
+        '200':
+          description: WebBroker API deployment restored successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v0.9/webbroker-apis/{apiId}/api-keys:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:webbroker_api:api_key:create
+            - ap:webbroker_api:api_key:manage
+      responses:
+        '201':
+          description: WebBroker API key created successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v0.9/webbroker-apis/{apiId}/api-keys/{keyName}:
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: keyName
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:webbroker_api:api_key:update
+            - ap:webbroker_api:api_key:manage
+      responses:
+        '200':
+          description: WebBroker API key updated successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    delete:
+      security:
+        - OAuth2SecurityEventGateway:
+            - ap:webbroker_api:api_key:delete
+            - ap:webbroker_api:api_key:manage
+      responses:
+        '204':
+          description: WebBroker API key deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+components:
+  schemas:
+    WebSubAPI:
+      type: object
+      required:
+        - displayName
+        - version
+        - projectId
+        - upstream
+        - channels
+      properties:
+        id:
+          type: string
+          description: Unique handle for the WebSub API
+          minLength: 3
+          maxLength: 63
+          example: my-websub-api
+        displayName:
+          type: string
+          description: Human-readable name for the WebSub API
+          minLength: 1
+          maxLength: 128
+          example: My WebSub API
+        description:
+          type: string
+          maxLength: 1023
+          example: A WebSub API for event publishing
+        version:
+          type: string
+          description: Semantic version of the WebSub API
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        projectId:
+          type: string
+          description: UUID of the project this API belongs to
+          example: 550e8400-e29b-41d4-a716-446655440000
+        context:
+          type: string
+          description: Base path for the API (must start with /)
+          pattern: '^\/([a-zA-Z0-9_\-.\/]*[^\/])?$'
+          example: /my-websub-api
+        upstream:
+          type: object
+          x-go-type: Upstream
+        allChannels:
+          $ref: '#/components/schemas/WebSubAllChannelPolicies'
+        channels:
+          type: object
+          description: Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.
+          additionalProperties:
+            $ref: '#/components/schemas/WebSubChannel'
+        transport:
+          type: array
+          description: Supported transport protocols
+          items:
+            type: string
+            enum:
+              - http
+              - https
+          example:
+            - http
+            - https
+        lifeCycleStatus:
+          type: string
+          description: Lifecycle status of the WebSub API
+          enum:
+            - CREATED
+            - PUBLISHED
+            - DEPRECATED
+            - RETIRED
+          example: CREATED
+        subscriptionPlans:
+          type: array
+          description: List of subscription plan IDs
+          items:
+            type: string
+        kind:
+          type: string
+          description: Kind of the WebSub API
+          readOnly: true
+          default: WebSubApi
+          example: WebSubApi
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
+        createdBy:
+          type: string
+          description: User identifier of the user who created this resource
+          readOnly: true
+          example: "john.doe@example.com"
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource. Only present in the detail response (GET /websub-apis/{id}), omitted from list responses.
+          example: "john.doe@example.com"
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+
+    WebSubAPIListItem:
+      type: object
+      required:
+        - displayName
+      properties:
+        id:
+          type: string
+          minLength: 3
+          maxLength: 63
+          example: my-websub-api
+        displayName:
+          type: string
+          description: Human-readable name for the WebSub API
+          minLength: 1
+          maxLength: 128
+          example: My WebSub API
+        version:
+          type: string
+          example: v1.0
+        projectId:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        context:
+          type: string
+          example: /my-websub-api
+        lifeCycleStatus:
+          type: string
+          enum:
+            - CREATED
+            - PUBLISHED
+            - DEPRECATED
+            - RETIRED
+          example: CREATED
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
+        createdBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe@example.com"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    WebSubAPIListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebSubAPIListItem'
+        pagination:
+          type: object
+          x-go-type: Pagination
+
+    WebSubAllChannelPolicies:
+      type: object
+      description: Policies applied to all channels, organized by event type.
+      properties:
+        on_subscription:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_unsubscription:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_message_received:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_message_delivery:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+
+    WebSubEventPolicies:
+      type: object
+      description: Policies for a single event type.
+      properties:
+        policies:
+          type: array
+          description: List of policies applied for this event type.
+          items:
+            type: object
+            x-go-type: Policy
+            x-go-type-skip-optional-pointer: true
+
+
+    WebSubChannel:
+      type: object
+      description: A single channel definition with optional per-channel policy overrides.
+      properties:
+        on_subscription:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_unsubscription:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_message_received:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_message_delivery:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+
+    WebSubAPIHmacSecretRequest:
+      type: object
+      required:
+        - displayName
+      properties:
+        displayName:
+          type: string
+          description: Human-readable label for the HMAC secret (used to derive the URL-safe name/slug).
+          minLength: 1
+          maxLength: 128
+          example: GitHub Webhook
+        secret:
+          type: string
+          description: |
+            Optional. If provided, this value is used as the HMAC secret instead of auto-generating one.
+            Must be at least 32 characters long.
+          minLength: 32
+          example: my-external-secret-value-that-is-at-least-32-chars
+
+    WebSubAPIHmacSecretRegenerateRequest:
+      type: object
+      properties:
+        secret:
+          type: string
+          description: |
+            Optional. If provided, this value is used as the new HMAC secret instead of auto-generating one.
+            Must be at least 32 characters long.
+          minLength: 32
+          example: my-external-secret-value-that-is-at-least-32-chars
+
+    WebSubAPIHmacSecretInfo:
+      type: object
+      required:
+        - uuid
+        - name
+        - displayName
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        uuid:
+          type: string
+          description: Unique identifier for the HMAC secret.
+        name:
+          type: string
+          description: URL-safe slug derived from the display name.
+          example: github-webhook
+        displayName:
+          type: string
+          description: Human-readable name for the HMAC secret
+          minLength: 1
+          maxLength: 128
+          example: GitHub Webhook
+        status:
+          type: string
+          description: Status of the HMAC secret.
+          example: active
+        createdBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe@example.com"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    WebSubAPIHmacSecretCreationResponse:
+      type: object
+      required:
+        - secret
+        - message
+      properties:
+        secret:
+          type: string
+          description: |
+            The plaintext HMAC secret value. This is returned **once** at creation/regeneration time
+            and is never stored unencrypted — save it immediately.
+          example: whsec_a3f2c1e4b5d6789012345678901234567890abcdef1234567890abcdef12345678
+        webhookSecret:
+          $ref: '#/components/schemas/WebSubAPIHmacSecretInfo'
+        message:
+          type: string
+          description: Human-readable confirmation message.
+          example: HMAC secret created successfully
+
+    WebSubAPIHmacSecretListResponse:
+      type: object
+      required:
+        - secrets
+      properties:
+        secrets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebSubAPIHmacSecretInfo'
+
+    WebBrokerAPI:
+      type: object
+      required:
+        - displayName
+        - version
+        - projectId
+        - receiver
+        - broker
+        - channels
+      properties:
+        id:
+          type: string
+          description: Unique handle for the WebBroker API
+          minLength: 3
+          maxLength: 63
+          example: my-webbroker-api
+        displayName:
+          type: string
+          description: Human-readable name for the WebBroker API
+          minLength: 1
+          maxLength: 128
+          example: My WebBroker API
+        description:
+          type: string
+          maxLength: 1023
+          example: A WebBroker API for real-time messaging
+        version:
+          type: string
+          description: Semantic version of the WebBroker API
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        projectId:
+          type: string
+          description: UUID of the project this API belongs to
+          example: 550e8400-e29b-41d4-a716-446655440000
+        context:
+          type: string
+          description: Base path for the API (must start with /)
+          pattern: '^\/([a-zA-Z0-9_\-.\/]*[^\/])?$'
+          example: /my-webbroker-api
+        receiver:
+          type: object
+          description: WebSocket receiver configuration
+          required:
+            - name
+            - type
+          properties:
+            name:
+              type: string
+              example: websocket-receiver
+            type:
+              type: string
+              enum:
+                - websocket
+              example: websocket
+            properties:
+              type: object
+              additionalProperties: true
+        broker:
+          type: object
+          description: Message broker configuration
+          required:
+            - name
+            - type
+          properties:
+            name:
+              type: string
+              example: kafka-driver
+            type:
+              type: string
+              enum:
+                - kafka
+              example: kafka
+            properties:
+              type: object
+              additionalProperties: true
+        allChannels:
+          $ref: '#/components/schemas/WebBrokerAllChannelPolicies'
+        channels:
+          type: object
+          description: Per-channel configuration keyed by channel name. Each key is a channel name and defines policies and topics for that channel.
+          additionalProperties:
+            $ref: '#/components/schemas/WebBrokerChannel'
+        transport:
+          type: array
+          description: Supported transport protocols
+          items:
+            type: string
+            enum:
+              - http
+              - https
+          example:
+            - http
+            - https
+        lifeCycleStatus:
+          type: string
+          description: Lifecycle status of the WebBroker API
+          enum:
+            - CREATED
+            - PUBLISHED
+            - DEPRECATED
+            - RETIRED
+          example: CREATED
+        subscriptionPlans:
+          type: array
+          description: List of subscription plan IDs
+          items:
+            type: string
+        kind:
+          type: string
+          description: Kind of the WebBroker API
+          readOnly: true
+          default: WebBrokerApi
+          example: WebBrokerApi
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
+        createdBy:
+          type: string
+          description: User identifier of the user who created this resource
+          readOnly: true
+          example: "john.doe@example.com"
+        updatedBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who last updated this resource. Only present in the detail response (GET /webbroker-apis/{id}), omitted from list responses.
+          example: "john.doe@example.com"
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+
+    WebBrokerAPIListItem:
+      type: object
+      required:
+        - displayName
+      properties:
+        id:
+          type: string
+          minLength: 3
+          maxLength: 63
+          example: my-webbroker-api
+        displayName:
+          type: string
+          description: Human-readable name for the WebBroker API
+          minLength: 1
+          maxLength: 128
+          example: My WebBroker API
+        version:
+          type: string
+          example: v1.0
+        projectId:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        context:
+          type: string
+          example: /my-webbroker-api
+        lifeCycleStatus:
+          type: string
+          enum:
+            - CREATED
+            - PUBLISHED
+            - DEPRECATED
+            - RETIRED
+          example: CREATED
+        readOnly:
+          type: boolean
+          description: True when the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane.
+          example: false
+        createdBy:
+          type: string
+          readOnly: true
+          description: User identifier of the user who created this resource
+          example: "john.doe@example.com"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    WebBrokerAPIListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebBrokerAPIListItem'
+        pagination:
+          type: object
+          x-go-type: Pagination
+
+    WebBrokerAllChannelPolicies:
+      type: object
+      description: Policies applied to all channels, organized by event type.
+      properties:
+        on_connection_init:
+          $ref: '#/components/schemas/WebBrokerEventPolicies'
+        on_produce:
+          $ref: '#/components/schemas/WebBrokerEventPolicies'
+        on_consume:
+          $ref: '#/components/schemas/WebBrokerEventPolicies'
+
+    WebBrokerEventPolicies:
+      type: object
+      description: Policies for a single event type.
+      properties:
+        policies:
+          type: array
+          description: List of policies applied for this event type.
+          items:
+            type: object
+            x-go-type: Policy
+            x-go-type-skip-optional-pointer: true
+
+    WebBrokerChannel:
+      type: object
+      description: A single channel definition with topic mappings and optional per-channel policy overrides.
+      properties:
+        produceTo:
+          type: object
+          description: Kafka topic to produce messages to
+          properties:
+            topic:
+              type: string
+              example: stock.prices
+        consumeFrom:
+          type: object
+          description: Kafka topic to consume messages from
+          properties:
+            topic:
+              type: string
+              example: stock.prices.response
+        on_connection_init:
+          $ref: '#/components/schemas/WebBrokerEventPolicies'
+        on_produce:
+          $ref: '#/components/schemas/WebBrokerEventPolicies'
+        on_consume:
+          $ref: '#/components/schemas/WebBrokerEventPolicies'
+
+  responses:
+    BadRequest:
+      description: Bad request
+    Unauthorized:
+      description: Unauthorized
+    NotFound:
+      description: Not found
+    Conflict:
+      description: Conflict
+    NotImplemented:
+      description: Not implemented
+    InternalServerError:
+      description: Internal server error
+    ServiceUnavailable:
+      description: Service unavailable
+  securitySchemes:
+    OAuth2SecurityEventGateway:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes: {}

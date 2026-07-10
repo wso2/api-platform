@@ -1,0 +1,62 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the
+# License at http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+#
+# AI Workspace configuration
+#
+# This file is read by the AI Workspace container at startup. Keys are flat and
+# map 1:1 to environment variables; environment variables always override values
+# set here. Browser-safe values (the VITE_* keys) are surfaced to the SPA at
+# runtime — never put secrets (e.g. the OIDC client secret) in this file; pass
+# them via the environment / a .env file instead.
+# --------------------------------------------------------------------
+
+# --- General ---
+# Domain shown in the browser address bar (host:port or just host for port 80/443).
+domain = "localhost:5380"
+
+# Default region assigned to new organizations on first login.
+default_org_region = "us"
+
+# --- Authentication ---
+# UI auth mode: "basic" uses the Platform API's file-based login (quickstart);
+# "oidc" delegates login to an external OIDC-compliant IDP (production).
+auth_mode = "basic"
+
+# --- OIDC (used when auth_mode = "oidc") ---
+# The BFF is a confidential client; the client secret is NOT set here — pass it
+# as OIDC_CLIENT_SECRET via the environment / .env. See README → "Testing with
+# an IDP locally" for the full setup.
+#
+# Issuer URL — endpoints are auto-discovered from /.well-known/openid-configuration.
+# oidc_authority = "https://api.asgardeo.io/t/<org>/oauth2/token"
+# Client ID registered in your IDP.
+# oidc_client_id = "your-client-id"
+
+# Claim name mappings — must match the [auth.idp] claim names in
+# config-platform-api.toml. Override only if your IDP uses different names.
+# oidc_username_claim = "username"
+# oidc_org_id_claim     = "org_id"
+# oidc_org_name_claim   = "org_name"
+# oidc_org_handle_claim = "org_handle"
+# oidc_scope = "openid profile email offline_access ap:organization:read ap:organization:manage ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage ap:application:association:read ap:application:association:create ap:application:association:delete ap:application:association:manage ap:application:association:api_key:read ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage ap:gateway:artifact:read ap:gateway:manifest:read ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:gateway:read ap:rest_api:gateway:create ap:rest_api:gateway:manage ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:deployment:undeploy ap:rest_api:deployment:restore ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage ap:rest_api:publication:read ap:rest_api:publication:create ap:rest_api:publication:delete ap:devportal:read ap:devportal:create ap:devportal:update ap:devportal:delete ap:devportal:manage ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage ap:llm_template:read ap:llm_template:create ap:llm_template:update ap:llm_template:delete ap:llm_template:manage ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_provider:deployment:undeploy ap:llm_provider:deployment:restore ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage ap:llm_proxy:api_key:read ap:llm_proxy:api_key:create ap:llm_proxy:api_key:delete ap:llm_proxy:api_key:manage ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore ap:websub_api:read ap:websub_api:create ap:websub_api:update ap:websub_api:delete ap:websub_api:manage ap:websub_api:api_key:read ap:websub_api:api_key:create ap:websub_api:api_key:delete ap:websub_api:api_key:manage ap:websub_api:api_key:update ap:websub_api:deployment:read ap:websub_api:deployment:create ap:websub_api:deployment:delete ap:websub_api:deployment:manage ap:websub_api:deployment:undeploy ap:websub_api:deployment:restore ap:websub_api:publication:read ap:websub_api:publication:create ap:websub_api:publication:delete ap:webbroker_api:read ap:webbroker_api:create ap:webbroker_api:update ap:webbroker_api:delete ap:webbroker_api:manage ap:webbroker_api:api_key:read ap:webbroker_api:api_key:create ap:webbroker_api:api_key:delete ap:webbroker_api:api_key:manage ap:webbroker_api:api_key:update ap:webbroker_api:deployment:read ap:webbroker_api:deployment:create ap:webbroker_api:deployment:delete ap:webbroker_api:deployment:manage ap:webbroker_api:deployment:undeploy ap:webbroker_api:deployment:restore ap:webbroker_api:publication:read ap:webbroker_api:publication:create ap:webbroker_api:publication:delete ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage"
+
+# --- Platform API connectivity ---
+# Base URL the browser uses for API calls — the same-origin BFF proxy path
+# (proxy_prefix + /api/v0.9, default /api/proxy) so the browser only talks to the
+# app origin and never hits the platform-api self-signed cert directly. The BFF
+# always derives this from proxy_prefix, so it stays relative.
+platform_api_base_url = "/api/proxy/api/v0.9"
+
+# Control-plane host — the externally reachable address gateways use to reach
+# the Platform API. Shown in gateway setup instructions (keys.env, helm values).
+controlplane_host = "host.docker.internal:9243"
+
+# --- Gateway metadata ---
+# Gateway versions shown in the create-gateway version selector (JSON array string).
+platform_gateway_versions = '[{"version":"1.2","latestVersion":"v1.2.0-M1","channel":"STS"}]'

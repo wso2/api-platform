@@ -28,13 +28,13 @@ Gateways need real-time notification of API deployments and configuration change
 
 ### Connection Establishment
 
-1. Gateway initiates WebSocket upgrade request to `wss://platform-api:9243/api/internal/v1/ws/gateways/connect`
-2. Platform validates API key via existing gateway service
-3. Platform enforces rate limiting (10 attempts/minute/IP)
-4. Platform checks maximum connection limit (default 1000)
+1. Gateway initiates WebSocket upgrade request to `wss://platform-api:9243/api/internal/v1/ws/gateways/connect` with an `api-key` header carrying the gateway token
+2. Platform validates the token via `GatewayService.VerifyToken`
+3. Platform enforces rate limiting (default 1000 attempts/minute/IP)
+4. Platform checks the per-organization connection limit (default 3) before upgrading
 5. HTTP connection upgrades to WebSocket protocol
-6. Platform sends connection acknowledgment with gateway ID and connection ID
-7. Connection registered in sync.Map registry keyed by gateway ID
+6. Platform sends a `connection.ack` message with the gateway's internal UUID (`gatewayId`) and a new connection ID
+7. Connection registered in sync.Map registry keyed by gateway UUID; gateway `isActive` is set to `true`
 
 ### Heartbeat Mechanism
 
@@ -151,15 +151,17 @@ for {
 {
   "type": "api.deployed",
   "payload": {
-    "apiUuid": "uuid",
-    "revisionId": "revision-id",
-    "vhost": "mg.wso2.com",
-    "environment": "production"
+    "apiId": "api-uuid",
+    "deploymentId": "deployment-uuid",
+    "performedAt": "2026-06-21T..."
   },
-  "timestamp": "2025-10-19T...",
+  "gatewayId": "gateway-uuid",
+  "timestamp": "2026-06-21T...",
   "correlationId": "uuid"
 }
 ```
+
+`apiId` and `gatewayId` are the platform's internal UUIDs — not the handle-based `id` used in the REST API.
 
 **Event Ordering**: Events sent sequentially per connection using mutex-protected Send method.
 
@@ -184,26 +186,32 @@ Per-connection atomic counters:
 
 ## Configuration
 
-**File**: `config/config.go`
+**File**: `config/config.go` (loaded via koanf, not the old envconfig setup)
 
 ```go
 type WebSocket struct {
-    MaxConnections    int `envconfig:"WS_MAX_CONNECTIONS" default:"1000"`
-    ConnectionTimeout int `envconfig:"WS_CONNECTION_TIMEOUT" default:"30"`
-    RateLimitPerMin   int `envconfig:"WS_RATE_LIMIT_PER_MINUTE" default:"10"`
+    MaxConnections       int  `koanf:"max_connections"`
+    ConnectionTimeout    int  `koanf:"connection_timeout"`
+    RateLimitPerMin      int  `koanf:"rate_limit_per_min"`
+    MaxConnectionsPerOrg int  `koanf:"max_connections_per_org"`
+    MetricsLogEnabled    bool `koanf:"metrics_log_enabled"`
+    MetricsLogInterval   int  `koanf:"metrics_log_interval"`
 }
 ```
 
-**Environment Variables**:
-- `WS_MAX_CONNECTIONS` - Maximum concurrent connections (default: 1000)
-- `WS_CONNECTION_TIMEOUT` - Heartbeat timeout in seconds (default: 30)
-- `WS_RATE_LIMIT_PER_MINUTE` - Connection attempts per IP per minute (default: 10)
+**Environment Variables** (see `config.go:envToKoanfKey` for the full mapping, including legacy `WEBSOCKET_WS_*` aliases):
+- `WEBSOCKET_MAX_CONNECTIONS` - Maximum concurrent connections (default: 1000)
+- `WEBSOCKET_CONNECTION_TIMEOUT` - Heartbeat timeout in seconds (default: 30)
+- `WEBSOCKET_RATE_LIMIT_PER_MIN` - Connection attempts per IP per minute (default: 1000)
+- `WEBSOCKET_MAX_CONNECTIONS_PER_ORG` - Concurrent connections allowed per organization (default: 3)
+- `WEBSOCKET_METRICS_LOG_ENABLED` - Periodically log connection metrics (default: true)
+- `WEBSOCKET_METRICS_LOG_INTERVAL` - Metrics log interval in seconds (default: 10)
 
 ## Build & Run
 
 ```bash
 # Build platform API with WebSocket support
-cd platform-api/src
+cd platform-api
 go build -o ../bin/platform-api ./cmd/main.go
 
 # Run with default configuration
@@ -211,9 +219,9 @@ cd ../bin
 ./platform-api
 
 # Run with custom WebSocket configuration
-export WS_MAX_CONNECTIONS=5000
-export WS_CONNECTION_TIMEOUT=60
-export WS_RATE_LIMIT_PER_MINUTE=20
+export WEBSOCKET_MAX_CONNECTIONS=5000
+export WEBSOCKET_CONNECTION_TIMEOUT=60
+export WEBSOCKET_RATE_LIMIT_PER_MIN=20
 ./platform-api
 ```
 
@@ -221,32 +229,37 @@ export WS_RATE_LIMIT_PER_MINUTE=20
 
 ### 1. Gateway Connection
 
-**Register Gateway**:
+**Register Gateway** (organization ID comes from the JWT token, not the request body):
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/gateways \
+curl -k -X POST https://localhost:9243/api/v0.9/gateways \
   -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <your-token>' \
   -d '{
-    "organizationId": "<org-uuid>",
-    "name": "test-gateway",
-    "displayName": "Test Gateway"
+    "id": "test-gateway",
+    "displayName": "Test Gateway",
+    "endpoints": ["https://test-gateway.example.com:8443/api/v1"],
+    "functionalityType": "regular"
   }'
 ```
 
 **Expected Response**:
 ```json
 {
-  "id": "d1aa71bc-8cb5-4294-8a26-fe1273c28632",
-  "name": "test-gateway",
+  "id": "test-gateway",
   "displayName": "Test Gateway",
-  "organizationId": "<org-uuid>",
-  "createdAt": "2025-10-19T..."
+  "organizationId": "acme",
+  "endpoints": ["https://test-gateway.example.com:8443/api/v1"],
+  "functionalityType": "regular",
+  "isActive": false,
+  "createdAt": "2026-06-21T..."
 }
 ```
 
-**Generate Gateway Token**:
+**Generate Gateway Token** (`{gatewayId}` is the handle from the response above, not a UUID):
 ```bash
-curl -k -X POST https://localhost:9243/api/v1/gateways/d1aa71bc-8cb5-4294-8a26-fe1273c28632/tokens \
-  -H 'Accept: application/json'
+curl -k -X POST https://localhost:9243/api/v0.9/gateways/test-gateway/tokens \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer <your-token>'
 ```
 
 **Expected Response**:
@@ -254,7 +267,7 @@ curl -k -X POST https://localhost:9243/api/v1/gateways/d1aa71bc-8cb5-4294-8a26-f
 {
   "id": "1db8b0e4-f237-4aa3-a6f2-e466c878de0f",
   "token": "guDgqzePBJTMD8iElVH-q4_hc3IWZE87PgBqfzS_qPA",
-  "createdAt": "2025-10-19T14:00:43.848145213+05:30",
+  "createdAt": "2026-06-21T14:00:43+05:30",
   "message": "New token generated successfully. Old token remains active until revoked."
 }
 ```
@@ -268,28 +281,29 @@ wscat -n -c wss://localhost:9243/api/internal/v1/ws/gateways/connect \
 **Expected Output**:
 ```
 Connected (press CTRL+C to quit)
-< {"type":"connection.ack","gatewayId":"d1aa71bc-8cb5-4294-8a26-fe1273c28632","connectionId":"85d759e5-f152-4a39-8cd1-e0923657268a","timestamp":"2025-10-19T07:11:04+05:30"}
+< {"type":"connection.ack","gatewayId":"d1aa71bc-8cb5-4294-8a26-fe1273c28632","connectionId":"85d759e5-f152-4a39-8cd1-e0923657268a","timestamp":"2026-06-21T07:11:04+05:30"}
 ```
+
+`gatewayId` here is the gateway's internal UUID (`gateway.ID`), not the handle (`test-gateway`) used in the REST API.
 
 ### 2. Event Delivery
 
-**Deploy API Revision** (with gateway connected):
+**Deploy an API** (with gateway connected; requires a REST API already created via `POST /rest-apis` and a `projectId`/`upstream` — see [API Lifecycle Management](../api-lifecycle-management.md)):
 ```bash
-curl -k -X POST 'https://localhost:9243/api/v1/apis/<api-uuid>/deploy-revision?revisionId=<revision-uuid>' \
+curl -k -X POST 'https://localhost:9243/api/v0.9/rest-apis/<apiHandle>/deployments' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
-  -d '[{
-    "revisionId": "<revision-uuid>",
-    "gatewayId": "d1aa71bc-8cb5-4294-8a26-fe1273c28632",
-    "status": "CREATED",
-    "vhost": "mg.wso2.com",
-    "displayOnDevportal": true
-  }]'
+  -H 'Authorization: Bearer <your-token>' \
+  -d '{
+    "name": "test-deployment",
+    "base": "current",
+    "gatewayId": "test-gateway"
+  }'
 ```
 
 **Expected Gateway Output (received via WebSocket)**:
 ```
-< {"type":"api.deployed","payload":{"apiUuid":"23826f9e-8daf-4638-b295-14898312759f","revisionId":"90d10e1c-8560-5c36-9d5a-124ecaa17485","vhost":"mg.wso2.com","environment":"production"},"timestamp":"2025-10-19T07:11:07+05:30","correlationId":"16408ddb-0cc9-48bc-a35d-6debb8d90c28"}
+< {"type":"api.deployed","payload":{"apiId":"23826f9e-8daf-4638-b295-14898312759f","deploymentId":"90d10e1c-8560-5c36-9d5a-124ecaa17485","performedAt":"2026-06-21T07:11:07+05:30"},"gatewayId":"d1aa71bc-8cb5-4294-8a26-fe1273c28632","timestamp":"2026-06-21T07:11:07+05:30","correlationId":"16408ddb-0cc9-48bc-a35d-6debb8d90c28"}
 ```
 
 ### 3. Authentication Rejection
@@ -335,17 +349,12 @@ curl -k -s -o /dev/null -w "%{http_code}" \
 
 ## Testing Approach
 
-### Automated Tests (Phase 3 Validation)
+### Automated Tests
 
-**File**: `specs/002-gateway-websockets-i/test-phase3.sh`
-
-Tests:
-- ✅ Build verification (all packages compile)
-- ✅ Binary build (platform-api executable created)
-- ✅ Server health check (HTTP 200 from /health)
-- ✅ Invalid API key rejection (HTTP 401)
-- ✅ Missing API key rejection (HTTP 401)
-- ✅ WebSocket test client availability
+The standalone `test-phase3.sh` script referenced in earlier revisions of this doc no longer
+exists, and there is currently no dedicated Go test coverage for `internal/websocket/` or the
+WebSocket upgrade handler (`internal/handler/websocket.go`) — verification today is manual (see
+below). This is a coverage gap worth closing, not an intentional design choice.
 
 ### Manual Tests
 
@@ -394,21 +403,25 @@ type DeliveryStats struct {
 
 ### Event Payload
 
+Defined in `internal/model/gateway_event.go`:
+
 ```go
-type GatewayEventDTO struct {
-    Type          string      `json:"type"`          // Event type identifier
-    Payload       interface{} `json:"payload"`       // Event-specific data
-    Timestamp     string      `json:"timestamp"`     // RFC3339 format
-    CorrelationID string      `json:"correlationId"` // Distributed tracing ID
+type GatewayEvent struct {
+    Type          string          `json:"type"`          // Event type identifier
+    Payload       json.RawMessage `json:"payload"`       // Event-specific data
+    GatewayID     string          `json:"gatewayId"`      // Target gateway's internal UUID
+    Timestamp     time.Time       `json:"timestamp"`
+    CorrelationID string          `json:"correlationId"` // Distributed tracing ID
 }
 
-type APIDeploymentEvent struct {
-    ApiUuid     string `json:"apiUuid"`     // API UUID
-    RevisionID  string `json:"revisionId"`  // Revision identifier
-    Vhost       string `json:"vhost"`       // Virtual host
-    Environment string `json:"environment"` // Target environment
+type DeploymentEvent struct {
+    ApiId        string    `json:"apiId"`        // API's internal UUID
+    DeploymentID string    `json:"deploymentId"` // Deployment's internal UUID
+    PerformedAt  time.Time `json:"performedAt"`  // Concurrency token
 }
 ```
+
+Sibling event types (`APIUndeploymentEvent`, `APIDeletionEvent`, and the LLM/MCP-proxy deployment events) follow the same `apiId`/`deploymentId`/`performedAt` shape.
 
 ## Security Considerations
 

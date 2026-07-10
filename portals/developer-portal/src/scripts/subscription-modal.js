@@ -52,7 +52,7 @@ async function prepareSubscriptionModal(modalId) {
     if (!modal) return;
 
     const apiId = modalId.replace('planModal-', '');
-    const orgID = modal.dataset.orgId || window.__subscriptionOrgID;
+    const orgId = modal.dataset.orgId || window.__subscriptionOrgId;
     let apiRefId = modal.dataset.apiRefid || '';
     if (!apiRefId) apiRefId = apiId;
     const subscriptionContainer = document.getElementById('subscriptionContent-' + apiId);
@@ -69,7 +69,7 @@ async function prepareSubscriptionModal(modalId) {
     if (!subscriptionContainer) return;
     subscriptionContainer.innerHTML = '';
 
-    if (!orgID) {
+    if (!orgId) {
         subscriptionContainer.innerHTML = '<div class="alert alert-warning">Organization not available.</div>';
         subscriptionContainer.style.display = 'block';
         if (plansBody) plansBody.style.display = 'none';
@@ -77,7 +77,7 @@ async function prepareSubscriptionModal(modalId) {
     }
 
     try {
-        const resp = await fetch(devportalApi.org(orgID, `/subscriptions?apiId=${encodeURIComponent(apiRefId)}`), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
+        const resp = await fetch(devportalApi.root(`/subscriptions?apiId=${encodeURIComponent(apiRefId)}`), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
         if (!resp.ok) throw new Error('Failed to fetch subscriptions');
         const data = await resp.json();
 
@@ -86,7 +86,7 @@ async function prepareSubscriptionModal(modalId) {
         const plans = data.subscriptionPlans || data.plans || [];
 
         // expose token meta and org id for other helpers
-        window.__subscriptionOrgID = window.__subscriptionOrgID || orgID;
+        window.__subscriptionOrgId = window.__subscriptionOrgId || orgId;
 
         // Render existing subscriptions table
         if (existing && existing.length > 0) {
@@ -157,7 +157,7 @@ async function prepareSubscriptionModal(modalId) {
                 const toggleBtn = document.createElement('button');
                 toggleBtn.className = 'btn btn-sm btn-outline-warning';
                 toggleBtn.innerHTML = sub.status === 'ACTIVE' ? '<i class="bi bi-pause-circle"></i>' : '<i class="bi bi-play-circle"></i>';
-                toggleBtn.dataset.orgId = orgID;
+                toggleBtn.dataset.orgId = orgId;
                 toggleBtn.dataset.subscriptionId = sub.subscriptionId;
                 toggleBtn.dataset.newStatus = newStatus;
                 if (window.isReadOnly) toggleBtn.disabled = true;
@@ -167,7 +167,7 @@ async function prepareSubscriptionModal(modalId) {
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'btn btn-sm btn-outline-danger';
                 deleteBtn.innerHTML = '<i class="bi bi-trash"></i>';
-                deleteBtn.dataset.orgId = orgID;
+                deleteBtn.dataset.orgId = orgId;
                 deleteBtn.dataset.subscriptionId = sub.subscriptionId;
                 if (window.isReadOnly) deleteBtn.disabled = true;
                 deleteBtn.addEventListener('click', function() {
@@ -198,8 +198,8 @@ async function prepareSubscriptionModal(modalId) {
                     <div class="card dev-card subscription-card">
                         <div class="card-body align-items-center text-center p-0">
                             <span class="subscription-plans-card-title">${escapeHtml(plan.displayName || plan.subscriptionPlanName || '')}</span>
-                            <h1 class="subscription-plans-request-count">${escapeHtml(String(plan.requestCount || plan.rate || ''))}</h1>
-                            <p class="subscription-plans-card-subtitle pt-0">requests per minute</p>
+                            <h1 class="subscription-plans-request-count">${escapeHtml(formatPlanLimitSummary(plan))}</h1>
+                            <p class="subscription-plans-card-subtitle pt-0">${escapeHtml(formatPlanLimitSubtitle(plan))}</p>
                         </div>
                         <div class="position-relative">
                             <div class="message-overlay hidden"><div class="message-content"><i class="bi message-icon"></i><p class="message-text"></p></div><button type="button" class="close-message" aria-label="Close">&times;</button></div>
@@ -210,9 +210,10 @@ async function prepareSubscriptionModal(modalId) {
                 const btn = document.createElement('button');
                 btn.className = 'common-btn-primary subscribe-btn w-100';
                 btn.textContent = 'Subscribe';
-                btn.dataset.orgId = orgID;
+                btn.dataset.orgId = orgId;
                 btn.dataset.apiId = apiId;
-                btn.dataset.policyName = plan.policyName || plan.subscriptionPlanName || '';
+                btn.dataset.planId = plan.id || '';
+                btn.dataset.planName = plan.id || plan.subscriptionPlanName || '';
                 btn.dataset.displayName = plan.displayName || plan.subscriptionPlanName || '';
                 if (window.isReadOnly) {
                     btn.disabled = true;
@@ -250,4 +251,25 @@ async function prepareSubscriptionModal(modalId) {
 
 function escapeHtml(unsafe) {
     return String(unsafe).replace(/[&<>"'`]/g, function (m) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;","`":"&#96;"})[m]; });
+}
+
+var LIMIT_TYPE_LABELS = { REQUEST_COUNT: 'req', EVENT_COUNT: 'events', BANDWIDTH: 'bytes', TOTAL_TOKEN_COUNT: 'tokens' };
+var TIME_UNIT_LABELS  = { MINUTE: 'min', HOUR: 'hr', DAY: 'day', MONTH: 'mo' };
+
+function formatPlanLimitSummary(plan) {
+    var limits = plan.limits;
+    if (!limits || limits.length === 0) return 'Unlimited';
+    var first = limits[0];
+    return first.limitCount === -1 ? '∞' : String(first.limitCount);
+}
+
+function formatPlanLimitSubtitle(plan) {
+    var limits = plan.limits;
+    if (!limits || limits.length === 0) return '';
+    var first = limits[0];
+    var typeLabel = LIMIT_TYPE_LABELS[first.limitType] || (first.limitType || '').toLowerCase().replace(/_/g, ' ');
+    if (!first.timeUnit) return typeLabel;
+    var unitLabel = TIME_UNIT_LABELS[first.timeUnit] || (first.timeUnit || '').toLowerCase();
+    var amount = first.timeAmount && first.timeAmount !== 1 ? first.timeAmount + ' ' : '';
+    return typeLabel + ' / ' + amount + unitLabel;
 }

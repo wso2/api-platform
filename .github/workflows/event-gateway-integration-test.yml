@@ -45,7 +45,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: '1.26.2'
+          go-version: '1.26.5'
           cache-dependency-path: '**/go.sum'
 
       - name: Set up Docker Buildx
@@ -62,7 +62,7 @@ jobs:
         run: make -C event-gateway build-gateway-runtime VERSION=${{ steps.version.outputs.version }}
 
       - name: Build webhook-listener image
-        run: docker build -t event-gateway/webhook-listener:local event-gateway/webhook-listener
+        run: make -C event-gateway/webhook-listener build IMAGE_NAME=event-gateway/webhook-listener VERSION=local
 
       - name: Run integration tests
         run: make -C event-gateway/it test

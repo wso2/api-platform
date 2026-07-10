@@ -1,43 +1,82 @@
 {{- $unified := .Values.gateway.gatewayRuntime -}}
 {{- $deployment := $unified.deployment -}}
+{{- $service := $unified.service -}}
+{{- $nodePorts := default (dict) $service.nodePorts -}}
+{{- $isNodePortCapable := or (eq $service.type "NodePort") (eq $service.type "LoadBalancer") -}}
 {{- if $deployment.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "gateway-operator.fullname" . }}-gateway-runtime
   labels:
-    {{- include "gateway-operator.componentLabels" (list . "gateway-runtime" $unified.service.labels) | nindent 4 }}
-  {{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $unified.service.annotations) }}
-  {{- if $annotations }}
+    {{- include "gateway-operator.componentLabels" (list . "gateway-runtime" $service.labels) | nindent 4 }}
+  {{- with (include "gateway-operator.annotations" (list . $service.annotations)) }}
   annotations:
-    {{- toYaml $annotations | nindent 4 }}
+    {{- . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ $unified.service.type }}
+  type: {{ $service.type }}
+  {{- with $service.clusterIP }}
+  clusterIP: {{ . }}
+  {{- end }}
+  {{- if and $service.externalTrafficPolicy $isNodePortCapable }}
+  externalTrafficPolicy: {{ $service.externalTrafficPolicy }}
+  {{- end }}
+  {{- if eq $service.type "LoadBalancer" }}
+  {{- with $service.loadBalancerClass }}
+  loadBalancerClass: {{ . }}
+  {{- end }}
+  {{- with $service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+  {{- with $service.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ . }}
+  {{- end }}
+  {{- with $service.ipFamilies }}
+  ipFamilies:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   ports:
-    - port: {{ $unified.service.ports.http }}
+    - port: {{ $service.ports.http }}
       targetPort: http
       protocol: TCP
       name: http
-    - port: {{ $unified.service.ports.https }}
+      {{- if and $isNodePortCapable $nodePorts.http }}
+      nodePort: {{ $nodePorts.http }}
+      {{- end }}
+    - port: {{ $service.ports.https }}
       targetPort: https
       protocol: TCP
       name: https
-    - port: {{ $unified.service.ports.policyEngineMetrics }}
+      {{- if and $isNodePortCapable $nodePorts.https }}
+      nodePort: {{ $nodePorts.https }}
+      {{- end }}
+    - port: {{ $service.ports.policyEngineMetrics }}
       targetPort: pe-metrics
       protocol: TCP
       name: pe-metrics
-    {{- if $unified.service.expose.routerAdmin }}
-    - port: {{ $unified.service.ports.routerAdmin }}
+      {{- if and $isNodePortCapable $nodePorts.policyEngineMetrics }}
+      nodePort: {{ $nodePorts.policyEngineMetrics }}
+      {{- end }}
+    {{- if $service.expose.routerAdmin }}
+    - port: {{ $service.ports.routerAdmin }}
       targetPort: router-admin
       protocol: TCP
       name: router-admin
+      {{- if and $isNodePortCapable $nodePorts.routerAdmin }}
+      nodePort: {{ $nodePorts.routerAdmin }}
+      {{- end }}
     {{- end }}
-    {{- if $unified.service.expose.policyEngineAdmin }}
-    - port: {{ $unified.service.ports.policyEngineAdmin }}
+    {{- if $service.expose.policyEngineAdmin }}
+    - port: {{ $service.ports.policyEngineAdmin }}
       targetPort: pe-admin
       protocol: TCP
       name: pe-admin
+      {{- if and $isNodePortCapable $nodePorts.policyEngineAdmin }}
+      nodePort: {{ $nodePorts.policyEngineAdmin }}
+      {{- end }}
     {{- end }}
   selector:
     {{- include "gateway-operator.componentSelectorLabels" (list . "gateway-runtime") | nindent 4 }}

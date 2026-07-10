@@ -79,6 +79,11 @@ type LLMDeploymentService struct {
 	policyValidator     *config.PolicyValidator
 	transformer         Transformer
 	routerConfig        *config.RouterConfig
+
+	// controlPlaneClient and deploymentPushEnabled drive the DP->CP push performed when a
+	// gateway-originated artifact is created here including via the immutable-gateway loader.
+	controlPlaneClient    ArtifactPusher
+	deploymentPushEnabled bool
 }
 
 // NewLLMDeploymentService initializes the service
@@ -121,6 +126,16 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	}
 
 	return service
+}
+
+// SetControlPlanePusher wires the control-plane push dependency used to forward
+// gateway-created artifacts to the control plane (DP->CP). It is set on the instances that
+// serve gateway-originated creates (the REST handlers' service and the immutable loader's
+// service), and left unset on the control plane client's internal service so CP-originated
+// applies are never pushed back.
+func (s *LLMDeploymentService) SetControlPlanePusher(pusher ArtifactPusher, pushEnabled bool) {
+	s.controlPlaneClient = pusher
+	s.deploymentPushEnabled = pushEnabled
 }
 
 func (s *LLMDeploymentService) publishLLMProviderEvent(action, entityID, correlationID string, logger *slog.Logger) {
@@ -275,20 +290,19 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		return nil, fmt.Errorf("failed to transform LLM provider to API configuration: %w", err)
 	}
 
-	// Validate policies against loaded policy definitions
-	// if s.policyValidator != nil {
-	// 	policyErrors := s.policyValidator.ValidatePolicies(&apiConfig)
-	// 	if len(policyErrors) > 0 {
-	// 		errs := make([]string, 0, len(policyErrors))
-	// 		for i, e := range policyErrors {
-	// 			if params.Logger != nil {
-	// 				params.Logger.Warn("Policy validation error", slog.String("field", e.Field), slog.String("message", e.Message))
-	// 			}
-	// 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
-	// 		}
-	// 		return nil, fmt.Errorf("policy validation failed with %d error(s): %s", len(policyErrors), strings.Join(errs, "; "))
-	// 	}
-	// }
+	// Validate policy references (name + version) against the loaded policy definitions.
+	// Mirrors the REST API path (ValidateRestAPIPolicies); an unresolvable policy name or
+	// version fails the deploy instead of being silently dropped by the runtime transform.
+	if s.policyValidator != nil {
+		if policyErrors := s.policyValidator.ValidateLLMProviderPolicies(&renderedProvider); len(policyErrors) > 0 {
+			errs := make([]string, 0, len(policyErrors))
+			for i, e := range policyErrors {
+				params.Logger.Warn("Policy validation error", slog.String("field", e.Field), slog.String("message", e.Message))
+				errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
+			}
+			return nil, fmt.Errorf("provider policy validation failed with %d error(s): %s", len(policyErrors), strings.Join(errs, "; "))
+		}
+	}
 
 	// Generate API ID if not provided
 	apiID := params.ID
@@ -323,6 +337,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		DesiredState:        desiredState,
 		DeploymentID:        params.DeploymentID,
 		Origin:              params.Origin,
+		CPSyncStatus:        cpSyncStatusForOrigin(params.Origin),
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          deployedAt,
@@ -447,20 +462,19 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		return nil, fmt.Errorf("failed to transform LLM proxy to API configuration: %w", err)
 	}
 
-	// Validate policies against loaded policy definitions
-	// if s.policyValidator != nil {
-	// 	policyErrors := s.policyValidator.ValidatePolicies(&apiConfig)
-	// 	if len(policyErrors) > 0 {
-	// 		errs := make([]string, 0, len(policyErrors))
-	// 		for i, e := range policyErrors {
-	// 			if params.Logger != nil {
-	// 				params.Logger.Warn("Policy validation error", slog.String("field", e.Field), slog.String("message", e.Message))
-	// 			}
-	// 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
-	// 		}
-	// 		return nil, fmt.Errorf("policy validation failed with %d error(s): %s", len(policyErrors), strings.Join(errs, "; "))
-	// 	}
-	// }
+	// Validate policy references (name + version) against the loaded policy definitions.
+	// Mirrors the REST API path (ValidateRestAPIPolicies); an unresolvable policy name or
+	// version fails the deploy instead of being silently dropped by the runtime transform.
+	if s.policyValidator != nil {
+		if policyErrors := s.policyValidator.ValidateLLMProxyPolicies(&renderedProxy); len(policyErrors) > 0 {
+			errs := make([]string, 0, len(policyErrors))
+			for i, e := range policyErrors {
+				params.Logger.Warn("Policy validation error", slog.String("field", e.Field), slog.String("message", e.Message))
+				errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
+			}
+			return nil, fmt.Errorf("%w: %d policy error(s): %s", ErrLLMProxyValidation, len(policyErrors), strings.Join(errs, "; "))
+		}
+	}
 
 	// Generate API ID if not provided
 	apiID := params.ID
@@ -495,6 +509,7 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 		DesiredState:        proxyDesiredState,
 		DeploymentID:        params.DeploymentID,
 		Origin:              params.Origin,
+		CPSyncStatus:        cpSyncStatusForOrigin(params.Origin),
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          deployedAt,
@@ -641,6 +656,9 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 	}
 
 	s.publishLLMTemplateEvent("CREATE", stored.UUID, params.CorrelationID, params.Logger)
+
+	s.pushTemplateToControlPlane(stored, params.Logger)
+
 	return stored, nil
 }
 
@@ -845,6 +863,9 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 	}
 
 	s.publishLLMTemplateEvent("UPDATE", updated.UUID, params.CorrelationID, params.Logger)
+
+	s.pushTemplateToControlPlane(updated, params.Logger)
+
 	return updated, nil
 }
 
@@ -970,7 +991,12 @@ func (s *LLMDeploymentService) removeProviderTemplateMappingLazyResource(provide
 
 // CreateLLMProvider is a convenience wrapper around DeployLLMProviderConfiguration for creating providers
 func (s *LLMDeploymentService) CreateLLMProvider(params LLMDeploymentParams) (*APIDeploymentResult, error) {
-	return s.DeployLLMProviderConfiguration(params)
+	result, err := s.DeployLLMProviderConfiguration(params)
+	if err != nil {
+		return nil, err
+	}
+	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
+	return result, nil
 }
 
 // ListLLMProviders returns all stored LLM provider configurations with optional filtering
@@ -1103,7 +1129,12 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 	// Ensure Deploy uses existing ID so it performs an update
 	params.ID = existing.UUID
 	params.IsUpdate = true
-	return s.DeployLLMProviderConfiguration(params)
+	result, err := s.DeployLLMProviderConfiguration(params)
+	if err != nil {
+		return nil, err
+	}
+	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
+	return result, nil
 }
 
 // DeleteLLMProvider deletes by name+version using store/db and updates snapshot
@@ -1166,7 +1197,12 @@ func (s *LLMDeploymentService) ListLLMProxies(params api.ListLLMProxiesParams) [
 
 // CreateLLMProxy is a convenience wrapper around DeployLLMProxyConfiguration for creating proxies
 func (s *LLMDeploymentService) CreateLLMProxy(params LLMDeploymentParams) (*APIDeploymentResult, error) {
-	return s.DeployLLMProxyConfiguration(params)
+	result, err := s.DeployLLMProxyConfiguration(params)
+	if err != nil {
+		return nil, err
+	}
+	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
+	return result, nil
 }
 
 // UpdateLLMProxy updates an existing proxy identified by name+version using DeployLLMProxyConfiguration.
@@ -1196,7 +1232,12 @@ func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentPar
 	// Ensure Deploy uses existing ID so it performs an update
 	params.ID = existing.UUID
 	params.IsUpdate = true
-	return s.DeployLLMProxyConfiguration(params)
+	result, err := s.DeployLLMProxyConfiguration(params)
+	if err != nil {
+		return nil, err
+	}
+	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
+	return result, nil
 }
 
 // isLLMProviderUndeployRequest parses just enough of the provider config to check if deploymentState is "undeployed".
@@ -1245,4 +1286,50 @@ func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logg
 	}
 	s.publishLLMProxyEvent("DELETE", cfg.UUID, correlationID, logger)
 	return cfg, nil
+}
+
+// pushTemplateToControlPlane forwards a gateway-created LLM provider template to the control
+// plane (DP->CP). It is a no-op when push is disabled or the control plane is disconnected.
+func (s *LLMDeploymentService) pushTemplateToControlPlane(stored *models.StoredLLMProviderTemplate, log *slog.Logger) {
+	if stored == nil || !s.canPushToControlPlane() {
+		return
+	}
+	if log == nil {
+		log = slog.Default()
+	}
+	cfg := &models.StoredConfig{
+		UUID:                stored.UUID,
+		Kind:                models.KindLlmProviderTemplate,
+		Handle:              stored.GetHandle(),
+		DisplayName:         stored.GetHandle(),
+		Configuration:       stored.Configuration,
+		SourceConfiguration: stored.Configuration,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginGatewayAPI,
+		CreatedAt:           stored.CreatedAt,
+		UpdatedAt:           stored.UpdatedAt,
+	}
+	pusher := s.controlPlaneClient
+	go func(c *models.StoredConfig) {
+		if err := pusher.PushArtifact(c.UUID, c, ""); err != nil {
+			log.Error("Failed to push LLM provider template to control plane",
+				slog.String("uuid", c.UUID), slog.Any("error", err))
+		}
+	}(cfg)
+}
+
+// pushDeployableArtifact forwards a freshly created or updated, gateway-originated deployable
+// LLM artifact (provider/proxy) to the control plane once it finishes deploying.
+func (s *LLMDeploymentService) pushDeployableArtifact(result *APIDeploymentResult, correlationID string, log *slog.Logger) {
+	if result == nil || result.IsStale || result.StoredConfig == nil {
+		return
+	}
+	if result.StoredConfig.Origin == models.OriginGatewayAPI && s.canPushToControlPlane() {
+		go waitForDeploymentAndPush(s.store, s.controlPlaneClient, result.StoredConfig.UUID, correlationID, result.StoredConfig.DeployedAt, log)
+	}
+}
+
+// canPushToControlPlane reports whether a DP->CP push should be attempted now.
+func (s *LLMDeploymentService) canPushToControlPlane() bool {
+	return s.deploymentPushEnabled && s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected()
 }

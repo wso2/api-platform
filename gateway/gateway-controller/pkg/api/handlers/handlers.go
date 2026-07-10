@@ -21,6 +21,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,8 +31,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
-	"github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	"github.com/wso2/api-platform/common/redact"
@@ -40,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -49,6 +50,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
+	"github.com/wso2/go-httpkit/httputil"
+	"gopkg.in/yaml.v3"
 )
 
 // APIServer implements the generated ServerInterface
@@ -153,8 +156,19 @@ func NewAPIServer(
 		subscriptionResourceService: subscriptionResourceService,
 		webhookSecretService:        webhookSecretService,
 	}
+	// Wire the DP->CP push into the LLM/MCP deployment services so create flows push to the
+	// control plane from the service layer (mirroring the REST API service), instead of the
+	// handler doing it. This keeps the push behavior identical whether an artifact is created
+	// via these handlers or directly through the service layer (e.g. the immutable loader).
+	pushEnabled := systemConfig.Controller.ControlPlane.DeploymentSyncEnabled
+	server.mcpDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
+	server.llmDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
+
 	server.restAPIService = restAPIService
 	server.RestAPIHandler = NewRestAPIHandler(restAPIService, logger)
+	// Wire the shared control-plane (DP->CP) push hooks so REST APIs use the same push
+	// path (APIServer.waitForDeploymentAndPush / pushArtifactUndeploy) as all other kinds.
+	server.RestAPIHandler.pushArtifactUndeploy = server.pushArtifactUndeploy
 
 	// Register status update callback
 	snapshotManager.SetStatusCallback(server.handleStatusUpdate)
@@ -200,8 +214,8 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, correlatio
 }
 
 // GetXDSSyncStatus implements the GET /xds_sync_status endpoint.
-func (s *APIServer) GetXDSSyncStatus(c *gin.Context) {
-	c.JSON(http.StatusOK, s.GetXDSSyncStatusResponse())
+func (s *APIServer) GetXDSSyncStatus(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusOK, s.GetXDSSyncStatusResponse())
 }
 
 // GetXDSSyncStatusResponse builds the xDS sync status response payload.
@@ -217,17 +231,17 @@ func (s *APIServer) GetXDSSyncStatusResponse() adminapi.XDSSyncStatusResponse {
 	}
 }
 
-func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
+func (s *APIServer) SearchDeployments(w http.ResponseWriter, r *http.Request, kind string) {
 	filterKeys := []string{"displayName", "version", "context", "status"}
 	filters := make(map[string]string)
 	for _, k := range filterKeys {
-		if v := c.Query(k); v != "" {
+		if v := r.URL.Query().Get(k); v != "" {
 			filters[k] = v
 		}
 	}
 
 	if s.store == nil {
-		c.JSON(http.StatusOK, gin.H{
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{
 			"status": "success",
 			"count":  0,
 		})
@@ -240,7 +254,7 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 		configs, err = s.mcpDeploymentService.ListMCPProxies()
 		if err != nil {
 			s.logger.Error("Failed to list MCP proxies", slog.Any("error", err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to list MCP proxies",
 			})
@@ -277,7 +291,7 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 		if kind == string(api.MCPProxyConfigurationKindMcp) {
 			mcp, err := rematerializeMCPProxyConfig(s.logger, cfg.UUID, cfg.DisplayName, cfg.SourceConfiguration)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 					Status:  "error",
 					Message: "Failed to get stored MCP configuration",
 				})
@@ -299,7 +313,7 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 		envelopeKey = "websubApis"
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":    "success",
 		"count":     len(items),
 		envelopeKey: items,
@@ -308,36 +322,58 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 
 // GetAPIByNameVersion implements ServerInterface.GetAPIByNameVersion
 // (GET /apis/{name}/{version})
-func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version string) {
+func (s *APIServer) GetAPIByNameVersion(w http.ResponseWriter, r *http.Request, name string, version string) {
 	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
+	log := middleware.GetLogger(r, s.logger)
 
 	cfg, err := s.store.GetByKindNameAndVersion(models.KindRestApi, name, version)
 	if err != nil || cfg == nil {
 		log.Warn("API configuration not found",
 			slog.String("name", name),
 			slog.String("version", version))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("RestAPI with name '%s' and version '%s' not found", name, version),
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
+	httputil.WriteJSON(w, http.StatusOK, buildResourceResponseFromStored(cfg.SourceConfiguration, cfg))
+}
+
+// pushArtifactUndeploy notifies the control plane that a gateway-originated artifact
+// has been deleted from this gateway. The control plane keeps the artifact but marks
+// it undeployed (it is not removed and can be re-deployed later). It is a no-op for
+// control-plane-originated artifacts or when push is disabled / disconnected.
+func (s *APIServer) pushArtifactUndeploy(cfg *models.StoredConfig, log *slog.Logger) {
+	if cfg == nil || cfg.Origin != models.OriginGatewayAPI {
+		return
+	}
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() && s.systemConfig.Controller.ControlPlane.DeploymentSyncEnabled {
+		undeploy := *cfg
+		undeploy.DesiredState = models.StateUndeployed
+		go func(uc models.StoredConfig) {
+			if err := s.controlPlaneClient.PushArtifact(uc.UUID, &uc, uc.DeploymentID); err != nil {
+				log.Error("Failed to push artifact undeploy to control plane",
+					slog.String("artifact_id", uc.UUID), slog.Any("error", err))
+			}
+		}(undeploy)
+	}
 }
 
 // waitForDeploymentAndPush waits for API deployment to complete and pushes it to the control plane
-// This is only called for APIs created directly via gateway endpoint (not from platform API)
-func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID string, log *slog.Logger) {
+// This is only called for APIs created directly via gateway endpoint (not from platform API).
+//
+// minDeployedAt is the DeployedAt of the deployment this push was triggered for.
+func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID string, minDeployedAt *time.Time, log *slog.Logger) {
 	// Create a logger with correlation ID if provided
 	if correlationID != "" {
 		log = log.With(slog.String("correlation_id", correlationID))
 	}
 
 	// Poll for deployment status with timeout
-	timeout := time.NewTimer(30 * time.Second)       // 30 second timeout
-	ticker := time.NewTicker(500 * time.Millisecond) // Check every 500ms
+	timeout := time.NewTimer(constants.CPPushDeploymentTimeout)
+	ticker := time.NewTicker(constants.CPPushPollInterval)
 	defer timeout.Stop()
 	defer ticker.Stop()
 
@@ -356,24 +392,28 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 				continue
 			}
 
-			if cfg.DeployedAt != nil {
-				log.Info("API deployed successfully, pushing to control plane",
-					slog.String("config_id", configID),
-					slog.String("displayName", cfg.DisplayName))
-
-				apiID := configID
-				deploymentID := cfg.DeploymentID
-
-				if err := s.controlPlaneClient.PushAPIDeployment(apiID, cfg, deploymentID); err != nil {
-					log.Error("Failed to push deployment to control plane",
-						slog.String("api_id", apiID),
-						slog.Any("error", err))
-				} else {
-					log.Info("Successfully pushed deployment to control plane",
-						slog.String("api_id", apiID))
-				}
-				return
+			// Not deployed yet, or the store still holds a snapshot older than the
+			// deployment we were triggered for — keep waiting.
+			if cfg.DeployedAt == nil || (minDeployedAt != nil && cfg.DeployedAt.Before(*minDeployedAt)) {
+				continue
 			}
+
+			log.Info("API deployed successfully, pushing to control plane",
+				slog.String("config_id", configID),
+				slog.String("displayName", cfg.DisplayName))
+
+			apiID := configID
+			deploymentID := cfg.DeploymentID
+
+			if err := s.controlPlaneClient.PushArtifact(apiID, cfg, deploymentID); err != nil {
+				log.Error("Failed to push deployment to control plane",
+					slog.String("api_id", apiID),
+					slog.Any("error", err))
+			} else {
+				log.Info("Successfully pushed deployment to control plane",
+					slog.String("api_id", apiID))
+			}
+			return
 		}
 	}
 }
@@ -401,14 +441,14 @@ func (s *APIServer) publishWebSubEvent(eventType eventhub.EventType, action, ent
 }
 
 // GetConfigDump implements the GET /config_dump endpoint
-func (s *APIServer) GetConfigDump(c *gin.Context) {
-	log := middleware.GetLogger(c, s.logger)
+func (s *APIServer) GetConfigDump(w http.ResponseWriter, r *http.Request) {
+	log := middleware.GetLogger(r, s.logger)
 	log.Info("Retrieving configuration dump")
 
 	response, err := s.BuildConfigDumpResponse(log)
 	if err != nil {
 		log.Error("Failed to retrieve configuration dump", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: err.Error(),
 		})
@@ -418,7 +458,7 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 	jsonBytes, err := json.Marshal(*response)
 	if err != nil {
 		log.Error("Failed to marshal configuration dump", slog.Any("error", err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: err.Error(),
 		})
@@ -428,7 +468,9 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 	sensitiveValues := s.store.GetAllSensitiveValues()
 	redacted := redact.Redact(string(jsonBytes), sensitiveValues)
 
-	c.Data(http.StatusOK, "application/json", []byte(redacted))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(redacted)) //nolint:errcheck
 	log.Info("Configuration dump retrieved successfully",
 		slog.Int("apis", len(*response.Apis)),
 		slog.Int("policies", len(*response.Policies)),
@@ -575,67 +617,49 @@ func (s *APIServer) getPolicyChainVersionString() string {
 
 func ptr[T any](v T) *T { return &v }
 
-// extractAuthenticatedUser extracts and validates the authenticated user from Gin context
-// Returns the AuthenticatedUser object and handles error responses automatically
-func (s *APIServer) extractAuthenticatedUser(c *gin.Context, operationName string, correlationID string) (*commonmodels.AuthContext, bool) {
+// extractAuthenticatedUser extracts and validates the authenticated user from the request context.
+// Returns the AuthContext object and handles error responses automatically.
+func (s *APIServer) extractAuthenticatedUser(w http.ResponseWriter, r *http.Request, operationName string, correlationID string) (*commonmodels.AuthContext, bool) {
 	log := s.logger
-
-	// Extract authentication context
-	authCtxValue, exists := c.Get(constants.AuthContextKey)
-	if !exists {
+	user, ok := authenticators.GetAuthContext(r)
+	if !ok {
 		log.Error("Authentication context not found",
 			slog.String("operation", operationName),
 			slog.String("correlation_id", correlationID))
-		c.JSON(http.StatusUnauthorized, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusUnauthorized, api.ErrorResponse{
 			Status:  "error",
 			Message: "Authentication context not available",
 		})
 		return nil, false
 	}
-
-	// Type assert to AuthContext
-	user, ok := authCtxValue.(commonmodels.AuthContext)
-	if !ok {
-		log.Error("Invalid authentication context type",
-			slog.String("operation", operationName),
-			slog.String("correlation_id", correlationID))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Invalid authentication context",
-		})
-		return nil, false
-	}
-
 	log.Debug("Authenticated user extracted",
 		slog.String("operation", operationName),
 		slog.String("user_id", user.UserID),
 		slog.Any("roles", user.Roles),
 		slog.String("correlation_id", correlationID))
-
 	return &user, true
 }
 
 // bindRequestBody binds the request body based on Content-Type header.
 // Supports both JSON and YAML content types.
 // Handles Content-Type headers case-insensitively and strips parameters (e.g., charset).
-func (s *APIServer) bindRequestBody(c *gin.Context, request interface{}) error {
-	contentType := c.GetHeader("Content-Type")
-
-	// Normalize the Content-Type: trim whitespace, split off parameters, and convert to lowercase
+func (s *APIServer) bindRequestBody(r *http.Request, request interface{}) error {
+	contentType := r.Header.Get("Content-Type")
 	contentType = strings.TrimSpace(contentType)
 	if idx := strings.Index(contentType, ";"); idx != -1 {
 		contentType = contentType[:idx]
 	}
-	contentType = strings.TrimSpace(contentType)
-	contentType = strings.ToLower(contentType)
+	contentType = strings.TrimSpace(strings.ToLower(contentType))
 
-	// Check for YAML content types (case-insensitive, normalized)
-	if contentType == "application/yaml" || contentType == "text/yaml" {
-		return c.ShouldBindYAML(request)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return err
 	}
 
-	// Default to JSON for application/json or when no content type is specified
-	return c.ShouldBindJSON(request)
+	if contentType == "application/yaml" || contentType == "text/yaml" {
+		return yaml.Unmarshal(body, request)
+	}
+	return json.Unmarshal(body, request)
 }
 
 // getLLMProviderTemplate extracts the template name from sourceConfig and retrieves the template.
