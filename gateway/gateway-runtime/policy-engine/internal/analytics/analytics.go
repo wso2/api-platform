@@ -64,12 +64,6 @@ const (
 	RequestHeadersKey  = "request_headers"
 	ResponseHeadersKey = "response_headers"
 
-	// TrafficLogMetadataKey is the analytics-metadata key under which the
-	// log-message policy (in access-log mode) stamps its per-API opt-in marker.
-	// Its presence gates the stdout traffic-logging publisher; its value (a JSON
-	// directive) shapes the emitted line. Must match the key used by that policy.
-	TrafficLogMetadataKey = "traffic_log"
-
 	// PromptTokenCountMetadataKey represents the prompt token count metadata key.
 	PromptTokenCountMetadataKey string = "aitoken:prompttokencount"
 	// CompletionTokenCountMetadataKey represents the completion token count metadata key.
@@ -213,16 +207,6 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		slog.Debug(fmt.Sprintf("Metadata key: %v -> value: %+v", key, value))
 	}
 
-	// Extract the per-API traffic-log opt-in marker stamped by the log-message
-	// policy (access-log mode). Its presence marks the API as opted in to stdout
-	// traffic logging;
-	// its value shapes the emitted line. It is intentionally kept off
-	// event.Properties so it never reaches the serialized output or other
-	// publishers (e.g. Moesif). A malformed marker still opts the API in with
-	// default (empty) presentation, since attachment alone signals intent.
-	if raw, exists := keyValuePairsFromMetadata[TrafficLogMetadataKey]; exists {
-		event.TrafficLog = c.parseTrafficLogDirective(raw)
-	}
 	// Prepare extended API
 	extendedAPI := dto.ExtendedAPI{}
 	extendedAPI.APIType = keyValuePairsFromMetadata[APITypeKey]
@@ -562,18 +546,6 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 
 	return event
-}
-
-// parseTrafficLogDirective parses the raw traffic_log directive JSON for the
-// current request.
-func (c *Analytics) parseTrafficLogDirective(raw string) *dto.TrafficLogDirective {
-	dir := &dto.TrafficLogDirective{}
-	if raw != "" {
-		if err := json.Unmarshal([]byte(raw), dir); err != nil {
-			slog.Warn("Failed to parse traffic_log directive; opting in with defaults", "error", err)
-		}
-	}
-	return dir
 }
 
 func (c *Analytics) getAnonymousApp() *dto.Application {

@@ -45,18 +45,17 @@ type Log struct {
 	// maxPayloadSize caps the number of request/response payload bytes written to
 	// the log line (0 = no limit). Truncation is output-side only.
 	maxPayloadSize int
-	// globalDir is the fallback directive used for requests whose API did not
-	// stamp a per-API traffic_log marker (no log-message policy attached, or one
-	// attached without enableTrafficLogging). Nil when global traffic logging is
-	// disabled, in which case only per-API opted-in events are emitted. Its
-	// Properties field is always left nil: global properties are request-time
-	// values (see globalProperties) and are attached to a per-request copy of
-	// this directive in resolveGlobalDirective, never mutated in place here.
+	// globalDir is the directive built from [traffic_logging] config, used for
+	// every request. Nil when traffic logging is disabled, in which case Publish
+	// is a no-op. Its Properties field is always left nil: properties are
+	// request-time values (see globalProperties) and are attached to a
+	// per-request copy of this directive in resolveGlobalDirective, never
+	// mutated in place here.
 	globalDir *dto.TrafficLogDirective
-	// globalProperties resolves traffic_logging.global.properties per request
-	// when falling back to globalDir. Nil (via a zero-value evaluator) is never
-	// stored; buildGlobalPropertyEvaluator always returns a usable, possibly-
-	// empty evaluator whose resolve() returns nil when nothing is configured.
+	// globalProperties resolves traffic_logging.properties per request. Nil (via
+	// a zero-value evaluator) is never stored; buildGlobalPropertyEvaluator
+	// always returns a usable, possibly-empty evaluator whose resolve() returns
+	// nil when nothing is configured.
 	globalProperties *globalPropertyEvaluator
 	// mu serializes writes to stdout so concurrent ALS streams do not interleave.
 	mu sync.Mutex
@@ -81,49 +80,47 @@ func NewLog(logCfg *config.TrafficLoggingConfig) *Log {
 	return &Log{
 		maskedHeaders:    masked,
 		maxPayloadSize:   logCfg.MaxPayloadSize,
-		globalDir:        buildGlobalDirective(logCfg.Global),
-		globalProperties: newGlobalPropertyEvaluator(logCfg.Global.Properties),
+		globalDir:        buildGlobalDirective(*logCfg),
+		globalProperties: newGlobalPropertyEvaluator(logCfg.Properties),
 		out:              os.Stdout,
 	}
 }
 
-// buildGlobalDirective converts the global traffic-logging config into a
-// TrafficLogDirective usable as a fallback in Publish. Returns nil when global
-// traffic logging is disabled. MaskedHeaders is left empty: the global config's
-// masked_headers list already applies via Log.maskedHeaders.
-func buildGlobalDirective(global config.GlobalTrafficLoggingConfig) *dto.TrafficLogDirective {
-	if !global.Enabled {
+// buildGlobalDirective converts the traffic-logging config into a
+// TrafficLogDirective used by every Publish call. Returns nil when traffic
+// logging is disabled.
+func buildGlobalDirective(cfg config.TrafficLoggingConfig) *dto.TrafficLogDirective {
+	if !cfg.Enabled {
 		return nil
 	}
 
 	dir := &dto.TrafficLogDirective{
 		Request: &dto.TrafficLogFlow{
-			Headers: global.RequestHeaders,
-			Payload: global.RequestBody,
+			Headers: cfg.RequestHeaders,
+			Payload: cfg.RequestBody,
 		},
 		Response: &dto.TrafficLogFlow{
-			Headers: global.ResponseHeaders,
-			Payload: global.ResponseBody,
+			Headers: cfg.ResponseHeaders,
+			Payload: cfg.ResponseBody,
 		},
 	}
 
-	if len(global.Fields.Only) > 0 || len(global.Fields.Exclude) > 0 {
+	if len(cfg.Fields.Only) > 0 || len(cfg.Fields.Exclude) > 0 {
 		dir.Fields = &dto.TrafficLogFields{
-			Only:    global.Fields.Only,
-			Exclude: global.Fields.Exclude,
+			Only:    cfg.Fields.Only,
+			Exclude: cfg.Fields.Exclude,
 		}
 	}
 
 	return dir
 }
 
-// resolveGlobalDirective returns the directive to use for a request falling
-// back to global traffic logging (l.globalDir is guaranteed non-nil by the
-// caller). When global properties are configured, it returns a shallow copy
-// of l.globalDir carrying this request's resolved Properties, so concurrent
-// requests never race on a shared, mutated globalDir.Properties field. The
-// Request/Response/Fields pointers are shared read-only state and safe to
-// alias across the copy.
+// resolveGlobalDirective returns the directive to use for a request
+// (l.globalDir is guaranteed non-nil by the caller). When global properties are
+// configured, it returns a shallow copy of l.globalDir carrying this request's
+// resolved Properties, so concurrent requests never race on a shared, mutated
+// globalDir.Properties field. The Request/Response/Fields pointers are shared
+// read-only state and safe to alias across the copy.
 func (l *Log) resolveGlobalDirective(event *dto.Event) *dto.TrafficLogDirective {
 	resolved := l.globalProperties.resolve(event)
 	if len(resolved) == 0 {
@@ -134,23 +131,14 @@ func (l *Log) resolveGlobalDirective(event *dto.Event) *dto.TrafficLogDirective 
 	return &dirCopy
 }
 
-// Publish writes the event to stdout as JSON. A per-API traffic-log directive
-// (stamped by the log-message policy on APIs that opted in) always takes
-// precedence; when absent, the global fallback directive is used if global
-// traffic logging is enabled. If neither applies, the event is skipped.
+// Publish writes the event to stdout as JSON, using the directive built from
+// [traffic_logging] config. If traffic logging is disabled, the event is skipped.
 func (l *Log) Publish(event *dto.Event) {
-	if event == nil {
+	if event == nil || l.globalDir == nil {
 		return
 	}
 
-	dir := event.TrafficLog
-	if dir == nil {
-		if l.globalDir == nil {
-			return
-		}
-		dir = l.resolveGlobalDirective(event)
-	}
-
+	dir := l.resolveGlobalDirective(event)
 	tl := l.toTrafficLogEvent(event, dir)
 
 	data, err := json.Marshal(tl)
@@ -299,12 +287,10 @@ func filterNestedKeys(m map[string]json.RawMessage, top string, keep func(string
 }
 
 // maskHeaders redacts header values whose names appear in mask (case-insensitive).
-// Returns a new map; the input is not modified. To drop a header entirely rather
-// than redacting its value, prefer the per-flow excludeHeaders directive (see
-// dropHeaders), which matches header names case-insensitively. A dotted
-// fields.exclude path (e.g. "requestHeaders.Authorization") can also drop a field,
-// but it matches the emitted key case-sensitively — so it must reproduce the exact
-// casing Envoy delivered, and is not a reliable way to drop a header by name.
+// Returns a new map; the input is not modified. A dotted fields.exclude path
+// (e.g. "requestHeaders.Authorization") can drop a header entirely instead of
+// redacting it, but it matches the emitted key case-sensitively — so it must
+// reproduce the exact casing Envoy delivered.
 func (l *Log) maskHeaders(headers map[string]string, mask map[string]bool) map[string]string {
 	result := make(map[string]string, len(headers))
 	for name, value := range headers {
@@ -315,24 +301,4 @@ func (l *Log) maskHeaders(headers map[string]string, mask map[string]bool) map[s
 		}
 	}
 	return result
-}
-
-// dropHeaders deletes, in place, any header whose name (case-insensitive) appears
-// in exclude. It is a no-op when exclude is empty. Unlike masking (which redacts
-// the value) this removes the key entirely, matching the log-message policy's
-// per-flow excludeHeaders semantics. Callers pass the freshly-built, non-shared
-// map returned by maskHeaders, so in-place mutation never affects other publishers.
-func dropHeaders(headers map[string]string, exclude []string) {
-	if len(exclude) == 0 {
-		return
-	}
-	drop := make(map[string]bool, len(exclude))
-	for _, h := range exclude {
-		drop[strings.ToLower(strings.TrimSpace(h))] = true
-	}
-	for name := range headers {
-		if drop[strings.ToLower(name)] {
-			delete(headers, name)
-		}
-	}
 }

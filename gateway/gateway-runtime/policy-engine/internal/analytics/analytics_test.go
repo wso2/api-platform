@@ -403,59 +403,6 @@ func TestPrepareAnalyticEvent_WithFilterMetadata(t *testing.T) {
 	assert.Equal(t, "TestApp", event.Application.ApplicationName)
 }
 
-func TestPrepareAnalyticEvent_TrafficLogMarker(t *testing.T) {
-	cfg := &config.Config{}
-	analytics := NewAnalytics(cfg)
-
-	logEntry := createLogEntryWithMetadata(map[string]string{
-		APINameKey:            "TestAPI",
-		TrafficLogMetadataKey: `{"request":{"payload":false,"headers":true}}`,
-	})
-
-	event := analytics.prepareAnalyticEvent(logEntry)
-
-	require.NotNil(t, event)
-	require.NotNil(t, event.TrafficLog, "traffic_log marker should populate event.TrafficLog")
-	require.NotNil(t, event.TrafficLog.Request)
-	assert.True(t, event.TrafficLog.Request.Headers)
-	assert.False(t, event.TrafficLog.Request.Payload)
-	assert.Nil(t, event.TrafficLog.Response, "unset flow stays nil")
-
-	// The marker must never leak into serialized properties (or other publishers).
-	_, inProps := event.Properties[TrafficLogMetadataKey]
-	assert.False(t, inProps, "traffic_log must not appear in event.Properties")
-}
-
-func TestPrepareAnalyticEvent_NoTrafficLogMarker(t *testing.T) {
-	cfg := &config.Config{}
-	analytics := NewAnalytics(cfg)
-
-	logEntry := createLogEntryWithMetadata(map[string]string{APINameKey: "TestAPI"})
-
-	event := analytics.prepareAnalyticEvent(logEntry)
-
-	require.NotNil(t, event)
-	assert.Nil(t, event.TrafficLog, "no marker -> event.TrafficLog stays nil (publisher skips)")
-}
-
-func TestPrepareAnalyticEvent_MalformedTrafficLogMarker(t *testing.T) {
-	cfg := &config.Config{}
-	analytics := NewAnalytics(cfg)
-
-	logEntry := createLogEntryWithMetadata(map[string]string{
-		TrafficLogMetadataKey: "not-json",
-	})
-
-	event := analytics.prepareAnalyticEvent(logEntry)
-
-	require.NotNil(t, event)
-	// Presence alone is the opt-in signal; a malformed marker still opts in with
-	// default (empty) presentation.
-	require.NotNil(t, event.TrafficLog)
-	assert.Nil(t, event.TrafficLog.Request)
-	assert.Nil(t, event.TrafficLog.Response)
-}
-
 func TestPrepareAnalyticEvent_WithAnonymousApp(t *testing.T) {
 	cfg := &config.Config{}
 	analytics := NewAnalytics(cfg)

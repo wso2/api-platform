@@ -94,7 +94,9 @@ type AnalyticsPublishersConfig struct {
 
 // TrafficLoggingConfig holds configuration for the stdout traffic-logging feature,
 // which writes each collected event to stdout as a JSON line. It is a consumer of
-// the collector; enabling it implicitly activates the collector.
+// the collector; enabling it implicitly activates the collector. There is a single
+// mode: when Enabled, a stdout line is emitted for every request to every API, with
+// no policy required — including requests denied by an auth policy short-circuit.
 type TrafficLoggingConfig struct {
 	// Enabled turns stdout JSON traffic logging on.
 	Enabled bool `koanf:"enabled"`
@@ -106,21 +108,6 @@ type TrafficLoggingConfig struct {
 	// the collector still captures the full body and other consumers (e.g. Moesif)
 	// are unaffected.
 	MaxPayloadSize int `koanf:"max_payload_size"`
-	// Global configures always-on traffic logging: when enabled, a stdout line is
-	// emitted for every request to every API, with no log-message policy required.
-	// It applies as a fallback default only for requests whose API did not stamp a
-	// per-API traffic_log marker; a per-API log-message directive still wins.
-	Global GlobalTrafficLoggingConfig `koanf:"global"`
-}
-
-// GlobalTrafficLoggingConfig configures the no-policy, all-APIs traffic-logging
-// fallback. Unlike the per-API log-message policy, it runs for every request the
-// stdout publisher sees, including requests denied by an auth policy short-circuit
-// (which never reach a request-header-phase log-message policy placed after auth).
-type GlobalTrafficLoggingConfig struct {
-	// Enabled turns on the global fallback directive. Has no effect unless
-	// TrafficLoggingConfig.Enabled is also true (that flag arms the publisher).
-	Enabled bool `koanf:"enabled"`
 	// RequestHeaders / RequestBody / ResponseHeaders / ResponseBody select which
 	// captured fields are attached to the log line. Each is a no-op if the
 	// corresponding [collector] capture flag is off — this directive can only
@@ -129,24 +116,21 @@ type GlobalTrafficLoggingConfig struct {
 	RequestBody     bool `koanf:"request_body"`
 	ResponseHeaders bool `koanf:"response_headers"`
 	ResponseBody    bool `koanf:"response_body"`
-	// Fields is a field-projection layered on top of the flow selection above,
-	// with the same only/exclude semantics as the log-message policy's `fields`.
-	Fields GlobalTrafficLoggingFieldsConfig `koanf:"fields"`
+	// Fields is a field-projection layered on top of the flow selection above.
+	Fields TrafficLoggingFieldsConfig `koanf:"fields"`
 	// Properties adds extra key->value pairs to the emitted line's top-level
-	// "properties" object, mirroring the log-message policy's `properties`
-	// parameter. A value prefixed "$ctx:" is evaluated as a CEL expression
-	// against a request-context surface built from the collected event (see
-	// publishers.globalPropertyEvaluator); other values are emitted as literal
-	// strings. Unlike the policy, there is no auth.* namespace: no policy runs
-	// to populate auth context for a global-mode line, so a "$ctx:" expression
-	// referencing auth.* fails to compile and that property is permanently
-	// omitted (logged once at startup) rather than silently varying per request.
+	// "properties" object. A value prefixed "$ctx:" is evaluated as a CEL
+	// expression against a request-context surface built from the collected
+	// event (see publishers.globalPropertyEvaluator), including a real auth.*
+	// namespace backed by analytics metadata the collector system policy stamps
+	// generically for any authenticated request; other values are emitted as
+	// literal strings.
 	Properties map[string]string `koanf:"properties"`
 }
 
-// GlobalTrafficLoggingFieldsConfig selects which fields appear in the global
-// traffic-log line. Exactly one of Only or Exclude should be set.
-type GlobalTrafficLoggingFieldsConfig struct {
+// TrafficLoggingFieldsConfig selects which fields appear in the traffic-log line.
+// Exactly one of Only or Exclude should be set.
+type TrafficLoggingFieldsConfig struct {
 	Only    []string `koanf:"only"`
 	Exclude []string `koanf:"exclude"`
 }
@@ -458,21 +442,18 @@ func defaultConfig() *Config {
 			Server:       defaultAccessLogsServiceConfig(),
 		},
 		TrafficLogging: TrafficLoggingConfig{
-			Enabled:        false,
-			MaskedHeaders:  []string{},
-			MaxPayloadSize: 0,
-			Global: GlobalTrafficLoggingConfig{
-				Enabled:         false,
-				RequestHeaders:  false,
-				RequestBody:     false,
-				ResponseHeaders: false,
-				ResponseBody:    false,
-				Fields: GlobalTrafficLoggingFieldsConfig{
-					Only:    []string{},
-					Exclude: []string{},
-				},
-				Properties: map[string]string{},
+			Enabled:         false,
+			MaskedHeaders:   []string{},
+			MaxPayloadSize:  0,
+			RequestHeaders:  false,
+			RequestBody:     false,
+			ResponseHeaders: false,
+			ResponseBody:    false,
+			Fields: TrafficLoggingFieldsConfig{
+				Only:    []string{},
+				Exclude: []string{},
 			},
+			Properties: map[string]string{},
 		},
 		Analytics: AnalyticsConfig{
 			Enabled:           false,
@@ -603,7 +584,7 @@ func (c *Config) Validate() error {
 	if c.TrafficLogging.MaxPayloadSize < 0 {
 		return fmt.Errorf("traffic_logging.max_payload_size must be >= 0, got %d", c.TrafficLogging.MaxPayloadSize)
 	}
-	if err := c.validateGlobalTrafficLoggingConfig(); err != nil {
+	if err := c.validateTrafficLoggingConfig(); err != nil {
 		return err
 	}
 	if c.Analytics.Enabled {
@@ -781,33 +762,29 @@ func (c *Config) validateAnalyticsConfig() error {
 	return nil
 }
 
-// validateGlobalTrafficLoggingConfig validates the global (no-policy, all-APIs)
-// traffic-logging fallback and warns about configurations that have no effect.
-func (c *Config) validateGlobalTrafficLoggingConfig() error {
-	global := c.TrafficLogging.Global
+// validateTrafficLoggingConfig validates the traffic-logging config and warns
+// about settings that have no effect.
+func (c *Config) validateTrafficLoggingConfig() error {
+	tl := c.TrafficLogging
 
-	if len(global.Fields.Only) > 0 && len(global.Fields.Exclude) > 0 {
-		return fmt.Errorf("traffic_logging.global.fields: set either 'only' or 'exclude', not both")
+	if len(tl.Fields.Only) > 0 && len(tl.Fields.Exclude) > 0 {
+		return fmt.Errorf("traffic_logging.fields: set either 'only' or 'exclude', not both")
 	}
 
-	if !global.Enabled {
-		if len(global.Properties) > 0 {
-			slog.Warn("traffic_logging.global.properties is set but traffic_logging.global.enabled is false; it has no effect")
+	if !tl.Enabled {
+		if len(tl.Properties) > 0 {
+			slog.Warn("traffic_logging.properties is set but traffic_logging.enabled is false; it has no effect")
 		}
 		return nil
 	}
 
-	if !c.TrafficLogging.Enabled {
-		slog.Warn("traffic_logging.global.enabled is true but traffic_logging.enabled is false; " +
-			"the global traffic-logging fallback has no effect until the stdout publisher is armed")
+	if tl.RequestBody && !c.Collector.RequestBody {
+		slog.Warn("traffic_logging.request_body is true but collector.request_body is false; " +
+			"traffic logging can only select among what the collector captured, so no request body will be logged")
 	}
-	if global.RequestBody && !c.Collector.RequestBody {
-		slog.Warn("traffic_logging.global.request_body is true but collector.request_body is false; " +
-			"the global directive can only select among what the collector captured, so no request body will be logged")
-	}
-	if global.ResponseBody && !c.Collector.ResponseBody {
-		slog.Warn("traffic_logging.global.response_body is true but collector.response_body is false; " +
-			"the global directive can only select among what the collector captured, so no response body will be logged")
+	if tl.ResponseBody && !c.Collector.ResponseBody {
+		slog.Warn("traffic_logging.response_body is true but collector.response_body is false; " +
+			"traffic logging can only select among what the collector captured, so no response body will be logged")
 	}
 
 	return nil

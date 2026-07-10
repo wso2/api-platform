@@ -18,8 +18,6 @@
 package publishers
 
 import (
-	"strings"
-
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 )
 
@@ -83,9 +81,9 @@ type TrafficLogClient struct {
 	UserAgent string `json:"userAgent,omitempty"`
 }
 
-// toTrafficLogEvent translates a dto.Event and its traffic-log directive into the
-// traffic-log-specific output shape, applying per-flow header filtering, global
-// header masking, and payload truncation.
+// toTrafficLogEvent translates a dto.Event and its directive into the
+// traffic-log-specific output shape, applying per-flow header filtering, header
+// masking, and payload truncation.
 func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) *TrafficLogEvent {
 	tl := &TrafficLogEvent{
 		Status:    event.ProxyResponseCode,
@@ -158,29 +156,12 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 	hasOnlySelection := dir.Fields != nil && len(dir.Fields.Only) > 0
 	hasExcludeSelection := dir.Fields != nil && len(dir.Fields.Only) == 0 && len(dir.Fields.Exclude) > 0
 
-	// Effective header mask: global config merged with any per-API additions.
-	mask := l.maskedHeaders
-	if len(dir.MaskedHeaders) > 0 {
-		merged := make(map[string]bool, len(l.maskedHeaders)+len(dir.MaskedHeaders))
-		for k, v := range l.maskedHeaders {
-			merged[k] = v
-		}
-		for _, h := range dir.MaskedHeaders {
-			merged[strings.ToLower(h)] = true
-		}
-		mask = merged
-	}
-
 	// Request flow
 	if raw, ok := event.Properties[dto.PropKeyRequestHeaders].(string); ok {
 		headersOn := dir.Request != nil && dir.Request.Headers
 		if fieldEnabled(hasOnlySelection, hasExcludeSelection, dir.Request, headersOn) {
 			if headers := parseHeadersFromString(raw); headers != nil {
-				masked := l.maskHeaders(headers, mask)
-				if dir.Request != nil {
-					dropHeaders(masked, dir.Request.ExcludeHeaders)
-				}
-				tl.RequestHeaders = masked
+				tl.RequestHeaders = l.maskHeaders(headers, l.maskedHeaders)
 			}
 		}
 	}
@@ -196,11 +177,7 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 		headersOn := dir.Response != nil && dir.Response.Headers
 		if fieldEnabled(hasOnlySelection, hasExcludeSelection, dir.Response, headersOn) {
 			if headers := parseHeadersFromString(raw); headers != nil {
-				masked := l.maskHeaders(headers, mask)
-				if dir.Response != nil {
-					dropHeaders(masked, dir.Response.ExcludeHeaders)
-				}
-				tl.ResponseHeaders = masked
+				tl.ResponseHeaders = l.maskHeaders(headers, l.maskedHeaders)
 			}
 		}
 	}

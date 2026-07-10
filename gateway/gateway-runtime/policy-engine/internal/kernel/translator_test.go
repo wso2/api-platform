@@ -608,14 +608,15 @@ func TestTranslateRequestActionsCore_ShortCircuit_PreservesPriorRequestAnalytics
 	assert.Equal(t, "immediate-response", analyticsData.GetFields()["source"].GetStringValue())
 }
 
-// TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorTrafficLogMarker
-// covers the request-header phase short-circuit path: the log-message policy
-// (traffic-logging mode) stamps its marker as request-header-phase analytics
-// metadata, then an auth policy rejects the request with 401 and short-circuits
-// the chain. The prior policy's marker must survive onto the immediate response's
-// dynamic metadata, otherwise the ALS access-log entry carries no traffic_log key
-// and the stdout traffic-log line is never emitted for rejected requests.
-func TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorTrafficLogMarker(t *testing.T) {
+// TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorAnalyticsMetadata
+// covers the request-header phase short-circuit path: an earlier policy (e.g. the
+// collector system policy capturing request headers) stamps request-header-phase
+// analytics metadata, then an auth policy rejects the request with 401 and
+// short-circuits the chain. The prior policy's metadata must survive onto the
+// immediate response's dynamic metadata, otherwise the ALS access-log entry is
+// missing it and the global traffic-logging publisher's line for that denied
+// request would be incomplete.
+func TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorAnalyticsMetadata(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
@@ -636,7 +637,7 @@ func TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorTrafficLogMark
 				Skipped: false,
 				Action: policy.UpstreamRequestHeaderModifications{
 					AnalyticsMetadata: map[string]any{
-						"traffic_log": `{"request":{"headers":true}}`,
+						"request_headers": `{"x-request-id":"req-1"}`,
 					},
 				},
 			},
@@ -668,8 +669,8 @@ func TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorTrafficLogMark
 	analyticsData := extProcNamespace.GetFields()["analytics_data"].GetStructValue()
 	require.NotNil(t, analyticsData)
 
-	// The traffic-log marker stamped by the earlier policy survives the short-circuit...
-	assert.Equal(t, `{"request":{"headers":true}}`, analyticsData.GetFields()["traffic_log"].GetStringValue())
+	// The metadata stamped by the earlier policy survives the short-circuit...
+	assert.Equal(t, `{"x-request-id":"req-1"}`, analyticsData.GetFields()["request_headers"].GetStringValue())
 	// ...and the immediate response's own analytics metadata is still present.
 	assert.Equal(t, "immediate-response", analyticsData.GetFields()["source"].GetStringValue())
 }

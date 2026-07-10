@@ -33,12 +33,12 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 )
 
-// globalPropertyCtxPrefix marks a traffic_logging.global.properties value as a
+// globalPropertyCtxPrefix marks a traffic_logging.properties value as a
 // CEL expression to evaluate, rather than a literal string, mirroring the
 // log-message policy's "$ctx:" convention.
 const globalPropertyCtxPrefix = "$ctx:"
 
-// globalPropertyEvaluator resolves traffic_logging.global.properties against a
+// globalPropertyEvaluator resolves traffic_logging.properties against a
 // dto.Event, mirroring the log-message policy's `properties` CEL surface.
 //
 // The auth.* namespace here is backed by analytics metadata the collector system
@@ -83,7 +83,7 @@ func newGlobalPropertyEvaluator(properties map[string]string) *globalPropertyEva
 
 	env, err := createGlobalPropertyEnv()
 	if err != nil {
-		slog.Error("traffic_logging.global.properties: failed to create CEL environment; all properties disabled", "error", err)
+		slog.Error("traffic_logging.properties: failed to create CEL environment; all properties disabled", "error", err)
 		return e
 	}
 
@@ -95,13 +95,13 @@ func newGlobalPropertyEvaluator(properties map[string]string) *globalPropertyEva
 		}
 		ast, issues := env.Compile(rest)
 		if issues != nil && issues.Err() != nil {
-			slog.Error("traffic_logging.global.properties: failed to compile expression; property will be omitted from every line",
+			slog.Error("traffic_logging.properties: failed to compile expression; property will be omitted from every line",
 				"property", name, "expression", rest, "error", issues.Err())
 			continue
 		}
 		program, err := env.Program(ast)
 		if err != nil {
-			slog.Error("traffic_logging.global.properties: failed to build CEL program; property will be omitted from every line",
+			slog.Error("traffic_logging.properties: failed to build CEL program; property will be omitted from every line",
 				"property", name, "expression", rest, "error", err)
 			continue
 		}
@@ -186,12 +186,12 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 	for name, program := range e.compiled {
 		out, _, err := program.Eval(evalCtx)
 		if err != nil {
-			slog.Debug("traffic_logging.global.properties: expression evaluation failed; omitting property", "property", name, "error", err)
+			slog.Debug("traffic_logging.properties: expression evaluation failed; omitting property", "property", name, "error", err)
 			continue
 		}
 		goVal, err := globalPropertyCELToGoValue(out)
 		if err != nil {
-			slog.Debug("traffic_logging.global.properties: failed to convert CEL result; omitting property", "property", name, "error", err)
+			slog.Debug("traffic_logging.properties: failed to convert CEL result; omitting property", "property", name, "error", err)
 			continue
 		}
 		result[name] = goVal
@@ -313,7 +313,7 @@ func buildGlobalPropertyEvalCtx(event *dto.Event) map[string]interface{} {
 		if err := json.Unmarshal([]byte(raw), &props); err == nil {
 			ctx["auth.property"] = props
 		} else {
-			slog.Debug("traffic_logging.global.properties: failed to parse auth properties metadata", "error", err)
+			slog.Debug("traffic_logging.properties: failed to parse auth properties metadata", "error", err)
 		}
 	}
 	if authorized, ok := event.Properties[dto.PropKeyAuthAuthorized].(string); ok {

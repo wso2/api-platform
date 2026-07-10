@@ -388,11 +388,13 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 				},
 			}
 			// Preserve request-header-phase analytics metadata from policies that
-			// executed before the short-circuit (e.g. the log-message traffic-log
-			// marker) so an immediate response like a 401 still carries it to the
-			// ALS access log. Without this, a short-circuiting policy (auth) drops
-			// the marker of any earlier policy and the traffic-log line is never
-			// emitted. Mirrors translateRequestActionsCore's short-circuit path.
+			// executed before the short-circuit (e.g. request headers captured by
+			// the collector system policy) so an immediate response like a 401
+			// still carries it to the ALS access log. Without this, a
+			// short-circuiting policy (auth) drops the metadata of any earlier
+			// policy and the global traffic-logging publisher's line for that
+			// denied request would be missing it. Mirrors translateRequestActionsCore's
+			// short-circuit path.
 			shortCircuitAnalyticsData := make(map[string]any)
 			for key, value := range execCtx.analyticsMetadata {
 				shortCircuitAnalyticsData[key] = value

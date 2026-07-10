@@ -51,12 +51,17 @@ func newLogToFile(t *testing.T, cfg *config.TrafficLoggingConfig) (*Log, func() 
 	}
 }
 
-// bothFlows returns a directive that opts in to logging both request and response
-// headers and payloads — the "log everything captured" case.
-func bothFlows() *dto.TrafficLogDirective {
-	return &dto.TrafficLogDirective{
-		Request:  &dto.TrafficLogFlow{Payload: true, Headers: true},
-		Response: &dto.TrafficLogFlow{Payload: true, Headers: true},
+// bothFlowsConfig returns a TrafficLoggingConfig that opts in to logging both
+// request and response headers and payloads — the "log everything captured" case.
+// Callers needing additional fields (MaskedHeaders, MaxPayloadSize, ...) can set
+// them on the returned pointer before passing it to newLogToFile/NewLog.
+func bothFlowsConfig() *config.TrafficLoggingConfig {
+	return &config.TrafficLoggingConfig{
+		Enabled:         true,
+		RequestHeaders:  true,
+		RequestBody:     true,
+		ResponseHeaders: true,
+		ResponseBody:    true,
 	}
 }
 
@@ -83,21 +88,20 @@ func TestNewLog_NilConfig(t *testing.T) {
 	assert.Empty(t, l.maskedHeaders)
 }
 
-// Per-API gating: an event without a traffic-log directive is never emitted.
-func TestLog_Publish_SkipsWhenNoDirective(t *testing.T) {
+// Traffic logging disabled (the default) -> every event is skipped.
+func TestLog_Publish_SkipsWhenGlobalDisabled(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
-	event := createBaseEvent() // no TrafficLog set
+	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
 
 	l.Publish(event)
 
-	assert.Empty(t, read(), "event without a traffic-log directive must not be logged")
+	assert.Empty(t, read(), "traffic logging disabled -> event must not be logged")
 }
 
 func TestLog_Publish_WritesJSONLineWithLatencies(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	l, read := newLogToFile(t, bothFlowsConfig())
 	event := createBaseEvent()
-	event.TrafficLog = bothFlows()
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
 
 	l.Publish(event)
@@ -112,60 +116,23 @@ func TestLog_Publish_WritesJSONLineWithLatencies(t *testing.T) {
 	reqH := headerMap(t, decoded["requestHeaders"])
 	assert.Equal(t, "bar", reqH["x-foo"])
 
-	// ALS-derived latencies are always present in the line — the key improvement
-	// over the inline log-message policy, which could never see them. The traffic
-	// log carries microsecond-precision timings, separate from Moesif's ms fields.
+	// ALS-derived latencies are always present in the line, including for
+	// requests an auth policy short-circuited (denied) before any backend
+	// response existed. The traffic log carries microsecond-precision timings,
+	// separate from Moesif's ms fields.
 	latencies := decoded["latencies"].(map[string]interface{})
 	assert.Equal(t, float64(250000), latencies["durationUs"])
 }
 
-// Properties from the directive are emitted as a top-level "properties" object.
-func TestLog_Publish_PropertiesTopLevel(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
-	event := createBaseEvent()
-	event.TrafficLog = &dto.TrafficLogDirective{
-		Request: &dto.TrafficLogFlow{Headers: true},
-		Properties: map[string]interface{}{
-			"who":        "alice",
-			"authType":   "jwt",
-			"retryCount": float64(3),
-		},
-	}
-	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
-
-	l.Publish(event)
-
-	decoded := decodeLine(t, read())
-	props, ok := decoded["properties"].(map[string]interface{})
-	require.True(t, ok, "expected top-level properties object, got %T", decoded["properties"])
-	assert.Equal(t, "alice", props["who"])
-	assert.Equal(t, "jwt", props["authType"])
-	assert.Equal(t, float64(3), props["retryCount"])
-	reqH := headerMap(t, decoded["requestHeaders"])
-	assert.Equal(t, "bar", reqH["x-foo"])
-}
-
-// A directive with no properties emits no "properties" key.
-func TestLog_Publish_NoPropertiesWhenAbsent(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
-	event := createBaseEvent()
-	event.TrafficLog = bothFlows()
-
-	l.Publish(event)
-
-	decoded := decodeLine(t, read())
-	_, present := decoded["properties"]
-	assert.False(t, present, "no properties key expected when directive has no properties")
-}
-
 // The fields projection can select "properties" like any other top-level key.
 func TestLog_Publish_PropertiesProjectableViaFields(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:        true,
+		RequestHeaders: true,
+		Properties:     map[string]string{"who": "alice"},
+		Fields:         config.TrafficLoggingFieldsConfig{Only: []string{"properties"}},
+	})
 	event := createBaseEvent()
-	event.TrafficLog = &dto.TrafficLogDirective{
-		Properties: map[string]interface{}{"who": "alice"},
-		Fields:     &dto.TrafficLogFields{Only: []string{"properties"}},
-	}
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
 
 	l.Publish(event)
@@ -179,9 +146,10 @@ func TestLog_Publish_PropertiesProjectableViaFields(t *testing.T) {
 }
 
 func TestLog_Publish_MasksHeaders(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{MaskedHeaders: []string{"Authorization"}})
+	cfg := bothFlowsConfig()
+	cfg.MaskedHeaders = []string{"Authorization"}
+	l, read := newLogToFile(t, cfg)
 	event := createBaseEvent()
-	event.TrafficLog = bothFlows()
 	event.Properties["requestHeaders"] = `{"Authorization":"Bearer secret","x-foo":"bar"}`
 	event.Properties["responseHeaders"] = `{"authorization":"Bearer secret2"}`
 
@@ -196,52 +164,15 @@ func TestLog_Publish_MasksHeaders(t *testing.T) {
 	assert.Equal(t, "****", resH["authorization"]) // case-insensitive match
 }
 
-// Per-API maskedHeaders are merged with the global config mask; either source alone redacts.
-func TestLog_Publish_PerAPIMaskedHeadersMergedWithGlobal(t *testing.T) {
-	// Global config masks "authorization"; per-API directive adds "x-secret".
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{MaskedHeaders: []string{"authorization"}})
-	event := createBaseEvent()
-	event.TrafficLog = &dto.TrafficLogDirective{
-		Request:       &dto.TrafficLogFlow{Headers: true},
-		MaskedHeaders: []string{"x-secret"},
-	}
-	event.Properties["requestHeaders"] = `{"Authorization":"Bearer s","X-Secret":"top","x-foo":"bar"}`
-
-	l.Publish(event)
-
-	decoded := decodeLine(t, read())
-	reqH := headerMap(t, decoded["requestHeaders"])
-	assert.Equal(t, "****", reqH["Authorization"], "global masked header still redacted")
-	assert.Equal(t, "****", reqH["X-Secret"], "per-API masked header redacted")
-	assert.Equal(t, "bar", reqH["x-foo"], "unmasked header unchanged")
-}
-
-// Per-API maskedHeaders work even when no global headers are configured.
-func TestLog_Publish_PerAPIMaskedHeadersNoGlobal(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
-	event := createBaseEvent()
-	event.TrafficLog = &dto.TrafficLogDirective{
-		Request:       &dto.TrafficLogFlow{Headers: true},
-		MaskedHeaders: []string{"X-Token"},
-	}
-	event.Properties["requestHeaders"] = `{"X-Token":"secret","x-foo":"bar"}`
-
-	l.Publish(event)
-
-	decoded := decodeLine(t, read())
-	reqH := headerMap(t, decoded["requestHeaders"])
-	assert.Equal(t, "****", reqH["X-Token"])
-	assert.Equal(t, "bar", reqH["x-foo"])
-}
-
-// fields.exclude with a dotted path drops a specific header entirely (vs global masking which redacts).
+// fields.exclude with a dotted path drops a specific header entirely (vs masking which redacts).
 func TestLog_Publish_ExcludeHeadersDrops(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{MaskedHeaders: []string{"authorization"}})
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		MaskedHeaders:  []string{"authorization"},
+		Enabled:        true,
+		RequestHeaders: true,
+		Fields:         config.TrafficLoggingFieldsConfig{Exclude: []string{"requestHeaders.X-Secret"}},
+	})
 	event := createBaseEvent()
-	event.TrafficLog = &dto.TrafficLogDirective{
-		Request: &dto.TrafficLogFlow{Headers: true},
-		Fields:  &dto.TrafficLogFields{Exclude: []string{"requestHeaders.X-Secret"}},
-	}
 	event.Properties["requestHeaders"] = `{"Authorization":"Bearer s","X-Secret":"top","x-foo":"bar"}`
 
 	l.Publish(event)
@@ -255,65 +186,15 @@ func TestLog_Publish_ExcludeHeadersDrops(t *testing.T) {
 	assert.Equal(t, "bar", reqH["x-foo"])
 }
 
-// Per-flow excludeHeaders drops a header entirely (case-insensitive), in both the
-// request and response flows, while masking still redacts other headers. This is
-// the traffic-logging counterpart of the inline excludeHeaders param.
-func TestLog_Publish_PerFlowExcludeHeadersDrops(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{MaskedHeaders: []string{"authorization"}})
-	event := createBaseEvent()
-	event.TrafficLog = &dto.TrafficLogDirective{
-		// Directive carries lower-cased names (as the policy stamps them); the
-		// captured header keys use mixed case to prove case-insensitive matching.
-		Request:  &dto.TrafficLogFlow{Headers: true, ExcludeHeaders: []string{"x-secret"}},
-		Response: &dto.TrafficLogFlow{Headers: true, ExcludeHeaders: []string{"set-cookie"}},
-	}
-	event.Properties["requestHeaders"] = `{"Authorization":"Bearer s","X-Secret":"top","x-foo":"bar"}`
-	event.Properties["responseHeaders"] = `{"Set-Cookie":"sid=1","x-bar":"baz"}`
-
-	l.Publish(event)
-
-	decoded := decodeLine(t, read())
-
-	reqH := headerMap(t, decoded["requestHeaders"])
-	_, hasSecret := reqH["X-Secret"]
-	assert.False(t, hasSecret, "excluded request header must be dropped entirely")
-	assert.Equal(t, "****", reqH["Authorization"], "masked header still redacted")
-	assert.Equal(t, "bar", reqH["x-foo"], "untouched header retained")
-
-	resH := headerMap(t, decoded["responseHeaders"])
-	_, hasCookie := resH["Set-Cookie"]
-	assert.False(t, hasCookie, "excluded response header must be dropped entirely")
-	assert.Equal(t, "baz", resH["x-bar"], "untouched response header retained")
-}
-
-// Per-flow excludeHeaders must not mutate the shared event, so other publishers
-// (e.g. Moesif) still see the full captured header set.
-func TestLog_Publish_PerFlowExcludeHeadersDoesNotMutateSharedEvent(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
-	event := createBaseEvent()
-	event.TrafficLog = &dto.TrafficLogDirective{
-		Request: &dto.TrafficLogFlow{Headers: true, ExcludeHeaders: []string{"x-secret"}},
-	}
-	const raw = `{"X-Secret":"top","x-foo":"bar"}`
-	event.Properties["requestHeaders"] = raw
-
-	l.Publish(event)
-
-	decoded := decodeLine(t, read())
-	reqH := headerMap(t, decoded["requestHeaders"])
-	_, hasSecret := reqH["X-Secret"]
-	assert.False(t, hasSecret, "header dropped from the emitted line")
-	assert.Equal(t, raw, event.Properties["requestHeaders"], "shared event.Properties must be untouched")
-}
-
-// headers:false omits the headers property; a nil flow omits its whole side.
+// headers:false omits the headers property; disabled response flags omit the whole side.
 func TestLog_Publish_DisabledFieldsOmitted(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:        true,
+		RequestHeaders: false,
+		RequestBody:    true,
+		// ResponseHeaders/ResponseBody left false -> both response props dropped.
+	})
 	event := createBaseEvent()
-	event.TrafficLog = &dto.TrafficLogDirective{
-		Request: &dto.TrafficLogFlow{Headers: false, Payload: true},
-		// Response flow nil -> both response props dropped.
-	}
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
 	event.Properties["request_payload"] = "req-body"
 	event.Properties["responseHeaders"] = `{"x-bar":"baz"}`
@@ -328,14 +209,15 @@ func TestLog_Publish_DisabledFieldsOmitted(t *testing.T) {
 
 	_, hasRespHeaders := decoded["responseHeaders"]
 	_, hasRespPayload := decoded["responseBody"]
-	assert.False(t, hasRespHeaders, "nil response flow -> response headers omitted")
-	assert.False(t, hasRespPayload, "nil response flow -> response payload omitted")
+	assert.False(t, hasRespHeaders, "response headers disabled -> omitted")
+	assert.False(t, hasRespPayload, "response payload disabled -> omitted")
 }
 
 func TestLog_Publish_DoesNotMutateSharedEvent(t *testing.T) {
-	l, _ := newLogToFile(t, &config.TrafficLoggingConfig{MaskedHeaders: []string{"authorization"}})
+	cfg := bothFlowsConfig()
+	cfg.MaskedHeaders = []string{"authorization"}
+	l, _ := newLogToFile(t, cfg)
 	event := createBaseEvent()
-	event.TrafficLog = bothFlows()
 	original := `{"authorization":"Bearer secret"}`
 	event.Properties["requestHeaders"] = original
 
@@ -354,14 +236,15 @@ func TestLog_Publish_NilEvent(t *testing.T) {
 // Field selection (include): only named top-level keys survive; fields.only is
 // authoritative over presence (request.headers boolean is ignored, masking still applies).
 func TestLog_Publish_FieldsInclude(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{MaskedHeaders: []string{"authorization"}})
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		MaskedHeaders:  []string{"authorization"},
+		Enabled:        true,
+		RequestHeaders: false, // boolean ignored when fields set
+		Fields:         config.TrafficLoggingFieldsConfig{Only: []string{"latencies", "requestHeaders"}},
+	})
 	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"Authorization":"Bearer s","X-Keep":"k"}`
 	event.Properties["responseHeaders"] = `{"x-bar":"baz"}`
-	event.TrafficLog = &dto.TrafficLogDirective{
-		Request: &dto.TrafficLogFlow{Headers: false}, // boolean ignored when fields set
-		Fields:  &dto.TrafficLogFields{Only: []string{"latencies", "requestHeaders"}},
-	}
 
 	l.Publish(event)
 	decoded := decodeLine(t, read())
@@ -381,15 +264,18 @@ func TestLog_Publish_FieldsInclude(t *testing.T) {
 	assert.Equal(t, "k", reqH["X-Keep"])
 }
 
-// Field selection (exclude): named keys are dropped, everything else remains.
+// Field selection (exclude): named keys are dropped, everything else remains,
+// even a key ("requestBody") that would otherwise be present.
 func TestLog_Publish_FieldsExclude(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:        true,
+		RequestHeaders: true,
+		RequestBody:    true,
+		Fields:         config.TrafficLoggingFieldsConfig{Exclude: []string{"operation", "requestBody"}},
+	})
 	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
 	event.Properties["request_payload"] = "secret-body"
-	event.TrafficLog = &dto.TrafficLogDirective{
-		Fields: &dto.TrafficLogFields{Exclude: []string{"operation", "requestBody"}},
-	}
 
 	l.Publish(event)
 	decoded := decodeLine(t, read())
@@ -399,35 +285,37 @@ func TestLog_Publish_FieldsExclude(t *testing.T) {
 	assert.Contains(t, decoded, "api", "api kept")
 	assert.Contains(t, decoded, "latencies", "latencies kept")
 	_, hasPayload := decoded["requestBody"]
-	assert.False(t, hasPayload, "requestBody excluded")
+	assert.False(t, hasPayload, "requestBody excluded even though request_body:true")
 	assert.Contains(t, decoded, "requestHeaders", "requestHeaders kept (not excluded)")
 }
 
 // An unrelated fields.exclude entry (dropping one header sub-key) must not defeat
 // an explicitly configured flow's payload:false/headers:true booleans. Regression
 // test for a bug where any fields.exclude entry made the per-flow booleans
-// globally inert, silently re-enabling payload logging that request.payload:false
+// globally inert, silently re-enabling payload logging that request_body:false
 // was supposed to suppress.
 func TestLog_Publish_FieldsExcludeDoesNotOverrideExplicitFlowBooleans(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:         true,
+		RequestHeaders:  true,
+		RequestBody:     false,
+		ResponseHeaders: true,
+		ResponseBody:    false,
+		Fields:          config.TrafficLoggingFieldsConfig{Exclude: []string{"requestHeaders.Cookie"}},
+	})
 	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"Cookie":"sid=1","x-foo":"bar"}`
 	event.Properties["request_payload"] = "secret-request-body"
 	event.Properties["responseHeaders"] = `{"x-bar":"baz"}`
 	event.Properties["response_payload"] = "secret-response-body"
-	event.TrafficLog = &dto.TrafficLogDirective{
-		Request:  &dto.TrafficLogFlow{Headers: true, Payload: false},
-		Response: &dto.TrafficLogFlow{Headers: true, Payload: false},
-		Fields:   &dto.TrafficLogFields{Exclude: []string{"requestHeaders.Cookie"}},
-	}
 
 	l.Publish(event)
 	decoded := decodeLine(t, read())
 
 	_, hasReqBody := decoded["requestBody"]
-	assert.False(t, hasReqBody, "request.payload:false must still suppress the request body")
+	assert.False(t, hasReqBody, "request_body:false must still suppress the request body")
 	_, hasRespBody := decoded["responseBody"]
-	assert.False(t, hasRespBody, "response.payload:false must still suppress the response body")
+	assert.False(t, hasRespBody, "response_body:false must still suppress the response body")
 
 	reqH := headerMap(t, decoded["requestHeaders"])
 	_, hasCookie := reqH["Cookie"]
@@ -435,20 +323,20 @@ func TestLog_Publish_FieldsExcludeDoesNotOverrideExplicitFlowBooleans(t *testing
 	assert.Equal(t, "bar", reqH["x-foo"], "other request headers still present")
 
 	respH := headerMap(t, decoded["responseHeaders"])
-	assert.Equal(t, "baz", respH["x-bar"], "response headers still present per headers:true")
+	assert.Equal(t, "baz", respH["x-bar"], "response headers still present per response_headers:true")
 }
 
 // requestBody and properties are top-level keys like any other and can be selected
-// explicitly via fields.only.
+// explicitly via fields.only, regardless of the request_body/request_headers booleans.
 func TestLog_Publish_FieldsIncludeRequestBodyAndProperties(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:    true,
+		Properties: map[string]string{"env": "prod"},
+		Fields:     config.TrafficLoggingFieldsConfig{Only: []string{"requestBody", "properties"}},
+	})
 	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
 	event.Properties["request_payload"] = "body-data"
-	event.TrafficLog = &dto.TrafficLogDirective{
-		Properties: map[string]interface{}{"env": "prod"},
-		Fields:     &dto.TrafficLogFields{Only: []string{"requestBody", "properties"}},
-	}
 
 	l.Publish(event)
 	decoded := decodeLine(t, read())
@@ -465,9 +353,10 @@ func TestLog_Publish_FieldsIncludeRequestBodyAndProperties(t *testing.T) {
 
 // Output-side payload truncation (0 = no limit).
 func TestLog_Publish_TruncatesPayload(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{MaxPayloadSize: 5})
+	cfg := bothFlowsConfig()
+	cfg.MaxPayloadSize = 5
+	l, read := newLogToFile(t, cfg)
 	event := createBaseEvent()
-	event.TrafficLog = bothFlows()
 	event.Properties["request_payload"] = "hello world"
 	event.Properties["response_payload"] = "goodbye world"
 
@@ -478,9 +367,10 @@ func TestLog_Publish_TruncatesPayload(t *testing.T) {
 }
 
 func TestLog_Publish_NoTruncationWhenZero(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{MaxPayloadSize: 0})
+	cfg := bothFlowsConfig()
+	cfg.MaxPayloadSize = 0
+	l, read := newLogToFile(t, cfg)
 	event := createBaseEvent()
-	event.TrafficLog = bothFlows()
 	event.Properties["request_payload"] = "hello world"
 
 	l.Publish(event)
@@ -489,9 +379,10 @@ func TestLog_Publish_NoTruncationWhenZero(t *testing.T) {
 }
 
 func TestLog_Publish_UnparseableHeadersDropped(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{MaskedHeaders: []string{"authorization"}})
+	cfg := bothFlowsConfig()
+	cfg.MaskedHeaders = []string{"authorization"}
+	l, read := newLogToFile(t, cfg)
 	event := createBaseEvent()
-	event.TrafficLog = bothFlows()
 	event.Properties["requestHeaders"] = "not-json"
 
 	l.Publish(event)
@@ -503,10 +394,9 @@ func TestLog_Publish_UnparseableHeadersDropped(t *testing.T) {
 
 // Application is omitted entirely for unauthenticated requests (all fields empty).
 func TestLog_Publish_UnauthenticatedRequestOmitsApplication(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	l, read := newLogToFile(t, bothFlowsConfig())
 	event := createBaseEvent()
 	event.Application = &dto.Application{} // all fields are ""
-	event.TrafficLog = bothFlows()
 
 	l.Publish(event)
 
@@ -517,9 +407,8 @@ func TestLog_Publish_UnauthenticatedRequestOmitsApplication(t *testing.T) {
 
 // TrafficLogAPI uses clean field names (id/name/kind) not the Moesif apiId/apiName/apiType.
 func TestLog_Publish_APIFieldNames(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	l, read := newLogToFile(t, bothFlowsConfig())
 	event := createBaseEvent()
-	event.TrafficLog = bothFlows()
 
 	l.Publish(event)
 
@@ -539,20 +428,15 @@ func TestLog_Publish_APIFieldNames(t *testing.T) {
 	}
 }
 
-// Global traffic logging: when enabled, an event with no per-API traffic-log
-// marker still gets a stdout line using the global fallback directive. This is
-// the key improvement over the log-message policy: it also covers events for
-// requests an auth policy short-circuited (denied), which never reach a
-// request-header-phase log-message policy placed after auth and so never stamp
-// a per-API marker.
+// Traffic logging emits a line for every request, including ones an auth policy
+// short-circuited (denied) before any backend response existed — the key win of
+// the config-only, no-policy design.
 func TestLog_Publish_GlobalFallback_UsedWhenNoDirective(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
-		Global: config.GlobalTrafficLoggingConfig{
-			Enabled:        true,
-			RequestHeaders: true,
-		},
+		Enabled:        true,
+		RequestHeaders: true,
 	})
-	event := createBaseEvent() // no TrafficLog set — e.g. a denied/401 request
+	event := createBaseEvent() // e.g. a denied/401 request
 	event.ProxyResponseCode = 401
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
 
@@ -564,31 +448,8 @@ func TestLog_Publish_GlobalFallback_UsedWhenNoDirective(t *testing.T) {
 	assert.Equal(t, "bar", reqH["x-foo"])
 }
 
-// A per-API traffic-log directive always takes precedence over the global
-// fallback, even when global traffic logging is enabled.
-func TestLog_Publish_PerAPIDirectiveOverridesGlobalFallback(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
-		Global: config.GlobalTrafficLoggingConfig{
-			Enabled:        true,
-			RequestHeaders: false, // global would omit request headers
-		},
-	})
-	event := createBaseEvent()
-	event.TrafficLog = &dto.TrafficLogDirective{
-		Request: &dto.TrafficLogFlow{Headers: true}, // per-API opts in
-	}
-	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
-
-	l.Publish(event)
-
-	decoded := decodeLine(t, read())
-	reqH := headerMap(t, decoded["requestHeaders"])
-	assert.Equal(t, "bar", reqH["x-foo"], "per-API directive must win over the global fallback")
-}
-
-// When global traffic logging is disabled (the default), an event without a
-// per-API marker is still skipped — regression guard for the pre-existing
-// per-API-only behavior.
+// When traffic logging is disabled (the default), every event is skipped —
+// regression guard for the base case.
 func TestLog_Publish_GlobalFallbackDisabled_StillSkipsWhenNoDirective(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
 	event := createBaseEvent()
@@ -596,20 +457,18 @@ func TestLog_Publish_GlobalFallbackDisabled_StillSkipsWhenNoDirective(t *testing
 
 	l.Publish(event)
 
-	assert.Empty(t, read(), "global traffic logging disabled and no per-API directive -> skip")
+	assert.Empty(t, read(), "traffic logging disabled -> skip")
 }
 
-// The global fallback's request/response body and header toggles select fields
-// exactly like an explicit per-API flow configuration.
+// The directive's request/response body and header toggles select fields
+// exactly like an explicit flow configuration.
 func TestLog_Publish_GlobalFallback_FlowToggles(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
-		Global: config.GlobalTrafficLoggingConfig{
-			Enabled:         true,
-			RequestHeaders:  true,
-			RequestBody:     false,
-			ResponseHeaders: false,
-			ResponseBody:    true,
-		},
+		Enabled:         true,
+		RequestHeaders:  true,
+		RequestBody:     false,
+		ResponseHeaders: false,
+		ResponseBody:    true,
 	})
 	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
@@ -621,25 +480,22 @@ func TestLog_Publish_GlobalFallback_FlowToggles(t *testing.T) {
 
 	decoded := decodeLine(t, read())
 	_, hasReqHeaders := decoded["requestHeaders"]
-	assert.True(t, hasReqHeaders, "global request_headers:true -> included")
+	assert.True(t, hasReqHeaders, "request_headers:true -> included")
 	_, hasReqBody := decoded["requestBody"]
-	assert.False(t, hasReqBody, "global request_body:false -> omitted")
+	assert.False(t, hasReqBody, "request_body:false -> omitted")
 	_, hasRespHeaders := decoded["responseHeaders"]
-	assert.False(t, hasRespHeaders, "global response_headers:false -> omitted")
-	assert.Equal(t, "resp-body", decoded["responseBody"], "global response_body:true -> included")
+	assert.False(t, hasRespHeaders, "response_headers:false -> omitted")
+	assert.Equal(t, "resp-body", decoded["responseBody"], "response_body:true -> included")
 }
 
-// Global masked_headers and max_payload_size (the existing, shared config knobs)
-// apply to global-fallback lines exactly as they do to per-API ones.
+// masked_headers and max_payload_size apply to every line.
 func TestLog_Publish_GlobalFallback_MaskingAndTruncationApply(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
 		MaskedHeaders:  []string{"authorization"},
 		MaxPayloadSize: 5,
-		Global: config.GlobalTrafficLoggingConfig{
-			Enabled:        true,
-			RequestHeaders: true,
-			RequestBody:    true,
-		},
+		Enabled:        true,
+		RequestHeaders: true,
+		RequestBody:    true,
 	})
 	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"Authorization":"Bearer secret","x-foo":"bar"}`
@@ -653,17 +509,14 @@ func TestLog_Publish_GlobalFallback_MaskingAndTruncationApply(t *testing.T) {
 	assert.Equal(t, "hello", decoded["requestBody"])
 }
 
-// The global fallback's fields.only/exclude projection layers on top of the flow
-// toggles exactly like the per-API directive's fields projection.
+// The directive's fields.only/exclude projection layers on top of the flow toggles.
 func TestLog_Publish_GlobalFallback_FieldsProjection(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
-		Global: config.GlobalTrafficLoggingConfig{
-			Enabled:        true,
-			RequestHeaders: true,
-			RequestBody:    true,
-			Fields: config.GlobalTrafficLoggingFieldsConfig{
-				Exclude: []string{"requestBody"},
-			},
+		Enabled:        true,
+		RequestHeaders: true,
+		RequestBody:    true,
+		Fields: config.TrafficLoggingFieldsConfig{
+			Exclude: []string{"requestBody"},
 		},
 	})
 	event := createBaseEvent()
@@ -674,34 +527,30 @@ func TestLog_Publish_GlobalFallback_FieldsProjection(t *testing.T) {
 
 	decoded := decodeLine(t, read())
 	_, hasBody := decoded["requestBody"]
-	assert.False(t, hasBody, "fields.exclude=[requestBody] must drop it from the global fallback line")
+	assert.False(t, hasBody, "fields.exclude=[requestBody] must drop it from the line")
 	assert.Contains(t, decoded, "requestHeaders")
 }
 
 func TestBuildGlobalDirective_DisabledReturnsNil(t *testing.T) {
-	dir := buildGlobalDirective(config.GlobalTrafficLoggingConfig{Enabled: false})
+	dir := buildGlobalDirective(config.TrafficLoggingConfig{Enabled: false})
 	assert.Nil(t, dir)
 }
 
 func TestBuildGlobalDirective_NoFieldsSelectionLeavesFieldsNil(t *testing.T) {
-	dir := buildGlobalDirective(config.GlobalTrafficLoggingConfig{Enabled: true})
+	dir := buildGlobalDirective(config.TrafficLoggingConfig{Enabled: true})
 	require.NotNil(t, dir)
 	assert.Nil(t, dir.Fields)
-	assert.Empty(t, dir.MaskedHeaders, "global masked_headers applies via Log.maskedHeaders, not the directive")
 }
 
-// End-to-end: traffic_logging.global.properties resolves "$ctx:" expressions
-// against the event and emits them under the top-level "properties" object,
-// exactly like a per-API directive's properties.
+// End-to-end: traffic_logging.properties resolves "$ctx:" expressions against
+// the event and emits them under the top-level "properties" object.
 func TestLog_Publish_GlobalFallback_PropertiesResolveCtx(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
-		Global: config.GlobalTrafficLoggingConfig{
-			Enabled: true,
-			Properties: map[string]string{
-				"env":     "prod",
-				"apiName": "$ctx:api.name",
-				"status":  "$ctx:response.status",
-			},
+		Enabled: true,
+		Properties: map[string]string{
+			"env":     "prod",
+			"apiName": "$ctx:api.name",
+			"status":  "$ctx:response.status",
 		},
 	})
 	event := createBaseEvent()
@@ -717,36 +566,9 @@ func TestLog_Publish_GlobalFallback_PropertiesResolveCtx(t *testing.T) {
 	assert.Equal(t, float64(201), props["status"])
 }
 
-// A per-API directive's own Properties are used as-is; global properties never
-// apply when a per-API marker is present.
-func TestLog_Publish_PerAPIPropertiesNotMixedWithGlobalProperties(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
-		Global: config.GlobalTrafficLoggingConfig{
-			Enabled:    true,
-			Properties: map[string]string{"fromGlobal": "yes"},
-		},
-	})
-	event := createBaseEvent()
-	event.TrafficLog = &dto.TrafficLogDirective{
-		Properties: map[string]interface{}{"fromPolicy": "yes"},
-	}
-
-	l.Publish(event)
-
-	decoded := decodeLine(t, read())
-	props, ok := decoded["properties"].(map[string]interface{})
-	require.True(t, ok)
-	assert.Equal(t, "yes", props["fromPolicy"])
-	_, hasGlobal := props["fromGlobal"]
-	assert.False(t, hasGlobal, "global properties must not mix into a per-API directive's line")
-}
-
-// No global properties configured -> no "properties" key on the fallback line,
-// matching the per-API "no properties -> no key" behavior.
+// No properties configured -> no "properties" key on the line.
 func TestLog_Publish_GlobalFallback_NoPropertiesConfiguredOmitsKey(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
-		Global: config.GlobalTrafficLoggingConfig{Enabled: true},
-	})
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{Enabled: true})
 	event := createBaseEvent()
 
 	l.Publish(event)
@@ -762,10 +584,8 @@ func TestLog_Publish_GlobalFallback_NoPropertiesConfiguredOmitsKey(t *testing.T)
 // decoded independently.
 func TestLog_Publish_GlobalFallback_PropertiesDoNotLeakAcrossRequests(t *testing.T) {
 	l := NewLog(&config.TrafficLoggingConfig{
-		Global: config.GlobalTrafficLoggingConfig{
-			Enabled:    true,
-			Properties: map[string]string{"apiName": "$ctx:api.name"},
-		},
+		Enabled:    true,
+		Properties: map[string]string{"apiName": "$ctx:api.name"},
 	})
 	require.Nil(t, l.globalDir.Properties, "globalDir must never carry baked-in properties")
 
@@ -803,10 +623,8 @@ func TestLog_Publish_GlobalFallback_PropertiesDoNotLeakAcrossRequests(t *testing
 // l.globalDir. Run with -race to make this meaningful.
 func TestLog_Publish_GlobalFallback_ConcurrentPropertiesNoRace(t *testing.T) {
 	l := NewLog(&config.TrafficLoggingConfig{
-		Global: config.GlobalTrafficLoggingConfig{
-			Enabled:    true,
-			Properties: map[string]string{"apiName": "$ctx:api.name"},
-		},
+		Enabled:    true,
+		Properties: map[string]string{"apiName": "$ctx:api.name"},
 	})
 	path := filepath.Join(t.TempDir(), "out.log")
 	f, err := os.Create(path)
@@ -832,9 +650,8 @@ func TestLog_Publish_GlobalFallback_ConcurrentPropertiesNoRace(t *testing.T) {
 
 // Top-level fields — status, correlationId, client — are always present when set.
 func TestLog_Publish_TopLevelFieldsPresent(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	l, read := newLogToFile(t, bothFlowsConfig())
 	event := createBaseEvent()
-	event.TrafficLog = bothFlows()
 
 	l.Publish(event)
 

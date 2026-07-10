@@ -371,37 +371,19 @@ timer_wakeup_seconds = 3
 # payloads) to stdout as a JSON line. Useful for log-scraping pipelines such as
 # Fluent Bit/Loki/ELK; no external SaaS needed.
 #
-# Per-API (opt-in): a line is emitted only for APIs that attach the `log-message`
-# policy with `enableTrafficLogging: true` — enabling this section alone does NOT
-# log every API unless [traffic_logging.global] below is also enabled. So an API
-# is logged only when both hold: [traffic_logging].enabled = true, and the
-# `log-message` policy (enableTrafficLogging: true) is attached to that API. The
-# policy's request/response parameters (per-flow payload/headers toggles and
-# excludeHeaders) shape each API's line; they filter/mask what the collector
-# captured (they cannot enable capture the collector was not configured to
-# perform). A per-API directive always takes precedence over the global fallback
-# below.
+# No policy required: enabling this section emits one stdout line for every
+# request to every API — including requests an auth policy denied
+# (short-circuited), which is otherwise invisible to any logging done from
+# inside the policy chain. Honors the shared collector.ignore_path_prefixes.
 [traffic_logging]
 enabled = false
 # Header names (case-insensitive) whose values are redacted as "****" in the
-# logged requestHeaders/responseHeaders. Applies globally (both per-API and
-# global-mode lines); the `log-message` policy's per-API excludeHeaders/
-# maskedHeaders add further redaction/removal on top.
+# logged requestHeaders/responseHeaders.
 masked_headers = ["authorization", "x-api-key", "x-jwt-assertion"]
 # Max bytes of request/response payload written to each log line (0 = no limit).
 # Applied output-side, so the collector still captures full bodies and other
 # consumers are unaffected.
 max_payload_size = 0
-
-# Global mode (no policy required): emits one stdout line for EVERY request to
-# EVERY API, including requests an auth policy denied (short-circuited) — which a
-# `log-message` policy placed after auth in the chain would never see. Has no
-# effect unless [traffic_logging].enabled = true above. Honors the shared
-# collector.ignore_path_prefixes, masked_headers, and max_payload_size. A per-API
-# `log-message`/enableTrafficLogging directive still overrides this default for
-# that one API.
-[traffic_logging.global]
-enabled = false
 # Each toggle only selects among what [collector] already captures — e.g.
 # request_body here is a no-op while collector.request_body = false.
 request_headers = false
@@ -409,53 +391,37 @@ request_body = false
 response_headers = false
 response_body = false
 
-# Optional field projection over the emitted line, same only/exclude semantics as
-# the log-message policy's `fields` parameter. Set at most one of the two.
-[traffic_logging.global.fields]
+# Optional field projection over the emitted line. Set at most one of the two.
+[traffic_logging.fields]
 only = []
 exclude = []
 # exclude = ["requestBody", "responseBody"]
 
-# Optional extra key->value pairs added under a top-level "properties" object,
-# mirroring the log-message policy's `properties` parameter. A value prefixed
-# "$ctx:" is evaluated as a CEL expression against context built from the
-# collected event; other values are literal strings.
+# Optional extra key->value pairs added under a top-level "properties" object.
+# A value prefixed "$ctx:" is evaluated as a CEL expression against context
+# built from the collected event; other values are literal strings.
 #
 # Available variables: request.path, request.method, request.id,
-# request.header['<name>'] (lower-case keys), api.id, api.name, api.version,
-# api.context, api.kind, project.id, target.statusCode, target.destination,
+# request.header['<name>'] (lower-case keys), response.status,
+# response.header['<name>'], api.id, api.name, api.version, api.context,
+# api.kind, project.id, target.statusCode, target.destination,
 # application.id/name/owner/keyType (populated only when an auth policy that
-# stamps application identity, e.g. api-key-auth, actually ran). Two of these
-# — response.status and response.header['<name>'] — are NOT available to the
-# log-message policy's own `properties` (it resolves in OnRequestHeaders,
-# before any response exists); global mode resolves after the response
-# completes, so it can see them.
+# stamps application identity, e.g. api-key-auth, actually ran).
 #
 # auth.* is also available — subject, type, issuer, credential_id, token_id,
 # audience (list), scopes (list), property['<claim>'] (map), authenticated,
 # authorized — populated generically (auth-type-agnostic) for ANY authenticated
-# request by the collector system policy, independent of jwt-auth/
-# opaque-token-auth/api-key-auth/etc. and independent of any log-message
-# policy. For an unauthenticated or denied request every auth.* variable
-# resolves to its zero value rather than erroring, so
-# `auth.subject != "" ? auth.subject : "anonymous"` is the recommended pattern
-# for a property that should always resolve to something.
-[traffic_logging.global.properties]
+# request by the collector system policy, independent of which auth policy
+# (jwt-auth, opaque-token-auth, api-key-auth, etc.) ran. For an unauthenticated
+# or denied request every auth.* variable resolves to its zero value rather
+# than erroring, so `auth.subject != "" ? auth.subject : "anonymous"` is the
+# recommended pattern for a property that should always resolve to something.
+[traffic_logging.properties]
 # env = "prod"
 # apiName = "$ctx:api.name"
 # status = "$ctx:response.status"
 # subject = "$ctx:auth.subject != '' ? auth.subject : 'anonymous'"
 # tenant = "$ctx:auth.property['tenant']"
-
-[traffic_logging]
-enabled = false
-masked_headers = ["authorization", "x-api-key", "x-jwt-assertion"]
-max_payload_size = 0
-request_headers = false
-request_body = false
-response_headers = false
-response_body = false
-
 
 
 # =============================================================================
