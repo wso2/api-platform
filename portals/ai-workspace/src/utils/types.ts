@@ -325,6 +325,7 @@ export interface ApiKeySecurity {
   enabled: boolean;
   key?: string;
   in?: 'header' | 'query';
+  keyPrefix?: string;
 }
 
 /**
@@ -408,6 +409,7 @@ export interface CreateLLMProviderRequest {
   operationPolicies?: OperationPolicy[];
   policies?: Policy[];
   openapi?: string;
+  security?: SecurityConfig;
 }
 
 /** Read-only fields from API (excluded from update requests) */
@@ -727,10 +729,7 @@ export interface CreateLLMProxyAPIKeyResponse {
 /**
  * API Key list response for LLM providers
  */
-export interface APIKeyListResponse {
-  count: number;
-  items: UserAPIKey[];
-}
+export type APIKeyListResponse = ApiListResponse<UserAPIKey>;
 
 // ============================================================================
 // MCP Server Types
@@ -1061,7 +1060,4 @@ export interface UserAPIKey {
 /**
  * User API Key list response
  */
-export interface UserAPIKeyListResponse {
-  count: number;
-  items: UserAPIKey[];
-}
+export type UserAPIKeyListResponse = ApiListResponse<UserAPIKey>;

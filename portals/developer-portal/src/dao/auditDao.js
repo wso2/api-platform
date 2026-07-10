@@ -20,6 +20,11 @@ const Audit = require('../models/audit');
 /**
  * Records one audit trail entry. Write-only — no list/query function, mirroring
  * platform-api's audit table, which is inspected directly in the database.
+ *
+ * Called fire-and-forget (see auditLogger.js), so a failure here is caught and
+ * logged by the caller and never blocks the request. For SQLite the shared
+ * Sequelize pool is capped at a single connection, so this autocommit write is
+ * serialized behind any open transaction rather than contending with it.
  */
 const record = async (action, resourceUuid, resourceType, orgUuid, performedBy) => {
     return Audit.create({

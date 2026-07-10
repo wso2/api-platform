@@ -178,166 +178,63 @@ Generated artifact names:
 - `default` DevPortal config: `build/devportal.zip`
 - named DevPortal config: `build/devportal_<name>.zip`
 
-## Organization Commands
+## Apply Command
 
-These commands manage DevPortal organizations using the `/devportal/organizations` endpoints.
+### `ap devportal apply`
 
-### `ap devportal org list`
-
-Lists organizations in the selected DevPortal.
+**Creates** or **updates** a DevPortal resource from a **single file**, aligning with `ap gateway apply` and `ap ai-workspace apply`. Because a project can contain multiple DevPortal resources, you point `-f` at the **exact file** — a YAML CR or a built REST API artifact zip — not at the project directory.
 
 ```shell
-ap devportal org list [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal apply -f <file> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
+
+The target endpoint is selected from the resource **kind**. For a YAML CR the top-level `kind` is read directly; for a `.zip` the `kind` is read from the artifact's `devportal.yaml`. The target organization is resolved server-side from the DevPortal credentials, so there is **no `--org` flag**.
+
+For kinds that are addressable by their handle (`metadata.name`) and expose a `PUT` — `Organization` and `RestApi` — apply first **checks whether the resource exists** (`GET {resource}/{handle}`, like `ap gateway apply`) and then **updates** it (`PUT`, reported as `updated`) or **creates** it (`POST`, reported as `applied`). Subscription plans have no per-plan `PUT` — their publish endpoint upserts, and `SubscriptionPolicyList` is a bulk upload — so they are always `POST`ed.
+
+| Kind (source) | Input | Create / update |
+| --- | --- | --- |
+| `Organization` (YAML CR) | `.yaml` | `GET /api/v0.9/organizations/{name}` → `PUT /api/v0.9/organizations/{name}` or `POST /api/v0.9/organizations` |
+| `SubscriptionPolicy` / `SubscriptionPolicyList` (YAML CR) | `.yaml` | `POST /api/v0.9/subscription-plans` (server upsert) |
+| `RestApi` (artifact `devportal.yaml`) | `.zip` | `GET /api/v0.9/apis/{name}` → `PUT /api/v0.9/apis/{name}` or `POST /api/v0.9/apis` |
 
 Examples:
 
 ```shell
-ap devportal org list
-ap devportal org list --display-name my-portal --platform eu
-```
 
-Behavior:
+# Subscription plan(s) — single (kind: SubscriptionPolicy) or bulk (kind: SubscriptionPolicyList)
+ap devportal apply -f sub_plan.yaml
 
-- Prints a table with `ORG_ID`, `ORG_NAME`, `BUSINESS_OWNER`, and `ORGANIZATION_IDENTIFIER`.
+# REST API from a built artifact zip (kind: RestApi read from devportal.yaml)
+ap devportal apply -f build/devportal.zip
 
-### `ap devportal org get`
-
-Gets a single organization by ID.
-
-```shell
-ap devportal org get --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
-
-```shell
-ap devportal org get --org org_1
-ap devportal org get --org org_1 --display-name my-portal --platform eu
-```
-
-### `ap devportal org add`
-
-Creates an organization by uploading a YAML CR file as multipart form data using the `organization` field.
-
-```shell
-ap devportal org add --file <org.yaml> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
-
-```shell
-ap devportal org add -f org.yaml
-ap devportal org add -f org.yaml --display-name my-portal --platform eu
-```
-
-Expected CR shape (`org.yaml`):
-
-```yaml
-apiVersion: devportal.api-platform.wso2.com/v1
-kind: Organization
-
-metadata:
-  name: ACME
-
-spec:
-  displayName: acme
-  organizationIdentifier: acme
-  adminRole: admin
-  subscriberRole: subscriber
-  superAdminRole: superAdmin
-
-  labels:
-    - name: default
-      displayName: Default
-
-  views:
-    - name: default
-      displayName: Default View
-      labels:
-        - default
 ```
 
 Notes:
 
-- `metadata.name` is read as the organization handle.
-- `spec.displayName` is read as the organization display name.
-- All other organization fields are read from `spec`.
-
-Equivalent request shape:
-
-```shell
-curl -X POST /devportal/organizations -F "organization=@org.yaml"
-```
-
-### `ap devportal org edit`
-
-Updates an organization using a JSON request payload file.
-
-```shell
-ap devportal org edit --org <org-id> --file <organization.json> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
-
-```shell
-ap devportal org edit --org org_1 -f organization.json
-ap devportal org edit --org org_1 -f organization.json --display-name my-portal --platform eu
-```
-
-### `ap devportal org delete`
-
-Deletes an organization by ID.
-
-```shell
-ap devportal org delete --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
-
-```shell
-ap devportal org delete --org org_1
-ap devportal org delete --org org_1 --display-name my-portal --platform eu
-```
-
-Expected payload shape for `ap devportal org edit`:
-
-`organization.json`
-```json
-{
-  "orgName": "John",
-  "businessOwner": "Jane Doe",
-  "businessOwnerContact": "+1-202-555-0147",
-  "businessOwnerEmail": "jane.doe@abc.example",
-  "orgHandle": "johndoe",
-  "roleClaimName": "roles",
-  "groupsClaimName": "groups",
-  "organizationClaimName": "organizationIdentifier",
-  "organizationIdentifier": "JOHN",
-  "adminRole": "admin",
-  "subscriberRole": "subscriber",
-  "superAdminRole": "superAdmin"
-}
-```
+- `--file` is required and must be an **exact file** (a `.yaml`/`.yml` CR or a `.zip` artifact), not a directory.
+- A `RestApi` must be supplied as a built `.zip` (from `ap devportal build`); a CR must be supplied as YAML.
+- On success it prints a `Status`/`Message`/`ID` summary — the message reports `applied` (created) or `updated` — followed by the server response body.
+- This replaces the former `ap devportal org add`, `ap devportal sub-plan publish`, and `ap devportal rest-api publish` commands (which were create/publish-only).
 
 ## Application Commands
 
-These commands manage DevPortal applications using the `/devportal/organizations/{orgId}/applications` endpoints.
+These commands manage DevPortal applications using the `/api/v0.9/applications` endpoints. The organization is resolved from the DevPortal credentials.
 
 ### `ap devportal application create`
 
 Creates an application. Only `--name` and `--type` are required; `--description` is optional.
 
 ```shell
-ap devportal application create --org <org-id> --name <name> --type <type> [--description <description>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal application create --name <name> --type <type> [--description <description>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal application create --org org_1 --name "Weather App" --type WEB
-ap devportal application create --org org_1 --name "Weather App" --type WEB --description "Calls the Weather APIs"
-ap devportal application create --org org_1 --name "Weather App" --type WEB --display-name my-portal --platform eu
+ap devportal application create --name "Weather App" --type WEB
+ap devportal application create --name "Weather App" --type WEB --description "Calls the Weather APIs"
+ap devportal application create --name "Weather App" --type WEB --display-name my-portal --platform eu
 ```
 
 Expected payload shape (`description` is omitted when `--description` is not provided):
@@ -355,15 +252,15 @@ Expected payload shape (`description` is omitted when `--description` is not pro
 Lists applications in an organization, or retrieves a single application when `--app-id` is provided.
 
 ```shell
-ap devportal application get --org <org-id> [--app-id <app-id>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal application get [--app-id <app-id>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal application get --org org_1
-ap devportal application get --org org_1 --app-id app_1
-ap devportal application get --org org_1 --app-id app_1 --display-name my-portal --platform eu
+ap devportal application get
+ap devportal application get --app-id app_1
+ap devportal application get --app-id app_1 --display-name my-portal --platform eu
 ```
 
 ### `ap devportal application update`
@@ -371,14 +268,14 @@ ap devportal application get --org org_1 --app-id app_1 --display-name my-portal
 Updates an existing application. `--name` and `--type` are required in the body; `--description` is optional. (`edit` is accepted as an alias.)
 
 ```shell
-ap devportal application update --org <org-id> --app-id <app-id> --name <name> --type <type> [--description <description>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal application update --app-id <app-id> --name <name> --type <type> [--description <description>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal application update --org org_1 --app-id app_1 --name "Weather App" --type WEB
-ap devportal application update --org org_1 --app-id app_1 --name "Weather App" --type WEB --description "Calls the Weather APIs"
+ap devportal application update --app-id app_1 --name "Weather App" --type WEB
+ap devportal application update --app-id app_1 --name "Weather App" --type WEB --description "Calls the Weather APIs"
 ```
 
 ### `ap devportal application delete`
@@ -386,34 +283,34 @@ ap devportal application update --org org_1 --app-id app_1 --name "Weather App" 
 Deletes an application by its application ID.
 
 ```shell
-ap devportal application delete --org <org-id> --app-id <app-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal application delete --app-id <app-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal application delete --org org_1 --app-id app_1
-ap devportal application delete --org org_1 --app-id app_1 --display-name my-portal --platform eu
+ap devportal application delete --app-id app_1
+ap devportal application delete --app-id app_1 --display-name my-portal --platform eu
 ```
 
 ## Subscription Commands
 
-These commands manage DevPortal platform subscriptions using the `/devportal/organizations/{orgId}/api-platform-subscriptions` endpoints.
+These commands manage DevPortal platform subscriptions using the `/api/v0.9/subscriptions` endpoints. The organization is resolved from the DevPortal credentials.
 
 ### `ap devportal subscription create`
 
 Creates a platform subscription. Only the API ID is required; the subscription plan is optional.
 
 ```shell
-ap devportal subscription create --org <org-id> --api-id <api-id> [--subscription-plan <plan-name>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal subscription create --api-id <api-id> [--subscription-plan <plan-name>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal subscription create --org org_1 --api-id api_1
-ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold
-ap devportal subscription create --org org_1 --api-id api_1 --subscription-plan gold --display-name my-portal --platform eu
+ap devportal subscription create --api-id api_1
+ap devportal subscription create --api-id api_1 --subscription-plan gold
+ap devportal subscription create --api-id api_1 --subscription-plan gold --display-name my-portal --platform eu
 ```
 
 Expected payload shape (`subscriptionPlanName` is omitted when `--subscription-plan` is not provided):
@@ -430,14 +327,14 @@ Expected payload shape (`subscriptionPlanName` is omitted when `--subscription-p
 Updates a platform subscription status with flags.
 
 ```shell
-ap devportal subscription edit --org <org-id> --sub-id <subscription-id> --status <status> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal subscription edit --sub-id <subscription-id> --status <status> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal subscription edit --org org_1 --sub-id sub_1 --status ACTIVE
-ap devportal subscription edit --org org_1 --sub-id sub_1 --status ACTIVE --display-name my-portal --platform eu
+ap devportal subscription edit --sub-id sub_1 --status ACTIVE
+ap devportal subscription edit --sub-id sub_1 --status ACTIVE --display-name my-portal --platform eu
 ```
 
 Expected payload shape:
@@ -453,15 +350,15 @@ Expected payload shape:
 Gets all platform subscriptions in an organization, or a single subscription when `--sub-id` is provided.
 
 ```shell
-ap devportal subscription get --org <org-id> [--sub-id <subscription-id>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal subscription get [--sub-id <subscription-id>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal subscription get --org org_1
-ap devportal subscription get --org org_1 --sub-id sub_1
-ap devportal subscription get --org org_1 --sub-id sub_1 --display-name my-portal --platform eu
+ap devportal subscription get
+ap devportal subscription get --sub-id sub_1
+ap devportal subscription get --sub-id sub_1 --display-name my-portal --platform eu
 ```
 
 ### `ap devportal subscription delete`
@@ -469,14 +366,14 @@ ap devportal subscription get --org org_1 --sub-id sub_1 --display-name my-porta
 Deletes a platform subscription by ID.
 
 ```shell
-ap devportal subscription delete --org <org-id> --sub-id <subscription-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal subscription delete --sub-id <subscription-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal subscription delete --org org_1 --sub-id sub_1
-ap devportal subscription delete --org org_1 --sub-id sub_1 --display-name my-portal --platform eu
+ap devportal subscription delete --sub-id sub_1
+ap devportal subscription delete --sub-id sub_1 --display-name my-portal --platform eu
 ```
 
 ## REST API Commands
@@ -488,14 +385,14 @@ These commands manage API artifacts in a DevPortal organization.
 Lists APIs in a DevPortal organization.
 
 ```shell
-ap devportal rest-api list --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal rest-api list [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal rest-api list --org org_1
-ap devportal rest-api list --org org_1 --display-name my-portal --platform eu
+ap devportal rest-api list
+ap devportal rest-api list --display-name my-portal --platform eu
 ```
 
 Behavior:
@@ -508,56 +405,40 @@ Behavior:
 Gets a single API artifact from a DevPortal organization.
 
 ```shell
-ap devportal rest-api get --org <org-id> --id <api-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal rest-api get --id <api-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal rest-api get --org org_1 --id api_1
-ap devportal rest-api get --org org_1 --id api_1 --display-name my-portal --platform eu
+ap devportal rest-api get --id api_1
+ap devportal rest-api get --id api_1 --display-name my-portal --platform eu
 ```
 
-### `ap devportal rest-api publish`
+### Publishing a REST API
 
-Publishes a DevPortal artifact zip to a DevPortal organization.
+A built REST API artifact zip is published with the unified [`ap devportal apply`](#ap-devportal-apply) command — `apply` reads `kind: RestApi` from the zip's `devportal.yaml` and routes it to the organization's `apis` endpoint:
 
 ```shell
-ap devportal rest-api publish [--file <zip-path>] --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal apply -f build/devportal.zip
 ```
 
-Examples:
-
-```shell
-ap devportal rest-api publish --org org_1
-ap devportal rest-api publish -f fooapi/build/devportal.zip --org org_1
-ap devportal rest-api publish -f fooapi/build/devportal.zip --org org_1 --display-name my-portal --platform eu
-ap devportal rest-api publish -f fooapi/build/devportal.zip --org org_1 --insecure
-```
-
-Behavior:
-
-- If `--file` is omitted, the command looks for `./devportal.zip` in the current directory.
-- If neither `--file` nor `./devportal.zip` is available, the command returns an error.
-- If `--display-name` is provided, the named DevPortal is used.
-- If `--display-name` is provided without `--platform`, the command looks in the `default` platform.
-- If `--display-name` is not provided, the command uses the active DevPortal of the resolved platform.
-- `--insecure` skips TLS certificate verification for local or self-signed HTTPS endpoints.
+Build the zip first with [`ap devportal build`](#ap-devportal-build). Use `ap devportal rest-api get`/`list`/`edit`/`delete` (below) to manage an already-published API.
 
 ### `ap devportal rest-api edit`
 
 Updates an existing API artifact in a DevPortal organization.
 
 ```shell
-ap devportal rest-api edit [--file <zip-path>] --org <org-id> --id <api-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal rest-api edit [--file <zip-path>] --id <api-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal rest-api edit --org org_1 --id api_1
-ap devportal rest-api edit -f fooapi/build/devportal.zip --org org_1 --id api_1
-ap devportal rest-api edit -f fooapi/build/devportal.zip --org org_1 --id api_1 --display-name my-portal --platform eu
+ap devportal rest-api edit --id api_1
+ap devportal rest-api edit -f fooapi/build/devportal.zip --id api_1
+ap devportal rest-api edit -f fooapi/build/devportal.zip --id api_1 --display-name my-portal --platform eu
 ```
 
 Behavior:
@@ -570,14 +451,14 @@ Behavior:
 Deletes an API artifact from a DevPortal organization.
 
 ```shell
-ap devportal rest-api delete --org <org-id> --id <api-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal rest-api delete --id <api-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal rest-api delete --org org_1 --id api_1
-ap devportal rest-api delete --org org_1 --id api_1 --display-name my-portal --platform eu
+ap devportal rest-api delete --id api_1
+ap devportal rest-api delete --id api_1 --display-name my-portal --platform eu
 ```
 
 Current status:
@@ -586,30 +467,30 @@ Current status:
 
 ## API Key Commands
 
-These commands manage API keys using the `/devportal/organizations/{orgId}/api-keys` endpoints.
+These commands manage API keys using the `/api/v0.9/api-keys` endpoints. The organization is resolved from the DevPortal credentials.
 
 ### `ap devportal api-key generate`
 
 Generates an API key for an API. The plaintext secret is returned once in the response and is never persisted. Run without the required flags to be prompted interactively.
 
 ```shell
-ap devportal api-key generate --org <org-id> --api-id <api-id> --name <key-name> [--expires-at <expiry>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal api-key generate --api-id <api-id> --name <key-name> [--expires-at <expiry>] [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
 # Provide everything via flags
-ap devportal api-key generate --org org_1 --api-id api_1 --name weather_prod_key
+ap devportal api-key generate --api-id api_1 --name weather_prod_key
 
 # Add an expiry (ISO-8601 with timezone, epoch seconds, or epoch milliseconds)
-ap devportal api-key generate --org org_1 --api-id api_1 --name weather_prod_key --expires-at 2026-12-31T23:59:59Z
+ap devportal api-key generate --api-id api_1 --name weather_prod_key --expires-at 2026-12-31T23:59:59Z
 
 # Interactive mode (prompts for any missing org/api-id/name/expiry)
 ap devportal api-key generate
 
 # Skip prompts and fail if a required flag is missing
-ap devportal api-key generate --org org_1 --api-id api_1 --name weather_prod_key --no-interactive
+ap devportal api-key generate --api-id api_1 --name weather_prod_key --no-interactive
 ```
 
 Notes:
@@ -623,14 +504,14 @@ Notes:
 Lists API keys for an API.
 
 ```shell
-ap devportal api-key get --org <org-id> --api-id <api-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal api-key get --api-id <api-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal api-key get --org org_1 --api-id api_1
-ap devportal api-key get --org org_1 --api-id api_1 --display-name my-portal --platform eu
+ap devportal api-key get --api-id api_1
+ap devportal api-key get --api-id api_1 --display-name my-portal --platform eu
 ```
 
 ### `ap devportal api-key regenerate`
@@ -638,14 +519,14 @@ ap devportal api-key get --org org_1 --api-id api_1 --display-name my-portal --p
 Regenerates the secret for an existing API key. The old secret is invalidated at connected gateways and the new plaintext secret is returned once.
 
 ```shell
-ap devportal api-key regenerate --org <org-id> --api-key-id <api-key-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal api-key regenerate --api-key-id <api-key-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal api-key regenerate --org org_1 --api-key-id key_1
-ap devportal api-key regenerate --org org_1 --api-key-id key_1 --display-name my-portal --platform eu
+ap devportal api-key regenerate --api-key-id key_1
+ap devportal api-key regenerate --api-key-id key_1 --display-name my-portal --platform eu
 ```
 
 ### `ap devportal api-key revoke`
@@ -653,35 +534,30 @@ ap devportal api-key regenerate --org org_1 --api-key-id key_1 --display-name my
 Revokes an existing API key. Connected gateways immediately reject requests carrying the revoked key.
 
 ```shell
-ap devportal api-key revoke --org <org-id> --api-key-id <api-key-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal api-key revoke --api-key-id <api-key-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal api-key revoke --org org_1 --api-key-id key_1
-ap devportal api-key revoke --org org_1 --api-key-id key_1 --display-name my-portal --platform eu
+ap devportal api-key revoke --api-key-id key_1
+ap devportal api-key revoke --api-key-id key_1 --display-name my-portal --platform eu
 ```
 
 ## Subscription Plan Commands
 
-These commands manage subscription plans using the `/devportal/organizations/{orgId}/subscription-policies` endpoint.
+These commands manage subscription plans using the `/api/v0.9/subscription-plans` endpoint. The organization is resolved from the DevPortal credentials.
 
-### `ap devportal sub-plan publish`
+### Publishing subscription plans
 
-Publishes one or more subscription plans by uploading a YAML CR file as multipart form data using the `subscriptionPolicy` field. Both a single plan (`kind: SubscriptionPolicy`) and a bulk list (`kind: SubscriptionPolicyList` with an `items` array) are accepted.
-
-```shell
-ap devportal sub-plan publish --file <plan.yaml> --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
-```
-
-Examples:
+Subscription plans are published with the unified [`ap devportal apply`](#ap-devportal-apply) command from a YAML CR — either a single plan (`kind: SubscriptionPolicy`) or a bulk list (`kind: SubscriptionPolicyList` with an `items` array).
 
 ```shell
-ap devportal sub-plan publish -f sub_plan_gold.yaml --org org_1
-ap devportal sub-plan publish -f sub_plans.yaml --org org_1
-ap devportal sub-plan publish -f sub_plan_gold.yaml --org org_1 --display-name my-portal --platform eu
+ap devportal apply -f sub_plan_gold.yaml     # single plan
+ap devportal apply -f sub_plans.yaml         # bulk list
 ```
+
+The CLI validates the CR locally before upload: `kind` must be `SubscriptionPolicy` or `SubscriptionPolicyList`, and each plan must have `metadata.name`.
 
 Single plan CR shape (`sub_plan_gold.yaml`):
 
@@ -723,42 +599,40 @@ items:
 
 Notes:
 
-- The CLI validates the CR locally before upload: `kind` must be `SubscriptionPolicy` or `SubscriptionPolicyList`, and each plan must have `metadata.name`.
 - `type` accepts `requestcount` or `eventcount`. Use `-1` for an unlimited request/event count.
-- Equivalent request shape: `curl -X POST /devportal/organizations/<org-id>/subscription-policies -F "subscriptionPolicy=@sub_plan_gold.yaml"`.
 
 ### `ap devportal sub-plan list`
 
 Lists all subscription plans in an organization.
 
 ```shell
-ap devportal sub-plan list --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal sub-plan list [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal sub-plan list --org org_1
-ap devportal sub-plan list --org org_1 --display-name my-portal --platform eu
+ap devportal sub-plan list
+ap devportal sub-plan list --display-name my-portal --platform eu
 ```
 
 Notes:
 
-- Calls `GET /o/<org-id>/devportal/v1/subscription-policies` (operationId `listSubscriptionPolicies`).
+- Calls `GET /api/v0.9/subscription-plans` (operationId `listSubscriptionPlans`).
 
 ### `ap devportal sub-plan get`
 
 Gets a single subscription plan by its policy ID.
 
 ```shell
-ap devportal sub-plan get --policy-id <policy-id> --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal sub-plan get --policy-id <policy-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal sub-plan get --policy-id plan_1 --org org_1
-ap devportal sub-plan get --policy-id plan_1 --org org_1 --display-name my-portal --platform eu
+ap devportal sub-plan get --policy-id plan_1
+ap devportal sub-plan get --policy-id plan_1 --display-name my-portal --platform eu
 ```
 
 Notes:
@@ -770,14 +644,14 @@ Notes:
 Deletes a subscription plan by its policy ID.
 
 ```shell
-ap devportal sub-plan delete --policy-id <policy-id> --org <org-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
+ap devportal sub-plan delete --policy-id <policy-id> [--display-name <devportal-name>] [--platform <platform>] [--insecure]
 ```
 
 Examples:
 
 ```shell
-ap devportal sub-plan delete --policy-id plan_1 --org org_1
-ap devportal sub-plan delete --policy-id plan_1 --org org_1 --display-name my-portal --platform eu
+ap devportal sub-plan delete --policy-id plan_1
+ap devportal sub-plan delete --policy-id plan_1 --display-name my-portal --platform eu
 ```
 
 Notes:

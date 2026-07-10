@@ -124,8 +124,7 @@ export default function LLLMStepBanner({
             : false,
         hasConsumptions:
           apiKeysResult.status === 'fulfilled'
-            ? (apiKeysResult.value.count ?? apiKeysResult.value.items?.length ?? 0) >
-              0
+            ? (apiKeysResult.value.list?.length ?? 0) > 0
             : false,
       });
     };

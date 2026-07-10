@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -64,6 +65,7 @@ func NewLLMProxyAPIKeyService(
 func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 	ctx context.Context,
 	proxyID, orgID, userID string,
+	limit, offset int,
 ) (*api.LLMProxyAPIKeyListResponse, error) {
 
 	proxy, err := s.llmProxyRepo.GetByID(proxyID, orgID)
@@ -72,7 +74,7 @@ func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 		return nil, fmt.Errorf("failed to get LLM proxy: %w", err)
 	}
 	if proxy == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
 	}
 
 	keys, err := s.apiKeyRepo.ListByArtifact(proxy.UUID)
@@ -81,33 +83,20 @@ func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 		return nil, fmt.Errorf("failed to list API keys: %w", err)
 	}
 
-	items := make([]api.APIKeyItem, 0, len(keys))
-	for _, k := range keys {
-		if k.CreatedBy != userID {
-			continue
-		}
-		createdBy := utils.StringPtrIfNotEmpty(k.CreatedBy)
-		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
-			return nil, err
-		}
-		item := api.APIKeyItem{
-			Id:             &k.Name,
-			DisplayName:    k.DisplayName,
-			MaskedApiKey:   k.MaskedAPIKey,
-			Status:         api.APIKeyItemStatus(k.Status),
-			CreatedAt:      k.CreatedAt,
-			CreatedBy:      createdBy,
-			UpdatedAt:      k.UpdatedAt,
-			ExpiresAt:      k.ExpiresAt,
-			Issuer:         k.Issuer,
-			AllowedTargets: k.AllowedTargets,
-		}
-		items = append(items, item)
+	items, err := ownedAPIKeyItems(keys, userID, s.identity)
+	if err != nil {
+		return nil, err
 	}
 
+	// API keys for one proxy (scoped to the caller) are a small, bounded set,
+	// so the total is the full count and the window is applied in memory.
+	total := len(items)
+	page := paginateSlice(items, limit, offset)
+
 	return &api.LLMProxyAPIKeyListResponse{
-		Items: items,
-		Count: len(items),
+		List:       page,
+		Count:      len(page),
+		Pagination: api.Pagination{Total: total, Offset: offset, Limit: limit},
 	}, nil
 }
 
@@ -123,7 +112,7 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 		return fmt.Errorf("failed to get LLM proxy: %w", err)
 	}
 	if proxy == nil {
-		return constants.ErrAPINotFound
+		return apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
 	}
 
 	existingKey, err := s.apiKeyRepo.GetByArtifactAndName(proxy.UUID, keyName)
@@ -132,12 +121,12 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 		return fmt.Errorf("failed to look up API key: %w", err)
 	}
 	if existingKey == nil {
-		return constants.ErrAPIKeyNotFound
+		return apperror.LLMProxyAPIKeyNotFound.Wrap(constants.ErrAPIKeyNotFound)
 	}
 
 	// Non-admin callers (userID != "") must be the key creator.
 	if userID != "" && existingKey.CreatedBy != userID {
-		return constants.ErrAPIKeyForbidden
+		return apperror.LLMProxyAPIKeyForbidden.Wrap(constants.ErrAPIKeyForbidden)
 	}
 
 	if err := s.apiKeyRepo.Delete(proxy.UUID, keyName); err != nil {
@@ -189,7 +178,7 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 	}
 	if proxy == nil {
 		s.slogger.Warn("LLM proxy not found", "proxyId", proxyID, "organizationId", orgID)
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
 	}
 
 	apiKey, err := utils.GenerateAPIKey()
@@ -222,7 +211,7 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 
 	if len(gateways) == 0 {
 		s.slogger.Warn("No gateways found for organization", "organizationId", orgID)
-		return nil, constants.ErrGatewayUnavailable
+		return nil, apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
 	}
 
 	apiKeyHashesJSON, err := buildAPIKeyHashesJSON(apiKey, []string{defaultHashingAlgorithm})

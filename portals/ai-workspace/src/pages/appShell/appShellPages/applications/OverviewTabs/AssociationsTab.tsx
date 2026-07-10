@@ -69,6 +69,7 @@ import AssociationSelectionDrawer, {
   SelectableKeyList,
 } from './AssociationSelectionDrawer';
 import AssociationsTable from './AssociationsTable';
+import { getErrorMessage } from '../../../../../utils/apiError';
 import {
   dedupeMappedKeys,
   getInitials,
@@ -100,7 +101,7 @@ type LoadEntityKeysArgs = {
     entityId: string,
     orgUuid: string
   ) => Promise<{
-    items?: UserAPIKey[];
+    list?: UserAPIKey[];
   }>;
   preselectLatest?: boolean;
   unavailableKeyNames?: Set<string>;
@@ -112,12 +113,7 @@ function getTemplateLogo(template?: string): string | undefined {
 }
 
 function getErrorDescription(error: unknown, fallback: string): string {
-  return (
-    (error as any)?.response?.data?.description ||
-    (error as any)?.response?.data?.message ||
-    (error instanceof Error ? error.message : null) ||
-    fallback
-  );
+  return getErrorMessage(error, fallback);
 }
 
 function resolveEntityId(key: MappedAPIKey): string | undefined {
@@ -356,7 +352,7 @@ async function loadEntityKeys({
 
   try {
     const response = await fetchKeys(entityId, orgUuid);
-    const activeKeys = (response.items ?? []).filter(
+    const activeKeys = (response.list ?? []).filter(
       (key) => key.status === 'active'
     );
     const latestKey = getLatestSelectableKey(activeKeys, unavailableKeyNames);

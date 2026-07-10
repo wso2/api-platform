@@ -60,13 +60,13 @@ func TestLLMProviderTemplateRepo_GetByID_ExactVersion(t *testing.T) {
 	v1UUID := v1.UUID
 
 	// Custom v2.0 spun off the built-in — version-suffixed handle, managedBy
-	// "customer"; this demotes v1.0 and becomes the family's latest.
+	// "organization"; this demotes v1.0 and becomes the family's latest.
 	v2 := &model.LLMProviderTemplate{
 		OrganizationUUID: orgUUID,
 		ID:               "mistralai-v2-0",
 		GroupID:   "mistralai",
 		Name:             "Mistral",
-		ManagedBy:        "customer",
+		ManagedBy:        "organization",
 		Version:          "v2.0",
 	}
 	if err := repo.CreateNewVersion(v2); err != nil {
@@ -91,8 +91,8 @@ func TestLLMProviderTemplateRepo_GetByID_ExactVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID(v2) error: %v", err)
 	}
-	if got == nil || got.Version != "v2.0" || got.ManagedBy != "customer" {
-		t.Fatalf("GetByID(v2) = %+v, want version v2.0 (managedBy customer)", got)
+	if got == nil || got.Version != "v2.0" || got.ManagedBy != "organization" {
+		t.Fatalf("GetByID(v2) = %+v, want version v2.0 (managedBy organization)", got)
 	}
 
 	// An unknown handle resolves to nothing (no spurious latest match).

@@ -34,14 +34,13 @@ import (
 const (
 	GetCmdLiteral = "get"
 	GetCmdExample = `# Get all platform subscriptions in an organization
-ap devportal subscription get --org org_1
+ap devportal subscription get
 
 # Get a specific platform subscription
-ap devportal subscription get --org org_1 --sub-id sub_1`
+ap devportal subscription get --sub-id sub_1`
 )
 
 var (
-	getOrgID        string
 	getSubscription string
 	getName         string
 	getPlatform     string
@@ -62,20 +61,13 @@ var getCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(getCmd, utils.FlagOrgID, &getOrgID, "", "Organization ID")
 	utils.AddStringFlag(getCmd, utils.FlagSubID, &getSubscription, "", "Subscription ID")
 	utils.AddStringFlag(getCmd, utils.FlagName, &getName, "", "DevPortal display name")
 	utils.AddStringFlag(getCmd, utils.FlagPlatform, &getPlatform, "", "Platform name")
 	getCmd.Flags().BoolVar(&getInsecure, utils.FlagInsecure, false, "Skip TLS certificate verification")
-	_ = getCmd.MarkFlagRequired(utils.FlagOrgID)
 }
 
 func runGetCommand() error {
-	orgID := strings.TrimSpace(getOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -87,7 +79,7 @@ func runGetCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, getInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "subscriptions")
+	path := internaldevportal.ResourcePath("subscriptions")
 	if subscriptionID := strings.TrimSpace(getSubscription); subscriptionID != "" {
 		path = fmt.Sprintf("%s/%s", path, url.PathEscape(subscriptionID))
 	}

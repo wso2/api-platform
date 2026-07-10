@@ -16,8 +16,18 @@
  * under the License.
  */
 const { Organization, OrgContent } = require('../models/organization');
-const { Sequelize } = require('sequelize');
+const { Sequelize, Op } = require('sequelize');
 const viewDao = require('./viewDao');
+const { Application, ApplicationKeyMapping, SubscriptionMapping } = require('../models/application');
+const { KeyManager } = require('../models/keyManager');
+const APIKey = require('../models/apiKey');
+const DPEvent = require('../models/event');
+const DPEventDelivery = require('../models/eventDelivery');
+const { APIWorkflow } = require('../models/apiWorkflow');
+const { WebhookSubscriber } = require('../models/webhookSubscriber');
+const View = require('../models/view');
+const Labels = require('../models/label');
+const Tags = require('../models/tag');
 
 const create = async (orgData, t) => {
     let devPortalId = "";
@@ -127,7 +137,7 @@ const update = async (orgData, t) => {
     try {
         const existing = await get(orgData.orgId, t);
         const devPortalId = orgData.handle ? orgData.handle.toLowerCase() : existing.handle;
-        const [updatedRowsCount, updatedOrg] = await Organization.update(
+        const [updatedRowsCount] = await Organization.update(
             {
                 display_name: orgData.displayName,
                 business_owner: orgData.businessOwner,
@@ -136,20 +146,23 @@ const update = async (orgData, t) => {
                 handle: devPortalId,
                 idp_ref_id: orgData.idpRefId,
                 ...(orgData.cpRefId !== undefined && { cp_ref_id: orgData.cpRefId }),
-                configuration: orgData.configuration,
+                ...(orgData.configuration !== undefined && { configuration: orgData.configuration }),
                 updated_by: orgData.updatedBy,
                 updated_at: new Date()
             },
             {
                 where: { uuid: existing.uuid },
-                returning: true,
                 transaction: t,
             }
         );
         if (updatedRowsCount < 1) {
             throw new Sequelize.EmptyResultError('Organization not found');
         }
-        return [updatedRowsCount, updatedOrg];
+        // `returning: true` only works on Postgres/MSSQL — Sequelize's sqlite
+        // dialect doesn't support RETURNING on UPDATE, so re-fetch explicitly
+        // instead (same pattern as applicationDao.update).
+        const updatedOrg = await Organization.findOne({ where: { uuid: existing.uuid }, transaction: t });
+        return [updatedRowsCount, [updatedOrg]];
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
             throw error;
@@ -158,9 +171,55 @@ const update = async (orgData, t) => {
     }
 };
 
+// Tables whose org_uuid FK is ON DELETE NO ACTION (database/schema.postgres.sql)
+// block Organization.destroy() unless their rows are removed first. Tables with
+// ON DELETE CASCADE/SET NULL (dp_api_metadata, dp_subscription_plans, dp_audit,
+// dp_user_organization_mappings, and the *_mappings join tables) are left to the
+// database to handle and aren't touched here.
+const deleteOrgDependents = async (orgUuid, t) => {
+    const opts = { transaction: t };
+
+    const events = await DPEvent.findAll({ attributes: ['uuid'], where: { org_uuid: orgUuid }, ...opts });
+    if (events.length) {
+        await DPEventDelivery.destroy({ where: { event_uuid: { [Op.in]: events.map(e => e.uuid) } }, ...opts });
+    }
+    await DPEvent.destroy({ where: { org_uuid: orgUuid }, ...opts });
+
+    await APIKey.destroy({ where: { org_uuid: orgUuid }, ...opts });
+    await SubscriptionMapping.destroy({ where: { org_uuid: orgUuid }, ...opts });
+
+    const [apps, keyManagers] = await Promise.all([
+        Application.findAll({ attributes: ['uuid'], where: { org_uuid: orgUuid }, ...opts }),
+        KeyManager.findAll({ attributes: ['uuid'], where: { org_uuid: orgUuid }, ...opts }),
+    ]);
+    if (apps.length || keyManagers.length) {
+        await ApplicationKeyMapping.destroy({
+            where: {
+                [Op.or]: [
+                    ...(apps.length ? [{ app_uuid: { [Op.in]: apps.map(a => a.uuid) } }] : []),
+                    ...(keyManagers.length ? [{ km_uuid: { [Op.in]: keyManagers.map(k => k.uuid) } }] : []),
+                ],
+            },
+            ...opts,
+        });
+    }
+    await Application.destroy({ where: { org_uuid: orgUuid }, ...opts });
+    await KeyManager.destroy({ where: { org_uuid: orgUuid }, ...opts });
+
+    await APIWorkflow.destroy({ where: { org_uuid: orgUuid }, ...opts });
+    await OrgContent.destroy({ where: { org_uuid: orgUuid }, ...opts });
+    // dp_view_label_mappings/dp_api_label_mappings cascade automatically from
+    // dp_views/dp_labels ON DELETE CASCADE.
+    await View.destroy({ where: { org_uuid: orgUuid }, ...opts });
+    await Labels.destroy({ where: { org_uuid: orgUuid }, ...opts });
+    await Tags.destroy({ where: { org_uuid: orgUuid }, ...opts });
+    await WebhookSubscriber.destroy({ where: { org_uuid: orgUuid }, ...opts });
+};
+
 const deleteOrg = async (orgId, t) => {
     try {
         const existing = await get(orgId, t);
+        await deleteOrgDependents(existing.uuid, t);
         const deletedRowsCount = await Organization.destroy({
             where: { uuid: existing.uuid },
             ...(t && { transaction: t }),

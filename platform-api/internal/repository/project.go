@@ -177,15 +177,21 @@ func (r *ProjectRepo) DeleteProject(projectId string) error {
 }
 
 // ListProjects retrieves projects with pagination
-func (r *ProjectRepo) ListProjects(orgID string, limit, offset int) ([]*model.Project, error) {
-	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
+func (r *ProjectRepo) ListProjects(orgID string, opts ListOptions) ([]*model.Project, error) {
 	query := `
 		SELECT uuid, handle, display_name, organization_uuid, description, created_at, updated_at
 		FROM projects
-		WHERE organization_uuid = ?
-		ORDER BY created_at DESC
-		` + pageClause
-	rows, err := r.db.Query(r.db.Rebind(query), append([]any{orgID}, pageArgs...)...)
+		WHERE organization_uuid = ?`
+	args := []any{orgID}
+	if searchClause, searchArgs := handleSearchClause(opts.Search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+	col, dir := opts.resolveSort(listSortColumns, "created_at")
+	pageClause, pageArgs := r.db.PaginationClause(opts.Limit, opts.Offset)
+	query += " ORDER BY " + col + " " + dir + ", handle ASC " + pageClause
+	args = append(args, pageArgs...)
+	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -203,4 +209,20 @@ func (r *ProjectRepo) ListProjects(orgID string, limit, offset int) ([]*model.Pr
 	}
 
 	return projects, rows.Err()
+}
+
+// CountProjects returns the total number of projects in an organization,
+// independent of any pagination applied by ListProjects.
+func (r *ProjectRepo) CountProjects(orgID, search string) (int, error) {
+	var total int
+	query := `SELECT COUNT(*) FROM projects WHERE organization_uuid = ?`
+	args := []any{orgID}
+	if searchClause, searchArgs := handleSearchClause(search); searchClause != "" {
+		query += searchClause
+		args = append(args, searchArgs...)
+	}
+	if err := r.db.QueryRow(r.db.Rebind(query), args...).Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
 }

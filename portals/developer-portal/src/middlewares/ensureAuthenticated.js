@@ -114,7 +114,31 @@ const ensurePermission = (currentPage, role, req) => {
     return false;
 }
 
+// Rejects requests whose path contains traversal or encoded-separator sequences.
+// Checked on the path only; query strings may legitimately contain dots.
+const ENCODED_SEPARATOR_RE = /%2f|%5c|%00/i;
+function hasTraversalSequence(originalUrl) {
+    const rawUrl = originalUrl || '';
+    const rawPath = rawUrl.split('?')[0];
+    if (rawUrl.includes('\0') || rawPath.includes('\\')) return true;
+    // Encoded separators are always suspicious in a path.
+    if (ENCODED_SEPARATOR_RE.test(rawPath)) return true;
+    // Decode once (originalUrl is raw — Express does not decode it) so mixed-encoding
+    // dot segments (.., .%2e, %2e., %2e%2e) all normalize to '..' before the check.
+    let decodedPath;
+    try {
+        decodedPath = decodeURIComponent(rawPath);
+    } catch {
+        return true; // malformed percent-encoding — fail closed
+    }
+    return decodedPath.includes('..') || decodedPath.includes('\\') || decodedPath.includes('\0');
+}
+
 const ensureAuthenticated = async (req, res, next) => {
+    if (hasTraversalSequence(req.originalUrl)) {
+        logger.warn('Rejected request with path-traversal sequence', { operation: 'ensureAuthenticated' });
+        return res.status(400).json({ error: 'bad_request', message: 'Invalid request path.' });
+    }
     let adminRole = config.idp?.roles?.admin;
     let superAdminRole = config.idp?.roles?.superAdmin;
     let subscriberRole = config.idp?.roles?.subscriber;
@@ -283,7 +307,7 @@ function validateAuthentication(scope) {
 const validateWithJwks = async (token, jwksURL, req) => {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
-        const jwtVerifyOptions = {};
+        const jwtVerifyOptions = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
         if (config.idp?.issuer) jwtVerifyOptions.issuer = config.idp.issuer;
         if (config.idp?.audience) jwtVerifyOptions.audience = config.idp.audience;
         const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);

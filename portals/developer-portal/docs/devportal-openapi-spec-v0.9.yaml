@@ -254,8 +254,9 @@ paths:
         `status`, `agentVisibility`, `tags`, `labels`,
         `referenceId`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`.
         The service also stores labels, subscription plan mappings, image metadata, and schema definitions for
-        GraphQL APIs when provided. MCP servers must be created via `POST /api/v0.9/mcp-servers` instead — a
-        request whose resolved `type` is `MCP` is rejected with `400`.
+        GraphQL APIs when provided. Via the JSON `apiMetadata` field, `type` is required — an omitted type is
+        rejected with `400` (via YAML, an omitted `spec.type` defaults to `REST`). MCP servers must be created via
+        `POST /api/v0.9/mcp-servers` instead — a request whose resolved `type` is `MCP` is rejected with `400`.
 
         `subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is
         a string array (`["Gold", "Silver"]`). In the JSON `apiMetadata` field it is an object array where only
@@ -337,7 +338,8 @@ paths:
         Updates Developer Portal API metadata and its stored definition. Accepts the same YAML spec fields and
         `apiMetadata` JSON format as the create operation. The update flow can also adjust label mappings, subscription
         plan mappings, schema definitions, and image metadata. Status changes to unpublished are rejected when active
-        subscriptions exist.
+        subscriptions exist. `type` is required (see the create operation) and is immutable — it must match the
+        API's existing type; a different value is rejected with `409`.
       operationId: updateApiMetadata
       requestBody:
         $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
@@ -1252,7 +1254,8 @@ paths:
       description: >-
         Creates Developer Portal MCP server metadata. Mirrors `POST /api/v0.9/apis` — same artifact ZIP, YAML
         (`api.yaml` / `devportal.yaml` / `mcp.yaml`), and `apiMetadata` JSON input formats — but the created record is
-        always typed `MCP`, regardless of what `type` is supplied.
+        always typed `MCP`. Via the JSON `apiMetadata` field, `type` must be explicitly `MCP`; an omitted type or any
+        other value is rejected with a 400 (use `POST /api/v0.9/apis` instead).
       operationId: createMcpServer
       requestBody:
         $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
@@ -1325,7 +1328,9 @@ paths:
         - MCP Servers
       summary: Update MCP server metadata
       description: >-
-        Updates Developer Portal MCP server metadata and its stored definition. Mirrors `PUT /api/v0.9/apis/{apiId}`.
+        Updates Developer Portal MCP server metadata and its stored definition. Mirrors `PUT /api/v0.9/apis/{apiId}`,
+        including `type` being required and immutable — it must stay `MCP`; any other value is rejected with `400`,
+        via the same resolveTypeOrReject check `POST /mcp-servers` uses.
       operationId: updateMcpServer
       requestBody:
         $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
@@ -4224,6 +4229,14 @@ components:
           additionalProperties: true
           example:
             devportalMode: DEFAULT
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
       additionalProperties: false
     OrganizationContentUploadResponse:
       type: object
@@ -4355,12 +4368,17 @@ components:
           type: string
         type:
           type: string
+          description: >-
+            The stored/returned type constant (src/utils/constants.js API_TYPE) — distinct
+            from the request-time keyword accepted on create/update (see `type` in
+            ApiMetadataMultipartBody: REST, SOAP, MCP, WS, WEBSUB, GRAPHQL). REST maps to
+            `RestApi` and WEBSUB maps to `WebSubApi`; the rest are returned unchanged.
           enum:
-            - REST
+            - RestApi
             - SOAP
-            - MCP
+            - Mcp
             - WS
-            - WEBSUB
+            - WebSubApi
             - GRAPHQL
         referenceId:
           type: string
@@ -5476,6 +5494,12 @@ components:
           type: string
           example: May 7, 2026
         updatedAt:
+          type: string
+          nullable: true
+        createdBy:
+          type: string
+          nullable: true
+        updatedBy:
           type: string
           nullable: true
       additionalProperties: false

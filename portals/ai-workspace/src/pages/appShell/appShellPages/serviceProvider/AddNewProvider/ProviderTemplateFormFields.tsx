@@ -48,6 +48,8 @@ type ProviderTemplateFormFieldsProps = {
   template?: ProviderTemplate | null;
   isLoading: boolean;
   error: Error | null;
+  /** Backend field-level validation errors (from the create/update API call), keyed by FormState field name. */
+  fieldErrors?: Partial<Record<keyof FormState, string>>;
 };
 
 const VERSION_PATTERN = /^v\d+\.\d+$/;
@@ -73,6 +75,7 @@ export default function ProviderTemplateFormFields({
   template,
   isLoading,
   error,
+  fieldErrors = {},
 }: ProviderTemplateFormFieldsProps) {
   const [versionTouched, setVersionTouched] = React.useState(false);
   const [contextTouched, setContextTouched] = React.useState(false);
@@ -150,6 +153,8 @@ export default function ProviderTemplateFormFields({
             }}
             placeholder={`WSO2 ${template?.displayName || ''} Provider`}
             data-cyid="provider-name-input"
+            error={Boolean(fieldErrors.name)}
+            helperText={fieldErrors.name}
           />
         </FormControl>
       </Grid>
@@ -175,8 +180,8 @@ export default function ProviderTemplateFormFields({
             }}
             onBlur={() => setVersionTouched(true)}
             placeholder="v1.0"
-            error={Boolean(versionErrorMessage)}
-            helperText={versionErrorMessage || undefined}
+            error={Boolean(versionErrorMessage) || Boolean(fieldErrors.version)}
+            helperText={fieldErrors.version || versionErrorMessage || undefined}
             data-cyid="provider-version-input"
           />
         </FormControl>
@@ -201,6 +206,8 @@ export default function ProviderTemplateFormFields({
             }
             placeholder={`Primary ${template?.displayName || ''} provider`}
             data-cyid="provider-description-input"
+            error={Boolean(fieldErrors.description)}
+            helperText={fieldErrors.description}
           />
         </FormControl>
       </Grid>
@@ -223,8 +230,8 @@ export default function ProviderTemplateFormFields({
             }}
             onBlur={() => setContextTouched(true)}
             placeholder="/"
-            error={Boolean(contextErrorMessage)}
-            helperText={contextErrorMessage || undefined}
+            error={Boolean(contextErrorMessage) || Boolean(fieldErrors.context)}
+            helperText={fieldErrors.context || contextErrorMessage || undefined}
             data-cyid="provider-context-input"
           />
         </FormControl>
@@ -250,7 +257,8 @@ export default function ProviderTemplateFormFields({
                 }))
               }
               placeholder="https://api.openai.com/v1"
-              helperText="The base URL of the upstream LLM provider"
+              error={Boolean(fieldErrors.upstreamUrl)}
+              helperText={fieldErrors.upstreamUrl || 'The base URL of the upstream LLM provider'}
               data-cyid="provider-upstream-url-input"
             />
           </FormControl>
@@ -311,10 +319,10 @@ export default function ProviderTemplateFormFields({
         </Grid>
       )}
 
-      {/* Auth Value - always show, user must provide their API key */}
+      {/* Auth Value - always show; optional, provider can be created without it */}
       <Grid size={{ xs: 12 }}>
         <FormControl fullWidth>
-          <FormLabel required>
+          <FormLabel>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.AddNewProvider.ProviderTemplateFormFields.api.key"
               defaultMessage={'API Key'}
@@ -352,7 +360,7 @@ export default function ProviderTemplateFormFields({
                 ),
               },
             }}
-            placeholder="Enter your API key or token"
+            placeholder="Enter your API key or token (optional)"
             // helperText={
             //   template?.metadata?.auth?.valuePrefix
             //     ? `Will be prefixed with: ${template.metadata.auth.valuePrefix}`

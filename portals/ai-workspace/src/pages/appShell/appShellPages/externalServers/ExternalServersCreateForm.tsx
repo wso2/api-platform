@@ -27,6 +27,14 @@ import {
 } from '@wso2/oxygen-ui';
 import { FormattedMessage } from 'react-intl';
 
+type FieldErrors = {
+  name?: string;
+  version?: string;
+  description?: string;
+  context?: string;
+  target?: string;
+};
+
 type Props = {
   isCreateDisabled: boolean;
   serverContext: string;
@@ -34,6 +42,7 @@ type Props = {
   serverName: string;
   serverTarget: string;
   serverVersion: string;
+  fieldErrors?: FieldErrors;
   onCancel: () => void;
   onCreate: () => void;
   onContextChange: (value: string) => void;
@@ -50,6 +59,7 @@ export default function ExternalServersCreateForm({
   serverName,
   serverTarget,
   serverVersion,
+  fieldErrors = {},
   onCancel,
   onCreate,
   onContextChange,
@@ -74,6 +84,8 @@ export default function ExternalServersCreateForm({
               placeholder="WSO2 MCP Proxy"
               value={serverName}
               onChange={(event) => onNameChange(event.target.value)}
+              error={Boolean(fieldErrors.name)}
+              helperText={fieldErrors.name}
             />
           </FormControl>
         </Grid>
@@ -90,6 +102,8 @@ export default function ExternalServersCreateForm({
               placeholder="v1.0"
               value={serverVersion}
               onChange={(event) => onVersionChange(event.target.value)}
+              error={Boolean(fieldErrors.version)}
+              helperText={fieldErrors.version}
             />
           </FormControl>
         </Grid>
@@ -108,6 +122,8 @@ export default function ExternalServersCreateForm({
               placeholder="Primary MCP Proxy"
               value={serverDescription}
               onChange={(event) => onDescriptionChange(event.target.value)}
+              error={Boolean(fieldErrors.description)}
+              helperText={fieldErrors.description}
             />
           </FormControl>
         </Grid>
@@ -123,6 +139,8 @@ export default function ExternalServersCreateForm({
               fullWidth
               value={serverContext}
               onChange={(event) => onContextChange(event.target.value)}
+              error={Boolean(fieldErrors.context)}
+              helperText={fieldErrors.context}
             />
           </FormControl>
         </Grid>
@@ -139,6 +157,8 @@ export default function ExternalServersCreateForm({
               placeholder="https://example.com/mcp"
               value={serverTarget}
               onChange={(event) => onTargetChange(event.target.value)}
+              error={Boolean(fieldErrors.target)}
+              helperText={fieldErrors.target}
             />
           </FormControl>
         </Grid>

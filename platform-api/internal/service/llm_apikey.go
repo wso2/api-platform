@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -64,6 +65,7 @@ func NewLLMProviderAPIKeyService(
 func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 	ctx context.Context,
 	providerID, orgID, userID string,
+	limit, offset int,
 ) (*api.LLMProviderAPIKeyListResponse, error) {
 
 	provider, err := s.llmProviderRepo.GetByID(providerID, orgID)
@@ -72,7 +74,7 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 		return nil, fmt.Errorf("failed to get LLM provider: %w", err)
 	}
 	if provider == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
 	}
 
 	keys, err := s.apiKeyRepo.ListByArtifact(provider.UUID)
@@ -81,16 +83,36 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 		return nil, fmt.Errorf("failed to list API keys: %w", err)
 	}
 
+	items, err := ownedAPIKeyItems(keys, userID, s.identity)
+	if err != nil {
+		return nil, err
+	}
+
+	// API keys for one provider (scoped to the caller) are a small, bounded set,
+	// so the total is the full count and the window is applied in memory.
+	total := len(items)
+	page := paginateSlice(items, limit, offset)
+
+	return &api.LLMProviderAPIKeyListResponse{
+		List:       page,
+		Count:      len(page),
+		Pagination: api.Pagination{Total: total, Offset: offset, Limit: limit},
+	}, nil
+}
+
+// ownedAPIKeyItems keeps only the keys created by userID and maps them to their
+// API representation, resolving each creator UUID to its raw identity.
+func ownedAPIKeyItems(keys []*model.APIKey, userID string, identity *IdentityService) ([]api.APIKeyItem, error) {
 	items := make([]api.APIKeyItem, 0, len(keys))
 	for _, k := range keys {
 		if k.CreatedBy != userID {
 			continue
 		}
 		createdBy := utils.StringPtrIfNotEmpty(k.CreatedBy)
-		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
+		if err := identity.ResolveIdentityField(&createdBy); err != nil {
 			return nil, err
 		}
-		item := api.APIKeyItem{
+		items = append(items, api.APIKeyItem{
 			Id:             &k.Name,
 			DisplayName:    k.DisplayName,
 			MaskedApiKey:   k.MaskedAPIKey,
@@ -101,14 +123,9 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 			ExpiresAt:      k.ExpiresAt,
 			Issuer:         k.Issuer,
 			AllowedTargets: k.AllowedTargets,
-		}
-		items = append(items, item)
+		})
 	}
-
-	return &api.LLMProviderAPIKeyListResponse{
-		Items: items,
-		Count: len(items),
-	}, nil
+	return items, nil
 }
 
 // DeleteLLMProviderAPIKey deletes the API key from the database and broadcasts a revoke event to gateways.
@@ -123,7 +140,7 @@ func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 		return fmt.Errorf("failed to get LLM provider: %w", err)
 	}
 	if provider == nil {
-		return constants.ErrAPINotFound
+		return apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
 	}
 
 	existingKey, err := s.apiKeyRepo.GetByArtifactAndName(provider.UUID, keyName)
@@ -132,11 +149,11 @@ func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 		return fmt.Errorf("failed to look up API key: %w", err)
 	}
 	if existingKey == nil {
-		return constants.ErrAPIKeyNotFound
+		return apperror.LLMProviderAPIKeyNotFound.Wrap(constants.ErrAPIKeyNotFound)
 	}
 
 	if userID != "" && existingKey.CreatedBy != userID {
-		return constants.ErrAPIKeyForbidden
+		return apperror.LLMProviderAPIKeyForbidden.Wrap(constants.ErrAPIKeyForbidden)
 	}
 
 	if err := s.apiKeyRepo.Delete(provider.UUID, keyName); err != nil {
@@ -188,7 +205,7 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 	}
 	if provider == nil {
 		s.slogger.Warn("LLM provider not found", "providerId", providerID, "organizationId", orgID)
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
 	}
 
 	apiKey, err := utils.GenerateAPIKey()
@@ -231,7 +248,7 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 
 	if len(gateways) == 0 {
 		s.slogger.Warn("No gateways found for organization", "organizationId", orgID)
-		return nil, constants.ErrGatewayUnavailable
+		return nil, apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
 	}
 
 	apiKeyHashesJSON, err := buildAPIKeyHashesJSON(apiKey, []string{defaultHashingAlgorithm})

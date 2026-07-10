@@ -258,7 +258,9 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
   "cpRefId": "string",
   "configuration": {
     "devportalMode": "DEFAULT"
-  }
+  },
+  "createdAt": "2019-08-24T14:15:22Z",
+  "updatedAt": "2019-08-24T14:15:22Z"
 }
 
 ```
@@ -276,6 +278,8 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 |cpRefId|string¦null|false|none|Control Plane reference ID. Included in outbound webhook event payloads so subscribers can correlate this organization with its Control Plane (Platform API) counterpart. Not used for authentication or org resolution.|
 |configuration|object|false|none|Organization portal configuration. Always includes `devportalMode`; may contain additional free-form keys set by the caller.|
 |» devportalMode|string|false|none|Controls the mode of the developer portal.|
+|createdAt|string(date-time)¦null|false|none|none|
+|updatedAt|string(date-time)¦null|false|none|none|
 
 #### Enumerated Values
 
@@ -348,7 +352,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
   "version": "string",
   "status": "PUBLISHED",
   "description": "string",
-  "type": "REST",
+  "type": "RestApi",
   "referenceId": "string",
   "agentVisibility": "VISIBLE",
   "addedLabels": [
@@ -439,7 +443,7 @@ and
   "version": "string",
   "status": "PUBLISHED",
   "description": "string",
-  "type": "REST",
+  "type": "RestApi",
   "referenceId": "string",
   "agentVisibility": "VISIBLE",
   "addedLabels": [
@@ -542,7 +546,7 @@ and
   "version": "string",
   "status": "PUBLISHED",
   "description": "string",
-  "type": "REST",
+  "type": "RestApi",
   "referenceId": "string",
   "agentVisibility": "VISIBLE",
   "addedLabels": [
@@ -583,7 +587,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |version|string|false|none|none|
 |status|string|false|none|API lifecycle status.|
 |description|string|false|none|none|
-|type|string|false|none|none|
+|type|string|false|none|The stored/returned type constant (src/utils/constants.js API_TYPE) — distinct from the request-time keyword accepted on create/update (see `type` in ApiMetadataMultipartBody: REST, SOAP, MCP, WS, WEBSUB, GRAPHQL). REST maps to `RestApi` and WEBSUB maps to `WebSubApi`; the rest are returned unchanged.|
 |referenceId|string¦null|false|none|External reference ID. Present when the API was created from a `devportal.yaml` artifact whose `spec` block sets `referenceId` — the create response echoes the parsed YAML back.|
 |agentVisibility|string|false|none|none|
 |addedLabels|[string]|false|none|none|
@@ -599,11 +603,11 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |---|---|
 |status|PUBLISHED|
 |status|DEPRECATED|
-|type|REST|
+|type|RestApi|
 |type|SOAP|
-|type|MCP|
+|type|Mcp|
 |type|WS|
-|type|WEBSUB|
+|type|WebSubApi|
 |type|GRAPHQL|
 |agentVisibility|VISIBLE|
 |agentVisibility|HIDDEN|
@@ -1891,7 +1895,9 @@ Access token response proxied from the key manager's token endpoint. Field names
   "apiWorkflowDefinition": "string",
   "markdownContent": "string",
   "createdAt": "May 7, 2026",
-  "updatedAt": "string"
+  "updatedAt": "string",
+  "createdBy": "string",
+  "updatedBy": "string"
 }
 
 ```
@@ -1911,6 +1917,8 @@ Access token response proxied from the key manager's token endpoint. Field names
 |markdownContent|string¦null|false|none|none|
 |createdAt|string|false|none|none|
 |updatedAt|string¦null|false|none|none|
+|createdBy|string¦null|false|none|none|
+|updatedBy|string¦null|false|none|none|
 
 #### Enumerated Values
 

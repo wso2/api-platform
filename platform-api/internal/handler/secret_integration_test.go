@@ -220,8 +220,10 @@ func TestSecretHandler_List_ReturnsPaginationObject(t *testing.T) {
 	if _, hasList := resp["list"]; !hasList {
 		t.Error("response should have list field")
 	}
-	if _, hasCount := resp["count"]; hasCount {
-		t.Error("response should NOT have top-level count field")
+	if count, hasCount := resp["count"]; !hasCount {
+		t.Error("response should have top-level count field")
+	} else if int(count.(float64)) != 3 {
+		t.Errorf("expected count=3, got %v", count)
 	}
 
 	pagination, ok := resp["pagination"].(map[string]interface{})
@@ -232,8 +234,8 @@ func TestSecretHandler_List_ReturnsPaginationObject(t *testing.T) {
 	if int(pagination["total"].(float64)) != 3 {
 		t.Errorf("expected total=3, got %v", pagination["total"])
 	}
-	if int(pagination["limit"].(float64)) != 25 {
-		t.Errorf("expected limit=25, got %v", pagination["limit"])
+	if int(pagination["limit"].(float64)) != 20 {
+		t.Errorf("expected limit=20, got %v", pagination["limit"])
 	}
 	if int(pagination["offset"].(float64)) != 0 {
 		t.Errorf("expected offset=0, got %v", pagination["offset"])
@@ -510,9 +512,16 @@ func TestSecretHandler_Delete_409_ReferencedByArtifact(t *testing.T) {
 	}
 
 	resp := parseBody(wDel)
-	refs, ok := resp["references"].([]interface{})
+	if resp["code"] != "SECRET_IN_USE" {
+		t.Errorf("expected code SECRET_IN_USE, got: %v", resp)
+	}
+	details, ok := resp["details"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected details object, got: %v", resp)
+	}
+	refs, ok := details["references"].([]interface{})
 	if !ok || len(refs) == 0 {
-		t.Errorf("expected non-empty references array, got: %v", resp)
+		t.Errorf("expected non-empty details.references array, got: %v", resp)
 	}
 }
 

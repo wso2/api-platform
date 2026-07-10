@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/config"
@@ -33,14 +32,13 @@ import (
 const (
 	ListCmdLiteral = "list"
 	ListCmdExample = `# List all subscription plans in an organization using the active devportal
-ap devportal sub-plan list --org org_1
+ap devportal sub-plan list
 
 # List all subscription plans using a specific devportal
-ap devportal sub-plan list --org org_1 --display-name my-portal --platform eu`
+ap devportal sub-plan list --display-name my-portal --platform eu`
 )
 
 var (
-	listOrgID    string
 	listName     string
 	listPlatform string
 	listInsecure bool
@@ -60,19 +58,12 @@ var listCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(listCmd, utils.FlagOrgID, &listOrgID, "", "Organization ID")
 	utils.AddStringFlag(listCmd, utils.FlagName, &listName, "", "DevPortal display name")
 	utils.AddStringFlag(listCmd, utils.FlagPlatform, &listPlatform, "", "Platform name")
 	utils.AddBoolFlag(listCmd, utils.FlagInsecure, &listInsecure, false, "Skip TLS certificate verification")
-	_ = listCmd.MarkFlagRequired(utils.FlagOrgID)
 }
 
 func runListCommand() error {
-	orgID := strings.TrimSpace(listOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -84,7 +75,7 @@ func runListCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, listInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "subscription-policies")
+	path := internaldevportal.ResourcePath("subscription-plans")
 	resp, err := client.Get(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("list subscription plans", err, listInsecure)

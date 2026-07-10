@@ -57,7 +57,7 @@ async function refreshAccessToken(refreshToken) {
 async function verifyWithCertificate(token, pemCertificate) {
     try {
         const publicKey = await importX509(pemCertificate, 'RS256');
-        const jwtVerifyOptions = {};
+        const jwtVerifyOptions = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
         if (config.idp?.issuer) jwtVerifyOptions.issuer = config.idp.issuer;
         if (config.idp?.audience) jwtVerifyOptions.audience = config.idp.audience;
         const { payload } = await jwtVerify(token, publicKey, jwtVerifyOptions);

@@ -34,14 +34,13 @@ import (
 const (
 	DeleteCmdLiteral = "delete"
 	DeleteCmdExample = `# Delete an application
-ap devportal application delete --org org_1 --app-id app_1
+ap devportal application delete --app-id app_1
 
 # Delete using a specific devportal
-ap devportal application delete --org org_1 --app-id app_1 --display-name my-portal --platform eu`
+ap devportal application delete --app-id app_1 --display-name my-portal --platform eu`
 )
 
 var (
-	deleteOrgID    string
 	deleteAppID    string
 	deleteName     string
 	deletePlatform string
@@ -62,21 +61,14 @@ var deleteCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(deleteCmd, utils.FlagOrgID, &deleteOrgID, "", "Organization ID")
 	utils.AddStringFlag(deleteCmd, utils.FlagAppID, &deleteAppID, "", "Application ID")
 	utils.AddStringFlag(deleteCmd, utils.FlagName, &deleteName, "", "DevPortal display name")
 	utils.AddStringFlag(deleteCmd, utils.FlagPlatform, &deletePlatform, "", "Platform name")
 	utils.AddBoolFlag(deleteCmd, utils.FlagInsecure, &deleteInsecure, false, "Skip TLS certificate verification")
-	_ = deleteCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = deleteCmd.MarkFlagRequired(utils.FlagAppID)
 }
 
 func runDeleteCommand() error {
-	orgID := strings.TrimSpace(deleteOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	appID := strings.TrimSpace(deleteAppID)
 	if appID == "" {
 		return fmt.Errorf("application ID is required")
@@ -93,7 +85,7 @@ func runDeleteCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, deleteInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "applications/"+url.PathEscape(appID))
+	path := internaldevportal.ResourcePath("applications/" + url.PathEscape(appID))
 	resp, err := client.Delete(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("delete application", err, deleteInsecure)

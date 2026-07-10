@@ -20,6 +20,7 @@ package webhook
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -29,9 +30,10 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/model"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 // RoutePath is the webhook endpoint under the resource API version prefix (constants.APIVersion,
@@ -127,31 +129,29 @@ func NewReceiver(
 
 // RegisterRoutes registers the webhook endpoint on the mux. Only called when the webhook is enabled.
 func (r *Receiver) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("POST "+RoutePath, r.ReceiveEvent)
+	mux.HandleFunc("POST "+RoutePath, middleware.MapErrors(r.slogger, r.ReceiveEvent))
 }
 
 // ReceiveEvent runs the full webhook flow: size-limited read -> signature verify -> envelope
 // decode/validate -> gateway_type filter -> idempotency -> dispatch -> mark processed.
-func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) {
+func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error {
 	if !r.cfg.Enabled {
-		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(http.StatusNotFound, "Not Found", "Webhook endpoint is disabled"))
-		return
+		return apperror.NotFound.New().WithLogMessage("webhook endpoint is disabled")
 	}
 
 	// Read the raw body with a size cap. The raw bytes are needed verbatim for HMAC verification.
 	limited := http.MaxBytesReader(w, req.Body, r.cfg.MaxBodySize)
 	body, err := io.ReadAll(limited)
 	if err != nil {
-		r.slogger.Warn("Webhook body read failed (possibly too large)", "limit", r.cfg.MaxBodySize, "error", err)
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(http.StatusBadRequest, "Bad Request", "Request body too large or unreadable"))
-		return
+		return apperror.ValidationFailed.Wrap(err, "Request body too large or unreadable").
+			WithLogMessage(fmt.Sprintf("webhook body read failed (possibly too large), limit=%d", r.cfg.MaxBodySize))
 	}
 
-	// 1. Verify HMAC signature over the raw body.
+	// 1. Verify HMAC signature over the raw body. Per the unified auth-failure rule, this returns the
+	// same generic response as any other auth failure; the specific reason is internal-only.
 	if err := r.verifier.Verify(req.Header.Get(r.cfg.SignatureHeader), body, time.Now()); err != nil {
-		r.slogger.Warn("Webhook signature verification failed", "clientIP", req.RemoteAddr, "error", err)
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(http.StatusUnauthorized, "Unauthorized", "Signature verification failed"))
-		return
+		return apperror.Unauthorized.Wrap(err).
+			WithLogMessage(fmt.Sprintf("webhook signature verification failed, clientIP=%s", req.RemoteAddr))
 	}
 
 	// 2. Decode + validate the envelope.
@@ -160,9 +160,7 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) {
 		err = env.Validate()
 	}
 	if err != nil {
-		r.slogger.Warn("Webhook envelope invalid", "error", err)
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(http.StatusBadRequest, "Bad Request", "Invalid event envelope"))
-		return
+		return apperror.ValidationFailed.Wrap(err, "Invalid event envelope")
 	}
 
 	log := r.slogger.With("eventId", env.EventID, "eventType", env.EventType, "orgHandle", env.OrgID)
@@ -172,10 +170,8 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) {
 	//    the UUID. An unknown handle is a terminal 404 (not retryable) since the event references an
 	//    organization that does not exist in the control plane.
 	if err := r.resolveOrgUUID(env); err != nil {
-		status := statusForError(err)
-		log.Warn("Webhook organization resolution failed", "status", status, "error", err)
-		httputil.WriteJSON(w, status, utils.NewErrorResponse(status, http.StatusText(status), "Unknown organization"))
-		return
+		log.Warn("Webhook organization resolution failed", "error", err)
+		return mapWebhookError(err)
 	}
 	log = log.With("orgId", env.OrgID)
 
@@ -183,7 +179,7 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) {
 	if r.cfg.GatewayType != "" && env.GatewayType != "" && env.GatewayType != r.cfg.GatewayType {
 		log.Info("Webhook event for a different gateway_type; accepting as no-op", "eventGatewayType", env.GatewayType)
 		httputil.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "ignored", "reason": "gateway_type mismatch"})
-		return
+		return nil
 	}
 
 	// 5. Dispatch to the matching handler. Duplicate (at-least-once) deliveries are made safe by
@@ -191,19 +187,17 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) {
 	handle, ok := r.handlers[env.EventType]
 	if !ok {
 		log.Warn("Unsupported webhook event type")
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(http.StatusBadRequest, "Bad Request", "Unsupported event type"))
-		return
+		return apperror.ValidationFailed.New("Unsupported event type")
 	}
 
 	if err := handle(req.Context(), env); err != nil {
-		status := statusForError(err)
-		log.Error("Webhook event handling failed", "status", status, "error", err)
-		httputil.WriteJSON(w, status, utils.NewErrorResponse(status, http.StatusText(status), "Failed to process event"))
-		return
+		log.Error("Webhook event handling failed", "error", err)
+		return mapWebhookError(err)
 	}
 
 	log.Info("Webhook event processed")
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "processed"})
+	return nil
 }
 
 // resolveOrgUUID converts the organization handle carried in the envelope (org.ref_id, normalized
@@ -222,20 +216,28 @@ func (r *Receiver) resolveOrgUUID(env *Envelope) error {
 	return nil
 }
 
-// statusForError maps domain errors returned by the reused services to HTTP status codes.
-func statusForError(err error) int {
+// mapWebhookError maps domain errors returned by the reused services to the matching apperror
+// catalog entry, preserving the same HTTP status classification the old statusForError gave them.
+func mapWebhookError(err error) *apperror.Error {
+	// Services that have migrated to the apperror catalog return typed errors
+	// directly — pass them through untouched.
+	var appErr *apperror.Error
+	if errors.As(err, &appErr) {
+		return appErr
+	}
 	switch {
 	case errors.Is(err, ErrInvalidEnvelope), errors.Is(err, ErrUnsupportedEvent), errors.Is(err, ErrDecryptionFailed):
-		return http.StatusBadRequest
-	case errors.Is(err, constants.ErrAPINotFound),
-		errors.Is(err, constants.ErrOrganizationNotFound),
-		errors.Is(err, constants.ErrSubscriptionNotFound),
-		errors.Is(err, constants.ErrSubscriptionPlanNotFound),
-		errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive),
-		errors.Is(err, constants.ErrAPIKeyNotFound):
-		return http.StatusNotFound
+		return apperror.ValidationFailed.Wrap(err, "Failed to process event")
+	case errors.Is(err, constants.ErrOrganizationNotFound):
+		return apperror.OrganizationNotFound.Wrap(err)
+	case errors.Is(err, constants.ErrSubscriptionNotFound):
+		return apperror.SubscriptionNotFound.Wrap(err)
+	case errors.Is(err, constants.ErrSubscriptionPlanNotFound), errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive):
+		return apperror.SubscriptionPlanNotFound.Wrap(err)
+	case errors.Is(err, constants.ErrAPINotFound), errors.Is(err, constants.ErrAPIKeyNotFound):
+		return apperror.ArtifactNotFound.Wrap(err)
 	default:
 		// Storage/EventHub failures and unexpected errors are retryable.
-		return http.StatusInternalServerError
+		return apperror.Internal.Wrap(err).WithLogMessage("failed to process webhook event")
 	}
 }

@@ -281,7 +281,64 @@ port = 9010
 host = "localhost"
 
 # =============================================================================
-# ANALYTICS CONFIGURATION
+# COLLECTOR CONFIGURATION
+# =============================================================================
+# The collector is the shared data-capture pipeline: it injects the analytics
+# system policy and ships request/response headers and bodies to the policy-engine
+# over ALS. It has NO on/off switch of its own — it is implicit, turning on
+# automatically whenever a consumer below is enabled ([analytics] or
+# [traffic_logging]) and staying off otherwise. This section only tunes what the
+# collector captures.
+[collector]
+# Capture request/response payloads (bodies) into the collected event. Bodies are
+# captured in full; per-consumer size caps are applied on output (see
+# traffic_logging.max_payload_size).
+request_body = false
+response_body = false
+# Capture ALL request/response headers into the collected event (request_headers/
+# response_headers). Applies to every API via the collector system policy, so no
+# per-API header policy is needed. Sensitive values are redacted on output by
+# consumers that support it (e.g. traffic_logging.masked_headers)
+# Off by default; enable deliberately per consumer.
+request_headers = false
+response_headers = false
+
+# Path prefixes for which the collector produces no analytics event and no
+# traffic-log line at all (as if disabled for that one request) — e.g. health
+# checks or metrics scrapes. Enforced by Envoy itself via an access-log filter,
+# so the policy-engine never even receives the request. Matched case-sensitively
+# against the path the client called (Envoy's x-envoy-original-path, set whenever
+# a route rewrite occurred), never against the rewritten backend path. Requests
+# without that header (no rewrite occurred) are never suppressed by this filter —
+# matching bare :path would risk suppressing traffic whose backend path merely
+# happens to share the prefix. Empty by default (no suppression).
+ignore_path_prefixes = []
+# ignore_path_prefixes = ["/health", "/metrics"]
+
+# ALS transport tuning (advanced; defaults are sensible). One section read by BOTH
+# ends of the Envoy → policy-engine access-log stream:
+#   • gateway-controller — configures Envoy's gRPC access-log sink (the sender)
+#   • policy-engine       — runs the receiving gRPC server
+# Shared keys (TLS, message/header limits) must match on both ends and live here
+# once. Envoy-sender-only keys (buffer_*, grpc_request_timeout) are read only by
+# the controller and ignored by the policy-engine.
+# NOTE: the TCP port (18090) is not configurable here — it is a fixed constant
+# (collector.ServerPort in common/collector) shared by both ends, so they can
+# never disagree on it. See ANALYTICS_LOG_PUBLISHER_DESIGN.md changelog.
+[collector.server]
+mode = "uds"                       # "uds" (default) or "tcp"
+buffer_flush_interval = 1000000000 # Envoy sender only (nanoseconds)
+buffer_size_bytes = 16384          # Envoy sender only
+grpc_request_timeout = 20000000000 # Envoy sender only (nanoseconds)
+shutdown_timeout = "600s"
+public_key_path = ""               # TLS for the ALS connection (both ends)
+private_key_path = ""
+als_plain_text = true              # plaintext gRPC (skip TLS)
+max_message_size = 1000000000
+max_header_limit = 8192
+
+# =============================================================================
+# ANALYTICS CONFIGURATION (consumer — enabling it activates the collector)
 # =============================================================================
 [analytics]
 enabled = false
@@ -291,6 +348,9 @@ enabled = false
 # To disable payloads entirely, set allow_payloads = false or remove it; do not
 # rely on send_*_body = false while allow_payloads remains true.
 allow_payloads = false
+# Deprecated: send_request_body / send_response_body are preserved
+# for backward compatibility and are mapped onto the [collector] body-capture flags
+# during validation (with a warning). Prefer setting [collector] directly.
 send_request_body = false
 send_response_body = false
 enabled_publishers = ["moesif"]
@@ -303,17 +363,97 @@ event_queue_size = 10000
 batch_size = 50
 timer_wakeup_seconds = 3
 
-[analytics.grpc_event_server]
-buffer_flush_interval = 1000000000
-buffer_size_bytes = 16384
-grpc_request_timeout = 20000000000
-server_port = 18090
-shutdown_timeout = "600s"
-public_key_path = ""
-private_key_path = ""
-als_plain_text = true
-max_message_size = 1000000000
-max_header_limit = 8192
+# =============================================================================
+# TRAFFIC LOGGING (consumer — enabling it activates the collector)
+# =============================================================================
+# Writes collected events (rich API/application/AI/latency metadata, plus
+# request/response headers and — when the collector's request_body/response_body
+# is enabled — payloads) to stdout as a JSON line. Useful for log-scraping pipelines such as
+# Fluent Bit/Loki/ELK; no external SaaS needed.
+#
+# No policy required: enabling this section emits one stdout line for every
+# request to every API — including requests an auth policy denied
+# (short-circuited), which is otherwise invisible to any logging done from
+# inside the policy chain. Honors the shared collector.ignore_path_prefixes.
+[traffic_logging]
+enabled = false
+# Header names (case-insensitive) whose values are redacted as "****" in the
+# logged requestHeaders/responseHeaders.
+masked_headers = ["authorization", "x-api-key", "x-jwt-assertion"]
+# Max bytes of request/response payload written to each log line (0 = no limit).
+# Applied output-side, so the collector still captures full bodies and other
+# consumers are unaffected.
+max_payload_size = 0
+# Each toggle only selects among what [collector] already captures — e.g.
+# request_body here is a no-op while collector.request_body = false.
+request_headers = false
+request_body = false
+response_headers = false
+response_body = false
+
+# Optional field projection over the emitted line: drop the named fields and
+# keep everything else. Names are top-level keys (e.g. "latencies",
+# "requestHeaders") or dotted paths of arbitrary depth into nested JSON objects
+# (e.g. "requestHeaders.authorization"; header sub-keys match case-insensitively,
+# every other path segment matches case-sensitively). A path that reaches past a
+# string value (e.g. one dot too many into a single header, or into requestBody)
+# is a no-op for that entry rather than an error.
+# This only trims what the request_*/response_* toggles above already include —
+# it is not a standalone switch. Setting only exclude_fields, with every
+# request_*/response_* toggle left at its false default, still logs no headers
+# or bodies at all.
+exclude_fields = []
+# exclude_fields = ["requestBody", "responseBody"]
+# A multi-level path is useful when a properties entry below exposes a whole CEL
+# map wholesale (e.g. `claims = "$ctx:auth.property"`, whose keys vary per token)
+# instead of one flattened property per claim — reach into it to drop just one:
+# exclude_fields = ["properties.claims.internal_debug"]
+
+# Optional extra key->value pairs added under a top-level "properties" object.
+# A value prefixed "$ctx:" is evaluated as a CEL expression against context
+# built from the collected event; other values are literal strings.
+#
+# Available variables: request.path, request.method, request.id,
+# request.header['<name>'] (lower-case keys), response.status,
+# response.header['<name>'], api.id, api.name, api.version, api.context,
+# api.kind, project.id, target.statusCode, target.destination,
+# application.id/name/owner/keyType (populated only when an auth policy that
+# stamps application identity, e.g. api-key-auth, actually ran).
+# request.header/response.header are masked with the same masked_headers list
+# above, so a property expression cannot re-expose a header (e.g.
+# request.header['authorization']) that masked_headers already redacts.
+#
+# auth.* is also available — subject, type, issuer, credential_id, token_id,
+# audience (list), scopes (list), property['<claim>'] (map), authenticated,
+# authorized — populated generically (auth-type-agnostic) for ANY authenticated
+# request by the collector system policy, independent of which auth policy
+# (jwt-auth, opaque-token-auth, api-key-auth, etc.) ran. For an unauthenticated
+# or denied request every auth.* variable resolves to its zero value rather
+# than erroring, so `auth.subject != "" ? auth.subject : "anonymous"` is the
+# recommended pattern for a property that should always resolve to something.
+# This zero-value guarantee covers scalar variables only: indexing into a map
+# or list variable (property['<claim>'], audience[0]) still raises a "no such
+# key"/index-out-of-range evaluation error when the claim/index is absent, and
+# the property is silently omitted from that line (logged at debug level). Use
+# the `in` operator to guard any map/list index, e.g. `'tenant' in auth.property
+# ? auth.property['tenant'] : ''`.
+#
+# metadata['<key>'] is also available — a generic map backed by SharedContext.Metadata,
+# a bag ANY policy (including third-party/Python policies) can write an arbitrary
+# key into for inter-policy communication. There is no fixed schema and, unlike
+# masked_headers for captured headers, no masking config for this path: any value a
+# policy writes to SharedContext.Metadata should be assumed visible here. Same
+# zero-value rules as auth.* — metadata itself is always bound to an empty map, but
+# indexing a specific key needs the same `in` guard shown above, e.g.
+# `'applicationId' in metadata ? metadata['applicationId'] : ''`.
+[traffic_logging.properties]
+# env = "prod"
+# apiName = "$ctx:api.name"
+# status = "$ctx:response.status"
+# subject = "$ctx:auth.subject != '' ? auth.subject : 'anonymous'"
+# tenant = "$ctx:'tenant' in auth.property ? auth.property['tenant'] : ''"
+# appId = "$ctx:'applicationId' in metadata ? metadata['applicationId'] : ''"
+
 
 # =============================================================================
 # POLICY CONFIGURATIONS
@@ -329,6 +469,17 @@ pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 [immutable_gateway]
 enabled = false
 artifacts_dir = "/etc/api-platform-gateway/immutable_gateway/artifacts"
+
+# =============================================================================
+# MCP CONFIGURATION
+# =============================================================================
+
+[mcp]
+# When true, restores the legacy behaviour of appending the "/mcp" resource path to the
+# MCP backend upstream (i.e. "<context>/mcp" is forwarded to "<upstream>/mcp"). The
+# default (false) forwards to exactly the configured upstream path. Enable this only if
+# existing MCP API definitions rely on the "/mcp" suffix being appended to the backend.
+append_resource_path_to_backend = false
 
 # =============================================================================
 # TRACING CONFIGURATION

@@ -58,6 +58,7 @@ import type { Application } from '../../../../utils/types';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import NoApplications from '../../../../assets/images/NoApplications.svg';
+import { getErrorCode } from '../../../../utils/apiError';
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -316,9 +317,7 @@ export default function ApplicationsList() {
     }
 
     if (error) {
-      const is404ProjectNotFound =
-        (error as any)?.response?.status === 404 &&
-        (error as any)?.response?.data?.description === 'Project not found';
+      const is404ProjectNotFound = getErrorCode(error) === 'PROJECT_NOT_FOUND';
 
       if (is404ProjectNotFound) {
         return (

@@ -39,13 +39,14 @@ import { logger } from '../utils/logger';
 
 const EMPTY_USER_API_KEYS_RESPONSE: UserAPIKeyListResponse = {
   count: 0,
-  items: [],
+  list: [],
+  pagination: { total: 0, offset: 0, limit: 0 },
 };
 
 type KeyManagementContextValue = {
   /** Convenience accessor for the user API keys list */
   userAPIKeys: UserAPIKey[];
-  /** Full API response with count and list */
+  /** Full API response with count, list, and pagination */
   userAPIKeysResponse: UserAPIKeyListResponse;
   isLoading: boolean;
   error: Error | null;
@@ -150,7 +151,7 @@ export function KeyManagementProvider({
 
   const value = useMemo(
     () => ({
-      userAPIKeys: userAPIKeysResponse.items,
+      userAPIKeys: userAPIKeysResponse.list,
       userAPIKeysResponse,
       isLoading,
       error,

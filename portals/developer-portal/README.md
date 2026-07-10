@@ -52,14 +52,19 @@ What happens automatically on first start:
 ### Test
 
 ```bash
-# Run Cypress integration tests headlessly inside Docker
+# Run the Cypress UI E2E suite headlessly inside Docker
 make it
+
+# Run the REST API suite (Jest + Supertest)
+make -C it test-rest-api
 
 # Open Cypress interactive UI — requires the portal running locally first
 make it-open
 ```
 
-For integration test details, see [it/README.md](it/README.md).
+Both suites also run on pull requests via the
+[Developer Portal Integration Test](../../.github/workflows/devportal-integration-test.yml)
+GitHub Actions workflow. For integration test details, see [it/README.md](it/README.md).
 
 ### Clean
 
@@ -106,9 +111,13 @@ Run `make help` to see the full list. Summary:
 
 | Target | Description |
 |--------|-------------|
-| `make it` | Run Cypress integration tests against SQLite (headless, in Docker) |
-| `make it-postgres` | Run Cypress integration tests against PostgreSQL (headless, in Docker) |
+| `make it` | Run the Cypress UI E2E suite against SQLite (headless, in Docker) |
+| `make it-postgres` | Run the Cypress UI E2E suite against PostgreSQL (headless, in Docker) |
 | `make it-open` | Open Cypress interactive UI (requires the portal running locally) |
+| `make -C it test-rest-api` | Run the REST API suite (Jest + Supertest) against SQLite |
+| `make -C it test-rest-api-postgres` | Run the REST API suite against PostgreSQL |
+
+See [it/README.md](it/README.md) for the full list of test commands and suite details.
 
 ### Database
 

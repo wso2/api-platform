@@ -34,15 +34,14 @@ import (
 const (
 	GetCmdLiteral = "get"
 	GetCmdExample = `# Get a subscription plan by policy ID
-ap devportal sub-plan get --policy-id plan_1 --org org_1
+ap devportal sub-plan get --policy-id plan_1
 
 # Get using a specific devportal
-ap devportal sub-plan get --policy-id plan_1 --org org_1 --display-name my-portal --platform eu`
+ap devportal sub-plan get --policy-id plan_1 --display-name my-portal --platform eu`
 )
 
 var (
 	getPolicyID string
-	getOrgID    string
 	getName     string
 	getPlatform string
 	getInsecure bool
@@ -63,23 +62,16 @@ var getCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(getCmd, utils.FlagPolicyId, &getPolicyID, "", "Subscription plan policy ID")
-	utils.AddStringFlag(getCmd, utils.FlagOrgID, &getOrgID, "", "Organization ID")
 	utils.AddStringFlag(getCmd, utils.FlagName, &getName, "", "DevPortal display name")
 	utils.AddStringFlag(getCmd, utils.FlagPlatform, &getPlatform, "", "Platform name")
 	utils.AddBoolFlag(getCmd, utils.FlagInsecure, &getInsecure, false, "Skip TLS certificate verification")
 	_ = getCmd.MarkFlagRequired(utils.FlagPolicyId)
-	_ = getCmd.MarkFlagRequired(utils.FlagOrgID)
 }
 
 func runGetCommand() error {
 	policyID := strings.TrimSpace(getPolicyID)
 	if policyID == "" {
 		return fmt.Errorf("policy ID is required")
-	}
-
-	orgID := strings.TrimSpace(getOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
 	}
 
 	cfg, err := config.LoadConfig()
@@ -93,7 +85,7 @@ func runGetCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, getInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "subscription-policies/"+url.PathEscape(policyID))
+	path := internaldevportal.ResourcePath("subscription-plans/" + url.PathEscape(policyID))
 	resp, err := client.Get(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("get subscription plan", err, getInsecure)

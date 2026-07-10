@@ -26,8 +26,11 @@ const labelDao = require('../dao/labelDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const whDao = require('../dao/webhookSubscriberDao');
 const { WebhookSubscriberDTO } = require('../dto/webhookSubscriberDto');
+const kmDao = require('../dao/keyManagerDao');
+const { KeyManagerDTO } = require('../dto/keyManagerDto');
 const { VALID_EVENT_TYPES } = require('../services/webhooks/eventPublisher');
 const apiWorkflowService = require('../services/apiWorkflowService');
+const util = require('../utils/util');
 const { renderGivenTemplate, loadLayoutFromAPI } = require('../utils/util');
 const { getSessionCsrfToken } = require('../middlewares/csrfProtection');
 const { config } = require('../config/configLoader');
@@ -119,6 +122,16 @@ const loadViewSettingsPage = async (req, res) => {
         templateContent.webhookSubscribers = webhookSubscribers;
         templateContent.webhookEventTypes = [...VALID_EVENT_TYPES];
 
+        let keyManagers = [];
+        try {
+            const keyManagerRecords = await kmDao.list(orgId);
+            keyManagers = keyManagerRecords.map(r => new KeyManagerDTO(r));
+        } catch (err) {
+            logger.warn('Failed to load key managers for settings page', { error: err.message });
+        }
+        templateContent.keyManagers = keyManagers;
+        templateContent.keyManagerTypes = ['ASGARDEO', 'WSO2IS', 'KEYCLOAK', 'GENERIC_OIDC'];
+
         const configAsset = await orgDao.getContent({
             orgId: orgId, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
         });
@@ -162,7 +175,7 @@ const getLlmsConfig = async (req, res) => {
         res.json(JSON.parse(asset.file_content.toString('utf8')));
     } catch (err) {
         logger.error('Error getting llms config', { error: err.message, stack: err.stack });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Failed to get LLMs configuration' });
     }
 };
 
@@ -195,7 +208,7 @@ const saveLlmsConfig = async (req, res) => {
         res.json({ message: 'Saved successfully' });
     } catch (err) {
         logger.error('Error saving llms config', { error: err.message, stack: err.stack });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Failed to save LLMs configuration' });
     }
 };
 

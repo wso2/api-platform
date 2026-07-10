@@ -103,7 +103,7 @@ export default function ProviderTemplateSelector({
 
   const familyMap = new Map<string, (typeof enabledTemplates)[0]>();
   for (const t of enabledTemplates) {
-    const key = t.displayName.toLowerCase();
+    const key = familyHandle((t.id ?? '').toLowerCase());
     const existing = familyMap.get(key);
     if (!existing || t.isLatest) familyMap.set(key, t);
   }

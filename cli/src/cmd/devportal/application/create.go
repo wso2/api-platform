@@ -34,17 +34,16 @@ import (
 const (
 	CreateCmdLiteral = "create"
 	CreateCmdExample = `# Create an application
-ap devportal application create --org org_1 --name "Weather App" --type WEB
+ap devportal application create --name "Weather App" --type WEB
 
 # Create an application with a description
-ap devportal application create --org org_1 --name "Weather App" --type WEB --description "Calls the Weather APIs"
+ap devportal application create --name "Weather App" --type WEB --description "Calls the Weather APIs"
 
 # Create using a specific devportal
-ap devportal application create --org org_1 --name "Weather App" --type WEB --display-name my-portal --platform eu`
+ap devportal application create --name "Weather App" --type WEB --display-name my-portal --platform eu`
 )
 
 var (
-	createOrgID       string
 	createAppName     string
 	createType        string
 	createDescription string
@@ -75,24 +74,17 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(createCmd, utils.FlagOrgID, &createOrgID, "", "Organization ID")
 	utils.AddStringFlag(createCmd, utils.FlagPropertyName, &createAppName, "", "Application name")
 	utils.AddStringFlag(createCmd, utils.FlagType, &createType, "", "Application type (e.g. WEB)")
 	utils.AddStringFlag(createCmd, utils.FlagDescription, &createDescription, "", "Application description (optional)")
 	utils.AddStringFlag(createCmd, utils.FlagName, &createName, "", "DevPortal display name")
 	utils.AddStringFlag(createCmd, utils.FlagPlatform, &createPlatform, "", "Platform name")
 	utils.AddBoolFlag(createCmd, utils.FlagInsecure, &createInsecure, false, "Skip TLS certificate verification")
-	_ = createCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = createCmd.MarkFlagRequired(utils.FlagPropertyName)
 	_ = createCmd.MarkFlagRequired(utils.FlagType)
 }
 
 func runCreateCommand() error {
-	orgID := strings.TrimSpace(createOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	payload, err := buildApplicationPayload(createAppName, createType, createDescription)
 	if err != nil {
 		return err
@@ -109,7 +101,7 @@ func runCreateCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, createInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "applications")
+	path := internaldevportal.ResourcePath("applications")
 	resp, err := client.PostJSON(path, payload)
 	if err != nil {
 		return internaldevportal.WrapRequestError("create application", err, createInsecure)

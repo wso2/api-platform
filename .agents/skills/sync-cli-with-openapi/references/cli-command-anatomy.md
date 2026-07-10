@@ -146,7 +146,7 @@ Consumes `portals/developer-portal/docs/devportal-openapi-spec-v1.yaml`. Targets
 - Client verbs: `client.Get(path)`, `client.PostJSON(path, []byte)`, `client.PutJSON(path, []byte)`, `client.Delete(path)`, `client.PostMultipartFile(path, field, filePath)`, `client.PutMultipartFile(...)`.
 - Errors: transport errors → `internaldevportal.WrapRequestError("<op>", err, insecure)`; non-2xx → `utils.FormatHTTPError("<op>", resp, "DevPortal")`. **Check the exact status the spec documents** (`http.StatusOK` for GET, `http.StatusCreated` for a `201` POST, etc.).
 - Output: `internaldevportal.PrintJSONResponse(resp)`.
-- Standard flags: `--org` (`FlagOrgID`, usually required), `--display-name` (`FlagName`), `--platform` (`FlagPlatform`), `--insecure` (`FlagInsecure`). Add resource flags as needed.
+- Standard flags: `--display-name` (`FlagName`), `--platform` (`FlagPlatform`), `--insecure` (`FlagInsecure`). Add resource flags as needed.
 
 ### Template — devportal create (`POST`, JSON body from flags)
 
@@ -171,7 +171,7 @@ import (
 const (
 	CreateCmdLiteral = "create"
 	CreateCmdExample = `# Create a <resource>
-ap devportal <resource> create --org org_1 --<field> <value>`
+ap devportal <resource> create --<field> <value>`
 )
 
 var (

@@ -116,6 +116,9 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	if req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
+	if err := validatePolicyVersions(req.Policies); err != nil {
+		return nil, err
+	}
 
 	if req.Upstream.Main.Url == nil || *req.Upstream.Main.Url == "" {
 		return nil, constants.ErrInvalidInput
@@ -172,11 +175,14 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		return nil, constants.ErrMCPProxyLimitReached
 	}
 
-	// Validate {{ secret "..." }} placeholders in the upstream config
+	// Validate {{ secret "..." }} placeholders anywhere in the request — the
+	// gateway-controller's template engine resolves placeholders generically
+	// across the whole artifact (policies included), not just upstream.auth,
+	// so validation must cover the same surface.
 	if s.secretService != nil {
-		configJSON, err := marshalUpstreamForValidation(req.Upstream)
+		configJSON, err := marshalUpstreamForValidation(req)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal upstream config for secret validation: %w", err)
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
@@ -337,6 +343,9 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	if req.DisplayName == "" || req.Version == "" {
 		return nil, constants.ErrInvalidInput
 	}
+	if err := validatePolicyVersions(req.Policies); err != nil {
+		return nil, err
+	}
 
 	if req.Upstream.Main.Url == nil || *req.Upstream.Main.Url == "" {
 		return nil, constants.ErrInvalidInput
@@ -351,11 +360,14 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 		return nil, constants.ErrMCPProxyNotFound
 	}
 
-	// Validate {{ secret "..." }} placeholders in the upstream config
+	// Validate {{ secret "..." }} placeholders anywhere in the request — the
+	// gateway-controller's template engine resolves placeholders generically
+	// across the whole artifact (policies included), not just upstream.auth,
+	// so validation must cover the same surface.
 	if s.secretService != nil {
-		configJSON, err := marshalUpstreamForValidation(req.Upstream)
+		configJSON, err := marshalUpstreamForValidation(req)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal upstream config for secret validation: %w", err)
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
@@ -419,6 +431,19 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 			return nil, constants.ErrMCPProxyNotFound
 		}
 		return nil, fmt.Errorf("failed to update MCP proxy: %w", err)
+	}
+
+	// Best-effort: delete the secret the credential was rotated away from. Must
+	// run after the update above persists the new reference, so the in-use
+	// check below no longer sees this proxy pointing at the old handle.
+	if s.secretService != nil {
+		s.secretService.cleanupRotatedSecret(
+			orgUUID,
+			mainUpstreamAuthValue(&existingUpstreamConfig),
+			mainUpstreamAuthValue(&existing.Configuration.Upstream),
+			updatedBy,
+			s.slogger,
+		)
 	}
 
 	_ = s.auditRepo.Record("UPDATE", existing.UUID, "mcp_proxy", orgUUID, updatedBy)

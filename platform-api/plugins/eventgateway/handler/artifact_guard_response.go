@@ -23,8 +23,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/go-httpkit/httputil"
 )
@@ -39,10 +39,10 @@ import (
 func respondArtifactGuardError(w http.ResponseWriter, err error) bool {
 	switch {
 	case errors.Is(err, constants.ErrArtifactReadOnly):
-		httputil.WriteJSON(w, http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden", err.Error()))
+		httputil.WriteJSON(w, http.StatusForbidden, apperror.NewErrorResponse(403, "Forbidden", err.Error()))
 		return true
 	case errors.Is(err, constants.ErrArtifactDeployed):
-		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", err.Error()))
+		httputil.WriteJSON(w, http.StatusConflict, apperror.NewErrorResponse(409, "Conflict", err.Error()))
 		return true
 	default:
 		return false

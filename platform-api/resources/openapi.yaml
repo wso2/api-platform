@@ -62,6 +62,9 @@ paths:
       responses:
         '201':
           description: Organization registered successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -69,7 +72,7 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '409':
-            $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/Conflict'
         '500':
             $ref: '#/components/responses/InternalServerError'
 
@@ -86,23 +89,8 @@ paths:
       tags:
         - Organizations
       parameters:
-        - name: limit
-          in: query
-          required: false
-          description: Maximum number of organizations to return per page.
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          required: false
-          description: Zero-based index of the first organization to return.
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Organizations retrieved successfully
@@ -174,7 +162,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Organization not found
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -202,6 +190,9 @@ paths:
       responses:
         '201':
           description: Project created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -229,6 +220,12 @@ paths:
             - ap:project:manage
       tags:
         - Projects
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
       responses:
         '200':
           description: Projects retrieved successfully
@@ -359,6 +356,11 @@ paths:
         - REST APIs
       parameters:
         - $ref: '#/components/parameters/projectId-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
       responses:
         '200':
           description: REST APIs retrieved successfully
@@ -396,6 +398,9 @@ paths:
       responses:
         '201':
           description: API created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -534,6 +539,8 @@ paths:
         - Gateways
       parameters:
         - $ref: '#/components/parameters/apiId'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of gateways associated with the API, including deployment details
@@ -622,6 +629,9 @@ paths:
       responses:
         '201':
           description: API key created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -635,11 +645,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
-          description: Service Unavailable - No gateway connections available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -691,11 +697,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
-          description: Service Unavailable - No gateway connections available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -735,11 +737,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
-          description: Service Unavailable - No gateway connections available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -772,26 +770,21 @@ paths:
       responses:
         '201':
           description: API deployed successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
         '400':
-          description: Bad Request. Validation errors (missing name, base, gatewayId, or API has no backend services)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: Not Found. API, gateway, or base deployment not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -814,6 +807,8 @@ paths:
         - $ref: '#/components/parameters/apiId'
         - $ref: '#/components/parameters/gatewayId-Q'
         - $ref: '#/components/parameters/deploymentStatus-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Deployments retrieved successfully
@@ -1002,11 +997,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict. Cannot restore currently deployed deployment or deployment is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1035,6 +1026,9 @@ paths:
       responses:
         '201':
           description: LLM provider template created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -1086,21 +1080,8 @@ paths:
           schema:
             type: string
           example: groupId:openai&version:v2.0
-        - name: limit
-          in: query
-          description: Maximum number of LLM provider templates to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of LLM provider templates to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: >-
@@ -1183,6 +1164,9 @@ paths:
       responses:
         '201':
           description: New version created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -1440,6 +1424,9 @@ paths:
       responses:
         '201':
           description: LLM provider created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -1466,21 +1453,8 @@ paths:
       tags:
         - LLM Providers
       parameters:
-        - name: limit
-          in: query
-          description: Maximum number of LLM providers to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of LLM providers to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of LLM providers
@@ -1631,26 +1605,21 @@ paths:
       responses:
         '201':
           description: LLM provider deployed successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
         '400':
-          description: Bad Request. Validation errors (missing name, base, gatewayId, or invalid input)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: Not Found. LLM provider, gateway, or base deployment not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1678,6 +1647,8 @@ paths:
             type: string
         - $ref: '#/components/parameters/gatewayId-Q'
         - $ref: '#/components/parameters/deploymentStatus-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Deployments retrieved successfully
@@ -1880,11 +1851,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict. Cannot restore currently deployed deployment or deployment is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1907,21 +1874,8 @@ paths:
           description: Unique identifier of the LLM provider
           schema:
             type: string
-        - name: limit
-          in: query
-          description: Maximum number of LLM proxies to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of LLM proxies to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of LLM proxies
@@ -1972,6 +1926,9 @@ paths:
       responses:
         '201':
           description: API key created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -1981,17 +1938,9 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: LLM provider not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '503':
-          description: No gateway connections available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
     get:
@@ -2014,6 +1963,8 @@ paths:
           schema:
             type: string
           example: wso2-openai-provider
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of API keys retrieved successfully
@@ -2024,11 +1975,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: LLM provider not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2067,17 +2014,9 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: LLM provider or API key not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '503':
-          description: No gateway connections available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2102,6 +2041,9 @@ paths:
       responses:
         '201':
           description: LLM proxy created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -2112,6 +2054,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
         '500':
@@ -2129,21 +2073,8 @@ paths:
         - LLM Proxies
       parameters:
         - $ref: '#/components/parameters/projectId-Q'
-        - name: limit
-          in: query
-          description: Maximum number of LLM proxies to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of LLM proxies to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of LLM proxies
@@ -2294,26 +2225,21 @@ paths:
       responses:
         '201':
           description: LLM proxy deployed successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
         '400':
-          description: Bad Request. Validation errors (missing name, base, gatewayId, or invalid input)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: Not Found. LLM proxy, gateway, or base deployment not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2341,6 +2267,8 @@ paths:
             type: string
         - $ref: '#/components/parameters/gatewayId-Q'
         - $ref: '#/components/parameters/deploymentStatus-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Deployments retrieved successfully
@@ -2543,11 +2471,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict. Cannot restore currently deployed deployment or deployment is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2584,6 +2508,9 @@ paths:
       responses:
         '201':
           description: API key created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -2593,17 +2520,9 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: LLM proxy not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '503':
-          description: No gateway connections available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
     get:
@@ -2626,6 +2545,8 @@ paths:
           schema:
             type: string
           example: wso2-openai-proxy
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of API keys retrieved successfully
@@ -2636,11 +2557,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: LLM proxy not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2679,17 +2596,9 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: LLM proxy or API key not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '503':
-          description: No gateway connections available
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/GatewayConnectionUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2714,6 +2623,9 @@ paths:
       responses:
         '201':
           description: MCP proxy created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -2741,21 +2653,8 @@ paths:
         - MCP Proxies
       parameters:
         - $ref: '#/components/parameters/projectId-Q'
-        - name: limit
-          in: query
-          description: Maximum number of MCP proxies to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of MCP proxies to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of MCP proxies
@@ -2906,24 +2805,19 @@ paths:
       responses:
         '201':
           description: MCP proxy deployed successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/DeploymentResponse'
         '400':
-          description: Bad Request. Validation errors (missing name, base, gatewayId, or MCP proxy has no backend services)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Not Found. MCP proxy, gateway, or base deployment not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -2951,6 +2845,8 @@ paths:
             type: string
         - $ref: '#/components/parameters/gatewayId-Q'
         - $ref: '#/components/parameters/deploymentStatus-Q'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Deployments retrieved successfully
@@ -3153,11 +3049,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict. Cannot restore currently deployed deployment or deployment is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3220,6 +3112,9 @@ paths:
       responses:
         '201':
           description: Gateway registered successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -3231,17 +3126,9 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: Organization not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: Gateway name already exists within organization
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3257,6 +3144,12 @@ paths:
             - ap:gateway:manage
       tags:
         - Gateways
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
       responses:
         '200':
           description: Gateways retrieved successfully
@@ -3368,22 +3261,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflict. Gateway has active deployments or connections
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-              examples:
-                activeDeployments:
-                  value:
-                    code: 409
-                    message: Conflict
-                    description: Cannot delete gateway - 3 active API deployment(s) exist
-                activeConnections:
-                  value:
-                    code: 409
-                    message: Conflict
-                    description: Cannot delete gateway - 2 active connection(s) exist
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3403,15 +3281,15 @@ paths:
         - Gateway Tokens
       parameters:
         - $ref: '#/components/parameters/gatewayId'
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of active tokens
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/TokenInfoResponse'
+                $ref: '#/components/schemas/GatewayTokenListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -3436,16 +3314,15 @@ paths:
       responses:
         '201':
           description: New token generated successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TokenRotationResponse'
         '400':
-          description: Bad request (e.g., maximum active tokens reached)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -3490,11 +3367,7 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: Gateway or token not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3540,15 +3413,16 @@ paths:
             - ap:gateway_custom_policy:manage
       tags:
         - Gateway Policies
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of custom policies
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/CustomPolicyResponse'
+                $ref: '#/components/schemas/CustomPolicyListResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -3612,17 +3486,17 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Policy already exists, patch version update, or downgrade is not allowed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
         '422':
           description: Policy is not a custom policy or manifest is unavailable
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: POLICY_INVALID_STATE
+                message: "The policy is not a custom policy, or its manifest is unavailable."
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3703,11 +3577,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Custom policy is in use by one or more APIs
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -3732,6 +3602,9 @@ paths:
       responses:
         '201':
           description: Application created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -3763,21 +3636,11 @@ paths:
         - Applications
       parameters:
         - $ref: '#/components/parameters/projectId-Q'
-        - name: limit
-          in: query
-          description: Maximum number of applications to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of applications to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
+        - $ref: '#/components/parameters/sortBy-Q'
+        - $ref: '#/components/parameters/sortOrder-Q'
+        - $ref: '#/components/parameters/query-Q'
       responses:
         '200':
           description: Applications retrieved successfully
@@ -3905,21 +3768,8 @@ paths:
         - API Keys
       parameters:
         - $ref: '#/components/parameters/appId'
-        - name: limit
-          in: query
-          description: Maximum number of mapped API keys to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of mapped API keys to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Mapped API keys retrieved successfully
@@ -4024,21 +3874,8 @@ paths:
         - Applications
       parameters:
         - $ref: '#/components/parameters/appId'
-        - name: limit
-          in: query
-          description: Maximum number of associations to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of associations to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Application associations retrieved successfully
@@ -4140,21 +3977,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/appId'
         - $ref: '#/components/parameters/associationId'
-        - name: limit
-          in: query
-          description: Maximum number of mapped API keys to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of mapped API keys to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: Mapped API keys retrieved successfully
@@ -4191,6 +4015,9 @@ paths:
       responses:
         '201':
           description: Subscription plan created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -4215,6 +4042,9 @@ paths:
             - ap:subscription_plan:manage
       tags:
         - SubscriptionPlans
+      parameters:
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of subscription plans
@@ -4348,6 +4178,9 @@ paths:
       responses:
         '201':
           description: Subscription created successfully
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -4404,21 +4237,8 @@ paths:
           schema:
             type: string
             enum: [ACTIVE, INACTIVE, REVOKED]
-        - name: limit
-          in: query
-          description: Maximum number of subscriptions to return
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: offset
-          in: query
-          description: Number of subscriptions to skip
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of subscriptions
@@ -4430,6 +4250,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -4590,6 +4412,8 @@ paths:
           style: form
           explode: false
           example: LlmProxy,LlmProvider
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
       responses:
         '200':
           description: List of API keys retrieved successfully
@@ -4629,6 +4453,9 @@ paths:
       responses:
         '201':
           description: Secret created successfully.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
           content:
             application/json:
               schema:
@@ -4659,19 +4486,8 @@ paths:
       tags:
         - Secrets
       parameters:
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 25
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
+        - $ref: '#/components/parameters/limit-Q'
+        - $ref: '#/components/parameters/offset-Q'
         - name: updatedAfter
           in: query
           description: RFC3339 timestamp — return only secrets updated after this time. Used by GW controller for incremental polling.
@@ -4807,17 +4623,32 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: Secret is referenced by active resources
+          description: Conflict. The secret is referenced by one or more active resources.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SecretDeleteConflict'
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: SECRET_IN_USE
+                message: The secret is referenced by one or more active resources.
+                details:
+                  references:
+                    - type: llm_provider
+                      handle: wso2-openai-provider
+                      name: WSO2 OpenAI Provider
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
 components:
+  headers:
+    Location:
+      description: URL of the newly created resource.
+      schema:
+        type: string
+        format: uri
   securitySchemes:
     OAuth2Security:
       type: oauth2
@@ -5015,47 +4846,56 @@ components:
     UserAPIKeyListResponse:
       type: object
       required:
-        - items
+        - list
         - count
+        - pagination
       properties:
-        items:
+        list:
           type: array
           items:
             $ref: '#/components/schemas/UserAPIKeyItem'
           description: List of API keys
         count:
           type: integer
-          description: Total number of API keys returned
+          description: Number of API keys in current response
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     LLMProviderAPIKeyListResponse:
       type: object
       required:
-        - items
+        - list
         - count
+        - pagination
       properties:
-        items:
+        list:
           type: array
           items:
             $ref: '#/components/schemas/APIKeyItem'
           description: List of API keys
         count:
           type: integer
-          description: Total number of API keys returned
+          description: Number of API keys in current response
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     LLMProxyAPIKeyListResponse:
       type: object
       required:
-        - items
+        - list
         - count
+        - pagination
       properties:
-        items:
+        list:
           type: array
           items:
             $ref: '#/components/schemas/APIKeyItem'
           description: List of API keys
         count:
           type: integer
-          description: Total number of API keys returned
+          description: Number of API keys in current response
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     Organization:
       type: object
@@ -6539,13 +6379,21 @@ components:
 
     SubscriptionPlanListResponse:
       type: object
+      required:
+        - list
+        - count
+        - pagination
       properties:
-        subscriptionPlans:
+        list:
           type: array
           items:
             $ref: '#/components/schemas/SubscriptionPlan'
+          description: List of subscription plans in current response
         count:
           type: integer
+          description: Number of subscription plans in current response
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     CreateSubscriptionRequest:
       type: object
@@ -6646,14 +6494,15 @@ components:
     SubscriptionListResponse:
       type: object
       required:
-        - subscriptions
+        - list
         - count
         - pagination
       properties:
-        subscriptions:
+        list:
           type: array
           items:
             $ref: '#/components/schemas/Subscription'
+          description: List of subscriptions in current response
         count:
           type: integer
           description: Number of subscriptions in current response
@@ -6661,26 +6510,64 @@ components:
           $ref: '#/components/schemas/Pagination'
 
     Error:
-      title: Error object returned
+      title: Standard error response
+      description: The single error shape returned by every failed request across the API.
       required:
+        - status
         - code
-        - title
+        - message
       type: object
       properties:
+        status:
+          type: string
+          enum: [error]
+          description: Always the literal "error".
+          example: error
         code:
-          type: integer
-          format: int64
-        title:
           type: string
-          description: Error message
-        details:
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: "Stable, machine-readable error code from the error catalog, in the form `<DOMAIN>_<REASON>` (e.g. `REST_API_NOT_FOUND`). Clients and agents should branch on this, not on the HTTP status."
+          example: REST_API_NOT_FOUND
+        message:
           type: string
-          description: A detailed description about the error message
+          description: Human-readable description of the error.
+          example: The requested REST API could not be found.
         errors:
           type: array
-          description: List of specific errors (useful for validation errors)
+          description: Per-field validation failures. Present when the error is a validation failure.
           items:
-            type: object
+            $ref: '#/components/schemas/FieldError'
+        details:
+          type: object
+          description: >-
+            Optional structured metadata specific to this error condition
+            (e.g. the resources referencing a secret that blocked its
+            deletion). Shape varies by `code`; absent when not applicable.
+          additionalProperties: true
+        trackingId:
+          type: string
+          format: uuid
+          description: >-
+            Correlation ID for server-side failures. Present only on 5xx
+            responses; quote it when reporting the error so operators can
+            find the corresponding server log entry.
+          example: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
+
+    FieldError:
+      title: Field-level validation error
+      required:
+        - field
+        - message
+      type: object
+      properties:
+        field:
+          type: string
+          description: Path of the offending field.
+          example: spec.context
+        message:
+          type: string
+          description: Why the field failed validation.
+          example: must start with /
 
     DeployRequest:
       type: object
@@ -6778,15 +6665,18 @@ components:
       required:
         - count
         - list
+        - pagination
       properties:
         count:
           type: integer
-          description: Total number of deployments
+          description: Number of deployments in current response
         list:
           type: array
           items:
             $ref: '#/components/schemas/DeploymentResponse'
           description: List of deployments
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     Upstream:
       type: object
@@ -6954,8 +6844,8 @@ components:
           type: string
           description: |
             Identifies who manages the template. Built-in templates use 'wso2';
-            custom templates default to 'customer' and may be set to any value.
-          default: customer
+            custom templates default to 'organization' and may be set to any value.
+          default: organization
           maxLength: 255
           example: wso2
         description:
@@ -7064,10 +6954,10 @@ components:
         managedBy:
           type: string
           description: |
-            Identifies who manages the template. Custom templates default to 'customer'.
-          default: customer
+            Identifies who manages the template. Custom templates default to 'organization'.
+          default: organization
           maxLength: 255
-          example: customer
+          example: organization
         description:
           type: string
           description: Description of the LLM provider template
@@ -8526,9 +8416,13 @@ components:
     SecretListResponse:
       type: object
       required:
+        - count
         - list
         - pagination
       properties:
+        count:
+          type: integer
+          description: Number of secrets in current response
         list:
           type: array
           items:
@@ -8536,26 +8430,41 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
-    SecretDeleteConflict:
+    GatewayTokenListResponse:
       type: object
+      required:
+        - count
+        - list
+        - pagination
       properties:
-        error:
-          type: string
-          example: secret is referenced by active resources
-        references:
+        count:
+          type: integer
+          description: Number of tokens in current response
+        list:
           type: array
           items:
-            type: object
-            properties:
-              type:
-                type: string
-                example: llm_provider
-              handle:
-                type: string
-                example: wso2-openai-provider
-              name:
-                type: string
-                example: WSO2 OpenAI Provider
+            $ref: '#/components/schemas/TokenInfoResponse'
+          description: List of active tokens
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    CustomPolicyListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of custom policies in current response
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomPolicyResponse'
+          description: List of custom policies
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
   responses:
     Unauthorized:
@@ -8565,9 +8474,9 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            code: 401
-            message: Unauthorized
-            description: Authorization header is required or token is invalid
+            status: error
+            code: UNAUTHORIZED
+            message: Authorization header is required, or the token is invalid or expired.
 
     BadRequest:
       description: Bad Request. Invalid request or validation error.
@@ -8576,9 +8485,12 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            code: 400
-            message: Bad Request
-            description: Invalid request or validation error
+            status: error
+            code: VALIDATION_FAILED
+            message: The request failed validation.
+            errors:
+              - field: spec.context
+                message: must start with /
     Forbidden:
       description: Forbidden. The authenticated user does not have permission to access this resource.
       content:
@@ -8586,9 +8498,9 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            code: 403
-            title: Forbidden
-            details: You do not have permission to perform this action
+            status: error
+            code: FORBIDDEN
+            message: You do not have permission to perform this action.
     NotFound:
       description: Not Found. The specified resource does not exist.
       content:
@@ -8596,9 +8508,9 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            code: 404
-            message: Not Found
-            description: The specified resource does not exist
+            status: error
+            code: NOT_FOUND
+            message: The specified resource does not exist.
     Conflict:
       description: Conflict. Specified resource already exists.
       content:
@@ -8606,9 +8518,9 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            code: 409
-            message: Conflict
-            description: Specified resource already exists
+            status: error
+            code: CONFLICT
+            message: The specified resource already exists.
     InternalServerError:
       description: Internal Server Error.
       content:
@@ -8616,10 +8528,10 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            code: 500
-            message: Internal Server Error
-            description: The server encountered an internal error. Please contact
-              administrator.
+            status: error
+            code: INTERNAL_ERROR
+            message: An unexpected error occurred.
+            trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
     ServiceUnavailable:
       description: Service Unavailable. The secrets management feature is not configured.
       content:
@@ -8627,9 +8539,34 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
           example:
-            code: 503
-            message: Service Unavailable
-            description: Secrets management is not configured — set PLATFORM_SECRET_ENCRYPTION_KEY
+            status: error
+            code: SERVICE_UNAVAILABLE
+            message: Secrets management is not configured.
+            trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
+
+    GatewayConnectionUnavailable:
+      description: Service Unavailable. No gateway connections are currently available to service this request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            code: GATEWAY_CONNECTION_UNAVAILABLE
+            message: No gateway connections are currently available.
+            trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
+
+  examples:
+    GatewayNotFoundExample:
+      value:
+        status: error
+        code: GATEWAY_NOT_FOUND
+        message: "The specified gateway could not be found."
+    DeploymentBaseNotFoundExample:
+      value:
+        status: error
+        code: DEPLOYMENT_BASE_NOT_FOUND
+        message: "The specified base deployment could not be found."
   parameters:
     projectId:
       name: projectId
@@ -8756,6 +8693,68 @@ components:
           - FAILED
           - ARCHIVED
       description: Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
+
+    limit-Q:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of items to return per page.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+        example: 20
+
+    offset-Q:
+      name: offset
+      in: query
+      required: false
+      description: Zero-based index of the first item to return.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+        example: 0
+
+    sortBy-Q:
+      name: sortBy
+      in: query
+      required: false
+      description: >-
+        Field to sort the collection by. An unrecognized value falls back to the
+        default sort (createdAt).
+      schema:
+        type: string
+        enum:
+          - name
+          - createdAt
+        default: createdAt
+        example: createdAt
+
+    sortOrder-Q:
+      name: sortOrder
+      in: query
+      required: false
+      description: Sort direction applied to `sortBy`.
+      schema:
+        type: string
+        enum:
+          - asc
+          - desc
+        default: desc
+        example: desc
+
+    query-Q:
+      name: query
+      in: query
+      required: false
+      description: >-
+        Case-insensitive substring filter matched against the resource id
+        (handle).
+      schema:
+        type: string
+        example: payment
 
 tags:
   - name: Health

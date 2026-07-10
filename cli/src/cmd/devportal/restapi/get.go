@@ -33,14 +33,13 @@ import (
 const (
 	GetCmdLiteral = "get"
 	GetCmdExample = `# Get an API artifact using the active devportal
-ap devportal rest-api get --org org_1 --api-id api_1
+ap devportal rest-api get --api-id api_1
 
 # Get an API artifact using a specific devportal
-ap devportal rest-api get --org org_1 --id api_1 --display-name my-portal --platform eu`
+ap devportal rest-api get --api-id api_1 --display-name my-portal --platform eu`
 )
 
 var (
-	getOrgID    string
 	getAPIID    string
 	getName     string
 	getPlatform string
@@ -61,21 +60,14 @@ var getCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(getCmd, utils.FlagOrgID, &getOrgID, "", "Organization ID")
 	utils.AddStringFlag(getCmd, utils.FlagAPIID, &getAPIID, "", "API ID")
 	utils.AddStringFlag(getCmd, utils.FlagName, &getName, "", "DevPortal display name")
 	utils.AddStringFlag(getCmd, utils.FlagPlatform, &getPlatform, "", "Platform name")
 	getCmd.Flags().BoolVar(&getInsecure, "insecure", false, "Skip TLS certificate verification")
-	_ = getCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = getCmd.MarkFlagRequired(utils.FlagAPIID)
 }
 
 func runGetCommand() error {
-	orgID := strings.TrimSpace(getOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	apiID := strings.TrimSpace(getAPIID)
 	if apiID == "" {
 		return fmt.Errorf("api ID is required")
@@ -92,7 +84,7 @@ func runGetCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, getInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "apis/"+url.PathEscape(apiID))
+	path := internaldevportal.ResourcePath("apis/" + url.PathEscape(apiID))
 	resp, err := client.Get(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("get api artifact", err, getInsecure)

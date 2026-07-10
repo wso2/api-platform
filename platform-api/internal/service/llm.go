@@ -29,6 +29,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -69,6 +70,7 @@ type LLMProxyService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
+	secretService        *SecretService
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
 	cfg                  *config.Server
@@ -136,6 +138,13 @@ func NewLLMProviderService(
 // SetSecretService injects the SecretService for placeholder validation.
 // Called after both services are constructed to avoid circular dependency.
 func (s *LLMProviderService) SetSecretService(ss *SecretService) {
+	s.secretService = ss
+}
+
+// SetSecretService injects the SecretService used to clean up a rotated-away
+// credential after Update. Called after both services are constructed to
+// avoid circular dependency.
+func (s *LLMProxyService) SetSecretService(ss *SecretService) {
 	s.secretService = ss
 }
 
@@ -225,7 +234,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	handle := makeTemplateHandle(baseHandle, version)
 
 	if req.ManagedBy != nil && strings.TrimSpace(*req.ManagedBy) == constants.PolicyManagedByWSO2 {
-		return nil, constants.ErrLLMProviderTemplateManagedByReserved
+		return nil, apperror.LLMProviderTemplateManagedByReserved.Wrap(constants.ErrLLMProviderTemplateManagedByReserved)
 	}
 
 	exists, err := s.repo.Exists(handle, orgUUID)
@@ -233,7 +242,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 		return nil, fmt.Errorf("failed to check template exists: %w", err)
 	}
 	if exists {
-		return nil, constants.ErrLLMProviderTemplateExists
+		return nil, apperror.LLMProviderTemplateExists.Wrap(constants.ErrLLMProviderTemplateExists)
 	}
 
 	m := &model.LLMProviderTemplate{
@@ -263,7 +272,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
-			return nil, constants.ErrLLMProviderTemplateExists
+			return nil, apperror.LLMProviderTemplateExists.Wrap(constants.ErrLLMProviderTemplateExists)
 		}
 		return nil, fmt.Errorf("failed to create template: %w", err)
 	}
@@ -316,7 +325,7 @@ func (s *LLMProviderTemplateService) Get(orgUUID, handle string) (*api.LLMProvid
 		return nil, fmt.Errorf("failed to get template: %w", err)
 	}
 	if m == nil {
-		return nil, constants.ErrLLMProviderTemplateNotFound
+		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 	return s.toTemplateAPI(m)
 }
@@ -329,7 +338,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 		return nil, constants.ErrInvalidInput
 	}
 	if req.ManagedBy != nil && strings.TrimSpace(*req.ManagedBy) == constants.PolicyManagedByWSO2 {
-		return nil, constants.ErrLLMProviderTemplateManagedByReserved
+		return nil, apperror.LLMProviderTemplateManagedByReserved.Wrap(constants.ErrLLMProviderTemplateManagedByReserved)
 	}
 
 	existing, err := s.repo.GetByID(handle, orgUUID)
@@ -337,10 +346,10 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 		return nil, fmt.Errorf("failed to resolve template: %w", err)
 	}
 	if existing == nil {
-		return nil, constants.ErrLLMProviderTemplateNotFound
+		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 	if existing.ManagedBy == "wso2" {
-		return nil, constants.ErrLLMProviderTemplateReadOnly
+		return nil, apperror.LLMProviderTemplateReadOnly.Wrap(constants.ErrLLMProviderTemplateReadOnly)
 	}
 
 	if req.Version != "" && req.Version != existing.Version {
@@ -392,7 +401,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 
 	if err := s.repo.Update(m); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrLLMProviderTemplateNotFound
+			return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 		}
 		return nil, fmt.Errorf("failed to update template: %w", err)
 	}
@@ -412,7 +421,7 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 		return nil, fmt.Errorf("failed to fetch updated template: %w", err)
 	}
 	if updated == nil {
-		return nil, constants.ErrLLMProviderTemplateNotFound
+		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 
 	_ = s.auditRepo.Record("UPDATE", updated.UUID, "llm_provider_template", orgUUID, updatedBy)
@@ -493,7 +502,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 
 	managedBy := defaultTemplateManagedBy(req.ManagedBy)
 	if managedBy == constants.PolicyManagedByWSO2 {
-		managedBy = constants.PolicyManagedByCustomer
+		managedBy = constants.TemplateManagedByOrganization
 	}
 
 	count, err := s.repo.CountVersions(groupID, orgUUID)
@@ -501,7 +510,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 		return nil, fmt.Errorf("failed to check template family: %w", err)
 	}
 	if count == 0 {
-		return nil, constants.ErrLLMProviderTemplateNotFound
+		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 	baseHandle := groupID
 
@@ -533,9 +542,9 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 	if err := s.repo.CreateNewVersion(m); err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			return nil, constants.ErrLLMProviderTemplateNotFound
+			return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 		case errors.Is(err, constants.ErrLLMProviderTemplateVersionExists):
-			return nil, constants.ErrLLMProviderTemplateVersionExists
+			return nil, apperror.LLMProviderTemplateVersionExists.Wrap(constants.ErrLLMProviderTemplateVersionExists)
 		default:
 			return nil, fmt.Errorf("failed to create new template version: %w", err)
 		}
@@ -559,7 +568,7 @@ func (s *LLMProviderTemplateService) CopyVersion(orgUUID, fromTemplateID, toTemp
 		return nil, fmt.Errorf("failed to resolve source template version: %w", err)
 	}
 	if source == nil {
-		return nil, constants.ErrLLMProviderTemplateNotFound
+		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 	groupID := source.GroupID
 
@@ -631,7 +640,7 @@ func (s *LLMProviderTemplateService) ListVersions(orgUUID, groupID string, limit
 		return nil, fmt.Errorf("failed to count template versions: %w", err)
 	}
 	if total == 0 {
-		return nil, constants.ErrLLMProviderTemplateNotFound
+		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 	items, err := s.repo.ListVersions(groupID, orgUUID, limit, offset)
 	if err != nil {
@@ -671,7 +680,7 @@ func (s *LLMProviderTemplateService) GetVersion(orgUUID, groupID, version string
 		return nil, fmt.Errorf("failed to get template version: %w", err)
 	}
 	if m == nil {
-		return nil, constants.ErrLLMProviderTemplateNotFound
+		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 	return s.toTemplateAPI(m)
 }
@@ -692,12 +701,12 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version
 		return nil, fmt.Errorf("failed to resolve template version: %w", err)
 	}
 	if target == nil {
-		return nil, constants.ErrLLMProviderTemplateNotFound
+		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 	// Enable/disable is reserved for built-in ('wso2') templates only. Custom
 	// templates are managed via update/delete and cannot be toggled.
 	if target.ManagedBy != constants.PolicyManagedByWSO2 {
-		return nil, constants.ErrLLMProviderTemplateNotToggleable
+		return nil, apperror.LLMProviderTemplateNotToggleable.Wrap(constants.ErrLLMProviderTemplateNotToggleable)
 	}
 	if err := ensureOriginMutable(target.Origin); err != nil {
 		return nil, err
@@ -708,12 +717,12 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version
 			return nil, fmt.Errorf("failed to check template version usage: %w", err)
 		}
 		if inUse > 0 {
-			return nil, constants.ErrLLMProviderTemplateInUse
+			return nil, apperror.LLMProviderTemplateInUse.Wrap(constants.ErrLLMProviderTemplateInUse)
 		}
 	}
 	if err := s.repo.SetEnabled(groupID, orgUUID, v, enabled); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrLLMProviderTemplateNotFound
+			return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 		}
 		return nil, fmt.Errorf("failed to set template version enabled: %w", err)
 	}
@@ -722,7 +731,7 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version
 		return nil, fmt.Errorf("failed to reload template version: %w", err)
 	}
 	if m == nil {
-		return nil, constants.ErrLLMProviderTemplateNotFound
+		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 	return s.toTemplateAPI(m)
 }
@@ -742,10 +751,10 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, groupID, version str
 		return fmt.Errorf("failed to resolve template version: %w", err)
 	}
 	if target == nil {
-		return constants.ErrLLMProviderTemplateNotFound
+		return apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 	if target.ManagedBy == "wso2" {
-		return constants.ErrLLMProviderTemplateReadOnly
+		return apperror.LLMProviderTemplateReadOnly.Wrap(constants.ErrLLMProviderTemplateReadOnly)
 	}
 	// Block deletion while any provider built from this specific version still depends on it.
 	inUse, err := s.repo.CountProvidersUsingTemplate(groupID, orgUUID, v)
@@ -753,11 +762,11 @@ func (s *LLMProviderTemplateService) DeleteVersion(orgUUID, groupID, version str
 		return fmt.Errorf("failed to check template version usage: %w", err)
 	}
 	if inUse > 0 {
-		return constants.ErrLLMProviderTemplateInUse
+		return apperror.LLMProviderTemplateInUse.Wrap(constants.ErrLLMProviderTemplateInUse)
 	}
 	if err := s.repo.DeleteVersion(groupID, orgUUID, v); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return constants.ErrLLMProviderTemplateNotFound
+			return apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 		}
 		return fmt.Errorf("failed to delete template version: %w", err)
 	}
@@ -775,7 +784,7 @@ func (s *LLMProviderTemplateService) SetEnabledByHandle(orgUUID, handle string, 
 		return nil, fmt.Errorf("failed to resolve template: %w", err)
 	}
 	if target == nil {
-		return nil, constants.ErrLLMProviderTemplateNotFound
+		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 	return s.SetVersionEnabled(orgUUID, target.GroupID, target.Version, enabled)
 }
@@ -789,7 +798,7 @@ func (s *LLMProviderTemplateService) DeleteByHandle(orgUUID, handle string) erro
 		return fmt.Errorf("failed to resolve template: %w", err)
 	}
 	if target == nil {
-		return constants.ErrLLMProviderTemplateNotFound
+		return apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 	return s.DeleteVersion(orgUUID, target.GroupID, target.Version)
 }
@@ -800,6 +809,15 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	}
 	if req.DisplayName == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
+	}
+	if err := validatePolicyVersions(req.GlobalPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateOperationPolicyVersions(req.OperationPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateLLMPolicyVersions(req.Policies); err != nil {
+		return nil, err
 	}
 	if err := validateModelProviders(req.Template, req.ModelProviders); err != nil {
 		return nil, err
@@ -837,7 +855,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		}
 	}
 	if tpl == nil {
-		return nil, constants.ErrLLMProviderTemplateNotFound
+		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 
 	// Determine handle: use provided id or auto-generate from displayName
@@ -863,11 +881,14 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	}
 	req.Id = &handle
 
-	// Validate {{ secret "..." }} placeholders in the upstream config
+	// Validate {{ secret "..." }} placeholders anywhere in the request — the
+	// gateway-controller's template engine resolves placeholders generically
+	// across the whole artifact (policies included), not just upstream.auth,
+	// so validation must cover the same surface.
 	if s.secretService != nil {
-		configJSON, err := marshalUpstreamForValidation(req.Upstream)
+		configJSON, err := marshalUpstreamForValidation(req)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal upstream config for secret validation: %w", err)
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
@@ -1038,6 +1059,15 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	if req.DisplayName == "" || req.Version == "" || req.Template == "" {
 		return nil, constants.ErrInvalidInput
 	}
+	if err := validatePolicyVersions(req.GlobalPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateOperationPolicyVersions(req.OperationPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateLLMPolicyVersions(req.Policies); err != nil {
+		return nil, err
+	}
 	if err := validateModelProviders(req.Template, req.ModelProviders); err != nil {
 		return nil, err
 	}
@@ -1054,14 +1084,15 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		return nil, fmt.Errorf("failed to validate template: %w", err)
 	}
 	if tpl == nil {
-		return nil, constants.ErrLLMProviderTemplateNotFound
+		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 
-	// Validate {{ secret "..." }} placeholders in the upstream config
+	// Validate {{ secret "..." }} placeholders anywhere in the request — see
+	// Create for why this covers the whole request, not just upstream.
 	if s.secretService != nil {
-		configJSON, err := marshalUpstreamForValidation(req.Upstream)
+		configJSON, err := marshalUpstreamForValidation(req)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal upstream config for secret validation: %w", err)
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
@@ -1129,6 +1160,19 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 			return nil, constants.ErrLLMProviderNotFound
 		}
 		return nil, fmt.Errorf("failed to update provider: %w", err)
+	}
+
+	// Best-effort: delete the secret the credential was rotated away from. Must
+	// run after the update above persists the new reference, so the in-use
+	// check below no longer sees this provider pointing at the old handle.
+	if s.secretService != nil {
+		s.secretService.cleanupRotatedSecret(
+			orgUUID,
+			mainUpstreamAuthValue(existing.Configuration.Upstream),
+			mainUpstreamAuthValue(m.Configuration.Upstream),
+			updatedBy,
+			s.slogger,
+		)
 	}
 
 	updated, err := s.repo.GetByID(handle, orgUUID)
@@ -1211,6 +1255,15 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	if req.DisplayName == "" || req.Version == "" || req.Provider.Id == "" || req.ProjectId == "" {
 		return nil, constants.ErrInvalidInput
 	}
+	if err := validatePolicyVersions(req.GlobalPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateOperationPolicyVersions(req.OperationPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateLLMPolicyVersions(req.Policies); err != nil {
+		return nil, err
+	}
 	// req.ProjectId is the project handle; resolve it to the project UUID so the
 	// proxy is stored against the same identifier List filters on.
 	projectUUID := req.ProjectId
@@ -1256,6 +1309,20 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		}
 	}
 	req.Id = &handle
+
+	// Validate {{ secret "..." }} placeholders anywhere in the request — the
+	// gateway-controller's template engine resolves placeholders generically
+	// across the whole artifact (policies included), not just provider.auth,
+	// so validation must cover the same surface.
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+			return nil, err
+		}
+	}
 
 	proxyCount, err := s.repo.Count(orgUUID)
 	if err != nil {
@@ -1480,6 +1547,15 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	if req.DisplayName == "" || req.Version == "" || req.Provider.Id == "" {
 		return nil, constants.ErrInvalidInput
 	}
+	if err := validatePolicyVersions(req.GlobalPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateOperationPolicyVersions(req.OperationPolicies); err != nil {
+		return nil, err
+	}
+	if err := validateLLMPolicyVersions(req.Policies); err != nil {
+		return nil, err
+	}
 
 	existing, err := s.repo.GetByID(handle, orgUUID)
 	if err != nil {
@@ -1496,6 +1572,22 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	}
 	if prov == nil {
 		return nil, constants.ErrLLMProviderNotFound
+	}
+
+	// Validate {{ secret "..." }} placeholders anywhere in the request. Checked
+	// against the raw request (not the post-preserve merged auth value) — an
+	// empty auth value here means "no change" and has nothing to validate; the
+	// value it will be preserved from was already validated when it was
+	// originally submitted. Covers the whole request (policies included), not
+	// just provider.auth — see Create for why.
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+			return nil, err
+		}
 	}
 
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
@@ -1555,6 +1647,19 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 			return nil, constants.ErrLLMProxyNotFound
 		}
 		return nil, fmt.Errorf("failed to update proxy: %w", err)
+	}
+
+	// Best-effort: delete the secret the credential was rotated away from. Must
+	// run after the update above persists the new reference, so the in-use
+	// check below no longer sees this proxy pointing at the old handle.
+	if s.secretService != nil {
+		s.secretService.cleanupRotatedSecret(
+			orgUUID,
+			upstreamAuthValue(existing.Configuration.UpstreamAuth),
+			upstreamAuthValue(m.Configuration.UpstreamAuth),
+			updatedBy,
+			s.slogger,
+		)
 	}
 
 	updated, err := s.repo.GetByID(handle, orgUUID)
@@ -2449,12 +2554,12 @@ func mapTemplateResourceMappingModelToAPI(in *model.LLMProviderTemplateResourceM
 }
 
 // defaultTemplateManagedBy normalizes the managedBy label supplied on a custom
-// template. An empty value defaults to "customer"; built-in templates are seeded
-// with "wso2" by the template seeder/loader.
+// template. An empty value defaults to "organization"; built-in templates are
+// seeded with "wso2" by the template seeder/loader.
 func defaultTemplateManagedBy(in *string) string {
 	v := strings.TrimSpace(utils.ValueOrEmpty(in))
 	if v == "" {
-		return "customer"
+		return constants.TemplateManagedByOrganization
 	}
 	return v
 }

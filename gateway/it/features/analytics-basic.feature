@@ -26,6 +26,7 @@ Feature: Analytics - Basic Event Capture
           - method: GET
             path: /info
       """
+    And I wait for policy snapshot sync
     When I send a GET request to "http://localhost:8080/analytics-test/v1/info"
     Then the response status code should be 200
     And I wait 5 seconds for analytics to be published

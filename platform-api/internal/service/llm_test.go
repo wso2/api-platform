@@ -1239,6 +1239,59 @@ func TestLLMProviderServiceCreateMigratesLegacyPolicies(t *testing.T) {
 	}
 }
 
+func TestLLMProviderServiceCreateRejectsInvalidGlobalPolicyVersion(t *testing.T) {
+	service := NewLLMProviderService(&mockLLMProviderRepo{}, &mockLLMTemplateRepo{}, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	request := validProviderRequest("openai")
+	request.GlobalPolicies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
+
+	_, err := service.Create("org-1", "alice", request)
+	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
+	}
+}
+
+func TestLLMProviderServiceCreateRejectsInvalidOperationPolicyVersion(t *testing.T) {
+	service := NewLLMProviderService(&mockLLMProviderRepo{}, &mockLLMTemplateRepo{}, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	request := validProviderRequest("openai")
+	request.OperationPolicies = &[]api.OperationPolicy{{Name: "token-ratelimit", Version: "1"}}
+
+	_, err := service.Create("org-1", "alice", request)
+	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
+	}
+}
+
+func TestLLMProviderServiceCreateRejectsInvalidLegacyPolicyVersion(t *testing.T) {
+	service := NewLLMProviderService(&mockLLMProviderRepo{}, &mockLLMTemplateRepo{}, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	request := validProviderRequest("openai")
+	request.Policies = &[]api.LLMPolicy{{Name: "basic-ratelimit", Version: "V1"}}
+
+	_, err := service.Create("org-1", "alice", request)
+	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
+	}
+}
+
+func TestLLMProviderServiceUpdateRejectsInvalidPolicyVersion(t *testing.T) {
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "prov-uuid", ID: providerID, TemplateUUID: "tpl-openai"}, nil
+		},
+	}
+	service := NewLLMProviderService(providerRepo, &mockLLMTemplateRepo{}, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	request := validProviderRequest("openai")
+	request.GlobalPolicies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
+
+	_, err := service.Update("org-1", "provider-1", "alice", request)
+	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
+	}
+}
+
 func TestLLMProviderServiceCreateReturnsConflictForDuplicateHandle(t *testing.T) {
 	providerRepo := &mockLLMProviderRepo{existsResult: true}
 	templateRepo := &mockLLMTemplateRepo{
@@ -1323,6 +1376,42 @@ func TestLLMProxyServiceCreateFailsWhenProviderNotFound(t *testing.T) {
 	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
 	if err != constants.ErrLLMProviderNotFound {
 		t.Fatalf("expected ErrLLMProviderNotFound, got: %v", err)
+	}
+}
+
+func TestLLMProxyServiceCreateRejectsInvalidPolicyVersion(t *testing.T) {
+	proxyRepo := &mockLLMProxyRepo{}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	request := validProxyRequest("provider-1", "project-1")
+	request.GlobalPolicies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
+
+	_, err := service.Create("org-1", "alice", request)
+	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
+	}
+}
+
+func TestLLMProxyServiceUpdateRejectsInvalidPolicyVersion(t *testing.T) {
+	proxyRepo := &mockLLMProxyRepo{}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	request := validProxyRequest("provider-1", "project-1")
+	request.OperationPolicies = &[]api.OperationPolicy{{Name: "token-ratelimit", Version: "1"}}
+
+	_, err := service.Update("org-1", "proxy-1", "alice", request)
+	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
 
@@ -1428,6 +1517,230 @@ func TestLLMProxyServiceUpdatePreservesProviderAuthValue(t *testing.T) {
 	}
 	if proxyRepo.updated.Configuration.UpstreamAuth.Value != "Bearer old-secret" {
 		t.Fatalf("expected proxy auth value to be preserved, got %q", proxyRepo.updated.Configuration.UpstreamAuth.Value)
+	}
+}
+
+// TestLLMProviderServiceCreate_PolicySecretRef_Rejected proves secret-ref
+// validation now covers the whole request, not just upstream.auth — a
+// placeholder embedded in a policy param (not upstream) must also be rejected.
+func TestLLMProviderServiceCreate_PolicySecretRef_Rejected(t *testing.T) {
+	now := time.Now()
+	providerRepo := &mockLLMProviderRepo{}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-1", ID: templateID, Enabled: true, CreatedAt: now, UpdatedAt: now}, nil
+		},
+	}
+	orgRepo := &mockOrganizationRepo{org: &model.Organization{ID: "org-1"}}
+	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService())
+	service := NewLLMProviderService(providerRepo, templateRepo, orgRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service.SetSecretService(secretService)
+
+	request := validProviderRequest("openai")
+	params := map[string]interface{}{"value": `{{ secret "nonexistent-policy-secret" }}`}
+	request.GlobalPolicies = &[]api.Policy{{Name: "set-headers", Version: "v1", Params: &params}}
+
+	_, err := service.Create("org-1", "alice", request)
+	if err == nil {
+		t.Fatal("expected error for non-existent secret placeholder in a policy param, got nil")
+	}
+	if !errors.Is(err, constants.ErrSecretRefMissing) {
+		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	}
+	if providerRepo.created != nil {
+		t.Error("expected provider creation to be aborted, but repo.Create was called")
+	}
+}
+
+func TestLLMProxyServiceCreate_MissingSecretRef_Rejected(t *testing.T) {
+	proxyRepo := &mockLLMProxyRepo{}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService())
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service.SetSecretService(secretService)
+
+	request := validProxyRequest("provider-1", "project-1")
+	request.Provider.Auth = &api.UpstreamAuth{
+		Type:   upstreamAuthTypePtr("api-key"),
+		Header: stringPtr("Authorization"),
+		Value:  stringPtr(`{{ secret "nonexistent-proxy-secret" }}`),
+	}
+
+	_, err := service.Create("org-1", "alice", request)
+	if err == nil {
+		t.Fatal("expected error for non-existent secret placeholder, got nil")
+	}
+	if !errors.Is(err, constants.ErrSecretRefMissing) {
+		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	}
+	if proxyRepo.created != nil {
+		t.Error("expected proxy creation to be aborted, but repo.Create was called")
+	}
+}
+
+func TestLLMProxyServiceUpdate_MissingSecretRef_Rejected(t *testing.T) {
+	now := time.Now()
+	proxyRepo := &mockLLMProxyRepo{
+		getByIDFunc: func(proxyID, orgUUID string) (*model.LLMProxy, error) {
+			return &model.LLMProxy{
+				UUID: "proxy-uuid", ID: proxyID, Name: "Old Proxy", Version: "v1.0",
+				ProjectUUID: "project-1", ProviderUUID: "provider-uuid",
+				CreatedAt: now, UpdatedAt: now,
+				Configuration: model.LLMProxyConfig{
+					Provider:     "provider-1",
+					UpstreamAuth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: `{{ secret "existing-handle" }}`},
+				},
+			}, nil
+		},
+	}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService())
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service.SetSecretService(secretService)
+
+	request := validProxyRequest("provider-1", "project-1")
+	request.Provider.Auth = &api.UpstreamAuth{
+		Type:   upstreamAuthTypePtr("api-key"),
+		Header: stringPtr("Authorization"),
+		Value:  stringPtr(`{{ secret "nonexistent-proxy-secret" }}`),
+	}
+
+	_, err := service.Update("org-1", "proxy-1", "alice", request)
+	if err == nil {
+		t.Fatal("expected error for non-existent secret placeholder, got nil")
+	}
+	if !errors.Is(err, constants.ErrSecretRefMissing) {
+		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	}
+	if proxyRepo.updated != nil {
+		t.Error("expected proxy update to be aborted, but repo.Update was called")
+	}
+}
+
+// TestLLMProviderServiceUpdate_CleansUpRotatedSecret proves rotating a
+// provider's upstream credential deprecates the secret it replaced — the
+// same cleanupRotatedSecret path LLM Proxy and REST API are also tested
+// against, exercised here for the Provider service specifically.
+func TestLLMProviderServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
+	now := time.Now()
+	providerRepo := &mockLLMProviderRepo{}
+	providerRepo.getByIDFunc = func(providerID, orgUUID string) (*model.LLMProvider, error) {
+		if providerRepo.updated == nil {
+			return &model.LLMProvider{
+				UUID:         "prov-uuid",
+				ID:           providerID,
+				Name:         "Old Provider",
+				Version:      "v1.0",
+				TemplateUUID: "tpl-openai",
+				CreatedAt:    now,
+				UpdatedAt:    now,
+				Configuration: model.LLMProviderConfig{
+					Upstream: &model.UpstreamConfig{
+						Main: &model.UpstreamEndpoint{
+							URL:  "https://example.com/openai/v1",
+							Auth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: `{{ secret "old-handle" }}`},
+						},
+					},
+				},
+			}, nil
+		}
+		updated := *providerRepo.updated
+		updated.UUID = "prov-uuid"
+		updated.CreatedAt = now
+		updated.UpdatedAt = now
+		return &updated, nil
+	}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai"}, nil
+		},
+	}
+	secretRepo := newMockRepo()
+	secretRepo.secrets["old-handle"] = &model.Secret{Handle: "old-handle", Status: model.SecretStatusActive}
+	secretRepo.secrets["new-handle"] = &model.Secret{Handle: "new-handle", Status: model.SecretStatusActive}
+	secretService := NewSecretService(secretRepo, &mockVault{}, newTestIdentityService())
+
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service.SetSecretService(secretService)
+
+	request := validProviderRequest("openai")
+	request.Upstream.Main.Auth = &api.UpstreamAuth{
+		Type:   upstreamAuthTypePtr("api-key"),
+		Header: stringPtr("Authorization"),
+		Value:  stringPtr(`{{ secret "new-handle" }}`),
+	}
+
+	if _, err := service.Update("org-1", "provider-1", "alice", request); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if secretRepo.secrets["old-handle"].Status != model.SecretStatusDeprecated {
+		t.Fatalf("expected old secret to be deprecated, got status=%v", secretRepo.secrets["old-handle"].Status)
+	}
+	if secretRepo.secrets["new-handle"].Status != model.SecretStatusActive {
+		t.Fatalf("expected new secret to remain active, got status=%v", secretRepo.secrets["new-handle"].Status)
+	}
+}
+
+func TestLLMProxyServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
+	now := time.Now()
+	proxyRepo := &mockLLMProxyRepo{}
+	proxyRepo.getByIDFunc = func(proxyID, orgUUID string) (*model.LLMProxy, error) {
+		if proxyRepo.updated == nil {
+			return &model.LLMProxy{
+				UUID:         "proxy-uuid",
+				ID:           proxyID,
+				Name:         "Old Proxy",
+				Version:      "v1.0",
+				ProjectUUID:  "project-1",
+				ProviderUUID: "provider-uuid",
+				CreatedAt:    now,
+				UpdatedAt:    now,
+				Configuration: model.LLMProxyConfig{
+					Provider:     "provider-1",
+					UpstreamAuth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: `{{ secret "old-handle" }}`},
+				},
+			}, nil
+		}
+		updated := *proxyRepo.updated
+		updated.UUID = "proxy-uuid"
+		updated.CreatedAt = now
+		updated.UpdatedAt = now
+		return &updated, nil
+	}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	secretRepo := newMockRepo()
+	secretRepo.secrets["old-handle"] = &model.Secret{Handle: "old-handle", Status: model.SecretStatusActive}
+	secretRepo.secrets["new-handle"] = &model.Secret{Handle: "new-handle", Status: model.SecretStatusActive}
+	secretService := NewSecretService(secretRepo, &mockVault{}, newTestIdentityService())
+
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service.SetSecretService(secretService)
+
+	request := validProxyRequest("provider-1", "project-1")
+	request.Provider.Auth = &api.UpstreamAuth{
+		Type:   upstreamAuthTypePtr("api-key"),
+		Header: stringPtr("Authorization"),
+		Value:  stringPtr(`{{ secret "new-handle" }}`),
+	}
+
+	_, err := service.Update("org-1", "proxy-1", "test-user", request)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if secretRepo.secrets["old-handle"].Status != model.SecretStatusDeprecated {
+		t.Fatalf("expected old secret to be deprecated, got status=%v", secretRepo.secrets["old-handle"].Status)
 	}
 }
 

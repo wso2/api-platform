@@ -1354,3 +1354,101 @@ func TestLLMDeploymentService_InitializeOOBTemplates_UpdateExisting(t *testing.T
 	assert.NoError(t, err)
 	assert.Equal(t, "Updated Template", found.Configuration.Spec.DisplayName)
 }
+
+func TestNormalizeTemplateDefaults(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+
+	t.Run("fills defaults when fields are absent", func(t *testing.T) {
+		tmpl := &api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "mistralai-v2"},
+			Spec:     api.LLMProviderTemplateData{DisplayName: "MistralAI"},
+		}
+		normalizeTemplateDefaults(tmpl)
+
+		require.NotNil(t, tmpl.Spec.GroupId)
+		// groupId falls back to the handle (metadata.name), never overwrites it.
+		assert.Equal(t, "mistralai-v2", *tmpl.Spec.GroupId)
+		require.NotNil(t, tmpl.Spec.Version)
+		assert.Equal(t, models.DefaultTemplateVersion, *tmpl.Spec.Version)
+		require.NotNil(t, tmpl.Spec.ManagedBy)
+		assert.Equal(t, models.DefaultTemplateManagedBy, *tmpl.Spec.ManagedBy)
+		// The handle itself is left untouched.
+		assert.Equal(t, "mistralai-v2", tmpl.Metadata.Name)
+	})
+
+	t.Run("preserves explicit values", func(t *testing.T) {
+		tmpl := &api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "mistralai-v2"},
+			Spec: api.LLMProviderTemplateData{
+				DisplayName: "MistralAI",
+				GroupId:     strPtr("mistralai"),
+				Version:     strPtr("v2.0"),
+				ManagedBy:   strPtr("wso2"),
+			},
+		}
+		normalizeTemplateDefaults(tmpl)
+
+		assert.Equal(t, "mistralai", *tmpl.Spec.GroupId)
+		assert.Equal(t, "v2.0", *tmpl.Spec.Version)
+		assert.Equal(t, "wso2", *tmpl.Spec.ManagedBy)
+	})
+}
+
+func TestTemplateVersionsShareGroupID(t *testing.T) {
+	const v1YAML = `apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProviderTemplate
+metadata:
+  name: deep-seek-v1-0
+spec:
+  displayName: deep seek
+  groupId: deep-seek
+  managedBy: organization
+  version: v1.0
+  promptTokens:
+    location: payload
+    identifier: $.usage.prompt_tokens
+  totalTokens:
+    location: payload
+    identifier: $.usage.total_tokens
+`
+	const v2YAML = `apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProviderTemplate
+metadata:
+  name: deep-seek-v2-0
+spec:
+  displayName: deep seek
+  groupId: deep-seek
+  managedBy: organization
+  version: v2.0
+  promptTokens:
+    location: payload
+    identifier: $.usage.prompt_tokens
+  totalTokens:
+    location: payload
+    identifier: $.usage.total_tokens
+`
+
+	parser := config.NewParser()
+	parse := func(raw string) *models.StoredLLMProviderTemplate {
+		var tmpl api.LLMProviderTemplate
+		require.NoError(t, parser.Parse([]byte(raw), "application/yaml", &tmpl))
+		normalizeTemplateDefaults(&tmpl)
+		return &models.StoredLLMProviderTemplate{Configuration: tmpl}
+	}
+
+	v1 := parse(v1YAML)
+	v2 := parse(v2YAML)
+
+	// Two separate templates: handles are distinct and taken verbatim from metadata.name.
+	assert.Equal(t, "deep-seek-v1-0", v1.GetHandle())
+	assert.Equal(t, "deep-seek-v2-0", v2.GetHandle())
+	assert.NotEqual(t, v1.GetHandle(), v2.GetHandle())
+
+	// Same group, different versions — this is what lets the AI workspace group them.
+	assert.Equal(t, "deep-seek", v1.GetGroupID())
+	assert.Equal(t, v1.GetGroupID(), v2.GetGroupID())
+	assert.Equal(t, "v1.0", v1.GetVersion())
+	assert.Equal(t, "v2.0", v2.GetVersion())
+	assert.NotEqual(t, v1.GetVersion(), v2.GetVersion())
+	assert.Equal(t, "organization", v1.GetManagedBy())
+}

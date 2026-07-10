@@ -125,7 +125,7 @@ async function resolveUserUuid(req, sub) {
 async function verifyJwksWithRefresh(token, jwksURL, req) {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
-        const jwtVerifyOptions = {};
+        const jwtVerifyOptions = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
         if (config.idp?.issuer) jwtVerifyOptions.issuer = config.idp.issuer;
         if (config.idp?.audience) jwtVerifyOptions.audience = config.idp.audience;
         const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);

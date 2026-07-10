@@ -22,7 +22,7 @@ import (
 	"log/slog"
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -92,7 +92,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		handle = generated
 	} else {
 		if err := utils.ValidateHandle(handle); err != nil {
-			return nil, err
+			return nil, apperror.ValidationFailed.Wrap(err, err.Error())
 		}
 	}
 
@@ -103,9 +103,9 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	}
 	if existingOrg != nil {
 		if existingOrg.ID == id {
-			return nil, constants.ErrOrganizationExists
+			return nil, apperror.OrganizationExists.New().WithLogMessage("an organization with this UUID already exists")
 		}
-		return nil, constants.ErrHandleExists
+		return nil, apperror.OrganizationExists.New().WithLogMessage("an organization with this handle already exists")
 	}
 
 	if name == "" {
@@ -196,7 +196,7 @@ func (s *OrganizationService) GetOrganizationByUUID(orgId string) (*api.Organiza
 	}
 
 	if orgModel == nil {
-		return nil, constants.ErrOrganizationNotFound
+		return nil, apperror.OrganizationNotFound.New()
 	}
 
 	org, convErr := s.modelToAPI(orgModel)
@@ -239,7 +239,7 @@ func (s *OrganizationService) GetOrganizationByHandle(handle string) (*api.Organ
 	}
 
 	if orgModel == nil {
-		return nil, constants.ErrOrganizationNotFound
+		return nil, apperror.OrganizationNotFound.New()
 	}
 
 	org, convErr := s.modelToAPI(orgModel)

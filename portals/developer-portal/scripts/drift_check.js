@@ -108,47 +108,49 @@ function responseSchema(operationId, status) {
 // ---------------------------------------------------------------------------
 
 const SAMPLES = [
-    // Organizations — adminService.createOrganization/updateOrganization and
-    // devportalService.getOrganizationDetails all emit {orgId, orgName, businessOwner,
-    // businessOwnerContact, businessOwnerEmail, orgHandle, idpRefId,
-    // cpRefId, orgConfiguration}. No IDP claim-mapping fields (roleClaimName etc.) —
-    // those were removed from the response shape long ago.
+    // Organizations — adminService.createOrganization/updateOrganization/
+    // getAllOrganizations and devportalService.getOrganizationDetails all emit
+    // {id, displayName, businessOwner, businessOwnerContact, businessOwnerEmail,
+    // idpRefId, cpRefId, configuration, createdAt, updatedAt} (adminService.js
+    // ~194-204). The previous org-prefixed field names (orgId/orgName/orgHandle/
+    // orgConfiguration) haven't matched the real response in a long time.
     ['createOrganization', 201, {
-        orgId: 'org-1', orgName: 'Acme', businessOwner: 'Jane', businessOwnerContact: '+1',
-        businessOwnerEmail: 'jane@acme.example', orgHandle: 'acme',
-        idpRefId: 'ACME', cpRefId: 'cp-ref-1', orgConfiguration: {},
+        id: 'acme', displayName: 'Acme', businessOwner: 'Jane', businessOwnerContact: '+1',
+        businessOwnerEmail: 'jane@acme.example',
+        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { devportalMode: 'DEFAULT' },
+        createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
     }],
-    // adminService.getAllOrganizations builds the same shape per item (orgId, not
-    // orgID); adminService.getOrganizations wraps it via util.toPaginatedList.
     ['getOrganizations', 200, {
         list: [{
-            orgName: 'Acme', orgId: 'org-1', businessOwner: 'Jane',
+            id: 'acme', displayName: 'Acme', businessOwner: 'Jane',
             businessOwnerContact: '+1', businessOwnerEmail: 'jane@acme.example',
-            orgHandle: 'acme', idpRefId: 'ACME', cpRefId: 'cp-ref-1',
-            orgConfiguration: {},
+            idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { devportalMode: 'DEFAULT' },
+            createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
         }],
         pagination: { total: 1, limit: 20, offset: 0 },
     }],
     ['getOrganization', 200, {
-        orgId: 'org-1', orgName: 'Acme', businessOwner: 'Jane', businessOwnerContact: '+1',
-        businessOwnerEmail: 'jane@acme.example', orgHandle: 'acme',
-        idpRefId: 'ACME', cpRefId: 'cp-ref-1', orgConfiguration: {},
+        id: 'acme', displayName: 'Acme', businessOwner: 'Jane', businessOwnerContact: '+1',
+        businessOwnerEmail: 'jane@acme.example',
+        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { devportalMode: 'DEFAULT' },
+        createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
     }],
     ['updateOrganization', 200, {
-        orgId: 'org-1', orgName: 'Acme', businessOwner: 'Jane', businessOwnerContact: '+1',
-        businessOwnerEmail: 'jane@acme.example', orgHandle: 'acme',
-        idpRefId: 'ACME', cpRefId: 'cp-ref-1', orgConfiguration: {},
+        id: 'acme', displayName: 'Acme', businessOwner: 'Jane', businessOwnerContact: '+1',
+        businessOwnerEmail: 'jane@acme.example',
+        idpRefId: 'ACME', cpRefId: 'cp-ref-1', configuration: { devportalMode: 'DEFAULT' },
+        createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
     }],
 
-    // Org content — adminService.createOrgContent/updateOrgContent both
-    // res.status(201).send({ orgId, fileName }).
-    ['createOrgContent', 201, { orgId: 'org-1', fileName: 'theme.zip' }],
-    ['updateOrgContent', 201, { orgId: 'org-1', fileName: 'theme.zip' }],
-    // devportalService.getOrgContent (fileType-only branch) res.status(200).send(results) —
-    // a bare array, not paginated.
-    ['getOrgLayoutContentByFileType', 200, [
-        { orgId: 'org-1', fileName: 'main.css', fileContent: 'body{}' },
-    ]],
+    // Org content — createOrgContent/updateOrgContent/getOrgLayoutContentByFileType
+    // never existed as operationIds; that whole naming scheme was stale. The real,
+    // documented operation is `applyTheme` (POST /views/{viewId}/apply-theme),
+    // adminService.js:440-471 — a single upsert (atomic delete+recreate) covering
+    // what the old create/update split assumed were separate operations:
+    // `res.status(200).json({ id: organization.handle, fileName: zipFile.originalname })`.
+    // `resetTheme` (204, no body) and `getOrgAsset` (200, raw file content — not JSON)
+    // have nothing here to validate via AJV, so they're not worth a sample.
+    ['applyTheme', 200, { id: 'acme', fileName: 'theme.zip' }],
 
     // Subscriptions — subscriptionService.formatSubscriptionResponse shape
     ['createSubscription', 201, {
@@ -166,71 +168,193 @@ const SAMPLES = [
         createdAt: '2026-05-07T08:30:00.000Z',
     }],
 
-    // Labels — apiMetadataService.retrieveLabels wraps via util.toPaginatedList;
-    // createLabels/updateLabel echo req.body verbatim (clients send LabelRequest[]).
-    ['retrieveLabels', 200, {
+    // Labels — apiMetadataService.js. The real operationIds are `listLabels`
+    // (singular create is `createLabel`, not the invented plural "createLabels")
+    // and `updateLabel` responds 200, not 201. Every one returns `new LabelDTO(...)`
+    // (labelDto.js: {id, displayName} — not {name, displayName}), a single object
+    // for create/get/update, and listLabels wraps via util.toPaginatedList.
+    ['listLabels', 200, {
         list: [
-            { name: 'premium', displayName: 'Premium APIs' },
-            { name: 'internal', displayName: 'Internal APIs' },
+            { id: 'premium', displayName: 'Premium APIs' },
+            { id: 'internal', displayName: 'Internal APIs' },
         ],
         pagination: { total: 2, limit: 20, offset: 0 },
     }],
-    ['createLabels', 201, [{ name: 'premium', displayName: 'Premium APIs' }]],
-    ['updateLabel', 201, [{ name: 'premium', displayName: 'Premium APIs' }]],
+    ['createLabel', 201, { id: 'premium', displayName: 'Premium APIs' }],
+    ['updateLabel', 200, { id: 'premium', displayName: 'Premium APIs' }],
 
-    // Subscription Plans — subscriptionPlanDto.js shape: {planId, planName, displayName,
-    // description, requestCount, refId, orgId}. requestCount is always a string or null
-    // (computed in subscriptionPlanDao.js), never a raw number. Single-create
-    // (createSubscriptionPlan) returns one object; bulk-create (createSubscriptionPlans)
-    // returns an array, or a {message} when generateDefaultSubPlans disables bulk create.
+    // Subscription Plans — subscriptionPlanDto.js's SubscriptionPlan class shape:
+    // {id, displayName, description, refId, orgId, limits[]}, where each limit is
+    // {limitType, timeUnit, timeAmount, limitCount} (limitCount is a number unless
+    // it overflows a safe integer, in which case subscriptionPlanDao.js stringifies
+    // it). There is no planId/planName/requestCount field — that shape predates the
+    // current DTO. Single-create (createSubscriptionPlan) returns one object;
+    // bulk-create (createSubscriptionPlans) returns an array, or a {message} when
+    // generateDefaultSubPlans disables bulk create.
     ['addSubscriptionPlans', 201, {
-        planId: 'p1', planName: 'bronze', displayName: 'Bronze',
-        description: 'desc', requestCount: '1000', refId: null, orgId: 'org-1',
+        id: 'bronze', displayName: 'Bronze', description: 'desc',
+        limits: [{ limitType: 'REQUEST_COUNT', timeUnit: 'MONTH', timeAmount: 1, limitCount: 1000 }],
+        refId: null, orgId: 'org-1',
+        createdBy: 'alice@example.com', updatedBy: 'alice@example.com',
+        createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
     }],
     ['addSubscriptionPlans', 201, [{
-        planId: 'p1', planName: 'bronze', displayName: 'Bronze',
-        description: 'desc', requestCount: '1000', refId: null, orgId: 'org-1',
+        id: 'bronze', displayName: 'Bronze', description: 'desc',
+        limits: [{ limitType: 'REQUEST_COUNT', timeUnit: 'MONTH', timeAmount: 1, limitCount: 1000 }],
+        refId: null, orgId: 'org-1',
+        createdBy: 'alice@example.com', updatedBy: 'alice@example.com',
+        createdAt: '2026-05-07T08:30:00.000Z', updatedAt: '2026-05-07T08:30:00.000Z',
     }]],
     ['addSubscriptionPlans', 200, {
         message: "Bulk creation of subscription plans is not allowed because 'generateDefaultSubPlans' is enabled in the Developer Portal.",
     }],
 
-    // API Workflows — apiWorkflowService.createAPIWorkflow res.status(201).json({apiWorkflowId, name, status});
-    // getAllAPIWorkflows wraps toAPIWorkflowDTO(...) items via util.toPaginatedList.
-    ['createApiWorkflow', 201, { apiWorkflowId: 'w1', name: 'workflow1', status: 'PUBLISHED' }],
+    // API Workflows — apiWorkflowService.js. createAPIWorkflow:
+    // `res.status(201).json({ id: apiWorkflow.handle, displayName: apiWorkflow.display_name,
+    // status })` (~line 230) — the handle is returned under `id`, not a separate
+    // apiWorkflowId/name pair (those never existed in this response). getAllAPIWorkflows
+    // wraps toAPIWorkflowDTO(...) items (~line 403) via util.toPaginatedList; each item
+    // also carries createdBy/updatedBy appended from audit data, on top of the DTO's own
+    // fields (id, displayName, description, agentPrompt, status, agentVisibility,
+    // contentType, apiWorkflowDefinition, markdownContent, createdAt, updatedAt).
+    ['createApiWorkflow', 201, { id: 'workflow-1', displayName: 'Workflow 1', status: 'PUBLISHED' }],
     ['getAllApiWorkflows', 200, {
         list: [{
-            apiWorkflowId: 'w1', name: 'workflow1', handle: 'workflow-1', description: 'desc',
+            id: 'workflow-1', displayName: 'Workflow 1', description: 'desc',
             agentPrompt: 'prompt', status: 'PUBLISHED',
             agentVisibility: 'VISIBLE', contentType: 'ARAZZO',
             apiWorkflowDefinition: '{}', markdownContent: null,
-            createdAt: 'May 7, 2026', updatedAt: '2026-05-07T08:30:00Z',
+            createdAt: 'May 7, 2026', updatedAt: 'May 7, 2026',
+            createdBy: 'alice@example.com', updatedBy: 'alice@example.com',
         }],
         pagination: { total: 1, limit: 20, offset: 0 },
     }],
 
-    // API Keys — apiKeyController (devportal source of truth, no CP lookup)
-    // generateApiKey res.status(201).json({ keyId, name, key, expiresAt, status })
+    // API Keys — apiKeyController.js (devportal source of truth, no CP lookup).
+    // apiKeyService.generate/regenerate return { keyId, id, displayName, key, expiresAt,
+    // status, ...audit } (apiKeyService.js:197,248) — the key's handle is `id`, its
+    // display name is `displayName`; there is no `name` field.
     ['generateApiKey', 201, {
-        keyId: 'key-12345', name: 'weather_prod_key',
+        keyId: 'key-12345', id: 'weather_prod_key', displayName: 'Weather Prod Key',
         key: 'ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ',
         expiresAt: '2026-12-31T23:59:59.000Z', status: 'ACTIVE',
     }],
     // listApiKeys res.status(200).json(util.toPaginatedList(keys.map(mapKey), req)) —
-    // mapKey emits { keyId, name, status, expiresAt, createdAt, revokedAt?, apiId, appId, appName }.
+    // mapKey (apiKeyController.js:85-99) emits { keyId, id, displayName, status,
+    // expiresAt, createdAt, revokedAt?, apiId, appId, appDisplayName }.
     ['listApiKeys', 200, {
         list: [{
-            keyId: 'key-12345', name: 'weather_prod_key', status: 'ACTIVE',
+            keyId: 'key-12345', id: 'weather_prod_key', displayName: 'Weather Prod Key', status: 'ACTIVE',
             expiresAt: null, createdAt: '2026-05-07T08:30:00.000Z', apiId: 'api-7f4c2a6b',
-            appId: null, appName: null,
+            appId: null, appDisplayName: null,
         }],
         pagination: { total: 1, limit: 20, offset: 0 },
     }],
-    // regenerateApiKey res.status(200).json({ keyId, name, key, expiresAt, status })
+    // regenerateApiKey — same shape as generateApiKey, minus displayName being
+    // re-derived (existing.display_name is carried through unchanged).
     ['regenerateApiKey', 200, {
-        keyId: 'key-12345', name: 'weather_prod_key',
+        keyId: 'key-12345', id: 'weather_prod_key', displayName: 'Weather Prod Key',
         key: 'ak_bmV3a2V5Zm9yZGVtb25zdHJhdGlvbg',
         expiresAt: null, status: 'ACTIVE',
+    }],
+
+    // APIs — apiMetadataService.js. Verified against a live server, not just read
+    // from source: create/update/get shapes below are actual captured response
+    // bodies from IT probes run this session, not hand-derived.
+    //
+    // createAPIMetadata: `res.status(201).send({ ...apiMetadata, ...audit })` (line
+    // ~247) — spreads the parsed request metadata (name, version, type, status,
+    // agentVisibility, tags, labels, owners, endPoints, subscriptionPlans, the
+    // resolved `id`) plus audit fields. NOT an APIDTO — no `refId`/`apiTitle`/
+    // `remotes`/`apiImageMetadata`, unlike get/update below.
+    ['createApiMetadata', 201, {
+        name: 'Zip API', version: 'v1.0', description: 'first', type: 'RestApi',
+        status: 'PUBLISHED', agentVisibility: 'VISIBLE', tags: [], labels: [], owners: {},
+        endPoints: { sandboxURL: 'https://sandbox.example.invalid/zip-api-1', productionURL: 'https://backend.example.invalid/zip-api-1' },
+        subscriptionPlans: [], id: 'zip-api-1',
+        createdBy: 'publisher', updatedBy: 'publisher',
+        createdAt: '2026-07-07T12:48:30.875Z', updatedAt: '2026-07-07T12:48:30.875Z',
+    }],
+    // getApiMetadata: getMetadataFromDB wraps the DAO row in `new APIDTO(...)`
+    // (apiDto.js) — a different, larger shape than create's.
+    ['getApiMetadata', 200, {
+        id: 'zip-api-1', refId: null, name: 'Zip API', apiTitle: null, remotes: [],
+        version: 'v1.0', description: 'first', type: 'RestApi', status: 'PUBLISHED',
+        agentVisibility: 'VISIBLE', apiImageMetadata: {}, tags: [], labels: [],
+        endPoints: { sandboxURL: 'https://sandbox.example.invalid/zip-api-1', productionURL: 'https://backend.example.invalid/zip-api-1' },
+        subscriptionPlans: [],
+        createdBy: 'publisher', updatedBy: 'publisher',
+        createdAt: '2026-07-07T12:48:30.875Z', updatedAt: '2026-07-07T12:48:30.875Z',
+    }],
+    // updateAPIMetadata: `res.status(200).send(new APIDTO(updatedAPI[0].dataValues,
+    // audit))` (line ~698) — an APIDTO like get, but observed without `apiImageMetadata`/
+    // `tags`/`labels` present when the update request didn't touch those fields
+    // (APIDTO only sets what its input row/audit actually carried at that point).
+    ['updateApiMetadata', 200, {
+        id: 'zip-api-1', refId: null, name: 'Zip API', apiTitle: null, remotes: [],
+        version: 'v1.0', description: 'second (changed)', type: 'RestApi', status: 'PUBLISHED',
+        agentVisibility: 'VISIBLE',
+        endPoints: { sandboxURL: 'https://sandbox.example.invalid/zip-api-1', productionURL: 'https://backend.example.invalid/zip-api-1' },
+        subscriptionPlans: [],
+        createdBy: 'publisher', updatedBy: 'publisher',
+        createdAt: '2026-07-07T12:48:30.875Z', updatedAt: '2026-07-07T12:52:41.706Z',
+    }],
+    // getAllApiMetadataForOrganization: util.toPaginatedList(retrievedAPIs.map(APIDTO)) —
+    // same per-item shape as getApiMetadata.
+    ['getAllApiMetadataForOrganization', 200, {
+        list: [{
+            id: 'zip-api-1', refId: null, name: 'Zip API', apiTitle: null, remotes: [],
+            version: 'v1.0', description: 'first', type: 'RestApi', status: 'PUBLISHED',
+            agentVisibility: 'VISIBLE', apiImageMetadata: {}, tags: [], labels: ['default'],
+            endPoints: { sandboxURL: 'https://sandbox.example.invalid/zip-api-1', productionURL: 'https://backend.example.invalid/zip-api-1' },
+            subscriptionPlans: [],
+            createdBy: 'publisher', updatedBy: 'publisher',
+            createdAt: '2026-07-07T12:48:30.875Z', updatedAt: '2026-07-07T12:48:30.875Z',
+        }],
+        pagination: { total: 1, limit: 20, offset: 0 },
+    }],
+
+    // MCP Servers — mcpServerService.js delegates every one of these straight into
+    // the same apiMetadataService handlers above via asMcpRequest() (req.__forceApiType
+    // = 'MCP'), so the response shape is identical apart from `type` — not a separate
+    // implementation to independently verify.
+    ['createMcpServer', 201, {
+        name: 'Booking MCP', version: 'v1.0', description: 'first', type: 'Mcp',
+        status: 'PUBLISHED', agentVisibility: 'VISIBLE', tags: [], labels: [], owners: {},
+        endPoints: { sandboxURL: 'https://sandbox.example.invalid/mcp-1', productionURL: 'https://backend.example.invalid/mcp-1' },
+        subscriptionPlans: [], id: 'mcp-server-1',
+        createdBy: 'publisher', updatedBy: 'publisher',
+        createdAt: '2026-07-07T12:48:30.875Z', updatedAt: '2026-07-07T12:48:30.875Z',
+    }],
+    ['getMcpServer', 200, {
+        id: 'mcp-server-1', refId: null, name: 'Booking MCP', apiTitle: null, remotes: [],
+        version: 'v1.0', description: 'first', type: 'Mcp', status: 'PUBLISHED',
+        agentVisibility: 'VISIBLE', apiImageMetadata: {}, tags: [], labels: [],
+        endPoints: { sandboxURL: 'https://sandbox.example.invalid/mcp-1', productionURL: 'https://backend.example.invalid/mcp-1' },
+        subscriptionPlans: [],
+        createdBy: 'publisher', updatedBy: 'publisher',
+        createdAt: '2026-07-07T12:48:30.875Z', updatedAt: '2026-07-07T12:48:30.875Z',
+    }],
+    ['updateMcpServer', 200, {
+        id: 'mcp-server-1', refId: null, name: 'Booking MCP', apiTitle: null, remotes: [],
+        version: 'v1.0', description: 'second (changed)', type: 'Mcp', status: 'PUBLISHED',
+        agentVisibility: 'VISIBLE',
+        endPoints: { sandboxURL: 'https://sandbox.example.invalid/mcp-1', productionURL: 'https://backend.example.invalid/mcp-1' },
+        subscriptionPlans: [],
+        createdBy: 'publisher', updatedBy: 'publisher',
+        createdAt: '2026-07-07T12:48:30.875Z', updatedAt: '2026-07-07T12:52:41.706Z',
+    }],
+    ['getAllMcpServersForOrganization', 200, {
+        list: [{
+            id: 'mcp-server-1', refId: null, name: 'Booking MCP', apiTitle: null, remotes: [],
+            version: 'v1.0', description: 'first', type: 'Mcp', status: 'PUBLISHED',
+            agentVisibility: 'VISIBLE', apiImageMetadata: {}, tags: [], labels: ['default'],
+            endPoints: { sandboxURL: 'https://sandbox.example.invalid/mcp-1', productionURL: 'https://backend.example.invalid/mcp-1' },
+            subscriptionPlans: [],
+            createdBy: 'publisher', updatedBy: 'publisher',
+            createdAt: '2026-07-07T12:48:30.875Z', updatedAt: '2026-07-07T12:48:30.875Z',
+        }],
+        pagination: { total: 1, limit: 20, offset: 0 },
     }],
 
     // Webhook Events — webhookAdminController.formatEvent() shape.
