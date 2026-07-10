@@ -1,5 +1,7 @@
 package policyv1alpha2
 
+import policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
+
 // Body represents HTTP request or response body data
 type Body struct {
 	// Content is the body payload (may be nil)
@@ -90,6 +92,13 @@ type RequestContext struct {
 	Authority string
 	Scheme    string
 	Vhost     string
+
+	// UpstreamInfo identifies the route's resolved upstream target (cluster name, URL,
+	// base path) for this request. Nil if no upstream has been resolved for the route.
+	// Authority/Scheme above reflect the inbound client-facing request and must not be
+	// used to address the actual upstream (e.g. for request signing) — use
+	// UpstreamInfo.URL instead.
+	UpstreamInfo *policyenginev1.UpstreamInfo
 }
 
 // ─── Response-phase contexts ─────────────────────────────────────────────────
