@@ -122,7 +122,8 @@ function specServerUrl(text: string): string | null {
     servers?: Array<{ url?: string }>;
   } | null;
   const url = spec?.servers?.[0]?.url;
-  return typeof url === 'string' && url.trim() ? url.trim() : null;
+  const trimmed = typeof url === 'string' ? url.trim() : '';
+  return trimmed && isValidHttpUrl(trimmed) ? trimmed : null;
 }
 
 function isParseableSpec(text: string): boolean {
@@ -264,7 +265,7 @@ export default function ProviderTemplateOverview() {
     setEndpointUrl(t.metadata?.endpointUrl ?? '');
     setProvider(
       (t.managedBy ?? t.provider)?.trim() ||
-        (isBuiltInProviderTemplate(t.id) ? 'wso2' : 'customer')
+        (isBuiltInProviderTemplate(t.id) ? 'wso2' : 'organization')
     );
     setOpenapiSpecUrl(t.metadata?.openapiSpecUrl ?? '');
     setLogoUrlField(t.metadata?.logoUrl ?? '');
@@ -412,7 +413,7 @@ export default function ProviderTemplateOverview() {
       id: template.id,
       displayName: template.displayName,
       version: currentVersion,
-      managedBy: provider.trim() || 'customer',
+      managedBy: provider.trim() || 'organization',
       description: template.description,
       ...fromTokenConfig(defaultTokens),
       metadata: Object.keys(metadata).length ? metadata : undefined,

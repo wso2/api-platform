@@ -494,7 +494,7 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 
 	managedBy := defaultTemplateManagedBy(req.ManagedBy)
 	if managedBy == constants.PolicyManagedByWSO2 {
-		managedBy = constants.PolicyManagedByCustomer
+		managedBy = constants.TemplateManagedByOrganization
 	}
 
 	count, err := s.repo.CountVersions(groupID, orgUUID)
@@ -2434,12 +2434,12 @@ func mapTemplateResourceMappingModelToAPI(in *model.LLMProviderTemplateResourceM
 }
 
 // defaultTemplateManagedBy normalizes the managedBy label supplied on a custom
-// template. An empty value defaults to "customer"; built-in templates are seeded
-// with "wso2" by the template seeder/loader.
+// template. An empty value defaults to "organization"; built-in templates are
+// seeded with "wso2" by the template seeder/loader.
 func defaultTemplateManagedBy(in *string) string {
 	v := strings.TrimSpace(utils.ValueOrEmpty(in))
 	if v == "" {
-		return "customer"
+		return constants.TemplateManagedByOrganization
 	}
 	return v
 }
