@@ -297,9 +297,6 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	if err != nil {
 		return fmt.Errorf("failed to get API deployments for API handle: %s: %w", apiHandle, err)
 	}
-	if len(gateways) == 0 {
-		return apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
-	}
 
 	// Resolve key name (required for DB uniqueness; derive from request or generate)
 	keyName, err := s.resolveUniqueKeyName(apiId, req, apiHandle)
