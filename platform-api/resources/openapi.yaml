@@ -7988,12 +7988,43 @@ components:
         as:
           type: string
           description: >
-            Logical upstream name used by policies to select this provider. Must
+            Logical LLM Provider name used by policies to select this provider. Must
             be unique within the proxy. Defaults to `id` when omitted.
           pattern: '^[a-zA-Z0-9\-_]+$'
           minLength: 1
           maxLength: 100
           example: anthropic-upstream
+        transformer:
+          $ref: '#/components/schemas/LLMProxyTransformer'
+
+    LLMProxyTransformer:
+      type: object
+      required:
+        - type
+        - version
+      description: >
+        Request/response translator applied when this provider is the selected
+        upstream. The proxy injects the translator as a conditional policy whose
+        execution condition matches this provider, so it runs only when the
+        provider is selected. The provider's `as` name (defaults to `id`) is
+        passed to the translator as its target upstream.
+      properties:
+        type:
+          type: string
+          description: Translator policy name (for example openai-to-anthropic).
+          minLength: 1
+          example: openai-to-anthropic
+        version:
+          type: string
+          description: >
+            Major-only translator policy version (for example v1). The Gateway
+            Controller resolves it to the installed full version.
+          minLength: 1
+          example: v1
+        params:
+          type: object
+          description: Translator-specific parameters (for example model, apiVersion).
+          additionalProperties: true
 
     CreateLLMProviderAPIKeyRequest:
       type: object

@@ -271,8 +271,18 @@ type LLMProxyConfig struct {
 // defaults to `ID` when empty). Provider upstream auth is taken from the
 // referenced LlmProvider's own configuration.
 type LLMProxyAdditionalProvider struct {
-	ID string `json:"id" db:"-"`
-	As string `json:"as,omitempty" db:"-"`
+	ID          string               `json:"id" db:"-"`
+	As          string               `json:"as,omitempty" db:"-"`
+	Transformer *LLMProxyTransformer `json:"transformer,omitempty" db:"-"`
+}
+
+// LLMProxyTransformer is a request/response translator applied when its
+// provider is the selected upstream. The gateway-controller injects it as a
+// conditional policy gated on that selection.
+type LLMProxyTransformer struct {
+	Type    string                 `json:"type" db:"-"`
+	Version string                 `json:"version" db:"-"`
+	Params  map[string]interface{} `json:"params,omitempty" db:"-"`
 }
 
 type SecurityConfig struct {

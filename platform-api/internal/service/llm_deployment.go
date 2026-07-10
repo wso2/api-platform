@@ -1889,10 +1889,21 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 	if len(proxy.Configuration.AdditionalProviders) > 0 {
 		additional := make([]dto.LLMProxyDeploymentAdditionalProvider, 0, len(proxy.Configuration.AdditionalProviders))
 		for _, ap := range proxy.Configuration.AdditionalProviders {
-			additional = append(additional, dto.LLMProxyDeploymentAdditionalProvider{
+			entry := dto.LLMProxyDeploymentAdditionalProvider{
 				ID: ap.ID,
 				As: ap.As,
-			})
+			}
+			if ap.Transformer != nil {
+				entry.Transformer = &api.LLMProxyTransformer{
+					Type:    ap.Transformer.Type,
+					Version: ap.Transformer.Version,
+				}
+				if len(ap.Transformer.Params) > 0 {
+					params := ap.Transformer.Params
+					entry.Transformer.Params = &params
+				}
+			}
+			additional = append(additional, entry)
 		}
 		proxyDeployment.Spec.AdditionalProviders = additional
 	}

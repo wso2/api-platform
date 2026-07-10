@@ -78,6 +78,7 @@ type LLMProxyDeploymentProvider struct {
 }
 
 type LLMProxyDeploymentAdditionalProvider struct {
-	ID string `yaml:"id"`
-	As string `yaml:"as,omitempty"`
+	ID          string                   `yaml:"id"`
+	As          string                   `yaml:"as,omitempty"`
+	Transformer *api.LLMProxyTransformer `yaml:"transformer,omitempty"`
 }

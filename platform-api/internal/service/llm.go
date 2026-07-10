@@ -2004,10 +2004,20 @@ func mapAdditionalProvidersAPIToModel(in *[]api.LLMProxyAdditionalProvider) []mo
 	}
 	out := make([]model.LLMProxyAdditionalProvider, 0, len(*in))
 	for _, p := range *in {
-		out = append(out, model.LLMProxyAdditionalProvider{
+		entry := model.LLMProxyAdditionalProvider{
 			ID: p.Id,
 			As: utils.ValueOrEmpty(p.As),
-		})
+		}
+		if p.Transformer != nil {
+			entry.Transformer = &model.LLMProxyTransformer{
+				Type:    p.Transformer.Type,
+				Version: p.Transformer.Version,
+			}
+			if p.Transformer.Params != nil {
+				entry.Transformer.Params = *p.Transformer.Params
+			}
+		}
+		out = append(out, entry)
 	}
 	return out
 }
@@ -2022,6 +2032,16 @@ func mapAdditionalProvidersModelToAPI(in []model.LLMProxyAdditionalProvider) *[]
 		if p.As != "" {
 			as := p.As
 			entry.As = &as
+		}
+		if p.Transformer != nil {
+			entry.Transformer = &api.LLMProxyTransformer{
+				Type:    p.Transformer.Type,
+				Version: p.Transformer.Version,
+			}
+			if len(p.Transformer.Params) > 0 {
+				params := p.Transformer.Params
+				entry.Transformer.Params = &params
+			}
 		}
 		out = append(out, entry)
 	}

@@ -1,4 +1,14 @@
 # --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
 # Anthropic LLM Provider Configuration
 #
 # Uses the built-in `anthropic` template and points to the public
@@ -43,20 +53,6 @@ spec:
       - path: /v1/messages
         methods: [POST]
 
----
-apiVersion: gateway.api-platform.wso2.com/v1
-kind: ApiKey
-metadata:
-  name: anthropic-provider-loopback-key
-spec:
-  parentRef:
-    kind: LlmProvider
-    name: anthropic-provider
-  displayName: Anthropic provider loopback key
-  apiKey:
-    value: anthropic_provider_loopback_key_1234567890abcdef
-    # anthropic_provider_loopback_key_1234567890abcdef
-  maskedApiKey: anthropic_provider_loopback_key_1234********cdef
-  expiresIn:
-    duration: 30
-    unit: days
+# The proxy in front of this provider authenticates over the internal loopback
+# route with an API key issued for this LlmProvider. Create one as shown in
+# api-key.yaml, then set the issued value as the proxy's provider.auth.value.

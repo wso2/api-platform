@@ -1,4 +1,14 @@
 # --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
 # OpenAI Multi-Provider Proxy
 #
 # Exposes one OpenAI-shaped /chat/completions endpoint and fans out to
@@ -29,13 +39,19 @@ spec:
     auth:
       type: api-key
       header: X-API-Key
-      value: openai_provider_loopback_key_1234567890abcdef
+      value: REPLACE_WITH_OPENAI_PROVIDER_LOOPBACK_KEY
   additionalProviders:
     - id: anthropic-provider
+      # Optional alias, for when the provider id is not readable enough to use
+      # in a routing policy. When set, "as" -- not "id" -- becomes the upstream
+      # name that the router selects and the translator matches on, so the
+      # mapping below would have to send x-provider: anthropic to
+      # "anthropic-upstream" instead. Defaults to "id" when omitted.
+      # as: anthropic-upstream
       auth:
         type: api-key
         header: X-API-Key
-        value: anthropic_provider_loopback_key_1234567890abcdef
+        value: REPLACE_WITH_ANTHROPIC_PROVIDER_LOOPBACK_KEY
       transformer:
         type: openai-to-anthropic
         version: v1
@@ -45,7 +61,7 @@ spec:
       auth:
         type: api-key
         header: X-API-Key
-        value: azure_openai_provider_loopback_key_1234567890abcdef
+        value: REPLACE_WITH_AZURE_OPENAI_PROVIDER_LOOPBACK_KEY
       transformer:
         type: openai-to-azure-openai
         version: v1
@@ -56,7 +72,7 @@ spec:
       auth:
         type: api-key
         header: X-API-Key
-        value: mistral_provider_loopback_key_1234567890abcdef
+        value: REPLACE_WITH_MISTRAL_PROVIDER_LOOPBACK_KEY
       transformer:
         type: openai-to-mistral
         version: v1
@@ -66,7 +82,7 @@ spec:
       auth:
         type: api-key
         header: X-API-Key
-        value: gemini_provider_loopback_key_1234567890abcdef
+        value: REPLACE_WITH_GEMINI_PROVIDER_LOOPBACK_KEY
       transformer:
         type: openai-to-gemini
         version: v1
