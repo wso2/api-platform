@@ -141,6 +141,7 @@ func getFeaturePaths() []string {
 		"features/llm-provider-wide-ratelimit.feature",
 		"features/log-message.feature",
 		"features/route-path-matching.feature",
+		"features/http-method-case.feature",
 		"features/secrets.feature",
 		"features/template-functions.feature",
 		// Runs late: it restarts the gateway-controller (reject/reconnect scenario), so keep it
