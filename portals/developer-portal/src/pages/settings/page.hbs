@@ -668,17 +668,11 @@
           </div>
           <div class="cfg-form-group">
             <label for="org-idp-ref">IDP reference ID</label>
-            <input type="text" id="org-idp-ref" class="cfg-form-input" value="{{currentOrg.idpRefId}}" readonly />
+            <input type="text" id="org-idp-ref" class="cfg-form-input" value="{{currentOrg.idpRefId}}" />
           </div>
           <div class="cfg-form-group">
             <label for="org-cp-ref">Control plane reference ID</label>
-            <input type="text" id="org-cp-ref" class="cfg-form-input" value="{{currentOrg.cpRefId}}" readonly />
-          </div>
-          <div class="cfg-form-group" style="grid-column:1/-1;">
-            <label style="display:flex;align-items:center;gap:8px;font-weight:400;">
-              <input type="checkbox" id="cfg-idp-cp-unlock" />
-              Unlock IDP / Control plane reference IDs for editing (changing these can break organization linkage)
-            </label>
+            <input type="text" id="org-cp-ref" class="cfg-form-input" value="{{currentOrg.cpRefId}}" />
           </div>
         </div>
         <div style="margin-top:20px;">
@@ -2231,14 +2225,6 @@
   if (!saveBtn) return;
 
   var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-  var unlockRefs = g('cfg-idp-cp-unlock');
-  if (unlockRefs) {
-    unlockRefs.addEventListener('change', function () {
-      g('org-idp-ref').readOnly = !unlockRefs.checked;
-      g('org-cp-ref').readOnly = !unlockRefs.checked;
-    });
-  }
 
   saveBtn.addEventListener('click', async function () {
     var handle = saveBtn.dataset.handle;
