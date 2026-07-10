@@ -27,11 +27,30 @@ const (
 	PropKeyResponseHeaders = "responseHeaders"
 	PropKeyRequestPayload  = "request_payload"
 	PropKeyResponsePayload = "response_payload"
+
+	// Auth-context property keys. Populated generically (auth-type-agnostic) by the
+	// collector system policy (gateway/system-policies/analytics, a separate Go module —
+	// hence the matching string literals there rather than a shared Go constant) whenever
+	// SharedContext.AuthContext is set by any auth policy, so these are available
+	// regardless of jwt-auth/opaque-token-auth/api-key-auth/etc. Key names match the raw
+	// analytics metadata 1:1 (no case translation, unlike PropKeyRequestHeaders above), so
+	// prepareAnalyticEvent copies them straight into Event.Properties. Consumed by the
+	// stdout traffic-logging publisher's global "$ctx:auth.*" properties (see
+	// internal/analytics/publishers/global_properties.go).
+	PropKeyAuthUserID       = "x-wso2-user-id"
+	PropKeyAuthType         = "x-wso2-auth-type"
+	PropKeyAuthIssuer       = "x-wso2-auth-issuer"
+	PropKeyAuthCredentialID = "x-wso2-auth-credential-id"
+	PropKeyAuthTokenID      = "x-wso2-auth-token-id"
+	PropKeyAuthAudience     = "x-wso2-auth-audience"
+	PropKeyAuthScopes       = "x-wso2-auth-scopes"
+	PropKeyAuthProperties   = "x-wso2-auth-properties"
+	PropKeyAuthAuthorized   = "x-wso2-auth-authorized"
 )
 
 // Event represents analytics event data.
 type Event struct {
-	API               *ExtendedAPI                   `json:"api,omitempty" bson:"api"`
+	API               *ExtendedAPI           `json:"api,omitempty" bson:"api"`
 	Operation         *Operation             `json:"operation,omitempty" bson:"operation"`
 	Target            *Target                `json:"target,omitempty" bson:"target"`
 	Application       *Application           `json:"application,omitempty" bson:"application"`
@@ -40,7 +59,7 @@ type Event struct {
 	MetaInfo          *MetaInfo              `json:"metaInfo,omitempty" bson:"meta_info"`
 	Error             *Error                 `json:"error,omitempty" bson:"error"`
 	ProxyResponseCode int                    `json:"proxyResponseCode,omitempty" bson:"proxy_response_code"`
-	RequestTimestamp  time.Time                 `json:"requestTimestamp,omitempty" bson:"request_timestamp"`
+	RequestTimestamp  time.Time              `json:"requestTimestamp,omitempty" bson:"request_timestamp"`
 	UserAgentHeader   string                 `json:"userAgentHeader,omitempty" bson:"user_agent_header"`
 	UserName          string                 `json:"userName,omitempty" bson:"user_name"`
 	UserIP            string                 `json:"userIp,omitempty" bson:"user_ip"`
@@ -102,4 +121,3 @@ type TrafficLogFields struct {
 	Only    []string `json:"only,omitempty"`
 	Exclude []string `json:"exclude,omitempty"`
 }
-

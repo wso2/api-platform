@@ -359,6 +359,20 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		slog.Debug("Analytics: User ID set from metadata", "userID", userID)
 	}
 
+	// Auth-context metadata (type, issuer, credential/token IDs, audience, scopes, custom
+	// claims), stamped generically by the collector system policy for any authenticated
+	// request regardless of auth type. Key names match the raw metadata 1:1 (see
+	// dto.PropKeyAuth* doc comment), so no case translation is needed here.
+	for _, key := range []string{
+		dto.PropKeyAuthType, dto.PropKeyAuthIssuer, dto.PropKeyAuthCredentialID,
+		dto.PropKeyAuthTokenID, dto.PropKeyAuthAudience, dto.PropKeyAuthScopes, dto.PropKeyAuthProperties,
+		dto.PropKeyAuthAuthorized,
+	} {
+		if v, exists := keyValuePairsFromMetadata[key]; exists && v != "" {
+			event.Properties[key] = v
+		}
+	}
+
 	// Prepare Subscription
 	subscription := &dto.Subscription{}
 	subscription.BillingCustomerID = keyValuePairsFromMetadata[BillingCustomerIDKey]

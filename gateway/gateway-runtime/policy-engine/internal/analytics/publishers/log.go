@@ -45,6 +45,19 @@ type Log struct {
 	// maxPayloadSize caps the number of request/response payload bytes written to
 	// the log line (0 = no limit). Truncation is output-side only.
 	maxPayloadSize int
+	// globalDir is the fallback directive used for requests whose API did not
+	// stamp a per-API traffic_log marker (no log-message policy attached, or one
+	// attached without enableTrafficLogging). Nil when global traffic logging is
+	// disabled, in which case only per-API opted-in events are emitted. Its
+	// Properties field is always left nil: global properties are request-time
+	// values (see globalProperties) and are attached to a per-request copy of
+	// this directive in resolveGlobalDirective, never mutated in place here.
+	globalDir *dto.TrafficLogDirective
+	// globalProperties resolves traffic_logging.global.properties per request
+	// when falling back to globalDir. Nil (via a zero-value evaluator) is never
+	// stored; buildGlobalPropertyEvaluator always returns a usable, possibly-
+	// empty evaluator whose resolve() returns nil when nothing is configured.
+	globalProperties *globalPropertyEvaluator
 	// mu serializes writes to stdout so concurrent ALS streams do not interleave.
 	mu sync.Mutex
 	// out is the destination writer; defaults to os.Stdout (overridable in tests).
@@ -66,21 +79,78 @@ func NewLog(logCfg *config.TrafficLoggingConfig) *Log {
 	}
 
 	return &Log{
-		maskedHeaders:  masked,
-		maxPayloadSize: logCfg.MaxPayloadSize,
-		out:            os.Stdout,
+		maskedHeaders:    masked,
+		maxPayloadSize:   logCfg.MaxPayloadSize,
+		globalDir:        buildGlobalDirective(logCfg.Global),
+		globalProperties: newGlobalPropertyEvaluator(logCfg.Global.Properties),
+		out:              os.Stdout,
 	}
 }
 
-// Publish writes the event to stdout as JSON. Traffic logging is per-API: only
-// events carrying a traffic-log directive (stamped by the log-message policy in
-// access-log mode on APIs that opted in) are emitted; all others are skipped.
+// buildGlobalDirective converts the global traffic-logging config into a
+// TrafficLogDirective usable as a fallback in Publish. Returns nil when global
+// traffic logging is disabled. MaskedHeaders is left empty: the global config's
+// masked_headers list already applies via Log.maskedHeaders.
+func buildGlobalDirective(global config.GlobalTrafficLoggingConfig) *dto.TrafficLogDirective {
+	if !global.Enabled {
+		return nil
+	}
+
+	dir := &dto.TrafficLogDirective{
+		Request: &dto.TrafficLogFlow{
+			Headers: global.RequestHeaders,
+			Payload: global.RequestBody,
+		},
+		Response: &dto.TrafficLogFlow{
+			Headers: global.ResponseHeaders,
+			Payload: global.ResponseBody,
+		},
+	}
+
+	if len(global.Fields.Only) > 0 || len(global.Fields.Exclude) > 0 {
+		dir.Fields = &dto.TrafficLogFields{
+			Only:    global.Fields.Only,
+			Exclude: global.Fields.Exclude,
+		}
+	}
+
+	return dir
+}
+
+// resolveGlobalDirective returns the directive to use for a request falling
+// back to global traffic logging (l.globalDir is guaranteed non-nil by the
+// caller). When global properties are configured, it returns a shallow copy
+// of l.globalDir carrying this request's resolved Properties, so concurrent
+// requests never race on a shared, mutated globalDir.Properties field. The
+// Request/Response/Fields pointers are shared read-only state and safe to
+// alias across the copy.
+func (l *Log) resolveGlobalDirective(event *dto.Event) *dto.TrafficLogDirective {
+	resolved := l.globalProperties.resolve(event)
+	if len(resolved) == 0 {
+		return l.globalDir
+	}
+	dirCopy := *l.globalDir
+	dirCopy.Properties = resolved
+	return &dirCopy
+}
+
+// Publish writes the event to stdout as JSON. A per-API traffic-log directive
+// (stamped by the log-message policy on APIs that opted in) always takes
+// precedence; when absent, the global fallback directive is used if global
+// traffic logging is enabled. If neither applies, the event is skipped.
 func (l *Log) Publish(event *dto.Event) {
-	if event == nil || event.TrafficLog == nil {
+	if event == nil {
 		return
 	}
 
 	dir := event.TrafficLog
+	if dir == nil {
+		if l.globalDir == nil {
+			return
+		}
+		dir = l.resolveGlobalDirective(event)
+	}
+
 	tl := l.toTrafficLogEvent(event, dir)
 
 	data, err := json.Marshal(tl)

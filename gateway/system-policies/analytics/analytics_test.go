@@ -65,6 +65,189 @@ func TestOnResponseHeaders_CapturesContentTypeForAllKinds(t *testing.T) {
 	}
 }
 
+func TestPopulateAuthAnalyticsMetadata_AllFieldsPopulated(t *testing.T) {
+	authCtx := &policy.AuthContext{
+		Authenticated: true,
+		Authorized:    true,
+		Subject:       "alice",
+		AuthType:      "jwt",
+		Issuer:        "https://issuer.example.com",
+		CredentialID:  "client-123",
+		TokenId:       "jti-abc",
+		Audience:      []string{"aud1", "aud2"},
+		Scopes:        map[string]bool{"read": true, "write": true, "admin": true},
+		Properties:    map[string]string{"tenant": "acme"},
+	}
+
+	metadata := make(map[string]any)
+	populateAuthAnalyticsMetadata(metadata, authCtx)
+
+	if metadata[AuthUserIDMetadataKey] != "alice" {
+		t.Errorf("%s = %v, want alice", AuthUserIDMetadataKey, metadata[AuthUserIDMetadataKey])
+	}
+	if metadata[AuthAuthorizedMetadataKey] != "true" {
+		t.Errorf("%s = %v, want true", AuthAuthorizedMetadataKey, metadata[AuthAuthorizedMetadataKey])
+	}
+	if metadata[AuthTypeMetadataKey] != "jwt" {
+		t.Errorf("%s = %v, want jwt", AuthTypeMetadataKey, metadata[AuthTypeMetadataKey])
+	}
+	if metadata[AuthIssuerMetadataKey] != "https://issuer.example.com" {
+		t.Errorf("%s = %v, want issuer URL", AuthIssuerMetadataKey, metadata[AuthIssuerMetadataKey])
+	}
+	if metadata[AuthCredentialIDMetadataKey] != "client-123" {
+		t.Errorf("%s = %v, want client-123", AuthCredentialIDMetadataKey, metadata[AuthCredentialIDMetadataKey])
+	}
+	if metadata[AuthTokenIDMetadataKey] != "jti-abc" {
+		t.Errorf("%s = %v, want jti-abc", AuthTokenIDMetadataKey, metadata[AuthTokenIDMetadataKey])
+	}
+	if metadata[AuthAudienceMetadataKey] != "aud1,aud2" {
+		t.Errorf("%s = %v, want aud1,aud2", AuthAudienceMetadataKey, metadata[AuthAudienceMetadataKey])
+	}
+	if metadata[AuthScopesMetadataKey] != "admin read write" {
+		t.Errorf("%s = %v, want sorted+space-joined 'admin read write'", AuthScopesMetadataKey, metadata[AuthScopesMetadataKey])
+	}
+	var props map[string]string
+	raw, ok := metadata[AuthPropertiesMetadataKey].(string)
+	if !ok {
+		t.Fatalf("%s is not a string: %v", AuthPropertiesMetadataKey, metadata[AuthPropertiesMetadataKey])
+	}
+	if err := json.Unmarshal([]byte(raw), &props); err != nil {
+		t.Fatalf("failed to unmarshal %s: %v", AuthPropertiesMetadataKey, err)
+	}
+	if props["tenant"] != "acme" {
+		t.Errorf("auth properties[tenant] = %v, want acme", props["tenant"])
+	}
+}
+
+func TestPopulateAuthAnalyticsMetadata_OptionalFieldsOmittedWhenEmpty(t *testing.T) {
+	authCtx := &policy.AuthContext{
+		Authenticated: true,
+		Subject:       "bob",
+		// AuthType, Issuer, CredentialID, TokenId, Audience, Scopes, Properties all zero.
+	}
+
+	metadata := make(map[string]any)
+	populateAuthAnalyticsMetadata(metadata, authCtx)
+
+	if metadata[AuthUserIDMetadataKey] != "bob" {
+		t.Errorf("%s = %v, want bob", AuthUserIDMetadataKey, metadata[AuthUserIDMetadataKey])
+	}
+	for _, key := range []string{
+		AuthTypeMetadataKey, AuthIssuerMetadataKey, AuthCredentialIDMetadataKey,
+		AuthTokenIDMetadataKey, AuthAudienceMetadataKey, AuthScopesMetadataKey, AuthPropertiesMetadataKey,
+	} {
+		if _, present := metadata[key]; present {
+			t.Errorf("expected %s to be omitted when empty, got %v", key, metadata[key])
+		}
+	}
+}
+
+// Unlike the optional fields above, Authorized is always stamped — even false — since it
+// is a distinct concept from Authenticated (which gates the whole block) and a false value
+// is meaningful information (e.g. authenticated but not authorized by mcp-authz), not an
+// absence to be omitted.
+func TestPopulateAuthAnalyticsMetadata_AuthorizedAlwaysStampedEvenFalse(t *testing.T) {
+	authCtx := &policy.AuthContext{Authenticated: true, Subject: "bob", Authorized: false}
+
+	metadata := make(map[string]any)
+	populateAuthAnalyticsMetadata(metadata, authCtx)
+
+	got, present := metadata[AuthAuthorizedMetadataKey]
+	if !present {
+		t.Fatal("expected AuthAuthorizedMetadataKey to be present even when false")
+	}
+	if got != "false" {
+		t.Errorf("%s = %v, want false", AuthAuthorizedMetadataKey, got)
+	}
+}
+
+func TestPopulateAuthAnalyticsMetadata_UnauthenticatedSkipped(t *testing.T) {
+	authCtx := &policy.AuthContext{Authenticated: false, Subject: "carol"}
+
+	metadata := make(map[string]any)
+	populateAuthAnalyticsMetadata(metadata, authCtx)
+
+	if len(metadata) != 0 {
+		t.Errorf("expected no metadata for unauthenticated context, got %v", metadata)
+	}
+}
+
+func TestPopulateAuthAnalyticsMetadata_EmptySubjectSkipped(t *testing.T) {
+	authCtx := &policy.AuthContext{Authenticated: true, Subject: ""}
+
+	metadata := make(map[string]any)
+	populateAuthAnalyticsMetadata(metadata, authCtx)
+
+	if len(metadata) != 0 {
+		t.Errorf("expected no metadata when subject is empty, got %v", metadata)
+	}
+}
+
+func TestPopulateAuthAnalyticsMetadata_NilAuthContextNoop(t *testing.T) {
+	metadata := make(map[string]any)
+
+	if got := func() (panicked bool) {
+		defer func() {
+			if recover() != nil {
+				panicked = true
+			}
+		}()
+		populateAuthAnalyticsMetadata(metadata, nil)
+		return false
+	}(); got {
+		t.Fatal("populateAuthAnalyticsMetadata must not panic on a nil AuthContext")
+	}
+	if len(metadata) != 0 {
+		t.Errorf("expected no metadata for nil AuthContext, got %v", metadata)
+	}
+}
+
+// Layered auth (Previous chain): the first layer that is both authenticated and has a
+// non-empty subject wins, matching the pre-existing single-Subject behavior this helper
+// replaced.
+func TestPopulateAuthAnalyticsMetadata_WalksPreviousChainToFirstAuthenticated(t *testing.T) {
+	inner := &policy.AuthContext{Authenticated: false, Subject: ""}
+	outer := &policy.AuthContext{Authenticated: true, Subject: "dave", AuthType: "mcp/oauth", Previous: inner}
+
+	metadata := make(map[string]any)
+	populateAuthAnalyticsMetadata(metadata, outer)
+
+	if metadata[AuthUserIDMetadataKey] != "dave" {
+		t.Errorf("%s = %v, want dave", AuthUserIDMetadataKey, metadata[AuthUserIDMetadataKey])
+	}
+	if metadata[AuthTypeMetadataKey] != "mcp/oauth" {
+		t.Errorf("%s = %v, want mcp/oauth", AuthTypeMetadataKey, metadata[AuthTypeMetadataKey])
+	}
+}
+
+// OnResponseHeaders wires populateAuthAnalyticsMetadata through end to end.
+func TestOnResponseHeaders_PopulatesAuthMetadata(t *testing.T) {
+	respCtx := &policy.ResponseHeaderContext{
+		SharedContext: &policy.SharedContext{
+			AuthContext: &policy.AuthContext{
+				Authenticated: true,
+				Subject:       "erin",
+				AuthType:      "jwt",
+				Scopes:        map[string]bool{"read": true},
+			},
+		},
+		ResponseStatus: 200,
+	}
+
+	action := (&AnalyticsPolicy{}).OnResponseHeaders(context.Background(), respCtx, nil)
+
+	mods, ok := action.(policy.DownstreamResponseHeaderModifications)
+	if !ok {
+		t.Fatalf("expected DownstreamResponseHeaderModifications, got %T", action)
+	}
+	if mods.AnalyticsMetadata[AuthUserIDMetadataKey] != "erin" {
+		t.Errorf("%s = %v, want erin", AuthUserIDMetadataKey, mods.AnalyticsMetadata[AuthUserIDMetadataKey])
+	}
+	if mods.AnalyticsMetadata[AuthScopesMetadataKey] != "read" {
+		t.Errorf("%s = %v, want read", AuthScopesMetadataKey, mods.AnalyticsMetadata[AuthScopesMetadataKey])
+	}
+}
+
 func TestExtractMCPResponseAnalyticsProps_IsError(t *testing.T) {
 	cases := []struct {
 		name    string

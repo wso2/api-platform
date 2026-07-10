@@ -552,6 +552,58 @@ func TestPrepareAnalyticEvent_WithUserID(t *testing.T) {
 	assert.Equal(t, "user-123", userID)
 }
 
+// prepareAnalyticEvent copies the auth-context metadata the collector system policy
+// stamps (gateway/system-policies/analytics) straight into Event.Properties, keyed 1:1
+// with no case translation, so the stdout traffic-logging publisher's global properties
+// can resolve $ctx:auth.* from it (see internal/analytics/publishers/global_properties.go).
+func TestPrepareAnalyticEvent_WithAuthContextMetadata(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		dto.PropKeyAuthType:         "jwt",
+		dto.PropKeyAuthIssuer:       "https://issuer.example.com",
+		dto.PropKeyAuthCredentialID: "client-123",
+		dto.PropKeyAuthTokenID:      "jti-abc",
+		dto.PropKeyAuthAudience:     "aud1,aud2",
+		dto.PropKeyAuthScopes:       "admin read",
+		dto.PropKeyAuthProperties:   `{"tenant":"acme"}`,
+		dto.PropKeyAuthAuthorized:   "true",
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	assert.Equal(t, "jwt", event.Properties[dto.PropKeyAuthType])
+	assert.Equal(t, "https://issuer.example.com", event.Properties[dto.PropKeyAuthIssuer])
+	assert.Equal(t, "client-123", event.Properties[dto.PropKeyAuthCredentialID])
+	assert.Equal(t, "jti-abc", event.Properties[dto.PropKeyAuthTokenID])
+	assert.Equal(t, "aud1,aud2", event.Properties[dto.PropKeyAuthAudience])
+	assert.Equal(t, "admin read", event.Properties[dto.PropKeyAuthScopes])
+	assert.Equal(t, "true", event.Properties[dto.PropKeyAuthAuthorized])
+	assert.Equal(t, `{"tenant":"acme"}`, event.Properties[dto.PropKeyAuthProperties])
+}
+
+// Absent auth-context metadata (unauthenticated request) must not add any auth.* keys.
+func TestPrepareAnalyticEvent_NoAuthContextMetadataOmitsKeys(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	for _, key := range []string{
+		dto.PropKeyAuthType, dto.PropKeyAuthIssuer, dto.PropKeyAuthCredentialID,
+		dto.PropKeyAuthTokenID, dto.PropKeyAuthAudience, dto.PropKeyAuthScopes, dto.PropKeyAuthProperties,
+		dto.PropKeyAuthAuthorized,
+	} {
+		_, ok := event.Properties[key]
+		assert.False(t, ok, "expected %s to be absent", key)
+	}
+}
+
 func TestPrepareAnalyticEvent_WithLLMCost(t *testing.T) {
 	cfg := &config.Config{}
 	analytics := NewAnalytics(cfg)

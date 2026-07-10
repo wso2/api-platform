@@ -19,9 +19,11 @@ package publishers
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -535,6 +537,297 @@ func TestLog_Publish_APIFieldNames(t *testing.T) {
 		_, present := api[moesifKey]
 		assert.False(t, present, "Moesif field %q must not appear in traffic log", moesifKey)
 	}
+}
+
+// Global traffic logging: when enabled, an event with no per-API traffic-log
+// marker still gets a stdout line using the global fallback directive. This is
+// the key improvement over the log-message policy: it also covers events for
+// requests an auth policy short-circuited (denied), which never reach a
+// request-header-phase log-message policy placed after auth and so never stamp
+// a per-API marker.
+func TestLog_Publish_GlobalFallback_UsedWhenNoDirective(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Global: config.GlobalTrafficLoggingConfig{
+			Enabled:        true,
+			RequestHeaders: true,
+		},
+	})
+	event := createBaseEvent() // no TrafficLog set — e.g. a denied/401 request
+	event.ProxyResponseCode = 401
+	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	assert.Equal(t, float64(401), decoded["status"])
+	reqH := headerMap(t, decoded["requestHeaders"])
+	assert.Equal(t, "bar", reqH["x-foo"])
+}
+
+// A per-API traffic-log directive always takes precedence over the global
+// fallback, even when global traffic logging is enabled.
+func TestLog_Publish_PerAPIDirectiveOverridesGlobalFallback(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Global: config.GlobalTrafficLoggingConfig{
+			Enabled:        true,
+			RequestHeaders: false, // global would omit request headers
+		},
+	})
+	event := createBaseEvent()
+	event.TrafficLog = &dto.TrafficLogDirective{
+		Request: &dto.TrafficLogFlow{Headers: true}, // per-API opts in
+	}
+	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	reqH := headerMap(t, decoded["requestHeaders"])
+	assert.Equal(t, "bar", reqH["x-foo"], "per-API directive must win over the global fallback")
+}
+
+// When global traffic logging is disabled (the default), an event without a
+// per-API marker is still skipped — regression guard for the pre-existing
+// per-API-only behavior.
+func TestLog_Publish_GlobalFallbackDisabled_StillSkipsWhenNoDirective(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{})
+	event := createBaseEvent()
+	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
+
+	l.Publish(event)
+
+	assert.Empty(t, read(), "global traffic logging disabled and no per-API directive -> skip")
+}
+
+// The global fallback's request/response body and header toggles select fields
+// exactly like an explicit per-API flow configuration.
+func TestLog_Publish_GlobalFallback_FlowToggles(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Global: config.GlobalTrafficLoggingConfig{
+			Enabled:         true,
+			RequestHeaders:  true,
+			RequestBody:     false,
+			ResponseHeaders: false,
+			ResponseBody:    true,
+		},
+	})
+	event := createBaseEvent()
+	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
+	event.Properties["request_payload"] = "req-body"
+	event.Properties["responseHeaders"] = `{"x-bar":"baz"}`
+	event.Properties["response_payload"] = "resp-body"
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	_, hasReqHeaders := decoded["requestHeaders"]
+	assert.True(t, hasReqHeaders, "global request_headers:true -> included")
+	_, hasReqBody := decoded["requestBody"]
+	assert.False(t, hasReqBody, "global request_body:false -> omitted")
+	_, hasRespHeaders := decoded["responseHeaders"]
+	assert.False(t, hasRespHeaders, "global response_headers:false -> omitted")
+	assert.Equal(t, "resp-body", decoded["responseBody"], "global response_body:true -> included")
+}
+
+// Global masked_headers and max_payload_size (the existing, shared config knobs)
+// apply to global-fallback lines exactly as they do to per-API ones.
+func TestLog_Publish_GlobalFallback_MaskingAndTruncationApply(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		MaskedHeaders:  []string{"authorization"},
+		MaxPayloadSize: 5,
+		Global: config.GlobalTrafficLoggingConfig{
+			Enabled:        true,
+			RequestHeaders: true,
+			RequestBody:    true,
+		},
+	})
+	event := createBaseEvent()
+	event.Properties["requestHeaders"] = `{"Authorization":"Bearer secret","x-foo":"bar"}`
+	event.Properties["request_payload"] = "hello world"
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	reqH := headerMap(t, decoded["requestHeaders"])
+	assert.Equal(t, "****", reqH["Authorization"])
+	assert.Equal(t, "hello", decoded["requestBody"])
+}
+
+// The global fallback's fields.only/exclude projection layers on top of the flow
+// toggles exactly like the per-API directive's fields projection.
+func TestLog_Publish_GlobalFallback_FieldsProjection(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Global: config.GlobalTrafficLoggingConfig{
+			Enabled:        true,
+			RequestHeaders: true,
+			RequestBody:    true,
+			Fields: config.GlobalTrafficLoggingFieldsConfig{
+				Exclude: []string{"requestBody"},
+			},
+		},
+	})
+	event := createBaseEvent()
+	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
+	event.Properties["request_payload"] = "secret-body"
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	_, hasBody := decoded["requestBody"]
+	assert.False(t, hasBody, "fields.exclude=[requestBody] must drop it from the global fallback line")
+	assert.Contains(t, decoded, "requestHeaders")
+}
+
+func TestBuildGlobalDirective_DisabledReturnsNil(t *testing.T) {
+	dir := buildGlobalDirective(config.GlobalTrafficLoggingConfig{Enabled: false})
+	assert.Nil(t, dir)
+}
+
+func TestBuildGlobalDirective_NoFieldsSelectionLeavesFieldsNil(t *testing.T) {
+	dir := buildGlobalDirective(config.GlobalTrafficLoggingConfig{Enabled: true})
+	require.NotNil(t, dir)
+	assert.Nil(t, dir.Fields)
+	assert.Empty(t, dir.MaskedHeaders, "global masked_headers applies via Log.maskedHeaders, not the directive")
+}
+
+// End-to-end: traffic_logging.global.properties resolves "$ctx:" expressions
+// against the event and emits them under the top-level "properties" object,
+// exactly like a per-API directive's properties.
+func TestLog_Publish_GlobalFallback_PropertiesResolveCtx(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Global: config.GlobalTrafficLoggingConfig{
+			Enabled: true,
+			Properties: map[string]string{
+				"env":     "prod",
+				"apiName": "$ctx:api.name",
+				"status":  "$ctx:response.status",
+			},
+		},
+	})
+	event := createBaseEvent()
+	event.ProxyResponseCode = 201
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	props, ok := decoded["properties"].(map[string]interface{})
+	require.True(t, ok, "expected top-level properties object")
+	assert.Equal(t, "prod", props["env"])
+	assert.Equal(t, "test-api", props["apiName"])
+	assert.Equal(t, float64(201), props["status"])
+}
+
+// A per-API directive's own Properties are used as-is; global properties never
+// apply when a per-API marker is present.
+func TestLog_Publish_PerAPIPropertiesNotMixedWithGlobalProperties(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Global: config.GlobalTrafficLoggingConfig{
+			Enabled:    true,
+			Properties: map[string]string{"fromGlobal": "yes"},
+		},
+	})
+	event := createBaseEvent()
+	event.TrafficLog = &dto.TrafficLogDirective{
+		Properties: map[string]interface{}{"fromPolicy": "yes"},
+	}
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	props, ok := decoded["properties"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "yes", props["fromPolicy"])
+	_, hasGlobal := props["fromGlobal"]
+	assert.False(t, hasGlobal, "global properties must not mix into a per-API directive's line")
+}
+
+// No global properties configured -> no "properties" key on the fallback line,
+// matching the per-API "no properties -> no key" behavior.
+func TestLog_Publish_GlobalFallback_NoPropertiesConfiguredOmitsKey(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Global: config.GlobalTrafficLoggingConfig{Enabled: true},
+	})
+	event := createBaseEvent()
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	_, present := decoded["properties"]
+	assert.False(t, present)
+}
+
+// resolveGlobalDirective must never mutate the shared l.globalDir: successive
+// requests for different APIs must not leak each other's resolved properties.
+// Each Publish call is directed to its own temp file so the two lines can be
+// decoded independently.
+func TestLog_Publish_GlobalFallback_PropertiesDoNotLeakAcrossRequests(t *testing.T) {
+	l := NewLog(&config.TrafficLoggingConfig{
+		Global: config.GlobalTrafficLoggingConfig{
+			Enabled:    true,
+			Properties: map[string]string{"apiName": "$ctx:api.name"},
+		},
+	})
+	require.Nil(t, l.globalDir.Properties, "globalDir must never carry baked-in properties")
+
+	readOnce := func(event *dto.Event) map[string]interface{} {
+		path := filepath.Join(t.TempDir(), "out.log")
+		f, err := os.Create(path)
+		require.NoError(t, err)
+		defer f.Close()
+		l.out = f
+
+		l.Publish(event)
+
+		require.NoError(t, f.Sync())
+		data, err := os.ReadFile(path)
+		require.NoError(t, err)
+		return decodeLine(t, string(data))
+	}
+
+	first := createBaseEvent()
+	first.API.APIName = "api-one"
+	firstLine := readOnce(first)
+	assert.Equal(t, "api-one", firstLine["properties"].(map[string]interface{})["apiName"])
+
+	require.Nil(t, l.globalDir.Properties, "globalDir must remain unmutated after a Publish call")
+
+	second := createBaseEvent()
+	second.API.APIName = "api-two"
+	secondLine := readOnce(second)
+	assert.Equal(t, "api-two", secondLine["properties"].(map[string]interface{})["apiName"])
+}
+
+// Stress the concurrency-safety claim in resolveGlobalDirective's doc comment:
+// many goroutines (standing in for concurrent ALS streams) calling Publish at
+// once, each with a different API name, must never race on the shared
+// l.globalDir. Run with -race to make this meaningful.
+func TestLog_Publish_GlobalFallback_ConcurrentPropertiesNoRace(t *testing.T) {
+	l := NewLog(&config.TrafficLoggingConfig{
+		Global: config.GlobalTrafficLoggingConfig{
+			Enabled:    true,
+			Properties: map[string]string{"apiName": "$ctx:api.name"},
+		},
+	})
+	path := filepath.Join(t.TempDir(), "out.log")
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = f.Close() })
+	l.out = f
+
+	const n = 50
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			event := createBaseEvent()
+			event.API.APIName = fmt.Sprintf("api-%d", i)
+			l.Publish(event)
+		}(i)
+	}
+	wg.Wait()
+
+	require.Nil(t, l.globalDir.Properties, "globalDir must remain unmutated after concurrent Publish calls")
 }
 
 // Top-level fields — status, correlationId, client — are always present when set.

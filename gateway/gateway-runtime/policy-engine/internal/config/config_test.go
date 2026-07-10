@@ -1251,6 +1251,79 @@ func TestValidate_TrafficLoggingMaxPayloadSize(t *testing.T) {
 	assert.Contains(t, err.Error(), "traffic_logging.max_payload_size")
 }
 
+func TestValidate_GlobalTrafficLogging(t *testing.T) {
+	t.Run("both only and exclude set -> error", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		cfg.TrafficLogging.Global.Enabled = true
+		cfg.TrafficLogging.Global.Fields.Only = []string{"latencies"}
+		cfg.TrafficLogging.Global.Fields.Exclude = []string{"requestBody"}
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "traffic_logging.global.fields")
+	})
+
+	t.Run("only set alone -> valid", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		cfg.TrafficLogging.Global.Enabled = true
+		cfg.TrafficLogging.Global.Fields.Only = []string{"latencies"}
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("global enabled activates the collector via traffic_logging.enabled", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		cfg.TrafficLogging.Global.Enabled = true
+		require.NoError(t, cfg.Validate())
+		assert.True(t, cfg.IsCollectorEnabled())
+	})
+
+	t.Run("global enabled without traffic_logging.enabled -> valid but warns (no effect)", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = false
+		cfg.TrafficLogging.Global.Enabled = true
+		require.NoError(t, cfg.Validate(), "misconfiguration is a warning, not a hard error")
+	})
+
+	t.Run("global body toggle without matching collector capture -> valid but warns", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		cfg.TrafficLogging.Global.Enabled = true
+		cfg.TrafficLogging.Global.RequestBody = true
+		cfg.Collector.RequestBody = false
+		require.NoError(t, cfg.Validate(), "misconfiguration is a warning, not a hard error")
+	})
+
+	t.Run("global disabled -> fields validation still applies", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Global.Enabled = false
+		cfg.TrafficLogging.Global.Fields.Only = []string{"latencies"}
+		cfg.TrafficLogging.Global.Fields.Exclude = []string{"requestBody"}
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "traffic_logging.global.fields")
+	})
+
+	t.Run("properties set", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		cfg.TrafficLogging.Global.Enabled = true
+		cfg.TrafficLogging.Global.Properties = map[string]string{
+			"env":     "prod",
+			"apiName": "$ctx:api.name",
+		}
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("properties set while global disabled -> valid but warns (no effect)", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Global.Enabled = false
+		cfg.TrafficLogging.Global.Properties = map[string]string{"env": "prod"}
+		require.NoError(t, cfg.Validate(), "misconfiguration is a warning, not a hard error")
+	})
+}
+
 // TestValidate_AnalyticsPublishers tests analytics publisher validation
 func TestValidate_AnalyticsPublishers(t *testing.T) {
 	tests := []struct {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -25,6 +26,23 @@ const (
 	AIProviderDisplayNameMetadataKey = "ai:providerdisplayname"
 	ApplicationIDMetadataKey         = "x-wso2-application-id"
 	ApplicationNameMetadataKey       = "x-wso2-application-name"
+
+	// Auth-context metadata keys. Populated generically (auth-type-agnostic, via
+	// SharedContext.AuthContext) by populateAuthAnalyticsMetadata below, so they work
+	// uniformly for jwt-auth, opaque-token-auth, api-key-auth, mcp-auth, or any future
+	// auth policy without that policy needing to export anything itself. Consumed by the
+	// policy-engine's prepareAnalyticEvent (internal/analytics/analytics.go), which mirrors
+	// these key names, and from there exposed to the stdout traffic-logging publisher's
+	// global "$ctx:auth.*" properties.
+	AuthUserIDMetadataKey       = "x-wso2-user-id"
+	AuthTypeMetadataKey         = "x-wso2-auth-type"
+	AuthIssuerMetadataKey       = "x-wso2-auth-issuer"
+	AuthCredentialIDMetadataKey = "x-wso2-auth-credential-id"
+	AuthTokenIDMetadataKey      = "x-wso2-auth-token-id"
+	AuthAudienceMetadataKey     = "x-wso2-auth-audience"
+	AuthScopesMetadataKey       = "x-wso2-auth-scopes"
+	AuthPropertiesMetadataKey   = "x-wso2-auth-properties"
+	AuthAuthorizedMetadataKey   = "x-wso2-auth-authorized"
 
 	// Subscription metadata keys for subscription and monetization information.
 	BillingCustomerIDMetadataKey     = "x-wso2-billing-customer-id"
@@ -166,6 +184,67 @@ func (a *AnalyticsPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.Req
 	return policy.UpstreamRequestHeaderModifications{}
 }
 
+// populateAuthAnalyticsMetadata walks authChain (handling layered/multi-auth via
+// AuthContext.Previous) and, for the first layer that is both authenticated and has a
+// non-empty subject, stamps auth-derived analytics metadata into analyticsMetadata —
+// auth-type-agnostic, so it works uniformly for jwt-auth, opaque-token-auth, api-key-auth,
+// mcp-auth, or any future auth policy without that policy needing to export anything
+// itself; it only relies on the common AuthContext type any auth policy already populates.
+// Scopes are sorted and space-joined and audience is comma-joined, matching the
+// log-message policy's own $ctx:auth.* serialization choices for consistency across
+// per-API and global traffic-log properties. Custom claims (Properties) are JSON-encoded,
+// mirroring how captured headers are already carried as a JSON string elsewhere in this
+// file. Fields are omitted (not empty-stringed) when absent, consistent with every other
+// optional key in this policy.
+func populateAuthAnalyticsMetadata(analyticsMetadata map[string]any, authChain *policy.AuthContext) {
+	for authCtx := authChain; authCtx != nil; authCtx = authCtx.Previous {
+		if !authCtx.Authenticated || authCtx.Subject == "" {
+			continue
+		}
+
+		analyticsMetadata[AuthUserIDMetadataKey] = authCtx.Subject
+		if authCtx.AuthType != "" {
+			analyticsMetadata[AuthTypeMetadataKey] = authCtx.AuthType
+		}
+		if authCtx.Issuer != "" {
+			analyticsMetadata[AuthIssuerMetadataKey] = authCtx.Issuer
+		}
+		if authCtx.CredentialID != "" {
+			analyticsMetadata[AuthCredentialIDMetadataKey] = authCtx.CredentialID
+		}
+		if authCtx.TokenId != "" {
+			analyticsMetadata[AuthTokenIDMetadataKey] = authCtx.TokenId
+		}
+		if len(authCtx.Audience) > 0 {
+			analyticsMetadata[AuthAudienceMetadataKey] = strings.Join(authCtx.Audience, ",")
+		}
+		if len(authCtx.Scopes) > 0 {
+			scopes := make([]string, 0, len(authCtx.Scopes))
+			for name := range authCtx.Scopes {
+				scopes = append(scopes, name)
+			}
+			sort.Strings(scopes)
+			analyticsMetadata[AuthScopesMetadataKey] = strings.Join(scopes, " ")
+		}
+		if len(authCtx.Properties) > 0 {
+			if data, err := json.Marshal(authCtx.Properties); err == nil {
+				analyticsMetadata[AuthPropertiesMetadataKey] = string(data)
+			} else {
+				slog.Warn("Analytics system policy: failed to marshal auth properties", "error", err)
+			}
+		}
+		// Authorized is distinct from Authenticated (which this block already gates on):
+		// it reflects a separate authorization check (e.g. mcp-authz) and can genuinely be
+		// false even for an authenticated request, so it's always stamped rather than
+		// omitted-when-zero like the optional fields above.
+		analyticsMetadata[AuthAuthorizedMetadataKey] = strconv.FormatBool(authCtx.Authorized)
+
+		slog.Debug("Analytics system policy: auth-context metadata extracted",
+			"subject", authCtx.Subject, "authType", authCtx.AuthType)
+		return
+	}
+}
+
 // OnResponseHeaders collects analytics data available at the response-headers phase.
 // Auth context and response headers are already populated here, so we emit them early
 // rather than waiting for the body phase (which may not be reached for header-only responses).
@@ -173,16 +252,7 @@ func (a *AnalyticsPolicy) OnResponseHeaders(_ context.Context, respCtx *policy.R
 	slog.Debug("Analytics system policy: OnResponseHeaders called")
 	analyticsMetadata := make(map[string]any)
 
-	for authCtx := respCtx.SharedContext.AuthContext; authCtx != nil; authCtx = authCtx.Previous {
-		if authCtx.Authenticated && authCtx.Subject != "" {
-			analyticsMetadata["x-wso2-user-id"] = authCtx.Subject
-			slog.Debug("Analytics system policy: User ID extracted from AuthContext in OnResponseHeaders",
-				"subject", authCtx.Subject,
-				"authType", authCtx.AuthType,
-			)
-			break
-		}
-	}
+	populateAuthAnalyticsMetadata(analyticsMetadata, respCtx.SharedContext.AuthContext)
 
 	// Subscription and monetization fields are written to SharedContext.Metadata by subscription-validation policy
 	if md := respCtx.SharedContext.Metadata; md != nil {
@@ -316,16 +386,7 @@ func (a *AnalyticsPolicy) OnResponseBody(_ context.Context, ctx *policy.Response
 
 	analyticsMetadata := make(map[string]any)
 
-	for authCtx := ctx.SharedContext.AuthContext; authCtx != nil; authCtx = authCtx.Previous {
-		if authCtx.Authenticated && authCtx.Subject != "" {
-			analyticsMetadata["x-wso2-user-id"] = authCtx.Subject
-			slog.Debug("Analytics system policy: User ID extracted from AuthContext",
-				"subject", authCtx.Subject,
-				"authType", authCtx.AuthType,
-			)
-			break
-		}
-	}
+	populateAuthAnalyticsMetadata(analyticsMetadata, ctx.SharedContext.AuthContext)
 
 	apiKind := ctx.SharedContext.APIKind
 	slog.Debug("API kind: ", "apiKind", apiKind)
@@ -443,12 +504,7 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 
 	analyticsMetadata := make(map[string]any)
 
-	for authCtx := ctx.SharedContext.AuthContext; authCtx != nil; authCtx = authCtx.Previous {
-		if authCtx.Authenticated && authCtx.Subject != "" {
-			analyticsMetadata["x-wso2-user-id"] = authCtx.Subject
-			break
-		}
-	}
+	populateAuthAnalyticsMetadata(analyticsMetadata, ctx.SharedContext.AuthContext)
 
 	apiKind := ctx.SharedContext.APIKind
 	switch apiKind {

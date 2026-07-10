@@ -16,6 +16,13 @@ enabled = false
 masked_headers = ["authorization", "x-api-key", "x-jwt-assertion"]
 max_payload_size = 2048
 
+[traffic_logging.global]
+enabled = false
+request_headers = false
+response_headers = false
+request_body = false
+response_body = false
+
 [router]
 gateway_host = "*"
 
