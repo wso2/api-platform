@@ -5854,7 +5854,7 @@ components:
         as:
           type: string
           description: >
-            Logical upstream name used by policies to select this provider. Must
+            Logical LLM Provider name used by policies to select this provider. Must
             be unique within the proxy. Defaults to `id` when omitted.
           pattern: '^[a-zA-Z0-9\-_]+$'
           minLength: 1
