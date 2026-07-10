@@ -30,6 +30,39 @@
     <!-- ── Left sub-nav ── -->
     <nav class="cfg-nav" aria-label="Settings navigation">
 
+      <div class="cfg-nav-section">ORGANIZATION</div>
+      <div class="cfg-nav-items">
+        <a href="#cfg-organizations" class="cfg-nav-item" data-panel="cfg-organizations">
+          <i class="bi bi-building"></i><span>Organization</span>
+        </a>
+        <a href="#cfg-views" class="cfg-nav-item" data-panel="cfg-views">
+          <i class="bi bi-layout-text-window"></i><span>Views</span>
+        </a>
+        <a href="#cfg-labels" class="cfg-nav-item" data-panel="cfg-labels">
+          <i class="bi bi-tags"></i><span>Labels</span>
+        </a>
+        <a href="#cfg-plans" class="cfg-nav-item" data-panel="cfg-plans">
+          <i class="bi bi-speedometer2"></i><span>Subscription Plans</span>
+        </a>
+        <a href="#cfg-keymanagers" class="cfg-nav-item" data-panel="cfg-keymanagers">
+          <i class="bi bi-key"></i><span>Key Managers</span>
+        </a>
+      </div>
+
+      <div class="cfg-nav-section">CONTENT</div>
+      <div class="cfg-nav-items">
+        <a href="#cfg-apis" class="cfg-nav-item" data-panel="cfg-apis">
+          <i class="bi bi-boxes"></i><span>APIs</span>
+        </a>
+      </div>
+
+      <div class="cfg-nav-section">INTEGRATIONS</div>
+      <div class="cfg-nav-items">
+        <a href="#cfg-webhooks" class="cfg-nav-item" data-panel="cfg-webhooks">
+          <i class="bi bi-broadcast"></i><span>Webhooks</span>
+        </a>
+      </div>
+
       <div class="cfg-nav-section">AI &amp; DISCOVERY</div>
       <div class="cfg-nav-items">
         <a href="#cfg-llm" class="cfg-nav-item" data-panel="cfg-llm">
@@ -44,35 +77,6 @@
       <div class="cfg-nav-items">
         <a href="#cfg-theming" class="cfg-nav-item" data-panel="cfg-theming">
           <i class="bi bi-palette"></i><span>Theming</span>
-        </a>
-      </div>
-
-      <div class="cfg-nav-section">MANAGEMENT</div>
-      <div class="cfg-nav-items">
-        <a href="#cfg-apis" class="cfg-nav-item" data-panel="cfg-apis">
-          <i class="bi bi-boxes"></i><span>APIs</span>
-        </a>
-        <a href="#cfg-plans" class="cfg-nav-item" data-panel="cfg-plans">
-          <i class="bi bi-speedometer2"></i><span>Subscription Plans</span>
-        </a>
-        <a href="#cfg-webhooks" class="cfg-nav-item" data-panel="cfg-webhooks">
-          <i class="bi bi-broadcast"></i><span>Webhooks</span>
-        </a>
-        <a href="#cfg-keymanagers" class="cfg-nav-item" data-panel="cfg-keymanagers">
-          <i class="bi bi-key"></i><span>Key Managers</span>
-        </a>
-      </div>
-
-      <div class="cfg-nav-section">ORGANIZATION</div>
-      <div class="cfg-nav-items">
-        <a href="#cfg-organizations" class="cfg-nav-item" data-panel="cfg-organizations">
-          <i class="bi bi-building"></i><span>Organization</span>
-        </a>
-        <a href="#cfg-views" class="cfg-nav-item" data-panel="cfg-views">
-          <i class="bi bi-layout-text-window"></i><span>Views</span>
-        </a>
-        <a href="#cfg-labels" class="cfg-nav-item" data-panel="cfg-labels">
-          <i class="bi bi-tags"></i><span>Labels</span>
         </a>
       </div>
 
@@ -1174,12 +1178,12 @@
 <!-- ══ Panel navigation ══ -->
 <script>
 (function () {
-  var PANELS   = ['cfg-llm', 'cfg-workflows', 'cfg-theming', 'cfg-apis', 'cfg-plans', 'cfg-webhooks', 'cfg-keymanagers', 'cfg-organizations', 'cfg-views', 'cfg-labels'];
+  var PANELS   = ['cfg-organizations', 'cfg-views', 'cfg-labels', 'cfg-plans', 'cfg-keymanagers', 'cfg-apis', 'cfg-webhooks', 'cfg-llm', 'cfg-workflows', 'cfg-theming'];
   var navItems = document.querySelectorAll('.cfg-nav-item');
   var panels   = document.querySelectorAll('.cfg-panel');
 
   function activate(id) {
-    if (!PANELS.includes(id)) id = 'cfg-llm';
+    if (!PANELS.includes(id)) id = 'cfg-organizations';
     navItems.forEach(function(a) { a.classList.toggle('active', a.dataset.panel === id); });
     panels.forEach(function(p)   { p.style.display = p.id === id ? 'flex' : 'none'; });
     history.replaceState(null, '', location.pathname + '#' + id);
