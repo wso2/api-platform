@@ -368,6 +368,7 @@ const deleteThemeContent = async (orgId, viewName, t) => {
 
 const hasThemeContent = async (orgId, viewName) => {
     const viewId = await viewDao.getId(orgId, viewName);
+    if (!viewId) return false;
     const count = await OrgContent.count({
         where: {
             org_uuid: orgId,
