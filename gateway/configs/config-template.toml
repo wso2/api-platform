@@ -393,14 +393,21 @@ response_body = false
 
 # Optional field projection over the emitted line: drop the named fields and
 # keep everything else. Names are top-level keys (e.g. "latencies",
-# "requestHeaders") or dotted sub-key paths within map fields (e.g.
-# "requestHeaders.authorization"; header sub-keys match case-insensitively).
+# "requestHeaders") or dotted paths of arbitrary depth into nested JSON objects
+# (e.g. "requestHeaders.authorization"; header sub-keys match case-insensitively,
+# every other path segment matches case-sensitively). A path that reaches past a
+# string value (e.g. one dot too many into a single header, or into requestBody)
+# is a no-op for that entry rather than an error.
 # This only trims what the request_*/response_* toggles above already include —
 # it is not a standalone switch. Setting only exclude_fields, with every
 # request_*/response_* toggle left at its false default, still logs no headers
 # or bodies at all.
 exclude_fields = []
 # exclude_fields = ["requestBody", "responseBody"]
+# A multi-level path is useful when a properties entry below exposes a whole CEL
+# map wholesale (e.g. `claims = "$ctx:auth.property"`, whose keys vary per token)
+# instead of one flattened property per claim — reach into it to drop just one:
+# exclude_fields = ["properties.claims.internal_debug"]
 
 # Optional extra key->value pairs added under a top-level "properties" object.
 # A value prefixed "$ctx:" is evaluated as a CEL expression against context
@@ -430,12 +437,22 @@ exclude_fields = []
 # the property is silently omitted from that line (logged at debug level). Use
 # the `in` operator to guard any map/list index, e.g. `'tenant' in auth.property
 # ? auth.property['tenant'] : ''`.
+#
+# metadata['<key>'] is also available — a generic map backed by SharedContext.Metadata,
+# a bag ANY policy (including third-party/Python policies) can write an arbitrary
+# key into for inter-policy communication. There is no fixed schema and, unlike
+# masked_headers for captured headers, no masking config for this path: any value a
+# policy writes to SharedContext.Metadata should be assumed visible here. Same
+# zero-value rules as auth.* — metadata itself is always bound to an empty map, but
+# indexing a specific key needs the same `in` guard shown above, e.g.
+# `'applicationId' in metadata ? metadata['applicationId'] : ''`.
 [traffic_logging.properties]
 # env = "prod"
 # apiName = "$ctx:api.name"
 # status = "$ctx:response.status"
 # subject = "$ctx:auth.subject != '' ? auth.subject : 'anonymous'"
 # tenant = "$ctx:'tenant' in auth.property ? auth.property['tenant'] : ''"
+# appId = "$ctx:'applicationId' in metadata ? metadata['applicationId'] : ''"
 
 
 # =============================================================================

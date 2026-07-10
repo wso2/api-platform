@@ -164,6 +164,15 @@ func createGlobalPropertyEnv() (*cel.Env, error) {
 		cel.Variable("auth.property", cel.MapType(cel.StringType, cel.StringType)),
 		cel.Variable("auth.authenticated", cel.BoolType),
 		cel.Variable("auth.authorized", cel.BoolType),
+
+		// Backed by SharedContext.Metadata — a generic bag ANY policy (including
+		// third-party/Python policies) can write to, unlike the strongly-typed auth.*
+		// namespace above. There is no fixed schema, so values are cel.DynType rather
+		// than StringType; a policy author writing to SharedContext.Metadata should
+		// assume its value is visible here, since (unlike headers) there is no masking
+		// config for this path. Always bound to an empty map when absent, so
+		// referencing metadata never errors — same zero-value guarantee as auth.*.
+		cel.Variable("metadata", cel.MapType(cel.StringType, cel.DynType)),
 	)
 }
 
@@ -243,6 +252,7 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, maskedHeaders map[string]bool)
 		"auth.property":       map[string]string{},
 		"auth.authenticated":  false,
 		"auth.authorized":     false,
+		"metadata":            map[string]interface{}{},
 	}
 
 	if event == nil {
@@ -329,6 +339,18 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, maskedHeaders map[string]bool)
 	if authorized, ok := event.Properties[dto.PropKeyAuthAuthorized].(string); ok {
 		if parsed, err := strconv.ParseBool(authorized); err == nil {
 			ctx["auth.authorized"] = parsed
+		}
+	}
+
+	// SharedContext.Metadata, JSON-encoded by populateGenericMetadata in
+	// gateway/system-policies/analytics/analytics.go. Raw and unfiltered: any policy
+	// author writing to SharedContext.Metadata should assume its value reaches here.
+	if raw, ok := event.Properties[dto.PropKeyMetadata].(string); ok && raw != "" {
+		var meta map[string]interface{}
+		if err := json.Unmarshal([]byte(raw), &meta); err == nil {
+			ctx["metadata"] = meta
+		} else {
+			slog.Debug("traffic_logging.properties: failed to parse generic metadata", "error", err)
 		}
 	}
 

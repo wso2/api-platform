@@ -345,12 +345,14 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 
 	// Auth-context metadata (type, issuer, credential/token IDs, audience, scopes, custom
 	// claims), stamped generically by the collector system policy for any authenticated
-	// request regardless of auth type. Key names match the raw metadata 1:1 (see
-	// dto.PropKeyAuth* doc comment), so no case translation is needed here.
+	// request regardless of auth type; plus PropKeyMetadata, the JSON-encoded raw
+	// SharedContext.Metadata bag (see dto.PropKeyMetadata doc comment). Key names match
+	// the raw metadata 1:1 (see dto.PropKeyAuth* doc comment), so no case translation is
+	// needed here.
 	for _, key := range []string{
 		dto.PropKeyAuthType, dto.PropKeyAuthIssuer, dto.PropKeyAuthCredentialID,
 		dto.PropKeyAuthTokenID, dto.PropKeyAuthAudience, dto.PropKeyAuthScopes, dto.PropKeyAuthProperties,
-		dto.PropKeyAuthAuthorized,
+		dto.PropKeyAuthAuthorized, dto.PropKeyMetadata,
 	} {
 		if v, exists := keyValuePairsFromMetadata[key]; exists && v != "" {
 			event.Properties[key] = v

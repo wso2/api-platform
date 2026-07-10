@@ -141,6 +141,46 @@ func TestGlobalPropertyEvaluator_MasksSensitiveHeaders(t *testing.T) {
 	assert.Equal(t, "trace-abc", resolved["traceId"], "unmasked header still resolves normally")
 }
 
+// metadata is backed by SharedContext.Metadata -- a generic bag ANY policy can write
+// to (see gateway/system-policies/analytics's populateGenericMetadata) -- unlike
+// auth.*, there is no fixed schema, so values of different underlying JSON types
+// (string, bool, number) must all resolve correctly via cel.DynType.
+func TestGlobalPropertyEvaluator_ResolvesGenericMetadata(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"appId":     "$ctx:metadata['applicationId']",
+		"isTrial":   "$ctx:metadata['isTrial']",
+		"maxTokens": "$ctx:metadata['maxTokens']",
+	}, nil)
+	event := createBaseEvent()
+	event.Properties[dto.PropKeyMetadata] = `{"applicationId":"app-42","isTrial":true,"maxTokens":100}`
+
+	resolved := e.resolve(event)
+
+	assert.Equal(t, "app-42", resolved["appId"])
+	assert.Equal(t, true, resolved["isTrial"])
+	assert.Equal(t, float64(100), resolved["maxTokens"])
+}
+
+// When no policy wrote anything to SharedContext.Metadata (or the request never
+// reached the collector), metadata resolves to an empty map rather than being
+// unbound -- consistent with the zero-value guarantee every other $ctx: namespace
+// gives. Unguarded indexing into an empty/missing key still errors and is omitted,
+// same behavior as auth.property, and for the same reason: map *index* is not
+// covered by the scalar zero-value guarantee -- use `in` to guard it.
+func TestGlobalPropertyEvaluator_GenericMetadataAbsentRequiresInGuard(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"unguarded": "$ctx:metadata['applicationId']",
+		"guarded":   "$ctx:'applicationId' in metadata ? metadata['applicationId'] : ''",
+	}, nil)
+	event := createBaseEvent() // no metadata property set at all
+
+	resolved := e.resolve(event)
+
+	_, hasUnguarded := resolved["unguarded"]
+	assert.False(t, hasUnguarded, "unguarded index into absent metadata omits the property")
+	assert.Equal(t, "", resolved["guarded"], "in-guarded index resolves to the fallback instead of erroring")
+}
+
 // auth.* is backed by analytics metadata the collector system policy stamps generically
 // for any authenticated request (see gateway/system-policies/analytics's
 // populateAuthAnalyticsMetadata), regardless of auth type — no auth policy modification

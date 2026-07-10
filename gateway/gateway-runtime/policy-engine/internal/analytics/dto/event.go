@@ -46,6 +46,16 @@ const (
 	PropKeyAuthScopes       = "x-wso2-auth-scopes"
 	PropKeyAuthProperties   = "x-wso2-auth-properties"
 	PropKeyAuthAuthorized   = "x-wso2-auth-authorized"
+
+	// PropKeyMetadata carries the JSON-encoded contents of SharedContext.Metadata —
+	// a generic map[string]interface{} bag ANY policy (including third-party/Python
+	// policies) can write to for inter-policy communication, populated generically
+	// (unlike the specific PropKeyAuth* fields above, which mirror the strongly-typed
+	// AuthContext) by the collector system policy's populateGenericMetadata. There is
+	// no fixed schema: whatever keys a policy happens to write are whatever keys show
+	// up here. Consumed by the stdout traffic-logging publisher's global
+	// "$ctx:metadata['<key>']" property (see internal/analytics/publishers/global_properties.go).
+	PropKeyMetadata = "x-wso2-metadata"
 )
 
 // Event represents analytics event data.

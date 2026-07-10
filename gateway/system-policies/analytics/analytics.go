@@ -50,6 +50,16 @@ const (
 	SubscriptionStatusMetadataKey    = "x-wso2-subscription-status"
 	SubscriptionPlanNameMetadataKey  = "x-wso2-subscription-plan-name"
 
+	// GenericMetadataKey carries the JSON-encoded contents of SharedContext.Metadata
+	// (minus internal/reserved keys), populated by populateGenericMetadata below. Unlike
+	// every other metadata key in this file, this is a raw, unfiltered passthrough of a
+	// generic map[string]interface{} bag ANY policy (including third-party/Python
+	// policies) can write to — not a specific named field extracted from a strongly-typed
+	// source. Consumed by the policy-engine's prepareAnalyticEvent (internal/analytics/
+	// analytics.go), which mirrors this key name, and from there exposed to the stdout
+	// traffic-logging publisher's global "$ctx:metadata['<key>']" property.
+	GenericMetadataKey = "x-wso2-metadata"
+
 	// Lazy resource type for LLM provider templates
 	lazyResourceTypeLLMProviderTemplate = "LlmProviderTemplate"
 	// Lazy resource type for provider-to-template mapping
@@ -245,6 +255,38 @@ func populateAuthAnalyticsMetadata(analyticsMetadata map[string]any, authChain *
 	}
 }
 
+// populateGenericMetadata JSON-encodes SharedContext.Metadata (minus the internal
+// streaming accumulator, which is never meant for export) into analyticsMetadata
+// under GenericMetadataKey, so the stdout traffic-logging publisher's
+// "$ctx:metadata['<key>']" CEL surface can reach ANY key any policy has written to
+// the shared metadata bag. Unlike populateAuthAnalyticsMetadata and the
+// subscription-field copy below, which extract specific named fields from a
+// strongly-typed source, this is a raw, unfiltered passthrough: any policy author
+// writing to SharedContext.Metadata should assume its value is visible in traffic
+// logs, since there is no masking config for this path (unlike masked_headers for
+// captured headers).
+func populateGenericMetadata(analyticsMetadata map[string]any, sharedMetadata map[string]interface{}) {
+	if len(sharedMetadata) == 0 {
+		return
+	}
+	filtered := make(map[string]interface{}, len(sharedMetadata))
+	for k, v := range sharedMetadata {
+		if k == analyticsStreamAccKey {
+			continue
+		}
+		filtered[k] = v
+	}
+	if len(filtered) == 0 {
+		return
+	}
+	data, err := json.Marshal(filtered)
+	if err != nil {
+		slog.Warn("Analytics system policy: failed to marshal SharedContext.Metadata for traffic logging", "error", err)
+		return
+	}
+	analyticsMetadata[GenericMetadataKey] = string(data)
+}
+
 // OnResponseHeaders collects analytics data available at the response-headers phase.
 // Auth context and response headers are already populated here, so we emit them early
 // rather than waiting for the body phase (which may not be reached for header-only responses).
@@ -269,6 +311,8 @@ func (a *AnalyticsPolicy) OnResponseHeaders(_ context.Context, respCtx *policy.R
 			analyticsMetadata[SubscriptionPlanNameMetadataKey] = v
 		}
 	}
+
+	populateGenericMetadata(analyticsMetadata, respCtx.SharedContext.Metadata)
 
 	// Capture the response content type for all API kinds. The Envoy access log does
 	// not carry response headers (no additional_response_headers_to_log is configured,

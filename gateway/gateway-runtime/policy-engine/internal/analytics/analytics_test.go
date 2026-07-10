@@ -551,6 +551,39 @@ func TestPrepareAnalyticEvent_NoAuthContextMetadataOmitsKeys(t *testing.T) {
 	}
 }
 
+// prepareAnalyticEvent copies the generic SharedContext.Metadata blob the collector
+// system policy stamps (via populateGenericMetadata) straight into Event.Properties,
+// same as the auth-context keys, so the stdout traffic-logging publisher's global
+// properties can resolve $ctx:metadata['<key>'] from it.
+func TestPrepareAnalyticEvent_WithGenericMetadata(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		dto.PropKeyMetadata: `{"applicationId":"app-42","isTrial":true}`,
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	assert.Equal(t, `{"applicationId":"app-42","isTrial":true}`, event.Properties[dto.PropKeyMetadata])
+}
+
+// Absent generic metadata (no policy wrote to SharedContext.Metadata) must not add
+// the key at all.
+func TestPrepareAnalyticEvent_NoGenericMetadataOmitsKey(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	_, ok := event.Properties[dto.PropKeyMetadata]
+	assert.False(t, ok, "expected %s to be absent", dto.PropKeyMetadata)
+}
+
 func TestPrepareAnalyticEvent_WithLLMCost(t *testing.T) {
 	cfg := &config.Config{}
 	analytics := NewAnalytics(cfg)

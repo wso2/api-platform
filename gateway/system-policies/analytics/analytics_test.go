@@ -248,6 +248,110 @@ func TestOnResponseHeaders_PopulatesAuthMetadata(t *testing.T) {
 	}
 }
 
+func TestPopulateGenericMetadata_PassesThroughArbitraryKeys(t *testing.T) {
+	metadata := make(map[string]any)
+	shared := map[string]interface{}{
+		"applicationId": "app-42",
+		"isTrial":       true,
+	}
+
+	populateGenericMetadata(metadata, shared)
+
+	raw, ok := metadata[GenericMetadataKey].(string)
+	if !ok {
+		t.Fatalf("expected %s to be a JSON string, got %T", GenericMetadataKey, metadata[GenericMetadataKey])
+	}
+	var decoded map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		t.Fatalf("failed to decode %s: %v", GenericMetadataKey, err)
+	}
+	if decoded["applicationId"] != "app-42" {
+		t.Errorf("applicationId = %v, want app-42", decoded["applicationId"])
+	}
+	if decoded["isTrial"] != true {
+		t.Errorf("isTrial = %v, want true", decoded["isTrial"])
+	}
+}
+
+// The streaming-body accumulator is internal scratch space (see analyticsStreamAccKey's
+// doc comment) and must never be exported, regardless of what a policy writes elsewhere
+// in SharedContext.Metadata.
+func TestPopulateGenericMetadata_ExcludesStreamAccumulator(t *testing.T) {
+	metadata := make(map[string]any)
+	shared := map[string]interface{}{
+		"applicationId":       "app-42",
+		analyticsStreamAccKey: []byte("partial response body chunk data"),
+	}
+
+	populateGenericMetadata(metadata, shared)
+
+	raw := metadata[GenericMetadataKey].(string)
+	var decoded map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		t.Fatalf("failed to decode %s: %v", GenericMetadataKey, err)
+	}
+	if _, present := decoded[analyticsStreamAccKey]; present {
+		t.Errorf("internal stream accumulator key must never be exported, got: %v", decoded)
+	}
+	if decoded["applicationId"] != "app-42" {
+		t.Errorf("applicationId = %v, want app-42", decoded["applicationId"])
+	}
+}
+
+func TestPopulateGenericMetadata_EmptyOrNilMetadataNoop(t *testing.T) {
+	metadata := make(map[string]any)
+	populateGenericMetadata(metadata, nil)
+	if _, present := metadata[GenericMetadataKey]; present {
+		t.Errorf("nil SharedContext.Metadata must not set %s", GenericMetadataKey)
+	}
+
+	populateGenericMetadata(metadata, map[string]interface{}{})
+	if _, present := metadata[GenericMetadataKey]; present {
+		t.Errorf("empty SharedContext.Metadata must not set %s", GenericMetadataKey)
+	}
+
+	// Only the excluded stream-accumulator key present -- still nothing to export.
+	populateGenericMetadata(metadata, map[string]interface{}{analyticsStreamAccKey: []byte("x")})
+	if _, present := metadata[GenericMetadataKey]; present {
+		t.Errorf("SharedContext.Metadata containing only the excluded key must not set %s", GenericMetadataKey)
+	}
+}
+
+// OnResponseHeaders wires populateGenericMetadata through end to end, alongside the
+// existing auth/subscription metadata copies.
+func TestOnResponseHeaders_PopulatesGenericMetadata(t *testing.T) {
+	respCtx := &policy.ResponseHeaderContext{
+		SharedContext: &policy.SharedContext{
+			Metadata: map[string]interface{}{
+				"applicationId":       "app-42",
+				analyticsStreamAccKey: []byte("should never be exported"),
+			},
+		},
+		ResponseStatus: 200,
+	}
+
+	action := (&AnalyticsPolicy{}).OnResponseHeaders(context.Background(), respCtx, nil)
+
+	mods, ok := action.(policy.DownstreamResponseHeaderModifications)
+	if !ok {
+		t.Fatalf("expected DownstreamResponseHeaderModifications, got %T", action)
+	}
+	raw, ok := mods.AnalyticsMetadata[GenericMetadataKey].(string)
+	if !ok {
+		t.Fatalf("expected %s to be set as a JSON string", GenericMetadataKey)
+	}
+	var decoded map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		t.Fatalf("failed to decode %s: %v", GenericMetadataKey, err)
+	}
+	if decoded["applicationId"] != "app-42" {
+		t.Errorf("applicationId = %v, want app-42", decoded["applicationId"])
+	}
+	if _, present := decoded[analyticsStreamAccKey]; present {
+		t.Errorf("internal stream accumulator key must never be exported, got: %v", decoded)
+	}
+}
+
 func TestExtractMCPResponseAnalyticsProps_IsError(t *testing.T) {
 	cases := []struct {
 		name    string
