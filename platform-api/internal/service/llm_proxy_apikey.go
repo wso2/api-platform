@@ -212,11 +212,6 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		return nil, fmt.Errorf("failed to get gateways: %w", err)
 	}
 
-	if len(gateways) == 0 {
-		s.slogger.Warn("No gateways found for organization", "organizationId", orgID)
-		return nil, apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
-	}
-
 	apiKeyHashesJSON, err := buildAPIKeyHashesJSON(apiKey, []string{defaultHashingAlgorithm})
 	if err != nil {
 		s.slogger.Error("Failed to hash API key for LLM proxy", "proxyId", proxyID, "error", err)
