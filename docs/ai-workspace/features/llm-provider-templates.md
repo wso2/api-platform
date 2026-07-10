@@ -49,7 +49,7 @@ Shows the template's logo, description, current version, and last-updated time. 
 
 ## Versioning
 
-Template versions are immutable — instead of editing a published version, you create a new one, so providers built from earlier versions stay stable.
+Built-in template versions are read-only. Custom template versions are not immutable — you can edit a custom version in place, or create a new version when you want to keep the existing one stable for providers already built from it.
 
 To create a new version:
 
