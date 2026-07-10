@@ -557,3 +557,28 @@ func TestSecretService_Decrypt_DeprecatedSecret_ReturnsError(t *testing.T) {
 		t.Fatal("expected error decrypting deprecated secret")
 	}
 }
+
+// TestCleanupRotatedSecret_NilLogger_DoesNotPanicOnDeleteFailure proves
+// cleanupRotatedSecret treats logging as best-effort: a nil *slog.Logger must
+// not crash the caller when the underlying Delete fails (e.g. the old secret
+// is still referenced elsewhere and Delete returns a SecretInUseError).
+func TestCleanupRotatedSecret_NilLogger_DoesNotPanicOnDeleteFailure(t *testing.T) {
+	repo := newMockRepo()
+	repo.secrets["old-handle"] = &model.Secret{Handle: "old-handle", Status: model.SecretStatusActive}
+	repo.findRefsFn = func(orgID, handle string) ([]model.SecretReference, error) {
+		return []model.SecretReference{{Type: "llm_provider", Handle: "still-using-it"}}, nil
+	}
+
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("cleanupRotatedSecret panicked with nil logger: %v", r)
+		}
+	}()
+	svc.cleanupRotatedSecret("org1", `{{ secret "old-handle" }}`, `{{ secret "new-handle" }}`, "alice", nil)
+
+	if got := repo.secrets["old-handle"].Status; got != model.SecretStatusActive {
+		t.Errorf("expected still-referenced secret to remain ACTIVE (Delete should have failed), got %q", got)
+	}
+}
