@@ -210,6 +210,10 @@ func (s *ArtifactImportService) getGatewayForOrg(orgID, gatewayID string) (*mode
 	return gateway, nil
 }
 
+// importConflictMaxRetries bounds how many times importValidated re-resolves and retries a
+// single artifact import after a unique-constraint violation
+const importConflictMaxRetries = 3
+
 // importValidated imports a single artifact, assuming the gateway has already been resolved
 // and validated for the org (so a batch validates the gateway once instead of per artifact).
 func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto.ImportGatewayArtifactRequest) (*dto.ImportGatewayArtifactResponse, error) {
@@ -270,58 +274,25 @@ func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto
 		ictx.ProjectID = project.ID
 	}
 
-	// The control plane owns the artifact UUID; it does NOT reuse the data-plane UUID
-	// (the gateway mints a fresh one whenever the artifact is recreated). Match an
-	// already-imported artifact by its handle, which is unique per organization and
-	// stable across delete/recreate. When found, reuse its CP UUID (so a recreate
-	// re-attaches to the same artifact and only adds a new deployment); otherwise mint
-	// a new CP UUID. Org-level kinds (e.g. templates) are not in the artifacts table —
-	// GetByHandle returns nil and the importer resolves existence itself.
+	// Resolve the existing artifact by handle, decide the last-in-wins write mode, and run the
+	// per-kind importer — retrying on a unique-constraint violation to close a TOCTOU race.
 	handle := utils.ImportHandle(ictx.Configuration)
-	existing, err := s.artifactRepo.GetByHandle(handle, orgID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to look up existing artifact: %w", err)
-	}
-	if existing != nil {
-		// Guard against handle reuse across kinds. GetByHandle reports the artifact kind in
-		// the Type field (the artifacts.type column).
-		if existing.Type != kind {
-			return nil, apperror.ArtifactExists.New().WithLogMessage(
-				fmt.Sprintf("artifact %q already exists with kind %s", handle, existing.Type))
+	var result *ImportResult
+	var err error
+	for attempt := 0; ; attempt++ {
+		result, err = s.resolveAndImport(importer, ictx, handle, orgID, kind, req.DeployedAt)
+		if err == nil {
+			break
 		}
-		ictx.ID = existing.UUID
-		ictx.Existing = existing
-	} else {
-		ictx.ID = uuid.NewString()
-	}
-
-	// Decide the working-copy (metadata) write mode using last-in-wins by deployment time.
-	// The "latest deployment" watermark is derived from the artifact's existing deployment
-	// rows (deployments.created_at, set to each push's gateway deployment time): a push wins
-	// only when its deployment time is later than every recorded deployment of the artifact.
-	// Org-level kinds not backed by the artifacts table (templates) have existing == nil here
-	// and recompute the decision themselves in the importer using their own watermark.
-	var currentOrigin string
-	var currentDeployedAt *time.Time
-	if existing != nil {
-		currentOrigin = existing.Origin
-		latest, err := s.deploymentRepo.GetLatestDeploymentTime(existing.UUID, orgID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to look up latest deployment time: %w", err)
+		if attempt < importConflictMaxRetries && repository.IsUniqueViolation(err) {
+			s.slogger.Info("Concurrent same-handle import detected; re-resolving and retrying as update",
+				"kind", kind, "handle", handle, "orgId", orgID, "attempt", attempt+1)
+			continue
 		}
-		currentDeployedAt = latest
-	}
-	ictx.MetadataMode = utils.DecideMetadataWrite(existing == nil, currentOrigin, currentDeployedAt, req.DeployedAt)
-
-	result, err := importer.Import(ictx)
-	if err != nil {
 		return nil, err
 	}
 
-	// Persist deployment + status for deployable kinds (everything except templates). This
-	// runs for every non-undeploy push — including a stale (utils.SkipWorkingCopy) one — so each
-	// push is recorded as a deployment (with created_at = the gateway deployment time) and
-	// each gateway's own deployment status stays accurate even when its push lost the race.
+	// Persist deployment + status for deployable kinds (everything except templates).
 	if result.Deployable {
 		if err := s.writeDeployment(ictx, result.ID); err != nil {
 			return nil, err
@@ -337,6 +308,50 @@ func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto
 		DeployedAt:      req.DeployedAt,
 		DeployedVersion: result.DeployedVersion,
 	}, nil
+}
+
+// resolveAndImport resolves the existing artifact by handle, computes the last-in-wins
+// metadata write mode for this push, and runs the per-kind importer once.
+func (s *ArtifactImportService) resolveAndImport(
+	importer GatewayArtifactImporter,
+	ictx *ImportContext,
+	handle, orgID, kind string,
+	incomingDeployedAt *time.Time,
+) (*ImportResult, error) {
+	// The control plane owns the artifact UUID; it does NOT reuse the data-plane UUID
+	// (the gateway mints a fresh one whenever the artifact is recreated).
+	existing, err := s.artifactRepo.GetByHandle(handle, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up existing artifact: %w", err)
+	}
+	if existing != nil {
+		// Guard against handle reuse across kinds. GetByHandle reports the artifact kind in
+		// the Type field (the artifacts.type column).
+		if existing.Type != kind {
+			return nil, apperror.ArtifactExists.New().WithLogMessage(
+				fmt.Sprintf("artifact %q already exists with kind %s", handle, existing.Type))
+		}
+		ictx.ID = existing.UUID
+		ictx.Existing = existing
+	} else {
+		ictx.ID = uuid.NewString()
+		ictx.Existing = nil
+	}
+
+	// Decide the working-copy (metadata) write mode using last-in-wins by deployment time.
+	var currentOrigin string
+	var currentDeployedAt *time.Time
+	if existing != nil {
+		currentOrigin = existing.Origin
+		latest, err := s.deploymentRepo.GetLatestDeploymentTime(existing.UUID, orgID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to look up latest deployment time: %w", err)
+		}
+		currentDeployedAt = latest
+	}
+	ictx.MetadataMode = utils.DecideMetadataWrite(existing == nil, currentOrigin, currentDeployedAt, incomingDeployedAt)
+
+	return importer.Import(ictx)
 }
 
 // writeDeployment records the immutable deployment artifact, upserts the current
