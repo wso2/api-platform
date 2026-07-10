@@ -144,11 +144,11 @@ See `configs/config-platform-api.toml.example` for the complete scope list used 
 
 ### Session persistence and scripted access
 
-The Platform API signs login JWTs with its `ENCRYPTION_KEY`. In demo mode this is auto-generated (and persisted next to the database) if unset; pin it so sessions survive restarts and set the **same value** in both services so the devportal can verify JWTs locally without a network round-trip:
+The Platform API generates a random JWT signing key at startup. Sessions are invalidated when it restarts unless you pin the key. Set the **same value** in both services so the devportal can verify JWTs locally without a network round-trip:
 
 ```bash
 # In .env (read by both services via docker-compose env_file / APIP_DP_* override)
-ENCRYPTION_KEY=<64-hex-char-string>   # openssl rand -hex 32
+AUTH_JWT_SECRET_KEY=<64-hex-char-string>   # openssl rand -hex 32
 ```
 
 For scripts and CLI tools, get a Bearer token directly from the Platform API and pass it on each request — no session cookie required:
@@ -160,7 +160,7 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:3000/api/v0.9/organizations
 ```
 
-The token is verified locally by the Developer Portal using the shared `ENCRYPTION_KEY` (the Platform API's signing key) with no extra call to the Platform API per request.
+The token is verified locally by the Developer Portal using the shared `AUTH_JWT_SECRET_KEY` with no extra call to the Platform API per request.
 
 > **Note:** Local auth is for development only. For production, configure the global OIDC identity provider via `APIP_DP_IDP_*` environment variables.
 

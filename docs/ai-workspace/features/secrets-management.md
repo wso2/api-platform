@@ -337,7 +337,7 @@ The following environment variable controls encryption for the Platform API:
 
 | Env Var | Description |
 |---------|-------------|
-| `ENCRYPTION_KEY` | 32-byte AES-256 key as 64 hex characters or base64. Used for all at-rest encryption (secrets, subscription tokens, HMAC) and for signing login JWTs. In demo mode, if unset a key file is auto-generated next to the database and reused on restart; in production it is required. Mutually exclusive with `ENCRYPTION_KEY_FILE`. |
+| `ENCRYPTION_KEY` | 32-byte AES-256 key as 64 hex characters or base64. In demo mode, if unset a key file is auto-generated next to the database and reused on restart; in production it is required. Mutually exclusive with `ENCRYPTION_KEY_FILE`. |
 
 Generate a stable key with:
 

@@ -15,7 +15,8 @@
 #   Set the environment variables below for secrets — either export them
 #   in your shell, or create a .env file next to this file:
 #
-#     ENCRYPTION_KEY=$(openssl rand -hex 32)   # stable key: encrypts secrets & signs login JWTs
+#     AUTH_JWT_SECRET_KEY=$(openssl rand -hex 32)   # stable key: signs login JWTs
+#     ENCRYPTION_KEY=$(openssl rand -hex 32)   # stable key: encrypts secrets
 #
 # Authentication:
 #   Out of the box the stack uses file-based auth (login admin / admin) — no
@@ -55,10 +56,11 @@ services:
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
       # Secrets — set these in your shell or in a .env file next to this file.
+      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
       - DATABASE_PASSWORD=${DATABASE_PASSWORD:-}
       - APIP_DEMO_MODE=${APIP_DEMO_MODE:-true}
       # Single encryption key (64 hex chars = 32 bytes) for all at-rest encryption
-      # (secrets, subscription tokens, HMAC) and for signing local login JWTs.
+      # (secrets, subscription tokens, HMAC)
       # In demo mode, if unset a key file is auto-created next to the database and reused
       # on restart. Set a stable value for multi-replica/production deployments:
       #   export ENCRYPTION_KEY=$(openssl rand -hex 32)

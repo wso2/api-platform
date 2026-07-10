@@ -263,8 +263,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 
 	// The single configured encryption key (ENCRYPTION_KEY) is used for all encrypted DB
-	// columns (secrets, subscription tokens, WebSub HMAC secrets) and for signing local
-	// HMAC login JWTs. It is validated below via DeriveEncryptionKey.
+	// columns (secrets, subscription tokens, WebSub HMAC secrets)
 	dbEncryptionKey := cfg.EncryptionKey
 	llmProviderDeploymentService := service.NewLLMProviderDeploymentService(
 		llmProviderRepo,
@@ -503,7 +502,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 			slogger.Warn("file-based authentication is enabled — this is not recommended for production; please configure an IDP of your choice")
 		}
 		chain = append(chain, middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
-			SecretKey:      cfg.EncryptionKey,
+			SecretKey:      cfg.Auth.JWT.SecretKey,
 			TokenIssuer:    cfg.Auth.JWT.Issuer,
 			SkipPaths:      cfg.Auth.SkipPaths,
 			SkipValidation: false,
@@ -587,7 +586,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 		}
 		return middleware.NewJWTAuthenticator(
 			middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
-				SecretKey:      cfg.EncryptionKey,
+				SecretKey:      cfg.Auth.JWT.SecretKey,
 				TokenIssuer:    cfg.Auth.JWT.Issuer,
 				SkipPaths:      cfg.Auth.SkipPaths,
 				SkipValidation: cfg.Auth.JWT.SkipValidation,

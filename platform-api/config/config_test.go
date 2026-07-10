@@ -32,6 +32,8 @@ import (
 const validInlineKey = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 
 // clearKeyEnv resets all encryption-related env vars to empty so each test starts clean.
+// A JWT signing key is provided so the (separate) AUTH_JWT_SECRET_KEY requirement never
+// interferes with these encryption-key assertions — JWT is validated independently.
 // t.Setenv restores the previous value automatically at test end.
 func clearKeyEnv(t *testing.T) {
 	t.Helper()
@@ -39,6 +41,7 @@ func clearKeyEnv(t *testing.T) {
 	t.Setenv("ENCRYPTION_KEY_FILE", "")
 	t.Setenv("DATABASE_DB_PATH", "")
 	t.Setenv("APIP_DEMO_MODE", "")
+	t.Setenv("AUTH_JWT_SECRET_KEY", validInlineKey)
 }
 
 // writeValidKeyFile writes a 32-byte binary key file and returns its path and the
@@ -268,15 +271,27 @@ func TestResolveKey_DemoModeTruthyVariants(t *testing.T) {
 	}
 }
 
-// --- validEncryptionKey unit coverage ---
+// A provided AUTH_JWT_SECRET_KEY must be an AES-256-sized key (64 hex / base64→32 bytes).
+func TestLoadConfig_InvalidJWTSecretKey_Errors(t *testing.T) {
+	clearKeyEnv(t)
+	t.Setenv("APIP_DEMO_MODE", "true")
+	t.Setenv("ENCRYPTION_KEY", validInlineKey) // valid, so the failure is attributable to the JWT key
+	t.Setenv("AUTH_JWT_SECRET_KEY", "not-a-valid-32-byte-key")
 
-func TestValidEncryptionKey(t *testing.T) {
-	require.True(t, validEncryptionKey(validInlineKey), "64 hex chars must be valid")
+	_, err := LoadConfig("")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid AUTH_JWT_SECRET_KEY")
+}
+
+// --- valid32ByteKey unit coverage ---
+
+func TestValid32ByteKey(t *testing.T) {
+	require.True(t, valid32ByteKey(validInlineKey), "64 hex chars must be valid")
 	// 32 bytes base64-encoded (standard encoding, 44 chars).
-	require.True(t, validEncryptionKey("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="))
-	require.False(t, validEncryptionKey(""), "empty must be invalid")
-	require.False(t, validEncryptionKey("short"), "short strings must be invalid")
-	require.False(t, validEncryptionKey("zz"+validInlineKey[2:]), "non-hex 64-char must be invalid")
+	require.True(t, valid32ByteKey("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="))
+	require.False(t, valid32ByteKey(""), "empty must be invalid")
+	require.False(t, valid32ByteKey("short"), "short strings must be invalid")
+	require.False(t, valid32ByteKey("zz"+validInlineKey[2:]), "non-hex 64-char must be invalid")
 }
 
 // validateAuthModeExclusivity: IDP (JWKS) auth must not be enabled alongside the

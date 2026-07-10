@@ -28,8 +28,10 @@
 #   4. Open http://localhost:3000
 #      Login: admin / admin
 #
-# Set ENCRYPTION_KEY in your shell or a .env file to keep sessions and encrypted data
-# alive across Platform API restarts. When unset a demo key is used.
+# Set AUTH_JWT_SECRET_KEY (signs login sessions; share the same value with the devportal's
+# APIP_DP_PLATFORMAPI_JWTSECRET) and ENCRYPTION_KEY (encrypts data at rest) in your shell or a
+# .env file to keep sessions/data alive across restarts. Both are 32-byte keys (64 hex chars /
+# base64 — openssl rand -hex 32). When AUTH_JWT_SECRET_KEY is unset an ephemeral demo key is used.
 
 services:
   platform-api:
@@ -38,6 +40,7 @@ services:
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
+      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro

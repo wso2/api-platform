@@ -188,6 +188,7 @@ type CORS struct {
 // JWT holds configuration for local HMAC JWT authentication.
 type JWT struct {
 	Enabled        bool   `koanf:"enabled"`
+	SecretKey      string `koanf:"secret_key"`
 	Issuer         string `koanf:"issuer"`
 	SkipValidation bool   `koanf:"skip_validation"`
 }
@@ -362,6 +363,29 @@ func LoadConfig(configPath string) (*Server, error) {
 		return nil, err
 	}
 
+	if cfg.Auth.JWT.Enabled {
+		switch {
+		case cfg.Auth.JWT.SecretKey == "":
+			if !demoMode() {
+				return nil, fmt.Errorf(
+					"AUTH_JWT_SECRET_KEY must be configured when APIP_DEMO_MODE=false and JWT authentication is enabled; " +
+						"generate one with: openssl rand -hex 32",
+				)
+			}
+			// Demo: generate an ephemeral in-memory key (a valid 64-hex/32-byte value)
+			key, err := generateRandomSecret()
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate JWT secret key: %w", err)
+			}
+			cfg.Auth.JWT.SecretKey = key
+			slog.Warn("AUTH_JWT_SECRET_KEY not set — generated an ephemeral in-memory demo key; " +
+				"login sessions will be invalidated on restart. Set AUTH_JWT_SECRET_KEY to persist sessions.")
+		case !valid32ByteKey(cfg.Auth.JWT.SecretKey):
+			return nil, fmt.Errorf("invalid AUTH_JWT_SECRET_KEY: must be 64 hex characters or " +
+				"base64 decoding to 32 bytes (generate one with: openssl rand -hex 32)")
+		}
+	}
+
 	if err := resolveEncryptionKey(cfg); err != nil {
 		return nil, err
 	}
@@ -390,7 +414,7 @@ func resolveEncryptionKey(cfg *Server) error {
 	switch {
 	case cfg.EncryptionKey != "":
 		// Inline key from config.toml / ENCRYPTION_KEY. Validate; never persist to a file.
-		if !validEncryptionKey(cfg.EncryptionKey) {
+		if !valid32ByteKey(cfg.EncryptionKey) {
 			return fmt.Errorf("invalid ENCRYPTION_KEY: must be 64 hex characters or base64 " +
 				"decoding to 32 bytes (generate one with: openssl rand -hex 32)")
 		}
@@ -450,9 +474,9 @@ func resolveEncryptionKey(cfg *Server) error {
 	}
 }
 
-// validEncryptionKey reports whether keyStr is a 32-byte key encoded as 64 hex characters
+// valid32ByteKey reports whether keyStr is a 32-byte key encoded as 64 hex characters
 // or base64 decoding to 32 bytes — matching utils.DeriveEncryptionKey's acceptance.
-func validEncryptionKey(keyStr string) bool {
+func valid32ByteKey(keyStr string) bool {
 	if len(keyStr) == 64 {
 		if k, err := hex.DecodeString(keyStr); err == nil && len(k) == 32 {
 			return true
@@ -614,6 +638,8 @@ func envToKoanfKey(s string) string {
 	// Auth JWT
 	case "auth_jwt_enabled":
 		return "auth.jwt.enabled"
+	case "auth_jwt_secret_key":
+		return "auth.jwt.secret_key"
 	case "auth_jwt_issuer":
 		return "auth.jwt.issuer"
 	case "auth_jwt_skip_validation":

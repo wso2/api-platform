@@ -10,13 +10,14 @@ services:
       - DATABASE_PATH=/app/data/platform.db
       - DATABASE_EXECUTE_SCHEMA_DDL=true
       # Single encryption key — must be 32 bytes (64 hex chars). Used for all at-rest
-      # encryption (secrets, subscription tokens, HMAC) and for signing local login JWTs.
+      # encryption (secrets, subscription tokens, HMAC)
       - ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       - AUTH_FILE_BASED_ENABLED=true
       - AUTH_FILE_BASED_ORGANIZATION_ID=default
       - AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
       - AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
       - AUTH_FILE_BASED_ORGANIZATION_REGION=us
+      - AUTH_JWT_SECRET_KEY=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
     ports:

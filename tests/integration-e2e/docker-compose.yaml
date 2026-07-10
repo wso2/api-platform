@@ -53,8 +53,6 @@ services:
       - DATABASE_USER=apip
       - DATABASE_PASSWORD=apip
       - DATABASE_SSL_MODE=disable
-      # Single encryption key — must be 32 bytes (64 hex chars). Used for all at-rest
-      # encryption (secrets, subscription tokens, HMAC) and for signing local login JWTs.
       - ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       # Force file-based auth + a stable org so the scenario can log in and the
       # org is seeded (env overrides the mounted config file).
@@ -63,6 +61,7 @@ services:
       - AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
       - AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
       - AUTH_FILE_BASED_ORGANIZATION_REGION=us
+      - AUTH_JWT_SECRET_KEY=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
       # The @devportal stack injects the admin user (with dp:* scopes) here so the
       # issued JWT is authorized on the developer portal. Empty (the default) means
       # platform-api uses its built-in admin (ap:* scopes only).
@@ -230,9 +229,9 @@ services:
       - APIP_DP_ORGANIZATION_AUTOCREATESUBSCRIPTIONPLANS=false
       - APIP_DP_LOGGING_CONSOLEONLY=true
       # Validate platform-api-issued JWTs locally: this MUST equal the stack's
-      # ENCRYPTION_KEY so the admin token is accepted by the devportal.
+      # AUTH_JWT_SECRET_KEY so the admin token is accepted by the devportal.
       - APIP_DP_PLATFORMAPI_BASEURL=https://platform-api:9243
-      - APIP_DP_PLATFORMAPI_JWTSECRET=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - APIP_DP_PLATFORMAPI_JWTSECRET=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
       - APIP_DP_PLATFORMAPI_INSECURE=true
       # The webhook delivery worker POSTs over raw https with the default agent,
       # and platform-api serves a self-signed cert here. APIP_DP_PLATFORMAPI_INSECURE

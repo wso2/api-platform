@@ -6,7 +6,7 @@ Backend service that powers the API Platform portals, gateways, and automation f
 
 ### Prerequisites
 
-Before using the Platform API, obtain a bearer token for authentication. In local JWT mode (default) tokens are signed with the configured `ENCRYPTION_KEY`. In IDP mode, obtain a token from your identity provider.
+Before using the Platform API, obtain a bearer token for authentication. In local JWT mode (default) you can generate a token using the configured `AUTH_JWT_SECRET_KEY`. In IDP mode, obtain a token from your identity provider.
 
 ### Build and Run
 
@@ -249,11 +249,11 @@ AUTH_IDP_ENABLED=true             →  IDP mode        (JWKS-based verification)
 
 #### Local JWT Mode (default)
 
-The server signs and validates HMAC login tokens using `ENCRYPTION_KEY` (the same key used for at-rest encryption; see [Encryption](#encryption)). Set `AUTH_JWT_SKIP_VALIDATION=true` only in local development environments where you do not have a token issuer available — all bearer values will be accepted without any signature check.
+The server signs and validates HMAC login tokens using `AUTH_JWT_SECRET_KEY` — a 32-byte key (64 hex chars or base64). Set `AUTH_JWT_SKIP_VALIDATION=true` only in local development environments where you do not have a token issuer available — all bearer values will be accepted without any signature check.
 
 | Variable | Default | Description                                                         |
 |---|---|---------------------------------------------------------------------|
-| `ENCRYPTION_KEY` | _(empty)_ | 32-byte key; signs HMAC login tokens and verification                           |
+| `AUTH_JWT_SECRET_KEY` | _(empty)_ | HMAC key for signing/verifying login JWTs — 32-byte value (64 hex or base64; `openssl rand -hex 32`). Required in production; demo generates an ephemeral one. |
 | `AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value                                          |
 | `AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only**                  |
 | `DEV_MODE` | `false` | Suppresses the startup warning when `AUTH_JWT_SKIP_VALIDATION=true` |
@@ -267,7 +267,7 @@ go run ./cmd/main.go
 
 Production with HMAC verification:
 ```bash
-export ENCRYPTION_KEY=<strong-random-key>
+export AUTH_JWT_SECRET_KEY=<strong-random-key>
 export AUTH_JWT_ISSUER=https://your-token-issuer
 go run ./cmd/main.go
 ```
@@ -276,6 +276,7 @@ go run ./cmd/main.go
 
 | Old name | New name |
 |---|---|
+| `JWT_SECRET_KEY` | `AUTH_JWT_SECRET_KEY` |
 | `JWT_ISSUER` | `AUTH_JWT_ISSUER` |
 | `JWT_SKIP_VALIDATION` | `AUTH_JWT_SKIP_VALIDATION` |
 | `JWT_SKIP_PATHS` | `AUTH_SKIP_PATHS` |
@@ -373,7 +374,7 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 
 ### Encryption
 
-A single key protects all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets) and signs local HMAC login JWTs. Provide **exactly one** of `ENCRYPTION_KEY` or `ENCRYPTION_KEY_FILE`.
+A single key protects all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets). Provide **exactly one** of `ENCRYPTION_KEY` or `ENCRYPTION_KEY_FILE`.
 
 | Variable | Default | Description |
 |---|---|---|

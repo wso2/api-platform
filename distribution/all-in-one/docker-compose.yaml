@@ -40,6 +40,8 @@ services:
       context: ../../portals/developer-portal
       dockerfile: Dockerfile
     container_name: devportal
+    environment:
+      - APIP_DP_PLATFORMAPI_JWTSECRET=${AUTH_JWT_SECRET_KEY:?AUTH_JWT_SECRET_KEY must be set to a stable 32-byte key (openssl rand -hex 32)}
     ports:
       - "3001:3001"
     volumes:
@@ -74,6 +76,7 @@ services:
       - DATABASE_CONN_MAX_LIFETIME=300
       - DATABASE_EXECUTE_SCHEMA_DDL=true
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set to a stable 32-byte key (openssl rand -hex 32)}
+      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:?AUTH_JWT_SECRET_KEY must be set to a stable 32-byte key (openssl rand -hex 32)}
     depends_on:
       postgres:
         condition: service_healthy

@@ -30,8 +30,8 @@ enable_scope_validation = true
 # Encryption
 # ---------------------------------------------------------------------------
 # Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
-# (secrets, subscription tokens, WebSub HMAC secrets) and for signing local HMAC
-# login JWTs. Provide exactly ONE of encryption_key / encryption_key_file
+# (secrets, subscription tokens, WebSub HMAC secrets)
+# Provide exactly ONE of encryption_key / encryption_key_file
 # (env: ENCRYPTION_KEY / ENCRYPTION_KEY_FILE). Generate with: openssl rand -hex 32.
 # In demo mode, if neither is set a key file is auto-created next to the database
 # and reused on restart; in production one of them is required.
@@ -58,7 +58,9 @@ path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 # ---------------------------------------------------------------------------
 
 # JWT (local HMAC) — issues signed tokens after file-based login.
-# Login JWTs are signed with the top-level encryption_key (ENCRYPTION_KEY).
+# secret_key is a 32-byte key (64 hex chars or base64; openssl rand -hex 32).
+# Auto-generated in memory when unset (ephemeral — sessions reset on restart).
+# Set AUTH_JWT_SECRET_KEY env var or secret_key here to persist sessions across restarts.
 [auth.jwt]
 enabled         = true
 issuer          = "platform-api"
