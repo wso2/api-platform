@@ -238,8 +238,13 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 	}
 
 	entries := make([]GatewayPolicyDefinition, 0, len(policies))
+	organizationCount := 0
 	for _, p := range policies {
-		if !constants.ValidPolicyManagedBy[p.ManagedBy] {
+		managedBy := p.ManagedBy
+		if managedBy == constants.PolicyManagedByLegacyCustomer {
+			managedBy = constants.PolicyManagedByOrganization
+		}
+		if !constants.ValidPolicyManagedBy[managedBy] {
 			s.slogger.Warn("Skipping policy with unknown managed_by value",
 				slog.String("gateway_id", gatewayID),
 				slog.String("policy_name", p.Name),
@@ -252,9 +257,10 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 			Version:     p.Version,
 			DisplayName: p.DisplayName,
 			Description: p.Description,
-			ManagedBy:   p.ManagedBy,
+			ManagedBy:   managedBy,
 		}
-		if p.ManagedBy == constants.PolicyManagedByOrganization {
+		if managedBy == constants.PolicyManagedByOrganization {
+			organizationCount++
 			policyDef := map[string]interface{}{}
 			if p.Parameters != nil {
 				policyDef["parameters"] = p.Parameters
@@ -281,12 +287,6 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 		return fmt.Errorf("failed to update gateway version: %w", err)
 	}
 
-	organizationCount := 0
-	for _, p := range policies {
-		if p.ManagedBy == constants.PolicyManagedByOrganization {
-			organizationCount++
-		}
-	}
 	s.slogger.Info("Gateway manifest received and stored",
 		slog.String("org_id", orgID),
 		slog.String("gateway_id", gatewayID),

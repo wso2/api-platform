@@ -164,6 +164,7 @@ const (
 const (
 	PolicyManagedByOrganization = "organization"
 	PolicyManagedByWSO2         = "wso2"
+	PolicyManagedByLegacyCustomer = "customer"
 )
 
 const TemplateManagedByOrganization = "organization"

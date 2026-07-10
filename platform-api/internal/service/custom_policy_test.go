@@ -42,9 +42,11 @@ type mockGatewayRepoForPolicy struct {
 	manifestErr error
 
 	// call tracking
-	getByUUIDCalled   bool
-	getManifestCalled bool
-	lastGatewayID     string
+	getByUUIDCalled      bool
+	getManifestCalled    bool
+	lastGatewayID        string
+	storedManifest       []byte
+	updatedVersion       string
 }
 
 func (m *mockGatewayRepoForPolicy) GetByUUID(gatewayID string) (*model.Gateway, error) {
@@ -56,6 +58,16 @@ func (m *mockGatewayRepoForPolicy) GetByUUID(gatewayID string) (*model.Gateway, 
 func (m *mockGatewayRepoForPolicy) GetGatewayManifest(gatewayID string) ([]byte, error) {
 	m.getManifestCalled = true
 	return m.manifest, m.manifestErr
+}
+
+func (m *mockGatewayRepoForPolicy) UpdateGatewayManifest(gatewayID string, manifest []byte) error {
+	m.storedManifest = manifest
+	return nil
+}
+
+func (m *mockGatewayRepoForPolicy) UpdateGatewayVersion(gatewayID, version string) error {
+	m.updatedVersion = version
+	return nil
 }
 
 // mockCustomPolicyRepo mocks all CustomPolicyRepository methods.
@@ -667,5 +679,57 @@ func TestListCustomPolicies(t *testing.T) {
 				t.Errorf("ListCustomPolicies() count = %d, want %d", len(policies), tt.wantCount)
 			}
 		})
+	}
+}
+
+// TestReceiveGatewayManifest_LegacyCustomerNormalized verifies that when a gateway manifest is received, any policies marked as "legacy customer" are normalized to "organization" in the stored manifest.
+func TestReceiveGatewayManifest_LegacyCustomerNormalized(t *testing.T) {
+	const (
+		orgID = "org-uuid-0001"
+		gwID  = "gw-uuid-0001"
+	)
+
+	gwRepo := &mockGatewayRepoForPolicy{
+		gateway: &model.Gateway{OrganizationID: orgID, Version: "1.1.0"},
+	}
+	svc := newTestGatewayService(gwRepo, &mockCustomPolicyRepo{})
+
+	params := map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}
+	policies := []GatewayPolicyInput{
+		{Name: "legacy-custom", Version: "v1.0.0", ManagedBy: constants.PolicyManagedByLegacyCustomer, Parameters: params},
+		{Name: "new-custom", Version: "v1.0.0", ManagedBy: constants.PolicyManagedByOrganization, Parameters: params},
+		{Name: "built-in", Version: "v1.0.0", ManagedBy: constants.PolicyManagedByWSO2},
+		{Name: "bogus", Version: "v1.0.0", ManagedBy: "somebody-else"},
+	}
+
+	if err := svc.ReceiveGatewayManifest(orgID, gwID, "1.1.0", "", policies); err != nil {
+		t.Fatalf("ReceiveGatewayManifest() error = %v", err)
+	}
+
+	var stored []GatewayPolicyDefinition
+	if err := json.Unmarshal(gwRepo.storedManifest, &stored); err != nil {
+		t.Fatalf("failed to unmarshal stored manifest: %v", err)
+	}
+	if len(stored) != 3 {
+		t.Fatalf("expected 3 stored policies (bogus skipped), got %d", len(stored))
+	}
+	byName := map[string]GatewayPolicyDefinition{}
+	for _, p := range stored {
+		byName[p.Name] = p
+	}
+	for _, name := range []string{"legacy-custom", "new-custom"} {
+		p, ok := byName[name]
+		if !ok {
+			t.Fatalf("policy %q missing from stored manifest", name)
+		}
+		if p.ManagedBy != constants.PolicyManagedByOrganization {
+			t.Errorf("policy %q stored with managedBy %q, want %q", name, p.ManagedBy, constants.PolicyManagedByOrganization)
+		}
+		if p.PolicyDefinition == nil {
+			t.Errorf("policy %q should have its policy definition stored", name)
+		}
+	}
+	if p := byName["built-in"]; p.ManagedBy != constants.PolicyManagedByWSO2 {
+		t.Errorf("built-in policy stored with managedBy %q, want %q", p.ManagedBy, constants.PolicyManagedByWSO2)
 	}
 }
