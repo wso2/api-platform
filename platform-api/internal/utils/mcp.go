@@ -291,8 +291,7 @@ func initializeMCPServer(url string, headerName string, headerValue string) (str
 
 	// Check HTTP status code
 	if resp.StatusCode == http.StatusUnauthorized {
-		return "", nil, apperror.ValidationFailed.New(
-			"The MCP server returned 401 Unauthorized. Check the provided credentials.").
+		return "", nil, apperror.Unauthorized.New().
 			WithLogMessage("MCP server returned 401 Unauthorized to the initialize request")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

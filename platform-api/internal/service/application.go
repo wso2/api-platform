@@ -202,7 +202,7 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle 
 		opts.Offset = 0
 	}
 	if strings.TrimSpace(projectHandle) == "" {
-		return nil, apperror.ProjectNotFound.New()
+		return nil, apperror.ValidationFailed.New("The project handle is required.")
 	}
 
 	project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgID)

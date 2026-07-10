@@ -82,10 +82,10 @@ func (s *SubscriptionPlanService) ResolveOrgHandle(orgUUID string) string {
 // CreatePlan creates a new subscription plan
 func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.SubscriptionPlan) (*model.SubscriptionPlan, error) {
 	if plan.Handle == "" {
-		return nil, fmt.Errorf("handle is required")
+		return nil, apperror.ValidationFailed.New("handle is required")
 	}
 	if plan.Name == "" {
-		return nil, fmt.Errorf("name is required")
+		return nil, apperror.ValidationFailed.New("name is required")
 	}
 
 	exists, err := s.planRepo.ExistsByHandleAndOrg(plan.Handle, orgUUID)
@@ -173,7 +173,7 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 
 	if update.Name != nil {
 		if *update.Name == "" {
-			return nil, fmt.Errorf("name is required")
+			return nil, apperror.ValidationFailed.New("name is required")
 		}
 		existing.Name = *update.Name
 	}
@@ -201,7 +201,7 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 		case model.SubscriptionPlanStatusActive, model.SubscriptionPlanStatusInactive:
 			existing.Status = *update.Status
 		default:
-			return nil, fmt.Errorf("invalid status: %s", *update.Status)
+			return nil, apperror.ValidationFailed.New(fmt.Sprintf("invalid status: %s", *update.Status))
 		}
 	}
 

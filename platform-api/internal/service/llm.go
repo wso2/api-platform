@@ -1348,7 +1348,7 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 	var resolvedProjectUUID *string
 	if projectHandle != nil && *projectHandle != "" {
 		if s.projectRepo == nil {
-			return nil, apperror.ProjectNotFound.New()
+			return nil, fmt.Errorf("cannot resolve project handle: project repository unavailable")
 		}
 		project, err := s.projectRepo.GetProjectByHandleAndOrgID(*projectHandle, orgUUID)
 		if err != nil {

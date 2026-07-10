@@ -107,6 +107,10 @@ func (h *LLMProviderAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.R
 	}
 
 	if err := h.apiKeyService.DeleteLLMProviderAPIKey(r.Context(), providerID, orgID, callerUserID, keyName); err != nil {
+		var appErr *apperror.Error
+		if errors.As(err, &appErr) {
+			return err
+		}
 		return serviceError(err, fmt.Sprintf("failed to delete LLM provider API key %s for provider %s in org %s", keyName, providerID, orgID))
 	}
 

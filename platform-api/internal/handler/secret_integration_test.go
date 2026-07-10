@@ -923,7 +923,7 @@ func TestSecretService_ValidateSecretRefs_DeprecatedHandleRejected(t *testing.T)
 		t.Fatal("expected validation error for DEPRECATED secret ref, got nil")
 	}
 	if !apperror.ValidationFailed.Is(err) {
-		t.Errorf("expected ErrSecretRefMissing, got %v", err)
+		t.Errorf("expected ValidationFailed, got %v", err)
 	}
 }
 
