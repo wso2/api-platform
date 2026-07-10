@@ -1453,6 +1453,9 @@ type LLMProviderTemplateResourceMappings struct {
 
 // LLMProxy defines model for LLMProxy.
 type LLMProxy struct {
+	// AdditionalProviders Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target.
+	AdditionalProviders *[]LLMProxyAdditionalProvider `json:"additionalProviders,omitempty" yaml:"additionalProviders,omitempty"`
+
 	// AssociatedGateways Optional list of gateways this LLM proxy can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
 	AssociatedGateways *[]AssociatedGateway `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
 
@@ -1519,6 +1522,18 @@ type LLMProxyAPIKeyListResponse struct {
 	Items []APIKeyItem `binding:"required" json:"items" yaml:"items"`
 }
 
+// LLMProxyAdditionalProvider Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`).
+type LLMProxyAdditionalProvider struct {
+	// As Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted.
+	As *string `json:"as,omitempty" yaml:"as,omitempty"`
+
+	// Id Unique id of a deployed llm provider
+	Id string `binding:"required" json:"id" yaml:"id"`
+
+	// Transformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
+	Transformer *LLMProxyTransformer `json:"transformer,omitempty" yaml:"transformer,omitempty"`
+}
+
 // LLMProxyListItem defines model for LLMProxyListItem.
 type LLMProxyListItem struct {
 	// Context Context path where the proxy is exposed
@@ -1563,6 +1578,18 @@ type LLMProxyProvider struct {
 
 	// Id Unique id of a deployed llm provider
 	Id string `binding:"required" json:"id" yaml:"id"`
+}
+
+// LLMProxyTransformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
+type LLMProxyTransformer struct {
+	// Params Translator-specific parameters (for example model, apiVersion).
+	Params *map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
+
+	// Type Translator policy name (for example openai-to-anthropic).
+	Type string `binding:"required" json:"type" yaml:"type"`
+
+	// Version Major-only translator policy version (for example v1). The Gateway Controller resolves it to the installed full version.
+	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
 // LLMRateLimitingConfig Rate limiting configuration for an LLM provider at provider and consumer levels.

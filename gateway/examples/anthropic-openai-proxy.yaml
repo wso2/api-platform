@@ -1,0 +1,52 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+# OpenAI -> Anthropic LLM Proxy (single-provider)
+#
+# Exposes an OpenAI-shaped /chat/completions endpoint that the
+# `openai-to-anthropic` policy translates into Anthropic's Messages API
+# format and forwards to the existing `anthropic-provider` upstream
+# (api.anthropic.com).
+#
+# Single-provider mode: there is no router in front of the policy, so
+# nothing sets metadata["selected_provider"] and the translator runs on
+# every request. "id" is omitted, so it routes to the default upstream
+# (the primary provider above).
+#
+# The provider must already be deployed and must have its x-api-key
+# set on upstream.auth (the policy does NOT inject the Anthropic key).
+#
+# The provider example's api-key-auth policy expects the proxy to send the
+# issued provider loopback key in X-API-Key.
+# --------------------------------------------------------------------
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProxy
+metadata:
+  name: openai-to-anthropic
+spec:
+  displayName: OpenAI to Anthropic Proxy
+  version: v1.0
+  context: /openai-anthropic
+  provider:
+    id: anthropic-provider
+    auth:
+      type: api-key
+      header: X-API-Key
+      value: REPLACE_WITH_ANTHROPIC_PROVIDER_LOOPBACK_KEY
+  policies:
+    - name: openai-to-anthropic
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            model: claude-sonnet-4-5-20250929

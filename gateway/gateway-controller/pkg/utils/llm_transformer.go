@@ -148,6 +148,50 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	spec.Upstream.Main = api.Upstream{
 		Url: &upstream,
 	}
+
+	// Step 3.1: Resolve additional providers (multi-provider proxies). Each is
+	// exposed as a named UpstreamDefinition so policies can route to it via
+	// the loopback context. The primary provider above remains the default.
+	if proxy.Spec.AdditionalProviders != nil && len(*proxy.Spec.AdditionalProviders) > 0 {
+		seen := map[string]bool{proxy.Spec.Provider.Id: true}
+		var defs []api.UpstreamDefinition
+		for _, ap := range *proxy.Spec.AdditionalProviders {
+			if ap.Id == "" {
+				return nil, fmt.Errorf("additionalProviders entry must have a non-empty id")
+			}
+			name := ap.Id
+			if ap.As != nil && *ap.As != "" {
+				name = *ap.As
+			}
+			if seen[name] {
+				return nil, fmt.Errorf("duplicate upstream name '%s' in additionalProviders (must be unique within the proxy and not collide with the primary provider id)", name)
+			}
+			seen[name] = true
+
+			addCfg, err := t.db.GetConfigByKindAndHandle(string(api.LLMProviderConfigurationKindLlmProvider), ap.Id)
+			if err != nil {
+				return nil, fmt.Errorf("failed to look up additional provider '%s': %w", ap.Id, err)
+			}
+			if addCfg == nil {
+				return nil, fmt.Errorf("additional provider '%s' not found", ap.Id)
+			}
+			addCtx, err := addCfg.GetContext()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get context for additional provider '%s': %w", ap.Id, err)
+			}
+			addURL := fmt.Sprintf("%s://%s:%d%s",
+				constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort, addCtx)
+			defs = append(defs, api.UpstreamDefinition{
+				Name: name,
+				Upstreams: []struct {
+					Url    string `json:"url" yaml:"url"`
+					Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+				}{{Url: addURL}},
+			})
+		}
+		spec.UpstreamDefinitions = &defs
+	}
+
 	// If provider has vhost configured add a host adding policy
 	if providerConfig.Spec.Vhost != nil && *providerConfig.Spec.Vhost != "" {
 		providerVhost := *providerConfig.Spec.Vhost
@@ -182,34 +226,43 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	}
 
 	// Step 3.5: Apply proxy-level provider auth for proxy->provider loopback upstream
-	var upstreamAuthPolicy *api.Policy
+	// and inline translators declared per additional provider. Both are attached as
+	// conditional policies so they run only when their provider is selected.
+	var upstreamAuthPolicies []api.Policy
+	var transformerPolicies []api.Policy
 	if proxy.Spec.Provider.Auth != nil {
-		auth := proxy.Spec.Provider.Auth
-		switch auth.Type {
-		case api.LLMUpstreamAuthTypeApiKey:
-			if auth.Value == nil || *auth.Value == "" {
-				return nil, fmt.Errorf("provider.auth.value is required")
+		pol, err := t.proxyUpstreamAuthPolicy(proxy.Spec.Provider.Auth, "provider.auth")
+		if err != nil {
+			return nil, err
+		}
+		condition := selectedProviderExecutionCondition(proxy.Spec.Provider.Id, true)
+		pol.ExecutionCondition = &condition
+		upstreamAuthPolicies = append(upstreamAuthPolicies, *pol)
+	}
+	if proxy.Spec.AdditionalProviders != nil {
+		for _, ap := range *proxy.Spec.AdditionalProviders {
+			name := ap.Id
+			if ap.As != nil && *ap.As != "" {
+				name = *ap.As
 			}
-			header := ""
-			if auth.Header != nil {
-				header = *auth.Header
+
+			if ap.Auth != nil {
+				pol, err := t.proxyUpstreamAuthPolicy(ap.Auth, fmt.Sprintf("additionalProviders[%s].auth", name))
+				if err != nil {
+					return nil, err
+				}
+				condition := selectedProviderExecutionCondition(name, false)
+				pol.ExecutionCondition = &condition
+				upstreamAuthPolicies = append(upstreamAuthPolicies, *pol)
 			}
-			params, err := GetUpstreamAuthApikeyPolicyParams(header, *auth.Value)
-			if err != nil {
-				return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
+
+			if ap.Transformer != nil {
+				pol, err := t.proxyTransformerPolicy(ap.Transformer, name, fmt.Sprintf("additionalProviders[%s].transformer", name))
+				if err != nil {
+					return nil, err
+				}
+				transformerPolicies = append(transformerPolicies, *pol)
 			}
-			policyVersion, err := t.resolvePolicyVersion(constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME)
-			if err != nil {
-				return nil, err
-			}
-			mh := api.Policy{
-				Name:    constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
-				Version: policyVersion,
-				Params:  &params,
-			}
-			upstreamAuthPolicy = &mh
-		default:
-			return nil, fmt.Errorf("unsupported upstream auth type: %s", auth.Type)
 		}
 	}
 
@@ -284,14 +337,19 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		ops = append(ops, *op)
 	}
 	ops = sortOperationsBySpecificity(ops)
-	if upstreamAuthPolicy != nil {
+	// Translators must run before upstream auth so the request is rewritten into
+	// the selected provider's shape before the upstream key is added.
+	if len(transformerPolicies) > 0 {
 		for i := range ops {
-			if ops[i].Policies == nil {
-				ops[i].Policies = &[]api.Policy{*upstreamAuthPolicy}
-			} else {
-				existing := *ops[i].Policies
-				existing = append(existing, *upstreamAuthPolicy)
-				ops[i].Policies = &existing
+			for _, transformerPolicy := range transformerPolicies {
+				appendOperationPolicy(&ops[i], transformerPolicy)
+			}
+		}
+	}
+	if len(upstreamAuthPolicies) > 0 {
+		for i := range ops {
+			for _, upstreamAuthPolicy := range upstreamAuthPolicies {
+				appendOperationPolicy(&ops[i], upstreamAuthPolicy)
 			}
 		}
 	}
@@ -666,6 +724,76 @@ func GetUpstreamAuthApikeyPolicyParams(header, value string) (map[string]interfa
 		return nil, err
 	}
 	return m, nil
+}
+
+func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAuth, field string) (*api.Policy, error) {
+	if auth == nil {
+		return nil, nil
+	}
+	switch auth.Type {
+	case api.LLMUpstreamAuthTypeApiKey:
+		if auth.Header == nil || *auth.Header == "" {
+			return nil, fmt.Errorf("%s.header is required", field)
+		}
+		if auth.Value == nil || *auth.Value == "" {
+			return nil, fmt.Errorf("%s.value is required", field)
+		}
+		params, err := GetUpstreamAuthApikeyPolicyParams(*auth.Header, *auth.Value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
+		}
+		policyVersion, err := t.resolvePolicyVersion(constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME)
+		if err != nil {
+			return nil, err
+		}
+		return &api.Policy{
+			Name:    constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
+			Version: policyVersion,
+			Params:  &params,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported upstream auth type: %s", auth.Type)
+	}
+}
+
+// proxyTransformerPolicy builds a translator policy for an additional provider's
+// inline transformer. The provider's upstream name is passed to the translator as
+// its "id" param so it targets the correct upstream, and gates execution so the
+// translator runs only when this provider is the selected upstream.
+func (t *LLMProviderTransformer) proxyTransformerPolicy(transformer *api.LLMProxyTransformer, name, field string) (*api.Policy, error) {
+	if transformer == nil {
+		return nil, nil
+	}
+	if transformer.Type == "" {
+		return nil, fmt.Errorf("%s.type is required", field)
+	}
+	if transformer.Version == "" {
+		return nil, fmt.Errorf("%s.version is required", field)
+	}
+
+	params := map[string]interface{}{}
+	if transformer.Params != nil {
+		for k, v := range *transformer.Params {
+			params[k] = v
+		}
+	}
+	params["id"] = name
+
+	condition := selectedProviderExecutionCondition(name, false)
+	return &api.Policy{
+		Name:               transformer.Type,
+		Version:            transformer.Version,
+		Params:             &params,
+		ExecutionCondition: &condition,
+	}, nil
+}
+
+func selectedProviderExecutionCondition(providerName string, includeDefault bool) string {
+	selectedExpr := fmt.Sprintf("request.Metadata['selected_provider'] == '%s'", providerName)
+	if includeDefault {
+		return fmt.Sprintf("!('selected_provider' in request.Metadata) || %s", selectedExpr)
+	}
+	return fmt.Sprintf("'selected_provider' in request.Metadata && %s", selectedExpr)
 }
 
 // GetHostAdditionPolicyParams renders the policy params with given host value (host-rewrite)
