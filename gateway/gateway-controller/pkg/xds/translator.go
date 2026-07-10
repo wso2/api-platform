@@ -300,8 +300,8 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	method := rdcRoute.Method
 	operationPath := rdcRoute.OperationPath
 
-	// Path-type flags needed below for the regex rewrite. The route's path matcher
-	// itself is built by setMatchPathSpecifier.
+	// Path-type flags needed below for the regex rewrite. The route's path matcher itself
+	// is built by setMatchPathSpecifier (which handles wildcard/params/root/exact/default).
 	isWildcardPath := strings.HasSuffix(operationPath, "/*")
 	isRootPath := operationPath == "/"
 

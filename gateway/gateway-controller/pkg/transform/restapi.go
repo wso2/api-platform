@@ -176,7 +176,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		// global route timeout default in effect.
 		opTimeout, opIdleTimeout, err := xds.ResolveResilience(op.Resilience)
 		if err != nil {
-			return nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.Method, op.Path, err)
+			return nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.EffectiveMethod(), op.EffectivePath(), err)
 		}
 		routeTimeout := buildRouteTimeout(opTimeout, apiTimeout, opIdleTimeout, apiIdleTimeout)
 

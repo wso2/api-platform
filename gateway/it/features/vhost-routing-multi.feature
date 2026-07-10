@@ -224,7 +224,7 @@ Feature: Gateway vhost routing with multi-domain defaults
   Scenario: Semicolon-separated vhosts.main routes every listed production host to the main upstream
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: vhost-multi-list-v1.0
