@@ -185,17 +185,23 @@ const ensureAuthenticated = async (req, res, next) => {
                 req.orgId = req.orgId || orgDetails?.uuid;
                 req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
                 if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
-                    // Reject cross-org access: the URL's :orgName must match the org the
-                    // authenticated (local-auth) user actually belongs to, never trust it bare.
+                    // Reject cross-org access: the URL's :orgName must resolve (via orgDetails.idp_ref_id)
+                    // to the org the authenticated (local-auth) user's token claims it belongs to — the
+                    // same comparison the token/OAuth2 branch below already does. Comparing against the
+                    // bare URL slug instead of idp_ref_id would false-reject legitimate admins whenever
+                    // the devportal org handle and the platform-api org id differ in spelling.
                     const isDevportalRoot = constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern));
-                    if (!isDevportalRoot && orgId !== undefined) {
-                        const authorizedOrgs = req.user.authorizedOrgs;
-                        const belongsToOrg = req.user.userOrg === orgId
-                            || (Array.isArray(authorizedOrgs) && authorizedOrgs.includes(orgId));
-                        if (!belongsToOrg) {
-                            const err = new Error('Forbidden');
-                            err.status = 403;
-                            return next(err);
+                    if (!isDevportalRoot) {
+                        const orgIdentifier = orgDetails?.idp_ref_id;
+                        const tokenOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
+                        if (orgIdentifier && tokenOrgClaim && tokenOrgClaim !== orgIdentifier) {
+                            const authorizedOrgs = req.user.authorizedOrgs;
+                            const belongsToOrg = Array.isArray(authorizedOrgs) && authorizedOrgs.includes(orgIdentifier);
+                            if (!belongsToOrg) {
+                                const err = new Error('Forbidden');
+                                err.status = 403;
+                                return next(err);
+                            }
                         }
                     }
                     if (req.user) {
