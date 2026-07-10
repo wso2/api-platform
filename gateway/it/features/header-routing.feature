@@ -26,14 +26,14 @@ Feature: Header-based route selection (normal RestApi path)
     And I authenticate using basic auth as "admin"
 
   # Several operations share the path /pick and differ only by matchHeaders. Each carries a
-  # distinct directResponse status so the selected route is unambiguous. This exercises exact
-  # header matching, RegularExpression header matching, the more-specific-route-wins precedence
-  # over a header-less catch-all, and the operation-level directResponse field — all on the
-  # normal management-API path.
+  # respond policy with a distinct status so the selected route is unambiguous. This exercises
+  # exact header matching, RegularExpression header matching, the more-specific-route-wins
+  # precedence over a header-less catch-all, and native matchHeaders route selection — all on
+  # the normal management-API path.
   Scenario: Requests are routed to the operation whose header match they satisfy
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: header-routing-api
@@ -52,27 +52,39 @@ Feature: Header-based route selection (normal RestApi path)
             matchHeaders:
               - name: x-variant
                 value: alpha
-            directResponse:
-              statusCode: 201
+            policies:
+              - name: respond
+                version: v1
+                params:
+                  statusCode: 201
           - method: GET
             path: /pick
             matchHeaders:
               - name: x-variant
                 value: beta
-            directResponse:
-              statusCode: 202
+            policies:
+              - name: respond
+                version: v1
+                params:
+                  statusCode: 202
           - method: GET
             path: /pick
             matchHeaders:
               - name: x-variant
                 type: RegularExpression
                 value: "^v[0-9]+$"
-            directResponse:
-              statusCode: 203
+            policies:
+              - name: respond
+                version: v1
+                params:
+                  statusCode: 203
           - method: GET
             path: /pick
-            directResponse:
-              statusCode: 200
+            policies:
+              - name: respond
+                version: v1
+                params:
+                  statusCode: 200
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/header-routing/v1.0/ready" to be ready
