@@ -355,7 +355,7 @@ Feature: Template functions in RestApi spec
         context: /tpl-mcp
         specVersion: "2025-06-18"
         upstream:
-          url: 'http://mcp-server-backend:3001{{ env "IT_DEFINITELY_MISSING_KEY" | default "" }}'
+          url: 'http://mcp-server-backend:3001/mcp{{ env "IT_DEFINITELY_MISSING_KEY" | default "" }}'
         tools: []
         resources: []
         prompts: []
