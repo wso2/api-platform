@@ -95,8 +95,10 @@ type TrafficLogFlow struct {
 
 // TrafficLogFields selects which fields are dropped from the emitted line,
 // keeping everything else. Names are top-level keys (e.g. "latencies",
-// "requestHeaders") or dotted sub-key paths within map fields (e.g.
-// "requestHeaders.authorization", "properties.env").
+// "requestHeaders") or dotted paths of arbitrary depth into nested JSON objects
+// (e.g. "requestHeaders.authorization", "properties.env", or
+// "properties.claims.internal_debug" for a nested object produced by a
+// properties $ctx: expression that evaluates to a CEL map wholesale).
 type TrafficLogFields struct {
 	Exclude []string `json:"exclude,omitempty"`
 }

@@ -296,6 +296,73 @@ func TestLog_Publish_FieldsExcludeHeaderSubKeyCaseInsensitive(t *testing.T) {
 	assert.Equal(t, "baz", respH["x-bar"], "other response headers still present")
 }
 
+// A properties $ctx: expression can expose a whole CEL map wholesale (e.g.
+// "$ctx:auth.property" for a token's full, dynamically-shaped claim set) rather
+// than flattening it into one property per claim. exclude_fields must be able to
+// reach one specific key inside that nested object via a multi-level dotted path.
+func TestLog_Publish_FieldsExcludeMultiLevelPath(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled: true,
+		Properties: map[string]string{
+			"claims": "$ctx:auth.property",
+		},
+		ExcludeFields: []string{"properties.claims.internal_debug"},
+	})
+	event := createBaseEvent()
+	event.Properties[dto.PropKeyAuthProperties] = `{"tenant":"acme","internal_debug":"xyz"}`
+
+	l.Publish(event)
+	decoded := decodeLine(t, read())
+
+	props, ok := decoded["properties"].(map[string]interface{})
+	require.True(t, ok, "properties present")
+	claims, ok := props["claims"].(map[string]interface{})
+	require.True(t, ok, "nested claims object still present")
+	_, hasDebug := claims["internal_debug"]
+	assert.False(t, hasDebug, "excluded nested key dropped")
+	assert.Equal(t, "acme", claims["tenant"], "sibling key under the nested object still present")
+}
+
+// Emptying a nested object via a multi-level exclude must collapse every level
+// that becomes empty as a result, all the way up — not leave "claims": {} or
+// "properties": {} lingering in the output.
+func TestLog_Publish_FieldsExcludeMultiLevelPath_CollapsesEmptyParents(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled: true,
+		Properties: map[string]string{
+			"claims": "$ctx:auth.property",
+		},
+		ExcludeFields: []string{"properties.claims.internal_debug"},
+	})
+	event := createBaseEvent()
+	// The only claim present is the one being excluded.
+	event.Properties[dto.PropKeyAuthProperties] = `{"internal_debug":"xyz"}`
+
+	l.Publish(event)
+	decoded := decodeLine(t, read())
+
+	_, hasProperties := decoded["properties"]
+	assert.False(t, hasProperties, "emptied properties object removed entirely, not left as {}")
+}
+
+// A dotted path that reaches past a header's value (always a string, never an
+// object) must be a graceful no-op, not a panic or data corruption.
+func TestLog_Publish_FieldsExcludePastHeaderValueIsNoOp(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:        true,
+		RequestHeaders: true,
+		ExcludeFields:  []string{"requestHeaders.x-foo.bar"},
+	})
+	event := createBaseEvent()
+	event.Properties["requestHeaders"] = `{"x-foo":"bar-value"}`
+
+	l.Publish(event)
+	decoded := decodeLine(t, read())
+
+	reqH := headerMap(t, decoded["requestHeaders"])
+	assert.Equal(t, "bar-value", reqH["x-foo"], "path deeper than a header's string value is a no-op")
+}
+
 // Output-side payload truncation (0 = no limit).
 func TestLog_Publish_TruncatesPayload(t *testing.T) {
 	cfg := bothFlowsConfig()

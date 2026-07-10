@@ -212,30 +212,68 @@ func (l *Log) truncatePayload(s string) string {
 
 // applyFieldsProjection mutates m in place, dropping the configured fields and
 // keeping everything else. Names are top-level keys (e.g. "latencies",
-// "requestHeaders") or dotted sub-key paths within map fields (e.g.
-// "requestHeaders.authorization", "labels.env"). Top-level values are kept as
-// raw JSON bytes; only the specific nested objects referenced by a dotted path
-// are decoded and re-encoded. Sub-keys under requestHeaders/responseHeaders are
-// matched case-insensitively (consistent with maskedHeaders and HTTP header-name
-// semantics) since the upstream may return a header in any casing (e.g.
-// "Set-Cookie"); sub-keys under any other map field match case-sensitively.
+// "requestHeaders") or dotted paths of arbitrary depth into nested JSON objects
+// (e.g. "requestHeaders.authorization", "properties.claims.internal_debug" —
+// the latter reaching into a nested object produced by a traffic_logging.properties
+// $ctx: expression that evaluates to a CEL map wholesale, e.g.
+// `claims = "$ctx:auth.property"`, rather than one flattened property per claim).
+// A path segment that doesn't correspond to a JSON object at that point (e.g. one
+// dot too many into a string leaf like requestBody, or a header value, which is
+// always a string) is a no-op for that entry rather than an error. Sub-keys
+// immediately under requestHeaders/responseHeaders are matched case-insensitively
+// (consistent with maskedHeaders and HTTP header-name semantics) since the
+// upstream may return a header in any casing (e.g. "Set-Cookie"); every other
+// path segment, at any depth, matches case-sensitively.
 func applyFieldsProjection(m map[string]json.RawMessage, fields *dto.TrafficLogFields) {
 	for _, name := range fields.Exclude {
-		if top, sub, found := strings.Cut(name, "."); found {
-			if isHeaderField(top) {
-				subLower := strings.ToLower(sub)
-				filterNestedKeys(m, top, func(k string) bool { return strings.ToLower(k) != subLower })
-			} else {
-				filterNestedKeys(m, top, func(k string) bool { return k != sub })
-			}
-		} else {
-			delete(m, name)
-		}
+		deleteNestedPath(m, strings.Split(name, "."))
 	}
 }
 
+// deleteNestedPath removes the key at the dotted path parts from m, recursively
+// decoding and re-encoding each intermediate level. A parent level is deleted
+// entirely once its last child is removed, so an emptied nested object doesn't
+// linger in the output as "{}".
+func deleteNestedPath(m map[string]json.RawMessage, parts []string) {
+	top := parts[0]
+	if len(parts) == 1 {
+		delete(m, top)
+		return
+	}
+
+	// Case-insensitive header-name matching only applies one level below
+	// requestHeaders/responseHeaders. A deeper path under a header (e.g.
+	// "requestHeaders.foo.bar") falls through to the generic path below, where
+	// the json.Unmarshal of a header's string value into an object fails and
+	// the entry is silently a no-op — the same graceful behavior as any other
+	// path that reaches into a non-object leaf.
+	if len(parts) == 2 && isHeaderField(top) {
+		filterNestedKeys(m, top, func(k string) bool { return !strings.EqualFold(k, parts[1]) })
+		return
+	}
+
+	raw, ok := m[top]
+	if !ok {
+		return
+	}
+	var nested map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &nested); err != nil {
+		return // not a JSON object at this level -- no-op, not an error
+	}
+	deleteNestedPath(nested, parts[1:])
+	if len(nested) == 0 {
+		delete(m, top)
+		return
+	}
+	filtered, err := json.Marshal(nested)
+	if err != nil {
+		return
+	}
+	m[top] = filtered
+}
+
 // isHeaderField reports whether top is one of the header map fields, whose
-// sub-keys are matched case-insensitively.
+// immediate sub-keys are matched case-insensitively.
 func isHeaderField(top string) bool {
 	return top == "requestHeaders" || top == "responseHeaders"
 }
@@ -273,7 +311,7 @@ func filterNestedKeys(m map[string]json.RawMessage, top string, keep func(string
 // Returns a new map; the input is not modified. A dotted fields.exclude path
 // (e.g. "requestHeaders.Authorization") can drop a header entirely instead of
 // redacting it; like mask, that comparison is also case-insensitive (see
-// isHeaderField in applyFieldsProjection), so any casing Envoy delivers matches.
+// isHeaderField, used by deleteNestedPath), so any casing Envoy delivers matches.
 func maskHeaders(headers map[string]string, mask map[string]bool) map[string]string {
 	result := make(map[string]string, len(headers))
 	for name, value := range headers {

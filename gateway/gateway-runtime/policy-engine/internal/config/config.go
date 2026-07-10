@@ -118,8 +118,10 @@ type TrafficLoggingConfig struct {
 	ResponseBody    bool `koanf:"response_body"`
 	// ExcludeFields drops the named fields from the emitted line and keeps
 	// everything else, layered on top of the flow selection above. Names are
-	// top-level keys (e.g. "latencies", "requestHeaders") or dotted sub-key
-	// paths within map fields (e.g. "requestHeaders.authorization").
+	// top-level keys (e.g. "latencies", "requestHeaders") or dotted paths of
+	// arbitrary depth into nested JSON objects (e.g. "requestHeaders.authorization",
+	// or "properties.claims.internal_debug" to reach into a nested object produced
+	// by a Properties $ctx: expression that evaluates to a CEL map wholesale).
 	ExcludeFields []string `koanf:"exclude_fields"`
 	// Properties adds extra key->value pairs to the emitted line's top-level
 	// "properties" object. A value prefixed "$ctx:" is evaluated as a CEL
