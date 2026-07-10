@@ -18,7 +18,11 @@
 
 package models
 
-import "time"
+import (
+	"time"
+
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
+)
 
 // RuntimeDeployConfig is the kind-agnostic intermediate representation produced by
 // each transformer (RestAPI, LLM Provider, LLM Proxy). Both the Envoy xDS translator
@@ -90,6 +94,12 @@ type RouteUpstream struct {
 	ClusterKey       string // key into UpstreamClusters map
 	UseClusterHeader bool   // if true, policy selects upstream dynamically
 	DefaultCluster   string // default cluster name when UseClusterHeader is true
+
+	// Default is this route's own compiled-in upstream (cluster name, URL, base
+	// path) — whichever slot this route belongs to (main or sandbox). Exposed to
+	// the policy engine as the route's single default upstream field, regardless
+	// of which slot it is.
+	Default *policyenginev1.UpstreamInfo
 }
 
 // PolicyChain is an ordered list of policies for a route.

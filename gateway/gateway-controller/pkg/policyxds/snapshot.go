@@ -349,6 +349,12 @@ func (t *Translator) createRouteConfigResource(
 		data["default_upstream_cluster"] = route.Upstream.DefaultCluster
 	}
 
+	// This route's own compiled-in upstream (whichever slot it belongs to) — a single,
+	// always-present field for the policy engine, regardless of main/sandbox.
+	if route.Upstream.Default != nil {
+		data["default_upstream"] = route.Upstream.Default.ToMap()
+	}
+
 	return toAnyResource(data, RouteConfigTypeURL)
 }
 

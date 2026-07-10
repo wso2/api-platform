@@ -32,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
 // maxStreamAccumulatorSize caps the amount of data accumulated before forcing
@@ -93,6 +94,11 @@ type PolicyExecutionContext struct {
 	// Maps upstream definition names to their URL paths.
 	// Used when UpstreamName is set to compute the correct path transformation.
 	upstreamDefinitionPaths map[string]string
+
+	// defaultUpstream is this route's own compiled-in upstream (cluster name, URL, base
+	// path) — whichever slot it belongs to. Always present; surfaced to policies via the
+	// "current_upstream" dynamic metadata object when no dynamic override is in effect.
+	defaultUpstream *policyenginev1.UpstreamInfo
 
 	// requestContentEncoding stores the Content-Encoding of the incoming request (e.g. "gzip", "br").
 	// The body is decompressed before being passed to policies, and re-compressed using this value
@@ -1010,6 +1016,7 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 		Authority:     authority,
 		Scheme:        scheme,
 		Vhost:         routeMetadata.Vhost,
+		UpstreamInfo:  ec.defaultUpstream,
 	}
 
 	// Build the streaming context once; reused across all chunks for this request.

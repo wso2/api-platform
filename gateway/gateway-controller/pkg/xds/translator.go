@@ -1088,11 +1088,18 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		return nil, nil, fmt.Errorf("invalid API-level resilience: %w", err)
 	}
 
-	for _, op := range apiData.Operations {
-		// Determine if dynamic cluster selection should be used
-		// When upstreamDefinitions exist, use cluster_header routing so policies can select the upstream
-		useClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
+	// Determine if dynamic cluster selection should be used. Enabled whenever the API has
+	// named upstream definitions (so a policy can select one) OR a sandbox upstream (so a
+	// policy can redirect between the API's own main/sandbox slots). Sandbox activity here
+	// mirrors restapi.go's Url/Ref-aware hasSandbox check, not the looser nil check below
+	// (which only gates whether the sandbox cluster itself gets built).
+	hasSandboxForClusterHeader := apiData.Upstream.Sandbox != nil &&
+		((apiData.Upstream.Sandbox.Url != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != "") ||
+			(apiData.Upstream.Sandbox.Ref != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Ref) != ""))
+	hasUpstreamDefinitions := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
+	useClusterHeader := hasUpstreamDefinitions || hasSandboxForClusterHeader
 
+	for _, op := range apiData.Operations {
 		opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
 		if err != nil {
 			return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.EffectiveMethod(), op.EffectivePath(), err)
@@ -1121,10 +1128,9 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		sandboxCluster := t.createCluster(sbClusterName, parsedSbURL, nil, sbUpstreamClusterConnectTimeout)
 		clusters = append(clusters, sandboxCluster)
 
-		// Create sandbox routes. When upstreamDefinitions exist, enable dynamic cluster
-		// selection (mirrors main).
+		// Create sandbox routes. Mirrors main's useClusterHeader (dynamic cluster selection
+		// is on whenever upstreamDefinitions exist or a sandbox upstream is configured).
 		sbRoutesList := make([]*route.Route, 0)
-		sbUseClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
 		for _, op := range apiData.Operations {
 			opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
 			if err != nil {
@@ -1133,7 +1139,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 			opTimeoutCfg := combineRouteResilience(sbTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
 
 			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, op.EffectiveMethod(), op.EffectivePath(),
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, opTimeoutCfg, sbUseClusterHeader, upstreamDefPaths)
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, opTimeoutCfg, useClusterHeader, upstreamDefPaths)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
