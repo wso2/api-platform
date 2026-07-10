@@ -19,10 +19,17 @@
 package models
 
 import (
+	"strings"
 	"time"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
+
+// DefaultTemplateVersion is used when a template does not declare a version.
+const DefaultTemplateVersion = "v1.0"
+
+// DefaultTemplateManagedBy is used when a template does not declare managedBy.
+const DefaultTemplateManagedBy = "organization"
 
 // StoredLLMProviderTemplate represents the LLM provider template stored in the database and in-memory
 type StoredLLMProviderTemplate struct {
@@ -35,4 +42,31 @@ type StoredLLMProviderTemplate struct {
 // GetHandle returns the template handle
 func (t *StoredLLMProviderTemplate) GetHandle() string {
 	return t.Configuration.Metadata.Name
+}
+
+func (t *StoredLLMProviderTemplate) GetGroupID() string {
+	if t.Configuration.Spec.GroupId != nil {
+		if v := strings.TrimSpace(*t.Configuration.Spec.GroupId); v != "" {
+			return v
+		}
+	}
+	return t.Configuration.Metadata.Name
+}
+
+func (t *StoredLLMProviderTemplate) GetVersion() string {
+	if t.Configuration.Spec.Version != nil {
+		if v := strings.TrimSpace(*t.Configuration.Spec.Version); v != "" {
+			return v
+		}
+	}
+	return DefaultTemplateVersion
+}
+
+func (t *StoredLLMProviderTemplate) GetManagedBy() string {
+	if t.Configuration.Spec.ManagedBy != nil {
+		if p := strings.TrimSpace(*t.Configuration.Spec.ManagedBy); p != "" {
+			return p
+		}
+	}
+	return DefaultTemplateManagedBy
 }
