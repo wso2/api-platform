@@ -18,7 +18,6 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Button,
   FormControl,
   FormLabel,
   Grid,
@@ -37,7 +36,6 @@ import { logger } from '../../../../utils/logger';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import type { LLMProvider, ProxyApiKeySecurity } from '../../../../utils/types';
 import { FormattedMessage } from 'react-intl';
-import { DisabledActionTooltip } from '../../../../utils/readOnlyArtifacts';
 
 /**
  * Provider tab – lets the user select / change the LLM Service Provider
@@ -108,18 +106,13 @@ export default function LLMProxyProviderTab() {
     };
   };
 
-  const handleSaveApiKey = () => {
-    if (isReadOnlyProxy) return;
-    if (!proxy || !apiKey.trim() || !providerDetail) {
-      showSnackbar('Please enter an API key.', 'error');
-      return;
-    }
+  const handleApiKeyChange = (value: string) => {
+    setApiKey(value);
+    if (isReadOnlyProxy || !proxy || !providerDetail) return;
     const providerId =
       typeof proxy.provider === 'string' ? proxy.provider : proxy.provider?.id;
-    if (!providerId) {
-      showSnackbar('Please select a provider first.', 'error');
-      return;
-    }
+    const trimmed = value.trim();
+    if (!providerId || !trimmed) return;
     const apiKeyHeader = providerDetail.security?.apiKey?.key || 'X-API-Key';
     setLocalProxy((prev) =>
       prev
@@ -130,13 +123,12 @@ export default function LLMProxyProviderTab() {
               auth: {
                 type: 'api-key',
                 header: apiKeyHeader,
-                value: apiKey.trim(),
+                value: trimmed,
               },
             },
           }
         : prev
     );
-    setApiKey('');
   };
 
   const handleProviderChange = async (event: { target: { value: string } }) => {
@@ -272,28 +264,12 @@ export default function LLMProxyProviderTab() {
                         placeholder="Enter API key"
                         value={apiKey}
                         disabled={isReadOnlyProxy}
-                        onChange={(e) => setApiKey(e.target.value)}
+                        onChange={(e) => handleApiKeyChange(e.target.value)}
                         fullWidth
                       />
                     </FormControl>
                   </Grid>
                 </Grid>
-
-                <DisabledActionTooltip disabled={isReadOnlyProxy}>
-                  <span>
-                    <Button
-                      variant="contained"
-                      onClick={handleSaveApiKey}
-                      disabled={isReadOnlyProxy || !apiKey.trim()}
-                      sx={{ alignSelf: 'flex-start' }}
-                    >
-                      <FormattedMessage
-                        id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyProviderTab.save.api.key"
-                        defaultMessage={'Save API Key'}
-                      />
-                    </Button>
-                  </span>
-                </DisabledActionTooltip>
               </Stack>
             </Stack>
           )}
