@@ -367,8 +367,8 @@ timer_wakeup_seconds = 3
 # TRAFFIC LOGGING (consumer — enabling it activates the collector)
 # =============================================================================
 # Writes collected events (rich API/application/AI/latency metadata, plus
-# request/response headers and — when the collector's send_*_body is enabled —
-# payloads) to stdout as a JSON line. Useful for log-scraping pipelines such as
+# request/response headers and — when the collector's request_body/response_body
+# is enabled — payloads) to stdout as a JSON line. Useful for log-scraping pipelines such as
 # Fluent Bit/Loki/ELK; no external SaaS needed.
 #
 # No policy required: enabling this section emits one stdout line for every

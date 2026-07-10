@@ -257,8 +257,28 @@ data:
     {{- end }}
 
     {{- if .Values.gateway.config.collector }}
+    [collector]
+    {{- if .Values.gateway.config.collector.request_body }}
+    request_body = {{ .Values.gateway.config.collector.request_body }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.response_body }}
+    response_body = {{ .Values.gateway.config.collector.response_body }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.request_headers }}
+    request_headers = {{ .Values.gateway.config.collector.request_headers }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.response_headers }}
+    response_headers = {{ .Values.gateway.config.collector.response_headers }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.ignore_path_prefixes }}
+    ignore_path_prefixes = [{{- range $i, $p := .Values.gateway.config.collector.ignore_path_prefixes }}{{- if gt $i 0 }}, {{ end }}{{ $p | quote }}{{- end }}]
+    {{- end }}
+
     {{- if .Values.gateway.config.collector.server }}
     [collector.server]
+    {{- if .Values.gateway.config.collector.server.mode }}
+    mode = {{ .Values.gateway.config.collector.server.mode | quote }}
+    {{- end }}
     buffer_flush_interval = {{ .Values.gateway.config.collector.server.buffer_flush_interval | quote }}
     buffer_size_bytes = {{ .Values.gateway.config.collector.server.buffer_size_bytes | int64 }}
     grpc_request_timeout = {{ .Values.gateway.config.collector.server.grpc_request_timeout | quote }}
@@ -280,6 +300,21 @@ data:
     {{- end }}
     {{- if .Values.gateway.config.traffic_logging.max_payload_size }}
     max_payload_size = {{ .Values.gateway.config.traffic_logging.max_payload_size | int64 }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.request_headers }}
+    request_headers = {{ .Values.gateway.config.traffic_logging.request_headers }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.request_body }}
+    request_body = {{ .Values.gateway.config.traffic_logging.request_body }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.response_headers }}
+    response_headers = {{ .Values.gateway.config.traffic_logging.response_headers }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.response_body }}
+    response_body = {{ .Values.gateway.config.traffic_logging.response_body }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.exclude_fields }}
+    exclude_fields = [{{- range $i, $f := .Values.gateway.config.traffic_logging.exclude_fields }}{{- if gt $i 0 }}, {{ end }}{{ $f | quote }}{{- end }}]
     {{- end }}
     {{- end }}
 
