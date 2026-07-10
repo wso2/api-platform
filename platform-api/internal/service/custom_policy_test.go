@@ -141,7 +141,7 @@ func sampleManifest(name, version string) []byte {
 		{
 			Name:      name,
 			Version:   version,
-			ManagedBy: constants.PolicyManagedByCustomer,
+			ManagedBy: constants.PolicyManagedByOrganization,
 			PolicyDefinition: map[string]interface{}{
 				"parameters": map[string]interface{}{
 					"type":       "object",
@@ -241,7 +241,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			name:    "policy not found in manifest",
 			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: makeManifest([]GatewayPolicyDefinition{
-				{Name: "other-policy", Version: "1.0.0", ManagedBy: constants.PolicyManagedByCustomer},
+				{Name: "other-policy", Version: "1.0.0", ManagedBy: constants.PolicyManagedByOrganization},
 			}),
 			policyName:  "rate-limit",
 			version:     "1.0.0",
@@ -252,7 +252,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			name:    "policy version mismatch in manifest",
 			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: makeManifest([]GatewayPolicyDefinition{
-				{Name: "rate-limit", Version: "1.1.0", ManagedBy: constants.PolicyManagedByCustomer},
+				{Name: "rate-limit", Version: "1.1.0", ManagedBy: constants.PolicyManagedByOrganization},
 			}),
 			policyName:  "rate-limit",
 			version:     "1.0.0",
