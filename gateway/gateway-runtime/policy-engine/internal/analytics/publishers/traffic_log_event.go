@@ -28,6 +28,9 @@ const trafficLogTimestampFormat = "2006-01-02T15:04:05.000Z07:00"
 // It is intentionally separate from dto.Event (shaped for Moesif) so its field
 // names, schema, and presence rules can evolve independently. All string fields
 // carry omitempty so absent or unknown values produce no key rather than "".
+// The API/Operation/Target pointer fields are additionally left nil (dropped
+// entirely, rather than emitted as "{}") when every one of their own fields
+// resolves to its zero value — see toTrafficLogEvent.
 type TrafficLogEvent struct {
 	Timestamp       string                   `json:"timestamp,omitempty"`
 	CorrelationID   string                   `json:"correlationId,omitempty"`
@@ -99,7 +102,7 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 	}
 
 	if event.API != nil {
-		tl.API = &TrafficLogAPI{
+		api := TrafficLogAPI{
 			ID:        event.API.APIID,
 			Name:      event.API.APIName,
 			Version:   event.API.APIVersion,
@@ -107,19 +110,28 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 			Kind:      event.API.APIType,
 			ProjectID: event.API.ProjectID,
 		}
+		if api != (TrafficLogAPI{}) {
+			tl.API = &api
+		}
 	}
 
 	if event.Operation != nil {
-		tl.Operation = &TrafficLogOperation{
+		op := TrafficLogOperation{
 			Method: event.Operation.APIMethod,
 			Path:   event.Operation.APIResourceTemplate,
+		}
+		if op != (TrafficLogOperation{}) {
+			tl.Operation = &op
 		}
 	}
 
 	if event.Target != nil {
-		tl.Target = &TrafficLogTarget{
+		target := TrafficLogTarget{
 			StatusCode:  event.Target.TargetResponseCode,
 			Destination: event.Target.Destination,
+		}
+		if target != (TrafficLogTarget{}) {
+			tl.Target = &target
 		}
 	}
 

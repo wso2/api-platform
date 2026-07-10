@@ -404,6 +404,41 @@ func TestLog_Publish_UnparseableHeadersDropped(t *testing.T) {
 	assert.False(t, hasHeaders, "unparseable header value must be silently dropped")
 }
 
+// A non-nil Target/API/Operation whose fields are all zero must not surface as
+// an empty "{}" object in the log line — it should be omitted entirely, same as
+// if the pointer itself were nil.
+func TestLog_Publish_EmptyStructFieldsOmitted(t *testing.T) {
+	l, read := newLogToFile(t, bothFlowsConfig())
+	event := createBaseEvent()
+	event.API = &dto.ExtendedAPI{}
+	event.Operation = &dto.Operation{}
+	event.Target = &dto.Target{}
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	_, hasAPI := decoded["api"]
+	_, hasOperation := decoded["operation"]
+	_, hasTarget := decoded["target"]
+	assert.False(t, hasAPI, "all-zero api must be omitted, not emitted as {}")
+	assert.False(t, hasOperation, "all-zero operation must be omitted, not emitted as {}")
+	assert.False(t, hasTarget, "all-zero target must be omitted, not emitted as {}")
+}
+
+// A Target with at least one non-zero field must still be emitted in full.
+func TestLog_Publish_NonEmptyTargetKept(t *testing.T) {
+	l, read := newLogToFile(t, bothFlowsConfig())
+	event := createBaseEvent()
+	event.Target = &dto.Target{Destination: "backend-1"}
+
+	l.Publish(event)
+
+	decoded := decodeLine(t, read())
+	target, ok := decoded["target"].(map[string]interface{})
+	require.True(t, ok, "target with a non-zero field must be present")
+	assert.Equal(t, "backend-1", target["destination"])
+}
+
 // Application is omitted entirely for unauthenticated requests (all fields empty).
 func TestLog_Publish_UnauthenticatedRequestOmitsApplication(t *testing.T) {
 	l, read := newLogToFile(t, bothFlowsConfig())
