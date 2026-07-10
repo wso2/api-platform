@@ -29,7 +29,7 @@ import (
 const DefaultTemplateVersion = "v1.0"
 
 // DefaultTemplateManagedBy is used when a template does not declare managedBy.
-const DefaultTemplateManagedBy = "customer"
+const DefaultTemplateManagedBy = "organization"
 
 // StoredLLMProviderTemplate represents the LLM provider template stored in the database and in-memory
 type StoredLLMProviderTemplate struct {

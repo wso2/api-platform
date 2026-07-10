@@ -1402,7 +1402,7 @@ metadata:
 spec:
   displayName: deep seek
   groupId: deep-seek
-  managedBy: customer
+  managedBy: organization
   version: v1.0
   promptTokens:
     location: payload
@@ -1418,7 +1418,7 @@ metadata:
 spec:
   displayName: deep seek
   groupId: deep-seek
-  managedBy: customer
+  managedBy: organization
   version: v2.0
   promptTokens:
     location: payload
@@ -1450,5 +1450,5 @@ spec:
 	assert.Equal(t, "v1.0", v1.GetVersion())
 	assert.Equal(t, "v2.0", v2.GetVersion())
 	assert.NotEqual(t, v1.GetVersion(), v2.GetVersion())
-	assert.Equal(t, "customer", v1.GetManagedBy())
+	assert.Equal(t, "organization", v1.GetManagedBy())
 }

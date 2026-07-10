@@ -113,7 +113,7 @@ func TestStoredLLMProviderTemplate_GetVersion(t *testing.T) {
 
 func TestStoredLLMProviderTemplate_GetManagedBy(t *testing.T) {
 	assert.Equal(t, "wso2", newTemplate("openai", nil, nil, ptr("wso2")).GetManagedBy())
-	// Defaults to customer when unset or blank.
+	// Defaults to organization when unset or blank.
 	assert.Equal(t, DefaultTemplateManagedBy, newTemplate("openai", nil, nil, nil).GetManagedBy())
 	assert.Equal(t, DefaultTemplateManagedBy, newTemplate("openai", nil, nil, ptr("")).GetManagedBy())
 }
@@ -121,8 +121,8 @@ func TestStoredLLMProviderTemplate_GetManagedBy(t *testing.T) {
 // Two deployed versions of the same template carry distinct handles but share a
 // groupId, so the AI workspace can present them as versions of one template.
 func TestStoredLLMProviderTemplate_VersionsShareGroupID(t *testing.T) {
-	v1 := newTemplate("openai-v1", ptr("openai"), ptr("v1.0"), ptr("customer"))
-	v2 := newTemplate("openai-v2", ptr("openai"), ptr("v2.0"), ptr("customer"))
+	v1 := newTemplate("openai-v1", ptr("openai"), ptr("v1.0"), ptr("organization"))
+	v2 := newTemplate("openai-v2", ptr("openai"), ptr("v2.0"), ptr("organization"))
 
 	assert.NotEqual(t, v1.GetHandle(), v2.GetHandle())
 	assert.Equal(t, v1.GetGroupID(), v2.GetGroupID())
