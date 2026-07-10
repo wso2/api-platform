@@ -62,6 +62,11 @@ type globalPropertyEvaluator struct {
 	// keyed by property name. Compiled once at construction since the
 	// expression set is fixed, static config — not per-request or per-API.
 	compiled map[string]cel.Program
+	// maskedHeaders holds lower-cased header names redacted in the request.header/
+	// response.header CEL variables, mirroring traffic_logging.masked_headers so a
+	// property expression cannot re-expose a header (e.g. authorization) that the
+	// emitted requestHeaders/responseHeaders map already redacts.
+	maskedHeaders map[string]bool
 }
 
 // newGlobalPropertyEvaluator compiles every "$ctx:" expression once. A
@@ -72,10 +77,11 @@ type globalPropertyEvaluator struct {
 // here is permanent (logged once) since it can never succeed on a later
 // request the way a per-request nil AuthContext might resolve differently
 // request to request.
-func newGlobalPropertyEvaluator(properties map[string]string) *globalPropertyEvaluator {
+func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[string]bool) *globalPropertyEvaluator {
 	e := &globalPropertyEvaluator{
-		literals: make(map[string]string),
-		compiled: make(map[string]cel.Program),
+		literals:      make(map[string]string),
+		compiled:      make(map[string]cel.Program),
+		maskedHeaders: maskedHeaders,
 	}
 	if len(properties) == 0 {
 		return e
@@ -182,7 +188,7 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 		return result
 	}
 
-	evalCtx := buildGlobalPropertyEvalCtx(event)
+	evalCtx := buildGlobalPropertyEvalCtx(event, e.maskedHeaders)
 	for name, program := range e.compiled {
 		out, _, err := program.Eval(evalCtx)
 		if err != nil {
@@ -202,8 +208,12 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 // buildGlobalPropertyEvalCtx builds the CEL evaluation context from a
 // dto.Event. Every declared variable is always bound (to a zero value when
 // the corresponding event field is absent) so evaluation never fails merely
-// because a nested pointer was nil.
-func buildGlobalPropertyEvalCtx(event *dto.Event) map[string]interface{} {
+// because a nested pointer was nil. request.header/response.header are masked
+// with the same maskedHeaders config applied to the emitted requestHeaders/
+// responseHeaders maps (see maskHeaders in log.go), so a property expression
+// like "$ctx:request.header['authorization']" cannot bypass masking and leak a
+// credential the operator explicitly asked to redact.
+func buildGlobalPropertyEvalCtx(event *dto.Event, maskedHeaders map[string]bool) map[string]interface{} {
 	ctx := map[string]interface{}{
 		"request.path":        "",
 		"request.method":      "",
@@ -248,14 +258,14 @@ func buildGlobalPropertyEvalCtx(event *dto.Event) map[string]interface{} {
 	}
 	if raw, ok := event.Properties[dto.PropKeyRequestHeaders].(string); ok {
 		if headers := parseHeadersFromString(raw); headers != nil {
-			ctx["request.header"] = lowerCaseHeaderKeys(headers)
+			ctx["request.header"] = maskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders)
 		}
 	}
 
 	ctx["response.status"] = event.ProxyResponseCode
 	if raw, ok := event.Properties[dto.PropKeyResponseHeaders].(string); ok {
 		if headers := parseHeadersFromString(raw); headers != nil {
-			ctx["response.header"] = lowerCaseHeaderKeys(headers)
+			ctx["response.header"] = maskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders)
 		}
 	}
 

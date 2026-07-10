@@ -350,7 +350,7 @@ enabled = false
 allow_payloads = false
 # Deprecated: send_request_body / send_response_body are preserved
 # for backward compatibility and are mapped onto the [collector] body-capture flags
-# during validation (with a warning). Prefer setting [collector] directly.\
+# during validation (with a warning). Prefer setting [collector] directly.
 send_request_body = false
 send_response_body = false
 enabled_publishers = ["moesif"]
@@ -394,7 +394,11 @@ response_body = false
 # Optional field projection over the emitted line: drop the named fields and
 # keep everything else. Names are top-level keys (e.g. "latencies",
 # "requestHeaders") or dotted sub-key paths within map fields (e.g.
-# "requestHeaders.authorization").
+# "requestHeaders.authorization"; header sub-keys match case-insensitively).
+# This only trims what the request_*/response_* toggles above already include —
+# it is not a standalone switch. Setting only exclude_fields, with every
+# request_*/response_* toggle left at its false default, still logs no headers
+# or bodies at all.
 exclude_fields = []
 # exclude_fields = ["requestBody", "responseBody"]
 
@@ -408,6 +412,9 @@ exclude_fields = []
 # api.kind, project.id, target.statusCode, target.destination,
 # application.id/name/owner/keyType (populated only when an auth policy that
 # stamps application identity, e.g. api-key-auth, actually ran).
+# request.header/response.header are masked with the same masked_headers list
+# above, so a property expression cannot re-expose a header (e.g.
+# request.header['authorization']) that masked_headers already redacts.
 #
 # auth.* is also available — subject, type, issuer, credential_id, token_id,
 # audience (list), scopes (list), property['<claim>'] (map), authenticated,
@@ -417,12 +424,18 @@ exclude_fields = []
 # or denied request every auth.* variable resolves to its zero value rather
 # than erroring, so `auth.subject != "" ? auth.subject : "anonymous"` is the
 # recommended pattern for a property that should always resolve to something.
+# This zero-value guarantee covers scalar variables only: indexing into a map
+# or list variable (property['<claim>'], audience[0]) still raises a "no such
+# key"/index-out-of-range evaluation error when the claim/index is absent, and
+# the property is silently omitted from that line (logged at debug level). Use
+# the `in` operator to guard any map/list index, e.g. `'tenant' in auth.property
+# ? auth.property['tenant'] : ''`.
 [traffic_logging.properties]
 # env = "prod"
 # apiName = "$ctx:api.name"
 # status = "$ctx:response.status"
 # subject = "$ctx:auth.subject != '' ? auth.subject : 'anonymous'"
-# tenant = "$ctx:auth.property['tenant']"
+# tenant = "$ctx:'tenant' in auth.property ? auth.property['tenant'] : ''"
 
 
 # =============================================================================

@@ -26,13 +26,13 @@ import (
 )
 
 func TestNewGlobalPropertyEvaluator_EmptyConfig(t *testing.T) {
-	e := newGlobalPropertyEvaluator(nil)
+	e := newGlobalPropertyEvaluator(nil, nil)
 	require.NotNil(t, e)
 	assert.Nil(t, e.resolve(createBaseEvent()))
 }
 
 func TestGlobalPropertyEvaluator_LiteralPassthrough(t *testing.T) {
-	e := newGlobalPropertyEvaluator(map[string]string{"env": "prod"})
+	e := newGlobalPropertyEvaluator(map[string]string{"env": "prod"}, nil)
 	resolved := e.resolve(createBaseEvent())
 	assert.Equal(t, "prod", resolved["env"])
 }
@@ -45,7 +45,7 @@ func TestGlobalPropertyEvaluator_ResolvesRequestAndAPIContext(t *testing.T) {
 		"apiName": "$ctx:api.name",
 		"apiKind": "$ctx:api.kind",
 		"project": "$ctx:project.id",
-	})
+	}, nil)
 	event := createBaseEvent()
 
 	resolved := e.resolve(event)
@@ -66,7 +66,7 @@ func TestGlobalPropertyEvaluator_ResolvesResponseAndTargetInfo(t *testing.T) {
 		"status":       "$ctx:response.status",
 		"targetStatus": "$ctx:target.statusCode",
 		"dest":         "$ctx:target.destination",
-	})
+	}, nil)
 	event := createBaseEvent()
 	event.ProxyResponseCode = 503
 	event.Target = &dto.Target{
@@ -88,7 +88,7 @@ func TestGlobalPropertyEvaluator_ResolvesApplicationInfo(t *testing.T) {
 		"appId":   "$ctx:application.id",
 		"appName": "$ctx:application.name",
 		"appKey":  "$ctx:application.keyType",
-	})
+	}, nil)
 	event := createBaseEvent()
 	event.Application = &dto.Application{
 		ApplicationID:   "app-1",
@@ -108,7 +108,7 @@ func TestGlobalPropertyEvaluator_ResolvesHeaders(t *testing.T) {
 		"tenant":   "$ctx:request.header['x-tenant-id']",
 		"traceId":  "$ctx:response.header['x-trace-id']",
 		"hasAuthz": "$ctx:'authorization' in request.header",
-	})
+	}, nil)
 	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"x-tenant-id":"acme","authorization":"Bearer x"}`
 	event.Properties["responseHeaders"] = `{"x-trace-id":"trace-abc"}`
@@ -118,6 +118,27 @@ func TestGlobalPropertyEvaluator_ResolvesHeaders(t *testing.T) {
 	assert.Equal(t, "acme", resolved["tenant"])
 	assert.Equal(t, "trace-abc", resolved["traceId"])
 	assert.Equal(t, true, resolved["hasAuthz"])
+}
+
+// A property expression reading a masked header (e.g. authorization) must see
+// the same redacted "****" placeholder as the emitted requestHeaders/
+// responseHeaders maps — otherwise traffic_logging.masked_headers would give a
+// false sense that a credential is protected while a property expression leaks
+// it verbatim.
+func TestGlobalPropertyEvaluator_MasksSensitiveHeaders(t *testing.T) {
+	mask := map[string]bool{"authorization": true}
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"token":   "$ctx:request.header['authorization']",
+		"traceId": "$ctx:response.header['x-trace-id']",
+	}, mask)
+	event := createBaseEvent()
+	event.Properties["requestHeaders"] = `{"authorization":"Bearer secret-token"}`
+	event.Properties["responseHeaders"] = `{"x-trace-id":"trace-abc"}`
+
+	resolved := e.resolve(event)
+
+	assert.Equal(t, maskedHeaderValue, resolved["token"], "masked header must not leak its raw value via a $ctx: property")
+	assert.Equal(t, "trace-abc", resolved["traceId"], "unmasked header still resolves normally")
 }
 
 // auth.* is backed by analytics metadata the collector system policy stamps generically
@@ -136,7 +157,7 @@ func TestGlobalPropertyEvaluator_ResolvesAuthContext_WhenAuthenticated(t *testin
 		"tenant":        "$ctx:auth.property['tenant']",
 		"authenticated": "$ctx:auth.authenticated",
 		"authorized":    "$ctx:auth.authorized",
-	})
+	}, nil)
 	event := createBaseEvent()
 	event.Properties[dto.PropKeyAuthUserID] = "alice"
 	event.Properties[dto.PropKeyAuthType] = "jwt"
@@ -170,7 +191,7 @@ func TestGlobalPropertyEvaluator_AuthDefaultsToZeroValuesWhenUnauthenticated(t *
 		"subject":       "$ctx:auth.subject != '' ? auth.subject : 'anonymous'",
 		"authenticated": "$ctx:auth.authenticated",
 		"scopes":        "$ctx:auth.scopes",
-	})
+	}, nil)
 	event := createBaseEvent() // no auth.* properties set — e.g. a denied/401 request
 
 	resolved := e.resolve(event)
@@ -180,6 +201,31 @@ func TestGlobalPropertyEvaluator_AuthDefaultsToZeroValuesWhenUnauthenticated(t *
 	assert.Equal(t, []interface{}{}, resolved["scopes"])
 }
 
+// Unlike scalar auth.* variables, indexing into auth.property (a map) for a
+// claim that isn't present raises a "no such key" evaluation error rather than
+// resolving to a zero value — so an unguarded auth.property['tenant'] omits the
+// property entirely on any request whose token lacks that claim. Guarding the
+// index with `in` (the pattern documented in config-template.toml) resolves
+// safely in both cases instead.
+func TestGlobalPropertyEvaluator_AuthPropertyIndexRequiresInGuard(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"unguarded": "$ctx:auth.property['tenant']",
+		"guarded":   "$ctx:'tenant' in auth.property ? auth.property['tenant'] : ''",
+	}, nil)
+
+	withClaim := createBaseEvent()
+	withClaim.Properties[dto.PropKeyAuthProperties] = `{"tenant":"acme"}`
+	resolved := e.resolve(withClaim)
+	assert.Equal(t, "acme", resolved["unguarded"])
+	assert.Equal(t, "acme", resolved["guarded"])
+
+	withoutClaim := createBaseEvent() // no auth.property claims at all
+	resolved = e.resolve(withoutClaim)
+	_, hasUnguarded := resolved["unguarded"]
+	assert.False(t, hasUnguarded, "unguarded map index omits the property when the claim is absent")
+	assert.Equal(t, "", resolved["guarded"], "in-guarded index resolves to the fallback instead of erroring")
+}
+
 // A reference to a variable that genuinely doesn't exist in the CEL environment still
 // fails to compile and is permanently omitted — the general mechanism auth.* used to
 // exercise before the namespace existed.
@@ -187,7 +233,7 @@ func TestGlobalPropertyEvaluator_UndeclaredVariableOmitted(t *testing.T) {
 	e := newGlobalPropertyEvaluator(map[string]string{
 		"bogus": "$ctx:nonexistent.field",
 		"ok":    "literal-value",
-	})
+	}, nil)
 	resolved := e.resolve(createBaseEvent())
 
 	_, hasBogus := resolved["bogus"]
@@ -201,7 +247,7 @@ func TestGlobalPropertyEvaluator_MalformedExpressionOmitted(t *testing.T) {
 	e := newGlobalPropertyEvaluator(map[string]string{
 		"broken": "$ctx:request.path +++ invalid",
 		"ok":     "$ctx:request.method",
-	})
+	}, nil)
 	event := createBaseEvent()
 
 	resolved := e.resolve(event)
@@ -212,6 +258,6 @@ func TestGlobalPropertyEvaluator_MalformedExpressionOmitted(t *testing.T) {
 }
 
 func TestGlobalPropertyEvaluator_NoPropertiesReturnsNilNotEmptyMap(t *testing.T) {
-	e := newGlobalPropertyEvaluator(map[string]string{})
+	e := newGlobalPropertyEvaluator(map[string]string{}, nil)
 	assert.Nil(t, e.resolve(createBaseEvent()))
 }

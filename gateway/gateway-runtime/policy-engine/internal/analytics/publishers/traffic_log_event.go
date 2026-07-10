@@ -29,20 +29,20 @@ const trafficLogTimestampFormat = "2006-01-02T15:04:05.000Z07:00"
 // names, schema, and presence rules can evolve independently. All string fields
 // carry omitempty so absent or unknown values produce no key rather than "".
 type TrafficLogEvent struct {
-	Timestamp       string                 `json:"timestamp,omitempty"`
-	CorrelationID   string                 `json:"correlationId,omitempty"`
-	Status          int                    `json:"status,omitempty"`
-	API             *TrafficLogAPI         `json:"api,omitempty"`
-	Operation       *TrafficLogOperation   `json:"operation,omitempty"`
-	Target          *TrafficLogTarget      `json:"target,omitempty"`
-	Application     *TrafficLogApplication `json:"application,omitempty"`
+	Timestamp       string                   `json:"timestamp,omitempty"`
+	CorrelationID   string                   `json:"correlationId,omitempty"`
+	Status          int                      `json:"status,omitempty"`
+	API             *TrafficLogAPI           `json:"api,omitempty"`
+	Operation       *TrafficLogOperation     `json:"operation,omitempty"`
+	Target          *TrafficLogTarget        `json:"target,omitempty"`
+	Application     *TrafficLogApplication   `json:"application,omitempty"`
 	Client          *TrafficLogClient        `json:"client,omitempty"`
 	Latencies       *dto.TrafficLogLatencies `json:"latencies,omitempty"`
-	RequestHeaders  map[string]string      `json:"requestHeaders,omitempty"`
-	ResponseHeaders map[string]string      `json:"responseHeaders,omitempty"`
-	RequestBody     string                 `json:"requestBody,omitempty"`
-	ResponseBody    string                 `json:"responseBody,omitempty"`
-	Properties      map[string]interface{} `json:"properties,omitempty"`
+	RequestHeaders  map[string]string        `json:"requestHeaders,omitempty"`
+	ResponseHeaders map[string]string        `json:"responseHeaders,omitempty"`
+	RequestBody     string                   `json:"requestBody,omitempty"`
+	ResponseBody    string                   `json:"responseBody,omitempty"`
+	Properties      map[string]interface{}   `json:"properties,omitempty"`
 }
 
 // TrafficLogAPI identifies the API that processed the request.
@@ -140,43 +140,28 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 		}
 	}
 
-	// fields.exclude only trims already-present fields/sub-keys (e.g. one header)
-	// on top of the per-flow Headers/Payload booleans below — it never turns on
-	// a field that presence config left off. hasExcludeSelection captures the one
-	// case where exclude alone (no request/response block at all) still acts as
-	// a blanket "log everything except X" shorthand.
-	hasExcludeSelection := dir.Fields != nil && len(dir.Fields.Exclude) > 0
-
-	// Request flow
-	if raw, ok := event.Properties[dto.PropKeyRequestHeaders].(string); ok {
-		headersOn := dir.Request != nil && dir.Request.Headers
-		if fieldEnabled(hasExcludeSelection, dir.Request, headersOn) {
-			if headers := parseHeadersFromString(raw); headers != nil {
-				tl.RequestHeaders = l.maskHeaders(headers, l.maskedHeaders)
-			}
+	// fields.exclude only trims fields/sub-keys that the per-flow Headers/Payload
+	// booleans below already turned on — it is a subtractive projection over the
+	// enabled set, never an independent "log everything except X" switch. Setting
+	// exclude_fields alone, with every request_*/response_* toggle left at its
+	// false default, still logs no headers/bodies.
+	if raw, ok := event.Properties[dto.PropKeyRequestHeaders].(string); ok && dir.Request != nil && dir.Request.Headers {
+		if headers := parseHeadersFromString(raw); headers != nil {
+			tl.RequestHeaders = maskHeaders(headers, l.maskedHeaders)
 		}
 	}
-	if p, ok := event.Properties[dto.PropKeyRequestPayload].(string); ok && p != "" {
-		payloadOn := dir.Request != nil && dir.Request.Payload
-		if fieldEnabled(hasExcludeSelection, dir.Request, payloadOn) {
-			tl.RequestBody = l.truncatePayload(p)
-		}
+	if p, ok := event.Properties[dto.PropKeyRequestPayload].(string); ok && p != "" && dir.Request != nil && dir.Request.Payload {
+		tl.RequestBody = l.truncatePayload(p)
 	}
 
 	// Response flow
-	if raw, ok := event.Properties[dto.PropKeyResponseHeaders].(string); ok {
-		headersOn := dir.Response != nil && dir.Response.Headers
-		if fieldEnabled(hasExcludeSelection, dir.Response, headersOn) {
-			if headers := parseHeadersFromString(raw); headers != nil {
-				tl.ResponseHeaders = l.maskHeaders(headers, l.maskedHeaders)
-			}
+	if raw, ok := event.Properties[dto.PropKeyResponseHeaders].(string); ok && dir.Response != nil && dir.Response.Headers {
+		if headers := parseHeadersFromString(raw); headers != nil {
+			tl.ResponseHeaders = maskHeaders(headers, l.maskedHeaders)
 		}
 	}
-	if p, ok := event.Properties[dto.PropKeyResponsePayload].(string); ok && p != "" {
-		payloadOn := dir.Response != nil && dir.Response.Payload
-		if fieldEnabled(hasExcludeSelection, dir.Response, payloadOn) {
-			tl.ResponseBody = l.truncatePayload(p)
-		}
+	if p, ok := event.Properties[dto.PropKeyResponsePayload].(string); ok && p != "" && dir.Response != nil && dir.Response.Payload {
+		tl.ResponseBody = l.truncatePayload(p)
 	}
 
 	if len(dir.Properties) > 0 {
@@ -184,15 +169,4 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 	}
 
 	return tl
-}
-
-// fieldEnabled decides whether a request/response header or payload field should
-// be attached to the traffic-log event, before any Fields projection trims it
-// back down. See the comment above hasExcludeSelection in toTrafficLogEvent for
-// the reasoning.
-func fieldEnabled(hasExcludeSelection bool, flow *dto.TrafficLogFlow, boolValue bool) bool {
-	if flow != nil {
-		return boolValue
-	}
-	return hasExcludeSelection
 }

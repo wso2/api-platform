@@ -116,6 +116,15 @@ func MigrateDeprecatedTransport[T comparable](analyticsEnabled bool, deprecated 
 		slog.Warn(deprecatedKey + " is deprecated; migrating it to collector.server")
 		*collectorCfg = deprecated
 	} else {
-		slog.Warn(deprecatedKey + " is deprecated and collector.server is already configured; ignoring the " + deprecatedKey + " override")
+		// The whole deprecated struct (including any TLS settings it configured, e.g.
+		// als_plain_text/public_key_path/private_key_path) is dropped here, not merged
+		// field-by-field — collector.server is used exactly as configured. If the
+		// deprecated block set up TLS and collector.server didn't (or set it up
+		// differently), the ALS link runs with whatever collector.server specifies,
+		// which may be plaintext (als_plain_text defaults to true).
+		slog.Warn(deprecatedKey + " is deprecated and collector.server is already configured (even partially); the entire " +
+			deprecatedKey + " block — including any TLS settings (als_plain_text/public_key_path/private_key_path) — is being " +
+			"ignored in favor of collector.server as configured. Verify collector.server's TLS settings explicitly; " +
+			"the ALS link may now be running in plaintext if collector.server did not also set them.")
 	}
 }

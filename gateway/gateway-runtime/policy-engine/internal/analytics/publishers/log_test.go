@@ -274,6 +274,28 @@ func TestLog_Publish_FieldsExcludeDoesNotOverrideExplicitFlowBooleans(t *testing
 	assert.Equal(t, "baz", respH["x-bar"], "response headers still present per response_headers:true")
 }
 
+// A fields.exclude header sub-key must match regardless of casing on either side
+// (config or the header the upstream actually returned), since HTTP header names
+// are case-insensitive and an upstream may return e.g. "Set-Cookie" while the
+// operator wrote "responseHeaders.set-cookie" in config.
+func TestLog_Publish_FieldsExcludeHeaderSubKeyCaseInsensitive(t *testing.T) {
+	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
+		Enabled:         true,
+		ResponseHeaders: true,
+		ExcludeFields:   []string{"responseHeaders.set-cookie"},
+	})
+	event := createBaseEvent()
+	event.Properties["responseHeaders"] = `{"Set-Cookie":"sid=1","x-bar":"baz"}`
+
+	l.Publish(event)
+	decoded := decodeLine(t, read())
+
+	respH := headerMap(t, decoded["responseHeaders"])
+	_, hasCookie := respH["Set-Cookie"]
+	assert.False(t, hasCookie, "excluded header sub-key dropped despite case mismatch")
+	assert.Equal(t, "baz", respH["x-bar"], "other response headers still present")
+}
+
 // Output-side payload truncation (0 = no limit).
 func TestLog_Publish_TruncatesPayload(t *testing.T) {
 	cfg := bothFlowsConfig()

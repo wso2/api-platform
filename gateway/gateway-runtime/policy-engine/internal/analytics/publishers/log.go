@@ -81,7 +81,7 @@ func NewLog(logCfg *config.TrafficLoggingConfig) *Log {
 		maskedHeaders:    masked,
 		maxPayloadSize:   logCfg.MaxPayloadSize,
 		globalDir:        buildGlobalDirective(*logCfg),
-		globalProperties: newGlobalPropertyEvaluator(logCfg.Properties),
+		globalProperties: newGlobalPropertyEvaluator(logCfg.Properties, masked),
 		out:              os.Stdout,
 	}
 }
@@ -215,15 +215,29 @@ func (l *Log) truncatePayload(s string) string {
 // "requestHeaders") or dotted sub-key paths within map fields (e.g.
 // "requestHeaders.authorization", "labels.env"). Top-level values are kept as
 // raw JSON bytes; only the specific nested objects referenced by a dotted path
-// are decoded and re-encoded.
+// are decoded and re-encoded. Sub-keys under requestHeaders/responseHeaders are
+// matched case-insensitively (consistent with maskedHeaders and HTTP header-name
+// semantics) since the upstream may return a header in any casing (e.g.
+// "Set-Cookie"); sub-keys under any other map field match case-sensitively.
 func applyFieldsProjection(m map[string]json.RawMessage, fields *dto.TrafficLogFields) {
 	for _, name := range fields.Exclude {
 		if top, sub, found := strings.Cut(name, "."); found {
-			filterNestedKeys(m, top, func(k string) bool { return k != sub })
+			if isHeaderField(top) {
+				subLower := strings.ToLower(sub)
+				filterNestedKeys(m, top, func(k string) bool { return strings.ToLower(k) != subLower })
+			} else {
+				filterNestedKeys(m, top, func(k string) bool { return k != sub })
+			}
 		} else {
 			delete(m, name)
 		}
 	}
+}
+
+// isHeaderField reports whether top is one of the header map fields, whose
+// sub-keys are matched case-insensitively.
+func isHeaderField(top string) bool {
+	return top == "requestHeaders" || top == "responseHeaders"
 }
 
 // filterNestedKeys decodes the JSON object stored at m[top], keeps only the
@@ -258,9 +272,9 @@ func filterNestedKeys(m map[string]json.RawMessage, top string, keep func(string
 // maskHeaders redacts header values whose names appear in mask (case-insensitive).
 // Returns a new map; the input is not modified. A dotted fields.exclude path
 // (e.g. "requestHeaders.Authorization") can drop a header entirely instead of
-// redacting it, but it matches the emitted key case-sensitively — so it must
-// reproduce the exact casing Envoy delivered.
-func (l *Log) maskHeaders(headers map[string]string, mask map[string]bool) map[string]string {
+// redacting it; like mask, that comparison is also case-insensitive (see
+// isHeaderField in applyFieldsProjection), so any casing Envoy delivers matches.
+func maskHeaders(headers map[string]string, mask map[string]bool) map[string]string {
 	result := make(map[string]string, len(headers))
 	for name, value := range headers {
 		if mask[strings.ToLower(name)] {

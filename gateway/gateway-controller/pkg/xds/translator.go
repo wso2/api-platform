@@ -546,6 +546,16 @@ func (t *Translator) TranslateConfigs(
 			Name:    vhost,
 			Domains: t.getVHostDomains(vhost),
 			Routes:  routes,
+			// Strip any client-supplied x-envoy-original-path so it cannot survive to
+			// the collector.ignore_path_prefixes access-log filter (buildIgnorePathsAccessLogFilter):
+			// on a route that performs a path rewrite, Envoy's router unconditionally
+			// re-sets this header to the true pre-rewrite path after removal, so
+			// legitimate suppression (e.g. "/health") is unaffected; on a route that
+			// does not rewrite, removal leaves the header absent, which the filter's
+			// documented "absent -> never suppress" fallback already treats as safe —
+			// closing the gap where a client could otherwise self-suppress its own
+			// traffic/analytics record by sending a forged x-envoy-original-path.
+			RequestHeadersToRemove: []string{envoyOriginalPathHeader},
 		}
 		virtualHosts = append(virtualHosts, virtualHost)
 	}
@@ -1387,6 +1397,11 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub(isHTTPS bool) (*listen
 		VirtualHosts: []*route.VirtualHost{{
 			Name:    "DYNAMIXC_FORWARD_PROXY_VHOST_WEBSUBHUB",
 			Domains: []string{t.routerConfig.EventGateway.WebSubHubURL}, // this should be websubhub domains
+			// This route never rewrites :path, so unlike the main API vhosts (see the
+			// matching comment in the main virtual host construction) Envoy never
+			// re-populates x-envoy-original-path here; stripping any client-supplied
+			// value still leaves it correctly absent for collector.ignore_path_prefixes.
+			RequestHeadersToRemove: []string{envoyOriginalPathHeader},
 			Routes: []*route.Route{{
 				Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Prefix{Prefix: "/"}},
 				Action: &route.Route_Route{Route: &route.RouteAction{

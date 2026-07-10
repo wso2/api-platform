@@ -1306,6 +1306,36 @@ func TestTranslator_TranslateConfigs_EmptyConfigs(t *testing.T) {
 	assert.NotNil(t, resources)
 }
 
+// Every API virtual host must strip any client-supplied x-envoy-original-path so it
+// cannot survive to the collector.ignore_path_prefixes access-log filter on a route
+// that never rewrites :path (see the comment on this field in TranslateConfigs).
+// vhostMap is pre-seeded with the wildcard "*" vhost, so this is exercised even with
+// no APIs deployed.
+func TestTranslator_TranslateConfigs_StripsClientOriginalPathHeader(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	resources, err := translator.TranslateConfigs([]*models.StoredConfig{}, "test-correlation-id")
+	require.NoError(t, err)
+
+	routeConfigs := resources[resource.RouteType]
+	require.NotEmpty(t, routeConfigs)
+
+	found := false
+	for _, res := range routeConfigs {
+		rc, ok := res.(*route.RouteConfiguration)
+		require.True(t, ok)
+		for _, vh := range rc.VirtualHosts {
+			found = true
+			assert.Contains(t, vh.RequestHeadersToRemove, envoyOriginalPathHeader,
+				"virtual host %q must strip client-supplied x-envoy-original-path", vh.Name)
+		}
+	}
+	assert.True(t, found, "expected at least one virtual host in the shared route config")
+}
+
 func TestTranslator_GetVHostDomains(t *testing.T) {
 	logger := createTestLogger()
 
