@@ -41,9 +41,11 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// Allow GetConfig() to auto-provision an encryption key so tests that exercise
-	// subscription_repository.go don't fail at startup.
+	// ENCRYPTION_KEY and AUTH_JWT_SECRET_KEY are required
+	// provide valid 64-hex keys so GetConfig() succeeds for tests that exercise subscription_repository.go.
 	os.Setenv("APIP_DEMO_MODE", "true")
+	os.Setenv("ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	os.Setenv("AUTH_JWT_SECRET_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 	os.Exit(m.Run())
 }
 

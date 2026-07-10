@@ -36,8 +36,8 @@
 # Secrets (both are 32-byte keys — 64 hex chars / base64; generate with openssl rand -hex 32):
 #   AUTH_JWT_SECRET_KEY  — signs login JWTs; the devportal verifies with the same value.
 #   ENCRYPTION_KEY       — encrypts secrets/subscription tokens at rest.
-#   Set them in your shell or a .env file to persist sessions/data across restarts. When
-#   AUTH_JWT_SECRET_KEY is unset the Platform API uses an ephemeral in-memory demo key.
+#   Both are REQUIRED — set them in your shell or a .env file; the Platform API fails to
+#   start if either is missing.
 #
 # TLS:
 #   A self-signed certificate is generated automatically on first start and stored
@@ -70,8 +70,8 @@ services:
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
-      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:?AUTH_JWT_SECRET_KEY is required — a 32-byte key (openssl rand -hex 32)}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY is required — a 32-byte key (openssl rand -hex 32)}
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data

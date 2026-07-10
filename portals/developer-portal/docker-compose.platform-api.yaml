@@ -28,10 +28,10 @@
 #   4. Open http://localhost:3000
 #      Login: admin / admin
 #
-# Set AUTH_JWT_SECRET_KEY (signs login sessions; share the same value with the devportal's
-# APIP_DP_PLATFORMAPI_JWTSECRET) and ENCRYPTION_KEY (encrypts data at rest) in your shell or a
-# .env file to keep sessions/data alive across restarts. Both are 32-byte keys (64 hex chars /
-# base64 — openssl rand -hex 32). When AUTH_JWT_SECRET_KEY is unset an ephemeral demo key is used.
+# AUTH_JWT_SECRET_KEY (signs login sessions; share the same value with the devportal's
+# APIP_DP_PLATFORMAPI_JWTSECRET) and ENCRYPTION_KEY (encrypts data at rest) are both REQUIRED —
+# set them in your shell or a .env file. Both are 32-byte keys (64 hex chars / base64 —
+# openssl rand -hex 32). The Platform API fails to start if either is missing.
 
 services:
   platform-api:
@@ -40,8 +40,8 @@ services:
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
-      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:?AUTH_JWT_SECRET_KEY is required — a 32-byte key (openssl rand -hex 32)}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY is required — a 32-byte key (openssl rand -hex 32)}
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data

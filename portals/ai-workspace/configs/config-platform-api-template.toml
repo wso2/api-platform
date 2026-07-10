@@ -39,12 +39,8 @@ enable_scope_validation = true
 # ---------------------------------------------------------------------------
 # Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
 # (secrets, subscription tokens, WebSub HMAC secrets)
-# Provide exactly ONE of encryption_key / encryption_key_file
-# (env: ENCRYPTION_KEY / ENCRYPTION_KEY_FILE). Generate with: openssl rand -hex 32.
-# In demo mode, if neither is set a key file is auto-created next to the database
-# and reused on restart; in production one of them is required.
+# Env: ENCRYPTION_KEY. Generate with: openssl rand -hex 32.
 # encryption_key = ""
-# encryption_key_file = ""
 
 # Controls authentication for POST /api/v0.9/organizations.
 # When true, the endpoint requires both a valid Bearer JWT and the
@@ -71,8 +67,6 @@ path = "/app/data/api_platform.db"
 # max_idle_conns    = 10    # maximum idle connections in the pool
 # conn_max_lifetime = 300   # seconds before a connection is recycled
 
-# (Encryption is configured once at the top of this file via encryption_key /
-# encryption_key_file — it covers subscription tokens, secrets, and HMAC secrets.)
 
 # ---------------------------------------------------------------------------
 # Authentication

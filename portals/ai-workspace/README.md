@@ -421,7 +421,7 @@ rather than run insecurely:
 |---|---|---|
 | **AI Workspace (BFF)** — auth | Basic / file-based auth allowed | Basic auth **rejected** — OIDC required (`VITE_AUTH_MODE=oidc` + the `OIDC_*` values) |
 | **AI Workspace (BFF)** — TLS | Auto-generates a self-signed cert when none is mounted | Self-signed fallback **disabled** — a cert/key must be mounted (`BFF_TLS_CERT_FILE` / `BFF_TLS_KEY_FILE`) |
-| **Platform API** — secrets | Generates an ephemeral encryption key (or persists one next to the DB) when none is set | A stable key is **required** (`ENCRYPTION_KEY` or `ENCRYPTION_KEY_FILE`) |
+| **Platform API** — secrets | `ENCRYPTION_KEY` and `AUTH_JWT_SECRET_KEY` are **required** | Same — both keys required |
 
 So before flipping `APIP_DEMO_MODE=false`, make sure you have:
 

@@ -337,7 +337,7 @@ The following environment variable controls encryption for the Platform API:
 
 | Env Var | Description |
 |---------|-------------|
-| `ENCRYPTION_KEY` | 32-byte AES-256 key as 64 hex characters or base64. In demo mode, if unset a key file is auto-generated next to the database and reused on restart; in production it is required. Mutually exclusive with `ENCRYPTION_KEY_FILE`. |
+| `ENCRYPTION_KEY` | 32-byte AES-256 key as 64 hex characters or base64. **Required in every mode and never auto-generated** — the Platform API fails to start if it is missing or malformed. |
 
 Generate a stable key with:
 
@@ -358,4 +358,4 @@ Then copy the output value into your `.env` file:
 ENCRYPTION_KEY=a3f1e2d4b5c6...
 ```
 
-> **Warning:** Always set a stable `ENCRYPTION_KEY` (or `ENCRYPTION_KEY_FILE`) in any environment where secrets must persist across restarts or across multiple replicas. An ephemeral auto-generated key will make existing encrypted secrets unreadable after a restart.
+> **Warning:** Use the **same** stable `ENCRYPTION_KEY` across restarts and across all replicas. Changing it makes existing encrypted secrets unreadable.

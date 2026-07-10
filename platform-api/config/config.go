@@ -18,15 +18,11 @@
 package config
 
 import (
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -86,8 +82,7 @@ type Server struct {
 	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
 	LLMTemplateDefinitionsPath string `koanf:"llm_template_definitions_path"`
 
-	EncryptionKey     string `koanf:"encryption_key"`
-	EncryptionKeyFile string `koanf:"encryption_key_file"`
+	EncryptionKey string `koanf:"encryption_key"`
 
 	Database         Database         `koanf:"database"`
 	Auth             Auth             `koanf:"auth"`
@@ -364,114 +359,25 @@ func LoadConfig(configPath string) (*Server, error) {
 	}
 
 	if cfg.Auth.JWT.Enabled {
-		switch {
-		case cfg.Auth.JWT.SecretKey == "":
-			if !demoMode() {
-				return nil, fmt.Errorf(
-					"AUTH_JWT_SECRET_KEY must be configured when APIP_DEMO_MODE=false and JWT authentication is enabled; " +
-						"generate one with: openssl rand -hex 32",
-				)
-			}
-			// Demo: generate an ephemeral in-memory key (a valid 64-hex/32-byte value)
-			key, err := generateRandomSecret()
-			if err != nil {
-				return nil, fmt.Errorf("failed to generate JWT secret key: %w", err)
-			}
-			cfg.Auth.JWT.SecretKey = key
-			slog.Warn("AUTH_JWT_SECRET_KEY not set — generated an ephemeral in-memory demo key; " +
-				"login sessions will be invalidated on restart. Set AUTH_JWT_SECRET_KEY to persist sessions.")
-		case !valid32ByteKey(cfg.Auth.JWT.SecretKey):
+		if cfg.Auth.JWT.SecretKey == "" {
+			return nil, fmt.Errorf("AUTH_JWT_SECRET_KEY is required when JWT authentication is enabled; " +
+				"generate one with: openssl rand -hex 32")
+		}
+		if !valid32ByteKey(cfg.Auth.JWT.SecretKey) {
 			return nil, fmt.Errorf("invalid AUTH_JWT_SECRET_KEY: must be 64 hex characters or " +
 				"base64 decoding to 32 bytes (generate one with: openssl rand -hex 32)")
 		}
 	}
 
-	if err := resolveEncryptionKey(cfg); err != nil {
-		return nil, err
+	if cfg.EncryptionKey == "" {
+		return nil, fmt.Errorf("ENCRYPTION_KEY is required; generate one with: openssl rand -hex 32")
+	}
+	if !valid32ByteKey(cfg.EncryptionKey) {
+		return nil, fmt.Errorf("invalid ENCRYPTION_KEY: must be 64 hex characters or " +
+			"base64 decoding to 32 bytes (generate one with: openssl rand -hex 32)")
 	}
 
 	return cfg, nil
-}
-
-// resolveEncryptionKey resolves cfg.EncryptionKey from either the inline ENCRYPTION_KEY or the
-// ENCRYPTION_KEY_FILE (a 32-byte binary key file). The two sources are mutually exclusive, and
-// the key is re-read on every start/restart so a persisted key keeps encrypted data readable.
-//
-// Rules:
-//   - Both provided                → error (configure exactly one).
-//   - Inline ENCRYPTION_KEY         → validated (64 hex or base64→32 bytes); never written to a file.
-//   - ENCRYPTION_KEY_FILE only      → read + validated on every start; never auto-generated.
-//   - Neither, non-demo mode        → error (a key is never auto-generated in production).
-//   - Neither, demo mode            → key file path defaults alongside the database file; the key
-//     is generated on first run and reloaded on restart. If no path can be derived, an ephemeral
-//     key is used and encrypted data will not survive a restart.
-func resolveEncryptionKey(cfg *Server) error {
-	// Mutual exclusivity: never accept both an inline key and a key file.
-	if cfg.EncryptionKey != "" && cfg.EncryptionKeyFile != "" {
-		return fmt.Errorf("configure only one of ENCRYPTION_KEY or ENCRYPTION_KEY_FILE, not both")
-	}
-
-	switch {
-	case cfg.EncryptionKey != "":
-		// Inline key from config.toml / ENCRYPTION_KEY. Validate; never persist to a file.
-		if !valid32ByteKey(cfg.EncryptionKey) {
-			return fmt.Errorf("invalid ENCRYPTION_KEY: must be 64 hex characters or base64 " +
-				"decoding to 32 bytes (generate one with: openssl rand -hex 32)")
-		}
-		return nil
-
-	case cfg.EncryptionKeyFile != "":
-		// Explicit key file: read and validate on every start/restart. Never auto-generate.
-		hexKey, err := loadEncryptionKeyFile(cfg.EncryptionKeyFile)
-		if err != nil {
-			return fmt.Errorf("failed to load ENCRYPTION_KEY_FILE: %w", err)
-		}
-		cfg.EncryptionKey = hexKey
-		return nil
-
-	default:
-		// Neither provided.
-		if !demoMode() {
-			return fmt.Errorf("no encryption key configured. Set ENCRYPTION_KEY or " +
-				"ENCRYPTION_KEY_FILE when APIP_DEMO_MODE=false (generate one with: openssl rand -hex 32)")
-		}
-
-		// Demo mode: default the key file path alongside the database file so the generated key
-		// is persisted and reloaded on restart (encrypted data survives restarts).
-		if cfg.EncryptionKeyFile == "" && cfg.Database.Path != "" {
-			cfg.EncryptionKeyFile = filepath.Join(filepath.Dir(cfg.Database.Path), "secret-encryption.key")
-		}
-
-		if cfg.EncryptionKeyFile == "" {
-			// No path available to persist (e.g. a non-SQLite driver with no DB path) — fall back
-			// to an ephemeral key. Encrypted data will not survive a restart.
-			key, err := generateRandomSecret()
-			if err != nil {
-				return fmt.Errorf("failed to generate ephemeral encryption key: %w", err)
-			}
-			cfg.EncryptionKey = key
-			slog.Warn("APIP_DEMO_MODE: using an ephemeral random encryption key (no key file path to " +
-				"persist) — encrypted secrets, subscription tokens, and login sessions will be unusable " +
-				"after restart. Set ENCRYPTION_KEY or ENCRYPTION_KEY_FILE to persist across restarts.")
-			return nil
-		}
-
-		hexKey, err := loadOrGenerateEncryptionKeyFile(cfg.EncryptionKeyFile)
-		if err != nil {
-			// Could not create/read the key file — fall back to an ephemeral key in demo mode.
-			slog.Warn("APIP_DEMO_MODE: could not initialise encryption key file, falling back to an "+
-				"ephemeral key (encrypted data will not survive a restart)",
-				slog.String("path", cfg.EncryptionKeyFile), slog.Any("err", err))
-			key, genErr := generateRandomSecret()
-			if genErr != nil {
-				return fmt.Errorf("failed to generate ephemeral encryption key: %w", genErr)
-			}
-			cfg.EncryptionKey = key
-			return nil
-		}
-		cfg.EncryptionKey = hexKey
-		return nil
-	}
 }
 
 // valid32ByteKey reports whether keyStr is a 32-byte key encoded as 64 hex characters
@@ -486,99 +392,6 @@ func valid32ByteKey(keyStr string) bool {
 		return true
 	}
 	return false
-}
-
-func generateRandomSecret() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
-}
-
-// demoMode reports whether APIP_DEMO_MODE is enabled.
-// Defaults to true when the variable is unset.
-func demoMode() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
-	if v == "" {
-		return true
-	}
-	return v == "true" || v == "1"
-}
-
-const encryptionKeySize = 32 // AES-256
-
-// loadOrGenerateEncryptionKeyFile loads a 32-byte binary key file from filePath, creating it
-// (and any missing parent directories) on first run. This mirrors the gateway controller's
-// KeyManager pattern: raw binary key file, 0600 permissions, validate size on load.
-// Returns the key as a 64-char hex string for use with DeriveEncryptionKey.
-//
-// Concurrent first-time callers are safe: generateEncryptionKeyFile uses O_CREATE|O_EXCL so
-// only one writer succeeds; others see os.ErrExist and fall through to loadEncryptionKeyFile.
-func loadOrGenerateEncryptionKeyFile(filePath string) (string, error) {
-	err := generateEncryptionKeyFile(filePath)
-	switch {
-	case err == nil:
-		slog.Info("APIP_DEMO_MODE: generated and persisted encryption key — encrypted data will survive restarts",
-			slog.String("path", filePath),
-			slog.String("hint", "Set and provide ENCRYPTION_KEY or a shared ENCRYPTION_KEY_FILE for production or multi-replica deployments"))
-	case errors.Is(err, os.ErrExist):
-		// Another initializer already created the file — load the winner's key.
-	default:
-		return "", err
-	}
-	return loadEncryptionKeyFile(filePath)
-}
-
-// generateEncryptionKeyFile creates parent directories and writes 32 cryptographically
-// random bytes to filePath with permissions 0600. Uses O_CREATE|O_EXCL so concurrent
-// first-time callers are safe: only one writer succeeds, others get os.ErrExist.
-// Mirrors gateway-controller's generateKeyFile.
-func generateEncryptionKeyFile(filePath string) error {
-	if err := os.MkdirAll(filepath.Dir(filePath), 0700); err != nil {
-		return fmt.Errorf("failed to create key directory: %w", err)
-	}
-	key := make([]byte, encryptionKeySize)
-	if _, err := rand.Read(key); err != nil {
-		return fmt.Errorf("failed to generate random key: %w", err)
-	}
-	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		// Propagate os.ErrExist so the caller can distinguish "already created" from other errors.
-		return err
-	}
-	_, err = f.Write(key)
-	if closeErr := f.Close(); closeErr != nil && err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		os.Remove(filePath) // best-effort cleanup of a partial write
-		return fmt.Errorf("failed to write key file %s: %w", filePath, err)
-	}
-	return nil
-}
-
-// loadEncryptionKeyFile reads the key file, validates its size (32 raw bytes), warns if
-// world-readable, and returns the key as a 64-char hex string.
-func loadEncryptionKeyFile(filePath string) (string, error) {
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to stat encryption key file %s: %w", filePath, err)
-	}
-	if info.Mode().Perm()&0004 != 0 {
-		slog.Warn("Encryption key file is world-readable — consider restricting permissions to 0600",
-			slog.String("path", filePath),
-			slog.String("permissions", info.Mode().Perm().String()))
-	}
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read encryption key file %s: %w", filePath, err)
-	}
-	if len(data) != encryptionKeySize {
-		return "", fmt.Errorf("encryption key file %s has wrong size: expected %d bytes, got %d", filePath, encryptionKeySize, len(data))
-	}
-	slog.Info("Loaded persisted encryption key from file", slog.String("path", filePath))
-	return hex.EncodeToString(data), nil
 }
 
 // envToKoanfKey maps a lowercased environment variable name to its koanf dot-notation key.
@@ -604,8 +417,6 @@ func envToKoanfKey(s string) string {
 		return "enable_scope_validation"
 	case "encryption_key":
 		return "encryption_key"
-	case "encryption_key_file":
-		return "encryption_key_file"
 
 	// Database
 	case "database_driver":

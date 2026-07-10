@@ -241,9 +241,8 @@ AUTH_IDP_ENABLED=true             →  IDP mode        (JWKS-based verification)
 ```
 
 > **Demo mode (`APIP_DEMO_MODE`).** Defaults to `true`; an explicit `false`/`0` opts into
-> production-grade startup checks. With demo mode off, the server will not fall back to an
-> ephemeral encryption key — you must set `ENCRYPTION_KEY` or `ENCRYPTION_KEY_FILE` — and it
-> warns loudly if `AUTH_JWT_SKIP_VALIDATION=true`.
+> production-grade startup checks. Note that `ENCRYPTION_KEY` and `AUTH_JWT_SECRET_KEY` are **required**
+> With demo mode off, the server warns loudly if `AUTH_JWT_SKIP_VALIDATION=true`.
 
 ---
 
@@ -374,14 +373,11 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 
 ### Encryption
 
-A single key protects all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets). Provide **exactly one** of `ENCRYPTION_KEY` or `ENCRYPTION_KEY_FILE`.
+`ENCRYPTION_KEY` protects all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets). It is **never auto-generated** — the operator must provide it.
 
 | Variable | Default | Description |
 |---|---|---|
-| `ENCRYPTION_KEY` | _(empty)_ | 32-byte AES-256 key as 64 hex chars or base64 (32 bytes). Generate with `openssl rand -hex 32`. |
-| `ENCRYPTION_KEY_FILE` | _(empty)_ | Path to a 32-byte binary key file (read on every start). Mutually exclusive with `ENCRYPTION_KEY`. |
-
-In **demo mode** (default), if neither is set a key file is auto-generated next to the SQLite database (`<db-dir>/secret-encryption.key`) and reused on restart. In **production** (`APIP_DEMO_MODE=false`), one of the two must be provided or startup fails — a key is never auto-generated.
+| `ENCRYPTION_KEY` | _(empty)_ | **Required.** 32-byte AES-256 key as 64 hex chars or base64 (32 bytes). Generate with `openssl rand -hex 32`. Startup fails if missing or malformed. |
 
 ---
 

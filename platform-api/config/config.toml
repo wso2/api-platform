@@ -29,12 +29,8 @@ port       = "9243"
 # ---------------------------------------------------------------------------
 # Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
 # (secrets, subscription tokens, WebSub HMAC secrets)
-# Provide exactly ONE of encryption_key / encryption_key_file
-# (env: ENCRYPTION_KEY / ENCRYPTION_KEY_FILE). Generate with: openssl rand -hex 32.
-# In demo mode, if neither is set a key file is auto-created next to the database
-# and reused on restart; in production one of them is required.
+# Env: ENCRYPTION_KEY. Generate with: openssl rand -hex 32.
 # encryption_key = ""
-# encryption_key_file = ""
 
 # ---------------------------------------------------------------------------
 # Database
