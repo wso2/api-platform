@@ -29,7 +29,7 @@ Feature: Operation HTTP methods are normalized to uppercase
   Scenario: A lowercase method is accepted and routes as uppercase
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: method-lower-v1.0
@@ -59,7 +59,7 @@ Feature: Operation HTTP methods are normalized to uppercase
   Scenario: A mixed-case method is accepted and routes as uppercase
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: method-mixed-v1.0
@@ -88,7 +88,7 @@ Feature: Operation HTTP methods are normalized to uppercase
   Scenario: Two methods on one path, mixed case, each routes
     When I deploy this API configuration:
       """
-      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
         name: method-multi-v1.0
