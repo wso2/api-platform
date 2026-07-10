@@ -166,13 +166,9 @@ func filterGatewaysByAllowedTargets(gateways []*model.Gateway, allowedTargets st
 	if allowedTargets == "" || allowedTargets == constants.APIKeyAllowedTargetsAll {
 		return gateways
 	}
-	allowed := make(map[string]struct{})
-	for _, name := range strings.Split(allowedTargets, ",") {
-		allowed[strings.TrimSpace(name)] = struct{}{}
-	}
 	filtered := make([]*model.Gateway, 0, len(gateways))
 	for _, gw := range gateways {
-		if _, ok := allowed[gw.Name]; ok {
+		if gatewayAllowedByTargets(gw.Name, allowedTargets) {
 			filtered = append(filtered, gw)
 		}
 	}
@@ -186,17 +182,29 @@ func filterAPIGatewaysByAllowedTargets(gateways []*model.APIGatewayWithDetails, 
 	if allowedTargets == "" || allowedTargets == constants.APIKeyAllowedTargetsAll {
 		return gateways
 	}
-	allowed := make(map[string]struct{})
-	for _, name := range strings.Split(allowedTargets, ",") {
-		allowed[strings.TrimSpace(name)] = struct{}{}
-	}
 	filtered := make([]*model.APIGatewayWithDetails, 0, len(gateways))
 	for _, gw := range gateways {
-		if _, ok := allowed[gw.Name]; ok {
+		if gatewayAllowedByTargets(gw.Name, allowedTargets) {
 			filtered = append(filtered, gw)
 		}
 	}
 	return filtered
+}
+
+// gatewayAllowedByTargets reports whether a gateway (identified by name) is permitted by a
+// key's allowedTargets. An empty value or constants.APIKeyAllowedTargetsAll ("ALL") permits
+// every gateway; otherwise the gateway name must appear in the comma-separated list. This is
+// the single source of truth shared by the filter helpers and the deploy-time backfill.
+func gatewayAllowedByTargets(gatewayName, allowedTargets string) bool {
+	if allowedTargets == "" || allowedTargets == constants.APIKeyAllowedTargetsAll {
+		return true
+	}
+	for _, name := range strings.Split(allowedTargets, ",") {
+		if strings.TrimSpace(name) == gatewayName {
+			return true
+		}
+	}
+	return false
 }
 
 // randomHexString generates a random lowercase hex string of the requested length.
@@ -332,7 +340,7 @@ func APIKeyCreatedEventFromModel(k *model.APIKey) *model.APIKeyCreatedEvent {
 // Best-effort: the controller upserts apikey.created idempotently, so re-sending a key the
 // gateway already holds is harmless, and any failure is logged without blocking the
 // deployment (the reconnect bulk sync remains the safety net).
-func BackfillAPIKeysToGateway(apiKeyRepo repository.APIKeyRepository, events *GatewayEventsService, slogger *slog.Logger, artifactUUID, gatewayID, actor string) {
+func BackfillAPIKeysToGateway(apiKeyRepo repository.APIKeyRepository, gatewayRepo repository.GatewayRepository, events *GatewayEventsService, slogger *slog.Logger, artifactUUID, gatewayID, actor string) {
 	if events == nil || apiKeyRepo == nil {
 		return
 	}
@@ -346,6 +354,22 @@ func BackfillAPIKeysToGateway(apiKeyRepo repository.APIKeyRepository, events *Ga
 		return
 	}
 
+	// Resolve the target gateway's name once so we can honor each key's AllowedTargets,
+	// which is matched by gateway name — consistent with the create/revoke broadcast paths
+	// (filterGatewaysByAllowedTargets). If the name can't be resolved, keys restricted to
+	// specific targets are conservatively skipped (only "ALL"/unrestricted keys go through).
+	gatewayName := ""
+	if gatewayRepo != nil {
+		if gw, gwErr := gatewayRepo.GetByUUID(gatewayID); gwErr != nil {
+			if slogger != nil {
+				slogger.Warn("Failed to resolve gateway for API key backfill target filtering",
+					"gatewayId", gatewayID, "error", gwErr)
+			}
+		} else if gw != nil {
+			gatewayName = gw.Name
+		}
+	}
+
 	now := time.Now()
 	backfilled := 0
 	for _, k := range keys {
@@ -354,6 +378,10 @@ func BackfillAPIKeysToGateway(apiKeyRepo repository.APIKeyRepository, events *Ga
 		}
 		// Skip expired keys — never push a dead key to a gateway.
 		if k.ExpiresAt != nil && !k.ExpiresAt.After(now) {
+			continue
+		}
+		// Honor per-key AllowedTargets — skip keys not permitted for this gateway.
+		if !gatewayAllowedByTargets(gatewayName, k.AllowedTargets) {
 			continue
 		}
 

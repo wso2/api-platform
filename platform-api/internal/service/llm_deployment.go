@@ -287,7 +287,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		// Push existing active API keys for this provider to the (possibly newly
 		// associated) gateway so keys created before this association are recognized
 		// immediately, rather than only after the controller's next reconnect sync.
-		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayEventsService, s.slogger, provider.UUID, gatewayID, "")
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, provider.UUID, gatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -382,7 +382,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		}
 
 		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
-		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayEventsService, s.slogger, provider.UUID, targetDeployment.GatewayID, "")
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, provider.UUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -1457,7 +1457,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		}
 
 		// Push existing active API keys for this proxy to the gateway (see BackfillAPIKeysToGateway).
-		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayEventsService, s.slogger, proxy.UUID, gatewayID, "")
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxy.UUID, gatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -1552,7 +1552,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		}
 
 		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
-		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayEventsService, s.slogger, proxy.UUID, targetDeployment.GatewayID, "")
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxy.UUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(

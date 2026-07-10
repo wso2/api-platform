@@ -348,7 +348,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		}
 
 		// Push existing active API keys for this proxy to the gateway (see BackfillAPIKeysToGateway).
-		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayEventsService, s.slogger, proxyUUID, gatewayID, createdBy)
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, gatewayID, createdBy)
 	}
 
 	// Return deployment response
@@ -557,7 +557,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		}
 
 		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
-		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayEventsService, s.slogger, proxyUUID, targetDeployment.GatewayID, "")
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(

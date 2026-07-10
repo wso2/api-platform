@@ -892,7 +892,7 @@ func (s *DeploymentService) ensureAPIGatewayAssociation(apiUUID, gatewayID, orgU
 // every deploy path (REST, LLM provider/proxy, MCP, WebSub, WebBroker) pushes existing
 // keys identically.
 func (s *DeploymentService) backfillAPIKeysToGateway(apiUUID, gatewayID, actor string) {
-	BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, actor)
+	BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, actor)
 }
 
 // DeployAPIByHandle creates a new immutable deployment artifact using API handle

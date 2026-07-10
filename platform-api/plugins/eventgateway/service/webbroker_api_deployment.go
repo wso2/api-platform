@@ -265,7 +265,7 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 		}
 
 		// Push existing active API keys for this API to the gateway (see BackfillAPIKeysToGateway).
-		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, createdBy)
+		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, createdBy)
 	}
 
 	return toAPIDeploymentResponse(
@@ -451,7 +451,7 @@ func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID st
 		}
 
 		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
-		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayEventsService, s.slogger, apiUUID, targetDeployment.GatewayID, "")
+		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(

@@ -58,6 +58,17 @@ func (r *stubBackfillAPIKeyRepo) ListByArtifact(string) ([]*model.APIKey, error)
 	return r.keys, r.err
 }
 
+// stubBackfillGatewayRepo resolves a gateway UUID to a gateway with a fixed name so the
+// backfill can evaluate per-key AllowedTargets (which match by gateway name).
+type stubBackfillGatewayRepo struct {
+	repository.GatewayRepository
+	name string
+}
+
+func (r *stubBackfillGatewayRepo) GetByUUID(id string) (*model.Gateway, error) {
+	return &model.Gateway{ID: id, Name: r.name}, nil
+}
+
 // decodeKeyName extracts the API key name from a captured apikey.created event.
 func decodeKeyName(t *testing.T, e eventhub.Event) string {
 	t.Helper()
@@ -161,7 +172,7 @@ func TestBackfillAPIKeysToGateway_ExportedSharedByAllKinds(t *testing.T) {
 	events := NewGatewayEventsService(hub, newTestIdentityService(), newTestLogger())
 
 	// nil slogger must not panic and must still broadcast.
-	BackfillAPIKeysToGateway(repo, events, nil, "artifact-1", "gw-X", "")
+	BackfillAPIKeysToGateway(repo, nil, events, nil, "artifact-1", "gw-X", "")
 
 	if len(hub.published) != 2 {
 		t.Fatalf("expected 2 broadcast events, got %d", len(hub.published))
@@ -180,9 +191,40 @@ func TestBackfillAPIKeysToGateway_RepoError(t *testing.T) {
 	hub := &capturingEventHub{}
 	events := NewGatewayEventsService(hub, newTestIdentityService(), newTestLogger())
 
-	BackfillAPIKeysToGateway(repo, events, newTestLogger(), "artifact-1", "gw-X", "")
+	BackfillAPIKeysToGateway(repo, nil, events, newTestLogger(), "artifact-1", "gw-X", "")
 
 	if len(hub.published) != 0 {
 		t.Fatalf("expected no broadcasts on repo error, got %d", len(hub.published))
+	}
+}
+
+// TestBackfillAPIKeysToGateway_HonorsAllowedTargets verifies a key is backfilled only to a
+// gateway permitted by its AllowedTargets — matching the create/revoke broadcast behaviour.
+func TestBackfillAPIKeysToGateway_HonorsAllowedTargets(t *testing.T) {
+	keys := []*model.APIKey{
+		{UUID: "k-all", ArtifactUUID: "api-1", Name: "all-key", Status: constants.APIKeyStatusActive, AllowedTargets: constants.APIKeyAllowedTargetsAll},
+		{UUID: "k-here", ArtifactUUID: "api-1", Name: "here-key", Status: constants.APIKeyStatusActive, AllowedTargets: "gw-target,other-gw"},
+		{UUID: "k-else", ArtifactUUID: "api-1", Name: "elsewhere-key", Status: constants.APIKeyStatusActive, AllowedTargets: "other-gw"},
+	}
+	hub := &capturingEventHub{}
+	events := NewGatewayEventsService(hub, newTestIdentityService(), newTestLogger())
+
+	// Target gateway "gw-target": the ALL key and the key that lists gw-target should go through;
+	// the key restricted to "other-gw" must be skipped.
+	BackfillAPIKeysToGateway(&stubBackfillAPIKeyRepo{keys: keys}, &stubBackfillGatewayRepo{name: "gw-target"},
+		events, newTestLogger(), "api-1", "gw-uuid", "")
+
+	if len(hub.published) != 2 {
+		t.Fatalf("expected 2 broadcasts (ALL + gw-target-listed), got %d", len(hub.published))
+	}
+	got := map[string]bool{}
+	for _, e := range hub.published {
+		got[decodeKeyName(t, e)] = true
+	}
+	if !got["all-key"] || !got["here-key"] {
+		t.Errorf("expected all-key and here-key backfilled; got %v", got)
+	}
+	if got["elsewhere-key"] {
+		t.Errorf("key restricted to other-gw must not be backfilled to gw-target")
 	}
 }
