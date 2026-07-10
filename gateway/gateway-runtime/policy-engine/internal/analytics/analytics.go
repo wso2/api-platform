@@ -90,14 +90,18 @@ type Analytics struct {
 	publishers []analytics_publisher.Publisher
 }
 
-// NewAnalytics creates a new instance of Analytics.
+// NewAnalytics creates a new instance of Analytics. Publishers are assembled from
+// each independently-configured consumer of the collected data: the analytics
+// consumer ([analytics], e.g. Moesif) and the traffic-logging consumer
+// ([traffic_logging], stdout JSON). Both rely on the collector being enabled to
+// receive any events.
 func NewAnalytics(cfg *config.Config) *Analytics {
 	analyticsCfg := cfg.Analytics
 	publishers := make([]analytics_publisher.Publisher, 0)
 	if analyticsCfg.Enabled {
 		for _, publisherName := range analyticsCfg.EnabledPublishers {
 			switch publisherName {
-			case "moesif":
+			case MoesifAnalyticsPublisher:
 				publisher := analytics_publisher.NewMoesif(&analyticsCfg.Publishers.Moesif)
 				if publisher != nil {
 					publishers = append(publishers, publisher)
@@ -109,8 +113,14 @@ func NewAnalytics(cfg *config.Config) *Analytics {
 		}
 	}
 
+	// Traffic logging is a standalone consumer, independent of analytics.
+	if cfg.TrafficLogging.Enabled {
+		publishers = append(publishers, analytics_publisher.NewLog(&cfg.TrafficLogging))
+		slog.Info("Traffic logging (stdout) publisher added")
+	}
+
 	if len(publishers) == 0 {
-		slog.Debug("No analytics publishers found. Analytics will not be published.")
+		slog.Debug("No analytics publishers found. Collected events will not be published.")
 	}
 	return &Analytics{
 		cfg:        cfg,
@@ -133,7 +143,6 @@ func (c *Analytics) Process(event *v3.HTTPAccessLogEntry) {
 		return
 	}
 
-	// Add logic to publish the event
 	analyticEvent := c.prepareAnalyticEvent(event)
 	for _, publisher := range c.publishers {
 		publisher.Publish(analyticEvent)
@@ -197,6 +206,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	for key, value := range keyValuePairsFromMetadata {
 		slog.Debug(fmt.Sprintf("Metadata key: %v -> value: %+v", key, value))
 	}
+
 	// Prepare extended API
 	extendedAPI := dto.ExtendedAPI{}
 	extendedAPI.APIType = keyValuePairsFromMetadata[APITypeKey]
@@ -247,34 +257,53 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		properties.TimeToFirstUpstreamTxByte != nil && properties.TimeToFirstUpstreamRxByte != nil &&
 		properties.TimeToLastUpstreamRxByte != nil && properties.TimeToLastDownstreamTxByte != nil {
 
-		lastRx :=
-			(properties.TimeToLastRxByte.Seconds * 1000) +
-				(int64(properties.TimeToLastRxByte.Nanos) / 1_000_000)
+		toMs := func(secs int64, nanos int32) int64 {
+			return (secs * 1000) + int64(nanos)/1_000_000
+		}
+		toUs := func(secs int64, nanos int32) int64 {
+			return (secs * 1_000_000) + int64(nanos)/1000
+		}
 
-		firstUpTx :=
-			(properties.TimeToFirstUpstreamTxByte.Seconds * 1000) +
-				(int64(properties.TimeToFirstUpstreamTxByte.Nanos) / 1_000_000)
+		// Moesif-oriented latencies (milliseconds).
+		lastRx := toMs(properties.TimeToLastRxByte.Seconds, properties.TimeToLastRxByte.Nanos)
+		firstUpTx := toMs(properties.TimeToFirstUpstreamTxByte.Seconds, properties.TimeToFirstUpstreamTxByte.Nanos)
+		firstUpRx := toMs(properties.TimeToFirstUpstreamRxByte.Seconds, properties.TimeToFirstUpstreamRxByte.Nanos)
+		lastUpRx := toMs(properties.TimeToLastUpstreamRxByte.Seconds, properties.TimeToLastUpstreamRxByte.Nanos)
+		lastDownTx := toMs(properties.TimeToLastDownstreamTxByte.Seconds, properties.TimeToLastDownstreamTxByte.Nanos)
 
-		firstUpRx :=
-			(properties.TimeToFirstUpstreamRxByte.Seconds * 1000) +
-				(int64(properties.TimeToFirstUpstreamRxByte.Nanos) / 1_000_000)
-
-		lastUpRx :=
-			(properties.TimeToLastUpstreamRxByte.Seconds * 1000) +
-				(int64(properties.TimeToLastUpstreamRxByte.Nanos) / 1_000_000)
-
-		lastDownTx :=
-			(properties.TimeToLastDownstreamTxByte.Seconds * 1000) +
-				(int64(properties.TimeToLastDownstreamTxByte.Nanos) / 1_000_000)
-
-		latencies := dto.Latencies{
+		event.Latencies = &dto.Latencies{
 			BackendLatency:           lastUpRx - firstUpTx,
 			RequestMediationLatency:  firstUpTx - lastRx,
 			ResponseLatency:          lastDownTx - firstUpRx,
 			ResponseMediationLatency: lastDownTx - lastUpRx,
 		}
 
-		event.Latencies = &latencies
+		// Traffic-log latencies (microseconds), derived from the same timepoints
+		// at full precision. Kept separate from the millisecond Latencies above so
+		// Moesif's units are unaffected.
+		lastRxUs := toUs(properties.TimeToLastRxByte.Seconds, properties.TimeToLastRxByte.Nanos)
+		firstUpTxUs := toUs(properties.TimeToFirstUpstreamTxByte.Seconds, properties.TimeToFirstUpstreamTxByte.Nanos)
+		firstUpRxUs := toUs(properties.TimeToFirstUpstreamRxByte.Seconds, properties.TimeToFirstUpstreamRxByte.Nanos)
+		lastDownTxUs := toUs(properties.TimeToLastDownstreamTxByte.Seconds, properties.TimeToLastDownstreamTxByte.Nanos)
+
+		trafficLatencies := dto.TrafficLogLatencies{
+			DurationUs:                lastDownTxUs,           // DS_RX_BEG → DS_TX_END
+			RequestMediationLatencyUs: firstUpTxUs - lastRxUs, // DS_RX_END → US_TX_BEG
+		}
+
+		// US_TX_END → US_RX_BEG: time the backend spent before sending the first response byte (TTFB).
+		if properties.TimeToLastUpstreamTxByte != nil {
+			lastUpTxUs := toUs(properties.TimeToLastUpstreamTxByte.Seconds, properties.TimeToLastUpstreamTxByte.Nanos)
+			trafficLatencies.BackendLatencyUs = firstUpRxUs - lastUpTxUs
+		}
+
+		// US_RX_BEG → DS_TX_BEG: gateway overhead processing the first response byte before writing downstream.
+		if properties.TimeToFirstDownstreamTxByte != nil {
+			firstDownTxUs := toUs(properties.TimeToFirstDownstreamTxByte.Seconds, properties.TimeToFirstDownstreamTxByte.Nanos)
+			trafficLatencies.ResponseMediationLatencyUs = firstDownTxUs - firstUpRxUs
+		}
+
+		event.TrafficLogLatencies = &trafficLatencies
 	}
 
 	// prepare metaInfo
@@ -312,6 +341,22 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	if userID, exists := keyValuePairsFromMetadata[UserIDMetadataKey]; exists && userID != "" {
 		event.Properties[UserIDMetadataKey] = userID
 		slog.Debug("Analytics: User ID set from metadata", "userID", userID)
+	}
+
+	// Auth-context metadata (type, issuer, credential/token IDs, audience, scopes, custom
+	// claims), stamped generically by the collector system policy for any authenticated
+	// request regardless of auth type; plus PropKeyMetadata, the JSON-encoded raw
+	// SharedContext.Metadata bag (see dto.PropKeyMetadata doc comment). Key names match
+	// the raw metadata 1:1 (see dto.PropKeyAuth* doc comment), so no case translation is
+	// needed here.
+	for _, key := range []string{
+		dto.PropKeyAuthType, dto.PropKeyAuthIssuer, dto.PropKeyAuthCredentialID,
+		dto.PropKeyAuthTokenID, dto.PropKeyAuthAudience, dto.PropKeyAuthScopes, dto.PropKeyAuthProperties,
+		dto.PropKeyAuthAuthorized, dto.PropKeyMetadata,
+	} {
+		if v, exists := keyValuePairsFromMetadata[key]; exists && v != "" {
+			event.Properties[key] = v
+		}
 	}
 
 	// Prepare Subscription
@@ -439,22 +484,22 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 
 	//Adding request and response headers for the analytics event
 	if requestHeaders, exists := keyValuePairsFromMetadata[RequestHeadersKey]; exists {
-		event.Properties["requestHeaders"] = requestHeaders
+		event.Properties[dto.PropKeyRequestHeaders] = requestHeaders
 	}
 	if responseHeaders, exists := keyValuePairsFromMetadata[ResponseHeadersKey]; exists {
-		event.Properties["responseHeaders"] = responseHeaders
+		event.Properties[dto.PropKeyResponseHeaders] = responseHeaders
 	}
 
-	// Optionally attach request and response payloads when enabled via configuration.
-	if c.cfg.Analytics.SendRequestBody {
-		if requestPayload, ok := keyValuePairsFromMetadata["request_payload"]; ok && requestPayload != "" {
-			event.Properties["request_payload"] = requestPayload
+	// Optionally attach request and response payloads when enabled via the collector.
+	if c.cfg.Collector.RequestBody {
+		if requestPayload, ok := keyValuePairsFromMetadata[dto.PropKeyRequestPayload]; ok && requestPayload != "" {
+			event.Properties[dto.PropKeyRequestPayload] = requestPayload
 			slog.Debug("Analytics request payload captured", "size_bytes", len(requestPayload))
 		}
 	}
-	if c.cfg.Analytics.SendResponseBody {
-		if responsePayload, ok := keyValuePairsFromMetadata["response_payload"]; ok && responsePayload != "" {
-			event.Properties["response_payload"] = responsePayload
+	if c.cfg.Collector.ResponseBody {
+		if responsePayload, ok := keyValuePairsFromMetadata[dto.PropKeyResponsePayload]; ok && responsePayload != "" {
+			event.Properties[dto.PropKeyResponsePayload] = responsePayload
 			slog.Debug("Analytics response payload captured", "size_bytes", len(responsePayload))
 		}
 	}

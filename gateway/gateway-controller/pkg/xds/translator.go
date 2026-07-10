@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/common/collector"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
@@ -545,6 +546,16 @@ func (t *Translator) TranslateConfigs(
 			Name:    vhost,
 			Domains: t.getVHostDomains(vhost),
 			Routes:  routes,
+			// Strip any client-supplied x-envoy-original-path so it cannot survive to
+			// the collector.ignore_path_prefixes access-log filter (buildIgnorePathsAccessLogFilter):
+			// on a route that performs a path rewrite, Envoy's router unconditionally
+			// re-sets this header to the true pre-rewrite path after removal, so
+			// legitimate suppression (e.g. "/health") is unaffected; on a route that
+			// does not rewrite, removal leaves the header absent, which the filter's
+			// documented "absent -> never suppress" fallback already treats as safe —
+			// closing the gap where a client could otherwise self-suppress its own
+			// traffic/analytics record by sending a forged x-envoy-original-path.
+			RequestHeadersToRemove: []string{envoyOriginalPathHeader},
 		}
 		virtualHosts = append(virtualHosts, virtualHost)
 	}
@@ -594,10 +605,10 @@ func (t *Translator) TranslateConfigs(
 	policyEngineCluster := t.createPolicyEngineCluster()
 	clusters = append(clusters, policyEngineCluster)
 
-	// Add ALS cluster if gRPC access log is enabled
-	log.Debug("gRPC event server config", slog.Any("config", t.config.Analytics.GRPCEventServerCfg))
-	if t.config.Analytics.Enabled {
-		log.Info("gRPC access log is enabled, creating ALS cluster")
+	// Add ALS cluster if the collector is active (it ships access logs over gRPC)
+	log.Debug("gRPC event server config", slog.Any("config", t.config.Collector.Server))
+	if t.config.IsCollectorEnabled() {
+		log.Info("collector is enabled, creating ALS cluster")
 		alsCluster := t.createALSCluster()
 		clusters = append(clusters, alsCluster)
 	}
@@ -1386,6 +1397,11 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub(isHTTPS bool) (*listen
 		VirtualHosts: []*route.VirtualHost{{
 			Name:    "DYNAMIXC_FORWARD_PROXY_VHOST_WEBSUBHUB",
 			Domains: []string{t.routerConfig.EventGateway.WebSubHubURL}, // this should be websubhub domains
+			// This route never rewrites :path, so unlike the main API vhosts (see the
+			// matching comment in the main virtual host construction) Envoy never
+			// re-populates x-envoy-original-path here; stripping any client-supplied
+			// value still leaves it correctly absent for collector.ignore_path_prefixes.
+			RequestHeadersToRemove: []string{envoyOriginalPathHeader},
 			Routes: []*route.Route{{
 				Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Prefix{Prefix: "/"}},
 				Action: &route.Route_Route{Route: &route.RouteAction{
@@ -2215,20 +2231,26 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 
 // createALSCluster creates an Envoy cluster for the gRPC access log service
 func (t *Translator) createALSCluster() *cluster.Cluster {
-	grpcConfig := t.config.Analytics.GRPCEventServerCfg
+	grpcConfig := t.config.Collector.Server
 
 	// Build the endpoint address (UDS or TCP)
 	var address *core.Address
 
 	if grpcConfig.Mode == "tcp" {
-		// TCP mode - use host:port
+		// TCP mode - use host:port. grpcConfig.Port is a deprecated override
+		// (see its doc comment); the fixed collector.ServerPort constant is used
+		// unless a config already sets it explicitly.
+		port := collector.ServerPort
+		if grpcConfig.Port != 0 {
+			port = grpcConfig.Port
+		}
 		address = &core.Address{
 			Address: &core.Address_SocketAddress{
 				SocketAddress: &core.SocketAddress{
 					Protocol: core.SocketAddress_TCP,
 					Address:  t.config.Router.PolicyEngine.Host,
 					PortSpecifier: &core.SocketAddress_PortValue{
-						PortValue: uint32(grpcConfig.Port),
+						PortValue: uint32(port),
 					},
 				},
 			},
@@ -2844,8 +2866,8 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 		},
 	})
 
-	// If gRPC access log is enabled, create the configuration and append to existing access logs
-	if t.config.Analytics.Enabled {
+	// If the collector is active, create the gRPC access log config and append to existing access logs
+	if t.config.IsCollectorEnabled() {
 		t.logger.Info("Creating gRPC access log configuration")
 		grpcAccessLog, err := t.createGRPCAccessLog()
 		if err != nil {
@@ -2861,8 +2883,8 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 
 // createGRPCAccessLog creates a gRPC access log configuration for the gateway controller
 func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
-	grpcConfig := t.config.Analytics.GRPCEventServerCfg
-	bufferSizeBytes, err := checkedUInt32FromPositiveInt("analytics.grpc_event_server.buffer_size_bytes", grpcConfig.BufferSizeBytes)
+	grpcConfig := t.config.Collector.Server
+	bufferSizeBytes, err := checkedUInt32FromPositiveInt("collector.server.buffer_size_bytes", grpcConfig.BufferSizeBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -2890,11 +2912,100 @@ func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
 	}
 
 	return &accesslog.AccessLog{
-		Name: "envoy.access_loggers.http_grpc",
+		Name:   "envoy.access_loggers.http_grpc",
+		Filter: buildIgnorePathsAccessLogFilter(t.config.Collector.IgnorePathPrefixes),
 		ConfigType: &accesslog.AccessLog_TypedConfig{
 			TypedConfig: grpcAccessLogAny,
 		},
 	}, nil
+}
+
+// envoyOriginalPathHeader is the header Envoy's router sets to the pre-rewrite,
+// client-facing path whenever a route applies a path rewrite (PrefixRewrite/
+// RegexRewrite) — which every proxied API route in this gateway does, for
+// context-path stripping. buildIgnorePathsAccessLogFilter matches against this
+// header rather than :path so that collector.ignore_path_prefixes is evaluated
+// against what the client actually called, not the rewritten backend path.
+const envoyOriginalPathHeader = "x-envoy-original-path"
+
+// buildIgnorePathsAccessLogFilter builds an Envoy AccessLogFilter that suppresses
+// the ALS access-log entry entirely for requests whose client-facing path matches
+// one of the configured prefixes, so the policy-engine never receives them (no
+// analytics event, no traffic-log line). Returns nil (no filter, log everything)
+// when no usable prefixes are configured.
+func buildIgnorePathsAccessLogFilter(prefixes []string) *accesslog.AccessLogFilter {
+	filters := make([]*accesslog.AccessLogFilter, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		prefix = strings.TrimSpace(prefix)
+		if prefix == "" {
+			continue
+		}
+		filters = append(filters, notEffectivelyMatchesPrefix(prefix))
+	}
+	switch len(filters) {
+	case 0:
+		return nil
+	case 1:
+		return filters[0]
+	default:
+		return &accesslog.AccessLogFilter{
+			FilterSpecifier: &accesslog.AccessLogFilter_AndFilter{
+				AndFilter: &accesslog.AndFilter{Filters: filters},
+			},
+		}
+	}
+}
+
+// notEffectivelyMatchesPrefix builds the per-prefix filter: OR(origAbsent,
+// origDoesNotMatch) — i.e. suppress the log entry (filter evaluates false) only
+// when x-envoy-original-path is present AND matches the prefix; log (filter
+// evaluates true) in every other case, including when the header is absent
+// entirely. There is deliberately no fallback to matching bare :path: without
+// the original-path header we cannot distinguish a route that genuinely never
+// rewrites (where :path is the real client path) from an upstream/backend path
+// that merely happens to share the prefix, so we always log rather than risk a
+// false-positive suppression of legitimate traffic.
+func notEffectivelyMatchesPrefix(prefix string) *accesslog.AccessLogFilter {
+	origAbsent := headerPresentFilter(envoyOriginalPathHeader, false)
+	origDoesNotMatch := headerPrefixFilter(envoyOriginalPathHeader, prefix, true)
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_OrFilter{
+			OrFilter: &accesslog.OrFilter{
+				Filters: []*accesslog.AccessLogFilter{origAbsent, origDoesNotMatch},
+			},
+		},
+	}
+}
+
+// headerPrefixFilter builds an AccessLogFilter matching (or, when invert is
+// true, not matching) a header's value against a prefix.
+func headerPrefixFilter(headerName, prefix string, invert bool) *accesslog.AccessLogFilter {
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_HeaderFilter{
+			HeaderFilter: &accesslog.HeaderFilter{
+				Header: &route.HeaderMatcher{
+					Name:                 headerName,
+					InvertMatch:          invert,
+					HeaderMatchSpecifier: &route.HeaderMatcher_PrefixMatch{PrefixMatch: prefix},
+				},
+			},
+		},
+	}
+}
+
+// headerPresentFilter builds an AccessLogFilter matching whether a header is
+// present (present=true) or absent (present=false).
+func headerPresentFilter(headerName string, present bool) *accesslog.AccessLogFilter {
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_HeaderFilter{
+			HeaderFilter: &accesslog.HeaderFilter{
+				Header: &route.HeaderMatcher{
+					Name:                 headerName,
+					HeaderMatchSpecifier: &route.HeaderMatcher_PresentMatch{PresentMatch: present},
+				},
+			},
+		},
+	}
 }
 
 // createTracingConfig creates tracing configuration for HCM if tracing is enabled
