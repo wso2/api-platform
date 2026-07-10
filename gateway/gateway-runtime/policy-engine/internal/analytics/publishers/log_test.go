@@ -124,27 +124,6 @@ func TestLog_Publish_WritesJSONLineWithLatencies(t *testing.T) {
 	assert.Equal(t, float64(250000), latencies["durationUs"])
 }
 
-// The fields projection can select "properties" like any other top-level key.
-func TestLog_Publish_PropertiesProjectableViaFields(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
-		Enabled:        true,
-		RequestHeaders: true,
-		Properties:     map[string]string{"who": "alice"},
-		Fields:         config.TrafficLoggingFieldsConfig{Only: []string{"properties"}},
-	})
-	event := createBaseEvent()
-	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
-
-	l.Publish(event)
-
-	decoded := decodeLine(t, read())
-	props, ok := decoded["properties"].(map[string]interface{})
-	require.True(t, ok, "expected properties retained by include projection")
-	assert.Equal(t, "alice", props["who"])
-	_, hasHeaders := decoded["requestHeaders"]
-	assert.False(t, hasHeaders, "requestHeaders not in Only list -> dropped")
-}
-
 func TestLog_Publish_MasksHeaders(t *testing.T) {
 	cfg := bothFlowsConfig()
 	cfg.MaskedHeaders = []string{"Authorization"}
@@ -170,7 +149,7 @@ func TestLog_Publish_ExcludeHeadersDrops(t *testing.T) {
 		MaskedHeaders:  []string{"authorization"},
 		Enabled:        true,
 		RequestHeaders: true,
-		Fields:         config.TrafficLoggingFieldsConfig{Exclude: []string{"requestHeaders.X-Secret"}},
+		ExcludeFields:  []string{"requestHeaders.X-Secret"},
 	})
 	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"Authorization":"Bearer s","X-Secret":"top","x-foo":"bar"}`
@@ -233,37 +212,6 @@ func TestLog_Publish_NilEvent(t *testing.T) {
 	assert.Empty(t, read())
 }
 
-// Field selection (include): only named top-level keys survive; fields.only is
-// authoritative over presence (request.headers boolean is ignored, masking still applies).
-func TestLog_Publish_FieldsInclude(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
-		MaskedHeaders:  []string{"authorization"},
-		Enabled:        true,
-		RequestHeaders: false, // boolean ignored when fields set
-		Fields:         config.TrafficLoggingFieldsConfig{Only: []string{"latencies", "requestHeaders"}},
-	})
-	event := createBaseEvent()
-	event.Properties["requestHeaders"] = `{"Authorization":"Bearer s","X-Keep":"k"}`
-	event.Properties["responseHeaders"] = `{"x-bar":"baz"}`
-
-	l.Publish(event)
-	decoded := decodeLine(t, read())
-
-	_, hasAPI := decoded["api"]
-	_, hasOp := decoded["operation"]
-	assert.False(t, hasAPI, "api not listed -> dropped")
-	assert.False(t, hasOp, "operation not listed -> dropped")
-	assert.Contains(t, decoded, "latencies", "latencies listed -> kept")
-
-	_, hasResp := decoded["responseHeaders"]
-	assert.False(t, hasResp, "responseHeaders not listed -> dropped")
-
-	require.NotNil(t, decoded["requestHeaders"], "requestHeaders present (fields authoritative, boolean ignored)")
-	reqH := headerMap(t, decoded["requestHeaders"])
-	assert.Equal(t, "****", reqH["Authorization"], "masking still applies")
-	assert.Equal(t, "k", reqH["X-Keep"])
-}
-
 // Field selection (exclude): named keys are dropped, everything else remains,
 // even a key ("requestBody") that would otherwise be present.
 func TestLog_Publish_FieldsExclude(t *testing.T) {
@@ -271,7 +219,7 @@ func TestLog_Publish_FieldsExclude(t *testing.T) {
 		Enabled:        true,
 		RequestHeaders: true,
 		RequestBody:    true,
-		Fields:         config.TrafficLoggingFieldsConfig{Exclude: []string{"operation", "requestBody"}},
+		ExcludeFields:  []string{"operation", "requestBody"},
 	})
 	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
@@ -301,7 +249,7 @@ func TestLog_Publish_FieldsExcludeDoesNotOverrideExplicitFlowBooleans(t *testing
 		RequestBody:     false,
 		ResponseHeaders: true,
 		ResponseBody:    false,
-		Fields:          config.TrafficLoggingFieldsConfig{Exclude: []string{"requestHeaders.Cookie"}},
+		ExcludeFields:   []string{"requestHeaders.Cookie"},
 	})
 	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"Cookie":"sid=1","x-foo":"bar"}`
@@ -324,31 +272,6 @@ func TestLog_Publish_FieldsExcludeDoesNotOverrideExplicitFlowBooleans(t *testing
 
 	respH := headerMap(t, decoded["responseHeaders"])
 	assert.Equal(t, "baz", respH["x-bar"], "response headers still present per response_headers:true")
-}
-
-// requestBody and properties are top-level keys like any other and can be selected
-// explicitly via fields.only, regardless of the request_body/request_headers booleans.
-func TestLog_Publish_FieldsIncludeRequestBodyAndProperties(t *testing.T) {
-	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
-		Enabled:    true,
-		Properties: map[string]string{"env": "prod"},
-		Fields:     config.TrafficLoggingFieldsConfig{Only: []string{"requestBody", "properties"}},
-	})
-	event := createBaseEvent()
-	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`
-	event.Properties["request_payload"] = "body-data"
-
-	l.Publish(event)
-	decoded := decodeLine(t, read())
-
-	_, hasAPI := decoded["api"]
-	assert.False(t, hasAPI, "api not listed -> dropped")
-	_, hasHeaders := decoded["requestHeaders"]
-	assert.False(t, hasHeaders, "requestHeaders not in Only list -> dropped")
-	assert.Equal(t, "body-data", decoded["requestBody"])
-	props, ok := decoded["properties"].(map[string]interface{})
-	require.True(t, ok)
-	assert.Equal(t, "prod", props["env"])
 }
 
 // Output-side payload truncation (0 = no limit).
@@ -509,15 +432,13 @@ func TestLog_Publish_GlobalFallback_MaskingAndTruncationApply(t *testing.T) {
 	assert.Equal(t, "hello", decoded["requestBody"])
 }
 
-// The directive's fields.only/exclude projection layers on top of the flow toggles.
+// The directive's exclude_fields projection layers on top of the flow toggles.
 func TestLog_Publish_GlobalFallback_FieldsProjection(t *testing.T) {
 	l, read := newLogToFile(t, &config.TrafficLoggingConfig{
 		Enabled:        true,
 		RequestHeaders: true,
 		RequestBody:    true,
-		Fields: config.TrafficLoggingFieldsConfig{
-			Exclude: []string{"requestBody"},
-		},
+		ExcludeFields:  []string{"requestBody"},
 	})
 	event := createBaseEvent()
 	event.Properties["requestHeaders"] = `{"x-foo":"bar"}`

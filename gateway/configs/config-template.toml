@@ -391,11 +391,12 @@ request_body = false
 response_headers = false
 response_body = false
 
-# Optional field projection over the emitted line. Set at most one of the two.
-[traffic_logging.fields]
-only = []
-exclude = []
-# exclude = ["requestBody", "responseBody"]
+# Optional field projection over the emitted line: drop the named fields and
+# keep everything else. Names are top-level keys (e.g. "latencies",
+# "requestHeaders") or dotted sub-key paths within map fields (e.g.
+# "requestHeaders.authorization").
+exclude_fields = []
+# exclude_fields = ["requestBody", "responseBody"]
 
 # Optional extra key->value pairs added under a top-level "properties" object.
 # A value prefixed "$ctx:" is evaluated as a CEL expression against context

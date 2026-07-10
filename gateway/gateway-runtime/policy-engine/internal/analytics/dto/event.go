@@ -93,14 +93,10 @@ type TrafficLogFlow struct {
 	Headers bool `json:"headers"`
 }
 
-// TrafficLogFields selects which fields appear in the emitted line. Exactly one
-// of Only or Exclude should be set. Only keeps exactly the named fields; Exclude
-// drops the named fields and keeps everything else. Names are top-level keys
-// (e.g. "latencies", "requestHeaders") or dotted sub-key paths within map fields
-// (e.g. "requestHeaders.authorization", "properties.env"). When set, this is
-// authoritative over field presence; per-flow Payload/Headers booleans are ignored
-// (global header masking still applies). If both are set, Only takes precedence.
+// TrafficLogFields selects which fields are dropped from the emitted line,
+// keeping everything else. Names are top-level keys (e.g. "latencies",
+// "requestHeaders") or dotted sub-key paths within map fields (e.g.
+// "requestHeaders.authorization", "properties.env").
 type TrafficLogFields struct {
-	Only    []string `json:"only,omitempty"`
 	Exclude []string `json:"exclude,omitempty"`
 }

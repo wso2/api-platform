@@ -105,11 +105,8 @@ func buildGlobalDirective(cfg config.TrafficLoggingConfig) *dto.TrafficLogDirect
 		},
 	}
 
-	if len(cfg.Fields.Only) > 0 || len(cfg.Fields.Exclude) > 0 {
-		dir.Fields = &dto.TrafficLogFields{
-			Only:    cfg.Fields.Only,
-			Exclude: cfg.Fields.Exclude,
-		}
+	if len(cfg.ExcludeFields) > 0 {
+		dir.Fields = &dto.TrafficLogFields{Exclude: cfg.ExcludeFields}
 	}
 
 	return dir
@@ -147,7 +144,7 @@ func (l *Log) Publish(event *dto.Event) {
 		return
 	}
 
-	if fields := dir.Fields; fields != nil && (len(fields.Only) > 0 || len(fields.Exclude) > 0) {
+	if fields := dir.Fields; fields != nil && len(fields.Exclude) > 0 {
 		// Shallow-decode only the top level; untouched fields stay as raw JSON
 		// bytes and are never deep-decoded or re-encoded.
 		var m map[string]json.RawMessage
@@ -213,41 +210,13 @@ func (l *Log) truncatePayload(s string) string {
 	return s[:l.maxPayloadSize]
 }
 
-// applyFieldsProjection mutates m in place to restrict it to the configured
-// fields. Names are top-level keys (e.g. "latencies", "requestHeaders") or
-// dotted sub-key paths within map fields (e.g. "requestHeaders.authorization",
-// "labels.env"). Only keeps exactly the named fields; Exclude drops the named
-// fields and keeps everything else. If both are set, Only takes precedence.
-// Top-level values are kept as raw JSON bytes; only the specific nested
-// objects referenced by a dotted path are decoded and re-encoded.
+// applyFieldsProjection mutates m in place, dropping the configured fields and
+// keeping everything else. Names are top-level keys (e.g. "latencies",
+// "requestHeaders") or dotted sub-key paths within map fields (e.g.
+// "requestHeaders.authorization", "labels.env"). Top-level values are kept as
+// raw JSON bytes; only the specific nested objects referenced by a dotted path
+// are decoded and re-encoded.
 func applyFieldsProjection(m map[string]json.RawMessage, fields *dto.TrafficLogFields) {
-	if len(fields.Only) > 0 {
-		directKeys := make(map[string]bool)
-		subKeys := make(map[string][]string) // topKey → sub-keys to keep
-		for _, name := range fields.Only {
-			if top, sub, found := strings.Cut(name, "."); found {
-				subKeys[top] = append(subKeys[top], sub)
-			} else {
-				directKeys[name] = true
-			}
-		}
-		for key := range m {
-			if !directKeys[key] && subKeys[key] == nil {
-				delete(m, key)
-			}
-		}
-		for top, subs := range subKeys {
-			if directKeys[top] {
-				continue // whole key kept; don't filter sub-keys
-			}
-			keep := make(map[string]bool, len(subs))
-			for _, s := range subs {
-				keep[s] = true
-			}
-			filterNestedKeys(m, top, func(k string) bool { return keep[k] })
-		}
-		return
-	}
 	for _, name := range fields.Exclude {
 		if top, sub, found := strings.Cut(name, "."); found {
 			filterNestedKeys(m, top, func(k string) bool { return k != sub })

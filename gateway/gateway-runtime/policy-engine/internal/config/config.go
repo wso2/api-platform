@@ -116,8 +116,11 @@ type TrafficLoggingConfig struct {
 	RequestBody     bool `koanf:"request_body"`
 	ResponseHeaders bool `koanf:"response_headers"`
 	ResponseBody    bool `koanf:"response_body"`
-	// Fields is a field-projection layered on top of the flow selection above.
-	Fields TrafficLoggingFieldsConfig `koanf:"fields"`
+	// ExcludeFields drops the named fields from the emitted line and keeps
+	// everything else, layered on top of the flow selection above. Names are
+	// top-level keys (e.g. "latencies", "requestHeaders") or dotted sub-key
+	// paths within map fields (e.g. "requestHeaders.authorization").
+	ExcludeFields []string `koanf:"exclude_fields"`
 	// Properties adds extra key->value pairs to the emitted line's top-level
 	// "properties" object. A value prefixed "$ctx:" is evaluated as a CEL
 	// expression against a request-context surface built from the collected
@@ -126,13 +129,6 @@ type TrafficLoggingConfig struct {
 	// generically for any authenticated request; other values are emitted as
 	// literal strings.
 	Properties map[string]string `koanf:"properties"`
-}
-
-// TrafficLoggingFieldsConfig selects which fields appear in the traffic-log line.
-// Exactly one of Only or Exclude should be set.
-type TrafficLoggingFieldsConfig struct {
-	Only    []string `koanf:"only"`
-	Exclude []string `koanf:"exclude"`
 }
 
 // MoesifPublisherConfig holds Moesif-specific configuration
@@ -449,10 +445,7 @@ func defaultConfig() *Config {
 			RequestBody:     false,
 			ResponseHeaders: false,
 			ResponseBody:    false,
-			Fields: TrafficLoggingFieldsConfig{
-				Only:    []string{},
-				Exclude: []string{},
-			},
+			ExcludeFields: []string{},
 			Properties: map[string]string{},
 		},
 		Analytics: AnalyticsConfig{
@@ -766,10 +759,6 @@ func (c *Config) validateAnalyticsConfig() error {
 // about settings that have no effect.
 func (c *Config) validateTrafficLoggingConfig() error {
 	tl := c.TrafficLogging
-
-	if len(tl.Fields.Only) > 0 && len(tl.Fields.Exclude) > 0 {
-		return fmt.Errorf("traffic_logging.fields: set either 'only' or 'exclude', not both")
-	}
 
 	if !tl.Enabled {
 		if len(tl.Properties) > 0 {

@@ -1252,20 +1252,10 @@ func TestValidate_TrafficLoggingMaxPayloadSize(t *testing.T) {
 }
 
 func TestValidate_TrafficLogging(t *testing.T) {
-	t.Run("both only and exclude set -> error", func(t *testing.T) {
+	t.Run("exclude_fields set -> valid", func(t *testing.T) {
 		cfg := validConfig()
 		cfg.TrafficLogging.Enabled = true
-		cfg.TrafficLogging.Fields.Only = []string{"latencies"}
-		cfg.TrafficLogging.Fields.Exclude = []string{"requestBody"}
-		err := cfg.Validate()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "traffic_logging.fields")
-	})
-
-	t.Run("only set alone -> valid", func(t *testing.T) {
-		cfg := validConfig()
-		cfg.TrafficLogging.Enabled = true
-		cfg.TrafficLogging.Fields.Only = []string{"latencies"}
+		cfg.TrafficLogging.ExcludeFields = []string{"requestBody"}
 		require.NoError(t, cfg.Validate())
 	})
 
@@ -1282,16 +1272,6 @@ func TestValidate_TrafficLogging(t *testing.T) {
 		cfg.TrafficLogging.RequestBody = true
 		cfg.Collector.RequestBody = false
 		require.NoError(t, cfg.Validate(), "misconfiguration is a warning, not a hard error")
-	})
-
-	t.Run("disabled -> fields validation still applies", func(t *testing.T) {
-		cfg := validConfig()
-		cfg.TrafficLogging.Enabled = false
-		cfg.TrafficLogging.Fields.Only = []string{"latencies"}
-		cfg.TrafficLogging.Fields.Exclude = []string{"requestBody"}
-		err := cfg.Validate()
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "traffic_logging.fields")
 	})
 
 	t.Run("properties set", func(t *testing.T) {

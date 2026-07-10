@@ -15,13 +15,11 @@ application_id = "<MOESIF_APPLICATION_ID>"
 enabled = false
 masked_headers = ["authorization", "x-api-key", "x-jwt-assertion"]
 max_payload_size = 2048
-
-[traffic_logging.global]
-enabled = false
 request_headers = false
 response_headers = false
 request_body = false
 response_body = false
+exclude_fields = []
 
 [router]
 gateway_host = "*"
