@@ -55,8 +55,7 @@ path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 
 # JWT (local HMAC) — issues signed tokens after file-based login.
 # secret_key is a 32-byte key (64 hex chars or base64; openssl rand -hex 32).
-# Auto-generated in memory when unset (ephemeral — sessions reset on restart).
-# Set AUTH_JWT_SECRET_KEY env var or secret_key here to persist sessions across restarts.
+# Set AUTH_JWT_SECRET_KEY env var Generate with: openssl rand -hex 32.
 [auth.jwt]
 enabled         = true
 issuer          = "platform-api"

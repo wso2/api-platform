@@ -241,8 +241,7 @@ AUTH_IDP_ENABLED=true             →  IDP mode        (JWKS-based verification)
 ```
 
 > **Demo mode (`APIP_DEMO_MODE`).** Defaults to `true`; an explicit `false`/`0` opts into
-> production-grade startup checks. Note that `ENCRYPTION_KEY` and `AUTH_JWT_SECRET_KEY` are **required**
-> With demo mode off, the server warns loudly if `AUTH_JWT_SKIP_VALIDATION=true`.
+> production-grade startup checks. Note that `ENCRYPTION_KEY` and `AUTH_JWT_SECRET_KEY` are **required**.
 
 ---
 
@@ -252,7 +251,7 @@ The server signs and validates HMAC login tokens using `AUTH_JWT_SECRET_KEY` —
 
 | Variable | Default | Description                                                         |
 |---|---|---------------------------------------------------------------------|
-| `AUTH_JWT_SECRET_KEY` | _(empty)_ | HMAC key for signing/verifying login JWTs — 32-byte value (64 hex or base64; `openssl rand -hex 32`). Required in production; demo generates an ephemeral one. |
+| `AUTH_JWT_SECRET_KEY` | _(empty)_ | HMAC key for signing/verifying login JWTs — 32-byte value (64 hex or base64; `openssl rand -hex 32`) |
 | `AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value                                          |
 | `AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only**                  |
 | `DEV_MODE` | `false` | Suppresses the startup warning when `AUTH_JWT_SKIP_VALIDATION=true` |
