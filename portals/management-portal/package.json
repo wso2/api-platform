@@ -21,7 +21,7 @@
     "react-is": "18.3.1",
     "react-markdown": "10.1.0",
     "react-router-dom": "6.30.4",
-    "swagger-ui-react": "5.32.6"
+    "swagger-ui-react": "5.32.8"
   },
   "devDependencies": {
     "@eslint/js": "9.36.0",
