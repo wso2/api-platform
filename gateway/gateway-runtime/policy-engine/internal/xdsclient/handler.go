@@ -281,6 +281,11 @@ func (h *ResourceHandler) HandleRouteConfigUpdate(ctx context.Context, resources
 		rc.Metadata.DefaultUpstreamCluster = getStringFromMap(data, "default_upstream_cluster")
 		rc.Metadata.UpstreamBasePath = getStringFromMap(data, "upstream_base_path")
 
+		if m, ok := data["default_upstream"].(map[string]interface{}); ok {
+			info := policyenginev1.UpstreamInfoFromMap(m)
+			rc.Metadata.DefaultUpstream = &info
+		}
+
 		if pathsRaw, ok := data["upstream_definition_paths"].(map[string]interface{}); ok {
 			paths := make(map[string]string, len(pathsRaw))
 			for k, v := range pathsRaw {

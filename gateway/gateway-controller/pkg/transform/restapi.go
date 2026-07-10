@@ -128,9 +128,22 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve main upstream: %w", err)
 	}
+	mainUpstreamInfo := mainUpstream.UpstreamInfo()
 
-	// Check if dynamic cluster selection should be used
-	useClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
+	// Determine vhosts to create routes for.
+	// Sandbox is active when a sandbox upstream is configured via either url or ref.
+	hasSandbox := apiData.Upstream.Sandbox != nil &&
+		((apiData.Upstream.Sandbox.Url != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != "") ||
+			(apiData.Upstream.Sandbox.Ref != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Ref) != ""))
+
+	// Check if dynamic cluster selection should be used. Enabled whenever the API has named
+	// upstream definitions (so a policy can select one) OR a sandbox upstream (so a policy can
+	// redirect between the API's own main/sandbox slots). Must mirror pkg/xds/translator.go's
+	// useClusterHeader computation exactly — that's what determines whether Envoy's route uses
+	// cluster_header routing; if this RDC (which feeds the policy engine's default-cluster
+	// fallback) disagrees, Envoy expects a header the policy engine never sets.
+	hasUpstreamDefinitions := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
+	useClusterHeader := hasUpstreamDefinitions || hasSandbox
 	defaultCluster := ""
 	if useClusterHeader {
 		// The default cluster must be the name Envoy actually knows the cluster by.
@@ -146,12 +159,6 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	if apiData.Upstream.Main.HostRewrite != nil && *apiData.Upstream.Main.HostRewrite == api.Manual {
 		mainAutoHostRewrite = false
 	}
-
-	// Determine vhosts to create routes for.
-	// Sandbox is active when a sandbox upstream is configured via either url or ref.
-	hasSandbox := apiData.Upstream.Sandbox != nil &&
-		((apiData.Upstream.Sandbox.Url != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != "") ||
-			(apiData.Upstream.Sandbox.Ref != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Ref) != ""))
 
 	// Guard: sandbox and main vhosts must differ, otherwise sandbox routes would
 	// overwrite main routes (same route key) and the sandbox patch would leave only
@@ -199,6 +206,10 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		for _, vhost := range vhosts {
 			routeKey := xds.GenerateRouteNameWithDiscriminator(method, apiData.Context, apiData.Version, opPath, vhost, discriminator)
 
+			// Build route. Default is this route's own upstream (main's, until the sandbox
+			// patch below overwrites it for sandbox-vhost routes) — the single field exposed
+			// to the policy engine as the route's compiled-in upstream, regardless of slot.
+			routeMainInfo := mainUpstreamInfo
 			rdcRoute := &models.Route{
 				Method:          method,
 				Path:            xds.ConstructFullPath(apiData.Context, apiData.Version, opPath),
@@ -213,6 +224,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 					ClusterKey:       mainUpstream.ClusterKey,
 					UseClusterHeader: useClusterHeader,
 					DefaultCluster:   defaultCluster,
+					Default:          &routeMainInfo,
 				},
 			}
 			rdc.Routes[routeKey] = rdcRoute
@@ -280,6 +292,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve sandbox upstream: %w", err)
 		}
+		sbUpstreamInfo := sbUpstream.UpstreamInfo()
 
 		sbAutoHostRewrite := true
 		if apiData.Upstream.Sandbox.HostRewrite != nil && *apiData.Upstream.Sandbox.HostRewrite == api.Manual {
@@ -304,6 +317,10 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 				} else {
 					r.Upstream.DefaultCluster = ""
 				}
+				// This route belongs to the sandbox slot — its own default upstream is
+				// the sandbox's, not main's.
+				routeSbInfo := sbUpstreamInfo
+				r.Upstream.Default = &routeSbInfo
 				r.AutoHostRewrite = sbAutoHostRewrite
 			}
 		}
@@ -434,6 +451,18 @@ type upstreamClusterResult struct {
 	EnvoyClusterName string
 	// BasePath is the URL path component of the upstream (e.g. "/anything/foo").
 	BasePath string
+	// URL is the resolved upstream origin (scheme://host[:port], no path — see BasePath).
+	URL string
+}
+
+// UpstreamInfo converts the resolved cluster result into the shared wire shape
+// carried to the policy engine (sdk/core/policyengine.UpstreamInfo).
+func (r *upstreamClusterResult) UpstreamInfo() policyenginev1.UpstreamInfo {
+	return policyenginev1.UpstreamInfo{
+		ClusterName: r.EnvoyClusterName,
+		URL:         r.URL,
+		BasePath:    r.BasePath,
+	}
 }
 
 // addUpstreamCluster resolves an upstream and adds it to the RuntimeDeployConfig.
@@ -482,6 +511,7 @@ func (t *RestAPITransformer) addUpstreamCluster(
 		ClusterKey:       clusterKey,
 		EnvoyClusterName: sanitizeEnvoyClusterName(parsedURL.Host, parsedURL.Scheme),
 		BasePath:         basePath,
+		URL:              fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host),
 	}, nil
 }
 
