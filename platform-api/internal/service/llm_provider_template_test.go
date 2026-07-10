@@ -42,9 +42,6 @@ type mockLLMProviderTemplateCRUDRepo struct {
 	createCalled bool
 	created      *model.LLMProviderTemplate
 
-	managedByForHandleResult string
-	managedByForHandleErr    error
-
 	updateErr error
 	updated   *model.LLMProviderTemplate
 
@@ -94,10 +91,6 @@ func (m *mockLLMProviderTemplateCRUDRepo) Create(t *model.LLMProviderTemplate) e
 	}
 	m.created = t
 	return nil
-}
-
-func (m *mockLLMProviderTemplateCRUDRepo) ManagedByForHandle(handle, orgUUID string) (string, error) {
-	return m.managedByForHandleResult, m.managedByForHandleErr
 }
 
 func (m *mockLLMProviderTemplateCRUDRepo) Update(t *model.LLMProviderTemplate) error {
@@ -356,8 +349,7 @@ func TestLLMProviderTemplateServiceUpdate_PreservesOpenAPISpecWhenOmitted(t *tes
 
 func TestLLMProviderTemplateServiceUpdate_PropagatesNameToFamily(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
-		managedByForHandleResult: "organization",
-		getGroupIDResult:         "mistralai",
+		getGroupIDResult: "mistralai",
 	}
 	repo.getByIDFunc = func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
 		return &model.LLMProviderTemplate{ID: templateID, OrganizationUUID: orgUUID, Name: "Mistral Updated", Version: "v1.0"}, nil
@@ -375,19 +367,6 @@ func TestLLMProviderTemplateServiceUpdate_PropagatesNameToFamily(t *testing.T) {
 	}
 	if resp == nil || resp.DisplayName != "Mistral Updated" {
 		t.Fatalf("expected updated template to be returned, got: %#v", resp)
-	}
-}
-
-func TestLLMProviderTemplateServiceUpdate_RejectsMismatchedID(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{managedByForHandleResult: "organization"}
-	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
-
-	req := validTemplateRequest("Name")
-	otherHandle := "some-other-handle"
-	req.Id = &otherHandle
-	_, err := svc.Update("org-1", "mistralai", "alice", req)
-	if !errors.Is(err, constants.ErrHandleImmutable) {
-		t.Fatalf("expected ErrHandleImmutable, got: %v", err)
 	}
 }
 
