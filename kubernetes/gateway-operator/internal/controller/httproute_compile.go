@@ -168,11 +168,12 @@ func BuildAPIConfigFromHTTPRoute(
 
 			for _, method := range methods {
 				op := apiv1.Operation{
-					Method:        method,
-					Path:          pathVal,
-					PathMatchType: pathType,
-					MatchHeaders:  headerMatches,
-					Policies:      copyPolicies(rulePolicies),
+					Match: &apiv1.OperationMatch{
+						Method:  method,
+						Path:    apiv1.OperationPathMatch{Value: pathVal, Type: pathType},
+						Headers: headerMatches,
+					},
+					Policies: copyPolicies(rulePolicies),
 				}
 				op.Policies = append(op.Policies, filterPolicies...)
 

@@ -1027,8 +1027,8 @@ func buildAPIMOperation(op management.Operation) map[string]interface{} {
 
 	return map[string]interface{}{
 		"id":                        "",
-		"target":                    op.Path,
-		"verb":                      strings.ToUpper(string(op.Method)),
+		"target":                    op.EffectivePath(),
+		"verb":                      strings.ToUpper(op.EffectiveMethod()),
 		"authType":                  "Application & Application User",
 		"throttlingPolicy":          "Unlimited",
 		"scopes":                    []interface{}{},
@@ -1083,8 +1083,8 @@ func buildOpenAPIPathsFromRestAPI(operations []management.Operation) map[string]
 	paths := make(map[string]interface{})
 
 	for _, op := range operations {
-		path := op.Path
-		method := string(op.Method)
+		path := op.EffectivePath()
+		method := op.EffectiveMethod()
 
 		if path != "" && method != "" {
 			if paths[path] == nil {

@@ -25,10 +25,10 @@ Feature: Header-based route selection (normal RestApi path)
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
 
-  # Several operations share the path /pick and differ only by matchHeaders. Each carries a
+  # Several operations share the path /pick and differ only by match.headers. Each carries a
   # respond policy with a distinct status so the selected route is unambiguous. This exercises
   # exact header matching, RegularExpression header matching, the more-specific-route-wins
-  # precedence over a header-less catch-all, and native matchHeaders route selection — all on
+  # precedence over a header-less catch-all, and native header-match route selection — all on
   # the normal management-API path.
   Scenario: Requests are routed to the operation whose header match they satisfy
     When I deploy this API configuration:
@@ -47,32 +47,38 @@ Feature: Header-based route selection (normal RestApi path)
         operations:
           - method: GET
             path: /ready
-          - method: GET
-            path: /pick
-            matchHeaders:
-              - name: x-variant
-                value: alpha
+          - match:
+              method: GET
+              path:
+                value: /pick
+              headers:
+                - name: x-variant
+                  value: alpha
             policies:
               - name: respond
                 version: v1
                 params:
                   statusCode: 201
-          - method: GET
-            path: /pick
-            matchHeaders:
-              - name: x-variant
-                value: beta
+          - match:
+              method: GET
+              path:
+                value: /pick
+              headers:
+                - name: x-variant
+                  value: beta
             policies:
               - name: respond
                 version: v1
                 params:
                   statusCode: 202
-          - method: GET
-            path: /pick
-            matchHeaders:
-              - name: x-variant
-                type: RegularExpression
-                value: "^v[0-9]+$"
+          - match:
+              method: GET
+              path:
+                value: /pick
+              headers:
+                - name: x-variant
+                  type: RegularExpression
+                  value: "^v[0-9]+$"
             policies:
               - name: respond
                 version: v1
@@ -121,4 +127,64 @@ Feature: Header-based route selection (normal RestApi path)
 
     Given I authenticate using basic auth as "admin"
     When I delete the API "header-routing-api"
+    Then the response should be successful
+
+  # The SAME path can be served by a simple (header-less) operation AND a match operation that
+  # adds a header condition. They are two separate operations — the header match gives the second
+  # a distinct route key, so both coexist. The header-matched operation wins WHEN its header is
+  # present; otherwise the request falls through to the header-less operation (more-specific wins).
+  Scenario: A simple operation and a match operation on the same path coexist by header precedence
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mixed-form-api
+      spec:
+        displayName: Mixed-Form-API
+        version: v1.0
+        context: /mixed-form/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080
+        operations:
+          - method: GET
+            path: /ready
+          - method: GET
+            path: /via-match
+            policies:
+              - name: respond
+                version: v1
+                params:
+                  statusCode: 200
+          - match:
+              method: GET
+              path:
+                value: /via-match
+              headers:
+                - name: x-variant
+                  value: alpha
+                  type: Exact
+            policies:
+              - name: respond
+                version: v1
+                params:
+                  statusCode: 210
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/mixed-form/v1.0/ready" to be ready
+
+    # header present -> the match operation wins
+    When I clear all headers
+    And I set header "x-variant" to "alpha"
+    And I send a GET request to "http://localhost:8080/mixed-form/v1.0/via-match"
+    Then the response status code should be 210
+
+    # header absent -> falls through to the simple (header-less) operation
+    When I clear all headers
+    And I send a GET request to "http://localhost:8080/mixed-form/v1.0/via-match"
+    Then the response status code should be 200
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "mixed-form-api"
     Then the response should be successful

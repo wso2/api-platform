@@ -1095,11 +1095,11 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 
 		opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
 		if err != nil {
-			return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.Method, op.Path, err)
+			return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.EffectiveMethod(), op.EffectivePath(), err)
 		}
 		opTimeoutCfg := combineRouteResilience(mainTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
 
-		r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
+		r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, op.EffectiveMethod(), op.EffectivePath(),
 			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, opTimeoutCfg, useClusterHeader, upstreamDefPaths)
 		mainRoutesList = append(mainRoutesList, r)
 	}
@@ -1128,11 +1128,11 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		for _, op := range apiData.Operations {
 			opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
 			if err != nil {
-				return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.Method, op.Path, err)
+				return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.EffectiveMethod(), op.EffectivePath(), err)
 			}
 			opTimeoutCfg := combineRouteResilience(sbTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
 
-			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
+			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, op.EffectiveMethod(), op.EffectivePath(),
 				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, opTimeoutCfg, sbUseClusterHeader, upstreamDefPaths)
 			sbRoutesList = append(sbRoutesList, r)
 		}

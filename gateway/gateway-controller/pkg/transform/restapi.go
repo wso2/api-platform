@@ -185,23 +185,28 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			vhosts = append(vhosts, effectiveSandboxVHost)
 		}
 
-		// Header matchers and their discriminator are vhost-independent, so derive them
-		// once per operation. The discriminator keeps the route key unique across
-		// operations that share method/path/vhost but match on different headers
-		// (e.g. multiple Gateway-API HTTPRoute rules on the same path).
+		// Resolve the effective matching criteria (simple top-level form or the richer match
+		// block) once per operation. Header matchers and their discriminator are vhost-
+		// independent; the discriminator keeps the route key unique across operations that
+		// share method/path/vhost but match on different headers (e.g. multiple Gateway-API
+		// HTTPRoute rules on the same path).
+		method := op.EffectiveMethod()
+		opPath := op.EffectivePath()
+		pathMatchType := op.EffectivePathMatchType()
 		headerMatches := routeHeaderMatches(op)
 		discriminator := xds.HeaderMatchDiscriminator(headerMatches)
 
 		for _, vhost := range vhosts {
-			routeKey := xds.GenerateRouteNameWithDiscriminator(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost, discriminator)
+			routeKey := xds.GenerateRouteNameWithDiscriminator(method, apiData.Context, apiData.Version, opPath, vhost, discriminator)
 
 			rdcRoute := &models.Route{
-				Method:          string(op.Method),
-				Path:            xds.ConstructFullPath(apiData.Context, apiData.Version, op.Path),
-				OperationPath:   op.Path,
+				Method:          method,
+				Path:            xds.ConstructFullPath(apiData.Context, apiData.Version, opPath),
+				OperationPath:   opPath,
 				Vhost:           vhost,
 				AutoHostRewrite: mainAutoHostRewrite,
 				MatchHeaders:    headerMatches,
+				PathMatchType:   pathMatchType,
 				Order:           i,
 				Timeout:         routeTimeout,
 				Upstream: models.RouteUpstream{
@@ -209,9 +214,6 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 					UseClusterHeader: useClusterHeader,
 					DefaultCluster:   defaultCluster,
 				},
-			}
-			if op.PathMatchType != nil {
-				rdcRoute.PathMatchType = string(*op.PathMatchType)
 			}
 			rdc.Routes[routeKey] = rdcRoute
 
@@ -289,7 +291,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		// above, otherwise header-matched routes would not be found and re-pointed.
 		for _, op := range apiData.Operations {
 			discriminator := xds.HeaderMatchDiscriminator(routeHeaderMatches(op))
-			routeKey := xds.GenerateRouteNameWithDiscriminator(string(op.Method), apiData.Context, apiData.Version, op.Path, effectiveSandboxVHost, discriminator)
+			routeKey := xds.GenerateRouteNameWithDiscriminator(op.EffectiveMethod(), apiData.Context, apiData.Version, op.EffectivePath(), effectiveSandboxVHost, discriminator)
 			if r, exists := rdc.Routes[routeKey]; exists {
 				r.Upstream.ClusterKey = sbUpstream.ClusterKey
 				// Mirror main on sandbox routes: cluster_header lets a dynamic-endpoint policy
@@ -336,11 +338,12 @@ func splitVhosts(raw string) []string {
 // used for both the Envoy route match and the route-key discriminator. Returning a single canonical
 // slice keeps the main route build and the sandbox patch loop in agreement on the route key.
 func routeHeaderMatches(op api.Operation) []models.RouteHeaderMatch {
-	if op.MatchHeaders == nil {
+	headers := op.EffectiveHeaders()
+	if len(headers) == 0 {
 		return nil
 	}
-	matches := make([]models.RouteHeaderMatch, 0, len(*op.MatchHeaders))
-	for _, h := range *op.MatchHeaders {
+	matches := make([]models.RouteHeaderMatch, 0, len(headers))
+	for _, h := range headers {
 		headerType := "Exact"
 		if h.Type != nil {
 			headerType = string(*h.Type)

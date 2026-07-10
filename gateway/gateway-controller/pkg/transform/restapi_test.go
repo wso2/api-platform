@@ -62,7 +62,7 @@ func makeRestAPIStoredConfig(apiPolicies []api.Policy, opPolicies []api.Policy) 
 		Context:     "/test",
 		Version:     "1.0.0",
 		Operations: []api.Operation{
-			{Method: "GET", Path: "/hello", Policies: opPols},
+			{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/hello"), Policies: opPols},
 		},
 		Policies: specPolicies,
 		Upstream: struct {
@@ -95,7 +95,7 @@ func makeRestAPIStoredConfigWithResilience(apiRes, opRes *api.Resilience) *model
 		Version:     "1.0.0",
 		Resilience:  apiRes,
 		Operations: []api.Operation{
-			{Method: "GET", Path: "/hello", Resilience: opRes},
+			{Method: api.Ptr(api.OperationMethod("GET")), Path: ptrStr("/hello"), Resilience: opRes},
 		},
 		Upstream: struct {
 			Main    api.Upstream  `json:"main" yaml:"main"`
@@ -479,7 +479,7 @@ func TestRestAPITransformer_DefaultClusterReferencesRealCluster(t *testing.T) {
 		Context:             "/test",
 		Version:             "1.0.0",
 		UpstreamDefinitions: &upDefs,
-		Operations:          []api.Operation{{Method: "GET", Path: "/hello"}},
+		Operations:          []api.Operation{{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/hello")}},
 		Upstream: struct {
 			Main    api.Upstream  `json:"main" yaml:"main"`
 			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
@@ -517,6 +517,18 @@ func hdrMatch(name, value string) api.OperationHeaderMatch {
 	return api.OperationHeaderMatch{Name: name, Value: value}
 }
 
+// mkMatch builds an operation match block (method + path + optional ANDed header matchers).
+func mkMatch(method, path string, headers ...api.OperationHeaderMatch) *api.OperationMatch {
+	m := &api.OperationMatch{
+		Method: api.OperationMethod(method),
+		Path:   api.OperationPathMatch{Value: path},
+	}
+	if len(headers) > 0 {
+		m.Headers = &headers
+	}
+	return m
+}
+
 // TestRestAPITransformer_HeaderMatchRoutesDoNotCollide verifies that operations sharing the same
 // method/path/vhost but differing by header matches produce distinct routes (no map collision),
 // that header-matched routes carry a 4th discriminator segment while a header-less operation keeps
@@ -531,11 +543,11 @@ func TestRestAPITransformer_HeaderMatchRoutesDoNotCollide(t *testing.T) {
 		Context:     "/test",
 		Version:     "1.0.0",
 		Operations: []api.Operation{
-			{Method: "GET", Path: "/", MatchHeaders: &[]api.OperationHeaderMatch{hdrMatch("version", "one")}},
-			{Method: "GET", Path: "/", MatchHeaders: &[]api.OperationHeaderMatch{hdrMatch("version", "two")}},
-			{Method: "GET", Path: "/", MatchHeaders: &[]api.OperationHeaderMatch{hdrMatch("version", "two"), hdrMatch("color", "orange")}},
-			{Method: "GET", Path: "/", MatchHeaders: &[]api.OperationHeaderMatch{hdrMatch("color", "blue")}},
-			{Method: "GET", Path: "/"}, // header-less: must keep the legacy 3-segment key
+			{Match: mkMatch("GET", "/", hdrMatch("version", "one"))},
+			{Match: mkMatch("GET", "/", hdrMatch("version", "two"))},
+			{Match: mkMatch("GET", "/", hdrMatch("version", "two"), hdrMatch("color", "orange"))},
+			{Match: mkMatch("GET", "/", hdrMatch("color", "blue"))},
+			{Match: mkMatch("GET", "/")}, // header-less: must keep the legacy 3-segment key
 		},
 		Upstream: struct {
 			Main    api.Upstream  `json:"main" yaml:"main"`
@@ -620,7 +632,7 @@ func TestRestAPITransformer_SemicolonVhostsExpandToMultipleHosts(t *testing.T) {
 		DisplayName: "Multi VHost API",
 		Context:     "/test",
 		Version:     "1.0.0",
-		Operations:  []api.Operation{{Method: "GET", Path: "/hello"}},
+		Operations:  []api.Operation{{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/hello")}},
 		Upstream: struct {
 			Main    api.Upstream  `json:"main" yaml:"main"`
 			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
@@ -682,7 +694,7 @@ func TestRestAPITransformer_MixedSchemeUpstreamDefinition(t *testing.T) {
 			Context:             "/test",
 			Version:             "1.0.0",
 			UpstreamDefinitions: &upDefs,
-			Operations:          []api.Operation{{Method: "GET", Path: "/hello"}},
+			Operations:          []api.Operation{{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/hello")}},
 			Upstream: struct {
 				Main    api.Upstream  `json:"main" yaml:"main"`
 				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
@@ -730,5 +742,110 @@ func TestRestAPITransformer_MixedSchemeUpstreamDefinition(t *testing.T) {
 		require.NotNil(t, uc, "weighted upstream cluster should exist")
 		require.NotNil(t, uc.TLS)
 		assert.False(t, uc.TLS.Enabled, "uniform-plaintext definition must keep TLS disabled")
+	})
+}
+
+// TestRestAPITransformer_SimpleAndMatchSamePathCoexist verifies the user's case: a header-less
+// simple-form operation and a match-form operation with a header, both on the same method+path,
+// coexist as two distinct routes (the header match gives the second a discriminator segment), so
+// header precedence — not a collision — decides which serves a given request.
+func TestRestAPITransformer_SimpleAndMatchSamePathCoexist(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	apiData := api.APIConfigData{
+		DisplayName: "Mixed Form API",
+		Context:     "/test",
+		Version:     "1.0.0",
+		Operations: []api.Operation{
+			{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/via-match")}, // simple, header-less
+			{Match: mkMatch("GET", "/via-match", hdrMatch("x-variant", "alpha"))},        // match, header-conditioned
+		},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: api.Upstream{Url: ptrStr("http://backend:8080")}},
+	}
+	cfg := &models.StoredConfig{UUID: "mixed", Kind: string(api.RestAPIKindRestApi),
+		Configuration: api.RestAPI{Kind: api.RestAPIKindRestApi, Metadata: api.Metadata{Name: "mixed"}, Spec: apiData}}
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	require.Len(t, rdc.Routes, 2, "both operations must produce distinct routes (no collision)")
+
+	base := "GET|/test/via-match|main.local"
+	require.Contains(t, rdc.Routes, base, "the simple header-less op keeps the 3-segment key")
+	assert.Empty(t, rdc.Routes[base].MatchHeaders, "simple op has no header matchers")
+
+	var headerKey string
+	for k := range rdc.Routes {
+		if k != base {
+			headerKey = k
+		}
+	}
+	require.True(t, strings.HasPrefix(headerKey, base+"|"), "match+header op gets a discriminator segment: %q", headerKey)
+	require.Len(t, rdc.Routes[headerKey].MatchHeaders, 1, "match op carries the x-variant header matcher")
+	assert.Equal(t, "x-variant", rdc.Routes[headerKey].MatchHeaders[0].Name)
+}
+
+// TestRestAPITransformer_OperationFormCombinations proves the four supported authoring shapes all
+// transform without error and produce the expected routes:
+//  1. all operations in the simple (method+path) form
+//  2. all operations in the match form
+//  3. a mix of simple and match forms on DIFFERENT routes
+//  4. a mix where the SAME path is defined both ways (simple header-less + match with a header)
+func TestRestAPITransformer_OperationFormCombinations(t *testing.T) {
+	mk := func(ops []api.Operation) *models.RuntimeDeployConfig {
+		t.Helper()
+		transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+		apiData := api.APIConfigData{
+			DisplayName: "Forms API", Context: "/test", Version: "1.0.0", Operations: ops,
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{Main: api.Upstream{Url: ptrStr("http://backend:8080")}},
+		}
+		cfg := &models.StoredConfig{UUID: "forms", Kind: string(api.RestAPIKindRestApi),
+			Configuration: api.RestAPI{Kind: api.RestAPIKindRestApi, Metadata: api.Metadata{Name: "forms"}, Spec: apiData}}
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		return rdc
+	}
+	simple := func(method, path string) api.Operation {
+		return api.Operation{Method: api.Ptr(api.OperationMethod(method)), Path: api.Ptr(path)}
+	}
+
+	t.Run("1: simple form only", func(t *testing.T) {
+		rdc := mk([]api.Operation{simple("GET", "/a"), simple("POST", "/b")})
+		require.Len(t, rdc.Routes, 2)
+		require.Contains(t, rdc.Routes, "GET|/test/a|main.local")
+		require.Contains(t, rdc.Routes, "POST|/test/b|main.local")
+	})
+
+	t.Run("2: match form only", func(t *testing.T) {
+		rdc := mk([]api.Operation{
+			{Match: mkMatch("GET", "/a")},
+			{Match: mkMatch("GET", "/b", hdrMatch("x-variant", "alpha"))},
+		})
+		require.Len(t, rdc.Routes, 2)
+		require.Contains(t, rdc.Routes, "GET|/test/a|main.local")
+	})
+
+	t.Run("3: mix on different routes", func(t *testing.T) {
+		rdc := mk([]api.Operation{
+			simple("GET", "/a"),
+			{Match: mkMatch("GET", "/b", hdrMatch("x-variant", "alpha"))},
+		})
+		require.Len(t, rdc.Routes, 2)
+		require.Contains(t, rdc.Routes, "GET|/test/a|main.local")
+	})
+
+	t.Run("4: same path defined both ways (simple header-less + match with header)", func(t *testing.T) {
+		rdc := mk([]api.Operation{
+			simple("GET", "/c"),
+			{Match: mkMatch("GET", "/c", hdrMatch("x-variant", "alpha"))},
+		})
+		require.Len(t, rdc.Routes, 2, "both coexist: the header match gives a distinct key")
+		base := "GET|/test/c|main.local"
+		require.Contains(t, rdc.Routes, base)
+		require.Empty(t, rdc.Routes[base].MatchHeaders)
 	})
 }

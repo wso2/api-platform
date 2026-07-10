@@ -124,33 +124,61 @@ type VhostConfig struct {
 }
 
 // Operation defines model for Operation.
+// An operation is matched either by the simple top-level method+path fields or by the richer
+// Match block (method + path + headers). When Match is set it is authoritative and the
+// top-level Method/Path are ignored. Exactly one form must be provided.
+// +kubebuilder:validation:XValidation:rule="(has(self.method) && has(self.path)) || has(self.match)",message="operation must set both method and path, or set match"
 type Operation struct {
-	// Method HTTP method
-	// +kubebuilder:validation:Required
+	// Method HTTP method (simple form; ignored when Match is set).
+	// +optional
 	// +kubebuilder:validation:Enum=GET;POST;PUT;PATCH;DELETE;HEAD;OPTIONS
-	Method OperationMethod `json:"method"`
+	Method OperationMethod `json:"method,omitempty"`
 
-	// Path Route path with optional {param} placeholders
-	// +kubebuilder:validation:Required
+	// Path Route path with optional {param} placeholders (simple form; ignored when Match is set).
+	// +optional
 	// +kubebuilder:validation:Pattern=`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/{}\[\]]*$`
-	Path string `json:"path"`
+	Path string `json:"path,omitempty"`
+
+	// Match Request matching criteria for the operation. Extensible with query params, cookies, etc.
+	// +optional
+	Match *OperationMatch `json:"match,omitempty"`
 
 	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
 	// +optional
 	Policies []Policy `json:"policies,omitempty"`
 
-	// PathMatchType How the path is matched (Exact or PathPrefix). Defaults to Exact when omitted.
-	// +optional
-	// +kubebuilder:validation:Enum=Exact;PathPrefix
-	PathMatchType OperationPathMatchType `json:"pathMatchType,omitempty"`
-
-	// MatchHeaders ANDed header matchers applied before routing to this operation.
-	// +optional
-	MatchHeaders []OperationHeaderMatch `json:"matchHeaders,omitempty"`
-
 	// Resilience Operation-level backend/route timeout configuration (overrides API-level)
 	// +optional
 	Resilience *Resilience `json:"resilience,omitempty"`
+}
+
+// OperationMatch is the request matching criteria for an operation.
+type OperationMatch struct {
+	// Method HTTP method
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=GET;POST;PUT;PATCH;DELETE;HEAD;OPTIONS
+	Method OperationMethod `json:"method"`
+
+	// Path Path match criteria
+	// +kubebuilder:validation:Required
+	Path OperationPathMatch `json:"path"`
+
+	// Headers ANDed header matchers applied before routing to this operation.
+	// +optional
+	Headers []OperationHeaderMatch `json:"headers,omitempty"`
+}
+
+// OperationPathMatch controls path matching for an operation.
+type OperationPathMatch struct {
+	// Value Route path with optional {param} placeholders
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/{}\[\]]*$`
+	Value string `json:"value"`
+
+	// Type How the path is matched (Exact or PathPrefix). Defaults to Exact when omitted.
+	// +optional
+	// +kubebuilder:validation:Enum=Exact;PathPrefix
+	Type OperationPathMatchType `json:"type,omitempty"`
 }
 
 // OperationPathMatchType controls path matching semantics.

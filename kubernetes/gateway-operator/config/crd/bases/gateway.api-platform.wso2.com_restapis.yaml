@@ -53,34 +53,76 @@ spec:
               operations:
                 description: Operations List of HTTP operations/routes
                 items:
-                  description: Operation defines model for Operation.
+                  description: |-
+                    Operation defines model for Operation.
+                    An operation is matched either by the simple top-level method+path fields or by the richer
+                    Match block (method + path + headers). When Match is set it is authoritative and the
+                    top-level Method/Path are ignored. Exactly one form must be provided.
                   properties:
-                    matchHeaders:
-                      description: MatchHeaders ANDed header matchers applied before
-                        routing to this operation.
-                      items:
-                        description: OperationHeaderMatch mirrors Gateway API HTTPHeaderMatch
-                          for Envoy route selection.
-                        properties:
-                          name:
-                            description: Name Header name (case-insensitive)
-                            type: string
-                          type:
-                            description: Type Match type (Exact or RegularExpression)
-                            enum:
-                            - Exact
-                            - RegularExpression
-                            type: string
-                          value:
-                            description: Value Header value to match
-                            type: string
-                        required:
-                        - name
-                        - value
-                        type: object
-                      type: array
+                    match:
+                      description: Match Request matching criteria for the operation.
+                        Extensible with query params, cookies, etc.
+                      properties:
+                        headers:
+                          description: Headers ANDed header matchers applied before
+                            routing to this operation.
+                          items:
+                            description: OperationHeaderMatch mirrors Gateway API
+                              HTTPHeaderMatch for Envoy route selection.
+                            properties:
+                              name:
+                                description: Name Header name (case-insensitive)
+                                type: string
+                              type:
+                                description: Type Match type (Exact or RegularExpression)
+                                enum:
+                                - Exact
+                                - RegularExpression
+                                type: string
+                              value:
+                                description: Value Header value to match
+                                type: string
+                            required:
+                            - name
+                            - value
+                            type: object
+                          type: array
+                        method:
+                          description: Method HTTP method
+                          enum:
+                          - GET
+                          - POST
+                          - PUT
+                          - PATCH
+                          - DELETE
+                          - HEAD
+                          - OPTIONS
+                          type: string
+                        path:
+                          description: Path Path match criteria
+                          properties:
+                            type:
+                              description: Type How the path is matched (Exact or
+                                PathPrefix). Defaults to Exact when omitted.
+                              enum:
+                              - Exact
+                              - PathPrefix
+                              type: string
+                            value:
+                              description: Value Route path with optional {param}
+                                placeholders
+                              pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/{}\[\]]*$
+                              type: string
+                          required:
+                          - value
+                          type: object
+                      required:
+                      - method
+                      - path
+                      type: object
                     method:
-                      description: Method HTTP method
+                      description: Method HTTP method (simple form; ignored when Match
+                        is set).
                       enum:
                       - GET
                       - POST
@@ -92,14 +134,8 @@ spec:
                       type: string
                     path:
                       description: Path Route path with optional {param} placeholders
+                        (simple form; ignored when Match is set).
                       pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/{}\[\]]*$
-                      type: string
-                    pathMatchType:
-                      description: PathMatchType How the path is matched (Exact or
-                        PathPrefix). Defaults to Exact when omitted.
-                      enum:
-                      - Exact
-                      - PathPrefix
                       type: string
                     policies:
                       description: Policies List of policies applied only to this
@@ -144,10 +180,10 @@ spec:
                           pattern: ^\d+(\.\d+)?(ms|s|m|h)$
                           type: string
                       type: object
-                  required:
-                  - method
-                  - path
                   type: object
+                  x-kubernetes-validations:
+                  - message: operation must set both method and path, or set match
+                    rule: (has(self.method) && has(self.path)) || has(self.match)
                 minItems: 1
                 type: array
               policies:

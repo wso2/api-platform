@@ -97,7 +97,7 @@ func TestBuildAPIConfigFromHTTPRoute(t *testing.T) {
 	require.Equal(t, "my-route", spec.DisplayName)
 	require.Equal(t, "v1.0", spec.Version)
 	require.Len(t, spec.Operations, 1)
-	require.Equal(t, "/api/hello/*", spec.Operations[0].Path)
+	require.Equal(t, "/api/hello/*", spec.Operations[0].EffectivePath())
 	require.Equal(t, strPtr("http://backend.default.svc.cluster.local:8080"), spec.Upstream.Main.Url)
 }
 
@@ -311,8 +311,8 @@ func TestBuildAPIConfigFromHTTPRoute_APIPolicyRuleExtensionRef(t *testing.T) {
 	spec, err := buildAPIConfigFromHTTPRouteForTest(context.Background(), cl, route, "cluster.local")
 	require.NoError(t, err)
 	require.Len(t, spec.Operations, 1)
-	require.Equal(t, apiv1.OperationMethodPOST, spec.Operations[0].Method)
-	require.Equal(t, "/r/*", spec.Operations[0].Path)
+	require.Equal(t, apiv1.OperationMethodPOST, spec.Operations[0].EffectiveMethod())
+	require.Equal(t, "/r/*", spec.Operations[0].EffectivePath())
 	require.Len(t, spec.Operations[0].Policies, 1)
 	require.Equal(t, "ext-ref-policy", spec.Operations[0].Policies[0].Name)
 }
@@ -381,8 +381,8 @@ func TestBuildAPIConfigFromHTTPRoute_MatchMethodOptionalAndEmptyMatchesRejected(
 		require.Len(t, spec.Operations, len(allRESTAPIOperationMethods()))
 		want := allRESTAPIOperationMethods()
 		for i := range want {
-			require.Equal(t, want[i], spec.Operations[i].Method)
-			require.Equal(t, "/x/*", spec.Operations[i].Path)
+			require.Equal(t, want[i], spec.Operations[i].EffectiveMethod())
+			require.Equal(t, "/x/*", spec.Operations[i].EffectivePath())
 		}
 	})
 }
