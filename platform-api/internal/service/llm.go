@@ -1248,6 +1248,38 @@ func (s *LLMProviderService) Delete(orgUUID, handle, deletedBy string) error {
 	return nil
 }
 
+// validateAdditionalProviders eagerly validates a proxy's additional providers
+// so Create/Update surface an immediate, actionable API error instead of a
+// confusing deployment-time failure. It mirrors the checks the gateway performs
+// at transform time (see llm_transformer.go): every referenced provider must
+// exist, and each upstream name (the `as` alias, or the provider id when no
+// alias is set) must be unique within the proxy and must not collide with the
+// primary provider id.
+func (s *LLMProxyService) validateAdditionalProviders(orgUUID, primaryProviderID string, additionalProviders *[]api.LLMProxyAdditionalProvider) error {
+	if additionalProviders == nil {
+		return nil
+	}
+	seen := map[string]bool{primaryProviderID: true}
+	for _, ap := range *additionalProviders {
+		prov, err := s.providerRepo.GetByID(ap.Id, orgUUID)
+		if err != nil {
+			return fmt.Errorf("failed to validate additional provider %q: %w", ap.Id, err)
+		}
+		if prov == nil {
+			return constants.ErrLLMProviderNotFound
+		}
+		name := ap.Id
+		if ap.As != nil && *ap.As != "" {
+			name = *ap.As
+		}
+		if seen[name] {
+			return constants.ErrInvalidInput
+		}
+		seen[name] = true
+	}
+	return nil
+}
+
 func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (*api.LLMProxy, error) {
 	if req == nil {
 		return nil, constants.ErrInvalidInput
@@ -1285,6 +1317,11 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	}
 	if prov == nil {
 		return nil, constants.ErrLLMProviderNotFound
+	}
+
+	// Validate additional providers exist and have unique upstream names
+	if err := s.validateAdditionalProviders(orgUUID, req.Provider.Id, req.AdditionalProviders); err != nil {
+		return nil, err
 	}
 
 	// Determine handle: use provided id or auto-generate from displayName
@@ -1588,6 +1625,11 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
 		}
+	}
+
+	// Validate additional providers exist and have unique upstream names
+	if err := s.validateAdditionalProviders(orgUUID, req.Provider.Id, req.AdditionalProviders); err != nil {
+		return nil, err
 	}
 
 	contextValue := utils.DefaultStringPtr(req.Context, "/")

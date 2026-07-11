@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // LLMProxyProvider references a deployed LlmProvider that this proxy fronts.
@@ -47,6 +48,34 @@ type LLMProxyAdditionalProvider struct {
 	// calls when the referenced provider is protected by an auth policy.
 	// +optional
 	Auth *LLMUpstreamAuth `json:"auth,omitempty"`
+
+	// Transformer optionally applies a request/response translator when this
+	// provider is the selected upstream. The proxy injects it as a conditional
+	// policy that runs only when this provider is selected.
+	// +optional
+	Transformer *LLMProxyTransformer `json:"transformer,omitempty"`
+}
+
+// LLMProxyTransformer is a request/response translator applied when its owning
+// provider is the selected upstream; mirrors the management-API
+// LLMProxyTransformer payload.
+type LLMProxyTransformer struct {
+	// Type is the translator policy name (for example openai-to-anthropic).
+	// +kubebuilder:validation:Required
+	Type string `json:"type"`
+
+	// Version is the major-only translator policy version (for example v1).
+	// The Gateway Controller resolves it to the installed full version.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^v\d+$`
+	Version string `json:"version"`
+
+	// Params carries translator-specific parameters (for example model,
+	// apiVersion).
+	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
+	Params *runtime.RawExtension `json:"params,omitempty"`
 }
 
 // LLMProxyConfigData mirrors the management-API LLMProxyConfigData payload.
