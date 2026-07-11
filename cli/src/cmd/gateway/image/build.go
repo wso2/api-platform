@@ -289,13 +289,10 @@ func displayBuildSummary(processed []policy.ProcessedPolicy) {
 
 // runDockerBuild executes the docker build process for gateway images
 func runDockerBuild(tempDir string) error {
-	// Create logs directory
-	logsDir := filepath.Join(tempDir, "logs")
-	if err := utils.EnsureDir(logsDir); err != nil {
-		return fmt.Errorf("failed to create logs directory: %w", err)
+	logFilePath, err := getDockerBuildLogPath(tempDir)
+	if err != nil {
+		return err
 	}
-
-	logFilePath := filepath.Join(logsDir, "docker.log")
 
 	// Prepare build configuration
 	config := gateway.DockerBuildConfig{
@@ -319,4 +316,13 @@ func runDockerBuild(tempDir string) error {
 	}
 
 	return nil
+}
+
+func getDockerBuildLogPath(tempDir string) (string, error) {
+	logsDir := filepath.Join(filepath.Dir(tempDir), "logs")
+	if err := utils.EnsureDir(logsDir); err != nil {
+		return "", fmt.Errorf("failed to create logs directory: %w", err)
+	}
+
+	return filepath.Join(logsDir, filepath.Base(tempDir)+"-docker.log"), nil
 }
