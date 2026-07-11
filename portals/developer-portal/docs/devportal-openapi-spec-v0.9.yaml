@@ -2986,7 +2986,6 @@ components:
           example:
             displayName: Asgardeo
             id: asgardeo-prod
-            type: ASGARDEO
             enabled: true
             tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
         multipart/form-data:
@@ -3874,7 +3873,7 @@ components:
               - id: asgardeo-prod
                 displayName: Asgardeo
                 orgId: org-12345
-                type: ASGARDEO
+                type: GENERIC_OIDC
                 enabled: true
                 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
                 createdBy: alice@example.com
@@ -5031,7 +5030,6 @@ components:
       type: object
       required:
         - displayName
-        - type
         - tokenEndpoint
       properties:
         displayName:
@@ -5043,13 +5041,6 @@ components:
             Desired handle for the key manager (unique per org), stored as-is. Optional — defaults to the key
             manager's `displayName` when omitted.
           example: asgardeo-prod
-        type:
-          type: string
-          enum:
-            - ASGARDEO
-            - WSO2IS
-            - GENERIC_OIDC
-          example: ASGARDEO
         enabled:
           type: boolean
           default: true
@@ -5075,13 +5066,6 @@ components:
           type: string
           description: Desired handle for the key manager (unique per org), stored as-is.
           example: asgardeo-prod
-        type:
-          type: string
-          enum:
-            - ASGARDEO
-            - WSO2IS
-            - GENERIC_OIDC
-          example: ASGARDEO
         enabled:
           type: boolean
           default: true
@@ -5107,11 +5091,11 @@ components:
           example: org-12345
         type:
           type: string
+          description: Fixed at `GENERIC_OIDC` for every key manager. Not client-configurable.
           enum:
-            - ASGARDEO
-            - WSO2IS
             - GENERIC_OIDC
-          example: ASGARDEO
+          readOnly: true
+          example: GENERIC_OIDC
         enabled:
           type: boolean
           example: true
@@ -5151,11 +5135,11 @@ components:
           example: Asgardeo
         type:
           type: string
+          description: Fixed at `GENERIC_OIDC` for every key manager.
           enum:
-            - ASGARDEO
-            - WSO2IS
             - GENERIC_OIDC
-          example: ASGARDEO
+          readOnly: true
+          example: GENERIC_OIDC
         tokenEndpoint:
           type: string
           format: uri

@@ -565,7 +565,6 @@
             <thead>
               <tr>
                 <th>Display name</th>
-                <th>Type</th>
                 <th>Token endpoint</th>
                 <th>Status</th>
                 <th style="width:90px;"></th>
@@ -578,7 +577,6 @@
                   <button type="button" class="cfg-km-edit-btn" data-id="{{id}}"
                     style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{displayName}}</button>
                 </td>
-                <td><span class="cfg-name-chip">{{type}}</span></td>
                 <td>
                   <span class="cfg-name-chip" title="{{tokenEndpoint}}"
                     style="display:inline-block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{tokenEndpoint}}</span>
@@ -608,7 +606,7 @@
               </tr>
               {{/keyManagers}}
               {{#unless keyManagers.length}}
-              <tr><td colspan="5" class="cfg-tbl-empty">No key managers yet. Add one to get started.</td></tr>
+              <tr><td colspan="4" class="cfg-tbl-empty">No key managers yet. Add one to get started.</td></tr>
               {{/unless}}
             </tbody>
           </table>
@@ -880,19 +878,9 @@
       <input type="text" id="km-handle" class="cfg-form-input cfg-form-input--mono" placeholder="asgardeo-prod" />
       <p class="cfg-field-hint">Lowercase identifier used internally.</p>
     </div>
-    <div class="cfg-form-grid" style="margin-bottom:16px;">
-      <div class="cfg-form-group">
-        <label for="km-type">Type <span class="required">*</span></label>
-        <select id="km-type" class="cfg-form-input">
-          {{#each keyManagerTypes}}
-          <option value="{{this}}">{{this}}</option>
-          {{/each}}
-        </select>
-      </div>
-      <div class="cfg-form-group">
-        <label for="km-token-endpoint">Token endpoint <span class="required">*</span></label>
-        <input type="text" id="km-token-endpoint" class="cfg-form-input cfg-form-input--mono" placeholder="https://api.asgardeo.io/t/myorg/oauth2/token" />
-      </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="km-token-endpoint">Token endpoint <span class="required">*</span></label>
+      <input type="text" id="km-token-endpoint" class="cfg-form-input cfg-form-input--mono" placeholder="https://api.asgardeo.io/t/myorg/oauth2/token" />
     </div>
     <div class="cfg-form-group" style="margin-bottom:24px;">
       <label style="display:flex;align-items:center;gap:10px;font-size:.844rem;color:#1a2433;font-weight:500;cursor:pointer;">
@@ -2321,7 +2309,6 @@
     sv('km-display',        mode === 'edit' ? data.displayName    : '');
     sv('km-handle',         mode === 'edit' ? data.id             : '');
     sv('km-token-endpoint', mode === 'edit' ? data.tokenEndpoint  : '');
-    document.getElementById('km-type').value    = mode === 'edit' ? data.type : document.getElementById('km-type').options[0].value;
     document.getElementById('km-enabled').checked = mode === 'edit' ? !!data.enabled : true;
     document.getElementById('cfg-km-modal').style.display = 'flex';
     document.getElementById('km-display').focus();
@@ -2338,7 +2325,6 @@
   document.getElementById('cfg-km-modal-save').addEventListener('click', async function() {
     var displayName   = v('km-display');
     var handle        = v('km-handle');
-    var type          = v('km-type');
     var tokenEndpoint = v('km-token-endpoint');
     if (!displayName || !handle || !tokenEndpoint) { await showAlert('Display name, handle and token endpoint are required.', 'error'); return; }
 
@@ -2352,7 +2338,6 @@
     var body = {
       id: handle,
       displayName: displayName,
-      type: type,
       tokenEndpoint: tokenEndpoint,
       enabled: document.getElementById('km-enabled').checked,
     };

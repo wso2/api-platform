@@ -155,12 +155,6 @@
     color: var(--main-text-color);
 }
 
-.keys-section .mk-km-type {
-    font-size: 0.78rem;
-    color: var(--main-text-color);
-    opacity: 0.55;
-}
-
 .keys-section .mk-km-badge {
     display: inline-flex;
     align-items: center;
