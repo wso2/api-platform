@@ -1,0 +1,88 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/common/configinterpolate"
+)
+
+func writeCtlInterpConfig(t *testing.T, content string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(p, []byte(content), 0o600))
+	return p
+}
+
+func TestLoadConfig_Interpolation_EnvToken(t *testing.T) {
+	t.Setenv("CI_CP_TOKEN", "resolved-token")
+	path := writeCtlInterpConfig(t, `
+[controller.controlplane]
+host = "cp.example.com"
+token = "{{ env \"CI_CP_TOKEN\" }}"
+`)
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	assert.Equal(t, "resolved-token", cfg.Controller.ControlPlane.Token)
+}
+
+func TestLoadConfig_Interpolation_EnvDefault(t *testing.T) {
+	os.Unsetenv("CI_MISSING_LEVEL")
+	path := writeCtlInterpConfig(t, `
+[controller.logging]
+level = "{{ env \"CI_MISSING_LEVEL\" \"debug\" }}"
+`)
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	assert.Equal(t, "debug", cfg.Controller.Logging.Level)
+}
+
+func TestLoadConfig_Interpolation_MissingRequiredFailsClosed(t *testing.T) {
+	os.Unsetenv("CI_ABSENT")
+	path := writeCtlInterpConfig(t, `
+[controller.controlplane]
+token = "{{ env \"CI_ABSENT\" }}"
+`)
+	cfg, err := LoadConfig(path)
+	require.Error(t, err)
+	assert.Nil(t, cfg)
+	assert.Contains(t, err.Error(), `required env var "CI_ABSENT" is not found`)
+}
+
+func TestLoadConfig_Interpolation_FileToken(t *testing.T) {
+	dir := t.TempDir()
+	secret := filepath.Join(dir, "cp-token")
+	require.NoError(t, os.WriteFile(secret, []byte("file-token\n"), 0o600))
+	// Point the shared allowlist env var at the temp dir so the file() source is allowed.
+	t.Setenv(configinterpolate.EnvFileSourceAllowlist, dir)
+
+	path := writeCtlInterpConfig(t, `
+[controller.controlplane]
+host = "cp.example.com"
+token = "{{ file \"`+secret+`\" }}"
+`)
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	assert.Equal(t, "file-token", cfg.Controller.ControlPlane.Token)
+}

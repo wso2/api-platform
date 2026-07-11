@@ -29,16 +29,28 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	toml "github.com/knadh/koanf/parsers/toml/v2"
+	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"github.com/wso2/api-platform/common/collector"
+	"github.com/wso2/api-platform/common/configinterpolate"
 )
 
 const (
 	// EnvPrefix is the prefix for environment variables used to configure the policy engine
 	EnvPrefix = "APIP_GW_"
 )
+
+// defaultFileSourceAllowlist is the policy-engine's default set of directories that
+// a {{ file "..." }} config-interpolation token may read from. It uses the
+// operator-visible container name (gateway-runtime), and can be overridden via the
+// shared APIP__CONFIG_FILE_SOURCE_ALLOWLIST env var
+// (see configinterpolate.ResolveAllowlist).
+var defaultFileSourceAllowlist = []string{
+	"/etc/gateway-runtime",
+	"/secrets/gateway-runtime",
+}
 
 type Config struct {
 	PolicyEngine         PolicyEngine           `koanf:"policy_engine"`
@@ -349,6 +361,16 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
 	}
 
+	// Resolve Go template tokens ({{ env }} / {{ file }}) in string leaves of the
+	// merged config before unmarshalling. Runs after the env merge so env values may
+	// themselves contain tokens; fails closed on a missing required value or a
+	// disallowed/oversize file. A token-free config is a no-op. Must run before the
+	// RawConfig capture below so policies see resolved values in ${config} expressions.
+	k, err := interpolate(k)
+	if err != nil {
+		return nil, err
+	}
+
 	// Unmarshal into pre-populated config struct with defaults
 	// Koanf will merge: fields from file/env overwrite defaults, unset fields keep defaults
 	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
@@ -362,7 +384,9 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	// Capture complete raw config for CEL ${config} expression resolution
+	// Capture complete raw config for CEL ${config} expression resolution.
+	// Uses the interpolated instance so ${config} expressions resolve to the
+	// materialized values, not the literal {{ ... }} tokens.
 	cfg.PolicyEngine.RawConfig = k.Raw()
 
 	// Validate
@@ -371,6 +395,34 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// interpolate resolves Go template tokens ({{ env }} / {{ file }}) in the merged
+// config and returns a fresh koanf instance holding the expanded values. It uses a
+// new instance (rather than reloading into k) so no un-expanded leaves survive. The
+// file-source allowlist is the policy-engine default, overridable via the shared
+// APIP__CONFIG_FILE_SOURCE_ALLOWLIST env var. Resolved values are never logged; only
+// reference counts are emitted at info level.
+func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
+	opts := configinterpolate.Options{
+		FileAllowlist: configinterpolate.ResolveAllowlist(defaultFileSourceAllowlist),
+	}
+	expanded, stats, err := configinterpolate.Expand(k.Raw(), opts)
+	if err != nil {
+		return nil, fmt.Errorf("config interpolation failed: %w", err)
+	}
+
+	out := koanf.New(".")
+	if err := out.Load(confmap.Provider(expanded, "."), nil); err != nil {
+		return nil, fmt.Errorf("failed to reload interpolated config: %w", err)
+	}
+	if stats.Fields > 0 {
+		slog.Info("config interpolation complete",
+			slog.Int("env_refs", stats.EnvRefs),
+			slog.Int("file_refs", stats.FileRefs),
+			slog.Int("fields", stats.Fields))
+	}
+	return out, nil
 }
 
 // defaultAccessLogsServiceConfig returns the default policy-engine ALS receiver tuning.

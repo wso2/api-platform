@@ -28,10 +28,12 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	toml "github.com/knadh/koanf/parsers/toml/v2"
+	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"github.com/wso2/api-platform/common/collector"
+	"github.com/wso2/api-platform/common/configinterpolate"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
@@ -42,6 +44,15 @@ const (
 	// DefaultLuaScriptPath is the default path for request transformation lua script
 	DefaultLuaScriptPath = "./lua/request_transformation.lua"
 )
+
+// defaultFileSourceAllowlist is the gateway-controller's default set of directories
+// that a {{ file "..." }} config-interpolation token may read from. It can be
+// overridden via the shared APIP__CONFIG_FILE_SOURCE_ALLOWLIST env var
+// (see configinterpolate.ResolveAllowlist).
+var defaultFileSourceAllowlist = []string{
+	"/etc/gateway-controller",
+	"/secrets/gateway-controller",
+}
 
 // Config holds all configuration for the gateway-controller
 type Config struct {
@@ -744,6 +755,15 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
 	}
 
+	// Resolve ${...}-style Go template tokens ({{ env }} / {{ file }}) in string
+	// leaves of the merged config before unmarshalling. Runs after the env merge so
+	// env-provided values may themselves contain tokens; fails closed on a missing
+	// required value or a disallowed/oversize file. A token-free config is a no-op.
+	k, err := interpolate(k)
+	if err != nil {
+		return nil, err
+	}
+
 	// Unmarshal into Config struct with DecodeHook for duration strings
 	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
 		DecoderConfig: &mapstructure.DecoderConfig{
@@ -762,6 +782,34 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// interpolate resolves Go template tokens ({{ env }} / {{ file }}) in the merged
+// config and returns a fresh koanf instance holding the expanded values. It uses a
+// new instance (rather than reloading into k) so no un-expanded leaves survive. The
+// file-source allowlist is the gateway-controller default, overridable via the
+// shared APIP__CONFIG_FILE_SOURCE_ALLOWLIST env var. Resolved values are never
+// logged; only reference counts are emitted at info level.
+func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
+	opts := configinterpolate.Options{
+		FileAllowlist: configinterpolate.ResolveAllowlist(defaultFileSourceAllowlist),
+	}
+	expanded, stats, err := configinterpolate.Expand(k.Raw(), opts)
+	if err != nil {
+		return nil, fmt.Errorf("config interpolation failed: %w", err)
+	}
+
+	out := koanf.New(".")
+	if err := out.Load(confmap.Provider(expanded, "."), nil); err != nil {
+		return nil, fmt.Errorf("failed to reload interpolated config: %w", err)
+	}
+	if stats.Fields > 0 {
+		slog.Info("config interpolation complete",
+			slog.Int("env_refs", stats.EnvRefs),
+			slog.Int("file_refs", stats.FileRefs),
+			slog.Int("fields", stats.Fields))
+	}
+	return out, nil
 }
 
 // defaultGRPCEventServerConfig returns the default Envoy→policy-engine ALS
