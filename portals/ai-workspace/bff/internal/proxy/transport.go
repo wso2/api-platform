@@ -18,15 +18,42 @@ package proxy
 
 import (
 	"crypto/tls"
+	"crypto/x509"
+	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"time"
 )
 
+// TLSClientOptions configures how the upstream (Platform API) certificate is
+// trusted. The two are mutually exclusive in effect: when SkipVerify is true no
+// verification happens and CAFile is ignored.
+type TLSClientOptions struct {
+	// CAFile is a PEM bundle appended to the system roots so a private or
+	// self-signed upstream cert can be trusted with verification still on.
+	CAFile string
+	// SkipVerify disables certificate verification entirely (dev/demo only).
+	SkipVerify bool
+}
+
 // NewTransport builds an *http.Transport for upstream calls with explicit
-// timeouts and connection pooling. skipVerify accepts the Platform API's
-// self-signed certificate (same posture as the old nginx proxy_ssl_verify off).
-func NewTransport(skipVerify bool) *http.Transport {
+// timeouts and connection pooling. TLS applies only when the upstream URL is
+// https:// — this transport is scheme-agnostic and does nothing for http://.
+func NewTransport(opts TLSClientOptions) (*http.Transport, error) {
+	tlsConf := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		// #nosec G402 — SkipVerify is an explicit, demo-gated escape hatch
+		// (validated in config); the secure default is false.
+		InsecureSkipVerify: opts.SkipVerify,
+	}
+	if !opts.SkipVerify && opts.CAFile != "" {
+		pool, err := caPool(opts.CAFile)
+		if err != nil {
+			return nil, err
+		}
+		tlsConf.RootCAs = pool
+	}
 	return &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -39,8 +66,23 @@ func NewTransport(skipVerify bool) *http.Transport {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		// #nosec G402 — the Platform API uses a self-signed cert in the default
-		// deployment; verification is opt-in via PLATFORM_API_TLS_SKIP_VERIFY=false.
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: skipVerify},
+		TLSClientConfig:       tlsConf,
+	}, nil
+}
+
+// caPool returns the system root pool with the PEM bundle at path appended, so
+// public CAs keep working alongside a private/self-signed upstream cert.
+func caPool(path string) (*x509.CertPool, error) {
+	pem, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read PLATFORM_API_CA_FILE %q: %w", path, err)
 	}
+	pool, err := x509.SystemCertPool()
+	if err != nil || pool == nil {
+		pool = x509.NewCertPool()
+	}
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("no valid certificates in PLATFORM_API_CA_FILE %q", path)
+	}
+	return pool, nil
 }

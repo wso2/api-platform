@@ -166,7 +166,7 @@ func main() {
 // demo mode a missing mounted cert is not fatal — it falls back to a self-signed
 // cert; outside demo mode an operator-provided cert is required.
 func buildTLS(c config.TLSConfig, demoMode bool) (*tls.Config, error) {
-	if !c.Enabled {
+	if !c.TerminateTLS {
 		// Plain HTTP is only safe when something upstream terminates TLS.
 		if !demoMode {
 			slog.Warn("TLS: disabled (BFF_TLS_ENABLED=false) while APIP_DEMO_MODE=false — " +

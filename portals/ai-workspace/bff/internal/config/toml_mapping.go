@@ -64,6 +64,7 @@ var tomlKeyToEnv = map[string]string{
 
 	// --- Upstream Platform API ---
 	"platform_api_url":             "PLATFORM_API_URL",
+	"platform_api_ca_file":         "PLATFORM_API_CA_FILE",
 	"platform_api_tls_skip_verify": "PLATFORM_API_TLS_SKIP_VERIFY",
 	"platform_login_path":          "PLATFORM_LOGIN_PATH",
 	"proxy_prefix":                 "PROXY_PREFIX",
