@@ -5910,6 +5910,7 @@ components:
           description: >
             Major-only translator policy version (for example v1). The Gateway
             Controller resolves it to the installed full version.
+          pattern: '^v\d+$'
           minLength: 1
           example: v1
         params:

@@ -117,6 +117,31 @@ spec:
                     id:
                       description: Id is the LlmProvider handle (metadata.name).
                       type: string
+                    transformer:
+                      description: |-
+                        Transformer optionally applies a request/response translator when this
+                        provider is the selected upstream. The proxy injects it as a conditional
+                        policy that runs only when this provider is selected.
+                      properties:
+                        params:
+                          description: |-
+                            Params carries translator-specific parameters (for example model,
+                            apiVersion).
+                          x-kubernetes-preserve-unknown-fields: true
+                        type:
+                          description: Type is the translator policy name (for example
+                            openai-to-anthropic).
+                          type: string
+                        version:
+                          description: |-
+                            Version is the major-only translator policy version (for example v1).
+                            The Gateway Controller resolves it to the installed full version.
+                          pattern: ^v\d+$
+                          type: string
+                      required:
+                      - type
+                      - version
+                      type: object
                   required:
                   - id
                   type: object

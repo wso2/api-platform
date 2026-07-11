@@ -659,6 +659,11 @@ func (v *LLMValidator) validateLLMProxyTransformer(fieldPrefix string, transform
 			Field:   fieldPrefix + ".version",
 			Message: "Transformer version is required",
 		})
+	} else if !majorVersionPattern.MatchString(transformer.Version) {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".version",
+			Message: "Transformer version must be major-only (e.g. v1)",
+		})
 	}
 	return errors
 }
