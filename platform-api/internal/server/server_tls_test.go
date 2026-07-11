@@ -29,42 +29,25 @@ func testServer() *Server {
 	return &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 }
 
-// TLS disabled: no certificate is required, even outside demo mode. This is the
-// deployment where an ingress or service-mesh sidecar terminates TLS.
-func TestBuildTLSConfig_Disabled_NoCertRequired(t *testing.T) {
+// HTTPS listener outside demo mode with no certificates: a fatal misconfiguration.
+func TestBuildTLSConfig_NonDemo_MissingCert_Errors(t *testing.T) {
 	t.Setenv("APIP_DEMO_MODE", "false")
 
-	tlsConfig, err := testServer().buildTLSConfig(config.TLS{
-		Enabled: false,
-		CertDir: filepath.Join(t.TempDir(), "does-not-exist"),
-	})
-	if err != nil {
-		t.Fatalf("expected no error when TLS is disabled, got %v", err)
-	}
-	if tlsConfig != nil {
-		t.Fatal("expected a nil tls.Config (plain HTTP) when TLS is disabled")
-	}
-}
-
-// TLS enabled outside demo mode with no certificates: still a fatal misconfiguration.
-func TestBuildTLSConfig_Enabled_NonDemo_MissingCert_Errors(t *testing.T) {
-	t.Setenv("APIP_DEMO_MODE", "false")
-
-	_, err := testServer().buildTLSConfig(config.TLS{
+	_, err := testServer().buildTLSConfig(config.HTTPSListener{
 		Enabled: true,
 		CertDir: filepath.Join(t.TempDir(), "does-not-exist"),
 	})
 	if err == nil {
-		t.Fatal("expected an error when TLS is enabled outside demo mode without certificates")
+		t.Fatal("expected an error when the HTTPS listener has no certificates outside demo mode")
 	}
 }
 
-// TLS enabled in demo mode with no certificates: a self-signed pair is generated.
-func TestBuildTLSConfig_Enabled_Demo_GeneratesSelfSigned(t *testing.T) {
+// HTTPS listener in demo mode with no certificates: a self-signed pair is generated.
+func TestBuildTLSConfig_Demo_GeneratesSelfSigned(t *testing.T) {
 	t.Setenv("APIP_DEMO_MODE", "true")
 	certDir := filepath.Join(t.TempDir(), "certs")
 
-	tlsConfig, err := testServer().buildTLSConfig(config.TLS{Enabled: true, CertDir: certDir})
+	tlsConfig, err := testServer().buildTLSConfig(config.HTTPSListener{Enabled: true, Port: "9243", CertDir: certDir})
 	if err != nil {
 		t.Fatalf("expected self-signed generation to succeed in demo mode, got %v", err)
 	}

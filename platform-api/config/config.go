@@ -79,7 +79,6 @@ type FileBased struct {
 type Server struct {
 	LogLevel  string `koanf:"log_level"`
 	LogFormat string `koanf:"log_format"`
-	Port      string `koanf:"port"`
 
 	DBSchemaPath               string `koanf:"db_schema_path"`
 	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
@@ -91,7 +90,8 @@ type Server struct {
 	DefaultDevPortal DefaultDevPortal `koanf:"default_devportal"`
 	Deployments      Deployments      `koanf:"deployments"`
 	ArtifactLimits   ArtifactLimits   `koanf:"artifact_limits"`
-	TLS              TLS              `koanf:"tls"`
+	HTTP             HTTPListener     `koanf:"http"`
+	HTTPS            HTTPSListener    `koanf:"https"`
 	CORS             CORS             `koanf:"cors"`
 	APIKey           APIKey           `koanf:"api_key"`
 	Gateway          Gateway          `koanf:"gateway"`
@@ -168,12 +168,27 @@ type Gateway struct {
 	EnableFunctionalityTypeVerification bool `koanf:"enable_functionality_type_verification"`
 }
 
-// TLS holds TLS listener configuration.
-type TLS struct {
-	// Enabled terminates TLS on the Platform API listener. Defaults to true.
-	// Set to false only when a trusted upstream (ingress, service-mesh sidecar)
-	// terminates TLS; certificates are then neither read nor generated.
+// HTTPListener and HTTPSListener model the two independent listeners, following
+// the gateway router's http/https split (see RouterConfig.HTTPSEnabled /
+// HTTPSPort in gateway-controller). Each is enabled independently and bound to
+// its own port, so a deployment can serve plain HTTP internally, HTTPS
+// externally, or both at once (e.g. to migrate clients between the two without
+// downtime).
+
+// HTTPListener configures the plain-HTTP listener. Enable it only when a trusted
+// upstream (ingress, service-mesh sidecar) terminates TLS, or for internal
+// cluster traffic; never expose it directly to untrusted networks.
+type HTTPListener struct {
 	Enabled bool   `koanf:"enabled"`
+	Port    string `koanf:"port"`
+}
+
+// HTTPSListener configures the TLS listener. CertDir must contain cert.pem and
+// key.pem when Enabled is true; in demo mode a self-signed pair is generated
+// there when none is present.
+type HTTPSListener struct {
+	Enabled bool   `koanf:"enabled"`
+	Port    string `koanf:"port"`
 	CertDir string `koanf:"cert_dir"`
 }
 
@@ -551,8 +566,6 @@ func envToKoanfKey(s string) string {
 		return "log_level"
 	case "log_format":
 		return "log_format"
-	case "port":
-		return "port"
 	case "db_schema_path":
 		return "db_schema_path"
 	case "openapi_spec_path":
@@ -722,11 +735,21 @@ func envToKoanfKey(s string) string {
 	case "artifact_limits_max_webbroker_apis_per_org":
 		return "artifact_limits.max_webbroker_apis_per_org"
 
-	// TLS
-	case "tls_enabled":
-		return "tls.enabled"
-	case "tls_cert_dir":
-		return "tls.cert_dir"
+	// Plain-HTTP listener
+	case "http_enabled":
+		return "http.enabled"
+	case "http_port":
+		return "http.port"
+
+	// HTTPS / TLS listener.
+	// Legacy TLS_ENABLED / TLS_CERT_DIR and the single-listener PORT are still
+	// honored and map onto the HTTPS listener, which historically served on 9243.
+	case "https_enabled", "tls_enabled":
+		return "https.enabled"
+	case "https_port", "port":
+		return "https.port"
+	case "https_cert_dir", "tls_cert_dir":
+		return "https.cert_dir"
 
 	// CORS
 	case "cors_allowed_origins":

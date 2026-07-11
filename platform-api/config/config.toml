@@ -22,7 +22,6 @@
 # ---------------------------------------------------------------------------
 log_level  = "INFO"   # DEBUG | INFO | WARN | ERROR
 log_format = "text"   # text | json
-port       = "9243"
 
 # ---------------------------------------------------------------------------
 # Database
@@ -80,18 +79,30 @@ password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
 scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage"
 
 # ---------------------------------------------------------------------------
-# TLS
+# Listeners (HTTP + HTTPS)
 # ---------------------------------------------------------------------------
-# enabled (default true) terminates TLS on the Platform API listener. Set it to
-# false only when a trusted upstream — an ingress controller or a service-mesh
-# sidecar — terminates TLS for you; the listener then serves plain HTTP and no
-# certificate is read or generated, so cert_dir can be left unmounted.
-# Override with the TLS_ENABLED / TLS_CERT_DIR env vars.
+# The plain-HTTP and TLS listeners are independent — enable either or both, each
+# on its own port. This follows the gateway router's http/https split, and lets
+# you serve plain HTTP internally, HTTPS externally, or run both at once (e.g. to
+# migrate clients between them without downtime).
 #
-# cert_dir must contain cert.pem and key.pem when enabled = true and
+# Defaults: the HTTPS listener is on at 9243; the plain-HTTP listener is off.
+# Enable the plain-HTTP listener only when a trusted upstream (ingress,
+# service-mesh sidecar) terminates TLS, or for internal traffic — never expose it
+# directly to untrusted networks.
+#
+# https.cert_dir must contain cert.pem and key.pem when https.enabled = true and
 # APIP_DEMO_MODE=false. In demo mode a self-signed pair is generated there.
-# [tls]
+#
+# Override with HTTP_ENABLED / HTTP_PORT and HTTPS_ENABLED / HTTPS_PORT /
+# HTTPS_CERT_DIR. Legacy TLS_ENABLED / TLS_CERT_DIR / PORT still map onto the
+# HTTPS listener.
+# [http]
+# enabled = false
+# port    = "9080"
+# [https]
 # enabled  = true
+# port     = "9243"
 # cert_dir = "/app/data/certs"
 
 # ---------------------------------------------------------------------------

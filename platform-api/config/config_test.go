@@ -221,22 +221,51 @@ func TestValidateAuthModeExclusivity(t *testing.T) {
 	}
 }
 
-// TLS terminates on the listener unless an operator explicitly opts out, so a
-// deployment that forgets the knob never silently downgrades to plain HTTP.
-func TestLoadConfig_TLSEnabled_DefaultsToTrue(t *testing.T) {
+// The HTTPS listener is on (and the plain-HTTP listener off) unless an operator
+// explicitly opts otherwise, so a deployment that forgets the knob never
+// silently downgrades to plain HTTP.
+func TestLoadConfig_HTTPSEnabled_DefaultsToTrue(t *testing.T) {
 	t.Setenv("APIP_DEMO_MODE", "true")
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err)
-	assert.True(t, cfg.TLS.Enabled, "tls.enabled must default to true when unset")
+	assert.True(t, cfg.HTTPS.Enabled, "https.enabled must default to true when unset")
+	assert.Equal(t, "9243", cfg.HTTPS.Port, "https.port must default to 9243")
+	assert.False(t, cfg.HTTP.Enabled, "http.enabled must default to false when unset")
 }
 
-// TLS_ENABLED=false must survive koanf's weakly-typed env decode into the bool.
-func TestLoadConfig_TLSEnabled_EnvOverrideDisables(t *testing.T) {
+// HTTPS_ENABLED=false must survive koanf's weakly-typed env decode into the bool.
+// The legacy TLS_ENABLED alias must keep working too.
+func TestLoadConfig_HTTPSEnabled_EnvOverrideDisables(t *testing.T) {
 	t.Setenv("APIP_DEMO_MODE", "true")
-	t.Setenv("TLS_ENABLED", "false")
+	t.Setenv("HTTPS_ENABLED", "false")
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err)
-	assert.False(t, cfg.TLS.Enabled, "TLS_ENABLED=false must disable TLS termination")
+	assert.False(t, cfg.HTTPS.Enabled, "HTTPS_ENABLED=false must disable the TLS listener")
+}
+
+// The plain-HTTP listener can be enabled independently on its own port.
+func TestLoadConfig_HTTPListener_EnvOverrideEnables(t *testing.T) {
+	t.Setenv("APIP_DEMO_MODE", "true")
+	t.Setenv("HTTP_ENABLED", "true")
+	t.Setenv("HTTP_PORT", "9080")
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.True(t, cfg.HTTP.Enabled, "HTTP_ENABLED=true must enable the plain-HTTP listener")
+	assert.Equal(t, "9080", cfg.HTTP.Port)
+}
+
+// The legacy single-port PORT and TLS_CERT_DIR env vars still map onto the
+// HTTPS listener for backward compatibility.
+func TestLoadConfig_LegacyTLSEnvAliases(t *testing.T) {
+	t.Setenv("APIP_DEMO_MODE", "true")
+	t.Setenv("PORT", "8443")
+	t.Setenv("TLS_CERT_DIR", "/custom/certs")
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.Equal(t, "8443", cfg.HTTPS.Port, "legacy PORT must map to https.port")
+	assert.Equal(t, "/custom/certs", cfg.HTTPS.CertDir, "legacy TLS_CERT_DIR must map to https.cert_dir")
 }

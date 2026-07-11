@@ -49,8 +49,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	slogger.Info("Starting server", "port", cfg.Port, "tls_enabled", cfg.TLS.Enabled)
-	if err := srv.Start(cfg.Port, cfg.TLS); err != nil {
+	slogger.Info("Starting server",
+		"http_enabled", cfg.HTTP.Enabled, "http_port", cfg.HTTP.Port,
+		"https_enabled", cfg.HTTPS.Enabled, "https_port", cfg.HTTPS.Port)
+	if err := srv.Start(cfg.HTTP, cfg.HTTPS); err != nil {
 		slogger.Error("Failed to start server", "error", err)
 		os.Exit(1)
 	}
