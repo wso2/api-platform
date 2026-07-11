@@ -73,11 +73,10 @@ func fileFunc(opts *Options, stats *Stats) func(string) (string, error) {
 }
 
 // readAllowedFile enforces the file-access security rules before reading:
-// null-byte/traversal rejection, allowlist containment on the input path, a
-// symlink re-check against the allowlist roots (k8s Secret mounts symlink through
-// ..data/… but stay under the root), and a size cap. Error messages are sterile:
-// they name the operator-supplied path but never the file contents, the allowlist,
-// or the byte limit.
+// null-byte/traversal rejection, allowlist containment on the input path, symlink
+// resolution and re-check against the allowlist roots before opening (prevents
+// TOCTOU), and a size cap. Error messages are sterile: they name the
+// operator-supplied path but never the file contents, the allowlist, or the byte limit.
 func readAllowedFile(input string, opts *Options) ([]byte, error) {
 	if strings.ContainsRune(input, '\x00') {
 		return nil, fmt.Errorf("file %q is not in an allowed source directory", input)
@@ -93,21 +92,23 @@ func readAllowedFile(input string, opts *Options) ([]byte, error) {
 		return nil, fmt.Errorf("file %q is not in an allowed source directory", input)
 	}
 
-	f, err := os.Open(cleaned)
+	// Resolve symlinks before opening to prevent TOCTOU: the path that is checked
+	// against the allowlist must be the same path that is opened. k8s Secret mounts
+	// resolve to <root>/..data/<key>, still under the root, so they pass; a symlink
+	// escaping the root is rejected.
+	resolved, err := filepath.EvalSymlinks(cleaned)
+	if err != nil {
+		return nil, fmt.Errorf("required file %q is not found", input)
+	}
+	if !isAllowedResolved(resolved, opts.FileAllowlist) {
+		return nil, fmt.Errorf("file %q is not in an allowed source directory", input)
+	}
+
+	f, err := os.Open(resolved)
 	if err != nil {
 		return nil, fmt.Errorf("required file %q is not found", input)
 	}
 	defer f.Close()
-
-	// Re-check the symlink-resolved target against the allowlist roots. The input
-	// path already passed containment; here we ensure it does not symlink out of
-	// the allowlist. k8s Secret mounts resolve to <root>/..data/<key>, still under
-	// the root, so they pass; a symlink escaping the root is rejected.
-	if resolved, err := filepath.EvalSymlinks(cleaned); err != nil {
-		return nil, fmt.Errorf("required file %q is not found", input)
-	} else if !isAllowedResolved(resolved, opts.FileAllowlist) {
-		return nil, fmt.Errorf("file %q is not in an allowed source directory", input)
-	}
 
 	limited := io.LimitReader(f, opts.MaxFileBytes+1)
 	data, err := io.ReadAll(limited)
