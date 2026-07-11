@@ -118,6 +118,7 @@ func getFeaturePaths() []string {
 		"features/request-rewrite.feature",
 		"features/host-rewrite.feature",
 		"features/respond.feature",
+		"features/redirect.feature",
 		"features/llm-provider.feature",
 		"features/certificates.feature",
 		"features/config-dump.feature",
