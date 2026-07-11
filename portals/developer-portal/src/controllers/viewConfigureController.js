@@ -103,7 +103,7 @@ const loadSettingsPage = async (req, res) => {
 
         const allAPIs = await apiDao.getByCondition({ org_uuid: orgId });
         const docNamesByApiId = await apiFileDao.listDocNamesForApis(orgId, allAPIs.map(api => api.uuid));
-        templateContent.orgAPIs = allAPIs.map(api => ({
+        const mappedAPIs = allAPIs.map(api => ({
             apiId: api.handle,
             apiName: api.name,
             apiHandle: api.handle,
@@ -118,6 +118,11 @@ const loadSettingsPage = async (req, res) => {
             subscriptionPlans: (api.dp_subscription_plans || []).map(p => p.display_name),
             existingDocs: docNamesByApiId[api.uuid] || [],
         }));
+        // MCP servers get their own admin tab; keep REST/WS/GraphQL/SOAP/WebSub in the APIs tab.
+        // orgAllAPIs backs the client-side apiMap (edit/drawer lookups) shared by both tables.
+        templateContent.orgAllAPIs = mappedAPIs;
+        templateContent.orgAPIs = mappedAPIs.filter(api => api.apiType !== constants.API_TYPE.MCP);
+        templateContent.orgMCPs = mappedAPIs.filter(api => api.apiType === constants.API_TYPE.MCP);
 
         let orgLabels = [];
         try {

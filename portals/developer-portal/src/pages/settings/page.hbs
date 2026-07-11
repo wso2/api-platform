@@ -11,7 +11,7 @@
 {{/pageScripts}}
 
 <!-- Server-side data for JS -->
-<script type="application/json" id="cfg-org-apis-data">{{{ json orgAPIs }}}</script>
+<script type="application/json" id="cfg-org-apis-data">{{{ json orgAllAPIs }}}</script>
 <script type="application/json" id="cfg-plans-data">{{{ json orgPlans }}}</script>
 <script type="application/json" id="cfg-webhooks-data">{{{ json webhookSubscribers }}}</script>
 <script type="application/json" id="cfg-keymanagers-data">{{{ json keyManagers }}}</script>
@@ -53,6 +53,9 @@
       <div class="cfg-nav-items">
         <a href="#cfg-apis" class="cfg-nav-item" data-panel="cfg-apis">
           <i class="bi bi-boxes"></i><span>APIs</span>
+        </a>
+        <a href="#cfg-mcps" class="cfg-nav-item" data-panel="cfg-mcps">
+          <i class="bi bi-hdd-network"></i><span>MCP Servers</span>
         </a>
       </div>
 
@@ -256,6 +259,10 @@
             <div class="cfg-step" data-step="2">
               <span class="cfg-step-circle">3</span><span class="cfg-step-label">Documentation</span>
             </div>
+            <div class="cfg-step-connector" id="cfg-step-connector-content" style="display:none;"></div>
+            <div class="cfg-step" data-step="3" id="cfg-step-content" style="display:none;">
+              <span class="cfg-step-circle">4</span><span class="cfg-step-label">Content</span>
+            </div>
           </div>
 
           <!-- Step 0: Details -->
@@ -426,6 +433,33 @@
             <div id="wz-docs-list" class="cfg-docs-list"></div>
           </div>
 
+          <!-- Step 3: Content (landing page & assets) — edit mode only -->
+          <div class="cfg-wizard-step" id="cfg-wstep-3" style="display:none;">
+            <p class="cfg-wstep-desc">Upload a ZIP to set this API's developer-portal content. Include a <code>web/</code> folder for landing-page assets (Markdown, HTML, CSS, JS, images) and/or a <code>docs/</code> folder for downloadable documents. Files with a matching name are replaced; others are added. This uploads immediately when you click <strong>Upload content</strong> — it is independent of the <strong>Save changes</strong> button.</p>
+            <label class="cfg-upload-zone" id="wz-content-zone">
+              <span class="cfg-upload-icon"><i class="bi bi-file-earmark-zip"></i></span>
+              <span class="cfg-upload-label">Drag &amp; drop or <span>browse</span> to upload</span>
+              <span class="cfg-upload-hint">Single ZIP file · up to 10 MB</span>
+              <input type="file" id="wz-content-input" accept=".zip" />
+            </label>
+            <p id="wz-content-error" style="display:none;color:#c62828;font-size:.813rem;margin:8px 0 0;"></p>
+            <div class="cfg-spec-chip" id="wz-content-chip">
+              <span class="cfg-spec-icon"><i class="bi bi-file-earmark-zip-fill"></i></span>
+              <div>
+                <div class="cfg-spec-name" id="wz-content-name"></div>
+                <div class="cfg-spec-sub">Ready to upload</div>
+              </div>
+              <button type="button" class="cfg-action-btn" id="wz-content-remove" style="margin-left:auto;">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <div class="d-flex align-items-center gap-3 mt-3">
+              <button type="button" class="cfg-btn-primary" id="wz-content-upload-btn" disabled>
+                <i class="bi bi-cloud-upload"></i> Upload content
+              </button>
+            </div>
+          </div>
+
           <!-- Wizard actions -->
           <div class="cfg-wizard-actions">
             <div class="cfg-wizard-actions-right">
@@ -437,6 +471,105 @@
         </div>
 
       </div><!-- /#cfg-apis -->
+
+      <!-- ══ MCP Servers ══ -->
+      <div class="cfg-panel" id="cfg-mcps">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">MCP Servers</h2>
+            <p class="cfg-panel-desc">Add, edit, and remove the MCP servers exposed in this developer portal.</p>
+          </div>
+          <div style="display:flex; gap:10px;">
+            <button class="cfg-btn-primary" id="cfg-add-mcp-btn" type="button">
+              <i class="bi bi-plus"></i> Add MCP Server
+            </button>
+          </div>
+        </div>
+
+        <div class="cfg-bulk-bar" id="cfg-mcps-bulk-bar" style="display:none;" role="region" aria-label="Bulk actions">
+          <span class="cfg-bulk-bar-count" id="cfg-mcps-bulk-bar-count"></span>
+          <button type="button" class="cfg-btn-danger cfg-btn-sm" id="cfg-mcps-bulk-delete-btn">
+            <i class="bi bi-trash"></i> Delete selected
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th class="cfg-th-check"><input type="checkbox" id="cfg-mcps-select-all" aria-label="Select all MCP servers"></th>
+                <th>MCP Server</th>
+                <th>Version</th>
+                <th>Status</th>
+                <th style="width:52px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-mcps-tbody">
+              {{#orgMCPs}}
+              <tr id="cfg-api-row-{{apiId}}">
+                <td class="cfg-td-check">
+                  <input type="checkbox" class="cfg-row-check"
+                    data-id="{{apiId}}" data-name="{{apiName}}"
+                    aria-label="Select {{apiName}}">
+                </td>
+                <td>
+                  <div class="cfg-api-cell">
+                    <span class="cfg-api-avatar cfg-api-avatar--mcp">{{firstTwoLetters apiName}}</span>
+                    <div>
+                      <div class="cfg-cell-name">{{apiName}}</div>
+                      <div class="cfg-cell-context">/{{apiHandle}}</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="cfg-cell-version">{{apiVersion}}</td>
+                <td>
+                  {{#if (eq apiStatus "PUBLISHED")}}
+                  <span class="cfg-status-badge cfg-status-published">
+                    <span class="cfg-status-dot"></span>Published
+                  </span>
+                  {{else if (eq apiStatus "DEPRECATED")}}
+                  <span class="cfg-status-badge cfg-status-deprecated">
+                    <span class="cfg-status-dot"></span>Deprecated
+                  </span>
+                  {{else}}
+                  <span class="cfg-status-badge cfg-status-draft">
+                    <span class="cfg-status-dot"></span>Draft
+                  </span>
+                  {{/if}}
+                </td>
+                <td class="cfg-cell-actions">
+                  <button class="cfg-action-btn cfg-menu-trigger" type="button" aria-label="MCP server actions">
+                    <i class="bi bi-three-dots-vertical"></i>
+                  </button>
+                  <div class="cfg-dropdown">
+                    <button class="cfg-dropdown-item cfg-edit-trigger" type="button" data-id="{{apiId}}">
+                      <i class="bi bi-pencil"></i> Edit
+                    </button>
+                    {{#if (eq apiStatus "PUBLISHED")}}
+                    <button class="cfg-dropdown-item cfg-unpublish-trigger" type="button" data-id="{{apiId}}" data-name="{{apiName}}">
+                      <i class="bi bi-archive"></i> Deprecate
+                    </button>
+                    {{else}}
+                    <button class="cfg-dropdown-item cfg-publish-trigger" type="button" data-id="{{apiId}}" data-name="{{apiName}}">
+                      <i class="bi bi-cloud-upload"></i> Publish
+                    </button>
+                    {{/if}}
+                    <div class="cfg-dropdown-divider"></div>
+                    <button class="cfg-dropdown-item cfg-dropdown-item--danger cfg-delete-trigger" type="button"
+                      data-id="{{apiId}}" data-name="{{apiName}}">
+                      <i class="bi bi-trash"></i> Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{/orgMCPs}}
+              {{#unless orgMCPs.length}}
+              <tr><td colspan="5" class="cfg-empty-row">No MCP servers found. Click <strong>Add MCP Server</strong> to get started.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-mcps -->
 
       <!-- ══ Subscription Plans ══ -->
       <div class="cfg-panel" id="cfg-plans">
@@ -1178,16 +1311,25 @@
 <!-- ══ Panel navigation ══ -->
 <script>
 (function () {
-  var PANELS   = ['cfg-organizations', 'cfg-views', 'cfg-labels', 'cfg-plans', 'cfg-keymanagers', 'cfg-apis', 'cfg-webhooks', 'cfg-llm', 'cfg-workflows', 'cfg-theming'];
+  var PANELS   = ['cfg-organizations', 'cfg-views', 'cfg-labels', 'cfg-plans', 'cfg-keymanagers', 'cfg-apis', 'cfg-mcps', 'cfg-webhooks', 'cfg-llm', 'cfg-workflows', 'cfg-theming'];
   var navItems = document.querySelectorAll('.cfg-nav-item');
   var panels   = document.querySelectorAll('.cfg-panel');
 
   function activate(id) {
     if (!PANELS.includes(id)) id = 'cfg-organizations';
+    // The shared API/MCP wizard lives inside #cfg-apis. Any sidebar navigation exits it
+    // and restores the APIs list, so we never land on a panel with the wizard still open.
+    var wizard = document.getElementById('cfg-apis-wizard');
+    if (wizard) wizard.style.display = 'none';
+    var apisList = document.getElementById('cfg-apis-list');
+    if (apisList) apisList.style.display = '';
     navItems.forEach(function(a) { a.classList.toggle('active', a.dataset.panel === id); });
     panels.forEach(function(p)   { p.style.display = p.id === id ? 'flex' : 'none'; });
     history.replaceState(null, '', location.pathname + '#' + id);
   }
+  // Exposed so the API/MCP wizard (defined in the Manage-APIs script) can restore the
+  // originating tab when it closes.
+  window.cfgActivatePanel = activate;
 
   navItems.forEach(function(a) {
     a.addEventListener('click', function(e) { e.preventDefault(); activate(a.dataset.panel); });
@@ -1274,6 +1416,9 @@
   var agentVis    = 'Visible';
   var allPolicies = [];
   var policyChips = [];
+  var contentZipFile = null;
+  var hasContentStep = false;   /* the Content step exists only for existing, non-MCP APIs */
+  var wizardOrigin = 'cfg-apis'; /* tab that launched the wizard: 'cfg-apis' or 'cfg-mcps' */
 
   /* build id→api lookup and load all policies from server-rendered data blobs */
   var apiMap = {};
@@ -1438,16 +1583,41 @@
   }());
 
   /* ── wizard show/hide ── */
-  function showWizard(api) {
+  function showWizard(api, kindHint) {
+    /* MCP servers and APIs share this wizard. Derive the "kind" from the record being
+       edited, or from the launching button (kindHint) when adding. */
+    var isMcp = api ? (api.apiType === 'Mcp') : (kindHint === 'mcp');
+    wizardOrigin = isMcp ? 'cfg-mcps' : 'cfg-apis';
+
+    /* The wizard markup lives inside #cfg-apis; reveal that panel (with its list hidden)
+       regardless of which tab launched it, and keep the launching tab highlighted. */
+    document.querySelectorAll('.cfg-panel').forEach(function(p) { p.style.display = p.id === 'cfg-apis' ? 'flex' : 'none'; });
+    document.querySelectorAll('.cfg-nav-item').forEach(function(a) { a.classList.toggle('active', a.dataset.panel === wizardOrigin); });
     document.getElementById('cfg-apis-list').style.display = 'none';
     document.getElementById('cfg-apis-wizard').style.display = 'flex';
+
+    var backLink = document.getElementById('cfg-wizard-back-link');
+    if (backLink) backLink.innerHTML = '<i class="bi bi-arrow-left"></i> ' + (isMcp ? 'Back to MCP Servers' : 'Back to Manage APIs');
+
+    /* MCP servers carry a tools schema instead of an API contract — relabel the Spec step. */
+    var specStepLabel = document.querySelector('#cfg-apis-wizard .cfg-step[data-step="1"] .cfg-step-label');
+    if (specStepLabel) specStepLabel.textContent = isMcp ? 'Tools Schema' : 'Spec';
+    var specDesc = document.querySelector('#cfg-wstep-1 .cfg-wstep-desc');
+    if (specDesc) specDesc.innerHTML = isMcp
+      ? 'Upload the MCP tools schema that defines this server’s tools. <span class="required">*</span> Required. Accepted: YAML or JSON (e.g. <code>schemaDefinition.yaml</code>).'
+      : 'Upload the contract that defines this API. <span class="required">*</span> Required. Accepted: OpenAPI (.json / .yaml), AsyncAPI, GraphQL SDL (.graphql), or WSDL (.wsdl / .xml).';
+    var specOnFileTxt = document.querySelector('#wz-spec-onfile span');
+    if (specOnFileTxt) specOnFileTxt.textContent = isMcp
+      ? 'Existing tools schema on file — attach a new file above to replace it'
+      : 'Existing spec on file — attach a new file above to replace it';
+
     currentStep = 0; specFile = null; docFiles = []; handleTouched = false;
     editMode = !!api; existingDocs = []; docsToRemove = [];
 
     if (api) {
       /* edit mode */
       editingId = api.apiId;
-      document.getElementById('cfg-wizard-title').textContent = 'Edit API';
+      document.getElementById('cfg-wizard-title').textContent = isMcp ? 'Edit MCP Server' : 'Edit API';
       sv('wz-name',       api.apiName);
       sv('wz-handle',     api.apiHandle);   handleTouched = true;
       sv('wz-version',    api.apiVersion);
@@ -1470,9 +1640,9 @@
     } else {
       /* add mode */
       editingId = null;
-      document.getElementById('cfg-wizard-title').textContent = 'Add API';
+      document.getElementById('cfg-wizard-title').textContent = isMcp ? 'Add MCP Server' : 'Add API';
       ['wz-name','wz-version','wz-handle','wz-desc','wz-tags','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
-      sel('wz-type','RestApi'); sel('wz-status','PUBLISHED');
+      sel('wz-type', isMcp ? 'Mcp' : 'RestApi'); sel('wz-status','PUBLISHED');
       agentVis = 'Visible';
       document.getElementById('wz-vis-visible').classList.add('active');
       document.getElementById('wz-vis-hidden').classList.remove('active');
@@ -1497,19 +1667,34 @@
     document.getElementById('wz-docs-list').innerHTML = '';
     renderExistingDocs();
     document.getElementById('wz-docs-empty').style.display = 'block';
+
+    /* The Content step (landing page & assets) exists only for existing, non-MCP APIs.
+       The /apis/{handle}/assets endpoint resolves only REST/SOAP/WS/WebSub/GraphQL APIs;
+       MCP servers manage content via /mcp-servers/{id}/assets instead. */
+    hasContentStep = editMode && !!api && api.apiType !== 'Mcp';
+    var contentStepEl = document.getElementById('cfg-step-content');
+    var contentConnEl = document.getElementById('cfg-step-connector-content');
+    if (contentStepEl) contentStepEl.style.display = hasContentStep ? '' : 'none';
+    if (contentConnEl) contentConnEl.style.display = hasContentStep ? '' : 'none';
+    resetContentUpload();
+
     updateWizardStep(0);
   }
 
   function hideWizard() {
-    document.getElementById('cfg-apis-list').style.display = '';
     document.getElementById('cfg-apis-wizard').style.display = 'none';
+    document.getElementById('cfg-apis-list').style.display = '';
     editingId = null;
+    /* Return to the tab that launched the wizard (activate() also clears wizard state). */
+    if (window.cfgActivatePanel) window.cfgActivatePanel(wizardOrigin || 'cfg-apis');
   }
 
   /* ── step navigation ── */
   function updateWizardStep(step) {
     currentStep = step;
-    for (var i=0; i<3; i++) {
+    /* Content (step 3) is the terminal step when present (edit, non-MCP); otherwise Documentation (2). */
+    var lastStep = hasContentStep ? 3 : 2;
+    for (var i=0; i<4; i++) {
       var p = document.getElementById('cfg-wstep-'+i);
       if (p) p.style.display = i===step ? 'flex' : 'none';
     }
@@ -1525,7 +1710,7 @@
     var backBtn = document.getElementById('cfg-wizard-back-step');
     var nextBtn = document.getElementById('cfg-wizard-next');
     backBtn.style.display = step > 0 ? 'inline-flex' : 'none';
-    nextBtn.textContent = step === 2 ? (editingId ? 'Save changes' : 'Save API') : 'Next';
+    nextBtn.textContent = step === lastStep ? (editingId ? 'Save changes' : 'Save API') : 'Next';
     nextBtn.disabled = false;
     nextBtn.title = '';
   }
@@ -1565,12 +1750,17 @@
 
     var fd = new FormData();
     fd.append('apiMetadata', JSON.stringify(meta));
-    if (specFile) fd.append('apiDefinition', specFile);
+    /* For MCP servers the uploaded contract is the tools schema (stored as SCHEMA_DEFINITION),
+       so it goes in the schemaDefinition field; every other type uses apiDefinition. */
+    if (specFile) fd.append(meta.type === 'Mcp' ? 'schemaDefinition' : 'apiDefinition', specFile);
     docFiles.forEach(function(f) { fd.append('docs', f); });
 
+    /* MCP servers are created/updated via /mcp-servers (which requires type MCP and rejects
+       non-MCP); everything else goes through /apis (which rejects MCP). */
+    var base   = meta.type === 'Mcp' ? '/mcp-servers' : '/apis';
     var url    = editingId
-      ? window.devportalApi.root('/apis/' + encodeURIComponent(editingId))
-      : window.devportalApi.root('/apis');
+      ? window.devportalApi.root(base + '/' + encodeURIComponent(editingId))
+      : window.devportalApi.root(base);
     var method = editingId ? 'PUT' : 'POST';
 
     try {
@@ -1580,7 +1770,8 @@
         body: fd,
       });
       if (res.ok) {
-        await showAlert(editingId ? 'API updated successfully.' : 'API created successfully.', 'success');
+        var savedNoun = meta.type === 'Mcp' ? 'MCP server' : 'API';
+        await showAlert(savedNoun + (editingId ? ' updated successfully.' : ' created successfully.'), 'success');
         window.location.reload();
       } else {
         var err = await res.json().catch(function(){ return {}; });
@@ -1591,46 +1782,55 @@
     }
   }
 
-  /* ── bulk selection ── */
+  /* ── bulk selection (shared by the APIs and MCP tables, each scoped to its own tbody) ── */
   var pendingBulkIds = null;
 
-  function selectedChecks() {
-    return Array.prototype.slice.call(document.querySelectorAll('.cfg-row-check:checked'));
-  }
+  function initBulkSelect(cfg) {
+    var tbody = document.getElementById(cfg.tbodyId);
+    if (!tbody) return;
 
-  function syncBulkBar() {
-    var checks = selectedChecks();
-    var bar = document.getElementById('cfg-bulk-bar');
-    var countEl = document.getElementById('cfg-bulk-bar-count');
-    bar.style.display = checks.length > 0 ? 'flex' : 'none';
-    countEl.textContent = checks.length + (checks.length === 1 ? ' API selected' : ' APIs selected');
-    var allChecks = document.querySelectorAll('.cfg-row-check');
-    var selectAll = document.getElementById('cfg-select-all');
-    if (selectAll) {
-      selectAll.checked = allChecks.length > 0 && checks.length === allChecks.length;
-      selectAll.indeterminate = checks.length > 0 && checks.length < allChecks.length;
+    function selected() {
+      return Array.prototype.slice.call(tbody.querySelectorAll('.cfg-row-check:checked'));
     }
+    function sync() {
+      var checks = selected();
+      var bar = document.getElementById(cfg.barId);
+      var countEl = document.getElementById(cfg.countId);
+      if (bar) bar.style.display = checks.length > 0 ? 'flex' : 'none';
+      if (countEl) countEl.textContent = checks.length + ' ' + cfg.noun + (checks.length === 1 ? '' : 's') + ' selected';
+      var allChecks = tbody.querySelectorAll('.cfg-row-check');
+      var selectAll = document.getElementById(cfg.selectAllId);
+      if (selectAll) {
+        selectAll.checked = allChecks.length > 0 && checks.length === allChecks.length;
+        selectAll.indeterminate = checks.length > 0 && checks.length < allChecks.length;
+      }
+    }
+
+    var selectAll = document.getElementById(cfg.selectAllId);
+    if (selectAll) selectAll.addEventListener('change', function() {
+      var checked = this.checked;
+      tbody.querySelectorAll('.cfg-row-check').forEach(function(c) { c.checked = checked; });
+      sync();
+    });
+
+    tbody.addEventListener('change', function(e) {
+      if (e.target.classList.contains('cfg-row-check')) sync();
+    });
+
+    var delBtn = document.getElementById(cfg.deleteBtnId);
+    if (delBtn) delBtn.addEventListener('click', function() {
+      var checks = selected();
+      if (!checks.length) return;
+      pendingBulkIds = checks.map(function(c) { return { id: c.dataset.id, name: c.dataset.name }; });
+      pendingDelId = null;
+      var label = checks.length + ' selected ' + cfg.noun + (checks.length === 1 ? '' : 's');
+      document.getElementById('cfg-del-api-name-txt').textContent = label;
+      document.getElementById('cfg-delete-api-modal').style.display = 'flex';
+    });
   }
 
-  document.getElementById('cfg-select-all').addEventListener('change', function() {
-    var checked = this.checked;
-    document.querySelectorAll('.cfg-row-check').forEach(function(c) { c.checked = checked; });
-    syncBulkBar();
-  });
-
-  document.getElementById('cfg-apis-tbody').addEventListener('change', function(e) {
-    if (e.target.classList.contains('cfg-row-check')) syncBulkBar();
-  });
-
-  document.getElementById('cfg-bulk-delete-btn').addEventListener('click', function() {
-    var checks = selectedChecks();
-    if (!checks.length) return;
-    pendingBulkIds = checks.map(function(c) { return { id: c.dataset.id, name: c.dataset.name }; });
-    pendingDelId = null;
-    var label = checks.length + (checks.length === 1 ? ' selected API' : ' selected APIs');
-    document.getElementById('cfg-del-api-name-txt').textContent = label;
-    document.getElementById('cfg-delete-api-modal').style.display = 'flex';
-  });
+  initBulkSelect({ tbodyId: 'cfg-apis-tbody', selectAllId: 'cfg-select-all',      barId: 'cfg-bulk-bar',      countId: 'cfg-bulk-bar-count',      deleteBtnId: 'cfg-bulk-delete-btn',      noun: 'API' });
+  initBulkSelect({ tbodyId: 'cfg-mcps-tbody', selectAllId: 'cfg-mcps-select-all', barId: 'cfg-mcps-bulk-bar', countId: 'cfg-mcps-bulk-bar-count', deleteBtnId: 'cfg-mcps-bulk-delete-btn', noun: 'MCP server' });
 
   /* ── delete ── */
   var pendingDelId = null;
@@ -1649,7 +1849,7 @@
       var failCount = 0;
       await Promise.all(ids.map(async function(item) {
         try {
-          var r = await fetch(window.devportalApi.root('/apis/'+encodeURIComponent(item.id)), {
+          var r = await fetch(window.devportalApi.root(mutationBasePath(item.id)+'/'+encodeURIComponent(item.id)), {
             method: 'DELETE',
             headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
           });
@@ -1660,11 +1860,10 @@
         } catch(e) { failCount++; }
       }));
       document.querySelectorAll('.cfg-row-check').forEach(function(c){ c.checked = false; });
-      var sa = document.getElementById('cfg-select-all');
-      if (sa) { sa.checked = false; sa.indeterminate = false; }
-      document.getElementById('cfg-bulk-bar').style.display = 'none';
+      document.querySelectorAll('#cfg-select-all, #cfg-mcps-select-all').forEach(function(sa){ sa.checked = false; sa.indeterminate = false; });
+      document.querySelectorAll('.cfg-bulk-bar').forEach(function(b){ b.style.display = 'none'; });
       await showAlert(
-        failCount > 0 ? failCount + ' API(s) could not be deleted.' : 'APIs deleted.',
+        failCount > 0 ? failCount + ' record(s) could not be deleted.' : 'Deleted.',
         failCount > 0 ? 'error' : 'success'
       );
       return;
@@ -1672,12 +1871,12 @@
 
     if (!pendingDelId) return;
     try {
-      var res = await fetch(window.devportalApi.root('/apis/'+encodeURIComponent(pendingDelId)), {
+      var res = await fetch(window.devportalApi.root(mutationBasePath(pendingDelId)+'/'+encodeURIComponent(pendingDelId)), {
         method: 'DELETE',
         headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
       });
       if (res.ok || res.status===204) {
-        await showAlert('API deleted.', 'success');
+        await showAlert(mutationBasePath(pendingDelId) === '/mcp-servers' ? 'MCP server deleted.' : 'API deleted.', 'success');
         var row = document.getElementById('cfg-api-row-'+pendingDelId);
         if (row) row.remove();
         pendingDelId = null;
@@ -1707,9 +1906,10 @@
 
   /* ── publish/unpublish ── */
   async function setApiStatus(apiId, apiName, newStatus) {
-    /* fetch current metadata, patch status, PUT back */
+    /* fetch current metadata, patch status, PUT back — MCP records use /mcp-servers */
+    var base = mutationBasePath(apiId);
     try {
-      var res = await fetch(window.devportalApi.root('/apis/'+encodeURIComponent(apiId)), {
+      var res = await fetch(window.devportalApi.root(base+'/'+encodeURIComponent(apiId)), {
         headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() }
       });
       if (!res.ok) throw new Error(res.statusText);
@@ -1722,7 +1922,7 @@
       });
       var fd = new FormData();
       fd.append('apiMetadata', JSON.stringify(meta));
-      var putRes = await fetch(window.devportalApi.root('/apis/'+encodeURIComponent(apiId)), {
+      var putRes = await fetch(window.devportalApi.root(base+'/'+encodeURIComponent(apiId)), {
         method: 'PUT',
         headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
         body: fd,
@@ -1739,6 +1939,13 @@
 
   /* ── load API data from pre-built map ── */
   function apiDataFromRow(id) { return apiMap[id] || null; }
+
+  /* Which REST resource family owns this handle — MCP servers are managed via /mcp-servers,
+     everything else via /apis. Falls back to /apis for unknown ids. */
+  function mutationBasePath(id) {
+    var api = apiMap[id];
+    return (api && api.apiType === 'Mcp') ? '/mcp-servers' : '/apis';
+  }
 
   /* ── event delegation for table actions ── */
   document.addEventListener('click', function(e) {
@@ -1869,6 +2076,7 @@
   }
 
   document.getElementById('cfg-add-api-btn').addEventListener('click', function() { showWizard(null); });
+  document.getElementById('cfg-add-mcp-btn').addEventListener('click', function() { showWizard(null, 'mcp'); });
 
   /* ── Seed sample APIs (demo mode only) ── */
   (function() {
@@ -1916,6 +2124,8 @@
         return;
       }
       updateWizardStep(2);
+    } else if (currentStep === 2 && hasContentStep) {
+      updateWizardStep(3);
     } else {
       await saveApi();
     }
@@ -2051,6 +2261,95 @@
     });
     list.appendChild(item);
   }
+
+  /* ── API content (landing page & assets) ZIP upload — edit mode only ──
+     Independent of the wizard's metadata Save: uploads immediately to
+     PUT /apis/{handle}/assets, mirroring the org-theming apply flow. */
+  function resetContentUpload() {
+    contentZipFile = null;
+    var input  = document.getElementById('wz-content-input');
+    var chip   = document.getElementById('wz-content-chip');
+    var errEl  = document.getElementById('wz-content-error');
+    var btn    = document.getElementById('wz-content-upload-btn');
+    if (input) input.value = '';
+    if (chip)  chip.classList.remove('visible');
+    if (errEl) errEl.style.display = 'none';
+    if (btn)   btn.disabled = true;
+  }
+
+  function handleContentZipFile(f) {
+    var errEl = document.getElementById('wz-content-error');
+    if (!f) return;
+    if (!/\.zip$/i.test(f.name)) {
+      if (errEl) { errEl.textContent = 'Unsupported file type. Accepted: .zip'; errEl.style.display = 'block'; }
+      return;
+    }
+    contentZipFile = f;
+    var nameEl = document.getElementById('wz-content-name');
+    var chip   = document.getElementById('wz-content-chip');
+    var btn    = document.getElementById('wz-content-upload-btn');
+    if (nameEl) nameEl.textContent = f.name;
+    if (chip)   chip.classList.add('visible');
+    if (errEl)  errEl.style.display = 'none';
+    if (btn)    btn.disabled = false;
+  }
+
+  async function uploadApiContent() {
+    if (!contentZipFile || !editingId) return;
+    var btn = document.getElementById('wz-content-upload-btn');
+    var original = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Uploading…';
+    }
+    try {
+      var fd = new FormData();
+      fd.append('apiContent', contentZipFile);
+      var res = await fetch(window.devportalApi.root('/apis/' + encodeURIComponent(editingId) + '/assets'), {
+        method: 'PUT',
+        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        credentials: 'same-origin',
+        body: fd,
+      });
+      if (res.ok) {
+        await showAlert('API content uploaded successfully.', 'success');
+        resetContentUpload();
+      } else {
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Upload failed: ' + (err.description || err.message || res.statusText), 'error');
+      }
+    } catch (e) {
+      await showAlert('Error: ' + e.message, 'error');
+    } finally {
+      if (btn) { btn.innerHTML = original; btn.disabled = !contentZipFile; }
+    }
+  }
+
+  (function() {
+    var input  = document.getElementById('wz-content-input');
+    var zone   = document.getElementById('wz-content-zone');
+    var remove = document.getElementById('wz-content-remove');
+    var btn    = document.getElementById('wz-content-upload-btn');
+    if (input) input.addEventListener('change', function(e) {
+      handleContentZipFile(e.target.files && e.target.files[0]);
+    });
+    if (remove) remove.addEventListener('click', resetContentUpload);
+    if (btn) btn.addEventListener('click', uploadApiContent);
+    if (zone) {
+      zone.addEventListener('dragover', function(e) {
+        e.preventDefault(); e.stopPropagation();
+        zone.classList.add('cfg-upload-zone--active');
+      });
+      zone.addEventListener('dragleave', function(e) {
+        if (!zone.contains(e.relatedTarget)) zone.classList.remove('cfg-upload-zone--active');
+      });
+      zone.addEventListener('drop', function(e) {
+        e.preventDefault(); e.stopPropagation();
+        zone.classList.remove('cfg-upload-zone--active');
+        handleContentZipFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+      });
+    }
+  }());
 
   /* ── API Detail Drawer ── */
   function openDrawer(api) {

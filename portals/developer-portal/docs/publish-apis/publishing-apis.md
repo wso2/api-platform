@@ -120,11 +120,12 @@ curl -k -X POST "https://localhost:3000/api/v0.9/apis" \
 ```
 
 ```bash
-# MCP server (note: MCP servers are created under /mcp-servers, not /apis)
+# MCP server (note: MCP servers are created under /mcp-servers, not /apis).
+# An MCP server's contract is its tools schema (schemaDefinition) — it has no apiDefinition.
 curl -k -X POST "https://localhost:3000/api/v0.9/mcp-servers" \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@mcp.yaml" \
-  -F "apiDefinition=@mcp-spec.yaml;type=application/yaml"
+  -F "schemaDefinition=@schemaDefinition.yaml;type=application/yaml"
 ```
 
 | Field | Required | Description |

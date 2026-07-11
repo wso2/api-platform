@@ -1252,13 +1252,15 @@ paths:
         - MCP Servers
       summary: Create MCP server metadata
       description: >-
-        Creates Developer Portal MCP server metadata. Mirrors `POST /api/v0.9/apis` — same artifact ZIP, YAML
-        (`api.yaml` / `devportal.yaml` / `mcp.yaml`), and `apiMetadata` JSON input formats — but the created record is
-        always typed `MCP`. Via the JSON `apiMetadata` field, `type` must be explicitly `MCP`; an omitted type or any
-        other value is rejected with a 400 (use `POST /api/v0.9/apis` instead).
+        Creates Developer Portal MCP server metadata. Accepts the same metadata input formats as
+        `POST /api/v0.9/apis` (artifact ZIP, `api.yaml` / `devportal.yaml` / `mcp.yaml`, or `apiMetadata` JSON),
+        but the created record is always typed `MCP`. An MCP server's contract is its `schemaDefinition` — the
+        tools, resources, and prompts it exposes — not an OpenAPI-style `apiDefinition`; a `schemaDefinition` is
+        required and any `apiDefinition` sent is ignored. Via the JSON `apiMetadata` field, `type` must be
+        explicitly `MCP`; an omitted type or any other value is rejected with a 400 (use `POST /api/v0.9/apis`).
       operationId: createMcpServer
       requestBody:
-        $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
+        $ref: "#/components/requestBodies/McpServerMultipartBody"
       responses:
         "201":
           $ref: "#/components/responses/McpServerCreateResponse"
@@ -1328,12 +1330,13 @@ paths:
         - MCP Servers
       summary: Update MCP server metadata
       description: >-
-        Updates Developer Portal MCP server metadata and its stored definition. Mirrors `PUT /api/v0.9/apis/{apiId}`,
-        including `type` being required and immutable — it must stay `MCP`; any other value is rejected with `400`,
-        via the same resolveTypeOrReject check `POST /mcp-servers` uses.
+        Updates Developer Portal MCP server metadata and, when a `schemaDefinition` is supplied, its stored
+        tools schema. `type` is required and immutable — it must stay `MCP`; any other value is rejected with
+        `400` via the same resolveTypeOrReject check `POST /mcp-servers` uses. An MCP server has no
+        `apiDefinition`; any `apiDefinition` sent on update is ignored.
       operationId: updateMcpServer
       requestBody:
-        $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
+        $ref: "#/components/requestBodies/McpServerMultipartBody"
       responses:
         "200":
           $ref: "#/components/responses/McpServerResponse"
@@ -3115,7 +3118,8 @@ components:
       required: true
       description: >-
         API metadata upload. Send either `artifact`, or `api` with `apiDefinition`, or `apiMetadata` with
-        `apiDefinition`. `schemaDefinition` is used for MCP APIs and GraphQL schema updates.
+        `apiDefinition`. `schemaDefinition` carries a GraphQL SDL schema. (MCP servers are created via
+        `/mcp-servers` with the dedicated `McpServerMultipartBody`, not this body.)
       content:
         multipart/form-data:
           schema:
@@ -3136,7 +3140,7 @@ components:
               schemaDefinition:
                 type: string
                 format: binary
-                description: Schema definition file, used by MCP APIs.
+                description: GraphQL SDL schema definition file.
               apiMetadata:
                 type: string
                 description: >-
@@ -3153,6 +3157,46 @@ components:
                   "status":"PUBLISHED","tags":["weather"],"labels":["default"],"endPoints":{
                   "productionURL":"https://api.example.com/weather",
                   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"id":"Gold"}]}
+    McpServerMultipartBody:
+      required: true
+      description: >-
+        MCP server upload. Provide the server metadata via `apiMetadata` (JSON), an `api` YAML file,
+        or a full `artifact` ZIP, together with its `schemaDefinition` — the tools, resources, and
+        prompts the server exposes. An MCP server has no OpenAPI-style `apiDefinition`; its
+        `schemaDefinition` IS its contract, so it is required on create (and replaces the stored
+        schema when supplied on update).
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            properties:
+              api:
+                type: string
+                format: binary
+                description: MCP server metadata YAML file (kind MCP).
+              artifact:
+                type: string
+                format: binary
+                description: Full MCP server ZIP artifact containing the metadata and the schemaDefinition.
+              schemaDefinition:
+                type: string
+                format: binary
+                description: >-
+                  MCP tools schema (YAML or JSON) listing the tools, resources, and prompts the server
+                  exposes. Required on create; when supplied on update it replaces the stored schema.
+              apiMetadata:
+                type: string
+                description: >-
+                  JSON string accepted when the `api` YAML file is not supplied. Accepted top-level fields:
+                  `name`, `version`, `description`, `type` (must be `MCP`), `agentVisibility`, `status`,
+                  `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL),
+                  and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already
+                  exist in the organization). `id` becomes the MCP server's stored handle.
+                example: >-
+                  {"name":"Travel Assistant MCP","version":"v1","description":"MCP server for travel
+                  planning tools","type":"MCP","agentVisibility":"VISIBLE","status":"PUBLISHED",
+                  "tags":["mcp"],"labels":["default"],"endPoints":{"productionURL":"https://mcp.example.com",
+                  "sandboxURL":"https://mcp.example.com"},"subscriptionPlans":[{"id":"Gold"}]}
     ApiContentZipMultipartBody:
       required: true
       description: |

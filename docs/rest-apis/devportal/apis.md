@@ -48,11 +48,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|object|true|API metadata upload. Send either `artifact`, or `api` with `apiDefinition`, or `apiMetadata` with `apiDefinition`. `schemaDefinition` is used for MCP APIs and GraphQL schema updates.|
+|body|body|object|true|API metadata upload. Send either `artifact`, or `api` with `apiDefinition`, or `apiMetadata` with `apiDefinition`. `schemaDefinition` carries a GraphQL SDL schema. (MCP servers are created via `/mcp-servers` with the dedicated `McpServerMultipartBody`, not this body.)|
 |» api|body|string(binary)|false|API metadata YAML file.|
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
-|» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
+|» schemaDefinition|body|string(binary)|false|GraphQL SDL schema definition file.|
 |» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields: `name`, `version`, `description`, `type`, `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes the API's stored handle; when the API is created from a YAML artifact instead, the handle is always taken from `metadata.name`.|
 
 > Example responses
@@ -594,11 +594,11 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|object|true|API metadata upload. Send either `artifact`, or `api` with `apiDefinition`, or `apiMetadata` with `apiDefinition`. `schemaDefinition` is used for MCP APIs and GraphQL schema updates.|
+|body|body|object|true|API metadata upload. Send either `artifact`, or `api` with `apiDefinition`, or `apiMetadata` with `apiDefinition`. `schemaDefinition` carries a GraphQL SDL schema. (MCP servers are created via `/mcp-servers` with the dedicated `McpServerMultipartBody`, not this body.)|
 |» api|body|string(binary)|false|API metadata YAML file.|
 |» apiDefinition|body|string(binary)|false|API definition file.|
 |» artifact|body|string(binary)|false|Full API ZIP artifact containing metadata and definition files.|
-|» schemaDefinition|body|string(binary)|false|Schema definition file, used by MCP APIs.|
+|» schemaDefinition|body|string(binary)|false|GraphQL SDL schema definition file.|
 |» apiMetadata|body|string|false|JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level fields: `name`, `version`, `description`, `type`, `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes the API's stored handle; when the API is created from a YAML artifact instead, the handle is always taken from `metadata.name`.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
 
