@@ -96,6 +96,45 @@ func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration, optionsRequi
 	return operations
 }
 
+// isMCPForwardingOperation reports whether an MCP-synthesized operation forwards traffic to the
+// upstream (where a route/idle timeout is meaningful). The non-forwarding routes are answered
+// locally by the policy engine and must be skipped:
+//   - any OPTIONS route  -> CORS preflight, answered locally by the cors policy
+//   - the PRM path       -> OAuth protected-resource metadata, synthesized by the mcp-auth policy
+func isMCPForwardingOperation(op api.Operation) bool {
+	if op.Method == api.OperationMethodOPTIONS {
+		return false
+	}
+	if op.Path == constants.MCP_PRM_RESOURCE_PATH {
+		return false
+	}
+	return true
+}
+
+// applyMCPResilience attaches the API-level resilience block to the MCP traffic-forwarding routes
+// (GET/POST/DELETE on the MCP resource path), skipping the local-response routes (OPTIONS, PRM).
+//
+// Because MCP transports are long-lived streams (SSE / Streamable HTTP), a finite route timeout
+// would sever a healthy stream. So — unlike REST/LLM, which fall back to the gateway's global route
+// timeout — the MCP route timeout defaults to disabled ("0s") when the user does not set one; the
+// idle timeout remains the liveness guard. An explicit resilience.timeout always wins.
+func applyMCPResilience(ops []api.Operation, userRes *api.Resilience) {
+	disabled := "0s"
+	for i := range ops {
+		if !isMCPForwardingOperation(ops[i]) {
+			continue
+		}
+		res := &api.Resilience{Timeout: &disabled}
+		if userRes != nil {
+			if userRes.Timeout != nil {
+				res.Timeout = userRes.Timeout
+			}
+			res.IdleTimeout = userRes.IdleTimeout
+		}
+		ops[i].Resilience = res
+	}
+}
+
 // Transform converts an MCP proxy configuration (input) to an API configuration (output)
 func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI, error) {
 	mcpConfig, ok := input.(*api.MCPProxyConfiguration)
@@ -114,9 +153,18 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 		apiData.Context = *mcpConfig.Spec.Context
 	}
 
-	apiData.Upstream.Main = api.Upstream{
-		Url: mcpConfig.Spec.Upstream.Url,
+	// Map the MCP backend (direct url or upstreamDefinition ref). When a ref is used, carry the
+	// upstreamDefinitions through so the per-upstream connect timeout resolves like it does for RestApi.
+	if mcpConfig.Spec.Upstream.Ref != nil && strings.TrimSpace(*mcpConfig.Spec.Upstream.Ref) != "" {
+		apiData.Upstream.Main = api.Upstream{
+			Ref: mcpConfig.Spec.Upstream.Ref,
+		}
+	} else {
+		apiData.Upstream.Main = api.Upstream{
+			Url: mcpConfig.Spec.Upstream.Url,
+		}
 	}
+	apiData.UpstreamDefinitions = mcpConfig.Spec.UpstreamDefinitions
 
 	// Process policies
 	var policies []api.Policy
@@ -139,6 +187,9 @@ func (t *MCPTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI
 
 	// Add MCP-specific operations, conditionally including OPTIONS when CORS is enabled
 	apiData.Operations = addMCPSpecificOperations(mcpConfig, optionsRequired)
+
+	// Attach the API-level resilience (route/idle timeout) to the traffic-forwarding routes only.
+	applyMCPResilience(apiData.Operations, mcpConfig.Spec.Resilience)
 
 	// Set upstream auth if present
 	upstream := mcpConfig.Spec.Upstream

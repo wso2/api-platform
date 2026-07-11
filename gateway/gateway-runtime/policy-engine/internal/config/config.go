@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"math"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+	"github.com/wso2/api-platform/common/collector"
 )
 
 const (
@@ -42,24 +44,44 @@ type Config struct {
 	PolicyEngine         PolicyEngine           `koanf:"policy_engine"`
 	GatewayController    map[string]interface{} `koanf:"gateway_controller"`
 	PolicyConfigurations map[string]interface{} `koanf:"policy_configurations"`
+	Collector            CollectorConfig        `koanf:"collector"`
 	Analytics            AnalyticsConfig        `koanf:"analytics"`
+	TrafficLogging       TrafficLoggingConfig   `koanf:"traffic_logging"`
 	TracingConfig        TracingConfig          `koanf:"tracing"`
+}
+
+// CollectorConfig holds the data-collection ("collector") configuration. The
+// collector is the shared capture pipeline that gathers request/response headers
+// and bodies and ships them to the policy-engine over ALS. It underpins every
+// consumer of that data (analytics and traffic logging) and is implicitly active
+// whenever a consumer is enabled — see Config.IsCollectorEnabled. This section
+// tunes capture and transport; it has no on/off flag of its own.
+type CollectorConfig struct {
+	// RequestBody / ResponseBody attach captured request/response bodies
+	// onto the collected event.
+	RequestBody  bool `koanf:"request_body"`
+	ResponseBody bool `koanf:"response_body"`
+	// Server tunes the policy-engine ALS receiver (the gRPC server that ingests
+	// collected access logs). It is part of the collector transport and is
+	// configured under the shared [collector.server] section (the controller
+	// reads the same section to configure Envoy's sender side).
+	Server AccessLogsServiceConfig `koanf:"server"`
 }
 
 // AnalyticsConfig holds analytics configuration
 type AnalyticsConfig struct {
-	Enabled              bool                      `koanf:"enabled"`
-	EnabledPublishers    []string                  `koanf:"enabled_publishers"`
-	Publishers           AnalyticsPublishersConfig `koanf:"publishers"`
-	GRPCEventServerCfg   map[string]interface{}    `koanf:"grpc_event_server"`
-	AccessLogsServiceCfg AccessLogsServiceConfig   `koanf:"access_logs_service"`
-	// AllowPayloads controls whether request and response bodies are captured
-	// into analytics metadata and forwarded to analytics publishers.
-	// Deprecated: use SendRequestBody and SendResponseBody instead.
-	// When true, validateAnalyticsConfig maps both SendRequestBody and SendResponseBody
-	// to true if both are false. Because bools cannot represent "unset", this also
-	// applies when both new flags are explicitly false; remove allow_payloads when
-	// migrating and set the directional flags directly.
+	Enabled            bool                      `koanf:"enabled"`
+	EnabledPublishers  []string                  `koanf:"enabled_publishers"`
+	Publishers         AnalyticsPublishersConfig `koanf:"publishers"`
+	GRPCEventServerCfg map[string]interface{}    `koanf:"grpc_event_server"`
+	// AccessLogsServiceCfg is a deprecated alias. ALS receiver tuning moved to
+	// [collector.server]; when set here it is migrated onto the collector during
+	// validation (with a warning). Prefer [collector.server].
+	AccessLogsServiceCfg AccessLogsServiceConfig `koanf:"access_logs_service"`
+	// AllowPayloads, SendRequestBody and SendResponseBody are deprecated aliases.
+	// Body capture now lives under [collector]. When set, these are mapped onto
+	// collector.request_body / collector.response_body during validation
+	// (with a warning). Prefer the [collector] fields directly.
 	AllowPayloads    bool `koanf:"allow_payloads"`
 	SendRequestBody  bool `koanf:"send_request_body"`
 	SendResponseBody bool `koanf:"send_response_body"`
@@ -68,6 +90,47 @@ type AnalyticsConfig struct {
 // AnalyticsPublishersConfig holds configuration for all analytics publishers
 type AnalyticsPublishersConfig struct {
 	Moesif MoesifPublisherConfig `koanf:"moesif"`
+}
+
+// TrafficLoggingConfig holds configuration for the stdout traffic-logging feature,
+// which writes each collected event to stdout as a JSON line. It is a consumer of
+// the collector; enabling it implicitly activates the collector. There is a single
+// mode: when Enabled, a stdout line is emitted for every request to every API, with
+// no policy required — including requests denied by an auth policy short-circuit.
+type TrafficLoggingConfig struct {
+	// Enabled turns stdout JSON traffic logging on.
+	Enabled bool `koanf:"enabled"`
+	// MaskedHeaders lists header names (case-insensitive) whose values are
+	// redacted in the logged requestHeaders/responseHeaders.
+	MaskedHeaders []string `koanf:"masked_headers"`
+	// MaxPayloadSize caps the number of bytes of request/response payload written
+	// to the log line (0 = no limit). Truncation is applied at the publisher, so
+	// the collector still captures the full body and other consumers (e.g. Moesif)
+	// are unaffected.
+	MaxPayloadSize int `koanf:"max_payload_size"`
+	// RequestHeaders / RequestBody / ResponseHeaders / ResponseBody select which
+	// captured fields are attached to the log line. Each is a no-op if the
+	// corresponding [collector] capture flag is off — this directive can only
+	// select among what the collector already captured.
+	RequestHeaders  bool `koanf:"request_headers"`
+	RequestBody     bool `koanf:"request_body"`
+	ResponseHeaders bool `koanf:"response_headers"`
+	ResponseBody    bool `koanf:"response_body"`
+	// ExcludeFields drops the named fields from the emitted line and keeps
+	// everything else, layered on top of the flow selection above. Names are
+	// top-level keys (e.g. "latencies", "requestHeaders") or dotted paths of
+	// arbitrary depth into nested JSON objects (e.g. "requestHeaders.authorization",
+	// or "properties.claims.internal_debug" to reach into a nested object produced
+	// by a Properties $ctx: expression that evaluates to a CEL map wholesale).
+	ExcludeFields []string `koanf:"exclude_fields"`
+	// Properties adds extra key->value pairs to the emitted line's top-level
+	// "properties" object. A value prefixed "$ctx:" is evaluated as a CEL
+	// expression against a request-context surface built from the collected
+	// event (see publishers.globalPropertyEvaluator), including a real auth.*
+	// namespace backed by analytics metadata the collector system policy stamps
+	// generically for any authenticated request; other values are emitted as
+	// literal strings.
+	Properties map[string]string `koanf:"properties"`
 }
 
 // MoesifPublisherConfig holds Moesif-specific configuration
@@ -82,13 +145,13 @@ type MoesifPublisherConfig struct {
 
 // Config represents the complete policy engine configuration
 type PolicyEngine struct {
-	Server     ServerConfig     `koanf:"server"`
-	Admin      AdminConfig      `koanf:"admin"`
-	Metrics    MetricsConfig    `koanf:"metrics"`
-	ConfigMode ConfigModeConfig `koanf:"config_mode"`
-	XDS        XDSConfig        `koanf:"xds"`
-	FileConfig FileConfigConfig `koanf:"file_config"`
-	Logging    LoggingConfig    `koanf:"logging"`
+	Server         ServerConfig         `koanf:"server"`
+	Admin          AdminConfig          `koanf:"admin"`
+	Metrics        MetricsConfig        `koanf:"metrics"`
+	ConfigMode     ConfigModeConfig     `koanf:"config_mode"`
+	XDS            XDSConfig            `koanf:"xds"`
+	FileConfig     FileConfigConfig     `koanf:"file_config"`
+	Logging        LoggingConfig        `koanf:"logging"`
 	PythonExecutor PythonExecutorConfig `koanf:"python_executor"`
 	// Tracing holds OpenTelemetry exporter configuration
 	TracingServiceName string `koanf:"tracing_service_name"`
@@ -235,7 +298,13 @@ type LoggingConfig struct {
 
 // AccessLogsServiceConfig holds access logs service configuration
 type AccessLogsServiceConfig struct {
-	Mode                  string        `koanf:"mode"` // Connection mode: "uds" (default) or "tcp"
+	Mode string `koanf:"mode"` // Connection mode: "uds" (default) or "tcp"
+	// ServerPort overrides the fixed ALS listener port (collector.ServerPort, 18090),
+	// used only in "tcp" mode. Deprecated: no longer defaulted here or documented in
+	// config-template.toml/Helm charts, so new deployments have no way to discover or
+	// set it. Kept solely so a config that already sets it explicitly keeps working;
+	// leave unset (0) to use the fixed port. Must match the gateway-controller's
+	// collector.server.port override, or the two sides will fail to connect.
 	ServerPort            int           `koanf:"server_port"`
 	ShutdownTimeout       time.Duration `koanf:"shutdown_timeout"`
 	PublicKeyPath         string        `koanf:"public_key_path"`
@@ -304,6 +373,21 @@ func Load(configPath string) (*Config, error) {
 	return cfg, nil
 }
 
+// defaultAccessLogsServiceConfig returns the default policy-engine ALS receiver tuning.
+// Shared by the collector (canonical) and the deprecated [analytics].access_logs_service
+// alias so a partial alias override migrates cleanly.
+func defaultAccessLogsServiceConfig() AccessLogsServiceConfig {
+	return AccessLogsServiceConfig{
+		Mode:                  "",
+		ShutdownTimeout:       600 * time.Second,
+		PublicKeyPath:         "",
+		PrivateKeyPath:        "",
+		ALSPlainText:          true,
+		ExtProcMaxMessageSize: 1000000000,
+		ExtProcMaxHeaderLimit: 8192,
+	}
+}
+
 // defaultConfig returns a Config struct with default configuration values
 func defaultConfig() *Config {
 	return &Config{
@@ -350,6 +434,22 @@ func defaultConfig() *Config {
 			},
 			TracingServiceName: "policy-engine",
 		},
+		Collector: CollectorConfig{
+			RequestBody:  false,
+			ResponseBody: false,
+			Server:       defaultAccessLogsServiceConfig(),
+		},
+		TrafficLogging: TrafficLoggingConfig{
+			Enabled:         false,
+			MaskedHeaders:   []string{},
+			MaxPayloadSize:  0,
+			RequestHeaders:  false,
+			RequestBody:     false,
+			ResponseHeaders: false,
+			ResponseBody:    false,
+			ExcludeFields: []string{},
+			Properties: map[string]string{},
+		},
 		Analytics: AnalyticsConfig{
 			Enabled:           false,
 			EnabledPublishers: []string{"moesif"},
@@ -369,19 +469,12 @@ func defaultConfig() *Config {
 				"buffer_size_bytes":     16384,
 				"grpc_request_timeout":  20000000000,
 			},
-			AccessLogsServiceCfg: AccessLogsServiceConfig{
-				Mode:                  "",
-				ServerPort:            18090,
-				ShutdownTimeout:       600 * time.Second,
-				PublicKeyPath:         "",
-				PrivateKeyPath:        "",
-				ALSPlainText:          true,
-				ExtProcMaxMessageSize: 1000000000,
-				ExtProcMaxHeaderLimit: 8192,
-			},
-			AllowPayloads:    false,
-			SendRequestBody:  false,
-			SendResponseBody: false,
+			// Deprecated alias: default mirrors the collector so a partial
+			// [analytics.access_logs_service] override migrates cleanly.
+			AccessLogsServiceCfg: defaultAccessLogsServiceConfig(),
+			AllowPayloads:        false,
+			SendRequestBody:      false,
+			SendResponseBody:     false,
 		},
 		TracingConfig: TracingConfig{
 			Enabled:            false,
@@ -480,6 +573,15 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid logging.format: %s (must be json or text)", c.PolicyEngine.Logging.Format)
 	}
 
+	if err := c.validateCollectorConfig(); err != nil {
+		return err
+	}
+	if c.TrafficLogging.MaxPayloadSize < 0 {
+		return fmt.Errorf("traffic_logging.max_payload_size must be >= 0, got %d", c.TrafficLogging.MaxPayloadSize)
+	}
+	if err := c.validateTrafficLoggingConfig(); err != nil {
+		return err
+	}
 	if c.Analytics.Enabled {
 		if err := c.validateAnalyticsConfig(); err != nil {
 			return fmt.Errorf("analytics configuration validation failed: %v", err)
@@ -536,49 +638,101 @@ func (c *Config) validateXDSConfig() error {
 	return nil
 }
 
-// validateAnalyticsConfig validates the analytics configuration
+// validateCollectorConfig migrates deprecated analytics capture aliases onto the
+// collector and enforces the collector prerequisite: a consumer (analytics or
+// traffic logging) requires the collector that feeds it. The collector has no
+// on/off flag of its own: it is implicitly active whenever a consumer is enabled
+// (see IsCollectorEnabled), so its transport is validated only in that case.
+func (c *Config) validateCollectorConfig() error {
+	c.migrateDeprecatedAnalyticsCapture()
+	c.migrateDeprecatedAnalyticsTransport()
+
+	if c.IsCollectorEnabled() {
+		if err := validateAccessLogsServiceConfig(c.Collector.Server); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// IsCollectorEnabled reports whether the collector should run. The collector is
+// implicit: it is active whenever any consumer of the collected data is enabled
+// (analytics or stdout traffic logging), and off otherwise.
+func (c *Config) IsCollectorEnabled() bool {
+	return collector.IsEnabled(c.Analytics.Enabled, c.TrafficLogging.Enabled)
+}
+
+// migrateDeprecatedAnalyticsTransport maps a deprecated [analytics].access_logs_service
+// override onto the collector when the collector's receiver tuning is still at its
+// default, so existing configs keep working after the transport moved to [collector].
+// See collector.MigrateDeprecatedTransport for the shared (with the gateway-controller)
+// migration logic and its guarding-while-analytics-enabled rationale.
+func (c *Config) migrateDeprecatedAnalyticsTransport() {
+	collector.MigrateDeprecatedTransport(
+		c.Analytics.Enabled,
+		c.Analytics.AccessLogsServiceCfg,
+		&c.Collector.Server,
+		defaultAccessLogsServiceConfig(),
+		"analytics.access_logs_service",
+	)
+}
+
+// validateAccessLogsServiceConfig validates the policy-engine ALS receiver tuning.
+// The transport port is normally the fixed, non-configurable collector.ServerPort
+// constant (see collector.ServerPort); als.ServerPort is a deprecated override honored
+// only for backward compatibility with configs that already set it (see its doc comment).
+func validateAccessLogsServiceConfig(als AccessLogsServiceConfig) error {
+	switch als.Mode {
+	case "uds", "tcp", "":
+	default:
+		return fmt.Errorf("collector.server.mode must be 'uds' or 'tcp', got: %s", als.Mode)
+	}
+	if als.ServerPort != 0 {
+		slog.Warn("collector.server.server_port is deprecated and no longer documented; the ALS port is fixed at " +
+			strconv.Itoa(collector.ServerPort) + " by default. Honoring the configured override for backward " +
+			"compatibility — ensure the gateway-controller's collector.server.port matches, or the two sides will fail to connect.")
+		if als.ServerPort < 0 || als.ServerPort > 65535 {
+			return fmt.Errorf("collector.server.server_port must be between 1 and 65535, got %d", als.ServerPort)
+		}
+	}
+	if als.ShutdownTimeout <= 0 {
+		return fmt.Errorf("collector.server.shutdown_timeout must be positive, got %s", als.ShutdownTimeout)
+	}
+	if als.ExtProcMaxMessageSize <= 0 {
+		return fmt.Errorf("collector.server.max_message_size must be positive, got %d", als.ExtProcMaxMessageSize)
+	}
+	if als.ExtProcMaxHeaderLimit <= 0 {
+		return fmt.Errorf("collector.server.max_header_limit must be positive, got %d", als.ExtProcMaxHeaderLimit)
+	}
+	if als.ExtProcMaxHeaderLimit > math.MaxUint32 {
+		return fmt.Errorf("collector.server.max_header_limit must be <= %d, got %d", uint64(math.MaxUint32), als.ExtProcMaxHeaderLimit)
+	}
+	return nil
+}
+
+// migrateDeprecatedAnalyticsCapture maps the deprecated analytics.allow_payloads /
+// analytics.send_request_body / analytics.send_response_body onto the collector's
+// body-capture flags, so existing configs keep working after capture settings
+// moved under [collector]. See collector.MigrateDeprecatedCapture for the shared
+// (with the gateway-controller) migration logic and its guarding-while-analytics-
+// enabled rationale.
+func (c *Config) migrateDeprecatedAnalyticsCapture() {
+	collector.MigrateDeprecatedCapture(
+		c.Analytics.Enabled,
+		collector.CaptureFlags{
+			SendRequestBody:  c.Analytics.SendRequestBody,
+			SendResponseBody: c.Analytics.SendResponseBody,
+			AllowPayloads:    c.Analytics.AllowPayloads,
+		},
+		&c.Collector.RequestBody,
+		&c.Collector.ResponseBody,
+	)
+}
+
+// validateAnalyticsConfig validates the analytics consumer configuration (publishers).
+// ALS transport validation lives in validateCollectorConfig.
 func (c *Config) validateAnalyticsConfig() error {
-	// Validate analytics configuration
 	if c.Analytics.Enabled {
-		// Migration path for deprecated analytics.allow_payloads.
-		// Runs when both directional flags are false, which is indistinguishable
-		// from "not set" because bool fields cannot represent unset vs explicit false.
-		if c.Analytics.AllowPayloads {
-			slog.Warn("analytics.allow_payloads is deprecated; use analytics.send_request_body and analytics.send_response_body instead")
-			if !c.Analytics.SendRequestBody && !c.Analytics.SendResponseBody {
-				c.Analytics.SendRequestBody = true
-				c.Analytics.SendResponseBody = true
-			}
-		}
-
-		// Validate ALS server config (policy-engine side)
-		als := c.Analytics.AccessLogsServiceCfg
-
-		// Validate ALS connection mode
-		switch als.Mode {
-		case "uds", "":
-			// UDS mode (default) - port is unused
-		case "tcp":
-			// TCP mode - validate port
-			if als.ServerPort <= 0 || als.ServerPort > 65535 {
-				return fmt.Errorf("analytics.access_logs_service.server_port must be between 1 and 65535, got %d", als.ServerPort)
-			}
-		default:
-			return fmt.Errorf("analytics.access_logs_service.mode must be 'uds' or 'tcp', got: %s", als.Mode)
-		}
-		if als.ShutdownTimeout <= 0 {
-			return fmt.Errorf("analytics.access_logs_service.shutdown_timeout must be positive, got %s", als.ShutdownTimeout)
-		}
-		if als.ExtProcMaxMessageSize <= 0 {
-			return fmt.Errorf("analytics.access_logs_service.max_message_size must be positive, got %d", als.ExtProcMaxMessageSize)
-		}
-		if als.ExtProcMaxHeaderLimit <= 0 {
-			return fmt.Errorf("analytics.access_logs_service.max_header_limit must be positive, got %d", als.ExtProcMaxHeaderLimit)
-		}
-		if als.ExtProcMaxHeaderLimit > math.MaxUint32 {
-			return fmt.Errorf("analytics.access_logs_service.max_header_limit must be <= %d, got %d", uint64(math.MaxUint32), als.ExtProcMaxHeaderLimit)
-		}
-
 		// Validate enabled publishers
 		for _, publisherName := range c.Analytics.EnabledPublishers {
 			switch publisherName {
@@ -600,5 +754,29 @@ func (c *Config) validateAnalyticsConfig() error {
 			}
 		}
 	}
+	return nil
+}
+
+// validateTrafficLoggingConfig validates the traffic-logging config and warns
+// about settings that have no effect.
+func (c *Config) validateTrafficLoggingConfig() error {
+	tl := c.TrafficLogging
+
+	if !tl.Enabled {
+		if len(tl.Properties) > 0 {
+			slog.Warn("traffic_logging.properties is set but traffic_logging.enabled is false; it has no effect")
+		}
+		return nil
+	}
+
+	if tl.RequestBody && !c.Collector.RequestBody {
+		slog.Warn("traffic_logging.request_body is true but collector.request_body is false; " +
+			"traffic logging can only select among what the collector captured, so no request body will be logged")
+	}
+	if tl.ResponseBody && !c.Collector.ResponseBody {
+		slog.Warn("traffic_logging.response_body is true but collector.response_body is false; " +
+			"traffic logging can only select among what the collector captured, so no response body will be logged")
+	}
+
 	return nil
 }

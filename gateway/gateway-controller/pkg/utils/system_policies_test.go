@@ -124,12 +124,9 @@ func TestInjectSystemPolicies_NilConfig(t *testing.T) {
 	assert.Equal(t, policies, result)
 }
 
-func TestInjectSystemPolicies_AnalyticsDisabled(t *testing.T) {
-	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			Enabled: false,
-		},
-	}
+func TestInjectSystemPolicies_CollectorDisabled(t *testing.T) {
+	// No consumer enabled -> collector implicitly off -> no system policy injected.
+	cfg := &config.Config{}
 	policies := []policyenginev1.PolicyInstance{
 		{Name: "existing", Version: "v1.0.0"},
 	}
@@ -139,11 +136,10 @@ func TestInjectSystemPolicies_AnalyticsDisabled(t *testing.T) {
 	assert.Equal(t, "existing", result[0].Name)
 }
 
-func TestInjectSystemPolicies_AnalyticsEnabled(t *testing.T) {
+func TestInjectSystemPolicies_CollectorEnabled(t *testing.T) {
+	// A consumer enabled -> collector implicitly on -> system policy injected.
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			Enabled: true,
-		},
+		Analytics: config.AnalyticsConfig{Enabled: true},
 	}
 	policies := []policyenginev1.PolicyInstance{
 		{Name: "existing", Version: "v1.0.0"},
@@ -159,42 +155,88 @@ func TestInjectSystemPolicies_AnalyticsEnabled(t *testing.T) {
 	assert.Equal(t, "existing", result[1].Name)
 }
 
-func TestInjectSystemPolicies_AllowPayloadsTrue(t *testing.T) {
+func TestInjectSystemPolicies_TrafficLoggingOnlyEnablesCollector(t *testing.T) {
+	// Traffic logging alone (no analytics) -> collector implicitly on -> system
+	// policy injected. Guards against a regression that gates injection on
+	// cfg.Analytics.Enabled alone instead of cfg.IsCollectorEnabled().
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			Enabled:         true,
-			SendRequestBody: true,
-			SendResponseBody: true,
+		TrafficLogging: config.TrafficLoggingConfig{Enabled: true},
+	}
+	policies := []policyenginev1.PolicyInstance{
+		{Name: "existing", Version: "v1.0.0"},
+	}
+
+	result := InjectSystemPolicies(policies, cfg, nil)
+	assert.Len(t, result, 2)
+	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
+	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_VERSION, result[0].Version)
+	assert.True(t, result[0].Enabled)
+	assert.Equal(t, "existing", result[1].Name)
+}
+
+func TestInjectSystemPolicies_BodyFlagsPropagated(t *testing.T) {
+	cfg := &config.Config{
+		Analytics: config.AnalyticsConfig{Enabled: true},
+		Collector: config.CollectorConfig{
+			RequestBody:  true,
+			ResponseBody: true,
 		},
 	}
 
 	result := InjectSystemPolicies(nil, cfg, nil)
 	assert.Len(t, result, 1)
 	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
-	assert.Equal(t, true, result[0].Parameters["send_request_body"])
-	assert.Equal(t, true, result[0].Parameters["send_response_body"])
+	assert.Equal(t, true, result[0].Parameters["request_body"])
+	assert.Equal(t, true, result[0].Parameters["response_body"])
 }
 
-func TestInjectSystemPolicies_AllowPayloadsFalse(t *testing.T) {
+func TestInjectSystemPolicies_BodyFlagsDefaultFalse(t *testing.T) {
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			Enabled:         true,
-			SendRequestBody: false,
-			SendResponseBody: false,
+		Analytics: config.AnalyticsConfig{Enabled: true},
+		Collector: config.CollectorConfig{
+			RequestBody:  false,
+			ResponseBody: false,
 		},
 	}
 
 	result := InjectSystemPolicies(nil, cfg, nil)
 	assert.Len(t, result, 1)
-	assert.Equal(t, false, result[0].Parameters["send_request_body"])
-	assert.Equal(t, false, result[0].Parameters["send_response_body"])
+	assert.Equal(t, false, result[0].Parameters["request_body"])
+	assert.Equal(t, false, result[0].Parameters["response_body"])
+}
+
+func TestInjectSystemPolicies_HeaderFlagsPropagated(t *testing.T) {
+	cfg := &config.Config{
+		Analytics: config.AnalyticsConfig{Enabled: true},
+		Collector: config.CollectorConfig{
+			RequestHeaders:  true,
+			ResponseHeaders: true,
+		},
+	}
+
+	result := InjectSystemPolicies(nil, cfg, nil)
+	assert.Len(t, result, 1)
+	assert.Equal(t, constants.ANALYTICS_SYSTEM_POLICY_NAME, result[0].Name)
+	assert.Equal(t, true, result[0].Parameters["request_headers"])
+	assert.Equal(t, true, result[0].Parameters["response_headers"])
+}
+
+func TestInjectSystemPolicies_HeaderFlagsDefaultFalse(t *testing.T) {
+	// Zero-value collector (headers unset) with a consumer on: propagation passes the
+	// struct's false through, matching the production default (see defaultConfig).
+	cfg := &config.Config{
+		Analytics: config.AnalyticsConfig{Enabled: true},
+	}
+
+	result := InjectSystemPolicies(nil, cfg, nil)
+	assert.Len(t, result, 1)
+	assert.Equal(t, false, result[0].Parameters["request_headers"])
+	assert.Equal(t, false, result[0].Parameters["response_headers"])
 }
 
 func TestInjectSystemPolicies_WithAdditionalProps(t *testing.T) {
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			Enabled: true,
-		},
+		Analytics: config.AnalyticsConfig{Enabled: true},
 	}
 	additionalProps := map[string]any{
 		constants.ANALYTICS_SYSTEM_POLICY_NAME: map[string]interface{}{
@@ -209,9 +251,7 @@ func TestInjectSystemPolicies_WithAdditionalProps(t *testing.T) {
 
 func TestInjectSystemPolicies_WithSharedParams(t *testing.T) {
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			Enabled: true,
-		},
+		Analytics: config.AnalyticsConfig{Enabled: true},
 	}
 	additionalProps := map[string]any{
 		SharedParamsKey: map[string]interface{}{
@@ -226,9 +266,7 @@ func TestInjectSystemPolicies_WithSharedParams(t *testing.T) {
 
 func TestInjectSystemPolicies_EmptyPolicies(t *testing.T) {
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			Enabled: true,
-		},
+		Analytics: config.AnalyticsConfig{Enabled: true},
 	}
 
 	result := InjectSystemPolicies([]policyenginev1.PolicyInstance{}, cfg, nil)
@@ -238,9 +276,7 @@ func TestInjectSystemPolicies_EmptyPolicies(t *testing.T) {
 
 func TestInjectSystemPolicies_PreservesExistingPolicies(t *testing.T) {
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			Enabled: true,
-		},
+		Analytics: config.AnalyticsConfig{Enabled: true},
 	}
 	policies := []policyenginev1.PolicyInstance{
 		{Name: "policy1", Version: "v1.0.0"},

@@ -200,6 +200,153 @@ function validateRequiredFields(
 }
 
 /**
+ * Validates a single leaf value against the format constraints declared in its
+ * schema (pattern, minLength/maxLength, minimum/maximum). Returns an error
+ * message, or null when the value satisfies every constraint.
+ *
+ * Empty/absent values are treated as valid here — presence is the concern of
+ * validateRequiredFields. Template variables (e.g. ${var}) are also skipped,
+ * consistent with coerceValuesToSchemaTypes.
+ */
+function validateValueConstraints(
+  schema: ParameterSchema,
+  value: unknown
+): string | null {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  if (schema.type === 'string' && typeof value === 'string') {
+    // Leave template references untouched — they are resolved at runtime.
+    if (/\$\{.+\}/.test(value)) {
+      return null;
+    }
+    if (schema.minLength !== undefined && value.length < schema.minLength) {
+      return `Must be at least ${schema.minLength} character(s)`;
+    }
+    if (schema.maxLength !== undefined && value.length > schema.maxLength) {
+      return `Must be at most ${schema.maxLength} character(s)`;
+    }
+    if (schema.pattern) {
+      let regex: RegExp | null = null;
+      try {
+        regex = new RegExp(schema.pattern);
+      } catch {
+        // An unparseable pattern is a policy authoring problem, not a user
+        // input problem — do not block the user on it.
+        regex = null;
+      }
+      if (regex && !regex.test(value)) {
+        return 'Value does not match the required format';
+      }
+    }
+    return null;
+  }
+
+  if (schema.type === 'number' || schema.type === 'integer') {
+    const num = typeof value === 'number' ? value : Number(value);
+    if (Number.isNaN(num)) {
+      return null;
+    }
+    if (schema.minimum !== undefined && num < schema.minimum) {
+      return `Must be at least ${schema.minimum}`;
+    }
+    if (schema.maximum !== undefined && num > schema.maximum) {
+      return `Must be at most ${schema.maximum}`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Recursively validates format constraints (pattern, length, numeric bounds,
+ * and simple-array size) declared anywhere in the schema against the current
+ * values. Complements validateRequiredFields, which only checks presence.
+ *
+ * Only constraints on fields that render an inline error (leaf fields and
+ * simple string/number arrays) are reported, so every returned error is
+ * visible to the user next to the offending field.
+ */
+function validateConstraints(
+  schema: ParameterSchema,
+  values: ParameterValues,
+  parentPath: string = ''
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  if (schema.type !== 'object' || !schema.properties) {
+    return errors;
+  }
+
+  Object.entries(schema.properties).forEach(([key, propSchema]) => {
+    const path = parentPath ? `${parentPath}.${key}` : key;
+    const value = getValueByPath(values, path);
+
+    // Recurse into nested objects
+    if (propSchema.type === 'object' && propSchema.properties) {
+      errors.push(...validateConstraints(propSchema, values, path));
+      return;
+    }
+
+    if (propSchema.type === 'array' && propSchema.items) {
+      if (!Array.isArray(value)) {
+        return;
+      }
+      const itemType = propSchema.items.type;
+      const isSimpleArray = itemType === 'string' || itemType === 'number';
+
+      // minItems/maxItems only for simple arrays, which surface an inline error.
+      if (isSimpleArray) {
+        if (
+          propSchema.minItems !== undefined &&
+          value.length < propSchema.minItems
+        ) {
+          errors.push({
+            path,
+            message: `Must have at least ${propSchema.minItems} item(s)`,
+          });
+        } else if (
+          propSchema.maxItems !== undefined &&
+          value.length > propSchema.maxItems
+        ) {
+          errors.push({
+            path,
+            message: `Must have at most ${propSchema.maxItems} item(s)`,
+          });
+        }
+      }
+
+      value.forEach((item, index) => {
+        if (propSchema.items!.type === 'object') {
+          // Object array items render their own fields, each with an inline
+          // error keyed by the item path.
+          const itemPath = `${path}.${index}`;
+          errors.push(...validateConstraints(propSchema.items!, values, itemPath));
+        } else if (isSimpleArray && !errors.some((e) => e.path === path)) {
+          // Simple (string/number) arrays render a single tag input whose
+          // inline error lives at the container path, so report the first
+          // failing item there rather than at an item path that has no field.
+          const message = validateValueConstraints(propSchema.items!, item);
+          if (message) {
+            errors.push({ path, message });
+          }
+        }
+      });
+      return;
+    }
+
+    // Leaf field
+    const message = validateValueConstraints(propSchema, value);
+    if (message) {
+      errors.push({ path, message });
+    }
+  });
+
+  return errors;
+}
+
+/**
  * Validates ONLY level-one required fields.
  * Also validates non-advanced optional objects with anyOf constraints:
  * if a boolean field (e.g. "enabled") is set to true, all other
@@ -438,14 +585,19 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
 
   // Handle form submission
   const handleSubmit = useCallback(() => {
-    // Validate required fields
-    const validationErrors = validateRequiredFields(parameters, values);
-
-    if (validationErrors.length > 0) {
-      const errorMap: Record<string, string> = {};
-      validationErrors.forEach((err) => {
+    // Validate required fields first, then format constraints (pattern,
+    // length, numeric bounds, array size). Required errors take precedence
+    const errorMap: Record<string, string> = {};
+    validateRequiredFields(parameters, values).forEach((err) => {
+      errorMap[err.path] = err.message;
+    });
+    validateConstraints(parameters, values).forEach((err) => {
+      if (!errorMap[err.path]) {
         errorMap[err.path] = err.message;
-      });
+      }
+    });
+
+    if (Object.keys(errorMap).length > 0) {
       setErrors(errorMap);
       return;
     }

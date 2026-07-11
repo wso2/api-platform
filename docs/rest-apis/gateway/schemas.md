@@ -2649,6 +2649,9 @@ and
 ```json
 {
   "displayName": "OpenAI",
+  "groupId": "openai",
+  "managedBy": "wso2",
+  "version": "v1.0",
   "promptTokens": {
     "location": "payload",
     "identifier": "$.usage.inputTokens"
@@ -2713,6 +2716,9 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |displayName|string|true|none|Human-readable LLM Template name|
+|groupId|string|false|none|Stable family-grouping identifier shared by every version of this<br>template. Multiple versions with the same groupId but different<br>handles are surfaced as versions of one template. Defaults to<br>metadata.name when omitted.|
+|managedBy|string|false|none|Origin of the template. Built-in templates use 'wso2'; custom<br>templates default to 'customer' and may be set to any value.|
+|version|string|false|none|Template content version (e.g. v1.0). Multiple versions of the same<br>groupId can coexist; defaults to v1.0 when omitted.|
 |promptTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 |completionTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|
 |totalTokens|[ExtractionIdentifier](#schemaextractionidentifier)|false|none|none|

@@ -80,7 +80,7 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 		t.Version = "v1.0"
 	}
 	if t.ManagedBy == "" {
-		t.ManagedBy = "customer"
+		t.ManagedBy = constants.TemplateManagedByOrganization
 	}
 	if t.GroupID == "" {
 		t.GroupID = t.ID

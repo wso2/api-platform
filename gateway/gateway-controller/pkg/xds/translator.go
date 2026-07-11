@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/common/collector"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
@@ -96,9 +97,11 @@ type Translator struct {
 }
 
 // resolvedTimeout represents parsed timeout values for an upstream.
-// Currently only connect timeout is supported at the upstream definition level.
+// Route and Idle come from the resilience block.
 type resolvedTimeout struct {
 	Connect *time.Duration
+	Route *time.Duration
+	Idle  *time.Duration
 }
 
 // NewTranslator creates a new translator
@@ -171,6 +174,14 @@ func (t *Translator) GetCertStore() *certstore.CertStore {
 	return t.certStore
 }
 
+// appendMCPResourcePathToBackend reports whether the legacy behaviour of appending the
+// "/mcp" resource path to the MCP backend upstream is enabled via configuration. When
+// enabled, MCP "/mcp" routes fall through to the standard rewrite (which preserves the
+// operation path on the upstream), matching the previous gateway version's behaviour.
+func (t *Translator) appendMCPResourcePathToBackend() bool {
+	return t.config != nil && t.config.MCP.AppendResourcePathToBackend
+}
+
 // SetTransformers sets the kind-to-transformer map used by TranslateConfigs.
 // When a transformer is available for a config's kind, the translator will
 // produce a RuntimeDeployConfig first, then convert it to Envoy resources.
@@ -214,6 +225,16 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 	return routes, clusters, nil
 }
 
+// routeTimeoutOrDefault returns the per-route timeout when configured (including an
+// explicit zero, which disables the timeout in Envoy), otherwise the global default
+// expressed in milliseconds.
+func (t *Translator) routeTimeoutOrDefault(v *time.Duration, defaultMs uint32) *durationpb.Duration {
+	if v != nil {
+		return durationpb.New(*v)
+	}
+	return durationpb.New(time.Duration(defaultMs) * time.Millisecond)
+}
+
 // createRouteFromRDC creates an Envoy route from a RuntimeDeployConfig Route.
 func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route, rdc *models.RuntimeDeployConfig) *route.Route {
 	fullPath := rdcRoute.Path
@@ -224,6 +245,15 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	isWildcardPath := strings.HasSuffix(operationPath, "/*")
 	hasParams := strings.Contains(operationPath, "{")
 	isRootPath := operationPath == "/"
+
+	// For MCP proxies the "/mcp" path is only the gateway-facing endpoint marker; it must
+	// NOT be appended to the backend. The upstream is expected to be the full MCP endpoint
+	// URL, so the request is forwarded to exactly the configured upstream path. See below.
+	// When mcp.append_resource_path_to_backend is enabled, this special-casing is skipped so
+	// the route falls back to the legacy behaviour of appending "/mcp" to the upstream.
+	isMCPResourceRoute := rdc.Metadata.Kind == string(models.KindMcp) &&
+		operationPath == constants.MCP_RESOURCE_PATH &&
+		!t.appendMCPResourcePathToBackend()
 
 	var pathSpecifier *route.RouteMatch_SafeRegex
 	if isWildcardPath {
@@ -249,15 +279,17 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		}
 	}
 
-	// Build route action with timeouts
+	// Build route action with timeouts. Per-route resilience values (from the API/operation
+	// resilience block) take precedence; otherwise fall back to the global route defaults.
+	var routeResilienceTimeout, routeResilienceIdle *time.Duration
+	if rdcRoute.Timeout != nil {
+		routeResilienceTimeout = rdcRoute.Timeout.Timeout
+		routeResilienceIdle = rdcRoute.Timeout.IdleTimeout
+	}
 	routeAction := &route.Route_Route{
 		Route: &route.RouteAction{
-			Timeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutMs) * time.Millisecond,
-			),
-			IdleTimeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs) * time.Millisecond,
-			),
+			Timeout:     t.routeTimeoutOrDefault(routeResilienceTimeout, t.routerConfig.Upstream.Timeouts.RouteTimeoutMs),
+			IdleTimeout: t.routeTimeoutOrDefault(routeResilienceIdle, t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs),
 		},
 	}
 
@@ -332,7 +364,23 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	contextWithVersion := strings.TrimSuffix(fullPath, operationPath)
 
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
-	if isRootPath {
+	if isMCPResourceRoute {
+		// MCP "/mcp" resource: the whole gateway-facing path ("<context>/mcp") maps to
+		// exactly the configured upstream URL path. We deliberately do NOT append "/mcp"
+		// to the backend, because some MCP backends serve at a different path (or root)
+		// and don't support a "/mcp" sub-path. When the upstream has no path, forward to
+		// "/".
+		mcpSubstitution := upstreamPath
+		if mcpSubstitution == "" {
+			mcpSubstitution = "/"
+		}
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
+			},
+			Substitution: mcpSubstitution,
+		}
+	} else if isRootPath {
 		// Root path ("/") matches both /ctx and /ctx/. Using a non-capturing pattern
 		// avoids an empty capture group when the trailing slash is absent, which would
 		// produce an empty rewritten path. Always normalize to upstreamPath+"/".
@@ -512,6 +560,16 @@ func (t *Translator) TranslateConfigs(
 			Name:    vhost,
 			Domains: t.getVHostDomains(vhost),
 			Routes:  routes,
+			// Strip any client-supplied x-envoy-original-path so it cannot survive to
+			// the collector.ignore_path_prefixes access-log filter (buildIgnorePathsAccessLogFilter):
+			// on a route that performs a path rewrite, Envoy's router unconditionally
+			// re-sets this header to the true pre-rewrite path after removal, so
+			// legitimate suppression (e.g. "/health") is unaffected; on a route that
+			// does not rewrite, removal leaves the header absent, which the filter's
+			// documented "absent -> never suppress" fallback already treats as safe —
+			// closing the gap where a client could otherwise self-suppress its own
+			// traffic/analytics record by sending a forged x-envoy-original-path.
+			RequestHeadersToRemove: []string{envoyOriginalPathHeader},
 		}
 		virtualHosts = append(virtualHosts, virtualHost)
 	}
@@ -561,10 +619,10 @@ func (t *Translator) TranslateConfigs(
 	policyEngineCluster := t.createPolicyEngineCluster()
 	clusters = append(clusters, policyEngineCluster)
 
-	// Add ALS cluster if gRPC access log is enabled
-	log.Debug("gRPC event server config", slog.Any("config", t.config.Analytics.GRPCEventServerCfg))
-	if t.config.Analytics.Enabled {
-		log.Info("gRPC access log is enabled, creating ALS cluster")
+	// Add ALS cluster if the collector is active (it ships access logs over gRPC)
+	log.Debug("gRPC event server config", slog.Any("config", t.config.Collector.Server))
+	if t.config.IsCollectorEnabled() {
+		log.Info("collector is enabled, creating ALS cluster")
 		alsCluster := t.createALSCluster()
 		clusters = append(clusters, alsCluster)
 	}
@@ -818,13 +876,25 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		}
 	}
 
+	// Resolve API-level resilience timeouts once; operation-level values override per field.
+	apiTimeout, apiIdleTimeout, err := ResolveResilience(apiData.Resilience)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid API-level resilience: %w", err)
+	}
+
 	for _, op := range apiData.Operations {
 		// Determine if dynamic cluster selection should be used
 		// When upstreamDefinitions exist, use cluster_header routing so policies can select the upstream
 		useClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
 
+		opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.Method, op.Path, err)
+		}
+		opTimeoutCfg := combineRouteResilience(mainTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
+
 		r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout, useClusterHeader, upstreamDefPaths)
+			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, opTimeoutCfg, useClusterHeader, upstreamDefPaths)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	routesList = append(routesList, mainRoutesList...)
@@ -850,8 +920,14 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		sbRoutesList := make([]*route.Route, 0)
 		sbUseClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
 		for _, op := range apiData.Operations {
+			opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
+			if err != nil {
+				return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.Method, op.Path, err)
+			}
+			opTimeoutCfg := combineRouteResilience(sbTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
+
 			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout, sbUseClusterHeader, upstreamDefPaths)
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, opTimeoutCfg, sbUseClusterHeader, upstreamDefPaths)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
@@ -1042,6 +1118,13 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		HttpFilters:                httpFilters,
 		ServerHeaderTransformation: convertServerHeaderTransformation(t.routerConfig.HTTPListener.ServerHeaderTransformation),
 		ServerName:                 t.routerConfig.HTTPListener.ServerHeaderValue,
+		// HCM-level (downstream) timeouts. Defaults match Envoy's documented defaults.
+		RequestTimeout:        durationpb.New(t.routerConfig.HTTPListener.Timeouts.RequestTimeout),
+		RequestHeadersTimeout: durationpb.New(t.routerConfig.HTTPListener.Timeouts.RequestHeadersTimeout),
+		StreamIdleTimeout:     durationpb.New(t.routerConfig.HTTPListener.Timeouts.StreamIdleTimeout),
+		CommonHttpProtocolOptions: &core.HttpProtocolOptions{
+			IdleTimeout: durationpb.New(t.routerConfig.HTTPListener.Timeouts.IdleTimeout),
+		},
 	}
 
 	// Add access logs if enabled
@@ -1353,6 +1436,11 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub(isHTTPS bool) (*listen
 		VirtualHosts: []*route.VirtualHost{{
 			Name:    "DYNAMIXC_FORWARD_PROXY_VHOST_WEBSUBHUB",
 			Domains: []string{t.routerConfig.EventGateway.WebSubHubURL}, // this should be websubhub domains
+			// This route never rewrites :path, so unlike the main API vhosts (see the
+			// matching comment in the main virtual host construction) Envoy never
+			// re-populates x-envoy-original-path here; stripping any client-supplied
+			// value still leaves it correctly absent for collector.ignore_path_prefixes.
+			RequestHeadersToRemove: []string{envoyOriginalPathHeader},
 			Routes: []*route.Route{{
 				Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Prefix{Prefix: "/"}},
 				Action: &route.Route_Route{Route: &route.RouteAction{
@@ -1762,6 +1850,16 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	// Check if path is the root path "/" (should match both /ctx and /ctx/)
 	isRootPath := path == "/"
 
+	// Check if this is the "/mcp" resource of an MCP proxy. For MCP proxies the "/mcp"
+	// path is only the gateway-facing endpoint marker; it must NOT be appended to the
+	// backend. The upstream is expected to be the full MCP endpoint URL, so the request
+	// is forwarded to exactly the configured upstream path. See below for the rewrite.
+	// When mcp.append_resource_path_to_backend is enabled, this special-casing is skipped so
+	// the route falls back to the legacy behaviour of appending "/mcp" to the upstream.
+	isMCPResourceRoute := apiKind == string(models.KindMcp) &&
+		path == constants.MCP_RESOURCE_PATH &&
+		!t.appendMCPResourcePathToBackend()
+
 	var pathSpecifier *route.RouteMatch_SafeRegex
 	if isWildcardPath {
 		// For wildcard paths, require end-of-string or a slash after the prefix to avoid
@@ -1791,15 +1889,17 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 		}
 	}
 
-	// Currently the route level timeouts are configurable using the global configuration.
+	// Route-level timeouts: per-route resilience values (resilience block) take precedence,
+	// otherwise fall back to the global configuration defaults.
+	var routeTimeout, routeIdleTimeout *time.Duration
+	if timeoutCfg != nil {
+		routeTimeout = timeoutCfg.Route
+		routeIdleTimeout = timeoutCfg.Idle
+	}
 	routeAction := &route.Route_Route{
 		Route: &route.RouteAction{
-			Timeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutMs) * time.Millisecond,
-			),
-			IdleTimeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs) * time.Millisecond,
-			),
+			Timeout:     t.routeTimeoutOrDefault(routeTimeout, t.routerConfig.Upstream.Timeouts.RouteTimeoutMs),
+			IdleTimeout: t.routeTimeoutOrDefault(routeIdleTimeout, t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs),
 		},
 	}
 
@@ -1884,7 +1984,23 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	// "/*" catch-all (empty literal prefix) and "/" root are unaffected. See issue #2071.
 	contextWithVersion := ConstructFullPath(context, apiVersion, "")
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
-	if isRootPath {
+	if isMCPResourceRoute {
+		// MCP "/mcp" resource: the whole gateway-facing path ("<context>/mcp") maps to
+		// exactly the configured upstream URL path. We deliberately do NOT append "/mcp"
+		// to the backend, because some MCP backends serve at a different path (or root)
+		// and don't support a "/mcp" sub-path. When the upstream has no path, forward to
+		// "/".
+		mcpSubstitution := upstreamPath
+		if mcpSubstitution == "" {
+			mcpSubstitution = "/"
+		}
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
+			},
+			Substitution: mcpSubstitution,
+		}
+	} else if isRootPath {
 		// Root path ("/") matches both /ctx and /ctx/. Using a non-capturing pattern
 		// avoids an empty capture group when the trailing slash is absent, which would
 		// produce an empty rewritten path. Always normalize to upstreamPath+"/".
@@ -2156,20 +2272,26 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 
 // createALSCluster creates an Envoy cluster for the gRPC access log service
 func (t *Translator) createALSCluster() *cluster.Cluster {
-	grpcConfig := t.config.Analytics.GRPCEventServerCfg
+	grpcConfig := t.config.Collector.Server
 
 	// Build the endpoint address (UDS or TCP)
 	var address *core.Address
 
 	if grpcConfig.Mode == "tcp" {
-		// TCP mode - use host:port
+		// TCP mode - use host:port. grpcConfig.Port is a deprecated override
+		// (see its doc comment); the fixed collector.ServerPort constant is used
+		// unless a config already sets it explicitly.
+		port := collector.ServerPort
+		if grpcConfig.Port != 0 {
+			port = grpcConfig.Port
+		}
 		address = &core.Address{
 			Address: &core.Address_SocketAddress{
 				SocketAddress: &core.SocketAddress{
 					Protocol: core.SocketAddress_TCP,
 					Address:  t.config.Router.PolicyEngine.Host,
 					PortSpecifier: &core.SocketAddress_PortValue{
-						PortValue: uint32(grpcConfig.Port),
+						PortValue: uint32(port),
 					},
 				},
 			},
@@ -2785,8 +2907,8 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 		},
 	})
 
-	// If gRPC access log is enabled, create the configuration and append to existing access logs
-	if t.config.Analytics.Enabled {
+	// If the collector is active, create the gRPC access log config and append to existing access logs
+	if t.config.IsCollectorEnabled() {
 		t.logger.Info("Creating gRPC access log configuration")
 		grpcAccessLog, err := t.createGRPCAccessLog()
 		if err != nil {
@@ -2802,8 +2924,8 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 
 // createGRPCAccessLog creates a gRPC access log configuration for the gateway controller
 func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
-	grpcConfig := t.config.Analytics.GRPCEventServerCfg
-	bufferSizeBytes, err := checkedUInt32FromPositiveInt("analytics.grpc_event_server.buffer_size_bytes", grpcConfig.BufferSizeBytes)
+	grpcConfig := t.config.Collector.Server
+	bufferSizeBytes, err := checkedUInt32FromPositiveInt("collector.server.buffer_size_bytes", grpcConfig.BufferSizeBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -2831,11 +2953,100 @@ func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
 	}
 
 	return &accesslog.AccessLog{
-		Name: "envoy.access_loggers.http_grpc",
+		Name:   "envoy.access_loggers.http_grpc",
+		Filter: buildIgnorePathsAccessLogFilter(t.config.Collector.IgnorePathPrefixes),
 		ConfigType: &accesslog.AccessLog_TypedConfig{
 			TypedConfig: grpcAccessLogAny,
 		},
 	}, nil
+}
+
+// envoyOriginalPathHeader is the header Envoy's router sets to the pre-rewrite,
+// client-facing path whenever a route applies a path rewrite (PrefixRewrite/
+// RegexRewrite) — which every proxied API route in this gateway does, for
+// context-path stripping. buildIgnorePathsAccessLogFilter matches against this
+// header rather than :path so that collector.ignore_path_prefixes is evaluated
+// against what the client actually called, not the rewritten backend path.
+const envoyOriginalPathHeader = "x-envoy-original-path"
+
+// buildIgnorePathsAccessLogFilter builds an Envoy AccessLogFilter that suppresses
+// the ALS access-log entry entirely for requests whose client-facing path matches
+// one of the configured prefixes, so the policy-engine never receives them (no
+// analytics event, no traffic-log line). Returns nil (no filter, log everything)
+// when no usable prefixes are configured.
+func buildIgnorePathsAccessLogFilter(prefixes []string) *accesslog.AccessLogFilter {
+	filters := make([]*accesslog.AccessLogFilter, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		prefix = strings.TrimSpace(prefix)
+		if prefix == "" {
+			continue
+		}
+		filters = append(filters, notEffectivelyMatchesPrefix(prefix))
+	}
+	switch len(filters) {
+	case 0:
+		return nil
+	case 1:
+		return filters[0]
+	default:
+		return &accesslog.AccessLogFilter{
+			FilterSpecifier: &accesslog.AccessLogFilter_AndFilter{
+				AndFilter: &accesslog.AndFilter{Filters: filters},
+			},
+		}
+	}
+}
+
+// notEffectivelyMatchesPrefix builds the per-prefix filter: OR(origAbsent,
+// origDoesNotMatch) — i.e. suppress the log entry (filter evaluates false) only
+// when x-envoy-original-path is present AND matches the prefix; log (filter
+// evaluates true) in every other case, including when the header is absent
+// entirely. There is deliberately no fallback to matching bare :path: without
+// the original-path header we cannot distinguish a route that genuinely never
+// rewrites (where :path is the real client path) from an upstream/backend path
+// that merely happens to share the prefix, so we always log rather than risk a
+// false-positive suppression of legitimate traffic.
+func notEffectivelyMatchesPrefix(prefix string) *accesslog.AccessLogFilter {
+	origAbsent := headerPresentFilter(envoyOriginalPathHeader, false)
+	origDoesNotMatch := headerPrefixFilter(envoyOriginalPathHeader, prefix, true)
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_OrFilter{
+			OrFilter: &accesslog.OrFilter{
+				Filters: []*accesslog.AccessLogFilter{origAbsent, origDoesNotMatch},
+			},
+		},
+	}
+}
+
+// headerPrefixFilter builds an AccessLogFilter matching (or, when invert is
+// true, not matching) a header's value against a prefix.
+func headerPrefixFilter(headerName, prefix string, invert bool) *accesslog.AccessLogFilter {
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_HeaderFilter{
+			HeaderFilter: &accesslog.HeaderFilter{
+				Header: &route.HeaderMatcher{
+					Name:                 headerName,
+					InvertMatch:          invert,
+					HeaderMatchSpecifier: &route.HeaderMatcher_PrefixMatch{PrefixMatch: prefix},
+				},
+			},
+		},
+	}
+}
+
+// headerPresentFilter builds an AccessLogFilter matching whether a header is
+// present (present=true) or absent (present=false).
+func headerPresentFilter(headerName string, present bool) *accesslog.AccessLogFilter {
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_HeaderFilter{
+			HeaderFilter: &accesslog.HeaderFilter{
+				Header: &route.HeaderMatcher{
+					Name:                 headerName,
+					HeaderMatchSpecifier: &route.HeaderMatcher_PresentMatch{PresentMatch: present},
+				},
+			},
+		},
+	}
 }
 
 // createTracingConfig creates tracing configuration for HCM if tracing is enabled
@@ -3032,6 +3243,68 @@ func parseTimeout(timeoutStr *string) (*time.Duration, error) {
 	}
 
 	return &duration, nil
+}
+
+// parseDurationAllowZero parses a duration string (e.g. "15s", "0s") into a *time.Duration.
+// Unlike parseTimeout it accepts zero ("0s" means the timeout is explicitly disabled). The format
+// is enforced against constants.ResilienceDurationPattern so this downstream parser stays
+// consistent with the CRD admission controller and the management-API validator: compound
+// ("1h30m"), negative ("-30s"), and unitless ("0") values are rejected. Returns nil for nil/empty.
+func parseDurationAllowZero(timeoutStr *string) (*time.Duration, error) {
+	if timeoutStr == nil || strings.TrimSpace(*timeoutStr) == "" {
+		return nil, nil
+	}
+
+	s := strings.TrimSpace(*timeoutStr)
+	if !constants.ResilienceDurationRegex.MatchString(s) {
+		return nil, fmt.Errorf("invalid timeout format %q: expected a single-unit duration like \"30s\", \"500ms\", or \"0s\" to disable", s)
+	}
+
+	duration, err := time.ParseDuration(s)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timeout format: %w", err)
+	}
+
+	return &duration, nil
+}
+
+// ResolveResilience parses a resilience block into route timeout and idle-timeout durations.
+// A nil block, or unset fields, yield nil durations (meaning "use the global default").
+// "0s" yields a non-nil zero duration (meaning "explicitly disabled").
+func ResolveResilience(r *api.Resilience) (timeout *time.Duration, idleTimeout *time.Duration, err error) {
+	if r == nil {
+		return nil, nil, nil
+	}
+	if timeout, err = parseDurationAllowZero(r.Timeout); err != nil {
+		return nil, nil, fmt.Errorf("invalid resilience.timeout: %w", err)
+	}
+	if idleTimeout, err = parseDurationAllowZero(r.IdleTimeout); err != nil {
+		return nil, nil, fmt.Errorf("invalid resilience.idleTimeout: %w", err)
+	}
+	return timeout, idleTimeout, nil
+}
+
+// combineRouteResilience returns a resolvedTimeout for a single route, preserving the
+// upstream connect timeout from base and applying the effective route/idle timeouts
+// (operation-level overriding API-level, per field). It returns base unchanged when no
+// resilience is configured at either level.
+func combineRouteResilience(base *resolvedTimeout, apiTimeout, apiIdle, opTimeout, opIdle *time.Duration) *resolvedTimeout {
+	effTimeout := opTimeout
+	if effTimeout == nil {
+		effTimeout = apiTimeout
+	}
+	effIdle := opIdle
+	if effIdle == nil {
+		effIdle = apiIdle
+	}
+	if effTimeout == nil && effIdle == nil {
+		return base
+	}
+	rt := resolvedTimeout{Route: effTimeout, Idle: effIdle}
+	if base != nil {
+		rt.Connect = base.Connect
+	}
+	return &rt
 }
 
 // resolveTimeoutFromDefinition converts an UpstreamDefinition's timeout block into a resolvedTimeout.

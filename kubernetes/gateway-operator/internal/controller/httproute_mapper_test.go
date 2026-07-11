@@ -89,7 +89,7 @@ func TestBuildAPIConfigFromHTTPRoute(t *testing.T) {
 	require.Len(t, spec.Operations, 1)
 	// PathPrefix "/api/hello" must emit a prefix route ("/*" suffix), not an Exact path.
 	require.Equal(t, "/api/hello/*", spec.Operations[0].Path)
-	require.Equal(t, "http://backend.default.svc.cluster.local:8080", spec.Upstream.Main.Url)
+	require.Equal(t, strPtr("http://backend.default.svc.cluster.local:8080"), spec.Upstream.Main.Url)
 }
 
 // TestBuildAPIConfigFromHTTPRoute_PathMatchType pins the issue #2021 fix: the mapper must honor
@@ -563,7 +563,7 @@ func TestBuildAPIConfigFromHTTPRoute_CrossNamespaceReferenceGrant(t *testing.T) 
 		cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(svc, route, grant).Build()
 		spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "cluster.local", nil)
 		require.NoError(t, err)
-		require.Equal(t, "http://backend.data.svc.cluster.local:8080", spec.Upstream.Main.Url)
+		require.Equal(t, strPtr("http://backend.data.svc.cluster.local:8080"), spec.Upstream.Main.Url)
 	})
 
 	t.Run("name-scoped grant must match service", func(t *testing.T) {
@@ -818,11 +818,11 @@ func TestBuildAPIConfigFromHTTPRoute_CustomClusterDomain(t *testing.T) {
 
 	spec, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, "example.k8s.local", nil)
 	require.NoError(t, err)
-	require.Equal(t, "http://backend.default.svc.example.k8s.local:8080", spec.Upstream.Main.Url)
+	require.Equal(t, strPtr("http://backend.default.svc.example.k8s.local:8080"), spec.Upstream.Main.Url)
 
 	spec2, err := BuildAPIConfigFromHTTPRoute(context.Background(), cl, route, ".cluster.local.", nil)
 	require.NoError(t, err)
-	require.Equal(t, "http://backend.default.svc.cluster.local:8080", spec2.Upstream.Main.Url)
+	require.Equal(t, strPtr("http://backend.default.svc.cluster.local:8080"), spec2.Upstream.Main.Url)
 }
 
 func TestDefaultHTTPRouteAPIHandle(t *testing.T) {

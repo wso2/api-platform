@@ -355,7 +355,7 @@ CREATE TABLE dbo.llm_provider_templates (
     handle VARCHAR(40) NOT NULL,
     group_id VARCHAR(40) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
-    managed_by VARCHAR(255) NOT NULL DEFAULT 'customer',
+    managed_by VARCHAR(255) NOT NULL DEFAULT 'organization',
     version VARCHAR(30) NOT NULL DEFAULT 'v1.0',
     description VARCHAR(1023),
     configuration VARBINARY(MAX) NOT NULL,

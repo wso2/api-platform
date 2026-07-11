@@ -166,6 +166,8 @@ const (
 	PolicyManagedByWSO2     = "wso2"
 )
 
+const TemplateManagedByOrganization = "organization"
+
 // ValidPolicyManagedBy holds accepted values for the managed_by field on gateway custom policies
 var ValidPolicyManagedBy = map[string]bool{
 	PolicyManagedByCustomer: true,

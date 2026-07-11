@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/kubernetes/gateway-operator
 
-go 1.26.2
+go 1.26.5
 
 require (
 	github.com/go-logr/zapr v1.3.0

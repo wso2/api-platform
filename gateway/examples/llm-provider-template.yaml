@@ -22,6 +22,9 @@ metadata:
   name: my-llm-provider-template
 spec:
   displayName: OpenAI
+  groupId: openai
+  managedBy: wso2
+  version: v1.0
   promptTokens:
     location: payload
     identifier: $.usage.inputTokens

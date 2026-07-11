@@ -808,7 +808,7 @@ type CreateLLMProviderTemplateVersionRequest struct {
 	// value renames the template family.
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
-	// ManagedBy Identifies who manages the template. Custom templates default to 'customer'.
+	// ManagedBy Identifies who manages the template. Custom templates default to 'organization'.
 	ManagedBy *string                      `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 	Metadata  *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
@@ -1439,7 +1439,7 @@ type LLMProviderTemplate struct {
 	IsLatest *bool `json:"isLatest,omitempty" yaml:"isLatest,omitempty"`
 
 	// ManagedBy Identifies who manages the template. Built-in templates use 'wso2';
-	// custom templates default to 'customer' and may be set to any value.
+	// custom templates default to 'organization' and may be set to any value.
 	ManagedBy *string                      `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 	Metadata  *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 

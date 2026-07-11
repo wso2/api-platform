@@ -180,6 +180,21 @@ spec:
                 required:
                 - id
                 type: object
+              resilience:
+                description: |-
+                  Resilience configures API-level backend/route timeouts applied to all routes
+                  generated for this LLM proxy. Supported at the API level only.
+                properties:
+                  idleTimeout:
+                    description: IdleTimeout Per-route stream idle timeout. "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                  timeout:
+                    description: Timeout Maximum time for the entire route (request
+                      to upstream response). "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                type: object
               version:
                 description: Version is the semantic version of the LLM proxy.
                 pattern: ^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$

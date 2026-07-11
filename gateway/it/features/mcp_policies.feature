@@ -38,7 +38,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpnonexistingpolicy
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: non-existing-policy
                   version: v1
@@ -65,7 +65,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpauth
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-auth
                   version: v1
@@ -108,7 +108,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpvalidtoken
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-auth
                   version: v1
@@ -148,7 +148,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcptoolsonly
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-auth
                   version: v1
@@ -195,7 +195,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpauthz
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-auth
                   version: v1
@@ -253,7 +253,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpauthzvalidtoken
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-auth
                   version: v1
@@ -304,7 +304,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpacl
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-acl-list
                   version: v1
@@ -344,7 +344,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpacl
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-acl-list
                   version: v1
@@ -389,7 +389,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcprewrite
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-rewrite
                   version: v1
@@ -453,7 +453,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpratelimittool
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-ratelimit
                   version: v1
@@ -520,7 +520,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpratelimitmethod
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: mcp-ratelimit
                   version: v1
@@ -587,7 +587,7 @@ Feature: Test how MCP Proxies behave when various policies are applied.
               context: /mcpcors
               specVersion: "2025-06-18"
               upstream:
-                url: http://mcp-server-backend:3001
+                url: http://mcp-server-backend:3001/mcp
               policies:
                 - name: cors
                   version: v1

@@ -340,6 +340,7 @@ export default function ServiceProvidersSummaryCard({
                       width: '100%',
                       p: 0,
                       alignItems: 'center',
+                      minHeight: '3.75rem',
                     },
                     '& .MuiCardHeader-content': {
                       minWidth: 0,
@@ -389,14 +390,16 @@ export default function ServiceProvidersSummaryCard({
                     }
                     subheader={
                       <Box sx={{ minWidth: 0, mt: 0.25 }}>
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          fontSize="0.75rem"
-                          sx={{ mb: 0.25 }}
-                        >
-                          {truncateText(descriptionText, 70)}
-                        </Typography>
+                        {descriptionText && (
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            fontSize="0.75rem"
+                            sx={{ mb: 0.25 }}
+                          >
+                            {truncateText(descriptionText, 70)}
+                          </Typography>
+                        )}
 
                         {templateDisplayName && (
                           <Stack
