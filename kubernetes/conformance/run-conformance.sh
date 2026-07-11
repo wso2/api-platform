@@ -8,7 +8,7 @@
 # Gateways of the GatewayClass below, applies HTTPRoutes + backends, then sends
 # real requests to the MetalLB-assigned Gateway address.
 #
-# The suite is consumed as a Go module dependency (conformance-report/runner),
+# The suite is consumed as a Go module dependency (kubernetes/conformance/runner),
 # NOT from a clone of the kubernetes-sigs/gateway-api repo — its test manifests are
 # embedded in the module, so `go test` resolves everything from the module cache.
 #
@@ -21,7 +21,6 @@
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER_DIR="${SCRIPT_DIR}/runner"
 

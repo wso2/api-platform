@@ -25,7 +25,8 @@
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# This script lives at kubernetes/conformance/, so the repo root is two levels up.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 OPERATOR_CHART="${OPERATOR_CHART:-${REPO_ROOT}/kubernetes/helm/operator-helm-chart}"
 OPERATOR_NS="${OPERATOR_NS:-gateway-system}"
@@ -129,10 +130,10 @@ helm upgrade --install gateway-operator "${OPERATOR_CHART}" \
   --set image.tag=0.8.1-SNAPSHOT \
   --set image.pullPolicy=IfNotPresent \
   --set gateway.values.gateway.controller.image.repository=ghcr.io/wso2/api-platform/gateway-controller \
-  --set gateway.values.gateway.controller.image.tag=1.2.0-SNAPSHOT \
+  --set gateway.values.gateway.controller.image.tag=1.2.0-M2-SNAPSHOT \
   --set gateway.values.gateway.controller.image.pullPolicy=IfNotPresent \
   --set gateway.values.gateway.gatewayRuntime.image.repository=ghcr.io/wso2/api-platform/gateway-runtime \
-  --set gateway.values.gateway.gatewayRuntime.image.tag=1.2.0-SNAPSHOT \
+  --set gateway.values.gateway.gatewayRuntime.image.tag=1.2.0-M2-SNAPSHOT \
   --set gateway.values.gateway.gatewayRuntime.image.pullPolicy=IfNotPresent \
   --set gateway.values.gateway.config.controller.storage.type=memory \
   --set gateway.values.gateway.controller.storage.type=sqlite \

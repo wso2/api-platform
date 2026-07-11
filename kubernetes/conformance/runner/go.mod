@@ -1,4 +1,4 @@
-module github.com/wso2/api-platform/conformance-report/runner
+module github.com/wso2/api-platform/kubernetes/conformance/runner
 
 go 1.26.2
 

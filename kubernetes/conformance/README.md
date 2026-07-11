@@ -38,23 +38,26 @@ cd ../..
 
 This produces:
 
-- `ghcr.io/wso2/api-platform/gateway-controller:1.2.0-SNAPSHOT`
-- `ghcr.io/wso2/api-platform/gateway-runtime:1.2.0-SNAPSHOT`
+- `ghcr.io/wso2/api-platform/gateway-controller:1.2.0-M2-SNAPSHOT`
+- `ghcr.io/wso2/api-platform/gateway-runtime:1.2.0-M2-SNAPSHOT`
 - `ghcr.io/wso2/api-platform/gateway-operator:0.8.1-SNAPSHOT`
+
+The controller/runtime tag comes from `gateway/VERSION` and the operator tag from the
+operator `Makefile`; `load-images.sh` (step 3) derives the same values automatically.
 
 ### 3. Create the KinD cluster with MetalLB and load the images
 
 ```sh
-cd conformance-report
+cd kubernetes/conformance
 ./kind/setup-kind.sh          # macOS + Colima: use ./kind/setup-colima.sh instead
-
-for img in \
-  ghcr.io/wso2/api-platform/gateway-controller:1.2.0-SNAPSHOT \
-  ghcr.io/wso2/api-platform/gateway-runtime:1.2.0-SNAPSHOT \
-  ghcr.io/wso2/api-platform/gateway-operator:0.8.1-SNAPSHOT; do
-  kind load docker-image "$img" --name wso2-conformance
-done
+./load-images.sh              # loads the images built in step 2 into the cluster
 ```
+
+`load-images.sh` derives the image tags from the same source of truth as the build
+(`gateway/VERSION` and the operator `Makefile`), verifies each image exists in the local
+Docker daemon, then `kind load`s all three into the cluster. It fails fast with a clear
+message if an image was not built. Override the cluster name or tags via the
+`CLUSTER_NAME`, `GW_VERSION`, and `OPERATOR_VERSION` environment variables.
 
 MetalLB gives the operator-provisioned gateway-runtime LoadBalancer Service a
 routable address the suite can reach. See `README.md` for why this is needed and
