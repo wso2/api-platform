@@ -62,8 +62,13 @@ type Route struct {
 }
 
 // RouteTimeout holds parsed timeout values for a route.
+// Timeout and IdleTimeout come from the resilience block (operation-level overriding
+// API-level). A nil field means "not configured" — the global route timeout default
+// applies. A non-nil zero value means "explicitly disabled".
 type RouteTimeout struct {
-	Connect *time.Duration
+	Connect     *time.Duration
+	Timeout     *time.Duration // route timeout -> RouteAction.Timeout
+	IdleTimeout *time.Duration // route idle timeout -> RouteAction.IdleTimeout
 }
 
 // RouteUpstream links a route to its upstream cluster.

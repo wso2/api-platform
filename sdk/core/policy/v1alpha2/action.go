@@ -43,6 +43,7 @@ type UpstreamRequestHeaderModifications struct {
 	// These are valid at the header phase because routing decisions do not require
 	// the request body to be available.
 	UpstreamName            *string             // route to a named upstream definition (nil = no change)
+	UpstreamSlot            *UpstreamSlot       // route to the API's main or sandbox upstream slot instead of the slot implied by the current vhost (nil = no change); requesting a slot the API doesn't have configured is a no-op (logged, not an error)
 	Path                    *string             // rewrite the request path (nil = no change)
 	Host                    *string             // rewrite the :authority header (nil = no change)
 	Method                  *string             // rewrite the request method (nil = no change)
@@ -113,6 +114,7 @@ type UpstreamRequestModifications struct {
 
 	// Routing mutations — applied before the request is forwarded to upstream.
 	UpstreamName            *string             // route to a named upstream definition (nil = no change)
+	UpstreamSlot            *UpstreamSlot       // route to the API's main or sandbox upstream slot instead of the slot implied by the current vhost (nil = no change); requesting a slot the API doesn't have configured is a no-op (logged, not an error)
 	Path                    *string             // rewrite the request path (nil = no change)
 	Host                    *string             // rewrite the :authority header (nil = no change)
 	Method                  *string             // rewrite the request method (nil = no change)

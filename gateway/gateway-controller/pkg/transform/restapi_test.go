@@ -21,6 +21,7 @@ package transform
 import (
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -82,6 +83,79 @@ func makeRestAPIStoredConfig(apiPolicies []api.Policy, opPolicies []api.Policy) 
 		Kind:          string(api.RestAPIKindRestApi),
 		Configuration: restAPI,
 	}
+}
+
+// makeRestAPIStoredConfigWithResilience builds a RestAPI StoredConfig whose single
+// operation (GET /hello) carries optional API-level and operation-level resilience blocks.
+func makeRestAPIStoredConfigWithResilience(apiRes, opRes *api.Resilience) *models.StoredConfig {
+	apiData := api.APIConfigData{
+		DisplayName: "Test API",
+		Context:     "/test",
+		Version:     "1.0.0",
+		Resilience:  apiRes,
+		Operations: []api.Operation{
+			{Method: "GET", Path: "/hello", Resilience: opRes},
+		},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{Url: ptrStr("http://backend:8080")},
+		},
+	}
+	return &models.StoredConfig{
+		UUID:          "test-api",
+		Kind:          string(api.RestAPIKindRestApi),
+		Configuration: api.RestAPI{Kind: api.RestAPIKindRestApi, Metadata: api.Metadata{Name: "test-api"}, Spec: apiData},
+	}
+}
+
+func TestRestAPITransformer_ResiliencePrecedence(t *testing.T) {
+	const routeKey = "GET|/test/hello|main.local"
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+
+	t.Run("operation-level overrides API-level", func(t *testing.T) {
+		cfg := makeRestAPIStoredConfigWithResilience(
+			&api.Resilience{Timeout: ptrStr("10s"), IdleTimeout: ptrStr("30s")},
+			&api.Resilience{Timeout: ptrStr("2s")},
+		)
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		rt := rdc.Routes[routeKey].Timeout
+		require.NotNil(t, rt)
+		require.NotNil(t, rt.Timeout)
+		assert.Equal(t, 2*time.Second, *rt.Timeout, "operation timeout should win")
+		require.NotNil(t, rt.IdleTimeout)
+		assert.Equal(t, 30*time.Second, *rt.IdleTimeout, "idleTimeout falls back to API-level when op omits it")
+	})
+
+	t.Run("API-level applies when operation omits resilience", func(t *testing.T) {
+		cfg := makeRestAPIStoredConfigWithResilience(&api.Resilience{Timeout: ptrStr("7s")}, nil)
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		rt := rdc.Routes[routeKey].Timeout
+		require.NotNil(t, rt)
+		require.NotNil(t, rt.Timeout)
+		assert.Equal(t, 7*time.Second, *rt.Timeout)
+		assert.Nil(t, rt.IdleTimeout)
+	})
+
+	t.Run("no resilience leaves Timeout nil (global default applies)", func(t *testing.T) {
+		cfg := makeRestAPIStoredConfigWithResilience(nil, nil)
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		assert.Nil(t, rdc.Routes[routeKey].Timeout)
+	})
+
+	t.Run("0s is preserved as explicit disable", func(t *testing.T) {
+		cfg := makeRestAPIStoredConfigWithResilience(&api.Resilience{Timeout: ptrStr("0s")}, nil)
+		rdc, err := transformer.Transform(cfg)
+		require.NoError(t, err)
+		rt := rdc.Routes[routeKey].Timeout
+		require.NotNil(t, rt)
+		require.NotNil(t, rt.Timeout)
+		assert.Equal(t, time.Duration(0), *rt.Timeout)
+	})
 }
 
 // findPolicyInChain returns true if any policy chain for the given route key

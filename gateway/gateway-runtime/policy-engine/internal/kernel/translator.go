@@ -387,7 +387,43 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 					},
 				},
 			}
-			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
+			// Preserve request-header-phase analytics metadata from policies that
+			// executed before the short-circuit (e.g. request headers captured by
+			// the collector system policy) so an immediate response like a 401
+			// still carries it to the ALS access log. Without this, a
+			// short-circuiting policy (auth) drops the metadata of any earlier
+			// policy and the global traffic-logging publisher's line for that
+			// denied request would be missing it. Mirrors translateRequestActionsCore's
+			// short-circuit path.
+			shortCircuitAnalyticsData := make(map[string]any)
+			for key, value := range execCtx.analyticsMetadata {
+				shortCircuitAnalyticsData[key] = value
+			}
+			for _, policyResult := range result.Results {
+				if policyResult.Skipped || policyResult.Action == nil {
+					continue
+				}
+				mods, ok := policyResult.Action.(policy.UpstreamRequestHeaderModifications)
+				if !ok {
+					continue
+				}
+				if mods.AnalyticsMetadata != nil {
+					for key, value := range mods.AnalyticsMetadata {
+						shortCircuitAnalyticsData[key] = value
+					}
+				}
+				dropAction := mods.AnalyticsHeaderFilter
+				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
+					originalHeaders := execCtx.requestBodyCtx.Headers.GetAll()
+					shortCircuitAnalyticsData["request_headers"] = finalizeAnalyticsHeaders(dropAction, originalHeaders)
+				}
+			}
+			if immResp.AnalyticsMetadata != nil {
+				for key, value := range immResp.AnalyticsMetadata {
+					shortCircuitAnalyticsData[key] = value
+				}
+			}
+			analyticsStruct, err := buildAnalyticsStruct(shortCircuitAnalyticsData, execCtx)
 			if err != nil {
 				return nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
 			}

@@ -70,6 +70,7 @@ type LLMProxyService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
+	secretService        *SecretService
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
 	cfg                  *config.Server
@@ -137,6 +138,13 @@ func NewLLMProviderService(
 // SetSecretService injects the SecretService for placeholder validation.
 // Called after both services are constructed to avoid circular dependency.
 func (s *LLMProviderService) SetSecretService(ss *SecretService) {
+	s.secretService = ss
+}
+
+// SetSecretService injects the SecretService used to clean up a rotated-away
+// credential after Update. Called after both services are constructed to
+// avoid circular dependency.
+func (s *LLMProxyService) SetSecretService(ss *SecretService) {
 	s.secretService = ss
 }
 
@@ -873,11 +881,14 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	}
 	req.Id = &handle
 
-	// Validate {{ secret "..." }} placeholders in the upstream config
+	// Validate {{ secret "..." }} placeholders anywhere in the request — the
+	// gateway-controller's template engine resolves placeholders generically
+	// across the whole artifact (policies included), not just upstream.auth,
+	// so validation must cover the same surface.
 	if s.secretService != nil {
-		configJSON, err := marshalUpstreamForValidation(req.Upstream)
+		configJSON, err := marshalUpstreamForValidation(req)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal upstream config for secret validation: %w", err)
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
@@ -1076,11 +1087,12 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		return nil, apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
 	}
 
-	// Validate {{ secret "..." }} placeholders in the upstream config
+	// Validate {{ secret "..." }} placeholders anywhere in the request — see
+	// Create for why this covers the whole request, not just upstream.
 	if s.secretService != nil {
-		configJSON, err := marshalUpstreamForValidation(req.Upstream)
+		configJSON, err := marshalUpstreamForValidation(req)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal upstream config for secret validation: %w", err)
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
@@ -1148,6 +1160,19 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 			return nil, constants.ErrLLMProviderNotFound
 		}
 		return nil, fmt.Errorf("failed to update provider: %w", err)
+	}
+
+	// Best-effort: delete the secret the credential was rotated away from. Must
+	// run after the update above persists the new reference, so the in-use
+	// check below no longer sees this provider pointing at the old handle.
+	if s.secretService != nil {
+		s.secretService.cleanupRotatedSecret(
+			orgUUID,
+			mainUpstreamAuthValue(existing.Configuration.Upstream),
+			mainUpstreamAuthValue(m.Configuration.Upstream),
+			updatedBy,
+			s.slogger,
+		)
 	}
 
 	updated, err := s.repo.GetByID(handle, orgUUID)
@@ -1284,6 +1309,20 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		}
 	}
 	req.Id = &handle
+
+	// Validate {{ secret "..." }} placeholders anywhere in the request — the
+	// gateway-controller's template engine resolves placeholders generically
+	// across the whole artifact (policies included), not just provider.auth,
+	// so validation must cover the same surface.
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+			return nil, err
+		}
+	}
 
 	proxyCount, err := s.repo.Count(orgUUID)
 	if err != nil {
@@ -1534,6 +1573,22 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		return nil, constants.ErrLLMProviderNotFound
 	}
 
+	// Validate {{ secret "..." }} placeholders anywhere in the request. Checked
+	// against the raw request (not the post-preserve merged auth value) — an
+	// empty auth value here means "no change" and has nothing to validate; the
+	// value it will be preserved from was already validated when it was
+	// originally submitted. Covers the whole request (policies included), not
+	// just provider.auth — see Create for why.
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+			return nil, err
+		}
+	}
+
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
@@ -1590,6 +1645,19 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 			return nil, constants.ErrLLMProxyNotFound
 		}
 		return nil, fmt.Errorf("failed to update proxy: %w", err)
+	}
+
+	// Best-effort: delete the secret the credential was rotated away from. Must
+	// run after the update above persists the new reference, so the in-use
+	// check below no longer sees this proxy pointing at the old handle.
+	if s.secretService != nil {
+		s.secretService.cleanupRotatedSecret(
+			orgUUID,
+			upstreamAuthValue(existing.Configuration.UpstreamAuth),
+			upstreamAuthValue(m.Configuration.UpstreamAuth),
+			updatedBy,
+			s.slogger,
+		)
 	}
 
 	updated, err := s.repo.GetByID(handle, orgUUID)

@@ -84,14 +84,15 @@ var defaultSystemPolicies = []systemPolicyConfig{
 			if cfg == nil {
 				return false
 			}
-			slog.Debug("Analytics state -> ", "state", cfg.Analytics.Enabled)
-			return cfg.Analytics.Enabled
+			// The analytics system policy is the collector: it is injected whenever
+			// the collector is active — i.e. whenever any consumer (analytics or
+			// traffic logging) is enabled.
+			slog.Debug("Collector state -> ", "state", cfg.IsCollectorEnabled())
+			return cfg.IsCollectorEnabled()
 		},
-		// Default parameters (can be overridden via additionalProps)
-		Parameters: map[string]interface{}{
-			"send_request_body":  false,
-			"send_response_body": false,
-		},
+		// No static defaults — all four capture flags are set at injection time
+		// from cfg.Collector (see InjectSystemPolicies below).
+		Parameters: nil,
 		ExecutionCondition: nil,
 	},
 }
@@ -197,10 +198,13 @@ func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.
 			for k, v := range sysPol.Parameters {
 				effectiveDefaults[k] = v
 			}
-			// For the analytics system policy, propagate the payload flags from runtime config.
+			// For the analytics (collector) system policy, propagate the payload and
+			// header capture flags from the collector config.
 			if sysPol.Name == constants.ANALYTICS_SYSTEM_POLICY_NAME {
-				effectiveDefaults["send_request_body"] = cfg.Analytics.SendRequestBody
-				effectiveDefaults["send_response_body"] = cfg.Analytics.SendResponseBody
+				effectiveDefaults["request_body"] = cfg.Collector.RequestBody
+				effectiveDefaults["response_body"] = cfg.Collector.ResponseBody
+				effectiveDefaults["request_headers"] = cfg.Collector.RequestHeaders
+				effectiveDefaults["response_headers"] = cfg.Collector.ResponseHeaders
 			}
 
 			// Merge parameters efficiently

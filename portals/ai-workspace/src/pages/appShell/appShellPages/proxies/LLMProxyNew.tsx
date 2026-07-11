@@ -355,22 +355,29 @@ function LLMProxyNewContent({
       let providerAuthValue = providerDetail?.upstream?.main?.auth?.value ?? '';
       if (selectedProviderRequiresApiKey) {
         const rawKey = manualApiKeyValue.trim() || selectedProviderApiKeyValue || '';
-        const secretHandle = generateSecretHandle();
-        const secretResponse = await createSecret({
-          id: secretHandle,
-          displayName: `${generatedId} Provider API Key`,
-          description: `Auto-generated secret for LLM proxy ${generatedId}`,
-          value: rawKey,
-          type: 'GENERIC',
-        });
-        logger.info('Created secret for LLM proxy provider auth', {
-          secretHandle: secretResponse.id,
-          proxyId: generatedId,
-        });
-        createdSecretHandle = secretResponse.id;
-        providerAuthType = 'api-key';
-        providerAuthHeader = selectedProviderApiKeyName;
-        providerAuthValue = buildSecretPlaceholder(secretResponse.id);
+        const isAlreadyPlaceholder = rawKey.includes('{{ secret ');
+        if (isAlreadyPlaceholder) {
+          providerAuthType = 'api-key';
+          providerAuthHeader = selectedProviderApiKeyName;
+          providerAuthValue = rawKey;
+        } else {
+          const secretHandle = generateSecretHandle();
+          const secretResponse = await createSecret({
+            id: secretHandle,
+            displayName: `${generatedId} Provider API Key`,
+            description: `Auto-generated secret for LLM proxy ${generatedId}`,
+            value: rawKey,
+            type: 'GENERIC',
+          });
+          logger.info('Created secret for LLM proxy provider auth', {
+            secretHandle: secretResponse.id,
+            proxyId: generatedId,
+          });
+          createdSecretHandle = secretResponse.id;
+          providerAuthType = 'api-key';
+          providerAuthHeader = selectedProviderApiKeyName;
+          providerAuthValue = buildSecretPlaceholder(secretResponse.id);
+        }
       }
 
       const payload: CreateProxyRequest = {

@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
@@ -472,13 +473,13 @@ func TestMCPValidator_ValidateUpstream(t *testing.T) {
 			name:      "Nil URL",
 			upstream:  &api.MCPProxyConfigData_Upstream{Url: nil},
 			wantError: true,
-			errField:  "spec.upstream.url",
+			errField:  "spec.upstream",
 		},
 		{
 			name:      "Empty URL",
 			upstream:  &api.MCPProxyConfigData_Upstream{Url: stringPtr("")},
 			wantError: true,
-			errField:  "spec.upstream.url",
+			errField:  "spec.upstream",
 		},
 		{
 			name:      "Invalid URL scheme",
@@ -655,4 +656,122 @@ func TestMCPValidator_ValidateUpstreamAuth(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ============================================================================
+// Upstream ref validation
+// ============================================================================
+
+func mcpWithUpstream(defs *[]api.UpstreamDefinition, up api.MCPProxyConfigData_Upstream) api.MCPProxyConfiguration {
+	ctx := "/everything"
+	specVersion := constants.SPEC_VERSION_2025_JUNE
+	return api.MCPProxyConfiguration{
+		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.MCPProxyConfigurationKindMcp,
+		Metadata:   api.Metadata{Name: "everything"},
+		Spec: api.MCPProxyConfigData{
+			DisplayName:         "Everything",
+			Version:             "v1.0",
+			Context:             &ctx,
+			SpecVersion:         &specVersion,
+			UpstreamDefinitions: defs,
+			Upstream:            up,
+		},
+	}
+}
+
+func TestValidateMCP_UpstreamRef(t *testing.T) {
+	validator := NewMCPValidator()
+
+	t.Run("valid ref resolves to a definition", func(t *testing.T) {
+		defs := &[]api.UpstreamDefinition{upstreamDef("mcp-backend", "6s")}
+		errs := validator.Validate(mcpWithUpstream(defs, api.MCPProxyConfigData_Upstream{Ref: stringPtr("mcp-backend")}))
+		assert.Empty(t, errs)
+	})
+
+	t.Run("ref not found in definitions", func(t *testing.T) {
+		defs := &[]api.UpstreamDefinition{upstreamDef("other", "6s")}
+		errs := validator.Validate(mcpWithUpstream(defs, api.MCPProxyConfigData_Upstream{Ref: stringPtr("missing")}))
+		assertHasFieldError(t, errs, "spec.upstream.ref")
+	})
+
+	t.Run("both url and ref rejected", func(t *testing.T) {
+		defs := &[]api.UpstreamDefinition{upstreamDef("mcp-backend", "6s")}
+		errs := validator.Validate(mcpWithUpstream(defs, api.MCPProxyConfigData_Upstream{
+			Url: stringPtr("http://backend:8080"),
+			Ref: stringPtr("mcp-backend"),
+		}))
+		assertHasFieldError(t, errs, "spec.upstream")
+	})
+
+	t.Run("malformed connect timeout rejected (must match CRD pattern)", func(t *testing.T) {
+		defs := &[]api.UpstreamDefinition{upstreamDef("mcp-backend", "1h30m")}
+		errs := validator.Validate(mcpWithUpstream(defs, api.MCPProxyConfigData_Upstream{Ref: stringPtr("mcp-backend")}))
+		assertHasFieldError(t, errs, "spec.upstreamDefinitions[0].timeout.connect")
+	})
+
+	t.Run("valid connect timeout accepted", func(t *testing.T) {
+		defs := &[]api.UpstreamDefinition{upstreamDef("mcp-backend", "5s")}
+		errs := validator.Validate(mcpWithUpstream(defs, api.MCPProxyConfigData_Upstream{Ref: stringPtr("mcp-backend")}))
+		assert.Empty(t, errs)
+	})
+}
+
+// ============================================================================
+// Resilience validation
+// ============================================================================
+
+func mcpWithResilience(r *api.Resilience) api.MCPProxyConfiguration {
+	ctx := "/everything"
+	specVersion := constants.SPEC_VERSION_2025_JUNE
+	return api.MCPProxyConfiguration{
+		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.MCPProxyConfigurationKindMcp,
+		Metadata:   api.Metadata{Name: "everything"},
+		Spec: api.MCPProxyConfigData{
+			DisplayName: "Everything",
+			Version:     "v1.0",
+			Context:     &ctx,
+			SpecVersion: &specVersion,
+			Upstream:    api.MCPProxyConfigData_Upstream{Url: stringPtr("http://backend:3001")},
+			Resilience:  r,
+		},
+	}
+}
+
+func TestValidateMCP_Resilience(t *testing.T) {
+	validator := NewMCPValidator()
+
+	t.Run("valid timeout and idleTimeout", func(t *testing.T) {
+		errs := validator.Validate(mcpWithResilience(&api.Resilience{
+			Timeout:     stringPtr("30s"),
+			IdleTimeout: stringPtr("0s"),
+		}))
+		assert.Empty(t, errs)
+	})
+
+	t.Run("nil resilience is fine (defaults applied downstream)", func(t *testing.T) {
+		errs := validator.Validate(mcpWithResilience(nil))
+		assert.Empty(t, errs)
+	})
+
+	t.Run("0s is accepted (explicit disable)", func(t *testing.T) {
+		errs := validator.Validate(mcpWithResilience(&api.Resilience{Timeout: stringPtr("0s")}))
+		assert.Empty(t, errs)
+	})
+
+	t.Run("malformed timeout is rejected", func(t *testing.T) {
+		errs := validator.Validate(mcpWithResilience(&api.Resilience{Timeout: stringPtr("30")}))
+		assertHasFieldError(t, errs, "spec.resilience.timeout")
+	})
+
+	t.Run("compound timeout is rejected (must match CRD pattern)", func(t *testing.T) {
+		errs := validator.Validate(mcpWithResilience(&api.Resilience{Timeout: stringPtr("1h30m")}))
+		assertHasFieldError(t, errs, "spec.resilience.timeout")
+	})
+
+	t.Run("negative idleTimeout is rejected", func(t *testing.T) {
+		errs := validator.Validate(mcpWithResilience(&api.Resilience{IdleTimeout: stringPtr("-5s")}))
+		assertHasFieldError(t, errs, "spec.resilience.idleTimeout")
+	})
 }

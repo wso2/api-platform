@@ -3,7 +3,7 @@ module github.com/wso2/api-platform/platform-api
 go 1.26.5
 
 require (
-	github.com/go-playground/validator/v10 v10.29.0
+	github.com/go-playground/validator/v10 v10.30.1
 	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
@@ -16,6 +16,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.41
 	github.com/microsoft/go-mssqldb v1.10.0
 	github.com/oapi-codegen/runtime v1.1.2
+	github.com/pb33f/libopenapi v0.28.2
 	github.com/stretchr/testify v1.11.1
 	github.com/wso2/api-platform/common v0.0.0
 	github.com/wso2/go-httpkit v0.0.0-local

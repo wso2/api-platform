@@ -85,6 +85,12 @@ func createBaseEvent() *dto.Event {
 		Latencies: &dto.Latencies{
 			ResponseLatency: 100,
 		},
+		TrafficLogLatencies: &dto.TrafficLogLatencies{
+			DurationUs:                 250000,
+			RequestMediationLatencyUs:  50000,
+			ResponseMediationLatencyUs: 30000,
+			BackendLatencyUs:           40000,
+		},
 	}
 }
 

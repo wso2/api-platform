@@ -358,7 +358,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, identityService, slogger)
 	// Wire secret placeholder validation into dependent services
 	llmProviderService.SetSecretService(secretService)
+	llmProxyService.SetSecretService(secretService)
 	mcpProxyService.WithSecretService(secretService)
+	apiService.SetSecretService(secretService)
 	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
 	// Start deployment timeout background job
 	timeoutConfig := service.DeploymentTimeoutConfig{
