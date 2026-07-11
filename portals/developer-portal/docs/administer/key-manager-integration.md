@@ -22,9 +22,10 @@ apiVersion: devportal.api-platform.wso2.com/v1alpha1
 kind: KeyManager
 
 metadata:
-  name: Asgardeo
+  name: asgardeo-prod
 
 spec:
+  displayName: Asgardeo
   enabled: true
   tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
 ```
@@ -37,7 +38,8 @@ curl -k -X POST https://localhost:3000/api/v0.9/key-managers \
 
 | Field | Required | Description |
 |---|---|---|
-| `metadata.name` | Yes | Unique display name shown to developers |
+| `metadata.name` | Yes | Unique handle for the key manager (used internally, e.g. in route segments) |
+| `spec.displayName` | Yes | Display name shown to developers |
 | `spec.tokenEndpoint` | Yes | OAuth2 token endpoint. The portal proxies `client_credentials` token requests here using the client ID/secret the developer supplies |
 | `spec.enabled` | No | Whether the key manager is active. Defaults to `true` |
 

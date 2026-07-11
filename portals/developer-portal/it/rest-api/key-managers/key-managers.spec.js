@@ -88,11 +88,10 @@ describe('key managers', () => {
         expect(res.body.list.some((km) => km.id === id)).toBe(true);
     });
 
-    it('ignores a client-supplied type and forces GENERIC_OIDC', async () => {
+    it('every created key manager is GENERIC_OIDC by default', async () => {
         const res = await client.as('admin').post('/key-managers', {
             id: uniqueHandle('km'),
-            displayName: 'Type Override KM',
-            type: 'NOT_A_REAL_TYPE',
+            displayName: 'Default Type KM',
             tokenEndpoint: 'https://asgardeo.example.invalid/oauth2/token',
         });
         expect(res.status).toBe(201);

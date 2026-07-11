@@ -143,7 +143,7 @@ const createKeyManager = async (req, res) => {
         }
         const hadExplicitHandle = !!(payload.handle && payload.handle.trim());
         const resolvedHandle = hadExplicitHandle ? payload.handle.trim() : generateHandle(payload.displayName);
-        if (hadExplicitHandle && !HANDLE_PATTERN.test(resolvedHandle)) {
+        if (!resolvedHandle || !HANDLE_PATTERN.test(resolvedHandle)) {
             return res.status(400).json({ error: "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens." });
         }
 
