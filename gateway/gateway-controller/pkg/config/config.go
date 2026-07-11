@@ -47,7 +47,7 @@ const (
 
 // defaultFileSourceAllowlist is the gateway-controller's default set of directories
 // that a {{ file "..." }} config-interpolation token may read from. It can be
-// overridden via the shared APIP__CONFIG_FILE_SOURCE_ALLOWLIST env var
+// overridden via the shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var
 // (see configinterpolate.ResolveAllowlist).
 var defaultFileSourceAllowlist = []string{
 	"/etc/gateway-controller",
@@ -788,7 +788,7 @@ func LoadConfig(configPath string) (*Config, error) {
 // config and returns a fresh koanf instance holding the expanded values. It uses a
 // new instance (rather than reloading into k) so no un-expanded leaves survive. The
 // file-source allowlist is the gateway-controller default, overridable via the
-// shared APIP__CONFIG_FILE_SOURCE_ALLOWLIST env var. Resolved values are never
+// shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var. Resolved values are never
 // logged; only reference counts are emitted at info level.
 func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
 	opts := configinterpolate.Options{

@@ -45,7 +45,7 @@ const (
 // defaultFileSourceAllowlist is the policy-engine's default set of directories that
 // a {{ file "..." }} config-interpolation token may read from. It uses the
 // operator-visible container name (gateway-runtime), and can be overridden via the
-// shared APIP__CONFIG_FILE_SOURCE_ALLOWLIST env var
+// shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var
 // (see configinterpolate.ResolveAllowlist).
 var defaultFileSourceAllowlist = []string{
 	"/etc/gateway-runtime",
@@ -401,7 +401,7 @@ func Load(configPath string) (*Config, error) {
 // config and returns a fresh koanf instance holding the expanded values. It uses a
 // new instance (rather than reloading into k) so no un-expanded leaves survive. The
 // file-source allowlist is the policy-engine default, overridable via the shared
-// APIP__CONFIG_FILE_SOURCE_ALLOWLIST env var. Resolved values are never logged; only
+// APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var. Resolved values are never logged; only
 // reference counts are emitted at info level.
 func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
 	opts := configinterpolate.Options{

@@ -27,7 +27,7 @@ import (
 // that overrides the {{ file }} source-directory allowlist. It is read directly
 // (not through any koanf prefix mapping) because the allowlist gates config
 // interpolation itself and so cannot live in config.toml (chicken-and-egg).
-const EnvFileSourceAllowlist = "APIP__CONFIG_FILE_SOURCE_ALLOWLIST"
+const EnvFileSourceAllowlist = "APIP_CONFIG_FILE_SOURCE_ALLOWLIST"
 
 // ResolveAllowlist returns the effective file-source allowlist for a component.
 // When EnvFileSourceAllowlist is set to a non-empty value, its comma-separated
