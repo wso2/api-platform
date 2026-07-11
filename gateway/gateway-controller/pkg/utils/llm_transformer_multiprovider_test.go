@@ -122,7 +122,8 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsCondition
 
 	var chatOp *api.Operation
 	for i := range result.Spec.Operations {
-		if result.Spec.Operations[i].Path == "/chat/completions" && result.Spec.Operations[i].Method == "POST" {
+		if result.Spec.Operations[i].Path != nil && *result.Spec.Operations[i].Path == "/chat/completions" &&
+			result.Spec.Operations[i].Method != nil && *result.Spec.Operations[i].Method == api.OperationMethod("POST") {
 			chatOp = &result.Spec.Operations[i]
 			break
 		}
