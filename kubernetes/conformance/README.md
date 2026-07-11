@@ -60,8 +60,9 @@ message if an image was not built. Override the cluster name or tags via the
 `CLUSTER_NAME`, `GW_VERSION`, and `OPERATOR_VERSION` environment variables.
 
 MetalLB gives the operator-provisioned gateway-runtime LoadBalancer Service a
-routable address the suite can reach. See `README.md` for why this is needed and
-for the macOS/Colima host-reachability details.
+routable address the suite can reach. On macOS, use `./kind/setup-colima.sh`
+instead of `./kind/setup-kind.sh` — see that script's header comments for the
+Colima host-reachability setup details.
 
 ### 4. Install the Gateway API CRDs, operator, and GatewayClass
 

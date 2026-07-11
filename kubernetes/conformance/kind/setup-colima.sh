@@ -53,12 +53,12 @@ fi
 # --------------------------------------------------------------------------- #
 # 0. Dependencies
 # --------------------------------------------------------------------------- #
-# need colima; need jq; need kind; need kubectl
-# if ! brew list socket_vmnet >/dev/null 2>&1; then
-#   echo "!! socket_vmnet is required for 'colima start --network-address'." >&2
-#   echo "   Install it with: brew install socket_vmnet" >&2
-#   exit 1
-# fi
+need colima; need jq; need kind; need kubectl
+if ! brew list socket_vmnet >/dev/null 2>&1; then
+  echo "!! socket_vmnet is required for 'colima start --network-address'." >&2
+  echo "   Install it with: brew install socket_vmnet" >&2
+  exit 1
+fi
 
 
 # ---- 1. Colima VM with a reachable IP --------------------------------------

@@ -32,6 +32,14 @@ PROFILE="${PROFILE:-GATEWAY-HTTP}"
 SUPPORTED_FEATURES="${SUPPORTED_FEATURES:-Gateway,HTTPRoute,HTTPRouteSchemeRedirect,HTTPRoutePortRedirect,HTTPRoute303RedirectStatusCode,HTTPRoute307RedirectStatusCode,HTTPRoute308RedirectStatusCode}"
 IMPL_VERSION="${IMPL_VERSION:-1.2.0-milestone}"
 REPORT_OUT="${REPORT_OUT:-${SCRIPT_DIR}/wso2-api-platform-${IMPL_VERSION}-report.yaml}"
+# Resolve a relative REPORT_OUT against the caller's directory NOW, before we cd into
+# the runner module. Otherwise `go test` would write it relative to runner/ while the
+# message below implies it is relative to the original working directory. (The default
+# above is already absolute via SCRIPT_DIR, so this only affects a relative override.)
+case "${REPORT_OUT}" in
+  /*) ;;
+  *) REPORT_OUT="$(pwd)/${REPORT_OUT}" ;;
+esac
 
 echo ">> Running conformance: profile=${PROFILE} gateway-class=${GATEWAY_CLASS}"
 echo ">> Report will be written to ${REPORT_OUT}"
