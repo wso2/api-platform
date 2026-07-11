@@ -41,8 +41,8 @@ spec:
             properties:
               context:
                 description: Context Base path for all API routes (must start with
-                  /, no trailing slash)
-                pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$
+                  /, no trailing slash; "/" denotes the root context)
+                pattern: ^/([a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/])?$
                 type: string
               displayName:
                 description: DisplayName Human-readable API name (must be URL-friendly

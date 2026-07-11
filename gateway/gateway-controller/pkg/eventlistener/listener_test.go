@@ -197,8 +197,8 @@ func testRestStoredConfig(uuid, handle, displayName, version string, status mode
 			},
 			Operations: []api.Operation{
 				{
-					Method: api.OperationMethodGET,
-					Path:   "/",
+					Method: api.Ptr(api.OperationMethodGET),
+					Path:   api.Ptr("/"),
 				},
 			},
 		},

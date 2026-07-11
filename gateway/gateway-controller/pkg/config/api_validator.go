@@ -699,39 +699,51 @@ func (v *APIValidator) validateOperations(operations []api.Operation) []Validati
 	}
 
 	for i, op := range operations {
+		// An operation must be expressed either via the simple top-level method+path form or
+		// via the richer match block. Resolve the effective values and validate those; the
+		// field path points at whichever form the user actually authored.
+		method := op.EffectiveMethod()
+		path := op.EffectivePath()
+		methodField := fmt.Sprintf("spec.operations[%d].method", i)
+		pathField := fmt.Sprintf("spec.operations[%d].path", i)
+		if op.Match != nil {
+			methodField = fmt.Sprintf("spec.operations[%d].match.method", i)
+			pathField = fmt.Sprintf("spec.operations[%d].match.path.value", i)
+		}
+
 		// Validate method
-		if op.Method == "" {
+		if method == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.operations[%d].method", i),
-				Message: "HTTP method is required",
+				Field:   methodField,
+				Message: "HTTP method is required (set operation.method or operation.match.method)",
 			})
-		} else if !validMethods[strings.ToUpper(string(op.Method))] {
+		} else if !validMethods[strings.ToUpper(method)] {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.operations[%d].method", i),
-				Message: fmt.Sprintf("Invalid HTTP method '%s' (must be GET, POST, PUT, DELETE, PATCH, HEAD, or OPTIONS)", op.Method),
+				Field:   methodField,
+				Message: fmt.Sprintf("Invalid HTTP method '%s' (must be GET, POST, PUT, DELETE, PATCH, HEAD, or OPTIONS)", method),
 			})
 		}
 
 		// Validate path
-		if op.Path == "" {
+		if path == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.operations[%d].path", i),
-				Message: "Operation path is required",
+				Field:   pathField,
+				Message: "Operation path is required (set operation.path or operation.match.path.value)",
 			})
 			continue
 		}
 
-		if !strings.HasPrefix(op.Path, "/") {
+		if !strings.HasPrefix(path, "/") {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.operations[%d].path", i),
+				Field:   pathField,
 				Message: "Operation path must start with /",
 			})
 		}
 
 		// Validate path parameters have balanced braces
-		if !v.validatePathParameters(op.Path) {
+		if !v.validatePathParameters(path) {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.operations[%d].path", i),
+				Field:   pathField,
 				Message: "Operation path has unbalanced braces in parameters",
 			})
 		}

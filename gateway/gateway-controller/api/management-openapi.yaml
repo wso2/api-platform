@@ -4148,7 +4148,7 @@ components:
         context:
           type: string
           description: Base path for all API routes (must start with /, no trailing slash). Use $version to embed the version in the path (e.g., /reading-list/$version resolves to /reading-list/v1.0).
-          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
           minLength: 1
           maxLength: 200
           example: /reading-list/$version
@@ -4175,9 +4175,13 @@ components:
           properties:
             main:
               type: string
-              description: Custom virtual host/domain for production traffic
-              pattern: '^[a-zA-Z0-9\.\-]+$'
-              example: api.example.com
+              description: |
+                Custom virtual host(s)/domain(s) for production traffic. One or more hostnames
+                separated by ';' — each hostname serves the main upstream (e.g. when a Gateway API
+                HTTPRoute attaches to multiple listener hostnames). The first entry is the primary
+                vhost. Each hostname may be a wildcard such as *.example.com.
+              pattern: '^(\*\.)?[a-zA-Z0-9.\-]+(\s*;\s*(\*\.)?[a-zA-Z0-9.\-]+)*$'
+              example: api.example.com;docs.example.com;*.example.com
             sandbox:
               type: string
               description: Custom virtual host/domain for sandbox traffic
@@ -4309,27 +4313,23 @@ components:
 
     Operation:
       type: object
-      required:
-        - method
-        - path
+      description: >
+        An operation is matched either by the simple top-level method+path form, or by the
+        richer 'match' block (method + path + headers). When 'match' is present it is
+        authoritative and the top-level method/path are ignored. At least one form must be
+        provided.
       properties:
         method:
-          type: string
-          description: HTTP method
-          enum:
-            - GET
-            - POST
-            - PUT
-            - DELETE
-            - PATCH
-            - HEAD
-            - OPTIONS
-          example: GET
+          allOf:
+            - $ref: "#/components/schemas/OperationMethod"
+          description: HTTP method (simple form; ignored when 'match' is set)
         path:
           type: string
-          description: Route path with optional {param} placeholders
+          description: Route path with optional {param} placeholders (simple form; ignored when 'match' is set)
           pattern: '^\/.*$'
           example: /books/{id}
+        match:
+          $ref: "#/components/schemas/OperationMatch"
         policies:
           type: array
           description: List of policies applied only to this operation (overrides or adds to API-level policies)
@@ -4337,6 +4337,74 @@ components:
             $ref: "#/components/schemas/Policy"
         resilience:
           $ref: "#/components/schemas/Resilience"
+
+    OperationMethod:
+      type: string
+      description: HTTP method
+      enum:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - PATCH
+        - HEAD
+        - OPTIONS
+      example: GET
+
+    OperationMatch:
+      type: object
+      description: Request matching criteria for an operation. Extensible with query params, cookies, etc.
+      required:
+        - method
+        - path
+      properties:
+        method:
+          $ref: "#/components/schemas/OperationMethod"
+        path:
+          $ref: "#/components/schemas/OperationPathMatch"
+        headers:
+          type: array
+          description: Header matchers ANDed with the path match for Envoy route selection
+          items:
+            $ref: "#/components/schemas/OperationHeaderMatch"
+
+    OperationPathMatch:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: string
+          description: Route path with optional {param} placeholders
+          pattern: '^\/.*$'
+          example: /books/{id}
+        type:
+          type: string
+          description: Path matching semantics for the operation route
+          enum: [Exact, PathPrefix]
+          default: Exact
+          example: Exact
+
+    OperationHeaderMatch:
+      type: object
+      required:
+        - name
+        - value
+      properties:
+        name:
+          type: string
+          description: Header name (case-insensitive)
+          pattern: '^[a-zA-Z0-9!#$%&''*+\-.^_`|~]+$'
+          example: version
+        value:
+          type: string
+          description: Header value to match
+          example: one
+        type:
+          type: string
+          description: Header match type
+          enum: [Exact, RegularExpression]
+          default: Exact
 
     Policy:
       type: object
@@ -4391,7 +4459,7 @@ components:
         context:
           type: string
           description: Base path for all API routes (must start with /, no trailing slash)
-          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
           minLength: 1
           maxLength: 200
           example: /weather
@@ -4700,7 +4768,7 @@ components:
         context:
           type: string
           description: Base path for all API routes (must start with /, no trailing slash)
-          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
           minLength: 1
           maxLength: 200
           example: /stock-trading

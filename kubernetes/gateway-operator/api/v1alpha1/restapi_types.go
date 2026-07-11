@@ -55,9 +55,9 @@ type RestApiList struct {
 
 // APIConfigData defines model for APIConfigData.
 type APIConfigData struct {
-	// Context Base path for all API routes (must start with /, no trailing slash)
+	// Context Base path for all API routes (must start with /, no trailing slash; "/" denotes the root context)
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Pattern=`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$`
+	// +kubebuilder:validation:Pattern=`^/([a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/])?$`
 	Context string `json:"context"`
 
 	// DisplayName Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
@@ -80,7 +80,8 @@ type APIConfigData struct {
 	Resilience *Resilience `json:"resilience,omitempty"`
 
 	// UpstreamDefinitions is the list of reusable upstream definitions (with optional connect
-	// timeout) that upstream.ref can reference.
+	// timeout and weighted load-balancing targets) that upstream.ref and the dynamic-endpoint
+	// policy can reference.
 	// +optional
 	UpstreamDefinitions []UpstreamDefinition `json:"upstreamDefinitions,omitempty"`
 
@@ -111,7 +112,9 @@ type UpstreamConfig struct {
 
 // VhostConfig defines custom virtual hosts/domains for the API
 type VhostConfig struct {
-	// Main Custom virtual host/domain for production traffic
+	// Main Custom virtual host(s)/domain(s) for production traffic. One or more hostnames separated
+	// by ";" — each serves the main upstream (e.g. when an HTTPRoute attaches to multiple listeners
+	// with distinct hostnames). The first entry is the primary vhost.
 	// +kubebuilder:validation:Required
 	Main string `json:"main"`
 
@@ -121,16 +124,24 @@ type VhostConfig struct {
 }
 
 // Operation defines model for Operation.
+// An operation is matched either by the simple top-level method+path fields or by the richer
+// Match block (method + path + headers). When Match is set it is authoritative and the
+// top-level Method/Path are ignored. Exactly one form must be provided.
+// +kubebuilder:validation:XValidation:rule="(has(self.method) && has(self.path)) || has(self.match)",message="operation must set both method and path, or set match"
 type Operation struct {
-	// Method HTTP method
-	// +kubebuilder:validation:Required
+	// Method HTTP method (simple form; ignored when Match is set).
+	// +optional
 	// +kubebuilder:validation:Enum=GET;POST;PUT;PATCH;DELETE;HEAD;OPTIONS
-	Method OperationMethod `json:"method"`
+	Method OperationMethod `json:"method,omitempty"`
 
-	// Path Route path with optional {param} placeholders
-	// +kubebuilder:validation:Required
+	// Path Route path with optional {param} placeholders (simple form; ignored when Match is set).
+	// +optional
 	// +kubebuilder:validation:Pattern=`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/{}\[\]]*$`
-	Path string `json:"path"`
+	Path string `json:"path,omitempty"`
+
+	// Match Request matching criteria for the operation. Extensible with query params, cookies, etc.
+	// +optional
+	Match *OperationMatch `json:"match,omitempty"`
 
 	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
 	// +optional
@@ -139,6 +150,59 @@ type Operation struct {
 	// Resilience Operation-level backend/route timeout configuration (overrides API-level)
 	// +optional
 	Resilience *Resilience `json:"resilience,omitempty"`
+}
+
+// OperationMatch is the request matching criteria for an operation.
+type OperationMatch struct {
+	// Method HTTP method
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=GET;POST;PUT;PATCH;DELETE;HEAD;OPTIONS
+	Method OperationMethod `json:"method"`
+
+	// Path Path match criteria
+	// +kubebuilder:validation:Required
+	Path OperationPathMatch `json:"path"`
+
+	// Headers ANDed header matchers applied before routing to this operation.
+	// +optional
+	Headers []OperationHeaderMatch `json:"headers,omitempty"`
+}
+
+// OperationPathMatch controls path matching for an operation.
+type OperationPathMatch struct {
+	// Value Route path with optional {param} placeholders
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/{}\[\]]*$`
+	Value string `json:"value"`
+
+	// Type How the path is matched (Exact or PathPrefix). Defaults to Exact when omitted.
+	// +optional
+	// +kubebuilder:validation:Enum=Exact;PathPrefix
+	Type OperationPathMatchType `json:"type,omitempty"`
+}
+
+// OperationPathMatchType controls path matching semantics.
+type OperationPathMatchType string
+
+const (
+	OperationPathMatchExact      OperationPathMatchType = "Exact"
+	OperationPathMatchPathPrefix OperationPathMatchType = "PathPrefix"
+)
+
+// OperationHeaderMatch mirrors Gateway API HTTPHeaderMatch for Envoy route selection.
+type OperationHeaderMatch struct {
+	// Name Header name (case-insensitive)
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Value Header value to match
+	// +kubebuilder:validation:Required
+	Value string `json:"value"`
+
+	// Type Match type (Exact or RegularExpression)
+	// +optional
+	// +kubebuilder:validation:Enum=Exact;RegularExpression
+	Type string `json:"type,omitempty"`
 }
 
 // Resilience defines backend/route timeout configuration (maps to Envoy RouteAction
@@ -211,13 +275,33 @@ type Upstream struct {
 	// Ref Name of a predefined upstreamDefinition to route through.
 	// +optional
 	Ref *string `json:"ref,omitempty"`
+
+	// HostRewrite controls how the Host header is handled when routing to the upstream.
+	// "auto" lets Envoy rewrite the Host header to the upstream cluster host; "manual"
+	// disables automatic rewriting so the incoming Host header is preserved. When unset,
+	// the gateway-controller defaults to "auto".
+	// +optional
+	// +kubebuilder:validation:Enum=auto;manual
+	HostRewrite *UpstreamHostRewrite `json:"hostRewrite,omitempty"`
 }
 
+// UpstreamHostRewrite controls Host header handling toward the upstream.
+type UpstreamHostRewrite string
+
+const (
+	// UpstreamHostRewriteAuto lets Envoy rewrite the Host header to the upstream cluster host.
+	UpstreamHostRewriteAuto UpstreamHostRewrite = "auto"
+	// UpstreamHostRewriteManual disables automatic rewriting; the incoming Host header is preserved.
+	UpstreamHostRewriteManual UpstreamHostRewrite = "manual"
+)
+
 // UpstreamDefinition is a reusable upstream configuration with an optional connect timeout and
-// load-balancing targets. Referenced from an upstream via its `ref` field. Shared by RestApi,
-// LLM Provider, and MCP; mirrors the management-API UpstreamDefinition schema.
+// one or more weighted load-balancing targets. Referenced from an upstream via its `ref` field
+// and by the dynamic-endpoint policy. Shared by RestApi, LLM Provider, and MCP; mirrors the
+// management-API UpstreamDefinition schema.
 type UpstreamDefinition struct {
-	// Name Unique identifier for this upstream definition (referenced by upstream.ref).
+	// Name Unique identifier for this upstream definition (referenced by upstream.ref or the
+	// dynamic-endpoint policy).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=100
@@ -237,7 +321,7 @@ type UpstreamDefinition struct {
 	// Upstreams List of backend targets with optional weights for load balancing.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
-	Upstreams []UpstreamTarget `json:"upstreams"`
+	Upstreams []WeightedUpstream `json:"upstreams"`
 }
 
 // UpstreamTimeout carries the per-upstream timeout configuration. Only the connect timeout is
@@ -249,11 +333,10 @@ type UpstreamTimeout struct {
 	Connect *string `json:"connect,omitempty"`
 }
 
-// UpstreamTarget is a single backend target within an UpstreamDefinition.
-type UpstreamTarget struct {
-	// Url Backend URL (host and port only; path comes from the definition's basePath).
+// WeightedUpstream is a single backend target within an UpstreamDefinition.
+type WeightedUpstream struct {
+	// Url Backend URL (host and port; no path)
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Pattern=`^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$`
 	Url string `json:"url"`
 
 	// Weight Relative weight for load balancing across multiple upstream targets. Reserved for

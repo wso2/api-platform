@@ -81,8 +81,8 @@ func createTestConfig(name, version string) *models.StoredConfig {
 			},
 			Operations: []api.Operation{
 				{
-					Method: api.OperationMethodGET,
-					Path:   "/test",
+					Method: api.Ptr(api.OperationMethodGET),
+					Path:   api.Ptr("/test"),
 				},
 			},
 		},
@@ -409,8 +409,8 @@ func createTestConfigWithLabels(name, version string, labels map[string]string) 
 			},
 			Operations: []api.Operation{
 				{
-					Method: api.OperationMethodGET,
-					Path:   "/test",
+					Method: api.Ptr(api.OperationMethodGET),
+					Path:   api.Ptr("/test"),
 				},
 			},
 		},

@@ -43,26 +43,26 @@ func protocolVersionComparator(base, current string) bool {
 func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration, optionsRequired bool) []api.Operation {
 	operations := []api.Operation{
 		{
-			Method:   api.OperationMethodGET,
-			Path:     constants.MCP_RESOURCE_PATH,
+			Method:   api.Ptr(api.OperationMethodGET),
+			Path:     api.Ptr(constants.MCP_RESOURCE_PATH),
 			Policies: nil,
 		},
 		{
-			Method:   api.OperationMethodPOST,
-			Path:     constants.MCP_RESOURCE_PATH,
+			Method:   api.Ptr(api.OperationMethodPOST),
+			Path:     api.Ptr(constants.MCP_RESOURCE_PATH),
 			Policies: nil,
 		},
 		{
-			Method:   api.OperationMethodDELETE,
-			Path:     constants.MCP_RESOURCE_PATH,
+			Method:   api.Ptr(api.OperationMethodDELETE),
+			Path:     api.Ptr(constants.MCP_RESOURCE_PATH),
 			Policies: nil,
 		},
 	}
 	if optionsRequired {
 		operations = append(operations,
 			api.Operation{
-				Method:   api.OperationMethodOPTIONS,
-				Path:     constants.MCP_RESOURCE_PATH,
+				Method:   api.Ptr(api.OperationMethodOPTIONS),
+				Path:     api.Ptr(constants.MCP_RESOURCE_PATH),
 				Policies: nil,
 			},
 		)
@@ -77,16 +77,16 @@ func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration, optionsRequi
 	if protocolVersionComparator(constants.SPEC_VERSION_2025_JUNE, mcpSpecVersion) {
 		operations = append(operations,
 			api.Operation{
-				Method:   api.OperationMethodGET,
-				Path:     constants.MCP_PRM_RESOURCE_PATH,
+				Method:   api.Ptr(api.OperationMethodGET),
+				Path:     api.Ptr(constants.MCP_PRM_RESOURCE_PATH),
 				Policies: nil,
 			},
 		)
 		if optionsRequired {
 			operations = append(operations,
 				api.Operation{
-					Method:   api.OperationMethodOPTIONS,
-					Path:     constants.MCP_PRM_RESOURCE_PATH,
+					Method:   api.Ptr(api.OperationMethodOPTIONS),
+					Path:     api.Ptr(constants.MCP_PRM_RESOURCE_PATH),
 					Policies: nil,
 				},
 			)
@@ -102,10 +102,10 @@ func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration, optionsRequi
 //   - any OPTIONS route  -> CORS preflight, answered locally by the cors policy
 //   - the PRM path       -> OAuth protected-resource metadata, synthesized by the mcp-auth policy
 func isMCPForwardingOperation(op api.Operation) bool {
-	if op.Method == api.OperationMethodOPTIONS {
+	if op.EffectiveMethod() == string(api.OperationMethodOPTIONS) {
 		return false
 	}
-	if op.Path == constants.MCP_PRM_RESOURCE_PATH {
+	if op.EffectivePath() == constants.MCP_PRM_RESOURCE_PATH {
 		return false
 	}
 	return true

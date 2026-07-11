@@ -71,10 +71,10 @@ func TestAddMCPSpecificOperations_DefaultVersion(t *testing.T) {
 	foundBase := 0
 	foundPRM := false
 	for _, op := range ops {
-		if op.Path == basePath && baseMethods[op.Method] {
+		if op.EffectivePath() == basePath && baseMethods[api.OperationMethod(op.EffectiveMethod())] {
 			foundBase++
 		}
-		if op.Path == constants.MCP_PRM_RESOURCE_PATH && op.Method == api.OperationMethodGET {
+		if op.EffectivePath() == constants.MCP_PRM_RESOURCE_PATH && op.EffectiveMethod() == string(api.OperationMethodGET) {
 			foundPRM = true
 		}
 	}
@@ -100,7 +100,7 @@ func TestAddMCPSpecificOperations_SpecifiedVersion(t *testing.T) {
 	}
 	foundPRM := false
 	for _, op := range ops {
-		if op.Path == constants.MCP_PRM_RESOURCE_PATH && op.Method == api.OperationMethodGET {
+		if op.EffectivePath() == constants.MCP_PRM_RESOURCE_PATH && op.EffectiveMethod() == string(api.OperationMethodGET) {
 			foundPRM = true
 		}
 	}
@@ -330,7 +330,7 @@ func TestMCPTransformer_Transform_WithCORSPolicy(t *testing.T) {
 	// With CORS policy, OPTIONS operations should be included
 	foundOptions := false
 	for _, op := range apiData.Operations {
-		if op.Method == api.OperationMethodOPTIONS {
+		if op.EffectiveMethod() == string(api.OperationMethodOPTIONS) {
 			foundOptions = true
 			break
 		}
@@ -427,7 +427,7 @@ func TestAddMCPSpecificOperations_WithOptions(t *testing.T) {
 	// Should have OPTIONS operations
 	foundOptions := 0
 	for _, op := range ops {
-		if op.Method == api.OperationMethodOPTIONS {
+		if op.EffectiveMethod() == string(api.OperationMethodOPTIONS) {
 			foundOptions++
 		}
 	}
@@ -455,7 +455,7 @@ func TestAddMCPSpecificOperations_OlderVersion(t *testing.T) {
 
 	// Should not have PRM resource path
 	for _, op := range ops {
-		if op.Path == constants.MCP_PRM_RESOURCE_PATH {
+		if op.EffectivePath() == constants.MCP_PRM_RESOURCE_PATH {
 			t.Error("Should not have PRM resource path for older spec version")
 		}
 	}
@@ -489,7 +489,7 @@ func TestGetParamsOfPolicy_MCP(t *testing.T) {
 // or nil if the operation is absent or carries no resilience.
 func mcpOpResilience(ops []api.Operation, method api.OperationMethod, path string) *api.Resilience {
 	for _, op := range ops {
-		if op.Method == method && op.Path == path {
+		if op.EffectiveMethod() == string(method) && op.EffectivePath() == path {
 			return op.Resilience
 		}
 	}

@@ -222,10 +222,10 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	operationRegistry := make(map[pathMethodKey]*api.Operation)
 	for _, method := range constants.WILDCARD_HTTP_METHODS {
 		op := &api.Operation{
-			Path:   constants.BASE_PATH + constants.WILD_CARD,
-			Method: api.OperationMethod(method),
+			Path:   api.Ptr(constants.BASE_PATH + constants.WILD_CARD),
+			Method: api.Ptr(api.OperationMethod(method)),
 		}
-		operationRegistry[pathMethodKey{path: op.Path, method: method}] = op
+		operationRegistry[pathMethodKey{path: op.EffectivePath(), method: method}] = op
 	}
 
 	// Phase 2: Process User-Defined Policies (operationPolicies + deprecated policies)
@@ -242,8 +242,8 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 
 				for _, op := range methodOperations {
 					// Use pathsMatch to determine if policy applies to this operation
-					if pathsMatch(op.Path, attachment.pathEntry.Path) {
-						for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+					if pathsMatch(op.EffectivePath(), attachment.pathEntry.Path) {
+						for _, targetPath := range expandPolicyTargetPaths(op.EffectivePath(), &tmpl.Configuration.Spec) {
 							if attachedPolicyPaths[targetPath] {
 								continue
 							}
@@ -254,8 +254,8 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 							targetOp, exists := operationRegistry[targetKey]
 							if !exists {
 								targetOp = &api.Operation{
-									Path:   targetPath,
-									Method: api.OperationMethod(policyMethod),
+									Path:   api.Ptr(targetPath),
+									Method: api.Ptr(api.OperationMethod(policyMethod)),
 								}
 								operationRegistry[targetKey] = targetOp
 							}
@@ -420,10 +420,10 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 		operationRegistry := make(map[pathMethodKey]*api.Operation)
 		for _, method := range constants.WILDCARD_HTTP_METHODS {
 			op := &api.Operation{
-				Path:   constants.BASE_PATH + constants.WILD_CARD,
-				Method: api.OperationMethod(method),
+				Path:   api.Ptr(constants.BASE_PATH + constants.WILD_CARD),
+				Method: api.Ptr(api.OperationMethod(method)),
 			}
-			operationRegistry[pathMethodKey{path: op.Path, method: method}] = op
+			operationRegistry[pathMethodKey{path: op.EffectivePath(), method: method}] = op
 		}
 
 		// Phase 2: Normalize and Process Access Control Exceptions (Deny List)
@@ -450,8 +450,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 				if _, exists := operationRegistry[key]; !exists {
 					// Create operation for this specific denied path
 					op := &api.Operation{
-						Path:   ex.Path,
-						Method: api.OperationMethod(method),
+						Path:   api.Ptr(ex.Path),
+						Method: api.Ptr(api.OperationMethod(method)),
 					}
 					operationRegistry[key] = op
 				}
@@ -502,8 +502,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 							continue
 						}
 
-						if pathsMatch(op.Path, attachment.pathEntry.Path) {
-							for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+						if pathsMatch(op.EffectivePath(), attachment.pathEntry.Path) {
+							for _, targetPath := range expandPolicyTargetPaths(op.EffectivePath(), &tmpl.Configuration.Spec) {
 								if attachedPolicyPaths[targetPath] {
 									continue
 								}
@@ -514,8 +514,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 								targetOp, exists := operationRegistry[targetKey]
 								if !exists {
 									targetOp = &api.Operation{
-										Path:   targetPath,
-										Method: api.OperationMethod(policyMethod),
+										Path:   api.Ptr(targetPath),
+										Method: api.Ptr(api.OperationMethod(policyMethod)),
 									}
 									operationRegistry[targetKey] = targetOp
 								}
@@ -573,8 +573,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 		operationRegistry := make(map[pathMethodKey]*api.Operation)
 		for key := range normalizedExceptions {
 			op := &api.Operation{
-				Path:   key.path,
-				Method: api.OperationMethod(key.method),
+				Path:   api.Ptr(key.path),
+				Method: api.Ptr(api.OperationMethod(key.method)),
 			}
 			operationRegistry[key] = op
 		}
@@ -594,8 +594,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 					methodOperations := getOperationsForMethod(operationRegistry, policyMethod)
 
 					for _, op := range methodOperations {
-						if pathsMatch(op.Path, attachment.pathEntry.Path) {
-							for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+						if pathsMatch(op.EffectivePath(), attachment.pathEntry.Path) {
+							for _, targetPath := range expandPolicyTargetPaths(op.EffectivePath(), &tmpl.Configuration.Spec) {
 								if attachedPolicyPaths[targetPath] {
 									continue
 								}
@@ -606,8 +606,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 								targetOp, exists := operationRegistry[targetKey]
 								if !exists {
 									targetOp = &api.Operation{
-										Path:   targetPath,
-										Method: api.OperationMethod(policyMethod),
+										Path:   api.Ptr(targetPath),
+										Method: api.Ptr(api.OperationMethod(policyMethod)),
 									}
 									operationRegistry[targetKey] = targetOp
 								}
@@ -692,7 +692,7 @@ func applyResilienceToTrafficRoutes(ops []api.Operation, resilience *api.Resilie
 		return
 	}
 	for i := range ops {
-		if denyKeys[pathMethodKey{path: ops[i].Path, method: string(ops[i].Method)}] {
+		if denyKeys[pathMethodKey{path: ops[i].EffectivePath(), method: ops[i].EffectiveMethod()}] {
 			continue
 		}
 		ops[i].Resilience = resilience
@@ -1021,8 +1021,8 @@ func ensureOperation(operationRegistry map[pathMethodKey]*api.Operation, path, m
 	}
 
 	op := &api.Operation{
-		Path:   path,
-		Method: api.OperationMethod(method),
+		Path:   api.Ptr(path),
+		Method: api.Ptr(api.OperationMethod(method)),
 	}
 	operationRegistry[key] = op
 	return op
@@ -1249,8 +1249,8 @@ func sortOperationsBySpecificity(ops []api.Operation) []api.Operation {
 
 // shouldSwap determines if two operations should be swapped in sorting
 func shouldSwap(op1, op2 api.Operation) bool {
-	path1HasWildcard := strings.Contains(op1.Path, "*")
-	path2HasWildcard := strings.Contains(op2.Path, "*")
+	path1HasWildcard := strings.Contains(op1.EffectivePath(), "*")
+	path2HasWildcard := strings.Contains(op2.EffectivePath(), "*")
 
 	// Non-wildcard paths come before wildcard paths
 	if !path1HasWildcard && path2HasWildcard {
@@ -1261,15 +1261,15 @@ func shouldSwap(op1, op2 api.Operation) bool {
 	}
 
 	// Longer paths come before shorter paths
-	if len(op1.Path) != len(op2.Path) {
-		return len(op1.Path) < len(op2.Path)
+	if len(op1.EffectivePath()) != len(op2.EffectivePath()) {
+		return len(op1.EffectivePath()) < len(op2.EffectivePath())
 	}
 
 	// Lexicographic comparison for paths
-	if op1.Path != op2.Path {
-		return op1.Path > op2.Path
+	if op1.EffectivePath() != op2.EffectivePath() {
+		return op1.EffectivePath() > op2.EffectivePath()
 	}
 
 	// Method alphabetically
-	return string(op1.Method) > string(op2.Method)
+	return op1.EffectiveMethod() > op2.EffectiveMethod()
 }

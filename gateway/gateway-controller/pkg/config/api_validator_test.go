@@ -391,8 +391,8 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Valid operations",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "/items"},
-				{Method: api.OperationMethodPOST, Path: "/items"},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/items")},
+				{Method: api.Ptr(api.OperationMethodPOST), Path: api.Ptr("/items")},
 			},
 			wantError: false,
 		},
@@ -405,7 +405,7 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Missing method",
 			operations: []api.Operation{
-				{Method: "", Path: "/items"},
+				{Method: api.Ptr(api.OperationMethod("")), Path: api.Ptr("/items")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].method",
@@ -413,7 +413,7 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Invalid method",
 			operations: []api.Operation{
-				{Method: "INVALID", Path: "/items"},
+				{Method: api.Ptr(api.OperationMethod("INVALID")), Path: api.Ptr("/items")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].method",
@@ -421,7 +421,7 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Missing path",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: ""},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].path",
@@ -429,7 +429,7 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Path without leading slash",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "items"},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("items")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].path",
@@ -437,14 +437,14 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Valid path with parameters",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "/items/{id}"},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/items/{id}")},
 			},
 			wantError: false,
 		},
 		{
 			name: "Path with unbalanced braces",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "/items/{id"},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/items/{id")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].path",
@@ -549,7 +549,7 @@ func TestAPIValidator_ValidateAllHTTPMethods(t *testing.T) {
 		t.Run(string(method), func(t *testing.T) {
 			config := createValidRestAPIConfig()
 			config.Spec.Operations = []api.Operation{
-				{Method: method, Path: "/test"},
+				{Method: api.Ptr(method), Path: api.Ptr("/test")},
 			}
 
 			errors := v.Validate(config)
@@ -735,7 +735,7 @@ func createValidRestAPIConfig() *api.RestAPI {
 				},
 			},
 			Operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "/items"},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/items")},
 			},
 		},
 	}
