@@ -60,8 +60,8 @@ services:
       # tokens/HMAC at rest. Both are REQUIRED 32-byte keys (64 hex chars / base64)
       #   export AUTH_JWT_SECRET_KEY=$(openssl rand -hex 32)
       #   export ENCRYPTION_KEY=$(openssl rand -hex 32)
-      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:?AUTH_JWT_SECRET_KEY is required — a 32-byte key (openssl rand -hex 32)}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY is required — a 32-byte key (openssl rand -hex 32)}
+      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - DATABASE_PASSWORD=${DATABASE_PASSWORD:-}
       - APIP_DEMO_MODE=${APIP_DEMO_MODE:-true}
       # ── OIDC IDP — uncomment to validate tokens against any OIDC provider's

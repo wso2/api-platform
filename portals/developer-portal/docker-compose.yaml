@@ -70,8 +70,8 @@ services:
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
-      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:?AUTH_JWT_SECRET_KEY is required — a 32-byte key (openssl rand -hex 32)}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY is required — a 32-byte key (openssl rand -hex 32)}
+      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
