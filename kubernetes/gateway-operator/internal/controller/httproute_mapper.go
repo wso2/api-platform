@@ -257,7 +257,7 @@ func BuildAPIConfigFromHTTPRoute(ctx context.Context, c client.Client, route *ga
 		DisplayName: displayName,
 		Operations:  ops,
 		Upstream: apiv1.UpstreamConfig{
-			Main: apiv1.Upstream{Url: backendURL},
+			Main: apiv1.Upstream{Url: &backendURL},
 		},
 		Version:  version,
 		Policies: apiPolicies,

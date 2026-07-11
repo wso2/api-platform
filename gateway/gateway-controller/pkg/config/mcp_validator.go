@@ -149,8 +149,14 @@ func (v *MCPValidator) validateSpec(spec *api.MCPProxyConfigData) []ValidationEr
 	// Validate context
 	errors = append(errors, v.validateContextAndVhost(spec.Context, spec.Vhost)...)
 
-	// Validate upstream
-	errors = append(errors, v.validateUpstream("spec.upstream", &spec.Upstream)...)
+	// Validate upstream definitions (name/url/connect timeout), then the upstream itself (which
+	// may reference one of them via `ref`).
+	errors = append(errors, validateUpstreamDefinitionsList("spec.upstreamDefinitions", spec.UpstreamDefinitions)...)
+	errors = append(errors, v.validateUpstream("spec.upstream", &spec.Upstream, spec.UpstreamDefinitions)...)
+
+	// Validate API-level resilience (timeout / idleTimeout). MCP supports resilience at the API
+	// level only; the route timeout defaults to disabled for MCP when unset (see mcp-timeout-divergence.md).
+	errors = append(errors, validateResilienceTimeouts("spec.resilience", spec.Resilience)...)
 
 	return errors
 }
@@ -192,8 +198,9 @@ func (v *MCPValidator) validateContextAndVhost(context, vhost *string) []Validat
 	return errors
 }
 
-// validateUpstream validates the upstream configuration
-func (v *MCPValidator) validateUpstream(fieldPrefix string, upstream *api.MCPProxyConfigData_Upstream) []ValidationError {
+// validateUpstream validates the upstream configuration. The upstream may specify either a direct
+// `url` or a `ref` to one of the provided upstream definitions (exactly one).
+func (v *MCPValidator) validateUpstream(fieldPrefix string, upstream *api.MCPProxyConfigData_Upstream, definitions *[]api.UpstreamDefinition) []ValidationError {
 	var errors []ValidationError
 
 	if upstream == nil {
@@ -204,38 +211,53 @@ func (v *MCPValidator) validateUpstream(fieldPrefix string, upstream *api.MCPPro
 		return errors
 	}
 
-	if upstream.Url == nil || *upstream.Url == "" {
+	// Validate url XOR ref
+	hasURL := upstream.Url != nil && strings.TrimSpace(*upstream.Url) != ""
+	hasRef := upstream.Ref != nil && strings.TrimSpace(*upstream.Ref) != ""
+	switch {
+	case hasURL && hasRef:
 		errors = append(errors, ValidationError{
-			Field:   fmt.Sprintf("%s.url", fieldPrefix),
-			Message: "Upstream URL is required",
+			Field:   fieldPrefix,
+			Message: "Specify exactly one of 'url' or 'ref'",
 		})
-		return errors
-	}
+	case !hasURL && !hasRef:
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix,
+			Message: "Must specify either 'url' or 'ref'",
+		})
+	case hasRef:
+		if !upstreamRefResolves(*upstream.Ref, definitions) {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s.ref", fieldPrefix),
+				Message: fmt.Sprintf("Referenced upstream definition '%s' not found in upstreamDefinitions", strings.TrimSpace(*upstream.Ref)),
+			})
+		}
+	case hasURL:
+		// Validate URL format (trim first, consistent with the hasURL check so surrounding
+		// whitespace does not fail parsing).
+		parsedURL, err := url.Parse(strings.TrimSpace(*upstream.Url))
+		if err != nil {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s.url", fieldPrefix),
+				Message: fmt.Sprintf("Invalid URL format: %v", err),
+			})
+		} else {
+			// Ensure scheme is http or https
+			if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.url", fieldPrefix),
+					Message: "Upstream URL must use http or https scheme",
+				})
+			}
 
-	// Validate URL format
-	parsedURL, err := url.Parse(*upstream.Url)
-	if err != nil {
-		errors = append(errors, ValidationError{
-			Field:   fmt.Sprintf("%s.url", fieldPrefix),
-			Message: fmt.Sprintf("Invalid URL format: %v", err),
-		})
-		return errors
-	}
-
-	// Ensure scheme is http or https
-	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		errors = append(errors, ValidationError{
-			Field:   fmt.Sprintf("%s.url", fieldPrefix),
-			Message: "Upstream URL must use http or https scheme",
-		})
-	}
-
-	// Ensure host is present
-	if parsedURL.Host == "" {
-		errors = append(errors, ValidationError{
-			Field:   fmt.Sprintf("%s.url", fieldPrefix),
-			Message: "Upstream URL must include a host",
-		})
+			// Ensure host is present
+			if parsedURL.Host == "" {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.url", fieldPrefix),
+					Message: "Upstream URL must include a host",
+				})
+			}
+		}
 	}
 
 	// Validate auth if present

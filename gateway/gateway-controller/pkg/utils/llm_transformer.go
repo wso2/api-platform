@@ -295,6 +295,9 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			}
 		}
 	}
+	// A proxy is always allow-all with no access control, so there are no deny routes:
+	// attach API-level resilience to all generated routes.
+	applyResilienceToTrafficRoutes(ops, proxy.Spec.Resilience, nil)
 	spec.Operations = ops
 
 	// Global (api-level) policies: route into the derived RestAPI's spec.Policies so they are
@@ -341,11 +344,19 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 		spec.Context = *provider.Spec.Context
 	}
 
-	// Step 2) Upstreams: map provider.Spec.Upstreams to api.Upstreams
-	// Map provider upstream and vhost to API main upstream and vhost
-	spec.Upstream.Main = api.Upstream{
-		Url: provider.Spec.Upstream.Url,
+	// Step 2) Upstreams: map provider upstream (direct url or upstreamDefinition ref) and vhost
+	// to the API main upstream. When a ref is used, carry the upstreamDefinitions through so the
+	// per-upstream connect timeout resolves the same way it does for RestApi.
+	if provider.Spec.Upstream.Ref != nil && strings.TrimSpace(*provider.Spec.Upstream.Ref) != "" {
+		spec.Upstream.Main = api.Upstream{
+			Ref: provider.Spec.Upstream.Ref,
+		}
+	} else {
+		spec.Upstream.Main = api.Upstream{
+			Url: provider.Spec.Upstream.Url,
+		}
 	}
+	spec.UpstreamDefinitions = provider.Spec.UpstreamDefinitions
 	if provider.Spec.Vhost != nil {
 		spec.Vhosts = &struct {
 			Main    string  `json:"main" yaml:"main"`
@@ -388,6 +399,12 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 
 	var ops []api.Operation
 
+	// denyOpKeys tracks the routes created purely to deny traffic (the access-control
+	// exception routes, which carry the 404 respond policy). API-level resilience is NOT
+	// attached to these (they never reach an upstream). Populated in allow_all mode; empty
+	// in deny_all (where every created route is an allowed/forwarding route).
+	denyOpKeys := make(map[pathMethodKey]bool)
+
 	switch mode {
 	case api.AllowAll:
 		var denyPolicyVersion string
@@ -427,6 +444,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 			for _, method := range methods {
 				key := pathMethodKey{path: ex.Path, method: method}
 				deniedPathMethods[key] = true
+				denyOpKeys[key] = true
 
 				// Check if operation exists
 				if _, exists := operationRegistry[key]; !exists {
@@ -634,6 +652,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 			}
 		}
 	}
+	// Attach API-level resilience to every traffic-forwarding route, skipping the deny routes.
+	applyResilienceToTrafficRoutes(ops, provider.Spec.Resilience, denyOpKeys)
 	spec.Operations = ops
 
 	// Global (api-level) policies: route into the derived RestAPI's spec.Policies so they are
@@ -656,6 +676,27 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 
 	output.Spec = spec
 	return output, nil
+}
+
+// applyResilienceToTrafficRoutes attaches the API-level resilience block to every operation that
+// forwards traffic upstream, skipping access-control deny routes (which only return a canned 404
+// and never reach an upstream, so a timeout on them is meaningless). denyKeys identifies the deny
+// routes by path+method; it is empty for deny_all and proxy (no deny routes exist there), so in
+// those cases the block is applied to all routes. A nil resilience block is a no-op.
+//
+// Resilience is attached at the operation level (not the derived API level) on purpose: that keeps
+// the deny routes on the gateway's global default timeout instead of inheriting the API-level value
+// via the translator's per-field fallback.
+func applyResilienceToTrafficRoutes(ops []api.Operation, resilience *api.Resilience, denyKeys map[pathMethodKey]bool) {
+	if resilience == nil {
+		return
+	}
+	for i := range ops {
+		if denyKeys[pathMethodKey{path: ops[i].Path, method: string(ops[i].Method)}] {
+			continue
+		}
+		ops[i].Resilience = resilience
+	}
 }
 
 // GetUpstreamAuthApikeyPolicyParams renders the policy params with given header and value

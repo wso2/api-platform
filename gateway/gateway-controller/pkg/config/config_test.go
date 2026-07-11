@@ -1012,6 +1012,61 @@ func TestConfig_ValidateTimeoutConfig(t *testing.T) {
 	}
 }
 
+func TestConfig_ValidateHCMTimeouts(t *testing.T) {
+	maxConn := time.Duration(constants.MaxReasonableConnectionTimeoutMs) * time.Millisecond
+	tests := []struct {
+		name        string
+		timeouts    HCMTimeouts
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:     "Envoy defaults are valid",
+			timeouts: HCMTimeouts{RequestTimeout: 0, RequestHeadersTimeout: 0, StreamIdleTimeout: 5 * time.Minute, IdleTimeout: time.Hour},
+		},
+		{
+			name:     "All zero (disabled) is valid",
+			timeouts: HCMTimeouts{},
+		},
+		{
+			name:     "Custom positive values are valid",
+			timeouts: HCMTimeouts{RequestTimeout: 30 * time.Second, RequestHeadersTimeout: 10 * time.Second, StreamIdleTimeout: time.Minute, IdleTimeout: 2 * time.Hour},
+		},
+		{
+			name:        "Negative request_timeout rejected",
+			timeouts:    HCMTimeouts{RequestTimeout: -1 * time.Second},
+			wantErr:     true,
+			errContains: "router.http_listener.timeouts.request_timeout must not be negative",
+		},
+		{
+			name:        "Negative stream_idle_timeout rejected",
+			timeouts:    HCMTimeouts{StreamIdleTimeout: -5 * time.Second},
+			wantErr:     true,
+			errContains: "router.http_listener.timeouts.stream_idle_timeout must not be negative",
+		},
+		{
+			name:        "idle_timeout exceeding max reasonable rejected",
+			timeouts:    HCMTimeouts{IdleTimeout: maxConn + time.Second},
+			wantErr:     true,
+			errContains: "router.http_listener.timeouts.idle_timeout",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Router.HTTPListener.Timeouts = tt.timeouts
+			err := cfg.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestConfig_ValidatePolicyEngineConfig(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -1669,6 +1724,50 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "info", cfg.Controller.Logging.Level)
 	assert.False(t, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup)
 	assert.Equal(t, uint32(5000), cfg.Router.Upstream.Timeouts.ConnectTimeoutMs, "default router.upstream.timeouts.connect_timeout_ms should be 5s (5000 ms)")
+
+	// HCM timeout defaults must match Envoy's documented defaults.
+	hcm := cfg.Router.HTTPListener.Timeouts
+	assert.Equal(t, time.Duration(0), hcm.RequestTimeout, "default request_timeout should be 0s (disabled)")
+	assert.Equal(t, time.Duration(0), hcm.RequestHeadersTimeout, "default request_headers_timeout should be 0s (disabled)")
+	assert.Equal(t, 5*time.Minute, hcm.StreamIdleTimeout, "default stream_idle_timeout should be 5m")
+	assert.Equal(t, time.Hour, hcm.IdleTimeout, "default idle_timeout should be 1h")
+}
+
+func TestLoadConfig_HCMTimeouts(t *testing.T) {
+	t.Run("explicit values parse from toml", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		toml := `
+[router.http_listener.timeouts]
+request_timeout = "30s"
+request_headers_timeout = "10s"
+stream_idle_timeout = "2m"
+idle_timeout = "30m"
+`
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		hcm := cfg.Router.HTTPListener.Timeouts
+		assert.Equal(t, 30*time.Second, hcm.RequestTimeout)
+		assert.Equal(t, 10*time.Second, hcm.RequestHeadersTimeout)
+		assert.Equal(t, 2*time.Minute, hcm.StreamIdleTimeout)
+		assert.Equal(t, 30*time.Minute, hcm.IdleTimeout)
+	})
+
+	t.Run("omitted section falls back to Envoy defaults", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(""), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		hcm := cfg.Router.HTTPListener.Timeouts
+		assert.Equal(t, time.Duration(0), hcm.RequestTimeout)
+		assert.Equal(t, time.Duration(0), hcm.RequestHeadersTimeout)
+		assert.Equal(t, 5*time.Minute, hcm.StreamIdleTimeout)
+		assert.Equal(t, time.Hour, hcm.IdleTimeout)
+	})
 }
 
 func TestConfig_CaseInsensitiveAlgorithm(t *testing.T) {

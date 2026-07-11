@@ -378,14 +378,20 @@ func (v *LLMValidator) validateProviderSpec(spec *api.LLMProviderConfigData) []V
 		})
 	}
 
-	// Validate upstreams
-	errors = append(errors, v.validateUpstreamWithAuth(fmt.Sprintf("spec.upstream"), &spec.Upstream)...)
+	// Validate upstream definitions (name/url/connect timeout), then the upstream itself (which
+	// may reference one of them via `ref`).
+	errors = append(errors, validateUpstreamDefinitionsList("spec.upstreamDefinitions", spec.UpstreamDefinitions)...)
+	errors = append(errors, v.validateUpstreamWithAuth("spec.upstream", &spec.Upstream, spec.UpstreamDefinitions)...)
 
 	// Validate access control
 	errors = append(errors, v.validateAccessControl("spec.accessControl", &spec.AccessControl)...)
 
 	// The deprecated `policies` list must not coexist with the new policy lists
 	errors = append(errors, v.validatePolicyListExclusivity(spec.GlobalPolicies, spec.OperationPolicies, spec.Policies)...)
+
+	// Validate API-level resilience (timeout / idleTimeout). LLM kinds support resilience at
+	// the API level only.
+	errors = append(errors, validateResilienceTimeouts("spec.resilience", spec.Resilience)...)
 
 	return errors
 }
@@ -412,9 +418,10 @@ func (v *LLMValidator) validatePolicyListExclusivity(globalPolicies *[]api.Polic
 	return nil
 }
 
-// validateUpstreamWithAuth validates an UpstreamWithAuth configuration
+// validateUpstreamWithAuth validates an UpstreamWithAuth configuration. The upstream may specify
+// either a direct `url` or a `ref` to one of the provided upstream definitions (exactly one).
 func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
-	upstream *api.LLMProviderConfigData_Upstream) []ValidationError {
+	upstream *api.LLMProviderConfigData_Upstream, definitions *[]api.UpstreamDefinition) []ValidationError {
 	var errors []ValidationError
 
 	if upstream == nil {
@@ -425,14 +432,23 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
 		return errors
 	}
 
-	// Validate URL
-	if upstream.Url == nil || *upstream.Url == "" {
+	// Validate url XOR ref
+	hasURL := upstream.Url != nil && strings.TrimSpace(*upstream.Url) != ""
+	hasRef := upstream.Ref != nil && strings.TrimSpace(*upstream.Ref) != ""
+	switch {
+	case hasURL && hasRef:
 		errors = append(errors, ValidationError{
-			Field:   fmt.Sprintf("%s.url", fieldPrefix),
-			Message: "Upstream URL is required",
+			Field:   fieldPrefix,
+			Message: "Specify exactly one of 'url' or 'ref'",
 		})
-	} else {
-		parsedURL, err := url.Parse(*upstream.Url)
+	case !hasURL && !hasRef:
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix,
+			Message: "Must specify either 'url' or 'ref'",
+		})
+	case hasURL:
+		// Trim first, consistent with the hasURL check, so surrounding whitespace does not fail parsing.
+		parsedURL, err := url.Parse(strings.TrimSpace(*upstream.Url))
 		if err != nil {
 			errors = append(errors, ValidationError{
 				Field:   fmt.Sprintf("%s.url", fieldPrefix),
@@ -447,6 +463,13 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
 			errors = append(errors, ValidationError{
 				Field:   fmt.Sprintf("%s.url", fieldPrefix),
 				Message: "Upstream URL must include a host",
+			})
+		}
+	case hasRef:
+		if !upstreamRefResolves(*upstream.Ref, definitions) {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s.ref", fieldPrefix),
+				Message: fmt.Sprintf("Referenced upstream definition '%s' not found in upstreamDefinitions", strings.TrimSpace(*upstream.Ref)),
 			})
 		}
 	}
@@ -593,6 +616,10 @@ func (v *LLMValidator) validateProxyData(spec *api.LLMProxyConfigData) []Validat
 
 	// The deprecated `policies` list must not coexist with the new policy lists
 	errors = append(errors, v.validatePolicyListExclusivity(spec.GlobalPolicies, spec.OperationPolicies, spec.Policies)...)
+
+	// Validate API-level resilience (timeout / idleTimeout). LLM kinds support resilience at
+	// the API level only.
+	errors = append(errors, validateResilienceTimeouts("spec.resilience", spec.Resilience)...)
 
 	return errors
 }

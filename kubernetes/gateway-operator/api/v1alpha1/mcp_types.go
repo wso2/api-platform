@@ -156,6 +156,11 @@ type MCPProxyConfigData struct {
 	// +kubebuilder:validation:Pattern=`^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`
 	Version string `json:"version"`
 
+	// UpstreamDefinitions is the list of reusable upstream definitions (with optional
+	// connect timeout) that upstream.ref can reference.
+	// +optional
+	UpstreamDefinitions []UpstreamDefinition `json:"upstreamDefinitions,omitempty"`
+
 	// Upstream is the MCP backend.
 	// +kubebuilder:validation:Required
 	Upstream MCPUpstream `json:"upstream"`
@@ -193,6 +198,12 @@ type MCPProxyConfigData struct {
 	// Policies are MCP proxy-level policies.
 	// +optional
 	Policies []Policy `json:"policies,omitempty"`
+
+	// Resilience configures API-level backend/route timeouts applied to the traffic-forwarding
+	// routes generated for this MCP proxy. Supported at the API level only. Because MCP transports
+	// are long-lived streams, the route timeout defaults to disabled ("0s") for MCP when unset.
+	// +optional
+	Resilience *Resilience `json:"resilience,omitempty"`
 }
 
 //+kubebuilder:object:root=true

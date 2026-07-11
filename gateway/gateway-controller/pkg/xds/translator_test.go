@@ -32,6 +32,7 @@ import (
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
@@ -789,6 +790,53 @@ func TestTranslator_WildcardUpstreamRewriteFromRDC(t *testing.T) {
 	}
 }
 
+// TestTranslator_RouteResilienceTimeoutsFromRDC verifies that per-route resilience
+// timeouts on a models.Route flow into the Envoy RouteAction, with fallback to the
+// global defaults (60s / 300s from testRouterConfig) when unset, and that an explicit
+// 0s is preserved (disables the timeout).
+func TestTranslator_RouteResilienceTimeoutsFromRDC(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	dur := func(d time.Duration) *time.Duration { return &d }
+
+	tests := []struct {
+		name        string
+		timeout     *models.RouteTimeout
+		wantTimeout time.Duration
+		wantIdle    time.Duration
+	}{
+		{name: "nil timeout uses global defaults", timeout: nil, wantTimeout: 60 * time.Second, wantIdle: 300 * time.Second},
+		{name: "configured values applied", timeout: &models.RouteTimeout{Timeout: dur(2 * time.Second), IdleTimeout: dur(10 * time.Second)}, wantTimeout: 2 * time.Second, wantIdle: 10 * time.Second},
+		{name: "timeout set, idle falls back", timeout: &models.RouteTimeout{Timeout: dur(3 * time.Second)}, wantTimeout: 3 * time.Second, wantIdle: 300 * time.Second},
+		{name: "explicit 0s disables route timeout", timeout: &models.RouteTimeout{Timeout: dur(0)}, wantTimeout: 0, wantIdle: 300 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdc := &models.RuntimeDeployConfig{
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"main": {Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+				},
+			}
+			rdcRoute := &models.Route{
+				Method:          "GET",
+				Path:            "/api/v1.0/items",
+				OperationPath:   "/items",
+				AutoHostRewrite: true,
+				Timeout:         tt.timeout,
+				Upstream:        models.RouteUpstream{ClusterKey: "main"},
+			}
+			r := translator.createRouteFromRDC("GET|/api/v1.0/items|", rdcRoute, rdc)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantTimeout, r.GetRoute().GetTimeout().AsDuration(), "route timeout")
+			assert.Equal(t, tt.wantIdle, r.GetRoute().GetIdleTimeout().AsDuration(), "route idle timeout")
+		})
+	}
+}
+
 // TestTranslator_MCPUpstreamRewriteFromRDC verifies the MCP "/mcp"-not-appended behavior on the
 // RuntimeDeployConfig path (createRouteFromRDC), which the policy/runtime xDS pipeline uses.
 func TestTranslator_MCPUpstreamRewriteFromRDC(t *testing.T) {
@@ -1105,6 +1153,55 @@ func TestTranslator_ExtractProviderName_NilSourceConfig(t *testing.T) {
 
 	result := translator.extractProviderName(storedCfg, nil)
 	assert.Equal(t, "", result)
+}
+
+// extractHCM pulls the HttpConnectionManager out of the listener's first filter chain.
+func extractHCM(t *testing.T, lis *listener.Listener) *hcm.HttpConnectionManager {
+	t.Helper()
+	require.NotEmpty(t, lis.GetFilterChains())
+	require.NotEmpty(t, lis.GetFilterChains()[0].GetFilters())
+	typedConfig := lis.GetFilterChains()[0].GetFilters()[0].GetTypedConfig()
+	require.NotNil(t, typedConfig)
+	manager := &hcm.HttpConnectionManager{}
+	require.NoError(t, typedConfig.UnmarshalTo(manager))
+	return manager
+}
+
+func TestTranslator_CreateListener_HCMTimeouts(t *testing.T) {
+	tests := []struct {
+		name     string
+		timeouts config.HCMTimeouts
+	}{
+		{
+			name:     "configured values",
+			timeouts: config.HCMTimeouts{RequestTimeout: 30 * time.Second, RequestHeadersTimeout: 10 * time.Second, StreamIdleTimeout: 2 * time.Minute, IdleTimeout: 30 * time.Minute},
+		},
+		{
+			name:     "envoy defaults flow through unchanged",
+			timeouts: config.HCMTimeouts{RequestTimeout: 0, RequestHeadersTimeout: 0, StreamIdleTimeout: 5 * time.Minute, IdleTimeout: time.Hour},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := createTestLogger()
+			routerCfg := testRouterConfig()
+			routerCfg.HTTPListener.Timeouts = tt.timeouts
+			cfg := testConfig()
+			cfg.Router = *routerCfg
+			translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+			lis, _, err := translator.createListener(nil, false)
+			require.NoError(t, err)
+
+			manager := extractHCM(t, lis)
+			assert.Equal(t, tt.timeouts.RequestTimeout, manager.GetRequestTimeout().AsDuration(), "request_timeout")
+			assert.Equal(t, tt.timeouts.RequestHeadersTimeout, manager.GetRequestHeadersTimeout().AsDuration(), "request_headers_timeout")
+			assert.Equal(t, tt.timeouts.StreamIdleTimeout, manager.GetStreamIdleTimeout().AsDuration(), "stream_idle_timeout")
+			require.NotNil(t, manager.GetCommonHttpProtocolOptions(), "common_http_protocol_options must be set")
+			assert.Equal(t, tt.timeouts.IdleTimeout, manager.GetCommonHttpProtocolOptions().GetIdleTimeout().AsDuration(), "idle_timeout")
+		})
+	}
 }
 
 func TestTranslator_CreateAccessLogConfig_Disabled(t *testing.T) {
@@ -2525,5 +2622,42 @@ func TestTranslator_CreateDynamicFwdListenerForWebSubHub(t *testing.T) {
 		// Verify the listener has the correct configuration
 		assert.Equal(t, "0.0.0.0", listener.GetAddress().GetSocketAddress().GetAddress())
 		assert.Equal(t, core.SocketAddress_TCP, listener.GetAddress().GetSocketAddress().GetProtocol())
+	})
+}
+
+// parseDurationAllowZero must accept exactly what the CRD admission controller accepts
+// (constants.ResilienceDurationPattern): single-unit durations including "0s" to disable, while
+// rejecting compound, negative, and unitless values.
+func TestParseDurationAllowZero_MatchesCRDPattern(t *testing.T) {
+	ptr := func(s string) *string { return &s }
+
+	t.Run("accepts single-unit and zero", func(t *testing.T) {
+		for _, in := range []string{"30s", "500ms", "1m", "2h", "1.5s", "0s", "0ms"} {
+			d, err := parseDurationAllowZero(ptr(in))
+			if err != nil {
+				t.Errorf("expected %q to be accepted, got error: %v", in, err)
+				continue
+			}
+			if d == nil {
+				t.Errorf("expected %q to yield a non-nil duration", in)
+			}
+		}
+	})
+
+	t.Run("nil and empty yield nil without error", func(t *testing.T) {
+		for _, in := range []*string{nil, ptr(""), ptr("  ")} {
+			d, err := parseDurationAllowZero(in)
+			if err != nil || d != nil {
+				t.Errorf("expected nil,nil for empty input, got %v,%v", d, err)
+			}
+		}
+	})
+
+	t.Run("rejects compound, negative, and unitless", func(t *testing.T) {
+		for _, in := range []string{"1h30m", "1m30s", "-30s", "-5s", "30", "0", "15seconds", "abc"} {
+			if _, err := parseDurationAllowZero(ptr(in)); err == nil {
+				t.Errorf("expected %q to be rejected, but it was accepted", in)
+			}
+		}
 	})
 }

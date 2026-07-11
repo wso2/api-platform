@@ -107,6 +107,11 @@ type LLMProviderConfigData struct {
 	// +kubebuilder:validation:Required
 	AccessControl LLMAccessControl `json:"accessControl"`
 
+	// UpstreamDefinitions is the list of reusable upstream definitions (with optional
+	// connect timeout) that upstream.ref can reference.
+	// +optional
+	UpstreamDefinitions []UpstreamDefinition `json:"upstreamDefinitions,omitempty"`
+
 	// Upstream configures the LLM upstream.
 	// +kubebuilder:validation:Required
 	Upstream LLMProviderUpstream `json:"upstream"`
@@ -128,6 +133,11 @@ type LLMProviderConfigData struct {
 	// Policies is the list of policies applied to this LLM provider.
 	// +optional
 	Policies []LLMPolicy `json:"policies,omitempty"`
+
+	// Resilience configures API-level backend/route timeouts applied to all routes
+	// generated for this LLM provider. Supported at the API level only.
+	// +optional
+	Resilience *Resilience `json:"resilience,omitempty"`
 }
 
 // LLMPolicyPath defines a path/methods combination together with policy

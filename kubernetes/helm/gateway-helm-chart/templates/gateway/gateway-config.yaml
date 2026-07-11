@@ -143,6 +143,16 @@ data:
     route_idle_timeout_ms = {{ $router.upstream.timeouts.route_idle_timeout_ms }}
     connect_timeout_ms = {{ $router.upstream.timeouts.connect_timeout_ms }}
 
+    [router.http_listener]
+    server_header_transformation = {{ $router.http_listener.server_header_transformation | quote }}
+    server_header_value = {{ $router.http_listener.server_header_value | quote }}
+
+    [router.http_listener.timeouts]
+    request_timeout = {{ $router.http_listener.timeouts.request_timeout | quote }}
+    request_headers_timeout = {{ $router.http_listener.timeouts.request_headers_timeout | quote }}
+    stream_idle_timeout = {{ $router.http_listener.timeouts.stream_idle_timeout | quote }}
+    idle_timeout = {{ $router.http_listener.timeouts.idle_timeout | quote }}
+
     [router.policy_engine]
     mode = {{ $router.policy_engine.mode | quote }}
     host = {{ $router.policy_engine.host | default "" | quote }}
