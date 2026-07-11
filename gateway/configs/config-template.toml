@@ -212,6 +212,18 @@ connect_timeout_ms = 5000
 server_header_transformation = "OVERWRITE"
 server_header_value = "WSO2 API Platform"
 
+# HTTP Connection Manager (downstream) timeouts
+# A value of zero disables any of these timeout settings.
+[router.http_listener.timeouts]
+# Max duration for the entire downstream request
+request_timeout = "0s"
+# Max duration to receive the complete request headers
+request_headers_timeout = "0s"
+# Idle timeout for a single HTTP stream/request
+stream_idle_timeout = "5m"
+# Idle timeout for the downstream connection
+idle_timeout = "1h"
+
 [router.policy_engine]
 host = "policy-engine"
 port = 9001

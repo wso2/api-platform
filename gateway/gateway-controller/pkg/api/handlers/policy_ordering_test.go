@@ -176,8 +176,8 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 		},
 		Operations: []api.Operation{
 			{
-				Method: "GET",
-				Path:   "/resource",
+				Method: api.Ptr(api.OperationMethod("GET")),
+				Path:   api.Ptr("/resource"),
 			},
 		},
 	}
@@ -294,28 +294,28 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method:   "GET",
-					Path:     "/resource1",
+					Method:   api.Ptr(api.OperationMethod("GET")),
+					Path:     api.Ptr("/resource1"),
 					Policies: &op1Policies,
 				},
 				{
-					Method:   "POST",
-					Path:     "/resource2",
+					Method:   api.Ptr(api.OperationMethod("POST")),
+					Path:     api.Ptr("/resource2"),
 					Policies: &op2Policies,
 				},
 				{
-					Method:   "PUT",
-					Path:     "/resource3",
+					Method:   api.Ptr(api.OperationMethod("PUT")),
+					Path:     api.Ptr("/resource3"),
 					Policies: &op3Policies,
 				},
 				{
-					Method: "DELETE",
-					Path:   "/resource4",
+					Method: api.Ptr(api.OperationMethod("DELETE")),
+					Path:   api.Ptr("/resource4"),
 					// No policies
 				},
 				{
-					Method:   "PATCH",
-					Path:     "/resource5",
+					Method:   api.Ptr(api.OperationMethod("PATCH")),
+					Path:     api.Ptr("/resource5"),
 					Policies: &op5Policies,
 				},
 			},
@@ -440,8 +440,8 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method:   "GET",
-					Path:     "/resource",
+					Method:   api.Ptr(api.OperationMethod("GET")),
+					Path:     api.Ptr("/resource"),
 					Policies: &operationPolicies,
 				},
 			},

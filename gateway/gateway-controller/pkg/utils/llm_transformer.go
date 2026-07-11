@@ -275,10 +275,10 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	operationRegistry := make(map[pathMethodKey]*api.Operation)
 	for _, method := range constants.WILDCARD_HTTP_METHODS {
 		op := &api.Operation{
-			Path:   constants.BASE_PATH + constants.WILD_CARD,
-			Method: api.OperationMethod(method),
+			Path:   api.Ptr(constants.BASE_PATH + constants.WILD_CARD),
+			Method: api.Ptr(api.OperationMethod(method)),
 		}
-		operationRegistry[pathMethodKey{path: op.Path, method: method}] = op
+		operationRegistry[pathMethodKey{path: op.EffectivePath(), method: method}] = op
 	}
 
 	// Phase 2: Process User-Defined Policies (operationPolicies + deprecated policies)
@@ -295,8 +295,8 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 
 				for _, op := range methodOperations {
 					// Use pathsMatch to determine if policy applies to this operation
-					if pathsMatch(op.Path, attachment.pathEntry.Path) {
-						for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+					if pathsMatch(op.EffectivePath(), attachment.pathEntry.Path) {
+						for _, targetPath := range expandPolicyTargetPaths(op.EffectivePath(), &tmpl.Configuration.Spec) {
 							if attachedPolicyPaths[targetPath] {
 								continue
 							}
@@ -307,8 +307,8 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 							targetOp, exists := operationRegistry[targetKey]
 							if !exists {
 								targetOp = &api.Operation{
-									Path:   targetPath,
-									Method: api.OperationMethod(policyMethod),
+									Path:   api.Ptr(targetPath),
+									Method: api.Ptr(api.OperationMethod(policyMethod)),
 								}
 								operationRegistry[targetKey] = targetOp
 							}
@@ -353,6 +353,9 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			}
 		}
 	}
+	// A proxy is always allow-all with no access control, so there are no deny routes:
+	// attach API-level resilience to all generated routes.
+	applyResilienceToTrafficRoutes(ops, proxy.Spec.Resilience, nil)
 	spec.Operations = ops
 
 	// Global (api-level) policies: route into the derived RestAPI's spec.Policies so they are
@@ -399,11 +402,19 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 		spec.Context = *provider.Spec.Context
 	}
 
-	// Step 2) Upstreams: map provider.Spec.Upstreams to api.Upstreams
-	// Map provider upstream and vhost to API main upstream and vhost
-	spec.Upstream.Main = api.Upstream{
-		Url: provider.Spec.Upstream.Url,
+	// Step 2) Upstreams: map provider upstream (direct url or upstreamDefinition ref) and vhost
+	// to the API main upstream. When a ref is used, carry the upstreamDefinitions through so the
+	// per-upstream connect timeout resolves the same way it does for RestApi.
+	if provider.Spec.Upstream.Ref != nil && strings.TrimSpace(*provider.Spec.Upstream.Ref) != "" {
+		spec.Upstream.Main = api.Upstream{
+			Ref: provider.Spec.Upstream.Ref,
+		}
+	} else {
+		spec.Upstream.Main = api.Upstream{
+			Url: provider.Spec.Upstream.Url,
+		}
 	}
+	spec.UpstreamDefinitions = provider.Spec.UpstreamDefinitions
 	if provider.Spec.Vhost != nil {
 		spec.Vhosts = &struct {
 			Main    string  `json:"main" yaml:"main"`
@@ -446,6 +457,12 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 
 	var ops []api.Operation
 
+	// denyOpKeys tracks the routes created purely to deny traffic (the access-control
+	// exception routes, which carry the 404 respond policy). API-level resilience is NOT
+	// attached to these (they never reach an upstream). Populated in allow_all mode; empty
+	// in deny_all (where every created route is an allowed/forwarding route).
+	denyOpKeys := make(map[pathMethodKey]bool)
+
 	switch mode {
 	case api.AllowAll:
 		var denyPolicyVersion string
@@ -461,10 +478,10 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 		operationRegistry := make(map[pathMethodKey]*api.Operation)
 		for _, method := range constants.WILDCARD_HTTP_METHODS {
 			op := &api.Operation{
-				Path:   constants.BASE_PATH + constants.WILD_CARD,
-				Method: api.OperationMethod(method),
+				Path:   api.Ptr(constants.BASE_PATH + constants.WILD_CARD),
+				Method: api.Ptr(api.OperationMethod(method)),
 			}
-			operationRegistry[pathMethodKey{path: op.Path, method: method}] = op
+			operationRegistry[pathMethodKey{path: op.EffectivePath(), method: method}] = op
 		}
 
 		// Phase 2: Normalize and Process Access Control Exceptions (Deny List)
@@ -485,13 +502,14 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 			for _, method := range methods {
 				key := pathMethodKey{path: ex.Path, method: method}
 				deniedPathMethods[key] = true
+				denyOpKeys[key] = true
 
 				// Check if operation exists
 				if _, exists := operationRegistry[key]; !exists {
 					// Create operation for this specific denied path
 					op := &api.Operation{
-						Path:   ex.Path,
-						Method: api.OperationMethod(method),
+						Path:   api.Ptr(ex.Path),
+						Method: api.Ptr(api.OperationMethod(method)),
 					}
 					operationRegistry[key] = op
 				}
@@ -542,8 +560,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 							continue
 						}
 
-						if pathsMatch(op.Path, attachment.pathEntry.Path) {
-							for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+						if pathsMatch(op.EffectivePath(), attachment.pathEntry.Path) {
+							for _, targetPath := range expandPolicyTargetPaths(op.EffectivePath(), &tmpl.Configuration.Spec) {
 								if attachedPolicyPaths[targetPath] {
 									continue
 								}
@@ -554,8 +572,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 								targetOp, exists := operationRegistry[targetKey]
 								if !exists {
 									targetOp = &api.Operation{
-										Path:   targetPath,
-										Method: api.OperationMethod(policyMethod),
+										Path:   api.Ptr(targetPath),
+										Method: api.Ptr(api.OperationMethod(policyMethod)),
 									}
 									operationRegistry[targetKey] = targetOp
 								}
@@ -613,8 +631,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 		operationRegistry := make(map[pathMethodKey]*api.Operation)
 		for key := range normalizedExceptions {
 			op := &api.Operation{
-				Path:   key.path,
-				Method: api.OperationMethod(key.method),
+				Path:   api.Ptr(key.path),
+				Method: api.Ptr(api.OperationMethod(key.method)),
 			}
 			operationRegistry[key] = op
 		}
@@ -634,8 +652,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 					methodOperations := getOperationsForMethod(operationRegistry, policyMethod)
 
 					for _, op := range methodOperations {
-						if pathsMatch(op.Path, attachment.pathEntry.Path) {
-							for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+						if pathsMatch(op.EffectivePath(), attachment.pathEntry.Path) {
+							for _, targetPath := range expandPolicyTargetPaths(op.EffectivePath(), &tmpl.Configuration.Spec) {
 								if attachedPolicyPaths[targetPath] {
 									continue
 								}
@@ -646,8 +664,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 								targetOp, exists := operationRegistry[targetKey]
 								if !exists {
 									targetOp = &api.Operation{
-										Path:   targetPath,
-										Method: api.OperationMethod(policyMethod),
+										Path:   api.Ptr(targetPath),
+										Method: api.Ptr(api.OperationMethod(policyMethod)),
 									}
 									operationRegistry[targetKey] = targetOp
 								}
@@ -692,6 +710,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 			}
 		}
 	}
+	// Attach API-level resilience to every traffic-forwarding route, skipping the deny routes.
+	applyResilienceToTrafficRoutes(ops, provider.Spec.Resilience, denyOpKeys)
 	spec.Operations = ops
 
 	// Global (api-level) policies: route into the derived RestAPI's spec.Policies so they are
@@ -714,6 +734,27 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 
 	output.Spec = spec
 	return output, nil
+}
+
+// applyResilienceToTrafficRoutes attaches the API-level resilience block to every operation that
+// forwards traffic upstream, skipping access-control deny routes (which only return a canned 404
+// and never reach an upstream, so a timeout on them is meaningless). denyKeys identifies the deny
+// routes by path+method; it is empty for deny_all and proxy (no deny routes exist there), so in
+// those cases the block is applied to all routes. A nil resilience block is a no-op.
+//
+// Resilience is attached at the operation level (not the derived API level) on purpose: that keeps
+// the deny routes on the gateway's global default timeout instead of inheriting the API-level value
+// via the translator's per-field fallback.
+func applyResilienceToTrafficRoutes(ops []api.Operation, resilience *api.Resilience, denyKeys map[pathMethodKey]bool) {
+	if resilience == nil {
+		return
+	}
+	for i := range ops {
+		if denyKeys[pathMethodKey{path: ops[i].EffectivePath(), method: ops[i].EffectiveMethod()}] {
+			continue
+		}
+		ops[i].Resilience = resilience
+	}
 }
 
 // GetUpstreamAuthApikeyPolicyParams renders the policy params with given header and value
@@ -1108,8 +1149,8 @@ func ensureOperation(operationRegistry map[pathMethodKey]*api.Operation, path, m
 	}
 
 	op := &api.Operation{
-		Path:   path,
-		Method: api.OperationMethod(method),
+		Path:   api.Ptr(path),
+		Method: api.Ptr(api.OperationMethod(method)),
 	}
 	operationRegistry[key] = op
 	return op
@@ -1336,8 +1377,8 @@ func sortOperationsBySpecificity(ops []api.Operation) []api.Operation {
 
 // shouldSwap determines if two operations should be swapped in sorting
 func shouldSwap(op1, op2 api.Operation) bool {
-	path1HasWildcard := strings.Contains(op1.Path, "*")
-	path2HasWildcard := strings.Contains(op2.Path, "*")
+	path1HasWildcard := strings.Contains(op1.EffectivePath(), "*")
+	path2HasWildcard := strings.Contains(op2.EffectivePath(), "*")
 
 	// Non-wildcard paths come before wildcard paths
 	if !path1HasWildcard && path2HasWildcard {
@@ -1348,15 +1389,15 @@ func shouldSwap(op1, op2 api.Operation) bool {
 	}
 
 	// Longer paths come before shorter paths
-	if len(op1.Path) != len(op2.Path) {
-		return len(op1.Path) < len(op2.Path)
+	if len(op1.EffectivePath()) != len(op2.EffectivePath()) {
+		return len(op1.EffectivePath()) < len(op2.EffectivePath())
 	}
 
 	// Lexicographic comparison for paths
-	if op1.Path != op2.Path {
-		return op1.Path > op2.Path
+	if op1.EffectivePath() != op2.EffectivePath() {
+		return op1.EffectivePath() > op2.EffectivePath()
 	}
 
 	// Method alphabetically
-	return string(op1.Method) > string(op2.Method)
+	return op1.EffectiveMethod() > op2.EffectiveMethod()
 }

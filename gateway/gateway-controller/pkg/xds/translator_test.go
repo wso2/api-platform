@@ -23,6 +23,7 @@ import (
 	"math"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,9 @@ import (
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
+	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -789,6 +792,53 @@ func TestTranslator_WildcardUpstreamRewriteFromRDC(t *testing.T) {
 	}
 }
 
+// TestTranslator_RouteResilienceTimeoutsFromRDC verifies that per-route resilience
+// timeouts on a models.Route flow into the Envoy RouteAction, with fallback to the
+// global defaults (60s / 300s from testRouterConfig) when unset, and that an explicit
+// 0s is preserved (disables the timeout).
+func TestTranslator_RouteResilienceTimeoutsFromRDC(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	dur := func(d time.Duration) *time.Duration { return &d }
+
+	tests := []struct {
+		name        string
+		timeout     *models.RouteTimeout
+		wantTimeout time.Duration
+		wantIdle    time.Duration
+	}{
+		{name: "nil timeout uses global defaults", timeout: nil, wantTimeout: 60 * time.Second, wantIdle: 300 * time.Second},
+		{name: "configured values applied", timeout: &models.RouteTimeout{Timeout: dur(2 * time.Second), IdleTimeout: dur(10 * time.Second)}, wantTimeout: 2 * time.Second, wantIdle: 10 * time.Second},
+		{name: "timeout set, idle falls back", timeout: &models.RouteTimeout{Timeout: dur(3 * time.Second)}, wantTimeout: 3 * time.Second, wantIdle: 300 * time.Second},
+		{name: "explicit 0s disables route timeout", timeout: &models.RouteTimeout{Timeout: dur(0)}, wantTimeout: 0, wantIdle: 300 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdc := &models.RuntimeDeployConfig{
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"main": {Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+				},
+			}
+			rdcRoute := &models.Route{
+				Method:          "GET",
+				Path:            "/api/v1.0/items",
+				OperationPath:   "/items",
+				AutoHostRewrite: true,
+				Timeout:         tt.timeout,
+				Upstream:        models.RouteUpstream{ClusterKey: "main"},
+			}
+			r := translator.createRouteFromRDC("GET|/api/v1.0/items|", rdcRoute, rdc)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantTimeout, r.GetRoute().GetTimeout().AsDuration(), "route timeout")
+			assert.Equal(t, tt.wantIdle, r.GetRoute().GetIdleTimeout().AsDuration(), "route idle timeout")
+		})
+	}
+}
+
 // TestTranslator_MCPUpstreamRewriteFromRDC verifies the MCP "/mcp"-not-appended behavior on the
 // RuntimeDeployConfig path (createRouteFromRDC), which the policy/runtime xDS pipeline uses.
 func TestTranslator_MCPUpstreamRewriteFromRDC(t *testing.T) {
@@ -895,6 +945,65 @@ func TestTranslator_MCPAppendResourcePathToBackend(t *testing.T) {
 			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
 		})
 	}
+}
+
+// TestTranslator_ExactPathUsesNativeMatcher guards the fix for HTTPRoutePathMatchOrder:
+// an Exact path match must be emitted as Envoy's native exact matcher (RouteMatch_Path),
+// NOT as a safe_regex. Rendering it as a regex made SortRoutesByPriority treat every route
+// as a Regex, so it fell back to regex-string length and let a longer prefix regex
+// (^/match(?:/.*)?$) outrank a shorter exact (^/match/exact$).
+func TestTranslator_ExactPathUsesNativeMatcher(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	rdc := &models.RuntimeDeployConfig{
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"main": {BasePath: "", Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+		},
+	}
+	rdcRoute := &models.Route{
+		Method:        "GET",
+		Path:          "/match/exact",
+		OperationPath: "/match/exact",
+		PathMatchType: "Exact",
+		Upstream:      models.RouteUpstream{ClusterKey: "main"},
+	}
+	r := translator.createRouteFromRDC("GET|/match/exact|", rdcRoute, rdc)
+	require.NotNil(t, r)
+	pathSpec, ok := r.GetMatch().GetPathSpecifier().(*route.RouteMatch_Path)
+	require.True(t, ok, "exact path should use RouteMatch_Path, got %T", r.GetMatch().GetPathSpecifier())
+	assert.Equal(t, "/match/exact", pathSpec.Path)
+	assert.Equal(t, pathMatchTypeExact, getPathMatchType(r.GetMatch()),
+		"exact route must rank as Exact for SortRoutesByPriority")
+}
+
+// TestSortRoutesByPriority_ExactBeatsLongerPrefixRegex reproduces the HTTPRoutePathMatchOrder
+// conformance shape: an exact /match must outrank the /match/ prefix even though the prefix's
+// regex string is longer. Before the fix the exact route was a safe_regex and lost on length.
+func TestSortRoutesByPriority_ExactBeatsLongerPrefixRegex(t *testing.T) {
+	exactMatch := &route.Route{
+		Name:  "exact-match",
+		Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Path{Path: "/match"}},
+	}
+	exactMatchExact := &route.Route{
+		Name:  "exact-match-exact",
+		Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Path{Path: "/match/exact"}},
+	}
+	prefixMatch := &route.Route{
+		Name: "prefix-match",
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_SafeRegex{
+				SafeRegex: &matcher.RegexMatcher{Regex: "^/match(?:/.*)?$"},
+			},
+		},
+	}
+
+	sorted := SortRoutesByPriority([]*route.Route{prefixMatch, exactMatch, exactMatchExact})
+
+	// Both exacts must precede the prefix regex.
+	assert.Equal(t, "exact-match-exact", sorted[0].Name)
+	assert.Equal(t, "exact-match", sorted[1].Name)
+	assert.Equal(t, "prefix-match", sorted[2].Name)
 }
 
 func TestTranslator_SanitizeClusterName(t *testing.T) {
@@ -1105,6 +1214,55 @@ func TestTranslator_ExtractProviderName_NilSourceConfig(t *testing.T) {
 
 	result := translator.extractProviderName(storedCfg, nil)
 	assert.Equal(t, "", result)
+}
+
+// extractHCM pulls the HttpConnectionManager out of the listener's first filter chain.
+func extractHCM(t *testing.T, lis *listener.Listener) *hcm.HttpConnectionManager {
+	t.Helper()
+	require.NotEmpty(t, lis.GetFilterChains())
+	require.NotEmpty(t, lis.GetFilterChains()[0].GetFilters())
+	typedConfig := lis.GetFilterChains()[0].GetFilters()[0].GetTypedConfig()
+	require.NotNil(t, typedConfig)
+	manager := &hcm.HttpConnectionManager{}
+	require.NoError(t, typedConfig.UnmarshalTo(manager))
+	return manager
+}
+
+func TestTranslator_CreateListener_HCMTimeouts(t *testing.T) {
+	tests := []struct {
+		name     string
+		timeouts config.HCMTimeouts
+	}{
+		{
+			name:     "configured values",
+			timeouts: config.HCMTimeouts{RequestTimeout: 30 * time.Second, RequestHeadersTimeout: 10 * time.Second, StreamIdleTimeout: 2 * time.Minute, IdleTimeout: 30 * time.Minute},
+		},
+		{
+			name:     "envoy defaults flow through unchanged",
+			timeouts: config.HCMTimeouts{RequestTimeout: 0, RequestHeadersTimeout: 0, StreamIdleTimeout: 5 * time.Minute, IdleTimeout: time.Hour},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := createTestLogger()
+			routerCfg := testRouterConfig()
+			routerCfg.HTTPListener.Timeouts = tt.timeouts
+			cfg := testConfig()
+			cfg.Router = *routerCfg
+			translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+			lis, _, err := translator.createListener(nil, false)
+			require.NoError(t, err)
+
+			manager := extractHCM(t, lis)
+			assert.Equal(t, tt.timeouts.RequestTimeout, manager.GetRequestTimeout().AsDuration(), "request_timeout")
+			assert.Equal(t, tt.timeouts.RequestHeadersTimeout, manager.GetRequestHeadersTimeout().AsDuration(), "request_headers_timeout")
+			assert.Equal(t, tt.timeouts.StreamIdleTimeout, manager.GetStreamIdleTimeout().AsDuration(), "stream_idle_timeout")
+			require.NotNil(t, manager.GetCommonHttpProtocolOptions(), "common_http_protocol_options must be set")
+			assert.Equal(t, tt.timeouts.IdleTimeout, manager.GetCommonHttpProtocolOptions().GetIdleTimeout().AsDuration(), "idle_timeout")
+		})
+	}
 }
 
 func TestTranslator_CreateAccessLogConfig_Disabled(t *testing.T) {
@@ -2526,4 +2684,149 @@ func TestTranslator_CreateDynamicFwdListenerForWebSubHub(t *testing.T) {
 		assert.Equal(t, "0.0.0.0", listener.GetAddress().GetSocketAddress().GetAddress())
 		assert.Equal(t, core.SocketAddress_TCP, listener.GetAddress().GetSocketAddress().GetProtocol())
 	})
+}
+
+// TestCreateWeightedCluster_TLS guards the fix for the reviewer concern
+// "Configure TLS for weighted HTTPS upstreams." A multi-endpoint (weighted) upstream
+// definition whose endpoints are HTTPS must be dialed over TLS, mirroring the single-endpoint
+// createCluster path. Before the fix createWeightedCluster discarded the scheme and produced a
+// plain cluster with no transport socket, silently downgrading HTTPS weighted upstreams to
+// plaintext.
+func TestCreateWeightedCluster_TLS(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	w := func(n int) *int { return &n }
+	endpoints := []models.Endpoint{
+		{Host: "a.example.com", Port: 443, Weight: w(70)},
+		{Host: "b.example.com", Port: 443, Weight: w(30)},
+	}
+
+	t.Run("https weighted upstream gets per-endpoint TLS transport sockets", func(t *testing.T) {
+		c := translator.createWeightedCluster("upstream_secure", endpoints, &models.UpstreamTLS{Enabled: true}, nil)
+		require.NotNil(t, c)
+
+		// One transport socket match per endpoint, each carrying a TLS transport socket.
+		require.Len(t, c.GetTransportSocketMatches(), len(endpoints),
+			"each HTTPS endpoint must get its own transport socket match")
+		for i, tsm := range c.GetTransportSocketMatches() {
+			matchID := strconv.Itoa(i)
+			assert.Equal(t, "ts"+matchID, tsm.GetName())
+			assert.Equal(t, matchID, tsm.GetMatch().GetFields()["lb_id"].GetStringValue())
+			require.NotNil(t, tsm.GetTransportSocket())
+			assert.Equal(t, "envoy.transport_sockets.tls", tsm.GetTransportSocket().GetName())
+
+			// The transport socket must hold an UpstreamTlsContext with the endpoint's host as SNI.
+			tc := &tlsv3.UpstreamTlsContext{}
+			require.NoError(t, tsm.GetTransportSocket().GetTypedConfig().UnmarshalTo(tc))
+			assert.Equal(t, endpoints[i].Host, tc.GetSni(),
+				"each endpoint's TLS context must use its own hostname as SNI")
+		}
+
+		// Every LbEndpoint must be tagged with the matching lb_id so Envoy selects its socket.
+		lbs := c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints()
+		require.Len(t, lbs, len(endpoints))
+		for i, lb := range lbs {
+			md := lb.GetMetadata().GetFilterMetadata()["envoy.transport_socket_match"]
+			require.NotNil(t, md, "HTTPS endpoint must carry transport_socket_match metadata")
+			assert.Equal(t, strconv.Itoa(i), md.GetFields()["lb_id"].GetStringValue())
+		}
+	})
+
+	t.Run("plaintext weighted upstream is unchanged (no transport socket)", func(t *testing.T) {
+		plain := []models.Endpoint{
+			{Host: "a.internal", Port: 8080, Weight: w(1)},
+			{Host: "b.internal", Port: 8080, Weight: w(1)},
+		}
+		// Both nil TLS and explicitly-disabled TLS must produce a plain cluster.
+		for _, tls := range []*models.UpstreamTLS{nil, {Enabled: false}} {
+			c := translator.createWeightedCluster("upstream_plain", plain, tls, nil)
+			require.NotNil(t, c)
+			assert.Empty(t, c.GetTransportSocketMatches(),
+				"plaintext weighted upstream must not get transport socket matches")
+			for _, lb := range c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints() {
+				assert.Nil(t, lb.GetMetadata(), "plaintext endpoint must not carry transport-socket metadata")
+			}
+		}
+	})
+}
+
+// parseDurationAllowZero must accept exactly what the CRD admission controller accepts
+// (constants.ResilienceDurationPattern): single-unit durations including "0s" to disable, while
+// rejecting compound, negative, and unitless values.
+func TestParseDurationAllowZero_MatchesCRDPattern(t *testing.T) {
+	ptr := func(s string) *string { return &s }
+
+	t.Run("accepts single-unit and zero", func(t *testing.T) {
+		for _, in := range []string{"30s", "500ms", "1m", "2h", "1.5s", "0s", "0ms"} {
+			d, err := parseDurationAllowZero(ptr(in))
+			if err != nil {
+				t.Errorf("expected %q to be accepted, got error: %v", in, err)
+				continue
+			}
+			if d == nil {
+				t.Errorf("expected %q to yield a non-nil duration", in)
+			}
+		}
+	})
+
+	t.Run("nil and empty yield nil without error", func(t *testing.T) {
+		for _, in := range []*string{nil, ptr(""), ptr("  ")} {
+			d, err := parseDurationAllowZero(in)
+			if err != nil || d != nil {
+				t.Errorf("expected nil,nil for empty input, got %v,%v", d, err)
+			}
+		}
+	})
+
+	t.Run("rejects compound, negative, and unitless", func(t *testing.T) {
+		for _, in := range []string{"1h30m", "1m30s", "-30s", "-5s", "30", "0", "15seconds", "abc"} {
+			if _, err := parseDurationAllowZero(ptr(in)); err == nil {
+				t.Errorf("expected %q to be rejected, but it was accepted", in)
+			}
+		}
+	})
+}
+
+// TestBuildMatchHeaders_HeaderMatchersRendered guards that configured header matches are rendered
+// as Envoy header matchers on the route (the mechanism that makes header-based route selection and
+// cross-HTTPRoute precedence work), and that a RegularExpression match becomes a safe_regex rather
+// than being downgraded to an exact match.
+func TestBuildMatchHeaders_HeaderMatchersRendered(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+	rdc := &models.RuntimeDeployConfig{
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"main": {BasePath: "", Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+		},
+	}
+
+	route1 := &models.Route{
+		Method: "GET", Path: "/svc/v1/things", OperationPath: "/things",
+		Upstream: models.RouteUpstream{ClusterKey: "main"},
+		MatchHeaders: []models.RouteHeaderMatch{
+			{Name: "Version", Type: "Exact", Value: "two"},
+			{Name: "X-Flavor", Type: "RegularExpression", Value: "red|blue"},
+		},
+	}
+	r := translator.createRouteFromRDC("GET|/svc/v1/things|main.local|abc123", route1, rdc)
+	require.NotNil(t, r)
+
+	var version, flavor *route.HeaderMatcher
+	for _, h := range r.GetMatch().GetHeaders() {
+		switch h.GetName() {
+		case "version":
+			version = h
+		case "x-flavor":
+			flavor = h
+		}
+	}
+	require.NotNil(t, version, "expected a lower-cased 'version' header matcher")
+	_, exactOK := version.GetHeaderMatchSpecifier().(*route.HeaderMatcher_StringMatch)
+	require.True(t, exactOK, "Exact header match must be a string_match, got %T", version.GetHeaderMatchSpecifier())
+
+	require.NotNil(t, flavor, "expected an 'x-flavor' header matcher")
+	rx, ok := flavor.GetHeaderMatchSpecifier().(*route.HeaderMatcher_SafeRegexMatch)
+	require.True(t, ok, "RegularExpression header match must stay a safe_regex, got %T", flavor.GetHeaderMatchSpecifier())
+	assert.Equal(t, "red|blue", rx.SafeRegexMatch.GetRegex())
 }

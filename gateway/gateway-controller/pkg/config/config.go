@@ -585,8 +585,17 @@ type VHostEntry struct {
 
 // HTTPListenerConfig holds HTTP listener related configuration of an API
 type HTTPListenerConfig struct {
-	ServerHeaderTransformation string `koanf:"server_header_transformation"` // Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
-	ServerHeaderValue          string `koanf:"server_header_value"`          // Custom value for the Server header
+	ServerHeaderTransformation string      `koanf:"server_header_transformation"` // Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
+	ServerHeaderValue          string      `koanf:"server_header_value"`          // Custom value for the Server header
+	Timeouts                   HCMTimeouts `koanf:"timeouts"`                     // HTTP Connection Manager (downstream) timeouts
+}
+
+// HCMTimeouts holds HTTP Connection Manager (downstream/connection) timeouts.
+type HCMTimeouts struct {
+	RequestTimeout        time.Duration `koanf:"request_timeout"`         // HCM request_timeout (default 0s = disabled)
+	RequestHeadersTimeout time.Duration `koanf:"request_headers_timeout"` // HCM request_headers_timeout (default 0s = disabled)
+	StreamIdleTimeout     time.Duration `koanf:"stream_idle_timeout"`     // HCM stream_idle_timeout (default 5m)
+	IdleTimeout           time.Duration `koanf:"idle_timeout"`            // common_http_protocol_options.idle_timeout (default 1h)
 }
 
 // PolicyEngineConfig holds policy engine ext_proc filter configuration
@@ -976,6 +985,12 @@ func defaultConfig() *Config {
 			HTTPListener: HTTPListenerConfig{
 				ServerHeaderTransformation: commonconstants.OVERWRITE,
 				ServerHeaderValue:          commonconstants.ServerName,
+				Timeouts: HCMTimeouts{
+					RequestTimeout:        0,               // 0s = disabled (Envoy default)
+					RequestHeadersTimeout: 0,               // 0s = disabled (Envoy default)
+					StreamIdleTimeout:     5 * time.Minute, // Envoy default
+					IdleTimeout:           1 * time.Hour,   // Envoy default (connection-level)
+				},
 			},
 		},
 		Analytics: AnalyticsConfig{
@@ -1674,6 +1689,26 @@ func (c *Config) validateTimeoutConfig() error {
 	if timeouts.ConnectTimeoutMs > constants.MaxReasonableTimeoutMs {
 		return fmt.Errorf("router.upstream.timeouts.connect_timeout_ms (%d) exceeds maximum reasonable timeout of %d ms",
 			timeouts.ConnectTimeoutMs, constants.MaxReasonableTimeoutMs)
+	}
+
+	// Validate HCM (downstream/connection) timeouts. Unlike the upstream timeouts above,
+	// 0 is a valid value here: which denotes "disabled scenario"
+	// only reject negative values and unreasonably large ones are rejected.
+	maxConnTimeout := time.Duration(constants.MaxReasonableConnectionTimeoutMs) * time.Millisecond
+	hcmTimeouts := map[string]time.Duration{
+		"request_timeout":         c.Router.HTTPListener.Timeouts.RequestTimeout,
+		"request_headers_timeout": c.Router.HTTPListener.Timeouts.RequestHeadersTimeout,
+		"stream_idle_timeout":     c.Router.HTTPListener.Timeouts.StreamIdleTimeout,
+		"idle_timeout":            c.Router.HTTPListener.Timeouts.IdleTimeout,
+	}
+	for name, v := range hcmTimeouts {
+		if v < 0 {
+			return fmt.Errorf("router.http_listener.timeouts.%s must not be negative, got: %s", name, v)
+		}
+		if v > maxConnTimeout {
+			return fmt.Errorf("router.http_listener.timeouts.%s (%s) exceeds maximum reasonable timeout of %s",
+				name, v, maxConnTimeout)
+		}
 	}
 
 	return nil

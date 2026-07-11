@@ -86,7 +86,7 @@ func readZipEntries(t *testing.T, buf *bytes.Buffer) map[string]string {
 func TestExportAPIAsZip_ZipContainsThreeFiles(t *testing.T) {
 	api := buildStoredConfig("PetStore", "v1", "/petstore", "https://petstore.example.com",
 		[]management.Operation{
-			{Method: "GET", Path: "/pet/{petId}"},
+			{Method: management.Ptr(management.OperationMethod("GET")), Path: management.Ptr("/pet/{petId}")},
 		})
 
 	buf, err := ExportAPIAsZip(api, "onprem-gw", "")
@@ -106,7 +106,7 @@ func TestExportAPIAsZip_ZipContainsThreeFiles(t *testing.T) {
 func TestExportAPIAsZip_APIYamlContent(t *testing.T) {
 	api := buildStoredConfig("PetStore", "v1", "/petstore", "https://petstore.example.com",
 		[]management.Operation{
-			{Method: "GET", Path: "/pet/{petId}"},
+			{Method: management.Ptr(management.OperationMethod("GET")), Path: management.Ptr("/pet/{petId}")},
 		})
 
 	buf, err := ExportAPIAsZip(api, "onprem-gw", "")
@@ -140,8 +140,8 @@ func TestExportAPIAsZip_DeploymentEnvsYamlContent(t *testing.T) {
 func TestExportAPIAsZip_SwaggerYamlContent(t *testing.T) {
 	api := buildStoredConfig("PetStore", "v1", "/petstore", "https://petstore.example.com",
 		[]management.Operation{
-			{Method: "GET", Path: "/pet/{petId}"},
-			{Method: "POST", Path: "/pet"},
+			{Method: management.Ptr(management.OperationMethod("GET")), Path: management.Ptr("/pet/{petId}")},
+			{Method: management.Ptr(management.OperationMethod("POST")), Path: management.Ptr("/pet")},
 		})
 
 	buf, err := ExportAPIAsZip(api, "onprem-gw", "")

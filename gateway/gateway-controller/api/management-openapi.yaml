@@ -4148,7 +4148,7 @@ components:
         context:
           type: string
           description: Base path for all API routes (must start with /, no trailing slash). Use $version to embed the version in the path (e.g., /reading-list/$version resolves to /reading-list/v1.0).
-          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
           minLength: 1
           maxLength: 200
           example: /reading-list/$version
@@ -4175,9 +4175,13 @@ components:
           properties:
             main:
               type: string
-              description: Custom virtual host/domain for production traffic
-              pattern: '^[a-zA-Z0-9\.\-]+$'
-              example: api.example.com
+              description: |
+                Custom virtual host(s)/domain(s) for production traffic. One or more hostnames
+                separated by ';' — each hostname serves the main upstream (e.g. when a Gateway API
+                HTTPRoute attaches to multiple listener hostnames). The first entry is the primary
+                vhost. Each hostname may be a wildcard such as *.example.com.
+              pattern: '^(\*\.)?[a-zA-Z0-9.\-]+(\s*;\s*(\*\.)?[a-zA-Z0-9.\-]+)*$'
+              example: api.example.com;docs.example.com;*.example.com
             sandbox:
               type: string
               description: Custom virtual host/domain for sandbox traffic
@@ -4194,6 +4198,8 @@ components:
           description: List of API-level policies applied to all operations unless overridden
           items:
             $ref: "#/components/schemas/Policy"
+        resilience:
+          $ref: "#/components/schemas/Resilience"
         operations:
           type: array
           description: List of HTTP operations/routes
@@ -4223,7 +4229,8 @@ components:
           example: my-upstream-1
         basePath:
           type: string
-          description: Base path prefix for all endpoints in this upstream (e.g., /api/v2). All requests to this upstream will have this path prepended.
+          description: Base path prefix for all endpoints in this upstream (e.g., /api/v2). All requests to this upstream will have this path prepended. Must start with '/' and must not end with '/'; omit for root.
+          pattern: '^/[a-zA-Z0-9\-._~!$&''()*+,;=:@%/]*[^/]$'
           example: /api/v2
         timeout:
           $ref: "#/components/schemas/UpstreamTimeout"
@@ -4243,7 +4250,7 @@ components:
                 example: http://prod-backend-1:5000
               weight:
                 type: integer
-                description: Weight for load balancing (optional, default 100)
+                description: Relative weight for load balancing across multiple upstream targets. Reserved for future multi-target load balancing; not applied yet (only the first target is currently used).
                 minimum: 0
                 maximum: 100
                 example: 80
@@ -4257,6 +4264,25 @@ components:
           description: Connection timeout duration (e.g., "5s", "500ms")
           pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
           example: 5s
+
+    Resilience:
+      type: object
+      description: >
+        Backend/route timeout configuration. Maps to Envoy RouteAction timeouts.
+        Can be set at the API level (applies to all routes) and/or the operation level
+        (applies to that operation's route). When set at both levels, the operation-level
+        value takes precedence. When unset, the gateway's global route timeout defaults apply.
+      properties:
+        timeout:
+          type: string
+          description: Maximum time for the entire route (request to upstream response). "0s" disables the timeout.
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 15s
+        idleTimeout:
+          type: string
+          description: Per-route stream idle timeout (overrides the listener stream idle timeout for this route). "0s" disables the timeout.
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 0s
 
     Upstream:
       type: object
@@ -4287,32 +4313,98 @@ components:
 
     Operation:
       type: object
-      required:
-        - method
-        - path
+      description: >
+        An operation is matched either by the simple top-level method+path form, or by the
+        richer 'match' block (method + path + headers). When 'match' is present it is
+        authoritative and the top-level method/path are ignored. At least one form must be
+        provided.
       properties:
         method:
-          type: string
-          description: HTTP method
-          enum:
-            - GET
-            - POST
-            - PUT
-            - DELETE
-            - PATCH
-            - HEAD
-            - OPTIONS
-          example: GET
+          allOf:
+            - $ref: "#/components/schemas/OperationMethod"
+          description: HTTP method (simple form; ignored when 'match' is set)
         path:
           type: string
-          description: Route path with optional {param} placeholders
+          description: Route path with optional {param} placeholders (simple form; ignored when 'match' is set)
           pattern: '^\/.*$'
           example: /books/{id}
+        match:
+          $ref: "#/components/schemas/OperationMatch"
         policies:
           type: array
           description: List of policies applied only to this operation (overrides or adds to API-level policies)
           items:
             $ref: "#/components/schemas/Policy"
+        resilience:
+          $ref: "#/components/schemas/Resilience"
+
+    OperationMethod:
+      type: string
+      description: HTTP method
+      enum:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - PATCH
+        - HEAD
+        - OPTIONS
+      example: GET
+
+    OperationMatch:
+      type: object
+      description: Request matching criteria for an operation. Extensible with query params, cookies, etc.
+      required:
+        - method
+        - path
+      properties:
+        method:
+          $ref: "#/components/schemas/OperationMethod"
+        path:
+          $ref: "#/components/schemas/OperationPathMatch"
+        headers:
+          type: array
+          description: Header matchers ANDed with the path match for Envoy route selection
+          items:
+            $ref: "#/components/schemas/OperationHeaderMatch"
+
+    OperationPathMatch:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          type: string
+          description: Route path with optional {param} placeholders
+          pattern: '^\/.*$'
+          example: /books/{id}
+        type:
+          type: string
+          description: Path matching semantics for the operation route
+          enum: [Exact, PathPrefix]
+          default: Exact
+          example: Exact
+
+    OperationHeaderMatch:
+      type: object
+      required:
+        - name
+        - value
+      properties:
+        name:
+          type: string
+          description: Header name (case-insensitive)
+          pattern: '^[a-zA-Z0-9!#$%&''*+\-.^_`|~]+$'
+          example: version
+        value:
+          type: string
+          description: Header value to match
+          example: one
+        type:
+          type: string
+          description: Header match type
+          enum: [Exact, RegularExpression]
+          default: Exact
 
     Policy:
       type: object
@@ -4367,7 +4459,7 @@ components:
         context:
           type: string
           description: Base path for all API routes (must start with /, no trailing slash)
-          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
           minLength: 1
           maxLength: 200
           example: /weather
@@ -4676,7 +4768,7 @@ components:
         context:
           type: string
           description: Base path for all API routes (must start with /, no trailing slash)
-          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
           minLength: 1
           maxLength: 200
           example: /stock-trading
@@ -5322,6 +5414,11 @@ components:
           minLength: 1
           maxLength: 253
           example: "mcp1.example.com"
+        upstreamDefinitions:
+          type: array
+          description: List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.
+          items:
+            $ref: "#/components/schemas/UpstreamDefinition"
         upstream:
           description: The backend MCP server url and auth configurations
           allOf:
@@ -5350,6 +5447,15 @@ components:
           enum: [deployed, undeployed]
           default: deployed
           example: deployed
+        resilience:
+          $ref: '#/components/schemas/Resilience'
+          description: >
+            API-level backend/route timeout configuration. Applies to the traffic-forwarding
+            routes generated for this MCP proxy (GET/POST/DELETE on the MCP resource path).
+            Supported at the API level only. Because MCP transports are long-lived streams,
+            the route timeout defaults to disabled ("0s") for MCP unless a timeout is set here
+            (unlike REST/LLM, which fall back to the gateway's global route timeout); the idle
+            timeout remains the liveness guard.
 
     MCPTool:
       type: object
@@ -5790,6 +5896,11 @@ components:
           type: string
           description: Template name to use for this LLM Provider
           example: openai
+        upstreamDefinitions:
+          type: array
+          description: List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.
+          items:
+            $ref: "#/components/schemas/UpstreamDefinition"
         upstream:
           allOf:
             - $ref: "#/components/schemas/Upstream"
@@ -5818,6 +5929,13 @@ components:
           enum: [deployed, undeployed]
           default: deployed
           example: deployed
+        resilience:
+          $ref: '#/components/schemas/Resilience'
+          description: >
+            API-level backend/route timeout configuration. Applies to all routes generated
+            for this LLM Provider (the routes that forward traffic upstream). Supported at the
+            API level only - LLM routes are synthesized by the gateway, so there is no
+            operation-level override.
 
     UpstreamAuth:
       type: object
@@ -6175,6 +6293,13 @@ components:
           enum: [deployed, undeployed]
           default: deployed
           example: deployed
+        resilience:
+          $ref: '#/components/schemas/Resilience'
+          description: >
+            API-level backend/route timeout configuration. Applies to all routes generated
+            for this LLM Proxy (the routes that forward traffic upstream). Supported at the
+            API level only - LLM routes are synthesized by the gateway, so there is no
+            operation-level override.
 
     SecretConfigurationRequest:
       type: object

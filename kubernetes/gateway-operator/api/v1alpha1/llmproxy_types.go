@@ -115,6 +115,11 @@ type LLMProxyConfigData struct {
 	// Policies is the list of policies applied to this LLM proxy.
 	// +optional
 	Policies []LLMPolicy `json:"policies,omitempty"`
+
+	// Resilience configures API-level backend/route timeouts applied to all routes
+	// generated for this LLM proxy. Supported at the API level only.
+	// +optional
+	Resilience *Resilience `json:"resilience,omitempty"`
 }
 
 //+kubebuilder:object:root=true

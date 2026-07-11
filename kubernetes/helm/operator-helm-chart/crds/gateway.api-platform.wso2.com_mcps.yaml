@@ -122,6 +122,22 @@ spec:
                   - name
                   type: object
                 type: array
+              resilience:
+                description: |-
+                  Resilience configures API-level backend/route timeouts applied to the traffic-forwarding
+                  routes generated for this MCP proxy. Supported at the API level only. Because MCP transports
+                  are long-lived streams, the route timeout defaults to disabled ("0s") for MCP when unset.
+                properties:
+                  idleTimeout:
+                    description: IdleTimeout Per-route stream idle timeout. "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                  timeout:
+                    description: Timeout Maximum time for the entire route (request
+                      to upstream response). "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                type: object
               resources:
                 description: Resources lists optional MCP resources exposed by this
                   proxy.
@@ -254,6 +270,68 @@ spec:
                     description: Url is the direct backend URL.
                     type: string
                 type: object
+              upstreamDefinitions:
+                description: |-
+                  UpstreamDefinitions is the list of reusable upstream definitions (with optional
+                  connect timeout) that upstream.ref can reference.
+                items:
+                  description: |-
+                    UpstreamDefinition is a reusable upstream configuration with an optional connect timeout and
+                    load-balancing targets. Referenced from an upstream via its `ref` field. Shared by RestApi,
+                    LLM Provider, and MCP; mirrors the management-API UpstreamDefinition schema.
+                  properties:
+                    basePath:
+                      description: |-
+                        BasePath Base path prefix prepended to all requests routed through this upstream (e.g. /api/v2).
+                        Must start with "/" and must not end with "/". Omit for root ("/").
+                      pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$
+                      type: string
+                    name:
+                      description: Name Unique identifier for this upstream definition
+                        (referenced by upstream.ref).
+                      maxLength: 100
+                      minLength: 1
+                      pattern: ^[a-zA-Z0-9\-_]+$
+                      type: string
+                    timeout:
+                      description: Timeout Optional timeout configuration for this
+                        upstream (connect timeout).
+                      properties:
+                        connect:
+                          description: Connect Connection-establishment timeout duration
+                            (e.g. "5s", "500ms"). "0s" disables.
+                          pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                          type: string
+                      type: object
+                    upstreams:
+                      description: Upstreams List of backend targets with optional
+                        weights for load balancing.
+                      items:
+                        description: UpstreamTarget is a single backend target within
+                          an UpstreamDefinition.
+                        properties:
+                          url:
+                            description: Url Backend URL (host and port only; path
+                              comes from the definition's basePath).
+                            pattern: ^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$
+                            type: string
+                          weight:
+                            description: |-
+                              Weight Relative weight for load balancing across multiple upstream targets. Reserved for
+                              future multi-target load balancing; not applied yet (only the first target is currently used).
+                            maximum: 100
+                            minimum: 0
+                            type: integer
+                        required:
+                        - url
+                        type: object
+                      minItems: 1
+                      type: array
+                  required:
+                  - name
+                  - upstreams
+                  type: object
+                type: array
               version:
                 description: Version is the MCP proxy semantic version.
                 pattern: ^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$

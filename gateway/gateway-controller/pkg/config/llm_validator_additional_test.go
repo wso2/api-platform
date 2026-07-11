@@ -275,7 +275,7 @@ func TestLLMValidator_ValidateUpstreamWithAuth_Nil(t *testing.T) {
 	validator := NewLLMValidator()
 
 	t.Run("Nil upstream", func(t *testing.T) {
-		errors := validator.validateUpstreamWithAuth("test", nil)
+		errors := validator.validateUpstreamWithAuth("test", nil, nil)
 
 		if len(errors) != 1 {
 			t.Errorf("Expected 1 error for nil upstream, got %d", len(errors))
@@ -297,7 +297,7 @@ func TestLLMValidator_UpstreamURLValidation(t *testing.T) {
 			Url: &malformed,
 		}
 
-		errors := validator.validateUpstreamWithAuth("test", upstream)
+		errors := validator.validateUpstreamWithAuth("test", upstream, nil)
 		found := false
 		for _, err := range errors {
 			if err.Field == "test.url" && err.Message != "" {
@@ -317,7 +317,7 @@ func TestLLMValidator_UpstreamURLValidation(t *testing.T) {
 			Url: &invalidScheme,
 		}
 
-		errors := validator.validateUpstreamWithAuth("test", upstream)
+		errors := validator.validateUpstreamWithAuth("test", upstream, nil)
 		found := false
 		for _, err := range errors {
 			if err.Field == "test.url" && err.Message == "Upstream URL must use http or https scheme" {
