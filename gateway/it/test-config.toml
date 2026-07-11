@@ -72,6 +72,10 @@ enabled = true
 enabled = true
 format = "text"
 
+[router.http_listener.timeouts]
+# This is the only HCM timeout set to a small, testable value here.
+request_headers_timeout = "5s"
+
 # =============================================================================
 # POLICY ENGINE CONFIGURATION
 # =============================================================================

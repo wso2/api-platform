@@ -590,6 +590,8 @@ func (h *LLMHandler) CreateLLMProxy(w http.ResponseWriter, r *http.Request) erro
 			return apperror.ProjectNotFound.Wrap(err)
 		case errors.Is(err, constants.ErrInvalidPolicyVersion):
 			return apperror.ValidationFailed.Wrap(err, "Invalid policy version format")
+		case errors.Is(err, constants.ErrSecretRefMissing):
+			return apperror.ValidationFailed.Wrap(err, "One or more referenced secrets do not exist")
 		case errors.Is(err, constants.ErrInvalidInput):
 			return apperror.ValidationFailed.Wrap(err, "Invalid input")
 		default:
@@ -712,6 +714,8 @@ func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) erro
 			return apperror.ValidationFailed.Wrap(err, "The id is immutable and cannot be changed")
 		case errors.Is(err, constants.ErrInvalidPolicyVersion):
 			return apperror.ValidationFailed.Wrap(err, "Invalid policy version format")
+		case errors.Is(err, constants.ErrSecretRefMissing):
+			return apperror.ValidationFailed.Wrap(err, "One or more referenced secrets do not exist")
 		case errors.Is(err, constants.ErrInvalidInput):
 			return apperror.ValidationFailed.Wrap(err, "Invalid input")
 		default:

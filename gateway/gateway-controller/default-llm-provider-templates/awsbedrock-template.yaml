@@ -22,6 +22,9 @@ metadata:
   name: awsbedrock
 spec:
   displayName: AWS Bedrock
+  groupId: awsbedrock
+  managedBy: wso2
+  version: v1.0
   promptTokens:
     location: payload
     identifier: $.usage.inputTokens

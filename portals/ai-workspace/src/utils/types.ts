@@ -325,6 +325,7 @@ export interface ApiKeySecurity {
   enabled: boolean;
   key?: string;
   in?: 'header' | 'query';
+  keyPrefix?: string;
 }
 
 /**
@@ -408,6 +409,7 @@ export interface CreateLLMProviderRequest {
   operationPolicies?: OperationPolicy[];
   policies?: Policy[];
   openapi?: string;
+  security?: SecurityConfig;
 }
 
 /** Read-only fields from API (excluded from update requests) */

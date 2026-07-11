@@ -18,6 +18,7 @@
 package service
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
@@ -40,6 +41,9 @@ type mockAPIRepository struct {
 
 	// Call tracking for verification
 	lastExcludeHandle string
+	created           *model.API
+	updated           *model.API
+	getByUUIDFunc     func(apiUUID, orgUUID string) (*model.API, error)
 }
 
 func (m *mockAPIRepository) CheckAPIExistsByHandleInOrganization(handle, orgUUID string) (bool, error) {
@@ -49,6 +53,23 @@ func (m *mockAPIRepository) CheckAPIExistsByHandleInOrganization(handle, orgUUID
 func (m *mockAPIRepository) CheckAPIExistsByNameAndVersionInOrganization(name, version, orgUUID, excludeHandle string) (bool, error) {
 	m.lastExcludeHandle = excludeHandle // Track for verification
 	return m.nameVersionExistsResult, m.nameVersionExistsError
+}
+
+func (m *mockAPIRepository) CreateAPI(api *model.API) error {
+	m.created = api
+	return nil
+}
+
+func (m *mockAPIRepository) GetAPIByUUID(apiUUID, orgUUID string) (*model.API, error) {
+	if m.getByUUIDFunc != nil {
+		return m.getByUUIDFunc(apiUUID, orgUUID)
+	}
+	return nil, nil
+}
+
+func (m *mockAPIRepository) UpdateAPI(api *model.API) error {
+	m.updated = api
+	return nil
 }
 
 // TestValidateUpdateAPIRequest tests the validateUpdateAPIRequest method
@@ -576,6 +597,170 @@ func TestApplyAPIUpdatesUpdatesPolicies(t *testing.T) {
 	}
 }
 
+// TestApplyAPIUpdatesPreservesUpstreamAuthOnEmptyValue proves that updating an
+// API's upstream URL without resending auth (routine — auth.value is redacted
+// on GET, so a naive read-modify-write round-trip never has it to resend)
+// does not wipe the stored credential.
+func TestApplyAPIUpdatesPreservesUpstreamAuthOnEmptyValue(t *testing.T) {
+	service := &APIService{
+		apiRepo:     &mockAPIRepository{},
+		projectRepo: &mockProjectRepository{projectByUUID: &model.Project{ID: "11111111-1111-1111-1111-111111111111", Handle: "test-project"}},
+		apiUtil:     &utils.APIUtil{},
+		identity:    newTestIdentityService(),
+	}
+
+	existing := &model.API{
+		Handle:    "pets-api",
+		ProjectID: "11111111-1111-1111-1111-111111111111",
+		Version:   "v1",
+		Configuration: model.RestAPIConfig{
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{
+					URL:  "https://old-backend.internal/api",
+					Auth: &model.UpstreamAuth{Type: "bearer", Header: "Authorization", Value: "stored-secret-token"},
+				},
+			},
+		},
+	}
+
+	// Client updates only the URL — auth is omitted, as it would be after a
+	// GET (which redacts auth.value) followed by a naive PUT of the same body.
+	req := &api.RESTAPI{
+		Upstream: api.Upstream{Main: api.UpstreamDefinition{Url: utils.StringPtrIfNotEmpty("https://new-backend.internal/api")}},
+	}
+
+	updated, err := service.applyAPIUpdates(existing, req, "org-1")
+	if err != nil {
+		t.Fatalf("applyAPIUpdates() error = %v", err)
+	}
+
+	if updated.Upstream.Main.Url == nil || *updated.Upstream.Main.Url != "https://new-backend.internal/api" {
+		t.Errorf("expected URL to be updated, got %v", updated.Upstream.Main.Url)
+	}
+	if updated.Upstream.Main.Auth == nil || updated.Upstream.Main.Auth.Value == nil {
+		t.Fatal("expected stored auth value to be preserved, got nil auth block/value")
+	}
+	if *updated.Upstream.Main.Auth.Value != "stored-secret-token" {
+		t.Errorf("expected stored auth value to be preserved, got %q", *updated.Upstream.Main.Auth.Value)
+	}
+}
+
+// TestApplyAPIUpdatesDoesNotReuseSecretAcrossAuthTypeChange proves that
+// changing the auth Type without resending a Value does not reattach the
+// old secret — the old secret was encrypted/formatted for the previous auth
+// scheme (e.g. a bearer token) and must not be silently reused as, say, a
+// basic-auth credential.
+func TestApplyAPIUpdatesDoesNotReuseSecretAcrossAuthTypeChange(t *testing.T) {
+	service := &APIService{
+		apiRepo:     &mockAPIRepository{},
+		projectRepo: &mockProjectRepository{projectByUUID: &model.Project{ID: "11111111-1111-1111-1111-111111111111", Handle: "test-project"}},
+		apiUtil:     &utils.APIUtil{},
+		identity:    newTestIdentityService(),
+	}
+
+	existing := &model.API{
+		Handle:    "pets-api",
+		ProjectID: "11111111-1111-1111-1111-111111111111",
+		Version:   "v1",
+		Configuration: model.RestAPIConfig{
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{
+					URL:  "https://backend.internal/api",
+					Auth: &model.UpstreamAuth{Type: "bearer", Header: "Authorization", Value: `{{ secret "bearer-handle" }}`},
+				},
+			},
+		},
+	}
+
+	// Client switches auth Type from bearer to basic but does not resend a
+	// Value (e.g. redacted-field round-trip, or simply an oversight).
+	basicType := api.UpstreamAuthType("basic")
+	req := &api.RESTAPI{
+		Upstream: api.Upstream{
+			Main: api.UpstreamDefinition{
+				Url: utils.StringPtrIfNotEmpty("https://backend.internal/api"),
+				Auth: &api.UpstreamAuth{
+					Type:   &basicType,
+					Header: utils.StringPtrIfNotEmpty("Authorization"),
+				},
+			},
+		},
+	}
+
+	updated, err := service.applyAPIUpdates(existing, req, "org-1")
+	if err != nil {
+		t.Fatalf("applyAPIUpdates() error = %v", err)
+	}
+
+	if updated.Upstream.Main.Auth == nil {
+		t.Fatal("expected auth block to be present")
+	}
+	if updated.Upstream.Main.Auth.Type == nil || *updated.Upstream.Main.Auth.Type != basicType {
+		t.Errorf("expected auth type to be %q, got %v", basicType, updated.Upstream.Main.Auth.Type)
+	}
+	if updated.Upstream.Main.Auth.Value != nil && *updated.Upstream.Main.Auth.Value != "" {
+		t.Errorf("expected old bearer secret to NOT be reused for the new basic auth type, got value %q", *updated.Upstream.Main.Auth.Value)
+	}
+}
+
+// TestAPIServiceUpdate_CleansUpRotatedSecret proves that rotating an API's
+// upstream auth to a new secret deprecates the secret it replaced.
+func TestAPIServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
+	apiRepo := &mockAPIRepository{
+		getByUUIDFunc: func(apiUUID, orgUUID string) (*model.API, error) {
+			return &model.API{
+				ID:             apiUUID,
+				Handle:         "pets-api",
+				OrganizationID: orgUUID,
+				ProjectID:      "11111111-1111-1111-1111-111111111111",
+				Version:        "v1",
+				Configuration: model.RestAPIConfig{
+					Upstream: model.UpstreamConfig{
+						Main: &model.UpstreamEndpoint{
+							URL:  "https://backend.internal/api",
+							Auth: &model.UpstreamAuth{Type: "bearer", Header: "Authorization", Value: `{{ secret "old-handle" }}`},
+						},
+					},
+				},
+			}, nil
+		},
+	}
+	secretRepo := newMockRepo()
+	secretRepo.secrets["old-handle"] = &model.Secret{Handle: "old-handle", Status: model.SecretStatusActive}
+	secretRepo.secrets["new-handle"] = &model.Secret{Handle: "new-handle", Status: model.SecretStatusActive}
+	secretService := NewSecretService(secretRepo, &mockVault{}, newTestIdentityService())
+
+	service := &APIService{
+		apiRepo:       apiRepo,
+		projectRepo:   &mockProjectRepository{projectByUUID: &model.Project{ID: "11111111-1111-1111-1111-111111111111", Handle: "test-project"}},
+		apiUtil:       &utils.APIUtil{},
+		secretService: secretService,
+		identity:      newTestIdentityService(),
+		auditRepo:     &noopAuditRepo{},
+	}
+
+	req := &api.RESTAPI{
+		Upstream: api.Upstream{
+			Main: api.UpstreamDefinition{
+				Url: utils.StringPtrIfNotEmpty("https://backend.internal/api"),
+				Auth: &api.UpstreamAuth{
+					Type:   upstreamAuthTypePtr("bearer"),
+					Header: ptr("Authorization"),
+					Value:  ptr(`{{ secret "new-handle" }}`),
+				},
+			},
+		},
+	}
+
+	_, err := service.UpdateAPI("api-uuid", req, "org-1", "alice")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if secretRepo.secrets["old-handle"].Status != model.SecretStatusDeprecated {
+		t.Errorf("expected old secret to be deprecated, got status=%v", secretRepo.secrets["old-handle"].Status)
+	}
+}
+
 // Helper functions
 
 // ptr creates a string pointer
@@ -599,3 +784,74 @@ func createStatusPtr(s string) *api.CreateRESTAPIRequestLifeCycleStatus {
 }
 
 // Note: contains() and findSubstring() helper functions are defined in gateway_test.go
+
+func TestAPIServiceCreate_MissingSecretRef_Rejected(t *testing.T) {
+	apiRepo := &mockAPIRepository{}
+	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService())
+	service := &APIService{
+		apiRepo:       apiRepo,
+		secretService: secretService,
+		identity:      newTestIdentityService(),
+	}
+
+	params := map[string]interface{}{"value": `{{ secret "nonexistent-api-secret" }}`}
+	req := &api.CreateRESTAPIRequest{
+		DisplayName: "Test API",
+		Context:     "/test",
+		Version:     "v1",
+		ProjectId:   "11111111-1111-1111-1111-111111111111",
+		Upstream:    api.Upstream{},
+		Policies:    &[]api.Policy{{Name: "set-headers", Version: "v1", Params: &params}},
+	}
+
+	_, err := service.CreateAPI(req, "org-1", "alice")
+	if err == nil {
+		t.Fatal("expected error for non-existent secret placeholder, got nil")
+	}
+	if !errors.Is(err, constants.ErrSecretRefMissing) {
+		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	}
+	if apiRepo.created != nil {
+		t.Error("expected API creation to be aborted, but repo.CreateAPI was called")
+	}
+}
+
+func TestAPIServiceUpdate_MissingSecretRef_Rejected(t *testing.T) {
+	apiRepo := &mockAPIRepository{
+		getByUUIDFunc: func(apiUUID, orgUUID string) (*model.API, error) {
+			return &model.API{
+				ID:             apiUUID,
+				Handle:         "pets-api",
+				OrganizationID: orgUUID,
+				ProjectID:      "11111111-1111-1111-1111-111111111111",
+				Version:        "v1",
+				Configuration:  model.RestAPIConfig{},
+			}, nil
+		},
+	}
+	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService())
+	service := &APIService{
+		apiRepo:       apiRepo,
+		secretService: secretService,
+		identity:      newTestIdentityService(),
+	}
+
+	params := map[string]interface{}{"value": `{{ secret "nonexistent-api-secret" }}`}
+	req := &api.RESTAPI{
+		DisplayName: "Test API",
+		Context:     "/test",
+		Version:     "v1",
+		Policies:    &[]api.Policy{{Name: "set-headers", Version: "v1", Params: &params}},
+	}
+
+	_, err := service.UpdateAPI("api-uuid", req, "org-1", "alice")
+	if err == nil {
+		t.Fatal("expected error for non-existent secret placeholder, got nil")
+	}
+	if !errors.Is(err, constants.ErrSecretRefMissing) {
+		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	}
+	if apiRepo.updated != nil {
+		t.Error("expected API update to be aborted, but repo.UpdateAPI was called")
+	}
+}

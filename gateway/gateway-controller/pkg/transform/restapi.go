@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	versionutil "github.com/wso2/api-platform/common/version"
@@ -151,8 +152,22 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		return nil, fmt.Errorf("sandbox upstream is configured but resolves to the same vhost %q as the main upstream; configure distinct vhosts to avoid route conflicts", effectiveMainVHost)
 	}
 
+	// Resolve API-level resilience timeouts once; operation-level values override these.
+	apiTimeout, apiIdleTimeout, err := xds.ResolveResilience(apiData.Resilience)
+	if err != nil {
+		return nil, fmt.Errorf("invalid API-level resilience: %w", err)
+	}
+
 	// Build routes and policy chains for each operation
 	for _, op := range apiData.Operations {
+		// Operation-level resilience overrides API-level (per field); nil leaves the
+		// global route timeout default in effect.
+		opTimeout, opIdleTimeout, err := xds.ResolveResilience(op.Resilience)
+		if err != nil {
+			return nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.Method, op.Path, err)
+		}
+		routeTimeout := buildRouteTimeout(opTimeout, apiTimeout, opIdleTimeout, apiIdleTimeout)
+
 		vhosts := []string{effectiveMainVHost}
 		if hasSandbox {
 			vhosts = append(vhosts, effectiveSandboxVHost)
@@ -168,6 +183,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 				OperationPath:   op.Path,
 				Vhost:           vhost,
 				AutoHostRewrite: mainAutoHostRewrite,
+				Timeout:         routeTimeout,
 				Upstream: models.RouteUpstream{
 					ClusterKey:       mainUpstream.ClusterKey,
 					UseClusterHeader: useClusterHeader,
@@ -246,6 +262,24 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 }
 
 // collectAPIPolicies validates and collects API-level policies into SDK format.
+// buildRouteTimeout applies operation-over-API precedence (per field) and returns a
+// *models.RouteTimeout, or nil when neither level configured any timeout (so the global
+// route timeout default applies).
+func buildRouteTimeout(opTimeout, apiTimeout, opIdle, apiIdle *time.Duration) *models.RouteTimeout {
+	timeout := opTimeout
+	if timeout == nil {
+		timeout = apiTimeout
+	}
+	idle := opIdle
+	if idle == nil {
+		idle = apiIdle
+	}
+	if timeout == nil && idle == nil {
+		return nil
+	}
+	return &models.RouteTimeout{Timeout: timeout, IdleTimeout: idle}
+}
+
 func (t *RestAPITransformer) collectAPIPolicies(policies *[]api.Policy) map[string]policyenginev1.PolicyInstance {
 	result := make(map[string]policyenginev1.PolicyInstance)
 	if policies == nil {

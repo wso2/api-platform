@@ -234,9 +234,9 @@ function ProxyOverviewContent() {
       setSavedProxy(updatedProxy);
       showSnackbar('Proxy updated successfully.', 'success');
     } catch (err) {
-      setUpdateError(
-        err instanceof Error ? err.message : 'Failed to update proxy'
-      );
+      const message = err instanceof Error ? err.message : 'Failed to update proxy';
+      setUpdateError(message);
+      showSnackbar(message, 'error');
     } finally {
       setIsSavingChanges(false);
     }

@@ -102,6 +102,14 @@ func validConfig() *Config {
 				ServerHeaderTransformation: commonconstants.OVERWRITE,
 			},
 		},
+		// Transport defaults mirror production so collector-gated grpc validation
+		// passes and the deprecated [analytics] alias stays neutral.
+		Collector: CollectorConfig{
+			Server: defaultGRPCEventServerConfig(),
+		},
+		Analytics: AnalyticsConfig{
+			GRPCEventServerCfg: defaultGRPCEventServerConfig(),
+		},
 	}
 }
 
@@ -1004,6 +1012,61 @@ func TestConfig_ValidateTimeoutConfig(t *testing.T) {
 	}
 }
 
+func TestConfig_ValidateHCMTimeouts(t *testing.T) {
+	maxConn := time.Duration(constants.MaxReasonableConnectionTimeoutMs) * time.Millisecond
+	tests := []struct {
+		name        string
+		timeouts    HCMTimeouts
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:     "Envoy defaults are valid",
+			timeouts: HCMTimeouts{RequestTimeout: 0, RequestHeadersTimeout: 0, StreamIdleTimeout: 5 * time.Minute, IdleTimeout: time.Hour},
+		},
+		{
+			name:     "All zero (disabled) is valid",
+			timeouts: HCMTimeouts{},
+		},
+		{
+			name:     "Custom positive values are valid",
+			timeouts: HCMTimeouts{RequestTimeout: 30 * time.Second, RequestHeadersTimeout: 10 * time.Second, StreamIdleTimeout: time.Minute, IdleTimeout: 2 * time.Hour},
+		},
+		{
+			name:        "Negative request_timeout rejected",
+			timeouts:    HCMTimeouts{RequestTimeout: -1 * time.Second},
+			wantErr:     true,
+			errContains: "router.http_listener.timeouts.request_timeout must not be negative",
+		},
+		{
+			name:        "Negative stream_idle_timeout rejected",
+			timeouts:    HCMTimeouts{StreamIdleTimeout: -5 * time.Second},
+			wantErr:     true,
+			errContains: "router.http_listener.timeouts.stream_idle_timeout must not be negative",
+		},
+		{
+			name:        "idle_timeout exceeding max reasonable rejected",
+			timeouts:    HCMTimeouts{IdleTimeout: maxConn + time.Second},
+			wantErr:     true,
+			errContains: "router.http_listener.timeouts.idle_timeout",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Router.HTTPListener.Timeouts = tt.timeouts
+			err := cfg.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestConfig_ValidatePolicyEngineConfig(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -1205,11 +1268,10 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 			name:    "Analytics enabled with valid UDS config (default mode)",
 			enabled: true,
 			setupConfig: func(cfg *Config) {
-				cfg.Analytics.GRPCEventServerCfg.Mode = "uds"
-				cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 1000
-				cfg.Analytics.GRPCEventServerCfg.BufferSizeBytes = 16384
-				cfg.Analytics.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-				cfg.Analytics.GRPCEventServerCfg.ServerPort = 18090
+				cfg.Collector.Server.Mode = "uds"
+				cfg.Collector.Server.BufferFlushInterval = 1000
+				cfg.Collector.Server.BufferSizeBytes = 16384
+				cfg.Collector.Server.GRPCRequestTimeout = 5000
 			},
 			wantErr: false,
 		},
@@ -1217,12 +1279,10 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 			name:    "Analytics enabled with valid TCP config",
 			enabled: true,
 			setupConfig: func(cfg *Config) {
-				cfg.Analytics.GRPCEventServerCfg.Mode = "tcp"
-				cfg.Analytics.GRPCEventServerCfg.Port = 18090
-				cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 1000
-				cfg.Analytics.GRPCEventServerCfg.BufferSizeBytes = 16384
-				cfg.Analytics.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-				cfg.Analytics.GRPCEventServerCfg.ServerPort = 18090
+				cfg.Collector.Server.Mode = "tcp"
+				cfg.Collector.Server.BufferFlushInterval = 1000
+				cfg.Collector.Server.BufferSizeBytes = 16384
+				cfg.Collector.Server.GRPCRequestTimeout = 5000
 			},
 			wantErr: false,
 		},
@@ -1230,11 +1290,10 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 			name:    "Analytics enabled with empty mode defaults to UDS",
 			enabled: true,
 			setupConfig: func(cfg *Config) {
-				cfg.Analytics.GRPCEventServerCfg.Mode = ""
-				cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 1000
-				cfg.Analytics.GRPCEventServerCfg.BufferSizeBytes = 16384
-				cfg.Analytics.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-				cfg.Analytics.GRPCEventServerCfg.ServerPort = 18090
+				cfg.Collector.Server.Mode = ""
+				cfg.Collector.Server.BufferFlushInterval = 1000
+				cfg.Collector.Server.BufferSizeBytes = 16384
+				cfg.Collector.Server.GRPCRequestTimeout = 5000
 			},
 			wantErr: false,
 		},
@@ -1242,58 +1301,58 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 			name:    "Invalid mode value",
 			enabled: true,
 			setupConfig: func(cfg *Config) {
-				cfg.Analytics.GRPCEventServerCfg.Mode = "invalid"
-				cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 1000
-				cfg.Analytics.GRPCEventServerCfg.BufferSizeBytes = 16384
-				cfg.Analytics.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-				cfg.Analytics.GRPCEventServerCfg.ServerPort = 18090
+				cfg.Collector.Server.Mode = "invalid"
+				cfg.Collector.Server.BufferFlushInterval = 1000
+				cfg.Collector.Server.BufferSizeBytes = 16384
+				cfg.Collector.Server.GRPCRequestTimeout = 5000
 			},
 			wantErr:     true,
-			errContains: "grpc_event_server.mode must be 'uds' or 'tcp'",
-		},
-		{
-			name:    "TCP mode - invalid port",
-			enabled: true,
-			setupConfig: func(cfg *Config) {
-				cfg.Analytics.GRPCEventServerCfg.Mode = "tcp"
-				cfg.Analytics.GRPCEventServerCfg.Port = 0
-				cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 1000
-				cfg.Analytics.GRPCEventServerCfg.BufferSizeBytes = 16384
-				cfg.Analytics.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-				cfg.Analytics.GRPCEventServerCfg.ServerPort = 18090
-			},
-			wantErr:     true,
-			errContains: "grpc_event_server.port must be between 1 and 65535",
-		},
-		{
-			name:    "Invalid server port",
-			enabled: true,
-			setupConfig: func(cfg *Config) {
-				cfg.Analytics.GRPCEventServerCfg.Mode = "uds"
-				cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 1000
-				cfg.Analytics.GRPCEventServerCfg.BufferSizeBytes = 16384
-				cfg.Analytics.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-				cfg.Analytics.GRPCEventServerCfg.ServerPort = 0
-			},
-			wantErr:     true,
-			errContains: "grpc_event_server.server_port must be between 1 and 65535",
+			errContains: "collector.server.mode must be 'uds' or 'tcp'",
 		},
 		{
 			name:    "Invalid buffer flush interval",
 			enabled: true,
 			setupConfig: func(cfg *Config) {
-				cfg.Analytics.GRPCEventServerCfg.Mode = "uds"
-				cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 0
-				cfg.Analytics.GRPCEventServerCfg.ServerPort = 18090
+				cfg.Collector.Server.Mode = "uds"
+				cfg.Collector.Server.BufferFlushInterval = 0
 			},
 			wantErr:     true,
 			errContains: "invalid gRPC event server configuration",
+		},
+		{
+			// Backward compat: an existing config that already sets a custom port
+			// (the deprecated Port override) must keep working, not error.
+			name:    "Deprecated port override still accepted (backward compat)",
+			enabled: true,
+			setupConfig: func(cfg *Config) {
+				cfg.Collector.Server.Mode = "tcp"
+				cfg.Collector.Server.Port = 9099
+				cfg.Collector.Server.BufferFlushInterval = 1000
+				cfg.Collector.Server.BufferSizeBytes = 16384
+				cfg.Collector.Server.GRPCRequestTimeout = 5000
+			},
+			wantErr: false,
+		},
+		{
+			name:    "Deprecated port override out of range still errors",
+			enabled: true,
+			setupConfig: func(cfg *Config) {
+				cfg.Collector.Server.Mode = "tcp"
+				cfg.Collector.Server.Port = 70000
+				cfg.Collector.Server.BufferFlushInterval = 1000
+				cfg.Collector.Server.BufferSizeBytes = 16384
+				cfg.Collector.Server.GRPCRequestTimeout = 5000
+			},
+			wantErr:     true,
+			errContains: "collector.server.port must be between 1 and 65535",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := validConfig()
+			// Analytics is a consumer; enabling it makes the collector implicitly
+			// active so these tests exercise the collector transport validation.
 			cfg.Analytics.Enabled = tt.enabled
 			if tt.setupConfig != nil {
 				tt.setupConfig(cfg)
@@ -1309,14 +1368,38 @@ func TestConfig_ValidateAnalyticsConfig(t *testing.T) {
 	}
 }
 
+// TestConfig_IsCollectorEnabled covers the implicit collector: it is active iff a
+// consumer (analytics or traffic logging) is enabled, and off otherwise.
+func TestConfig_IsCollectorEnabled(t *testing.T) {
+	t.Run("no consumers -> off", func(t *testing.T) {
+		cfg := validConfig()
+		assert.False(t, cfg.IsCollectorEnabled())
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("analytics on -> collector on", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.Analytics.Enabled = true
+		cfg.Analytics.EnabledPublishers = []string{}
+		assert.True(t, cfg.IsCollectorEnabled())
+		require.NoError(t, cfg.Validate())
+	})
+
+	t.Run("traffic logging on -> collector on", func(t *testing.T) {
+		cfg := validConfig()
+		cfg.TrafficLogging.Enabled = true
+		assert.True(t, cfg.IsCollectorEnabled())
+		require.NoError(t, cfg.Validate())
+	})
+}
+
 func TestConfig_ValidateAnalyticsPayloadMigration(t *testing.T) {
 	setValidAnalyticsGRPC := func(cfg *Config) {
-		cfg.Analytics.Enabled = true
+		cfg.Analytics.Enabled = true // a consumer being on makes the collector implicit
 		cfg.Analytics.GRPCEventServerCfg.Mode = "uds"
 		cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 1000
 		cfg.Analytics.GRPCEventServerCfg.BufferSizeBytes = 16384
 		cfg.Analytics.GRPCEventServerCfg.GRPCRequestTimeout = 5000
-		cfg.Analytics.GRPCEventServerCfg.ServerPort = 18090
 	}
 
 	tests := []struct {
@@ -1371,8 +1454,67 @@ func TestConfig_ValidateAnalyticsPayloadMigration(t *testing.T) {
 
 			err := cfg.Validate()
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantSendReq, cfg.Analytics.SendRequestBody)
-			assert.Equal(t, tt.wantSendResp, cfg.Analytics.SendResponseBody)
+			// Deprecated analytics body aliases now migrate onto the collector.
+			assert.Equal(t, tt.wantSendReq, cfg.Collector.RequestBody)
+			assert.Equal(t, tt.wantSendResp, cfg.Collector.ResponseBody)
+		})
+	}
+}
+
+// TestConfig_ValidateAnalyticsPayloadMigration_SkippedWhenAnalyticsDisabled guards
+// against a stale analytics.allow_payloads left over from a disabled analytics
+// setup silently turning on body capture for an unrelated consumer (traffic
+// logging) enabled later. The deprecated capture aliases belong to analytics, so
+// they must only be honored while analytics itself is enabled.
+func TestConfig_ValidateAnalyticsPayloadMigration_SkippedWhenAnalyticsDisabled(t *testing.T) {
+	cfg := validConfig()
+	cfg.Analytics.Enabled = false
+	cfg.TrafficLogging.Enabled = true // an unrelated consumer activates the collector
+	cfg.Analytics.AllowPayloads = true
+
+	err := cfg.Validate()
+	require.NoError(t, err)
+	assert.False(t, cfg.Collector.RequestBody)
+	assert.False(t, cfg.Collector.ResponseBody)
+}
+
+// TestConfig_ValidateAnalyticsTransportMigration_SkippedWhenAnalyticsDisabled guards
+// against a stale analytics.grpc_event_server override left over from a disabled
+// analytics setup silently reconfiguring the transport for an unrelated consumer
+// (traffic logging) enabled later. The deprecated transport alias belongs to
+// analytics, so it must only be honored while analytics itself is enabled.
+func TestConfig_ValidateAnalyticsTransportMigration_SkippedWhenAnalyticsDisabled(t *testing.T) {
+	cfg := validConfig()
+	cfg.Analytics.Enabled = false
+	cfg.TrafficLogging.Enabled = true // an unrelated consumer activates the collector
+	cfg.Analytics.GRPCEventServerCfg.Mode = "uds"
+	cfg.Analytics.GRPCEventServerCfg.BufferFlushInterval = 1000
+	cfg.Analytics.GRPCEventServerCfg.BufferSizeBytes = 16384
+	cfg.Analytics.GRPCEventServerCfg.GRPCRequestTimeout = 5000
+
+	err := cfg.Validate()
+	require.NoError(t, err)
+	assert.Equal(t, defaultGRPCEventServerConfig(), cfg.Collector.Server)
+}
+
+func TestConfig_ValidateCollectorConfig_IgnorePathPrefixesNormalized(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []string
+		want  []string
+	}{
+		{name: "absent -> nil", input: nil, want: nil},
+		{name: "empty slice -> nil", input: []string{}, want: nil},
+		{name: "all blank -> nil", input: []string{"", "   "}, want: nil},
+		{name: "trims whitespace and drops empties", input: []string{"  /health  ", "", "/metrics"}, want: []string{"/health", "/metrics"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Collector.IgnorePathPrefixes = tt.input
+
+			require.NoError(t, cfg.Validate())
+			assert.Equal(t, tt.want, cfg.Collector.IgnorePathPrefixes)
 		})
 	}
 }
@@ -1582,6 +1724,50 @@ func TestDefaultConfig(t *testing.T) {
 	assert.Equal(t, "info", cfg.Controller.Logging.Level)
 	assert.False(t, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup)
 	assert.Equal(t, uint32(5000), cfg.Router.Upstream.Timeouts.ConnectTimeoutMs, "default router.upstream.timeouts.connect_timeout_ms should be 5s (5000 ms)")
+
+	// HCM timeout defaults must match Envoy's documented defaults.
+	hcm := cfg.Router.HTTPListener.Timeouts
+	assert.Equal(t, time.Duration(0), hcm.RequestTimeout, "default request_timeout should be 0s (disabled)")
+	assert.Equal(t, time.Duration(0), hcm.RequestHeadersTimeout, "default request_headers_timeout should be 0s (disabled)")
+	assert.Equal(t, 5*time.Minute, hcm.StreamIdleTimeout, "default stream_idle_timeout should be 5m")
+	assert.Equal(t, time.Hour, hcm.IdleTimeout, "default idle_timeout should be 1h")
+}
+
+func TestLoadConfig_HCMTimeouts(t *testing.T) {
+	t.Run("explicit values parse from toml", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		toml := `
+[router.http_listener.timeouts]
+request_timeout = "30s"
+request_headers_timeout = "10s"
+stream_idle_timeout = "2m"
+idle_timeout = "30m"
+`
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		hcm := cfg.Router.HTTPListener.Timeouts
+		assert.Equal(t, 30*time.Second, hcm.RequestTimeout)
+		assert.Equal(t, 10*time.Second, hcm.RequestHeadersTimeout)
+		assert.Equal(t, 2*time.Minute, hcm.StreamIdleTimeout)
+		assert.Equal(t, 30*time.Minute, hcm.IdleTimeout)
+	})
+
+	t.Run("omitted section falls back to Envoy defaults", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(""), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		hcm := cfg.Router.HTTPListener.Timeouts
+		assert.Equal(t, time.Duration(0), hcm.RequestTimeout)
+		assert.Equal(t, time.Duration(0), hcm.RequestHeadersTimeout)
+		assert.Equal(t, 5*time.Minute, hcm.StreamIdleTimeout)
+		assert.Equal(t, time.Hour, hcm.IdleTimeout)
+	})
 }
 
 func TestConfig_CaseInsensitiveAlgorithm(t *testing.T) {

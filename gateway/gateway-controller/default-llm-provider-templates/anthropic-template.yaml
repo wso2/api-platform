@@ -22,6 +22,9 @@ metadata:
   name: anthropic
 spec:
   displayName: Anthropic
+  groupId: anthropic
+  managedBy: wso2
+  version: v1.0
   promptTokens:
     location: payload
     identifier: $.usage.input_tokens

@@ -241,7 +241,7 @@ Feature: Search Deployments API
         context: /search-mcp
         specVersion: "2025-06-18"
         upstream:
-          url: http://mcp-server-backend:3001
+          url: http://mcp-server-backend:3001/mcp
         tools: []
         resources: []
         prompts: []
@@ -270,7 +270,7 @@ Feature: Search Deployments API
         context: /displayname-mcp
         specVersion: "2025-06-18"
         upstream:
-          url: http://mcp-server-backend:3001
+          url: http://mcp-server-backend:3001/mcp
         tools: []
         resources: []
         prompts: []
@@ -299,7 +299,7 @@ Feature: Search Deployments API
         context: /version-mcp
         specVersion: "2025-06-18"
         upstream:
-          url: http://mcp-server-backend:3001
+          url: http://mcp-server-backend:3001/mcp
         tools: []
         resources: []
         prompts: []

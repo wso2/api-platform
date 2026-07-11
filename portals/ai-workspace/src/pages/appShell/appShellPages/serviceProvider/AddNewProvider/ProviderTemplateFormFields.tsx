@@ -319,10 +319,10 @@ export default function ProviderTemplateFormFields({
         </Grid>
       )}
 
-      {/* Auth Value - always show, user must provide their API key */}
+      {/* Auth Value - always show; optional, provider can be created without it */}
       <Grid size={{ xs: 12 }}>
         <FormControl fullWidth>
-          <FormLabel required>
+          <FormLabel>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.AddNewProvider.ProviderTemplateFormFields.api.key"
               defaultMessage={'API Key'}
@@ -360,7 +360,7 @@ export default function ProviderTemplateFormFields({
                 ),
               },
             }}
-            placeholder="Enter your API key or token"
+            placeholder="Enter your API key or token (optional)"
             // helperText={
             //   template?.metadata?.auth?.valuePrefix
             //     ? `Will be prefixed with: ${template.metadata.auth.valuePrefix}`

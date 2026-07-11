@@ -139,7 +139,7 @@ func copyVersionPath(fromID, toID, toVersion string) string {
 // createFamily POSTs a new custom family and returns its handle + groupId.
 func createFamily(t *testing.T, r http.Handler, name string) (handle, groupID string) {
 	t.Helper()
-	body := `{"displayName":"` + name + `","managedBy":"customer","metadata":{"endpointUrl":"https://api.example.com"}}`
+	body := `{"displayName":"` + name + `","managedBy":"organization","metadata":{"endpointUrl":"https://api.example.com"}}`
 	w := doJSON(t, r, http.MethodPost, tmplBase, body, true)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create family %q: expected 201, got %d: %s", name, w.Code, w.Body.String())
@@ -171,7 +171,7 @@ func TestLLMTemplateHTTP_CreateFamily_Errors(t *testing.T) {
 	defer cleanup()
 
 	// Missing endpointUrl -> 400.
-	w := doJSON(t, r, http.MethodPost, tmplBase, `{"displayName":"No Endpoint","managedBy":"customer"}`, true)
+	w := doJSON(t, r, http.MethodPost, tmplBase, `{"displayName":"No Endpoint","managedBy":"organization"}`, true)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("missing endpoint: expected 400, got %d: %s", w.Code, w.Body.String())
 	}
@@ -186,7 +186,7 @@ func TestLLMTemplateHTTP_CreateFamily_Errors(t *testing.T) {
 	// Duplicate handle -> 409.
 	createFamily(t, r, "Dup Family")
 	w = doJSON(t, r, http.MethodPost, tmplBase,
-		`{"displayName":"Dup Family","managedBy":"customer","metadata":{"endpointUrl":"https://x"}}`, true)
+		`{"displayName":"Dup Family","managedBy":"organization","metadata":{"endpointUrl":"https://x"}}`, true)
 	if w.Code != http.StatusConflict {
 		t.Errorf("duplicate: expected 409, got %d: %s", w.Code, w.Body.String())
 	}

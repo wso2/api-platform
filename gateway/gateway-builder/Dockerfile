@@ -17,7 +17,7 @@
 # --------------------------------------------------------------------
 
 # Gateway Builder Image
-FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS builder
 ARG TARGETARCH
 
 # Build arguments for version information
@@ -76,12 +76,13 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o /usr/local/bin/gateway-builder \
     ./cmd/builder
 
-FROM golang:1.26.2-bookworm
+FROM golang:1.26.5-bookworm
 
-# Install runtime dependencies
+# Install runtime dependencies (upgrade first to pull in Debian security fixes)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
+    apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
     git \
     make \
     ca-certificates \

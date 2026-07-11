@@ -147,18 +147,8 @@ func dedupeNonEmpty(ids []string) []string {
 	return unique
 }
 
-// isUniqueViolation detects DB unique-constraint violations across SQLite and PostgreSQL.
+// isUniqueViolation detects DB unique-constraint violations. It delegates to the
+// shared, dialect-aware IsUniqueViolation (SQLite, PostgreSQL and SQL Server).
 func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	if strings.Contains(s, "UNIQUE constraint failed") {
-		return true
-	}
-	if strings.Contains(s, "duplicate key value violates unique constraint") ||
-		strings.Contains(s, "23505") {
-		return true
-	}
-	return false
+	return IsUniqueViolation(err)
 }
