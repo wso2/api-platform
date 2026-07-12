@@ -132,7 +132,7 @@ func main() {
 			"url", url,
 			"mode", mode,
 			"auth_mode", cfg.AuthMode,
-			"platform_api", cfg.PlatformAPIURL,
+			"platform_api", cfg.PlatformAPI.URL,
 			"oidc_enabled", cfg.OIDC.Enabled,
 		)
 		printStartedMarker(mode, url)

@@ -42,18 +42,8 @@ type Config struct {
 	// TLS for the BFF listener
 	TLS TLSConfig
 
-	// Upstream Platform API. The http/https scheme of PlatformAPIURL is the single
-	// source of truth for whether the outbound hop uses TLS — there is deliberately
-	// no separate boolean, since that could contradict the URL.
-	PlatformAPIURL string // base URL, e.g. https://platform-api:9243
-	// PlatformCAFile is a PEM bundle to trust for the upstream's TLS certificate
-	// (the preferred way to accept a private/self-signed Platform API cert while
-	// keeping verification on). Ignored when PlatformTLSSkipVerify is true.
-	PlatformCAFile string
-	// PlatformTLSSkipVerify disables upstream certificate verification entirely.
-	// Last-resort escape hatch for dev/demo only; prefer PlatformCAFile.
-	PlatformTLSSkipVerify bool
-	PlatformLoginPath     string // file-based login path on the Platform API
+	// Upstream Platform API
+	PlatformAPI PlatformAPIConfig
 
 	// Same-origin reverse-proxy prefix the SPA calls (stripped before forwarding)
 	ProxyPrefix string
@@ -76,6 +66,26 @@ type Config struct {
 
 	// Runtime config surfaced to the SPA (window.__RUNTIME_CONFIG__)
 	RuntimeConfig map[string]string
+}
+
+// PlatformAPIConfig groups everything about the upstream Platform API hop: where
+// it is, and how its TLS certificate is trusted.
+type PlatformAPIConfig struct {
+	// URL is the base URL, e.g. https://platform-api:9243. Its http/https scheme is
+	// the single source of truth for whether the outbound hop uses TLS — there is
+	// deliberately no separate boolean, since that could contradict the URL.
+	URL string
+	// CAFile is a PEM bundle to trust for the upstream's TLS certificate. It is
+	// appended to the system roots rather than replacing them, so public CAs keep
+	// working; leaving it empty simply uses the OS trust store on its own. Set it to
+	// accept a private/self-signed Platform API cert with verification still on.
+	// Ignored when TLSSkipVerify is true.
+	CAFile string
+	// TLSSkipVerify disables upstream certificate verification entirely.
+	// Last-resort escape hatch for dev/demo only; prefer CAFile.
+	TLSSkipVerify bool
+	// LoginPath is the file-based login path on the Platform API.
+	LoginPath string
 }
 
 // TLSConfig controls whether the BFF listener serves HTTPS directly or sits
@@ -235,11 +245,13 @@ func Load() (*Config, error) {
 			CertFile: getenv("BFF_TLS_CERT_FILE", "/etc/ai-workspace/tls/tls.crt"),
 			KeyFile:  getenv("BFF_TLS_KEY_FILE", "/etc/ai-workspace/tls/tls.key"),
 		},
-		PlatformAPIURL:        strings.TrimRight(getenv("PLATFORM_API_URL", ""), "/"),
-		PlatformCAFile:        getenv("PLATFORM_API_CA_FILE", ""),
-		PlatformTLSSkipVerify: platformTLSSkipVerify,
-		PlatformLoginPath:     getenv("PLATFORM_LOGIN_PATH", "/api/portal/v0.9/auth/login"),
-		ProxyPrefix:           strings.TrimRight(getenv("PROXY_PREFIX", "/api/proxy"), "/"),
+		PlatformAPI: PlatformAPIConfig{
+			URL:           strings.TrimRight(getenv("PLATFORM_API_URL", ""), "/"),
+			CAFile:        getenv("PLATFORM_API_CA_FILE", ""),
+			TLSSkipVerify: platformTLSSkipVerify,
+			LoginPath:     getenv("PLATFORM_LOGIN_PATH", "/api/portal/v0.9/auth/login"),
+		},
+		ProxyPrefix: strings.TrimRight(getenv("PROXY_PREFIX", "/api/proxy"), "/"),
 		Session: SessionConfig{
 			Store:       getenv("SESSION_STORE", "memory"),
 			IdleTimeout: idleTimeout,
@@ -280,26 +292,26 @@ func Load() (*Config, error) {
 		},
 	}
 
-	if cfg.PlatformAPIURL == "" {
+	if cfg.PlatformAPI.URL == "" {
 		return nil, fmt.Errorf("PLATFORM_API_URL is required")
 	}
 	// The scheme is the single source of truth for the outbound TLS decision, so a
 	// missing/typo'd scheme must fail at startup rather than surface as an opaque
 	// dial error on the first proxied request.
-	u, err := url.Parse(cfg.PlatformAPIURL)
+	u, err := url.Parse(cfg.PlatformAPI.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, fmt.Errorf("PLATFORM_API_URL must be an absolute http:// or https:// URL, got %q", cfg.PlatformAPIURL)
+		return nil, fmt.Errorf("PLATFORM_API_URL must be an absolute http:// or https:// URL, got %q", cfg.PlatformAPI.URL)
 	}
 	// Trust knobs only apply to an https upstream; flag them on a plain-http URL so a
 	// mistaken belief that TLS is in effect is caught early.
 	if u.Scheme == "http" {
-		if cfg.PlatformCAFile != "" || cfg.PlatformTLSSkipVerify {
+		if cfg.PlatformAPI.CAFile != "" || cfg.PlatformAPI.TLSSkipVerify {
 			return nil, fmt.Errorf("PLATFORM_API_CA_FILE / PLATFORM_API_TLS_SKIP_VERIFY are set but PLATFORM_API_URL is http:// (no TLS on the upstream hop)")
 		}
 	}
 	// Skipping verification outside demo mode is a security downgrade; require an
 	// operator to reach it deliberately rather than inheriting it silently.
-	if u.Scheme == "https" && cfg.PlatformTLSSkipVerify && !cfg.DemoMode {
+	if u.Scheme == "https" && cfg.PlatformAPI.TLSSkipVerify && !cfg.DemoMode {
 		return nil, fmt.Errorf("PLATFORM_API_TLS_SKIP_VERIFY=true is not allowed while APIP_DEMO_MODE=false; " +
 			"trust the upstream certificate with PLATFORM_API_CA_FILE instead")
 	}

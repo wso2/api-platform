@@ -60,14 +60,14 @@ type Server struct {
 // session store, the file-based authenticator, and (when enabled) the OIDC
 // authenticator — discovering the IDP endpoints up front.
 func New(ctx context.Context, cfg *config.Config) (*Server, error) {
-	target, err := url.Parse(cfg.PlatformAPIURL)
+	target, err := url.Parse(cfg.PlatformAPI.URL)
 	if err != nil {
 		return nil, err
 	}
 
 	transport, err := proxy.NewTransport(proxy.TLSClientOptions{
-		CAFile:     cfg.PlatformCAFile,
-		SkipVerify: cfg.PlatformTLSSkipVerify,
+		CAFile:     cfg.PlatformAPI.CAFile,
+		SkipVerify: cfg.PlatformAPI.TLSSkipVerify,
 	})
 	if err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	s := &Server{
 		cfg:          cfg,
-		fileBased:    auth.NewFileBased(upstream, cfg.PlatformAPIURL, cfg.PlatformLoginPath, cfg.Session.AbsoluteTTL),
+		fileBased:    auth.NewFileBased(upstream, cfg.PlatformAPI.URL, cfg.PlatformAPI.LoginPath, cfg.Session.AbsoluteTTL),
 		proxy:        proxy.ReverseProxy(target, cfg.ProxyPrefix, transport),
 		refreshLocks: make(map[string]*refreshLock),
 	}
