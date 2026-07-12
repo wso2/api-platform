@@ -101,10 +101,10 @@ func buildTestServer(t *testing.T, platformURL, jwt string) (*Server, *httptest.
 	}
 
 	cfg := &config.Config{
-		PlatformAPIURL: platformURL,
-		ProxyPrefix:    "/api/proxy",
-		Cookie:         config.CookieConfig{Name: "_bff_session"},
-		CSRFHeader:     "X-Requested-By",
+		PlatformAPI: config.PlatformAPIConfig{URL: platformURL},
+		ProxyPrefix: "/api/proxy",
+		Cookie:      config.CookieConfig{Name: "_bff_session"},
+		CSRFHeader:  "X-Requested-By",
 	}
 
 	s := &Server{
@@ -168,7 +168,10 @@ func fakePlatformAPI(t *testing.T, responses map[string]struct {
 }
 
 func TestHandleCreateWithSecretCompensation_Success(t *testing.T) {
-	platform, calls := fakePlatformAPI(t, map[string]struct{ status int; body string }{
+	platform, calls := fakePlatformAPI(t, map[string]struct {
+		status int
+		body   string
+	}{
 		"POST /api/v0.9/llm-providers": {http.StatusCreated, `{"id":"prov-1"}`},
 	})
 
@@ -236,7 +239,10 @@ func TestHandleCreateWithSecretCompensation_ProviderFailTriggersDelete(t *testin
 }
 
 func TestHandleCreateWithSecretCompensation_NoSecretNoDelete(t *testing.T) {
-	platform, calls := fakePlatformAPI(t, map[string]struct{ status int; body string }{
+	platform, calls := fakePlatformAPI(t, map[string]struct {
+		status int
+		body   string
+	}{
 		"POST /api/v0.9/llm-providers": {http.StatusBadRequest, `{"error":"bad request"}`},
 	})
 
@@ -265,9 +271,9 @@ func TestHandleCreateWithSecretCompensation_NoSecretNoDelete(t *testing.T) {
 func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 	platform, _ := fakePlatformAPI(t, nil)
 	cfg := &config.Config{
-		PlatformAPIURL: platform.URL,
-		ProxyPrefix:    "/api/proxy",
-		Cookie:         config.CookieConfig{Name: "_bff_session"},
+		PlatformAPI: config.PlatformAPIConfig{URL: platform.URL},
+		ProxyPrefix: "/api/proxy",
+		Cookie:      config.CookieConfig{Name: "_bff_session"},
 	}
 	transport, err := proxy.NewTransport(proxy.TLSClientOptions{SkipVerify: true})
 	if err != nil {
@@ -293,4 +299,3 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 		t.Errorf("error = %q, want %q", body["error"], "not authenticated")
 	}
 }
-
