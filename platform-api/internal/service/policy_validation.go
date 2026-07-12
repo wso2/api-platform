@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 )
 
 // policyVersionPattern mirrors the `pattern: '^v\d+$'` constraint on Policy.version,
@@ -50,7 +50,8 @@ func validatePolicyVersions(policies *[]api.Policy) error {
 	}
 	for _, p := range *policies {
 		if !isValidPolicyVersion(p.Version) {
-			return fmt.Errorf("%w: policy %q version %q", constants.ErrInvalidPolicyVersion, p.Name, p.Version)
+			return apperror.ValidationFailed.New(fmt.Sprintf(
+				"Policy %q has an invalid version %q. Policy versions must be major-only, e.g. v1.", p.Name, p.Version))
 		}
 	}
 	return nil
@@ -63,7 +64,8 @@ func validateLLMPolicyVersions(policies *[]api.LLMPolicy) error {
 	}
 	for _, p := range *policies {
 		if !isValidPolicyVersion(p.Version) {
-			return fmt.Errorf("%w: policy %q version %q", constants.ErrInvalidPolicyVersion, p.Name, p.Version)
+			return apperror.ValidationFailed.New(fmt.Sprintf(
+				"Policy %q has an invalid version %q. Policy versions must be major-only, e.g. v1.", p.Name, p.Version))
 		}
 	}
 	return nil
@@ -76,7 +78,8 @@ func validateOperationPolicyVersions(policies *[]api.OperationPolicy) error {
 	}
 	for _, p := range *policies {
 		if !isValidPolicyVersion(p.Version) {
-			return fmt.Errorf("%w: policy %q version %q", constants.ErrInvalidPolicyVersion, p.Name, p.Version)
+			return apperror.ValidationFailed.New(fmt.Sprintf(
+				"Policy %q has an invalid version %q. Policy versions must be major-only, e.g. v1.", p.Name, p.Version))
 		}
 	}
 	return nil

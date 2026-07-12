@@ -18,13 +18,12 @@
 package service
 
 import (
-	"errors"
 	"log/slog"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
@@ -58,7 +57,7 @@ func TestMCPProxyServiceCreateRejectsInvalidPolicyVersion(t *testing.T) {
 	request.Policies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
 
 	_, err := service.Create("org-1", "alice", request)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
@@ -71,7 +70,7 @@ func TestMCPProxyServiceUpdateRejectsInvalidPolicyVersion(t *testing.T) {
 	request.Policies = &[]api.Policy{{Name: "api-key-auth", Version: "1"}}
 
 	_, err := service.Update("org-1", "mcp-proxy-1", "alice", request)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }

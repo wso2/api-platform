@@ -33,7 +33,7 @@ import (
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/api"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -251,8 +251,8 @@ func TestAPIServiceSecretLifecycle_Integration(t *testing.T) {
 	}
 	if _, err := apiSvc.UpdateAPIByHandle(*apiUUID, badUpstreamReq, apiSecretITOrgUUID, "alice"); err == nil {
 		t.Fatal("expected update with a nonexistent upstream secret ref to be rejected, got nil error")
-	} else if !errors.Is(err, constants.ErrSecretRefMissing) {
-		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	} else if !apperror.ValidationFailed.Is(err) {
+		t.Errorf("expected a validation error for missing secret ref, got: %v", err)
 	}
 
 	// --- Validation: the same check covers policy params, not just upstream ---
@@ -268,7 +268,7 @@ func TestAPIServiceSecretLifecycle_Integration(t *testing.T) {
 	}
 	if _, err := apiSvc.UpdateAPIByHandle(*apiUUID, badPolicyReq, apiSecretITOrgUUID, "alice"); err == nil {
 		t.Fatal("expected update with a nonexistent policy secret ref to be rejected, got nil error")
-	} else if !errors.Is(err, constants.ErrSecretRefMissing) {
-		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	} else if !apperror.ValidationFailed.Is(err) {
+		t.Errorf("expected a validation error for missing secret ref, got: %v", err)
 	}
 }

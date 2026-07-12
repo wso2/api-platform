@@ -18,9 +18,9 @@
 package service
 
 import (
-	"errors"
 	"testing"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -42,11 +42,11 @@ func TestEnsureRuntimeArtifactUnchanged(t *testing.T) {
 		t.Errorf("DP origin with identical artifacts: got %v, want nil", err)
 	}
 	err := ensureRuntimeArtifactUnchanged(constants.OriginDP, a, b)
-	if !errors.Is(err, constants.ErrArtifactRuntimeImmutable) {
+	if !apperror.ArtifactRuntimeImmutable.Is(err) {
 		t.Errorf("DP origin with differing artifacts: got %v, want ErrArtifactRuntimeImmutable", err)
 	}
 	// It is a distinct sentinel, NOT wrapping the blanket read-only error.
-	if errors.Is(err, constants.ErrArtifactReadOnly) {
+	if apperror.ArtifactReadOnly.Is(err) {
 		t.Errorf("ErrArtifactRuntimeImmutable must be distinct from ErrArtifactReadOnly")
 	}
 }
@@ -94,7 +94,7 @@ func TestRESTRuntimeArtifactGuard(t *testing.T) {
 		existing := baseRESTAPI(constants.OriginDP)
 		updated := baseRESTAPI(constants.OriginDP)
 		updated.Configuration.Upstream.Main.URL = "https://new-backend.example.com"
-		if err := svc.ensureRESTRuntimeArtifactUnchanged(existing, updated); !errors.Is(err, constants.ErrArtifactRuntimeImmutable) {
+		if err := svc.ensureRESTRuntimeArtifactUnchanged(existing, updated); !apperror.ArtifactRuntimeImmutable.Is(err) {
 			t.Errorf("upstream edit: got %v, want read-only", err)
 		}
 	})
@@ -104,7 +104,7 @@ func TestRESTRuntimeArtifactGuard(t *testing.T) {
 		updated := baseRESTAPI(constants.OriginDP)
 		updated.Configuration.Operations = append(updated.Configuration.Operations,
 			model.Operation{Name: "post", Request: &model.OperationRequest{Method: "POST", Path: "/items"}})
-		if err := svc.ensureRESTRuntimeArtifactUnchanged(existing, updated); !errors.Is(err, constants.ErrArtifactRuntimeImmutable) {
+		if err := svc.ensureRESTRuntimeArtifactUnchanged(existing, updated); !apperror.ArtifactRuntimeImmutable.Is(err) {
 			t.Errorf("operation edit: got %v, want read-only", err)
 		}
 	})
@@ -172,7 +172,7 @@ func TestMCPProxyRuntimeArtifactGuard(t *testing.T) {
 		existingFP := mcpFingerprint(t, existing)
 		existing.Configuration.Context = rtStrPtr("/my-mcp-v2")
 		updatedFP := mcpFingerprint(t, existing)
-		if err := ensureRuntimeArtifactUnchanged(constants.OriginDP, existingFP, updatedFP); !errors.Is(err, constants.ErrArtifactRuntimeImmutable) {
+		if err := ensureRuntimeArtifactUnchanged(constants.OriginDP, existingFP, updatedFP); !apperror.ArtifactRuntimeImmutable.Is(err) {
 			t.Errorf("context edit: got %v, want read-only", err)
 		}
 	})
@@ -207,7 +207,7 @@ func TestTemplateRuntimeArtifactGuard(t *testing.T) {
 		existing := baseTemplate(constants.OriginDP)
 		updated := baseTemplate(constants.OriginDP)
 		updated.PromptTokens = &model.ExtractionIdentifier{Location: "header", Identifier: "x-prompt-tokens"}
-		if err := ensureTemplateRuntimeArtifactUnchanged(existing, updated); !errors.Is(err, constants.ErrArtifactRuntimeImmutable) {
+		if err := ensureTemplateRuntimeArtifactUnchanged(existing, updated); !apperror.ArtifactRuntimeImmutable.Is(err) {
 			t.Errorf("extraction identifier edit: got %v, want read-only", err)
 		}
 	})
@@ -223,7 +223,7 @@ func TestTemplateRuntimeArtifactGuard(t *testing.T) {
 				},
 			}},
 		}
-		if err := ensureTemplateRuntimeArtifactUnchanged(existing, updated); !errors.Is(err, constants.ErrArtifactRuntimeImmutable) {
+		if err := ensureTemplateRuntimeArtifactUnchanged(existing, updated); !apperror.ArtifactRuntimeImmutable.Is(err) {
 			t.Errorf("resource mapping edit: got %v, want read-only", err)
 		}
 	})

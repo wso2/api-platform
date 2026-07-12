@@ -22,7 +22,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
@@ -262,7 +262,7 @@ func (r *CustomPolicyRepo) DeleteCustomPolicyIfUnused(orgUUID, policyUUID string
 		return err
 	}
 	if count == 0 {
-		return constants.ErrCustomPolicyNotFound
+		return apperror.CustomPolicyNotFound.New()
 	}
-	return constants.ErrCustomPolicyInUse
+	return apperror.PolicyInUse.New()
 }

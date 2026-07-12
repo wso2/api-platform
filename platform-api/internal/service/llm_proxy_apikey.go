@@ -74,7 +74,7 @@ func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 		return nil, fmt.Errorf("failed to get LLM proxy: %w", err)
 	}
 	if proxy == nil {
-		return nil, apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
+		return nil, apperror.ArtifactNotFound.New()
 	}
 
 	keys, err := s.apiKeyRepo.ListByArtifact(proxy.UUID)
@@ -112,7 +112,7 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 		return fmt.Errorf("failed to get LLM proxy: %w", err)
 	}
 	if proxy == nil {
-		return apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
+		return apperror.ArtifactNotFound.New()
 	}
 
 	existingKey, err := s.apiKeyRepo.GetByArtifactAndName(proxy.UUID, keyName)
@@ -121,12 +121,12 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 		return fmt.Errorf("failed to look up API key: %w", err)
 	}
 	if existingKey == nil {
-		return apperror.LLMProxyAPIKeyNotFound.Wrap(constants.ErrAPIKeyNotFound)
+		return apperror.LLMProxyAPIKeyNotFound.New()
 	}
 
 	// Non-admin callers (userID != "") must be the key creator.
 	if userID != "" && existingKey.CreatedBy != userID {
-		return apperror.LLMProxyAPIKeyForbidden.Wrap(constants.ErrAPIKeyForbidden)
+		return apperror.LLMProxyAPIKeyForbidden.New()
 	}
 
 	if err := s.apiKeyRepo.Delete(proxy.UUID, keyName); err != nil {
@@ -178,7 +178,7 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 	}
 	if proxy == nil {
 		s.slogger.Warn("LLM proxy not found", "proxyId", proxyID, "organizationId", orgID)
-		return nil, apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
+		return nil, apperror.ArtifactNotFound.New()
 	}
 
 	apiKey, err := utils.GenerateAPIKey()
@@ -211,7 +211,7 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 
 	if len(gateways) == 0 {
 		s.slogger.Warn("No gateways found for organization", "organizationId", orgID)
-		return nil, apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
+		return nil, apperror.GatewayConnectionUnavailable.New()
 	}
 
 	apiKeyHashesJSON, err := buildAPIKeyHashesJSON(apiKey, []string{defaultHashingAlgorithm})

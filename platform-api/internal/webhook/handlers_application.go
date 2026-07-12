@@ -19,12 +19,11 @@ package webhook
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 )
 
 // Application event types. apikey.application_updated is intentionally handled with the other
@@ -63,7 +62,7 @@ func (r *Receiver) handleApplicationCreated(ctx context.Context, env *Envelope) 
 	_, err := r.apps.CreateApplicationFromWebhook(d.Handle, d.DisplayName, d.Description, d.Type, env.OrgID)
 	if err != nil {
 		// Domain-level idempotency: a duplicate delivery whose application already exists is success.
-		if errors.Is(err, constants.ErrApplicationExists) || errors.Is(err, constants.ErrHandleExists) {
+		if apperror.ApplicationExists.Is(err) {
 			return nil
 		}
 		return err
@@ -97,12 +96,12 @@ func (r *Receiver) handleApplicationUpdated(ctx context.Context, env *Envelope) 
 	if err == nil {
 		return nil
 	}
-	if !errors.Is(err, constants.ErrApplicationNotFound) || name == "" {
+	if !apperror.ApplicationNotFound.Is(err) || name == "" {
 		return err
 	}
 	// Upsert: the create event was likely missed.
 	if _, cerr := r.apps.CreateApplicationFromWebhook(handle, name, d.Description, d.Type, env.OrgID); cerr != nil &&
-		!errors.Is(cerr, constants.ErrApplicationExists) && !errors.Is(cerr, constants.ErrHandleExists) {
+		!apperror.ApplicationExists.Is(cerr) {
 		return cerr
 	}
 	return nil
@@ -119,7 +118,7 @@ func (r *Receiver) handleApplicationDeleted(ctx context.Context, env *Envelope) 
 	}
 	if err := r.apps.DeleteApplication(d.Handle, env.OrgID, ""); err != nil {
 		// Domain-level idempotency: already gone is success.
-		if errors.Is(err, constants.ErrApplicationNotFound) {
+		if apperror.ApplicationNotFound.Is(err) {
 			return nil
 		}
 		return err

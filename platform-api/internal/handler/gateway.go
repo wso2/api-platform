@@ -119,7 +119,7 @@ func (h *GatewayHandler) CreateGateway(w http.ResponseWriter, r *http.Request) e
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to register gateway")
+		return serviceError(err, "failed to register gateway")
 	}
 
 	// Return 201 Created with response
@@ -139,7 +139,7 @@ func (h *GatewayHandler) ListGateways(w http.ResponseWriter, r *http.Request) er
 
 	gateways, err := h.gatewayService.ListGateways(&organizationID, opts)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to list gateways")
+		return serviceError(err, "failed to list gateways")
 	}
 
 	// Return 200 OK with constitution-compliant envelope structure
@@ -169,7 +169,7 @@ func (h *GatewayHandler) GetGateway(w http.ResponseWriter, r *http.Request) erro
 		if strings.Contains(err.Error(), "invalid UUID") {
 			return apperror.ValidationFailed.Wrap(err, "Invalid gateway ID format")
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to retrieve gateway")
+		return serviceError(err, "failed to retrieve gateway")
 	}
 
 	// Return 200 OK with gateway details
@@ -196,7 +196,7 @@ func (h *GatewayHandler) GetGatewayStatus(w http.ResponseWriter, r *http.Request
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to get gateway status")
+		return serviceError(err, "failed to get gateway status")
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, status)
@@ -234,10 +234,7 @@ func (h *GatewayHandler) UpdateGateway(w http.ResponseWriter, r *http.Request) e
 	}
 	response, err := h.gatewayService.UpdateGateway(gatewayId, orgId, updatedBy, &req)
 	if err != nil {
-		if errors.Is(err, constants.ErrGatewayNotFound) {
-			return apperror.GatewayNotFound.Wrap(err)
-		}
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to update gateway")
+		return serviceError(err, "failed to update gateway")
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, response)
@@ -263,19 +260,13 @@ func (h *GatewayHandler) DeleteGateway(w http.ResponseWriter, r *http.Request) e
 	}
 	if err := h.gatewayService.DeleteGateway(gatewayId, orgId, deletedBy); err != nil {
 		// Check for specific error types
-		if errors.Is(err, constants.ErrGatewayNotFound) {
-			return apperror.GatewayNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrGatewayHasAssociatedAPIs) {
-			return apperror.GatewayHasActiveDeployments.Wrap(err)
-		}
 
 		if strings.Contains(err.Error(), "invalid UUID") {
 			return apperror.ValidationFailed.Wrap(err, "Invalid gateway ID format")
 		}
 
 		// Internal server error
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to delete gateway")
+		return serviceError(err, "failed to delete gateway")
 	}
 
 	// Return 204 No Content on successful deletion
@@ -303,7 +294,7 @@ func (h *GatewayHandler) ListTokens(w http.ResponseWriter, r *http.Request) erro
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to list tokens")
+		return serviceError(err, "failed to list tokens")
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, tokens)
@@ -333,7 +324,7 @@ func (h *GatewayHandler) RotateToken(w http.ResponseWriter, r *http.Request) err
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to rotate token")
+		return serviceError(err, "failed to rotate token")
 	}
 
 	// Return 201 Created with response
@@ -372,7 +363,7 @@ func (h *GatewayHandler) RevokeToken(w http.ResponseWriter, r *http.Request) err
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to revoke token")
+		return serviceError(err, "failed to revoke token")
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"message": "Token revoked successfully"})
@@ -397,10 +388,7 @@ func (h *GatewayHandler) GetGatewayManifest(w http.ResponseWriter, r *http.Reque
 		if strings.Contains(err.Error(), "invalid UUID") {
 			return apperror.ValidationFailed.Wrap(err, "Invalid gateway ID format")
 		}
-		if errors.Is(err, constants.ErrGatewayNotFound) {
-			return apperror.GatewayNotFound.Wrap(err)
-		}
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to retrieve gateway manifest")
+		return serviceError(err, "failed to retrieve gateway manifest")
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, manifestSyncResponse{
@@ -431,7 +419,7 @@ func (h *GatewayHandler) SyncCustomPolicy(w http.ResponseWriter, r *http.Request
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to sync custom policy")
+		return serviceError(err, "failed to sync custom policy")
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, policy)
@@ -457,7 +445,7 @@ func (h *GatewayHandler) GetCustomPolicy(w http.ResponseWriter, r *http.Request)
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to get custom policy")
+		return serviceError(err, "failed to get custom policy")
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, policy)
@@ -483,14 +471,7 @@ func (h *GatewayHandler) DeleteCustomPolicy(w http.ResponseWriter, r *http.Reque
 			return err
 		}
 		// Repository-origin sentinels (delete-if-unused path) are still untyped.
-		if errors.Is(err, constants.ErrCustomPolicyNotFound) {
-			return apperror.CustomPolicyNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrCustomPolicyInUse) {
-			return apperror.PolicyInUse.Wrap(err)
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to delete custom policy, orgID=%s, policyUUID=%s", orgId, policyUUID))
+		return serviceError(err, fmt.Sprintf("failed to delete custom policy, orgID=%s, policyUUID=%s", orgId, policyUUID))
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -508,7 +489,7 @@ func (h *GatewayHandler) ListCustomPolicies(w http.ResponseWriter, r *http.Reque
 
 	policies, total, err := h.gatewayService.ListCustomPolicies(orgId, limit, offset)
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage(fmt.Sprintf("failed to list custom policies, orgID=%s", orgId))
+		return serviceError(err, fmt.Sprintf("failed to list custom policies, orgID=%s", orgId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{

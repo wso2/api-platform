@@ -19,7 +19,6 @@ package service
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -122,14 +121,14 @@ func NewLLMProxyDeploymentService(
 func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req *api.DeployRequest, orgUUID string) (*api.DeploymentResponse, error) {
 	// Validate request
 	if req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.LLMProviderDeploymentValidationFailed.New("A request body is required.")
 	}
 	if req.Base == "" {
-		return nil, constants.ErrDeploymentBaseRequired
+		return nil, apperror.LLMProviderDeploymentValidationFailed.New("Base is required (use 'current' or a deploymentId).")
 	}
 	gatewayHandle := strings.TrimSpace(req.GatewayId)
 	if gatewayHandle == "" {
-		return nil, constants.ErrDeploymentGatewayIDRequired
+		return nil, apperror.LLMProviderDeploymentValidationFailed.New("Gateway ID is required.")
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
@@ -139,7 +138,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayID := gateway.ID
 
@@ -149,7 +148,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		return nil, err
 	}
 	if provider == nil {
-		return nil, constants.ErrLLMProviderNotFound
+		return nil, apperror.LLMProviderNotFound.New()
 	}
 
 	// DP-originated artifacts are read-only in the control plane and cannot be
@@ -160,7 +159,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 
 	// Validate deployment name is provided
 	if req.Name == "" {
-		return nil, constants.ErrDeploymentNameRequired
+		return nil, apperror.LLMProviderDeploymentValidationFailed.New("Deployment name is required.")
 	}
 
 	// Ensure a gateway association exists for the target gateway before deploying, and
@@ -216,8 +215,8 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		// Use existing deployment as base
 		baseDeployment, err := s.deploymentRepo.GetWithContent(req.Base, provider.UUID, orgUUID)
 		if err != nil {
-			if errors.Is(err, constants.ErrDeploymentNotFound) {
-				return nil, constants.ErrBaseDeploymentNotFound
+			if apperror.DeploymentNotFound.Is(err) {
+				return nil, apperror.DeploymentBaseNotFound.Wrap(err)
 			}
 			return nil, fmt.Errorf("failed to get base deployment: %w", err)
 		}
@@ -300,7 +299,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		return nil, err
 	}
 	if provider == nil {
-		return nil, constants.ErrLLMProviderNotFound
+		return nil, apperror.LLMProviderNotFound.New()
 	}
 	// DP-originated artifacts are read-only in the control plane; restore cannot be CP-initiated.
 	if err := ensureOriginMutable(provider.Origin); err != nil {
@@ -312,7 +311,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		return nil, err
 	}
 	if targetDeployment == nil {
-		return nil, constants.ErrDeploymentNotFound
+		return nil, apperror.DeploymentNotFound.New()
 	}
 	// gatewayID is a gateway handle (matching deploy); resolve it to the internal
 	// gateway UUID stored on the deployment before comparing.
@@ -321,10 +320,10 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if resolvedGateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 	if targetDeployment.GatewayID != resolvedGateway.ID {
-		return nil, constants.ErrGatewayIDMismatch
+		return nil, apperror.DeploymentGatewayMismatch.New()
 	}
 
 	currentDeploymentID, status, _, err := s.deploymentRepo.GetStatus(provider.UUID, orgUUID, targetDeployment.GatewayID)
@@ -332,7 +331,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
 	}
 	if currentDeploymentID == deploymentID && status == model.DeploymentStatusDeployed {
-		return nil, constants.ErrDeploymentAlreadyDeployed
+		return nil, apperror.DeploymentRestoreConflict.New()
 	}
 
 	gateway, err := s.gatewayRepo.GetByUUID(targetDeployment.GatewayID)
@@ -340,7 +339,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil || gateway.OrganizationID != orgUUID {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	// Set initial status based on config; transitional (DEPLOYING) only when enabled
@@ -392,7 +391,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 		return nil, err
 	}
 	if provider == nil {
-		return nil, constants.ErrLLMProviderNotFound
+		return nil, apperror.LLMProviderNotFound.New()
 	}
 	// DP-originated artifacts are read-only in the control plane: their deploy/undeploy
 	// lifecycle is owned by the data-plane gateway, so undeployment cannot be initiated
@@ -406,7 +405,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 		return nil, err
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotFound
+		return nil, apperror.DeploymentNotFound.New()
 	}
 	// gatewayID is a gateway handle (matching deploy); resolve it to the internal
 	// gateway UUID stored on the deployment before comparing.
@@ -415,13 +414,13 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if resolvedGateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 	if deployment.GatewayID != resolvedGateway.ID {
-		return nil, constants.ErrGatewayIDMismatch
+		return nil, apperror.DeploymentGatewayMismatch.New()
 	}
 	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
-		return nil, constants.ErrDeploymentNotActive
+		return nil, apperror.DeploymentNotActive.New("LLM provider")
 	}
 
 	gateway, err := s.gatewayRepo.GetByUUID(deployment.GatewayID)
@@ -429,7 +428,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil || gateway.OrganizationID != orgUUID {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
@@ -481,7 +480,7 @@ func (s *LLMProviderDeploymentService) DeleteLLMProviderDeployment(providerID, d
 		return err
 	}
 	if provider == nil {
-		return constants.ErrLLMProviderNotFound
+		return apperror.LLMProviderNotFound.New()
 	}
 
 	deployment, err := s.deploymentRepo.GetWithState(deploymentID, provider.UUID, orgUUID)
@@ -489,10 +488,10 @@ func (s *LLMProviderDeploymentService) DeleteLLMProviderDeployment(providerID, d
 		return err
 	}
 	if deployment == nil {
-		return constants.ErrDeploymentNotFound
+		return apperror.DeploymentNotFound.New()
 	}
 	if deployment.Status != nil && *deployment.Status == model.DeploymentStatusDeployed {
-		return constants.ErrDeploymentIsDeployed
+		return apperror.DeploymentActive.New()
 	}
 
 	if err := s.deploymentRepo.Delete(deploymentID, provider.UUID, orgUUID); err != nil {
@@ -509,7 +508,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployments(providerID, org
 		return nil, err
 	}
 	if provider == nil {
-		return nil, constants.ErrLLMProviderNotFound
+		return nil, apperror.LLMProviderNotFound.New()
 	}
 
 	if status != nil {
@@ -522,7 +521,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployments(providerID, org
 			string(model.DeploymentStatusArchived):    true,
 		}
 		if !validStatuses[*status] {
-			return nil, constants.ErrInvalidDeploymentStatus
+			return nil, apperror.DeploymentInvalidStatus.New()
 		}
 	}
 
@@ -578,7 +577,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployment(providerID, depl
 		return nil, err
 	}
 	if provider == nil {
-		return nil, constants.ErrLLMProviderNotFound
+		return nil, apperror.LLMProviderNotFound.New()
 	}
 
 	deployment, err := s.deploymentRepo.GetWithState(deploymentID, provider.UUID, orgUUID)
@@ -586,7 +585,7 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployment(providerID, depl
 		return nil, err
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotFound
+		return nil, apperror.DeploymentNotFound.New()
 	}
 
 	return toAPIDeploymentResponse(
@@ -605,14 +604,14 @@ func (s *LLMProviderDeploymentService) GetLLMProviderDeployment(providerID, depl
 
 func (s *LLMProviderDeploymentService) getTemplateHandle(templateUUID, orgUUID string) (string, error) {
 	if templateUUID == "" {
-		return "", apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return "", apperror.LLMProviderTemplateNotFound.Wrap(apperror.LLMProviderDeploymentValidationFailed.New("The referenced LLM provider template could not be found."))
 	}
 	tpl, err := s.templateRepo.GetByUUID(templateUUID, orgUUID)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve template: %w", err)
 	}
 	if tpl == nil {
-		return "", apperror.LLMProviderTemplateNotFound.Wrap(constants.ErrLLMProviderTemplateNotFound)
+		return "", apperror.LLMProviderTemplateNotFound.Wrap(apperror.LLMProviderDeploymentValidationFailed.New("The referenced LLM provider template could not be found."))
 	}
 	return tpl.ID, nil
 }
@@ -625,11 +624,11 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 		return dto.LLMProviderDeploymentYAML{}, apperror.Internal.New().WithLogMessage("generateLLMProviderDeploymentYAML: template handle is empty")
 	}
 	if provider.Configuration.Upstream == nil || provider.Configuration.Upstream.Main == nil {
-		return dto.LLMProviderDeploymentYAML{}, constants.ErrInvalidInput
+		return dto.LLMProviderDeploymentYAML{}, apperror.LLMProviderDeploymentValidationFailed.New("The LLM provider must define an upstream main configuration.")
 	}
 	main := provider.Configuration.Upstream.Main
 	if main.URL == "" && main.Ref == "" {
-		return dto.LLMProviderDeploymentYAML{}, constants.ErrInvalidInput
+		return dto.LLMProviderDeploymentYAML{}, apperror.LLMProviderDeploymentValidationFailed.New("The LLM provider upstream main must specify either a url or a ref.")
 	}
 
 	contextValue := "/"
@@ -1294,14 +1293,14 @@ func unmarshalDeploymentMetadata(s string) (map[string]any, error) {
 func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.DeployRequest, orgUUID string) (*api.DeploymentResponse, error) {
 	// Validate request
 	if req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.LLMProxyDeploymentValidationFailed.New("A request body is required.")
 	}
 	if req.Base == "" {
-		return nil, constants.ErrDeploymentBaseRequired
+		return nil, apperror.LLMProxyDeploymentValidationFailed.New("Base is required (use 'current' or a deploymentId).")
 	}
 	gatewayHandle := strings.TrimSpace(req.GatewayId)
 	if gatewayHandle == "" {
-		return nil, constants.ErrDeploymentGatewayIDRequired
+		return nil, apperror.LLMProxyDeploymentValidationFailed.New("Gateway ID is required.")
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
@@ -1311,7 +1310,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayID := gateway.ID
 
@@ -1321,7 +1320,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		return nil, err
 	}
 	if proxy == nil {
-		return nil, constants.ErrLLMProxyNotFound
+		return nil, apperror.LLMProxyNotFound.New()
 	}
 
 	// DP-originated artifacts are read-only in the control plane and cannot be
@@ -1332,7 +1331,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 
 	// Validate deployment name is provided
 	if req.Name == "" {
-		return nil, constants.ErrDeploymentNameRequired
+		return nil, apperror.LLMProxyDeploymentValidationFailed.New("Deployment name is required.")
 	}
 
 	// Ensure a gateway association exists for the target gateway before deploying, and
@@ -1380,8 +1379,8 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		// Use existing deployment as base
 		baseDeployment, err := s.deploymentRepo.GetWithContent(req.Base, proxy.UUID, orgUUID)
 		if err != nil {
-			if errors.Is(err, constants.ErrDeploymentNotFound) {
-				return nil, constants.ErrBaseDeploymentNotFound
+			if apperror.DeploymentNotFound.Is(err) {
+				return nil, apperror.DeploymentBaseNotFound.Wrap(err)
 			}
 			return nil, fmt.Errorf("failed to get base deployment: %w", err)
 		}
@@ -1464,7 +1463,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		return nil, err
 	}
 	if proxy == nil {
-		return nil, constants.ErrLLMProxyNotFound
+		return nil, apperror.LLMProxyNotFound.New()
 	}
 	// DP-originated artifacts are read-only in the control plane; restore cannot be CP-initiated.
 	if err := ensureOriginMutable(proxy.Origin); err != nil {
@@ -1476,7 +1475,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		return nil, err
 	}
 	if targetDeployment == nil {
-		return nil, constants.ErrDeploymentNotFound
+		return nil, apperror.DeploymentNotFound.New()
 	}
 	// gatewayID is a gateway handle (matching deploy); resolve it to the internal
 	// gateway UUID stored on the deployment before comparing.
@@ -1485,10 +1484,10 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if resolvedGateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 	if targetDeployment.GatewayID != resolvedGateway.ID {
-		return nil, constants.ErrGatewayIDMismatch
+		return nil, apperror.DeploymentGatewayMismatch.New()
 	}
 
 	currentDeploymentID, status, _, err := s.deploymentRepo.GetStatus(proxy.UUID, orgUUID, targetDeployment.GatewayID)
@@ -1496,7 +1495,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
 	}
 	if currentDeploymentID == deploymentID && status == model.DeploymentStatusDeployed {
-		return nil, constants.ErrDeploymentAlreadyDeployed
+		return nil, apperror.DeploymentRestoreConflict.New()
 	}
 
 	gateway, err := s.gatewayRepo.GetByUUID(targetDeployment.GatewayID)
@@ -1504,7 +1503,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil || gateway.OrganizationID != orgUUID {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	// Set initial status based on config; transitional (DEPLOYING) only when enabled
@@ -1556,7 +1555,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 		return nil, err
 	}
 	if proxy == nil {
-		return nil, constants.ErrLLMProxyNotFound
+		return nil, apperror.LLMProxyNotFound.New()
 	}
 	// DP-originated artifacts are read-only in the control plane: their deploy/undeploy
 	// lifecycle is owned by the data-plane gateway, so undeployment cannot be initiated
@@ -1570,7 +1569,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 		return nil, err
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotFound
+		return nil, apperror.DeploymentNotFound.New()
 	}
 	// gatewayID is a gateway handle (matching deploy); resolve it to the internal
 	// gateway UUID stored on the deployment before comparing.
@@ -1579,13 +1578,13 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if resolvedGateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 	if deployment.GatewayID != resolvedGateway.ID {
-		return nil, constants.ErrGatewayIDMismatch
+		return nil, apperror.DeploymentGatewayMismatch.New()
 	}
 	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
-		return nil, constants.ErrDeploymentNotActive
+		return nil, apperror.DeploymentNotActive.New("LLM proxy")
 	}
 
 	gateway, err := s.gatewayRepo.GetByUUID(deployment.GatewayID)
@@ -1593,7 +1592,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil || gateway.OrganizationID != orgUUID {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
@@ -1645,7 +1644,7 @@ func (s *LLMProxyDeploymentService) DeleteLLMProxyDeployment(proxyID, deployment
 		return err
 	}
 	if proxy == nil {
-		return constants.ErrLLMProxyNotFound
+		return apperror.LLMProxyNotFound.New()
 	}
 
 	deployment, err := s.deploymentRepo.GetWithState(deploymentID, proxy.UUID, orgUUID)
@@ -1653,10 +1652,10 @@ func (s *LLMProxyDeploymentService) DeleteLLMProxyDeployment(proxyID, deployment
 		return err
 	}
 	if deployment == nil {
-		return constants.ErrDeploymentNotFound
+		return apperror.DeploymentNotFound.New()
 	}
 	if deployment.Status != nil && *deployment.Status == model.DeploymentStatusDeployed {
-		return constants.ErrDeploymentIsDeployed
+		return apperror.DeploymentActive.New()
 	}
 
 	if err := s.deploymentRepo.Delete(deploymentID, proxy.UUID, orgUUID); err != nil {
@@ -1673,7 +1672,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployments(proxyID, orgUUID stri
 		return nil, err
 	}
 	if proxy == nil {
-		return nil, constants.ErrLLMProxyNotFound
+		return nil, apperror.LLMProxyNotFound.New()
 	}
 
 	if status != nil {
@@ -1686,7 +1685,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployments(proxyID, orgUUID stri
 			string(model.DeploymentStatusArchived):    true,
 		}
 		if !validStatuses[*status] {
-			return nil, constants.ErrInvalidDeploymentStatus
+			return nil, apperror.DeploymentInvalidStatus.New()
 		}
 	}
 
@@ -1742,7 +1741,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployment(proxyID, deploymentID,
 		return nil, err
 	}
 	if proxy == nil {
-		return nil, constants.ErrLLMProxyNotFound
+		return nil, apperror.LLMProxyNotFound.New()
 	}
 
 	deployment, err := s.deploymentRepo.GetWithState(deploymentID, proxy.UUID, orgUUID)
@@ -1750,7 +1749,7 @@ func (s *LLMProxyDeploymentService) GetLLMProxyDeployment(proxyID, deploymentID,
 		return nil, err
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotFound
+		return nil, apperror.DeploymentNotFound.New()
 	}
 
 	return toAPIDeploymentResponse(
@@ -1772,7 +1771,7 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 		return dto.LLMProxyDeploymentYAML{}, apperror.Internal.New().WithLogMessage("generateLLMProxyDeploymentYAML: proxy is nil")
 	}
 	if proxy.Configuration.Provider == "" {
-		return dto.LLMProxyDeploymentYAML{}, constants.ErrInvalidInput
+		return dto.LLMProxyDeploymentYAML{}, apperror.LLMProxyDeploymentValidationFailed.New("The LLM proxy must reference a provider.")
 	}
 
 	contextValue := "/"

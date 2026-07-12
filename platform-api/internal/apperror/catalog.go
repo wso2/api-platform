@@ -186,3 +186,23 @@ var (
 	ApplicationAPIKeyNotFound  = def(CodeApplicationAPIKeyNotFound, http.StatusNotFound, "The specified API key could not be found.")
 	ApplicationAPIKeyForbidden = def(CodeApplicationAPIKeyForbidden, http.StatusForbidden, "You do not have permission to access this API key.")
 )
+
+// WebSub / WebBroker API entries.
+var (
+	WebSubAPINotFound        = def(CodeWebSubAPINotFound, http.StatusNotFound, "The specified WebSub API could not be found.")
+	WebSubAPIExists          = def(CodeWebSubAPIExists, http.StatusConflict, "A WebSub API with this ID already exists.")
+	WebSubAPILimitReached    = def(CodeWebSubAPILimitReached, http.StatusConflict, "WebSub API limit reached for the organization.")
+	WebBrokerAPINotFound     = def(CodeWebBrokerAPINotFound, http.StatusNotFound, "The specified WebBroker API could not be found.")
+	WebBrokerAPIExists       = def(CodeWebBrokerAPIExists, http.StatusConflict, "A WebBroker API with this ID already exists.")
+	WebBrokerAPILimitReached = def(CodeWebBrokerAPILimitReached, http.StatusConflict, "WebBroker API limit reached for the organization.")
+)
+
+// HMAC secret entries. The 32-character minimum is a fixed, publicly
+// documented rule, so stating it in the client message reveals nothing the
+// API contract does not already.
+var (
+	HmacSecretNotFound      = def(CodeHmacSecretNotFound, http.StatusNotFound, "The specified HMAC secret could not be found.")
+	HmacSecretExists        = def(CodeHmacSecretExists, http.StatusConflict, "An HMAC secret with this name already exists.")
+	HmacSecretInvalidValue  = def(CodeHmacSecretInvalidValue, http.StatusBadRequest, "The secret value must be at least 32 characters.")
+	HmacSecretNotConfigured = def(CodeHmacSecretNotConfigured, http.StatusServiceUnavailable, "HMAC secret management is not configured on this server.")
+)

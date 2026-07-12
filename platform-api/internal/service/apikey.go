@@ -288,7 +288,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if apiMetadata == nil {
 		s.slogger.Warn("API not found by handle", "apiHandle", apiHandle, "orgId", orgId)
-		return apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
+		return apperror.ArtifactNotFound.New()
 	}
 	apiId := apiMetadata.ID
 
@@ -298,7 +298,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		return fmt.Errorf("failed to get API deployments for API handle: %s: %w", apiHandle, err)
 	}
 	if len(gateways) == 0 {
-		return apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
+		return apperror.GatewayConnectionUnavailable.New()
 	}
 
 	// Resolve key name (required for DB uniqueness; derive from request or generate)
@@ -414,7 +414,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if apiMetadata == nil {
 		s.slogger.Warn("API not found by handle for API key update", "apiHandle", apiHandle)
-		return apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
+		return apperror.ArtifactNotFound.New()
 	}
 	apiId := apiMetadata.ID
 
@@ -426,7 +426,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if len(gateways) == 0 {
 		s.slogger.Warn("No gateway deployments found for API", "apiHandle", apiHandle)
-		return apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
+		return apperror.GatewayConnectionUnavailable.New()
 	}
 
 	// Hash the API key with all configured algorithms before storage and broadcast
@@ -525,7 +525,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if apiMetadata == nil {
 		s.slogger.Warn("API not found by handle for API key revocation", "apiHandle", apiHandle)
-		return apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
+		return apperror.ArtifactNotFound.New()
 	}
 	apiId := apiMetadata.ID
 
@@ -535,7 +535,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 		return fmt.Errorf("failed to get API deployments: %w", err)
 	}
 	if len(gateways) == 0 {
-		return apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
+		return apperror.GatewayConnectionUnavailable.New()
 	}
 
 	// Fetch UUID before revoke for consistent audit record (CREATE uses UUID, not name)

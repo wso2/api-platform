@@ -24,6 +24,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -481,7 +482,7 @@ func TestImport_LLMProvider_MissingTemplate(t *testing.T) {
 	d := setupImportTest(t)
 	_, err := d.svc.Import(importTestOrgID, importTestGatewayID,
 		dpProviderReq("dp-prov-1", "openai", "OpenAI", "does-not-exist"))
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrInvalidInput for a missing template reference", err)
 	}
 }
@@ -591,7 +592,7 @@ func TestImport_LLMProxy_MissingProvider(t *testing.T) {
 	d := setupImportTest(t)
 	_, err := d.svc.Import(importTestOrgID, importTestGatewayID,
 		dpProxyReq("dp-proxy-1", "chat-proxy", "Chat", "no-such-provider"))
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrInvalidInput for a missing provider reference", err)
 	}
 }
@@ -898,7 +899,7 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 		if _, err := svc.Update(importTestOrgID, "blk-tmpl", "tester", &api.LLMProviderTemplate{
 			DisplayName:  "T",
 			PromptTokens: &api.ExtractionIdentifier{Location: api.ExtractionIdentifierLocation("payload"), Identifier: "$.usage.prompt_tokens"},
-		}); !errors.Is(err, constants.ErrArtifactRuntimeImmutable) {
+		}); !apperror.ArtifactRuntimeImmutable.Is(err) {
 			t.Errorf("Template Update(DP, extraction change) = %v, want ErrArtifactRuntimeImmutable", err)
 		}
 
@@ -986,4 +987,3 @@ func TestCPSideGuard_DPOriginUpdate(t *testing.T) {
 		}
 	})
 }
-

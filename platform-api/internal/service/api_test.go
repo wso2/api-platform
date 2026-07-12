@@ -18,12 +18,11 @@
 package service
 
 import (
-	"errors"
 	"reflect"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/api"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -83,7 +82,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 		mockNameVersionExists     bool
 		mockNameVersionError      error
 		wantErr                   bool
-		expectedErr               error
+		expectedErr               apperror.Def
 		errContains               string
 		expectedExcludeHandle     string
 		verifyExcludeHandleCalled bool
@@ -118,7 +117,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 			req:                   &api.RESTAPI{DisplayName: "Conflicting Name"},
 			mockNameVersionExists: true,
 			wantErr:               true,
-			expectedErr:           constants.ErrAPINameVersionAlreadyExists,
+			expectedErr:           apperror.RESTAPIExists,
 		},
 		{
 			name: "invalid lifecycle state",
@@ -128,7 +127,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 			},
 			req:         &api.RESTAPI{LifeCycleStatus: statusPtr("INVALID_STATE")},
 			wantErr:     true,
-			expectedErr: constants.ErrInvalidLifecycleState,
+			expectedErr: apperror.ValidationFailed,
 		},
 		{
 			name: "invalid api type",
@@ -138,7 +137,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 			},
 			req:         &api.RESTAPI{Kind: ptr("INVALID_TYPE")},
 			wantErr:     true,
-			expectedErr: constants.ErrInvalidAPIType,
+			expectedErr: apperror.ValidationFailed,
 		},
 		{
 			name: "invalid transport",
@@ -148,7 +147,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 			},
 			req:         &api.RESTAPI{Transport: slicePtr([]string{"invalid"})},
 			wantErr:     true,
-			expectedErr: constants.ErrInvalidTransport,
+			expectedErr: apperror.ValidationFailed,
 		},
 		{
 			name: "valid lifecycle state",
@@ -193,7 +192,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				},
 			},
 			wantErr:     true,
-			errContains: "policy version must be major-only",
+			errContains: "must be major-only",
 		},
 		{
 			name: "invalid channel policy version",
@@ -211,7 +210,7 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				},
 			},
 			wantErr:     true,
-			errContains: "policy version must be major-only",
+			errContains: "must be major-only",
 		},
 	}
 
@@ -237,8 +236,8 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 			}
 
 			if tt.wantErr && err != nil {
-				if tt.expectedErr != nil && err != tt.expectedErr {
-					t.Errorf("validateUpdateAPIRequest() error = %v, expectedErr %v", err, tt.expectedErr)
+				if tt.expectedErr.Code != "" && !tt.expectedErr.Is(err) {
+					t.Errorf("validateUpdateAPIRequest() error = %v, expected code %s", err, tt.expectedErr.Code)
 				}
 				if tt.errContains != "" && !contains(err.Error(), tt.errContains) {
 					t.Errorf("validateUpdateAPIRequest() error = %v, should contain %v", err, tt.errContains)
@@ -266,7 +265,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 		mockNameVersionExists    bool
 		mockNameVersionError     error
 		wantErr                  bool
-		expectedErr              error
+		expectedErr              apperror.Def
 		errContains              string
 		verifyExcludeHandleEmpty bool
 		expectedExcludeHandle    string
@@ -297,7 +296,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 			},
 			mockHandleExists: true,
 			wantErr:          true,
-			expectedErr:      constants.ErrHandleExists,
+			expectedErr:      apperror.RESTAPIExists,
 		},
 		{
 			name: "name version already exists",
@@ -310,7 +309,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 			},
 			mockNameVersionExists:    true,
 			wantErr:                  true,
-			expectedErr:              constants.ErrAPINameVersionAlreadyExists,
+			expectedErr:              apperror.RESTAPIExists,
 			verifyExcludeHandleEmpty: true,
 			expectedExcludeHandle:    "",
 		},
@@ -324,7 +323,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Upstream:    api.Upstream{},
 			},
 			wantErr:     true,
-			expectedErr: constants.ErrInvalidAPIName,
+			expectedErr: apperror.ValidationFailed,
 		},
 		{
 			name: "missing project id",
@@ -348,7 +347,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Upstream:    api.Upstream{},
 			},
 			wantErr:     true,
-			expectedErr: constants.ErrInvalidAPIContext,
+			expectedErr: apperror.ValidationFailed,
 		},
 		{
 			name: "invalid version",
@@ -360,7 +359,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Upstream:    api.Upstream{},
 			},
 			wantErr:     true,
-			expectedErr: constants.ErrInvalidAPIVersion,
+			expectedErr: apperror.ValidationFailed,
 		},
 		{
 			name: "invalid lifecycle state",
@@ -373,7 +372,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Upstream:        api.Upstream{},
 			},
 			wantErr:     true,
-			expectedErr: constants.ErrInvalidLifecycleState,
+			expectedErr: apperror.ValidationFailed,
 		},
 		{
 			name: "invalid api type",
@@ -386,7 +385,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Upstream:    api.Upstream{},
 			},
 			wantErr:     true,
-			expectedErr: constants.ErrInvalidAPIType,
+			expectedErr: apperror.ValidationFailed,
 		},
 		{
 			name: "invalid transport",
@@ -399,7 +398,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Upstream:    api.Upstream{},
 			},
 			wantErr:     true,
-			expectedErr: constants.ErrInvalidTransport,
+			expectedErr: apperror.ValidationFailed,
 		},
 		{
 			name: "valid lifecycle state",
@@ -463,7 +462,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				},
 			},
 			wantErr:     true,
-			errContains: "policy version must be major-only",
+			errContains: "must be major-only",
 		},
 		{
 			name: "invalid channel policy version",
@@ -482,7 +481,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				},
 			},
 			wantErr:     true,
-			errContains: "policy version must be major-only",
+			errContains: "must be major-only",
 		},
 		{
 			name: "unspecified operation policy version is allowed (gateway resolves to latest)",
@@ -529,8 +528,8 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 			}
 
 			if tt.wantErr && err != nil {
-				if tt.expectedErr != nil && err != tt.expectedErr {
-					t.Errorf("validateCreateAPIRequest() error = %v, expectedErr %v", err, tt.expectedErr)
+				if tt.expectedErr.Code != "" && !tt.expectedErr.Is(err) {
+					t.Errorf("validateCreateAPIRequest() error = %v, expected code %s", err, tt.expectedErr.Code)
 				}
 				if tt.errContains != "" && !contains(err.Error(), tt.errContains) {
 					t.Errorf("validateCreateAPIRequest() error = %v, should contain %v", err, tt.errContains)
@@ -808,8 +807,8 @@ func TestAPIServiceCreate_MissingSecretRef_Rejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-existent secret placeholder, got nil")
 	}
-	if !errors.Is(err, constants.ErrSecretRefMissing) {
-		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	if !apperror.ValidationFailed.Is(err) {
+		t.Errorf("expected a validation error for missing secret ref, got: %v", err)
 	}
 	if apiRepo.created != nil {
 		t.Error("expected API creation to be aborted, but repo.CreateAPI was called")
@@ -848,8 +847,8 @@ func TestAPIServiceUpdate_MissingSecretRef_Rejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-existent secret placeholder, got nil")
 	}
-	if !errors.Is(err, constants.ErrSecretRefMissing) {
-		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	if !apperror.ValidationFailed.Is(err) {
+		t.Errorf("expected a validation error for missing secret ref, got: %v", err)
 	}
 	if apiRepo.updated != nil {
 		t.Error("expected API update to be aborted, but repo.UpdateAPI was called")
