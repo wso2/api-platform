@@ -15,8 +15,8 @@
 #   Set the environment variables below for secrets — either export them
 #   in your shell, or create a .env file next to this file:
 #
-#     AUTH_JWT_SECRET_KEY=<long-random-string>
-#     PLATFORM_SECRET_ENCRYPTION_KEY=$(openssl rand -hex 32)   # stable key for persistent secrets
+#     AUTH_JWT_SECRET_KEY=$(openssl rand -hex 32)   # stable key: signs login JWTs
+#     ENCRYPTION_KEY=$(openssl rand -hex 32)   # stable key: encrypts secrets
 #
 # Authentication:
 #   Out of the box the stack uses file-based auth (login admin / admin) — no
@@ -56,15 +56,14 @@ services:
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
       # Secrets — set these in your shell or in a .env file next to this file.
+      # AUTH_JWT_SECRET_KEY signs login JWTs; ENCRYPTION_KEY encrypts secrets/subscription
+      # tokens/HMAC at rest. Both are REQUIRED 32-byte keys (64 hex chars / base64)
+      #   export AUTH_JWT_SECRET_KEY=$(openssl rand -hex 32)
+      #   export ENCRYPTION_KEY=$(openssl rand -hex 32)
       - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - DATABASE_PASSWORD=${DATABASE_PASSWORD:-}
-      - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=${DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY:-}
       - APIP_DEMO_MODE=${APIP_DEMO_MODE:-true}
-      # Encryption key for secrets stored in the database (64 hex chars = 32 bytes).
-      # If unset, a random key is generated on startup — encrypted secrets will be
-      # unreadable after a container restart. Set a stable value for persistent deployments:
-      #   export PLATFORM_SECRET_ENCRYPTION_KEY=$(openssl rand -hex 32)
-      - PLATFORM_SECRET_ENCRYPTION_KEY=${PLATFORM_SECRET_ENCRYPTION_KEY:-}
       # ── OIDC IDP — uncomment to validate tokens against any OIDC provider's
       # JWKS instead of file-based auth. Set the OIDC_* values in .env. Claim
       # overrides are optional (default: organization / org_name / org_handle).
