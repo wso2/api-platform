@@ -60,6 +60,19 @@ func (e *Error) Error() string {
 // Unwrap exposes the wrapped cause to errors.Is/errors.As chains.
 func (e *Error) Unwrap() error { return e.Cause }
 
+// Is reports whether target is an *Error carrying the same catalog code, so
+// errors.Is(err, SomeDef.New()) matches on the code rather than on pointer
+// identity. Without it, every Def.New() allocates a fresh value and no two
+// instances of the same failure would ever compare equal — the trap that the
+// package-level sentinel errors this catalog replaced used to paper over.
+//
+// Prefer Def.Is(err) at call sites; this method exists so catalog errors also
+// behave correctly when passed through the standard errors.Is protocol.
+func (e *Error) Is(target error) bool {
+	var t *Error
+	return errors.As(target, &t) && t.Code == e.Code
+}
+
 // NewValidation converts a request-validation failure into an Error,
 // mirroring NewValidationErrorResponse: validator.ValidationErrors
 // become field-level errors under VALIDATION_FAILED; anything else

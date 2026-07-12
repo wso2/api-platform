@@ -18,7 +18,6 @@
 package service
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -86,14 +85,14 @@ func NewDeploymentService(
 func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	// Validate request
 	if req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.RESTAPIDeploymentValidationFailed.New("A request body is required.")
 	}
 	if req.Base == "" {
-		return nil, constants.ErrDeploymentBaseRequired
+		return nil, apperror.RESTAPIDeploymentValidationFailed.New("Base is required (use 'current' or a deploymentId).")
 	}
 	gatewayHandle := strings.TrimSpace(req.GatewayId)
 	if gatewayHandle == "" {
-		return nil, constants.ErrDeploymentGatewayIDRequired
+		return nil, apperror.RESTAPIDeploymentValidationFailed.New("Gateway ID is required.")
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
@@ -103,7 +102,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayID := gateway.ID
 
@@ -113,7 +112,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		return nil, err
 	}
 	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 
 	// DP-originated artifacts are read-only in the control plane and cannot be
@@ -124,7 +123,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 
 	// Validate deployment name is provided
 	if req.Name == "" {
-		return nil, constants.ErrDeploymentNameRequired
+		return nil, apperror.RESTAPIDeploymentValidationFailed.New("Deployment name is required.")
 	}
 
 	var baseDeploymentID *string
@@ -137,8 +136,8 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		var err error
 		baseDeployment, err = s.deploymentRepo.GetWithContent(req.Base, apiUUID, orgUUID)
 		if err != nil {
-			if errors.Is(err, constants.ErrDeploymentNotFound) {
-				return nil, constants.ErrBaseDeploymentNotFound
+			if apperror.DeploymentNotFound.Is(err) {
+				return nil, apperror.DeploymentBaseNotFound.Wrap(err)
 			}
 			return nil, fmt.Errorf("failed to get base deployment: %w", err)
 		}
@@ -372,12 +371,12 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 		return nil, err
 	}
 	if targetDeployment == nil {
-		return nil, constants.ErrDeploymentNotFound
+		return nil, apperror.DeploymentNotFound.New()
 	}
 
 	// Validate that the provided gatewayID matches the deployment's bound gateway
 	if targetDeployment.GatewayID != gatewayID {
-		return nil, constants.ErrGatewayIDMismatch
+		return nil, apperror.DeploymentGatewayMismatch.New()
 	}
 
 	// Verify target deployment is NOT currently DEPLOYED
@@ -386,7 +385,7 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
 	}
 	if currentDeploymentID == deploymentID && status == model.DeploymentStatusDeployed {
-		return nil, constants.ErrDeploymentAlreadyDeployed
+		return nil, apperror.DeploymentRestoreConflict.New()
 	}
 
 	// Validate gateway exists and belongs to organization
@@ -395,7 +394,7 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil || gateway.OrganizationID != orgUUID {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	// Set initial status based on config; transitional (DEPLOYING) only when enabled
@@ -459,17 +458,17 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, gatewayID,
 		return nil, err
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotFound
+		return nil, apperror.DeploymentNotFound.New()
 	}
 
 	// Validate that the provided gatewayID matches the deployment's bound gateway
 	if deployment.GatewayID != gatewayID {
-		return nil, constants.ErrGatewayIDMismatch
+		return nil, apperror.DeploymentGatewayMismatch.New()
 	}
 
 	// Verify deployment is currently DEPLOYED (status already populated by GetDeploymentWithState)
 	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
-		return nil, constants.ErrDeploymentNotActive
+		return nil, apperror.DeploymentNotActive.New("API")
 	}
 
 	// Validate gateway exists and belongs to organization
@@ -478,7 +477,7 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, gatewayID,
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
@@ -535,12 +534,12 @@ func (s *DeploymentService) DeleteDeployment(apiUUID, deploymentID, orgUUID, act
 		return err
 	}
 	if deployment == nil {
-		return constants.ErrDeploymentNotFound
+		return apperror.DeploymentNotFound.New()
 	}
 
 	// Verify deployment is NOT currently DEPLOYED (status already populated by GetDeploymentWithState)
 	if deployment.Status != nil && *deployment.Status == model.DeploymentStatusDeployed {
-		return constants.ErrDeploymentIsDeployed
+		return apperror.DeploymentActive.New()
 	}
 
 	// Delete the deployment artifact
@@ -748,7 +747,7 @@ func (s *DeploymentService) GetDeployments(apiUUID, orgUUID string, gatewayID *s
 		return nil, err
 	}
 	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 
 	// Validate status parameter
@@ -762,7 +761,7 @@ func (s *DeploymentService) GetDeployments(apiUUID, orgUUID string, gatewayID *s
 			string(model.DeploymentStatusArchived):    true,
 		}
 		if !validStatuses[*status] {
-			return nil, constants.ErrInvalidDeploymentStatus
+			return nil, apperror.DeploymentInvalidStatus.New()
 		}
 	}
 
@@ -809,7 +808,7 @@ func (s *DeploymentService) GetDeployment(apiUUID, deploymentID, orgUUID string)
 		return nil, err
 	}
 	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 
 	// Get deployment with state derived via LEFT JOIN
@@ -818,7 +817,7 @@ func (s *DeploymentService) GetDeployment(apiUUID, deploymentID, orgUUID string)
 		return nil, err
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotFound
+		return nil, apperror.DeploymentNotFound.New()
 	}
 
 	return toAPIDeploymentResponse(
@@ -843,7 +842,7 @@ func (s *DeploymentService) GetDeploymentContent(apiUUID, deploymentID, orgUUID 
 		return nil, err
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotFound
+		return nil, apperror.DeploymentNotFound.New()
 	}
 
 	return deployment.Content, nil
@@ -901,7 +900,7 @@ func (s *DeploymentService) RestoreDeploymentByHandle(apiHandle, deploymentID, g
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	return s.RestoreDeployment(apiUUID, deploymentID, gateway.ID, orgUUID, actor)
@@ -918,7 +917,7 @@ func (s *DeploymentService) getUUIDByHandle(handle, orgUUID string) (string, err
 		return "", err
 	}
 	if artifact == nil {
-		return "", constants.ErrArtifactNotFound
+		return "", apperror.ArtifactNotFound.New()
 	}
 
 	return artifact.UUID, nil
@@ -983,7 +982,7 @@ func (s *DeploymentService) UndeployDeploymentByHandle(apiHandle, deploymentID, 
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	return s.UndeployDeployment(apiUUID, deploymentID, gateway.ID, orgUUID, actor)

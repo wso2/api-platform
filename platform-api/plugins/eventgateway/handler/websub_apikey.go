@@ -21,7 +21,6 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -112,11 +111,11 @@ func (h *WebSubAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := h.apiKeyService.CreateAPIKey(r.Context(), apiHandle, constants.WebSubApi, orgID, userId, &req); err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
+		if apperror.ArtifactNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "WebSub API not found"))
 			return
 		}
-		if errors.Is(err, constants.ErrGatewayUnavailable) {
+		if apperror.GatewayConnectionUnavailable.Is(err) {
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, apperror.NewErrorResponse(503, "Service Unavailable", "No gateway connections available"))
 			return
 		}
@@ -184,11 +183,11 @@ func (h *WebSubAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, constants.WebSubApi, orgID, keyName, userId, &req); err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
+		if apperror.ArtifactNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "WebSub API not found"))
 			return
 		}
-		if errors.Is(err, constants.ErrGatewayUnavailable) {
+		if apperror.GatewayConnectionUnavailable.Is(err) {
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, apperror.NewErrorResponse(503, "Service Unavailable", "No gateway connections available"))
 			return
 		}
@@ -232,15 +231,15 @@ func (h *WebSubAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.WebSubApi, orgID, keyName, userId); err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
+		if apperror.ArtifactNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "WebSub API not found"))
 			return
 		}
-		if errors.Is(err, constants.ErrAPIKeyNotFound) {
+		if apperror.ApplicationAPIKeyNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "API key not found"))
 			return
 		}
-		if errors.Is(err, constants.ErrGatewayUnavailable) {
+		if apperror.GatewayConnectionUnavailable.Is(err) {
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, apperror.NewErrorResponse(503, "Service Unavailable", "No gateway connections available"))
 			return
 		}
@@ -254,13 +253,12 @@ func (h *WebSubAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Reques
 
 // handleServiceError maps service errors to HTTP responses
 func (h *WebSubAPIKeyHandler) handleServiceError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, constants.ErrInvalidInput):
-		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", err.Error()))
-	case errors.Is(err, constants.ErrWebSubAPINotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "WebSub API not found"))
-	default:
-		h.slogger.Error("WebSub API key service error", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, apperror.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
+	// Catalog errors — validation failures, an unknown referenced project, and the
+	// data-plane-origin guard — already carry their status, code, and a sterile
+	// client message. Only this plugin's own sentinel conditions are mapped below.
+	if respondCatalogError(w, h.slogger, err) {
+		return
 	}
+	h.slogger.Error("WebSub API key service error", "error", err)
+	httputil.WriteJSON(w, http.StatusInternalServerError, apperror.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
 }

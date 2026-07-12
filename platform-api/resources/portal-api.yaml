@@ -61,25 +61,34 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/Error'
               example:
-                error: username and password are required
+                status: error
+                code: VALIDATION_FAILED
+                message: username and password are required
         '401':
-          description: Invalid credentials.
+          description: |
+            Authentication failed. The response is identical for an unknown username, a wrong
+            password, and a malformed credential, so it cannot be used to enumerate users.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/Error'
               example:
-                error: invalid credentials
+                status: error
+                code: UNAUTHORIZED
+                message: Invalid or expired credentials.
         '500':
           description: The server failed to issue a token.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/Error'
               example:
-                error: failed to issue token
+                status: error
+                code: INTERNAL_ERROR
+                message: An unexpected error occurred.
+                trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
 
 components:
   schemas:
@@ -115,15 +124,40 @@ components:
           description: Token expiry as a Unix timestamp (seconds since epoch).
           example: 1735689600
 
-    ErrorResponse:
-      type: object
+    Error:
+      title: Standard error response
+      description: |
+        The error shape shared with the main Platform API (see the `Error` schema in
+        openapi.yaml). Portal errors are produced by the same central error mapper, so the
+        two surfaces cannot drift.
       required:
-        - error
+        - status
+        - code
+        - message
+      type: object
       properties:
-        error:
+        status:
           type: string
-          description: Human-readable error message.
-          example: invalid credentials
+          enum: [error]
+          description: Always the literal "error".
+          example: error
+        code:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: "Stable, machine-readable error code from the error catalog. Clients should branch on this, not on the HTTP status."
+          example: UNAUTHORIZED
+        message:
+          type: string
+          description: Human-readable description of the error.
+          example: Invalid or expired credentials.
+        trackingId:
+          type: string
+          format: uuid
+          description: >-
+            Correlation ID for server-side failures. Present only on 5xx
+            responses; quote it when reporting the error so operators can
+            find the corresponding server log entry.
+          example: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
 
 tags:
   - name: Portal Authentication

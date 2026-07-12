@@ -19,16 +19,16 @@ package service
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
+	"time"
+
 	"github.com/wso2/api-platform/platform-api/config"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
-	"time"
 )
 
 // GatewayInternalAPIService handles internal gateway API operations
@@ -129,10 +129,10 @@ func (s *GatewayInternalAPIService) GetAPIByUUID(apiId, orgId string) (map[strin
 		return nil, fmt.Errorf("failed to get api: %w", err)
 	}
 	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 	if apiModel.OrganizationID != orgId {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 
 	apiYaml, err := s.apiUtil.GenerateAPIDeploymentYAML(apiModel)
@@ -153,7 +153,7 @@ func (s *GatewayInternalAPIService) GetActiveDeploymentByGateway(apiID, orgID, g
 		return nil, fmt.Errorf("failed to get deployment: %w", err)
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotActive
+		return nil, apperror.DeploymentNotActive.New("API")
 	}
 
 	// Deployment content is already stored as YAML, so return it directly
@@ -173,7 +173,7 @@ func (s *GatewayInternalAPIService) GetActiveLLMProviderDeploymentByGateway(prov
 		return nil, fmt.Errorf("failed to get deployment: %w", err)
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotActive
+		return nil, apperror.DeploymentNotActive.New("LLM provider")
 	}
 
 	providerYaml := string(deployment.Content)
@@ -191,7 +191,7 @@ func (s *GatewayInternalAPIService) GetActiveLLMProxyDeploymentByGateway(proxyID
 		return nil, fmt.Errorf("failed to get deployment: %w", err)
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotActive
+		return nil, apperror.DeploymentNotActive.New("LLM proxy")
 	}
 
 	proxyYaml := string(deployment.Content)
@@ -202,18 +202,18 @@ func (s *GatewayInternalAPIService) GetActiveLLMProxyDeploymentByGateway(proxyID
 }
 
 // IsAPIDeployedOnGateway returns nil if the API has an active deployment_status row on the gateway
-// (DEPLOYED or UNDEPLOYED), ErrAPINotFound if the API does not exist, or ErrDeploymentNotActive
+// (DEPLOYED or UNDEPLOYED), REST_API_NOT_FOUND if the API does not exist, or DEPLOYMENT_NOT_ACTIVE
 // if no active deployment_status exists for the API+gateway.
 func (s *GatewayInternalAPIService) IsAPIDeployedOnGateway(apiID, gatewayID, orgID string) error {
 	api, err := s.apiRepo.GetAPIByUUID(apiID, orgID)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
+		if apperror.RESTAPINotFound.Is(err) {
 			return err
 		}
 		return fmt.Errorf("failed to get api: %w", err)
 	}
 	if api == nil || api.OrganizationID != orgID {
-		return constants.ErrAPINotFound
+		return apperror.RESTAPINotFound.New()
 	}
 
 	deploymentID, status, _, err := s.deploymentRepo.GetStatus(apiID, orgID, gatewayID)
@@ -221,10 +221,10 @@ func (s *GatewayInternalAPIService) IsAPIDeployedOnGateway(apiID, gatewayID, org
 		return fmt.Errorf("failed to get deployment status: %w", err)
 	}
 	if deploymentID == "" {
-		return constants.ErrDeploymentNotActive
+		return apperror.DeploymentNotActive.New("API")
 	}
 	if status != model.DeploymentStatusDeployed && status != model.DeploymentStatusUndeployed {
-		return constants.ErrDeploymentNotActive
+		return apperror.DeploymentNotActive.New("API")
 	}
 	return nil
 }
@@ -232,7 +232,7 @@ func (s *GatewayInternalAPIService) IsAPIDeployedOnGateway(apiID, gatewayID, org
 // ListSubscriptionsForAPI lists subscriptions for a given API within an organization.
 func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string) ([]dto.GatewaySubscriptionInfo, error) {
 	if apiID == "" || orgID == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The API id and organization id are required.")
 	}
 	// apiID here is the API UUID (rest_apis.uuid) used as deployment id for REST APIs.
 	// First, ensure the API exists and belongs to the organization so callers can map
@@ -241,13 +241,13 @@ func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string)
 	if err != nil {
 		// Preserve explicit not-found signaling from the repository so callers
 		// can translate it to a 404, while still wrapping unexpected failures.
-		if errors.Is(err, constants.ErrAPINotFound) {
+		if apperror.RESTAPINotFound.Is(err) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("failed to get api for listing subscriptions: %w", err)
 	}
 	if apiModel == nil || apiModel.OrganizationID != orgID {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 
 	// Internal sync: fetch all subscriptions for the API via pagination so reconciliation
@@ -285,7 +285,7 @@ func (s *GatewayInternalAPIService) ListSubscriptionsForAPI(apiID, orgID string)
 // ListSubscriptionPlansForOrg lists all subscription plans for an organization.
 func (s *GatewayInternalAPIService) ListSubscriptionPlansForOrg(orgID string) ([]dto.GatewaySubscriptionPlanInfo, error) {
 	if orgID == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The organization id is required.")
 	}
 	// Internal sync: fetch all plans for the organization via pagination so reconciliation
 	// never performs destructive deletes due to a cutoff.
@@ -328,7 +328,7 @@ func (s *GatewayInternalAPIService) GetActiveMCPProxyDeploymentByGateway(proxyID
 		return nil, fmt.Errorf("failed to get MCP proxy: %w", err)
 	}
 	if proxy == nil {
-		return nil, constants.ErrMCPProxyNotFound
+		return nil, apperror.MCPProxyNotFound.New()
 	}
 
 	deployment, err := s.deploymentRepo.GetCurrentByGateway(proxy.UUID, gatewayID, orgID)
@@ -336,7 +336,7 @@ func (s *GatewayInternalAPIService) GetActiveMCPProxyDeploymentByGateway(proxyID
 		return nil, fmt.Errorf("failed to get deployment: %w", err)
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotActive
+		return nil, apperror.DeploymentNotActive.New("MCP proxy")
 	}
 
 	proxyYaml := string(deployment.Content)
@@ -349,14 +349,15 @@ func (s *GatewayInternalAPIService) GetActiveMCPProxyDeploymentByGateway(proxyID
 // GetActiveWebSubAPIDeploymentByGateway retrieves the currently deployed WebSub API artifact for a specific gateway
 func (s *GatewayInternalAPIService) GetActiveWebSubAPIDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
 	if s.websubAPIRepo == nil {
-		return nil, constants.ErrWebSubAPINotFound
+		return nil, apperror.WebSubAPINotFound.New().
+			WithLogMessage("WebSub API repository unavailable: the event-gateway plugin is not enabled")
 	}
 	websubAPI, err := s.websubAPIRepo.GetByUUID(apiID, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get WebSub API: %w", err)
 	}
 	if websubAPI == nil {
-		return nil, constants.ErrWebSubAPINotFound
+		return nil, apperror.WebSubAPINotFound.New()
 	}
 
 	deployment, err := s.deploymentRepo.GetCurrentByGateway(websubAPI.UUID, gatewayID, orgID)
@@ -364,7 +365,7 @@ func (s *GatewayInternalAPIService) GetActiveWebSubAPIDeploymentByGateway(apiID,
 		return nil, fmt.Errorf("failed to get deployment: %w", err)
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotActive
+		return nil, apperror.DeploymentNotActive.New("WebSub API")
 	}
 
 	apiYaml := string(deployment.Content)
@@ -377,14 +378,15 @@ func (s *GatewayInternalAPIService) GetActiveWebSubAPIDeploymentByGateway(apiID,
 // GetActiveWebBrokerAPIDeploymentByGateway retrieves the currently deployed WebBroker API artifact for a specific gateway
 func (s *GatewayInternalAPIService) GetActiveWebBrokerAPIDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
 	if s.webbrokerAPIRepo == nil {
-		return nil, constants.ErrWebBrokerAPINotFound
+		return nil, apperror.WebBrokerAPINotFound.New().
+			WithLogMessage("WebBroker API repository unavailable: the event-gateway plugin is not enabled")
 	}
 	webbrokerAPI, err := s.webbrokerAPIRepo.GetByUUID(apiID, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get WebBroker API: %w", err)
 	}
 	if webbrokerAPI == nil {
-		return nil, constants.ErrWebBrokerAPINotFound
+		return nil, apperror.WebBrokerAPINotFound.New()
 	}
 
 	deployment, err := s.deploymentRepo.GetCurrentByGateway(webbrokerAPI.UUID, gatewayID, orgID)
@@ -392,7 +394,7 @@ func (s *GatewayInternalAPIService) GetActiveWebBrokerAPIDeploymentByGateway(api
 		return nil, fmt.Errorf("failed to get deployment: %w", err)
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotActive
+		return nil, apperror.DeploymentNotActive.New("WebBroker API")
 	}
 
 	apiYaml := string(deployment.Content)
