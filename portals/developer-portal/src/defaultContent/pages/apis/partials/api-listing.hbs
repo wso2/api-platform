@@ -164,45 +164,5 @@
     </div>
   </div>
 
-  <script>
-    (function(){
-      function findClosest(el, selector){
-        while(el && el !== document){
-          if(el.matches && el.matches(selector)) return el;
-          el = el.parentNode;
-        }
-        return null;
-      }
-
-      document.addEventListener('click', function(e){
-        var modalTrigger = findClosest(e.target, '[data-modal]');
-        if(modalTrigger){
-          e.preventDefault();
-          if(modalTrigger.classList.contains('is-readonly') || modalTrigger.getAttribute('aria-disabled') === 'true'){
-            return;
-          }
-          if(typeof loadModal === 'function'){
-            loadModal(modalTrigger.getAttribute('data-modal'));
-          } else {
-            var id = modalTrigger.getAttribute('data-modal');
-            var el = document.getElementById(id);
-            if(el) {
-              el.style.display = 'flex';
-              document.body.classList.add('modal-open');
-              if(typeof prepareSubscriptionModal === 'function') {
-                try { prepareSubscriptionModal(id); } catch(err) { /* noop */ }
-              }
-            }
-          }
-          return;
-        }
-
-        var nav = findClosest(e.target, '[data-href]');
-        if(nav){
-          var href = nav.getAttribute('data-href');
-          if(href){ window.location.href = href; }
-        }
-      }, false);
-    })();
-  </script>
+  <script src='/technical-scripts/listing-cards.js' defer></script>
 </section>

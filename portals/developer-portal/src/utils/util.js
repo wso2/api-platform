@@ -882,10 +882,19 @@ function validateScripts(strContent) {
             "<script src='/technical-scripts/api-workflow-detail.js' defer></script>",
             "<script src='/technical-scripts/api-agent-prompt.js' defer></script>",
             '<script src="/technical-scripts/home-discover.js" defer></script>',
+            "<script src='/technical-scripts/home-particles.js' defer></script>",
+            "<script src='/technical-scripts/listing-cards.js' defer></script>",
+            "<script src='/technical-scripts/mcp-landing.js' defer></script>",
+            "<script src='/technical-scripts/api-subscription-plans.js' defer></script>",
+            "<script src='/technical-scripts/mcp-subscription-plans.js' defer></script>",
+            "<script src='/technical-scripts/onboarding-overlay.js' defer></script>",
+            "<script src='/technical-scripts/dev-reload.js' defer></script>",
             '<script src="https://cdn.jsdelivr.net/npm/@jentic/arazzo-ui@1.0.0-alpha.30/dist/arazzo-ui.js" integrity="sha256-OYzURPQLK+lup5rGo+IQmVbjWOjVgjURBWDDtMHIOaw=" crossorigin="anonymous"></script>',
             '<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" integrity="sha256-Rdw90D3AegZwWiwpibjH9wkBPwS9U4bjJ51ORH8H69c=" crossorigin="anonymous"></script>',
             '<script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js" integrity="sha256-Wt6n2O5BpwD8zBS7nVAxBPBHDMF6hK0+Fn0/UlHq4No=" crossorigin="anonymous"></script>',
             '<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js" integrity="sha512-78KH17QLT5e55GJqP76vutp1D2iAoy06WcYBXB6iBCsmO6wWzx0Qdg8EDpm8mKXv68BcvHOyeeP4wxAL0twJGQ==" crossorigin="anonymous"></script>',
+            "<script src=\"https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js\" integrity=\"sha384-qzrow8+R9k2/XKVt7fpdI3hp6ocDhtrCzBsdbcw7/VRkwEXYcsTTAEeFvhlgiGBW\" crossorigin=\"anonymous\"></script>",
+            "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js\" integrity=\"sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp\" crossorigin=\"anonymous\"></script>",
         ]);
         const allowedInlineScripts = new Set([
             // Token-map JSON data island (api-landing/partials/api-subscription-plans.hbs)
@@ -905,8 +914,10 @@ function validateScripts(strContent) {
             // tokenMap + orgId bootstrap (api-subscriptions/partials/api-subscription-list.hbs
             // and subscriptions/partials/subscription-list.hbs)
             "<script>\n                window.__tokenMap = window.__tokenMap || {};\n                window.__subscriptionOrgId = \"{{@root.orgId}}\";\n            </script>",
-            // Modal click handler (apis/partials/api-listing.hbs)
-            "<script>\n    (function(){\n      function findClosest(el, selector){\n        while(el && el !== document){\n          if(el.matches && el.matches(selector)) return el;\n          el = el.parentNode;\n        }\n        return null;\n      }\n\n      document.addEventListener('click', function(e){\n        var modalTrigger = findClosest(e.target, '[data-modal]');\n        if(modalTrigger){\n          e.preventDefault();\n          if(modalTrigger.classList.contains('is-readonly') || modalTrigger.getAttribute('aria-disabled') === 'true'){\n            return;\n          }\n          if(typeof loadModal === 'function'){\n            loadModal(modalTrigger.getAttribute('data-modal'));\n          } else {\n            var id = modalTrigger.getAttribute('data-modal');\n            var el = document.getElementById(id);\n            if(el) {\n              el.style.display = 'flex';\n              document.body.classList.add('modal-open');\n              if(typeof prepareSubscriptionModal === 'function') {\n                try { prepareSubscriptionModal(id); } catch(err) { /* noop */ }\n              }\n            }\n          }\n          return;\n        }\n\n        var nav = findClosest(e.target, '[data-href]');\n        if(nav){\n          var href = nav.getAttribute('data-href');\n          if(href){ window.location.href = href; }\n        }\n      }, false);\n    })();\n  </script>",
+            // API config bootstrap (layout/main.hbs)
+            "<script>\n      // Devportal API base segment + version, sourced from server constants.\n      // Browser scripts build invocation URLs via window.devportalApi (common.js).\n      window.__DEVPORTAL_API__ = { base: \"{{devportalApiConfig.base}}\", version: \"{{devportalApiConfig.version}}\" };\n    </script>",
+            // Existing-subs JSON data island (mcp-landing/partials/mcp-subscription-plans.hbs)
+            "<script id=\"mcp-existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
         ]);
 
         const scriptRegex = /<script(?:\s+[^>]*)?>[\s\S]*?<\/script>/gi;
