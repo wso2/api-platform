@@ -946,14 +946,14 @@ func (t *Translator) getVHostDomains(effectiveVHost string) []string {
 	}
 
 	mainVHost := t.config.Router.VHosts.Main
-	if effectiveVHost == mainVHost.Default && len(mainVHost.Domains) > 0 {
+	if strings.EqualFold(strings.TrimSpace(effectiveVHost), mainVHost.Default) && len(mainVHost.Domains) > 0 {
 		if expanded := expand(mainVHost.Domains); len(expanded) > 0 {
 			return expanded
 		}
 	}
 
 	sandboxVHost := t.config.Router.VHosts.Sandbox
-	if effectiveVHost == sandboxVHost.Default && len(sandboxVHost.Domains) > 0 {
+	if strings.EqualFold(strings.TrimSpace(effectiveVHost), sandboxVHost.Default) && len(sandboxVHost.Domains) > 0 {
 		if expanded := expand(sandboxVHost.Domains); len(expanded) > 0 {
 			return expanded
 		}

@@ -1574,6 +1574,20 @@ func TestTranslator_GetVHostDomains(t *testing.T) {
 		domains := translator.getVHostDomains("api.wso2.com")
 		assert.Equal(t, []string{"api.wso2.com", "api.wso2.com:*", "api.wso2.com:8443"}, domains)
 	})
+
+	t.Run("matches default case- and whitespace-insensitively for pre-existing vhosts", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		routerCfg.VHosts.Main.Default = "*.wso2.com"
+		routerCfg.VHosts.Main.Domains = []string{"*.wso2.com", "*.foo.com"}
+		cfg := testConfig()
+		cfg.Router = *routerCfg
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		// A vhost stored before canonicalization (mixed case or padded) still matches the
+		// canonical default and expands its configured domains.
+		domains := translator.getVHostDomains("  *.WSO2.COM  ")
+		assert.Equal(t, []string{"*.wso2.com", "*.wso2.com:*", "*.foo.com", "*.foo.com:*"}, domains)
+	})
 }
 
 func TestTranslator_GetCertStore_Nil(t *testing.T) {

@@ -1789,6 +1789,11 @@ func (c *Config) validateVHostsConfig() error {
 		return fmt.Errorf("router.vhosts.sandbox.default must be a non-empty string")
 	}
 
+	// Canonicalize default vhosts (lower-case and trim) so they match the normalized vhost
+	// values stored on deploy and the case-insensitive way Envoy compares domains.
+	c.Router.VHosts.Main.Default = strings.ToLower(strings.TrimSpace(c.Router.VHosts.Main.Default))
+	c.Router.VHosts.Sandbox.Default = strings.ToLower(strings.TrimSpace(c.Router.VHosts.Sandbox.Default))
+
 	// Validate main.domains (only if not nil)
 	if err := validateDomains("router.vhosts.main.domains", c.Router.VHosts.Main.Domains); err != nil {
 		return err

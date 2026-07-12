@@ -646,6 +646,31 @@ func (s *APIDeploymentService) sendTopicRequestToHub(ctx context.Context, httpCl
 	return fmt.Errorf("WebSubHub request failed after %d retries; last status: %d", maxRetries, lastStatus)
 }
 
+// normalizeVhost lower-cases and trims surrounding whitespace from a vhost so that the stored
+// value is canonical. Envoy compares virtual-host domains case-insensitively and ignores
+// surrounding whitespace, so two values that differ only in case or whitespace would otherwise
+// be emitted as separate virtual hosts with duplicate domains and the whole route configuration
+// would be rejected.
+func normalizeVhost(vhost string) string {
+	return strings.ToLower(strings.TrimSpace(vhost))
+}
+
+// isGatewayDefaultVhost reports whether a vhost is the gateway-default sentinel, ignoring case
+// and surrounding whitespace.
+func isGatewayDefaultVhost(vhost string) bool {
+	return normalizeVhost(vhost) == constants.VHostGatewayDefault
+}
+
+// canonicalizeVhost normalizes a vhost, except when it contains a template expression
+// ("{{"). Such values are rendered later by RenderSpec and their case must be preserved
+// for the lookup key (e.g. {{ env "API_HOST" }}), so they are left untouched here.
+func canonicalizeVhost(vhost string) string {
+	if strings.Contains(vhost, "{{") {
+		return vhost
+	}
+	return normalizeVhost(vhost)
+}
+
 // resolveVhostSentinels replaces the gateway-default sentinel in a RestAPI or WebSubAPI's vhosts
 // with the actual default values from the router config. This ensures that the stored value is
 // always a concrete hostname, making deployments immune to future gateway config changes.
@@ -660,82 +685,103 @@ func resolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
 			// Populate defaults when vhosts is omitted entirely (e.g. direct gateway deployment
 			// without platform-api injecting sentinels). This freezes the current gateway defaults
 			// so that routing is immune to future config changes.
-			main := routerCfg.VHosts.Main.Default
+			main := normalizeVhost(routerCfg.VHosts.Main.Default)
 			c.Spec.Vhosts = &struct {
 				Main    string  `json:"main" yaml:"main"`
 				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
 			}{
 				Main: main,
 			}
-			if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
+			if sandboxDefault := normalizeVhost(routerCfg.VHosts.Sandbox.Default); sandboxDefault != "" {
 				c.Spec.Vhosts.Sandbox = &sandboxDefault
 			}
 			*cfg = c
 			return nil
 		}
-		if c.Spec.Vhosts.Main == constants.VHostGatewayDefault {
-			c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
+		if isGatewayDefaultVhost(c.Spec.Vhosts.Main) {
+			c.Spec.Vhosts.Main = normalizeVhost(routerCfg.VHosts.Main.Default)
+		} else {
+			c.Spec.Vhosts.Main = canonicalizeVhost(c.Spec.Vhosts.Main)
 		}
-		if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == constants.VHostGatewayDefault {
-			resolved := routerCfg.VHosts.Sandbox.Default
-			if resolved != "" {
-				c.Spec.Vhosts.Sandbox = &resolved
+		if c.Spec.Vhosts.Sandbox != nil {
+			if isGatewayDefaultVhost(*c.Spec.Vhosts.Sandbox) {
+				resolved := normalizeVhost(routerCfg.VHosts.Sandbox.Default)
+				if resolved != "" {
+					c.Spec.Vhosts.Sandbox = &resolved
+				} else {
+					c.Spec.Vhosts.Sandbox = nil
+				}
 			} else {
-				c.Spec.Vhosts.Sandbox = nil
+				resolved := canonicalizeVhost(*c.Spec.Vhosts.Sandbox)
+				c.Spec.Vhosts.Sandbox = &resolved
 			}
 		}
 		*cfg = c
 	case api.WebSubAPI:
 		if c.Spec.Vhosts == nil {
-			main := routerCfg.VHosts.Main.Default
+			main := normalizeVhost(routerCfg.VHosts.Main.Default)
 			c.Spec.Vhosts = &struct {
 				Main    string  `json:"main" yaml:"main"`
 				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
 			}{
 				Main: main,
 			}
-			if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
+			if sandboxDefault := normalizeVhost(routerCfg.VHosts.Sandbox.Default); sandboxDefault != "" {
 				c.Spec.Vhosts.Sandbox = &sandboxDefault
 			}
 			*cfg = c
 			return nil
 		}
-		if c.Spec.Vhosts.Main == constants.VHostGatewayDefault {
-			c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
+		if isGatewayDefaultVhost(c.Spec.Vhosts.Main) {
+			c.Spec.Vhosts.Main = normalizeVhost(routerCfg.VHosts.Main.Default)
+		} else {
+			c.Spec.Vhosts.Main = canonicalizeVhost(c.Spec.Vhosts.Main)
 		}
-		if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == constants.VHostGatewayDefault {
-			resolved := routerCfg.VHosts.Sandbox.Default
-			if resolved != "" {
-				c.Spec.Vhosts.Sandbox = &resolved
+		if c.Spec.Vhosts.Sandbox != nil {
+			if isGatewayDefaultVhost(*c.Spec.Vhosts.Sandbox) {
+				resolved := normalizeVhost(routerCfg.VHosts.Sandbox.Default)
+				if resolved != "" {
+					c.Spec.Vhosts.Sandbox = &resolved
+				} else {
+					c.Spec.Vhosts.Sandbox = nil
+				}
 			} else {
-				c.Spec.Vhosts.Sandbox = nil
+				resolved := canonicalizeVhost(*c.Spec.Vhosts.Sandbox)
+				c.Spec.Vhosts.Sandbox = &resolved
 			}
 		}
 		*cfg = c
 	case api.WebBrokerApi:
 		if c.Spec.Vhosts == nil {
-			main := routerCfg.VHosts.Main.Default
+			main := normalizeVhost(routerCfg.VHosts.Main.Default)
 			c.Spec.Vhosts = &struct {
 				Main    string  `json:"main" yaml:"main"`
 				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
 			}{
 				Main: main,
 			}
-			if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
+			if sandboxDefault := normalizeVhost(routerCfg.VHosts.Sandbox.Default); sandboxDefault != "" {
 				c.Spec.Vhosts.Sandbox = &sandboxDefault
 			}
 			*cfg = c
 			return nil
 		}
-		if c.Spec.Vhosts.Main == constants.VHostGatewayDefault {
-			c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
+		if isGatewayDefaultVhost(c.Spec.Vhosts.Main) {
+			c.Spec.Vhosts.Main = normalizeVhost(routerCfg.VHosts.Main.Default)
+		} else {
+			c.Spec.Vhosts.Main = canonicalizeVhost(c.Spec.Vhosts.Main)
 		}
-		if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == constants.VHostGatewayDefault {
-			resolved := routerCfg.VHosts.Sandbox.Default
-			if resolved != "" {
-				c.Spec.Vhosts.Sandbox = &resolved
+		if c.Spec.Vhosts.Sandbox != nil {
+			if isGatewayDefaultVhost(*c.Spec.Vhosts.Sandbox) {
+				resolved := normalizeVhost(routerCfg.VHosts.Sandbox.Default)
+				if resolved != "" {
+					c.Spec.Vhosts.Sandbox = &resolved
+				} else {
+					c.Spec.Vhosts.Sandbox = nil
+				}
 			} else {
-				c.Spec.Vhosts.Sandbox = nil
+				resolved := canonicalizeVhost(*c.Spec.Vhosts.Sandbox)
+				c.Spec.Vhosts.Sandbox = &resolved
 			}
 		}
 		*cfg = c
