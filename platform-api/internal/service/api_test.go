@@ -277,7 +277,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Context:     "/test",
 				Version:     "v1",
 				ProjectId:   projectID,
-				Upstream:    api.Upstream{},
+				Upstream:    validUpstream(),
 			},
 			mockNameVersionExists:    false,
 			wantErr:                  false,
@@ -292,7 +292,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Context:     "/test",
 				Version:     "v1",
 				ProjectId:   projectID,
-				Upstream:    api.Upstream{},
+				Upstream:    validUpstream(),
 			},
 			mockHandleExists: true,
 			wantErr:          true,
@@ -305,7 +305,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Context:     "/test",
 				Version:     "v1",
 				ProjectId:   projectID,
-				Upstream:    api.Upstream{},
+				Upstream:    validUpstream(),
 			},
 			mockNameVersionExists:    true,
 			wantErr:                  true,
@@ -320,7 +320,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Context:     "/test",
 				Version:     "v1",
 				ProjectId:   projectID,
-				Upstream:    api.Upstream{},
+				Upstream:    validUpstream(),
 			},
 			wantErr:     true,
 			expectedErr: apperror.ValidationFailed,
@@ -332,7 +332,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Context:     "/test",
 				Version:     "v1",
 				ProjectId:   "",
-				Upstream:    api.Upstream{},
+				Upstream:    validUpstream(),
 			},
 			wantErr:     true,
 			errContains: "project id is required",
@@ -344,7 +344,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Context:     "invalid",
 				Version:     "v1",
 				ProjectId:   projectID,
-				Upstream:    api.Upstream{},
+				Upstream:    validUpstream(),
 			},
 			wantErr:     true,
 			expectedErr: apperror.ValidationFailed,
@@ -356,7 +356,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Context:     "/test",
 				Version:     "",
 				ProjectId:   projectID,
-				Upstream:    api.Upstream{},
+				Upstream:    validUpstream(),
 			},
 			wantErr:     true,
 			expectedErr: apperror.ValidationFailed,
@@ -369,7 +369,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Version:         "v1",
 				ProjectId:       projectID,
 				LifeCycleStatus: createStatusPtr("INVALID_STATE"),
-				Upstream:        api.Upstream{},
+				Upstream:        validUpstream(),
 			},
 			wantErr:     true,
 			expectedErr: apperror.ValidationFailed,
@@ -382,7 +382,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Version:     "v1",
 				ProjectId:   projectID,
 				Kind:        ptr("INVALID_TYPE"),
-				Upstream:    api.Upstream{},
+				Upstream:    validUpstream(),
 			},
 			wantErr:     true,
 			expectedErr: apperror.ValidationFailed,
@@ -395,7 +395,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Version:     "v1",
 				ProjectId:   projectID,
 				Transport:   slicePtr([]string{"invalid"}),
-				Upstream:    api.Upstream{},
+				Upstream:    validUpstream(),
 			},
 			wantErr:     true,
 			expectedErr: apperror.ValidationFailed,
@@ -408,7 +408,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Version:         "v1",
 				ProjectId:       projectID,
 				LifeCycleStatus: createStatusPtr("PUBLISHED"),
-				Upstream:        api.Upstream{},
+				Upstream:        validUpstream(),
 			},
 			mockNameVersionExists:    false,
 			wantErr:                  false,
@@ -423,7 +423,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Version:     "v1",
 				ProjectId:   projectID,
 				Kind:        ptr("RestApi"),
-				Upstream:    api.Upstream{},
+				Upstream:    validUpstream(),
 			},
 			mockNameVersionExists:    false,
 			wantErr:                  false,
@@ -438,7 +438,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Version:     "v1",
 				ProjectId:   projectID,
 				Transport:   slicePtr([]string{"https"}),
-				Upstream:    api.Upstream{},
+				Upstream:    validUpstream(),
 			},
 			mockNameVersionExists:    false,
 			wantErr:                  false,
@@ -452,7 +452,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Context:     "/test",
 				Version:     "v1",
 				ProjectId:   projectID,
-				Upstream:    api.Upstream{},
+				Upstream:    validUpstream(),
 				Operations: &[]api.Operation{
 					{
 						Request: api.OperationRequest{
@@ -471,7 +471,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Context:     "/test",
 				Version:     "v1",
 				ProjectId:   projectID,
-				Upstream:    api.Upstream{},
+				Upstream:    validUpstream(),
 				Channels: &[]api.Channel{
 					{
 						Request: api.ChannelRequest{
@@ -490,7 +490,7 @@ func TestValidateCreateAPIRequest(t *testing.T) {
 				Context:     "/test",
 				Version:     "v1",
 				ProjectId:   projectID,
-				Upstream:    api.Upstream{},
+				Upstream:    validUpstream(),
 				Operations: &[]api.Operation{
 					{
 						Request: api.OperationRequest{
@@ -577,6 +577,9 @@ func TestApplyAPIUpdatesUpdatesPolicies(t *testing.T) {
 		ProjectID: "11111111-1111-1111-1111-111111111111",
 		Version:   "v1",
 		Configuration: model.RestAPIConfig{
+			Upstream: model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{URL: "http://backend"},
+			},
 			Policies: []model.Policy{
 				{Name: "legacy-policy", Version: "v1"},
 			},
@@ -799,7 +802,7 @@ func TestAPIServiceCreate_MissingSecretRef_Rejected(t *testing.T) {
 		Context:     "/test",
 		Version:     "v1",
 		ProjectId:   "11111111-1111-1111-1111-111111111111",
-		Upstream:    api.Upstream{},
+		Upstream:    validUpstream(),
 		Policies:    &[]api.Policy{{Name: "set-headers", Version: "v1", Params: &params}},
 	}
 

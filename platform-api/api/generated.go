@@ -930,7 +930,10 @@ type CreateRESTAPIRequest struct {
 
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
-	Version  string   `binding:"required" json:"version" yaml:"version"`
+
+	// UpstreamDefinitions List of reusable named upstream definitions, referenced by `ref` from both API-level and operation-level upstreams.
+	UpstreamDefinitions *[]ReusableUpstream `json:"upstreamDefinitions,omitempty" yaml:"upstreamDefinitions,omitempty"`
+	Version             string              `binding:"required" json:"version" yaml:"version"`
 }
 
 // CreateRESTAPIRequestLifeCycleStatus Current lifecycle status of the API
@@ -1924,10 +1927,25 @@ type OperationRequest struct {
 
 	// Policies List of policies to be applied on the operation
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+
+	// Upstream Per-operation upstream override. Each sub-field must reference a named entry in upstreamDefinitions. Missing sub-fields fall back to the API-level upstream. At least one of main or sandbox must be set.
+	Upstream *OperationUpstream `json:"upstream,omitempty" yaml:"upstream,omitempty"`
 }
 
 // OperationRequestMethod HTTP method for the operation
 type OperationRequestMethod string
+
+// OperationUpstream Per-operation upstream override. Each sub-field must reference a named entry in upstreamDefinitions. Missing sub-fields fall back to the API-level upstream. At least one of main or sandbox must be set.
+type OperationUpstream struct {
+	Main *struct {
+		// Ref Name of a ReusableUpstream entry in the API's upstreamDefinitions pool. Used by both API-level and operation-level upstream refs.
+		Ref UpstreamReference `json:"ref" yaml:"ref"`
+	} `json:"main,omitempty" yaml:"main,omitempty"`
+	Sandbox *struct {
+		// Ref Name of a ReusableUpstream entry in the API's upstreamDefinitions pool. Used by both API-level and operation-level upstream refs.
+		Ref UpstreamReference `json:"ref" yaml:"ref"`
+	} `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+}
 
 // Organization defines model for Organization.
 type Organization struct {
@@ -2075,7 +2093,10 @@ type RESTAPI struct {
 
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
-	Version  string   `binding:"required" json:"version" yaml:"version"`
+
+	// UpstreamDefinitions List of reusable named upstream definitions, referenced by `ref` from both API-level and operation-level upstreams.
+	UpstreamDefinitions *[]ReusableUpstream `json:"upstreamDefinitions,omitempty" yaml:"upstreamDefinitions,omitempty"`
+	Version             string              `binding:"required" json:"version" yaml:"version"`
 }
 
 // RESTAPILifeCycleStatus Current lifecycle status of the API
@@ -2229,6 +2250,27 @@ type ResourceWiseRateLimitingConfig struct {
 
 	// Resources Explicit resource limits that override the default limit.
 	Resources []RateLimitingResourceLimit `binding:"required" json:"resources" yaml:"resources"`
+}
+
+// ReusableUpstream A reusable named upstream definition. Referenced by name from API-level and operation-level upstream refs.
+type ReusableUpstream struct {
+	// BasePath Base path prefix prepended to all requests routed to this upstream (e.g., /api/v2)
+	BasePath *string `json:"basePath,omitempty" yaml:"basePath,omitempty"`
+
+	// Name Name of a ReusableUpstream entry in the API's upstreamDefinitions pool. Used by both API-level and operation-level upstream refs.
+	Name UpstreamReference `json:"name" yaml:"name"`
+
+	// Timeout Timeout configuration for upstream requests
+	Timeout *UpstreamTimeout `json:"timeout,omitempty" yaml:"timeout,omitempty"`
+
+	// Upstreams List of backend targets with optional weights for load balancing
+	Upstreams []struct {
+		// Url Backend URL (host and port only; path comes from basePath)
+		Url string `json:"url" yaml:"url"`
+
+		// Weight Weight for load balancing (optional, default 100)
+		Weight *int `json:"weight,omitempty" yaml:"weight,omitempty"`
+	} `binding:"required" json:"upstreams" yaml:"upstreams"`
 }
 
 // RouteException defines model for RouteException.
@@ -2568,8 +2610,8 @@ type UpstreamDefinition struct {
 	// Auth Authentication configuration for upstream endpoints
 	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
-	// Ref Reference to a predefined upstreamDefinition
-	Ref *string `json:"ref,omitempty" yaml:"ref,omitempty"`
+	// Ref Name of a ReusableUpstream entry in the API's upstreamDefinitions pool. Used by both API-level and operation-level upstream refs.
+	Ref *UpstreamReference `json:"ref,omitempty" yaml:"ref,omitempty"`
 
 	// Url Direct backend URL to route traffic to
 	Url   *string `json:"url,omitempty" yaml:"url,omitempty"`
@@ -2581,6 +2623,15 @@ type UpstreamDefinition0 = interface{}
 
 // UpstreamDefinition1 defines model for .
 type UpstreamDefinition1 = interface{}
+
+// UpstreamReference Name of a ReusableUpstream entry in the API's upstreamDefinitions pool. Used by both API-level and operation-level upstream refs.
+type UpstreamReference = string
+
+// UpstreamTimeout Timeout configuration for upstream requests
+type UpstreamTimeout struct {
+	// Connect Connection timeout duration (e.g., "5s", "500ms")
+	Connect *string `json:"connect,omitempty" yaml:"connect,omitempty"`
+}
 
 // UserAPIKeyItem defines model for UserAPIKeyItem.
 type UserAPIKeyItem struct {

@@ -22,9 +22,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -744,6 +746,11 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 		return err
 	}
 
+	// Validate that every upstream ref (API-level + per-operation) resolves to a declared upstreamDefinition
+	if err := s.validateUpstreamRefs(req.UpstreamDefinitions, req.Upstream, req.Operations); err != nil {
+		return apperror.ValidationFailed.Wrap(err, err.Error())
+	}
+
 	return nil
 }
 
@@ -771,6 +778,182 @@ func (s *APIService) validateSubscriptionPlans(planHandles *[]string, orgUUID st
 		if plan == nil || plan.Status != model.SubscriptionPlanStatusActive {
 			return apperror.ValidationFailed.New(fmt.Sprintf(
 				"Subscription plan %q was not found or is not active.", handle))
+		}
+	}
+	return nil
+}
+
+// upstreamRefNameRe is the contract an upstreamDefinition name and a per-operation ref must
+// match. It mirrors the UpstreamReference pattern published in the OpenAPI spec and the gateway
+// validator, so a name the platform accepts is never rejected at deploy.
+var upstreamRefNameRe = regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`)
+
+// connectTimeoutRe is the contract an upstreamDefinition connect timeout must match: a whole or
+// decimal value in ms, s, m, or h. It mirrors the connect pattern published in the OpenAPI spec
+// and the gateway validator, since time.ParseDuration alone also accepts ns/us units and compound
+// values like "1h30m" that the gateway rejects at deploy.
+var connectTimeoutRe = regexp.MustCompile(`^\d+(\.\d+)?(ms|s|m|h)$`)
+
+// validateUpstreamReferenceName enforces the shared UpstreamReference contract.
+func validateUpstreamReferenceName(value, field string) error {
+	if value == "" {
+		return fmt.Errorf("%s is required", field)
+	}
+	if len(value) > 100 {
+		return fmt.Errorf("%s must not exceed 100 characters", field)
+	}
+	if !upstreamRefNameRe.MatchString(value) {
+		return fmt.Errorf("%s must match pattern ^[a-zA-Z0-9\\-_]+$", field)
+	}
+	return nil
+}
+
+// resolveUpstreamRef enforces the UpstreamReference contract on a ref value and ensures it
+// names a declared upstreamDefinition. field is the full path of the ref, for example
+// "upstream.main.ref" or "operations[0].upstream.main.ref".
+func resolveUpstreamRef(ref, field string, defined map[string]bool) error {
+	refName := strings.TrimSpace(ref)
+	if err := validateUpstreamReferenceName(refName, field); err != nil {
+		return err
+	}
+	if !defined[refName] {
+		return fmt.Errorf("%s references upstream definition %q which is not declared in upstreamDefinitions", field, refName)
+	}
+	return nil
+}
+
+// validateAPIUpstreamEndpoint validates the API-level url-or-ref union and resolves refs.
+func validateAPIUpstreamEndpoint(endpoint api.UpstreamDefinition, field string, defined map[string]bool) error {
+	hasURL := endpoint.Url != nil
+	hasRef := endpoint.Ref != nil
+	if hasURL && hasRef {
+		return fmt.Errorf("%s must specify exactly one of url or ref", field)
+	}
+	if !hasURL && !hasRef {
+		return fmt.Errorf("%s must specify either url or ref", field)
+	}
+
+	if hasURL {
+		// Match the gateway validator: trim only to detect an empty value, then
+		// parse the original string, so the platform never accepts a URL the
+		// gateway later rejects at deploy.
+		if strings.TrimSpace(*endpoint.Url) == "" {
+			return fmt.Errorf("%s.url is required", field)
+		}
+		parsed, err := url.Parse(*endpoint.Url)
+		if err != nil {
+			return fmt.Errorf("%s.url is invalid: %w", field, err)
+		}
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return fmt.Errorf("%s.url must use http or https scheme", field)
+		}
+		if parsed.Host == "" {
+			return fmt.Errorf("%s.url must include a host", field)
+		}
+		return nil
+	}
+
+	return resolveUpstreamRef(*endpoint.Ref, field+".ref", defined)
+}
+
+// validateUpstreamRefs ensures upstreamDefinitions are well-formed (unique, legal name, valid
+// host-only url, in-range weight, positive timeout), validates each API-level url-or-ref union,
+// and ensures every API-level and per-operation ref resolves.
+func (s *APIService) validateUpstreamRefs(upstreamDefs *[]api.ReusableUpstream, upstream api.Upstream, operations *[]api.Operation) error {
+	defined := make(map[string]bool)
+	if upstreamDefs != nil {
+		for defIdx, d := range *upstreamDefs {
+			definitionPath := fmt.Sprintf("upstreamDefinitions[%d]", defIdx)
+			if err := validateUpstreamReferenceName(d.Name, definitionPath+".name"); err != nil {
+				return err
+			}
+			if defined[d.Name] {
+				return fmt.Errorf("%s.name duplicates upstream definition %q", definitionPath, d.Name)
+			}
+			if len(d.Upstreams) == 0 {
+				return fmt.Errorf("%s.upstreams must declare at least one upstream url", definitionPath)
+			}
+			for upstreamIdx, backend := range d.Upstreams {
+				backendPath := fmt.Sprintf("%s.upstreams[%d]", definitionPath, upstreamIdx)
+				if backend.Url == "" {
+					return fmt.Errorf("%s.url is required", backendPath)
+				}
+				parsed, err := url.Parse(backend.Url)
+				if err != nil {
+					return fmt.Errorf("%s.url %q is invalid: %w", backendPath, backend.Url, err)
+				}
+				if parsed.Scheme != "http" && parsed.Scheme != "https" {
+					return fmt.Errorf("%s.url must use http or https scheme", backendPath)
+				}
+				if parsed.Host == "" {
+					return fmt.Errorf("%s.url must include a host", backendPath)
+				}
+				// Match the gateway validator: a non-root path, query, or fragment is not
+				// part of the upstream cluster and must be configured elsewhere.
+				if parsed.Path != "" && parsed.Path != "/" {
+					return fmt.Errorf("%s.url must not include a path; set it in upstreamDefinitions[].basePath", backendPath)
+				}
+				if parsed.RawQuery != "" || parsed.ForceQuery {
+					return fmt.Errorf("%s.url must not include a query string; only host[:port] is used", backendPath)
+				}
+				if parsed.Fragment != "" {
+					return fmt.Errorf("%s.url must not include a fragment; only host[:port] is used", backendPath)
+				}
+				if backend.Weight != nil && (*backend.Weight < 0 || *backend.Weight > 100) {
+					return fmt.Errorf("%s.weight must be between 0 and 100", backendPath)
+				}
+			}
+			// Match the gateway validator: trim first and validate only a non-empty
+			// value, so a blank or whitespace-only connect is treated as "unset" here
+			// exactly as the gateway treats it, rather than rejected.
+			if d.Timeout != nil && d.Timeout.Connect != nil {
+				if timeoutValue := strings.TrimSpace(*d.Timeout.Connect); timeoutValue != "" {
+					timeoutPath := definitionPath + ".timeout.connect"
+					duration, err := time.ParseDuration(timeoutValue)
+					if err != nil {
+						return fmt.Errorf("%s %q is invalid: %w", timeoutPath, timeoutValue, err)
+					}
+					if !connectTimeoutRe.MatchString(timeoutValue) {
+						return fmt.Errorf("%s must use one unsigned unit ms, s, m, or h (for example 5s or 500ms)", timeoutPath)
+					}
+					if duration <= 0 {
+						return fmt.Errorf("%s must be positive", timeoutPath)
+					}
+				}
+			}
+			defined[d.Name] = true
+		}
+	}
+
+	if err := validateAPIUpstreamEndpoint(upstream.Main, "upstream.main", defined); err != nil {
+		return err
+	}
+	if upstream.Sandbox != nil {
+		if err := validateAPIUpstreamEndpoint(*upstream.Sandbox, "upstream.sandbox", defined); err != nil {
+			return err
+		}
+	}
+
+	if operations != nil {
+		for opIdx, op := range *operations {
+			if op.Request.Upstream == nil {
+				continue
+			}
+			operationPath := fmt.Sprintf("operations[%d].upstream", opIdx)
+			operationUpstream := op.Request.Upstream
+			if operationUpstream.Main == nil && operationUpstream.Sandbox == nil {
+				return fmt.Errorf("%s must set at least one of main or sandbox", operationPath)
+			}
+			if operationUpstream.Main != nil {
+				if err := resolveUpstreamRef(operationUpstream.Main.Ref, operationPath+".main.ref", defined); err != nil {
+					return err
+				}
+			}
+			if operationUpstream.Sandbox != nil {
+				if err := resolveUpstreamRef(operationUpstream.Sandbox.Ref, operationPath+".sandbox.ref", defined); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil
@@ -817,6 +1000,15 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.RESTA
 		// wipe the stored credential. Preserve auth from the existing model
 		// (unredacted) whenever the incoming value is empty.
 		existingAPI.Upstream = preserveUpstreamAuthOnAPIUpdate(existingAPIModel.Configuration.Upstream, req.Upstream)
+	}
+	if req.UpstreamDefinitions != nil {
+		existingAPI.UpstreamDefinitions = req.UpstreamDefinitions
+	}
+
+	// Validate the merged configuration so a partial update cannot leave a per-operation ref
+	// pointing at a definition the update removed.
+	if err := s.validateUpstreamRefs(existingAPI.UpstreamDefinitions, existingAPI.Upstream, existingAPI.Operations); err != nil {
+		return nil, apperror.ValidationFailed.Wrap(err, err.Error())
 	}
 
 	return existingAPI, nil
@@ -1033,21 +1225,22 @@ func (s *APIService) createRequestToRESTAPI(req *api.CreateRESTAPIRequest, handl
 	}
 
 	return &api.RESTAPI{
-		Channels:          req.Channels,
-		Context:           req.Context,
-		CreatedBy:         req.CreatedBy,
-		Description:       req.Description,
-		Id:                utils.StringPtrIfNotEmpty(handle),
-		Kind:              req.Kind,
-		LifeCycleStatus:   lifecycle,
-		DisplayName:       req.DisplayName,
-		Operations:        req.Operations,
-		Policies:          req.Policies,
-		ProjectId:         req.ProjectId,
-		SubscriptionPlans: req.SubscriptionPlans,
-		Transport:         req.Transport,
-		Upstream:          req.Upstream,
-		Version:           req.Version,
+		Channels:            req.Channels,
+		Context:             req.Context,
+		CreatedBy:           req.CreatedBy,
+		Description:         req.Description,
+		Id:                  utils.StringPtrIfNotEmpty(handle),
+		Kind:                req.Kind,
+		LifeCycleStatus:     lifecycle,
+		DisplayName:         req.DisplayName,
+		Operations:          req.Operations,
+		Policies:            req.Policies,
+		ProjectId:           req.ProjectId,
+		SubscriptionPlans:   req.SubscriptionPlans,
+		Transport:           req.Transport,
+		Upstream:            req.Upstream,
+		UpstreamDefinitions: req.UpstreamDefinitions,
+		Version:             req.Version,
 	}
 }
 
