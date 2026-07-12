@@ -35,3 +35,33 @@ type UpstreamAuth struct {
 	Header string `json:"header,omitempty" db:"-"`
 	Value  string `json:"value,omitempty" db:"-"`
 }
+
+// ReusableUpstream represents a named reusable upstream definition
+type ReusableUpstream struct {
+	Name      string           `json:"name" db:"-"`
+	BasePath  string           `json:"basePath,omitempty" db:"-"`
+	Timeout   *UpstreamTimeout `json:"timeout,omitempty" db:"-"`
+	Upstreams []UpstreamTarget `json:"upstreams" db:"-"`
+}
+
+// UpstreamTarget represents a backend target with an optional load-balancing weight
+type UpstreamTarget struct {
+	URL    string `json:"url" db:"-"`
+	Weight *int   `json:"weight,omitempty" db:"-"`
+}
+
+// UpstreamTimeout represents upstream timeout configuration
+type UpstreamTimeout struct {
+	Connect string `json:"connect,omitempty" db:"-"`
+}
+
+// OperationUpstream represents a per-operation upstream override
+type OperationUpstream struct {
+	Main    *OperationUpstreamRef `json:"main,omitempty" db:"-"`
+	Sandbox *OperationUpstreamRef `json:"sandbox,omitempty" db:"-"`
+}
+
+// OperationUpstreamRef references a reusable upstream definition by name
+type OperationUpstreamRef struct {
+	Ref string `json:"ref" db:"-"`
+}
