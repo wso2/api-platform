@@ -9,9 +9,18 @@
 #
 # Platform API configuration template
 #
-# Copy this file to config-platform-api.toml and edit the values for your deployment.
-# This file is read by the Platform API (Go binary).
-# Environment variables always override values set here.
+# Copy this file to config-platform-api.toml and edit the values for your
+# deployment. This file is read by the Platform API (Go binary).
+#
+# This template lists EVERY key the Platform API reads, so it doubles as the
+# configuration reference. Commented-out keys show the built-in default; the
+# handful of uncommented keys are the quickstart choices. Deleting a key simply
+# restores its default.
+#
+# Precedence: environment variable > this file > built-in default. Each section
+# names the env var for its keys; the rule is the dotted path uppercased with
+# dots replaced by underscores (auth.jwt.secret_key -> AUTH_JWT_SECRET_KEY),
+# with the few exceptions called out inline.
 #
 # QUICK START (file-based auth mode — no external IDP needed):
 #   1. Copy this file to config-platform-api.toml.
@@ -30,9 +39,19 @@
 log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
 port      = "9243"   # HTTP/HTTPS listen port for Platform API
 
-# Scope-based authorization for API endpoints.
+# Log output encoding. Use "json" when shipping logs to an aggregator.
+# log_format = "text"   # text | json
+
+# Scope-based authorization for API endpoints. When true, every request must
+# carry the OAuth2 scope its endpoint declares.
 # Set to false only to temporarily bypass during development.
 enable_scope_validation = true
+
+# Paths to resources the binary loads at startup. The defaults are correct for
+# the published container image; override only for a custom layout.
+# db_schema_path                = "./internal/database/schema.sql"
+# openapi_spec_path             = "./resources/openapi.yaml"
+# llm_template_definitions_path = "./resources/default-llm-provider-templates"
 
 # ---------------------------------------------------------------------------
 # Encryption
@@ -42,16 +61,13 @@ enable_scope_validation = true
 # Env: ENCRYPTION_KEY. Generate with: openssl rand -hex 32.
 # encryption_key = ""
 
-# Controls authentication for POST /api/v0.9/organizations.
-# When true, the endpoint requires both a valid Bearer JWT and the
-# ap:organization:manage scope; requests without that scope are rejected.
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
 [database]
 driver = "sqlite3"   # "sqlite3" or "postgres"
 
-# SQLite — ignored when driver = "postgres"
+# SQLite — ignored when driver = "postgres". Env var is DATABASE_DB_PATH.
 path = "/app/data/api_platform.db"
 
 # PostgreSQL — uncomment and set driver = "postgres" above to use
@@ -70,15 +86,30 @@ path = "/app/data/api_platform.db"
 
 # ---------------------------------------------------------------------------
 # Authentication
+#
+# Exactly one of jwt / idp / file_based drives request authentication; enabling
+# more than one real auth mode is rejected at startup.
 # ---------------------------------------------------------------------------
+
+# Paths that bypass the auth middleware entirely. The default list covers the
+# health/metrics probes, the file-based login endpoint, and the internal gateway
+# routes (which authenticate with a gateway token instead). Setting this key
+# REPLACES the default list — include the defaults you still need.
+# skip_paths is under [auth]; env var is AUTH_SKIP_PATHS (comma-separated).
+# [auth]
+# skip_paths = ["/health", "/metrics", "/api/portal/v0.9/auth/login"]
 
 # JWT (local HMAC) — the default for self-hosted deployments.
 # Disable when delegating auth entirely to an external IDP.
 [auth.jwt]
 enabled    = true
 issuer     = "platform-api"
+# Signing key. Auto-generated (ephemeral — sessions reset on restart) when
+# unset in demo mode; REQUIRED when APIP_DEMO_MODE=false.
 # secret_key = "change-me-to-a-random-secret"   # or use AUTH_JWT_SECRET_KEY env var
-# skip_validation = false   # NEVER set true in production
+# Skip signature verification. Defaults to true for the zero-config quickstart
+# and is rejected outright when APIP_DEMO_MODE=false. NEVER set true in production.
+# skip_validation = true
 
 # IDP (JWKS-based) — enable instead of JWT when using Asgardeo, Keycloak, Auth0, etc.
 [auth.idp]
@@ -104,7 +135,8 @@ enabled  = false
 # scope_claim_name        = "scope"          # space-separated scope string
 # roles_claim_path        = ""               # JSON path to roles array, e.g. "realm_access.roles"
 
-# File-based auth — local username/password login. Ideal for initial / air-gapped setup.
+# File-based auth — local username/password login. Ideal for initial / air-gapped
+# setup, and rejected outright when APIP_DEMO_MODE=false.
 # When enabled, IDP is NOT used for Platform API authentication.
 [auth.file_based]
 enabled = true
@@ -113,9 +145,14 @@ enabled = true
 id           = "default"          # Required: organization handle (URL-safe slug)
 display_name = "Default"
 region       = "us"
+# Platform organization UUID, emitted as the `organization` claim in issued
+# tokens. Generated at startup when unset; pin it to keep the organization
+# stable across fresh databases.
+# uuid = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
 
 # Add one [[auth.file_based.users]] block per user.
 # Generate a bcrypt hash with: htpasswd -bnBC 12 "" <password> | tr -d ':\n'
+# The env-var equivalent (AUTH_FILE_BASED_USERS) takes a JSON array instead.
 [[auth.file_based.users]]
 username      = "admin"
 password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
@@ -132,9 +169,26 @@ scopes = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:mana
 # TLS
 # ---------------------------------------------------------------------------
 [tls]
-# Directory where the Platform API stores and reads its TLS certificate and key.
-# A self-signed certificate is generated here on first startup.
+# Terminate TLS on the Platform API listener. Set false only when a trusted
+# upstream — an ingress controller or a service-mesh sidecar — terminates TLS
+# for you. The listener then serves plain HTTP and no certificate is read or
+# generated, so cert_dir may be left unmounted.
+# enabled = true
+
+# Directory where the Platform API reads cert.pem and key.pem. A self-signed
+# pair is generated here on first startup in demo mode; when APIP_DEMO_MODE=false
+# the certificates must already exist (or TLS must be disabled above).
 cert_dir = "/app/data/certs"
+
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+# Origins allowed to make credentialed cross-origin requests, e.g. the Developer
+# Portal and AI Workspace origins. Unset (or ["*"]) is permitted only in demo
+# mode; an explicit non-wildcard list is REQUIRED when APIP_DEMO_MODE=false.
+# Env var is CORS_ALLOWED_ORIGINS (comma-separated).
+# [cors]
+# allowed_origins = ["https://workspace.example.com", "https://devportal.example.com"]
 
 # ---------------------------------------------------------------------------
 # API Key
@@ -199,3 +253,21 @@ enabled    = false
 # admin_role       = "admin"
 # subscriber_role  = "Internal/subscriber"
 # super_admin_role = "superAdmin"
+
+# ---------------------------------------------------------------------------
+# Environment-only settings (no config file key)
+# ---------------------------------------------------------------------------
+#
+#   APIP_DEMO_MODE   "true" (default) relaxes startup checks for quickstart:
+#                    file-based auth is allowed, a self-signed TLS certificate
+#                    and an ephemeral JWT / secret-encryption key are generated
+#                    when none are supplied, and CORS may be left open.
+#
+#                    Setting it to "false" turns each of those into a startup
+#                    requirement: a real auth mode (IDP or JWT with signature
+#                    validation on), an explicit CORS allow-list, a stable
+#                    secret-encryption key, and either mounted certificates or
+#                    tls.enabled = false above.
+#
+#                    The same variable drives the AI Workspace BFF, so one value
+#                    governs the whole stack.

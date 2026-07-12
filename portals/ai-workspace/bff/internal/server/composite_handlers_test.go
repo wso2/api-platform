@@ -95,7 +95,10 @@ func TestExtractSecretHandle(t *testing.T) {
 func buildTestServer(t *testing.T, platformURL, jwt string) (*Server, *httptest.Server) {
 	t.Helper()
 
-	transport := proxy.NewTransport(true)
+	transport, err := proxy.NewTransport(proxy.TLSClientOptions{SkipVerify: true})
+	if err != nil {
+		t.Fatalf("NewTransport: %v", err)
+	}
 
 	cfg := &config.Config{
 		PlatformAPIURL: platformURL,
@@ -266,7 +269,10 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 		ProxyPrefix:    "/api/proxy",
 		Cookie:         config.CookieConfig{Name: "_bff_session"},
 	}
-	transport := proxy.NewTransport(true)
+	transport, err := proxy.NewTransport(proxy.TLSClientOptions{SkipVerify: true})
+	if err != nil {
+		t.Fatalf("NewTransport: %v", err)
+	}
 	s := &Server{
 		cfg:          cfg,
 		proxy:        proxy.ReverseProxy(mustParseURL(platform.URL), cfg.ProxyPrefix, transport),

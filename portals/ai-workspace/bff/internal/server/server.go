@@ -65,7 +65,13 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return nil, err
 	}
 
-	transport := proxy.NewTransport(cfg.PlatformTLSSkipVerify)
+	transport, err := proxy.NewTransport(proxy.TLSClientOptions{
+		CAFile:     cfg.PlatformCAFile,
+		SkipVerify: cfg.PlatformTLSSkipVerify,
+	})
+	if err != nil {
+		return nil, err
+	}
 	upstream := &http.Client{Transport: transport, Timeout: 60 * time.Second}
 
 	s := &Server{

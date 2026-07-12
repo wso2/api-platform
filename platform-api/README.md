@@ -384,9 +384,16 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 
 | Variable | Default | Description |
 |---|---|---|
-| `PORT` | `9243` | HTTP/HTTPS server port |
 | `LOG_LEVEL` | `DEBUG` | Log verbosity (`DEBUG`, `INFO`, `WARN`, `ERROR`) |
-| `TLS_CERT_DIR` | `./data/certs` | Directory for TLS certificates |
+| `HTTPS_ENABLED` | `true` | Enable the TLS listener. Certificates are read from `HTTPS_CERT_DIR` (or generated in demo mode) |
+| `HTTPS_PORT` | `9243` | Port for the TLS listener |
+| `HTTPS_CERT_DIR` | `./data/certs` | Directory holding `cert.pem` / `key.pem` (used only when `HTTPS_ENABLED=true`) |
+| `HTTP_ENABLED` | `false` | Enable the plain-HTTP listener. Use only behind a TLS-terminating ingress/sidecar or for internal traffic — never expose directly to untrusted networks |
+| `HTTP_PORT` | `9080` | Port for the plain-HTTP listener |
+| `TIMEOUTS_READ_HEADER` | `10s` | Max time to read request headers, on both listeners (`0` disables) |
+| `TIMEOUTS_READ` | `60s` | Max time to read the whole request, including the body (`0` disables) |
+| `TIMEOUTS_WRITE` | `120s` | Max time for handler execution plus response write (`0` disables) |
+| `TIMEOUTS_IDLE` | `120s` | Max time a keep-alive connection may sit unused (`0` disables) |
 | `DEPLOYMENTS_MAX_PER_API_GATEWAY` | `20` | Maximum deployments per API per gateway |
 | `DEPLOYMENTS_TRANSITIONAL_STATUS_ENABLED` | `false` | Show `DEPLOYING`/`UNDEPLOYING` status before gateway ack |
 | `ARTIFACT_LIMITS_MAX_LLM_PROVIDERS_PER_ORG` | _unlimited_ | Max LLM providers per organization (`0` or unset = unlimited) |
@@ -396,6 +403,8 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 | `ARTIFACT_LIMITS_MAX_WEBBROKER_APIS_PER_ORG` | _unlimited_ | Max WebBroker APIs per organization (`0` or unset = unlimited) |
 | `GATEWAY_ENABLE_VERSION_VERIFICATION` | `false` | Reject gateway connections with mismatched versions |
 | `API_KEY_HASHING_ALGORITHMS` | `sha256` | Comma-separated hash algorithms for API key storage |
+
+> The legacy `PORT`, `TLS_ENABLED`, and `TLS_CERT_DIR` env vars are still honored and map onto the HTTPS listener (`HTTPS_PORT`, `HTTPS_ENABLED`, `HTTPS_CERT_DIR`).
 
 ## Documentation
 

@@ -21,6 +21,7 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -156,4 +157,117 @@ func TestValidateAuthModeExclusivity(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The HTTPS listener is on (and the plain-HTTP listener off) unless an operator
+// explicitly opts otherwise, so a deployment that forgets the knob never
+// silently downgrades to plain HTTP.
+func TestLoadConfig_HTTPSEnabled_DefaultsToTrue(t *testing.T) {
+	setValidKeys(t)
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.True(t, cfg.HTTPS.Enabled, "https.enabled must default to true when unset")
+	assert.Equal(t, "9243", cfg.HTTPS.Port, "https.port must default to 9243")
+	assert.False(t, cfg.HTTP.Enabled, "http.enabled must default to false when unset")
+}
+
+// HTTPS_ENABLED=false must survive koanf's weakly-typed env decode into the bool.
+// The legacy TLS_ENABLED alias must keep working too.
+func TestLoadConfig_HTTPSEnabled_EnvOverrideDisables(t *testing.T) {
+	setValidKeys(t)
+	t.Setenv("HTTPS_ENABLED", "false")
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.False(t, cfg.HTTPS.Enabled, "HTTPS_ENABLED=false must disable the TLS listener")
+}
+
+// The plain-HTTP listener can be enabled independently on its own port.
+func TestLoadConfig_HTTPListener_EnvOverrideEnables(t *testing.T) {
+	setValidKeys(t)
+	t.Setenv("HTTP_ENABLED", "true")
+	t.Setenv("HTTP_PORT", "9080")
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.True(t, cfg.HTTP.Enabled, "HTTP_ENABLED=true must enable the plain-HTTP listener")
+	assert.Equal(t, "9080", cfg.HTTP.Port)
+}
+
+// Listener timeouts must be finite by default, so a deployment that never sets
+// them is still protected against a peer holding connections open (Slowloris).
+func TestLoadConfig_Timeouts_DefaultToFiniteValues(t *testing.T) {
+	setValidKeys(t)
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.Equal(t, 10*time.Second, cfg.Timeouts.ReadHeader)
+	assert.Equal(t, 60*time.Second, cfg.Timeouts.Read)
+	assert.Equal(t, 120*time.Second, cfg.Timeouts.Write)
+	assert.Equal(t, 120*time.Second, cfg.Timeouts.Idle)
+}
+
+// Duration strings from the environment must decode into time.Duration fields.
+func TestLoadConfig_Timeouts_EnvOverride(t *testing.T) {
+	setValidKeys(t)
+	t.Setenv("TIMEOUTS_READ_HEADER", "5s")
+	t.Setenv("TIMEOUTS_READ", "30s")
+	t.Setenv("TIMEOUTS_WRITE", "2m")
+	t.Setenv("TIMEOUTS_IDLE", "90s")
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.Equal(t, 5*time.Second, cfg.Timeouts.ReadHeader)
+	assert.Equal(t, 30*time.Second, cfg.Timeouts.Read)
+	assert.Equal(t, 2*time.Minute, cfg.Timeouts.Write)
+	assert.Equal(t, 90*time.Second, cfg.Timeouts.Idle)
+}
+
+// 0 is the net/http "no timeout" sentinel and must be accepted as-is, rather
+// than being silently replaced by the default.
+func TestLoadConfig_Timeouts_ZeroDisablesTimeout(t *testing.T) {
+	setValidKeys(t)
+	t.Setenv("TIMEOUTS_WRITE", "0")
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.Zero(t, cfg.Timeouts.Write, "TIMEOUTS_WRITE=0 must disable the write timeout")
+}
+
+// A negative duration would expire immediately and break every request; a
+// read_header bound above read would never be reached. Both must be rejected at
+// load time rather than producing a server that fails at request time.
+func TestLoadConfig_Timeouts_RejectsInvalidValues(t *testing.T) {
+	t.Run("negative", func(t *testing.T) {
+		setValidKeys(t)
+		t.Setenv("TIMEOUTS_READ", "-1s")
+
+		_, err := LoadConfig("")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must not be negative")
+	})
+
+	t.Run("read_header exceeds read", func(t *testing.T) {
+		setValidKeys(t)
+		t.Setenv("TIMEOUTS_READ_HEADER", "30s")
+		t.Setenv("TIMEOUTS_READ", "10s")
+
+		_, err := LoadConfig("")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must not exceed")
+	})
+}
+
+// The legacy single-port PORT and TLS_CERT_DIR env vars still map onto the
+// HTTPS listener for backward compatibility.
+func TestLoadConfig_LegacyTLSEnvAliases(t *testing.T) {
+	setValidKeys(t)
+	t.Setenv("PORT", "8443")
+	t.Setenv("TLS_CERT_DIR", "/custom/certs")
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.Equal(t, "8443", cfg.HTTPS.Port, "legacy PORT must map to https.port")
+	assert.Equal(t, "/custom/certs", cfg.HTTPS.CertDir, "legacy TLS_CERT_DIR must map to https.cert_dir")
 }
