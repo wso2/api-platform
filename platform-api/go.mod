@@ -10,13 +10,13 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/knadh/koanf/parsers/toml/v2 v2.2.0
+	github.com/knadh/koanf/providers/confmap v1.0.0
 	github.com/knadh/koanf/providers/env v1.1.0
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/v2 v2.3.2
 	github.com/mattn/go-sqlite3 v1.14.41
 	github.com/microsoft/go-mssqldb v1.10.0
 	github.com/oapi-codegen/runtime v1.1.2
-	github.com/pb33f/libopenapi v0.28.2
 	github.com/stretchr/testify v1.11.1
 	github.com/wso2/api-platform/common v0.0.0
 	github.com/wso2/go-httpkit v0.0.0-local
