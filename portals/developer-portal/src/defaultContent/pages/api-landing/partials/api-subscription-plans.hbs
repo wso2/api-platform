@@ -379,12 +379,6 @@
           return _origShowAlert ? _origShowAlert(message, type) : Promise.resolve();
         };
 
-        var _origReset = window.resetSubscribeButtonState;
-        window.resetSubscribeButtonState = function (btn) {
-          if (btn) btn.classList.remove('aov-btn-loading');
-          if (_origReset) _origReset(btn);
-        };
-
         /* Relabel subscribe buttons to "Switch plan" when a subscription already exists */
         if ((window.existingSubscriptions || []).length > 0) {
           document.querySelectorAll('#subscriptionPlans .subscribe-btn').forEach(function (btn) {

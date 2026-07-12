@@ -16,6 +16,32 @@
  * under the License.
  */
 
+// Show a loading state on a subscription/update button while the request is in flight.
+window.showSubscribeButtonLoading = function(button) {
+    if (button) {
+        if (!button.dataset.originalText) {
+            button.dataset.originalText = button.innerHTML;
+        }
+        button.disabled = true;
+
+        const trimmed = (button.textContent || '').trim();
+        if (trimmed === 'Subscribe') {
+            button.textContent = 'Subscribing...';
+        } else if (trimmed === 'Update') {
+            button.textContent = 'Updating...';
+        }
+    }
+};
+
+// Restore a subscription button to its original label/enabled state.
+window.resetSubscribeButtonState = function(button) {
+    if (button && button.dataset.originalText) {
+        button.innerHTML = button.dataset.originalText;
+        button.disabled = false;
+        delete button.dataset.originalText;
+    }
+};
+
 async function subscribe(orgId, apiId, planName, planId) {
     try {
         const body = { apiId, subscriptionPlanId: planId };
