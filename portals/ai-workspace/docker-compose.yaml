@@ -12,11 +12,16 @@
 # Configuration:
 #   Edit configs/config.toml for AI Workspace settings.
 #   Edit configs/config-platform-api.toml for Platform API settings.
-#   Set the environment variables below for secrets — either export them
-#   in your shell, or create a .env file next to this file:
 #
-#     AUTH_JWT_SECRET_KEY=$(openssl rand -hex 32)   # stable key: signs login JWTs
-#     ENCRYPTION_KEY=$(openssl rand -hex 32)   # stable key: encrypts secrets
+# Secrets (REQUIRED — never hardcode them here or in the config TOML):
+#   Set the environment variables below for secrets — either export them
+#   in your shell, or create a .env file:
+#
+#     AUTH_JWT_SECRET_KEY=$(openssl rand -hex 32)   # signs login JWTs
+#     ENCRYPTION_KEY=$(openssl rand -hex 32)        # encrypts secrets
+#
+#   The Platform API reads them from config-platform-api.toml via {{ env "..." }}
+#   tokens. For production, prefer mounting a secret file and using {{ file "..." }}.
 #
 # Authentication:
 #   Out of the box the stack uses file-based auth (login admin / admin) — no
@@ -55,14 +60,6 @@ services:
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
-      # Secrets — set these in your shell or in a .env file next to this file.
-      # AUTH_JWT_SECRET_KEY signs login JWTs; ENCRYPTION_KEY encrypts secrets/subscription
-      # tokens/HMAC at rest. Both are REQUIRED 32-byte keys (64 hex chars / base64)
-      #   export AUTH_JWT_SECRET_KEY=$(openssl rand -hex 32)
-      #   export ENCRYPTION_KEY=$(openssl rand -hex 32)
-      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
-      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-}
       - APIP_DEMO_MODE=${APIP_DEMO_MODE:-true}
       # ── OIDC IDP — uncomment to validate tokens against any OIDC provider's
       # JWKS instead of file-based auth. Set the OIDC_* values in .env. Claim

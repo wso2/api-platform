@@ -334,10 +334,11 @@ Attempting to delete a secret that is still in use returns HTTP 409. To remove i
 ## Configuration
 
 The following environment variable controls encryption for the Platform API:
+**required and never auto-generated** — the Platform API fails to start if missing or malformed:
 
-| Env Var | Description |
-|---------|-------------|
-| `ENCRYPTION_KEY` | 32-byte AES-256 key as 64 hex characters or base64. **Required in every mode and never auto-generated** — the Platform API fails to start if it is missing or malformed. |
+| Key | Purpose |
+|-----|---------|
+| `ENCRYPTION_KEY` | Encrypts secrets, subscription tokens, and WebSub HMAC secrets at rest. |
 
 Generate a stable key with:
 
@@ -352,10 +353,39 @@ openssl rand -hex 32
 # example output: a3f1e2d4b5c6...
 ```
 
-Then copy the output value into your `.env` file:
+### How keys are provided
+
+Never write a raw key value into `config-platform-api.toml`, and never hardcode one as
+a literal env var in `docker-compose.yaml`. Instead, the config file **references** each
+key with a Go-template token that is resolved at startup — from an environment variable
+or, preferably, from a mounted file:
+
+```toml
+# config-platform-api.toml
+encryption_key = '{{ env "ENCRYPTION_KEY" }}'          # from an environment variable
+
+# or
+
+encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'   # from a mounted file (preferred)
+```
+
+Resolution fails closed: if a referenced env var is unset/empty or a referenced file is
+missing (or outside the allowed directories), the Platform API refuses to start.
+
+**Preferred — mounted files (`{{ file "..." }}`).** Mount each secret as a file (for
+example a Docker/Kubernetes secret) under an allowed directory (`/etc/platform-api` or
+`/secrets/platform-api`; override with `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`) and reference
+it with `{{ file "..." }}`. The value never appears in the environment or the compose file.
+
+**Simple — an `.env` file (`{{ env "..." }}`).** For local/quickstart Docker Compose, put
+the values in a `.env` file next to `docker-compose.yaml` (it is git-ignored) and let the
+compose file inject them into the container via `env_file`:
 
 ```sh
-ENCRYPTION_KEY=a3f1e2d4b5c6...
+cp .env.example .env
+# then, in .env:
+AUTH_JWT_SECRET_KEY=$(openssl rand -hex 32)
+ENCRYPTION_KEY=$(openssl rand -hex 32)
 ```
 
 > **Warning:** Use the **same** stable `ENCRYPTION_KEY` across restarts and across all replicas. Changing it makes existing encrypted secrets unreadable.
