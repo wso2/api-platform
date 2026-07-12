@@ -1266,14 +1266,18 @@ func (s *LLMProxyService) validateAdditionalProviders(orgUUID, primaryProviderID
 			return fmt.Errorf("failed to validate additional provider %q: %w", ap.Id, err)
 		}
 		if prov == nil {
-			return constants.ErrLLMProviderNotFound
+			// The provider is referenced from the request body, not targeted by
+			// the URL, so this is a 400 REF_NOT_FOUND rather than a 404.
+			return apperror.LLMProviderRefNotFound.New().
+				WithLogMessage(fmt.Sprintf("additional provider %q not found in org %s", ap.Id, orgUUID))
 		}
 		name := ap.Id
 		if ap.As != nil && *ap.As != "" {
 			name = *ap.As
 		}
 		if seen[name] {
-			return constants.ErrInvalidInput
+			return apperror.ValidationFailed.New(
+				fmt.Sprintf("The upstream name %q is used by more than one provider in this proxy.", name))
 		}
 		seen[name] = true
 	}

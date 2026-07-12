@@ -1792,8 +1792,8 @@ func TestLLMProxyServiceCreateFailsWhenAdditionalProviderNotFound(t *testing.T) 
 	req := validProxyRequest("provider-1", "project-1")
 	req.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{{Id: "missing-provider"}}
 
-	if _, err := service.Create("org-1", "alice", req); err != constants.ErrLLMProviderNotFound {
-		t.Fatalf("expected ErrLLMProviderNotFound, got: %v", err)
+	if _, err := service.Create("org-1", "alice", req); !apperror.LLMProviderRefNotFound.Is(err) {
+		t.Fatalf("expected LLMProviderRefNotFound, got: %v", err)
 	}
 }
 
@@ -1813,8 +1813,8 @@ func TestLLMProxyServiceCreateFailsWhenAdditionalProviderNameCollides(t *testing
 		{Id: "provider-2", As: stringPtr("provider-1")},
 	}
 
-	if _, err := service.Create("org-1", "alice", req); err != constants.ErrInvalidInput {
-		t.Fatalf("expected ErrInvalidInput, got: %v", err)
+	if _, err := service.Create("org-1", "alice", req); !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("expected ValidationFailed, got: %v", err)
 	}
 }
 
@@ -1847,8 +1847,8 @@ func TestLLMProxyServiceUpdateFailsWhenAdditionalProviderNotFound(t *testing.T) 
 	req := validProxyRequest("provider-1", "project-1")
 	req.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{{Id: "missing-provider"}}
 
-	if _, err := service.Update("org-1", "proxy-1", "test-user", req); err != constants.ErrLLMProviderNotFound {
-		t.Fatalf("expected ErrLLMProviderNotFound, got: %v", err)
+	if _, err := service.Update("org-1", "proxy-1", "test-user", req); !apperror.LLMProviderRefNotFound.Is(err) {
+		t.Fatalf("expected LLMProviderRefNotFound, got: %v", err)
 	}
 	if proxyRepo.updated != nil {
 		t.Fatalf("expected update to be rejected before persisting, but proxy was updated")
@@ -1885,8 +1885,8 @@ func TestLLMProxyServiceUpdateFailsWhenAdditionalProviderNameCollides(t *testing
 		{Id: "provider-3", As: stringPtr("shared")},
 	}
 
-	if _, err := service.Update("org-1", "proxy-1", "test-user", req); err != constants.ErrInvalidInput {
-		t.Fatalf("expected ErrInvalidInput, got: %v", err)
+	if _, err := service.Update("org-1", "proxy-1", "test-user", req); !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("expected ValidationFailed, got: %v", err)
 	}
 	if proxyRepo.updated != nil {
 		t.Fatalf("expected update to be rejected before persisting, but proxy was updated")
