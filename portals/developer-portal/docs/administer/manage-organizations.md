@@ -148,7 +148,7 @@ The Platform API generates a random JWT signing key at startup. Sessions are inv
 
 ```bash
 # In .env (read by both services via docker-compose env_file / APIP_DP_* override)
-AUTH_JWT_SECRET_KEY=<random-64-char-string>
+AUTH_JWT_SECRET_KEY=<64-hex-char-string>   # openssl rand -hex 32
 ```
 
 For scripts and CLI tools, get a Bearer token directly from the Platform API and pass it on each request — no session cookie required:

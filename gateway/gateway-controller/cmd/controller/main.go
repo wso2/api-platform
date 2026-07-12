@@ -36,6 +36,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
@@ -431,6 +432,21 @@ func main() {
 	llmTransformer := transform.NewLLMTransformer(configStore, db, &cfg.Router, cfg, policyDefinitions, policyVersionResolver)
 	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
 	policyManager.SetTransformers(transformerRegistry)
+
+	// Wire the same transformer into the Envoy xDS translator so Envoy routes are built from the
+	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
+	// resources are keyed. Without this the Envoy translator falls back to the legacy per-operation
+	// path, which (a) does not render header matchers and (b) names routes "method|path|vhost"
+	// (3 segments), while the policy resources are keyed "method|path|vhost|<header-hash>". The
+	// policy engine resolves the chain by the Envoy route name, so the mismatch makes every
+	// header-matched route fail with 500 ("policy chain not found"). WebSubApi is intentionally
+	// excluded so it keeps using the async-specific legacy translation path.
+	translator.SetTransformers(map[string]models.ConfigTransformer{
+		"RestApi":     transformerRegistry,
+		"Mcp":         transformerRegistry,
+		"LlmProvider": transformerRegistry,
+		"LlmProxy":    transformerRegistry,
+	})
 
 	// Load runtime configs from existing API configurations on startup.
 	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;

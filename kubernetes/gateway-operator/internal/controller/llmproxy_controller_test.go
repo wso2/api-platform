@@ -93,3 +93,85 @@ func TestLlmProxyDeploy_ResolvesPolicyParamsValueFrom(t *testing.T) {
 	require.True(t, strings.Contains(got, "name: api-key-auth"))
 }
 
+func TestLlmProxyDeploy_ResolvesAdditionalProviderAuthValueFrom(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(corev1.AddToScheme(scheme))
+	utilruntime.Must(apiv1.AddToScheme(scheme))
+
+	sec := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "apigateway-demo", Name: "provider-secrets"},
+		Data: map[string][]byte{
+			"primary":    []byte("Bearer primary-key"),
+			"additional": []byte("Bearer additional-key"),
+		},
+	}
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(sec).Build()
+
+	header := "Authorization"
+	authType := "api-key"
+	cr := &apiv1.LlmProxy{
+		ObjectMeta: metav1.ObjectMeta{Name: "demo-llm-proxy", Namespace: "apigateway-demo"},
+		Spec: apiv1.LLMProxyConfigData{
+			DisplayName: "Lifecycle LLM Proxy",
+			Version:     "v1.0",
+			Provider: apiv1.LLMProxyProvider{
+				Id: "openai-provider",
+				Auth: &apiv1.LLMUpstreamAuth{
+					Type:   authType,
+					Header: &header,
+					Value: apiv1.SecretValueSource{ValueFrom: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: "provider-secrets"},
+						Key:                  "primary",
+					}},
+				},
+			},
+			AdditionalProviders: []apiv1.LLMProxyAdditionalProvider{{
+				Id: "anthropic-provider",
+				Auth: &apiv1.LLMUpstreamAuth{
+					Type:   authType,
+					Header: &header,
+					Value: apiv1.SecretValueSource{ValueFrom: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: "provider-secrets"},
+						Key:                  "additional",
+					}},
+				},
+			}},
+		},
+	}
+
+	var (
+		mu      sync.Mutex
+		payload string
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("not found"))
+			return
+		}
+		if r.Method == http.MethodPost {
+			b, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			payload = string(b)
+			mu.Unlock()
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte("{}"))
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}))
+	defer srv.Close()
+
+	adapter := &llmProxyAdapter{}
+	_, err := adapter.Deploy(context.Background(), k8sClient, srv.URL, cr, nil)
+	require.NoError(t, err)
+
+	mu.Lock()
+	got := payload
+	mu.Unlock()
+	require.Contains(t, got, "value: Bearer primary-key")
+	require.Contains(t, got, "value: Bearer additional-key")
+	require.Contains(t, got, "additionalProviders:")
+	require.NotContains(t, got, "secretKeyRef")
+	require.NotContains(t, got, "valueFrom")
+}

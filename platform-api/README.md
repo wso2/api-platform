@@ -241,21 +241,19 @@ AUTH_IDP_ENABLED=true             →  IDP mode        (JWKS-based verification)
 ```
 
 > **Demo mode (`APIP_DEMO_MODE`).** Defaults to `true`; an explicit `false`/`0` opts into
-> production-grade startup checks. With demo mode off, the server will not fall back to an
-> ephemeral secret encryption key (set `PLATFORM_SECRET_ENCRYPTION_KEY` or
-> `DATABASE_ENCRYPTION_KEY`) and warns loudly if `AUTH_JWT_SKIP_VALIDATION=true`.
+> production-grade startup checks. Note that `ENCRYPTION_KEY` and `AUTH_JWT_SECRET_KEY` are **required**.
 
 ---
 
 #### Local JWT Mode (default)
 
-The server validates HMAC-signed tokens using `AUTH_JWT_SECRET_KEY`. Set `AUTH_JWT_SKIP_VALIDATION=true` only in local development environments where you do not have a token issuer available — all bearer values will be accepted without any signature check.
+The server signs and validates HMAC login tokens using `AUTH_JWT_SECRET_KEY` — a 32-byte key (64 hex chars or base64). Set `AUTH_JWT_SKIP_VALIDATION=true` only in local development environments where you do not have a token issuer available — all bearer values will be accepted without any signature check.
 
-| Variable | Default | Description |
-|---|---|---|
-| `AUTH_JWT_SECRET_KEY` | `your-secret-key-change-in-production` | HMAC signing key for token verification |
-| `AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value |
-| `AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only** |
+| Variable | Default | Description                                                         |
+|---|---|---------------------------------------------------------------------|
+| `AUTH_JWT_SECRET_KEY` | _(empty)_ | HMAC key for signing/verifying login JWTs — 32-byte value (64 hex or base64; `openssl rand -hex 32`) |
+| `AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value                                          |
+| `AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only**                  |
 | `DEV_MODE` | `false` | Suppresses the startup warning when `AUTH_JWT_SKIP_VALIDATION=true` |
 
 Local development with no token issuer:
@@ -369,7 +367,16 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 | `DATABASE_PASSWORD` | _(empty)_ | Postgres password |
 | `DATABASE_SSL_MODE` | `disable` | Postgres SSL mode (`disable`, `require`, `verify-full`) |
 | `DATABASE_EXECUTE_SCHEMA_DDL` | `true` | Set to `false` when the DB user lacks DDL privileges |
-| `DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY` | _(empty)_ | 32-byte key (64 hex or 44 base64 chars) for AES-256-GCM token encryption. |
+
+---
+
+### Encryption
+
+`ENCRYPTION_KEY` protects all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets). It is **never auto-generated** — the operator must provide it.
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENCRYPTION_KEY` | _(empty)_ | **Required.** 32-byte AES-256 key as 64 hex chars or base64 (32 bytes). Generate with `openssl rand -hex 32`. Startup fails if missing or malformed. |
 
 ---
 

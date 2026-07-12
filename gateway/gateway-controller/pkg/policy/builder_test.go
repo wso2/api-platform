@@ -42,7 +42,7 @@ func makeStoredConfig(t *testing.T, sandbox *api.Upstream) *models.StoredConfig 
 		Context:     "/test",
 		Version:     "1.0.0",
 		Operations: []api.Operation{
-			{Method: "GET", Path: "/hello"},
+			{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/hello")},
 		},
 		Policies: &[]api.Policy{
 			{Name: "header-mutate", Version: "v1"},
@@ -158,7 +158,7 @@ func TestDerivePolicyFromAPIConfig_EmptyVersionResolvesToLatest(t *testing.T) {
 			DisplayName: "Test API",
 			Context:     "/test",
 			Version:     "1.0.0",
-			Operations:  []api.Operation{{Method: "GET", Path: "/hello"}},
+			Operations:  []api.Operation{{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/hello")}},
 			Policies:    &[]api.Policy{{Name: "header-mutate", Version: ""}}, // empty version
 			Upstream: struct {
 				Main    api.Upstream  `json:"main" yaml:"main"`
@@ -197,8 +197,8 @@ func TestDerivePolicyFromAPIConfig_OperationLevelEmptyVersionResolvesToLatest(t 
 			Context:     "/test",
 			Version:     "1.0.0",
 			Operations: []api.Operation{{
-				Method: "GET",
-				Path:   "/hello",
+				Method: api.Ptr(api.OperationMethod("GET")),
+				Path:   api.Ptr("/hello"),
 				Policies: &[]api.Policy{
 					{Name: "rate-limit", Version: ""}, // empty version at operation level
 				},
@@ -237,7 +237,7 @@ func TestDerivePolicyFromAPIConfig_UnknownPolicySkipped(t *testing.T) {
 			DisplayName: "Test API",
 			Context:     "/test",
 			Version:     "1.0.0",
-			Operations:  []api.Operation{{Method: "GET", Path: "/hello"}},
+			Operations:  []api.Operation{{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/hello")}},
 			Policies:    &[]api.Policy{{Name: "unknown-policy", Version: ""}},
 			Upstream: struct {
 				Main    api.Upstream  `json:"main" yaml:"main"`

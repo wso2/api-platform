@@ -21,11 +21,9 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -265,15 +263,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 
-	// Initialize the shared database encryption key used for all encrypted DB columns.
-	// DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY is accepted as a legacy alias.
-	// DeriveEncryptionKey requires 64-char hex or base64-to-32-bytes; when falling back to
-	// the raw JWT secret (arbitrary length), hash it to a valid 64-char hex key.
-	dbEncryptionKey := cfg.Database.EncryptionKey
-	if dbEncryptionKey == "" && cfg.Auth.JWT.SecretKey != "" {
-		h := sha256.Sum256([]byte(cfg.Auth.JWT.SecretKey))
-		dbEncryptionKey = hex.EncodeToString(h[:])
-	}
+	// The single configured encryption key (ENCRYPTION_KEY) is used for all encrypted DB
+	// columns (secrets, subscription tokens, WebSub HMAC secrets)
+	dbEncryptionKey := cfg.EncryptionKey
 	llmProviderDeploymentService := service.NewLLMProviderDeploymentService(
 		llmProviderRepo,
 		llmTemplateRepo,
@@ -321,15 +313,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		mcpProxyService,
 	)
 
-	// Initialize secret vault and service.
-	// Key precedence: PLATFORM_SECRET_ENCRYPTION_KEY → DATABASE_ENCRYPTION_KEY → JWT secret hash.
-	secretKeyStr := cfg.Database.SecretEncryptionKey
-	if secretKeyStr == "" {
-		secretKeyStr = dbEncryptionKey
-	}
-	secretKey, keyErr := utils.DeriveEncryptionKey(secretKeyStr)
+	// Initialize secret vault and service using the single configured encryption key.
+	secretKey, keyErr := utils.DeriveEncryptionKey(cfg.EncryptionKey)
 	if keyErr != nil {
-		return nil, fmt.Errorf("invalid secret encryption key: %w", keyErr)
+		return nil, fmt.Errorf("invalid encryption key: %w", keyErr)
 	}
 	secretVault, vaultErr := internalvault.NewInHouseVault(secretKey)
 	if vaultErr != nil {
@@ -906,7 +893,6 @@ func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListene
 		return nil
 	}
 }
-
 
 // GetMux returns the raw ServeMux for testing purposes.
 func (s *Server) GetMux() *http.ServeMux {

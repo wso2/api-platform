@@ -24,6 +24,14 @@ log_level  = "INFO"   # DEBUG | INFO | WARN | ERROR
 log_format = "text"   # text | json
 
 # ---------------------------------------------------------------------------
+# Encryption
+# ---------------------------------------------------------------------------
+# Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
+# (secrets, subscription tokens, WebSub HMAC secrets)
+# Env: ENCRYPTION_KEY. Generate with: openssl rand -hex 32.
+# encryption_key = ""
+
+# ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
 [database]
@@ -43,8 +51,8 @@ driver = "sqlite3"          # "sqlite3" or "postgres"
 # ---------------------------------------------------------------------------
 
 # JWT (local HMAC) — issues signed tokens after file-based login.
-# secret_key is auto-generated at startup when not set (ephemeral — sessions reset on restart).
-# Set AUTH_JWT_SECRET_KEY env var or secret_key here to persist sessions across restarts.
+# secret_key is a 32-byte key (64 hex chars or base64; openssl rand -hex 32)
+# Env: AUTH_JWT_SECRET_KEY. Generate with: openssl rand -hex 32.
 [auth.jwt]
 enabled = true
 issuer  = "platform-api"
