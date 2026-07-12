@@ -110,6 +110,11 @@ func llmProxyExternalDepsFingerprint(ctx context.Context, c client.Client, cr *a
 	if cr.Spec.Provider.Auth != nil {
 		accumulateBackingFromSecretValueSource(cr.Spec.Provider.Auth.Value, cr.Namespace, backing)
 	}
+	for i := range cr.Spec.AdditionalProviders {
+		if cr.Spec.AdditionalProviders[i].Auth != nil {
+			accumulateBackingFromSecretValueSource(cr.Spec.AdditionalProviders[i].Auth.Value, cr.Namespace, backing)
+		}
+	}
 	for i := range cr.Spec.Policies {
 		for j := range cr.Spec.Policies[i].Paths {
 			if p := cr.Spec.Policies[i].Paths[j].Params; p != nil {

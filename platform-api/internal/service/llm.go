@@ -1248,6 +1248,38 @@ func (s *LLMProviderService) Delete(orgUUID, handle, deletedBy string) error {
 	return nil
 }
 
+// validateAdditionalProviders eagerly validates a proxy's additional providers
+// so Create/Update surface an immediate, actionable API error instead of a
+// confusing deployment-time failure. It mirrors the checks the gateway performs
+// at transform time (see llm_transformer.go): every referenced provider must
+// exist, and each upstream name (the `as` alias, or the provider id when no
+// alias is set) must be unique within the proxy and must not collide with the
+// primary provider id.
+func (s *LLMProxyService) validateAdditionalProviders(orgUUID, primaryProviderID string, additionalProviders *[]api.LLMProxyAdditionalProvider) error {
+	if additionalProviders == nil {
+		return nil
+	}
+	seen := map[string]bool{primaryProviderID: true}
+	for _, ap := range *additionalProviders {
+		prov, err := s.providerRepo.GetByID(ap.Id, orgUUID)
+		if err != nil {
+			return fmt.Errorf("failed to validate additional provider %q: %w", ap.Id, err)
+		}
+		if prov == nil {
+			return constants.ErrLLMProviderNotFound
+		}
+		name := ap.Id
+		if ap.As != nil && *ap.As != "" {
+			name = *ap.As
+		}
+		if seen[name] {
+			return constants.ErrInvalidInput
+		}
+		seen[name] = true
+	}
+	return nil
+}
+
 func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (*api.LLMProxy, error) {
 	if req == nil {
 		return nil, constants.ErrInvalidInput
@@ -1285,6 +1317,11 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 	}
 	if prov == nil {
 		return nil, constants.ErrLLMProviderNotFound
+	}
+
+	// Validate additional providers exist and have unique upstream names
+	if err := s.validateAdditionalProviders(orgUUID, req.Provider.Id, req.AdditionalProviders); err != nil {
+		return nil, err
 	}
 
 	// Determine handle: use provided id or auto-generate from displayName
@@ -1351,14 +1388,15 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		ProviderUUID:     prov.UUID,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Configuration: model.LLMProxyConfig{
-			Context:           &contextValue,
-			Vhost:             req.Vhost,
-			Provider:          req.Provider.Id,
-			UpstreamAuth:      mapUpstreamAuthAPIToModel(req.Provider.Auth),
-			GlobalPolicies:    mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
-			OperationPolicies: mapOperationPoliciesAPIToModel(req.OperationPolicies),
-			Policies:          mapPoliciesAPIToModel(req.Policies),
-			Security:          mapSecurityAPIToModel(req.Security),
+			Context:             &contextValue,
+			Vhost:               req.Vhost,
+			Provider:            req.Provider.Id,
+			UpstreamAuth:        mapUpstreamAuthAPIToModel(req.Provider.Auth),
+			AdditionalProviders: mapAdditionalProvidersAPIToModel(req.AdditionalProviders),
+			GlobalPolicies:      mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
+			OperationPolicies:   mapOperationPoliciesAPIToModel(req.OperationPolicies),
+			Policies:            mapPoliciesAPIToModel(req.Policies),
+			Security:            mapSecurityAPIToModel(req.Security),
 		},
 		Origin:             constants.OriginCP,
 		AssociatedGateways: associatedGateways,
@@ -1589,6 +1627,11 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		}
 	}
 
+	// Validate additional providers exist and have unique upstream names
+	if err := s.validateAdditionalProviders(orgUUID, req.Provider.Id, req.AdditionalProviders); err != nil {
+		return nil, err
+	}
+
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
@@ -1600,14 +1643,15 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		ProviderUUID:     prov.UUID,
 		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
 		Configuration: model.LLMProxyConfig{
-			Context:           &contextValue,
-			Vhost:             req.Vhost,
-			Provider:          req.Provider.Id,
-			UpstreamAuth:      mapUpstreamAuthAPIToModel(req.Provider.Auth),
-			GlobalPolicies:    mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
-			OperationPolicies: mapOperationPoliciesAPIToModel(req.OperationPolicies),
-			Policies:          mapPoliciesAPIToModel(req.Policies),
-			Security:          mapSecurityAPIToModel(req.Security),
+			Context:             &contextValue,
+			Vhost:               req.Vhost,
+			Provider:            req.Provider.Id,
+			UpstreamAuth:        mapUpstreamAuthAPIToModel(req.Provider.Auth),
+			AdditionalProviders: mapAdditionalProvidersAPIToModel(req.AdditionalProviders),
+			GlobalPolicies:      mapGlobalPoliciesAPIToModel(req.GlobalPolicies),
+			OperationPolicies:   mapOperationPoliciesAPIToModel(req.OperationPolicies),
+			Policies:            mapPoliciesAPIToModel(req.Policies),
+			Security:            mapSecurityAPIToModel(req.Security),
 		},
 	}
 	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
@@ -2090,6 +2134,56 @@ func mapUpstreamAuthAPIToModel(in *api.UpstreamAuth) *model.UpstreamAuth {
 		Header: utils.ValueOrEmpty(in.Header),
 		Value:  utils.ValueOrEmpty(in.Value),
 	}
+}
+
+func mapAdditionalProvidersAPIToModel(in *[]api.LLMProxyAdditionalProvider) []model.LLMProxyAdditionalProvider {
+	if in == nil || len(*in) == 0 {
+		return nil
+	}
+	out := make([]model.LLMProxyAdditionalProvider, 0, len(*in))
+	for _, p := range *in {
+		entry := model.LLMProxyAdditionalProvider{
+			ID: p.Id,
+			As: utils.ValueOrEmpty(p.As),
+		}
+		if p.Transformer != nil {
+			entry.Transformer = &model.LLMProxyTransformer{
+				Type:    p.Transformer.Type,
+				Version: p.Transformer.Version,
+			}
+			if p.Transformer.Params != nil {
+				entry.Transformer.Params = *p.Transformer.Params
+			}
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func mapAdditionalProvidersModelToAPI(in []model.LLMProxyAdditionalProvider) *[]api.LLMProxyAdditionalProvider {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]api.LLMProxyAdditionalProvider, 0, len(in))
+	for _, p := range in {
+		entry := api.LLMProxyAdditionalProvider{Id: p.ID}
+		if p.As != "" {
+			as := p.As
+			entry.As = &as
+		}
+		if p.Transformer != nil {
+			entry.Transformer = &api.LLMProxyTransformer{
+				Type:    p.Transformer.Type,
+				Version: p.Transformer.Version,
+			}
+			if len(p.Transformer.Params) > 0 {
+				params := p.Transformer.Params
+				entry.Transformer.Params = &params
+			}
+		}
+		out = append(out, entry)
+	}
+	return &out
 }
 
 func normalizeUpstreamAuthType(authType string) string {
@@ -3002,6 +3096,9 @@ func mapProxyModelToAPI(m *model.LLMProxy) *api.LLMProxy {
 			Header: utils.StringPtrIfNotEmpty(m.Configuration.UpstreamAuth.Header),
 			Value:  nil, // Redact auth credential value
 		}
+	}
+	if extra := mapAdditionalProvidersModelToAPI(m.Configuration.AdditionalProviders); extra != nil {
+		out.AdditionalProviders = extra
 	}
 	out.GlobalPolicies = globalPoliciesProxy
 	out.OperationPolicies = operationPoliciesProxy
