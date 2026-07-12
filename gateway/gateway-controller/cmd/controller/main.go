@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -681,6 +682,14 @@ func main() {
 		outerMiddlewares = append(outerMiddlewares, middleware.MetricsMiddleware())
 	}
 	handler := gohttpkit.Chain(outerMiddlewares...)(mux)
+
+	// Enable block/mutex profiling sampling when pprof is enabled. These are the
+	// only profiles that need explicit rate setup; 0 leaves them disabled. Gated so
+	// the sampling overhead is never paid unless pprof is deliberately turned on.
+	if cfg.Controller.AdminServer.Pprof.Enabled {
+		runtime.SetBlockProfileRate(cfg.Controller.AdminServer.Pprof.BlockProfileRate)
+		runtime.SetMutexProfileFraction(cfg.Controller.AdminServer.Pprof.MutexProfileFraction)
+	}
 
 	// Start controller admin server for debug endpoints if enabled.
 	var controllerAdminServer *adminserver.Server

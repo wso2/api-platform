@@ -304,9 +304,22 @@ type ServerConfig struct {
 
 // AdminServerConfig holds controller admin HTTP server configuration.
 type AdminServerConfig struct {
-	Enabled    bool     `koanf:"enabled"`
-	Port       int      `koanf:"port"`
-	AllowedIPs []string `koanf:"allowed_ips"`
+	Enabled    bool        `koanf:"enabled"`
+	Port       int         `koanf:"port"`
+	AllowedIPs []string    `koanf:"allowed_ips"`
+	Pprof      PprofConfig `koanf:"pprof"`
+}
+
+// PprofConfig gates the Go runtime profiling endpoints (net/http/pprof) served on
+// the admin HTTP server. Disabled by default; when disabled the /debug/pprof/*
+// routes are not registered at all (they return 404, not 403).
+type PprofConfig struct {
+	// Enabled registers the /debug/pprof/* handlers on the admin server.
+	Enabled bool `koanf:"enabled"`
+	// BlockProfileRate is passed to runtime.SetBlockProfileRate (0 = block profiling off).
+	BlockProfileRate int `koanf:"block_profile_rate"`
+	// MutexProfileFraction is passed to runtime.SetMutexProfileFraction (0 = mutex profiling off).
+	MutexProfileFraction int `koanf:"mutex_profile_fraction"`
 }
 
 // PolicyServerConfig holds policy xDS server-related configuration
@@ -845,6 +858,11 @@ func defaultConfig() *Config {
 				Enabled:    true,
 				Port:       9092,
 				AllowedIPs: []string{"*"},
+				Pprof: PprofConfig{
+					Enabled:              false,
+					BlockProfileRate:     0,
+					MutexProfileFraction: 0,
+				},
 			},
 			PolicyServer: PolicyServerConfig{
 				Port: 18001,
