@@ -931,7 +931,10 @@ type CreateRESTAPIRequest struct {
 
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
-	Version  string   `binding:"required" json:"version" yaml:"version"`
+
+	// UpstreamDefinitions List of reusable named upstream definitions, referenced by `ref` from both API-level and operation-level upstreams.
+	UpstreamDefinitions *[]ReusableUpstream `json:"upstreamDefinitions,omitempty" yaml:"upstreamDefinitions,omitempty"`
+	Version             string              `binding:"required" json:"version" yaml:"version"`
 }
 
 // CreateRESTAPIRequestLifeCycleStatus Current lifecycle status of the API
@@ -1312,7 +1315,7 @@ type LLMProvider struct {
 	// AssociatedGateways Optional list of gateways this LLM provider can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
 	AssociatedGateways *[]AssociatedGateway `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
 
-	// Context Base path for all routes exposed by this proxy. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
+	// Context Base path for all routes exposed by this provider. Must start with / and carry no trailing slash; the single exception is the root path "/", which is the default.
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 
 	// CreatedAt Timestamp when the resource was created
@@ -1818,21 +1821,30 @@ type MCPProxyListResponse struct {
 	Pagination Pagination         `json:"pagination" yaml:"pagination"`
 }
 
-// MCPServerInfoFetchRequest defines model for MCPServerInfoFetchRequest.
+// MCPServerInfoFetchRequest Target MCP server to introspect, and the credentials to introspect it with. At least
+// one of `url`/`proxyId` must be provided
 type MCPServerInfoFetchRequest struct {
 	// Auth Authentication configuration for upstream endpoints
 	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
-	// ProxyId MCP proxy handle (identifier) for refresh operations. When provided,
-	// the server fetches URL and auth from the stored proxy configuration.
-	// Auth override is not allowed in refetch mode.
+	// ProxyId MCP proxy handle (identifier) for refresh operations. The stored credentials of
+	// this proxy are used for the fetch, and its stored upstream URL too unless `url`
+	// overrides it. Required unless `url` is given.
 	ProxyId *string `json:"proxyId,omitempty" yaml:"proxyId,omitempty"`
 
-	// Url Endpoint URL of the MCP server to fetch information from.
-	// Required when proxyId is not provided. When proxyId is provided,
-	// the URL from the stored proxy configuration is used.
-	Url *string `json:"url,omitempty" yaml:"url,omitempty"`
+	// Url Endpoint URL of the MCP server to fetch information from. Required unless
+	// `proxyId` is given. When sent together with `proxyId` it overrides that proxy's
+	// stored upstream URL, while the proxy's stored credentials are still used — this
+	// validates an unsaved endpoint edit without re-sending a write-only secret.
+	Url   *string `json:"url,omitempty" yaml:"url,omitempty"`
+	union json.RawMessage
 }
+
+// MCPServerInfoFetchRequest0 defines model for .
+type MCPServerInfoFetchRequest0 = interface{}
+
+// MCPServerInfoFetchRequest1 defines model for .
+type MCPServerInfoFetchRequest1 = interface{}
 
 // MCPServerInfoFetchResponse defines model for MCPServerInfoFetchResponse.
 type MCPServerInfoFetchResponse struct {
@@ -1925,10 +1937,25 @@ type OperationRequest struct {
 
 	// Policies List of policies to be applied on the operation
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+
+	// Upstream Per-operation upstream override. Each sub-field must reference a named entry in upstreamDefinitions. Missing sub-fields fall back to the API-level upstream. At least one of main or sandbox must be set.
+	Upstream *OperationUpstream `json:"upstream,omitempty" yaml:"upstream,omitempty"`
 }
 
 // OperationRequestMethod HTTP method for the operation
 type OperationRequestMethod string
+
+// OperationUpstream Per-operation upstream override. Each sub-field must reference a named entry in upstreamDefinitions. Missing sub-fields fall back to the API-level upstream. At least one of main or sandbox must be set.
+type OperationUpstream struct {
+	Main *struct {
+		// Ref Name of a ReusableUpstream entry in the API's upstreamDefinitions pool. Used by both API-level and operation-level upstream refs.
+		Ref UpstreamReference `json:"ref" yaml:"ref"`
+	} `json:"main,omitempty" yaml:"main,omitempty"`
+	Sandbox *struct {
+		// Ref Name of a ReusableUpstream entry in the API's upstreamDefinitions pool. Used by both API-level and operation-level upstream refs.
+		Ref UpstreamReference `json:"ref" yaml:"ref"`
+	} `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+}
 
 // Organization defines model for Organization.
 type Organization struct {
@@ -2076,7 +2103,10 @@ type RESTAPI struct {
 
 	// Upstream Upstream backend configuration with main and sandbox endpoints
 	Upstream Upstream `json:"upstream" yaml:"upstream"`
-	Version  string   `binding:"required" json:"version" yaml:"version"`
+
+	// UpstreamDefinitions List of reusable named upstream definitions, referenced by `ref` from both API-level and operation-level upstreams.
+	UpstreamDefinitions *[]ReusableUpstream `json:"upstreamDefinitions,omitempty" yaml:"upstreamDefinitions,omitempty"`
+	Version             string              `binding:"required" json:"version" yaml:"version"`
 }
 
 // RESTAPILifeCycleStatus Current lifecycle status of the API
@@ -2232,6 +2262,27 @@ type ResourceWiseRateLimitingConfig struct {
 	Resources []RateLimitingResourceLimit `binding:"required" json:"resources" yaml:"resources"`
 }
 
+// ReusableUpstream A reusable named upstream definition. Referenced by name from API-level and operation-level upstream refs.
+type ReusableUpstream struct {
+	// BasePath Base path prefix prepended to all requests routed to this upstream (e.g., /api/v2)
+	BasePath *string `json:"basePath,omitempty" yaml:"basePath,omitempty"`
+
+	// Name Name of a ReusableUpstream entry in the API's upstreamDefinitions pool. Used by both API-level and operation-level upstream refs.
+	Name UpstreamReference `json:"name" yaml:"name"`
+
+	// Timeout Timeout configuration for upstream requests
+	Timeout *UpstreamTimeout `json:"timeout,omitempty" yaml:"timeout,omitempty"`
+
+	// Upstreams List of backend targets with optional weights for load balancing
+	Upstreams []struct {
+		// Url Backend URL (host and port only; path comes from basePath)
+		Url string `json:"url" yaml:"url"`
+
+		// Weight Weight for load balancing (optional, default 100)
+		Weight *int `json:"weight,omitempty" yaml:"weight,omitempty"`
+	} `binding:"required" json:"upstreams" yaml:"upstreams"`
+}
+
 // RouteException defines model for RouteException.
 type RouteException struct {
 	// Methods HTTP methods
@@ -2256,7 +2307,7 @@ type SecretCreateRequest struct {
 	Type *SecretCreateRequestType `json:"type,omitempty" yaml:"type,omitempty"`
 
 	// Value Plaintext secret value — encrypted at rest, never returned in any response
-	Value string `binding:"required" json:"value" yaml:"value"`
+	Value *string `binding:"required" json:"value,omitempty" yaml:"value,omitempty"`
 }
 
 // SecretCreateRequestType defines model for SecretCreateRequest.Type.
@@ -2324,7 +2375,7 @@ type SecretUpdateRequest struct {
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
 
 	// Value New plaintext secret value — re-encrypted at rest
-	Value string `binding:"required" json:"value" yaml:"value"`
+	Value *string `binding:"required" json:"value,omitempty" yaml:"value,omitempty"`
 }
 
 // SecurityConfig Defines security mechanisms (API key, OAuth2) applicable to the API
@@ -2572,8 +2623,8 @@ type UpstreamDefinition struct {
 	// Auth Authentication configuration for upstream endpoints
 	Auth *UpstreamAuth `json:"auth,omitempty" yaml:"auth,omitempty"`
 
-	// Ref Reference to a predefined upstreamDefinition. Mutually exclusive with `url`.
-	Ref *string `json:"ref,omitempty" yaml:"ref,omitempty"`
+	// Ref Name of a ReusableUpstream entry in the API's upstreamDefinitions pool. Used by both API-level and operation-level upstream refs.
+	Ref *UpstreamReference `json:"ref,omitempty" yaml:"ref,omitempty"`
 
 	// Url Direct backend URL to route traffic to. Mutually exclusive with `ref`.
 	Url   *string `json:"url,omitempty" yaml:"url,omitempty"`
@@ -2585,6 +2636,15 @@ type UpstreamDefinition0 = interface{}
 
 // UpstreamDefinition1 defines model for .
 type UpstreamDefinition1 = interface{}
+
+// UpstreamReference Name of a ReusableUpstream entry in the API's upstreamDefinitions pool. Used by both API-level and operation-level upstream refs.
+type UpstreamReference = string
+
+// UpstreamTimeout Timeout configuration for upstream requests
+type UpstreamTimeout struct {
+	// Connect Connection timeout duration (e.g., "5s", "500ms")
+	Connect *string `json:"connect,omitempty" yaml:"connect,omitempty"`
+}
 
 // UserAPIKeyItem defines model for UserAPIKeyItem.
 type UserAPIKeyItem struct {
@@ -2883,7 +2943,7 @@ type ListLLMProviderAPIKeysParams struct {
 
 // GetLLMProviderDeploymentsParams defines parameters for GetLLMProviderDeployments.
 type GetLLMProviderDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -2943,7 +3003,7 @@ type ListLLMProxyAPIKeysParams struct {
 
 // GetLLMProxyDeploymentsParams defines parameters for GetLLMProxyDeployments.
 type GetLLMProxyDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -2985,7 +3045,7 @@ type ListMCPProxiesParams struct {
 
 // GetMCPProxyDeploymentsParams defines parameters for GetMCPProxyDeployments.
 type GetMCPProxyDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -3091,7 +3151,7 @@ type ListRESTAPIsParamsSortOrder string
 
 // GetDeploymentsParams defines parameters for GetDeployments.
 type GetDeploymentsParams struct {
-	// GatewayId **Gateway ID** (handle — unique slug identifier) of the Gateway to filter deployments by.
+	// GatewayId **Gateway ID** consisting of the **handle** (unique slug identifier) of the Gateway to filter status by.
 	GatewayId *GatewayIdQ `form:"gatewayId,omitempty" json:"gatewayId,omitempty" yaml:"gatewayId,omitempty"`
 
 	// Status Filter deployments by status (DEPLOYED, UNDEPLOYED, DEPLOYING, UNDEPLOYING, FAILED, or ARCHIVED)
@@ -3298,6 +3358,130 @@ type CreateSubscriptionJSONRequestBody = CreateSubscriptionRequest
 
 // UpdateSubscriptionJSONRequestBody defines body for UpdateSubscription for application/json ContentType.
 type UpdateSubscriptionJSONRequestBody = Subscription
+
+// AsMCPServerInfoFetchRequest0 returns the union data inside the MCPServerInfoFetchRequest as a MCPServerInfoFetchRequest0
+func (t MCPServerInfoFetchRequest) AsMCPServerInfoFetchRequest0() (MCPServerInfoFetchRequest0, error) {
+	var body MCPServerInfoFetchRequest0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMCPServerInfoFetchRequest0 overwrites any union data inside the MCPServerInfoFetchRequest as the provided MCPServerInfoFetchRequest0
+func (t *MCPServerInfoFetchRequest) FromMCPServerInfoFetchRequest0(v MCPServerInfoFetchRequest0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMCPServerInfoFetchRequest0 performs a merge with any union data inside the MCPServerInfoFetchRequest, using the provided MCPServerInfoFetchRequest0
+func (t *MCPServerInfoFetchRequest) MergeMCPServerInfoFetchRequest0(v MCPServerInfoFetchRequest0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMCPServerInfoFetchRequest1 returns the union data inside the MCPServerInfoFetchRequest as a MCPServerInfoFetchRequest1
+func (t MCPServerInfoFetchRequest) AsMCPServerInfoFetchRequest1() (MCPServerInfoFetchRequest1, error) {
+	var body MCPServerInfoFetchRequest1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMCPServerInfoFetchRequest1 overwrites any union data inside the MCPServerInfoFetchRequest as the provided MCPServerInfoFetchRequest1
+func (t *MCPServerInfoFetchRequest) FromMCPServerInfoFetchRequest1(v MCPServerInfoFetchRequest1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMCPServerInfoFetchRequest1 performs a merge with any union data inside the MCPServerInfoFetchRequest, using the provided MCPServerInfoFetchRequest1
+func (t *MCPServerInfoFetchRequest) MergeMCPServerInfoFetchRequest1(v MCPServerInfoFetchRequest1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MCPServerInfoFetchRequest) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.Auth != nil {
+		object["auth"], err = json.Marshal(t.Auth)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'auth': %w", err)
+		}
+	}
+
+	if t.ProxyId != nil {
+		object["proxyId"], err = json.Marshal(t.ProxyId)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'proxyId': %w", err)
+		}
+	}
+
+	if t.Url != nil {
+		object["url"], err = json.Marshal(t.Url)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'url': %w", err)
+		}
+	}
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *MCPServerInfoFetchRequest) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["auth"]; found {
+		err = json.Unmarshal(raw, &t.Auth)
+		if err != nil {
+			return fmt.Errorf("error reading 'auth': %w", err)
+		}
+	}
+
+	if raw, found := object["proxyId"]; found {
+		err = json.Unmarshal(raw, &t.ProxyId)
+		if err != nil {
+			return fmt.Errorf("error reading 'proxyId': %w", err)
+		}
+	}
+
+	if raw, found := object["url"]; found {
+		err = json.Unmarshal(raw, &t.Url)
+		if err != nil {
+			return fmt.Errorf("error reading 'url': %w", err)
+		}
+	}
+
+	return err
+}
 
 // AsRateLimitingScopeConfig0 returns the union data inside the RateLimitingScopeConfig as a RateLimitingScopeConfig0
 func (t RateLimitingScopeConfig) AsRateLimitingScopeConfig0() (RateLimitingScopeConfig0, error) {
