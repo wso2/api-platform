@@ -34,7 +34,7 @@ Feature: Redirect Policy Integration Tests
             path: /go
             policies:
               - name: redirect
-                version: v1
+                version: v0
                 params:
                   hostname: example.org
       """
@@ -65,7 +65,7 @@ Feature: Redirect Policy Integration Tests
             path: /go
             policies:
               - name: redirect
-                version: v1
+                version: v0
                 params:
                   statusCode: 301
                   hostname: example.org
@@ -97,7 +97,7 @@ Feature: Redirect Policy Integration Tests
             path: /go
             policies:
               - name: redirect
-                version: v1
+                version: v0
                 params:
                   scheme: https
       """
@@ -132,7 +132,7 @@ Feature: Redirect Policy Integration Tests
             path: /go
             policies:
               - name: redirect
-                version: v1
+                version: v0
                 params:
                   hostname: example.org
                   path:
@@ -170,7 +170,7 @@ Feature: Redirect Policy Integration Tests
             path: /go
             policies:
               - name: redirect
-                version: v1
+                version: v0
                 params:
                   statusCode: 308
                   scheme: https

@@ -65,7 +65,7 @@ policies:
   - name: prompt-template
     gomodule: github.com/wso2/gateway-controllers/policies/prompt-template@v1
   - name: redirect
-    gomodule: github.com/wso2/gateway-controllers/policies/redirect@v1
+    gomodule: github.com/wso2/gateway-controllers/policies/redirect@v0
   - name: regex-guardrail
     gomodule: github.com/wso2/gateway-controllers/policies/regex-guardrail@v1
   - name: remove-headers
