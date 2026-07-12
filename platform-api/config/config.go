@@ -339,8 +339,7 @@ func GetConfig() *Server {
 
 // defaultFileSourceAllowlist is the platform-api's default set of directories that a
 // {{ file "..." }} config-interpolation token may read from. It can be overridden via
-// the shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var (see
-// configinterpolate.ResolveAllowlist).
+// the shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var (see configinterpolate.ResolveAllowlist).
 var defaultFileSourceAllowlist = []string{
 	"/etc/platform-api",
 	"/secrets/platform-api",
@@ -424,24 +423,11 @@ func LoadConfig(configPath string) (*Server, error) {
 	if err := validateAuthModeExclusivity(&cfg.Auth); err != nil {
 		return nil, err
 	}
-
-	if cfg.Auth.JWT.Enabled {
-		if cfg.Auth.JWT.SecretKey == "" {
-			return nil, fmt.Errorf("AUTH_JWT_SECRET_KEY is required when JWT authentication is enabled; " +
-				"generate one with: openssl rand -hex 32")
-		}
-		if !valid32ByteKey(cfg.Auth.JWT.SecretKey) {
-			return nil, fmt.Errorf("invalid AUTH_JWT_SECRET_KEY: must be 64 hex characters or " +
-				"base64 decoding to 32 bytes (generate one with: openssl rand -hex 32)")
-		}
+	if err := validateJWTConfig(&cfg.Auth.JWT); err != nil {
+		return nil, err
 	}
-
-	if cfg.EncryptionKey == "" {
-		return nil, fmt.Errorf("ENCRYPTION_KEY is required; generate one with: openssl rand -hex 32")
-	}
-	if !valid32ByteKey(cfg.EncryptionKey) {
-		return nil, fmt.Errorf("invalid ENCRYPTION_KEY: must be 64 hex characters or " +
-			"base64 decoding to 32 bytes (generate one with: openssl rand -hex 32)")
+	if err := validateEncryptionKey(cfg.EncryptionKey); err != nil {
+		return nil, err
 	}
 
 	return cfg, nil
@@ -823,6 +809,36 @@ func validateAuthModeExclusivity(auth *Auth) error {
 	if auth.FileBased.Enabled {
 		return fmt.Errorf("auth.idp.enabled=true and auth.file_based.enabled=true are mutually exclusive: " +
 			"set auth.file_based.enabled=false to delegate authentication to the IDP (tokens are validated against auth.idp.jwks_url)")
+	}
+	return nil
+}
+
+// validateJWTConfig verifies the local HMAC JWT secret when JWT auth is enabled. The
+// secret is required and never generated: a missing or malformed key fails startup.
+func validateJWTConfig(jwt *JWT) error {
+	if !jwt.Enabled {
+		return nil
+	}
+	if jwt.SecretKey == "" {
+		return fmt.Errorf("AUTH_JWT_SECRET_KEY is required when JWT authentication is enabled; " +
+			"generate one with: openssl rand -hex 32")
+	}
+	if !valid32ByteKey(jwt.SecretKey) {
+		return fmt.Errorf("invalid AUTH_JWT_SECRET_KEY: must be 64 hex characters or " +
+			"base64 decoding to 32 bytes (generate one with: openssl rand -hex 32)")
+	}
+	return nil
+}
+
+// validateEncryptionKey verifies the at-rest encryption key.
+// A missing or malformed key fails startup.
+func validateEncryptionKey(key string) error {
+	if key == "" {
+		return fmt.Errorf("ENCRYPTION_KEY is required; generate one with: openssl rand -hex 32")
+	}
+	if !valid32ByteKey(key) {
+		return fmt.Errorf("invalid ENCRYPTION_KEY: must be 64 hex characters or " +
+			"base64 decoding to 32 bytes (generate one with: openssl rand -hex 32)")
 	}
 	return nil
 }
