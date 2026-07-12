@@ -337,7 +337,7 @@ The following environment variable controls encryption for the Platform API:
 
 | Env Var | Description |
 |---------|-------------|
-| `PLATFORM_SECRET_ENCRYPTION_KEY` | 32-byte AES-256 key as 64 hex characters or base64. If unset, a random ephemeral key is auto-generated at startup — secrets stored in that session will be unreadable after a restart. |
+| `ENCRYPTION_KEY` | 32-byte AES-256 key as 64 hex characters or base64. **Required in every mode and never auto-generated** — the Platform API fails to start if it is missing or malformed. |
 
 Generate a stable key with:
 
@@ -355,7 +355,7 @@ openssl rand -hex 32
 Then copy the output value into your `.env` file:
 
 ```sh
-PLATFORM_SECRET_ENCRYPTION_KEY=a3f1e2d4b5c6...
+ENCRYPTION_KEY=a3f1e2d4b5c6...
 ```
 
-> **Warning:** Always set a stable `PLATFORM_SECRET_ENCRYPTION_KEY` in any environment where secrets must persist across restarts or across multiple replicas. An ephemeral auto-generated key will make existing encrypted secrets unreadable after a restart.
+> **Warning:** Use the **same** stable `ENCRYPTION_KEY` across restarts and across all replicas. Changing it makes existing encrypted secrets unreadable.

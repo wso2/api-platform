@@ -18,6 +18,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -53,6 +54,14 @@ type GatewayAPIConfig struct {
 	// ClusterDomain is the cluster DNS suffix for in-cluster Service URLs (e.g. cluster.local),
 	// used when building http://<svc>.<ns>.svc.<ClusterDomain>:<port> for HTTPRoute backends.
 	ClusterDomain string `koanf:"cluster_domain"`
+
+	// NodePortAddressOverride, when set, is published verbatim as the Gateway status address
+	// for NodePort-backed gateways instead of deriving node addresses from the cluster. This
+	// is intended for local environments (e.g. Rancher Desktop / kind) where the node is only
+	// reachable via loopback; set it to "127.0.0.1". Leave it empty on real clusters so the
+	// operator advertises actual node addresses (ExternalIP, falling back to InternalIP).
+	// Sourced from the GATEWAY_API_NODEPORT_ADDRESS_OVERRIDE environment variable.
+	NodePortAddressOverride string `koanf:"nodeport_address_override"`
 }
 
 // GatewayConfig holds configuration for gateway deployments
@@ -236,6 +245,10 @@ func LoadConfig(configPath string) (*OperatorConfig, error) {
 		cfg.GatewayAPI.ClusterDomain = v
 	}
 
+	if v := strings.TrimSpace(os.Getenv("GATEWAY_API_NODEPORT_ADDRESS_OVERRIDE")); v != "" {
+		cfg.GatewayAPI.NodePortAddressOverride = v
+	}
+
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
@@ -249,6 +262,13 @@ func (c *OperatorConfig) Validate() error {
 	c.GatewayAPI.ClusterDomain = strings.Trim(strings.TrimSpace(c.GatewayAPI.ClusterDomain), ".")
 	if c.GatewayAPI.ClusterDomain == "" {
 		c.GatewayAPI.ClusterDomain = "cluster.local"
+	}
+
+	if v := strings.TrimSpace(c.GatewayAPI.NodePortAddressOverride); v != "" {
+		if net.ParseIP(v) == nil {
+			return fmt.Errorf("gateway_api.nodeport_address_override must be a valid IP address")
+		}
+		c.GatewayAPI.NodePortAddressOverride = v
 	}
 
 	// Validate log level

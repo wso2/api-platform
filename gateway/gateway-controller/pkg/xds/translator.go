@@ -19,6 +19,8 @@
 package xds
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -27,6 +29,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -152,8 +155,46 @@ func convertServerHeaderTransformation(transformation string) hcm.HttpConnection
 // This format is used by both Envoy routes and the policy engine for route matching
 // It builds the full path by combining context, version, and path using ConstructFullPath
 func GenerateRouteName(method, context, apiVersion, path, vhost string) string {
+	return GenerateRouteNameWithDiscriminator(method, context, apiVersion, path, vhost, "")
+}
+
+// GenerateRouteNameWithDiscriminator builds a route key like GenerateRouteName but appends an
+// optional discriminator segment so that routes which share method, path and vhost but differ by
+// header matches (e.g. multiple Gateway-API HTTPRoute rules on the same path) do not collide in the
+// RuntimeDeployConfig route map. When discriminator is empty the result is byte-identical to
+// GenerateRouteName, so routes without header matches keep their historical key.
+//
+// The vhost stays at index 2 when splitting on "|"; the discriminator is the (optional) 4th segment.
+func GenerateRouteNameWithDiscriminator(method, context, apiVersion, path, vhost, discriminator string) string {
 	fullPath := ConstructFullPath(context, apiVersion, path)
-	return fmt.Sprintf("%s|%s|%s", method, fullPath, vhost)
+	if discriminator == "" {
+		return fmt.Sprintf("%s|%s|%s", method, fullPath, vhost)
+	}
+	return fmt.Sprintf("%s|%s|%s|%s", method, fullPath, vhost, discriminator)
+}
+
+// HeaderMatchDiscriminator returns a short, stable discriminator for a set of route header matchers,
+// or "" when there are no header matchers. It is used to keep route keys unique across routes that
+// share method/path/vhost but match on different headers. The output is deterministic across
+// reconciles: header names are lowercased (mirroring Envoy's case-insensitive header matching) and
+// the matchers are canonically sorted by (name, type, value) before hashing, so input order does not
+// affect the result.
+func HeaderMatchDiscriminator(headers []models.RouteHeaderMatch) string {
+	if len(headers) == 0 {
+		return ""
+	}
+	canonical := make([]string, 0, len(headers))
+	for _, h := range headers {
+		// type defaults to Exact to align with how routes are rendered when unset.
+		t := h.Type
+		if t == "" {
+			t = "Exact"
+		}
+		canonical = append(canonical, strings.ToLower(strings.TrimSpace(h.Name))+"\x1f"+t+"\x1f"+h.Value)
+	}
+	sort.Strings(canonical)
+	sum := sha256.Sum256([]byte(strings.Join(canonical, "\x1e")))
+	return hex.EncodeToString(sum[:8])
 }
 
 // ConstructFullPath builds the full path by replacing $version placeholder in context and appending path
@@ -201,24 +242,42 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 		if len(uc.Endpoints) == 0 {
 			continue
 		}
-		ep := uc.Endpoints[0]
-		parsedURL := &url.URL{
-			Scheme: "http",
-			Host:   net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port)),
-			Path:   uc.BasePath,
-		}
-		if uc.TLS != nil && uc.TLS.Enabled {
-			parsedURL.Scheme = "https"
-		}
 		var connectTimeout *time.Duration
-		// Use global default; per-cluster timeout comes from the route's Timeout field
-		c := t.createCluster(clusterName, parsedURL, nil, connectTimeout)
+		if len(uc.Endpoints) == 1 {
+			ep := uc.Endpoints[0]
+			parsedURL := &url.URL{
+				Scheme: "http",
+				Host:   net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port)),
+				Path:   uc.BasePath,
+			}
+			if uc.TLS != nil && uc.TLS.Enabled {
+				parsedURL.Scheme = "https"
+			}
+			c := t.createCluster(clusterName, parsedURL, nil, connectTimeout)
+			clusters = append(clusters, c)
+			continue
+		}
+		c := t.createWeightedCluster(clusterName, uc.Endpoints, uc.TLS, connectTimeout)
 		clusters = append(clusters, c)
 	}
 
-	// Build routes from Routes map
-	for routeKey, rdcRoute := range rdc.Routes {
-		r := t.createRouteFromRDC(routeKey, rdcRoute, rdc)
+	// Build routes from Routes map. Iterate in a deterministic order — ascending
+	// Route.Order (the source operation/rule index), then route key — so the stable
+	// route sorter later resolves equal-precedence ties by Gateway-API rule order
+	// instead of relying on non-deterministic map iteration.
+	routeKeys := make([]string, 0, len(rdc.Routes))
+	for routeKey := range rdc.Routes {
+		routeKeys = append(routeKeys, routeKey)
+	}
+	sort.SliceStable(routeKeys, func(i, j int) bool {
+		oi, oj := rdc.Routes[routeKeys[i]].Order, rdc.Routes[routeKeys[j]].Order
+		if oi != oj {
+			return oi < oj
+		}
+		return routeKeys[i] < routeKeys[j]
+	})
+	for _, routeKey := range routeKeys {
+		r := t.createRouteFromRDC(routeKey, rdc.Routes[routeKey], rdc)
 		routes = append(routes, r)
 	}
 
@@ -241,9 +300,9 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	method := rdcRoute.Method
 	operationPath := rdcRoute.OperationPath
 
-	// Determine path type
+	// Path-type flags needed below for the regex rewrite. The route's path matcher itself
+	// is built by setMatchPathSpecifier (which handles wildcard/params/root/exact/default).
 	isWildcardPath := strings.HasSuffix(operationPath, "/*")
-	hasParams := strings.Contains(operationPath, "{")
 	isRootPath := operationPath == "/"
 
 	// For MCP proxies the "/mcp" path is only the gateway-facing endpoint marker; it must
@@ -254,30 +313,6 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	isMCPResourceRoute := rdc.Metadata.Kind == string(models.KindMcp) &&
 		operationPath == constants.MCP_RESOURCE_PATH &&
 		!t.appendMCPResourcePathToBackend()
-
-	var pathSpecifier *route.RouteMatch_SafeRegex
-	if isWildcardPath {
-		prefixPath := strings.TrimSuffix(fullPath, "/*")
-		pathSpecifier = &route.RouteMatch_SafeRegex{
-			SafeRegex: &matcher.RegexMatcher{
-				Regex: "^" + regexp.QuoteMeta(prefixPath) + "(?:/.*)?$",
-			},
-		}
-	} else if hasParams {
-		regexPattern := t.pathToRegex(fullPath)
-		pathSpecifier = &route.RouteMatch_SafeRegex{
-			SafeRegex: &matcher.RegexMatcher{
-				Regex: regexPattern,
-			},
-		}
-	} else if isRootPath {
-		trimmedPath := strings.TrimSuffix(fullPath, "/")
-		pathSpecifier = &route.RouteMatch_SafeRegex{
-			SafeRegex: &matcher.RegexMatcher{
-				Regex: "^" + regexp.QuoteMeta(trimmedPath) + "/?$",
-			},
-		}
-	}
 
 	// Build route action with timeouts. Per-route resilience values (from the API/operation
 	// resilience block) take precedence; otherwise fall back to the global route defaults.
@@ -322,30 +357,10 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		r.RequestHeadersToRemove = append(r.RequestHeadersToRemove, constants.TargetUpstreamHeader)
 	}
 
-	r.Match = &route.RouteMatch{
-		Headers: []*route.HeaderMatcher{{
-			Name: ":method",
-			HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
-				StringMatch: &matcher.StringMatcher{
-					MatchPattern: &matcher.StringMatcher_Exact{
-						Exact: method,
-					},
-				},
-			},
-		}},
-	}
-
-	// Set path specifier
-	if isWildcardPath || hasParams || isRootPath {
-		r.Match.PathSpecifier = pathSpecifier
-	} else {
-		// Accept both /path and /path/ but preserve the trailing slash in the rewrite.
-		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
-			SafeRegex: &matcher.RegexMatcher{
-				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
-			},
-		}
-	}
+	// Build the request matchers (shared with direct-response routes so both kinds of
+	// route match identical requests).
+	r.Match.Headers = buildMatchHeaders(method, rdcRoute)
+	t.setMatchPathSpecifier(r.Match, fullPath, operationPath, rdcRoute)
 
 	// Compute regex rewrite to strip context and prepend upstream path
 	upstreamPath := ""
@@ -411,6 +426,195 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	}
 
 	return r
+}
+
+// buildMatchHeaders builds the Envoy header matchers for a route: the mandatory :method matcher
+// followed by any configured header matches. A header match of type RegularExpression becomes a
+// SafeRegexMatch; everything else is an exact string match. This is what makes header-based route
+// selection and precedence work, including across separate HTTPRoutes sharing a vhost.
+func buildMatchHeaders(method string, rdcRoute *models.Route) []*route.HeaderMatcher {
+	headerMatchers := []*route.HeaderMatcher{{
+		Name: ":method",
+		HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+			StringMatch: &matcher.StringMatcher{
+				MatchPattern: &matcher.StringMatcher_Exact{Exact: method},
+			},
+		},
+	}}
+	for _, hm := range rdcRoute.MatchHeaders {
+		name := strings.ToLower(strings.TrimSpace(hm.Name))
+		matchType := strings.TrimSpace(hm.Type)
+		if matchType == "RegularExpression" {
+			headerMatchers = append(headerMatchers, &route.HeaderMatcher{
+				Name: name,
+				HeaderMatchSpecifier: &route.HeaderMatcher_SafeRegexMatch{
+					SafeRegexMatch: &matcher.RegexMatcher{Regex: hm.Value},
+				},
+			})
+		} else {
+			headerMatchers = append(headerMatchers, &route.HeaderMatcher{
+				Name: name,
+				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+					StringMatch: &matcher.StringMatcher{
+						MatchPattern: &matcher.StringMatcher_Exact{Exact: hm.Value},
+					},
+				},
+			})
+		}
+	}
+	return headerMatchers
+}
+
+// setMatchPathSpecifier sets m.PathSpecifier for the given operation, covering every path type:
+// wildcard prefix, parameterized ({param}) regex, root, Envoy's native exact matcher, and the
+// default plain-path regex (accepting an optional trailing slash). Branch precedence matches the
+// original createRouteFromRDC logic (wildcard > params > root > exact > default).
+func (t *Translator) setMatchPathSpecifier(m *route.RouteMatch, fullPath, operationPath string, rdcRoute *models.Route) {
+	isWildcardPath := strings.HasSuffix(operationPath, "/*")
+	hasParams := strings.Contains(operationPath, "{")
+	isRootPath := operationPath == "/"
+	isExactPath := strings.EqualFold(rdcRoute.PathMatchType, "Exact")
+
+	switch {
+	case isWildcardPath:
+		prefixPath := strings.TrimSuffix(fullPath, "/*")
+		m.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(prefixPath) + "(?:/.*)?$",
+			},
+		}
+	case hasParams:
+		m.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: t.pathToRegex(fullPath),
+			},
+		}
+	case isRootPath:
+		trimmedPath := strings.TrimSuffix(fullPath, "/")
+		m.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(trimmedPath) + "/?$",
+			},
+		}
+	case isExactPath:
+		// Use Envoy's native exact path matcher (not safe_regex) so that
+		// SortRoutesByPriority ranks Exact above Regex/Prefix. Rendering exact
+		// paths as safe_regex made every route look like a Regex to the sorter,
+		// which then fell back to regex-string length and let a longer prefix
+		// regex (e.g. ^/match(?:/.*)?$) outrank a shorter exact (^/match/exact$).
+		m.PathSpecifier = &route.RouteMatch_Path{
+			Path: fullPath,
+		}
+	default:
+		// Accept both /path and /path/ but preserve the trailing slash in the rewrite.
+		m.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
+			},
+		}
+	}
+}
+
+func (t *Translator) createWeightedCluster(
+	name string,
+	endpoints []models.Endpoint,
+	tls *models.UpstreamTLS,
+	connectTimeout *time.Duration,
+) *cluster.Cluster {
+	tlsEnabled := tls != nil && tls.Enabled
+
+	lbEndpoints := make([]*endpoint.LbEndpoint, 0, len(endpoints))
+	var transportSocketMatches []*cluster.Cluster_TransportSocketMatch
+	for i, ep := range endpoints {
+		lb := &endpoint.LbEndpoint{
+			HostIdentifier: &endpoint.LbEndpoint_Endpoint{
+				Endpoint: &endpoint.Endpoint{
+					Address: &core.Address{
+						Address: &core.Address_SocketAddress{
+							SocketAddress: &core.SocketAddress{
+								Protocol:      core.SocketAddress_TCP,
+								Address:       ep.Host,
+								PortSpecifier: &core.SocketAddress_PortValue{PortValue: uint32(ep.Port)},
+							},
+						},
+					},
+				},
+			},
+		}
+		if ep.Weight != nil && *ep.Weight > 0 {
+			lb.LoadBalancingWeight = &wrapperspb.UInt32Value{Value: uint32(*ep.Weight)}
+		}
+
+		// When the upstream definition is HTTPS, dial each endpoint over TLS. Endpoints in a
+		// weighted definition can have different hostnames, so each gets its own transport
+		// socket match carrying an UpstreamTlsContext with that endpoint's SNI, and the
+		// LbEndpoint is tagged with the matching lb_id. This mirrors processEndpoint (the
+		// single-endpoint path), generalized to multiple endpoints; certs are nil here, same
+		// as the single-endpoint RDC path, so TLS relies on SDS or the system trust store.
+		if tlsEnabled {
+			matchID := strconv.Itoa(i)
+			tlsContext := t.createUpstreamTLSContext(nil, ep.Host)
+			marshalledTLSContext, err := anypb.New(tlsContext)
+			if err != nil {
+				t.logger.Error("internal error while marshalling the weighted upstream TLS context",
+					slog.String("cluster", name), slog.Any("error", err))
+			} else {
+				transportSocketMatches = append(transportSocketMatches, &cluster.Cluster_TransportSocketMatch{
+					Name: constants.TransportSocketPrefix + matchID,
+					Match: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							constants.LoadBalancerIDKey: structpb.NewStringValue(matchID),
+						},
+					},
+					TransportSocket: &core.TransportSocket{
+						Name: constants.EnvoyTLSTransportSocket,
+						ConfigType: &core.TransportSocket_TypedConfig{
+							TypedConfig: marshalledTLSContext,
+						},
+					},
+				})
+				lb.Metadata = &core.Metadata{
+					FilterMetadata: map[string]*structpb.Struct{
+						constants.TransportSocketMatchKey: {
+							Fields: map[string]*structpb.Value{
+								constants.LoadBalancerIDKey: structpb.NewStringValue(matchID),
+							},
+						},
+					},
+				}
+			}
+		}
+
+		lbEndpoints = append(lbEndpoints, lb)
+	}
+
+	var effectiveConnectTimeout time.Duration
+	if connectTimeout != nil {
+		effectiveConnectTimeout = *connectTimeout
+	} else {
+		effectiveConnectTimeout = time.Duration(t.routerConfig.Upstream.Timeouts.ConnectTimeoutMs) * time.Millisecond
+		if effectiveConnectTimeout == 0 {
+			effectiveConnectTimeout = 5 * time.Second
+		}
+	}
+
+	c := &cluster.Cluster{
+		Name:                 name,
+		ConnectTimeout:       durationpb.New(effectiveConnectTimeout),
+		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+		DnsLookupFamily:      cluster.Cluster_V4_PREFERRED,
+		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+		LoadAssignment: &endpoint.ClusterLoadAssignment{
+			ClusterName: name,
+			Endpoints: []*endpoint.LocalityLbEndpoints{{
+				LbEndpoints: lbEndpoints,
+			}},
+		},
+	}
+	if len(transportSocketMatches) > 0 {
+		c.TransportSocketMatches = transportSocketMatches
+	}
+	return c
 }
 
 // TranslateConfigs translates all API configurations to Envoy resources
@@ -502,9 +706,11 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	for _, r := range allRoutes {
-		// Extract vhost from route name: "METHOD|PATH|VHOST"
+		// Extract vhost from route name: "METHOD|PATH|VHOST" with an optional
+		// "|DISCRIMINATOR" 4th segment for header-matched routes. The vhost is always
+		// at index 2; hostnames and paths never contain "|".
 		parts := strings.Split(r.Name, "|")
-		if len(parts) != 3 {
+		if len(parts) < 3 {
 			// Routes without proper naming (e.g., catch-all 404) should be added to all vhosts later
 			continue // or handle error
 		}
@@ -889,11 +1095,11 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 
 		opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
 		if err != nil {
-			return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.Method, op.Path, err)
+			return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.EffectiveMethod(), op.EffectivePath(), err)
 		}
 		opTimeoutCfg := combineRouteResilience(mainTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
 
-		r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
+		r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, op.EffectiveMethod(), op.EffectivePath(),
 			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, opTimeoutCfg, useClusterHeader, upstreamDefPaths)
 		mainRoutesList = append(mainRoutesList, r)
 	}
@@ -922,11 +1128,11 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		for _, op := range apiData.Operations {
 			opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
 			if err != nil {
-				return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.Method, op.Path, err)
+				return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.EffectiveMethod(), op.EffectivePath(), err)
 			}
 			opTimeoutCfg := combineRouteResilience(sbTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
 
-			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
+			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, op.EffectiveMethod(), op.EffectivePath(),
 				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, opTimeoutCfg, sbUseClusterHeader, upstreamDefPaths)
 			sbRoutesList = append(sbRoutesList, r)
 		}

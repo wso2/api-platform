@@ -1,0 +1,84 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+# OpenAI LLM Provider Configuration
+#
+# Uses the built-in `openai` template and points to the OpenAI public
+# endpoint. The auth value below is a SAMPLE / placeholder token --
+# replace it with a real OpenAI API key (Bearer sk-...) before deploying.
+#
+# Auth: upstream.auth is the gateway -> OpenAI vendor auth. This is the
+# only auth this provider needs; proxies in front of it route freely and
+# inherit this vendor auth automatically.
+# --------------------------------------------------------------------
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProvider
+metadata:
+  name: openai-provider
+spec:
+  displayName: OpenAI Provider
+  version: v1.0
+  template: openai
+  upstream:
+    url: https://api.openai.com/v1
+    auth:
+      type: api-key
+      header: Authorization
+      # OpenAI expects:  Authorization: Bearer <key>  -- sent verbatim, so the
+      # "Bearer " prefix MUST be included here.
+      value: Bearer sk-REPLACE_WITH_OPENAI_KEY
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /completions
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /embeddings
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /models
+          methods: [GET]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /models/{modelId}
+          methods: [GET]
+          params:
+            key: X-API-Key
+            in: header
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /chat/completions
+        methods: [POST]
+      - path: /completions
+        methods: [POST]
+      - path: /embeddings
+        methods: [POST]
+      - path: /models
+        methods: [GET]
+      - path: /models/{modelId}
+        methods: [GET]
+
+# The proxy in front of this provider authenticates over the internal loopback
+# route with an API key issued for this LlmProvider. Create one as shown in
+# api-key.yaml, then set the issued value as the proxy's provider.auth.value.

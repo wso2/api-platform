@@ -25,6 +25,15 @@ port      = "9243"
 
 # Validate OAuth2 scopes on incoming requests.
 enable_scope_validation = true
+
+# ---------------------------------------------------------------------------
+# Encryption
+# ---------------------------------------------------------------------------
+# Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
+# (secrets, subscription tokens, WebSub HMAC secrets)
+# Env: ENCRYPTION_KEY. Generate with: openssl rand -hex 32.
+# encryption_key = ""
+
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
@@ -45,8 +54,8 @@ path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 # ---------------------------------------------------------------------------
 
 # JWT (local HMAC) — issues signed tokens after file-based login.
-# secret_key is auto-generated at startup when not set (ephemeral — sessions reset on restart).
-# Set AUTH_JWT_SECRET_KEY env var or secret_key here to persist sessions across restarts.
+# secret_key is a 32-byte key (64 hex chars or base64; openssl rand -hex 32).
+# Set AUTH_JWT_SECRET_KEY env var Generate with: openssl rand -hex 32.
 [auth.jwt]
 enabled         = true
 issuer          = "platform-api"

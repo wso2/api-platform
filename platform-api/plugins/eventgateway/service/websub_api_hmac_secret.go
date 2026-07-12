@@ -52,7 +52,7 @@ type WebSubAPIHmacSecretService struct {
 
 // NewWebSubAPIHmacSecretService creates a new WebSubAPIHmacSecretService.
 // encryptionKeyStr must be a 32-byte key encoded as 64 hex chars or base64
-// (set via DATABASE_ENCRYPTION_KEY).
+// (set via ENCRYPTION_KEY).
 func NewWebSubAPIHmacSecretService(
 	repo repository.WebSubAPIHmacSecretRepository,
 	websubRepo repository.WebSubAPIRepository,

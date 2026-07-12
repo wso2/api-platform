@@ -677,8 +677,8 @@ func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 				},
 				Operations: []api.Operation{
 					{
-						Method: "GET",
-						Path:   "/resource",
+						Method: api.Ptr(api.OperationMethod("GET")),
+						Path:   api.Ptr("/resource"),
 					},
 				},
 			},
