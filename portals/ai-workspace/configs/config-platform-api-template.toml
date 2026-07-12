@@ -24,10 +24,17 @@
 #
 # QUICK START (file-based auth mode — no external IDP needed):
 #   1. Copy this file to config-platform-api.toml.
-#   2. Set encryption_key to a 32-byte key (or use the ENCRYPTION_KEY env var): openssl rand -hex 32.
-#   3. Set [auth.jwt] secret_key to a 32-byte key — openssl rand -hex 32 (or use AUTH_JWT_SECRET_KEY env var).
+#   2. Generate two 32-byte keys: openssl rand -hex 32 (one for ENCRYPTION_KEY,
+#      one for AUTH_JWT_SECRET_KEY).
+#   3. Put both in a .env file next to docker-compose.yaml (see .env.example).
+#      The encryption_key / secret_key fields below read them via {{ env "..." }}
+#      tokens — never paste raw key values into this file.
 #   4. Set [auth.file_based] enabled = true and configure users.
 #   5. Run: docker compose up
+#
+# Secrets are resolved at load time from environment variables ({{ env "..." }}) or
+# mounted files ({{ file "..." }}, preferred in production). Do not hardcode secret
+# values in this file or as literals in docker-compose.yaml.
 #
 # OIDC mode: keep file_based disabled, set [auth.idp] fields,
 # and set auth_mode = "oidc" in config.toml with oidc_* fields.
@@ -58,8 +65,9 @@ enable_scope_validation = true
 # ---------------------------------------------------------------------------
 # Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
 # (secrets, subscription tokens, WebSub HMAC secrets)
-# Env: ENCRYPTION_KEY. Generate with: openssl rand -hex 32.
-# encryption_key = ""
+# Resolved from the ENCRYPTION_KEY env var (.env — see .env.example). Files preferred:
+#   encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
+encryption_key = '{{ env "ENCRYPTION_KEY" }}'
 
 # ---------------------------------------------------------------------------
 # Database
@@ -75,7 +83,7 @@ path = "/app/data/api_platform.db"
 # port     = 5432
 # name     = "platform_api"
 # user     = "platform_api"
-# password = "change-me"
+# password = '{{ file "/secrets/platform-api/postgres_password" }}'
 # ssl_mode = "disable"   # "disable" | "require" | "verify-ca" | "verify-full"
 
 # Connection pool — tune for production workloads
@@ -101,12 +109,14 @@ path = "/app/data/api_platform.db"
 
 # JWT (local HMAC) — the default for self-hosted deployments.
 # Disable when delegating auth entirely to an external IDP.
+# Resolved from AUTH_JWT_SECRET_KEY (.env);
+# secret files preferred: secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
 [auth.jwt]
 enabled    = true
 issuer     = "platform-api"
 # Signing key. Auto-generated (ephemeral — sessions reset on restart) when
 # unset in demo mode; REQUIRED when APIP_DEMO_MODE=false.
-# secret_key = "change-me-to-a-random-secret"   # or use AUTH_JWT_SECRET_KEY env var
+ secret_key = '{{ env "AUTH_JWT_SECRET_KEY" }}'
 # Skip signature verification. Defaults to true for the zero-config quickstart
 # and is rejected outright when APIP_DEMO_MODE=false. NEVER set true in production.
 # skip_validation = true

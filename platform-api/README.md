@@ -378,6 +378,23 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 |---|---|---|
 | `ENCRYPTION_KEY` | _(empty)_ | **Required.** 32-byte AES-256 key as 64 hex chars or base64 (32 bytes). Generate with `openssl rand -hex 32`. Startup fails if missing or malformed. |
 
+#### Providing secrets via the config file (preferred over raw values)
+
+When the Platform API is configured from a TOML file, do **not** write raw key values into
+it and do **not** hardcode them as literal env vars in a compose file. Reference each secret
+(`ENCRYPTION_KEY`, `AUTH_JWT_SECRET_KEY`, `DATABASE_PASSWORD`, `WEBHOOK_SECRET`, …) with an
+interpolation token that is resolved at startup, preferring a mounted file:
+
+```toml
+encryption_key = '{{ env "ENCRYPTION_KEY" }}'                     # from an env var (e.g. a .env file)
+# preferred — from a mounted secret file:
+# encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
+```
+
+`{{ file }}` reads are restricted to an allowlist (`/etc/platform-api`, `/secrets/platform-api`;
+override with the shared `APIP_CONFIG_FILE_SOURCE_ALLOWLIST` env var). Resolution fails closed:
+a missing/empty required env var, or a missing/disallowed/oversize file, aborts startup.
+
 ---
 
 ### Other Settings

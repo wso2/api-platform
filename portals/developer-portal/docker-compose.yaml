@@ -69,9 +69,6 @@ services:
     container_name: platform-api
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
-    environment:
-      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
