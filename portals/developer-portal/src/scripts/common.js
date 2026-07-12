@@ -219,30 +219,6 @@ document.addEventListener("DOMContentLoaded", function () {
     // Call the function when page loads
     setActiveDocLink();
 
-    // Copy MCP Server Config JSON to clipboard
-    window.copyServerConfig = async function(apiId) {
-        const preBlock = document.getElementById(`server-config-${apiId}`);
-        const buttonElement = preBlock.nextElementSibling;
-        const iconElement = buttonElement.querySelector('i');
-
-        try {
-            const text = preBlock.innerText.trim();
-            await navigator.clipboard.writeText(text);
-
-            iconElement.classList.remove('bi-clipboard');
-            iconElement.classList.add('bi-clipboard-check');
-            await showAlert('Server config copied to clipboard!', `default`);
-
-            setTimeout(() => {
-                iconElement.classList.remove('bi-clipboard-check');
-                iconElement.classList.add('bi-clipboard');
-            }, 1500);
-        } catch (err) {
-            console.error('Failed to copy server config:', err);
-            await showAlert('Failed to copy server config', true);
-        }
-    };
-    
     // Handle API card message overlays
     const messageOverlays = document.querySelectorAll('.message-overlay');
     messageOverlays.forEach(overlay => {
@@ -257,46 +233,6 @@ document.addEventListener("DOMContentLoaded", function () {
             });
         }
     });
-    
-    // Helper function to show message on an API card or subscription card
-    window.showApiMessage = function(overlay, message, type = 'success') {
-        if (overlay) {
-            // Clear any existing auto-hide timers
-            if (overlay.hideTimer) {
-                clearTimeout(overlay.hideTimer);
-                overlay.hideTimer = null;
-            }
-            
-            // Set message - keeping it simple and concise
-            const messageText = overlay.querySelector('.message-text');
-            if (messageText) messageText.textContent = message;
-            
-            // Set type (success/error)
-            overlay.classList.remove('success', 'error');
-            overlay.classList.add(type);
-            
-            // Update icon - ensure proper class structure for alignment
-            const icon = overlay.querySelector('.message-icon');
-            if (icon) {
-                icon.className = 'bi message-icon ' + type;
-                icon.classList.add(type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-circle-fill');
-            }
-            
-            // Show the overlay (remove hidden class if it exists)
-            overlay.classList.remove('hidden');
-            
-            // Auto-hide after the designated time only for success messages
-            // Error messages remain visible until user closes them manually
-            if (type === 'success') {
-                overlay.hideTimer = setTimeout(() => {
-                    overlay.classList.add('hidden');
-                }, 5000);
-            }
-            
-            return overlay;
-        }
-        return null;
-    };
 
     // Toggle accordion chevron icons
     document.querySelectorAll('.accordion-header').forEach(btn => {
