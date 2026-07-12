@@ -16,7 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const { renderTemplateFromAPI, resolveActor } = require('../utils/util');
+const { renderTemplate, resolveActor } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -76,7 +76,7 @@ const loadSubscriptions = async (req, res, next) => {
             isReadOnlyMode: config.server.readOnlyMode,
         };
 
-        html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/subscriptions', viewName);
+        html = renderTemplate('../pages/subscriptions/page.hbs', './src/defaultContent/layout/main.hbs', templateContent, true);
         res.send(html);
     } catch (error) {
         logger.error('Error loading subscriptions page', {

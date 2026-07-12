@@ -75,38 +75,6 @@ footer {
   box-shadow: 0 0 0 0.25rem rgba(92, 79, 163, 0.4);
 }
 
-.common-btn-white {
-  background-color: var(--white-color);
-  color: var(--primary-main-color);
-  font-size: 0.875rem;
-  padding: 0.625rem 1.25rem;
-  border: none;
-  border-radius: 3.125rem;
-  cursor: pointer;
-  text-align: center;
-  text-decoration: none;
-  transition: all 0.3s ease-in-out;
-  box-shadow: 0 0.125rem 0.125rem rgba(0, 0, 0, 0.1);
-}
-
-.common-btn-white:hover {
-  background-color: var(--primary-main-color);
-  box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.15);
-  color: var(--white-text-color);
-}
-
-.common-btn-white:active {
-  background-color: var(--primary-main-color);
-  box-shadow: 0 0.0625rem 0.125rem rgba(0, 0, 0, 0.1);
-  transform: scale(0.98);
-  color: var(--white-text-color);
-}
-
-.common-btn-white:focus {
-  outline: none;
-  box-shadow: 0 0 0 0.25rem rgba(255, 255, 255, 0.4);
-}
-
 .common-btn-link {
   background-color: transparent;
   color: var(--primary-main-color);

@@ -388,7 +388,7 @@ const generatePrompt = async (req, res) => {
     }
 };
 
-// Internal utility used by settingsController
+// Internal utility for listing an org/view's API workflows (used by the settings page and llms.txt generation)
 const getAllAPIWorkflowsFromDB = async (orgId, viewId) => {
     const apiWorkflows = await apiWorkflowDao.list(orgId, viewId);
     return toAPIWorkflowListDTOs(apiWorkflows);
