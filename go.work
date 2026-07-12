@@ -1,20 +1,20 @@
 go 1.26.5
 
 use (
-	./httpkit
 	./cli/it
 	./cli/src
 	./common
 	./event-gateway/gateway-builder
-	./event-gateway/webhook-listener
 	./event-gateway/gateway-runtime
 	./event-gateway/it
+	./event-gateway/webhook-listener
 	./gateway/gateway-builder
 	./gateway/gateway-controller
 	./gateway/gateway-runtime/policy-engine
 	./gateway/it
 	./gateway/sample-policies/transform-payload-case
 	./gateway/system-policies/analytics
+	./httpkit
 	./kubernetes/gateway-operator
 	./platform-api
 	./portals/ai-workspace/bff
