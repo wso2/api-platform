@@ -390,6 +390,10 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 | `HTTPS_CERT_DIR` | `./data/certs` | Directory holding `cert.pem` / `key.pem` (used only when `HTTPS_ENABLED=true`) |
 | `HTTP_ENABLED` | `false` | Enable the plain-HTTP listener. Use only behind a TLS-terminating ingress/sidecar or for internal traffic — never expose directly to untrusted networks |
 | `HTTP_PORT` | `9080` | Port for the plain-HTTP listener |
+| `TIMEOUTS_READ_HEADER` | `10s` | Max time to read request headers, on both listeners (`0` disables) |
+| `TIMEOUTS_READ` | `60s` | Max time to read the whole request, including the body (`0` disables) |
+| `TIMEOUTS_WRITE` | `120s` | Max time for handler execution plus response write (`0` disables) |
+| `TIMEOUTS_IDLE` | `120s` | Max time a keep-alive connection may sit unused (`0` disables) |
 | `DEPLOYMENTS_MAX_PER_API_GATEWAY` | `20` | Maximum deployments per API per gateway |
 | `DEPLOYMENTS_TRANSITIONAL_STATUS_ENABLED` | `false` | Show `DEPLOYING`/`UNDEPLOYING` status before gateway ack |
 | `ARTIFACT_LIMITS_MAX_LLM_PROVIDERS_PER_ORG` | _unlimited_ | Max LLM providers per organization (`0` or unset = unlimited) |

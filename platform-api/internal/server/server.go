@@ -749,8 +749,8 @@ func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, err
 		if !demoMode() {
 			return nil, fmt.Errorf(
 				"no TLS certificates found at %q (cert.pem / key.pem) and APIP_DEMO_MODE=false: "+
-					"mount real certificates, set TLS_CERT_DIR to a directory containing cert.pem and key.pem, "+
-					"or set TLS_ENABLED=false to serve plain HTTP behind a TLS-terminating proxy; "+
+					"mount real certificates, set HTTPS_CERT_DIR to a directory containing cert.pem and key.pem, "+
+					"or set HTTPS_ENABLED=false to serve plain HTTP behind a TLS-terminating proxy; "+
 					"self-signed certificate generation is only permitted in demo mode",
 				certDir,
 			)
@@ -780,7 +780,10 @@ func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, err
 // independent: either or both may run, each on its own port. This mirrors the
 // gateway router's http/https listener split. At least one listener must be
 // enabled.
-func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListener) error {
+//
+// timeouts bounds connection lifetime on both listeners so a slow or idle peer
+// cannot hold one open indefinitely (Slowloris). It is validated at config load.
+func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListener, timeouts config.Timeouts) error {
 	if !httpCfg.Enabled && !httpsCfg.Enabled {
 		s.logger.Error("No listeners enabled")
 		return fmt.Errorf("no listeners enabled: set HTTP_ENABLED=true and/or HTTPS_ENABLED=true")
@@ -815,8 +818,12 @@ func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListene
 				"directly to untrusted networks.")
 		}
 		httpServer := &http.Server{
-			Addr:    ":" + httpCfg.Port,
-			Handler: s.handler,
+			Addr:              ":" + httpCfg.Port,
+			Handler:           s.handler,
+			ReadHeaderTimeout: timeouts.ReadHeader,
+			ReadTimeout:       timeouts.Read,
+			WriteTimeout:      timeouts.Write,
+			IdleTimeout:       timeouts.Idle,
 		}
 		httpServers = append(httpServers, httpServer)
 		s.logger.Info("Starting HTTP listener", "address", "http://localhost:"+httpCfg.Port)
@@ -835,9 +842,13 @@ func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListene
 			return err
 		}
 		httpsServer := &http.Server{
-			Addr:      ":" + httpsCfg.Port,
-			Handler:   s.handler,
-			TLSConfig: tlsConfig,
+			Addr:              ":" + httpsCfg.Port,
+			Handler:           s.handler,
+			TLSConfig:         tlsConfig,
+			ReadHeaderTimeout: timeouts.ReadHeader,
+			ReadTimeout:       timeouts.Read,
+			WriteTimeout:      timeouts.Write,
+			IdleTimeout:       timeouts.Idle,
 		}
 		httpServers = append(httpServers, httpsServer)
 		s.logger.Info("Starting HTTPS listener", "address", "https://localhost:"+httpsCfg.Port)

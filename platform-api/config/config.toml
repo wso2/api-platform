@@ -114,6 +114,28 @@ scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_poli
 # cert_dir = "/app/data/certs"
 
 # ---------------------------------------------------------------------------
+# Listener timeouts
+# ---------------------------------------------------------------------------
+# Bound the lifetime of a connection so a slow or idle peer cannot hold one open
+# indefinitely (Slowloris). These apply to both listeners, which serve the same
+# handler. Values are durations, e.g. "10s", "2m".
+#
+# 0 disables a timeout (net/http semantics). Disabling read or read_header
+# removes the Slowloris protection — only do so behind a proxy that enforces its
+# own bounds. Keep `write` generous: it bounds handler execution, and some
+# handlers proxy slow upstreams (LLM completions, deployments).
+#
+# WebSocket routes are unaffected — the deadlines are cleared on upgrade.
+#
+# Override with TIMEOUTS_READ_HEADER / TIMEOUTS_READ / TIMEOUTS_WRITE /
+# TIMEOUTS_IDLE.
+# [timeouts]
+# read_header = "10s"
+# read        = "60s"
+# write       = "120s"
+# idle        = "120s"
+
+# ---------------------------------------------------------------------------
 # CORS
 # ---------------------------------------------------------------------------
 # Required (non-wildcard) when APIP_DEMO_MODE=false. List the exact origins

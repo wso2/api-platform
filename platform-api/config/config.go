@@ -91,6 +91,7 @@ type Server struct {
 	ArtifactLimits   ArtifactLimits   `koanf:"artifact_limits"`
 	HTTP             HTTPListener     `koanf:"http"`
 	HTTPS            HTTPSListener    `koanf:"https"`
+	Timeouts         Timeouts         `koanf:"timeouts"`
 	CORS             CORS             `koanf:"cors"`
 	APIKey           APIKey           `koanf:"api_key"`
 	Gateway          Gateway          `koanf:"gateway"`
@@ -189,6 +190,30 @@ type HTTPSListener struct {
 	Enabled bool   `koanf:"enabled"`
 	Port    string `koanf:"port"`
 	CertDir string `koanf:"cert_dir"`
+}
+
+// Timeouts bounds the lifetime of a connection on both listeners, so a slow or
+// idle peer cannot hold one open indefinitely (Slowloris). The values apply to
+// the plain-HTTP and HTTPS listeners alike, since both serve the same handler.
+//
+// A zero value disables the corresponding timeout, matching net/http semantics.
+// Disabling Read or ReadHeader removes the Slowloris protection — only do so
+// behind a proxy that already enforces its own bounds.
+//
+// WebSocket routes are unaffected: gorilla/websocket clears the hijacked
+// connection's deadlines during the upgrade, so long-lived sockets outlive these.
+type Timeouts struct {
+	// ReadHeader bounds how long a client may take to send request headers.
+	ReadHeader time.Duration `koanf:"read_header"`
+	// Read bounds the whole request read, including bodies such as uploaded API
+	// definitions. Must be >= ReadHeader when both are set.
+	Read time.Duration `koanf:"read"`
+	// Write bounds handler execution plus the response write. Keep it generous:
+	// some handlers proxy slow upstreams (LLM completions, deployments).
+	Write time.Duration `koanf:"write"`
+	// Idle bounds how long a keep-alive connection may sit unused between
+	// requests.
+	Idle time.Duration `koanf:"idle"`
 }
 
 // CORS holds cross-origin resource sharing configuration.
@@ -355,6 +380,9 @@ func LoadConfig(configPath string) (*Server, error) {
 	// format as the rest of the application, instead of slog's default handler.
 	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.LogLevel, Format: cfg.LogFormat}))
 
+	if err := validateTimeoutsConfig(&cfg.Timeouts); err != nil {
+		return nil, err
+	}
 	if err := validateDefaultDevPortalConfig(&cfg.DefaultDevPortal); err != nil {
 		return nil, err
 	}
@@ -603,6 +631,17 @@ func envToKoanfKey(s string) string {
 	case "https_cert_dir", "tls_cert_dir":
 		return "https.cert_dir"
 
+	// Listener timeouts (apply to both listeners). Values are durations, e.g.
+	// "10s", "2m". 0 disables the timeout.
+	case "timeouts_read_header":
+		return "timeouts.read_header"
+	case "timeouts_read":
+		return "timeouts.read"
+	case "timeouts_write":
+		return "timeouts.write"
+	case "timeouts_idle":
+		return "timeouts.idle"
+
 	// CORS
 	case "cors_allowed_origins":
 		return "cors.allowed_origins"
@@ -666,6 +705,32 @@ func fileBasedUsersDecodeHook() mapstructure.DecodeHookFuncType {
 		}
 		return users, nil
 	}
+}
+
+// validateTimeoutsConfig rejects negative durations (net/http treats only zero as
+// "no timeout"; a negative deadline would expire immediately and break every
+// request) and a Read bound that would cut off header reading before ReadHeader.
+func validateTimeoutsConfig(cfg *Timeouts) error {
+	for _, f := range []struct {
+		name  string
+		value time.Duration
+	}{
+		{"timeouts.read_header (TIMEOUTS_READ_HEADER)", cfg.ReadHeader},
+		{"timeouts.read (TIMEOUTS_READ)", cfg.Read},
+		{"timeouts.write (TIMEOUTS_WRITE)", cfg.Write},
+		{"timeouts.idle (TIMEOUTS_IDLE)", cfg.Idle},
+	} {
+		if f.value < 0 {
+			return fmt.Errorf("%s must not be negative (got %s); use 0 to disable the timeout", f.name, f.value)
+		}
+	}
+	if cfg.Read > 0 && cfg.ReadHeader > cfg.Read {
+		return fmt.Errorf(
+			"timeouts.read_header (%s) must not exceed timeouts.read (%s): the header deadline would never be reached",
+			cfg.ReadHeader, cfg.Read,
+		)
+	}
+	return nil
 }
 
 func validateDefaultDevPortalConfig(cfg *DefaultDevPortal) error {

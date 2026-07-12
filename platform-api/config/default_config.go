@@ -144,6 +144,15 @@ func defaultConfig() *Server {
 			Port:    "9243",
 			CertDir: "./data/certs",
 		},
+		// Finite by default so a slow or idle peer cannot hold a connection open
+		// indefinitely. Write is the loosest of the four because some handlers
+		// proxy slow upstreams (LLM completions, deployments).
+		Timeouts: Timeouts{
+			ReadHeader: 10 * time.Second,
+			Read:       60 * time.Second,
+			Write:      120 * time.Second,
+			Idle:       120 * time.Second,
+		},
 		APIKey: APIKey{
 			HashingAlgorithms: []string{"sha256"},
 		},

@@ -21,6 +21,7 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -192,6 +193,70 @@ func TestLoadConfig_HTTPListener_EnvOverrideEnables(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, cfg.HTTP.Enabled, "HTTP_ENABLED=true must enable the plain-HTTP listener")
 	assert.Equal(t, "9080", cfg.HTTP.Port)
+}
+
+// Listener timeouts must be finite by default, so a deployment that never sets
+// them is still protected against a peer holding connections open (Slowloris).
+func TestLoadConfig_Timeouts_DefaultToFiniteValues(t *testing.T) {
+	setValidKeys(t)
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.Equal(t, 10*time.Second, cfg.Timeouts.ReadHeader)
+	assert.Equal(t, 60*time.Second, cfg.Timeouts.Read)
+	assert.Equal(t, 120*time.Second, cfg.Timeouts.Write)
+	assert.Equal(t, 120*time.Second, cfg.Timeouts.Idle)
+}
+
+// Duration strings from the environment must decode into time.Duration fields.
+func TestLoadConfig_Timeouts_EnvOverride(t *testing.T) {
+	setValidKeys(t)
+	t.Setenv("TIMEOUTS_READ_HEADER", "5s")
+	t.Setenv("TIMEOUTS_READ", "30s")
+	t.Setenv("TIMEOUTS_WRITE", "2m")
+	t.Setenv("TIMEOUTS_IDLE", "90s")
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.Equal(t, 5*time.Second, cfg.Timeouts.ReadHeader)
+	assert.Equal(t, 30*time.Second, cfg.Timeouts.Read)
+	assert.Equal(t, 2*time.Minute, cfg.Timeouts.Write)
+	assert.Equal(t, 90*time.Second, cfg.Timeouts.Idle)
+}
+
+// 0 is the net/http "no timeout" sentinel and must be accepted as-is, rather
+// than being silently replaced by the default.
+func TestLoadConfig_Timeouts_ZeroDisablesTimeout(t *testing.T) {
+	setValidKeys(t)
+	t.Setenv("TIMEOUTS_WRITE", "0")
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.Zero(t, cfg.Timeouts.Write, "TIMEOUTS_WRITE=0 must disable the write timeout")
+}
+
+// A negative duration would expire immediately and break every request; a
+// read_header bound above read would never be reached. Both must be rejected at
+// load time rather than producing a server that fails at request time.
+func TestLoadConfig_Timeouts_RejectsInvalidValues(t *testing.T) {
+	t.Run("negative", func(t *testing.T) {
+		setValidKeys(t)
+		t.Setenv("TIMEOUTS_READ", "-1s")
+
+		_, err := LoadConfig("")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must not be negative")
+	})
+
+	t.Run("read_header exceeds read", func(t *testing.T) {
+		setValidKeys(t)
+		t.Setenv("TIMEOUTS_READ_HEADER", "30s")
+		t.Setenv("TIMEOUTS_READ", "10s")
+
+		_, err := LoadConfig("")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must not exceed")
+	})
 }
 
 // The legacy single-port PORT and TLS_CERT_DIR env vars still map onto the
