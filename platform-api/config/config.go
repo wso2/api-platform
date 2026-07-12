@@ -30,10 +30,12 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	toml "github.com/knadh/koanf/parsers/toml/v2"
+	"github.com/knadh/koanf/providers/confmap"
 	kenv "github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
+	"github.com/wso2/api-platform/common/configinterpolate"
 	"github.com/wso2/api-platform/platform-api/internal/logger"
 )
 
@@ -335,6 +337,15 @@ func GetConfig() *Server {
 	return settingInstance
 }
 
+// defaultFileSourceAllowlist is the platform-api's default set of directories that a
+// {{ file "..." }} config-interpolation token may read from. It can be overridden via
+// the shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var (see
+// configinterpolate.ResolveAllowlist).
+var defaultFileSourceAllowlist = []string{
+	"/etc/platform-api",
+	"/secrets/platform-api",
+}
+
 // LoadConfig loads configuration with priority: env vars > config file > defaults.
 // configPath may be empty — when omitted only env vars and defaults are used.
 func LoadConfig(configPath string) (*Server, error) {
@@ -358,6 +369,15 @@ func LoadConfig(configPath string) (*Server, error) {
 		return envToKoanfKey(strings.ToLower(s)), v
 	}), nil); err != nil {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
+	}
+
+	// Resolve {{ env }} / {{ file }} interpolation tokens after the env+file merge
+	// and before unmarshal, so any config field may pull its value from an
+	// environment variable or an allowlisted file. String leaves without a "{{"
+	// token pass through unchanged, so a token-free config is unaffected.
+	k, err := interpolate(k)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
@@ -425,6 +445,34 @@ func LoadConfig(configPath string) (*Server, error) {
 	}
 
 	return cfg, nil
+}
+
+// interpolate resolves Go template tokens ({{ env }} / {{ file }}) in the merged
+// config and returns a fresh koanf instance holding the expanded values. It loads the
+// expanded map into a new instance (rather than reloading into k) so no un-expanded
+// leaves survive. The file-source allowlist is the platform-api default, overridable
+// via the shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var. Resolved values are never
+// logged; only reference counts are emitted at info level.
+func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
+	opts := configinterpolate.Options{
+		FileAllowlist: configinterpolate.ResolveAllowlist(defaultFileSourceAllowlist),
+	}
+	expanded, stats, err := configinterpolate.Expand(k.Raw(), opts)
+	if err != nil {
+		return nil, fmt.Errorf("config interpolation failed: %w", err)
+	}
+
+	out := koanf.New(".")
+	if err := out.Load(confmap.Provider(expanded, "."), nil); err != nil {
+		return nil, fmt.Errorf("failed to reload interpolated config: %w", err)
+	}
+	if stats.Fields > 0 {
+		slog.Info("config interpolation complete",
+			slog.Int("env_refs", stats.EnvRefs),
+			slog.Int("file_refs", stats.FileRefs),
+			slog.Int("fields", stats.Fields))
+	}
+	return out, nil
 }
 
 // valid32ByteKey reports whether keyStr is a 32-byte key encoded as 64 hex characters
