@@ -21,6 +21,8 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - namespaces
+  - nodes
   - secrets
   verbs:
   - get

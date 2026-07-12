@@ -141,6 +141,7 @@ func getFeaturePaths() []string {
 		"features/llm-provider-wide-ratelimit.feature",
 		"features/log-message.feature",
 		"features/route-path-matching.feature",
+		"features/header-routing.feature",
 		"features/secrets.feature",
 		"features/template-functions.feature",
 		"features/upstream-connect-timeout.feature",

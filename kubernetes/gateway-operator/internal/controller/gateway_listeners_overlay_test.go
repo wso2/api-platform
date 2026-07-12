@@ -18,9 +18,15 @@
 package controller
 
 import (
+	"context"
 	"testing"
 
 	yamlv3 "gopkg.in/yaml.v3"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
@@ -199,5 +205,175 @@ func TestApplyListenerOverlayToValues_EmptyBaseYAML(t *testing.T) {
 	ports := runtimeServicePortsFromYAML(t, out)
 	if ports["http"] != 8080 || ports["https"] != 8443 {
 		t.Fatalf("unexpected gatewayRuntime.service.ports: %v", ports)
+	}
+}
+
+func httpsListenerWithCertRef(port int32, secretName, secretNS string) gatewayv1.Listener {
+	ref := gatewayv1.SecretObjectReference{Name: gatewayv1.ObjectName(secretName)}
+	if secretNS != "" {
+		ns := gatewayv1.Namespace(secretNS)
+		ref.Namespace = &ns
+	}
+	return gatewayv1.Listener{
+		Protocol: "HTTPS",
+		Port:     gatewayv1.PortNumber(port),
+		TLS:      &gatewayv1.ListenerTLSConfig{CertificateRefs: []gatewayv1.SecretObjectReference{ref}},
+	}
+}
+
+func controllerTLSFromYAML(t *testing.T, y string) map[string]interface{} {
+	t.Helper()
+	var m map[string]interface{}
+	if err := yamlv3.Unmarshal([]byte(y), &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	gw, _ := m["gateway"].(map[string]interface{})
+	ctrl, _ := gw["controller"].(map[string]interface{})
+	tls, _ := ctrl["tls"].(map[string]interface{})
+	return tls
+}
+
+// newTLSOverlayClient builds a fake client, optionally seeded with secrets.
+func newTLSOverlayClient(t *testing.T, secrets ...*corev1.Secret) client.Client {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	builder := fake.NewClientBuilder().WithScheme(scheme)
+	for _, s := range secrets {
+		builder = builder.WithObjects(s)
+	}
+	return builder.Build()
+}
+
+func validTLSSecret(t *testing.T, name, namespace string) *corev1.Secret {
+	t.Helper()
+	certPEM, keyPEM := generateTestTLSCertKey(t)
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		Type:       corev1.SecretTypeTLS,
+		Data:       map[string][]byte{"tls.crt": certPEM, "tls.key": keyPEM},
+	}
+}
+
+func TestApplyListenerTLSOverlay_PointsAtListenerCertSecret(t *testing.T) {
+	gw := newGatewayWithListeners(httpsListenerWithCertRef(443, "tls-validity-checks-certificate", ""))
+	gw.Namespace = "gateway-conformance-infra"
+	cl := newTLSOverlayClient(t, validTLSSecret(t, "tls-validity-checks-certificate", "gateway-conformance-infra"))
+
+	out, err := applyListenerTLSOverlayToValues(context.Background(), cl, gw, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tls := controllerTLSFromYAML(t, out)
+	if tls["enabled"] != true {
+		t.Errorf("tls.enabled = %v, want true", tls["enabled"])
+	}
+	if tls["certificateProvider"] != "secret" {
+		t.Errorf("tls.certificateProvider = %v, want secret", tls["certificateProvider"])
+	}
+	secret, _ := tls["secret"].(map[string]interface{})
+	if secret["name"] != "tls-validity-checks-certificate" {
+		t.Errorf("tls.secret.name = %v, want tls-validity-checks-certificate", secret["name"])
+	}
+	if secret["certKey"] != "tls.crt" || secret["keyKey"] != "tls.key" {
+		t.Errorf("unexpected secret keys: %v", secret)
+	}
+}
+
+func TestApplyListenerTLSOverlay_NoHTTPSReturnsUnchanged(t *testing.T) {
+	gw := newGatewayWithListeners(listener("HTTP", 8080))
+	in := "gateway:\n  controller:\n    tls:\n      certificateProvider: cert-manager\n"
+	out, err := applyListenerTLSOverlayToValues(context.Background(), newTLSOverlayClient(t), gw, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != in {
+		t.Errorf("expected input returned unchanged, got:\n%s", out)
+	}
+}
+
+// TestApplyListenerTLSOverlay_SkipsNonexistentSecret guards GatewayWithAttachedRoutes and
+// GatewayInvalidTLSConfiguration: mounting a nonexistent Secret leaves the gateway Helm
+// release permanently unready, and the install's 300s Wait then blocks the single Gateway
+// worker on every retry — starving e.g. the AttachedRoutes recount for this very Gateway.
+// The overlay must fall back to the chart default certificate.
+func TestApplyListenerTLSOverlay_SkipsNonexistentSecret(t *testing.T) {
+	gw := newGatewayWithListeners(httpsListenerWithCertRef(443, "does-not-exist", ""))
+	gw.Namespace = "gateway-conformance-infra"
+	in := "gateway:\n  controller:\n    tls:\n      certificateProvider: cert-manager\n"
+	out, err := applyListenerTLSOverlayToValues(context.Background(), newTLSOverlayClient(t), gw, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != in {
+		t.Errorf("expected input returned unchanged for nonexistent secret, got:\n%s", out)
+	}
+}
+
+// TestApplyListenerTLSOverlay_SkipsMalformedSecret: a Secret with unparseable cert data
+// would leave the router failing at startup — same failure mode as a nonexistent Secret.
+func TestApplyListenerTLSOverlay_SkipsMalformedSecret(t *testing.T) {
+	malformed := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "malformed", Namespace: "gateway-conformance-infra"},
+		Type:       corev1.SecretTypeTLS,
+		Data:       map[string][]byte{"tls.crt": []byte("not a cert"), "tls.key": []byte("not a key")},
+	}
+	gw := newGatewayWithListeners(httpsListenerWithCertRef(443, "malformed", ""))
+	gw.Namespace = "gateway-conformance-infra"
+	in := "gateway:\n  controller:\n    tls:\n      certificateProvider: cert-manager\n"
+	out, err := applyListenerTLSOverlayToValues(context.Background(), newTLSOverlayClient(t, malformed), gw, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != in {
+		t.Errorf("expected input returned unchanged for malformed secret, got:\n%s", out)
+	}
+}
+
+func TestApplyListenerTLSOverlay_SkipsNonTLSTypeSecret(t *testing.T) {
+	opaque := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "opaque", Namespace: "gateway-conformance-infra"},
+		Type:       corev1.SecretTypeOpaque,
+		Data:       map[string][]byte{"tls.crt": []byte("x"), "tls.key": []byte("y")},
+	}
+	gw := newGatewayWithListeners(httpsListenerWithCertRef(443, "opaque", ""))
+	gw.Namespace = "gateway-conformance-infra"
+	out, err := applyListenerTLSOverlayToValues(context.Background(), newTLSOverlayClient(t, opaque), gw, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "" {
+		t.Errorf("expected input returned unchanged for non-TLS-type secret, got:\n%s", out)
+	}
+}
+
+func TestGatewayListenersReferenceTLSSecret(t *testing.T) {
+	gw := newGatewayWithListeners(httpsListenerWithCertRef(443, "my-cert", ""))
+	gw.Namespace = "ns-a"
+
+	if !gatewayListenersReferenceTLSSecret(gw, "ns-a", "my-cert") {
+		t.Error("expected same-namespace certificateRef to match")
+	}
+	if gatewayListenersReferenceTLSSecret(gw, "ns-a", "other-cert") {
+		t.Error("expected different secret name to not match")
+	}
+	if gatewayListenersReferenceTLSSecret(gw, "ns-b", "my-cert") {
+		t.Error("expected secret in different namespace to not match")
+	}
+
+	crossNS := newGatewayWithListeners(httpsListenerWithCertRef(443, "my-cert", "ns-b"))
+	crossNS.Namespace = "ns-a"
+	if gatewayListenersReferenceTLSSecret(crossNS, "ns-b", "my-cert") {
+		t.Error("expected cross-namespace certificateRef to not match (overlay cannot mount it)")
+	}
+}
+
+func TestApplyListenerTLSOverlay_SkipsCrossNamespaceCertRef(t *testing.T) {
+	gw := newGatewayWithListeners(httpsListenerWithCertRef(443, "other-cert", "other-ns"))
+	gw.Namespace = "gateway-conformance-infra"
+	if name, ok := listenerTLSSecretFromGateway(gw); ok {
+		t.Errorf("expected cross-namespace certificateRef to be skipped, got secret %q", name)
 	}
 }

@@ -117,7 +117,7 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 						},
 					},
 					Operations: []api.Operation{
-						{Method: "GET", Path: "/test"},
+						{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/test")},
 					},
 				},
 			}
@@ -372,7 +372,7 @@ func TestValidator_LabelsValidation(t *testing.T) {
 						},
 					},
 					Operations: []api.Operation{
-						{Method: "GET", Path: "/test"},
+						{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/test")},
 					},
 				},
 			}
@@ -435,7 +435,7 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 					},
 				},
 				Operations: []api.Operation{
-					{Method: "GET", Path: "/test"},
+					{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/test")},
 				},
 			},
 		}
@@ -503,7 +503,7 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 					},
 				},
 				Operations: []api.Operation{
-					{Method: "GET", Path: "/test"},
+					{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/test")},
 				},
 			},
 		}

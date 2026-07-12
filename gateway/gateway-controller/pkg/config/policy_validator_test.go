@@ -78,8 +78,8 @@ func TestPolicyValidator_ValidateRestAPIPolicies_Success(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 		},
@@ -120,8 +120,8 @@ func TestPolicyValidator_PolicyNotFound(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 		},
@@ -187,8 +187,8 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 		},
@@ -238,8 +238,8 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 					Policies: &[]api.Policy{
 						{
 							Name:    "RateLimiting",
@@ -299,8 +299,8 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 					Policies: &[]api.Policy{
 						{
 							Name:    "NonExistent3",
@@ -364,8 +364,8 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 		},
@@ -425,8 +425,8 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 		},
@@ -498,8 +498,8 @@ func TestPolicyValidator_MixedMajorVersions_SamePolicyName(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 					Policies: &[]api.Policy{
 						{
 							Name:    "MultiVersionPolicy",
@@ -555,7 +555,7 @@ func TestPolicyValidator_FullSemverRejected(t *testing.T) {
 				},
 			},
 			Operations: []api.Operation{
-				{Method: "GET", Path: "/resource"},
+				{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/resource")},
 			},
 		},
 	}
@@ -610,8 +610,8 @@ func TestPolicyValidator_MajorVersionResolution_Success(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 		},
@@ -657,8 +657,8 @@ func TestPolicyValidator_MajorVersionResolution_NotFound(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 		},
@@ -711,8 +711,8 @@ func TestPolicyValidator_MajorVersionResolution_MultipleMatches(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 		},
@@ -767,7 +767,7 @@ func TestPolicyValidator_EmptyVersion_ResolvesToLatest(t *testing.T) {
 					Version: "", // empty — should resolve to v1.0.0
 				},
 			},
-			Operations: []api.Operation{{Method: "GET", Path: "/resource"}},
+			Operations: []api.Operation{{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/resource")}},
 		},
 	}
 
@@ -805,7 +805,7 @@ func TestPolicyValidator_EmptyVersion_PolicyNotFound(t *testing.T) {
 					Version: "",
 				},
 			},
-			Operations: []api.Operation{{Method: "GET", Path: "/resource"}},
+			Operations: []api.Operation{{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/resource")}},
 		},
 	}
 

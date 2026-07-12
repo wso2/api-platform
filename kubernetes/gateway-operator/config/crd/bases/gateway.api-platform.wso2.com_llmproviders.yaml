@@ -253,8 +253,9 @@ spec:
                 items:
                   description: |-
                     UpstreamDefinition is a reusable upstream configuration with an optional connect timeout and
-                    load-balancing targets. Referenced from an upstream via its `ref` field. Shared by RestApi,
-                    LLM Provider, and MCP; mirrors the management-API UpstreamDefinition schema.
+                    one or more weighted load-balancing targets. Referenced from an upstream via its `ref` field
+                    and by the dynamic-endpoint policy. Shared by RestApi, LLM Provider, and MCP; mirrors the
+                    management-API UpstreamDefinition schema.
                   properties:
                     basePath:
                       description: |-
@@ -263,8 +264,9 @@ spec:
                       pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$
                       type: string
                     name:
-                      description: Name Unique identifier for this upstream definition
-                        (referenced by upstream.ref).
+                      description: |-
+                        Name Unique identifier for this upstream definition (referenced by upstream.ref or the
+                        dynamic-endpoint policy).
                       maxLength: 100
                       minLength: 1
                       pattern: ^[a-zA-Z0-9\-_]+$
@@ -283,13 +285,11 @@ spec:
                       description: Upstreams List of backend targets with optional
                         weights for load balancing.
                       items:
-                        description: UpstreamTarget is a single backend target within
+                        description: WeightedUpstream is a single backend target within
                           an UpstreamDefinition.
                         properties:
                           url:
-                            description: Url Backend URL (host and port only; path
-                              comes from the definition's basePath).
-                            pattern: ^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$
+                            description: Url Backend URL (host and port; no path)
                             type: string
                           weight:
                             description: |-

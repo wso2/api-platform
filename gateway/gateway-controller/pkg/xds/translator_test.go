@@ -23,6 +23,7 @@ import (
 	"math"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +35,7 @@ import (
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
+	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -943,6 +945,65 @@ func TestTranslator_MCPAppendResourcePathToBackend(t *testing.T) {
 			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
 		})
 	}
+}
+
+// TestTranslator_ExactPathUsesNativeMatcher guards the fix for HTTPRoutePathMatchOrder:
+// an Exact path match must be emitted as Envoy's native exact matcher (RouteMatch_Path),
+// NOT as a safe_regex. Rendering it as a regex made SortRoutesByPriority treat every route
+// as a Regex, so it fell back to regex-string length and let a longer prefix regex
+// (^/match(?:/.*)?$) outrank a shorter exact (^/match/exact$).
+func TestTranslator_ExactPathUsesNativeMatcher(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	rdc := &models.RuntimeDeployConfig{
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"main": {BasePath: "", Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+		},
+	}
+	rdcRoute := &models.Route{
+		Method:        "GET",
+		Path:          "/match/exact",
+		OperationPath: "/match/exact",
+		PathMatchType: "Exact",
+		Upstream:      models.RouteUpstream{ClusterKey: "main"},
+	}
+	r := translator.createRouteFromRDC("GET|/match/exact|", rdcRoute, rdc)
+	require.NotNil(t, r)
+	pathSpec, ok := r.GetMatch().GetPathSpecifier().(*route.RouteMatch_Path)
+	require.True(t, ok, "exact path should use RouteMatch_Path, got %T", r.GetMatch().GetPathSpecifier())
+	assert.Equal(t, "/match/exact", pathSpec.Path)
+	assert.Equal(t, pathMatchTypeExact, getPathMatchType(r.GetMatch()),
+		"exact route must rank as Exact for SortRoutesByPriority")
+}
+
+// TestSortRoutesByPriority_ExactBeatsLongerPrefixRegex reproduces the HTTPRoutePathMatchOrder
+// conformance shape: an exact /match must outrank the /match/ prefix even though the prefix's
+// regex string is longer. Before the fix the exact route was a safe_regex and lost on length.
+func TestSortRoutesByPriority_ExactBeatsLongerPrefixRegex(t *testing.T) {
+	exactMatch := &route.Route{
+		Name:  "exact-match",
+		Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Path{Path: "/match"}},
+	}
+	exactMatchExact := &route.Route{
+		Name:  "exact-match-exact",
+		Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Path{Path: "/match/exact"}},
+	}
+	prefixMatch := &route.Route{
+		Name: "prefix-match",
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_SafeRegex{
+				SafeRegex: &matcher.RegexMatcher{Regex: "^/match(?:/.*)?$"},
+			},
+		},
+	}
+
+	sorted := SortRoutesByPriority([]*route.Route{prefixMatch, exactMatch, exactMatchExact})
+
+	// Both exacts must precede the prefix regex.
+	assert.Equal(t, "exact-match-exact", sorted[0].Name)
+	assert.Equal(t, "exact-match", sorted[1].Name)
+	assert.Equal(t, "prefix-match", sorted[2].Name)
 }
 
 func TestTranslator_SanitizeClusterName(t *testing.T) {
@@ -2625,6 +2686,71 @@ func TestTranslator_CreateDynamicFwdListenerForWebSubHub(t *testing.T) {
 	})
 }
 
+// TestCreateWeightedCluster_TLS guards the fix for the reviewer concern
+// "Configure TLS for weighted HTTPS upstreams." A multi-endpoint (weighted) upstream
+// definition whose endpoints are HTTPS must be dialed over TLS, mirroring the single-endpoint
+// createCluster path. Before the fix createWeightedCluster discarded the scheme and produced a
+// plain cluster with no transport socket, silently downgrading HTTPS weighted upstreams to
+// plaintext.
+func TestCreateWeightedCluster_TLS(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	w := func(n int) *int { return &n }
+	endpoints := []models.Endpoint{
+		{Host: "a.example.com", Port: 443, Weight: w(70)},
+		{Host: "b.example.com", Port: 443, Weight: w(30)},
+	}
+
+	t.Run("https weighted upstream gets per-endpoint TLS transport sockets", func(t *testing.T) {
+		c := translator.createWeightedCluster("upstream_secure", endpoints, &models.UpstreamTLS{Enabled: true}, nil)
+		require.NotNil(t, c)
+
+		// One transport socket match per endpoint, each carrying a TLS transport socket.
+		require.Len(t, c.GetTransportSocketMatches(), len(endpoints),
+			"each HTTPS endpoint must get its own transport socket match")
+		for i, tsm := range c.GetTransportSocketMatches() {
+			matchID := strconv.Itoa(i)
+			assert.Equal(t, "ts"+matchID, tsm.GetName())
+			assert.Equal(t, matchID, tsm.GetMatch().GetFields()["lb_id"].GetStringValue())
+			require.NotNil(t, tsm.GetTransportSocket())
+			assert.Equal(t, "envoy.transport_sockets.tls", tsm.GetTransportSocket().GetName())
+
+			// The transport socket must hold an UpstreamTlsContext with the endpoint's host as SNI.
+			tc := &tlsv3.UpstreamTlsContext{}
+			require.NoError(t, tsm.GetTransportSocket().GetTypedConfig().UnmarshalTo(tc))
+			assert.Equal(t, endpoints[i].Host, tc.GetSni(),
+				"each endpoint's TLS context must use its own hostname as SNI")
+		}
+
+		// Every LbEndpoint must be tagged with the matching lb_id so Envoy selects its socket.
+		lbs := c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints()
+		require.Len(t, lbs, len(endpoints))
+		for i, lb := range lbs {
+			md := lb.GetMetadata().GetFilterMetadata()["envoy.transport_socket_match"]
+			require.NotNil(t, md, "HTTPS endpoint must carry transport_socket_match metadata")
+			assert.Equal(t, strconv.Itoa(i), md.GetFields()["lb_id"].GetStringValue())
+		}
+	})
+
+	t.Run("plaintext weighted upstream is unchanged (no transport socket)", func(t *testing.T) {
+		plain := []models.Endpoint{
+			{Host: "a.internal", Port: 8080, Weight: w(1)},
+			{Host: "b.internal", Port: 8080, Weight: w(1)},
+		}
+		// Both nil TLS and explicitly-disabled TLS must produce a plain cluster.
+		for _, tls := range []*models.UpstreamTLS{nil, {Enabled: false}} {
+			c := translator.createWeightedCluster("upstream_plain", plain, tls, nil)
+			require.NotNil(t, c)
+			assert.Empty(t, c.GetTransportSocketMatches(),
+				"plaintext weighted upstream must not get transport socket matches")
+			for _, lb := range c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints() {
+				assert.Nil(t, lb.GetMetadata(), "plaintext endpoint must not carry transport-socket metadata")
+			}
+		}
+	})
+}
+
 // parseDurationAllowZero must accept exactly what the CRD admission controller accepts
 // (constants.ResilienceDurationPattern): single-unit durations including "0s" to disable, while
 // rejecting compound, negative, and unitless values.
@@ -2660,4 +2786,47 @@ func TestParseDurationAllowZero_MatchesCRDPattern(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestBuildMatchHeaders_HeaderMatchersRendered guards that configured header matches are rendered
+// as Envoy header matchers on the route (the mechanism that makes header-based route selection and
+// cross-HTTPRoute precedence work), and that a RegularExpression match becomes a safe_regex rather
+// than being downgraded to an exact match.
+func TestBuildMatchHeaders_HeaderMatchersRendered(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+	rdc := &models.RuntimeDeployConfig{
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"main": {BasePath: "", Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+		},
+	}
+
+	route1 := &models.Route{
+		Method: "GET", Path: "/svc/v1/things", OperationPath: "/things",
+		Upstream: models.RouteUpstream{ClusterKey: "main"},
+		MatchHeaders: []models.RouteHeaderMatch{
+			{Name: "Version", Type: "Exact", Value: "two"},
+			{Name: "X-Flavor", Type: "RegularExpression", Value: "red|blue"},
+		},
+	}
+	r := translator.createRouteFromRDC("GET|/svc/v1/things|main.local|abc123", route1, rdc)
+	require.NotNil(t, r)
+
+	var version, flavor *route.HeaderMatcher
+	for _, h := range r.GetMatch().GetHeaders() {
+		switch h.GetName() {
+		case "version":
+			version = h
+		case "x-flavor":
+			flavor = h
+		}
+	}
+	require.NotNil(t, version, "expected a lower-cased 'version' header matcher")
+	_, exactOK := version.GetHeaderMatchSpecifier().(*route.HeaderMatcher_StringMatch)
+	require.True(t, exactOK, "Exact header match must be a string_match, got %T", version.GetHeaderMatchSpecifier())
+
+	require.NotNil(t, flavor, "expected an 'x-flavor' header matcher")
+	rx, ok := flavor.GetHeaderMatchSpecifier().(*route.HeaderMatcher_SafeRegexMatch)
+	require.True(t, ok, "RegularExpression header match must stay a safe_regex, got %T", flavor.GetHeaderMatchSpecifier())
+	assert.Equal(t, "red|blue", rx.SafeRegexMatch.GetRegex())
 }

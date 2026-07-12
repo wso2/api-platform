@@ -45,7 +45,8 @@ services:
     image: ghcr.io/wso2/api-platform/platform-api:0.11.0
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
-      AUTH_JWT_SECRET_KEY: "it-test-jwt-secret-key-not-for-production"
+      ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      AUTH_JWT_SECRET_KEY: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
     volumes:
       - ./configs/config-platform-api-it.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data

@@ -1746,10 +1746,10 @@ func TestLLMProxyServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
 
 func validProviderRequest(template string) *api.LLMProvider {
 	return &api.LLMProvider{
-		Id:       strPointer("provider-1"),
-		DisplayName:     "Test Provider",
-		Version:  "v1.0",
-		Template: template,
+		Id:          strPointer("provider-1"),
+		DisplayName: "Test Provider",
+		Version:     "v1.0",
+		Template:    template,
 		Upstream: api.Upstream{
 			Main: api.UpstreamDefinition{Url: stringPtr("https://example.com/openai/v1")},
 		},
@@ -1759,10 +1759,10 @@ func validProviderRequest(template string) *api.LLMProvider {
 
 func validProxyRequest(providerID, projectID string) *api.LLMProxy {
 	return &api.LLMProxy{
-		Id:        strPointer("proxy-1"),
-		DisplayName:      "Test Proxy",
-		Version:   "v1.0",
-		ProjectId: projectID,
+		Id:          strPointer("proxy-1"),
+		DisplayName: "Test Proxy",
+		Version:     "v1.0",
+		ProjectId:   projectID,
 		Provider: api.LLMProxyProvider{
 			Id: providerID,
 		},
@@ -1776,4 +1776,120 @@ func stringPtr(s string) *string {
 func upstreamAuthTypePtr(v string) *api.UpstreamAuthType {
 	t := api.UpstreamAuthType(v)
 	return &t
+}
+
+func TestLLMProxyServiceCreateFailsWhenAdditionalProviderNotFound(t *testing.T) {
+	proxyRepo := &mockLLMProxyRepo{}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			if providerID == "provider-1" {
+				return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+			}
+			return nil, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	req := validProxyRequest("provider-1", "project-1")
+	req.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{{Id: "missing-provider"}}
+
+	if _, err := service.Create("org-1", "alice", req); err != constants.ErrLLMProviderNotFound {
+		t.Fatalf("expected ErrLLMProviderNotFound, got: %v", err)
+	}
+}
+
+func TestLLMProxyServiceCreateFailsWhenAdditionalProviderNameCollides(t *testing.T) {
+	proxyRepo := &mockLLMProxyRepo{}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	req := validProxyRequest("provider-1", "project-1")
+	// The additional provider exists, but its upstream `as` name collides with
+	// the primary provider id, which the gateway rejects at transform time.
+	req.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{
+		{Id: "provider-2", As: stringPtr("provider-1")},
+	}
+
+	if _, err := service.Create("org-1", "alice", req); err != constants.ErrInvalidInput {
+		t.Fatalf("expected ErrInvalidInput, got: %v", err)
+	}
+}
+
+func TestLLMProxyServiceUpdateFailsWhenAdditionalProviderNotFound(t *testing.T) {
+	now := time.Now()
+	proxyRepo := &mockLLMProxyRepo{}
+	proxyRepo.getByIDFunc = func(proxyID, orgUUID string) (*model.LLMProxy, error) {
+		return &model.LLMProxy{
+			UUID:          "proxy-uuid",
+			ID:            proxyID,
+			Name:          "Old Proxy",
+			Version:       "v1.0",
+			ProjectUUID:   "project-1",
+			ProviderUUID:  "provider-uuid",
+			CreatedAt:     now,
+			UpdatedAt:     now,
+			Configuration: model.LLMProxyConfig{Provider: "provider-1"},
+		}, nil
+	}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			if providerID == "provider-1" {
+				return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+			}
+			return nil, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	req := validProxyRequest("provider-1", "project-1")
+	req.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{{Id: "missing-provider"}}
+
+	if _, err := service.Update("org-1", "proxy-1", "test-user", req); err != constants.ErrLLMProviderNotFound {
+		t.Fatalf("expected ErrLLMProviderNotFound, got: %v", err)
+	}
+	if proxyRepo.updated != nil {
+		t.Fatalf("expected update to be rejected before persisting, but proxy was updated")
+	}
+}
+
+func TestLLMProxyServiceUpdateFailsWhenAdditionalProviderNameCollides(t *testing.T) {
+	now := time.Now()
+	proxyRepo := &mockLLMProxyRepo{}
+	proxyRepo.getByIDFunc = func(proxyID, orgUUID string) (*model.LLMProxy, error) {
+		return &model.LLMProxy{
+			UUID:          "proxy-uuid",
+			ID:            proxyID,
+			Name:          "Old Proxy",
+			Version:       "v1.0",
+			ProjectUUID:   "project-1",
+			ProviderUUID:  "provider-uuid",
+			CreatedAt:     now,
+			UpdatedAt:     now,
+			Configuration: model.LLMProxyConfig{Provider: "provider-1"},
+		}, nil
+	}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	req := validProxyRequest("provider-1", "project-1")
+	// Two additional providers resolve to the same upstream `as` name.
+	req.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{
+		{Id: "provider-2", As: stringPtr("shared")},
+		{Id: "provider-3", As: stringPtr("shared")},
+	}
+
+	if _, err := service.Update("org-1", "proxy-1", "test-user", req); err != constants.ErrInvalidInput {
+		t.Fatalf("expected ErrInvalidInput, got: %v", err)
+	}
+	if proxyRepo.updated != nil {
+		t.Fatalf("expected update to be rejected before persisting, but proxy was updated")
+	}
 }

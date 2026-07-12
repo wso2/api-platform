@@ -17,7 +17,8 @@ jobs:
   pr-check:
     runs-on: ubuntu-24.04
     env:
-      AUTH_JWT_SECRET_KEY: ai-workspace-pr-check-secret-key
+      ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      AUTH_JWT_SECRET_KEY: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
     steps:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1

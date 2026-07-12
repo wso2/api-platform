@@ -54,4 +54,10 @@ const (
 	// AnnHTTPRouteLastDeployedParentGateway records the Gateway used for the last successful DeployRestAPI
 	// as "namespace/name" so deletion can target the correct registry entry even if spec.parentRefs change.
 	AnnHTTPRouteLastDeployedParentGateway = "gateway.api-platform.wso2.com/last-deployed-parent-gateway"
+
+	// AnnHTTPRouteLastDeployedConfigHash records a hash of the RestApi payload from the last successful
+	// DeployRestAPI. The reconciler skips re-deploying when the freshly built payload hashes to the same
+	// value (and the API still exists on the gateway), so repeated reconciles of an unchanged HTTPRoute do
+	// not re-push identical config to the gateway-controller (which would re-snapshot and churn xDS).
+	AnnHTTPRouteLastDeployedConfigHash = "gateway.api-platform.wso2.com/last-deployed-config-hash"
 )
