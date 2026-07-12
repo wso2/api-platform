@@ -162,7 +162,7 @@ func TestValidateAuthModeExclusivity(t *testing.T) {
 // explicitly opts otherwise, so a deployment that forgets the knob never
 // silently downgrades to plain HTTP.
 func TestLoadConfig_HTTPSEnabled_DefaultsToTrue(t *testing.T) {
-	t.Setenv("APIP_DEMO_MODE", "true")
+	setValidKeys(t)
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err)
@@ -174,7 +174,7 @@ func TestLoadConfig_HTTPSEnabled_DefaultsToTrue(t *testing.T) {
 // HTTPS_ENABLED=false must survive koanf's weakly-typed env decode into the bool.
 // The legacy TLS_ENABLED alias must keep working too.
 func TestLoadConfig_HTTPSEnabled_EnvOverrideDisables(t *testing.T) {
-	t.Setenv("APIP_DEMO_MODE", "true")
+	setValidKeys(t)
 	t.Setenv("HTTPS_ENABLED", "false")
 
 	cfg, err := LoadConfig("")
@@ -184,7 +184,7 @@ func TestLoadConfig_HTTPSEnabled_EnvOverrideDisables(t *testing.T) {
 
 // The plain-HTTP listener can be enabled independently on its own port.
 func TestLoadConfig_HTTPListener_EnvOverrideEnables(t *testing.T) {
-	t.Setenv("APIP_DEMO_MODE", "true")
+	setValidKeys(t)
 	t.Setenv("HTTP_ENABLED", "true")
 	t.Setenv("HTTP_PORT", "9080")
 
@@ -197,7 +197,7 @@ func TestLoadConfig_HTTPListener_EnvOverrideEnables(t *testing.T) {
 // The legacy single-port PORT and TLS_CERT_DIR env vars still map onto the
 // HTTPS listener for backward compatibility.
 func TestLoadConfig_LegacyTLSEnvAliases(t *testing.T) {
-	t.Setenv("APIP_DEMO_MODE", "true")
+	setValidKeys(t)
 	t.Setenv("PORT", "8443")
 	t.Setenv("TLS_CERT_DIR", "/custom/certs")
 
