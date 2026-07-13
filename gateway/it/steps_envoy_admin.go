@@ -101,18 +101,28 @@ func RegisterEnvoyAdminSteps(ctx *godog.ScenarioContext) {
 		return nil
 	})
 
+	// The set is observed over a settle window rather than once: an update
+	// propagates to Envoy asynchronously, so a single immediate read could pass
+	// against the pre-update state and miss a cluster rename that lands moments
+	// later. Any change inside the window fails immediately.
 	ctx.Step(`^the Envoy cluster names prefixed "([^"]*)" should be unchanged$`, func(prefix string) error {
 		captured, ok := rememberedClusterSets[prefix]
 		if !ok {
 			return fmt.Errorf("no captured cluster set for prefix %q; use the capture step first", prefix)
 		}
-		current, err := fetchEnvoyClusterNames(prefix)
-		if err != nil {
-			return err
+		deadline := time.Now().Add(6 * time.Second)
+		for {
+			current, err := fetchEnvoyClusterNames(prefix)
+			if err != nil {
+				return err
+			}
+			if strings.Join(captured, ",") != strings.Join(current, ",") {
+				return fmt.Errorf("Envoy cluster set with prefix %q changed across the update: before=%v after=%v (cluster identity must be stable)", prefix, captured, current)
+			}
+			if time.Now().After(deadline) {
+				return nil
+			}
+			time.Sleep(500 * time.Millisecond)
 		}
-		if strings.Join(captured, ",") != strings.Join(current, ",") {
-			return fmt.Errorf("Envoy cluster set with prefix %q changed across the update: before=%v after=%v (cluster identity must be stable)", prefix, captured, current)
-		}
-		return nil
 	})
 }

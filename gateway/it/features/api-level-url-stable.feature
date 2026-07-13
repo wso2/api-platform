@@ -217,7 +217,7 @@ Feature: API-Level Upstream URL-Stable Cluster Naming
     When I delete the API "api-level-url-stable-sandbox-api-v1.0"
     Then the response should be successful
 
-  Scenario: API-level upstream with cluster_header routing (default upstream cluster resolves correctly)
+  Scenario: API-level upstream ref resolves to the referenced upstreamDefinitions entry
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
@@ -445,7 +445,9 @@ Feature: API-Level Upstream URL-Stable Cluster Naming
     # name (cluster_<scheme>_<host>_<port>), so this edit would have minted a new
     # cluster_https_ cluster and dropped the previous one. Identity-based naming
     # must keep the SAME main_<hash> and never produce a cluster_https_. TLS
-    # routing itself is not asserted (there is no TLS echo backend); the cluster
+    # routing itself is not asserted (there is no TLS echo backend), so there is no
+    # endpoint-readiness wait here; the cluster-set check below observes a settle
+    # window instead to cover xDS propagation. The cluster
     # name is stable independent of upstream reachability.
     Given I authenticate using basic auth as "admin"
     When I update the API "api-level-url-stable-scheme-api-v1.0" with this configuration:
