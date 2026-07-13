@@ -44,6 +44,7 @@ import { Copy, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import YAML from 'yaml';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { useProxy } from '../../../../contexts/proxy';
+import { useLLMProviders } from '../../../../contexts/llmProvider';
 import { getGateways } from '../../../../apis/gatewayApis';
 import { getLLMProxyDeployments } from '../../../../apis/llmProxiesApis';
 import { PLATFORM_API_BASE_URL } from '../../../../config.env';
@@ -58,6 +59,7 @@ import {
   DisabledActionTooltip,
   GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
 } from '../../../../utils/readOnlyArtifacts';
+import ApiTryOutCurlSnippet from '../../../../Components/common/ApiTryOutCurlSnippet';
 
 type OpenApiSpec = Record<string, unknown>;
 
@@ -101,6 +103,7 @@ export default function LLMProxyOverviewTab() {
   const { currentOrganization } = useAppShell();
   const { proxy, getProxyAPIKeys, createProxyAPIKey, deleteProxyAPIKey } =
     useProxy();
+  const { getProviderById } = useLLMProviders();
   const showSnackbar = useAIWorkspaceSnackbar();
   const fetchedApiKeysProxyIdRef = useRef<string | null>(null);
   const fetchingApiKeysProxyIdRef = useRef<string | null>(null);
@@ -129,6 +132,14 @@ export default function LLMProxyOverviewTab() {
 
   const apiKeyLocation = proxy?.security?.apiKey?.in ?? 'header';
   const apiKeyName = proxy?.security?.apiKey?.key ?? 'X-API-Key';
+  const providerTemplate = useMemo(() => {
+    const providerId =
+      typeof proxy?.provider === 'string'
+        ? proxy.provider
+        : proxy?.provider?.id ?? '';
+
+    return getProviderById(providerId)?.template ?? null;
+  }, [getProviderById, proxy?.provider]);
 
   const parsedOpenApiSpec = useMemo(
     () => parseOpenApiSpec(proxy?.openapi || ''),
@@ -817,7 +828,7 @@ export default function LLMProxyOverviewTab() {
       <Dialog
         open={isApiKeyModalOpen}
         onClose={handleCloseApiKeyModal}
-        maxWidth="sm"
+        maxWidth={generatedKey ? 'md' : 'sm'}
         fullWidth
       >
         <DialogTitle>
@@ -830,91 +841,101 @@ export default function LLMProxyOverviewTab() {
             </Alert>
           )}
           {generatedKey ? (
-            <Alert
-              severity="warning"
-              sx={{
-                '& .MuiAlert-message': {
-                  width: '100%',
-                },
-              }}
-            >
-              <Stack spacing={1}>
-                <Typography variant="caption" color="text.secondary">
-                  <FormattedMessage
-                    id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverviewTab.please.copy.and.save.this.api.key"
-                    defaultMessage={
-                      "Please copy and save this API key. For security reasons, you won't be able to see it again."
-                    }
-                  />
-                </Typography>
-                <Box
-                  display="flex"
-                  flexDirection="row"
-                  alignItems="center"
-                  gap={0.5}
-                >
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ flexShrink: 0 }}
-                  >
-                    {apiKeyLocation}
-                  </Typography>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    value={apiKeyName}
-                    slotProps={{
-                      input: {
-                        readOnly: true,
-                      },
-                    }}
-                  />
-                </Box>
-                <Box
-                  display="flex"
-                  flexDirection="row"
-                  alignItems="center"
-                  gap={0.5}
-                >
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ flexShrink: 0 }}
-                  >
-                    API Key
+            <>
+              <Alert
+                severity="warning"
+                sx={{
+                  '& .MuiAlert-message': {
+                    width: '100%',
+                  },
+                }}
+              >
+                <Stack spacing={1}>
+                  <Typography variant="caption" color="text.secondary">
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverviewTab.please.copy.and.save.this.api.key"
+                      defaultMessage={
+                        "Please copy and save this API key. For security reasons, you won't be able to see it again."
+                      }
+                    />
                   </Typography>
                   <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1,
-                      p: 1.5,
-                      width: '100%',
-                      bgcolor: 'background.paper',
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      fontFamily: 'monospace',
-                      fontSize: '0.875rem',
-                    }}
+                    display="flex"
+                    flexDirection="row"
+                    alignItems="center"
+                    gap={0.5}
                   >
-                    <Box sx={{ flex: 1, wordBreak: 'break-all' }}>
-                      {generatedKey}
-                    </Box>
-                    <IconButton
-                      size="small"
-                      onClick={() => {
-                        void handleCopyAPIKey();
-                      }}
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
                       sx={{ flexShrink: 0 }}
                     >
-                      <Copy size={16} />
-                    </IconButton>
+                      {apiKeyLocation}
+                    </Typography>
+                    <TextField
+                      size="small"
+                      fullWidth
+                      value={apiKeyName}
+                      slotProps={{
+                        input: {
+                          readOnly: true,
+                        },
+                      }}
+                    />
                   </Box>
-                </Box>
-              </Stack>
-            </Alert>
+                  <Box
+                    display="flex"
+                    flexDirection="row"
+                    alignItems="center"
+                    gap={0.5}
+                  >
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ flexShrink: 0 }}
+                    >
+                      API Key
+                    </Typography>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        p: 1.5,
+                        width: '100%',
+                        bgcolor: 'background.paper',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        fontFamily: 'monospace',
+                        fontSize: '0.875rem',
+                      }}
+                    >
+                      <Box sx={{ flex: 1, wordBreak: 'break-all' }}>
+                        {generatedKey}
+                      </Box>
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          void handleCopyAPIKey();
+                        }}
+                        sx={{ flexShrink: 0 }}
+                      >
+                        <Copy size={16} />
+                      </IconButton>
+                    </Box>
+                  </Box>
+                </Stack>
+              </Alert>
+              <Divider sx={{ my: 2 }} />
+              <ApiTryOutCurlSnippet
+                apiKey={generatedKey}
+                gatewayUrl={generatedGatewayUrl}
+                apiKeyHeaderName={apiKeyName}
+                apiKeyLocation={apiKeyLocation}
+                providerTemplate={providerTemplate}
+              />
+            </>
           ) : (
             <Stack spacing={1}>
               <FormControl fullWidth>
