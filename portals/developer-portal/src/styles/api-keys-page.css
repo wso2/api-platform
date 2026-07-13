@@ -7,7 +7,7 @@
 
 /* ── Inline code in page description ─────────────────────────── */
 .ak-inline-code {
-  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.78125rem;
   background: var(--surface-sunken);
   padding: 0.125rem 0.375rem;
@@ -80,7 +80,7 @@
   padding: 0.375rem 0.6875rem;
   letter-spacing: 0.125rem;
   color: #d6336c;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-weight: 700;
   font-size: 0.8125rem;
   line-height: 1;
@@ -263,7 +263,7 @@
   border-radius: 0.5rem;
   padding: 0.6875rem 0.8125rem;
   font-size: 0.875rem;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   color: var(--text-strong);
   background: var(--white);
   outline: none;
@@ -400,7 +400,7 @@
   border: 1px solid var(--border);
   border-radius: 0.5625rem;
   padding: 0.75rem 0.875rem;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.84375rem;
   font-weight: 600;
   color: var(--text-strong);

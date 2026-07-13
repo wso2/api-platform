@@ -96,7 +96,7 @@
 }
 
 .sub-token-code {
-  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.8125rem;
   color: var(--text-muted);
 }

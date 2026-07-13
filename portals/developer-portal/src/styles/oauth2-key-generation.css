@@ -379,7 +379,7 @@ input[type="checkbox"]:checked {
   color: var(--text-muted);
   white-space: pre-wrap;
   word-break: break-all;
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.8125rem;
   margin: 0;
   padding: 0;

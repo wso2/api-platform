@@ -90,8 +90,8 @@
   --on-dark-fill-border: color-mix(in srgb, var(--white) 12%, transparent);
 
   /* ---- Non-color tokens ---- */
-  --font-family-sans: Inter, "Montserrat", "Quicksand", "Noto Sans", "Poppins", sans-serif;
-  --font-family-mono: "Roboto", monospace;
+  --font-family-sans: Inter, "Montserrat", "Quicksand", "Noto Sans", "Poppins", system-ui, -apple-system, sans-serif;
+  --font-family-mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 
   --border-radius: 0.5rem;
 }

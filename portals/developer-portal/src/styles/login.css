@@ -7,7 +7,7 @@
 
 /* Body Styling */
 body {
-    font-family: 'Roboto', sans-serif;
+    font-family: var(--font-family-sans);
     height: 100vh;
     display: flex;
     align-items: center;

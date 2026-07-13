@@ -3,7 +3,7 @@
   flex-direction: column;
   gap: 16px;
   height: 100vh;
-  font-family: 'Montserrat', sans-serif;
+  font-family: var(--font-family-sans);
 }
 
 .graphql-controls {
@@ -59,7 +59,7 @@
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 8px 12px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: var(--font-family-mono);
   font-size: 13px;
   color: var(--text-strong);
   background: var(--white);
@@ -150,7 +150,7 @@
 
 .graphql-auth-tab {
   padding: 6px 16px;
-  font-family: 'Montserrat', sans-serif;
+  font-family: var(--font-family-sans);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;

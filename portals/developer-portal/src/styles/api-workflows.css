@@ -582,7 +582,7 @@
 .af-md-detail-container li { margin-bottom: 0.25rem; }
 
 .af-md-detail-container code {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.85em;
     background: var(--bs-gray-100);
     border: 1px solid var(--bs-gray-200);
@@ -658,7 +658,7 @@
 
 .af-md-fallback {
     white-space: pre-wrap;
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8125rem;
     line-height: 1.6;
     padding: 1.5rem;

@@ -24,7 +24,7 @@
   background: var(--white);
   border: 1px solid var(--border);
   color: var(--text-muted);
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.78125rem;
 }
 
@@ -630,7 +630,7 @@
 .aov-endpoint-url {
   flex: 1;
   min-width: 0;
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.8125rem;
   font-weight: 500;
   color: var(--text-strong);

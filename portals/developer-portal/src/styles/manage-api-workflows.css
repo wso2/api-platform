@@ -812,7 +812,7 @@
 
 .api-workflow-prompt-editor,
 .api-workflow-code-editor {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8125rem;
     line-height: 1.6;
     resize: vertical;
@@ -969,7 +969,7 @@
 
 .af-cm-host .CodeMirror {
     height: 420px;
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8125rem;
     line-height: 1.6;
     background: var(--surface);
@@ -1404,7 +1404,7 @@
 /* ===== Markdown Editor ===== */
 
 .af-md-editor {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8125rem;
     line-height: 1.7;
     resize: vertical;
@@ -1581,12 +1581,12 @@
 }
 
 .af-editor-filename {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     color: var(--bs-secondary);
 }
 
 .af-editor-linecount {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     color: var(--bs-secondary);
 }
 
@@ -1617,7 +1617,7 @@
 }
 
 .af-editor-empty-body {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8125rem;
     color: var(--bs-secondary);
     margin: 0;
@@ -1844,7 +1844,7 @@
     border-radius: 3px;
     padding: 0.05em 0.3em;
     color: #c9d1f5;
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
 }
 
 .af-info-tip:hover .af-info-tip-content,
@@ -2224,7 +2224,7 @@
 
 .af-prompt-section-edit {
     width: 100%;
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8125rem;
     line-height: 1.65;
     resize: vertical;
@@ -2267,7 +2267,7 @@
 
 /* ===== Step 3 Right — Workflow .md Preview ===== */
 .af-workflow-md-preview {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.75rem;
     line-height: 1.65;
     color: var(--text);
@@ -2341,7 +2341,7 @@
 }
 
 .llms-instructions-textarea {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8125rem;
     line-height: 1.6;
     resize: vertical;
@@ -2380,7 +2380,7 @@
     padding: 1rem;
     font-size: 0.78rem;
     line-height: 1.6;
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     max-height: 70vh;

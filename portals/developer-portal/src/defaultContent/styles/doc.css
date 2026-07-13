@@ -140,7 +140,7 @@
 .api-markdown-content a { color: var(--primary); }
 
 .api-markdown-content code {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.78125rem;
   color: #d6336c;
   background: #fff0f3;

@@ -199,7 +199,7 @@
 .api-version {
   font-size: 0.75rem;
   font-weight: 500;
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   color: var(--text-muted);
 }
 

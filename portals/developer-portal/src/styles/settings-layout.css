@@ -405,14 +405,14 @@
 /* ── Table extras (version / context cells) ──────────────── */
 
 .cfg-cell-version {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.8125rem;
   color: var(--text-muted);
   padding: 13px 14px !important;
 }
 
 .cfg-cell-context {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.6875rem;
   color: var(--text-subtle);
   margin-top: 3px;
@@ -588,7 +588,7 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
-.cfg-form-input--mono { font-family: monospace; font-size: 0.8125rem; }
+.cfg-form-input--mono { font-family: var(--font-family-mono); font-size: 0.8125rem; }
 
 /* ── File upload zone ────────────────────────────────────── */
 
@@ -809,7 +809,7 @@
 
 .cfg-review-label { color: var(--text-muted); }
 .cfg-review-value { color: var(--text-strong); font-weight: 600; }
-.cfg-review-value--mono { font-family: monospace; font-size: 0.8125rem; font-weight: 400; }
+.cfg-review-value--mono { font-family: var(--font-family-mono); font-size: 0.8125rem; font-weight: 400; }
 
 /* ── Wizard footer ───────────────────────────────────────── */
 
@@ -1090,7 +1090,7 @@
   color: var(--text-muted);
   border-radius: 6px;
   padding: 3px 9px;
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.8125rem;
 }
 
@@ -1125,7 +1125,7 @@
 /* ── Subscription plans table extras ──────────────────── */
 
 .cfg-count-chip {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.8125rem;
   color: var(--text-strong);
   font-weight: 600;
@@ -1150,7 +1150,7 @@
   padding: 3px 8px;
   font-size: 0.688rem;
   font-weight: 600;
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   background: var(--surface-sunken);
   color: var(--text-strong);
   margin: 2px 4px 2px 0;
@@ -1273,7 +1273,7 @@
 }
 
 .cfg-drawer-handle {
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.8125rem;
   color: var(--text-subtle);
   margin-top: 3px;
@@ -1328,7 +1328,7 @@
 
 .cfg-drawer-lbl { color: var(--text-muted); }
 .cfg-drawer-val { color: var(--text-strong); font-weight: 500; word-break: break-word; }
-.cfg-drawer-val--mono { font-family: monospace; font-size: 0.8125rem; font-weight: 400; }
+.cfg-drawer-val--mono { font-family: var(--font-family-mono); font-size: 0.8125rem; font-weight: 400; }
 
 .cfg-drawer-foot {
   padding: 16px 24px;

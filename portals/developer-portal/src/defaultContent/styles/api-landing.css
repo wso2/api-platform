@@ -93,7 +93,7 @@
 .aov-resource-path {
   flex: none;
   max-width: 13.75rem;
-  font-family: monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.84375rem;
   font-weight: 600;
   color: var(--text-strong);
