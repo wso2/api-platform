@@ -188,9 +188,11 @@ export const CSRF_HEADER = getEnvOrDefault('APIP_AIW_CSRF_HEADER', 'X-Requested-
 export const CSRF_VALUE = 'ai-workspace';
 
 // JWT claim names for user display — configure to match your IDP's token structure.
-// Common alternatives: 'name', 'preferred_username' (Keycloak), 'upn' (Azure AD)
-export const OIDC_USERNAME_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_USERNAME_CLAIM_NAME', 'given_name');
+// The defaults mirror the BFF's [oidc.claim_mappings] defaults, so both sides read the
+// same claim when the key is left unset.
+// Common alternatives: 'name', 'given_name', 'preferred_username' (Keycloak), 'upn' (Azure AD)
+export const OIDC_USERNAME_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_USERNAME_CLAIM_NAME', 'username');
 export const OIDC_EMAIL_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_EMAIL_CLAIM_NAME', 'email');
 
-// Auth mode: 'oidc' (default) uses react-oidc-context; 'basic' posts credentials to /api/portal/v0.9/auth/login.
+// Auth mode: 'basic' (default) posts credentials to /api/portal/v0.9/auth/login; 'oidc' uses react-oidc-context.
 export const AUTH_MODE = getEnvOrDefault('APIP_AIW_AUTH_MODE', 'basic') as 'oidc' | 'basic';

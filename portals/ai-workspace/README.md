@@ -161,8 +161,10 @@ cd portals/ai-workspace
 make bff-run            # serves /api/* on https://localhost:8081, proxies to the Platform API
 ```
 The Vite dev server proxies `/api` and `/runtime-config.js` to the BFF, so the browser
-talks only to the app origin (same topology as production). Set `PLATFORM_API_URL` (consumed by
-`make bff-run`) if the Platform API is not on `https://localhost:9243`.
+talks only to the app origin (same topology as production). Set `PLATFORM_API_URL` if the
+Platform API is not on `https://localhost:9243` — `make bff-run` forwards it to the BFF as
+`APIP_AIW_PLATFORM_API_URL`, the variable the `[platform_api] url` token names, so the two
+names are the same setting.
 
 Ensure all three services are running before accessing the application.
 
