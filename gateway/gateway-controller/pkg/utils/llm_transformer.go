@@ -184,18 +184,27 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			if err != nil {
 				return nil, fmt.Errorf("failed to get context for additional provider '%s': %w", ap.Id, err)
 			}
+
 			if addProviderConfig, ok := addCfg.SourceConfiguration.(api.LLMProviderConfiguration); ok {
 				additionalValuePrefixByID[ap.Id] = apiKeyAuthValuePrefix(addProviderConfig.Spec.GlobalPolicies)
 			}
-			addURL := fmt.Sprintf("%s://%s:%d%s",
-				constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort, addCtx)
+
+			// Named upstream definition URLs are host-only. Keep the provider context
+			// in basePath so dynamic provider routing does not drop it and send the
+			// loopback request to the proxy listener root.
+			addURL := fmt.Sprintf("%s://%s:%d",
+				constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort)
 			defs = append(defs, api.UpstreamDefinition{
+
 				Name: name,
 				Upstreams: []struct {
 					Url    string `json:"url" yaml:"url"`
 					Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 				}{{Url: addURL}},
 			})
+			if addCtx != "" && addCtx != constants.BASE_PATH {
+				defs[len(defs)-1].BasePath = &addCtx
+			}
 		}
 		spec.UpstreamDefinitions = &defs
 	}

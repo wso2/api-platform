@@ -1,0 +1,54 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+# OpenAI -> AWS Bedrock LLM Proxy (single-provider)
+#
+# Exposes an OpenAI-shaped /chat/completions endpoint that the
+# `openai-to-bedrock-transformer` policy translates into Bedrock's Converse API format
+# (path /model/{modelId}/converse[-stream], body rewrite) and forwards to the
+# existing `bedrock-provider` upstream. For streaming requests the policy
+# decodes Bedrock's binary Amazon event-stream and re-emits OpenAI SSE, so
+# OpenAI clients get `data: {...}` chunks terminated by `data: [DONE]`.
+#
+# Single-provider mode: there is no router in front of the policy, so nothing
+# sets metadata["selected_provider"] and the translator runs on every request.
+#
+# The provider must already be deployed (see bedrock-provider.yaml) with its
+# Bearer key on upstream.auth (the policy does NOT inject the Bedrock key).
+# The provider example's api-key-auth policy expects the proxy to send the
+# issued provider loopback key in X-API-Key.
+# --------------------------------------------------------------------
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProxy
+metadata:
+  name: openai-to-bedrock
+spec:
+  displayName: OpenAI to Bedrock Proxy
+  version: v1.0
+  context: /openai-bedrock
+  provider:
+    id: bedrock-provider
+    auth:
+      type: api-key
+      header: X-API-Key
+      value: REPLACE_WITH_BEDROCK_PROVIDER_LOOPBACK_KEY
+  policies:
+    - name: openai-to-bedrock-transformer
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            # Bedrock puts the model id in the URL path; the translator builds
+            # /model/<model>/converse[-stream] from this param. Use an inference
+            # profile id your key can invoke (e.g. us.* / eu.*).
+            model: us.amazon.nova-lite-v1:0
