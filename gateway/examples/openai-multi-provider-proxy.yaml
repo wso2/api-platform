@@ -89,6 +89,16 @@ spec:
         params:
           model: gemini-2.5-flash
           apiVersion: v1beta
+    - id: bedrock-provider
+      auth:
+        type: api-key
+        header: X-API-Key
+        value: REPLACE_WITH_BEDROCK_PROVIDER_LOOPBACK_KEY
+      transformer:
+        type: openai-to-bedrock-transformer
+        version: v1
+        params:
+          model: us.amazon.nova-lite-v1:0
   policies:
     - name: api-key-auth
       version: v1
@@ -117,6 +127,8 @@ spec:
                 provider: mistral-provider
               - headerValue: gemini
                 provider: gemini-provider
+              - headerValue: bedrock
+                provider: bedrock-provider
 
     # - name: token-based-ratelimit
     #   version: v1
