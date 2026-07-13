@@ -387,6 +387,60 @@ role_claim_name         = "roles"
 	}
 }
 
+// A configured max_me_response_bytes is read as written.
+func TestLoad_MaxMeResponseBytes_ConfigValue(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[platform_api]
+url = "https://platform-api:9243"
+max_me_response_bytes = 2097152
+`)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.PlatformAPI.MaxMeResponseBytes != 2097152 {
+		t.Errorf("MaxMeResponseBytes = %d, want the config.toml value 2097152", cfg.PlatformAPI.MaxMeResponseBytes)
+	}
+}
+
+// When the key is absent the safe default applies.
+func TestLoad_MaxMeResponseBytes_DefaultsWhenUnset(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[platform_api]
+url = "https://platform-api:9243"
+`)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.PlatformAPI.MaxMeResponseBytes != 1<<20 {
+		t.Errorf("MaxMeResponseBytes = %d, want the 1 MiB default", cfg.PlatformAPI.MaxMeResponseBytes)
+	}
+}
+
+// Unlike a boolean or duration, a malformed or non-positive size ceiling must not
+// fail startup — it degrades to the safe default so a bad value cannot block the
+// service from coming up.
+func TestLoad_MaxMeResponseBytes_InvalidFallsBackToDefault(t *testing.T) {
+	for _, raw := range []string{`"nonsense"`, "0", "-5"} {
+		cfgPath := writeConfig(t, `
+[platform_api]
+url = "https://platform-api:9243"
+max_me_response_bytes = `+raw+`
+`)
+
+		cfg, err := Load(cfgPath)
+		if err != nil {
+			t.Fatalf("Load() with max_me_response_bytes = %s error = %v — a bad size ceiling must not fail startup", raw, err)
+		}
+		if cfg.PlatformAPI.MaxMeResponseBytes != 1<<20 {
+			t.Errorf("max_me_response_bytes = %s: MaxMeResponseBytes = %d, want the 1 MiB default", raw, cfg.PlatformAPI.MaxMeResponseBytes)
+		}
+	}
+}
+
 // A malformed boolean must fail startup rather than fall back to the default.
 func TestLoad_InvalidBool_Errors(t *testing.T) {
 	cfgPath := writeConfig(t, `

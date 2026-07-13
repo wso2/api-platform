@@ -74,6 +74,28 @@ func TestEnrichPermissions_ScopedTokenSkipsLookup(t *testing.T) {
 	}
 }
 
+// The configured limit caps how much of the /me response is read. A too-small
+// ceiling truncates the JSON so the decode fails, which — like any lookup failure —
+// leaves the user with no scopes rather than pulling an oversized body into memory.
+func TestEnrichPermissions_HonorsConfiguredResponseLimit(t *testing.T) {
+	platform, _ := fakePlatformAPI(t, map[string]struct {
+		status int
+		body   string
+	}{
+		"GET " + portalMePath: {http.StatusOK, meOK},
+	})
+	s, _ := buildTestServer(t, platform.URL, "jwt-abc")
+	// A handful of bytes cannot hold the full identity record, so the decode fails.
+	s.cfg.PlatformAPI.MaxMeResponseBytes = 4
+
+	u := session.User{Name: "alice"}
+	s.enrichPermissions(context.Background(), "jwt-abc", &u)
+
+	if len(u.Scopes) != 0 {
+		t.Errorf("Scopes = %v, want none when the response exceeds the configured read limit", u.Scopes)
+	}
+}
+
 // A failed lookup must leave the user with no scopes: the app hides privileged
 // controls rather than offering actions the Platform API would then reject.
 func TestEnrichPermissions_LookupFailureLeavesNoScopes(t *testing.T) {
