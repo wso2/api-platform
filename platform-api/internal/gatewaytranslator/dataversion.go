@@ -56,20 +56,16 @@ func TargetGatewayDataVersion(gatewayTargetVersion Version) GatewayDataVersion {
 
 // GatewayDataVersionForGateway resolves the gateway data version a target
 // gateway accepts from its raw reported version string (model.Gateway.Version).
-//
-// An empty/blank version is treated as the LATEST (v1): down-conversion is the
-// lossy operation, so we only down-convert when a gateway POSITIVELY reports a
-// version older than MinGatewayV1Version. A gateway may legitimately be
-// registered without a version (its reported semver is not persisted onto the
-// record), and mis-down-converting such a current gateway to v1alpha1 produces
-// an artifact it will not route. Assuming latest for an unknown version matches
-// the pre-translation behaviour (REST/MCP/WebSub always shipped v1) and keeps
-// the down-convert path scoped to gateways that explicitly report < 1.2.0.
+// Down-conversion is lossy, so it applies only when the gateway positively
+// reports a semver below MinGatewayV1Version; a blank or non-semver version
+// (unregistered, or dev/e2e build tags like "it-e2e") is assumed to be a
+// current build and resolves to latest (v1).
 func GatewayDataVersionForGateway(rawVersion string) GatewayDataVersion {
-	if strings.TrimSpace(rawVersion) == "" {
+	v, ok := parseVersion(rawVersion)
+	if !ok {
 		return GatewayDataVersionV1
 	}
-	return TargetGatewayDataVersion(ParseVersion(rawVersion))
+	return TargetGatewayDataVersion(v)
 }
 
 // PlatformDataVersion is the shape platform-api stored an entity as, recorded

@@ -33,10 +33,26 @@ type Version struct {
 // ParseVersion parses a gateway version string into a Version. Pre-release
 // suffixes (e.g. "-SNAPSHOT", "-RC1") and a leading "v" are stripped before
 // parsing. An empty or unparseable string returns Version{1, 0, 0}.
+//
+// Callers that must distinguish "genuinely old" from "not a semver at all"
+// (e.g. dev/e2e builds versioned "it-e2e") should use parseVersion directly —
+// see GatewayDataVersionForGateway.
 func ParseVersion(s string) Version {
+	v, ok := parseVersion(s)
+	if !ok {
+		return Version{1, 0, 0} // blank/unparseable → treat as oldest known
+	}
+	return v
+}
+
+// parseVersion parses a gateway version string into a Version, reporting
+// whether the string carried a parseable semver. Pre-release suffixes and a
+// leading "v" are stripped before parsing. Blank or unparseable strings return
+// ok=false.
+func parseVersion(s string) (Version, bool) {
 	v := strings.TrimSpace(s)
 	if v == "" {
-		return Version{1, 0, 0}
+		return Version{}, false
 	}
 	// Strip pre-release suffix
 	if i := strings.IndexByte(v, '-'); i >= 0 {
@@ -52,9 +68,9 @@ func ParseVersion(s string) Version {
 	minor, err2 := strconv.Atoi(parts[1])
 	patch, err3 := strconv.Atoi(parts[2])
 	if err1 != nil || err2 != nil || err3 != nil {
-		return Version{1, 0, 0} // unparseable → treat as oldest known
+		return Version{}, false
 	}
-	return Version{major, minor, patch}
+	return Version{major, minor, patch}, true
 }
 
 // AtLeast reports whether v is greater than or equal to o.

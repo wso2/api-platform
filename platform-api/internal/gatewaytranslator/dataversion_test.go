@@ -60,12 +60,18 @@ func TestGatewayDataVersionForGateway(t *testing.T) {
 		version string
 		want    GatewayDataVersion
 	}{
-		// Empty/blank/unreported version must NOT down-convert: an unversioned
-		// gateway is assumed to be latest (v1). This is the regression guard for
-		// the e2e failure where the gateway registered without a version and every
-		// REST/MCP/WebSub artifact was wrongly shipped as v1alpha1 (→ no route → 404).
+		// Blank or unparseable versions must NOT down-convert: such a gateway is
+		// assumed to be latest (v1). This is the regression guard for the e2e
+		// failures where (a) the gateway registered without a version and (b) the
+		// e2e gateway build reported the non-semver "it-e2e" (persisted onto the
+		// record by ReceiveGatewayManifest) — in both cases every REST/MCP/WebSub
+		// artifact was wrongly shipped as v1alpha1 (→ no route → 404).
 		{"empty is latest v1", "", GatewayDataVersionV1},
 		{"blank is latest v1", "   ", GatewayDataVersionV1},
+		{"non-semver e2e build tag is latest v1", "it-e2e", GatewayDataVersionV1},
+		{"unparseable is latest v1", "not-a-version", GatewayDataVersionV1},
+		{"snapshot of current is v1", "1.2.0-M2-SNAPSHOT", GatewayDataVersionV1},
+		{"snapshot of old is v1alpha1", "1.1.0-SNAPSHOT", GatewayDataVersionV1Alpha1},
 		// A gateway that positively reports an old version still down-converts.
 		{"reported 1.1 is v1alpha1", "1.1", GatewayDataVersionV1Alpha1},
 		{"reported 1.1.9 is v1alpha1", "1.1.9", GatewayDataVersionV1Alpha1},
