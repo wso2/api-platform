@@ -176,11 +176,11 @@ This produces two images:
 
 Update the image references in `docker-compose.yaml` to use your custom builds.
 
-See the [API Platform CLI documentation](https://apim.docs.wso2.com/en/latest/api-platform/gateway/) for full build options.
+See the [WSO2 API Platform documentation](https://wso2.com/api-platform/docs/) (Tools section) for CLI usage and full build options.
 
 ## License
 
-Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com)
+Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com)
 
 Licensed under the Apache License, Version 2.0. You may obtain a copy of the License at
 http://www.apache.org/licenses/LICENSE-2.0
