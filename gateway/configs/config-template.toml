@@ -19,6 +19,15 @@ enabled = true
 port = 9092
 allowed_ips = ["*"]
 
+[controller.admin_server.pprof]
+# Go runtime profiling (net/http/pprof) served on the admin server, off by default.
+# When profiling, also restrict admin_server.allowed_ips or reach it via port-forward.
+enabled = false
+# runtime.SetBlockProfileRate arg (0 = block profiling off; e.g. 10000 samples ~1/10µs blocking)
+block_profile_rate = 0
+# runtime.SetMutexProfileFraction arg (0 = mutex profiling off; e.g. 5 samples 1/5 contentions)
+mutex_profile_fraction = 0
+
 [controller.policy_server]
 # Policy xDS gRPC port for policy distribution
 port = 18001
@@ -249,6 +258,15 @@ extproc_port = 9001
 enabled = true
 port = 9002
 allowed_ips = ["*", "127.0.0.1"]
+
+[policy_engine.admin.pprof]
+# Go runtime profiling (net/http/pprof) served on the admin server, off by default.
+# When profiling, also restrict admin.allowed_ips or reach it via port-forward.
+enabled = false
+# runtime.SetBlockProfileRate arg (0 = block profiling off; e.g. 10000 samples ~1/10µs blocking)
+block_profile_rate = 0
+# runtime.SetMutexProfileFraction arg (0 = mutex profiling off; e.g. 5 samples 1/5 contentions)
+mutex_profile_fraction = 0
 
 [policy_engine.config_mode]
 mode = "xds"

@@ -252,6 +252,23 @@ type AdminConfig struct {
 	// AllowedIPs is a list of IP addresses allowed to access the admin API
 	// Defaults to localhost only (127.0.0.1 and ::1)
 	AllowedIPs []string `koanf:"allowed_ips"`
+
+	// Pprof gates the Go runtime profiling endpoints served on this admin server.
+	Pprof PprofConfig `koanf:"pprof"`
+}
+
+// PprofConfig gates the Go runtime profiling endpoints (net/http/pprof) served on
+// the admin HTTP server. Disabled by default; when disabled the /debug/pprof/*
+// routes are not registered at all (they return 404, not 403).
+type PprofConfig struct {
+	// Enabled registers the /debug/pprof/* handlers on the admin server.
+	Enabled bool `koanf:"enabled"`
+
+	// BlockProfileRate is passed to runtime.SetBlockProfileRate (0 = block profiling off).
+	BlockProfileRate int `koanf:"block_profile_rate"`
+
+	// MutexProfileFraction is passed to runtime.SetMutexProfileFraction (0 = mutex profiling off).
+	MutexProfileFraction int `koanf:"mutex_profile_fraction"`
 }
 
 // ConfigModeConfig specifies how policy chains are configured
@@ -452,6 +469,11 @@ func defaultConfig() *Config {
 				Enabled:    true,
 				Port:       9002,
 				AllowedIPs: []string{"*"},
+				Pprof: PprofConfig{
+					Enabled:              false,
+					BlockProfileRate:     0,
+					MutexProfileFraction: 0,
+				},
 			},
 			Metrics: MetricsConfig{
 				Enabled: false,
