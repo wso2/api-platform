@@ -88,6 +88,11 @@ type PlatformAPIConfig struct {
 	TLSSkipVerify bool
 	// LoginPath is the file-based login path on the Platform API.
 	LoginPath string
+	// MaxMeResponseBytes caps how much of the upstream GET /me response the BFF
+	// will read into memory. The payload is a small identity record; anything
+	// larger is an upstream fault, not something to buffer. A non-positive or
+	// malformed configured value falls back to the safe default.
+	MaxMeResponseBytes int64
 }
 
 // TLSConfig controls whether the BFF listener serves HTTPS directly or sits
@@ -264,10 +269,11 @@ func Load(path string) (*Config, error) {
 			KeyFile:  s.get("tls.key_file", "/etc/ai-workspace/tls/tls.key"),
 		},
 		PlatformAPI: PlatformAPIConfig{
-			URL:           strings.TrimRight(s.get("platform_api.url", ""), "/"),
-			CAFile:        s.get("platform_api.ca_file", ""),
-			TLSSkipVerify: platformTLSSkipVerify,
-			LoginPath:     s.get("platform_api.login_path", "/api/portal/v0.9/auth/login"),
+			URL:                strings.TrimRight(s.get("platform_api.url", ""), "/"),
+			CAFile:             s.get("platform_api.ca_file", ""),
+			TLSSkipVerify:      platformTLSSkipVerify,
+			LoginPath:          s.get("platform_api.login_path", "/api/portal/v0.9/auth/login"),
+			MaxMeResponseBytes: s.getint64("platform_api.max_me_response_bytes", 1<<20), // 1 MiB
 		},
 		ProxyPrefix: strings.TrimRight(s.get("proxy_prefix", "/api/proxy"), "/"),
 		Session: SessionConfig{

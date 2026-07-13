@@ -70,9 +70,12 @@ func TestShippedConfig_QuickstartLoadsWithNoEnv(t *testing.T) {
 // config.toml would silently strip the override and leave the BFF on :5380 serving
 // /app. This test pins the Makefile's contract with the file.
 func TestShippedConfig_MakeBffRunOverrides(t *testing.T) {
-	// Exactly the variables the bff-run target sets.
+	// Exactly the variables the bff-run target sets. TLS_SKIP_VERIFY is set to
+	// false here — the opposite of the shipped file's default (true) — so the
+	// assertion below proves the {{ env }} token actually overrides the default
+	// rather than coincidentally matching it.
 	t.Setenv("APIP_AIW_PLATFORM_API_URL", "https://localhost:9243")
-	t.Setenv("APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY", "true")
+	t.Setenv("APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY", "false")
 	t.Setenv("APIP_AIW_LISTEN_ADDR", ":8081")
 	t.Setenv("APIP_AIW_STATIC_DIR", "../dist")
 	t.Setenv("APIP_AIW_LOG_LEVEL", "debug")
@@ -92,6 +95,12 @@ func TestShippedConfig_MakeBffRunOverrides(t *testing.T) {
 			t.Errorf("%s = %q, want %q — `make bff-run` sets this variable, so configs/config.toml must carry the matching {{ env }} token",
 				tc.name, tc.got, tc.want)
 		}
+	}
+
+	// TLSSkipVerify is a bool, so it is checked outside the string loop. The env
+	// override to false must win over the file's default of true.
+	if cfg.PlatformAPI.TLSSkipVerify {
+		t.Error("PlatformAPI.TLSSkipVerify = true, want false — APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY=false must override the shipped default via its {{ env }} token")
 	}
 }
 

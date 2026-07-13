@@ -156,6 +156,22 @@ func (s settings) getbool(key string, def bool) (bool, error) {
 	return b, nil
 }
 
+// getint64 parses key as an int64 byte/count limit. Unlike getbool/getdur, an
+// unset, malformed, or non-positive value falls back to def rather than failing
+// startup — a size ceiling is a defensive bound, so a bad value should degrade to
+// the safe default instead of blocking the service from coming up.
+func (s settings) getint64(key string, def int64) int64 {
+	v, ok := s[key]
+	if !ok || v == "" {
+		return def
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+	if err != nil || n <= 0 {
+		return def
+	}
+	return n
+}
+
 // getdur parses key as a Go duration. A malformed value fails startup.
 func (s settings) getdur(key string, def time.Duration) (time.Duration, error) {
 	v, ok := s[key]

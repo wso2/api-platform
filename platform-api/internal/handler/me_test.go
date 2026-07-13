@@ -86,7 +86,7 @@ func TestGetMe_ScopeModeReportsScopeClaim(t *testing.T) {
 // Roles and scopes must serialize as [] rather than null so clients can index
 // into them without a nil check.
 func TestGetMe_EmptyPermissionsSerializeAsArrays(t *testing.T) {
-	r := httptest.NewRequest(http.MethodGet, "/api/portal/v0.9/me", nil)
+	r := middleware.WithUserID(httptest.NewRequest(http.MethodGet, "/api/portal/v0.9/me", nil), "u-1")
 	w := httptest.NewRecorder()
 
 	if err := NewMeHandler(middleware.ValidationModeRole, slog.Default()).GetMe(w, r); err != nil {

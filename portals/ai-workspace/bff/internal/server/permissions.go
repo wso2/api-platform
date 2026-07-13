@@ -33,10 +33,10 @@ import (
 // identity and effective permissions (portal-api.yaml, GET /me).
 const portalMePath = "/api/portal/v0.9/me"
 
-// maxMeResponseBytes caps how much of the /me response we will read. The payload
-// is a small identity record; anything larger is an upstream fault, not something
-// to pull into memory.
-const maxMeResponseBytes = 1 << 20 // 1 MiB
+// defaultMaxMeResponseBytes is the fallback cap on the /me response read when the
+// configured limit is unset or non-positive. The payload is a small identity
+// record; anything larger is an upstream fault, not something to buffer.
+const defaultMaxMeResponseBytes = 1 << 20 // 1 MiB
 
 // meResponse is the subset of GET /me the BFF consumes.
 type meResponse struct {
@@ -57,8 +57,14 @@ func (s *Server) fetchPermissions(ctx context.Context, jwt string) (*meResponse,
 		return nil, fmt.Errorf("platform api GET %s: status %d", portalMePath, resp.StatusCode)
 	}
 
+	// Cap how much of the /me response we read into memory. Fall back to the safe
+	// default whenever the configured limit is unset or non-positive.
+	maxBytes := s.cfg.PlatformAPI.MaxMeResponseBytes
+	if maxBytes <= 0 {
+		maxBytes = defaultMaxMeResponseBytes
+	}
 	var me meResponse
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxMeResponseBytes)).Decode(&me); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBytes)).Decode(&me); err != nil {
 		return nil, fmt.Errorf("platform api GET %s: decode: %w", portalMePath, err)
 	}
 	return &me, nil

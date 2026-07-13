@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 
 	"github.com/wso2/go-httpkit/httputil"
@@ -71,7 +72,15 @@ type meResponse struct {
 // GetMe returns the authenticated caller's identity, IDP roles, and the scopes
 // those roles (or the token's scope claim) grant.
 func (h *MeHandler) GetMe(w http.ResponseWriter, r *http.Request) error {
-	userID, _ := middleware.GetUserIDFromRequest(r)
+	// The route is authentication-required. If the validated token carries no
+	// resolvable user identity, fail closed rather than reporting an identity
+	// record with an empty userId.
+	userID, ok := middleware.GetUserIDFromRequest(r)
+	if !ok || userID == "" {
+		return apperror.Unauthorized.New().
+			WithLogMessage("user ID not found in token")
+	}
+
 	username, _ := middleware.GetUsernameFromRequest(r)
 	email, _ := middleware.GetEmailFromRequest(r)
 
