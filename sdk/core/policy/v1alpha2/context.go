@@ -17,6 +17,29 @@ type Body struct {
 	Present bool
 }
 
+// DownstreamContext holds an immutable snapshot of data as received from the
+// downstream client, captured before any policy mutation is applied.
+//
+// Downstream is nil on older gateways that predate this field. Policies MUST
+// nil-check before use and fall back to legacy validation.
+//
+type DownstreamContext struct {
+	// Headers is the original request headers exactly as received from the
+	// downstream client, before any policy mutation.
+	Headers *Headers
+}
+
+// UpstreamContext holds an immutable snapshot of data as received from the
+// upstream backend, captured before any policy mutation is applied.
+//
+// Upstream is nil on older gateways that predate this field. Policies MUST
+// nil-check before use and fall back to legacy validation.
+type UpstreamContext struct {
+	// Headers is the original response headers exactly as received from the
+	// upstream backend, before any policy mutation. Read-only.
+	Headers *Headers
+}
+
 // SharedContext contains data shared across request and response phases
 type SharedContext struct {
 	// ProjectID is the project ID which the API is associated with
@@ -75,6 +98,10 @@ type RequestHeaderContext struct {
 	Authority string
 	Scheme    string
 	Vhost     string
+
+	// Downstream holds the immutable snapshot of the original client request
+	// headers, captured before any policy mutation. Nil on older gateways.
+	Downstream *DownstreamContext
 }
 
 // RequestContext is passed to RequestPolicy.OnRequestBody.
@@ -99,6 +126,10 @@ type RequestContext struct {
 	// used to address the actual upstream (e.g. for request signing) — use
 	// UpstreamInfo.URL instead.
 	UpstreamInfo *policyenginev1.UpstreamInfo
+
+	// Downstream holds the immutable snapshot of the original client request
+	// headers, captured before any policy mutation. Nil on older gateways.
+	Downstream *DownstreamContext
 }
 
 // ─── Response-phase contexts ─────────────────────────────────────────────────
@@ -119,6 +150,14 @@ type ResponseHeaderContext struct {
 
 	// Current response status code
 	ResponseStatus int
+
+	// Downstream holds the immutable snapshot of the original client request
+	// headers, captured before any policy mutation. Nil on older gateways.
+	Downstream *DownstreamContext
+
+	// Upstream holds the immutable snapshot of the original upstream response
+	// headers, captured before any policy mutation. Nil on older gateways.
+	Upstream *UpstreamContext
 }
 
 // ResponseContext is passed to ResponsePolicy.OnResponseBody.
@@ -143,6 +182,14 @@ type ResponseContext struct {
 
 	// Current response status code
 	ResponseStatus int
+
+	// Downstream holds the immutable snapshot of the original client request
+	// headers, captured before any policy mutation. Nil on older gateways.
+	Downstream *DownstreamContext
+
+	// Upstream holds the immutable snapshot of the original upstream response
+	// headers, captured before any policy mutation. Nil on older gateways.
+	Upstream *UpstreamContext
 }
 
 // ─── Streaming contexts ──────────────────────────────────────────────────────
@@ -180,6 +227,10 @@ type RequestStreamContext struct {
 	Authority string
 	Scheme    string
 	Vhost     string
+
+	// Downstream holds the immutable snapshot of the original client request
+	// headers, captured before any policy mutation. Nil on older gateways.
+	Downstream *DownstreamContext
 }
 
 // ResponseStreamContext is the per-chunk context passed to StreamingResponseBodyPolicy.
@@ -199,4 +250,12 @@ type ResponseStreamContext struct {
 
 	// Current response status code
 	ResponseStatus int
+
+	// Downstream holds the immutable snapshot of the original client request
+	// headers, captured before any policy mutation. Nil on older gateways.
+	Downstream *DownstreamContext
+
+	// Upstream holds the immutable snapshot of the original upstream response
+	// headers, captured before any policy mutation. Nil on older gateways.
+	Upstream *UpstreamContext
 }
