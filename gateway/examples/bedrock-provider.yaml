@@ -1,0 +1,73 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+# AWS Bedrock LLM Provider Configuration (native Converse API)
+#
+# Uses the built-in `awsbedrock` template and points to the region-specific
+# Bedrock runtime endpoint. AWS Bedrock now supports Bearer-token auth
+# (Amazon Bedrock API keys) in addition to the legacy SigV4 flow -- this
+# provider uses the Bearer key. Replace the placeholder with a real key and
+# set the URL to the region your key and model access live in.
+#
+# The model id is carried in the URL path (/model/{modelId}/converse), so the
+# awsbedrock template extracts request/response model via location: pathParam
+# (a RE2 capture group), for both /converse and /converse-stream.
+#
+# Auth: upstream.auth is the gateway -> Bedrock vendor auth. The header is
+# Authorization and the value is sent verbatim, so the "Bearer " prefix MUST
+# be included here (the portal auto-prepends it; raw YAML does not). Proxies in
+# front of this provider inherit this vendor auth automatically.
+# --------------------------------------------------------------------
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProvider
+metadata:
+  name: bedrock-provider
+spec:
+  displayName: AWS Bedrock Provider
+  version: v1.0
+  template: awsbedrock
+  context: /bedrock
+  upstream:
+    # Match the region your key/model access is in. For the no-AWS mock
+    # (bedrock-mock.py), use: http://host.docker.internal:9010
+    url: https://bedrock-runtime.us-east-1.amazonaws.com
+    auth:
+      type: api-key
+      header: Authorization
+      # Bedrock expects:  Authorization: Bearer <key>  -- sent verbatim, so the
+      # "Bearer " prefix MUST be included here. The mock ignores the value.
+      value: Bearer REPLACE_WITH_BEDROCK_API_KEY
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /model/{modelId}/converse
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /model/{modelId}/converse-stream
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /model/{modelId}/converse
+        methods: [POST]
+      - path: /model/{modelId}/converse-stream
+        methods: [POST]
+
+# The proxy in front of this provider authenticates over the internal loopback
+# route with an API key issued for this LlmProvider (see bedrock-testing.md,
+# "Issue a consumer key"). Set the issued value as the proxy's provider.auth.value.
