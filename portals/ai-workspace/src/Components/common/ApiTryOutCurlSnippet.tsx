@@ -204,8 +204,8 @@ export default function ApiTryOutCurlSnippet({
             Try it out
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            Use the <Box component="span" sx={{ fontWeight: 700 }}>Sample Curl</Box> command below to test your
-            provider endpoint with the generated API key.
+            Use the <Box component="span" sx={{ fontWeight: 700 }}>Sample Curl</Box> command below to test this
+            endpoint with the generated API key.
           </Typography>
         </Stack>
       </Stack>
