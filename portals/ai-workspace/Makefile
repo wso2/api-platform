@@ -49,16 +49,20 @@ run: ## Start AI Workspace dev server locally (installs deps if needed)
 bff-build: ## Build the BFF binary
 	cd $(BFF_DIR) && GOWORK=off CGO_ENABLED=0 go build -o ../target/ai-workspace-bff .
 
-# Config-override env vars carry the APIP_AIW_ prefix; the suffix is the config.toml
-# key (APIP_AIW_LISTEN_ADDR -> listen_addr). No config.toml is mounted locally, so
-# these few overrides are the whole configuration.
+# Runs the deployed config — configs/config.toml, the same file the container mounts —
+# with the container-shaped defaults pointed at this machine. Each variable below is
+# read by that key's '{{ env "APIP_AIW_..." }}' token in the file; the token is the only
+# thing that lets an environment variable reach a key, so a key absent from the file
+# cannot be set here. To test against an IDP, add APIP_AIW_AUTH_MODE=oidc and the
+# APIP_AIW_OIDC_* variables the [oidc] tokens name — see README.md.
 bff-run: ## Run the BFF locally (proxies to PLATFORM_API_URL; pair with `make run`)
 	cd $(BFF_DIR) && \
 		APIP_AIW_PLATFORM_API_URL=$(PLATFORM_API_URL) \
 		APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY=true \
 		APIP_AIW_LISTEN_ADDR=$(BFF_DEV_ADDR) \
 		APIP_AIW_STATIC_DIR=../dist \
-		go run .
+		APIP_AIW_LOG_LEVEL=debug \
+		go run . -config ../configs/config.toml
 
 bff-test: ## Run BFF unit tests
 	cd $(BFF_DIR) && GOWORK=off go test ./...

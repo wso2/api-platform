@@ -92,8 +92,8 @@ export default defineConfig({
     proxy: {
       // In dev, run the BFF locally (default https://localhost:8081) and route
       // all same-origin BFF traffic to it, mirroring the production topology.
-      //   cd bff && APIP_AIW_PLATFORM_API_URL=https://localhost:9243 \
-      //     APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY=true APIP_AIW_LISTEN_ADDR=:8081 go run .
+      // `make bff-run` starts it against configs/config.toml, whose {{ env }} tokens read
+      // the APIP_AIW_* variables (PLATFORM_API_URL, LISTEN_ADDR, ...).
       '/api': {
         target: process.env.BFF_DEV_TARGET || 'https://localhost:8081',
         changeOrigin: true,

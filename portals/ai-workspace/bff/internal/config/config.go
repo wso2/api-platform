@@ -14,12 +14,13 @@
  * under the License.
  */
 
-// Package config loads BFF configuration from a flat config.toml and APIP_AIW_*
-// environment variables (env wins), resolving {{ env }} / {{ file }} interpolation
-// tokens through the shared configinterpolate library. Browser-safe keys are
-// surfaced to the SPA as APIP_AIW_* runtime config. The BFF never validates tokens, so
-// there are no signing keys here — only the IDP client credentials needed to
-// perform the OAuth2 code exchange.
+// Package config loads BFF configuration from config.toml, resolving its
+// {{ env }} / {{ file }} interpolation tokens through the shared configinterpolate
+// library. The file is the only source: a key takes its value from the environment or
+// a mounted secret file exactly when its token says so. Browser-safe keys are surfaced
+// to the SPA as APIP_AIW_* runtime config. The BFF never validates tokens, so there are
+// no signing keys here — only the IDP client credentials needed to perform the OAuth2
+// code exchange.
 package config
 
 import (
@@ -94,7 +95,7 @@ type PlatformAPIConfig struct {
 type TLSConfig struct {
 	// TerminateTLS makes the BFF serve HTTPS on its own listener: it presents the
 	// certificate and decrypts inbound TLS itself. Defaults to true (config key
-	// tls_enabled). Set to false only when a trusted upstream (ingress,
+	// [tls] enabled). Set to false only when a trusted upstream (ingress,
 	// service-mesh sidecar) terminates TLS and forwards plain HTTP to the BFF; no
 	// certificate is then read, generated, or required.
 	TerminateTLS bool
@@ -149,7 +150,7 @@ type ClaimMappingConfig struct {
 // defaultOIDCScopes is the full set of scopes the BFF requests in OIDC mode so a
 // logged-in user's access token carries every ap:* permission the Platform API
 // authorizes against. The IDP must still have these scopes registered and granted
-// to the user, otherwise it drops the ungranted ones. Override with the oidc_scope
+// to the user, otherwise it drops the ungranted ones. Override with the [oidc] scope
 // config key to request a narrower set.
 //
 // offline_access is required: without it most IDPs (Asgardeo, WSO2 IS, Okta,
@@ -193,24 +194,20 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage" +
 	" ap:git:read"
 
-// configFileEnv names the environment variable that points at the config file.
-// It is read before the config file exists, so it cannot itself be a config key.
-const configFileEnv = "APIP_AIW_CONFIG_FILE"
+// DefaultConfigFile is where the container mounts config.toml. It is the path used
+// unless -config names another one.
+const DefaultConfigFile = "/etc/ai-workspace/config.toml"
 
-// defaultConfigFile is where the container mounts config.toml.
-const defaultConfigFile = "/etc/ai-workspace/config.toml"
-
-// Load resolves configuration from config.toml (if present) and APIP_AIW_*
-// environment variables, which always win over the config file. Interpolation
-// tokens ({{ env }} / {{ file }}) in either source are resolved first, so any key
-// — the OIDC client secret in particular — can be pulled from an environment
-// variable or a mounted secret file instead of being written in the clear.
-func Load() (*Config, error) {
-	tomlPath := defaultConfigFile
-	if v := os.Getenv(configFileEnv); v != "" {
-		tomlPath = v
+// Load resolves configuration from the config.toml at path, or from the mounted
+// DefaultConfigFile when path is empty. The file's {{ env }} / {{ file }} tokens are
+// expanded first, so any key — the OIDC client secret in particular — can be pulled
+// from an environment variable or a mounted secret file instead of being written in
+// the clear. A key not present in the file falls back to the default below.
+func Load(path string) (*Config, error) {
+	if path == "" {
+		path = DefaultConfigFile
 	}
-	s, err := loadSettings(tomlPath)
+	s, err := loadSettings(path)
 	if err != nil {
 		return nil, err
 	}
@@ -219,31 +216,31 @@ func Load() (*Config, error) {
 
 	// Parse typed values up front so a malformed one fails startup instead of
 	// being silently replaced with the default.
-	selfSigned, err := s.getbool("tls_self_signed", true)
+	selfSigned, err := s.getbool("tls.self_signed", true)
 	if err != nil {
 		return nil, err
 	}
-	tlsEnabled, err := s.getbool("tls_enabled", true)
+	tlsEnabled, err := s.getbool("tls.enabled", true)
 	if err != nil {
 		return nil, err
 	}
-	platformTLSSkipVerify, err := s.getbool("platform_api_tls_skip_verify", false)
+	platformTLSSkipVerify, err := s.getbool("platform_api.tls_skip_verify", false)
 	if err != nil {
 		return nil, err
 	}
-	idleTimeout, err := s.getdur("session_idle_timeout", 30*time.Minute)
+	idleTimeout, err := s.getdur("session.idle_timeout", 30*time.Minute)
 	if err != nil {
 		return nil, err
 	}
-	absoluteTTL, err := s.getdur("session_absolute_ttl", 8*time.Hour)
+	absoluteTTL, err := s.getdur("session.absolute_ttl", 8*time.Hour)
 	if err != nil {
 		return nil, err
 	}
-	cookieSecure, err := s.getbool("cookie_secure", true)
+	cookieSecure, err := s.getbool("cookie.secure", true)
 	if err != nil {
 		return nil, err
 	}
-	oidcEnabled, err := s.getbool("oidc_enabled", false)
+	oidcEnabled, err := s.getbool("oidc.enabled", false)
 	if err != nil {
 		return nil, err
 	}
@@ -258,84 +255,89 @@ func Load() (*Config, error) {
 			SelfSigned:   selfSigned,
 			// Convention matches the container's mount path. buildTLS falls back to
 			// a self-signed cert when these files are absent.
-			CertFile: s.get("tls_cert_file", "/etc/ai-workspace/tls/tls.crt"),
-			KeyFile:  s.get("tls_key_file", "/etc/ai-workspace/tls/tls.key"),
+			CertFile: s.get("tls.cert_file", "/etc/ai-workspace/tls/tls.crt"),
+			KeyFile:  s.get("tls.key_file", "/etc/ai-workspace/tls/tls.key"),
 		},
 		PlatformAPI: PlatformAPIConfig{
-			URL:           strings.TrimRight(s.get("platform_api_url", ""), "/"),
-			CAFile:        s.get("platform_api_ca_file", ""),
+			URL:           strings.TrimRight(s.get("platform_api.url", ""), "/"),
+			CAFile:        s.get("platform_api.ca_file", ""),
 			TLSSkipVerify: platformTLSSkipVerify,
-			LoginPath:     s.get("platform_login_path", "/api/portal/v0.9/auth/login"),
+			LoginPath:     s.get("platform_api.login_path", "/api/portal/v0.9/auth/login"),
 		},
 		ProxyPrefix: strings.TrimRight(s.get("proxy_prefix", "/api/proxy"), "/"),
 		Session: SessionConfig{
-			Store:       s.get("session_store", "memory"),
+			Store:       s.get("session.store", "memory"),
 			IdleTimeout: idleTimeout,
 			AbsoluteTTL: absoluteTTL,
 		},
 		Cookie: CookieConfig{
-			Name:     s.get("cookie_name", "_ai_workspace_session"),
+			Name:     s.get("cookie.name", "_ai_workspace_session"),
 			Secure:   cookieSecure,
-			SameSite: strings.ToLower(s.get("cookie_samesite", "lax")),
+			SameSite: strings.ToLower(s.get("cookie.samesite", "lax")),
 		},
 		CSRFHeader: s.get("csrf_header", "X-Requested-By"),
 		AuthMode:   authMode,
 		DemoMode:   demoMode(),
 		OIDC: OIDCConfig{
 			Enabled:  authMode == "oidc" || oidcEnabled,
-			Issuer:   strings.TrimRight(s.get("oidc_authority", ""), "/"),
-			ClientID: s.get("oidc_client_id", ""),
-			// Never write the secret itself into config.toml: set it via the
-			// APIP_AIW_OIDC_CLIENT_SECRET env var, or — preferably — read it from a
-			// mounted file with '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'.
-			ClientSecret: s.get("oidc_client_secret", ""),
-			RedirectURL:  s.get("oidc_redirect_url", ""),
+			Issuer:   strings.TrimRight(s.get("oidc.authority", ""), "/"),
+			ClientID: s.get("oidc.client_id", ""),
+			// Never write the secret as a literal. Point the key at an environment
+			// variable with '{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}', or — preferably —
+			// at a mounted file with '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'.
+			ClientSecret: s.get("oidc.client_secret", ""),
+			RedirectURL:  s.get("oidc.redirect_url", ""),
 			// Empty by default: LogoutURL() forwards this as post_logout_redirect_uri,
 			// which IDPs require to be an absolute, pre-registered URL. A relative
 			// default would produce an invalid logout request, so leave it unset
 			// unless an absolute URL is explicitly configured.
-			PostLogoutRedirectURL: s.get("oidc_post_logout_redirect_url", ""),
-			Scopes:                s.get("oidc_scope", defaultOIDCScopes),
-			// The same claim-name keys drive both the BFF's session mapping and the
-			// SPA's runtime config, so one config entry keeps both layers in sync.
+			PostLogoutRedirectURL: s.get("oidc.post_logout_redirect_url", ""),
+			Scopes:                s.get("oidc.scope", defaultOIDCScopes),
+			// [oidc.claim_mappings] deliberately mirrors the Platform API's
+			// [auth.idp.claim_mappings], key for key: both describe the same IDP token,
+			// and they must agree, so they are named the same on both sides.
+			//
+			// The same keys drive the BFF's session mapping and the SPA's runtime
+			// config, so one config entry keeps both layers in sync.
 			Claims: ClaimMappingConfig{
-				Username:  s.get("oidc_username_claim", "username"),
-				Email:     s.get("oidc_email_claim", "email"),
-				Role:      s.get("oidc_role_claim", "platform_role"),
-				Scope:     s.get("oidc_scope_claim", "scope"),
-				OrgID:     s.get("oidc_org_id_claim", "org_id"),
-				OrgName:   s.get("oidc_org_name_claim", "org_name"),
-				OrgHandle: s.get("oidc_org_handle_claim", "org_handle"),
+				Username:  s.get("oidc.claim_mappings.username_claim_name", "username"),
+				Email:     s.get("oidc.claim_mappings.email_claim_name", "email"),
+				Role:      s.get("oidc.claim_mappings.role_claim_name", "platform_role"),
+				Scope:     s.get("oidc.claim_mappings.scope_claim_name", "scope"),
+				OrgID:     s.get("oidc.claim_mappings.organization_claim_name", "org_id"),
+				OrgName:   s.get("oidc.claim_mappings.org_name_claim_name", "org_name"),
+				OrgHandle: s.get("oidc.claim_mappings.org_handle_claim_name", "org_handle"),
 			},
 		},
 	}
 
 	if cfg.PlatformAPI.URL == "" {
-		return nil, fmt.Errorf("platform_api_url is required (set it in config.toml or via %sPLATFORM_API_URL)", EnvPrefix)
+		return nil, fmt.Errorf("[platform_api] url is required: set it in config.toml, "+
+			"either as a literal or as '{{ env \"%sPLATFORM_API_URL\" }}'", EnvPrefix)
 	}
 	// The scheme is the single source of truth for the outbound TLS decision, so a
 	// missing/typo'd scheme must fail at startup rather than surface as an opaque
 	// dial error on the first proxied request.
 	u, err := url.Parse(cfg.PlatformAPI.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, fmt.Errorf("platform_api_url must be an absolute http:// or https:// URL, got %q", cfg.PlatformAPI.URL)
+		return nil, fmt.Errorf("[platform_api] url must be an absolute http:// or https:// URL, got %q", cfg.PlatformAPI.URL)
 	}
 	// Trust knobs only apply to an https upstream; flag them on a plain-http URL so a
 	// mistaken belief that TLS is in effect is caught early.
 	if u.Scheme == "http" {
 		if cfg.PlatformAPI.CAFile != "" || cfg.PlatformAPI.TLSSkipVerify {
-			return nil, fmt.Errorf("platform_api_ca_file / platform_api_tls_skip_verify are set but platform_api_url is http:// (no TLS on the upstream hop)")
+			return nil, fmt.Errorf("[platform_api] ca_file / tls_skip_verify are set but [platform_api] url is http:// (no TLS on the upstream hop)")
 		}
 	}
 	// Skipping verification outside demo mode is a security downgrade; require an
 	// operator to reach it deliberately rather than inheriting it silently.
 	if u.Scheme == "https" && cfg.PlatformAPI.TLSSkipVerify && !cfg.DemoMode {
-		return nil, fmt.Errorf("platform_api_tls_skip_verify = true is not allowed while APIP_DEMO_MODE=false; " +
-			"trust the upstream certificate with platform_api_ca_file instead")
+		return nil, fmt.Errorf("[platform_api] tls_skip_verify = true is not allowed while APIP_DEMO_MODE=false; " +
+			"trust the upstream certificate with [platform_api] ca_file instead")
 	}
 	if cfg.OIDC.Enabled {
 		if cfg.OIDC.Issuer == "" || cfg.OIDC.ClientID == "" || cfg.OIDC.ClientSecret == "" || cfg.OIDC.RedirectURL == "" {
-			return nil, fmt.Errorf("OIDC mode requires oidc_authority, oidc_client_id, oidc_client_secret and oidc_redirect_url")
+			return nil, fmt.Errorf("OIDC mode requires [oidc] authority, client_id, client_secret and redirect_url")
 		}
 	}
 
@@ -343,7 +345,7 @@ func Load() (*Config, error) {
 	// Platform API's built-in admin/admin credentials and is dev-only.
 	if !cfg.DemoMode && !cfg.OIDC.Enabled {
 		return nil, fmt.Errorf("APIP_DEMO_MODE=false does not allow basic (file-based) auth; " +
-			"configure OIDC (set auth_mode = \"oidc\" and oidc_authority, oidc_client_id, oidc_client_secret, oidc_redirect_url)")
+			"configure OIDC (set auth_mode = \"oidc\" and [oidc] authority, client_id, client_secret, redirect_url)")
 	}
 
 	cfg.RuntimeConfig = buildRuntimeConfig(cfg, s)

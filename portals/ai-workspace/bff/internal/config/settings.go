@@ -17,7 +17,6 @@
 package config
 
 import (
-	"bufio"
 	"fmt"
 	"log/slog"
 	"os"
@@ -25,18 +24,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pelletier/go-toml/v2"
+
 	"github.com/wso2/api-platform/common/configinterpolate"
 )
 
-// EnvPrefix namespaces the environment variables that override configuration keys.
-// The prefix is stripped and the remainder lowercased to give the config key, e.g.
-// APIP_AIW_LOG_LEVEL -> log_level, APIP_AIW_PLATFORM_API_URL -> platform_api_url.
-// It mirrors the Platform API's APIP_CP_ and the Developer Portal's APIP_DP_.
+// EnvPrefix namespaces the AI Workspace's environment variables. It mirrors the
+// Platform API's APIP_CP_ and the Developer Portal's APIP_DP_.
 //
-// Two variables are deliberately unprefixed: APIP_DEMO_MODE (a standalone runtime
-// flag shared across the stack) and the shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST.
-// The bare names inside {{ env "NAME" }} tokens are also read unprefixed — the
-// token names an arbitrary environment variable, it is not a config key.
+// It is a naming convention, not a binding: the environment reaches the config only
+// through the {{ env "NAME" }} tokens written in config.toml, which name the variable
+// explicitly. By convention a key's variable is its dotted path uppercased, with dots
+// as underscores, prefixed — so [oidc] client_id ships as
+// '{{ env "APIP_AIW_OIDC_CLIENT_ID" }}'. A token may name any variable, and a key with
+// no token cannot be set from the environment at all.
+//
+// The prefix also namespaces the runtime config the SPA reads (see runtimeKey).
 const EnvPrefix = "APIP_AIW_"
 
 // defaultFileSourceAllowlist is the AI Workspace's default set of directories a
@@ -47,40 +50,33 @@ var defaultFileSourceAllowlist = []string{
 	"/secrets/ai-workspace",
 }
 
-// settings is the fully-resolved flat configuration: config.toml values overlaid
-// with APIP_AIW_* environment variables, with every {{ env }} / {{ file }} token
-// expanded. Keys are the flat config.toml key names (e.g. "platform_api_url").
+// settings is the fully-resolved configuration: the config.toml values with every
+// {{ env }} / {{ file }} token expanded, flattened to dotted paths. A key is its
+// table path joined with dots — [platform_api] url becomes "platform_api.url" — and a
+// key outside any table keeps its bare name ("domain").
 type settings map[string]string
 
-// loadSettings reads config.toml (when present), overlays the APIP_AIW_* env vars,
-// then expands interpolation tokens across the merged result. Environment variables
-// always win over the file. A missing config.toml is not an error — the BFF can be
-// configured entirely from the environment.
+// loadSettings reads config.toml and expands its interpolation tokens. config.toml is
+// the only source of configuration: there is no implicit environment overlay, so a
+// value comes from the environment exactly when the key's token asks for it, e.g.
 //
-// Interpolation runs after the merge so a value supplied either way may reference a
-// secret, and it fails closed: an unset {{ env }} var or an unreadable/disallowed
-// {{ file }} path aborts startup rather than silently yielding an empty credential.
+//	log_level = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'
+//
+// One mechanism therefore covers both ordinary settings and secrets, and every source
+// a value can come from is visible in the file itself rather than implied by a naming
+// rule. Interpolation fails closed: an unset {{ env }} variable with no default, or an
+// unreadable/disallowed {{ file }} path, aborts startup rather than silently yielding
+// an empty credential.
+//
+// A missing config.toml is not an error — the built-in defaults still apply — but the
+// required keys (platform_api_url) then have no value, so Load fails on them.
 func loadSettings(tomlPath string) (settings, error) {
-	raw := map[string]any{}
-
-	fileValues, err := parseFlatTOML(tomlPath)
+	raw, err := parseTOML(tomlPath)
 	if err != nil {
 		return nil, err
 	}
-	for k, v := range fileValues {
-		raw[k] = v
-	}
 
-	// Env overlay. An empty value is treated as unset so that a `${VAR:-}`
-	// placeholder in docker-compose does not shadow a value set in config.toml.
-	for _, kv := range os.Environ() {
-		name, value, ok := strings.Cut(kv, "=")
-		if !ok || value == "" || !strings.HasPrefix(name, EnvPrefix) {
-			continue
-		}
-		raw[strings.ToLower(strings.TrimPrefix(name, EnvPrefix))] = value
-	}
-
+	// Expand walks the whole tree, so a token works at any depth.
 	expanded, stats, err := configinterpolate.Expand(raw, configinterpolate.Options{
 		FileAllowlist: configinterpolate.ResolveAllowlist(defaultFileSourceAllowlist),
 	})
@@ -95,46 +91,48 @@ func loadSettings(tomlPath string) (settings, error) {
 			slog.Int("fields", stats.Fields))
 	}
 
-	s := make(settings, len(expanded))
-	for k, v := range expanded {
-		if str, ok := v.(string); ok {
-			s[k] = str
-		}
-	}
+	s := settings{}
+	flatten(s, "", expanded)
 	return s, nil
 }
 
-// parseFlatTOML reads simple `key = value` lines from the config file. It is
-// deliberately a naive line parser rather than a full TOML decoder: the BFF's
-// config surface is flat by design (no nested tables), so table headers and
-// comments are skipped. A missing file yields an empty map, not an error.
-func parseFlatTOML(path string) (map[string]string, error) {
-	f, err := os.Open(path)
+// parseTOML decodes the config file. A missing file yields an empty tree rather than
+// an error, leaving every key on its default — Load then fails on the required ones.
+func parseTOML(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return map[string]string{}, nil // env-only configuration
+			return map[string]any{}, nil
 		}
 		return nil, fmt.Errorf("failed to read config file %q: %w", path, err)
 	}
-	defer f.Close()
 
-	out := map[string]string{}
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "[") {
-			continue
-		}
-		key, val, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		out[strings.ToLower(strings.TrimSpace(key))] = strings.Trim(strings.TrimSpace(val), `"'`)
+	var raw map[string]any
+	if err := toml.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("failed to parse config file %q: %w", path, err)
 	}
-	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("failed to read config file %q: %w", path, err)
+	return raw, nil
+}
+
+// flatten collapses the decoded tree into dotted keys ([oidc] client_id ->
+// "oidc.client_id"), stringifying scalars so a value may be written either quoted or
+// bare — tls.enabled = true and tls.enabled = "true" both reach getbool as "true".
+// Arrays have no config key today and are skipped rather than guessed at.
+func flatten(dst settings, prefix string, tree map[string]any) {
+	for k, v := range tree {
+		key := strings.ToLower(k)
+		if prefix != "" {
+			key = prefix + "." + key
+		}
+		switch val := v.(type) {
+		case map[string]any:
+			flatten(dst, key, val)
+		case string:
+			dst[key] = val
+		case bool, int64, float64:
+			dst[key] = fmt.Sprint(val)
+		}
 	}
-	return out, nil
 }
 
 // get returns the value for key, or def when it is unset or empty.
