@@ -26,11 +26,11 @@ const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 
 /**
- * Supported key manager types. Every type proxies token requests identically
- * (a standard OAuth2 client_credentials request), so this list exists purely
- * to validate the `type` field when an admin configures a key manager.
+ * Every key manager is a standard OAuth2 client_credentials-based generic
+ * OIDC provider. The `type` column is retained on the model for backward
+ * compatibility but is no longer client-configurable.
  */
-const SUPPORTED_KM_TYPES = ['ASGARDEO', 'WSO2IS', 'KEYCLOAK', 'GENERIC_OIDC'];
+const DEFAULT_KM_TYPE = 'GENERIC_OIDC';
 
 // ---------------------------------------------------------------------------
 // YAML ingestion helpers (mirrors parseIdentityProviderFromYamlFile pattern)
@@ -44,7 +44,7 @@ function mapYamlToKeyManager(yamlDoc) {
     return {
         handle: yamlDoc.metadata?.name || spec.name,
         displayName: spec.displayName || spec.name,
-        type: spec.type,
+        type: DEFAULT_KM_TYPE,
         enabled: spec.enabled !== undefined ? spec.enabled : true,
         tokenEndpoint: spec.tokenEndpoint,
     };
@@ -111,7 +111,7 @@ const generateHandle = (name) =>
 const HANDLE_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 function _validateRequiredFields(payload) {
-    const missing = ['displayName', 'type', 'tokenEndpoint']
+    const missing = ['displayName', 'tokenEndpoint']
         .filter(f => !payload[f]);
     if (missing.length) {
         return `Missing required fields: ${missing.join(', ')}`;
@@ -141,18 +141,14 @@ const createKeyManager = async (req, res) => {
         if (validationError) {
             return res.status(400).json({ error: validationError });
         }
-        const resolvedType = typeof payload.type === 'string' ? payload.type.toUpperCase() : undefined;
-        if (!SUPPORTED_KM_TYPES.includes(resolvedType)) {
-            return res.status(400).json({ error: `Unsupported key manager type '${payload.type}'. Must be one of: ${SUPPORTED_KM_TYPES.join(', ')}.` });
-        }
         const hadExplicitHandle = !!(payload.handle && payload.handle.trim());
         const resolvedHandle = hadExplicitHandle ? payload.handle.trim() : generateHandle(payload.displayName);
-        if (hadExplicitHandle && !HANDLE_PATTERN.test(resolvedHandle)) {
+        if (!resolvedHandle || !HANDLE_PATTERN.test(resolvedHandle)) {
             return res.status(400).json({ error: "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens." });
         }
 
         const userId = util.resolveActor(req);
-        const record = await kmDao.create(orgId, { ...payload, handle: resolvedHandle, type: resolvedType }, userId);
+        const record = await kmDao.create(orgId, { ...payload, handle: resolvedHandle, type: DEFAULT_KM_TYPE }, userId);
         logUserAction('KEY_MANAGER_CREATED', req, { orgId, kmId: record.uuid, resourceUuid: record.uuid, resourceType: 'key_manager' });
         let audit;
         try {
@@ -185,14 +181,8 @@ const updateKeyManager = async (req, res) => {
         const orgId = req.orgId;
         const { kmId: kmHandle } = req.params;
         const payload = _resolvePayload(req);
-
-        if (payload.type !== undefined) {
-            const resolvedType = typeof payload.type === 'string' ? payload.type.toUpperCase() : undefined;
-            if (!SUPPORTED_KM_TYPES.includes(resolvedType)) {
-                return res.status(400).json({ error: `Unsupported key manager type '${payload.type}'. Must be one of: ${SUPPORTED_KM_TYPES.join(', ')}.` });
-            }
-            payload.type = resolvedType;
-        }
+        // The key manager type is fixed at GENERIC_OIDC and is not client-configurable.
+        delete payload.type;
 
         const kmId = await kmDao.getIdByHandle(orgId, kmHandle);
         if (!kmId) {

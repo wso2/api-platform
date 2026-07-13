@@ -27,13 +27,18 @@ const ServerResponseDTO = require('../dto/mcpServerDto');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
+const yaml = require('js-yaml');
 
 const MCP_STATUSES = ['active', 'deprecated', 'deleted'];
 const SERVER_NAME_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
 const VERSION_RANGE_PATTERN = /^[\^~]|^>=?|^<=?|\*|(^|\.)x(\.|$)/i;
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
-const SCHEMA_FILE_NAME = 'schema.json';
+// Canonical stored schema filename/shape across the whole platform: a flat, type-tagged
+// YAML array (schemaDefinition.yaml) — the same format the admin /mcp-servers API and the
+// sample seeder write. Registry writes arrive grouped and are flattened to this on write
+// (see toFlatSchema); parseSchema regroups on read.
+const SCHEMA_FILE_NAME = constants.FILE_NAME.SCHEMA_DEFINITION_YAML_FILE_NAME;
 
 // Map registry spec status values to DB STATUS values
 const REGISTRY_TO_DB_STATUS = {
@@ -218,11 +223,36 @@ function parseSchema(contentRow) {
     try {
         const raw = contentRow.file_content;
         const str = Buffer.isBuffer(raw) ? raw.toString('utf-8') : String(raw);
-        return JSON.parse(str);
+        // The stored schema comes in one of two shapes depending on which path wrote it:
+        //   - registry publishServer writes grouped JSON: { tools, resources, prompts }
+        //   - the devportal admin API and sample seeder store the raw uploaded schemaDefinition,
+        //     a flat YAML/JSON array of { type: TOOL|RESOURCE|PROMPT, ... } entries.
+        // yaml.load parses both JSON and YAML; normalize a flat array into the grouped shape the
+        // ServerResponseDTO expects, so the registry exposes capabilities however the server was
+        // created (mirrors the landing-page parser in apiContentController).
+        const parsed = yaml.load(str);
+        if (Array.isArray(parsed)) {
+            return {
+                tools: parsed.filter(item => item && item.type === 'TOOL'),
+                resources: parsed.filter(item => item && item.type === 'RESOURCE'),
+                prompts: parsed.filter(item => item && item.type === 'PROMPT'),
+            };
+        }
+        return parsed;
     } catch (e) {
         logger.warn('Failed to parse MCP schema content', { error: e.message });
         return null;
     }
+}
+
+// Inverse of parseSchema's grouping: turn grouped capabilities into the canonical flat,
+// type-tagged array so every SCHEMA_DEFINITION row across the platform shares one shape.
+function toFlatSchema(tools = [], resources = [], prompts = []) {
+    return [
+        ...tools.map((t) => ({ ...t, type: 'TOOL' })),
+        ...resources.map((r) => ({ ...r, type: 'RESOURCE' })),
+        ...prompts.map((p) => ({ ...p, type: 'PROMPT' })),
+    ];
 }
 
 // ─── Public discovery endpoints ──────────────────────────────────────────────
@@ -376,7 +406,7 @@ const publishServer = async (req, res) => {
         const prompts = choreoMeta?.prompts || [];
         const now = new Date().toISOString();
         const schemaBuffer = choreoMeta
-            ? Buffer.from(JSON.stringify({ tools, resources, prompts }), 'utf-8')
+            ? Buffer.from(yaml.dump(toFlatSchema(tools, resources, prompts)), 'utf-8')
             : null;
 
         let row;
@@ -414,9 +444,11 @@ const publishServer = async (req, res) => {
                 await apiDao.update(orgId, existing.uuid, apiMetadataPayload, userId, t);
                 await labelDao.createApiMapping(orgId, existing.uuid, ['default'], userId, t);
                 if (schemaBuffer) {
-                    await apiFileDao.upsertMany(
-                        [{ content: schemaBuffer, fileName: SCHEMA_FILE_NAME, type: constants.DOC_TYPES.SCHEMA_DEFINITION }],
-                        existing.uuid, orgId, userId, t
+                    // Type-based upsert: an MCP server has exactly one schema row, so match by
+                    // type (not filename) — this replaces any prior row regardless of its stored name.
+                    await apiFileDao.upsert(
+                        schemaBuffer, SCHEMA_FILE_NAME, existing.uuid, orgId,
+                        constants.DOC_TYPES.SCHEMA_DEFINITION, userId, t
                     );
                 }
                 row = await APIMetadata.findOne({ where: { uuid: existing.uuid }, transaction: t });
@@ -425,7 +457,7 @@ const publishServer = async (req, res) => {
                 const created_row = await apiDao.create(orgId, apiMetadataPayload, userId, t);
                 const apiId = created_row.dataValues.uuid;
                 await labelDao.createApiMapping(orgId, apiId, ['default'], userId, t);
-                const newSchemaBuffer = schemaBuffer || Buffer.from(JSON.stringify({ tools: [], resources: [], prompts: [] }), 'utf-8');
+                const newSchemaBuffer = schemaBuffer || Buffer.from(yaml.dump([]), 'utf-8');
                 await apiFileDao.store(newSchemaBuffer, SCHEMA_FILE_NAME, apiId, constants.DOC_TYPES.SCHEMA_DEFINITION, userId, t);
                 row = await APIMetadata.findOne({ where: { uuid: apiId }, transaction: t });
                 created = true;
@@ -473,7 +505,7 @@ const updateVersion = async (req, res) => {
         const resources = choreoMeta?.resources || [];
         const prompts = choreoMeta?.prompts || [];
         const schemaBuffer = choreoMeta
-            ? Buffer.from(JSON.stringify({ tools, resources, prompts }), 'utf-8')
+            ? Buffer.from(yaml.dump(toFlatSchema(tools, resources, prompts)), 'utf-8')
             : null;
 
         let row;
@@ -489,9 +521,11 @@ const updateVersion = async (req, res) => {
             await apiDao.update(orgId, existing.uuid, apiMetadataPayload, userId, t);
             await labelDao.createApiMapping(orgId, existing.uuid, ['default'], userId, t);
             if (schemaBuffer) {
-                await apiFileDao.upsertMany(
-                    [{ content: schemaBuffer, fileName: SCHEMA_FILE_NAME, type: constants.DOC_TYPES.SCHEMA_DEFINITION }],
-                    existing.uuid, orgId, userId, t
+                // Type-based upsert: an MCP server has exactly one schema row, so match by
+                // type (not filename) — this replaces any prior row regardless of its stored name.
+                await apiFileDao.upsert(
+                    schemaBuffer, SCHEMA_FILE_NAME, existing.uuid, orgId,
+                    constants.DOC_TYPES.SCHEMA_DEFINITION, userId, t
                 );
             }
             row = await APIMetadata.findOne({ where: { uuid: existing.uuid }, transaction: t });

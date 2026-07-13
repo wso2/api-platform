@@ -1,0 +1,2019 @@
+openapi: 3.0.3
+info:
+  title: Event Gateway Controller Management API
+  description: |
+    REST API for managing WebSub and WebBroker API configurations in the
+    WSO2 API Platform event-gateway-controller.
+  version: 1.0.0
+  contact:
+    name: WSO2 API Platform Team
+servers:
+  - url: https://localhost:9090/api/management/v1
+    description: Local development
+  - url: https://event-gateway-controller:9090/api/management/v1
+    description: Docker/Kubernetes deployment
+security:
+  - basicAuth: []
+paths:
+  /websub-apis:
+    post:
+      summary: Create a new WebSubAPI
+      description: Add a new WebSubAPI to the Gateway.
+      operationId: createWebSubAPI
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/WebSubAPIRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebSubAPIRequest"
+      responses:
+        "201":
+          description: WebSubAPI created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSubAPI"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - WebSub API with same name and version already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: List all WebSubAPIs
+      description: List WebSubAPIs registered in the Gateway, optionally filtered by name, version, context, or status.
+      operationId: listWebSubAPIs
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: displayName
+          in: query
+          required: false
+          description: Filter by WebSub API display name
+          schema:
+            type: string
+          example: Weather WebSub API
+        - name: version
+          in: query
+          required: false
+          description: Filter by WebSub API version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by WebSub API context/path
+          schema:
+            type: string
+          example: /weather-events
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [ deployed, undeployed ]
+          example: undeployed
+      responses:
+        "200":
+          description: List of WebSubAPIs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 5
+                  apis:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WebSubAPI"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /websub-apis/{id}/api-keys:
+    post:
+      summary: Create a new API key for a WebSub API
+      description: Generate a new API key for a WebSub API in the Gateway. The key is a 32-byte random value encoded in hexadecimal, prefixed with `apip_`. Use the API Key policy on the API to validate incoming requests with this key.
+      operationId: createWebSubAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API to generate the key for
+          schema:
+            type: string
+          example: weather-websub-api
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebSub API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: Get the list of API keys for a WebSub API
+      description: List all API keys for a WebSub API in the Gateway.
+      operationId: listWebSubAPIKeys
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API to retrieve the keys for
+          schema:
+            type: string
+          example: weather-websub-api
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyListResponse"
+        '404':
+          description: WebSub API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /websub-apis/{id}/api-keys/{apiKeyName}/regenerate:
+    post:
+      summary: Regenerate API key for a WebSub API
+      description: Regenerate an existing API key for a WebSub API in the Gateway. The previous key is revoked and replaced with a new 32-byte random value encoded in hexadecimal, prefixed with `apip_`.
+      operationId: regenerateWebSubAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API
+          schema:
+            type: string
+          example: weather-websub-api
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to regenerate
+          schema:
+            type: string
+          example: weather-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+      responses:
+        '200':
+          description: API key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebSub API or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /websub-apis/{id}/api-keys/{apiKeyName}:
+    put:
+      summary: Update an API key for a WebSub API
+      description: Update an API key with a custom value instead of auto-generating one.
+      operationId: updateWebSubAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API
+          schema:
+            type: string
+          example: weather-websub-api
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to update
+          schema:
+            type: string
+          example: weather-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebSub API or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Revoke an API key for a WebSub API
+      description: Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+      operationId: revokeWebSubAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API
+          schema:
+            type: string
+          example: weather-websub-api
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to revoke
+          schema:
+            type: string
+          example: weather-api-key
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRevocationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebSub API or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /websub-apis/{id}/secrets:
+    post:
+      summary: Generate a new HMAC secret for a WebSub API
+      description: |
+        Generates a cryptographically secure HMAC shared secret (format: `whsec_` + 64 hex chars)
+        for the given WebSub API. The plaintext value is returned **once** in the response and
+        never stored in plaintext. Use the secret as the `secret` parameter value in the
+        `websub-hmac-auth` policy to validate incoming webhook event signatures.
+      operationId: createWebSubAPISecret
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API
+          schema:
+            type: string
+          example: weather-websub-api
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookSecretCreationRequest"
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/WebhookSecretCreationRequest"
+      responses:
+        '201':
+          description: Secret generated successfully. The `secret` field will not appear in any future list or get response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSecretCreationResponse"
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebSub API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: A secret with the same name already exists for this API
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List HMAC secrets for a WebSub API
+      description: Returns metadata for all active HMAC secrets. Plaintext values are never included.
+      operationId: listWebSubAPISecrets
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API
+          schema:
+            type: string
+          example: weather-websub-api
+      responses:
+        '200':
+          description: List of secrets (no plaintext)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSecretListResponse"
+        '404':
+          description: WebSub API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /websub-apis/{id}/secrets/{secretName}/regenerate:
+    post:
+      summary: Regenerate (rotate) a WebSub API HMAC secret
+      description: |
+        Replaces the secret value with a newly generated one. The old secret stops
+        validating signatures immediately. The new plaintext is returned once and
+        never stored unencrypted.
+      operationId: regenerateWebSubAPISecret
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API
+          schema:
+            type: string
+          example: weather-websub-api
+        - name: secretName
+          in: path
+          required: true
+          description: Name of the secret to regenerate
+          schema:
+            type: string
+          example: github-webhook
+      responses:
+        '200':
+          description: Secret rotated successfully. The new `secret` value will not appear again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSecretCreationResponse"
+        '404':
+          description: WebSub API or secret not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /websub-apis/{id}/secrets/{secretName}:
+    delete:
+      summary: Delete a WebSub API HMAC secret
+      description: Permanently removes the secret. Existing webhook deliveries that used this secret will immediately fail signature validation.
+      operationId: deleteWebSubAPISecret
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebSub API
+          schema:
+            type: string
+          example: weather-websub-api
+        - name: secretName
+          in: path
+          required: true
+          description: Name of the secret to delete
+          schema:
+            type: string
+          example: github-webhook
+      responses:
+        '204':
+          description: Secret deleted successfully
+        '404':
+          description: WebSub API or secret not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /websub-apis/{id}:
+    get:
+      summary: Get WebSubAPI by id
+      description: Get a WebSubAPI by its ID.
+      operationId: getWebSubAPIById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier for the WebSub API.
+          schema:
+            type: string
+          example: weather-websub-api
+      responses:
+        "200":
+          description: WebSubAPI details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSubAPI"
+            application/yaml:
+              schema:
+                $ref: "#/components/schemas/WebSubAPI"
+        "404":
+          description: WebSubAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      summary: Update an existing WebSubAPI
+      description: Update an existing WebSubAPI in the Gateway.
+      operationId: updateWebSubAPI
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the WebSub API to update.
+          schema:
+            type: string
+          example: weather-websub-api
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/WebSubAPIRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebSubAPIRequest"
+      responses:
+        "200":
+          description: WebSubAPI updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebSubAPI"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: WebSubAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete a WebSubAPI
+      description: Delete a WebSubAPI from the Gateway.
+      operationId: deleteWebSubAPI
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebSub API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the WebSub API to delete.
+          schema:
+            type: string
+          example: weather-websub-api
+      responses:
+        "200":
+          description: WebSubAPI deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: WebSubAPI deleted successfully
+                  id:
+                    type: string
+                    example: weather-websub-api
+        "404":
+          description: WebSubAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /webbroker-apis:
+    post:
+      summary: Create a new WebBrokerAPI
+      description: Add a new WebBrokerAPI to the Gateway. WebBrokerAPI provides bidirectional streaming between WebSocket clients and Kafka brokers with per-connection isolation.
+      operationId: createWebBrokerApi
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebBroker API Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/WebBrokerApiRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebBrokerApiRequest"
+      responses:
+        "201":
+          description: WebBrokerAPI created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebBrokerApi"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - WebBroker API with same name and version already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: List all WebBrokerAPIs
+      description: List WebBrokerAPIs registered in the Gateway, optionally filtered by name, version, or status.
+      operationId: listWebBrokerApis
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebBroker API Management
+      parameters:
+        - name: displayName
+          in: query
+          required: false
+          description: Filter by WebBroker API display name
+          schema:
+            type: string
+          example: Stock Trading WebBroker API
+        - name: version
+          in: query
+          required: false
+          description: Filter by WebBroker API version
+          schema:
+            type: string
+          example: v1.0
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [ deployed, undeployed ]
+          example: deployed
+      responses:
+        "200":
+          description: List of WebBrokerAPIs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 3
+                  apis:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WebBrokerApi"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /webbroker-apis/{id}:
+    get:
+      summary: Get WebBrokerAPI by id
+      description: Get a WebBrokerAPI by its ID.
+      operationId: getWebBrokerApiById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebBroker API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier for the WebBroker API.
+          schema:
+            type: string
+          example: stock-trading-webbroker-api
+      responses:
+        "200":
+          description: WebBrokerAPI details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebBrokerApi"
+            application/yaml:
+              schema:
+                $ref: "#/components/schemas/WebBrokerApi"
+        "404":
+          description: WebBrokerAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete a WebBrokerAPI
+      description: Delete a WebBrokerAPI from the Gateway.
+      operationId: deleteWebBrokerApiById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - WebBroker API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the WebBroker API to delete.
+          schema:
+            type: string
+          example: stock-trading-webbroker-api
+      responses:
+        "200":
+          description: WebBrokerAPI deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: WebBrokerAPI deleted successfully
+                  id:
+                    type: string
+                    example: stock-trading-webbroker-api
+        "404":
+          description: WebBrokerAPI not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /webbroker-apis/{id}/api-keys:
+    post:
+      summary: Create a new API key for a WebBroker API
+      description: Generate a new API key for a WebBroker API in the Gateway. The key is a 32-byte random value encoded in hexadecimal, prefixed with `apip_`. Use the API Key policy on the API to validate incoming requests with this key.
+      operationId: createWebBrokerAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebBroker API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebBroker API to generate the key for
+          schema:
+            type: string
+          example: stock-trading-webbroker-api
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreationRequest"
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebBroker API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: Get the list of API keys for a WebBroker API
+      description: List all API keys for a WebBroker API in the Gateway.
+      operationId: listWebBrokerAPIKeys
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebBroker API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebBroker API to retrieve the keys for
+          schema:
+            type: string
+          example: stock-trading-webbroker-api
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyListResponse"
+        '404':
+          description: WebBroker API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /webbroker-apis/{id}/api-keys/{apiKeyName}/regenerate:
+    post:
+      summary: Regenerate API key for a WebBroker API
+      description: Regenerate an existing API key for a WebBroker API in the Gateway. The previous key is revoked and replaced with a new 32-byte random value encoded in hexadecimal, prefixed with `apip_`.
+      operationId: regenerateWebBrokerAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebBroker API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebBroker API
+          schema:
+            type: string
+          example: stock-trading-webbroker-api
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to regenerate
+          schema:
+            type: string
+          example: trading-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRegenerationRequest"
+      responses:
+        '200':
+          description: API key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebBroker API or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /webbroker-apis/{id}/api-keys/{apiKeyName}:
+    put:
+      summary: Update an API key for a WebBroker API
+      description: Update an API key with a custom value instead of auto-generating one.
+      operationId: updateWebBrokerAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebBroker API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebBroker API
+          schema:
+            type: string
+          example: stock-trading-webbroker-api
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to update
+          schema:
+            type: string
+          example: trading-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyUpdateRequest"
+      responses:
+        '200':
+          description: API key updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreationResponse"
+        '400':
+          description: Invalid request (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict (duplicate key or conflicting update)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebBroker API or API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      summary: Revoke an API key for a WebBroker API
+      description: Revoke an API key. Once revoked, it can no longer be used to authenticate requests.
+      operationId: revokeWebBrokerAPIKey
+      x-basicauth-roles: [admin, consumer]
+      tags:
+        - WebBroker API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique public identifier of the WebBroker API
+          schema:
+            type: string
+          example: stock-trading-webbroker-api
+        - name: apiKeyName
+          in: path
+          required: true
+          description: Name of the API key to revoke
+          schema:
+            type: string
+          example: trading-api-key
+      responses:
+        '200':
+          description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRevocationResponse"
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: WebBroker API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+  schemas:
+    APIKey:
+      type: object
+      description: Details of an API key
+      properties:
+        name:
+          type: string
+          description: URL-safe identifier for the API key (auto-generated from displayName, immutable, used as path parameter)
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+          minLength: 3
+          maxLength: 63
+          example: my-production-key
+        displayName:
+          type: string
+          description: Human-readable name for the API key (user-provided, mutable)
+          minLength: 1
+          maxLength: 100
+          example: My Production Key
+        apiKey:
+          type: string
+          description: Generated API key with apip_ prefix
+          example: "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        apiId:
+          type: string
+          description: Unique public identifier of the API that the key is associated with
+          example: reading-list-api-v1.0
+        status:
+          type: string
+          description: Status of the API key
+          enum:
+            - active
+            - revoked
+            - expired
+          example: active
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the API key was generated
+          example: "2026-04-01T10:30:00Z"
+        createdBy:
+          type: string
+          description: Identifier of the user who generated the API key
+          example: admin
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Expiration timestamp (null if no expiration)
+          example: "2027-01-01T00:00:00Z"
+        source:
+          type: string
+          description: Source of the API key (local or external)
+          enum:
+            - local
+            - external
+          example: local
+        externalRefId:
+          type: string
+          description: External reference ID for the API key
+          example: "cloud-apim-key-98765"
+      required:
+        - name
+        - apiId
+        - status
+        - createdAt
+        - createdBy
+        - expiresAt
+        - source
+      example:
+        name: my-production-key
+        displayName: My Production Key
+        apiKey: "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        apiId: reading-list-api-v1.0
+        status: active
+        createdAt: "2026-04-01T10:30:00Z"
+        createdBy: admin
+        expiresAt: null
+        source: local
+    APIKeyCreationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Identifier of the API key. If not provided, a default identifier will be generated
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+          minLength: 3
+          maxLength: 63
+          example: my-production-key
+        apiKey:
+          type: string
+          minLength: 36
+          description: |
+            Optional plain-text API key value for external key injection.
+            If provided, this key will be used instead of generating a new one.
+            The key will be hashed before storage. The key can be in any format
+            (minimum 36 characters). Use this for injecting externally generated
+            API keys.
+          example: "xxxxxx-wso2-api-platform-key-xxxxxx-xxxxxxx"
+        maskedApiKey:
+          type: string
+          description: |
+            Masked version of the API key for display purposes.
+            Provided by the platform API when injecting pre-hashed keys.
+          example: "apip_****xyz789"
+        expiresIn:
+          type: object
+          description: Expiration duration for the API key
+          properties:
+            unit:
+              type: string
+              description: Time unit for expiration
+              enum:
+                - seconds
+                - minutes
+                - hours
+                - days
+                - weeks
+                - months
+              example: days
+            duration:
+              type: integer
+              description: Duration value for expiration
+              example: 30
+          required:
+            - unit
+            - duration
+        expiresAt:
+          type: string
+          format: date-time
+          description: Expiration timestamp. If both expiresIn and expiresAt are provided, expiresAt takes precedence.
+          example: "2026-12-08T10:30:00Z"
+        externalRefId:
+          type: string
+          description: |
+            External reference ID for the API key.
+            This field is optional and used for tracing purposes only.
+            The gateway generates its own internal ID for tracking.
+          example: "cloud-apim-key-98765"
+        issuer:
+          type: string
+          description: |
+            Identifies the portal that created this key. If provided, only api keys generated from
+            the same portal will be accepted. If not provided, there is no portal restriction.
+          example: "api-platform-devportal"
+      example:
+        name: my-production-key
+    APIKeyCreationResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: API key generated successfully
+        remainingApiKeyQuota:
+          type: integer
+          description: Remaining API key quota for the user
+          example: 9
+        apiKey:
+          $ref: '#/components/schemas/APIKey'
+      required:
+        - status
+        - message
+      example:
+        status: success
+        message: API key generated successfully
+        remainingApiKeyQuota: 9
+        apiKey:
+          name: my-production-key
+          displayName: My Production Key
+          apiKey: "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+          apiId: reading-list-api-v1.0
+          status: active
+          createdAt: "2026-04-01T10:30:00Z"
+          createdBy: admin
+          expiresAt: null
+          source: local
+    APIKeyListResponse:
+      type: object
+      properties:
+        apiKeys:
+          type: array
+          items:
+            $ref: "#/components/schemas/APIKey"
+        totalCount:
+          type: integer
+          description: Total number of API keys
+          example: 3
+        status:
+          type: string
+          example: success
+    APIKeyRegenerationRequest:
+      type: object
+      properties:
+        expiresIn:
+          type: object
+          description: Expiration duration for the API key
+          properties:
+            unit:
+              type: string
+              description: Time unit for expiration
+              enum:
+                - seconds
+                - minutes
+                - hours
+                - days
+                - weeks
+                - months
+              example: days
+            duration:
+              type: integer
+              description: Duration value for expiration
+              example: 30
+          required:
+            - unit
+            - duration
+        expiresAt:
+          type: string
+          format: date-time
+          description: Expiration timestamp
+          example: "2026-12-08T10:30:00Z"
+      example: {}
+    APIKeyRevocationResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: API key revoked successfully
+      required:
+        - status
+        - message
+    APIKeyUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/APIKeyCreationRequest"
+      required:
+        - apiKey
+    ErrorResponse:
+      type: object
+      required:
+        - status
+        - message
+      properties:
+        status:
+          type: string
+          example: error
+        message:
+          type: string
+          description: High-level error description
+          example: Configuration validation failed
+        errors:
+          type: array
+          description: Detailed validation errors
+          items:
+            $ref: "#/components/schemas/ValidationError"
+    Metadata:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Unique handle for the resource
+          example: reading-list-api-v1.0
+        labels:
+          type: object
+          description: Labels are key-value pairs for organizing and selecting APIs. Keys must not contain spaces.
+          additionalProperties:
+            type: string
+          example:
+            environment: production
+            team: backend
+            version: v1
+        annotations:
+          type: object
+          description: Annotations are arbitrary non-identifying metadata. Use domain-prefixed keys.
+          additionalProperties:
+            type: string
+          example:
+            gateway.api-platform.wso2.com/project-id: 019d953f-d386-7a64-aa92-1869a28292e0
+    Policy:
+      type: object
+      required:
+        - name
+        - version
+      properties:
+        name:
+          type: string
+          description: Name of the policy
+          example: cors
+        version:
+          type: string
+          description: >
+            Version of the policy. Only major-only version is allowed (e.g., v0, v1).
+            Full semantic version (e.g., v1.0.0) is not accepted and will be rejected.
+            The Gateway Controller resolves the major version to the single matching
+            full version installed in the gateway image.
+          pattern: '^v\d+$'
+          example: v1
+        executionCondition:
+          type: string
+          description: Expression controlling conditional execution of the policy
+          example: "request.metadata[authenticated] != true"
+        params:
+          type: object
+          description: Arbitrary parameters for the policy (free-form key/value structure)
+          additionalProperties: true
+
+    # -----------------------
+    # Webhook (Async) API schema
+    # -----------------------
+    ResourceStatus:
+      type: object
+      description: Server-managed lifecycle information for a resource
+      properties:
+        id:
+          type: string
+          description: Unique identifier assigned by the server (equal to metadata.name)
+          example: reading-list-api-v1.0
+        state:
+          type: string
+          description: Desired deployment state reported by the server
+          enum:
+            - deployed
+            - undeployed
+          example: deployed
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was first created (UTC)
+          example: 2026-04-24T07:21:13Z
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was last updated (UTC)
+          example: 2026-04-24T07:21:13Z
+        deployedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the resource was last deployed (omitted when undeployed)
+          example: 2026-04-24T07:21:13Z
+
+    # Request body for create/update: user/resource fields only (no server-managed status).
+    ValidationError:
+      type: object
+      properties:
+        field:
+          type: string
+          description: Field that failed validation
+          example: spec.context
+        message:
+          type: string
+          description: Human-readable error message
+          example: Context must start with / and cannot end with /
+
+    WebBrokerApi:
+      allOf:
+        - $ref: '#/components/schemas/WebBrokerApiRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: WebBrokerApi
+        metadata:
+          name: stock-trading-v1.0
+        spec:
+          displayName: Stock Trading WebBroker API
+          version: v1.0
+          context: /stock-trading/$version
+          receiver:
+            name: websocket-receiver
+            type: websocket
+          broker:
+            name: kafka-driver
+            type: kafka
+            properties:
+              brokers:
+                - kafka-broker-1:9092
+                - kafka-broker-2:9092
+          allChannels:
+            on_connection_init:
+              policies: []
+            on_produce:
+              policies: []
+            on_consume:
+              policies: []
+          channels:
+            prices:
+              produceTo:
+                topic: stock.prices
+              consumeFrom:
+                topic: stock.prices
+              on_connection_init:
+                policies: []
+              on_produce:
+                policies: []
+              on_consume:
+                policies: []
+        status:
+          id: stock-trading-v1.0
+          state: deployed
+          createdAt: 2026-04-24T07:21:13Z
+          updatedAt: 2026-04-24T07:21:13Z
+          deployedAt: 2026-04-24T07:21:13Z
+    WebBrokerApiAllChannelPolicies:
+      type: object
+      description: Protocol mediation policies applied to all channels
+      properties:
+        on_connection_init:
+          $ref: '#/components/schemas/WebBrokerApiPolicyGroup'
+        on_produce:
+          $ref: '#/components/schemas/WebBrokerApiPolicyGroup'
+        on_consume:
+          $ref: '#/components/schemas/WebBrokerApiPolicyGroup'
+    WebBrokerApiBroker:
+      type: object
+      description: Message broker driver configuration
+      required:
+        - name
+        - type
+        - properties
+      properties:
+        name:
+          type: string
+          description: Broker driver name
+          example: kafka-driver
+        type:
+          type: string
+          description: Broker driver type
+          example: kafka
+        properties:
+          type: object
+          description: Broker driver properties (e.g., bootstrap servers)
+          additionalProperties: true
+          example:
+              brokers:
+                - kafka-broker-1:9092
+                - kafka-broker-2:9092
+    WebBrokerApiChannel:
+      type: object
+      description: WebSocket channel configuration with Kafka topic mapping
+      properties:
+        produceTo:
+          $ref: '#/components/schemas/WebBrokerApiProduceConfig'
+        consumeFrom:
+          $ref: '#/components/schemas/WebBrokerApiConsumeConfig'
+        on_connection_init:
+          $ref: '#/components/schemas/WebBrokerApiPolicyGroup'
+        on_produce:
+          $ref: '#/components/schemas/WebBrokerApiPolicyGroup'
+        on_consume:
+          $ref: '#/components/schemas/WebBrokerApiPolicyGroup'
+    WebBrokerApiConsumeConfig:
+      type: object
+      description: Configuration for consuming messages from Kafka to WebSocket
+      required:
+        - topic
+      properties:
+        topic:
+          type: string
+          description: Kafka topic to consume messages from
+          example: stock.prices
+    WebBrokerApiData:
+      type: object
+      required:
+        - displayName
+        - version
+        - context
+        - receiver
+        - broker
+        - channels
+      properties:
+        displayName:
+          type: string
+          description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: Stock Trading WebBroker API
+        version:
+          type: string
+          description: Semantic version of the API
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        context:
+          type: string
+          description: Base path for all API routes (must start with /, no trailing slash)
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          minLength: 1
+          maxLength: 200
+          example: /stock-trading
+        receiver:
+          $ref: '#/components/schemas/WebBrokerApiReceiver'
+        broker:
+          $ref: '#/components/schemas/WebBrokerApiBroker'
+        allChannels:
+          $ref: '#/components/schemas/WebBrokerApiAllChannelPolicies'
+        channels:
+          type: object
+          description: Map of WebSocket channels for bidirectional streaming with Kafka (key is channel name)
+          minProperties: 1
+          additionalProperties:
+            $ref: '#/components/schemas/WebBrokerApiChannel'
+        vhosts:
+          type: object
+          required:
+            - main
+          description: Custom virtual hosts/domains for the API
+          properties:
+            main:
+              type: string
+              description: Custom virtual host/domain for production traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: api.example.com
+            sandbox:
+              type: string
+              description: Custom virtual host/domain for sandbox traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: sandbox-api.example.com
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
+    WebBrokerApiPolicyGroup:
+      type: object
+      description: Group of policies
+      properties:
+        policies:
+          type: array
+          description: List of policies to apply
+          items:
+            $ref: '#/components/schemas/Policy'
+    WebBrokerApiProduceConfig:
+      type: object
+      description: Configuration for producing messages from WebSocket to Kafka
+      required:
+        - topic
+      properties:
+        topic:
+          type: string
+          description: Kafka topic to produce messages to
+          example: stock.prices
+    WebBrokerApiReceiver:
+      type: object
+      description: WebSocket receiver configuration
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          description: Receiver name
+          example: websocket-receiver
+        type:
+          type: string
+          description: Receiver type
+          example: websocket
+        properties:
+          type: object
+          description: Additional receiver properties
+          additionalProperties: true
+    WebBrokerApiRequest:
+      type: object
+      required:
+        - apiVersion
+        - metadata
+        - kind
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: API specification version
+          example: gateway.api-platform.wso2.com/v1
+          enum:
+            - gateway.api-platform.wso2.com/v1
+        kind:
+          type: string
+          description: API type
+          example: WebBrokerApi
+          enum:
+            - WebBrokerApi
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: '#/components/schemas/WebBrokerApiData'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: WebBrokerApi
+        metadata:
+          name: stock-trading-v1.0
+        spec:
+          displayName: Stock Trading WebBroker API
+          version: v1.0
+          context: /stock-trading/$version
+          receiver:
+            name: websocket-receiver
+            type: websocket
+          broker:
+            name: kafka-driver
+            type: kafka
+            properties:
+              brokers:
+                - kafka-broker-1:9092
+                - kafka-broker-2:9092
+          allChannels:
+            on_connection_init:
+              policies: []
+            on_produce:
+              policies: []
+            on_consume:
+              policies: []
+          channels:
+            prices:
+              produceTo:
+                topic: stock.prices
+              consumeFrom:
+                topic: stock.prices
+              on_connection_init:
+                policies: []
+              on_produce:
+                policies: []
+              on_consume:
+                policies: []
+    WebSubAPI:
+      allOf:
+        - $ref: '#/components/schemas/WebSubAPIRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: Server-managed lifecycle fields. Populated on responses.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: WebSubApi
+        metadata:
+          name: github-events-v1.0
+        spec:
+          displayName: GitHub Events
+          version: v1.0
+          context: /github-events/$version
+          channels:
+            - name: issues
+              method: SUB
+            - name: pull_requests
+              method: SUB
+        status:
+          id: github-events-v1.0
+          state: deployed
+          createdAt: 2026-04-24T07:21:13Z
+          updatedAt: 2026-04-24T07:21:13Z
+          deployedAt: 2026-04-24T07:21:13Z
+    WebSubAPIRequest:
+      type: object
+      required:
+        - apiVersion
+        - metadata
+        - kind
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: API specification version
+          example: gateway.api-platform.wso2.com/v1
+          enum:
+            - gateway.api-platform.wso2.com/v1
+        kind:
+          type: string
+          description: API type
+          example: WebSubApi
+          enum:
+            - WebSubApi
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: '#/components/schemas/WebhookAPIData'
+      example:
+        apiVersion: gateway.api-platform.wso2.com/v1
+        kind: WebSubApi
+        metadata:
+          name: github-events-v1.0
+        spec:
+          displayName: GitHub Events
+          version: v1.0
+          context: /github-events/$version
+          channels:
+            - name: issues
+              method: SUB
+            - name: pull_requests
+              method: SUB
+    WebSubAllChannelPolicies:
+      type: object
+      description: Policies applied to all channels, organized by event type.
+      properties:
+        on_subscription:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_unsubscription:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_message_received:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_message_delivery:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+
+    # WebSubChannelPolicies defines per-channel policies organized by event type.
+    WebSubChannel:
+      type: object
+      description: A single channel definition with optional per-channel policy overrides.
+      properties:
+        on_subscription:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_unsubscription:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_message_received:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+        on_message_delivery:
+          $ref: '#/components/schemas/WebSubEventPolicies'
+
+    # WebSubEventPolicies defines policies for a single event type.
+    WebSubEventPolicies:
+      type: object
+      description: Policies for a single event type.
+      properties:
+        policies:
+          type: array
+          description: List of policies applied for this event type.
+          items:
+            $ref: '#/components/schemas/Policy'
+
+    # WebSubAllChannelPolicies defines policies applied to all channels for each event type.
+    WebhookAPIData:
+      type: object
+      required:
+        - displayName
+        - version
+        - context
+      properties:
+        displayName:
+          type: string
+          description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: reading-list-api
+        version:
+          type: string
+          description: Semantic version of the API
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        context:
+          type: string
+          description: Base path for all API routes (must start with /, no trailing slash)
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          minLength: 1
+          maxLength: 200
+          example: /weather
+        vhosts:
+          type: object
+          required:
+            - main
+          description: Custom virtual hosts/domains for the API
+          properties:
+            main:
+              type: string
+              description: Custom virtual host/domain for production traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: api.example.com
+            sandbox:
+              type: string
+              description: Custom virtual host/domain for sandbox traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: sandbox-api.example.com
+        allChannels:
+          $ref: '#/components/schemas/WebSubAllChannelPolicies'
+        channels:
+          type: object
+          description: Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.
+          additionalProperties:
+            $ref: '#/components/schemas/WebSubChannel'
+        deploymentState:
+          type: string
+          description: Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.
+          enum: [deployed, undeployed]
+          default: deployed
+          example: deployed
+
+    # WebSubChannel defines a single channel entry with its per-channel policies.
+    WebhookSecretCreationRequest:
+      type: object
+      required:
+        - displayName
+      properties:
+        displayName:
+          type: string
+          description: Human-readable label for this secret (used to derive the immutable name slug).
+          minLength: 1
+          maxLength: 100
+          example: GitHub Webhook
+    WebhookSecretCreationResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: Webhook secret generated successfully
+        secret:
+          type: string
+          description: |
+            The generated plaintext secret value (whsec_ prefix + 64 hex chars).
+            Returned exactly once — store it immediately as it will not be retrievable again.
+          example: "whsec_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b"
+        webhookSecret:
+          $ref: '#/components/schemas/WebhookSecretInfo'
+      required:
+        - status
+        - message
+        - secret
+    WebhookSecretInfo:
+      type: object
+      description: Metadata for an HMAC secret. The plaintext value is never included.
+      properties:
+        name:
+          type: string
+          description: URL-safe slug (immutable, used as path parameter for regenerate/delete).
+          example: github-webhook
+        displayName:
+          type: string
+          description: Human-readable label.
+          example: GitHub Webhook
+        status:
+          type: string
+          enum: [active, revoked]
+          example: active
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-06-01T10:00:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2026-06-01T10:00:00Z"
+    WebhookSecretListResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        totalCount:
+          type: integer
+          description: Total number of active secrets for this API
+          example: 2
+        secrets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookSecretInfo'

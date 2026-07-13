@@ -14,8 +14,6 @@ func ExtractNameVersion(cfg any) (string, string, error) {
 	switch c := cfg.(type) {
 	case api.RestAPI:
 		return c.Spec.DisplayName, c.Spec.Version, nil
-	case api.WebSubAPI:
-		return c.Spec.DisplayName, c.Spec.Version, nil
 	default:
 		return "", "", fmt.Errorf("unsupported api config type: %T", cfg)
 	}

@@ -302,7 +302,7 @@ export default function ProxyQuickStartBanner() {
     ? buildProjectPath(
         currentOrganization,
         completion.latestProject,
-        '/proxies/new'
+        '/proxies/create'
       )
     : defaultProjectsPath;
   const deployProxyPath =

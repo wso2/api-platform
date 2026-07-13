@@ -109,7 +109,7 @@ export default function GatewayDeployMainSection({
         <Button
           variant="contained"
           component={RouterLink}
-          to={buildOrgPath(currentOrganization, '/gateways/new')}
+          to={buildOrgPath(currentOrganization, '/gateways/create')}
           startIcon={<Plus size={20} />}
         >
           <FormattedMessage

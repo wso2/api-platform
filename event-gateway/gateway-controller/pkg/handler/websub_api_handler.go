@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package handlers
+package handler
 
 import (
 	"context"
@@ -28,23 +28,24 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/go-httpkit/httputil"
+
+	eventgateway "github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/api/eventgateway"
 )
 
 // CreateWebSubAPI implements ServerInterface.CreateWebSubAPI
 // (POST /websub-apis)
-func (s *APIServer) CreateWebSubAPI(w http.ResponseWriter, r *http.Request) {
+func (s *WebSubServer) CreateWebSubAPI(w http.ResponseWriter, r *http.Request) {
 	log := middleware.GetLogger(r, s.logger)
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Error("Failed to read request body", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
 		})
@@ -65,7 +66,7 @@ func (s *APIServer) CreateWebSubAPI(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Error("Failed to deploy WebSub API configuration", slog.Any("error", err))
 		if storage.IsConflictError(err) {
-			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusConflict, eventgateway.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
@@ -74,7 +75,7 @@ func (s *APIServer) CreateWebSubAPI(w http.ResponseWriter, r *http.Request) {
 		if mapRenderError(w, "create", err) {
 			return
 		}
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: err.Error(),
 		})
@@ -96,19 +97,19 @@ func (s *APIServer) CreateWebSubAPI(w http.ResponseWriter, r *http.Request) {
 
 // ListWebSubAPIs implements ServerInterface.ListWebSubAPIs
 // (GET /websub-apis)
-func (s *APIServer) ListWebSubAPIs(w http.ResponseWriter, r *http.Request, params api.ListWebSubAPIsParams) {
+func (s *WebSubServer) ListWebSubAPIs(w http.ResponseWriter, r *http.Request, params eventgateway.ListWebSubAPIsParams) {
 	if (params.DisplayName != nil && *params.DisplayName != "") ||
 		(params.Version != nil && *params.Version != "") ||
 		(params.Context != nil && *params.Context != "") ||
 		(params.Status != nil && *params.Status != "") {
-		s.SearchDeployments(w, r, string(api.WebSubAPIKindWebSubApi))
+		s.deploymentSearcher.SearchDeployments(w, r, "WebSubApi")
 		return
 	}
 
-	configs, err := s.db.GetAllConfigsByKind(string(api.WebSubAPIKindWebSubApi))
+	configs, err := s.db.GetAllConfigsByKind("WebSubApi")
 	if err != nil {
 		s.logger.Error("Failed to list WebSub APIs", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to list WebSub API configurations",
 		})
@@ -141,14 +142,14 @@ func (s *APIServer) ListWebSubAPIs(w http.ResponseWriter, r *http.Request, param
 
 // GetWebSubAPIById implements ServerInterface.GetWebSubAPIById
 // (GET /websub-apis/{id})
-func (s *APIServer) GetWebSubAPIById(w http.ResponseWriter, r *http.Request, id string) {
+func (s *WebSubServer) GetWebSubAPIById(w http.ResponseWriter, r *http.Request, id string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 
 	cfg, err := s.db.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
 	if err != nil {
 		if storage.IsDatabaseUnavailableError(err) {
-			httputil.WriteJSON(w, http.StatusServiceUnavailable, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, eventgateway.ErrorResponse{
 				Status:  "error",
 				Message: "Database storage not available",
 			})
@@ -156,7 +157,7 @@ func (s *APIServer) GetWebSubAPIById(w http.ResponseWriter, r *http.Request, id 
 		}
 		log.Warn("WebSub API configuration not found",
 			slog.String("handle", handle))
-		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
 		})
@@ -168,14 +169,14 @@ func (s *APIServer) GetWebSubAPIById(w http.ResponseWriter, r *http.Request, id 
 
 // UpdateWebSubAPI implements ServerInterface.UpdateWebSubAPI
 // (PUT /websub-apis/{id})
-func (s *APIServer) UpdateWebSubAPI(w http.ResponseWriter, r *http.Request, id string) {
+func (s *WebSubServer) UpdateWebSubAPI(w http.ResponseWriter, r *http.Request, id string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Error("Failed to read request body", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
 		})
@@ -186,7 +187,7 @@ func (s *APIServer) UpdateWebSubAPI(w http.ResponseWriter, r *http.Request, id s
 	if err != nil {
 		log.Warn("WebSub API configuration not found",
 			slog.String("handle", handle))
-		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
 		})
@@ -207,7 +208,7 @@ func (s *APIServer) UpdateWebSubAPI(w http.ResponseWriter, r *http.Request, id s
 	if err != nil {
 		log.Error("Failed to update WebSub API configuration", slog.Any("error", err))
 		if storage.IsConflictError(err) {
-			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusConflict, eventgateway.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
@@ -216,7 +217,7 @@ func (s *APIServer) UpdateWebSubAPI(w http.ResponseWriter, r *http.Request, id s
 		if mapRenderError(w, "update", err) {
 			return
 		}
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: err.Error(),
 		})
@@ -234,7 +235,7 @@ func (s *APIServer) UpdateWebSubAPI(w http.ResponseWriter, r *http.Request, id s
 
 // DeleteWebSubAPI implements ServerInterface.DeleteWebSubAPI
 // (DELETE /websub-apis/{id})
-func (s *APIServer) DeleteWebSubAPI(w http.ResponseWriter, r *http.Request, id string) {
+func (s *WebSubServer) DeleteWebSubAPI(w http.ResponseWriter, r *http.Request, id string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(r)
@@ -243,7 +244,7 @@ func (s *APIServer) DeleteWebSubAPI(w http.ResponseWriter, r *http.Request, id s
 	if err != nil {
 		log.Warn("WebSub API configuration not found",
 			slog.String("handle", handle))
-		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("WebSub API configuration with handle '%s' not found", handle),
 		})
@@ -252,7 +253,7 @@ func (s *APIServer) DeleteWebSubAPI(w http.ResponseWriter, r *http.Request, id s
 
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		log.Error("Failed to delete WebSub API config from database", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to delete configuration",
 		})
@@ -269,9 +270,9 @@ func (s *APIServer) DeleteWebSubAPI(w http.ResponseWriter, r *http.Request, id s
 	topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
 	for _, topic := range topicsToUnregister {
 		ctx, cancel := context.WithTimeout(context.Background(),
-			time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+			time.Duration(s.eventGatewayConfig.TimeoutSeconds)*time.Second)
 		if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic,
-			s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
+			s.eventGatewayConfig.RouterHost, s.eventGatewayConfig.WebSubHubListenerPort, log); err != nil {
 			log.Error("Failed to deregister topic from WebSubHub",
 				slog.Any("error", err),
 				slog.String("topic", topic))
@@ -297,7 +298,7 @@ func (s *APIServer) DeleteWebSubAPI(w http.ResponseWriter, r *http.Request, id s
 
 // CreateWebSubAPIKey implements ServerInterface.CreateWebSubAPIKey
 // (POST /websub-apis/{id}/api-keys)
-func (s *APIServer) CreateWebSubAPIKey(w http.ResponseWriter, r *http.Request, id string) {
+func (s *WebSubServer) CreateWebSubAPIKey(w http.ResponseWriter, r *http.Request, id string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(r)
@@ -307,20 +308,20 @@ func (s *APIServer) CreateWebSubAPIKey(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 
-	var request api.APIKeyCreationRequest
+	var request eventgateway.APIKeyCreationRequest
 	if err := s.bindRequestBody(r, &request); err != nil {
 		log.Error("Failed to parse request body for WebSub API key creation",
 			slog.Any("error", err),
 			slog.String("handle", handle),
 			slog.String("correlation_id", correlationID))
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
 		return
 	}
 
 	params := utils.APIKeyCreationParams{
 		Kind:          models.KindWebSubApi,
 		Handle:        handle,
-		Request:       request,
+		Request:       toManagementAPIKeyCreationRequest(request),
 		User:          user,
 		CorrelationID: correlationID,
 		Logger:        log,
@@ -329,12 +330,12 @@ func (s *APIServer) CreateWebSubAPIKey(w http.ResponseWriter, r *http.Request, i
 	result, err := s.apiKeyService.CreateAPIKey(params)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
 		} else if storage.IsConflictError(err) {
-			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusConflict, eventgateway.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			log.Error("Failed to create WebSub API key", slog.String("handle", handle), slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create API key"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Failed to create API key"})
 		}
 		return
 	}
@@ -344,7 +345,7 @@ func (s *APIServer) CreateWebSubAPIKey(w http.ResponseWriter, r *http.Request, i
 
 // ListWebSubAPIKeys implements ServerInterface.ListWebSubAPIKeys
 // (GET /websub-apis/{id}/api-keys)
-func (s *APIServer) ListWebSubAPIKeys(w http.ResponseWriter, r *http.Request, id string) {
+func (s *WebSubServer) ListWebSubAPIKeys(w http.ResponseWriter, r *http.Request, id string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(r)
@@ -365,10 +366,10 @@ func (s *APIServer) ListWebSubAPIKeys(w http.ResponseWriter, r *http.Request, id
 	result, err := s.apiKeyService.ListAPIKeys(params)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
 		} else {
 			log.Error("Failed to list WebSub API keys", slog.String("handle", handle), slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list API keys"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Failed to list API keys"})
 		}
 		return
 	}
@@ -378,7 +379,7 @@ func (s *APIServer) ListWebSubAPIKeys(w http.ResponseWriter, r *http.Request, id
 
 // RevokeWebSubAPIKey implements ServerInterface.RevokeWebSubAPIKey
 // (DELETE /websub-apis/{id}/api-keys/{apiKeyName})
-func (s *APIServer) RevokeWebSubAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+func (s *WebSubServer) RevokeWebSubAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(r)
@@ -400,10 +401,10 @@ func (s *APIServer) RevokeWebSubAPIKey(w http.ResponseWriter, r *http.Request, i
 	result, err := s.apiKeyService.RevokeAPIKey(params)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
 		} else {
 			log.Error("Failed to revoke WebSub API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to revoke API key"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Failed to revoke API key"})
 		}
 		return
 	}
@@ -413,7 +414,7 @@ func (s *APIServer) RevokeWebSubAPIKey(w http.ResponseWriter, r *http.Request, i
 
 // UpdateWebSubAPIKey implements ServerInterface.UpdateWebSubAPIKey
 // (PUT /websub-apis/{id}/api-keys/{apiKeyName})
-func (s *APIServer) UpdateWebSubAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+func (s *WebSubServer) UpdateWebSubAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(r)
@@ -423,14 +424,14 @@ func (s *APIServer) UpdateWebSubAPIKey(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 
-	var request api.APIKeyCreationRequest
+	var request eventgateway.APIKeyCreationRequest
 	if err := s.bindRequestBody(r, &request); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
 		return
 	}
 
 	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiKey is required"})
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{Status: "error", Message: "apiKey is required"})
 		return
 	}
 
@@ -438,7 +439,7 @@ func (s *APIServer) UpdateWebSubAPIKey(w http.ResponseWriter, r *http.Request, i
 		Kind:          models.KindWebSubApi,
 		Handle:        handle,
 		APIKeyName:    apiKeyName,
-		Request:       request,
+		Request:       toManagementAPIKeyCreationRequest(request),
 		User:          user,
 		CorrelationID: correlationID,
 		Logger:        log,
@@ -447,14 +448,14 @@ func (s *APIServer) UpdateWebSubAPIKey(w http.ResponseWriter, r *http.Request, i
 	result, err := s.apiKeyService.UpdateAPIKey(params)
 	if err != nil {
 		if storage.IsOperationNotAllowedError(err) {
-			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{Status: "error", Message: err.Error()})
 		} else if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API or API key '%s' not found", apiKeyName)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API or API key '%s' not found", apiKeyName)})
 		} else if storage.IsConflictError(err) {
-			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusConflict, eventgateway.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			log.Error("Failed to update WebSub API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update API key"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Failed to update API key"})
 		}
 		return
 	}
@@ -464,7 +465,7 @@ func (s *APIServer) UpdateWebSubAPIKey(w http.ResponseWriter, r *http.Request, i
 
 // RegenerateWebSubAPIKey implements ServerInterface.RegenerateWebSubAPIKey
 // (POST /websub-apis/{id}/api-keys/{apiKeyName}/regenerate)
-func (s *APIServer) RegenerateWebSubAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+func (s *WebSubServer) RegenerateWebSubAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(r)
@@ -474,9 +475,9 @@ func (s *APIServer) RegenerateWebSubAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var request api.APIKeyRegenerationRequest
+	var request eventgateway.APIKeyRegenerationRequest
 	if err := s.bindRequestBody(r, &request); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
 		return
 	}
 
@@ -484,7 +485,7 @@ func (s *APIServer) RegenerateWebSubAPIKey(w http.ResponseWriter, r *http.Reques
 		Kind:          models.KindWebSubApi,
 		Handle:        handle,
 		APIKeyName:    apiKeyName,
-		Request:       request,
+		Request:       toManagementAPIKeyRegenerationRequest(request),
 		User:          user,
 		CorrelationID: correlationID,
 		Logger:        log,
@@ -493,10 +494,10 @@ func (s *APIServer) RegenerateWebSubAPIKey(w http.ResponseWriter, r *http.Reques
 	result, err := s.apiKeyService.RegenerateAPIKey(params)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API or API key '%s' not found", apiKeyName)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API or API key '%s' not found", apiKeyName)})
 		} else {
 			log.Error("Failed to regenerate WebSub API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to regenerate API key"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Failed to regenerate API key"})
 		}
 		return
 	}
@@ -510,56 +511,56 @@ func (s *APIServer) RegenerateWebSubAPIKey(w http.ResponseWriter, r *http.Reques
 
 // CreateWebSubAPISecret implements ServerInterface.CreateWebSubAPISecret
 // (POST /websub-apis/{id}/secrets)
-func (s *APIServer) CreateWebSubAPISecret(w http.ResponseWriter, r *http.Request, handle string) {
+func (s *WebSubServer) CreateWebSubAPISecret(w http.ResponseWriter, r *http.Request, handle string) {
 	log := middleware.GetLogger(r, s.logger)
 	correlationID := middleware.GetCorrelationID(r)
 
 	cfg, err := s.db.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
 			return
 		}
 		if storage.IsDatabaseUnavailableError(err) {
-			httputil.WriteJSON(w, http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Storage unavailable"})
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, eventgateway.ErrorResponse{Status: "error", Message: "Storage unavailable"})
 			return
 		}
 		log.Error("Failed to look up WebSub API", slog.String("handle", handle), slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Internal error looking up WebSub API"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Internal error looking up WebSub API"})
 		return
 	}
 	if cfg == nil {
-		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+		httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
 		return
 	}
 
-	var request api.WebhookSecretCreationRequest
+	var request eventgateway.WebhookSecretCreationRequest
 	if err := s.bindRequestBody(r, &request); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %s", err.Error())})
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %s", err.Error())})
 		return
 	}
 
 	ws, plaintext, err := s.webhookSecretService.Generate(cfg.UUID, request.DisplayName, correlationID)
 	if err != nil {
 		if storage.IsConflictError(err) {
-			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusConflict, eventgateway.ErrorResponse{Status: "error", Message: err.Error()})
 			return
 		}
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: err.Error()})
 			return
 		}
 		log.Error("Failed to generate webhook secret", slog.String("handle", handle), slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to generate webhook secret"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Failed to generate webhook secret"})
 		return
 	}
 
-	secretStatus := api.WebhookSecretInfoStatus(ws.Status)
-	httputil.WriteJSON(w, http.StatusCreated, api.WebhookSecretCreationResponse{
+	secretStatus := eventgateway.WebhookSecretInfoStatus(ws.Status)
+	httputil.WriteJSON(w, http.StatusCreated, eventgateway.WebhookSecretCreationResponse{
 		Status:  "success",
 		Message: "Webhook secret generated successfully",
 		Secret:  plaintext,
-		WebhookSecret: &api.WebhookSecretInfo{
+		WebhookSecret: &eventgateway.WebhookSecretInfo{
 			Name:        &ws.Name,
 			DisplayName: &ws.DisplayName,
 			Status:      &secretStatus,
@@ -571,39 +572,39 @@ func (s *APIServer) CreateWebSubAPISecret(w http.ResponseWriter, r *http.Request
 
 // ListWebSubAPISecrets implements ServerInterface.ListWebSubAPISecrets
 // (GET /websub-apis/{id}/secrets)
-func (s *APIServer) ListWebSubAPISecrets(w http.ResponseWriter, r *http.Request, handle string) {
+func (s *WebSubServer) ListWebSubAPISecrets(w http.ResponseWriter, r *http.Request, handle string) {
 	log := middleware.GetLogger(r, s.logger)
 
 	cfg, err := s.db.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
 			return
 		}
 		if storage.IsDatabaseUnavailableError(err) {
-			httputil.WriteJSON(w, http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Storage unavailable"})
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, eventgateway.ErrorResponse{Status: "error", Message: "Storage unavailable"})
 			return
 		}
 		log.Error("Failed to look up WebSub API", slog.String("handle", handle), slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Internal error looking up WebSub API"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Internal error looking up WebSub API"})
 		return
 	}
 	if cfg == nil {
-		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+		httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
 		return
 	}
 
 	wsList, err := s.webhookSecretService.List(cfg.UUID)
 	if err != nil {
 		log.Error("Failed to list webhook secrets", slog.String("handle", handle), slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list webhook secrets"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Failed to list webhook secrets"})
 		return
 	}
 
-	items := make([]api.WebhookSecretInfo, 0, len(wsList))
+	items := make([]eventgateway.WebhookSecretInfo, 0, len(wsList))
 	for _, ws := range wsList {
-		secretStatus := api.WebhookSecretInfoStatus(ws.Status)
-		items = append(items, api.WebhookSecretInfo{
+		secretStatus := eventgateway.WebhookSecretInfoStatus(ws.Status)
+		items = append(items, eventgateway.WebhookSecretInfo{
 			Name:        &ws.Name,
 			DisplayName: &ws.DisplayName,
 			Status:      &secretStatus,
@@ -614,7 +615,7 @@ func (s *APIServer) ListWebSubAPISecrets(w http.ResponseWriter, r *http.Request,
 
 	total := len(items)
 	status := "success"
-	httputil.WriteJSON(w, http.StatusOK, api.WebhookSecretListResponse{
+	httputil.WriteJSON(w, http.StatusOK, eventgateway.WebhookSecretListResponse{
 		Status:     &status,
 		TotalCount: &total,
 		Secrets:    &items,
@@ -623,46 +624,46 @@ func (s *APIServer) ListWebSubAPISecrets(w http.ResponseWriter, r *http.Request,
 
 // RegenerateWebSubAPISecret implements ServerInterface.RegenerateWebSubAPISecret
 // (POST /websub-apis/{id}/secrets/{secretName}/regenerate)
-func (s *APIServer) RegenerateWebSubAPISecret(w http.ResponseWriter, r *http.Request, handle string, secretName string) {
+func (s *WebSubServer) RegenerateWebSubAPISecret(w http.ResponseWriter, r *http.Request, handle string, secretName string) {
 	log := middleware.GetLogger(r, s.logger)
 	correlationID := middleware.GetCorrelationID(r)
 
 	cfg, err := s.db.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
 			return
 		}
 		if storage.IsDatabaseUnavailableError(err) {
-			httputil.WriteJSON(w, http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Storage unavailable"})
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, eventgateway.ErrorResponse{Status: "error", Message: "Storage unavailable"})
 			return
 		}
 		log.Error("Failed to look up WebSub API", slog.String("handle", handle), slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Internal error looking up WebSub API"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Internal error looking up WebSub API"})
 		return
 	}
 	if cfg == nil {
-		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+		httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
 		return
 	}
 
 	ws, plaintext, err := s.webhookSecretService.Regenerate(cfg.UUID, secretName, correlationID)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Webhook secret '%s' not found", secretName)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("Webhook secret '%s' not found", secretName)})
 			return
 		}
 		log.Error("Failed to regenerate webhook secret", slog.String("handle", handle), slog.String("secret", secretName), slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to regenerate webhook secret"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Failed to regenerate webhook secret"})
 		return
 	}
 
-	secretStatus := api.WebhookSecretInfoStatus(ws.Status)
-	httputil.WriteJSON(w, http.StatusOK, api.WebhookSecretCreationResponse{
+	secretStatus := eventgateway.WebhookSecretInfoStatus(ws.Status)
+	httputil.WriteJSON(w, http.StatusOK, eventgateway.WebhookSecretCreationResponse{
 		Status:  "success",
 		Message: "Webhook secret regenerated successfully",
 		Secret:  plaintext,
-		WebhookSecret: &api.WebhookSecretInfo{
+		WebhookSecret: &eventgateway.WebhookSecretInfo{
 			Name:        &ws.Name,
 			DisplayName: &ws.DisplayName,
 			Status:      &secretStatus,
@@ -674,36 +675,36 @@ func (s *APIServer) RegenerateWebSubAPISecret(w http.ResponseWriter, r *http.Req
 
 // DeleteWebSubAPISecret implements ServerInterface.DeleteWebSubAPISecret
 // (DELETE /websub-apis/{id}/secrets/{secretName})
-func (s *APIServer) DeleteWebSubAPISecret(w http.ResponseWriter, r *http.Request, handle string, secretName string) {
+func (s *WebSubServer) DeleteWebSubAPISecret(w http.ResponseWriter, r *http.Request, handle string, secretName string) {
 	log := middleware.GetLogger(r, s.logger)
 	correlationID := middleware.GetCorrelationID(r)
 
 	cfg, err := s.db.GetConfigByKindAndHandle(models.KindWebSubApi, handle)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
 			return
 		}
 		if storage.IsDatabaseUnavailableError(err) {
-			httputil.WriteJSON(w, http.StatusServiceUnavailable, api.ErrorResponse{Status: "error", Message: "Storage unavailable"})
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, eventgateway.ErrorResponse{Status: "error", Message: "Storage unavailable"})
 			return
 		}
 		log.Error("Failed to look up WebSub API", slog.String("handle", handle), slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Internal error looking up WebSub API"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Internal error looking up WebSub API"})
 		return
 	}
 	if cfg == nil {
-		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
+		httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebSub API '%s' not found", handle)})
 		return
 	}
 
 	if err := s.webhookSecretService.Delete(cfg.UUID, secretName, correlationID); err != nil {
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Webhook secret '%s' not found", secretName)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("Webhook secret '%s' not found", secretName)})
 			return
 		}
 		log.Error("Failed to delete webhook secret", slog.String("handle", handle), slog.String("secret", secretName), slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to delete webhook secret"})
+		httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Failed to delete webhook secret"})
 		return
 	}
 

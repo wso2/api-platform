@@ -31,15 +31,17 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/wso2/api-platform/common/webhooksecret"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-const (
-	// WebhookSecretStateTypeURL is the xDS type URL for webhook secret state snapshots.
-	WebhookSecretStateTypeURL = "api-platform.wso2.org/v1.WebhookSecretState"
-)
+// WebhookSecretStateTypeURL is the xDS type URL for webhook secret state
+// snapshots — re-exported from core's policyxds package, which is the single
+// source of truth so core's CombinedCache dispatch and this producer never
+// drift apart.
+const WebhookSecretStateTypeURL = policyxds.WebhookSecretStateTypeURL
 
 // SnapshotManager maintains an xDS LinearCache for webhook secret state and
 // rebuilds it whenever the in-memory WebhookSecretStore changes.

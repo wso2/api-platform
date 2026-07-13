@@ -111,14 +111,6 @@ function TemplateBasedFormFieldsContainer({
         : prev.upstreamAuthHeader,
       upstreamAuthValue: templateChanged ? '' : prev.upstreamAuthValue,
       valuePrefix: template?.metadata?.auth?.valuePrefix || '',
-      // Consumer-facing security config (how callers authenticate to our
-      // gateway) mirrors the template's upstream auth metadata, when present.
-      securityKeyName: templateChanged
-        ? template?.metadata?.auth?.header || 'X-API-Key'
-        : prev.securityKeyName,
-      securityKeyPrefix: templateChanged
-        ? template?.metadata?.auth?.valuePrefix || ''
-        : prev.securityKeyPrefix,
     }));
 
     // Resolve OpenAPI spec. Prefer the inline spec stored on the template
@@ -206,8 +198,6 @@ export default function ServiceProviderNew() {
     upstreamAuthHeader: 'Authorization',
     upstreamAuthValue: '',
     valuePrefix: '',
-    securityKeyName: 'X-API-Key',
-    securityKeyPrefix: '',
   });
   const isVersionValid = VERSION_PATTERN.test(formState.version.trim());
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
@@ -226,7 +216,7 @@ export default function ServiceProviderNew() {
   useEffect(() => {
     if (isProjectLevel && hasPermission(SCOPES.LLM_PROVIDER_MANAGE)) {
       setCurrentProject(null);
-      navigate(buildOrgPath(currentOrganization, '/service-provider/new'), {
+      navigate(buildOrgPath(currentOrganization, '/service-provider/create'), {
         replace: true,
       });
     }
@@ -370,11 +360,8 @@ export default function ServiceProviderNew() {
         enabled: true,
         apiKey: {
           enabled: true,
-          key: formState.securityKeyName || 'X-API-Key',
+          key: 'X-API-Key',
           in: 'header' as const,
-          ...(formState.securityKeyPrefix
-            ? { keyPrefix: formState.securityKeyPrefix }
-            : {}),
         },
       };
 

@@ -21,10 +21,15 @@
  * Tag: API Content
  */
 const apiMetadataService = require('../../../services/apiMetadataService');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
+const { compose } = require('./compose');
 
+// Mutating operations require a CSRF token for browser cookie sessions (the admin UI's
+// content-upload flow); Bearer / API-key / mTLS callers skip the check inside the middleware,
+// so CLI and service integrations are unaffected. Mirrors organizationContentHandler.
 module.exports = {
-    createApiContent: apiMetadataService.createAPIContent,
-    replaceApiContent: apiMetadataService.updateAPIContent,
+    createApiContent: compose(requireCsrfForMutatingApi, apiMetadataService.createAPIContent),
+    replaceApiContent: compose(requireCsrfForMutatingApi, apiMetadataService.updateAPIContent),
     getApiContentFile: apiMetadataService.getAPIFile,
-    deleteApiContentFile: apiMetadataService.deleteAPIFile,
+    deleteApiContentFile: compose(requireCsrfForMutatingApi, apiMetadataService.deleteAPIFile),
 };

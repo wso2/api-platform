@@ -207,15 +207,15 @@ export default function QuickStart(): JSX.Element {
     ? buildProjectPath(currentOrganization, currentProject, '/home')
     : orgHomePath;
   const mcpNewPath = currentProject
-    ? buildProjectPath(currentOrganization, currentProject, '/mcp-proxy/new')
-    : buildOrgPath(currentOrganization, '/mcp-proxy/new');
+    ? buildProjectPath(currentOrganization, currentProject, '/mcp-proxy/create')
+    : buildOrgPath(currentOrganization, '/mcp-proxy/create');
 
   const allQuickStartOptions: QuickStartOption[] = [
     getProviderProxyOption(() =>
-      buildOrgPath(currentOrganization, '/service-provider/new')
+      buildOrgPath(currentOrganization, '/service-provider/create')
     ),
     getManageGatewaysOption(() =>
-      buildOrgPath(currentOrganization, '/gateways/new')
+      buildOrgPath(currentOrganization, '/gateways/create')
     ),
     getMCPProxyOption(() => mcpNewPath),
   ];
@@ -297,7 +297,11 @@ export default function QuickStart(): JSX.Element {
 
     setCurrentProject(selectedProject as ProjectBase);
     navigate(
-      buildProjectPath(currentOrganization, selectedProject, '/mcp-proxy/new')
+      buildProjectPath(
+        currentOrganization,
+        selectedProject,
+        '/mcp-proxy/create'
+      )
     );
     setIsProjectSelectionOpen(false);
   };

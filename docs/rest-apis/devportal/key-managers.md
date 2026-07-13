@@ -27,7 +27,6 @@ Creates a key manager configuration for the organization. If `id` is omitted, th
 {
   "displayName": "Asgardeo",
   "id": "asgardeo-prod",
-  "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
@@ -36,7 +35,6 @@ Creates a key manager configuration for the organization. If `id` is omitted, th
 ```yaml
 displayName: Asgardeo
 id: asgardeo-prod
-type: ASGARDEO
 enabled: true
 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
 
@@ -64,7 +62,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "asgardeo-prod",
   "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "type": "ASGARDEO",
+  "type": "GENERIC_OIDC",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
   "createdBy": "alice@example.com",
@@ -194,7 +192,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "id": "asgardeo-prod",
       "displayName": "Asgardeo",
       "orgId": "org-12345",
-      "type": "ASGARDEO",
+      "type": "GENERIC_OIDC",
       "enabled": true,
       "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
       "createdBy": "alice@example.com",
@@ -243,7 +241,7 @@ Status Code **200**
 |»»» id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
 |»»» displayName|string|false|none|none|
 |»»» orgId|string|false|none|none|
-|»»» type|string|false|none|none|
+|»»» type|string|false|read-only|Fixed at `GENERIC_OIDC` for every key manager. Not client-configurable.|
 |»»» enabled|boolean|false|none|none|
 |»»» tokenEndpoint|string(uri)|false|none|none|
 |»»» createdBy|string|false|none|Identity of the user who created this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
@@ -258,7 +256,7 @@ Status Code **200**
 |»» *anonymous*|[KeyManagerPublicResponseSchema](schemas.md#schemakeymanagerpublicresponseschema)|false|none|Minimal developer-facing key manager view.|
 |»»» id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
 |»»» displayName|string|false|none|none|
-|»»» type|string|false|none|none|
+|»»» type|string|false|read-only|Fixed at `GENERIC_OIDC` for every key manager.|
 |»»» tokenEndpoint|string(uri)|false|none|none|
 
 *continued*
@@ -274,13 +272,7 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
-|type|ASGARDEO|
-|type|WSO2IS|
-|type|KEYCLOAK|
 |type|GENERIC_OIDC|
-|type|ASGARDEO|
-|type|WSO2IS|
-|type|KEYCLOAK|
 |type|GENERIC_OIDC|
 
 ## Get a key manager
@@ -324,7 +316,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "asgardeo-prod",
   "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "type": "ASGARDEO",
+  "type": "GENERIC_OIDC",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
   "createdBy": "alice@example.com",
@@ -389,7 +381,6 @@ Updates an existing key manager configuration. Accepts either a `application/jso
 {
   "displayName": "Asgardeo",
   "id": "asgardeo-prod",
-  "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
@@ -398,7 +389,6 @@ Updates an existing key manager configuration. Accepts either a `application/jso
 ```yaml
 displayName: Asgardeo
 id: asgardeo-prod
-type: ASGARDEO
 enabled: true
 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
 
@@ -427,7 +417,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "asgardeo-prod",
   "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "type": "ASGARDEO",
+  "type": "GENERIC_OIDC",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
   "createdBy": "alice@example.com",

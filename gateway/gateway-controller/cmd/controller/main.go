@@ -43,7 +43,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -226,10 +225,6 @@ func main() {
 	apiKeySnapshotManager := apikeyxds.NewAPIKeySnapshotManager(apiKeyStore, log)
 	apiKeyXDSManager := apikeyxds.NewAPIKeyStateManager(apiKeyStore, apiKeySnapshotManager, log)
 
-	// Initialize in-memory webhook secret store (shared with the HMAC policy via the common package)
-	webhookSecretStore := webhooksecret.GetStoreInstance()
-	webhookSecretSnapshotManager := webhooksecretxds.NewSnapshotManager(webhookSecretStore, log)
-
 	// Initialize in-memory lazy resource store and components for xDS
 	lazyResourceStore := storage.NewLazyResourceStore(log)
 	lazyResourceSnapshotManager := lazyresourcexds.NewLazyResourceSnapshotManager(lazyResourceStore, log)
@@ -298,17 +293,6 @@ func main() {
 		}
 		// Create secrets service
 		secretsService = secrets.NewSecretsService(db, encryptionProviderManager, log)
-
-		// Load webhook secrets from database into the in-memory store
-		log.Info("Loading webhook secrets from database")
-		if err := storage.LoadWebhookSecretsFromDatabase(db, encryptionProviderManager, webhookSecretStore); err != nil {
-			log.Error("Failed to load webhook secrets from database", slog.Any("error", err))
-			os.Exit(1)
-		}
-		log.Info("Loaded webhook secrets from database")
-		if err := webhookSecretSnapshotManager.RefreshSnapshot(); err != nil {
-			log.Warn("Failed to generate initial webhook secret xDS snapshot", slog.Any("error", err))
-		}
 	}
 	log.Info("Loaded encryption providers")
 
@@ -333,7 +317,7 @@ func main() {
 	for key, def := range policyDefinitions {
 		def.ManagedBy = "wso2"
 		if localPolicies[def.Name+"|"+def.Version] {
-			def.ManagedBy = "customer"
+			def.ManagedBy = "organization"
 		}
 		policyDefinitions[key] = def
 	}
@@ -496,7 +480,7 @@ func main() {
 			cfg.Controller.PolicyServer.TLS.KeyFile,
 		))
 	}
-	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, subscriptionSnapshotManager, webhookSecretSnapshotManager, cfg.Controller.PolicyServer.Port, log, serverOpts...)
+	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, subscriptionSnapshotManager, nil, cfg.Controller.PolicyServer.Port, log, serverOpts...)
 	go func() {
 		if err := policyXDSServer.Start(); err != nil {
 			log.Error("Policy xDS server failed", slog.Any("error", err))
@@ -522,7 +506,6 @@ func main() {
 
 	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService)
 	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID, secretsService)
-	webhookSecretService := utils.NewWebhookSecretService(db, encryptionProviderManager, webhookSecretStore, eventHubInstance, gatewayID, log)
 	llmSvc := utils.NewLLMDeploymentService(configStore, db, snapshotManager, lazyResourceXDSManager, templateDefinitions,
 		apiSvc, &cfg.Router, policyVersionResolver, policyValidator)
 
@@ -542,8 +525,8 @@ func main() {
 		subscriptionSnapshotManager,
 		eventHubInstance,
 		secretsService,
-		webhookSecretStore,
-		webhookSecretSnapshotManager,
+		webhooksecret.GetStoreInstance(),
+		nil,
 	)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
@@ -598,9 +581,6 @@ func main() {
 		cfg,
 		policyDefinitions,
 		secretsService,
-		webhookSecretStore,
-		webhookSecretSnapshotManager,
-		encryptionProviderManager,
 	)
 	if err := evtListener.Start(); err != nil {
 		log.Error("Failed to start event listener", slog.Any("error", err))
@@ -626,7 +606,6 @@ func main() {
 		subscriptionSnapshotManager,
 		secretsService,
 		restAPIService,
-		webhookSecretService,
 	)
 
 	// Load immutable gateway artifacts from the filesystem (no-op when immutable mode is disabled).

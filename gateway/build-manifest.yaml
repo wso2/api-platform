@@ -7,7 +7,7 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/analytics-header-filter@v1
     - name: api-key-auth
-      version: v1.0.4
+      version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v1
     - name: aws-bedrock-guardrail
       version: v1.0.2
@@ -135,3 +135,6 @@ policies:
     - name: word-count-guardrail
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/word-count-guardrail@v1
+    - name: aws-authentication
+      version: v0.9.0
+      gomodule: github.com/wso2/gateway-controllers/policies/aws-authentication@v0

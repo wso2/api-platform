@@ -25,6 +25,7 @@ const { CustomError } = require('../utils/errors/customErrors');
 const orgDao = require('../dao/organizationDao');
 const constants = require('../utils/constants');
 const unzipper = require('unzipper');
+const zlib = require('zlib');
 const axios = require('axios');
 const qs = require('qs');
 const https = require('https');
@@ -303,6 +304,113 @@ function resolveActor(req) {
         || req?.[constants.USER_ID]
         || req?.user?.[constants.USER_ID]
         || constants.SYSTEM_ACTOR;
+}
+
+// CRC-32 lookup table (IEEE 802.3 polynomial) used by the ZIP writer below.
+const CRC32_TABLE = (() => {
+    const table = new Int32Array(256);
+    for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) {
+            c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+        }
+        table[n] = c;
+    }
+    return table;
+})();
+
+function crc32(buf) {
+    let crc = -1;
+    for (let i = 0; i < buf.length; i++) {
+        crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ buf[i]) & 0xFF];
+    }
+    return (crc ^ -1) >>> 0;
+}
+
+// Builds a ZIP archive entirely in memory (no filesystem writes), using DEFLATE
+// via the built-in zlib. `entries` is an array of { path, content } where path is
+// the forward-slash entry name and content is a Buffer. Returns the archive Buffer.
+function createZipBuffer(entries) {
+    const localParts = [];
+    const centralParts = [];
+    let offset = 0;
+
+    for (const entry of entries) {
+        const nameBuf = Buffer.from(entry.path, constants.CHARSET_UTF8);
+        const content = Buffer.isBuffer(entry.content) ? entry.content : Buffer.from(entry.content);
+        const crc = crc32(content);
+        const compressed = zlib.deflateRawSync(content);
+        const method = 8; // DEFLATE
+
+        const local = Buffer.alloc(30);
+        local.writeUInt32LE(0x04034b50, 0);   // local file header signature
+        local.writeUInt16LE(20, 4);           // version needed to extract
+        local.writeUInt16LE(0x0800, 6);       // general purpose flag: UTF-8 filename (bit 11)
+        local.writeUInt16LE(method, 8);
+        local.writeUInt16LE(0, 10);           // mod time
+        local.writeUInt16LE(0x21, 12);        // mod date (1980-01-01)
+        local.writeUInt32LE(crc, 14);
+        local.writeUInt32LE(compressed.length, 18);
+        local.writeUInt32LE(content.length, 22);
+        local.writeUInt16LE(nameBuf.length, 26);
+        local.writeUInt16LE(0, 28);           // extra field length
+        localParts.push(local, nameBuf, compressed);
+
+        const central = Buffer.alloc(46);
+        central.writeUInt32LE(0x02014b50, 0);  // central directory header signature
+        central.writeUInt16LE(20, 4);          // version made by
+        central.writeUInt16LE(20, 6);          // version needed to extract
+        central.writeUInt16LE(0x0800, 8);      // general purpose flag: UTF-8 filename
+        central.writeUInt16LE(method, 10);
+        central.writeUInt16LE(0, 12);          // mod time
+        central.writeUInt16LE(0x21, 14);       // mod date
+        central.writeUInt32LE(crc, 16);
+        central.writeUInt32LE(compressed.length, 20);
+        central.writeUInt32LE(content.length, 24);
+        central.writeUInt16LE(nameBuf.length, 28);
+        central.writeUInt16LE(0, 30);          // extra field length
+        central.writeUInt16LE(0, 32);          // file comment length
+        central.writeUInt16LE(0, 34);          // disk number start
+        central.writeUInt16LE(0, 36);          // internal file attributes
+        central.writeUInt32LE(0, 38);          // external file attributes
+        central.writeUInt32LE(offset, 42);     // relative offset of local header
+        centralParts.push(central, nameBuf);
+
+        offset += local.length + nameBuf.length + compressed.length;
+    }
+
+    const localBuf = Buffer.concat(localParts);
+    const centralBuf = Buffer.concat(centralParts);
+
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);          // end of central directory signature
+    end.writeUInt16LE(0, 4);                   // number of this disk
+    end.writeUInt16LE(0, 6);                   // disk with central directory start
+    end.writeUInt16LE(entries.length, 8);      // central dir records on this disk
+    end.writeUInt16LE(entries.length, 10);     // total central dir records
+    end.writeUInt32LE(centralBuf.length, 12);  // size of central directory
+    end.writeUInt32LE(localBuf.length, 16);    // offset of central directory
+    end.writeUInt16LE(0, 20);                  // comment length
+
+    return Buffer.concat([localBuf, centralBuf, end]);
+}
+
+// Recursively reads every file under rootDir, returning { relativePath, content } entries
+// with forward-slash relative paths. Used to bundle the on-disk default theme for download.
+function readDirTree(rootDir, baseDir = '') {
+    const out = [];
+    const entries = fs.readdirSync(rootDir, { withFileTypes: true });
+    for (const entry of entries) {
+        if (entry.name === '.DS_Store' || entry.name === '__MACOSX') continue;
+        const abs = path.join(rootDir, entry.name);
+        const rel = baseDir ? `${baseDir}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+            out.push(...readDirTree(abs, rel));
+        } else if (entry.isFile()) {
+            out.push({ relativePath: rel, content: fs.readFileSync(abs) });
+        }
+    }
+    return out;
 }
 
 const unzipDirectory = async (zipPath, extractPath) => {
@@ -1003,6 +1111,8 @@ module.exports = {
     readDocFiles,
     findFileByNameRecursive,
     unzipDirectory,
+    createZipBuffer,
+    readDirTree,
     filterAllowedAPIs,
     enforcePortalMode,
     isAiDisabledForPortal,

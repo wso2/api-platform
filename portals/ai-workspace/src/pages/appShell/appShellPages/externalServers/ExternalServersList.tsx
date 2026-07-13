@@ -305,7 +305,7 @@ export default function ExternalServersList(): React.JSX.Element {
               to={buildProjectPath(
                 currentOrganization,
                 effectiveProject,
-                '/mcp-proxy/new'
+                '/mcp-proxy/create'
               )}
               startIcon={<Plus size={20} />}
               sx={{ ml: 'auto', flexShrink: 0 }}
@@ -411,7 +411,7 @@ export default function ExternalServersList(): React.JSX.Element {
                 to={buildProjectPath(
                   currentOrganization,
                   effectiveProject,
-                  '/mcp-proxy/new'
+                  '/mcp-proxy/create'
                 )}
                 startIcon={<Plus size={20} />}
               >

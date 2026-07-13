@@ -233,45 +233,6 @@ func TestValidateAuthConfig_BothAuthEnabled(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestValidateEventGWConfig_Enabled(t *testing.T) {
-	// Test that validation passes when event gateway is enabled with valid config
-	config := &Config{
-		Controller: Controller{},
-		Router: RouterConfig{
-			EventGateway: EventGatewayConfig{
-				Enabled:               true,
-				WebSubHubURL:          "http://example.com",
-				WebSubHubPort:         9098,
-				WebSubHubListenerPort: 8083,
-				TimeoutSeconds:        10,
-			},
-		},
-	}
-
-	err := config.validateEventGatewayConfig()
-	assert.NoError(t, err)
-}
-
-func TestValidateWebSubURLConfig_WithoutSchema(t *testing.T) {
-	// Test that validation fails when there's no scheme in WebSubHubURL
-	config := &Config{
-		Controller: Controller{},
-		Router: RouterConfig{
-			EventGateway: EventGatewayConfig{
-				Enabled:               true,
-				WebSubHubURL:          "example.com",
-				WebSubHubPort:         9098,
-				WebSubHubListenerPort: 8083,
-				TimeoutSeconds:        10,
-			},
-		},
-	}
-
-	err := config.validateEventGatewayConfig()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "http or https scheme")
-}
-
 func TestValidator_LabelsValidation(t *testing.T) {
 	validator := NewAPIValidator()
 
@@ -451,35 +412,7 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 		assert.False(t, hasLabelError, "RestApi should accept valid labels")
 	})
 
-	// Test WebSubApi
-	t.Run("WebSubApi with valid labels", func(t *testing.T) {
-		config := &api.WebSubAPI{
-			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1,
-			Kind:       api.WebSubAPIKindWebSubApi,
-			Metadata: api.Metadata{
-				Name:   "test-api-v1.0",
-				Labels: &validLabels,
-			},
-			Spec: api.WebhookAPIData{
-				DisplayName: "TestAPI",
-				Version:     "v1.0",
-				Context:     "/test",
-				Channels: &map[string]api.WebSubChannel{
-					"/events": {},
-				},
-			},
-		}
-
-		errors := validator.Validate(config)
-		hasLabelError := false
-		for _, err := range errors {
-			if err.Field == "metadata.labels" {
-				hasLabelError = true
-				break
-			}
-		}
-		assert.False(t, hasLabelError, "WebSubApi should accept valid labels")
-	}) // Test with invalid labels for both types
+	// Test with invalid labels for both types
 	invalidLabels := map[string]string{"Invalid Key": "value"}
 
 	t.Run("RestApi with invalid labels", func(t *testing.T) {
@@ -519,34 +452,6 @@ func TestValidator_LabelsWithAllAPITypes(t *testing.T) {
 		assert.True(t, hasLabelError, "RestApi should reject labels with spaces in keys")
 	})
 
-	t.Run("WebSubApi with invalid labels", func(t *testing.T) {
-		config := &api.WebSubAPI{
-			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1,
-			Kind:       api.WebSubAPIKindWebSubApi,
-			Metadata: api.Metadata{
-				Name:   "test-api-v1.0",
-				Labels: &invalidLabels,
-			},
-			Spec: api.WebhookAPIData{
-				DisplayName: "TestAPI",
-				Version:     "v1.0",
-				Context:     "/test",
-				Channels: &map[string]api.WebSubChannel{
-					"/events": {},
-				},
-			},
-		}
-
-		errors := validator.Validate(config)
-		hasLabelError := false
-		for _, err := range errors {
-			if err.Field == "metadata.labels" {
-				hasLabelError = true
-				break
-			}
-		}
-		assert.True(t, hasLabelError, "WebSubApi should reject labels with spaces in keys")
-	})
 }
 
 func TestValidateUpstreamDefinitions_Valid(t *testing.T) {

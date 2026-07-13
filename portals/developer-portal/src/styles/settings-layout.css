@@ -1509,3 +1509,181 @@
   font-weight: 500;
 }
 
+
+/* View-scoped setting banner, shown atop the LLM Instructions and API Workflows
+   panels. Always rendered — communicates that the panel's content is edited per
+   view. The pill on the right is a searchable view switcher (combobox); the
+   settings page is org-scoped, so each option links to ?view=<id> and the server
+   re-renders those two view-scoped panels for the chosen view. Scales to many
+   views via type-to-filter. */
+.cfg-view-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  margin-bottom: 22px;
+  background: #fdf1e8;
+  border: 1px solid #f6d9bd;
+  border-radius: 12px;
+}
+.cfg-view-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cfg-view-banner-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: #fbe0c4;
+  color: #ea7a1f;
+  font-size: 1.05rem;
+}
+.cfg-view-banner-caption {
+  font-size: 0.688rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #d9670f;
+}
+.cfg-view-banner-sub {
+  font-size: 0.844rem;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+.cfg-view-combo {
+  position: relative;
+  flex-shrink: 0;
+}
+.cfg-view-combo-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  padding: 8px 14px;
+  border: 1px solid #d5dbe3;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.8125rem;
+  color: #1a2433;
+  cursor: pointer;
+}
+.cfg-view-combo-trigger:hover { border-color: #94a3b8; }
+.cfg-view-combo-trigger:disabled { cursor: default; opacity: 0.85; }
+.cfg-view-combo-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+.cfg-view-combo-current {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cfg-view-combo-trigger .bi-chevron-expand { font-size: 0.75rem; color: #64748b; margin-left: auto; }
+
+.cfg-view-combo-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: 280px;
+  max-width: 80vw;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, .14);
+  overflow: hidden;
+}
+.cfg-view-combo-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #eef2f6;
+}
+.cfg-view-combo-search .bi-search { color: #94a3b8; font-size: 0.875rem; }
+.cfg-view-combo-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 0.8125rem;
+  background: transparent;
+  color: #1a2433;
+}
+.cfg-view-combo-list {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.cfg-view-combo-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #334155;
+  text-decoration: none;
+  cursor: pointer;
+}
+.cfg-view-combo-option:hover,
+.cfg-view-combo-option:focus {
+  background: #f1f5f9;
+  color: #1a2433;
+  outline: none;
+}
+.cfg-view-combo-option .bi-check2 { opacity: 0; font-size: 0.9375rem; color: var(--primary-main-color, #2563eb); }
+.cfg-view-combo-option.selected { color: var(--primary-main-color, #2563eb); font-weight: 600; }
+.cfg-view-combo-option.selected .bi-check2 { opacity: 1; }
+.cfg-view-combo-empty { padding: 14px 12px; font-size: 0.8125rem; color: #94a3b8; text-align: center; }
+
+/* Toggle-chip label picker used in the Add/Edit View modal (replaces a
+   cmd+click multi-select). Click a chip to include/exclude that label. */
+.cfg-label-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cfg-label-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid #d5dbe3;
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.cfg-label-toggle:hover {
+  border-color: #94a3b8;
+}
+.cfg-label-toggle .bi {
+  font-size: 0.875rem;
+  opacity: 0;
+  transition: opacity .12s;
+}
+.cfg-label-toggle.selected {
+  background: var(--primary-main-color, #2563eb);
+  border-color: var(--primary-main-color, #2563eb);
+  color: #fff;
+}
+.cfg-label-toggle.selected .bi {
+  opacity: 1;
+}

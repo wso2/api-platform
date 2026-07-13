@@ -25,6 +25,16 @@
 const client = require('../support/client');
 const { uniqueHandle, createApi } = require('../support/fixtures');
 
+// An MCP server's contract is its tools schema (schemaDefinition) — it has no apiDefinition.
+const MCP_TOOLS_SCHEMA = [
+    '- type: TOOL',
+    '  name: ping',
+    '  description: Health check tool.',
+    '  inputSchema:',
+    '    type: object',
+    '    properties: {}',
+].join('\n');
+
 async function createMcpServer(overrides = {}) {
     const id = overrides.id || uniqueHandle('mcp-server');
     const metadata = {
@@ -42,7 +52,7 @@ async function createMcpServer(overrides = {}) {
         .as('publisher')
         .postMultipart('/mcp-servers')
         .field('apiMetadata', JSON.stringify(metadata))
-        .attach('apiDefinition', Buffer.from(JSON.stringify({ tools: [] })), 'definition.json');
+        .attach('schemaDefinition', Buffer.from(MCP_TOOLS_SCHEMA), 'schemaDefinition.yaml');
     if (res.status !== 201) {
         throw new Error(`Failed to seed MCP server: ${res.status} ${JSON.stringify(res.body)}`);
     }
@@ -73,7 +83,7 @@ describe('MCP servers', () => {
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://x.invalid', sandboxURL: 'https://x.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from(JSON.stringify({ tools: [] })), 'definition.json');
+            .attach('schemaDefinition', Buffer.from(MCP_TOOLS_SCHEMA), 'schemaDefinition.yaml');
         expect(res.status).toBe(400);
     });
 
@@ -93,7 +103,7 @@ describe('MCP servers', () => {
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://x.invalid', sandboxURL: 'https://x.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from(JSON.stringify({ tools: [] })), 'definition.json');
+            .attach('schemaDefinition', Buffer.from(MCP_TOOLS_SCHEMA), 'schemaDefinition.yaml');
         expect(res.status).toBe(400);
     });
 
@@ -109,7 +119,7 @@ describe('MCP servers', () => {
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://updated.example.invalid', sandboxURL: 'https://updated-sandbox.example.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from(JSON.stringify({ tools: [] })), 'definition.json');
+            .attach('schemaDefinition', Buffer.from(MCP_TOOLS_SCHEMA), 'schemaDefinition.yaml');
         expect(put.status).toBe(400);
     });
 
@@ -125,7 +135,7 @@ describe('MCP servers', () => {
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://updated.example.invalid', sandboxURL: 'https://updated-sandbox.example.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from(JSON.stringify({ tools: [] })), 'definition.json');
+            .attach('schemaDefinition', Buffer.from(MCP_TOOLS_SCHEMA), 'schemaDefinition.yaml');
         expect(put.status).toBe(200);
         expect(put.body.name).toBe('Updated MCP Server');
     });
@@ -141,7 +151,7 @@ describe('MCP servers', () => {
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://updated.example.invalid', sandboxURL: 'https://updated-sandbox.example.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from(JSON.stringify({ tools: [] })), 'definition.json');
+            .attach('schemaDefinition', Buffer.from(MCP_TOOLS_SCHEMA), 'schemaDefinition.yaml');
         expect(put.status).toBe(400);
     });
 
@@ -176,7 +186,7 @@ describe('MCP servers', () => {
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://x.invalid', sandboxURL: 'https://x.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from(JSON.stringify({ tools: [] })), 'definition.json');
+            .attach('apiDefinition', Buffer.from(JSON.stringify({ openapi: '3.0.0' })), 'definition.json');
         expect(res.status).toBe(400);
     });
 
@@ -187,6 +197,120 @@ describe('MCP servers', () => {
         expect(res.status).toBe(201);
         expect(res.body.id).toBe(keyId);
         expect(res.body.key).toBeDefined();
+    });
+
+    // An MCP server's contract is its tools schema (schemaDefinition), analogous to a
+    // GraphQL SDL — not an apiDefinition. It can be created from a schemaDefinition alone
+    // with no apiDefinition, matching how sampleSeeder deploys samples/mcps (api.yaml +
+    // schemaDefinition.yaml, no definition file) and how the admin UI wizard now uploads it.
+    describe('tools schema (schemaDefinition)', () => {
+        function createWithSchema(schema, idPrefix) {
+            const id = uniqueHandle(idPrefix || 'mcp-schema');
+            return client
+                .as('publisher')
+                .postMultipart('/mcp-servers')
+                .field('apiMetadata', JSON.stringify({
+                    id,
+                    name: `Schema MCP ${id}`,
+                    version: 'v1.0',
+                    type: 'MCP',
+                    status: 'PUBLISHED',
+                    endPoints: { productionURL: 'https://x.invalid', sandboxURL: 'https://x.invalid' },
+                }))
+                .attach('schemaDefinition', Buffer.from(schema), 'schemaDefinition.yaml')
+                .then((res) => ({ id, res }));
+        }
+
+        it('creates an MCP server from a schemaDefinition with no apiDefinition, stored as SCHEMA_DEFINITION', async () => {
+            const { id, res } = await createWithSchema(MCP_TOOLS_SCHEMA);
+            expect(res.status).toBe(201);
+
+            // The tools schema is persisted and retrievable as a SCHEMA_DEFINITION asset.
+            const asset = await client.as('publisher')
+                .get(`/mcp-servers/${id}/assets?type=SCHEMA_DEFINITION&fileName=schemaDefinition.yaml`);
+            expect(asset.status).toBe(200);
+            expect(String(asset.text || asset.body)).toContain('name: ping');
+        });
+
+        it('rejects creating an MCP server without a schemaDefinition', async () => {
+            const id = uniqueHandle('mcp-no-contract');
+            const res = await client
+                .as('publisher')
+                .postMultipart('/mcp-servers')
+                .field('apiMetadata', JSON.stringify({
+                    id,
+                    name: 'No Contract MCP',
+                    version: 'v1.0',
+                    type: 'MCP',
+                    status: 'PUBLISHED',
+                    endPoints: { productionURL: 'https://x.invalid', sandboxURL: 'https://x.invalid' },
+                }));
+            expect(res.status).toBe(400);
+        });
+
+        it('rejects creating an MCP server with an apiDefinition but no schemaDefinition (apiDefinition is not an MCP contract)', async () => {
+            const id = uniqueHandle('mcp-apidef-only');
+            const res = await client
+                .as('publisher')
+                .postMultipart('/mcp-servers')
+                .field('apiMetadata', JSON.stringify({
+                    id,
+                    name: 'ApiDef Only MCP',
+                    version: 'v1.0',
+                    type: 'MCP',
+                    status: 'PUBLISHED',
+                    endPoints: { productionURL: 'https://x.invalid', sandboxURL: 'https://x.invalid' },
+                }))
+                .attach('apiDefinition', Buffer.from(JSON.stringify({ openapi: '3.0.0' })), 'definition.json');
+            expect(res.status).toBe(400);
+        });
+
+        it('replaces the tools schema on update via a new schemaDefinition', async () => {
+            const { id, res } = await createWithSchema(MCP_TOOLS_SCHEMA, 'mcp-schema-update');
+            expect(res.status).toBe(201);
+
+            const updatedSchema = MCP_TOOLS_SCHEMA.replace('name: ping', 'name: echo');
+            const put = await client
+                .as('publisher')
+                .putMultipart(`/mcp-servers/${id}`)
+                .field('apiMetadata', JSON.stringify({
+                    name: `Schema MCP ${id}`,
+                    version: 'v1.0',
+                    type: 'MCP',
+                    status: 'PUBLISHED',
+                    endPoints: { productionURL: 'https://x.invalid', sandboxURL: 'https://x.invalid' },
+                }))
+                .attach('schemaDefinition', Buffer.from(updatedSchema), 'schemaDefinition.yaml');
+            expect(put.status).toBe(200);
+
+            const asset = await client.as('publisher')
+                .get(`/mcp-servers/${id}/assets?type=SCHEMA_DEFINITION&fileName=schemaDefinition.yaml`);
+            expect(asset.status).toBe(200);
+            expect(String(asset.text || asset.body)).toContain('name: echo');
+        });
+    });
+
+    // A server created via the admin /mcp-servers API stores its schema as a flat
+    // `type:`-tagged YAML array (schemaDefinition.yaml). The MCP Registry API must still
+    // surface those capabilities — mcpRegistryService.parseSchema normalizes the flat array
+    // into the grouped { tools, resources, prompts } shape the registry response expects.
+    describe('MCP registry exposure of admin-created servers', () => {
+        it('exposes tools via the registry API for a server created through /mcp-servers', async () => {
+            const name = uniqueHandle('registry-mcp');
+            const mcp = await createMcpServer({ name });
+            const version = mcp.version || 'v1.0';
+
+            // Registry GETs are public discovery routes at the root (not under /api/v0.9);
+            // an admin-created MCP server (ref_id null) is addressable by name + version.
+            const res = await client.page('publisher')
+                .get(`/registry/${client.ORG_HANDLE}/v0.1/servers/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}`);
+            expect(res.status).toBe(200);
+
+            const caps = res.body?._meta?.['io.api-platform/mcp-capabilities'];
+            expect(caps).toBeDefined();
+            expect(Array.isArray(caps.tools)).toBe(true);
+            expect(caps.tools.some((t) => t.name === 'ping')).toBe(true);
+        });
     });
 
     // /mcp-servers and /apis share the same dp_api_metadata table, distinguished only

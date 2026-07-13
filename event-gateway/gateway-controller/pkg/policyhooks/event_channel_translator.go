@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -16,20 +16,47 @@
  * under the License.
  */
 
-package policyxds
+// Package policyhooks implements gateway-controller (core)'s
+// policyxds.EventChannelTranslator interface and policy.RegisterEventGatewayPolicyChainBuilder
+// hook, moved out of core's pkg/policyxds/event_channel_translator.go and
+// pkg/policy/builder.go (the WebSubApi case).
+package policyhooks
 
 import (
 	"log/slog"
 	"sort"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
+
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policy"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
+	versionutil "github.com/wso2/api-platform/common/version"
+	policyv1alpha "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
+
+	eventgateway "github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/api/eventgateway"
 )
+
+// EventChannelTranslator implements policyxds.EventChannelTranslator.
+type EventChannelTranslator struct {
+	logger *slog.Logger
+}
+
+// New creates a new EventChannelTranslator.
+func New(logger *slog.Logger) *EventChannelTranslator {
+	return &EventChannelTranslator{logger: logger}
+}
+
+var _ policyxds.EventChannelTranslator = (*EventChannelTranslator)(nil)
 
 // TranslateWebSubApisToEventChannelConfigs translates WebSubApi StoredConfigs into
 // EventChannelConfig xDS resources for the event gateway runtime.
-func (t *Translator) TranslateWebSubApisToEventChannelConfigs(configs []*models.StoredConfig) map[string]types.Resource {
+func (t *EventChannelTranslator) TranslateWebSubApisToEventChannelConfigs(configs []*models.StoredConfig) map[string]types.Resource {
 	resources := make(map[string]types.Resource)
 
 	for _, cfg := range configs {
@@ -40,7 +67,7 @@ func (t *Translator) TranslateWebSubApisToEventChannelConfigs(configs []*models.
 			continue
 		}
 
-		webSubCfg, ok := cfg.Configuration.(api.WebSubAPI)
+		webSubCfg, ok := cfg.Configuration.(eventgateway.WebSubAPI)
 		if !ok {
 			t.logger.Warn("Failed to type-assert WebSubApi configuration",
 				slog.String("uuid", cfg.UUID))
@@ -67,7 +94,7 @@ func (t *Translator) TranslateWebSubApisToEventChannelConfigs(configs []*models.
 
 // TranslateWebBrokerApisToEventChannelConfigs translates WebBrokerApi StoredConfigs into
 // EventChannelConfig xDS resources for the event gateway runtime.
-func (t *Translator) TranslateWebBrokerApisToEventChannelConfigs(configs []*models.StoredConfig) map[string]types.Resource {
+func (t *EventChannelTranslator) TranslateWebBrokerApisToEventChannelConfigs(configs []*models.StoredConfig) map[string]types.Resource {
 	resources := make(map[string]types.Resource)
 
 	for _, cfg := range configs {
@@ -78,7 +105,7 @@ func (t *Translator) TranslateWebBrokerApisToEventChannelConfigs(configs []*mode
 			continue
 		}
 
-		webBrokerCfg, ok := cfg.Configuration.(api.WebBrokerApi)
+		webBrokerCfg, ok := cfg.Configuration.(eventgateway.WebBrokerApi)
 		if !ok {
 			t.logger.Warn("Failed to type-assert WebBrokerApi configuration",
 				slog.String("uuid", cfg.UUID))
@@ -103,11 +130,10 @@ func (t *Translator) TranslateWebBrokerApisToEventChannelConfigs(configs []*mode
 	return resources
 }
 
-func (t *Translator) buildEventChannelResourceForWebSub(uuid string, webSubCfg *api.WebSubAPI) (types.Resource, error) {
+func (t *EventChannelTranslator) buildEventChannelResourceForWebSub(uuid string, webSubCfg *eventgateway.WebSubAPI) (types.Resource, error) {
 	spec := webSubCfg.Spec
 
-	// Build channels list from channels, including per-channel policies.
-	var channels map[string]api.WebSubChannel
+	var channels map[string]eventgateway.WebSubChannel
 	if spec.Channels != nil {
 		channels = *spec.Channels
 	}
@@ -144,7 +170,6 @@ func (t *Translator) buildEventChannelResourceForWebSub(uuid string, webSubCfg *
 		channelEntries = append(channelEntries, chEntry)
 	}
 
-	// policies maps to API-level policy chains.
 	subscribePolicies := []interface{}{}
 	unsubscribePolicies := []interface{}{}
 	inboundPolicies := []interface{}{}
@@ -182,13 +207,12 @@ func (t *Translator) buildEventChannelResourceForWebSub(uuid string, webSubCfg *
 		},
 	}
 
-	return toAnyResource(data, EventChannelConfigTypeURL)
+	return policyxds.ToAnyResource(data, policyxds.EventChannelConfigTypeURL)
 }
 
-func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBrokerCfg *api.WebBrokerApi) (types.Resource, error) {
+func (t *EventChannelTranslator) buildEventChannelResourceForWebBroker(uuid string, webBrokerCfg *eventgateway.WebBrokerApi) (types.Resource, error) {
 	spec := webBrokerCfg.Spec
 
-	// Build receiver configuration
 	receiver := map[string]interface{}{
 		"name": spec.Receiver.Name,
 		"type": spec.Receiver.Type,
@@ -197,19 +221,12 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 		receiver["properties"] = *spec.Receiver.Properties
 	}
 
-	// Build broker-driver configuration
 	brokerDriver := map[string]interface{}{
 		"name":       spec.Broker.Name,
 		"type":       spec.Broker.Type,
 		"properties": spec.Broker.Properties,
 	}
-	slog.Info("DEBUG: Building EventChannelConfig for WebBrokerApi",
-		"name", webBrokerCfg.Metadata.Name,
-		"receiverName", spec.Receiver.Name,
-		"brokerDriverName", spec.Broker.Name,
-		"brokerDriverType", spec.Broker.Type)
 
-	// Build API-level policies from AllChannels
 	var apiOnConnectionInit []interface{}
 	var apiOnProduce []interface{}
 	var apiOnConsume []interface{}
@@ -226,7 +243,6 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 		}
 	}
 
-	// Build channels map with channel-specific policies and topic mappings
 	channels := make(map[string]interface{})
 	if spec.Channels != nil {
 		for channelName, channelConfig := range spec.Channels {
@@ -234,7 +250,6 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 			var channelOnProduce []interface{}
 			var channelOnConsume []interface{}
 
-			// Extract policies from channel-level policy groups
 			if channelConfig.OnConnectionInit != nil && channelConfig.OnConnectionInit.Policies != nil {
 				channelOnConnectionInit = buildPolicyList(channelConfig.OnConnectionInit.Policies)
 			}
@@ -245,24 +260,20 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 				channelOnConsume = buildPolicyList(channelConfig.OnConsume.Policies)
 			}
 
-			// Build channel entry with policies nested inside "policies" field
 			channelEntry := map[string]interface{}{}
 
-			// Add produceTo topic mapping if specified
 			if channelConfig.ProduceTo != nil {
 				channelEntry["produce_to"] = map[string]interface{}{
 					"topic": channelConfig.ProduceTo.Topic,
 				}
 			}
 
-			// Add consumeFrom topic mapping if specified
 			if channelConfig.ConsumeFrom != nil {
 				channelEntry["consume_from"] = map[string]interface{}{
 					"topic": channelConfig.ConsumeFrom.Topic,
 				}
 			}
 
-			// Nest all policies inside a "policies" field (flattened structure)
 			channelEntry["policies"] = map[string]interface{}{
 				"on_connection_init": channelOnConnectionInit,
 				"on_produce":         channelOnProduce,
@@ -289,10 +300,10 @@ func (t *Translator) buildEventChannelResourceForWebBroker(uuid string, webBroke
 		"channels": channels,
 	}
 
-	return toAnyResource(data, EventChannelConfigTypeURL)
+	return policyxds.ToAnyResource(data, policyxds.EventChannelConfigTypeURL)
 }
 
-func buildPolicyList(policies *[]api.Policy) []interface{} {
+func buildPolicyList(policies *[]eventgateway.Policy) []interface{} {
 	if policies == nil || len(*policies) == 0 {
 		return []interface{}{}
 	}
@@ -309,4 +320,90 @@ func buildPolicyList(policies *[]api.Policy) []interface{} {
 		result = append(result, pol)
 	}
 	return result
+}
+
+// BuildPolicyChains implements the hook registered via
+// policy.RegisterEventGatewayPolicyChainBuilder, building per-channel policy
+// chains for WebSubApi configs (RestApi is handled natively by core).
+func BuildPolicyChains(cfg *models.StoredConfig, routerConfig *config.RouterConfig, systemConfig *config.Config, policyDefinitions map[string]models.PolicyDefinition) []policyenginev1.PolicyChain {
+	cfgTyped, ok := cfg.Configuration.(eventgateway.WebSubAPI)
+	if !ok {
+		return nil
+	}
+
+	latestVersions := config.BuildLatestVersionIndex(policyDefinitions)
+	var routes []policyenginev1.PolicyChain
+
+	apiData := cfgTyped.Spec
+	var channels map[string]eventgateway.WebSubChannel
+	if apiData.Channels != nil {
+		channels = *apiData.Channels
+	}
+	for chName, ch := range channels {
+		var finalPolicies []policyenginev1.PolicyInstance
+
+		if apiData.AllChannels != nil && apiData.AllChannels.OnSubscription != nil && apiData.AllChannels.OnSubscription.Policies != nil {
+			finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.AllChannels.OnSubscription.Policies))
+			for _, p := range *apiData.AllChannels.OnSubscription.Policies {
+				resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, p.Name, p.Version)
+				if err != nil {
+					slog.Error("Failed to resolve policy version for all-channel subscription policy", "policy_name", p.Name, "error", err)
+					continue
+				}
+				finalPolicies = append(finalPolicies, policy.ConvertAPIPolicyToModel(api.Policy(p), policyv1alpha.LevelAPI, versionutil.MajorVersion(resolved)))
+			}
+		}
+
+		if ch.OnSubscription != nil && ch.OnSubscription.Policies != nil && len(*ch.OnSubscription.Policies) > 0 {
+			for _, opPolicy := range *ch.OnSubscription.Policies {
+				resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, opPolicy.Name, opPolicy.Version)
+				if err != nil {
+					slog.Error("Failed to resolve policy version for channel-level policy", "policy_name", opPolicy.Name, "channel_name", chName, "error", err)
+					continue
+				}
+				finalPolicies = append(finalPolicies, policy.ConvertAPIPolicyToModel(api.Policy(opPolicy), policyv1alpha.LevelRoute, versionutil.MajorVersion(resolved)))
+			}
+		}
+
+		routeKey := xds.GenerateRouteName("SUB", apiData.Context, apiData.Version, chName, routerConfig.GatewayHost)
+		props := make(map[string]any)
+		injectedPolicies := utils.InjectSystemPolicies(finalPolicies, systemConfig, props)
+
+		routes = append(routes, policyenginev1.PolicyChain{
+			RouteKey: routeKey,
+			Policies: injectedPolicies,
+		})
+
+		var unsubPolicies []policyenginev1.PolicyInstance
+		if apiData.AllChannels != nil && apiData.AllChannels.OnUnsubscription != nil && apiData.AllChannels.OnUnsubscription.Policies != nil {
+			unsubPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.AllChannels.OnUnsubscription.Policies))
+			for _, p := range *apiData.AllChannels.OnUnsubscription.Policies {
+				resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, p.Name, p.Version)
+				if err != nil {
+					slog.Error("Failed to resolve policy version for all-channel unsubscription policy", "policy_name", p.Name, "error", err)
+					continue
+				}
+				unsubPolicies = append(unsubPolicies, policy.ConvertAPIPolicyToModel(api.Policy(p), policyv1alpha.LevelAPI, versionutil.MajorVersion(resolved)))
+			}
+		}
+		if ch.OnUnsubscription != nil && ch.OnUnsubscription.Policies != nil && len(*ch.OnUnsubscription.Policies) > 0 {
+			for _, opPolicy := range *ch.OnUnsubscription.Policies {
+				resolved, err := config.ResolvePolicyVersion(policyDefinitions, latestVersions, opPolicy.Name, opPolicy.Version)
+				if err != nil {
+					slog.Error("Failed to resolve policy version for channel-level unsubscription policy", "policy_name", opPolicy.Name, "channel_name", chName, "error", err)
+					continue
+				}
+				unsubPolicies = append(unsubPolicies, policy.ConvertAPIPolicyToModel(api.Policy(opPolicy), policyv1alpha.LevelRoute, versionutil.MajorVersion(resolved)))
+			}
+		}
+		unsubRouteKey := xds.GenerateRouteName("UNSUB", apiData.Context, apiData.Version, chName, routerConfig.GatewayHost)
+		unsubProps := make(map[string]any)
+		injectedUnsubPolicies := utils.InjectSystemPolicies(unsubPolicies, systemConfig, unsubProps)
+		routes = append(routes, policyenginev1.PolicyChain{
+			RouteKey: unsubRouteKey,
+			Policies: injectedUnsubPolicies,
+		})
+	}
+
+	return routes
 }

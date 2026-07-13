@@ -264,8 +264,8 @@ function ServiceProviderOverviewContent() {
     ? buildProjectPath(currentOrganization, currentProject, '/service-provider')
     : buildOrgPath(currentOrganization, '/service-provider');
   const createProxyPath = isProjectLevel
-    ? buildProjectPath(currentOrganization, currentProject, '/proxies/new')
-    : buildOrgPath(currentOrganization, '/proxies/new');
+    ? buildProjectPath(currentOrganization, currentProject, '/proxies/create')
+    : buildOrgPath(currentOrganization, '/proxies/create');
   const [tabIndex, setTabIndex] = useState(0);
   const [draftProvider, setDraftProvider] = useState<LLMProvider | null>(null);
   const draftProviderRef = useRef<LLMProvider | null>(null);
@@ -529,7 +529,7 @@ function ServiceProviderOverviewContent() {
       buildProjectPath(
         currentOrganization,
         selectedProjectForProxy,
-        '/proxies/new'
+        '/proxies/create'
       ),
       {
         state: {

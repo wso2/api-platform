@@ -146,21 +146,6 @@ func TestGetContext_RestAPI_WithVersionPlaceholderMultiple(t *testing.T) {
 	assert.Equal(t, "/v2.0/api/v2.0", ctx)
 }
 
-func TestGetContext_WebSubAPI_WithVersionPlaceholder(t *testing.T) {
-	config := &StoredConfig{
-		Version: "v1.0",
-		SourceConfiguration: api.WebSubAPI{
-			Spec: api.WebhookAPIData{
-				Context: "/events/$version",
-			},
-		},
-	}
-
-	ctx, err := config.GetContext()
-	require.NoError(t, err)
-	assert.Equal(t, "/events/v1.0", ctx)
-}
-
 func TestGetContext_UnsupportedType(t *testing.T) {
 	config := &StoredConfig{
 		SourceConfiguration: map[string]interface{}{"kind": "unknown"},

@@ -41,11 +41,6 @@ func stringPtr(s string) *string {
 // loadDummyConfig creates a dummy router configuration
 func loadDummyConfig() config.RouterConfig {
 	return config.RouterConfig{
-		EventGateway: config.EventGatewayConfig{
-			Enabled:       true,
-			WebSubHubURL:  "http://host.docker.internal",
-			WebSubHubPort: 9098,
-		},
 		AccessLogs: config.AccessLogsConfig{
 			Enabled: true,
 			Format:  "json",

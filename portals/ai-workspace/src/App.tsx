@@ -329,7 +329,7 @@ export default function App() {
               }
             />
             <Route
-              path="projects/new"
+              path="projects/create"
               element={
                 <WithPageBoundary>
                   <AddNewProject />
@@ -362,7 +362,7 @@ export default function App() {
                 }
               />
               <Route
-                path="new"
+                path="create"
                 element={
                   <WithPageBoundary>
                     <ApplicationNew />
@@ -396,7 +396,7 @@ export default function App() {
                 }
               />
               <Route
-                path="new"
+                path="create"
                 element={
                   <WithPageBoundary>
                     <LLMProxyNew />
@@ -438,7 +438,7 @@ export default function App() {
                 }
               />
               <Route
-                path="new"
+                path="create"
                 element={
                   <WithPageBoundary>
                     <ServiceProviderNew />
@@ -479,7 +479,7 @@ export default function App() {
               }
             />
             <Route
-              path="mcp-proxy/new"
+              path="mcp-proxy/create"
               element={
                 <WithPageBoundary>
                   <MCPServerValidationProvider>
@@ -606,7 +606,7 @@ export default function App() {
                   }
                 />
                 <Route
-                  path="new"
+                  path="create"
                   element={
                     <WithPageBoundary>
                       <ApplicationNew />
@@ -640,7 +640,7 @@ export default function App() {
                   }
                 />
                 <Route
-                  path="new"
+                  path="create"
                   element={
                     <WithPageBoundary>
                       <LLMProxyNew />
@@ -685,7 +685,7 @@ export default function App() {
                   }
                 />
                 <Route
-                  path="new"
+                  path="create"
                   element={
                     <WithPageBoundary>
                       <ServiceProviderNew />
@@ -734,7 +734,7 @@ export default function App() {
                 }
               />
               <Route
-                path="mcp-proxy/new"
+                path="mcp-proxy/create"
                 element={
                   <WithPageBoundary>
                     <MCPServerValidationProvider>

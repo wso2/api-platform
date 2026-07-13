@@ -25,17 +25,21 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/common/eventhub"
-	"github.com/wso2/api-platform/common/webhooksecret"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
+
+// WebhookSecretEventHandler is the extension point through which an external
+// event-gateway-controller binary supplies webhook-secret (HMAC) event
+// processing. Core never implements this interface itself.
+type WebhookSecretEventHandler interface {
+	HandleEvent(event eventhub.Event)
+}
 
 // APIKeyXDSManager defines API key xDS operations used by the listener.
 type APIKeyXDSManager interface {
@@ -64,10 +68,8 @@ type EventListener struct {
 	logger              *slog.Logger
 	systemConfig        *config.Config
 	policyDefinitions   map[string]models.PolicyDefinition
-	secretResolver              funcs.SecretResolver
-	webhookSecretStore          *webhooksecret.WebhookSecretStore
-	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager
-	providerManager             *encryption.ProviderManager
+	secretResolver      funcs.SecretResolver
+	webhookSecretHandler WebhookSecretEventHandler
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -89,9 +91,6 @@ func NewEventListener(
 	systemConfig *config.Config,
 	policyDefinitions map[string]models.PolicyDefinition,
 	secretResolver funcs.SecretResolver,
-	webhookSecretStore *webhooksecret.WebhookSecretStore,
-	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager,
-	providerManager *encryption.ProviderManager,
 ) *EventListener {
 	if eventHub == nil {
 		panic("event listener requires non-nil EventHub")
@@ -124,13 +123,16 @@ func NewEventListener(
 		logger:              logger,
 		systemConfig:        systemConfig,
 		policyDefinitions:   policyDefinitions,
-		secretResolver:               secretResolver,
-		webhookSecretStore:           webhookSecretStore,
-		webhookSecretSnapshotManager: webhookSecretSnapshotManager,
-		providerManager:              providerManager,
+		secretResolver:      secretResolver,
 		ctx:                 ctx,
 		cancel:              cancel,
 	}
+}
+
+// SetWebhookSecretHandler registers the event-gateway webhook-secret event
+// handler. Passing nil (the default) means webhook-secret events are ignored.
+func (l *EventListener) SetWebhookSecretHandler(h WebhookSecretEventHandler) {
+	l.webhookSecretHandler = h
 }
 
 // Start begins listening for events
@@ -231,7 +233,9 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 	case eventhub.EventTypeMCPProxy:
 		l.processMCPProxyEvent(event)
 	case eventhub.EventTypeWebhookSecret:
-		l.processWebhookSecretEvent(event)
+		if l.webhookSecretHandler != nil {
+			l.webhookSecretHandler.HandleEvent(event)
+		}
 	default:
 		l.logger.Warn("Unknown event type received",
 			slog.String("event_type", string(event.EventType)),
