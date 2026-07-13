@@ -18,7 +18,7 @@ on:
       - main
     paths:
       - 'kubernetes/**'
-      - '.github/workflows/gateway-api-conformance.yml'
+      - '.github/workflows/k8s-gateway-api-conformance.yml'
   schedule:
     # Saturday at 00:00 UTC (cron day-of-week 6 = Saturday) — runs after Friday's
     # changes have landed, so each run covers the full week including Friday.
