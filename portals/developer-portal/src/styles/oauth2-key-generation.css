@@ -49,7 +49,7 @@
 }
 
 .keygen-subtitle {
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 14px;
   margin-bottom: 16px;
 }
@@ -108,7 +108,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #e5e7eb;
+  background-color: var(--border);
   transition: .4s;
 }
 
@@ -157,8 +157,8 @@ input[type="checkbox"]:checked {
 }
 
 .keygen-input-container.error input {
-  border-color: #F87171;
-  background-color: #FEF2F2;
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--surface));
+  background-color: var(--danger-surface);
 }
 
 .keygen-input-container.with-label input {
@@ -175,7 +175,7 @@ input[type="checkbox"]:checked {
   width: 100%;
   padding: 10px;
   font-size: 16px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-strong);
   border-radius: 4px;
   appearance: none;
   background-color: white;
@@ -217,7 +217,7 @@ input[type="checkbox"]:checked {
 .collapsible-header h2 {
   font-size: 20px;
   font-weight: 600;
-  color: #333;
+  color: var(--text);
 }
 
 .chevron {
@@ -231,7 +231,7 @@ input[type="checkbox"]:checked {
 }
 
 .description {
-  color: #666;
+  color: var(--text-muted);
   font-size: 16px;
   line-height: 1.5;
   margin-bottom: 24px;
@@ -239,7 +239,7 @@ input[type="checkbox"]:checked {
 
 .endpoint-value {
   font-size: 12px;
-  color: #333;
+  color: var(--text);
   word-break: break-all;
   padding-right: 40px;
 }
@@ -266,7 +266,7 @@ input[type="checkbox"]:checked {
   display: flex;
   flex-wrap: wrap;
   background-color: var(--white);
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 0.5rem;
   padding: 0.75rem;
   position: relative;
@@ -310,18 +310,18 @@ input[type="checkbox"]:checked {
 .info-title {
   font-size: 0.9rem;
   font-weight: 500;
-  color: #333;
+  color: var(--text);
 }
 
 .info-text {
-  color: #666;
+  color: var(--text-muted);
   line-height: 1;
   font-size: 12px;
   margin-bottom: 0.25rem;
 }
 
 .info-icon {
-  color: #3b82f6;
+  color: var(--primary);
   margin-left: 1rem;
 }
 
@@ -369,14 +369,14 @@ input[type="checkbox"]:checked {
 
 .token-card {
   background-color: var(--white);
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 0.5rem;
   padding: 0.75rem;
   position: relative;
 }
 
 .token-text {
-  color: #6b7280;
+  color: var(--text-muted);
   white-space: pre-wrap;
   word-break: break-all;
   font-family: monospace;
@@ -396,24 +396,24 @@ input[type="checkbox"]:checked {
   right: 0.5rem;
   background: none;
   border: none;
-  color: #9ca3af;
+  color: var(--text-subtle);
   cursor: pointer;
   padding: 0.25rem;
 }
 
 .copy-button:hover {
-  color: #4b5563;
+  color: var(--text);
 }
 
 
 .curl-description {
-  color: #666;
+  color: var(--text-muted);
   font-size: 14px;
   line-height: 1.6;
 }
 
 .code-block {
-  background-color: #f0f0f0;
+  background-color: var(--surface-sunken);
   border-radius: 6px;
   padding: 1rem;
   position: relative;
@@ -422,10 +422,10 @@ input[type="checkbox"]:checked {
 }
 
 .key-action-container {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 0.375rem;
   padding: 1rem;
-  background-color: #f9fafb;
+  background-color: var(--surface-sunken);
 }
 
 /* Password visibility toggle */
@@ -443,7 +443,7 @@ input[type="checkbox"]:checked {
   background: none;
   border: none;
   cursor: pointer;
-  color: #6b7280;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -467,7 +467,7 @@ input[type="checkbox"]:checked {
 
 .password-toggle-btn:hover,
 .password-copy-btn:hover {
-  color: #374151;
+  color: var(--text);
 }
 
 .password-toggle-btn:focus,
@@ -481,8 +481,8 @@ input[type="checkbox"]:checked {
 }
 
 .token-details-card {
-  background-color: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background-color: var(--surface-sunken);
+  border: 1px solid var(--border);
   border-radius: 0.375rem;
   padding: 1rem;
   margin-bottom: 1rem;
@@ -503,12 +503,12 @@ input[type="checkbox"]:checked {
 
 .detail-label {
   font-weight: 500;
-  color: #475569;
+  color: var(--text);
   min-width: 170px;
 }
 
 .detail-value {
-  color: #334155;
+  color: var(--text);
   word-break: break-all;
 }
 

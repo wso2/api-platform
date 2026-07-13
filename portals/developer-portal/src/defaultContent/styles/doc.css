@@ -21,7 +21,7 @@
   font-weight: 700;
   line-height: 1;
   letter-spacing: .07em;
-  color: #9aa3af;
+  color: var(--text-subtle);
   padding: 0 0.75rem;
   margin-bottom: 0.625rem;
 }
@@ -41,7 +41,7 @@
   font-size: 0.84375rem;
   font-weight: 500;
   line-height: 1;
-  color: #44505f;
+  color: var(--text);
   text-decoration: none;
   transition: background-color .15s, color .15s;
   white-space: nowrap;
@@ -49,15 +49,15 @@
 }
 
 .adoc-nav-item:hover {
-  background: #f3f6fb;
-  color: #1f6feb;
+  background: var(--surface-sunken);
+  color: var(--primary);
   text-decoration: none;
 }
 
 .adoc-nav-item--active,
 .adoc-nav-item.active {
-  background: #eef4fb !important;
-  color: #1f6feb !important;
+  background: var(--primary-surface) !important;
+  color: var(--primary) !important;
   font-weight: 600;
 }
 
@@ -65,7 +65,7 @@
 .adoc-content-card {
   flex: 1;
   min-width: 0;
-  border: 1px solid #e6eaf0;
+  border: 1px solid var(--border);
   border-radius: 0.875rem;
   padding: 1rem;
   overflow-x: auto;
@@ -85,13 +85,13 @@
 }
 
 .adoc-file-badge--doc {
-  background: #fff4e6;
-  color: #e65100;
+  background: var(--warning-surface);
+  color: var(--warning);
 }
 
 .adoc-file-badge--spec {
-  background: #e6f2fb;
-  color: #0277bd;
+  background: var(--info-surface);
+  color: var(--info);
 }
 
 /* Markdown content typography */
@@ -103,7 +103,7 @@
   font-size: 1.75rem;
   font-weight: 700;
   line-height: 1.2;
-  color: #1a2433;
+  color: var(--text-strong);
   margin: 0 0 1rem;
   letter-spacing: -0.01em;
 }
@@ -112,32 +112,32 @@
   font-size: 1.25rem;
   font-weight: 600;
   line-height: 1.3;
-  color: #1a2433;
+  color: var(--text-strong);
   margin: 2.125rem 0 0;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid #eef1f5;
+  border-bottom: 1px solid var(--border);
 }
 
 .api-markdown-content h3 {
   font-size: 1rem;
   font-weight: 600;
   line-height: 1.3;
-  color: #1a2433;
+  color: var(--text-strong);
   margin: 1.5rem 0 0.5rem;
 }
 
 .api-markdown-content p {
   font-size: 0.9375rem;
   line-height: 1.65;
-  color: #3a4a5a;
+  color: var(--text);
   margin: 0.875rem 0 0;
 }
 
 .api-markdown-content p:first-child { margin-top: 0; }
 
-.api-markdown-content strong { color: #1a2433; font-weight: 600; }
+.api-markdown-content strong { color: var(--text-strong); font-weight: 600; }
 
-.api-markdown-content a { color: #1f6feb; }
+.api-markdown-content a { color: var(--primary); }
 
 .api-markdown-content code {
   font-family: monospace;
@@ -149,7 +149,7 @@
 }
 
 .api-markdown-content pre {
-  background: #16242f;
+  background: var(--ink);
   border-radius: 0.75rem;
   padding: 1.25rem;
   overflow: auto;
@@ -157,7 +157,7 @@
 }
 
 .api-markdown-content pre code {
-  color: #c8d6e2;
+  color: var(--on-dark);
   background: none;
   padding: 0;
   font-size: 0.78125rem;
@@ -168,7 +168,7 @@
 .api-markdown-content ol {
   font-size: 0.9375rem;
   line-height: 1.65;
-  color: #3a4a5a;
+  color: var(--text);
   padding-left: 1.5rem;
   margin: 0.75rem 0 0;
 }
@@ -186,38 +186,38 @@
   font-size: 0.78125rem;
   font-weight: 600;
   line-height: 1.3;
-  color: #1a2433;
+  color: var(--text-strong);
   padding: 0.625rem 1rem;
-  background: #f6f8fb;
-  border: 1px solid #e6eaf0;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
 }
 
 .api-markdown-content td {
   font-size: 0.84375rem;
   line-height: 1.5;
-  color: #3a4a5a;
+  color: var(--text);
   padding: 0.625rem 1rem;
-  border: 1px solid #eef1f5;
+  border: 1px solid var(--border);
   vertical-align: top;
 }
 
 .api-markdown-content blockquote {
   margin: 1rem 0 0;
   padding: 0.8125rem 0.9375rem 0.8125rem 1rem;
-  background: #e9f3fb;
-  border: 1px solid #cfe3f5;
-  border-left: 4px solid #1f6feb;
+  background: var(--info-surface);
+  border: 1px solid color-mix(in srgb, var(--info) 22%, var(--surface));
+  border-left: 4px solid var(--primary);
   border-radius: 0.625rem;
 }
 
 .api-markdown-content blockquote p {
-  color: #2a4a63;
+  color: var(--text);
   margin: 0;
 }
 
 .api-markdown-content hr {
   border: none;
-  border-top: 1px solid #eef1f5;
+  border-top: 1px solid var(--border);
   margin: 1.75rem 0;
 }
 

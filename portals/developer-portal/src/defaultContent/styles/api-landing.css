@@ -3,8 +3,8 @@
 /* ── Hero ─────────────────────────────────────────────────────── */
 .aov-hero {
   /* margin: 1.25rem 1.5rem 0; */
-  background: linear-gradient(135deg, #f1f6fc 0%, #e9f1fa 100%);
-  border: 1px solid #e0eaf4;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 5%, var(--surface)) 0%, color-mix(in srgb, var(--primary) 9%, var(--surface)) 100%);
+  border: 1px solid var(--border);
   border-radius: 1rem;
   padding: 2rem 2.125rem;
   display: flex;
@@ -23,7 +23,7 @@
   margin: 0;
   font-size: 1.75rem;
   font-weight: 700;
-  color: #1c3d5a;
+  color: var(--primary);
   letter-spacing: -0.01em;
   line-height: 1.1;
 }
@@ -34,7 +34,7 @@
   max-width: 48rem;
   font-size: 0.90625rem;
   line-height: 1.6;
-  color: #4a5a6a;
+  color: var(--text);
 }
 
 .aov-hero-actions { display: flex; flex-wrap: wrap; gap: 0.6875rem; }
@@ -42,7 +42,7 @@
   width: 5rem;
   height: 5rem;
   border-radius: 1rem;
-  background: linear-gradient(135deg, #1f6feb 0%, #0b4ea8 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -50,14 +50,14 @@
   font-size: 1.625rem;
   font-weight: 700;
   letter-spacing: 0.02em;
-  box-shadow: 0 6px 18px rgba(31,111,235,.28);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 28%, transparent);
 }
 .aov-api-img {
   width: 5rem;
   height: 5rem;
   border-radius: 1rem;
   object-fit: cover;
-  box-shadow: 0 6px 18px rgba(31,111,235,.15);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 /* ── Resources ────────────────────────────────────────────────── */
@@ -65,15 +65,15 @@
   display: flex;
   align-items: center;
   gap: 0.875rem;
-  border: 1px solid #e6eaf0;
+  border: 1px solid var(--border);
   border-radius: 0.625rem;
   padding: 0.75rem 0.875rem;
   margin-bottom: 0.5625rem;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .aov-resource-row:hover {
-  border-color: #cdd9e8;
-  box-shadow: 0 4px 14px rgba(20,40,70,.06);
+  border-color: var(--border-strong);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--ink) 6%, transparent);
 }
 .aov-method-badge {
   flex: none;
@@ -85,10 +85,10 @@
   font-weight: 700;
   letter-spacing: 0.04em;
 }
-.aov-method-badge--GET    { background: #e6f2fb; color: #0277bd; }
-.aov-method-badge--POST   { background: #e6f4ea; color: #2e7d32; }
-.aov-method-badge--DELETE { background: #fdeaea; color: #c62828; }
-.aov-method-badge--PUT    { background: #fff4e6; color: #e65100; }
+.aov-method-badge--GET    { background: var(--info-surface); color: var(--info); }
+.aov-method-badge--POST   { background: var(--success-surface); color: var(--success); }
+.aov-method-badge--DELETE { background: var(--danger-surface); color: var(--danger); }
+.aov-method-badge--PUT    { background: var(--warning-surface); color: var(--warning); }
 .aov-method-badge--PATCH  { background: #e6f9f4; color: #00695c; }
 .aov-resource-path {
   flex: none;
@@ -96,7 +96,7 @@
   font-family: monospace;
   font-size: 0.84375rem;
   font-weight: 600;
-  color: #1a2433;
+  color: var(--text-strong);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -105,7 +105,7 @@
   flex: 1;
   min-width: 0;
   font-size: 0.8125rem;
-  color: #637282;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -116,18 +116,18 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  border: 1px dashed #d6dde7;
+  border: 1px dashed var(--border-strong);
   border-radius: 0.75rem;
   padding: 1.125rem 1.25rem;
-  color: #8a93a0;
+  color: var(--text-muted);
   font-size: 0.84375rem;
 }
 .aov-scope-pill {
   display: inline-flex;
   align-items: center;
-  background: #f1f5f9;
-  border: 1px solid #e0eaf4;
-  color: #3a4f6a;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  color: var(--text);
   border-radius: 0.5rem;
   padding: 0.375rem 0.75rem;
   font-size: 0.8125rem;
@@ -140,7 +140,7 @@
   display: flex;
   align-items: center;
   gap: 0.875rem;
-  border: 1px solid #e6eaf0;
+  border: 1px solid var(--border);
   border-radius: 0.625rem;
   padding: 0.75rem 0.875rem;
   margin-bottom: 0.5625rem;
@@ -153,8 +153,8 @@
   font-weight: 700;
   letter-spacing: 0.04em;
 }
-.aov-channel-badge--pub { background: #e6f4ea; color: #2e7d32; }
-.aov-channel-badge--sub { background: #e6f2fb; color: #0277bd; }
+.aov-channel-badge--pub { background: var(--success-surface); color: var(--success); }
+.aov-channel-badge--sub { background: var(--info-surface); color: var(--info); }
 
 /* ── Responsive ───────────────────────────────────────────────── */
 @media (max-width: 768px) {

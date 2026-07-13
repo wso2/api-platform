@@ -893,7 +893,7 @@ function validateScripts(strContent) {
             '<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" integrity="sha256-Rdw90D3AegZwWiwpibjH9wkBPwS9U4bjJ51ORH8H69c=" crossorigin="anonymous"></script>',
             '<script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js" integrity="sha256-Wt6n2O5BpwD8zBS7nVAxBPBHDMF6hK0+Fn0/UlHq4No=" crossorigin="anonymous"></script>',
             '<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js" integrity="sha512-78KH17QLT5e55GJqP76vutp1D2iAoy06WcYBXB6iBCsmO6wWzx0Qdg8EDpm8mKXv68BcvHOyeeP4wxAL0twJGQ==" crossorigin="anonymous"></script>',
-            "<script src=\"https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js\" integrity=\"sha384-qzrow8+R9k2/XKVt7fpdI3hp6ocDhtrCzBsdbcw7/VRkwEXYcsTTAEeFvhlgiGBW\" crossorigin=\"anonymous\"></script>",
+            "<script src=\"https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js\" integrity=\"sha384-oHYQNeDBTZNj6KnIfJMAzcEn2OTbeMKKXFeEwU6T+pH0oS1yTIzEBaW6BXmCtvs2\" crossorigin=\"anonymous\"></script>",
             "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js\" integrity=\"sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp\" crossorigin=\"anonymous\"></script>",
         ]);
         const allowedInlineScripts = new Set([

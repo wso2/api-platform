@@ -65,9 +65,9 @@
 .login-btn {
   display: inline-flex;
   align-items: center;
-  background: #143b52;
+  background: var(--primary);
   color: var(--white);
-  border: 1px solid #143b52;
+  border: 1px solid var(--primary);
   border-radius: 1.25rem;
   padding: 0.5625rem 1.375rem;
   font-size: 0.875rem;

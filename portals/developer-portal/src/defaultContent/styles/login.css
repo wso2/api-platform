@@ -19,8 +19,8 @@
   width: 2.625rem;
   height: 2.625rem;
   border-radius: 0.6875rem;
-  background: var(--panel-fill);
-  border: 1px solid var(--panel-fill-border);
+  background: var(--on-dark-fill);
+  border: 1px solid var(--on-dark-fill-border);
   display: flex;
   align-items: center;
   justify-content: center;

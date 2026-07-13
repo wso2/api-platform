@@ -10,8 +10,8 @@
     gap: 10px;
     border-radius: 6px;
     background-color: var(--white);
-    color: #40404b;
-    border: 1px solid #e0e0e0;
+    color: var(--text);
+    border: 1px solid var(--border);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     z-index: 1090;
     pointer-events: auto;
@@ -31,12 +31,12 @@
 }
 
 .alert-toast.success {
-    background-color: #95d5b2;
-    color: #0a3622;
+    background-color: color-mix(in srgb, var(--success) 45%, var(--surface));
+    color: var(--success);
 }
 
 .alert-toast.error {
-    background-color: #ff8585;
+    background-color: color-mix(in srgb, var(--danger) 50%, var(--surface));
     color: #4f0000;
 }
 

@@ -42,7 +42,7 @@
       '<select class="cfg-form-input cfg-limit-type" style="flex:2;">'+typeOpts+'</select>'+
       '<input type="number" class="cfg-form-input cfg-form-input--mono cfg-limit-count" style="flex:1.5;" '+
         'placeholder="count" value="'+(limit?limit.limitCount:'')+'" />'+
-      '<span style="color:#637282;font-size:.8rem;white-space:nowrap;">/ per</span>'+
+      '<span style="color:var(--text-muted);font-size:.8rem;white-space:nowrap;">/ per</span>'+
       '<input type="number" class="cfg-form-input cfg-form-input--mono cfg-limit-amount" style="flex:.7;" '+
         'placeholder="1" value="'+(limit&&limit.timeAmount!=null?limit.timeAmount:1)+'" min="1" />'+
       '<select class="cfg-form-input cfg-limit-unit" style="flex:1.2;">'+unitOpts+'</select>'+

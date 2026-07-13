@@ -355,8 +355,8 @@
     font-weight: 500;
     border-radius: 999px;
     background: var(--white);
-    color: #40404b;
-    border: 1.5px solid #d0d0d8;
+    color: var(--text);
+    border: 1.5px solid var(--border);
 }
 
 /* ── Card footer ── */

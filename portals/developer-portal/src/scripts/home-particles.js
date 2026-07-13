@@ -19,18 +19,46 @@
 
 /* Particles init — runs after DOM ready */
 (function () {
+  /* Canvas fillStyle cannot read CSS custom properties, so resolve the theme
+     tokens to concrete hex values at runtime (via a probe element the browser
+     fully computes, including color-mix()) and feed those to particles.js.
+     Editing the seeds in main.css re-themes the particles on next load. */
+  function resolveHex(varName, fallback) {
+    try {
+      var probe = document.createElement('span');
+      probe.style.cssText = 'color:var(' + varName + ',' + fallback + ');position:absolute;visibility:hidden';
+      document.body.appendChild(probe);
+      var m = getComputedStyle(probe).color.match(/\d+(?:\.\d+)?/g);
+      probe.parentNode.removeChild(probe);
+      if (!m || m.length < 3) return fallback;
+      return '#' + m.slice(0, 3).map(function (n) {
+        return ('0' + Math.round(parseFloat(n)).toString(16)).slice(-2);
+      }).join('');
+    } catch (e) {
+      return fallback;
+    }
+  }
+
   function init() {
     if (typeof window.particlesJS === 'undefined') return;
     var el = document.getElementById('hero-particles');
     if (!el) return;
+
+    var dotColors = [
+      resolveHex('--white', '#ffffff'),
+      resolveHex('--accent-light', '#f9a04b'),
+      resolveHex('--on-dark-pill', '#5cd1ff'),
+    ];
+    var linkColor = resolveHex('--primary-light', '#9fb6cc');
+
     window.particlesJS('hero-particles', {
       particles: {
         number: { value: 64, density: { enable: true, value_area: 900 } },
-        color: { value: ['var(--white)', '#f9a04b', '#5cd1ff'] },
+        color: { value: dotColors },
         shape: { type: 'circle' },
         opacity: { value: 0.5, random: true },
         size: { value: 2.6, random: true },
-        line_linked: { enable: true, distance: 150, color: '#9fb6cc', opacity: 0.18, width: 1 },
+        line_linked: { enable: true, distance: 150, color: linkColor, opacity: 0.18, width: 1 },
         move: { enable: true, speed: 1.1, direction: 'none', out_mode: 'out' },
       },
       interactivity: {

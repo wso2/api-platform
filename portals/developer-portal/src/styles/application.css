@@ -60,7 +60,7 @@
   color: var(--text);
   font-size: 14px;
   font-weight: 400;
-  background-color: #f9f9f9;
+  background-color: var(--surface-sunken);
 }
 
 .app-th:first-child,
@@ -79,7 +79,7 @@
 }
 
 .data-row:hover td {
-  background-color: #f2f2f2;
+  background-color: var(--surface-sunken);
 }
 
 thead tr th {
@@ -131,7 +131,7 @@ thead tr th {
 .tooltip-text {
   visibility: hidden;
   width: 180px;
-  background-color: #555;
+  background-color: var(--text-muted);
   color: var(--white);
   text-align: center;
   border-radius: 4px;
@@ -203,8 +203,8 @@ thead tr th {
 }
 
 .api-key-actions .api-key-revoke {
-  box-shadow: inset 0 0 0 1px #dc3545;
-  color: #dc3545;
+  box-shadow: inset 0 0 0 1px var(--danger);
+  color: var(--danger);
 }
 
 .api-key-actions .api-key-revoke:hover {

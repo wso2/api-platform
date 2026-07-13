@@ -26,7 +26,7 @@ body {
   display: flex;
   flex-direction: column;
   padding: 3.5rem 4rem;
-  background: var(--panel-bg);
+  background: var(--surface-dark);
 }
 
 /* Logo row */
@@ -60,9 +60,9 @@ body {
   line-height: 1;
   letter-spacing: .13em;
   text-transform: uppercase;
-  color: var(--panel-pill);
-  background: var(--panel-pill-bg);
-  border: 1px solid var(--panel-pill-border);
+  color: var(--on-dark-pill);
+  background: var(--on-dark-pill-bg);
+  border: 1px solid var(--on-dark-pill-border);
   padding: 0.4375rem 0.8125rem;
   border-radius: 1.25rem;
 }
@@ -82,7 +82,7 @@ body {
   font-size: 1rem;
   font-weight: 400;
   line-height: 1.6;
-  color: var(--panel-text);
+  color: var(--on-dark);
   max-width: 28.75rem;
 }
 
@@ -96,16 +96,16 @@ body {
   gap: 1.375rem;
   font-size: 0.8125rem;
   line-height: 1;
-  color: var(--panel-text-muted);
+  color: var(--on-dark-muted);
 }
 
 .auth-foot-desktop a {
-  color: var(--panel-text-muted);
+  color: var(--on-dark-muted);
   text-decoration: none;
   cursor: pointer;
 }
 
-.auth-foot-desktop a:hover { color: var(--panel-text); }
+.auth-foot-desktop a:hover { color: var(--on-dark); }
 
 /* ── Right: org selector form ───────────────────────────────── */
 .auth-form {

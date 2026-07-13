@@ -61,10 +61,7 @@
   justify-content: center;
   min-height: calc(100vh - 7rem);   /* fill available vertical space */
   margin: 0 -2rem -1rem -2rem;   /* bleed past content-area padding */
-  background:
-    radial-gradient(56.25rem 37.5rem at 18% 12%, rgba(31,111,235,.28), transparent 60%),
-    radial-gradient(50rem 38.75rem at 88% 96%, rgba(244,123,32,.20), transparent 55%),
-    linear-gradient(165deg, #0e3046 0%, #0b2436 58%, #081b29 100%);
+  background: var(--surface-dark);
 }
 
 /* Particles canvas overlay */
@@ -102,9 +99,9 @@
   line-height: 1;
   letter-spacing: .13em;
   text-transform: uppercase;
-  color: #7fd0ff;
-  background: rgba(92,209,255,.10);
-  border: 1px solid rgba(92,209,255,.26);
+  color: var(--on-dark-pill);
+  background: var(--on-dark-pill-bg);
+  border: 1px solid var(--on-dark-pill-border);
   padding: 0.5rem 0.9375rem;
   border-radius: 1.25rem;
 }
@@ -122,7 +119,7 @@
 
 .hero-headline-accent {
   font-weight: 600;
-  background: linear-gradient(90deg, #f9a04b, #ef4223);
+  background: linear-gradient(90deg, var(--accent-light), var(--accent-dark));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -133,7 +130,7 @@
   margin: 1.5rem 0 0;
   font-size: 1.125rem;
   line-height: 1.6;
-  color: rgba(226,237,247,.74);
+  color: var(--on-dark);
   max-width: 38.75rem;
 }
 
@@ -169,7 +166,7 @@
 .hero-btn--gradient {
   background: var(--cta-gradient);
   color: var(--white);
-  box-shadow: 0 10px 26px rgba(239,66,35,.32);
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--accent-dark) 32%, transparent);
 }
 
 /* AI (purple) button */
@@ -184,7 +181,7 @@
   border: none;
   border-radius: 0.875rem;
   overflow: hidden;
-  box-shadow: 0 30px 80px rgba(8,22,36,.4);
+  box-shadow: 0 30px 80px color-mix(in srgb, var(--ink) 40%, transparent);
 }
 
 .hero-modal-header {
@@ -193,7 +190,7 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 1.375rem 1.625rem;
-  border-bottom: 1px solid #eef1f5;
+  border-bottom: 1px solid var(--border);
 }
 
 .hero-modal-title-row {
@@ -220,7 +217,7 @@
   font-size: 1.375rem;
   font-weight: 400;
   line-height: 1.2;
-  color: #152433;
+  color: var(--text-strong);
 }
 
 .hero-modal-close {
@@ -233,13 +230,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #8a98a6;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 1rem;
   transition: background .2s;
 }
 
-.hero-modal-close:hover { background: #f1f4f8; }
+.hero-modal-close:hover { background: var(--surface-sunken); }
 
 .hero-modal-info {
   display: flex;
@@ -247,15 +244,15 @@
   justify-content: space-between;
   gap: 1.25rem;
   padding: 1.125rem 1.625rem;
-  background: #f6f8fb;
-  border-bottom: 1px solid #eef1f5;
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--border);
 }
 
 .hero-modal-info-text {
   margin: 0;
   font-size: 0.875rem;
   line-height: 1.5;
-  color: #56657a;
+  color: var(--text-muted);
   max-width: 27.5rem;
 }
 
@@ -274,7 +271,7 @@
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
-  box-shadow: 0 8px 20px rgba(239,66,35,.22);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--accent-dark) 22%, transparent);
   transition: opacity .2s;
   white-space: nowrap;
 }
@@ -285,9 +282,9 @@
 
 .hero-prompt-card {
   position: relative;
-  border: 1px solid #e6eaf0;
+  border: 1px solid var(--border);
   border-radius: 0.625rem;
-  background: #fbfcfd;
+  background: var(--surface-sunken);
   padding: 1.375rem;
 }
 
@@ -302,19 +299,19 @@
 .hero-prompt-tool {
   width: 2.125rem;
   height: 2.125rem;
-  border: 1px solid #dde3ea;
+  border: 1px solid var(--border);
   border-radius: 0.5rem;
   background: var(--white);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #56657a;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 0.9375rem;
   transition: background .2s, border-color .2s;
 }
 
-.hero-prompt-tool:hover { background: #f1f4f8; border-color: #cdd5df; }
+.hero-prompt-tool:hover { background: var(--surface-sunken); border-color: var(--border-strong); }
 
 .hero-prompt-pre {
   margin: 0;
@@ -323,7 +320,7 @@
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 0.84375rem;
   line-height: 1.7;
-  color: #2a3947;
+  color: var(--text);
   max-width: 37.5rem;
   padding-right: 5rem;  /* avoid overlap with action buttons */
 }

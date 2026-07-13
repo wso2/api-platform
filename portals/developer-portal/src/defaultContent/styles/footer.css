@@ -9,7 +9,7 @@
   background-color: var(--white);
   height: 3rem;
   box-sizing: border-box;
-  border-top: 1px solid #e6eaf0;
+  border-top: 1px solid var(--border);
   z-index: 100;
 }
 

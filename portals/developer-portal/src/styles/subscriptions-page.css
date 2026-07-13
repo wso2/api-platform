@@ -9,13 +9,13 @@
   font-weight: 300;
   line-height: 1.1;
   letter-spacing: -0.01em;
-  color: #152433;
+  color: var(--text-strong);
 }
 
 
 /* ── Table wrapper ────────────────────────────────────────────── */
 .sub-tablewrap {
-  border: 1px solid #e6eaf0;
+  border: 1px solid var(--border);
   border-radius: 0.75rem;
   overflow: hidden;
 }
@@ -24,13 +24,13 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
-  color: #2a3947;
+  color: var(--text);
   min-width: 51.25rem;
 }
 
 .sub-table thead tr {
-  background: #f6f8fb;
-  border-bottom: 1px solid #e6eaf0;
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--border);
 }
 
 .sub-table thead th {
@@ -39,12 +39,12 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #8a98a6;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
 .sub-table tbody tr {
-  border-bottom: 1px solid #eef1f5;
+  border-bottom: 1px solid var(--border);
   transition: background 0.12s;
 }
 
@@ -53,7 +53,7 @@
 }
 
 .sub-table tbody tr:hover {
-  background: #fafbfc;
+  background: var(--surface-sunken);
 }
 
 .sub-table tbody td {
@@ -64,22 +64,22 @@
 
 /* ── API name link ────────────────────────────────────────────── */
 .sub-api-link {
-  color: #1f6feb;
+  color: var(--primary);
   text-decoration: none;
   font-weight: 500;
 }
 
 .sub-api-link:hover {
   text-decoration: underline;
-  color: #1a5ec8;
+  color: var(--primary);
 }
 
 /* ── Type pill ────────────────────────────────────────────────── */
 .sub-type-pill {
   display: inline-flex;
   align-items: center;
-  background: #e8f1fb;
-  color: #1f6feb;
+  background: var(--primary-surface);
+  color: var(--primary);
   border-radius: 0.875rem;
   padding: 0.3125rem 0.6875rem;
   font-size: 0.75rem;
@@ -98,7 +98,7 @@
 .sub-token-code {
   font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
   font-size: 0.8125rem;
-  color: #8a98a6;
+  color: var(--text-muted);
 }
 
 
@@ -132,22 +132,22 @@
 }
 
 .sub-action-btn--delete {
-  border-color: #f3c6c6;
-  color: #c62828;
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--surface));
+  color: var(--danger);
 }
 
 .sub-action-btn--delete:hover:not(:disabled) {
-  background: #fdecec;
+  background: var(--danger-surface);
 }
 
 .sub-action-btn--manage {
-  border-color: #d0d9e3;
-  color: #3d5268;
+  border-color: var(--border);
+  color: var(--text-muted);
 }
 
 .sub-action-btn--manage:hover:not(:disabled) {
-  background: #f1f5f9;
-  border-color: #b0bec8;
+  background: var(--surface-sunken);
+  border-color: var(--border-strong);
 }
 
 /* ── Overflow wrapper ─────────────────────────────────────────── */

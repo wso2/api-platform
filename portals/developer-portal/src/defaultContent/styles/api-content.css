@@ -257,7 +257,7 @@
 
 hr {
   border: none;
-  border-top: 0.0625rem solid #abb0c0;
+  border-top: 0.0625rem solid var(--border-strong);
   margin-top: 1.25rem;
   margin-bottom: 1.25rem;
 }
@@ -489,7 +489,7 @@ hr {
 }
 
 .custom-modal {
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: var(--overlay);
   padding-top: 3rem;
 }
 
@@ -594,7 +594,7 @@ hr {
 .plan-kpi-valueTop .plan-kpi-tier-details summary {
   font-size: 0.75rem;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-strong);
   cursor: pointer;
   list-style: none;
   display: flex;
@@ -809,13 +809,13 @@ hr {
 .plans-summary { margin-top: 0.875rem; }
 .plans-summary__top{
   display:flex; align-items:center; gap:0.625rem;
-  color:#475569; font-size:0.75rem; font-weight:800;
+  color:var(--text); font-size:0.75rem; font-weight:800;
 }
 .plans-summary__label{ display:inline-flex; gap:0.5rem; align-items:center; }
 .plans-summary__link{
   padding-left: 0.625rem;
-  border-left: 1px solid #e2e8f0;
-  color:#2563eb;
+  border-left: 1px solid var(--border);
+  color:var(--primary);
   font-size:0.75rem; font-weight:700;
   text-decoration:none;
 }
@@ -823,7 +823,7 @@ hr {
 
 .plans-summary__names{
   margin-top:0.375rem;
-  color:#334155;
+  color:var(--text);
   font-size:0.875rem;
   font-weight:600;
 
@@ -833,17 +833,17 @@ hr {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.plans-summary__sep{ color:#cbd5e1; font-weight:700; margin: 0 0.5rem; }
-.plans-summary__name{ color:#0f172a; }
+.plans-summary__sep{ color:var(--border-strong); font-weight:700; margin: 0 0.5rem; }
+.plans-summary__name{ color:var(--text-strong); }
 
 /* KPI panel */
 .plan-kpis{
   width: 100%;
   max-width: 27.5rem;
   margin: 1rem auto 1.125rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   border-radius: 0.875rem;
-  background: #f8fafc;
+  background: var(--surface-sunken);
   overflow: hidden;
   text-align: left !important; /* overrides card-body text-center */
   box-sizing: border-box;
@@ -865,14 +865,14 @@ hr {
 
 .plan-kpi-divider{
   height: 1px;
-  background: #e2e8f0;
+  background: var(--border);
 }
 
 /* Label */
 .plan-kpi-label{
   font-size: 1rem;
   font-weight: 500;
-  color: #0f172a;
+  color: var(--text-strong);
   line-height: 1.1;
 }
 
@@ -911,7 +911,7 @@ hr {
 .plan-kpi-amount{
   font-size: 1.25rem;
   font-weight: 800;
-  color: #0f172a;
+  color: var(--text-strong);
   line-height: 1.05;
   white-space: nowrap;
 }
@@ -919,14 +919,14 @@ hr {
 .plan-kpi-unit{
   font-size: 1rem;
   font-weight: 600;
-  color: #64748b;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
 .plan-kpi-free{
   font-size: 1.25rem;
   font-weight: 850;
-  color: #16a34a;
+  color: var(--success);
   line-height: 1.05;
   white-space: nowrap;
 }
@@ -939,8 +939,8 @@ hr {
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 700;
-  background: #e0f2fe;
-  color: #0369a1;
+  background: var(--info-surface);
+  color: var(--info);
   white-space: nowrap;
 }
 
@@ -953,8 +953,8 @@ hr {
    KPI PANEL V2 (MODAL ONLY)
    ============================== */
 .subscription-plans-body--modal .plan-kpis{
-  background: #f8fafc;
-  border: 1px solid #dbeafe;
+  background: var(--surface-sunken);
+  border: 1px solid color-mix(in srgb, var(--info) 15%, var(--surface));
   border-radius: 1.125rem;
   padding: 1.375rem 1.5rem;
   text-align: left !important;   /* override card-body text-center */
@@ -973,7 +973,7 @@ hr {
 .subscription-plans-body--modal .plan-kpi-label{
   font-size: 0.875rem;
   font-weight: 500;
-  color: #0f172a;
+  color: var(--text-strong);
   line-height: 1.1;
   white-space: normal;          /* IMPORTANT: prevent vertical letters */
   word-break: normal;
@@ -1005,28 +1005,28 @@ hr {
 
 .subscription-plans-body--modal .plan-kpi-divider{
   height: 1px;
-  background: #e2e8f0;
+  background: var(--border);
   margin: 1rem 0;
 }
 
 .subscription-plans-body--modal .plan-kpi-amount{
   font-size: 1.25rem;
   font-weight: 900;
-  color: #0f172a;
+  color: var(--text-strong);
   letter-spacing: -0.02em;
 }
 
 .subscription-plans-body--modal .plan-kpi-unit{
   font-size: 0.625rem;
   font-weight: 700;
-  color: #64748b;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
 .subscription-plans-body--modal .plan-kpi-free{
   font-size: 1.25rem;
   font-weight: 900;
-  color: #16a34a;
+  color: var(--success);
 }
 
 .subscription-plans-body--modal .plan-kpi-badge-slot{
@@ -1036,8 +1036,8 @@ hr {
 }
 
 .subscription-plans-body--modal .plan-kpi-badge{
-  background-color: #e0f2fe;
-  color: #0369a1;
+  background-color: var(--info-surface);
+  color: var(--info);
   font-size: 0.75rem;
   padding: 0.375rem 0.75rem;
   border-radius: 999px;
@@ -1067,13 +1067,13 @@ hr {
 .subscription-plans-body--modal .plan-kpi-rateValue{
   font-size: 1.25rem;
   font-weight: 900;
-  color: #0f172a;
+  color: var(--text-strong);
 }
 
 .subscription-plans-body--modal .plan-kpi-rateUnit{
   font-size: 0.625rem;
   font-weight: 700;
-  color: #64748b;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 

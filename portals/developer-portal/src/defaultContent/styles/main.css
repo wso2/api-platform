@@ -68,25 +68,26 @@
   --danger-surface:  color-mix(in srgb, var(--danger)  10%, var(--surface));
   --info-surface:    color-mix(in srgb, var(--info)    12%, var(--surface));
 
-  /* ---- DERIVED · auth brand panel ----
-     The dark hero shared by the sign-in, login and org-select shell. The ground
-     and glows come from the brand seeds; text is white; only the gradient and
-     translucent overlays are derived. The tenant pill is --primary-light
-     lightened for legibility on the navy — no separate seed. */
-  --panel-bg:
+  /* ---- DERIVED · dark brand surface + content on it ----
+     Shared by every dark navy surface: the home hero, the sidebar, and the
+     sign-in / org-select shell. --surface-dark is the ground (from the brand
+     seeds); --on-dark* are the text / fills / pill that sit on top of it (white
+     at reducing opacity + a lightened --primary-light pill). Only gradients and
+     translucent overlays are derived — no separate seeds. */
+  --surface-dark:
     radial-gradient(56.25rem 37.5rem at 12% 8%, color-mix(in srgb, var(--primary-light) 42%, transparent), transparent 60%),
     radial-gradient(43.75rem 37.5rem at 95% 100%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 55%),
     linear-gradient(160deg,
       var(--primary-dark) 0%,
       color-mix(in srgb, var(--primary-dark) 72%, #000) 60%,
       color-mix(in srgb, var(--primary-dark) 58%, #000) 100%);
-  --panel-pill:        color-mix(in oklch, var(--primary-light) 60%, var(--white));
-  --panel-pill-bg:     color-mix(in srgb,  var(--primary-light) 16%, transparent);
-  --panel-pill-border: color-mix(in srgb,  var(--primary-light) 34%, transparent);
-  --panel-text:        color-mix(in srgb, var(--white) 74%, transparent);
-  --panel-text-muted:  color-mix(in srgb, var(--white) 52%, transparent);
-  --panel-fill:        color-mix(in srgb, var(--white) 6%,  transparent);
-  --panel-fill-border: color-mix(in srgb, var(--white) 12%, transparent);
+  --on-dark-pill:        color-mix(in oklch, var(--primary-light) 60%, var(--white));
+  --on-dark-pill-bg:     color-mix(in srgb,  var(--primary-light) 16%, transparent);
+  --on-dark-pill-border: color-mix(in srgb,  var(--primary-light) 34%, transparent);
+  --on-dark:        color-mix(in srgb, var(--white) 74%, transparent);
+  --on-dark-muted:  color-mix(in srgb, var(--white) 52%, transparent);
+  --on-dark-fill:        color-mix(in srgb, var(--white) 6%,  transparent);
+  --on-dark-fill-border: color-mix(in srgb, var(--white) 12%, transparent);
 
   /* ---- Non-color tokens ---- */
   --font-family-sans: Inter, "Montserrat", "Quicksand", "Noto Sans", "Poppins", sans-serif;

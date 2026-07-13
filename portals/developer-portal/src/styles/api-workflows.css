@@ -87,7 +87,7 @@
 .flow-card-header {
     padding: 1.5rem;
     border-bottom: 1px solid var(--bs-gray-200);
-    background: var(--surface-sunken, #f8f9fa);
+    background: var(--surface-sunken);
 }
 
 .flow-card-title {
@@ -141,7 +141,7 @@
 
 .flow-api-chip {
     display: inline-block;
-    background: var(--primary-surface, #f0f0f8);
+    background: var(--primary-surface);
     color: var(--primary);
     padding: 0.2rem 0.575rem;
     border-radius: 0.375rem;
@@ -149,11 +149,11 @@
     font-weight: 500;
     transition: all 0.2s ease;
     flex-shrink: 0;
-    border: 1px solid var(--primary-light, #e8e8f4);
+    border: 1px solid var(--primary-light);
 }
 
 .flow-api-chip:hover {
-    background: var(--primary-light, #e8e8f4);
+    background: var(--primary-light);
     border-color: var(--primary);
 }
 
@@ -182,7 +182,7 @@
 .flow-card-footer {
     padding: 0.875rem 1.5rem;
     border-top: 1px solid var(--bs-gray-200);
-    background: var(--surface-sunken, #f8f9fa);
+    background: var(--surface-sunken);
     display: flex;
     align-items: center;
     gap: 0.375rem;
@@ -234,7 +234,7 @@
 
 .flows-empty i {
     font-size: 3rem;
-    color: var(--primary-light, #e8e8f4);
+    color: var(--primary-light);
     margin-bottom: 1rem;
     display: block;
 }
@@ -314,7 +314,7 @@
     border: none;
     font-size: 1.4rem;
     cursor: pointer;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     transition: color 0.2s ease;
     padding: 0;
 }
@@ -331,7 +331,7 @@
 
 
 .prompt-text {
-    background: var(--surface-sunken, #f8f9fa);
+    background: var(--surface-sunken);
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.25rem;
     padding: 1rem;
@@ -546,8 +546,8 @@
     max-width: 860px;
     margin: 1.5rem auto 3rem;
     padding: 3rem 3.5rem;
-    background: var(--surface, var(--white));
-    border: 1px solid var(--bs-gray-200, #e9ecef);
+    background: var(--surface);
+    border: 1px solid var(--bs-gray-200);
     border-radius: 0.75rem;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
     color: var(--text);
@@ -567,7 +567,7 @@
 }
 
 .af-md-detail-container h1 { font-size: 1.625rem; margin-top: 0; }
-.af-md-detail-container h2 { font-size: 1.25rem; padding-bottom: 0.375rem; border-bottom: 1px solid var(--bs-gray-200, #e9ecef); }
+.af-md-detail-container h2 { font-size: 1.25rem; padding-bottom: 0.375rem; border-bottom: 1px solid var(--bs-gray-200); }
 .af-md-detail-container h3 { font-size: 1.0625rem; }
 .af-md-detail-container h4 { font-size: 0.9375rem; }
 
@@ -584,15 +584,15 @@
 .af-md-detail-container code {
     font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
     font-size: 0.85em;
-    background: var(--bs-gray-100, #f8f9fa);
-    border: 1px solid var(--bs-gray-200, #e9ecef);
+    background: var(--bs-gray-100);
+    border: 1px solid var(--bs-gray-200);
     border-radius: 0.25rem;
     padding: 0.1em 0.4em;
 }
 
 .af-md-detail-container pre {
-    background: var(--bs-gray-100, #f8f9fa);
-    border: 1px solid var(--bs-gray-200, #e9ecef);
+    background: var(--bs-gray-100);
+    border: 1px solid var(--bs-gray-200);
     border-radius: 0.5rem;
     padding: 1rem 1.25rem;
     overflow-x: auto;
@@ -617,31 +617,31 @@
 .af-md-detail-container th,
 .af-md-detail-container td {
     padding: 0.5rem 0.875rem;
-    border: 1px solid var(--bs-gray-200, #e9ecef);
+    border: 1px solid var(--bs-gray-200);
     text-align: left;
 }
 
 .af-md-detail-container th {
-    background: var(--bs-gray-100, #f8f9fa);
+    background: var(--bs-gray-100);
     font-weight: 600;
 }
 
 .af-md-detail-container tr:nth-child(even) td {
-    background: var(--surface-sunken, #f8f9fa);
+    background: var(--surface-sunken);
 }
 
 .af-md-detail-container blockquote {
     border-left: 3px solid var(--primary);
     padding: 0.5rem 1rem;
     margin: 0 0 1rem;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     background: color-mix(in srgb, var(--primary) 4%, transparent);
     border-radius: 0 0.375rem 0.375rem 0;
 }
 
 .af-md-detail-container hr {
     border: none;
-    border-top: 1px solid var(--bs-gray-200, #e9ecef);
+    border-top: 1px solid var(--bs-gray-200);
     margin: 1.5rem 0;
 }
 
@@ -652,7 +652,7 @@
 .af-md-empty {
     padding: 3rem;
     text-align: center;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     font-style: italic;
 }
 
@@ -662,6 +662,6 @@
     font-size: 0.8125rem;
     line-height: 1.6;
     padding: 1.5rem;
-    background: var(--bs-gray-100, #f8f9fa);
+    background: var(--bs-gray-100);
     border-radius: 0.5rem;
 }
