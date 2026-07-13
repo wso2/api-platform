@@ -1,0 +1,177 @@
+name: Gateway API Conformance
+
+# Guards that the WSO2 gateway keeps passing the Gateway API conformance suite.
+# Triggers:
+#   - Pull requests that touch kubernetes/** (the operator, helm charts and the
+#     conformance scripts themselves) — catches regressions before merge.
+#   - Manual runs (workflow_dispatch).
+#   - A weekly schedule (Saturday 00:00 UTC) so drift on main is caught even when no
+#     kubernetes/** change lands. Saturday (not Friday) so the run happens after
+#     Friday's changes have merged — otherwise a Friday-00:00 run would miss all of
+#     Friday's work until the following week.
+# NOTE: gateway/** is deliberately NOT a path trigger (per the requested scope); add
+#       'gateway/**' below if you also want controller/runtime changes to run this.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'kubernetes/**'
+      - '.github/workflows/gateway-api-conformance.yml'
+  schedule:
+    # Saturday at 00:00 UTC (cron day-of-week 6 = Saturday) — runs after Friday's
+    # changes have landed, so each run covers the full week including Friday.
+    - cron: '0 0 * * 6'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The conformance scripts derive image tags from gateway/VERSION and the operator
+  # Makefile, and install-wso2-gateway.sh deploys those exact tags with
+  # imagePullPolicy=IfNotPresent. So we build with the DEFAULT registry/version (no
+  # overrides) and let load-images.sh line the tags up automatically.
+  CONFORMANCE_DIR: kubernetes/conformance
+  REPORT_OUT: ${{ github.workspace }}/conformance-report.yaml
+  RUN_LOG: ${{ github.workspace }}/conformance-run.log
+
+jobs:
+  conformance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          # docker driver builds straight into the local daemon so `kind load` /
+          # load-images.sh can see the images.
+          driver: docker
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install KinD CLI
+        # setup-kind.sh requires the kind binary (kubectl, docker, jq, curl are already
+        # present on ubuntu-24.04). Built via the Go toolchain that's already set up;
+        # pin the version here if a reproducible kind CLI is desired.
+        run: go install sigs.k8s.io/kind@latest
+
+      # ---- Build the gateway images from source (default tags) -----------------
+      - name: Build gateway images (controller + runtime)
+        run: make -C gateway build
+
+      - name: Build operator image
+        run: make -C kubernetes/gateway-operator docker-build
+
+      # ---- Stand up the cluster and deploy via the conformance scripts ---------
+      - name: Create KinD cluster with MetalLB
+        run: bash "${CONFORMANCE_DIR}/kind/setup-kind.sh"
+
+      - name: Load built images into the cluster
+        run: bash "${CONFORMANCE_DIR}/load-images.sh"
+
+      - name: Install cert-manager, operator and GatewayClass
+        run: bash "${CONFORMANCE_DIR}/install-wso2-gateway.sh"
+
+      # ---- Run the suite (never fails the step directly; the outcome is recorded
+      #      and enforced by the reporting step below) --------------------------
+      - name: Run Gateway API conformance suite
+        id: run
+        run: |
+          set -o pipefail
+          if bash "${CONFORMANCE_DIR}/run-conformance.sh" 2>&1 | tee "${RUN_LOG}"; then
+            echo "outcome=passed" >> "$GITHUB_OUTPUT"
+          else
+            echo "outcome=failed" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ---- Present the result ---------------------------------------------------
+      # A report is written by the suite whenever it finishes running (pass OR
+      # partial fail). If it is missing, the suite died during setup/build/cluster
+      # bring-up and never reached report generation.
+      - name: Publish conformance results
+        run: |
+          if [ -s "${REPORT_OUT}" ]; then
+            {
+              echo "## Gateway API Conformance Report"
+              echo ""
+              if [ "${{ steps.run.outputs.outcome }}" = "passed" ]; then
+                echo "**Status: ✅ All conformance tests passed.**"
+              else
+                echo "**Status: ❌ Conformance suite completed with failures — full report below.**"
+              fi
+              echo ""
+              echo '```yaml'
+              cat "${REPORT_OUT}"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            echo "==================== Gateway API Conformance Report ===================="
+            cat "${REPORT_OUT}"
+            echo "======================================================================="
+
+            if [ "${{ steps.run.outputs.outcome }}" != "passed" ]; then
+              echo "::error::Gateway API conformance suite reported failures. See the report above."
+              exit 1
+            fi
+            echo "Gateway API conformance suite passed."
+          else
+            echo "::error::Conformance suite failed before a report could be generated (setup/build/cluster error)."
+            {
+              echo "## Gateway API Conformance — FAILED before report generation"
+              echo ""
+              echo "The suite did not produce a report. Tail of the run log:"
+              echo '```'
+              tail -n 300 "${RUN_LOG}" 2>/dev/null || echo "(no run log captured)"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "==================== Conformance run log (tail) ===================="
+            tail -n 300 "${RUN_LOG}" 2>/dev/null || echo "(no run log captured)"
+            echo "==================================================================="
+            exit 1
+          fi
+
+      - name: Upload conformance report and run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-api-conformance-report
+          path: |
+            ${{ env.REPORT_OUT }}
+            ${{ env.RUN_LOG }}
+          if-no-files-found: warn
+
+      - name: Collect cluster diagnostics on failure
+        if: failure()
+        run: |
+          echo "===== Pods (all namespaces) ====="
+          kubectl get pods -A -o wide || true
+          echo "===== Gateways ====="
+          kubectl get gateways.gateway.networking.k8s.io -A || true
+          echo "===== HTTPRoutes ====="
+          kubectl get httproutes.gateway.networking.k8s.io -A || true
+          echo "===== GatewayClass ====="
+          kubectl get gatewayclass -A || true
+          echo "===== Operator logs ====="
+          kubectl logs -n gateway-system deploy/gateway-operator --tail=200 || true
+          echo "===== Data-plane pods (conformance infra namespace) ====="
+          kubectl get pods -n gateway-conformance-infra -o wide || true
