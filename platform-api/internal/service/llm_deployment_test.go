@@ -47,11 +47,9 @@ func providerWithConsumerLimits(rl *model.LLMRateLimitingConfig) *model.LLMProvi
 	}
 }
 
-// TestGenerateYAML_ConsumerRequestLimit verifies that a consumer-only request limit
-// generates a single advanced-ratelimit policy where the key extraction includes
-// x-wso2-application-id (making it consumer-scoped). Unlike token/cost limits,
-// the request limit does NOT use a consumerBased flag — it uses the application ID
-// directly in the key extraction.
+// TestGenerateYAML_ConsumerRequestLimit verifies that a consumer provider-wide request limit
+// is emitted as a GLOBAL advanced-ratelimit policy keyed on apiname + x-wso2-application-id
+// — one shared bucket per consumer across all routes.
 func TestGenerateYAML_ConsumerRequestLimit(t *testing.T) {
 	count := 100
 	rl := &model.LLMRateLimitingConfig{
@@ -80,12 +78,26 @@ func TestGenerateYAML_ConsumerRequestLimit(t *testing.T) {
 	if !strings.Contains(yamlStr, "x-wso2-application-id") {
 		t.Error("expected x-wso2-application-id in key extraction for consumer request limit")
 	}
+	// Provider-wide (global) per-consumer bucket must key on apiname, not routename,
+	// so it is shared across all routes for a given consumer.
+	if !strings.Contains(yamlStr, "apiname") {
+		t.Errorf("expected apiname key extraction for consumer GLOBAL request limit:\n%s", yamlStr)
+	}
+	if strings.Contains(yamlStr, "routename") {
+		t.Errorf("expected no routename key for consumer GLOBAL request limit (would silo per route):\n%s", yamlStr)
+	}
+	// A provider-wide per-consumer limit is a GLOBAL policy: emitted into globalPolicies,
+	// never operationPolicies.
+	if findGlobalPolicy(yamlArtifact.Spec.GlobalPolicies, "advanced-ratelimit") == nil {
+		t.Errorf("expected consumer global request in globalPolicies:\n%s", yamlStr)
+	}
+	if findOperationPolicy(yamlArtifact.Spec.OperationPolicies, "advanced-ratelimit") != nil {
+		t.Errorf("expected consumer global request NOT in operationPolicies:\n%s", yamlStr)
+	}
 	// Should NOT have a backend (non-consumer) advanced-ratelimit entry
 	if strings.Count(yamlStr, "advanced-ratelimit") > 1 {
 		t.Error("expected only one advanced-ratelimit policy (consumer), got more than one")
 	}
-
-	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
 // TestGenerateYAML_ConsumerTokenLimit verifies that a consumer token limit
@@ -228,9 +240,10 @@ func TestGenerateYAML_BackendOnlyTokenLimit(t *testing.T) {
 	t.Logf("Generated YAML:\n%s", yamlStr)
 }
 
-// TestGenerateYAML_BackendOnlyRequestLimit verifies that a backend-only request limit
-// generates an advanced-ratelimit policy with quota name "request-limit" (not "consumer-request-limit")
-// and without x-wso2-application-id in the key extraction.
+// TestGenerateYAML_BackendOnlyRequestLimit verifies that a backend (provider-level) global
+// request limit produces a basic-ratelimit global policy with a plain {requests, duration}
+// limit — basic-ratelimit shares one bucket across all routes by keying on the API by
+// default, so no keyExtraction or per-consumer key is part of its shape.
 func TestGenerateYAML_BackendOnlyRequestLimit(t *testing.T) {
 	count := 500
 	rl := &model.LLMRateLimitingConfig{
@@ -244,21 +257,30 @@ func TestGenerateYAML_BackendOnlyRequestLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	yamlBytes, _ := yaml.Marshal(yamlArtifact)
-	yamlStr := string(yamlBytes)
-	if !strings.Contains(yamlStr, "advanced-ratelimit") {
-		t.Error("expected advanced-ratelimit in generated YAML")
+
+	if len(yamlArtifact.Spec.GlobalPolicies) != 1 {
+		t.Fatalf("expected exactly one global policy, got: %d", len(yamlArtifact.Spec.GlobalPolicies))
 	}
-	if strings.Contains(yamlStr, "x-wso2-application-id") {
-		t.Error("expected no x-wso2-application-id for backend-only request limit")
+	requestPolicy := findGlobalPolicy(yamlArtifact.Spec.GlobalPolicies, "basic-ratelimit")
+	if requestPolicy == nil {
+		t.Fatalf("expected basic-ratelimit global policy, got: %+v", yamlArtifact.Spec.GlobalPolicies)
 	}
-	if !strings.Contains(yamlStr, "request-limit") {
-		t.Error("expected quota name 'request-limit' in generated YAML")
+	if requestPolicy.Params == nil {
+		t.Fatalf("expected basic-ratelimit policy to have params")
 	}
-	if strings.Contains(yamlStr, "consumer-request-limit") {
-		t.Error("expected no 'consumer-request-limit' for backend-only request limit")
+	if len(*requestPolicy.Params) != 1 {
+		t.Fatalf("expected params to contain only 'limits', got: %#v", *requestPolicy.Params)
 	}
-	t.Logf("Generated YAML:\n%s", yamlStr)
+	limits, ok := (*requestPolicy.Params)["limits"].([]map[string]interface{})
+	if !ok || len(limits) != 1 {
+		t.Fatalf("expected limits with one entry, got: %#v", (*requestPolicy.Params)["limits"])
+	}
+	if limits[0]["requests"] != count {
+		t.Errorf("expected requests %d, got: %#v", count, limits[0]["requests"])
+	}
+	if limits[0]["duration"] != "1h" {
+		t.Errorf("expected duration 1h, got: %#v", limits[0]["duration"])
+	}
 }
 
 // TestGenerateYAML_BackendOnlyCostLimit verifies that a backend-only cost limit
@@ -358,9 +380,10 @@ func TestGenerateYAML_BackendPerResourceCostLimit(t *testing.T) {
 // Backend + consumer for individual limit types
 // ---------------------------------------------------------------------------
 
-// TestGenerateYAML_BothBackendAndConsumerRequestLimits verifies that backend and consumer
-// request limits produce two advanced-ratelimit policies with distinct quota names:
-// "request-limit" (backend, no app-id key) and "consumer-request-limit" (consumer, with app-id key).
+// TestGenerateYAML_BothBackendAndConsumerRequestLimits verifies that a backend request
+// limit and a consumer request limit produce distinct policies: the backend limit is a
+// basic-ratelimit (apiname-shared, no keyExtraction) while the consumer limit remains an
+// advanced-ratelimit with quota name "consumer-request-limit" keyed on x-wso2-application-id.
 func TestGenerateYAML_BothBackendAndConsumerRequestLimits(t *testing.T) {
 	count := 100
 	rl := &model.LLMRateLimitingConfig{
@@ -381,8 +404,11 @@ func TestGenerateYAML_BothBackendAndConsumerRequestLimits(t *testing.T) {
 	}
 	yamlBytes, _ := yaml.Marshal(yamlArtifact)
 	yamlStr := string(yamlBytes)
-	if strings.Count(yamlStr, "advanced-ratelimit") < 2 {
-		t.Error("expected two advanced-ratelimit policies (one backend, one consumer)")
+	if strings.Count(yamlStr, "advanced-ratelimit") != 1 {
+		t.Error("expected exactly one advanced-ratelimit policy (consumer only)")
+	}
+	if !strings.Contains(yamlStr, "basic-ratelimit") {
+		t.Error("expected a basic-ratelimit policy for the backend request limit")
 	}
 	if !strings.Contains(yamlStr, "consumer-request-limit") {
 		t.Error("expected 'consumer-request-limit' quota name for consumer policy")
@@ -508,6 +534,72 @@ func TestGenerateYAML_AllThreeConsumerLimits(t *testing.T) {
 	}
 
 	t.Logf("Generated YAML:\n%s", yamlStr)
+}
+
+// TestRoundTrip_ConsumerGlobalRequestLimit verifies the consumer global request limit
+// survives the CP->DP forward conversion (now via globalPolicies) and the DP->CP import,
+// landing back in ConsumerLevel.Global.Request.
+func TestRoundTrip_ConsumerGlobalRequestLimit(t *testing.T) {
+	rl := &model.LLMRateLimitingConfig{
+		ConsumerLevel: &model.RateLimitingScopeConfig{
+			Global: &model.RateLimitingLimitConfig{
+				Request: &model.RequestRateLimit{Enabled: true, Count: 100, Reset: model.RateLimitResetWindow{Duration: 1, Unit: "hour"}},
+			},
+		},
+	}
+	out, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cfg := mapLLMProviderSpecToConfig(out.Spec)
+	if cfg.RateLimiting == nil || cfg.RateLimiting.ConsumerLevel == nil || cfg.RateLimiting.ConsumerLevel.Global == nil ||
+		cfg.RateLimiting.ConsumerLevel.Global.Request == nil {
+		t.Fatalf("consumer global request not reconstructed: %+v", cfg.RateLimiting)
+	}
+	req := cfg.RateLimiting.ConsumerLevel.Global.Request
+	if !req.Enabled || req.Count != 100 || req.Reset.Unit != "hour" || req.Reset.Duration != 1 {
+		t.Errorf("consumer global request = %+v, want enabled count=100 reset=1h", req)
+	}
+	// It must NOT be misclassified as a provider-level (backend) limit.
+	if cfg.RateLimiting.ProviderLevel != nil {
+		t.Errorf("expected no provider-level limit, got: %+v", cfg.RateLimiting.ProviderLevel)
+	}
+}
+
+// TestGenerateYAML_ConsumerResourceWiseRequestLimitKeepsRoutename verifies that a
+// consumer RESOURCE-WISE request limit stays keyed on routename + application id (an
+// independent per-route, per-consumer bucket) — the counterpart to the apiname-keyed
+// consumer global limit.
+func TestGenerateYAML_ConsumerResourceWiseRequestLimitKeepsRoutename(t *testing.T) {
+	rl := &model.LLMRateLimitingConfig{
+		ConsumerLevel: &model.RateLimitingScopeConfig{
+			ResourceWise: &model.ResourceWiseRateLimitingConfig{
+				Resources: []model.RateLimitingResourceLimit{
+					{
+						Resource: "/v1/chat",
+						Limit: model.RateLimitingLimitConfig{
+							Request: &model.RequestRateLimit{Enabled: true, Count: 50, Reset: model.RateLimitResetWindow{Duration: 1, Unit: "hour"}},
+						},
+					},
+				},
+			},
+		},
+	}
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(providerWithConsumerLimits(rl), "anthropic")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	yamlBytes, _ := yaml.Marshal(yamlArtifact)
+	yamlStr := string(yamlBytes)
+	if !strings.Contains(yamlStr, "routename") {
+		t.Errorf("expected routename key for consumer resource-wise request limit:\n%s", yamlStr)
+	}
+	if strings.Contains(yamlStr, "apiname") {
+		t.Errorf("expected no apiname key for consumer resource-wise request limit:\n%s", yamlStr)
+	}
+	if !strings.Contains(yamlStr, "x-wso2-application-id") {
+		t.Errorf("expected x-wso2-application-id key for consumer resource-wise request limit:\n%s", yamlStr)
+	}
 }
 
 // ---------------------------------------------------------------------------

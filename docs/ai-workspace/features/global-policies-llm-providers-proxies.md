@@ -1,6 +1,6 @@
 # Global Policies for LLM Providers and LLM Proxies
 
-Global policies apply a single policy across **every operation** of an LLM Provider or LLM Proxy, rather than to one path and method at a time. They are the natural way to express a provider-wide control — a token budget for the whole provider, a single request ceiling shared across all endpoints, or a guardrail that must run on every route.
+Global policies apply a single policy across **every operation** of an LLM Provider or LLM Proxy, rather than to one path and method at a time. They are the natural way to express a provider-wide control — a single request ceiling shared across all endpoints, or a guardrail that must run on every route.
 
 Policies attached to an LLM Provider or Proxy now fall into two lists:
 
@@ -24,7 +24,7 @@ The same distinction holds for guardrails: a global guardrail runs on every oper
 
 ### Which to choose
 
-- Use a **global policy** when the control describes the provider or proxy as a whole: "this provider may consume at most X tokens per hour," "mask PII on every request regardless of endpoint."
+- Use a **global policy** when the control describes the provider or proxy as a whole: "this provider may accept at most X requests per hour," "mask PII on every request regardless of endpoint."
 - Use an **operation policy** when different endpoints need different treatment: a stricter limit on an expensive completion route, a guardrail only on a route that accepts free-text input.
 
 ## Configuring Policies
@@ -62,8 +62,6 @@ Global rate limits are a **hard ceiling on total traffic** and are counted **per
 
 Rejected requests receive HTTP `429` with the body `Rate limit exceeded`.
 
-> **Advanced rate limit and shared counters.** The advanced rate-limit policy keys its counter per route by default, which would silo the limit per operation. When you attach it as a *global* policy, the platform automatically configures it to key on the provider or proxy instead, so a single bucket is shared across all routes — matching the behaviour of a global basic rate limit. Any key-extraction setting you configure explicitly is preserved.
-
 ## Legacy Policies
 
 The original flat **policies** list is **deprecated** but continues to work, so existing configurations behave exactly as before.
@@ -83,18 +81,16 @@ Global and operation policies require a gateway running a version that understan
 
 ## Example
 
-A provider with a global token budget shared across all operations, plus a stricter per-route request limit on the completions endpoint:
+A provider with a global request ceiling shared across all operations, plus a stricter per-route request limit on the completions endpoint:
 
 ```yaml
 globalPolicies:
-  - name: advanced-ratelimit
+  - name: basic-ratelimit
     version: v1
     params:
-      quotas:
-        - name: request-limit
-          limits:
-            - limit: 10000
-              duration: "1h"
+      limits:
+        - requests: 10000
+          duration: "1h"
 operationPolicies:
   - name: basic-ratelimit
     version: v1
