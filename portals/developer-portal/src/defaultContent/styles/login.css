@@ -1,4 +1,4 @@
-/* Login page — ln-* prefix (loaded alongside os.css) */
+/* Login page — ln-* prefix (loaded alongside auth-shell.css) */
 
 /* ── Brand panel: feature list ──────────────────────────────── */
 .ln-features {
@@ -69,7 +69,7 @@
 .ln-pw-toggle:hover { color: #44505f; }
 
 
-/* Sign in button — reuses os-continue-btn, just change the tag */
+/* Sign in button — reuses auth-continue-btn, just change the tag */
 .ln-signin-btn {
   margin-top: 0.25rem;
 }
@@ -90,127 +90,3 @@
 }
 
 .ln-error-banner i { flex: none; font-size: 0.9375rem; }
-
-/* ── Social buttons (non-local-auth branch) ─────────────────── */
-.ln-social-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.625rem;
-  margin-top: 1.75rem;
-}
-
-.ln-social-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.625rem;
-  width: 100%;
-  padding: 0.75rem 1rem;
-  border: 1px solid #d4dde6;
-  border-radius: 0.5rem;
-  background: #fff;
-  font-family: inherit;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #1a2433;
-  cursor: pointer;
-  text-decoration: none;
-  transition: background .14s, border-color .14s;
-}
-
-.ln-social-btn:hover {
-  background: #f4f7fb;
-  border-color: #bcc8d4;
-  color: #1a2433;
-}
-
-.ln-social-btn--outline {
-  background: transparent;
-  color: #44505f;
-}
-
-.ln-divider {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  color: #9aa7b4;
-  font-size: 0.78125rem;
-  font-weight: 500;
-  margin: 0.25rem 0;
-}
-
-.ln-divider::before,
-.ln-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: #e1e7ee;
-}
-
-/* ── Enterprise card (fallback for toggle) ──────────────────── */
-.enterprise-login { width: 100%; }
-
-.enterprise-login-form-group { margin-bottom: 0.875rem; }
-
-.enterprise-login-input {
-  width: 100%;
-  border: 1px solid #d4dde6;
-  border-radius: 0.5rem;
-  padding: 0.8125rem 0.875rem;
-  font-family: inherit;
-  font-size: 0.90625rem;
-  line-height: 1;
-  color: #152433;
-  background: #fff;
-  outline: none;
-  transition: border-color .2s, box-shadow .2s;
-}
-
-.enterprise-login-input:focus {
-  border-color: #1f6feb;
-  box-shadow: 0 0 0 3px rgba(31,111,235,.14);
-}
-
-.enterprise-login-input::placeholder { color: #9aa7b4; }
-
-.common-btn-primary {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding: 0.875rem;
-  border: none;
-  border-radius: 1.25rem;
-  font-family: inherit;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: #fff;
-  background: var(--primary-gradient);
-  cursor: pointer;
-  box-shadow: 0 8px 20px rgba(239,66,35,.22);
-  transition: opacity .2s;
-  text-decoration: none;
-}
-
-.common-btn-primary:hover { opacity: .9; }
-
-.common-btn-outlined {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  padding: 0.8125rem;
-  border: 1px solid #d4dde6;
-  border-radius: 1.25rem;
-  font-family: inherit;
-  font-size: 0.90625rem;
-  font-weight: 500;
-  color: #44505f;
-  background: #fff;
-  cursor: pointer;
-  text-decoration: none;
-  transition: background .14s, border-color .14s;
-  text-align: center;
-}
-
-.common-btn-outlined:hover { background: #f4f7fb; border-color: #bcc8d4; }
