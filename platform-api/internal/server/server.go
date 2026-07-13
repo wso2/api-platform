@@ -263,7 +263,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 
-	// The single configured encryption key (ENCRYPTION_KEY) is used for all encrypted DB
+	// The single configured encryption key (APIP_CP_ENCRYPTION_KEY) is used for all encrypted DB
 	// columns (secrets, subscription tokens, WebSub HMAC secrets)
 	dbEncryptionKey := cfg.EncryptionKey
 	llmProviderDeploymentService := service.NewLLMProviderDeploymentService(

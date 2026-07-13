@@ -566,13 +566,11 @@ func validateJWTConfig(jwt *JWT) error {
 		return nil
 	}
 	if jwt.SecretKey == "" {
-		return fmt.Errorf("AUTH_JWT_SECRET_KEY is required when JWT authentication is enabled " +
-			"(set auth.jwt.secret_key in config via {{ env }}/{{ file }}, or the " +
-			"APIP_CP_AUTH_JWT_SECRET_KEY env var); generate one with: openssl rand -hex 32")
+		return fmt.Errorf("Auth.JWT.SecretKey is required when JWT authentication is enabled " +
+			"(set auth.jwt.secret_key in config via {{ env }}/{{ file }})")
 	}
 	if !valid32ByteKey(jwt.SecretKey) {
-		return fmt.Errorf("invalid AUTH_JWT_SECRET_KEY: must be 64 hex characters or " +
-			"base64 decoding to 32 bytes (generate one with: openssl rand -hex 32)")
+		return fmt.Errorf("invalid Auth.JWT.SecretKey: must be 64 hex characters or base64 decoding to 32 bytes")
 	}
 	return nil
 }
@@ -581,13 +579,12 @@ func validateJWTConfig(jwt *JWT) error {
 // A missing or malformed key fails startup.
 func validateEncryptionKey(key string) error {
 	if key == "" {
-		return fmt.Errorf("ENCRYPTION_KEY is required (set encryption_key in config via " +
-			"{{ env }}/{{ file }}, or the APIP_CP_ENCRYPTION_KEY env var); " +
-			"generate one with: openssl rand -hex 32")
+		return fmt.Errorf("EncryptionKey is required (set encryption_key in config via " +
+			"{{ env }}/{{ file }}")
 	}
 	if !valid32ByteKey(key) {
-		return fmt.Errorf("invalid ENCRYPTION_KEY: must be 64 hex characters or " +
-			"base64 decoding to 32 bytes (generate one with: openssl rand -hex 32)")
+		return fmt.Errorf("invalid EncryptionKey: must be 64 hex characters or " +
+			"base64 decoding to 32 bytes")
 	}
 	return nil
 }

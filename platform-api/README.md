@@ -6,7 +6,7 @@ Backend service that powers the API Platform portals, gateways, and automation f
 
 ### Prerequisites
 
-Before using the Platform API, obtain a bearer token for authentication. In local JWT mode (default) you can generate a token using the configured `AUTH_JWT_SECRET_KEY`. In IDP mode, obtain a token from your identity provider.
+Before using the Platform API, obtain a bearer token for authentication. In local JWT mode (default) you can generate a token using the configured `APIP_CP_AUTH_JWT_SECRET_KEY`. In IDP mode, obtain a token from your identity provider.
 
 ### Build and Run
 
@@ -265,12 +265,10 @@ The server signs and validates HMAC login tokens using `APIP_CP_AUTH_JWT_SECRET_
 | `APIP_CP_AUTH_JWT_SECRET_KEY` | _(empty)_ | HMAC key for signing/verifying login JWTs — 32-byte value (64 hex or base64; `openssl rand -hex 32`) |
 | `APIP_CP_AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value                                          |
 | `APIP_CP_AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only**                  |
-| `DEV_MODE` | `false` | Suppresses the startup warning when `APIP_CP_AUTH_JWT_SKIP_VALIDATION=true` |
 
 Local development with no token issuer:
 ```bash
 export APIP_CP_AUTH_JWT_SKIP_VALIDATION=true
-export DEV_MODE=true
 go run ./cmd/main.go
 ```
 

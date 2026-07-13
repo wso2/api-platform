@@ -4,7 +4,7 @@
 services:
   platform-api:
     image: ${PLATFORM_API_IMAGE:-platform-api:it-e2e}
-    command: ["./platform-api", "-config", "/etc/platform-api/config.toml"]
+    command: ["-config", "/etc/platform-api/config.toml"]
     environment:
       - APIP_CP_DATABASE_DRIVER=sqlite3
       - APIP_CP_DATABASE_PATH=/app/data/platform.db

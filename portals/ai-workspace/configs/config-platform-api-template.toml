@@ -17,10 +17,7 @@
 # handful of uncommented keys are the quickstart choices. Deleting a key simply
 # restores its default.
 #
-# Precedence: environment variable > this file > built-in default. Each section
-# names the env var for its keys; the rule is the dotted path uppercased with
-# dots replaced by underscores (auth.jwt.secret_key -> AUTH_JWT_SECRET_KEY),
-# with the few exceptions called out inline.
+# Precedence: this file > built-in default.
 #
 # QUICK START (file-based auth mode — no external IDP needed):
 #   1. Copy this file to config-platform-api.toml.

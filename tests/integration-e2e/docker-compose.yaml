@@ -44,7 +44,7 @@ services:
 
   platform-api:
     image: ${PLATFORM_API_IMAGE:-platform-api:it-e2e}
-    command: ["./platform-api", "-config", "/etc/platform-api/config.toml"]
+    command: ["-config", "/etc/platform-api/config.toml"]
     environment:
       - APIP_CP_DATABASE_DRIVER=postgres
       - APIP_CP_DATABASE_HOST=postgres
@@ -229,7 +229,7 @@ services:
       - APIP_DP_ORGANIZATION_AUTOCREATESUBSCRIPTIONPLANS=false
       - APIP_DP_LOGGING_CONSOLEONLY=true
       # Validate platform-api-issued JWTs locally: this MUST equal the stack's
-      # AUTH_JWT_SECRET_KEY so the admin token is accepted by the devportal.
+      # APIP_CP_AUTH_JWT_SECRET_KEY so the admin token is accepted by the devportal.
       - APIP_DP_PLATFORMAPI_BASEURL=https://platform-api:9243
       - APIP_DP_PLATFORMAPI_JWTSECRET=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
       - APIP_DP_PLATFORMAPI_INSECURE=true

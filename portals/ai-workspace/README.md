@@ -474,14 +474,14 @@ rather than run insecurely:
 |---|---|---|
 | **AI Workspace (BFF)** — auth | Basic / file-based auth allowed | Basic auth **rejected** — OIDC required (`auth_mode = "oidc"` + the `[oidc]` keys) |
 | **AI Workspace (BFF)** — inbound TLS | Auto-generates a self-signed cert when none is mounted | Self-signed fallback **disabled** — a cert/key must be mounted (`tls_cert_file` / `tls_key_file`), or TLS turned off with `tls_enabled = false` when an ingress terminates it |
-| **AI Workspace (BFF)** — upstream TLS | `platform_api_tls_skip_verify = true` accepts the Platform API's self-signed cert | Skip-verify **rejected** — trust the upstream cert with `platform_api_ca_file` (a PEM bundle) so verification stays on |
-| **Platform API** — secrets | `ENCRYPTION_KEY` and `AUTH_JWT_SECRET_KEY` are **required** | Same — both keys required |
+| **AI Workspace (BFF)** — upstream TLS | `PLATFORM_API_TLS_SKIP_VERIFY = true` accepts the Platform API's self-signed cert | Skip-verify **rejected** — trust the upstream cert with `platform_api_ca_file` (a PEM bundle) so verification stays on |
+| **Platform API** — secrets | `APIP_CP_ENCRYPTION_KEY` and `APIP_CP_AUTH_JWT_SECRET_KEY` are **required** | Same — both keys required |
 
 So before flipping `APIP_DEMO_MODE=false`, make sure you have:
 
 1. **OIDC configured on both services** — follow [Testing with an IDP locally](#testing-with-an-idp-locally) (uncomment the OIDC blocks on both compose services and set the `OIDC_*` values). Basic auth is no longer a fallback.
 2. **A real TLS certificate mounted** on the BFF (and the Platform API) — follow [Custom TLS certificates](#custom-tls-certificates-optional) above and uncomment the cert volume lines. The self-signed fallback is gone.
-3. **A stable encryption key** for the Platform API — generate a value by running `openssl rand -hex 32` in a shell, then paste the resulting 64-hex string into your `.env` as `ENCRYPTION_KEY=<value>`. Do **not** put `ENCRYPTION_KEY=$(openssl rand -hex 32)` in `.env` — `.env` files store the literal text and do not run command substitution. Otherwise encrypted secrets become unreadable after a restart. See [platform-api/README.md](../../platform-api/README.md).
+3. **A stable encryption key** for the Platform API — generate a value by running `openssl rand -hex 32` in a shell, then paste the resulting 64-hex string into your `.env` as `APIP_CP_ENCRYPTION_KEY=<value>`. Do **not** put `APIP_CP_ENCRYPTION_KEY=$(openssl rand -hex 32)` in `.env` — `.env` files store the literal text and do not run command substitution. Otherwise encrypted secrets become unreadable after a restart. See [platform-api/README.md](../../platform-api/README.md).
 
 If any of these is missing, the corresponding service exits at startup with a message naming
 exactly what to provide.
