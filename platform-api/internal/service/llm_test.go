@@ -1271,7 +1271,7 @@ func TestLLMProviderServiceCreateReturnsConflictForDuplicateHandle(t *testing.T)
 	providerRepo := &mockLLMProviderRepo{existsResult: true}
 	templateRepo := &mockLLMTemplateRepo{
 		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai"}, nil
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", Enabled: true}, nil
 		},
 	}
 	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
@@ -1313,7 +1313,7 @@ func TestLLMProviderServiceUpdatePreservesUpstreamAuthValue(t *testing.T) {
 	}
 	templateRepo := &mockLLMTemplateRepo{
 		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai"}, nil
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", Enabled: true}, nil
 		},
 	}
 	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
@@ -1495,6 +1495,50 @@ func TestLLMProxyServiceUpdatePreservesProviderAuthValue(t *testing.T) {
 	}
 }
 
+// TestLLMProviderServiceCreate_DisabledTemplate_Rejected proves a provider
+// cannot be created against a disabled template.
+func TestLLMProviderServiceCreate_DisabledTemplate_Rejected(t *testing.T) {
+	providerRepo := &mockLLMProviderRepo{}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", Enabled: false}, nil
+		},
+	}
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	_, err := service.Create("org-1", "alice", validProviderRequest("openai"))
+	if !apperror.LLMProviderTemplateDisabled.Is(err) {
+		t.Fatalf("expected LLMProviderTemplateDisabled, got: %v", err)
+	}
+	if providerRepo.created != nil {
+		t.Error("expected provider creation to be aborted, but repo.Create was called")
+	}
+}
+
+// TestLLMProviderServiceUpdate_DisabledTemplate_Rejected proves a provider
+// cannot be updated to reference a disabled template.
+func TestLLMProviderServiceUpdate_DisabledTemplate_Rejected(t *testing.T) {
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "prov-uuid", ID: providerID, TemplateUUID: "tpl-openai"}, nil
+		},
+	}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", Enabled: false}, nil
+		},
+	}
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	_, err := service.Update("org-1", "provider-1", "alice", validProviderRequest("openai"))
+	if !apperror.LLMProviderTemplateDisabled.Is(err) {
+		t.Fatalf("expected LLMProviderTemplateDisabled, got: %v", err)
+	}
+	if providerRepo.updated != nil {
+		t.Error("expected provider update to be aborted, but repo.Update was called")
+	}
+}
+
 // TestLLMProviderServiceCreate_PolicySecretRef_Rejected proves secret-ref
 // validation now covers the whole request, not just upstream.auth — a
 // placeholder embedded in a policy param (not upstream) must also be rejected.
@@ -1635,7 +1679,7 @@ func TestLLMProviderServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
 	}
 	templateRepo := &mockLLMTemplateRepo{
 		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai"}, nil
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", Enabled: true}, nil
 		},
 	}
 	secretRepo := newMockRepo()

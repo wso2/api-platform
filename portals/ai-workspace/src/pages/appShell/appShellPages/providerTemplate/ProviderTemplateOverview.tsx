@@ -726,7 +726,7 @@ export default function ProviderTemplateOverview() {
                     endIcon={<ChevronDown size={16} />}
                     sx={{ borderRadius: 5, px: 1.5 }}
                   >
-                    {selectedVersion || template.version || 'v1'}
+                    {selectedVersion || template.version || 'v1.0'}
                   </Button>
                   <Menu
                     anchorEl={versionMenuAnchor}
@@ -755,9 +755,9 @@ export default function ProviderTemplateOverview() {
                             {sectionLabel}
                           </Typography>
                           {visibleVersions.map((v) => {
-                            const ver = v.version || 'v1';
+                            const ver = v.version || 'v1.0';
                             const isSelected =
-                              ver === (selectedVersion || template.version || 'v1');
+                              ver === (selectedVersion || template.version || 'v1.0');
                             return (
                               <MenuItem
                                 key={ver}
