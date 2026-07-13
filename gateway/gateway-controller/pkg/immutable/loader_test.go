@@ -79,3 +79,38 @@ func TestCollectArtifacts_ConfigMapMountYieldsFileOnce(t *testing.T) {
 	}
 }
 
+func TestCollectArtifacts_DescendsIntoNonDotDotDirs(t *testing.T) {
+	cases := []struct {
+		name   string
+		subdir string
+	}{
+		{"nested subdirectory", "rest-apis"},
+		{"single-dot directory", ".hidden"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			sub := filepath.Join(dir, tc.subdir)
+			if err := os.Mkdir(sub, 0o700); err != nil {
+				t.Fatalf("setup: %v", err)
+			}
+			want := filepath.Join(sub, "petstore.yaml")
+			if err := os.WriteFile(want, []byte(petstoreArtifact), 0o600); err != nil {
+				t.Fatalf("setup: %v", err)
+			}
+
+			paths, err := collectArtifacts(dir)
+
+			if err != nil {
+				t.Fatalf("collectArtifacts: %v", err)
+			}
+			if len(paths) != 1 {
+				t.Fatalf("got %d path(s) %v; want 1", len(paths), paths)
+			}
+			if paths[0] != want {
+				t.Errorf("got %q; want %q", paths[0], want)
+			}
+		})
+	}
+}
+
