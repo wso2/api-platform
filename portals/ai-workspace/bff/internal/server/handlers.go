@@ -77,6 +77,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// File-based tokens carry a scope claim, so this is normally a no-op; it keeps
+	// the login response consistent with /api/session if the Platform API is ever
+	// configured to authorize this surface on roles.
+	s.enrichPermissions(r.Context(), sess.AccessToken, &sess.User)
+
 	// The cookie carries the JWT itself. File-based sessions have no refresh
 	// token, so nothing is stored server-side at all.
 	s.setSessionCookie(w, sess.AccessToken, sess.AbsoluteExpiry)
@@ -164,6 +169,10 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login?error=auth_failed", http.StatusFound)
 		return
 	}
+	// Resolve the scopes a role-only token does not carry before the session is
+	// stored, so every later /api/session read is served from the store.
+	s.enrichPermissions(r.Context(), sess.AccessToken, &sess.User)
+
 	// OIDC: the cookie carries the access JWT, while the refresh/id tokens are
 	// kept server-side keyed by that JWT so the proxy can renew it later.
 	if err := s.putRefreshState(r.Context(), sess); err != nil {
@@ -248,14 +257,24 @@ func (s *Server) tokenFromCookie(r *http.Request) (string, bool) {
 // self-contained in the JWT. For OIDC the stored entry holds the richer User
 // (which merged id_token claims at login); we fall back to decoding the access
 // token if that entry is gone (e.g. after a BFF restart).
+//
+// Scopes are topped up from the Platform API when the token carries none — see
+// enrichPermissions. The stored OIDC User was already enriched at login and at
+// each refresh, so the common path costs no upstream hop.
 func (s *Server) userFromToken(ctx context.Context, jwt string) session.User {
-	if s.oidc != nil {
+	var u session.User
+	switch {
+	case s.oidc != nil:
 		if sess, ok, _ := s.store.Get(ctx, jwt); ok {
-			return sess.User
+			u = sess.User
+		} else {
+			u = s.oidc.UserFromAccessToken(jwt)
 		}
-		return s.oidc.UserFromAccessToken(jwt)
+	default:
+		u = session.UserFromClaims(session.DecodeJWTClaims(jwt), nil, session.DefaultClaimMapping())
 	}
-	return session.UserFromClaims(session.DecodeJWTClaims(jwt), nil, session.DefaultClaimMapping())
+	s.enrichPermissions(ctx, jwt, &u)
+	return u
 }
 
 // putRefreshState stores the OIDC refresh/id tokens keyed by the access JWT so
@@ -335,6 +354,11 @@ func (s *Server) doRefresh(ctx context.Context, jwt string) (*session.Session, e
 	// session lifetime, not slide forward on every refresh (which would let an
 	// active session live indefinitely and disagree with the cookie's MaxAge).
 	updated.AbsoluteExpiry = cur.AbsoluteExpiry
+	// The refreshed User is rebuilt from the new token's claims, so a role-only
+	// token arrives here with no scopes again. Re-resolve them against the new
+	// token rather than copying the previous set forward — the user's roles may
+	// have changed, and the refreshed token is what the API will authorize.
+	s.enrichPermissions(ctx, updated.AccessToken, &updated.User)
 	if err := s.store.Put(ctx, updated); err != nil {
 		return nil, err
 	}

@@ -47,6 +47,7 @@ const (
 	keyAudience      contextKey = "audience"
 	keyClaims        contextKey = "claims"
 	keyPlatformRoles contextKey = "platform_roles"
+	keyRoles         contextKey = "roles"
 )
 
 // CustomClaims represents the JWT claims structure used in local JWT (non-IDP) mode.
@@ -217,10 +218,13 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 	ctx = context.WithValue(ctx, keyFirstName, getStringClaim(mapClaims, "firstName"))
 	ctx = context.WithValue(ctx, keyLastName, getStringClaim(mapClaims, "lastName"))
 	ctx = context.WithValue(ctx, keyOrganization, org)
+	ctx = context.WithValue(ctx, keyOrgName, getStringClaim(mapClaims, "org_name"))
+	ctx = context.WithValue(ctx, keyOrgHandle, getStringClaim(mapClaims, "org_handle"))
 	ctx = context.WithValue(ctx, keyScope, claimsObj.Scope)
 	ctx = context.WithValue(ctx, keyAudience, claimsObj.Audience)
 	ctx = context.WithValue(ctx, keyClaims, claimsObj)
 	ctx = context.WithValue(ctx, keyPlatformRoles, []string{})
+	ctx = context.WithValue(ctx, keyRoles, []string{})
 	return r.WithContext(ctx), nil
 }
 
@@ -281,7 +285,8 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) func(http.Handler) 
 				lastName = getStringClaim(mapClaims, "lastName")
 			}
 
-			platformRoles := resolvePlatformRoles(mapClaims, claimNames.RolesClaimPath, claimNames.RoleScopeMap)
+			idpRoles := resolveRolesClaim(mapClaims, claimNames.RolesClaimPath)
+			platformRoles := expandRoleScopes(idpRoles, claimNames.RoleScopeMap)
 
 			ctx := r.Context()
 			ctx = context.WithValue(ctx, keyUserID, userID)
@@ -296,6 +301,7 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) func(http.Handler) 
 			ctx = context.WithValue(ctx, keyAudience, aud)
 			ctx = context.WithValue(ctx, keyClaims, claimsObj)
 			ctx = context.WithValue(ctx, keyPlatformRoles, platformRoles)
+			ctx = context.WithValue(ctx, keyRoles, idpRoles)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -304,10 +310,24 @@ func PlatformClaimsMiddleware(claimNames PlatformClaimNames) func(http.Handler) 
 
 // resolvePlatformRoles extracts IDP role names from the token and expands them.
 func resolvePlatformRoles(claims jwt.MapClaims, claimPath string, roleScopeMap map[string][]string) []string {
+	return expandRoleScopes(resolveRolesClaim(claims, claimPath), roleScopeMap)
+}
+
+// resolveRolesClaim returns the role names carried by the token, exactly as the IDP
+// wrote them. These are the input to the roles.yaml expansion; they are kept in
+// their own context entry so callers (e.g. GET /me) can report which roles a user
+// holds alongside the scopes those roles grant.
+func resolveRolesClaim(claims jwt.MapClaims, claimPath string) []string {
 	if claimPath == "" {
 		return nil
 	}
-	idpRoles := extractClaimByPath(claims, claimPath)
+	return extractClaimByPath(claims, claimPath)
+}
+
+// expandRoleScopes maps IDP role names to the union of the platform scopes they
+// grant. With no roles.yaml configured the role names pass through unchanged and
+// are matched against required scopes as-is.
+func expandRoleScopes(idpRoles []string, roleScopeMap map[string][]string) []string {
 	if roleScopeMap == nil {
 		return idpRoles
 	}
@@ -534,9 +554,18 @@ func GetClaimsFromRequest(r *http.Request) (*CustomClaims, bool) {
 	return claims, ok
 }
 
-// GetPlatformRolesFromRequest extracts platform roles from the request context.
+// GetPlatformRolesFromRequest extracts the scopes the caller's IDP roles expand
+// to (via roles.yaml) from the request context. In role validation mode these are
+// the scopes authorization is enforced against.
 func GetPlatformRolesFromRequest(r *http.Request) ([]string, bool) {
 	roles, ok := r.Context().Value(keyPlatformRoles).([]string)
+	return roles, ok
+}
+
+// GetRolesClaimFromRequest extracts the raw IDP role names carried by the token,
+// before roles.yaml expansion.
+func GetRolesClaimFromRequest(r *http.Request) ([]string, bool) {
+	roles, ok := r.Context().Value(keyRoles).([]string)
 	return roles, ok
 }
 
@@ -593,6 +622,20 @@ func WithOrganization(r *http.Request, org string) *http.Request {
 // WithUserID is a helper for tests to inject a user ID into the request context.
 func WithUserID(r *http.Request, id string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), keyUserID, id))
+}
+
+// WithScope is a helper for tests to inject the token's scope claim into the
+// request context.
+func WithScope(r *http.Request, scope string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), keyScope, scope))
+}
+
+// WithRoles is a helper for tests to inject the caller's IDP roles and the scopes
+// those roles expand to, as PlatformClaimsMiddleware would.
+func WithRoles(r *http.Request, idpRoles, expandedScopes []string) *http.Request {
+	ctx := context.WithValue(r.Context(), keyRoles, idpRoles)
+	ctx = context.WithValue(ctx, keyPlatformRoles, expandedScopes)
+	return r.WithContext(ctx)
 }
 
 // --- Compatibility shims for common/authenticators ---

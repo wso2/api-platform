@@ -385,6 +385,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Register all routes on the mux. Public routes (login) are accessible
 	// because the auth middleware uses cfg.Auth.SkipPaths to bypass them.
 	handler.NewAuthLoginHandler(cfg).RegisterPublicRoutes(mux)
+	handler.NewMeHandler(cfg.Auth.IDP.ValidationMode, slogger).RegisterRoutes(mux)
 	orgHandler.RegisterRoutes(mux)
 	projectHandler.RegisterRoutes(mux)
 	appHandler.RegisterRoutes(mux)

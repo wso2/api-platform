@@ -7,13 +7,15 @@ info:
     the control plane.
 
     These endpoints are not intended for general client use — they back portal-specific flows
-    such as local (file-based) credential login.
+    such as local (file-based) credential login and permission discovery for the signed-in
+    user.
 
     ## Authentication
 
-    Endpoints under this API are public (unauthenticated): they are used to *obtain* a token
-    rather than to access protected resources. Once a token is issued, portals use it as a
-    Bearer JWT against the main Platform API.
+    `/auth/login` is public (unauthenticated): it is used to *obtain* a token rather than to
+    access a protected resource. Every other endpoint requires the resulting token as a Bearer
+    JWT, but requires no scope — a portal must be able to ask what the current user may do
+    before it knows what the current user may do.
 
   version: "0.9"
   contact:
@@ -90,8 +92,113 @@ paths:
                 message: An unexpected error occurred.
                 trackingId: 4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11
 
+  /me:
+    get:
+      summary: Get the signed-in user's identity and effective permissions
+      description: |
+        Returns the caller's identity together with the roles their token carries and the
+        scopes those roles grant.
+
+        Portals that gate UI on permissions must read `scopes` from here rather than decoding
+        the token's `scope` claim. When the Platform API runs in role validation mode
+        (`auth.idp.validation_mode = "role"`) the token carries roles only and no scope claim,
+        so a portal reading the claim would see an empty list and hide every action the user is
+        in fact allowed to perform. The scopes returned here are resolved server-side from the
+        configured role-to-scope mapping (`roles.yaml`) and are the same list the Platform API
+        authorizes each request against — so a portal can neither hide a permitted action nor
+        offer one the API would reject.
+
+        Requires a valid Bearer JWT. No scope is required.
+      operationId: portalGetCurrentUser
+      tags:
+        - Portal Users
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: The signed-in user's identity, roles, and effective scopes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUser'
+        '401':
+          description: |
+            Authentication failed. The response is identical for a missing, malformed, expired,
+            and invalid token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                status: error
+                code: UNAUTHORIZED
+                message: Invalid or expired credentials.
+
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: The JWT issued by `/auth/login`, or by the configured IDP.
+
   schemas:
+    CurrentUser:
+      type: object
+      required:
+        - userId
+        - roles
+        - scopes
+      properties:
+        userId:
+          type: string
+          description: Identifier of the signed-in user, resolved from the token subject.
+          example: 9f2f6f0c-2a11-4c93-b1de-4f1c6f2e8a4b
+        username:
+          type: string
+          description: Username claim carried by the token, when present.
+          example: admin
+        email:
+          type: string
+          description: Email claim carried by the token, when present.
+          example: admin@example.com
+        organization:
+          type: object
+          description: The organization the caller's token is scoped to.
+          required:
+            - id
+            - handle
+          properties:
+            id:
+              type: string
+              description: UUID of the organization.
+            name:
+              type: string
+              description: Human-readable display name of the organization.
+            handle:
+              type: string
+              description: URL-safe handle (identifier) of the organization.
+        roles:
+          type: array
+          description: |
+            The IDP role names carried by the token, exactly as the IDP wrote them. Empty when
+            the deployment authorizes on scopes rather than roles.
+          items:
+            type: string
+          example:
+            - platform-admin
+        scopes:
+          type: array
+          description: |
+            The scopes the caller effectively holds — the token's scope claim in scope
+            validation mode, or the scopes the caller's roles expand to in role mode. This is
+            the list the Platform API authorizes requests against.
+          items:
+            type: string
+          example:
+            - ap:project:manage
+            - ap:rest_api:manage
+
     LoginRequest:
       type: object
       required:
@@ -164,3 +271,7 @@ tags:
     description: |
       Authentication endpoints used by the platform's portals to obtain a token via
       file-based (local) credential login.
+  - name: Portal Users
+    description: |
+      Identity and effective-permission lookups for the signed-in user, used by portals to
+      decide what to show them.

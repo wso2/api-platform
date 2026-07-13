@@ -83,7 +83,7 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) func(http.H
 				return
 			}
 
-			effectiveScopes := resolveEffectiveScopes(r, mode)
+			effectiveScopes := EffectiveScopes(r, mode)
 
 			for _, required := range requiredScopes {
 				for _, have := range effectiveScopes {
@@ -122,8 +122,11 @@ func scopeSatisfies(have, required string) bool {
 	return segments == 1
 }
 
-// resolveEffectiveScopes returns the effective scopes for the request.
-func resolveEffectiveScopes(r *http.Request, mode string) []string {
+// EffectiveScopes returns the scopes the request is authorized against: the token's
+// scope claim in scope mode, or the scopes the token's IDP roles expand to in role
+// mode. GET /me reports the same list, so what a client is shown it can do and what
+// the enforcer actually permits are computed from one place.
+func EffectiveScopes(r *http.Request, mode string) []string {
 	if mode == ValidationModeRole {
 		roles, _ := GetPlatformRolesFromRequest(r)
 		return roles
