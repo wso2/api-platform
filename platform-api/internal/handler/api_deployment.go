@@ -19,7 +19,6 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -84,32 +83,7 @@ func (h *DeploymentHandler) DeployAPI(w http.ResponseWriter, r *http.Request) er
 	}
 	deployment, err := h.deploymentService.DeployAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
-		if guardErr := mapArtifactGuardError(err); guardErr != nil {
-			return guardErr
-		}
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.RESTAPINotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrGatewayNotFound) {
-			return apperror.GatewayNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrBaseDeploymentNotFound) {
-			return apperror.DeploymentBaseNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrDeploymentNameRequired) {
-			return apperror.RESTAPIDeploymentValidationFailed.Wrap(err, "Deployment name is required")
-		}
-		if errors.Is(err, constants.ErrDeploymentBaseRequired) {
-			return apperror.RESTAPIDeploymentValidationFailed.Wrap(err, "Base is required (use 'current' or a deploymentId)")
-		}
-		if errors.Is(err, constants.ErrDeploymentGatewayIDRequired) {
-			return apperror.RESTAPIDeploymentValidationFailed.Wrap(err, "Gateway ID is required")
-		}
-		if errors.Is(err, constants.ErrAPINoBackendServices) {
-			return apperror.RESTAPIDeploymentValidationFailed.Wrap(err, "API must have at least one backend service attached before deployment")
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to deploy API %s", apiId))
+		return serviceError(err, fmt.Sprintf("failed to deploy API %s", apiId))
 	}
 
 	setLocation(w, "rest-apis", apiId, "deployments", deployment.DeploymentId.String())
@@ -148,26 +122,7 @@ func (h *DeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Re
 	deployment, err := h.deploymentService.UndeployDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
-		if guardErr := mapArtifactGuardError(err); guardErr != nil {
-			return guardErr
-		}
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.RESTAPINotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrDeploymentNotFound) {
-			return apperror.DeploymentNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrGatewayNotFound) {
-			return apperror.GatewayNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrDeploymentNotActive) {
-			return apperror.DeploymentNotActive.Wrap(err, "API")
-		}
-		if errors.Is(err, constants.ErrGatewayIDMismatch) {
-			return apperror.DeploymentGatewayMismatch.Wrap(err)
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to undeploy API %s deployment %s from gateway %s", apiId, deploymentId, gatewayId))
+		return serviceError(err, fmt.Sprintf("failed to undeploy API %s deployment %s from gateway %s", apiId, deploymentId, gatewayId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, deployment)
@@ -205,26 +160,7 @@ func (h *DeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Req
 	deployment, err := h.deploymentService.RestoreDeploymentByHandle(apiId, deploymentId, gatewayId, orgId, actor)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
-		if guardErr := mapArtifactGuardError(err); guardErr != nil {
-			return guardErr
-		}
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.RESTAPINotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrDeploymentNotFound) {
-			return apperror.DeploymentNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrGatewayNotFound) {
-			return apperror.GatewayNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrDeploymentAlreadyDeployed) {
-			return apperror.DeploymentRestoreConflict.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrGatewayIDMismatch) {
-			return apperror.DeploymentGatewayMismatch.Wrap(err)
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to restore API %s deployment %s on gateway %s", apiId, deploymentId, gatewayId))
+		return serviceError(err, fmt.Sprintf("failed to restore API %s deployment %s on gateway %s", apiId, deploymentId, gatewayId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, deployment)
@@ -255,20 +191,7 @@ func (h *DeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Requ
 		return err
 	}
 	if err := h.deploymentService.DeleteDeploymentByHandle(apiId, deploymentId, orgId, actor); err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.RESTAPINotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrDeploymentNotFound) {
-			return apperror.DeploymentNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrDeploymentIsDeployed) {
-			return apperror.DeploymentActive.Wrap(err)
-		}
-		if guardErr := mapArtifactGuardError(err); guardErr != nil {
-			return guardErr
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to delete API %s deployment %s", apiId, deploymentId))
+		return serviceError(err, fmt.Sprintf("failed to delete API %s deployment %s", apiId, deploymentId))
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -296,14 +219,7 @@ func (h *DeploymentHandler) GetDeployment(w http.ResponseWriter, r *http.Request
 
 	deployment, err := h.deploymentService.GetDeploymentByHandle(apiId, deploymentId, orgId)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.RESTAPINotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrDeploymentNotFound) {
-			return apperror.DeploymentNotFound.Wrap(err)
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to get API %s deployment %s", apiId, deploymentId))
+		return serviceError(err, fmt.Sprintf("failed to get API %s deployment %s", apiId, deploymentId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, deployment)
@@ -346,14 +262,7 @@ func (h *DeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Reques
 
 	deployments, err := h.deploymentService.GetDeploymentsByHandle(apiId, gatewayId, status, orgId)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.RESTAPINotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrInvalidDeploymentStatus) {
-			return apperror.DeploymentInvalidStatus.Wrap(err)
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to get deployments for API %s", apiId))
+		return serviceError(err, fmt.Sprintf("failed to get deployments for API %s", apiId))
 	}
 
 	paginateDeploymentList(deployments, limit, offset)

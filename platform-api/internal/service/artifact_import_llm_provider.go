@@ -19,6 +19,8 @@ package service
 
 import (
 	"fmt"
+
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -113,14 +115,14 @@ func (i *llmProviderImporter) Import(ctx *ImportContext) (*ImportResult, error) 
 // to its UUID. The template must already exist (FK requirement).
 func (i *llmProviderImporter) resolveTemplateUUID(templateHandle, orgID string) (string, error) {
 	if templateHandle == "" {
-		return "", fmt.Errorf("%w: LLM provider import requires a template reference", constants.ErrInvalidInput)
+		return "", apperror.ValidationFailed.New("The LLM provider import requires a template reference.")
 	}
 	tmpl, err := i.templateRepo.GetByID(templateHandle, orgID)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve LLM provider template %q: %w", templateHandle, err)
 	}
 	if tmpl == nil {
-		return "", fmt.Errorf("%w: referenced LLM provider template %q does not exist", constants.ErrInvalidInput, templateHandle)
+		return "", apperror.ValidationFailed.New(fmt.Sprintf("The referenced LLM provider template %q does not exist.", templateHandle))
 	}
 	return tmpl.UUID, nil
 }

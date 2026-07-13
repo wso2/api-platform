@@ -19,9 +19,9 @@ package service
 
 import (
 	"database/sql"
-	"errors"
 	"testing"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
@@ -61,8 +61,8 @@ func TestUndeployDeployment_BlockedForDPOrigin(t *testing.T) {
 	}
 
 	_, err := svc.UndeployDeployment("artifact-1", "deployment-1", "gateway-1", "org-1", "tester")
-	if !errors.Is(err, constants.ErrArtifactReadOnly) {
-		t.Fatalf("UndeployDeployment(DP origin) error = %v, want ErrArtifactReadOnly", err)
+	if !apperror.ArtifactReadOnly.Is(err) {
+		t.Fatalf("UndeployDeployment(DP origin) error = %v, want ARTIFACT_READ_ONLY", err)
 	}
 }
 
@@ -76,7 +76,7 @@ func TestRestoreDeployment_BlockedForDPOrigin(t *testing.T) {
 	}
 
 	_, err := svc.RestoreDeployment("artifact-1", "deployment-1", "gateway-1", "org-1", "tester")
-	if !errors.Is(err, constants.ErrArtifactReadOnly) {
-		t.Fatalf("RestoreDeployment(DP origin) error = %v, want ErrArtifactReadOnly", err)
+	if !apperror.ArtifactReadOnly.Is(err) {
+		t.Fatalf("RestoreDeployment(DP origin) error = %v, want ARTIFACT_READ_ONLY", err)
 	}
 }

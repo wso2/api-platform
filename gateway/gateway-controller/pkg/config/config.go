@@ -28,10 +28,12 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	toml "github.com/knadh/koanf/parsers/toml/v2"
+	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"github.com/wso2/api-platform/common/collector"
+	"github.com/wso2/api-platform/common/configinterpolate"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
@@ -42,6 +44,15 @@ const (
 	// DefaultLuaScriptPath is the default path for request transformation lua script
 	DefaultLuaScriptPath = "./lua/request_transformation.lua"
 )
+
+// defaultFileSourceAllowlist is the gateway-controller's default set of directories
+// that a {{ file "..." }} config-interpolation token may read from. It can be
+// overridden via the shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var
+// (see configinterpolate.ResolveAllowlist).
+var defaultFileSourceAllowlist = []string{
+	"/etc/gateway-controller",
+	"/secrets/gateway-controller",
+}
 
 // Config holds all configuration for the gateway-controller
 type Config struct {
@@ -293,9 +304,22 @@ type ServerConfig struct {
 
 // AdminServerConfig holds controller admin HTTP server configuration.
 type AdminServerConfig struct {
-	Enabled    bool     `koanf:"enabled"`
-	Port       int      `koanf:"port"`
-	AllowedIPs []string `koanf:"allowed_ips"`
+	Enabled    bool        `koanf:"enabled"`
+	Port       int         `koanf:"port"`
+	AllowedIPs []string    `koanf:"allowed_ips"`
+	Pprof      PprofConfig `koanf:"pprof"`
+}
+
+// PprofConfig gates the Go runtime profiling endpoints (net/http/pprof) served on
+// the admin HTTP server. Disabled by default; when disabled the /debug/pprof/*
+// routes are not registered at all (they return 404, not 403).
+type PprofConfig struct {
+	// Enabled registers the /debug/pprof/* handlers on the admin server.
+	Enabled bool `koanf:"enabled"`
+	// BlockProfileRate is passed to runtime.SetBlockProfileRate (0 = block profiling off).
+	BlockProfileRate int `koanf:"block_profile_rate"`
+	// MutexProfileFraction is passed to runtime.SetMutexProfileFraction (0 = mutex profiling off).
+	MutexProfileFraction int `koanf:"mutex_profile_fraction"`
 }
 
 // PolicyServerConfig holds policy xDS server-related configuration
@@ -585,8 +609,17 @@ type VHostEntry struct {
 
 // HTTPListenerConfig holds HTTP listener related configuration of an API
 type HTTPListenerConfig struct {
-	ServerHeaderTransformation string `koanf:"server_header_transformation"` // Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
-	ServerHeaderValue          string `koanf:"server_header_value"`          // Custom value for the Server header
+	ServerHeaderTransformation string      `koanf:"server_header_transformation"` // Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
+	ServerHeaderValue          string      `koanf:"server_header_value"`          // Custom value for the Server header
+	Timeouts                   HCMTimeouts `koanf:"timeouts"`                     // HTTP Connection Manager (downstream) timeouts
+}
+
+// HCMTimeouts holds HTTP Connection Manager (downstream/connection) timeouts.
+type HCMTimeouts struct {
+	RequestTimeout        time.Duration `koanf:"request_timeout"`         // HCM request_timeout (default 0s = disabled)
+	RequestHeadersTimeout time.Duration `koanf:"request_headers_timeout"` // HCM request_headers_timeout (default 0s = disabled)
+	StreamIdleTimeout     time.Duration `koanf:"stream_idle_timeout"`     // HCM stream_idle_timeout (default 5m)
+	IdleTimeout           time.Duration `koanf:"idle_timeout"`            // common_http_protocol_options.idle_timeout (default 1h)
 }
 
 // PolicyEngineConfig holds policy engine ext_proc filter configuration
@@ -735,6 +768,15 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
 	}
 
+	// Resolve ${...}-style Go template tokens ({{ env }} / {{ file }}) in string
+	// leaves of the merged config before unmarshalling. Runs after the env merge so
+	// env-provided values may themselves contain tokens; fails closed on a missing
+	// required value or a disallowed/oversize file. A token-free config is a no-op.
+	k, err := interpolate(k)
+	if err != nil {
+		return nil, err
+	}
+
 	// Unmarshal into Config struct with DecodeHook for duration strings
 	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
 		DecoderConfig: &mapstructure.DecoderConfig{
@@ -753,6 +795,34 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// interpolate resolves Go template tokens ({{ env }} / {{ file }}) in the merged
+// config and returns a fresh koanf instance holding the expanded values. It uses a
+// new instance (rather than reloading into k) so no un-expanded leaves survive. The
+// file-source allowlist is the gateway-controller default, overridable via the
+// shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var. Resolved values are never
+// logged; only reference counts are emitted at info level.
+func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
+	opts := configinterpolate.Options{
+		FileAllowlist: configinterpolate.ResolveAllowlist(defaultFileSourceAllowlist),
+	}
+	expanded, stats, err := configinterpolate.Expand(k.Raw(), opts)
+	if err != nil {
+		return nil, fmt.Errorf("config interpolation failed: %w", err)
+	}
+
+	out := koanf.New(".")
+	if err := out.Load(confmap.Provider(expanded, "."), nil); err != nil {
+		return nil, fmt.Errorf("failed to reload interpolated config: %w", err)
+	}
+	if stats.Fields > 0 {
+		slog.Info("config interpolation complete",
+			slog.Int("env_refs", stats.EnvRefs),
+			slog.Int("file_refs", stats.FileRefs),
+			slog.Int("fields", stats.Fields))
+	}
+	return out, nil
 }
 
 // defaultGRPCEventServerConfig returns the default Envoy→policy-engine ALS
@@ -788,6 +858,11 @@ func defaultConfig() *Config {
 				Enabled:    true,
 				Port:       9092,
 				AllowedIPs: []string{"*"},
+				Pprof: PprofConfig{
+					Enabled:              false,
+					BlockProfileRate:     0,
+					MutexProfileFraction: 0,
+				},
 			},
 			PolicyServer: PolicyServerConfig{
 				Port: 18001,
@@ -976,6 +1051,12 @@ func defaultConfig() *Config {
 			HTTPListener: HTTPListenerConfig{
 				ServerHeaderTransformation: commonconstants.OVERWRITE,
 				ServerHeaderValue:          commonconstants.ServerName,
+				Timeouts: HCMTimeouts{
+					RequestTimeout:        0,               // 0s = disabled (Envoy default)
+					RequestHeadersTimeout: 0,               // 0s = disabled (Envoy default)
+					StreamIdleTimeout:     5 * time.Minute, // Envoy default
+					IdleTimeout:           1 * time.Hour,   // Envoy default (connection-level)
+				},
 			},
 		},
 		Analytics: AnalyticsConfig{
@@ -1674,6 +1755,26 @@ func (c *Config) validateTimeoutConfig() error {
 	if timeouts.ConnectTimeoutMs > constants.MaxReasonableTimeoutMs {
 		return fmt.Errorf("router.upstream.timeouts.connect_timeout_ms (%d) exceeds maximum reasonable timeout of %d ms",
 			timeouts.ConnectTimeoutMs, constants.MaxReasonableTimeoutMs)
+	}
+
+	// Validate HCM (downstream/connection) timeouts. Unlike the upstream timeouts above,
+	// 0 is a valid value here: which denotes "disabled scenario"
+	// only reject negative values and unreasonably large ones are rejected.
+	maxConnTimeout := time.Duration(constants.MaxReasonableConnectionTimeoutMs) * time.Millisecond
+	hcmTimeouts := map[string]time.Duration{
+		"request_timeout":         c.Router.HTTPListener.Timeouts.RequestTimeout,
+		"request_headers_timeout": c.Router.HTTPListener.Timeouts.RequestHeadersTimeout,
+		"stream_idle_timeout":     c.Router.HTTPListener.Timeouts.StreamIdleTimeout,
+		"idle_timeout":            c.Router.HTTPListener.Timeouts.IdleTimeout,
+	}
+	for name, v := range hcmTimeouts {
+		if v < 0 {
+			return fmt.Errorf("router.http_listener.timeouts.%s must not be negative, got: %s", name, v)
+		}
+		if v > maxConnTimeout {
+			return fmt.Errorf("router.http_listener.timeouts.%s (%s) exceeds maximum reasonable timeout of %s",
+				name, v, maxConnTimeout)
+		}
 	}
 
 	return nil

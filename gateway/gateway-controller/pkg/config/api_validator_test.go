@@ -391,8 +391,8 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Valid operations",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "/items"},
-				{Method: api.OperationMethodPOST, Path: "/items"},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/items")},
+				{Method: api.Ptr(api.OperationMethodPOST), Path: api.Ptr("/items")},
 			},
 			wantError: false,
 		},
@@ -405,7 +405,7 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Missing method",
 			operations: []api.Operation{
-				{Method: "", Path: "/items"},
+				{Method: api.Ptr(api.OperationMethod("")), Path: api.Ptr("/items")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].method",
@@ -413,7 +413,7 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Invalid method",
 			operations: []api.Operation{
-				{Method: "INVALID", Path: "/items"},
+				{Method: api.Ptr(api.OperationMethod("INVALID")), Path: api.Ptr("/items")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].method",
@@ -421,7 +421,7 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Missing path",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: ""},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].path",
@@ -429,7 +429,7 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Path without leading slash",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "items"},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("items")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].path",
@@ -437,14 +437,14 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Valid path with parameters",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "/items/{id}"},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/items/{id}")},
 			},
 			wantError: false,
 		},
 		{
 			name: "Path with unbalanced braces",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "/items/{id"},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/items/{id")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].path",
@@ -478,6 +478,60 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 	}
 }
 
+func TestAPIValidator_ValidateResilience(t *testing.T) {
+	v := NewAPIValidator()
+
+	tests := []struct {
+		name      string
+		apiRes    *api.Resilience
+		opRes     *api.Resilience
+		wantError bool
+		errField  string
+	}{
+		{name: "No resilience is valid", wantError: false},
+		{name: "Valid API-level timeout + idleTimeout", apiRes: &api.Resilience{Timeout: stringPtr("15s"), IdleTimeout: stringPtr("0s")}, wantError: false},
+		{name: "Valid operation-level timeout", opRes: &api.Resilience{Timeout: stringPtr("2s")}, wantError: false},
+		{name: "0s is allowed (disabled)", apiRes: &api.Resilience{Timeout: stringPtr("0s"), IdleTimeout: stringPtr("0s")}, wantError: false},
+		{name: "Invalid API-level timeout format", apiRes: &api.Resilience{Timeout: stringPtr("15seconds")}, wantError: true, errField: "spec.resilience.timeout"},
+		{name: "Invalid API-level idleTimeout format", apiRes: &api.Resilience{IdleTimeout: stringPtr("abc")}, wantError: true, errField: "spec.resilience.idleTimeout"},
+		{name: "Negative API-level timeout rejected", apiRes: &api.Resilience{Timeout: stringPtr("-5s")}, wantError: true, errField: "spec.resilience.timeout"},
+		{name: "Compound API-level timeout rejected (must match CRD pattern)", apiRes: &api.Resilience{Timeout: stringPtr("1h30m")}, wantError: true, errField: "spec.resilience.timeout"},
+		{name: "Compound API-level idleTimeout rejected", apiRes: &api.Resilience{IdleTimeout: stringPtr("1m30s")}, wantError: true, errField: "spec.resilience.idleTimeout"},
+		{name: "Unitless API-level timeout rejected", apiRes: &api.Resilience{Timeout: stringPtr("30")}, wantError: true, errField: "spec.resilience.timeout"},
+		{name: "Bare 0 rejected (unit required)", apiRes: &api.Resilience{Timeout: stringPtr("0")}, wantError: true, errField: "spec.resilience.timeout"},
+		{name: "Fractional single-unit timeout allowed", apiRes: &api.Resilience{Timeout: stringPtr("1.5s")}, wantError: false},
+		{name: "Invalid operation-level timeout format", opRes: &api.Resilience{Timeout: stringPtr("nope")}, wantError: true, errField: "spec.operations[0].resilience.timeout"},
+		{name: "Compound operation-level timeout rejected", opRes: &api.Resilience{Timeout: stringPtr("1h30m")}, wantError: true, errField: "spec.operations[0].resilience.timeout"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := createValidRestAPIConfig()
+			cfg.Spec.Resilience = tt.apiRes
+			cfg.Spec.Operations[0].Resilience = tt.opRes
+
+			errors := v.Validate(cfg)
+			hasExpectedError := false
+			for _, e := range errors {
+				if e.Field == tt.errField {
+					hasExpectedError = true
+					break
+				}
+			}
+			if tt.wantError && !hasExpectedError {
+				t.Errorf("expected error for field %s, got: %v", tt.errField, errors)
+			}
+			if !tt.wantError {
+				for _, e := range errors {
+					if strings.Contains(e.Field, "resilience") {
+						t.Errorf("unexpected resilience error: %v", e)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestAPIValidator_ValidateAllHTTPMethods(t *testing.T) {
 	v := NewAPIValidator()
 
@@ -495,7 +549,7 @@ func TestAPIValidator_ValidateAllHTTPMethods(t *testing.T) {
 		t.Run(string(method), func(t *testing.T) {
 			config := createValidRestAPIConfig()
 			config.Spec.Operations = []api.Operation{
-				{Method: method, Path: "/test"},
+				{Method: api.Ptr(method), Path: api.Ptr("/test")},
 			}
 
 			errors := v.Validate(config)
@@ -681,7 +735,7 @@ func createValidRestAPIConfig() *api.RestAPI {
 				},
 			},
 			Operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "/items"},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/items")},
 			},
 		},
 	}

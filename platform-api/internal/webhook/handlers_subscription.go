@@ -19,11 +19,10 @@ package webhook
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
@@ -114,7 +113,7 @@ func (r *Receiver) handleSubscriptionCreated(ctx context.Context, env *Envelope)
 	_, err := r.subs.CreateSubscription(d.API.RefID, d.API.kind(), env.OrgID, d.SubscriberID, d.applicationIDPtr(), &d.SubscriptionPlan.RefID, token, d.Status, "")
 	if err != nil {
 		// Domain-level idempotency: a duplicate delivery whose subscription already exists is success.
-		if errors.Is(err, constants.ErrSubscriptionAlreadyExists) {
+		if apperror.SubscriptionExists.Is(err) {
 			return nil
 		}
 		return err
@@ -141,7 +140,7 @@ func (r *Receiver) handleSubscriptionUpdated(ctx context.Context, env *Envelope)
 		return err
 	}
 	if sub == nil {
-		return constants.ErrSubscriptionNotFound
+		return apperror.SubscriptionNotFound.New()
 	}
 
 	_, err = r.subs.UpdateSubscription(sub.UUID, env.OrgID, d.SubscriberID, d.Status, "")
@@ -165,7 +164,7 @@ func (r *Receiver) handleSubscriptionPlanChanged(ctx context.Context, env *Envel
 		return err
 	}
 	if sub == nil {
-		return constants.ErrSubscriptionNotFound
+		return apperror.SubscriptionNotFound.New()
 	}
 
 	_, err = r.subs.ChangePlan(sub.UUID, env.OrgID, d.SubscriberID, d.SubscriptionPlan.RefID)
@@ -197,7 +196,7 @@ func (r *Receiver) handleSubscriptionTokenRegenerated(ctx context.Context, env *
 		return err
 	}
 	if sub == nil {
-		return constants.ErrSubscriptionNotFound
+		return apperror.SubscriptionNotFound.New()
 	}
 
 	_, err = r.subs.RegenerateToken(sub.UUID, env.OrgID, d.SubscriberID, token)
@@ -224,7 +223,7 @@ func (r *Receiver) handleSubscriptionDeleted(ctx context.Context, env *Envelope)
 	}
 
 	if err := r.subs.DeleteSubscription(sub.UUID, env.OrgID, d.SubscriberID, ""); err != nil {
-		if errors.Is(err, constants.ErrSubscriptionNotFound) {
+		if apperror.SubscriptionNotFound.Is(err) {
 			return nil
 		}
 		return err

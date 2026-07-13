@@ -74,7 +74,7 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 		return nil, fmt.Errorf("failed to get LLM provider: %w", err)
 	}
 	if provider == nil {
-		return nil, apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
+		return nil, apperror.ArtifactNotFound.New()
 	}
 
 	keys, err := s.apiKeyRepo.ListByArtifact(provider.UUID)
@@ -140,7 +140,7 @@ func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 		return fmt.Errorf("failed to get LLM provider: %w", err)
 	}
 	if provider == nil {
-		return apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
+		return apperror.ArtifactNotFound.New()
 	}
 
 	existingKey, err := s.apiKeyRepo.GetByArtifactAndName(provider.UUID, keyName)
@@ -149,11 +149,11 @@ func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 		return fmt.Errorf("failed to look up API key: %w", err)
 	}
 	if existingKey == nil {
-		return apperror.LLMProviderAPIKeyNotFound.Wrap(constants.ErrAPIKeyNotFound)
+		return apperror.LLMProviderAPIKeyNotFound.New()
 	}
 
 	if userID != "" && existingKey.CreatedBy != userID {
-		return apperror.LLMProviderAPIKeyForbidden.Wrap(constants.ErrAPIKeyForbidden)
+		return apperror.LLMProviderAPIKeyForbidden.New()
 	}
 
 	if err := s.apiKeyRepo.Delete(provider.UUID, keyName); err != nil {
@@ -205,7 +205,7 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 	}
 	if provider == nil {
 		s.slogger.Warn("LLM provider not found", "providerId", providerID, "organizationId", orgID)
-		return nil, apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
+		return nil, apperror.ArtifactNotFound.New()
 	}
 
 	apiKey, err := utils.GenerateAPIKey()
@@ -219,8 +219,8 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		name = *req.Id
 	} else {
 		if req.DisplayName == "" {
-			s.slogger.Error("Failed to generate API key name", "providerId", providerID, "error", constants.ErrHandleSourceEmpty)
-			return nil, fmt.Errorf("failed to generate API key name: both name and displayName are empty: %w", constants.ErrHandleSourceEmpty)
+			return nil, apperror.ValidationFailed.New("Either id or displayName is required.").
+				WithLogMessage(fmt.Sprintf("cannot generate API key name for provider %s: both id and displayName are empty", providerID))
 		}
 		name, err = utils.GenerateHandle(req.DisplayName, nil)
 		if err != nil {

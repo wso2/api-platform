@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -36,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
@@ -432,6 +434,21 @@ func main() {
 	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
 	policyManager.SetTransformers(transformerRegistry)
 
+	// Wire the same transformer into the Envoy xDS translator so Envoy routes are built from the
+	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
+	// resources are keyed. Without this the Envoy translator falls back to the legacy per-operation
+	// path, which (a) does not render header matchers and (b) names routes "method|path|vhost"
+	// (3 segments), while the policy resources are keyed "method|path|vhost|<header-hash>". The
+	// policy engine resolves the chain by the Envoy route name, so the mismatch makes every
+	// header-matched route fail with 500 ("policy chain not found"). WebSubApi is intentionally
+	// excluded so it keeps using the async-specific legacy translation path.
+	translator.SetTransformers(map[string]models.ConfigTransformer{
+		"RestApi":     transformerRegistry,
+		"Mcp":         transformerRegistry,
+		"LlmProvider": transformerRegistry,
+		"LlmProxy":    transformerRegistry,
+	})
+
 	// Load runtime configs from existing API configurations on startup.
 	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;
 	// the single UpdateSnapshot call below covers all of them.
@@ -665,6 +682,14 @@ func main() {
 		outerMiddlewares = append(outerMiddlewares, middleware.MetricsMiddleware())
 	}
 	handler := gohttpkit.Chain(outerMiddlewares...)(mux)
+
+	// Enable block/mutex profiling sampling when pprof is enabled. These are the
+	// only profiles that need explicit rate setup; 0 leaves them disabled. Gated so
+	// the sampling overhead is never paid unless pprof is deliberately turned on.
+	if cfg.Controller.AdminServer.Pprof.Enabled {
+		runtime.SetBlockProfileRate(cfg.Controller.AdminServer.Pprof.BlockProfileRate)
+		runtime.SetMutexProfileFraction(cfg.Controller.AdminServer.Pprof.MutexProfileFraction)
+	}
 
 	// Start controller admin server for debug endpoints if enabled.
 	var controllerAdminServer *adminserver.Server

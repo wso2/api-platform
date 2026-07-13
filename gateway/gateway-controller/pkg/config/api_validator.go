@@ -26,6 +26,7 @@ import (
 	"time"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
 // APIValidator validates API configurations using rule-based validation
@@ -263,8 +264,29 @@ func (v *APIValidator) validateUpstreamRef(label string, ref *string, upstreamDe
 	return errors
 }
 
-// validateUpstreamDefinitions validates the upstreamDefinitions array
+// validateUpstreamDefinitions validates the upstreamDefinitions array. Delegates to the shared
+// validateUpstreamDefinitionsList so RestApi, LLM Provider, and MCP validate identically.
 func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDefinition) []ValidationError {
+	return validateUpstreamDefinitionsList("spec.upstreamDefinitions", definitions)
+}
+
+// upstreamDefinitionNameRegex enforces the same name constraint as the CRD/OpenAPI
+// (UpstreamDefinition.name pattern), so a definition accepted over the management API cannot carry a
+// name that CRD admission would reject. The name is also used for Envoy cluster naming.
+var upstreamDefinitionNameRegex = regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`)
+
+// upstreamBasePathRegex enforces the same basePath constraint as the CRD/OpenAPI: it must start with
+// "/" and must not end with "/" (root is expressed by omitting the field). basePath is prepended to
+// the upstream path during routing, so a malformed value (missing leading slash, trailing slash)
+// would silently produce a bad upstream request path — this rejects it at deploy time instead.
+var upstreamBasePathRegex = regexp.MustCompile(`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$`)
+
+// validateUpstreamDefinitionsList validates an upstreamDefinitions array. fieldPrefix is the path
+// to the array (e.g. "spec.upstreamDefinitions"). It is shared by the RestApi, LLM Provider, and
+// MCP validators so the three kinds validate upstream definitions identically. The connect timeout
+// is validated against the shared CRD duration pattern (constants.ResilienceDurationRegex) so
+// gateway-side validation matches CRD admission (compound/unitless/negative values are rejected).
+func validateUpstreamDefinitionsList(fieldPrefix string, definitions *[]api.UpstreamDefinition) []ValidationError {
 	var errors []ValidationError
 
 	if definitions == nil {
@@ -275,38 +297,58 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 	namesSeen := make(map[string]bool)
 
 	for i, def := range *definitions {
-		// Validate name
+		// Validate name (must match the CRD/OpenAPI constraint: 1-100 chars, ^[a-zA-Z0-9\-_]+$).
 		if def.Name == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].name", i),
+				Field:   fmt.Sprintf("%s[%d].name", fieldPrefix, i),
 				Message: "Upstream definition name is required",
 			})
 			continue
+		}
+		if len(def.Name) > 100 {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s[%d].name", fieldPrefix, i),
+				Message: "Upstream definition name must be 1-100 characters",
+			})
+		}
+		if !upstreamDefinitionNameRegex.MatchString(def.Name) {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s[%d].name", fieldPrefix, i),
+				Message: "Upstream definition name must match ^[a-zA-Z0-9\\-_]+$ (letters, numbers, hyphens, underscores)",
+			})
 		}
 
 		// Check for duplicate names
 		if namesSeen[def.Name] {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].name", i),
+				Field:   fmt.Sprintf("%s[%d].name", fieldPrefix, i),
 				Message: fmt.Sprintf("Duplicate upstream definition name '%s'", def.Name),
 			})
 			continue
 		}
 		namesSeen[def.Name] = true
 
+		// Validate basePath (when set) against the CRD/OpenAPI pattern. Validated raw (no trim) so it
+		// matches CRD admission exactly; omit the field for root.
+		if def.BasePath != nil && !upstreamBasePathRegex.MatchString(*def.BasePath) {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s[%d].basePath", fieldPrefix, i),
+				Message: "Invalid basePath (must start with '/' and must not end with '/'; omit for root)",
+			})
+		}
+
 		// Validate upstreams array
 		if len(def.Upstreams) == 0 {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams", i),
+				Field:   fmt.Sprintf("%s[%d].upstreams", fieldPrefix, i),
 				Message: "At least one upstream target is required",
 			})
 		}
 
 		for j, upstream := range def.Upstreams {
-			// Validate URL
 			if upstream.Url == "" {
 				errors = append(errors, ValidationError{
-					Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+					Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
 					Message: "URL is required",
 				})
 				continue
@@ -315,20 +357,20 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 			parsedURL, err := url.Parse(upstream.Url)
 			if err != nil {
 				errors = append(errors, ValidationError{
-					Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+					Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
 					Message: fmt.Sprintf("Invalid URL format: %v", err),
 				})
 			} else {
 				if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+						Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
 						Message: "URL must use http or https scheme",
 					})
 				}
 
 				if parsedURL.Host == "" {
 					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+						Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
 						Message: "URL must include a host",
 					})
 				}
@@ -337,7 +379,7 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 				// configured exclusively via upstreamDefinitions[].basePath.
 				if parsedURL.Path != "" && parsedURL.Path != "/" {
 					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+						Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
 						Message: "URL must not include a path; set the base path in upstreamDefinitions[].basePath instead",
 					})
 				}
@@ -346,14 +388,14 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 				// (host[:port] only), so it would be silently dropped. Reject it.
 				if parsedURL.RawQuery != "" || parsedURL.ForceQuery {
 					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+						Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
 						Message: "URL must not include a query string; only host[:port] is used",
 					})
 				}
 
 				if parsedURL.Fragment != "" {
 					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].url", i, j),
+						Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
 						Message: "URL must not include a fragment; only host[:port] is used",
 					})
 				}
@@ -363,23 +405,30 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 			if upstream.Weight != nil {
 				if *upstream.Weight < 0 || *upstream.Weight > 100 {
 					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].upstreams[%d].weight", i, j),
+						Field:   fmt.Sprintf("%s[%d].upstreams[%d].weight", fieldPrefix, i, j),
 						Message: "Weight must be between 0 and 100",
 					})
 				}
 			}
 		}
 
-		// Timeout validation is limited to connect timeout; request and idle
-		// timeouts are no longer supported at the upstream definition level.
+		// Timeout validation is limited to connect timeout. Enforce the same single-unit duration
+		// pattern as the CRD/OpenAPI so gateway validation cannot diverge from CRD admission, then
+		// a ParseDuration guard for pathological overflow — mirroring validateResilienceTimeouts.
 		if def.Timeout != nil && def.Timeout.Connect != nil {
 			timeoutStr := strings.TrimSpace(*def.Timeout.Connect)
 			if timeoutStr != "" {
-				_, err := time.ParseDuration(timeoutStr)
-				if err != nil {
+				if !constants.ResilienceDurationRegex.MatchString(timeoutStr) {
 					errors = append(errors, ValidationError{
-						Field:   fmt.Sprintf("spec.upstreamDefinitions[%d].timeout.connect", i),
-						Message: fmt.Sprintf("Invalid timeout format: %v (expected format: '30s', '1m', '500ms')", err),
+						Field:   fmt.Sprintf("%s[%d].timeout.connect", fieldPrefix, i),
+						Message: "Invalid timeout format (expected a single-unit duration like '30s', '1m', '500ms')",
+					})
+				} else if _, err := time.ParseDuration(timeoutStr); err != nil {
+					// The pattern guarantees a single-unit value; ParseDuration is a final guard
+					// against pathological overflow (e.g. "99999999999999999999s").
+					errors = append(errors, ValidationError{
+						Field:   fmt.Sprintf("%s[%d].timeout.connect", fieldPrefix, i),
+						Message: fmt.Sprintf("Invalid timeout format: %v", err),
 					})
 				}
 			}
@@ -387,6 +436,20 @@ func (v *APIValidator) validateUpstreamDefinitions(definitions *[]api.UpstreamDe
 	}
 
 	return errors
+}
+
+// upstreamRefResolves reports whether ref names one of the provided upstream definitions.
+func upstreamRefResolves(ref string, definitions *[]api.UpstreamDefinition) bool {
+	if definitions == nil {
+		return false
+	}
+	refName := strings.TrimSpace(ref)
+	for _, def := range *definitions {
+		if def.Name == refName {
+			return true
+		}
+	}
+	return false
 }
 
 // validateRestData validates the data section of the configuration for RestApi kind
@@ -436,9 +499,60 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 		errors = append(errors, v.validateUpstream("sandbox", spec.Upstream.Sandbox, spec.UpstreamDefinitions)...)
 	}
 
+	// Validate API-level resilience block
+	errors = append(errors, v.validateResilience("spec.resilience", spec.Resilience)...)
+
 	// Validate operations
 	errors = append(errors, v.validateOperations(spec.Operations)...)
 
+	return errors
+}
+
+// validateResilience validates a resilience block (timeout / idleTimeout). Both fields
+// are optional duration strings; "0s" is allowed (disables the timeout), negative and
+// malformed values are rejected. fieldPrefix is the path to the block (e.g.
+// "spec.resilience" or "spec.operations[2].resilience").
+func (v *APIValidator) validateResilience(fieldPrefix string, r *api.Resilience) []ValidationError {
+	return validateResilienceTimeouts(fieldPrefix, r)
+}
+
+// validateResilienceTimeouts validates the timeout fields of a resilience block.
+func validateResilienceTimeouts(fieldPrefix string, r *api.Resilience) []ValidationError {
+	var errors []ValidationError
+	if r == nil {
+		return errors
+	}
+
+	validate := func(field string, value *string) {
+		if value == nil {
+			return
+		}
+		s := strings.TrimSpace(*value)
+		if s == "" {
+			return
+		}
+		// Enforce the same single-unit format as the CRD admission controller (see
+		// constants.ResilienceDurationPattern). This rejects compound durations ("1h30m"),
+		// negatives ("-30s"), and unitless values ("0", "30"), while accepting "0s" to disable.
+		if !constants.ResilienceDurationRegex.MatchString(s) {
+			errors = append(errors, ValidationError{
+				Field:   field,
+				Message: "Invalid timeout format (expected a single-unit duration like '30s', '1m', '500ms', or '0s' to disable; compound, negative, and unitless values are not allowed)",
+			})
+			return
+		}
+		// The pattern guarantees a parseable, non-negative, single-unit value; ParseDuration is a
+		// final guard against pathological overflow.
+		if _, err := time.ParseDuration(s); err != nil {
+			errors = append(errors, ValidationError{
+				Field:   field,
+				Message: fmt.Sprintf("Invalid timeout format: %v", err),
+			})
+		}
+	}
+
+	validate(fieldPrefix+".timeout", r.Timeout)
+	validate(fieldPrefix+".idleTimeout", r.IdleTimeout)
 	return errors
 }
 
@@ -585,42 +699,57 @@ func (v *APIValidator) validateOperations(operations []api.Operation) []Validati
 	}
 
 	for i, op := range operations {
+		// An operation must be expressed either via the simple top-level method+path form or
+		// via the richer match block. Resolve the effective values and validate those; the
+		// field path points at whichever form the user actually authored.
+		method := op.EffectiveMethod()
+		path := op.EffectivePath()
+		methodField := fmt.Sprintf("spec.operations[%d].method", i)
+		pathField := fmt.Sprintf("spec.operations[%d].path", i)
+		if op.Match != nil {
+			methodField = fmt.Sprintf("spec.operations[%d].match.method", i)
+			pathField = fmt.Sprintf("spec.operations[%d].match.path.value", i)
+		}
+
 		// Validate method
-		if op.Method == "" {
+		if method == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.operations[%d].method", i),
-				Message: "HTTP method is required",
+				Field:   methodField,
+				Message: "HTTP method is required (set operation.method or operation.match.method)",
 			})
-		} else if !validMethods[strings.ToUpper(string(op.Method))] {
+		} else if !validMethods[strings.ToUpper(method)] {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.operations[%d].method", i),
-				Message: fmt.Sprintf("Invalid HTTP method '%s' (must be GET, POST, PUT, DELETE, PATCH, HEAD, or OPTIONS)", op.Method),
+				Field:   methodField,
+				Message: fmt.Sprintf("Invalid HTTP method '%s' (must be GET, POST, PUT, DELETE, PATCH, HEAD, or OPTIONS)", method),
 			})
 		}
 
 		// Validate path
-		if op.Path == "" {
+		if path == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.operations[%d].path", i),
-				Message: "Operation path is required",
+				Field:   pathField,
+				Message: "Operation path is required (set operation.path or operation.match.path.value)",
 			})
 			continue
 		}
 
-		if !strings.HasPrefix(op.Path, "/") {
+		if !strings.HasPrefix(path, "/") {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.operations[%d].path", i),
+				Field:   pathField,
 				Message: "Operation path must start with /",
 			})
 		}
 
 		// Validate path parameters have balanced braces
-		if !v.validatePathParameters(op.Path) {
+		if !v.validatePathParameters(path) {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.operations[%d].path", i),
+				Field:   pathField,
 				Message: "Operation path has unbalanced braces in parameters",
 			})
 		}
+
+		// Validate operation-level resilience block
+		errors = append(errors, v.validateResilience(fmt.Sprintf("spec.operations[%d].resilience", i), op.Resilience)...)
 	}
 
 	return errors

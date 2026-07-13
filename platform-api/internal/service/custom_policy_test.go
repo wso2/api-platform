@@ -22,27 +22,29 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
-	"github.com/wso2/api-platform/platform-api/internal/model"
-	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
 
 // mockGatewayRepoForPolicy mocks only the GatewayRepository methods used by custom-policy operations.
 type mockGatewayRepoForPolicy struct {
 	repository.GatewayRepository
 
-	gateway         *model.Gateway
-	gatewayErr      error
-	manifest        []byte
-	manifestErr     error
+	gateway     *model.Gateway
+	gatewayErr  error
+	manifest    []byte
+	manifestErr error
 
 	// call tracking
-	getByUUIDCalled      bool
-	getManifestCalled    bool
-	lastGatewayID        string
+	getByUUIDCalled   bool
+	getManifestCalled bool
+	lastGatewayID     string
 }
 
 func (m *mockGatewayRepoForPolicy) GetByUUID(gatewayID string) (*model.Gateway, error) {
@@ -72,10 +74,10 @@ type mockCustomPolicyRepo struct {
 	deleteIfUnusedErr         error
 	countUsages               int
 	countUsagesErr            error
-	insertCalled         bool
-	updateCalled         bool
-	updateOldVersion     string
-	deleteIfUnusedCalled bool
+	insertCalled              bool
+	updateCalled              bool
+	updateOldVersion          string
+	deleteIfUnusedCalled      bool
 }
 
 func (m *mockCustomPolicyRepo) InsertCustomPolicy(policy *model.CustomPolicy) error {
@@ -166,31 +168,31 @@ func newTestGatewayService(gwRepo repository.GatewayRepository, cpRepo repositor
 
 func TestSyncCustomPolicy(t *testing.T) {
 	const (
-		orgID     = "org-uuid-0001"
-		gwID      = "gw-uuid-0001"
-		otherOrg  = "org-uuid-OTHER"
+		orgID      = "org-uuid-0001"
+		gwID       = "gw-uuid-0001"
+		otherOrg   = "org-uuid-OTHER"
 		policyUUID = "pol-uuid-0001"
 	)
 
 	tests := []struct {
-		name string
-		gateway    *model.Gateway
-		gatewayErr error
-		manifest   []byte
-		manifestErr error
+		name                string
+		gateway             *model.Gateway
+		gatewayErr          error
+		manifest            []byte
+		manifestErr         error
 		existingPolicies    []*model.CustomPolicy
 		existingPoliciesErr error
 		insertErr           error
 		updateErr           error
-		persistedPolicy *model.CustomPolicy
-		policyName string
-		version    string
-		wantErr     bool
-		errContains string
-		wantInsert bool
-		wantUpdate bool
+		persistedPolicy     *model.CustomPolicy
+		policyName          string
+		version             string
+		wantErr             bool
+		errContains         string
+		wantInsert          bool
+		wantUpdate          bool
 	}{
-		// gateway validation 
+		// gateway validation
 		{
 			name:        "gateway not found - repo error",
 			gatewayErr:  errors.New("db error"),
@@ -208,11 +210,11 @@ func TestSyncCustomPolicy(t *testing.T) {
 			errContains: "GATEWAY_NOT_FOUND",
 		},
 		{
-			name: "gateway belongs to different org",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: otherOrg},
-			policyName: "rate-limit",
-			version:    "1.0.0",
-			wantErr:    true,
+			name:        "gateway belongs to different org",
+			gateway:     &model.Gateway{ID: gwID, OrganizationID: otherOrg},
+			policyName:  "rate-limit",
+			version:     "1.0.0",
+			wantErr:     true,
 			errContains: "GATEWAY_NOT_FOUND",
 		},
 
@@ -271,8 +273,8 @@ func TestSyncCustomPolicy(t *testing.T) {
 
 		// version conflict rules
 		{
-			name:    "exact same version already exists",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
+			name:     "exact same version already exists",
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: sampleManifest("rate-limit", "1.2.0"),
 			existingPolicies: []*model.CustomPolicy{
 				makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.2.0"),
@@ -283,8 +285,8 @@ func TestSyncCustomPolicy(t *testing.T) {
 			errContains: "POLICY_VERSION_CONFLICT",
 		},
 		{
-			name:    "patch version update is not allowed",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
+			name:     "patch version update is not allowed",
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: sampleManifest("rate-limit", "1.2.1"),
 			existingPolicies: []*model.CustomPolicy{
 				makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.2.0"),
@@ -295,8 +297,8 @@ func TestSyncCustomPolicy(t *testing.T) {
 			errContains: "POLICY_VERSION_CONFLICT",
 		},
 		{
-			name:    "downgrade is not allowed",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
+			name:     "downgrade is not allowed",
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: sampleManifest("rate-limit", "1.1.0"),
 			existingPolicies: []*model.CustomPolicy{
 				makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.3.0"),
@@ -321,8 +323,8 @@ func TestSyncCustomPolicy(t *testing.T) {
 			wantUpdate:       false,
 		},
 		{
-			name:    "minor version bump - existing record updated",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
+			name:     "minor version bump - existing record updated",
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: sampleManifest("rate-limit", "1.3.0"),
 			existingPolicies: []*model.CustomPolicy{
 				makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.2.0"),
@@ -335,8 +337,8 @@ func TestSyncCustomPolicy(t *testing.T) {
 			wantUpdate:      true,
 		},
 		{
-			name:    "new major version - separate record inserted",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
+			name:     "new major version - separate record inserted",
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: sampleManifest("rate-limit", "2.0.0"),
 			existingPolicies: []*model.CustomPolicy{
 				makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.5.0"),
@@ -349,9 +351,9 @@ func TestSyncCustomPolicy(t *testing.T) {
 			wantUpdate:      false,
 		},
 		{
-			name:    "policy name normalised to lowercase before lookup",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
-			manifest: sampleManifest("rate-limit", "1.0.0"),
+			name:             "policy name normalised to lowercase before lookup",
+			gateway:          &model.Gateway{ID: gwID, OrganizationID: orgID},
+			manifest:         sampleManifest("rate-limit", "1.0.0"),
 			existingPolicies: []*model.CustomPolicy{},
 			persistedPolicy:  makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.0.0"),
 			policyName:       "Rate-Limit",
@@ -360,8 +362,8 @@ func TestSyncCustomPolicy(t *testing.T) {
 			wantInsert:       true,
 		},
 		{
-			name:    "minor version update preserves the existing UUID",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
+			name:     "minor version update preserves the existing UUID",
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: sampleManifest("auth-policy", "1.2.0"),
 			existingPolicies: []*model.CustomPolicy{
 				makeCustomPolicy("stable-uuid", orgID, "auth-policy", "1.1.0"),
@@ -383,10 +385,10 @@ func TestSyncCustomPolicy(t *testing.T) {
 				manifestErr: tt.manifestErr,
 			}
 			cpRepo := &mockCustomPolicyRepo{
-				getPoliciesByName:    tt.existingPolicies,
-				getPoliciesByNameErr: tt.existingPoliciesErr,
-				insertErr:            tt.insertErr,
-				updateErr:            tt.updateErr,
+				getPoliciesByName:      tt.existingPolicies,
+				getPoliciesByNameErr:   tt.existingPoliciesErr,
+				insertErr:              tt.insertErr,
+				updateErr:              tt.updateErr,
 				getPolicyByNameVersion: tt.persistedPolicy,
 			}
 
@@ -470,37 +472,37 @@ func TestGetCustomPolicyByUUID(t *testing.T) {
 		expectedErr error
 	}{
 		{
-			name:        "policy found with matching version",
-			repoPolicy:  makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.0.0"),
-			version:     "1.0.0",
-			wantErr:     false,
+			name:       "policy found with matching version",
+			repoPolicy: makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.0.0"),
+			version:    "1.0.0",
+			wantErr:    false,
 		},
 		{
 			name:        "policy not found - nil from repo",
 			repoPolicy:  nil,
 			version:     "1.0.0",
 			wantErr:     true,
-			expectedErr: constants.ErrCustomPolicyNotFound,
+			expectedErr: apperror.CustomPolicyNotFound.New(),
 		},
 		{
-			name:        "repo returns error",
-			repoErr:     errors.New("db failure"),
-			version:     "1.0.0",
-			wantErr:     true,
+			name:    "repo returns error",
+			repoErr: errors.New("db failure"),
+			version: "1.0.0",
+			wantErr: true,
 		},
 		{
 			name:        "version mismatch",
 			repoPolicy:  makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.0.0"),
 			version:     "1.1.0",
 			wantErr:     true,
-			expectedErr: constants.ErrCustomPolicyVersionMismatch,
+			expectedErr: apperror.CustomPolicyVersionNotFnd.New(),
 		},
 		{
 			name:        "major version mismatch",
 			repoPolicy:  makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.0.0"),
 			version:     "2.0.0",
 			wantErr:     true,
-			expectedErr: constants.ErrCustomPolicyVersionMismatch,
+			expectedErr: apperror.CustomPolicyVersionNotFnd.New(),
 		},
 	}
 
@@ -561,28 +563,28 @@ func TestDeleteCustomPolicyByUUID(t *testing.T) {
 			repoPolicy:  nil,
 			version:     "1.0.0",
 			wantErr:     true,
-			expectedErr: constants.ErrCustomPolicyNotFound,
+			expectedErr: apperror.CustomPolicyNotFound.New(),
 		},
 		{
-			name:        "repo returns error on lookup",
-			repoErr:     errors.New("db failure"),
-			version:     "1.0.0",
-			wantErr:     true,
+			name:    "repo returns error on lookup",
+			repoErr: errors.New("db failure"),
+			version: "1.0.0",
+			wantErr: true,
 		},
 		{
 			name:        "version mismatch",
 			repoPolicy:  makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.0.0"),
 			version:     "2.0.0",
 			wantErr:     true,
-			expectedErr: constants.ErrCustomPolicyVersionMismatch,
+			expectedErr: apperror.CustomPolicyVersionNotFnd.New(),
 		},
 		{
 			name:              "policy in use by APIs",
 			repoPolicy:        makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.0.0"),
 			version:           "1.0.0",
-			deleteIfUnusedErr: constants.ErrCustomPolicyInUse,
+			deleteIfUnusedErr: apperror.PolicyInUse.New(),
 			wantErr:           true,
-			expectedErr:       constants.ErrCustomPolicyInUse,
+			expectedErr:       apperror.PolicyInUse.New(),
 			wantDeleteCalled:  true,
 		},
 	}
@@ -621,11 +623,11 @@ func TestListCustomPolicies(t *testing.T) {
 	const orgID = "org-uuid-0001"
 
 	tests := []struct {
-		name        string
+		name         string
 		repoPolicies []*model.CustomPolicy
-		repoErr     error
-		wantCount   int
-		wantErr     bool
+		repoErr      error
+		wantCount    int
+		wantErr      bool
 	}{
 		{
 			name: "returns all policies for org",

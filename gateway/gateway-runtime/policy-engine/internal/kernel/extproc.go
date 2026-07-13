@@ -44,6 +44,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/tracing"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
 // ExternalProcessorServer implements the Envoy external processor service
@@ -379,6 +380,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 		(*execCtx).upstreamBasePath = routeMetadata.UpstreamBasePath
 		(*execCtx).apiContext = routeMetadata.Context
 		(*execCtx).upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
+		(*execCtx).defaultUpstream = routeMetadata.DefaultUpstream
 		(*execCtx).buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
 		return &routeMetadata
 	}
@@ -456,6 +458,11 @@ type RouteMetadata struct {
 	DefaultUpstreamCluster  string            // Default cluster for dynamic cluster routing
 	UpstreamBasePath        string            // Base path for the upstream (e.g., /anything)
 	UpstreamDefinitionPaths map[string]string // Maps upstream definition names to their URL base paths
+
+	// DefaultUpstream is this route's own compiled-in upstream (cluster name, URL, base
+	// path) — whichever slot it belongs to (main or sandbox). Always present; surfaced
+	// to the policy engine as the route's single default upstream.
+	DefaultUpstream *policyenginev1.UpstreamInfo
 }
 
 // generateRequestID generates a unique request identifier

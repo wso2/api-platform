@@ -1205,8 +1205,8 @@ func createTestStoredConfig(id, name, version, context string) *models.StoredCon
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 		},
@@ -1268,8 +1268,8 @@ func createTestRestAPIRequestBody(t *testing.T, handle, displayName, version, co
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 		},
@@ -2498,8 +2498,8 @@ func TestBuildStoredPolicyFromAPINoPolicies(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 		},
@@ -3525,7 +3525,7 @@ func TestGetConfigDumpMissingHandle(t *testing.T) {
 					Url: stringPtr("http://backend.com"),
 				},
 			},
-			Operations: []api.Operation{{Method: "GET", Path: "/"}},
+			Operations: []api.Operation{{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/")}},
 		},
 	}
 	cfg := &models.StoredConfig{
@@ -3617,8 +3617,8 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 			Policies: &policies,
@@ -3668,8 +3668,8 @@ func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method:   "GET",
-					Path:     "/resource",
+					Method:   api.Ptr(api.OperationMethod("GET")),
+					Path:     api.Ptr("/resource"),
 					Policies: &opPolicies,
 				},
 			},

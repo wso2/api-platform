@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"strings"
 	"time"
 
@@ -50,6 +51,16 @@ func NewServer(cfg *config.AdminConfig, k *kernel.Kernel, reg *registry.PolicyRe
 	mux.Handle("/xds_sync_status", ipWhitelistMiddleware(cfg.AllowedIPs, xdsSyncHandler))
 	// Health endpoint is registered without IP whitelist so Docker/k8s health probes can reach it
 	mux.Handle("/health", healthHandler)
+
+	// Go runtime profiling endpoints, registered only when explicitly enabled and
+	// wrapped in the same IP whitelist as the other admin routes.
+	if cfg.Pprof.Enabled {
+		mux.Handle("/debug/pprof/", ipWhitelistMiddleware(cfg.AllowedIPs, http.HandlerFunc(pprof.Index)))
+		mux.Handle("/debug/pprof/cmdline", ipWhitelistMiddleware(cfg.AllowedIPs, http.HandlerFunc(pprof.Cmdline)))
+		mux.Handle("/debug/pprof/profile", ipWhitelistMiddleware(cfg.AllowedIPs, http.HandlerFunc(pprof.Profile)))
+		mux.Handle("/debug/pprof/symbol", ipWhitelistMiddleware(cfg.AllowedIPs, http.HandlerFunc(pprof.Symbol)))
+		mux.Handle("/debug/pprof/trace", ipWhitelistMiddleware(cfg.AllowedIPs, http.HandlerFunc(pprof.Trace)))
+	}
 
 	httpServer := &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),

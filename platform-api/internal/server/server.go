@@ -21,12 +21,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/big"
@@ -264,15 +263,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 
-	// Initialize the shared database encryption key used for all encrypted DB columns.
-	// DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY is accepted as a legacy alias.
-	// DeriveEncryptionKey requires 64-char hex or base64-to-32-bytes; when falling back to
-	// the raw JWT secret (arbitrary length), hash it to a valid 64-char hex key.
-	dbEncryptionKey := cfg.Database.EncryptionKey
-	if dbEncryptionKey == "" && cfg.Auth.JWT.SecretKey != "" {
-		h := sha256.Sum256([]byte(cfg.Auth.JWT.SecretKey))
-		dbEncryptionKey = hex.EncodeToString(h[:])
-	}
+	// The single configured encryption key (ENCRYPTION_KEY) is used for all encrypted DB
+	// columns (secrets, subscription tokens, WebSub HMAC secrets)
+	dbEncryptionKey := cfg.EncryptionKey
 	llmProviderDeploymentService := service.NewLLMProviderDeploymentService(
 		llmProviderRepo,
 		llmTemplateRepo,
@@ -323,15 +316,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		mcpProxyService,
 	)
 
-	// Initialize secret vault and service.
-	// Key precedence: PLATFORM_SECRET_ENCRYPTION_KEY → DATABASE_ENCRYPTION_KEY → JWT secret hash.
-	secretKeyStr := cfg.Database.SecretEncryptionKey
-	if secretKeyStr == "" {
-		secretKeyStr = dbEncryptionKey
-	}
-	secretKey, keyErr := utils.DeriveEncryptionKey(secretKeyStr)
+	// Initialize secret vault and service using the single configured encryption key.
+	secretKey, keyErr := utils.DeriveEncryptionKey(cfg.EncryptionKey)
 	if keyErr != nil {
-		return nil, fmt.Errorf("invalid secret encryption key: %w", keyErr)
+		return nil, fmt.Errorf("invalid encryption key: %w", keyErr)
 	}
 	secretVault, vaultErr := internalvault.NewInHouseVault(secretKey)
 	if vaultErr != nil {
@@ -736,19 +724,15 @@ func generateSelfSignedCert(certPath, keyPath string, logger *slog.Logger) (tls.
 	return cert, nil
 }
 
-// Start starts the HTTPS server
-func (s *Server) Start(port string, certDir string) error {
-	if port == "" {
-		s.logger.Error("Port cannot be empty")
-		return fmt.Errorf("port cannot be empty")
-	}
-
-	// Build certificate paths
+// buildTLSConfig resolves the TLS listener configuration. The caller invokes it
+// only when the HTTPS listener is enabled, so certificates are always read (or,
+// in demo mode, generated) here.
+func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, error) {
+	certDir := httpsCfg.CertDir
 	certPath := filepath.Join(certDir, "cert.pem")
 	keyPath := filepath.Join(certDir, "key.pem")
 
 	var cert tls.Certificate
-	certGenerated := false
 
 	// Try to load existing certificates first
 	if _, certErr := os.Stat(certPath); certErr == nil {
@@ -766,9 +750,10 @@ func (s *Server) Start(port string, certDir string) error {
 	// Generate new certificate if not loaded
 	if cert.Certificate == nil {
 		if !demoMode() {
-			return fmt.Errorf(
+			return nil, fmt.Errorf(
 				"no TLS certificates found at %q (cert.pem / key.pem) and APIP_DEMO_MODE=false: "+
-					"mount real certificates or set TLS_CERT_DIR to a directory containing cert.pem and key.pem; "+
+					"mount real certificates, set HTTPS_CERT_DIR to a directory containing cert.pem and key.pem, "+
+					"or set HTTPS_ENABLED=false to serve plain HTTP behind a TLS-terminating proxy; "+
 					"self-signed certificate generation is only permitted in demo mode",
 				certDir,
 			)
@@ -777,15 +762,34 @@ func (s *Server) Start(port string, certDir string) error {
 		// Ensure cert directory exists
 		if err := os.MkdirAll(certDir, 0755); err != nil {
 			s.logger.Error("Failed to create cert directory", "error", err)
-			return fmt.Errorf("failed to create cert directory: %v", err)
+			return nil, fmt.Errorf("failed to create cert directory: %v", err)
 		}
 		generatedCert, err := generateSelfSignedCert(certPath, keyPath, s.logger)
 		if err != nil {
 			s.logger.Error("Failed to generate self-signed certificate", "error", err)
-			return fmt.Errorf("failed to generate self-signed certificate: %v", err)
+			return nil, fmt.Errorf("failed to generate self-signed certificate: %v", err)
 		}
 		cert = generatedCert
-		certGenerated = true
+		s.logger.Warn("Note: Using self-signed certificate for development. Browsers will show security warnings.")
+	}
+
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}, nil
+}
+
+// Start brings up the enabled listeners. The plain-HTTP and TLS listeners are
+// independent: either or both may run, each on its own port. This mirrors the
+// gateway router's http/https listener split. At least one listener must be
+// enabled.
+//
+// timeouts bounds connection lifetime on both listeners so a slow or idle peer
+// cannot hold one open indefinitely (Slowloris). It is validated at config load.
+func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListener, timeouts config.Timeouts) error {
+	if !httpCfg.Enabled && !httpsCfg.Enabled {
+		s.logger.Error("No listeners enabled")
+		return fmt.Errorf("no listeners enabled: set HTTP_ENABLED=true and/or HTTPS_ENABLED=true")
 	}
 
 	// Add a health endpoint. Routes added to s.mux after startup are reachable
@@ -794,33 +798,67 @@ func (s *Server) Start(port string, certDir string) error {
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 	})
 
-	// CreateOrganization TLS configuration
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
-	}
-
-	address := fmt.Sprintf(":%s", port)
-	httpServer := &http.Server{
-		Addr:      address,
-		Handler:   s.handler,
-		TLSConfig: tlsConfig,
-	}
-
-	s.logger.Info("Starting HTTPS server", "address", "https://localhost:"+port)
-	if certGenerated {
-		s.logger.Warn("Note: Using self-signed certificate for development. Browsers will show security warnings.")
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go s.timeoutService.Start(ctx)
 
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- httpServer.ListenAndServeTLS("", "")
-	}()
+	// errCh is buffered for both listeners so a failing goroutine never blocks,
+	// even while the other listener is still being shut down.
+	errCh := make(chan error, 2)
+	var httpServers []*http.Server
+
+	// Plain-HTTP listener.
+	if httpCfg.Enabled {
+		if httpCfg.Port == "" {
+			return fmt.Errorf("HTTP listener enabled but port is empty (HTTP_PORT)")
+		}
+		// Plain HTTP is only safe when something upstream terminates TLS, or for
+		// internal traffic. Say so loudly outside demo mode.
+		if !demoMode() {
+			s.logger.Warn("Plain-HTTP listener is enabled (HTTP_ENABLED=true) while APIP_DEMO_MODE=false: " +
+				"terminate TLS at an ingress or service-mesh sidecar and never expose this listener " +
+				"directly to untrusted networks.")
+		}
+		httpServer := &http.Server{
+			Addr:              ":" + httpCfg.Port,
+			Handler:           s.handler,
+			ReadHeaderTimeout: timeouts.ReadHeader,
+			ReadTimeout:       timeouts.Read,
+			WriteTimeout:      timeouts.Write,
+			IdleTimeout:       timeouts.Idle,
+		}
+		httpServers = append(httpServers, httpServer)
+		s.logger.Info("Starting HTTP listener", "address", "http://localhost:"+httpCfg.Port)
+		go func() {
+			errCh <- httpServer.ListenAndServe()
+		}()
+	}
+
+	// TLS listener.
+	if httpsCfg.Enabled {
+		if httpsCfg.Port == "" {
+			return fmt.Errorf("HTTPS listener enabled but port is empty (HTTPS_PORT)")
+		}
+		tlsConfig, err := s.buildTLSConfig(httpsCfg)
+		if err != nil {
+			return err
+		}
+		httpsServer := &http.Server{
+			Addr:              ":" + httpsCfg.Port,
+			Handler:           s.handler,
+			TLSConfig:         tlsConfig,
+			ReadHeaderTimeout: timeouts.ReadHeader,
+			ReadTimeout:       timeouts.Read,
+			WriteTimeout:      timeouts.Write,
+			IdleTimeout:       timeouts.Idle,
+		}
+		httpServers = append(httpServers, httpsServer)
+		s.logger.Info("Starting HTTPS listener", "address", "https://localhost:"+httpsCfg.Port)
+		go func() {
+			errCh <- httpsServer.ListenAndServeTLS("", "")
+		}()
+	}
 
 	mode := "PRODUCTION"
 	if demoMode() {
@@ -835,8 +873,10 @@ func (s *Server) Start(port string, certDir string) error {
 	teardown := func() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
-		if err := httpServer.Shutdown(shutdownCtx); err != nil {
-			s.logger.Error("HTTP server shutdown error", "error", err)
+		for _, srv := range httpServers {
+			if err := srv.Shutdown(shutdownCtx); err != nil {
+				s.logger.Error("HTTP server shutdown error", "addr", srv.Addr, "error", err)
+			}
 		}
 		for _, p := range plugin.All() {
 			if err := p.Shutdown(shutdownCtx); err != nil {
@@ -854,7 +894,12 @@ func (s *Server) Start(port string, certDir string) error {
 	case err := <-errCh:
 		cancel()
 		teardown()
-		return err
+		// A graceful Shutdown surfaces http.ErrServerClosed on the listener
+		// goroutine; that is a clean exit, not a startup failure.
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
 	case sig := <-quit:
 		s.logger.Info("Received shutdown signal", "signal", sig)
 		cancel()
@@ -862,7 +907,6 @@ func (s *Server) Start(port string, certDir string) error {
 		return nil
 	}
 }
-
 
 // GetMux returns the raw ServeMux for testing purposes.
 func (s *Server) GetMux() *http.ServeMux {

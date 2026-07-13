@@ -367,15 +367,7 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 	}
 	updated, err := h.planService.UpdatePlan(planId, orgId, actor, update)
 	if err != nil {
-		var appErr *apperror.Error
-		if errors.As(err, &appErr) {
-			return err
-		}
-		if errors.Is(err, constants.ErrHandleImmutable) {
-			return apperror.ValidationFailed.Wrap(err, "The plan id is immutable and cannot be changed")
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to update subscription plan %s in org %s", planId, orgId))
+		return serviceError(err, fmt.Sprintf("failed to update subscription plan %s in org %s", planId, orgId))
 	}
 	resp, err := h.toSubscriptionPlanResponse(updated, true)
 	if err != nil {

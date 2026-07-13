@@ -18,6 +18,8 @@ package helm
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -390,11 +392,22 @@ func (c *Client) newActionConfig(namespace string) (*action.Configuration, error
 	return actionConfig, nil
 }
 
-// GetReleaseName generates a release name from a gateway name
+const (
+	helmReleaseNameSuffix   = "-gw"
+	maxHelmReleaseNameLen   = 53
+	helmReleaseHashPrefix   = "gw-"
+	helmReleaseHashHexChars = 8
+)
+
+// GetReleaseName generates a stable Helm release name from a gateway name.
+// Helm release names must be DNS-1123 labels and at most 53 characters.
 func GetReleaseName(gatewayName string) string {
-	// Helm release names must be DNS-compliant
-	// Gateway name is already validated as a Kubernetes resource name
-	return fmt.Sprintf("%s-gateway", gatewayName)
+	candidate := gatewayName + helmReleaseNameSuffix
+	if len(candidate) <= maxHelmReleaseNameLen {
+		return candidate
+	}
+	sum := sha256.Sum256([]byte(gatewayName))
+	return helmReleaseHashPrefix + hex.EncodeToString(sum[:])[:helmReleaseHashHexChars]
 }
 
 // MergeValuesYAML deep-merges two Helm values YAML strings.

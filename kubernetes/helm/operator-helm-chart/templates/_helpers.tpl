@@ -113,6 +113,22 @@ Common RBAC rules shared between ClusterRole (global) and Role (scoped)
   - patch
   - delete
 - apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - gateway.api-platform.wso2.com
   resources:
   - restapis

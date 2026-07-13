@@ -26,6 +26,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -238,6 +239,14 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 	extprocv3.RegisterExternalProcessorServer(grpcServer, extprocServer)
+
+	// Enable block/mutex profiling sampling when pprof is enabled. These are the
+	// only profiles that need explicit rate setup; 0 leaves them disabled. Gated so
+	// the sampling overhead is never paid unless pprof is deliberately turned on.
+	if cfg.PolicyEngine.Admin.Pprof.Enabled {
+		runtime.SetBlockProfileRate(cfg.PolicyEngine.Admin.Pprof.BlockProfileRate)
+		runtime.SetMutexProfileFraction(cfg.PolicyEngine.Admin.Pprof.MutexProfileFraction)
+	}
 
 	// Start admin HTTP server if enabled
 	var adminServer *admin.Server

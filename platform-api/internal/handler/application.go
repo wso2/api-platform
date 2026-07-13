@@ -19,7 +19,6 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -72,8 +71,7 @@ func (h *ApplicationHandler) CreateApplication(w http.ResponseWriter, r *http.Re
 	}
 	app, err := h.applicationService.CreateApplication(&req, orgID, createdBy)
 	if err != nil {
-		return h.mapApplicationError(err).
-			WithLogMessage(fmt.Sprintf("failed to create application in project %s for org %s by user %s", req.ProjectId, orgID, createdBy))
+		return serviceError(err, fmt.Sprintf("failed to create application in project %s for org %s by user %s", req.ProjectId, orgID, createdBy))
 	}
 
 	setLocation(w, "applications", app.Id)
@@ -95,8 +93,7 @@ func (h *ApplicationHandler) GetApplication(w http.ResponseWriter, r *http.Reque
 
 	app, err := h.applicationService.GetApplicationByID(appID, orgID)
 	if err != nil {
-		return h.mapApplicationError(err).
-			WithLogMessage(fmt.Sprintf("failed to get application %s in org %s", appID, orgID))
+		return serviceError(err, fmt.Sprintf("failed to get application %s in org %s", appID, orgID))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, app)
@@ -119,8 +116,7 @@ func (h *ApplicationHandler) ListApplications(w http.ResponseWriter, r *http.Req
 
 	apps, err := h.applicationService.GetApplicationsByOrganization(orgID, projectID, opts)
 	if err != nil {
-		return h.mapApplicationError(err).
-			WithLogMessage(fmt.Sprintf("failed to list applications for project %s in org %s", projectID, orgID))
+		return serviceError(err, fmt.Sprintf("failed to list applications for project %s in org %s", projectID, orgID))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, apps)
@@ -150,8 +146,7 @@ func (h *ApplicationHandler) UpdateApplication(w http.ResponseWriter, r *http.Re
 
 	app, err := h.applicationService.UpdateApplication(appID, &req, orgID, userID)
 	if err != nil {
-		return h.mapApplicationError(err).
-			WithLogMessage(fmt.Sprintf("failed to update application %s in org %s by user %s", appID, orgID, userID))
+		return serviceError(err, fmt.Sprintf("failed to update application %s in org %s by user %s", appID, orgID, userID))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, app)
@@ -175,8 +170,7 @@ func (h *ApplicationHandler) DeleteApplication(w http.ResponseWriter, r *http.Re
 	}
 
 	if err := h.applicationService.DeleteApplication(appID, orgID, userID); err != nil {
-		return h.mapApplicationError(err).
-			WithLogMessage(fmt.Sprintf("failed to delete application %s in org %s by user %s", appID, orgID, userID))
+		return serviceError(err, fmt.Sprintf("failed to delete application %s in org %s by user %s", appID, orgID, userID))
 	}
 
 	httputil.WriteJSON(w, http.StatusNoContent, nil)
@@ -199,8 +193,7 @@ func (h *ApplicationHandler) ListApplicationAssociations(w http.ResponseWriter, 
 
 	associations, err := h.applicationService.ListApplicationAssociations(appID, orgID, limit, offset)
 	if err != nil {
-		return h.mapApplicationError(err).
-			WithLogMessage(fmt.Sprintf("failed to list associations for application %s in org %s", appID, orgID))
+		return serviceError(err, fmt.Sprintf("failed to list associations for application %s in org %s", appID, orgID))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, associations)
@@ -229,8 +222,7 @@ func (h *ApplicationHandler) AddApplicationAssociations(w http.ResponseWriter, r
 
 	associations, err := h.applicationService.AddApplicationAssociations(appID, &req, orgID)
 	if err != nil {
-		return h.mapApplicationError(err).
-			WithLogMessage(fmt.Sprintf("failed to add associations for application %s in org %s", appID, orgID))
+		return serviceError(err, fmt.Sprintf("failed to add associations for application %s in org %s", appID, orgID))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, associations)
@@ -254,8 +246,7 @@ func (h *ApplicationHandler) RemoveApplicationAssociation(w http.ResponseWriter,
 	}
 
 	if err := h.applicationService.RemoveApplicationAssociation(appID, associationID, orgID); err != nil {
-		return h.mapApplicationError(err).
-			WithLogMessage(fmt.Sprintf("failed to remove association %s for application %s in org %s", associationID, appID, orgID))
+		return serviceError(err, fmt.Sprintf("failed to remove association %s for application %s in org %s", associationID, appID, orgID))
 	}
 
 	httputil.WriteJSON(w, http.StatusNoContent, nil)
@@ -278,8 +269,7 @@ func (h *ApplicationHandler) ListApplicationAPIKeys(w http.ResponseWriter, r *ht
 
 	keys, err := h.applicationService.ListMappedAPIKeys(appID, orgID, limit, offset)
 	if err != nil {
-		return h.mapApplicationError(err).
-			WithLogMessage(fmt.Sprintf("failed to list mapped API keys for application %s in org %s", appID, orgID))
+		return serviceError(err, fmt.Sprintf("failed to list mapped API keys for application %s in org %s", appID, orgID))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, keys)
@@ -306,8 +296,7 @@ func (h *ApplicationHandler) ListApplicationAssociationAPIKeys(w http.ResponseWr
 
 	keys, err := h.applicationService.ListMappedAPIKeysForAssociation(appID, associationID, orgID, limit, offset)
 	if err != nil {
-		return h.mapApplicationError(err).
-			WithLogMessage(fmt.Sprintf("failed to list mapped API keys for association %s of application %s in org %s", associationID, appID, orgID))
+		return serviceError(err, fmt.Sprintf("failed to list mapped API keys for association %s of application %s in org %s", associationID, appID, orgID))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, keys)
@@ -340,8 +329,7 @@ func (h *ApplicationHandler) AddApplicationAPIKeys(w http.ResponseWriter, r *htt
 
 	keys, err := h.applicationService.AddMappedAPIKeys(appID, &req, orgID, userID)
 	if err != nil {
-		return h.mapApplicationError(err).
-			WithLogMessage(fmt.Sprintf("failed to add mapped API keys for application %s in org %s by user %s", appID, orgID, userID))
+		return serviceError(err, fmt.Sprintf("failed to add mapped API keys for application %s in org %s by user %s", appID, orgID, userID))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, keys)
@@ -373,8 +361,7 @@ func (h *ApplicationHandler) RemoveApplicationAPIKey(w http.ResponseWriter, r *h
 	}
 
 	if err := h.applicationService.RemoveMappedAPIKey(appID, keyID, entityID, orgID, userID); err != nil {
-		return h.mapApplicationError(err).
-			WithLogMessage(fmt.Sprintf("failed to remove mapped API key %s for application %s in org %s by user %s", keyID, appID, orgID, userID))
+		return serviceError(err, fmt.Sprintf("failed to remove mapped API key %s for application %s in org %s by user %s", keyID, appID, orgID, userID))
 	}
 
 	httputil.WriteJSON(w, http.StatusNoContent, nil)
@@ -396,48 +383,4 @@ func (h *ApplicationHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+base+"/{applicationId}/associations", middleware.MapErrors(h.slogger, h.AddApplicationAssociations))
 	mux.HandleFunc("GET "+base+"/{applicationId}/associations/{associationId}/api-keys", middleware.MapErrors(h.slogger, h.ListApplicationAssociationAPIKeys))
 	mux.HandleFunc("DELETE "+base+"/{applicationId}/associations/{associationId}", middleware.MapErrors(h.slogger, h.RemoveApplicationAssociation))
-}
-
-// mapApplicationError maps service errors to *apperror.Error values for the
-// centralized error mapper, preserving the exact status/code/message each
-// error produced before the migration.
-func (h *ApplicationHandler) mapApplicationError(err error) *apperror.Error {
-	switch {
-	case errors.Is(err, constants.ErrApplicationNotFound):
-		return apperror.ApplicationNotFound.Wrap(err)
-	case errors.Is(err, constants.ErrProjectNotFound):
-		return apperror.ProjectNotFound.Wrap(err)
-	case errors.Is(err, constants.ErrOrganizationNotFound):
-		return apperror.OrganizationNotFound.Wrap(err)
-	case errors.Is(err, constants.ErrApplicationExists):
-		return apperror.ApplicationExists.Wrap(err)
-	case errors.Is(err, constants.ErrHandleExists):
-		return apperror.ApplicationExists.Wrap(err)
-	case errors.Is(err, constants.ErrAPIKeyNotFound):
-		return apperror.ApplicationAPIKeyNotFound.Wrap(err)
-	case errors.Is(err, constants.ErrAPIKeyForbidden):
-		return apperror.ApplicationAPIKeyForbidden.Wrap(err)
-	case errors.Is(err, constants.ErrInvalidApplicationName):
-		return apperror.ValidationFailed.Wrap(err, "displayName is required")
-	case errors.Is(err, constants.ErrInvalidApplicationType):
-		return apperror.ValidationFailed.Wrap(err, "Application type is required")
-	case errors.Is(err, constants.ErrUnsupportedApplicationType):
-		return apperror.ValidationFailed.Wrap(err, "Invalid application type. Only 'genai' is supported")
-	case errors.Is(err, constants.ErrInvalidHandle):
-		return apperror.ValidationFailed.Wrap(err, "Invalid application handle format")
-	case errors.Is(err, constants.ErrInvalidApplicationID):
-		return apperror.ValidationFailed.Wrap(err, "Invalid application id")
-	case errors.Is(err, constants.ErrInvalidAPIKey):
-		return apperror.ValidationFailed.Wrap(err, "Invalid API key id")
-	case errors.Is(err, constants.ErrArtifactNotFound):
-		return apperror.ArtifactNotFound.Wrap(err)
-	case errors.Is(err, constants.ErrArtifactInvalidKind):
-		return apperror.ValidationFailed.Wrap(err, "Invalid association kind. Only LlmProvider and LlmProxy are supported")
-	case errors.Is(err, constants.ErrInvalidInput):
-		return apperror.ValidationFailed.Wrap(err, "Invalid application association input")
-	case errors.Is(err, constants.ErrHandleImmutable):
-		return apperror.ValidationFailed.Wrap(err, "The id is immutable and must match the application being updated")
-	default:
-		return apperror.Internal.Wrap(err)
-	}
 }

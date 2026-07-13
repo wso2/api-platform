@@ -19,6 +19,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -41,7 +42,8 @@ func ensureCrossNamespaceServiceReferenceGrant(ctx context.Context, c client.Cli
 			return nil
 		}
 	}
-	return newTransientHTTPRouteConfigError(
+	return newBackendRefError(
+		gatewayv1.RouteReasonRefNotPermitted,
 		"cross-namespace backend Service %s/%s: no ReferenceGrant in namespace %q allowing HTTPRoute from namespace %q to core/Service %q",
 		serviceNS, serviceName, serviceNS, routeNS, serviceName,
 	)
@@ -78,6 +80,63 @@ func referenceGrantAllowsHTTPRouteToService(spec *gatewayv1beta1.ReferenceGrantS
 			continue
 		}
 		if t.Name == nil || string(*t.Name) == svcName {
+			return true
+		}
+	}
+	return false
+}
+
+// crossNamespaceSecretReferenceGrantPermitted checks whether a Gateway may reference a Secret
+// in another namespace per Gateway API ReferenceGrant rules. Grants must exist in the Secret
+// namespace. It returns a non-nil error only when the ReferenceGrant lookup itself fails (a
+// transient API read problem the caller should retry); a completed check that finds no matching
+// grant returns (false, nil) — a real, permanent deny. This lets callers distinguish a temporary
+// read failure from an actual RefNotPermitted.
+func crossNamespaceSecretReferenceGrantPermitted(ctx context.Context, c client.Client, gwNS, secretNS, secretName string) (bool, error) {
+	if secretNS == gwNS {
+		return true, nil
+	}
+	var list gatewayv1beta1.ReferenceGrantList
+	if err := c.List(ctx, &list, client.InNamespace(secretNS)); err != nil {
+		return false, fmt.Errorf("list ReferenceGrant in namespace %q: %w", secretNS, err)
+	}
+	for i := range list.Items {
+		if referenceGrantAllowsGatewayToSecret(&list.Items[i].Spec, gwNS, secretName) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func referenceGrantAllowsGatewayToSecret(spec *gatewayv1beta1.ReferenceGrantSpec, gwNS, secretName string) bool {
+	if spec == nil {
+		return false
+	}
+	fromOK := false
+	for _, f := range spec.From {
+		if string(f.Namespace) != gwNS {
+			continue
+		}
+		if string(f.Kind) != "Gateway" {
+			continue
+		}
+		if string(f.Group) != gatewayv1.GroupName {
+			continue
+		}
+		fromOK = true
+		break
+	}
+	if !fromOK {
+		return false
+	}
+	for _, t := range spec.To {
+		if string(t.Kind) != "Secret" {
+			continue
+		}
+		if string(t.Group) != "" {
+			continue
+		}
+		if t.Name == nil || string(*t.Name) == secretName {
 			return true
 		}
 	}

@@ -587,7 +587,7 @@ func TestClient_handleMCPProxyUndeploymentEvent_PublishesReplicaSyncUpdate(t *te
 					Main: api.Upstream{Url: &upstreamURL},
 				},
 				Operations: []api.Operation{
-					{Method: api.OperationMethodGET, Path: "/"},
+					{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/")},
 				},
 			},
 		},

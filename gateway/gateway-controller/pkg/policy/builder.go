@@ -191,7 +191,7 @@ func DerivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 				injectedPolicies := utils.InjectSystemPolicies(finalPolicies, systemConfig, props)
 
 				routes = append(routes, policyenginev1.PolicyChain{
-					RouteKey: xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost),
+					RouteKey: xds.GenerateRouteName(op.EffectiveMethod(), apiData.Context, apiData.Version, op.EffectivePath(), vhost),
 					Policies: injectedPolicies,
 				})
 			}

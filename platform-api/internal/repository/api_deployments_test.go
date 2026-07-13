@@ -595,8 +595,10 @@ func TestGetControlPlaneDeploymentsByGateway_ExcludesGatewayOrigin(t *testing.T)
 }
 
 func TestMain(m *testing.M) {
-	// Allow GetConfig() to generate an ephemeral secret_encryption_key without failing.
+	// ENCRYPTION_KEY and AUTH_JWT_SECRET_KEY are required.
 	os.Setenv("APIP_DEMO_MODE", "true")
+	os.Setenv("ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	os.Setenv("AUTH_JWT_SECRET_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	code := m.Run()

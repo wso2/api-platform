@@ -18,14 +18,11 @@
 package config
 
 import (
-	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -79,11 +76,12 @@ type FileBased struct {
 type Server struct {
 	LogLevel  string `koanf:"log_level"`
 	LogFormat string `koanf:"log_format"`
-	Port      string `koanf:"port"`
 
 	DBSchemaPath               string `koanf:"db_schema_path"`
 	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
 	LLMTemplateDefinitionsPath string `koanf:"llm_template_definitions_path"`
+
+	EncryptionKey string `koanf:"encryption_key"`
 
 	Database         Database         `koanf:"database"`
 	Auth             Auth             `koanf:"auth"`
@@ -91,7 +89,9 @@ type Server struct {
 	DefaultDevPortal DefaultDevPortal `koanf:"default_devportal"`
 	Deployments      Deployments      `koanf:"deployments"`
 	ArtifactLimits   ArtifactLimits   `koanf:"artifact_limits"`
-	TLS              TLS              `koanf:"tls"`
+	HTTP             HTTPListener     `koanf:"http"`
+	HTTPS            HTTPSListener    `koanf:"https"`
+	Timeouts         Timeouts         `koanf:"timeouts"`
 	CORS             CORS             `koanf:"cors"`
 	APIKey           APIKey           `koanf:"api_key"`
 	Gateway          Gateway          `koanf:"gateway"`
@@ -168,9 +168,52 @@ type Gateway struct {
 	EnableFunctionalityTypeVerification bool `koanf:"enable_functionality_type_verification"`
 }
 
-// TLS holds TLS certificate configuration.
-type TLS struct {
+// HTTPListener and HTTPSListener model the two independent listeners, following
+// the gateway router's http/https split (see RouterConfig.HTTPSEnabled /
+// HTTPSPort in gateway-controller). Each is enabled independently and bound to
+// its own port, so a deployment can serve plain HTTP internally, HTTPS
+// externally, or both at once (e.g. to migrate clients between the two without
+// downtime).
+
+// HTTPListener configures the plain-HTTP listener. Enable it only when a trusted
+// upstream (ingress, service-mesh sidecar) terminates TLS, or for internal
+// cluster traffic; never expose it directly to untrusted networks.
+type HTTPListener struct {
+	Enabled bool   `koanf:"enabled"`
+	Port    string `koanf:"port"`
+}
+
+// HTTPSListener configures the TLS listener. CertDir must contain cert.pem and
+// key.pem when Enabled is true; in demo mode a self-signed pair is generated
+// there when none is present.
+type HTTPSListener struct {
+	Enabled bool   `koanf:"enabled"`
+	Port    string `koanf:"port"`
 	CertDir string `koanf:"cert_dir"`
+}
+
+// Timeouts bounds the lifetime of a connection on both listeners, so a slow or
+// idle peer cannot hold one open indefinitely (Slowloris). The values apply to
+// the plain-HTTP and HTTPS listeners alike, since both serve the same handler.
+//
+// A zero value disables the corresponding timeout, matching net/http semantics.
+// Disabling Read or ReadHeader removes the Slowloris protection — only do so
+// behind a proxy that already enforces its own bounds.
+//
+// WebSocket routes are unaffected: gorilla/websocket clears the hijacked
+// connection's deadlines during the upgrade, so long-lived sockets outlive these.
+type Timeouts struct {
+	// ReadHeader bounds how long a client may take to send request headers.
+	ReadHeader time.Duration `koanf:"read_header"`
+	// Read bounds the whole request read, including bodies such as uploaded API
+	// definitions. Must be >= ReadHeader when both are set.
+	Read time.Duration `koanf:"read"`
+	// Write bounds handler execution plus the response write. Keep it generous:
+	// some handlers proxy slow upstreams (LLM completions, deployments).
+	Write time.Duration `koanf:"write"`
+	// Idle bounds how long a keep-alive connection may sit unused between
+	// requests.
+	Idle time.Duration `koanf:"idle"`
 }
 
 // CORS holds cross-origin resource sharing configuration.
@@ -214,16 +257,6 @@ type Database struct {
 	MaxOpenConns    int    `koanf:"max_open_conns"`
 	MaxIdleConns    int    `koanf:"max_idle_conns"`
 	ConnMaxLifetime int    `koanf:"conn_max_lifetime"`
-
-	EncryptionKey                  string `koanf:"encryption_key"`
-	SubscriptionTokenEncryptionKey string `koanf:"subscription_token_encryption_key"`
-	SecretEncryptionKey            string `koanf:"secret_encryption_key"`
-	// SecretEncryptionKeyFile is the path to a 32-byte binary key file used for secret encryption.
-	// Honoured in both demo and non-demo mode when neither SecretEncryptionKey nor
-	// EncryptionKey is set. In demo mode the file is auto-generated on first startup and
-	// reused on subsequent restarts; in non-demo mode the file must already exist (a missing
-	// or unreadable file is fatal). Matches the gateway controller key-management pattern.
-	SecretEncryptionKeyFile string `koanf:"secret_encryption_key_file"`
 }
 
 // DefaultDevPortal holds default DevPortal configuration for new organizations.
@@ -347,6 +380,9 @@ func LoadConfig(configPath string) (*Server, error) {
 	// format as the rest of the application, instead of slog's default handler.
 	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.LogLevel, Format: cfg.LogFormat}))
 
+	if err := validateTimeoutsConfig(&cfg.Timeouts); err != nil {
+		return nil, err
+	}
 	if err := validateDefaultDevPortalConfig(&cfg.DefaultDevPortal); err != nil {
 		return nil, err
 	}
@@ -369,171 +405,40 @@ func LoadConfig(configPath string) (*Server, error) {
 		return nil, err
 	}
 
-	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SecretKey == "" {
-		if !demoMode() {
-			return nil, fmt.Errorf(
-				"AUTH_JWT_SECRET_KEY must be configured when APIP_DEMO_MODE=false and JWT authentication is enabled; " +
-					"generate a secret with: openssl rand -hex 32",
-			)
+	if cfg.Auth.JWT.Enabled {
+		if cfg.Auth.JWT.SecretKey == "" {
+			return nil, fmt.Errorf("AUTH_JWT_SECRET_KEY is required when JWT authentication is enabled; " +
+				"generate one with: openssl rand -hex 32")
 		}
-		key, err := generateRandomSecret()
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate JWT secret key: %w", err)
-		}
-		cfg.Auth.JWT.SecretKey = key
-		slog.Warn("AUTH_JWT_SECRET_KEY not set — generated an ephemeral demo key (restart will invalidate all sessions)",
-			slog.String("AUTH_JWT_SECRET_KEY", key))
-	}
-
-	// Resolve the secret key file path: explicit config → default alongside the DB file.
-	if cfg.Database.SecretEncryptionKeyFile == "" && cfg.Database.Path != "" {
-		cfg.Database.SecretEncryptionKeyFile = filepath.Join(filepath.Dir(cfg.Database.Path), "secret-encryption.key")
-	}
-
-	// SecretEncryptionKey is optional when the shared DATABASE_ENCRYPTION_KEY is configured;
-	// server.go resolves the final key via: SecretEncryptionKey → EncryptionKey.
-	// Only fail (or auto-generate in demo mode) when no key source is available at all.
-	if cfg.Database.SecretEncryptionKey == "" && cfg.Database.EncryptionKey == "" {
-		if cfg.Database.SecretEncryptionKeyFile != "" {
-			demoMode := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
-			isDemoMode := demoMode != "false" && demoMode != "0"
-			if isDemoMode {
-				// Demo mode: auto-generate the key file on first start, reload on subsequent starts.
-				hexKey, err := loadOrGenerateSecretKeyFile(cfg.Database.SecretEncryptionKeyFile)
-				if err == nil {
-					cfg.Database.SecretEncryptionKey = hexKey
-				} else {
-					slog.Warn("APIP_DEMO_MODE: could not initialise secret key file, falling back to ephemeral key",
-						slog.String("path", cfg.Database.SecretEncryptionKeyFile), slog.Any("err", err))
-				}
-			} else {
-				// Non-demo mode: the key file must already exist — never auto-generate.
-				hexKey, err := loadSecretKeyFile(cfg.Database.SecretEncryptionKeyFile)
-				if err != nil {
-					return nil, fmt.Errorf("failed to load secret key file: %w", err)
-				}
-				cfg.Database.SecretEncryptionKey = hexKey
-			}
+		if !valid32ByteKey(cfg.Auth.JWT.SecretKey) {
+			return nil, fmt.Errorf("invalid AUTH_JWT_SECRET_KEY: must be 64 hex characters or " +
+				"base64 decoding to 32 bytes (generate one with: openssl rand -hex 32)")
 		}
 	}
 
-	if cfg.Database.SecretEncryptionKey == "" && cfg.Database.EncryptionKey == "" {
-		// APIP_DEMO_MODE defaults to enabled when unset; only an explicit
-		// "false"/"0" opts out and requires a configured encryption key.
-		demoMode := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
-		if demoMode == "false" || demoMode == "0" {
-			return nil, fmt.Errorf("no encryption key configured for secrets management. " +
-				"Set PLATFORM_SECRET_ENCRYPTION_KEY (secret-specific), DATABASE_ENCRYPTION_KEY (shared), " +
-				"or DATABASE_SECRET_ENCRYPTION_KEY_FILE (key file). " +
-				"Generate one with: openssl rand -hex 32. " +
-				"To allow an ephemeral key in a single-node dev environment, set APIP_DEMO_MODE=true")
-		}
-
-		// Demo mode with no usable key file — fall back to an ephemeral key.
-		// Secrets will not survive restarts.
-		key, err := generateRandomSecret()
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate secret encryption key: %w", err)
-		}
-		cfg.Database.SecretEncryptionKey = key
-		slog.Warn("APIP_DEMO_MODE: using an ephemeral random key — encrypted secrets will be unreadable after restart. " +
-			"Set DATABASE_SECRET_ENCRYPTION_KEY_FILE, PLATFORM_SECRET_ENCRYPTION_KEY, or DATABASE_ENCRYPTION_KEY.")
+	if cfg.EncryptionKey == "" {
+		return nil, fmt.Errorf("ENCRYPTION_KEY is required; generate one with: openssl rand -hex 32")
+	}
+	if !valid32ByteKey(cfg.EncryptionKey) {
+		return nil, fmt.Errorf("invalid ENCRYPTION_KEY: must be 64 hex characters or " +
+			"base64 decoding to 32 bytes (generate one with: openssl rand -hex 32)")
 	}
 
 	return cfg, nil
 }
 
-func generateRandomSecret() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
+// valid32ByteKey reports whether keyStr is a 32-byte key encoded as 64 hex characters
+// or base64 decoding to 32 bytes — matching utils.DeriveEncryptionKey's acceptance.
+func valid32ByteKey(keyStr string) bool {
+	if len(keyStr) == 64 {
+		if k, err := hex.DecodeString(keyStr); err == nil && len(k) == 32 {
+			return true
+		}
 	}
-	return hex.EncodeToString(b), nil
-}
-
-// demoMode reports whether APIP_DEMO_MODE is enabled.
-// Defaults to true when the variable is unset.
-func demoMode() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
-	if v == "" {
+	if k, err := base64.StdEncoding.DecodeString(keyStr); err == nil && len(k) == 32 {
 		return true
 	}
-	return v == "true" || v == "1"
-}
-
-const secretKeySize = 32 // AES-256
-
-// loadOrGenerateSecretKeyFile loads a 32-byte binary key file from filePath, creating it
-// (and any missing parent directories) on first run. This mirrors the gateway controller's
-// KeyManager pattern: raw binary key file, 0600 permissions, validate size on load.
-// Returns the key as a 64-char hex string for use with DeriveEncryptionKey.
-//
-// Concurrent first-time callers are safe: generateSecretKeyFile uses O_CREATE|O_EXCL so
-// only one writer succeeds; others see os.ErrExist and fall through to loadSecretKeyFile.
-func loadOrGenerateSecretKeyFile(filePath string) (string, error) {
-	err := generateSecretKeyFile(filePath)
-	switch {
-	case err == nil:
-		slog.Info("APIP_DEMO_MODE: generated and persisted secret encryption key — encrypted secrets will survive restarts",
-			slog.String("path", filePath),
-			slog.String("hint", "Set PLATFORM_SECRET_ENCRYPTION_KEY or DATABASE_ENCRYPTION_KEY for production or multi-replica deployments"))
-	case errors.Is(err, os.ErrExist):
-		// Another initializer already created the file — load the winner's key.
-	default:
-		return "", err
-	}
-	return loadSecretKeyFile(filePath)
-}
-
-// generateSecretKeyFile creates parent directories and writes 32 cryptographically
-// random bytes to filePath with permissions 0600. Uses O_CREATE|O_EXCL so concurrent
-// first-time callers are safe: only one writer succeeds, others get os.ErrExist.
-// Mirrors gateway-controller's generateKeyFile.
-func generateSecretKeyFile(filePath string) error {
-	if err := os.MkdirAll(filepath.Dir(filePath), 0700); err != nil {
-		return fmt.Errorf("failed to create key directory: %w", err)
-	}
-	key := make([]byte, secretKeySize)
-	if _, err := rand.Read(key); err != nil {
-		return fmt.Errorf("failed to generate random key: %w", err)
-	}
-	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		// Propagate os.ErrExist so the caller can distinguish "already created" from other errors.
-		return err
-	}
-	_, err = f.Write(key)
-	if closeErr := f.Close(); closeErr != nil && err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		os.Remove(filePath) // best-effort cleanup of a partial write
-		return fmt.Errorf("failed to write key file %s: %w", filePath, err)
-	}
-	return nil
-}
-
-// loadSecretKeyFile reads the key file, validates its size, warns if world-readable,
-// and returns the key as a 64-char hex string.
-func loadSecretKeyFile(filePath string) (string, error) {
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to stat secret key file %s: %w", filePath, err)
-	}
-	if info.Mode().Perm()&0004 != 0 {
-		slog.Warn("Secret encryption key file is world-readable — consider restricting permissions to 0600",
-			slog.String("path", filePath),
-			slog.String("permissions", info.Mode().Perm().String()))
-	}
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read secret key file %s: %w", filePath, err)
-	}
-	if len(data) != secretKeySize {
-		return "", fmt.Errorf("secret key file %s has wrong size: expected %d bytes, got %d", filePath, secretKeySize, len(data))
-	}
-	slog.Info("APIP_DEMO_MODE: loaded persisted secret encryption key", slog.String("path", filePath))
-	return hex.EncodeToString(data), nil
+	return false
 }
 
 // envToKoanfKey maps a lowercased environment variable name to its koanf dot-notation key.
@@ -547,8 +452,6 @@ func envToKoanfKey(s string) string {
 		return "log_level"
 	case "log_format":
 		return "log_format"
-	case "port":
-		return "port"
 	case "db_schema_path":
 		return "db_schema_path"
 	case "openapi_spec_path":
@@ -557,6 +460,8 @@ func envToKoanfKey(s string) string {
 		return "llm_template_definitions_path"
 	case "enable_scope_validation":
 		return "enable_scope_validation"
+	case "encryption_key":
+		return "encryption_key"
 
 	// Database
 	case "database_driver":
@@ -581,14 +486,6 @@ func envToKoanfKey(s string) string {
 		return "database.max_idle_conns"
 	case "database_conn_max_lifetime":
 		return "database.conn_max_lifetime"
-	case "database_encryption_key":
-		return "database.encryption_key"
-	case "database_subscription_token_encryption_key":
-		return "database.subscription_token_encryption_key"
-	case "platform_secret_encryption_key":
-		return "database.secret_encryption_key"
-	case "database_secret_encryption_key_file":
-		return "database.secret_encryption_key_file"
 
 	// Auth
 	case "auth_skip_paths":
@@ -718,9 +615,32 @@ func envToKoanfKey(s string) string {
 	case "artifact_limits_max_webbroker_apis_per_org":
 		return "artifact_limits.max_webbroker_apis_per_org"
 
-	// TLS
-	case "tls_cert_dir":
-		return "tls.cert_dir"
+	// Plain-HTTP listener
+	case "http_enabled":
+		return "http.enabled"
+	case "http_port":
+		return "http.port"
+
+	// HTTPS / TLS listener.
+	// Legacy TLS_ENABLED / TLS_CERT_DIR and the single-listener PORT are still
+	// honored and map onto the HTTPS listener, which historically served on 9243.
+	case "https_enabled", "tls_enabled":
+		return "https.enabled"
+	case "https_port", "port":
+		return "https.port"
+	case "https_cert_dir", "tls_cert_dir":
+		return "https.cert_dir"
+
+	// Listener timeouts (apply to both listeners). Values are durations, e.g.
+	// "10s", "2m". 0 disables the timeout.
+	case "timeouts_read_header":
+		return "timeouts.read_header"
+	case "timeouts_read":
+		return "timeouts.read"
+	case "timeouts_write":
+		return "timeouts.write"
+	case "timeouts_idle":
+		return "timeouts.idle"
 
 	// CORS
 	case "cors_allowed_origins":
@@ -785,6 +705,32 @@ func fileBasedUsersDecodeHook() mapstructure.DecodeHookFuncType {
 		}
 		return users, nil
 	}
+}
+
+// validateTimeoutsConfig rejects negative durations (net/http treats only zero as
+// "no timeout"; a negative deadline would expire immediately and break every
+// request) and a Read bound that would cut off header reading before ReadHeader.
+func validateTimeoutsConfig(cfg *Timeouts) error {
+	for _, f := range []struct {
+		name  string
+		value time.Duration
+	}{
+		{"timeouts.read_header (TIMEOUTS_READ_HEADER)", cfg.ReadHeader},
+		{"timeouts.read (TIMEOUTS_READ)", cfg.Read},
+		{"timeouts.write (TIMEOUTS_WRITE)", cfg.Write},
+		{"timeouts.idle (TIMEOUTS_IDLE)", cfg.Idle},
+	} {
+		if f.value < 0 {
+			return fmt.Errorf("%s must not be negative (got %s); use 0 to disable the timeout", f.name, f.value)
+		}
+	}
+	if cfg.Read > 0 && cfg.ReadHeader > cfg.Read {
+		return fmt.Errorf(
+			"timeouts.read_header (%s) must not exceed timeouts.read (%s): the header deadline would never be reached",
+			cfg.ReadHeader, cfg.Read,
+		)
+	}
+	return nil
 }
 
 func validateDefaultDevPortalConfig(cfg *DefaultDevPortal) error {

@@ -28,7 +28,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	coreservice "github.com/wso2/api-platform/platform-api/internal/service"
@@ -52,7 +52,7 @@ type WebSubAPIHmacSecretService struct {
 
 // NewWebSubAPIHmacSecretService creates a new WebSubAPIHmacSecretService.
 // encryptionKeyStr must be a 32-byte key encoded as 64 hex chars or base64
-// (set via DATABASE_ENCRYPTION_KEY).
+// (set via ENCRYPTION_KEY).
 func NewWebSubAPIHmacSecretService(
 	repo repository.WebSubAPIHmacSecretRepository,
 	websubRepo repository.WebSubAPIRepository,
@@ -62,7 +62,7 @@ func NewWebSubAPIHmacSecretService(
 	slogger *slog.Logger,
 ) (*WebSubAPIHmacSecretService, error) {
 	if encryptionKeyStr == "" {
-		return nil, fmt.Errorf("%w", constants.ErrHmacSecretEncryptionKeyMissing)
+		return nil, apperror.HmacSecretNotConfigured.New()
 	}
 	key, err := utils.DeriveEncryptionKey(encryptionKeyStr)
 	if err != nil {
@@ -87,7 +87,7 @@ func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, name, external
 		return nil, "", fmt.Errorf("failed to look up WebSub API: %w", err)
 	}
 	if api == nil {
-		return nil, "", constants.ErrWebSubAPINotFound
+		return nil, "", apperror.WebSubAPINotFound.New()
 	}
 
 	handle := slugifyHmacSecret(name)
@@ -104,7 +104,7 @@ func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, name, external
 	var plaintext string
 	if externalSecret != "" {
 		if len(externalSecret) < 32 {
-			return nil, "", constants.ErrHmacSecretInvalidValue
+			return nil, "", apperror.HmacSecretInvalidValue.New()
 		}
 		plaintext = externalSecret
 	} else {
@@ -137,7 +137,7 @@ func (s *WebSubAPIHmacSecretService) Generate(orgUUID, apiHandle, name, external
 
 	if err := s.repo.Create(secret); err != nil {
 		if isUniqueConstraintError(err) {
-			return nil, "", constants.ErrHmacSecretAlreadyExists
+			return nil, "", apperror.HmacSecretExists.New()
 		}
 		return nil, "", fmt.Errorf("failed to persist HMAC secret: %w", err)
 	}
@@ -153,7 +153,7 @@ func (s *WebSubAPIHmacSecretService) List(orgUUID, apiHandle string) ([]*model.W
 		return nil, fmt.Errorf("failed to look up WebSub API: %w", err)
 	}
 	if api == nil {
-		return nil, constants.ErrWebSubAPINotFound
+		return nil, apperror.WebSubAPINotFound.New()
 	}
 	return s.repo.ListByArtifact(api.UUID)
 }
@@ -167,7 +167,7 @@ func (s *WebSubAPIHmacSecretService) Regenerate(orgUUID, apiHandle, secretName, 
 		return nil, "", fmt.Errorf("failed to look up WebSub API: %w", err)
 	}
 	if api == nil {
-		return nil, "", constants.ErrWebSubAPINotFound
+		return nil, "", apperror.WebSubAPINotFound.New()
 	}
 
 	existing, err := s.repo.GetByArtifactAndName(api.UUID, secretName)
@@ -175,13 +175,13 @@ func (s *WebSubAPIHmacSecretService) Regenerate(orgUUID, apiHandle, secretName, 
 		return nil, "", fmt.Errorf("failed to look up HMAC secret: %w", err)
 	}
 	if existing == nil {
-		return nil, "", constants.ErrHmacSecretNotFound
+		return nil, "", apperror.HmacSecretNotFound.New()
 	}
 
 	var plaintext string
 	if externalSecret != "" {
 		if len(externalSecret) < 32 {
-			return nil, "", constants.ErrHmacSecretInvalidValue
+			return nil, "", apperror.HmacSecretInvalidValue.New()
 		}
 		plaintext = externalSecret
 	} else {
@@ -200,7 +200,7 @@ func (s *WebSubAPIHmacSecretService) Regenerate(orgUUID, apiHandle, secretName, 
 	existing.UpdatedBy = userID
 	if err := s.repo.Update(existing); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, "", constants.ErrHmacSecretNotFound
+			return nil, "", apperror.HmacSecretNotFound.Wrap(err)
 		}
 		return nil, "", fmt.Errorf("failed to update HMAC secret: %w", err)
 	}
@@ -216,7 +216,7 @@ func (s *WebSubAPIHmacSecretService) Delete(orgUUID, apiHandle, secretName strin
 		return fmt.Errorf("failed to look up WebSub API: %w", err)
 	}
 	if api == nil {
-		return constants.ErrWebSubAPINotFound
+		return apperror.WebSubAPINotFound.New()
 	}
 
 	existing, err := s.repo.GetByArtifactAndName(api.UUID, secretName)
@@ -224,12 +224,12 @@ func (s *WebSubAPIHmacSecretService) Delete(orgUUID, apiHandle, secretName strin
 		return fmt.Errorf("failed to look up HMAC secret: %w", err)
 	}
 	if existing == nil {
-		return constants.ErrHmacSecretNotFound
+		return apperror.HmacSecretNotFound.New()
 	}
 
 	if err := s.repo.Delete(api.UUID, secretName); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return constants.ErrHmacSecretNotFound
+			return apperror.HmacSecretNotFound.Wrap(err)
 		}
 		return fmt.Errorf("failed to delete HMAC secret: %w", err)
 	}

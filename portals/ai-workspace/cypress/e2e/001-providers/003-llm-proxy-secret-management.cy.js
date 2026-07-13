@@ -30,8 +30,8 @@
  *   TC-3  POST /secrets 500 → proxy creation aborted, no proxy created
  *
  * Update flow via Provider tab (TC-4 – TC-6):
- *   The Provider tab's "Save API Key" button only stages the new value locally
- *   (setLocalProxy) — the page-level "Save" button is what actually persists it
+ *   Typing into the API Key field stages the new value locally (setLocalProxy) as
+ *   you type — the page-level "Save" button is what actually persists it
  *   via PUT /llm-proxies/{id} and triggers secret rotation.
  *   TC-4  Edit API key with a new plaintext value → POST /secrets called, PUT
  *         body holds placeholder, old secret DELETEd afterward, plaintext absent
@@ -292,7 +292,7 @@ describe('AI Workspace — LLM proxy secret management (create flow)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// UPDATE flow (Provider tab: stage via "Save API Key", persist via page Save)
+// UPDATE flow (Provider tab: typing the key stages it locally, persist via page Save)
 // ---------------------------------------------------------------------------
 
 describe('AI Workspace — LLM proxy secret management (update flow)', () => {
@@ -393,9 +393,8 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
     cy.intercept('POST', '**/secrets').as('createSecret');
     cy.intercept('PUT', /\/llm-proxies\/[^/?]+(\?|$)/).as('updateProxy');
 
-    // Stage the new key — "Save API Key" only updates local state.
+    // Typing the new key stages it into local proxy state.
     cy.get('input[placeholder="Enter API key"]').type(UPDATED_KEY);
-    cy.contains('button', 'Save API Key').should('not.be.disabled').click();
 
     // Persist — page-level Save actually fires the update + secret rotation.
     cy.contains('button', /^Save$/).should('not.be.disabled').click();
@@ -465,7 +464,6 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
       `{{ secret "${explicitHandle}" }}`,
       { parseSpecialCharSequences: false }
     );
-    cy.contains('button', 'Save API Key').should('not.be.disabled').click();
     cy.contains('button', /^Save$/).should('not.be.disabled').click();
 
     cy.wait('@updateProxy', { timeout: 20000 }).then((pi) => {
@@ -494,7 +492,6 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
     });
 
     cy.get('input[placeholder="Enter API key"]').type('sk-tc6-will-fail');
-    cy.contains('button', 'Save API Key').should('not.be.disabled').click();
     cy.contains('button', /^Save$/).should('not.be.disabled').click();
 
     cy.wait('@failSecret');

@@ -105,13 +105,11 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to create subscription for api %s in org %s", req.APIID, orgId))
+		return serviceError(err, fmt.Sprintf("failed to create subscription for api %s in org %s", req.APIID, orgId))
 	}
 	resp, err := h.toSubscriptionResponse(sub, orgId)
 	if err != nil {
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to resolve subscription identity for api %s in org %s", req.APIID, orgId))
+		return serviceError(err, fmt.Sprintf("failed to resolve subscription identity for api %s in org %s", req.APIID, orgId))
 	}
 	setLocation(w, "subscriptions", sub.UUID)
 	httputil.WriteJSON(w, http.StatusCreated, resp)
@@ -156,8 +154,7 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to list subscriptions for api %s in org %s", apiId, orgId))
+		return serviceError(err, fmt.Sprintf("failed to list subscriptions for api %s in org %s", apiId, orgId))
 	}
 	// Bulk fetch API handles and plan names to avoid N+1 queries
 	apiUUIDSet := make(map[string]struct{})
@@ -180,13 +177,11 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 	}
 	artifactMetaMap, err := h.subscriptionService.GetArtifactMetadataMap(apiUUIDs, orgId)
 	if err != nil {
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to bulk fetch artifact metadata for list in org %s", orgId))
+		return serviceError(err, fmt.Sprintf("failed to bulk fetch artifact metadata for list in org %s", orgId))
 	}
 	planNameMap, err := h.subscriptionPlanService.GetPlanNameMap(planIDs, orgId)
 	if err != nil {
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to bulk fetch plan names for list in org %s", orgId))
+		return serviceError(err, fmt.Sprintf("failed to bulk fetch plan names for list in org %s", orgId))
 	}
 	// Bulk-resolve createdBy UUIDs to their raw identity to avoid N+1 lookups.
 	createdByUUIDs := make([]string, 0, len(list))
@@ -195,8 +190,7 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 	}
 	createdByMap, err := h.identity.SubsForUUIDs(createdByUUIDs)
 	if err != nil {
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to resolve subscription creator identities in org %s", orgId))
+		return serviceError(err, fmt.Sprintf("failed to resolve subscription creator identities in org %s", orgId))
 	}
 	items := make([]map[string]any, 0, len(list))
 	for _, sub := range list {
@@ -231,13 +225,11 @@ func (h *SubscriptionHandler) GetSubscription(w http.ResponseWriter, r *http.Req
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to get subscription %s in org %s", subscriptionId, orgId))
+		return serviceError(err, fmt.Sprintf("failed to get subscription %s in org %s", subscriptionId, orgId))
 	}
 	resp, err := h.toSubscriptionResponse(sub, orgId)
 	if err != nil {
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to resolve subscription identity for subscription %s in org %s", subscriptionId, orgId))
+		return serviceError(err, fmt.Sprintf("failed to resolve subscription identity for subscription %s in org %s", subscriptionId, orgId))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -281,13 +273,11 @@ func (h *SubscriptionHandler) UpdateSubscription(w http.ResponseWriter, r *http.
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to update subscription %s in org %s", subscriptionId, orgId))
+		return serviceError(err, fmt.Sprintf("failed to update subscription %s in org %s", subscriptionId, orgId))
 	}
 	resp, err := h.toSubscriptionResponse(sub, orgId)
 	if err != nil {
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to resolve subscription identity for subscription %s in org %s", subscriptionId, orgId))
+		return serviceError(err, fmt.Sprintf("failed to resolve subscription identity for subscription %s in org %s", subscriptionId, orgId))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -313,14 +303,7 @@ func (h *SubscriptionHandler) DeleteSubscription(w http.ResponseWriter, r *http.
 		return err
 	}
 	if err := h.subscriptionService.DeleteSubscription(subscriptionId, orgId, subscriberID, actor); err != nil {
-		if errors.Is(err, constants.ErrSubscriptionNotFound) {
-			return apperror.SubscriptionNotFound.Wrap(err)
-		}
-		if errors.Is(err, constants.ErrSubscriptionSubscriberMismatch) {
-			return apperror.SubscriptionForbidden.Wrap(err)
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to delete subscription %s in org %s", subscriptionId, orgId))
+		return serviceError(err, fmt.Sprintf("failed to delete subscription %s in org %s", subscriptionId, orgId))
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil

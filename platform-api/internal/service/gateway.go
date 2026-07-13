@@ -24,17 +24,18 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
-	"log/slog"
-	"regexp"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -109,10 +110,10 @@ func (s *GatewayService) GetStoredManifest(gatewayID, orgID string) (*Manifest, 
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 	if gateway.OrganizationID != orgID {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	raw, err := s.gatewayRepo.GetGatewayManifest(gatewayID)
@@ -192,7 +193,7 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 		return fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil || gateway.OrganizationID != orgID {
-		return constants.ErrGatewayNotFound
+		return apperror.GatewayNotFound.New()
 	}
 
 	reported := strings.TrimSpace(gatewayVersion)
@@ -206,7 +207,9 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 	}
 	if reportedMinor != registeredMinor {
 		if s.enableVersionVerification {
-			return fmt.Errorf("%w: registered=%s, reported=%s", constants.ErrGatewayVersionMismatch, registeredMinor, reportedMinor)
+			return apperror.Conflict.New().
+				WithDetails(map[string]string{"registered": registeredMinor, "reported": reportedMinor}).
+				WithLogMessage(fmt.Sprintf("gateway version mismatch: registered=%s reported=%s", registeredMinor, reportedMinor))
 		}
 		s.slogger.Warn("Gateway version mismatch ignored (verification disabled)",
 			slog.String("org_id", orgID),
@@ -222,7 +225,9 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 	}
 	if !functionalityTypeCompatible(gateway.FunctionalityType, reportedType) {
 		if s.enableFunctionalityTypeVerification {
-			return fmt.Errorf("%w: registered=%s, reported=%s", constants.ErrGatewayFunctionalityTypeMismatch, gateway.FunctionalityType, reportedType)
+			return apperror.Conflict.New().
+				WithDetails(map[string]string{"registered": gateway.FunctionalityType, "reported": reportedType}).
+				WithLogMessage(fmt.Sprintf("gateway functionality type mismatch: registered=%s reported=%s", gateway.FunctionalityType, reportedType))
 		}
 		s.slogger.Warn("Gateway functionality type mismatch ignored (verification disabled)",
 			slog.String("org_id", orgID),
@@ -503,10 +508,10 @@ func (s *GatewayService) GetCustomPolicyByUUID(orgID, policyUUID, version string
 		return nil, fmt.Errorf("failed to retrieve custom policy (org_id=%s, policy_uuid=%s): %w", orgID, policyUUID, err)
 	}
 	if policy == nil {
-		return nil, apperror.CustomPolicyNotFound.Wrap(constants.ErrCustomPolicyNotFound)
+		return nil, apperror.CustomPolicyNotFound.New()
 	}
 	if policy.Version != version {
-		return nil, apperror.CustomPolicyVersionNotFnd.Wrap(constants.ErrCustomPolicyVersionMismatch)
+		return nil, apperror.CustomPolicyVersionNotFnd.New()
 	}
 	return policy, nil
 }
@@ -518,10 +523,10 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 		return fmt.Errorf("failed to retrieve custom policy (org_id=%s, policy_uuid=%s): %w", orgID, policyUUID, err)
 	}
 	if policy == nil {
-		return apperror.CustomPolicyNotFound.Wrap(constants.ErrCustomPolicyNotFound)
+		return apperror.CustomPolicyNotFound.New()
 	}
 	if policy.Version != version {
-		return apperror.CustomPolicyVersionNotFnd.Wrap(constants.ErrCustomPolicyVersionMismatch)
+		return apperror.CustomPolicyVersionNotFnd.New()
 	}
 
 	if err := s.customPolicyRepo.DeleteCustomPolicyIfUnused(orgID, policyUUID); err != nil {
@@ -701,7 +706,7 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, req *
 		return nil, err
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	gateway.Name = req.DisplayName
@@ -740,7 +745,7 @@ func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error
 		return err
 	}
 	if gateway == nil {
-		return constants.ErrGatewayNotFound
+		return apperror.GatewayNotFound.New()
 	}
 
 	// Delete gateway by UUID (FK CASCADE will automatically remove tokens and deployments; association_mappings cleanup is handled by the repository)
@@ -759,7 +764,7 @@ func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error
 // VerifyToken verifies a plain-text token and returns the associated gateway
 func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) {
 	if plainToken == "" {
-		return nil, constants.ErrMissingAPIKey
+		return nil, apperror.Unauthorized.New().WithLogMessage("gateway token missing from request")
 	}
 
 	// Hash the token and look it up directly in the database
@@ -769,7 +774,7 @@ func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) 
 		return nil, fmt.Errorf("failed to query token: %w", err)
 	}
 	if token == nil {
-		return nil, constants.ErrInvalidAPIToken
+		return nil, apperror.Unauthorized.New().WithLogMessage("no active gateway token matches the presented token hash")
 	}
 
 	// Fetch the associated gateway
@@ -778,7 +783,8 @@ func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) 
 		return nil, fmt.Errorf("failed to query gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, constants.ErrInvalidAPIToken
+		return nil, apperror.Unauthorized.New().
+			WithLogMessage(fmt.Sprintf("gateway %s referenced by an active token no longer exists", token.GatewayID))
 	}
 
 	return gateway, nil

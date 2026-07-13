@@ -313,7 +313,25 @@ gateway:
           route_timeout_ms: 60000
           route_idle_timeout_ms: 300000
           connect_timeout_ms: 5000
-      
+
+      # HTTP Connection Manager (downstream) configuration: server-header handling and timeouts
+      http_listener:
+        # Server header handling: APPEND_IF_ABSENT | OVERWRITE | PASS_THROUGH
+        server_header_transformation: OVERWRITE
+        # Value written for the Server response header
+        server_header_value: "WSO2 API Platform"
+
+        # Downstream (client-facing) timeouts. A value of "0s" disables the timeout.
+        timeouts:
+          # Max duration for the entire downstream request (0s = disabled)
+          request_timeout: "0s"
+          # Max duration to receive the complete request headers (0s = disabled)
+          request_headers_timeout: "0s"
+          # Idle timeout for a single HTTP stream/request
+          stream_idle_timeout: "5m"
+          # Idle timeout for the downstream connection
+          idle_timeout: "1h"
+
       tracing_service_name: router
 
       # Policy Engine ext_proc filter configuration

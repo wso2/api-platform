@@ -33,6 +33,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/plugin"
@@ -258,14 +259,14 @@ func (p *EventGatewayPlugin) CheckProjectDeletion(orgID, projectID string) error
 		return err
 	}
 	if websubCount > 0 {
-		return constants.ErrProjectHasAssociatedWebSubAPIs
+		return apperror.ValidationFailed.New("Project has associated WebSub APIs")
 	}
 	webbrokerCount, err := p.webbrokerAPIRepo.CountByProject(orgID, projectID)
 	if err != nil {
 		return err
 	}
 	if webbrokerCount > 0 {
-		return constants.ErrProjectHasAssociatedWebBrokerAPIs
+		return apperror.ValidationFailed.New("Project has associated WebBroker APIs")
 	}
 	return nil
 }

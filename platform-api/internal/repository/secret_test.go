@@ -21,13 +21,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
 // ---- helpers ----------------------------------------------------------------
 
-func createTestSecret(t *testing.T, db interface{ Exec(string, ...interface{}) (interface{ RowsAffected() (int64, error) }, error) }, orgID, handle string) {
+func createTestSecret(t *testing.T, db interface {
+	Exec(string, ...interface{}) (interface{ RowsAffected() (int64, error) }, error)
+}, orgID, handle string) {
 	t.Helper()
 }
 
@@ -106,7 +108,7 @@ func TestSecretRepo_GetByHandle_NotFound(t *testing.T) {
 
 	repo := NewSecretRepo(db)
 	_, err := repo.GetByHandle(orgID, "nonexistent")
-	if err != constants.ErrSecretNotFound {
+	if !apperror.SecretNotFound.Is(err) {
 		t.Errorf("expected ErrSecretNotFound, got %v", err)
 	}
 }
@@ -231,7 +233,7 @@ func TestSecretRepo_List_Pagination(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		s := &model.Secret{
 			OrganizationID: orgID,
-			Handle:         string(rune('a' + i)) + "-secret",
+			Handle:         string(rune('a'+i)) + "-secret",
 			Ciphertext:     []byte("ct"),
 			Hash:           "h",
 			CreatedBy:      "u",
@@ -852,7 +854,7 @@ func TestSecretRepo_Create_UniqueConstraint_409(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error on duplicate handle, got nil")
 	}
-	if err != constants.ErrSecretAlreadyExists {
+	if !apperror.SecretExists.Is(err) {
 		t.Errorf("expected ErrSecretAlreadyExists, got: %v", err)
 	}
 }

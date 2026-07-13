@@ -82,10 +82,10 @@ func (s *SubscriptionPlanService) ResolveOrgHandle(orgUUID string) string {
 // CreatePlan creates a new subscription plan
 func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.SubscriptionPlan) (*model.SubscriptionPlan, error) {
 	if plan.Handle == "" {
-		return nil, fmt.Errorf("handle is required")
+		return nil, apperror.ValidationFailed.New("handle is required")
 	}
 	if plan.Name == "" {
-		return nil, fmt.Errorf("name is required")
+		return nil, apperror.ValidationFailed.New("name is required")
 	}
 
 	exists, err := s.planRepo.ExistsByHandleAndOrg(plan.Handle, orgUUID)
@@ -93,7 +93,7 @@ func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.
 		return nil, err
 	}
 	if exists {
-		return nil, apperror.SubscriptionPlanExists.Wrap(constants.ErrSubscriptionPlanAlreadyExists)
+		return nil, apperror.SubscriptionPlanExists.New()
 	}
 
 	plan.OrganizationUUID = orgUUID
@@ -103,7 +103,7 @@ func (s *SubscriptionPlanService) CreatePlan(orgUUID, actor string, plan *model.
 		plan.Status = model.SubscriptionPlanStatusActive
 	}
 	if plan.ThrottleLimitUnit != "" && !constants.ValidThrottleLimitUnits[plan.ThrottleLimitUnit] {
-		return nil, apperror.ValidationFailed.Wrap(constants.ErrInvalidThrottleLimitUnit, "Invalid throttle limit unit")
+		return nil, apperror.ValidationFailed.New("Invalid throttle limit unit")
 	}
 
 	if err := s.planRepo.Create(plan); err != nil {
@@ -133,12 +133,12 @@ func (s *SubscriptionPlanService) GetPlan(handle, orgUUID string) (*model.Subscr
 	plan, err := s.planRepo.GetByHandleAndOrg(handle, orgUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, apperror.SubscriptionPlanNotFound.Wrap(constants.ErrSubscriptionPlanNotFound)
+			return nil, apperror.SubscriptionPlanNotFound.New()
 		}
 		return nil, err
 	}
 	if plan == nil {
-		return nil, apperror.SubscriptionPlanNotFound.Wrap(constants.ErrSubscriptionPlanNotFound)
+		return nil, apperror.SubscriptionPlanNotFound.New()
 	}
 	return plan, nil
 }
@@ -163,17 +163,17 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 	existing, err := s.planRepo.GetByHandleAndOrg(handle, orgUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, apperror.SubscriptionPlanNotFound.Wrap(constants.ErrSubscriptionPlanNotFound)
+			return nil, apperror.SubscriptionPlanNotFound.New()
 		}
 		return nil, err
 	}
 	if existing == nil {
-		return nil, apperror.SubscriptionPlanNotFound.Wrap(constants.ErrSubscriptionPlanNotFound)
+		return nil, apperror.SubscriptionPlanNotFound.New()
 	}
 
 	if update.Name != nil {
 		if *update.Name == "" {
-			return nil, fmt.Errorf("name is required")
+			return nil, apperror.ValidationFailed.New("name is required")
 		}
 		existing.Name = *update.Name
 	}
@@ -189,7 +189,7 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 	}
 	if update.ThrottleLimitUnit != nil {
 		if !constants.ValidThrottleLimitUnits[*update.ThrottleLimitUnit] {
-			return nil, apperror.ValidationFailed.Wrap(constants.ErrInvalidThrottleLimitUnit, "Invalid throttle limit unit")
+			return nil, apperror.ValidationFailed.New("Invalid throttle limit unit")
 		}
 		existing.ThrottleLimitUnit = *update.ThrottleLimitUnit
 	}
@@ -201,7 +201,7 @@ func (s *SubscriptionPlanService) UpdatePlan(handle, orgUUID, actor string, upda
 		case model.SubscriptionPlanStatusActive, model.SubscriptionPlanStatusInactive:
 			existing.Status = *update.Status
 		default:
-			return nil, fmt.Errorf("invalid status: %s", *update.Status)
+			return nil, apperror.ValidationFailed.New(fmt.Sprintf("invalid status: %s", *update.Status))
 		}
 	}
 
@@ -233,12 +233,12 @@ func (s *SubscriptionPlanService) DeletePlan(handle, orgUUID, actor string) erro
 	existing, err := s.planRepo.GetByHandleAndOrg(handle, orgUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return apperror.SubscriptionPlanNotFound.Wrap(constants.ErrSubscriptionPlanNotFound)
+			return apperror.SubscriptionPlanNotFound.New()
 		}
 		return err
 	}
 	if existing == nil {
-		return apperror.SubscriptionPlanNotFound.Wrap(constants.ErrSubscriptionPlanNotFound)
+		return apperror.SubscriptionPlanNotFound.New()
 	}
 
 	if err := s.planRepo.Delete(existing.UUID, orgUUID); err != nil {

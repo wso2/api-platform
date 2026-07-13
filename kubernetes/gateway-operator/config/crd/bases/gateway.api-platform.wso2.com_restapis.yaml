@@ -41,8 +41,8 @@ spec:
             properties:
               context:
                 description: Context Base path for all API routes (must start with
-                  /, no trailing slash)
-                pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$
+                  /, no trailing slash; "/" denotes the root context)
+                pattern: ^/([a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/])?$
                 type: string
               displayName:
                 description: DisplayName Human-readable API name (must be URL-friendly
@@ -53,10 +53,76 @@ spec:
               operations:
                 description: Operations List of HTTP operations/routes
                 items:
-                  description: Operation defines model for Operation.
+                  description: |-
+                    Operation defines model for Operation.
+                    An operation is matched either by the simple top-level method+path fields or by the richer
+                    Match block (method + path + headers). When Match is set it is authoritative and the
+                    top-level Method/Path are ignored. Exactly one form must be provided.
                   properties:
+                    match:
+                      description: Match Request matching criteria for the operation.
+                        Extensible with query params, cookies, etc.
+                      properties:
+                        headers:
+                          description: Headers ANDed header matchers applied before
+                            routing to this operation.
+                          items:
+                            description: OperationHeaderMatch mirrors Gateway API
+                              HTTPHeaderMatch for Envoy route selection.
+                            properties:
+                              name:
+                                description: Name Header name (case-insensitive)
+                                type: string
+                              type:
+                                description: Type Match type (Exact or RegularExpression)
+                                enum:
+                                - Exact
+                                - RegularExpression
+                                type: string
+                              value:
+                                description: Value Header value to match
+                                type: string
+                            required:
+                            - name
+                            - value
+                            type: object
+                          type: array
+                        method:
+                          description: Method HTTP method
+                          enum:
+                          - GET
+                          - POST
+                          - PUT
+                          - PATCH
+                          - DELETE
+                          - HEAD
+                          - OPTIONS
+                          type: string
+                        path:
+                          description: Path Path match criteria
+                          properties:
+                            type:
+                              description: Type How the path is matched (Exact or
+                                PathPrefix). Defaults to Exact when omitted.
+                              enum:
+                              - Exact
+                              - PathPrefix
+                              type: string
+                            value:
+                              description: Value Route path with optional {param}
+                                placeholders
+                              pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/{}\[\]]*$
+                              type: string
+                          required:
+                          - value
+                          type: object
+                      required:
+                      - method
+                      - path
+                      type: object
                     method:
-                      description: Method HTTP method
+                      description: Method HTTP method (simple form; ignored when Match
+                        is set).
                       enum:
                       - GET
                       - POST
@@ -68,6 +134,7 @@ spec:
                       type: string
                     path:
                       description: Path Route path with optional {param} placeholders
+                        (simple form; ignored when Match is set).
                       pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/{}\[\]]*$
                       type: string
                     policies:
@@ -98,10 +165,25 @@ spec:
                         - version
                         type: object
                       type: array
-                  required:
-                  - method
-                  - path
+                    resilience:
+                      description: Resilience Operation-level backend/route timeout
+                        configuration (overrides API-level)
+                      properties:
+                        idleTimeout:
+                          description: IdleTimeout Per-route stream idle timeout.
+                            "0s" disables.
+                          pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                          type: string
+                        timeout:
+                          description: Timeout Maximum time for the entire route (request
+                            to upstream response). "0s" disables.
+                          pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                          type: string
+                      type: object
                   type: object
+                  x-kubernetes-validations:
+                  - message: operation must set both method and path, or set match
+                    rule: (has(self.method) && has(self.path)) || has(self.match)
                 minItems: 1
                 type: array
               policies:
@@ -132,6 +214,21 @@ spec:
                   - version
                   type: object
                 type: array
+              resilience:
+                description: |-
+                  Resilience API-level backend/route timeout configuration applied to all operations
+                  unless overridden at the operation level
+                properties:
+                  idleTimeout:
+                    description: IdleTimeout Per-route stream idle timeout. "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                  timeout:
+                    description: Timeout Maximum time for the entire route (request
+                      to upstream response). "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                type: object
               upstream:
                 description: Upstream API-level upstream configuration
                 properties:
@@ -139,29 +236,122 @@ spec:
                     description: Main Upstream backend configuration for production
                       traffic
                     properties:
+                      hostRewrite:
+                        description: |-
+                          HostRewrite controls how the Host header is handled when routing to the upstream.
+                          "auto" lets Envoy rewrite the Host header to the upstream cluster host; "manual"
+                          disables automatic rewriting so the incoming Host header is preserved. When unset,
+                          the gateway-controller defaults to "auto".
+                        enum:
+                        - auto
+                        - manual
+                        type: string
+                      ref:
+                        description: Ref Name of a predefined upstreamDefinition to
+                          route through.
+                        type: string
                       url:
-                        description: Url Backend service URL (may include path prefix
-                          like /api/v2)
+                        description: Url Direct backend service URL (may include path
+                          prefix like /api/v2)
                         pattern: ^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$
                         type: string
-                    required:
-                    - url
                     type: object
+                    x-kubernetes-validations:
+                    - message: exactly one of url or ref must be set
+                      rule: has(self.url) != has(self.ref)
                   sandbox:
                     description: Sandbox Upstream backend configuration for sandbox/testing
                       traffic
                     properties:
+                      hostRewrite:
+                        description: |-
+                          HostRewrite controls how the Host header is handled when routing to the upstream.
+                          "auto" lets Envoy rewrite the Host header to the upstream cluster host; "manual"
+                          disables automatic rewriting so the incoming Host header is preserved. When unset,
+                          the gateway-controller defaults to "auto".
+                        enum:
+                        - auto
+                        - manual
+                        type: string
+                      ref:
+                        description: Ref Name of a predefined upstreamDefinition to
+                          route through.
+                        type: string
                       url:
-                        description: Url Backend service URL (may include path prefix
-                          like /api/v2)
+                        description: Url Direct backend service URL (may include path
+                          prefix like /api/v2)
                         pattern: ^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$
                         type: string
-                    required:
-                    - url
                     type: object
+                    x-kubernetes-validations:
+                    - message: exactly one of url or ref must be set
+                      rule: has(self.url) != has(self.ref)
                 required:
                 - main
                 type: object
+              upstreamDefinitions:
+                description: |-
+                  UpstreamDefinitions is the list of reusable upstream definitions (with optional connect
+                  timeout and weighted load-balancing targets) that upstream.ref and the dynamic-endpoint
+                  policy can reference.
+                items:
+                  description: |-
+                    UpstreamDefinition is a reusable upstream configuration with an optional connect timeout and
+                    one or more weighted load-balancing targets. Referenced from an upstream via its `ref` field
+                    and by the dynamic-endpoint policy. Shared by RestApi, LLM Provider, and MCP; mirrors the
+                    management-API UpstreamDefinition schema.
+                  properties:
+                    basePath:
+                      description: |-
+                        BasePath Base path prefix prepended to all requests routed through this upstream (e.g. /api/v2).
+                        Must start with "/" and must not end with "/". Omit for root ("/").
+                      pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$
+                      type: string
+                    name:
+                      description: |-
+                        Name Unique identifier for this upstream definition (referenced by upstream.ref or the
+                        dynamic-endpoint policy).
+                      maxLength: 100
+                      minLength: 1
+                      pattern: ^[a-zA-Z0-9\-_]+$
+                      type: string
+                    timeout:
+                      description: Timeout Optional timeout configuration for this
+                        upstream (connect timeout).
+                      properties:
+                        connect:
+                          description: Connect Connection-establishment timeout duration
+                            (e.g. "5s", "500ms"). "0s" disables.
+                          pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                          type: string
+                      type: object
+                    upstreams:
+                      description: Upstreams List of backend targets with optional
+                        weights for load balancing.
+                      items:
+                        description: WeightedUpstream is a single backend target within
+                          an UpstreamDefinition.
+                        properties:
+                          url:
+                            description: Url Backend URL (host and port; no path)
+                            type: string
+                          weight:
+                            description: |-
+                              Weight Relative weight for load balancing across multiple upstream targets. Reserved for
+                              future multi-target load balancing; not applied yet (only the first target is currently used).
+                            maximum: 100
+                            minimum: 0
+                            type: integer
+                        required:
+                        - url
+                        type: object
+                      minItems: 1
+                      type: array
+                  required:
+                  - name
+                  - upstreams
+                  type: object
+                type: array
               version:
                 description: Version Semantic version of the API
                 pattern: ^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$
@@ -170,7 +360,10 @@ spec:
                 description: Vhosts Custom virtual hosts/domains for the API
                 properties:
                   main:
-                    description: Main Custom virtual host/domain for production traffic
+                    description: |-
+                      Main Custom virtual host(s)/domain(s) for production traffic. One or more hostnames separated
+                      by ";" — each serves the main upstream (e.g. when an HTTPRoute attaches to multiple listeners
+                      with distinct hostnames). The first entry is the primary vhost.
                     type: string
                   sandbox:
                     description: Sandbox Custom virtual host/domain for sandbox traffic

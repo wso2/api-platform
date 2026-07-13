@@ -48,6 +48,10 @@ auth_mode = "basic"
 # full ap:* set (recommended). Override only to request a narrower set.
 # oidc_scope = "openid profile email offline_access ap:organization:manage ..."
 
+# Force the BFF's OIDC client on independently of auth_mode. Setting
+# auth_mode = "oidc" already enables it, so this is rarely needed.
+# oidc_enabled = false
+
 # BFF callback the IDP redirects to after login — must equal the redirect URI
 # registered on the IDP application. Required in OIDC mode.
 # oidc_redirect_url = "https://localhost:5380/api/auth/callback"
@@ -92,7 +96,12 @@ platform_gateway_versions = '[{"version":"1.2","latestVersion":"v1.2.0-M1","chan
 # --- Listener & TLS ---
 # Address the BFF listens on (host:port). The container publishes this port.
 # bff_addr = ":5380"
+# Terminate TLS on the BFF listener. Set false only when a trusted upstream
+# (ingress controller, service-mesh sidecar) terminates TLS for you — no
+# certificate is then read, generated, or required.
+# tls_enabled = true
 # Use a self-signed certificate when no cert/key files are mounted.
+# Ignored when tls_enabled = false. Never reached when APIP_DEMO_MODE=false.
 # tls_self_signed = true
 # Paths to a mounted TLS certificate and key (used instead of self-signed).
 # tls_cert_file = "/etc/ai-workspace/tls/tls.crt"
@@ -129,3 +138,23 @@ platform_gateway_versions = '[{"version":"1.2","latestVersion":"v1.2.0-M1","chan
 # cookie_samesite = "lax"
 # Custom header required on state-mutating requests (CSRF protection).
 # csrf_header = "X-Requested-By"
+
+
+# ====================================================================
+# Environment-only settings (no config.toml key)
+#
+# These are read from the environment and have no equivalent here — either
+# because they are secrets, or because they gate the startup safety checks
+# and must be set deliberately rather than inherited from a copied file.
+# ====================================================================
+#
+#   OIDC_CLIENT_SECRET   The BFF's confidential-client secret. Set it in a .env
+#                        file or the container environment. Never commit it.
+#
+#   APIP_DEMO_MODE       "true" (default) relaxes startup checks for quickstart:
+#                        basic auth is allowed and a self-signed TLS certificate
+#                        is generated when none is mounted. Set "false" for
+#                        production, which then requires OIDC, plus either a
+#                        mounted certificate or tls_enabled = false above.
+#                        The same variable drives the Platform API, so one value
+#                        governs the whole stack.
