@@ -3016,6 +3016,14 @@ components:
           default: deployed
           example: deployed
 
+    UpstreamReference:
+      type: string
+      description: Name of a predefined upstreamDefinition.
+      minLength: 1
+      maxLength: 100
+      pattern: '^[a-zA-Z0-9\-_]+$'
+      example: my-upstream-1
+
     UpstreamDefinition:
       type: object
       required:
@@ -3024,12 +3032,7 @@ components:
       description: Reusable upstream configuration with optional timeout and load balancing settings
       properties:
         name:
-          type: string
-          description: Unique identifier for this upstream definition
-          minLength: 1
-          maxLength: 100
-          pattern: '^[a-zA-Z0-9\-_]+$'
-          example: my-upstream-1
+          $ref: "#/components/schemas/UpstreamReference"
         basePath:
           type: string
           description: Base path prefix for all endpoints in this upstream (e.g., /api/v2). All requests to this upstream will have this path prepended. Must start with '/' and must not end with '/'; omit for root.
@@ -3100,8 +3103,7 @@ components:
           description: Direct backend URL to route traffic to
           example: http://prod-backend:5000/api/v2
         ref:
-          type: string
-          description: Reference to a predefined upstreamDefinition
+          $ref: "#/components/schemas/UpstreamReference"
         hostRewrite:
           type: string
           enum:
@@ -3140,6 +3142,8 @@ components:
             $ref: "#/components/schemas/Policy"
         resilience:
           $ref: "#/components/schemas/Resilience"
+        upstream:
+          $ref: "#/components/schemas/OperationUpstream"
 
     OperationMethod:
       type: string
@@ -3208,6 +3212,29 @@ components:
           description: Header match type
           enum: [Exact, RegularExpression]
           default: Exact
+
+    OperationUpstream:
+      type: object
+      additionalProperties: false
+      description: Per-operation upstream override. Each sub-field must reference a named entry in spec.upstreamDefinitions. Missing sub-fields fall back to API-level upstream. At least one of main or sandbox must be set.
+      minProperties: 1
+      properties:
+        main:
+          type: object
+          additionalProperties: false
+          required:
+            - ref
+          properties:
+            ref:
+              $ref: "#/components/schemas/UpstreamReference"
+        sandbox:
+          type: object
+          additionalProperties: false
+          required:
+            - ref
+          properties:
+            ref:
+              $ref: "#/components/schemas/UpstreamReference"
 
     Policy:
       type: object

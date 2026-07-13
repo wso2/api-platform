@@ -29,10 +29,20 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils/clusterkey"
 )
 
 // ptrStr is a helper to get a pointer to a string literal.
 func ptrStr(s string) *string { return &s }
+
+// opRef builds the inline per-operation upstream target holding a ref.
+func opRef(ref string) *struct {
+	Ref api.UpstreamReference `json:"ref" yaml:"ref"`
+} {
+	return &struct {
+		Ref api.UpstreamReference `json:"ref" yaml:"ref"`
+	}{Ref: ref}
+}
 
 // testRouterCfg returns a minimal RouterConfig for transformer tests.
 func testRouterCfg() *config.RouterConfig {
@@ -297,29 +307,6 @@ func TestRestAPITransformer_EmptyVersionUsesResolvedVersionInChain(t *testing.T)
 		"resolved major version should be stored in the chain, not the original empty string")
 }
 
-// TestSanitizeUpstreamDefinitionName verifies that dots and colons are replaced
-// for Envoy cluster name compatibility.
-func TestSanitizeUpstreamDefinitionName(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"my-upstream", "my-upstream"},
-		{"my.upstream", "my_upstream"},
-		{"my:upstream", "my_upstream"},
-		{"host.example.com:8080", "host_example_com_8080"},
-		{"", ""},
-		{"a.b.c:d", "a_b_c_d"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := SanitizeUpstreamDefinitionName(tt.input)
-			assert.Equal(t, tt.expected, got)
-		})
-	}
-}
-
 // TestResolveUpstreamURL verifies URL resolution from direct URL, ref, or missing config.
 func TestResolveUpstreamURL(t *testing.T) {
 	refName := "my-def"
@@ -399,6 +386,401 @@ func TestResolveUpstreamURL(t *testing.T) {
 	})
 }
 
+// makeRestAPIWithOps builds a RestAPI StoredConfig with caller-supplied operations,
+// both API-level main and sandbox upstreams configured, and a set of common
+// upstreamDefinitions that per-op tests can reference by name.
+func makeRestAPIWithOps(ops []api.Operation) *models.StoredConfig {
+	defs := []api.UpstreamDefinition{
+		{Name: "user-svc-cluster", Upstreams: []struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{{Url: "http://user-svc:8080"}}},
+		{Name: "user-svc-test-cluster", Upstreams: []struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{{Url: "http://user-svc-test:8080"}}},
+		{Name: "shared-svc-cluster", Upstreams: []struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{{Url: "http://shared-svc:8080"}}},
+		{Name: "same-svc-cluster", Upstreams: []struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{{Url: "http://same-svc:8080"}}},
+		{Name: "user-svc-cluster-v2", Upstreams: []struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{{Url: "http://user-svc:9090"}}},
+		{Name: "per-op-cluster", Upstreams: []struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{{Url: "http://per-op-main:9090"}}},
+	}
+	apiData := api.APIConfigData{
+		DisplayName:         "Test API",
+		Context:             "/test",
+		Version:             "1.0.0",
+		Operations:          ops,
+		UpstreamDefinitions: &defs,
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main:    api.Upstream{Url: ptrStr("http://api-main:8080")},
+			Sandbox: &api.Upstream{Url: ptrStr("http://api-sandbox:8080")},
+		},
+	}
+	restAPI := api.RestAPI{
+		Kind:     api.RestAPIKindRestApi,
+		Metadata: api.Metadata{Name: "test-api"},
+		Spec:     apiData,
+	}
+	return &models.StoredConfig{
+		UUID:          "test-api",
+		Kind:          string(api.RestAPIKindRestApi),
+		Configuration: restAPI,
+	}
+}
+
+// TestRestAPITransformer_PerOpMainOverridesMainVhost asserts that a main-only override
+// causes the main vhost route to use the definition cluster while the sandbox vhost route
+// falls back to the API-level sandbox cluster.
+func TestRestAPITransformer_PerOpMainOverridesMainVhost(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	cfg := makeRestAPIWithOps([]api.Operation{
+		{
+			Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users"),
+			Upstream: &api.OperationUpstream{
+				Main: opRef("user-svc-cluster"),
+			},
+		},
+	})
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, rdc)
+
+	mainRoute := rdc.Routes["GET|/test/users|main.local"]
+	require.NotNil(t, mainRoute)
+	assert.Equal(t, clusterkey.DefinitionName("RestApi", cfg.UUID, "user-svc-cluster"), mainRoute.Upstream.ClusterKey,
+		"main vhost should use the referenced definition cluster")
+	// Per-op main is dynamic: cluster_header ON with the definition cluster as the
+	// default, so a dynamic-endpoint policy can still steer it while a no-policy
+	// request falls back to the per-op ref.
+	assert.True(t, mainRoute.Upstream.UseClusterHeader,
+		"per-op main route should use cluster_header so policies can override")
+	assert.Equal(t, mainRoute.Upstream.ClusterKey, mainRoute.Upstream.DefaultCluster,
+		"per-op main DefaultCluster must be the definition cluster key")
+
+	sandboxRoute := rdc.Routes["GET|/test/users|sandbox.local"]
+	require.NotNil(t, sandboxRoute)
+	assert.False(t, strings.HasPrefix(sandboxRoute.Upstream.ClusterKey, "upstream_"),
+		"sandbox vhost should fall back to API sandbox, got %q", sandboxRoute.Upstream.ClusterKey)
+}
+
+// TestRestAPITransformer_PerOpSandboxOverridesSandboxVhost asserts that a sandbox-only override
+// causes the main vhost to fall back to the API main while the sandbox vhost uses the definition cluster.
+func TestRestAPITransformer_PerOpSandboxOverridesSandboxVhost(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	cfg := makeRestAPIWithOps([]api.Operation{
+		{
+			Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users"),
+			Upstream: &api.OperationUpstream{
+				Sandbox: opRef("user-svc-test-cluster"),
+			},
+		},
+	})
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	mainRoute := rdc.Routes["GET|/test/users|main.local"]
+	require.NotNil(t, mainRoute)
+	assert.False(t, strings.HasPrefix(mainRoute.Upstream.ClusterKey, "upstream_"),
+		"main vhost should fall back to API main, got %q", mainRoute.Upstream.ClusterKey)
+
+	sandboxRoute := rdc.Routes["GET|/test/users|sandbox.local"]
+	require.NotNil(t, sandboxRoute)
+	assert.Equal(t, clusterkey.DefinitionName("RestApi", cfg.UUID, "user-svc-test-cluster"), sandboxRoute.Upstream.ClusterKey,
+		"sandbox vhost should use the referenced definition cluster")
+}
+
+// TestRestAPITransformer_PerOpBothOverrideBothVhosts asserts that both vhosts get distinct
+// definition clusters when main and sandbox are overridden.
+func TestRestAPITransformer_PerOpBothOverrideBothVhosts(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	cfg := makeRestAPIWithOps([]api.Operation{
+		{
+			Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users"),
+			Upstream: &api.OperationUpstream{
+				Main:    opRef("user-svc-cluster"),
+				Sandbox: opRef("user-svc-test-cluster"),
+			},
+		},
+	})
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	mainRoute := rdc.Routes["GET|/test/users|main.local"]
+	sandboxRoute := rdc.Routes["GET|/test/users|sandbox.local"]
+	require.NotNil(t, mainRoute)
+	require.NotNil(t, sandboxRoute)
+
+	assert.Equal(t, clusterkey.DefinitionName("RestApi", cfg.UUID, "user-svc-cluster"), mainRoute.Upstream.ClusterKey,
+		"main vhost should use its referenced definition cluster")
+	assert.Equal(t, clusterkey.DefinitionName("RestApi", cfg.UUID, "user-svc-test-cluster"), sandboxRoute.Upstream.ClusterKey,
+		"sandbox vhost should use its referenced definition cluster")
+	assert.NotEqual(t, mainRoute.Upstream.ClusterKey, sandboxRoute.Upstream.ClusterKey,
+		"main and sandbox per-op vhosts must produce distinct cluster keys (definition names differ)")
+}
+
+// TestRestAPITransformer_NoPerOpUsesAPILevelClusters - regression - without per-op
+// upstream the routes still use the API-level main/sandbox clusters.
+func TestRestAPITransformer_NoPerOpUsesAPILevelClusters(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	cfg := makeRestAPIWithOps([]api.Operation{
+		{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users")},
+	})
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	mainRoute := rdc.Routes["GET|/test/users|main.local"]
+	sandboxRoute := rdc.Routes["GET|/test/users|sandbox.local"]
+	require.NotNil(t, mainRoute)
+	require.NotNil(t, sandboxRoute)
+	assert.False(t, strings.HasPrefix(mainRoute.Upstream.ClusterKey, "upstream_"))
+	assert.False(t, strings.HasPrefix(sandboxRoute.Upstream.ClusterKey, "upstream_"))
+}
+
+// TestRestAPITransformer_TwoOpsSameRefReuseOneCluster verifies the core reuse
+// property: two operations referencing the SAME upstream definition reuse exactly
+// ONE definition cluster (no per-op clusters), and both routes point at it.
+func TestRestAPITransformer_TwoOpsSameRefReuseOneCluster(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	cfg := makeRestAPIWithOps([]api.Operation{
+		{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users"), Upstream: &api.OperationUpstream{Main: opRef("shared-svc")}},
+		{Method: api.Ptr(api.OperationMethod("POST")), Path: api.Ptr("/users"), Upstream: &api.OperationUpstream{Main: opRef("shared-svc")}},
+	})
+	spec := cfg.Configuration.(api.RestAPI)
+	spec.Spec.UpstreamDefinitions = &[]api.UpstreamDefinition{
+		{
+			Name: "shared-svc",
+			Upstreams: []struct {
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{Url: "http://shared-svc:8080"},
+			},
+		},
+	}
+	cfg.Configuration = spec
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	getRoute := rdc.Routes["GET|/test/users|main.local"]
+	postRoute := rdc.Routes["POST|/test/users|main.local"]
+	require.NotNil(t, getRoute, "GET route must exist")
+	require.NotNil(t, postRoute, "POST route must exist")
+
+	// Both ops reuse the SAME definition cluster (no per-op clusters).
+	assert.Equal(t, getRoute.Upstream.ClusterKey, postRoute.Upstream.ClusterKey,
+		"two ops sharing a ref must reuse the same definition cluster")
+	assert.True(t, strings.HasPrefix(getRoute.Upstream.ClusterKey, "upstream_"),
+		"per-op route must reuse the upstream_<def> definition cluster, got %q", getRoute.Upstream.ClusterKey)
+
+	// Exactly ONE cluster registered for shared-svc.
+	shared := 0
+	for k := range rdc.UpstreamClusters {
+		if strings.Contains(k, "shared-svc") {
+			shared++
+		}
+	}
+	assert.Equal(t, 1, shared, "shared-svc must produce exactly one reused definition cluster")
+}
+
+// TestRestAPITransformer_PerOpClusterIsolatedAcrossAPIs asserts that two APIs with the
+// same operation referencing the same definition produce different definition cluster
+// keys because the API ID is part of the cluster name.
+func TestRestAPITransformer_PerOpClusterIsolatedAcrossAPIs(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+
+	cfgA := makeRestAPIWithOps([]api.Operation{
+		{
+			Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users"),
+			Upstream: &api.OperationUpstream{
+				Main: opRef("shared-svc-cluster"),
+			},
+		},
+	})
+	cfgA.UUID = "api-aaa"
+
+	cfgB := makeRestAPIWithOps([]api.Operation{
+		{
+			Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users"),
+			Upstream: &api.OperationUpstream{
+				Main: opRef("shared-svc-cluster"),
+			},
+		},
+	})
+	cfgB.UUID = "api-bbb"
+
+	rdcA, err := transformer.Transform(cfgA)
+	require.NoError(t, err)
+	rdcB, err := transformer.Transform(cfgB)
+	require.NoError(t, err)
+
+	var keyA, keyB string
+	for k := range rdcA.UpstreamClusters {
+		if strings.HasPrefix(k, "upstream_") {
+			keyA = k
+		}
+	}
+	for k := range rdcB.UpstreamClusters {
+		if strings.HasPrefix(k, "upstream_") {
+			keyB = k
+		}
+	}
+
+	require.NotEmpty(t, keyA)
+	require.NotEmpty(t, keyB)
+	assert.NotEqual(t, keyA, keyB, "same URL across different APIs must produce different definition cluster keys")
+}
+
+// TestRestAPITransformer_PerOpSandboxWithoutAPILevelSandbox - guard regression.
+// API-level Sandbox is nil, but one op declares a per-op sandbox upstream. The
+// sandbox vhost must be created only for that op; ops without per-op sandbox
+// must NOT get a sandbox route (otherwise they'd silently route to the main
+// cluster on the sandbox vhost).
+func TestRestAPITransformer_PerOpSandboxWithoutAPILevelSandbox(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+
+	sbDefs := []api.UpstreamDefinition{
+		{Name: "user-svc-cluster", Upstreams: []struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{{Url: "http://user-svc-test:8080"}}},
+	}
+	apiData := api.APIConfigData{
+		DisplayName:         "Test API",
+		Context:             "/test",
+		Version:             "1.0.0",
+		UpstreamDefinitions: &sbDefs,
+		Operations: []api.Operation{
+			{
+				Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users"),
+				Upstream: &api.OperationUpstream{
+					Sandbox: opRef("user-svc-cluster"),
+				},
+			},
+			{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/orders")},
+		},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main:    api.Upstream{Url: ptrStr("http://api-main:8080")},
+			Sandbox: nil,
+		},
+	}
+	cfg := &models.StoredConfig{
+		UUID: "test-api",
+		Kind: string(api.RestAPIKindRestApi),
+		Configuration: api.RestAPI{
+			Kind:     api.RestAPIKindRestApi,
+			Metadata: api.Metadata{Name: "test-api"},
+			Spec:     apiData,
+		},
+	}
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, rdc)
+
+	usersMain := rdc.Routes["GET|/test/users|main.local"]
+	require.NotNil(t, usersMain, "op with per-op sandbox must still have a main route")
+	assert.False(t, strings.HasPrefix(usersMain.Upstream.ClusterKey, "upstream_"),
+		"main vhost should fall back to API main cluster, got %q", usersMain.Upstream.ClusterKey)
+
+	usersSandbox := rdc.Routes["GET|/test/users|sandbox.local"]
+	require.NotNil(t, usersSandbox, "op with per-op sandbox must have a sandbox route")
+	assert.True(t, strings.HasPrefix(usersSandbox.Upstream.ClusterKey, "upstream_"),
+		"sandbox vhost should use definition cluster, got %q", usersSandbox.Upstream.ClusterKey)
+
+	ordersMain := rdc.Routes["GET|/test/orders|main.local"]
+	require.NotNil(t, ordersMain, "op without per-op upstream must have a main route")
+	assert.False(t, strings.HasPrefix(ordersMain.Upstream.ClusterKey, "upstream_"))
+
+	_, ordersHasSandbox := rdc.Routes["GET|/test/orders|sandbox.local"]
+	assert.False(t, ordersHasSandbox,
+		"op without per-op sandbox must NOT get a sandbox route when API-level sandbox is nil")
+}
+
+// TestRestAPITransformer_PerOpSandboxInheritsSandboxHostRewrite - a per-op sandbox
+// override route carries no HostRewrite of its own, so it must inherit the API-level
+// SANDBOX HostRewrite (not the API-level main). This guards the transform/xDS parity:
+// the xDS path inherits the sandbox value, so the RDC path must too. With API-level
+// main=auto and sandbox=manual, the per-op sandbox route must be manual (AutoHostRewrite=false).
+func TestRestAPITransformer_PerOpSandboxInheritsSandboxHostRewrite(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+
+	manual := api.Manual
+	auto := api.Auto
+	defs := []api.UpstreamDefinition{
+		{Name: "op-sandbox-cluster", Upstreams: []struct {
+			Url    string `json:"url" yaml:"url"`
+			Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+		}{{Url: "http://op-sandbox:8080"}}},
+	}
+	apiData := api.APIConfigData{
+		DisplayName:         "Test API",
+		Context:             "/test",
+		Version:             "1.0.0",
+		UpstreamDefinitions: &defs,
+		Operations: []api.Operation{
+			{
+				Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users"),
+				Upstream: &api.OperationUpstream{
+					Sandbox: opRef("op-sandbox-cluster"),
+				},
+			},
+		},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main:    api.Upstream{Url: ptrStr("http://api-main:8080"), HostRewrite: &auto},
+			Sandbox: &api.Upstream{Url: ptrStr("http://api-sandbox:8080"), HostRewrite: &manual},
+		},
+	}
+	cfg := &models.StoredConfig{
+		UUID: "test-api",
+		Kind: string(api.RestAPIKindRestApi),
+		Configuration: api.RestAPI{
+			Kind:     api.RestAPIKindRestApi,
+			Metadata: api.Metadata{Name: "test-api"},
+			Spec:     apiData,
+		},
+	}
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	usersSandbox := rdc.Routes["GET|/test/users|sandbox.local"]
+	require.NotNil(t, usersSandbox, "op with per-op sandbox must have a sandbox route")
+	assert.True(t, strings.HasPrefix(usersSandbox.Upstream.ClusterKey, "upstream_"),
+		"sandbox vhost should use definition cluster, got %q", usersSandbox.Upstream.ClusterKey)
+	assert.False(t, usersSandbox.AutoHostRewrite,
+		"per-op sandbox route must inherit API-level SANDBOX hostRewrite (manual), not main (auto)")
+
+	usersMain := rdc.Routes["GET|/test/users|main.local"]
+	require.NotNil(t, usersMain)
+	assert.True(t, usersMain.AutoHostRewrite,
+		"main route must keep API-level main hostRewrite (auto)")
+}
+
 // TestResolvePort checks port resolution with explicit, default-http and default-https.
 func TestResolvePort(t *testing.T) {
 	tests := []struct {
@@ -431,10 +813,6 @@ func TestRestAPITransformer_SandboxRouteClusterHeader(t *testing.T) {
 	defs := map[string]models.PolicyDefinition{}
 	const sandboxURL = "http://sandbox-backend:9080/sandbox"
 	const sandboxRouteKey = "GET|/test/hello|sandbox.local"
-	// The default cluster must be the name Envoy knows the cluster by, which in the
-	// RDC path is the rdc.UpstreamClusters map key (ClusterKey), i.e.
-	// "upstream_sandbox_<host>_<port>" — not the sanitized "cluster_<scheme>_<host>" form.
-	const expectedSandboxCluster = "upstream_sandbox_sandbox-backend_9080"
 
 	t.Run("without upstreamDefinitions the sandbox route still uses cluster_header defaulting to the sandbox cluster", func(t *testing.T) {
 		transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
@@ -448,8 +826,8 @@ func TestRestAPITransformer_SandboxRouteClusterHeader(t *testing.T) {
 		r, exists := rdc.Routes[sandboxRouteKey]
 		require.True(t, exists, "sandbox route should exist")
 		assert.True(t, r.Upstream.UseClusterHeader)
-		assert.Equal(t, expectedSandboxCluster, r.Upstream.DefaultCluster,
-			"sandbox route must default to the sandbox cluster, not main")
+		assert.True(t, strings.HasPrefix(r.Upstream.DefaultCluster, "sandbox_"),
+			"sandbox route must default to the URL-stable sandbox cluster (sandbox_<hash>), not main; got %q", r.Upstream.DefaultCluster)
 	})
 
 	t.Run("with upstreamDefinitions the sandbox route uses cluster_header defaulting to the sandbox cluster", func(t *testing.T) {
@@ -465,8 +843,8 @@ func TestRestAPITransformer_SandboxRouteClusterHeader(t *testing.T) {
 		r, exists := rdc.Routes[sandboxRouteKey]
 		require.True(t, exists, "sandbox route should exist")
 		assert.True(t, r.Upstream.UseClusterHeader)
-		assert.Equal(t, expectedSandboxCluster, r.Upstream.DefaultCluster,
-			"sandbox route must default to the sandbox cluster, not main")
+		assert.True(t, strings.HasPrefix(r.Upstream.DefaultCluster, "sandbox_"),
+			"sandbox route must default to the URL-stable sandbox cluster (sandbox_<hash>), not main; got %q", r.Upstream.DefaultCluster)
 	})
 }
 
@@ -910,4 +1288,226 @@ func TestRestAPITransformer_ConnectTimeoutFromDefinition(t *testing.T) {
 			assert.Nil(t, uc.ConnectTimeout, "cluster %q must have no connect timeout so the global default applies", name)
 		}
 	})
+}
+
+// TestRestAPITransformer_APILevelClusterNameShape asserts the URL-stable cluster
+// naming contract for API-level main and sandbox upstreams:
+//   - cluster names are "<env>_<64-hex>": main and sandbox share the sha256(apiID) digest, distinguished by the env prefix
+//   - ClusterKey and EnvoyClusterName are the SAME string (so the policy engine's
+//     default_upstream_cluster metadata resolves to a real Envoy cluster)
+func TestRestAPITransformer_APILevelClusterNameShape(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	cfg := makeRestAPIWithOps([]api.Operation{
+		{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users")},
+	})
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	// Expected name is hard-coded (full sha256("test-api")), not computed via
+	// clusterkey.HashedName, so a change to the hashing function is caught here.
+	expectedMain := "main_2a28373e2cacc6ea903d8c7e52dd3c49f8a87f95ec65ba1156de7e6564ca9524"
+	expectedSandbox := "sandbox_2a28373e2cacc6ea903d8c7e52dd3c49f8a87f95ec65ba1156de7e6564ca9524"
+
+	mainRoute := rdc.Routes["GET|/test/users|main.local"]
+	require.NotNil(t, mainRoute, "main route must exist")
+	assert.Equal(t, expectedMain, mainRoute.Upstream.ClusterKey,
+		"main cluster name should be <env>_<hash> derived from sha256(apiID)")
+
+	sandboxRoute := rdc.Routes["GET|/test/users|sandbox.local"]
+	require.NotNil(t, sandboxRoute, "sandbox route must exist")
+	assert.Equal(t, expectedSandbox, sandboxRoute.Upstream.ClusterKey,
+		"sandbox cluster name should be <env>_<hash> derived from sha256(apiID)")
+
+	_, mainExists := rdc.UpstreamClusters[expectedMain]
+	require.True(t, mainExists, "main cluster %q must be registered in UpstreamClusters", expectedMain)
+	_, sandboxExists := rdc.UpstreamClusters[expectedSandbox]
+	require.True(t, sandboxExists, "sandbox cluster %q must be registered in UpstreamClusters", expectedSandbox)
+}
+
+// TestRestAPITransformer_APILevelDefaultClusterMatchesRealCluster verifies that
+// route.Upstream.DefaultCluster matches a cluster registered in
+// rdc.UpstreamClusters whenever UseClusterHeader is enabled. The policy engine
+// writes DefaultCluster into the x-target-upstream header and Envoy looks up
+// the cluster by that value; if the name does not match a registered cluster,
+// Envoy returns a cluster-not-found 503.
+func TestRestAPITransformer_APILevelDefaultClusterMatchesRealCluster(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	cfg := makeRestAPIWithOps([]api.Operation{
+		{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users")},
+	})
+	// Add an upstreamDefinition so UseClusterHeader becomes true and
+	// DefaultCluster is actually populated.
+	spec := cfg.Configuration.(api.RestAPI)
+	spec.Spec.UpstreamDefinitions = &[]api.UpstreamDefinition{
+		{
+			Name: "stub-def",
+			Upstreams: []struct {
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{
+				{Url: "http://stub-def-svc:8080"},
+			},
+		},
+	}
+	cfg.Configuration = spec
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	mainRoute := rdc.Routes["GET|/test/users|main.local"]
+	require.NotNil(t, mainRoute)
+	require.True(t, mainRoute.Upstream.UseClusterHeader,
+		"upstreamDefinitions present, UseClusterHeader should be true so DefaultCluster is meaningful")
+	require.NotEmpty(t, mainRoute.Upstream.DefaultCluster,
+		"DefaultCluster must be populated when UseClusterHeader is true")
+
+	_, exists := rdc.UpstreamClusters[mainRoute.Upstream.DefaultCluster]
+	assert.True(t, exists,
+		"DefaultCluster %q must reference a real registered cluster in UpstreamClusters "+
+			"(prevents a cluster-not-found 503 when the policy engine writes x-target-upstream)",
+		mainRoute.Upstream.DefaultCluster)
+	assert.Equal(t, mainRoute.Upstream.ClusterKey, mainRoute.Upstream.DefaultCluster,
+		"DefaultCluster and ClusterKey must be the same string")
+}
+
+// TestRestAPITransformer_APILevelURLStableAcrossURLEdit asserts that editing the
+// API-level main upstream URL does NOT change the cluster name. This is the
+// URL-stable contract: the route keeps pointing at the same named cluster and
+// name-keyed stats stay continuous across URL edits.
+func TestRestAPITransformer_APILevelURLStableAcrossURLEdit(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+
+	cfgA := makeRestAPIWithOps([]api.Operation{{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users")}})
+	rdcA, err := transformer.Transform(cfgA)
+	require.NoError(t, err)
+
+	cfgB := makeRestAPIWithOps([]api.Operation{{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users")}})
+	specB := cfgB.Configuration.(api.RestAPI)
+	specB.Spec.Upstream.Main.Url = ptrStr("http://api-main-v2:9090")
+	cfgB.Configuration = specB
+	rdcB, err := transformer.Transform(cfgB)
+	require.NoError(t, err)
+
+	nameA := rdcA.Routes["GET|/test/users|main.local"].Upstream.ClusterKey
+	nameB := rdcB.Routes["GET|/test/users|main.local"].Upstream.ClusterKey
+	assert.Equal(t, nameA, nameB,
+		"API-level main cluster name must not depend on URL "+
+			"(URL-stable contract: the name must survive URL edits)")
+}
+
+// TestRestAPITransformer_APILevelMainOnlyHasNoSandboxCluster verifies that an
+// API with no sandbox upstream registers no sandbox_<hash> cluster and creates
+// no sandbox route. The optional env must not leave a route pointing at a
+// cluster absent from UpstreamClusters (which would surface as a cluster-not-found 503).
+func TestRestAPITransformer_APILevelMainOnlyHasNoSandboxCluster(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	cfg := makeRestAPIWithOps([]api.Operation{
+		{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users")},
+	})
+	spec := cfg.Configuration.(api.RestAPI)
+	spec.Spec.Upstream.Sandbox = nil // main-only API
+	cfg.Configuration = spec
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	// Expected name is hard-coded (full sha256("test-api")), not computed via
+	// clusterkey.HashedName, so a change to the hashing function is caught here.
+	expectedMain := "main_2a28373e2cacc6ea903d8c7e52dd3c49f8a87f95ec65ba1156de7e6564ca9524"
+	expectedSandbox := "sandbox_2a28373e2cacc6ea903d8c7e52dd3c49f8a87f95ec65ba1156de7e6564ca9524"
+
+	_, mainExists := rdc.UpstreamClusters[expectedMain]
+	require.True(t, mainExists, "main cluster %q must still be registered", expectedMain)
+
+	_, sandboxExists := rdc.UpstreamClusters[expectedSandbox]
+	assert.False(t, sandboxExists,
+		"sandbox cluster %q must not be registered when no sandbox upstream is configured", expectedSandbox)
+
+	_, sandboxRouteExists := rdc.Routes["GET|/test/users|sandbox.local"]
+	assert.False(t, sandboxRouteExists,
+		"no sandbox route should exist for a main-only API")
+}
+
+// TestRestAPITransformer_ClusterNameUsesSharedHelper locks the cross-builder
+// naming contract: the transform path names the cluster exactly
+// clusterkey.HashedName(env, cfg.UUID), the same helper and argument the xDS
+// translator uses (pinned on that side in pkg/xds tests), so the two builders
+// cannot drift to different names for the same API.
+func TestRestAPITransformer_ClusterNameUsesSharedHelper(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	cfg := makeRestAPIWithOps([]api.Operation{
+		{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users")},
+	})
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	assert.Equal(t, clusterkey.HashedName("main", cfg.UUID),
+		rdc.Routes["GET|/test/users|main.local"].Upstream.ClusterKey)
+	assert.Equal(t, clusterkey.HashedName("sandbox", cfg.UUID),
+		rdc.Routes["GET|/test/users|sandbox.local"].Upstream.ClusterKey)
+}
+
+// TestRestAPITransformer_APILevelPolicyPrecedesOperationLevelInChain pins that
+// buildPolicyChain places API-level policies before operation-level ones, so an
+// operation-level policy is the last write and wins over an API-level one in the kernel.
+func TestRestAPITransformer_APILevelPolicyPrecedesOperationLevelInChain(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"api-pol|v1.0.0": {Name: "api-pol", Version: "v1.0.0"},
+		"op-pol|v1.0.0":  {Name: "op-pol", Version: "v1.0.0"},
+	}
+
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+	cfg := makeRestAPIStoredConfig(
+		[]api.Policy{{Name: "api-pol", Version: ""}},
+		[]api.Policy{{Name: "op-pol", Version: ""}},
+	)
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, rdc)
+
+	routeKey := "GET|/test/hello|main.local"
+	chain, ok := rdc.PolicyChains[routeKey]
+	require.True(t, ok)
+	require.Len(t, chain.Policies, 2)
+	assert.Equal(t, "api-pol", chain.Policies[0].Name,
+		"API-level policy must come first in the chain")
+	assert.Equal(t, "op-pol", chain.Policies[1].Name,
+		"operation-level policy must come after the API-level policy so it wins as the last write in the kernel")
+}
+
+// TestRestAPITransformer_PerOpMainKeptWhenVhostsEqual pins that a per-op main override
+// survives when the main and sandbox vhosts are the same string and no sandbox upstream
+// exists; the route dispatch must key on the vhost's role, not its name.
+func TestRestAPITransformer_PerOpMainKeptWhenVhostsEqual(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	cfg := makeRestAPIWithOps([]api.Operation{
+		{
+			Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users"),
+			Upstream: &api.OperationUpstream{
+				Main: opRef("user-svc-cluster"),
+			},
+		},
+	})
+	restAPI := cfg.Configuration.(api.RestAPI)
+	restAPI.Spec.Upstream.Sandbox = nil
+	same := "same.local"
+	restAPI.Spec.Vhosts = &struct {
+		Main    string  `json:"main" yaml:"main"`
+		Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+	}{Main: same, Sandbox: &same}
+	cfg.Configuration = restAPI
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	route := rdc.Routes["GET|/test/users|same.local"]
+	require.NotNil(t, route, "main route must exist")
+	want := clusterkey.DefinitionName("RestApi", cfg.UUID, "user-svc-cluster")
+	assert.Equal(t, want, route.Upstream.ClusterKey,
+		"per-op main override must survive equal main/sandbox vhosts")
+	assert.Equal(t, want, route.Upstream.DefaultCluster,
+		"cluster_header default must be the per-op cluster, not the API-level one")
 }

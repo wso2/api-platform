@@ -27,6 +27,7 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils/upstreamref"
 )
 
 // APIValidator validates API configurations using rule-based validation
@@ -37,6 +38,9 @@ type APIValidator struct {
 	versionRegex *regexp.Regexp
 	// urlFriendlyNameRegex matches URL-safe characters for API names
 	urlFriendlyNameRegex *regexp.Regexp
+	// upstreamRefRegex enforces the schema pattern shared by upstream refs
+	// (API-level and per-op) and upstream definition names
+	upstreamRefRegex *regexp.Regexp
 	// policyValidator validates policy references and parameters
 	policyValidator *PolicyValidator
 }
@@ -47,6 +51,7 @@ func NewAPIValidator() *APIValidator {
 		pathParamRegex:       regexp.MustCompile(`\{[a-zA-Z0-9_]+\}`),
 		versionRegex:         regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
 		urlFriendlyNameRegex: regexp.MustCompile(`^[a-zA-Z0-9\-_\. ]+$`),
+		upstreamRefRegex:     regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`),
 	}
 }
 
@@ -186,6 +191,36 @@ func (v *APIValidator) validateUpstreamUrl(label string, upUrl *string) []Valida
 	return errors
 }
 
+// validateUpstreamRefName enforces the shared UpstreamReference name contract
+// (max 100 characters, ^[a-zA-Z0-9\-_]+$) on definition names and refs. The
+// message names the field from the trailing segment of its path.
+func (v *APIValidator) validateUpstreamRefName(field, value string) []ValidationError {
+	name := fieldName(field)
+	if len(value) > 100 {
+		return []ValidationError{{
+			Field:   field,
+			Message: fmt.Sprintf("%s must not exceed %d characters", name, 100),
+		}}
+	}
+	if !v.upstreamRefRegex.MatchString(value) {
+		return []ValidationError{{
+			Field:   field,
+			Message: name + " must match pattern " + v.upstreamRefRegex.String(),
+		}}
+	}
+	return nil
+}
+
+// fieldName returns the trailing path segment of a validation field path
+// (for example "spec.operations[2].upstream.main.ref" yields "ref") so error
+// messages can name the field without a caller-supplied label.
+func fieldName(field string) string {
+	if i := strings.LastIndex(field, "."); i >= 0 {
+		return field[i+1:]
+	}
+	return field
+}
+
 func (v *APIValidator) validateUpstreamRef(label string, ref *string, upstreamDefinitions *[]api.UpstreamDefinition) []ValidationError {
 	var errors []ValidationError
 
@@ -200,7 +235,10 @@ func (v *APIValidator) validateUpstreamRef(label string, ref *string, upstreamDe
 
 	refName := strings.TrimSpace(*ref)
 
-	// Check if upstream definitions are provided
+	if errs := v.validateUpstreamRefName("spec.upstream."+label+".ref", refName); errs != nil {
+		return errs
+	}
+
 	if upstreamDefinitions == nil || len(*upstreamDefinitions) == 0 {
 		errors = append(errors, ValidationError{
 			Field:   "spec.upstream." + label + ".ref",
@@ -209,16 +247,8 @@ func (v *APIValidator) validateUpstreamRef(label string, ref *string, upstreamDe
 		return errors
 	}
 
-	// Check if the referenced definition exists
-	found := false
-	for _, def := range *upstreamDefinitions {
-		if def.Name == refName {
-			found = true
-			break
-		}
-	}
-
-	if !found {
+	// Resolve via the shared upstreamref helper so API-level, per-op, and translator lookups match.
+	if _, err := upstreamref.FindByName(refName, upstreamDefinitions); err != nil {
 		errors = append(errors, ValidationError{
 			Field:   "spec.upstream." + label + ".ref",
 			Message: fmt.Sprintf("Referenced upstream definition '%s' not found in upstreamDefinitions", refName),
@@ -467,7 +497,7 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 	errors = append(errors, v.validateResilience("spec.resilience", spec.Resilience)...)
 
 	// Validate operations
-	errors = append(errors, v.validateOperations(spec.Operations)...)
+	errors = append(errors, v.validateOperations(spec.Operations, spec.UpstreamDefinitions)...)
 
 	return errors
 }
@@ -560,7 +590,7 @@ func (v *APIValidator) ValidateContext(context string) []ValidationError {
 }
 
 // validateOperations validates the operations configuration
-func (v *APIValidator) validateOperations(operations []api.Operation) []ValidationError {
+func (v *APIValidator) validateOperations(operations []api.Operation, upstreamDefinitions *[]api.UpstreamDefinition) []ValidationError {
 	var errors []ValidationError
 
 	if len(operations) == 0 {
@@ -628,9 +658,65 @@ func (v *APIValidator) validateOperations(operations []api.Operation) []Validati
 
 		// Validate operation-level resilience block
 		errors = append(errors, v.validateResilience(fmt.Sprintf("spec.operations[%d].resilience", i), op.Resilience)...)
+
+		// Validate per-operation upstream override (main / sandbox)
+		errors = append(errors, v.validateOperationUpstream(i, op.Upstream, upstreamDefinitions)...)
 	}
 
 	return errors
+}
+
+// validateOperationUpstream validates the ref-only per-operation main/sandbox
+// overrides; each present ref must name an entry in upstreamDefinitions.
+func (v *APIValidator) validateOperationUpstream(opIdx int, up *api.OperationUpstream, upstreamDefinitions *[]api.UpstreamDefinition) []ValidationError {
+	var errors []ValidationError
+	if up == nil {
+		return errors
+	}
+	if up.Main == nil && up.Sandbox == nil {
+		errors = append(errors, ValidationError{
+			Field:   fmt.Sprintf("spec.operations[%d].upstream", opIdx),
+			Message: "At least one of 'main' or 'sandbox' must be set",
+		})
+		return errors
+	}
+	if up.Main != nil {
+		errs := v.validateOperationUpstreamRef(opIdx, "main", up.Main.Ref, upstreamDefinitions)
+		errors = append(errors, errs...)
+	}
+	if up.Sandbox != nil {
+		errs := v.validateOperationUpstreamRef(opIdx, "sandbox", up.Sandbox.Ref, upstreamDefinitions)
+		errors = append(errors, errs...)
+	}
+	return errors
+}
+
+// validateOperationUpstreamRef validates a single operation-level upstream ref.
+// The ref must resolve to a named entry in upstreamDefinitions.
+func (v *APIValidator) validateOperationUpstreamRef(opIdx int, env, ref string, upstreamDefinitions *[]api.UpstreamDefinition) []ValidationError {
+	field := fmt.Sprintf("spec.operations[%d].upstream.%s.ref", opIdx, env)
+
+	refName := strings.TrimSpace(ref)
+	if refName == "" {
+		return []ValidationError{{
+			Field:   field,
+			Message: "Upstream ref is required",
+		}}
+	}
+
+	if errs := v.validateUpstreamRefName(field, refName); errs != nil {
+		return errs
+	}
+
+	// Resolve via the shared upstreamref helper (same lookup as the translators).
+	if _, err := upstreamref.FindByName(refName, upstreamDefinitions); err != nil {
+		return []ValidationError{{
+			Field:   field,
+			Message: fmt.Sprintf("Referenced upstream definition '%s' not found in upstreamDefinitions", refName),
+		}}
+	}
+
+	return nil
 }
 
 // validatePathParameters checks if path parameters have balanced braces
