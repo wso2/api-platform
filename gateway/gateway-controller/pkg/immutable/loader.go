@@ -210,6 +210,30 @@ func (g *ImmutableGW) applyArtifact(path, kind, contentType string, data []byte,
 	return nil
 }
 
+func collectArtifacts(dir string) ([]string, error) {
+	var paths []string
+	if err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return fmt.Errorf("error accessing path %s: %w", path, walkErr)
+		}
+		if d.IsDir() {
+			if strings.HasPrefix(d.Name(), "..") {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		if ext != ".yaml" && ext != ".yml" && ext != ".json" {
+			return nil
+		}
+		paths = append(paths, path)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return paths, nil
+}
+
 // Middleware returns a handler that rejects POST, PUT, and DELETE with 405
 // when immutable mode is enabled. When disabled, it returns a passthrough handler.
 func (g *ImmutableGW) Middleware() func(http.Handler) http.Handler {
