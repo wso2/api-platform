@@ -33,7 +33,7 @@ enable_scope_validation = true
 # (secrets, subscription tokens, WebSub HMAC secrets)
 # Generate with: openssl rand -hex 32.
 # encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
-encryption_key = '{{ env "ENCRYPTION_KEY" }}'
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
 # ---------------------------------------------------------------------------
 # Database
@@ -60,7 +60,7 @@ path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 [auth.jwt]
 enabled         = true
 issuer          = "platform-api"
-secret_key      = '{{ env "AUTH_JWT_SECRET_KEY" }}'
+secret_key      = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
 skip_validation = false   # verify JWT signature
 
 # IDP (JWKS-based) — disabled in quickstart mode.

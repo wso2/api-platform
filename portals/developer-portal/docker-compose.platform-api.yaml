@@ -23,15 +23,16 @@
 #        cd ../../platform-api && make build
 #      This is required — the published 0.10.0 image on ghcr.io predates the
 #      /auth/login endpoint that the username/password login form here uses.
-#   2. docker compose -f docker-compose.platform-api.yaml up -d
+#   2. docker compose --env-file keys.env -f docker-compose.platform-api.yaml up -d
 #   3. npm start
 #   4. Open http://localhost:3000
 #      Login: admin / admin
 #
-# AUTH_JWT_SECRET_KEY (signs login sessions; share the same value with the devportal's
-# APIP_DP_PLATFORMAPI_JWTSECRET) and ENCRYPTION_KEY (encrypts data at rest) are both REQUIRED —
-# set them in your shell or a .env file. Both are 32-byte keys (64 hex chars / base64 —
-# openssl rand -hex 32). The Platform API fails to start if either is missing.
+# APIP_CP_AUTH_JWT_SECRET_KEY (signs login sessions; share the same value with the devportal's
+# APIP_DP_PLATFORMAPI_JWTSECRET) and APIP_CP_ENCRYPTION_KEY (encrypts data at rest) are both
+# REQUIRED. Put them in a `keys.env` file and pass it with --env-file. Both are 32-byte keys
+# (64 hex chars / base64 — openssl rand -hex 32); the Platform API reads them
+# from config-platform-api.toml via {{ env "..." }} tokens and fails to start if either is missing.
 
 services:
   platform-api:
@@ -39,6 +40,9 @@ services:
     container_name: platform-api
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
+    environment:
+      - APIP_CP_ENCRYPTION_KEY=${APIP_CP_ENCRYPTION_KEY:-}
+      - APIP_CP_AUTH_JWT_SECRET_KEY=${APIP_CP_AUTH_JWT_SECRET_KEY:-}
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data

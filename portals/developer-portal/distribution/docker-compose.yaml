@@ -23,15 +23,16 @@
 # Quick start:
 #   1. (Optional) Edit configs/config-platform-api.toml to adjust users/org as needed
 #      — ships with a default admin/admin user, ready to use as-is.
-#   2. docker compose up
+#   2. docker compose --env-file keys.env up
 #   3. Open https://localhost:3000/default/views/default  (accept the self-signed cert warning)
 #      Login with a user defined in configs/config-platform-api.toml (default: admin / admin)
 #
 # Secrets (both are 32-byte keys — 64 hex chars / base64; generate with openssl rand -hex 32):
-#   AUTH_JWT_SECRET_KEY  — signs login JWTs; the devportal verifies with the same value.
-#   ENCRYPTION_KEY       — encrypts secrets/subscription tokens at rest.
-#   Both are REQUIRED — set them in your shell or a .env file; the Platform API fails to
-#   start if either is missing.
+#   APIP_CP_AUTH_JWT_SECRET_KEY  — signs login JWTs; the devportal verifies with the same value.
+#   APIP_CP_ENCRYPTION_KEY       — encrypts secrets/subscription tokens at rest.
+#   Both are REQUIRED. Put them in `keys.env` file and start
+#   with `docker compose --env-file keys.env up`; the Platform API reads them from
+#   config-platform-api.toml via {{ env "..." }} tokens and fails to start if either is missing.
 #
 # Configuration:
 #   Edit configs/config.toml to customise devportal settings.
@@ -65,6 +66,9 @@ services:
     container_name: platform-api
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
+    environment:
+      - APIP_CP_ENCRYPTION_KEY=${APIP_CP_ENCRYPTION_KEY:-}
+      - APIP_CP_AUTH_JWT_SECRET_KEY=${APIP_CP_AUTH_JWT_SECRET_KEY:-}
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
@@ -149,10 +153,10 @@ services:
       APIP_DP_LOGGING_CONSOLEONLY: "true"
 
       # Platform API — used for local auth credential validation.
-      # Set APIP_DP_PLATFORMAPI_JWTSECRET to the same value as AUTH_JWT_SECRET_KEY so
+      # Set APIP_DP_PLATFORMAPI_JWTSECRET to the same value as APIP_CP_AUTH_JWT_SECRET_KEY so
       # the devportal can verify Platform API JWTs locally (no per-request login call).
       APIP_DP_PLATFORMAPI_BASEURL: "https://platform-api:9243"
-      APIP_DP_PLATFORMAPI_JWTSECRET: ${AUTH_JWT_SECRET_KEY:-}
+      APIP_DP_PLATFORMAPI_JWTSECRET: ${APIP_CP_AUTH_JWT_SECRET_KEY:-}
       APIP_DP_PLATFORMAPI_INSECURE: "true"   # Platform API uses a self-signed cert in this dev setup
 
       # AES-256-GCM key for encrypting subscription tokens and webhook secrets at rest.

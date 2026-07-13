@@ -236,10 +236,11 @@ The prefix is stripped and the remainder mapped to a config key — e.g. `APIP_C
 with the prefix.
 
 Two variables are intentionally **not** prefixed: `APIP_DEMO_MODE` (a standalone runtime
-flag) and the shared `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`. Separately, the `{{ env "NAME" }}`
-interpolation tokens used inside the config file read **bare** names via `os.LookupEnv`, so
-`{{ env "ENCRYPTION_KEY" }}` reads `ENCRYPTION_KEY` while the direct override for the same
-key is `APIP_CP_ENCRYPTION_KEY` (see "Providing secrets via the config file" below).
+flag) and the shared `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`. The `{{ env "NAME" }}` interpolation
+tokens in the config file read the literal name via `os.LookupEnv` (independent of the koanf
+prefix mechanism); the samples use the same `APIP_CP_`-prefixed names for one consistent
+namespace — e.g. `{{ env "APIP_CP_ENCRYPTION_KEY" }}` (see "Providing secrets via the config
+file" below).
 
 ### Authentication
 
@@ -392,14 +393,20 @@ In **IDP mode with `APIP_CP_AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are reso
 
 When the Platform API is configured from a TOML file, do **not** write raw key values into
 it and do **not** hardcode them as literal env vars in a compose file. Reference each secret
-(`ENCRYPTION_KEY`, `AUTH_JWT_SECRET_KEY`, `DATABASE_PASSWORD`, `WEBHOOK_SECRET`, …) with an
-interpolation token that is resolved at startup, preferring a mounted file:
+(`APIP_CP_ENCRYPTION_KEY`, `APIP_CP_AUTH_JWT_SECRET_KEY`, `APIP_CP_DATABASE_PASSWORD`,
+`APIP_CP_WEBHOOK_SECRET`, …) with an interpolation token that is resolved at startup,
+preferring a mounted file:
 
 ```toml
-encryption_key = '{{ env "ENCRYPTION_KEY" }}'                     # from an env var (e.g. a .env file)
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'            # from an env var
 # preferred — from a mounted secret file:
 # encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
 ```
+
+For the `{{ env }}` form, supply the value from a git-ignored env file rather than the shell or
+the compose file — the samples keep secrets in `keys.env` and start the stack with
+`docker compose --env-file keys.env up`, which the compose forwards into the container
+via an `environment:` `${APIP_CP_…}` passthrough (never an `env_file:` block or a hardcoded value).
 
 `{{ file }}` reads are restricted to an allowlist (`/etc/platform-api`, `/secrets/platform-api`;
 override with the shared `APIP_CONFIG_FILE_SOURCE_ALLOWLIST` env var). Resolution fails closed:

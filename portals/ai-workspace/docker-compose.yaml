@@ -36,7 +36,7 @@
 #   example: Asgardeo).
 #
 # Usage:
-#   docker compose up -d
+#   docker compose --env-file keys.env up -d
 #
 # Ports:
 #   AI Workspace  →  https://localhost:5380
@@ -66,6 +66,8 @@ services:
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
       - APIP_DEMO_MODE=${APIP_DEMO_MODE:-true}
+      - APIP_CP_ENCRYPTION_KEY=${APIP_CP_ENCRYPTION_KEY:-}
+      - APIP_CP_AUTH_JWT_SECRET_KEY=${APIP_CP_AUTH_JWT_SECRET_KEY:-}
       # ── OIDC IDP — uncomment to validate tokens against any OIDC provider's
       # JWKS instead of file-based auth. Set the OIDC_* values in .env. Claim
       # overrides are optional (default: organization / org_name / org_handle).

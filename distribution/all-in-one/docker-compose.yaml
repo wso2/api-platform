@@ -41,7 +41,7 @@ services:
       dockerfile: Dockerfile
     container_name: devportal
     environment:
-      - APIP_DP_PLATFORMAPI_JWTSECRET=${AUTH_JWT_SECRET_KEY:-}
+      - APIP_DP_PLATFORMAPI_JWTSECRET=${APIP_CP_AUTH_JWT_SECRET_KEY:-}
     ports:
       - "3001:3001"
     volumes:
@@ -75,6 +75,8 @@ services:
       - APIP_CP_DATABASE_MAX_IDLE_CONNS=10
       - APIP_CP_DATABASE_CONN_MAX_LIFETIME=300
       - APIP_CP_DATABASE_EXECUTE_SCHEMA_DDL=true
+      - APIP_CP_ENCRYPTION_KEY=${APIP_CP_ENCRYPTION_KEY:-}
+      - APIP_CP_AUTH_JWT_SECRET_KEY=${APIP_CP_AUTH_JWT_SECRET_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

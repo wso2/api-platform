@@ -160,18 +160,20 @@ Instead, reference each in the TOML with an interpolation token that is resolved
 startup — from an environment variable, or preferably from a mounted secret file:
 
 ```toml
-encryption_key = '{{ env "ENCRYPTION_KEY" }}'                    # from an env var
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'            # from an env var
 secret_key     = '{{ file "/secrets/platform-api/jwt_secret" }}' # from a file (preferred)
 ```
 
-Supply the values via a git-ignored `.env` file (see the stack's `.env.example`) or a
-mounted secret file — never commit them. The names referenced by the tokens above:
+Supply the env values from a git-ignored `keys.env` and start with `docker compose --env-file keys.env up`
+Or mount a secret file and use `{{ file }}`.
 
-| Key referenced by the token | Description |
-|--------------------------|-------------|
-| `AUTH_JWT_SECRET_KEY` | JWT signing key (required when `auth.jwt.enabled = true`) |
-| `ENCRYPTION_KEY` | 32-byte key (64 hex / base64) — encrypts secrets & subscription tokens (required) |
-| `DATABASE_PASSWORD` | Database password |
+The `APIP_CP_`-prefixed names referenced by the tokens above:
+
+| Key referenced by the token | Description                                                                       |
+|--------------------------|-----------------------------------------------------------------------------------|
+| `APIP_CP_AUTH_JWT_SECRET_KEY` | JWT signing key (required when `auth.jwt.enabled = true`)                         |
+| `APIP_CP_ENCRYPTION_KEY` | 32-byte key (64 hex / base64) — encrypts secrets & subscription tokens (required) |
+| `APIP_CP_DATABASE_PASSWORD` | Database password                                                                 |
 
 ## Environment Variable Override
 
