@@ -108,8 +108,8 @@ export default function LLMProxiesList() {
   } = useAppShell();
   const isProjectLevel = Boolean(currentProject?.id);
   const newProxyPath = isProjectLevel
-    ? buildProjectPath(currentOrganization, currentProject, '/proxies/new')
-    : buildOrgPath(currentOrganization, '/proxies/new');
+    ? buildProjectPath(currentOrganization, currentProject, '/proxies/create')
+    : buildOrgPath(currentOrganization, '/proxies/create');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{
