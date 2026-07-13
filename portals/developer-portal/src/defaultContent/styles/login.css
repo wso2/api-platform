@@ -185,7 +185,7 @@
   font-size: 0.9375rem;
   font-weight: 600;
   color: #fff;
-  background: var(--wso2-gradient);
+  background: var(--primary-gradient);
   cursor: pointer;
   box-shadow: 0 8px 20px rgba(239,66,35,.22);
   transition: opacity .2s;

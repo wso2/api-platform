@@ -34,7 +34,7 @@
 
 .navbar-nav .nav-link {
   white-space: nowrap;
-  color: var(--font-colour-primary);
+  color: var(--main-text-color);
   margin-right: 20px;
   font-size: 14px;
   text-align: center;
@@ -44,11 +44,11 @@
 
 .navbar-nav .nav-link:hover,
 .navbar-nav .nav-link.active {
-  color: var(--font-colour-primary);
+  color: var(--main-text-color);
 }
 
 .navbar-nav .dropdown-menu {
-  background-color: var(--font-colour-primary);
+  background-color: var(--main-text-color);
   border: none;
 }
 
@@ -61,9 +61,9 @@
 }
 
 .custom-signup-btn {
-  background-color: var(--secondary-color);
-  border-color: var(--border-colour-primary);
-  color: var(--font-colour-primary);
+  background-color: var(--secondary-main-color);
+  border-color: var(--border-color);
+  color: var(--main-text-color);
   border-radius: 25px;
   padding: 8px 20px;
   margin-right: 10px;
@@ -72,14 +72,14 @@
 }
 
 .custom-signup-btn:hover {
-  background-color: var(--secondary-color);
-  border-color: var(--border-colour-primary);
+  background-color: var(--secondary-main-color);
+  border-color: var(--border-color);
 }
 
 .custom-signup-btn:focus {
   box-shadow: 0 0 0 1px rgba(226, 225, 252, 0.5);
-  background-color: var(--dark-color);
-  color: var(--font-colour-primary);
+  background-color: var(--primary-dark-color);
+  color: var(--main-text-color);
 }
 
 .custom-signup-btn:active {
@@ -87,7 +87,7 @@
 }
 
 .custom-login-btn {
-  color: var(--font-colour-primary);
+  color: var(--main-text-color);
   border-radius: 20px;
   padding: 10px 20px;
   border: 0px;
@@ -98,13 +98,13 @@
 
 .custom-login-btn:hover {
   background-color: rgba(255, 255, 255, 0.1);
-  color: var(--font-colour-primary);
+  color: var(--main-text-color);
 }
 
 .custom-login-btn:focus {
   box-shadow: 0 0 0 1px rgba(226, 225, 252, 0.5);
-  background-color: var(--dark-color);
-  color: var(--font-colour-primary);
+  background-color: var(--primary-dark-color);
+  color: var(--main-text-color);
 }
 
 .custom-login-btn:active {
@@ -158,7 +158,7 @@
   align-items: center;
   justify-content: flex-start;
   padding: 15px;
-  border-bottom: 0.5px solid var(--notselect-star-color);
+  border-bottom: 0.5px solid var(--border-color);
   max-width: 211px;
 }
 
@@ -189,7 +189,7 @@
 .user-status {
   font-size: 10px;
   color: var(--secondary-bg-color);
-  background-color: var(--primary-color);
+  background-color: var(--primary-main-color);
   padding: 2px 6px;
   border-radius: 12px;
   margin-top: 4px;
@@ -197,7 +197,7 @@
 
 .dropdown-item i {
   margin-right: 10px;
-  color: var(--primary-color);
+  color: var(--primary-main-color);
   font-size: 16px;
   min-width: 20px;
   text-align: center;
@@ -232,13 +232,13 @@
 }
 
 .dropdown-menu hr {
-  border-top: 1px solid var(--notselect-star-color);
+  border-top: 1px solid var(--border-color);
   margin: 10px 0;
 }
 
 .user-email {
   font-size: 12px;
-  color: var(--notselect-star-color);
+  color: var(--border-color);
   white-space: normal;
   word-wrap: break-word;
   overflow-wrap: break-word;

@@ -59,7 +59,7 @@
   font-size: 10px;
   text-transform: lowercase;
   background-color: var(--secondary-bg-color);
-  color: var(--secondary-text-color);
+  color: var(--main-text-color);
   border: 1px solid;
 }
 
@@ -393,10 +393,6 @@
    Applications redesign — new layout styles
    ══════════════════════════════════════════════════════════ */
 
-:root {
-  --wso2-gradient: linear-gradient(135deg, #ef4223 0%, #ff8636 100%);
-}
-
 /* ── Page container ───────────────────────────────────────── */
 
 .apps-section {
@@ -439,7 +435,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--wso2-gradient);
+  background: var(--primary-gradient);
   color: #fff;
   border: none;
   border-radius: 20px;
@@ -748,7 +744,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--wso2-gradient);
+  background: var(--primary-gradient);
   color: #fff;
   border: none;
   border-radius: 20px;

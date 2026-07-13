@@ -4,10 +4,6 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-:root {
-  --wso2-gradient: linear-gradient(135deg, #ef4223 0%, #ff8636 100%);
-}
-
 body {
   margin: 0;
   font-family: "Inter", system-ui, -apple-system, sans-serif;
@@ -294,7 +290,7 @@ body {
 }
 
 .os-continue-btn--active {
-  background: var(--wso2-gradient);
+  background: var(--primary-gradient);
   opacity: 1;
   cursor: pointer;
   box-shadow: 0 8px 20px rgba(239,66,35,.22);

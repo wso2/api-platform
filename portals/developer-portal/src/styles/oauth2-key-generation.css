@@ -1,7 +1,7 @@
 .form-card {
   display: flex;
   flex-direction: column;
-  border: 0.0625rem solid var(--border-colour-secondary);
+  border: 0.0625rem solid var(--border-color);
   border-radius: 0.75rem;
   background-color: var(--secondary-bg-color);
   padding: 1.25rem;
@@ -12,7 +12,7 @@
 .title {
   font-size: 1.5rem;
   margin: 0;
-  color: var(--primary-color);
+  color: var(--primary-main-color);
 }
 
 .button i {

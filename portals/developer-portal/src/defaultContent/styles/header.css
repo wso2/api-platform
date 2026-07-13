@@ -44,7 +44,7 @@
 
 .navbar-toggler:focus {
   box-shadow: none;
-  border: 0.0625rem solid var(--primary-color);
+  border: 0.0625rem solid var(--primary-main-color);
 }
 
 @media (max-width: 61.5rem) {

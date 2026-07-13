@@ -1,9 +1,5 @@
 /* ── Settings page layout ────────────────────────────────── */
 
-:root {
-  --wso2-gradient: linear-gradient(135deg, #ef4223 0%, #ff8636 100%);
-}
-
 .cfg-page {
   padding: 24px 36px 40px;
 }
@@ -139,7 +135,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--wso2-gradient);
+  background: var(--primary-gradient);
   color: #fff;
   border: none;
   border-radius: 20px;

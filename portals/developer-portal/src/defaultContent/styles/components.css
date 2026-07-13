@@ -225,9 +225,6 @@
 .common-btn-primary:active { background-color: var(--primary-main-color); color: var(--light-text-color); }
 .common-btn-primary:focus { outline: none; }
 
-.common-btn-secondary { background-color: var(--secondary-main-color); }
-.common-btn-secondary:hover { background-color: var(--secondary-light-color); color: var(--light-text-color); }
-.common-btn-secondary:active { background-color: var(--secondary-main-color); color: var(--light-text-color); }
 
 .common-btn-link {
   display: inline-block;
@@ -370,7 +367,7 @@
   transition: opacity 0.15s, background 0.15s;
 }
 
-.dp-btn--primary { background: var(--wso2-gradient); color: #fff; }
+.dp-btn--primary { background: var(--primary-gradient); color: #fff; }
 .dp-btn--primary:hover { opacity: 0.9; color: #fff; text-decoration: none; }
 .dp-btn--primary:disabled,
 .dp-btn--primary.disabled { opacity: 0.55; cursor: not-allowed; pointer-events: none; }
@@ -698,7 +695,7 @@
 }
 .aov-plan-name { font-size: 0.9375rem; font-weight: 700; color: #1a2433; }
 .aov-recommended-badge {
-  background: var(--wso2-gradient);
+  background: var(--primary-gradient);
   color: #fff;
   border-radius: 1.25rem;
   padding: 0.25rem 0.625rem;

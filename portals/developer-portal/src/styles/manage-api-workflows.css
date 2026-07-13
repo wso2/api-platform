@@ -136,7 +136,7 @@
 }
 
 .api-workflow-content-type--arazzo {
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.1);
+    background: color-mix(in srgb, var(--primary-main-color) 10%, transparent);
     color: var(--primary-main-color);
 }
 
@@ -218,7 +218,7 @@
 
 .api-workflow-visibility-private {
     background: var(--bs-gray-500);
-    color: var(--white-text-color);
+    color: var(--light-text-color);
 }
 
 .api-workflow-agent-visible {
@@ -488,7 +488,7 @@
 }
 
 .af-seg-option:hover {
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.05);
+    background: color-mix(in srgb, var(--primary-main-color) 5%, transparent);
 }
 
 .af-seg-option--disabled {
@@ -927,7 +927,7 @@
     display: inline-flex;
     align-items: center;
     padding: 0.2em 0.65em;
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.1);
+    background: color-mix(in srgb, var(--primary-main-color) 10%, transparent);
     color: var(--primary-main-color);
     border-radius: 999px;
     font-size: 0.74rem;
@@ -946,7 +946,7 @@
 .af-show-selected-active {
     border-color: var(--primary-main-color) !important;
     color: var(--primary-main-color) !important;
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.06) !important;
+    background: color-mix(in srgb, var(--primary-main-color) 6%, transparent) !important;
 }
 
 /* ===== Selected API Card — stronger visual ===== */
@@ -954,7 +954,7 @@
 .af-api-card--selected {
     border-color: var(--primary-main-color);
     border-width: 1px;
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.035);
+    background: color-mix(in srgb, var(--primary-main-color) 3.5%, transparent);
     border-left: 3px solid var(--primary-main-color);
 }
 
@@ -993,7 +993,7 @@
 
 .af-cm-host:focus-within {
     border-color: var(--primary-main-color);
-    box-shadow: 0 0 0 0.2rem rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.15);
+    box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--primary-main-color) 15%, transparent);
 }
 
 .af-cm-invalid {
@@ -1029,12 +1029,12 @@
 
 .af-path-card:hover {
     border-color: var(--primary-main-color);
-    box-shadow: 0 2px 12px rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.1);
+    box-shadow: 0 2px 12px color-mix(in srgb, var(--primary-main-color) 10%, transparent);
 }
 
 .af-path-card--active {
     border-color: var(--primary-main-color);
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.04);
+    background: color-mix(in srgb, var(--primary-main-color) 4%, transparent);
 }
 
 .af-path-card-icon-wrap {
@@ -1042,7 +1042,7 @@
     width: 2.75rem;
     height: 2.75rem;
     border-radius: 0.75rem;
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.1);
+    background: color-mix(in srgb, var(--primary-main-color) 10%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1051,7 +1051,7 @@
 
 .af-path-card--active .af-path-card-icon-wrap,
 .af-path-card:hover .af-path-card-icon-wrap {
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.15);
+    background: color-mix(in srgb, var(--primary-main-color) 15%, transparent);
 }
 
 .af-path-card-icon {
@@ -1103,7 +1103,7 @@
 .af-upload-zone:hover,
 .af-upload-zone--dragover {
     border-color: var(--primary-main-color);
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.04);
+    background: color-mix(in srgb, var(--primary-main-color) 4%, transparent);
 }
 
 .af-upload-zone-inner {
@@ -1176,7 +1176,7 @@
 }
 
 .af-upload-format-pill--arazzo {
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.1);
+    background: color-mix(in srgb, var(--primary-main-color) 10%, transparent);
     color: var(--primary-main-color);
 }
 
@@ -1225,7 +1225,7 @@
 }
 
 .af-upload-type-badge--arazzo {
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.1);
+    background: color-mix(in srgb, var(--primary-main-color) 10%, transparent);
     color: var(--primary-main-color);
 }
 
@@ -1447,7 +1447,7 @@
 
 .af-create-format-btn:hover {
     color: var(--main-text-color);
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.06);
+    background: color-mix(in srgb, var(--primary-main-color) 6%, transparent);
 }
 
 .af-create-format-btn--active {
@@ -1966,7 +1966,7 @@
     max-width: 70px
 }
 .af-preview-badge--public {
-    background:rgba(var(--primary-main-color-rgb,62,80,180),0.1);
+    background:color-mix(in srgb, var(--primary-main-color) 10%, transparent);
     color:var(--primary-main-color);
 }
 .af-preview-empty {
@@ -2040,12 +2040,12 @@
 
 .af-visibility-card:hover {
     border-color:var(--primary-main-color);
-    box-shadow:0 2px 8px rgba(var(--primary-main-color-rgb,62,80,180),0.1);
+    box-shadow:0 2px 8px color-mix(in srgb, var(--primary-main-color) 10%, transparent);
 }
 
 .af-visibility-card--active {
     border-color:var(--primary-main-color);
-    background:rgba(var(--primary-main-color-rgb,62,80,180),0.04);
+    background:color-mix(in srgb, var(--primary-main-color) 4%, transparent);
     box-shadow:0 0 0 1px var(--primary-main-color);
 }
 
@@ -2053,7 +2053,7 @@
     flex-shrink:0;
     width:2.25rem; height:2.25rem;
     border-radius:0.5rem;
-    background:rgba(var(--primary-main-color-rgb,62,80,180),0.08);
+    background:color-mix(in srgb, var(--primary-main-color) 8%, transparent);
     display:flex; align-items:center; justify-content:center;
     font-size:1rem;
     color:var(--bs-secondary);
@@ -2062,7 +2062,7 @@
 
 .af-visibility-card--active .af-visibility-card-icon,
 .af-visibility-card:hover .af-visibility-card-icon {
-    background:rgba(var(--primary-main-color-rgb,62,80,180),0.14);
+    background:color-mix(in srgb, var(--primary-main-color) 14%, transparent);
     color:var(--primary-main-color);
 }
 
@@ -2238,7 +2238,7 @@
 .af-prompt-section-edit:focus {
     outline: none;
     border-color: var(--primary-main-color);
-    box-shadow: 0 0 0 0.15rem rgba(var(--primary-main-color-rgb,62,80,180),0.15);
+    box-shadow: 0 0 0 0.15rem color-mix(in srgb, var(--primary-main-color) 15%, transparent);
 }
 
 .af-prompt-empty {
@@ -2296,7 +2296,7 @@
     width: 2.5rem;
     height: 2.5rem;
     border-radius: 0.625rem;
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.1);
+    background: color-mix(in srgb, var(--primary-main-color) 10%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2307,7 +2307,7 @@
 .llms-url-code {
     font-size: 0.78rem;
     color: var(--primary-main-color);
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.08);
+    background: color-mix(in srgb, var(--primary-main-color) 8%, transparent);
     padding: 0.1em 0.4em;
     border-radius: 0.25rem;
 }

@@ -245,4 +245,4 @@
 .api-md-content h4, .api-md-content h5, .api-md-content h6 { font-size: 1.25rem; color: var(--main-text-color); }
 .api-md-content p { font-size: 0.9375rem; color: var(--main-text-color); }
 .api-md-content li { font-size: 0.9375rem; color: var(--main-text-color); }
-.api-md-content li::marker { color: var(--primary-color); }
+.api-md-content li::marker { color: var(--primary-main-color); }

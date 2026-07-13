@@ -167,7 +167,7 @@
 
 /* Gradient (APIs / MCP) button */
 .hero-btn--gradient {
-  background: var(--wso2-gradient);
+  background: var(--primary-gradient);
   color: #fff;
   box-shadow: 0 10px 26px rgba(239,66,35,.32);
 }
@@ -264,7 +264,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5625rem;
-  background: var(--wso2-gradient);
+  background: var(--primary-gradient);
   color: #fff;
   border: none;
   border-radius: 1.25rem;

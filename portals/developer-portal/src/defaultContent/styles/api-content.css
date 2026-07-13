@@ -141,7 +141,7 @@
   position: absolute;
   left: 0;
   top: 0;
-  color: var(--primary-color);
+  color: var(--primary-main-color);
   font-size: 1rem;
 }
 
@@ -150,7 +150,7 @@
 }
 
 .api-sidebar {
-  border: 0.0625rem solid var(--primary-color);
+  border: 0.0625rem solid var(--primary-main-color);
   padding: 0 2.1875rem;
   border-radius: 2rem;
   background-color: transparent;
@@ -179,7 +179,7 @@
   top: 0.5rem;
   width: 0.5rem;
   height: 0.5rem;
-  background-color: var(--primary-color);
+  background-color: var(--primary-main-color);
   border-radius: 50%;
 }
 

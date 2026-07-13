@@ -24,7 +24,6 @@
   --primary-lightest-color: #D4E8F64D;
   /* secondary colors */
   --secondary-main-color: #FE8C3A;
-  --secondary-light-color: #FEAF76;
   /* font colors */
   --main-text-color: #40404b;
   --light-text-color: #ffffff;
@@ -34,11 +33,9 @@
   --danger-color: #a40e26;
   --warning-color: #ffc107;
   --white-color: #ffffff;
-  --Black-color: #000000;
-  --subscribed-color: #0c7838;
+  --border-color: #e6eaf0;
   /* Gradient */
-  --wso2-gradient: linear-gradient(135deg, #ef4223 0%, #ff8636 100%);
-  --primary-gradient: linear-gradient(135deg, #3d6b8a, #1c3b52);
+  --primary-gradient: linear-gradient(135deg, #ef4223 0%, #ff8636 100%);
 
   --font-family-sans: Inter, "Montserrat", "Quicksand", "Noto Sans", "Poppins", sans-serif;
   --font-family-mono: "Roboto", monospace;
