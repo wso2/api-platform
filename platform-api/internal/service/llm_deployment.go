@@ -43,6 +43,7 @@ import (
 const (
 	tokenBasedRateLimitPolicyName   = "token-based-ratelimit"
 	advancedRateLimitPolicyName     = "advanced-ratelimit"
+	basicRateLimitPolicyName        = "basic-ratelimit"
 	apiKeyAuthPolicyName            = "api-key-auth"
 	llmCostPolicyName               = "llm-cost"
 	llmCostBasedRateLimitPolicyName = "llm-cost-based-ratelimit"
@@ -712,19 +713,11 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid request reset window: %w", err)
 					}
 					params := map[string]interface{}{
-						"quotas": []map[string]interface{}{
-							{
-								"name": "request-limit",
-								"limits": []map[string]interface{}{
-									{"limit": requestLimit.Count, "duration": duration},
-								},
-							},
-						},
-						"keyExtraction": []map[string]interface{}{
-							{"type": "apiname"},
+						"limits": []map[string]interface{}{
+							{"requests": requestLimit.Count, "duration": duration},
 						},
 					}
-					globalPolicies = append(globalPolicies, api.Policy{Name: advancedRateLimitPolicyName, Version: "", Params: &params})
+					globalPolicies = append(globalPolicies, api.Policy{Name: basicRateLimitPolicyName, Version: "", Params: &params})
 				}
 				if providerLevel.Global.Cost != nil && providerLevel.Global.Cost.Enabled {
 					costLimit := providerLevel.Global.Cost
@@ -770,17 +763,12 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					if err != nil {
 						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid request reset window: %w", err)
 					}
-					addOrAppendOperationPolicyPath(&operationPolicies, advancedRateLimitPolicyName, "", api.OperationPolicyPath{
+					addOrAppendOperationPolicyPath(&operationPolicies, basicRateLimitPolicyName, "", api.OperationPolicyPath{
 						Path:    "/*",
 						Methods: []api.OperationPolicyPathMethods{api.OperationPolicyPathMethodsAsterisk},
 						Params: map[string]interface{}{
-							"quotas": []map[string]interface{}{
-								{
-									"name": "request-limit",
-									"limits": []map[string]interface{}{
-										{"limit": requestLimit.Count, "duration": duration},
-									},
-								},
+							"limits": []map[string]interface{}{
+								{"requests": requestLimit.Count, "duration": duration},
 							},
 						},
 					})
@@ -832,17 +820,12 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						if err != nil {
 							return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid request reset window for resource %s: %w", r.Resource, err)
 						}
-						addOrAppendOperationPolicyPath(&operationPolicies, advancedRateLimitPolicyName, "", api.OperationPolicyPath{
+						addOrAppendOperationPolicyPath(&operationPolicies, basicRateLimitPolicyName, "", api.OperationPolicyPath{
 							Path:    r.Resource,
 							Methods: []api.OperationPolicyPathMethods{api.OperationPolicyPathMethodsAsterisk},
 							Params: map[string]interface{}{
-								"quotas": []map[string]interface{}{
-									{
-										"name": "request-limit",
-										"limits": []map[string]interface{}{
-											{"limit": requestLimit.Count, "duration": duration},
-										},
-									},
+								"limits": []map[string]interface{}{
+									{"requests": requestLimit.Count, "duration": duration},
 								},
 							},
 						})
@@ -909,33 +892,21 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					if err != nil {
 						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid consumer request reset window: %w", err)
 					}
-					policies = append(policies, api.LLMPolicy{
-						Name:    advancedRateLimitPolicyName,
-						Version: "",
-						Paths: []api.LLMPolicyPath{
+					params := map[string]interface{}{
+						"quotas": []map[string]interface{}{
 							{
-								Path:    "/*",
-								Methods: []api.LLMPolicyPathMethods{"*"},
-								Params: map[string]interface{}{
-									"quotas": []map[string]interface{}{
-										{
-											"name": "consumer-request-limit",
-											"limits": []map[string]interface{}{
-												{
-													"limit":    requestLimit.Count,
-													"duration": duration,
-												},
-											},
-											"keyExtraction": []map[string]interface{}{
-												{"type": "routename"},
-												{"type": "metadata", "key": "x-wso2-application-id"},
-											},
-										},
-									},
+								"name": "consumer-request-limit",
+								"limits": []map[string]interface{}{
+									{"limit": requestLimit.Count, "duration": duration},
+								},
+								"keyExtraction": []map[string]interface{}{
+									{"type": "apiname"},
+									{"type": "metadata", "key": "x-wso2-application-id"},
 								},
 							},
 						},
-					})
+					}
+					globalPolicies = append(globalPolicies, api.Policy{Name: advancedRateLimitPolicyName, Version: "", Params: &params})
 				}
 				if consumerLevel.Global.Cost != nil && consumerLevel.Global.Cost.Enabled {
 					costLimit := consumerLevel.Global.Cost
@@ -1064,9 +1035,6 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 			continue
 		}
 		params := p.Params
-		if p.Name == advancedRateLimitPolicyName && params != nil {
-			params = withGlobalAdvancedRatelimitKeyExtraction(params)
-		}
 		entry := api.Policy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version)}
 		if p.ExecutionCondition != "" {
 			entry.ExecutionCondition = &p.ExecutionCondition
@@ -1815,9 +1783,6 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 			continue
 		}
 		params := p.Params
-		if p.Name == advancedRateLimitPolicyName && params != nil {
-			params = withGlobalAdvancedRatelimitKeyExtraction(params)
-		}
 		entry := api.Policy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version)}
 		if p.ExecutionCondition != "" {
 			entry.ExecutionCondition = &p.ExecutionCondition
@@ -1968,27 +1933,6 @@ func orderLLMPolicies(policies []api.LLMPolicy) []api.LLMPolicy {
 		policies[costIdx], policies[rateLimitIdx] = policies[rateLimitIdx], policies[costIdx]
 	}
 	return policies
-}
-
-// withGlobalAdvancedRatelimitKeyExtraction returns a copy of params with
-// keyExtraction defaulted to [{type:"apiname"}] when the caller did not set one.
-// advanced-ratelimit defaults to a per-route (routename) key; in globalPolicies
-// that would create one bucket per operation, so an apiname key is injected to
-// give a single shared API-level counter.
-//
-// An explicit keyExtraction is intentionally preserved untouched: a user who sets
-// it (e.g. a per-consumer header key, or routename on purpose) has made a
-// deliberate choice that this default must not override.
-func withGlobalAdvancedRatelimitKeyExtraction(params map[string]interface{}) map[string]interface{} {
-	if _, ok := params["keyExtraction"]; ok {
-		return params
-	}
-	out := make(map[string]interface{}, len(params)+1)
-	for k, v := range params {
-		out[k] = v
-	}
-	out["keyExtraction"] = []map[string]interface{}{{"type": "apiname"}}
-	return out
 }
 
 // orderLLMGlobalPolicies ensures llm-cost-based-ratelimit precedes llm-cost in the global policy list.

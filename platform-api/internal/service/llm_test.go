@@ -638,34 +638,26 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderGlobalRateLimit(t *testin
 		t.Fatalf("expected token duration 1h, got: %#v", firstTokenLimit["duration"])
 	}
 
-	requestPolicy := findGlobalPolicy(out.Spec.GlobalPolicies, "advanced-ratelimit")
+	requestPolicy := findGlobalPolicy(out.Spec.GlobalPolicies, "basic-ratelimit")
 	if requestPolicy == nil {
-		t.Fatalf("expected advanced-ratelimit global policy to exist")
+		t.Fatalf("expected basic-ratelimit global policy to exist")
 	}
 	if requestPolicy.Params == nil {
 		t.Fatalf("expected request policy to have params")
 	}
-	quotas, ok := (*requestPolicy.Params)["quotas"].([]interface{})
-	if !ok || len(quotas) != 1 {
-		t.Fatalf("expected quotas with one entry, got: %#v", (*requestPolicy.Params)["quotas"])
+	if _, ok := (*requestPolicy.Params)["keyExtraction"]; ok {
+		t.Fatalf("expected no keyExtraction on global basic-ratelimit, got: %#v", (*requestPolicy.Params)["keyExtraction"])
 	}
-	firstQuota, ok := quotas[0].(map[string]interface{})
-	if !ok {
-		t.Fatalf("expected first quota as object, got: %#v", quotas[0])
-	}
-	if firstQuota["name"] != "request-limit" {
-		t.Fatalf("expected quota name request-limit, got: %#v", firstQuota["name"])
-	}
-	limits, ok := firstQuota["limits"].([]interface{})
+	limits, ok := (*requestPolicy.Params)["limits"].([]interface{})
 	if !ok || len(limits) != 1 {
-		t.Fatalf("expected quota limits with one entry, got: %#v", firstQuota["limits"])
+		t.Fatalf("expected limits with one entry, got: %#v", (*requestPolicy.Params)["limits"])
 	}
 	firstRequestLimit, ok := limits[0].(map[string]interface{})
 	if !ok {
 		t.Fatalf("expected first request limit as object, got: %#v", limits[0])
 	}
-	if firstRequestLimit["limit"] != 1 {
-		t.Fatalf("expected request limit 1, got: %#v", firstRequestLimit["limit"])
+	if firstRequestLimit["requests"] != 1 {
+		t.Fatalf("expected request count 1, got: %#v", firstRequestLimit["requests"])
 	}
 	if firstRequestLimit["duration"] != "1h" {
 		t.Fatalf("expected request duration 1h, got: %#v", firstRequestLimit["duration"])
@@ -751,9 +743,9 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimit(t *
 		t.Fatalf("expected token policy path /audio/speech")
 	}
 
-	requestPolicy := findOperationPolicy(out.Spec.OperationPolicies, "advanced-ratelimit")
+	requestPolicy := findOperationPolicy(out.Spec.OperationPolicies, "basic-ratelimit")
 	if requestPolicy == nil {
-		t.Fatalf("expected advanced-ratelimit operation policy to exist")
+		t.Fatalf("expected basic-ratelimit operation policy to exist")
 	}
 	if len(requestPolicy.Paths) != 2 {
 		t.Fatalf("expected 2 request policy paths, got: %d", len(requestPolicy.Paths))
@@ -786,24 +778,16 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimit(t *
 	}
 
 	for _, p := range []*api.OperationPolicyPath{assistantsRequestPath, audioRequestPath} {
-		quotas, ok := p.Params["quotas"].([]interface{})
-		if !ok || len(quotas) != 1 {
-			t.Fatalf("expected quotas with one entry, got: %#v", p.Params["quotas"])
-		}
-		firstQuota, ok := quotas[0].(map[string]interface{})
-		if !ok {
-			t.Fatalf("expected first quota object, got: %#v", quotas[0])
-		}
-		limits, ok := firstQuota["limits"].([]interface{})
+		limits, ok := p.Params["limits"].([]interface{})
 		if !ok || len(limits) != 1 {
-			t.Fatalf("expected limits with one entry, got: %#v", firstQuota["limits"])
+			t.Fatalf("expected limits with one entry, got: %#v", p.Params["limits"])
 		}
 		firstRequestLimit, ok := limits[0].(map[string]interface{})
 		if !ok {
 			t.Fatalf("expected request limit object, got: %#v", limits[0])
 		}
-		if firstRequestLimit["limit"] != 1 {
-			t.Fatalf("expected request limit 1, got: %#v", firstRequestLimit["limit"])
+		if firstRequestLimit["requests"] != 1 {
+			t.Fatalf("expected request count 1, got: %#v", firstRequestLimit["requests"])
 		}
 		if firstRequestLimit["duration"] != "1h" {
 			t.Fatalf("expected request duration 1h, got: %#v", firstRequestLimit["duration"])
@@ -884,9 +868,9 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimitAndD
 		t.Fatalf("expected 3 token policy paths (default + 2 unique resources), got: %d", len(tokenPolicy.Paths))
 	}
 
-	requestPolicy := findOperationPolicy(out.Spec.OperationPolicies, "advanced-ratelimit")
+	requestPolicy := findOperationPolicy(out.Spec.OperationPolicies, "basic-ratelimit")
 	if requestPolicy == nil {
-		t.Fatalf("expected advanced-ratelimit operation policy to exist")
+		t.Fatalf("expected basic-ratelimit operation policy to exist")
 	}
 	if len(requestPolicy.Paths) != 3 {
 		t.Fatalf("expected 3 request policy paths (default + 2 unique resources), got: %d", len(requestPolicy.Paths))
@@ -916,24 +900,16 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimitAndD
 	}
 
 	for _, p := range requestPolicy.Paths {
-		quotas, ok := p.Params["quotas"].([]interface{})
-		if !ok || len(quotas) != 1 {
-			t.Fatalf("expected quotas with one entry, got: %#v", p.Params["quotas"])
-		}
-		firstQuota, ok := quotas[0].(map[string]interface{})
-		if !ok {
-			t.Fatalf("expected first quota object, got: %#v", quotas[0])
-		}
-		limits, ok := firstQuota["limits"].([]interface{})
+		limits, ok := p.Params["limits"].([]interface{})
 		if !ok || len(limits) != 1 {
-			t.Fatalf("expected limits with one entry, got: %#v", firstQuota["limits"])
+			t.Fatalf("expected limits with one entry, got: %#v", p.Params["limits"])
 		}
 		firstRequestLimit, ok := limits[0].(map[string]interface{})
 		if !ok {
 			t.Fatalf("expected request limit object, got: %#v", limits[0])
 		}
-		if firstRequestLimit["limit"] != 1 || firstRequestLimit["duration"] != "1h" {
-			t.Fatalf("expected request limit {limit:1,duration:1h}, got: %#v", firstRequestLimit)
+		if firstRequestLimit["requests"] != 1 || firstRequestLimit["duration"] != "1h" {
+			t.Fatalf("expected request limit {requests:1,duration:1h}, got: %#v", firstRequestLimit)
 		}
 	}
 }
