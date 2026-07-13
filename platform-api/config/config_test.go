@@ -185,26 +185,26 @@ func TestLoadConfig_HTTPSEnabled_DefaultsToTrue(t *testing.T) {
 	assert.False(t, cfg.HTTP.Enabled, "http.enabled must default to false when unset")
 }
 
-// HTTPS_ENABLED=false must survive koanf's weakly-typed env decode into the bool.
-// The legacy TLS_ENABLED alias must keep working too.
+// APIP_CP_HTTPS_ENABLED=false must survive koanf's weakly-typed env decode into the bool.
+// The legacy APIP_CP_TLS_ENABLED alias must keep working too.
 func TestLoadConfig_HTTPSEnabled_EnvOverrideDisables(t *testing.T) {
 	setValidKeys(t)
-	t.Setenv("HTTPS_ENABLED", "false")
+	t.Setenv("APIP_CP_HTTPS_ENABLED", "false")
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err)
-	assert.False(t, cfg.HTTPS.Enabled, "HTTPS_ENABLED=false must disable the TLS listener")
+	assert.False(t, cfg.HTTPS.Enabled, "APIP_CP_HTTPS_ENABLED=false must disable the TLS listener")
 }
 
 // The plain-HTTP listener can be enabled independently on its own port.
 func TestLoadConfig_HTTPListener_EnvOverrideEnables(t *testing.T) {
 	setValidKeys(t)
-	t.Setenv("HTTP_ENABLED", "true")
-	t.Setenv("HTTP_PORT", "9080")
+	t.Setenv("APIP_CP_HTTP_ENABLED", "true")
+	t.Setenv("APIP_CP_HTTP_PORT", "9080")
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err)
-	assert.True(t, cfg.HTTP.Enabled, "HTTP_ENABLED=true must enable the plain-HTTP listener")
+	assert.True(t, cfg.HTTP.Enabled, "APIP_CP_HTTP_ENABLED=true must enable the plain-HTTP listener")
 	assert.Equal(t, "9080", cfg.HTTP.Port)
 }
 
@@ -224,10 +224,10 @@ func TestLoadConfig_Timeouts_DefaultToFiniteValues(t *testing.T) {
 // Duration strings from the environment must decode into time.Duration fields.
 func TestLoadConfig_Timeouts_EnvOverride(t *testing.T) {
 	setValidKeys(t)
-	t.Setenv("TIMEOUTS_READ_HEADER", "5s")
-	t.Setenv("TIMEOUTS_READ", "30s")
-	t.Setenv("TIMEOUTS_WRITE", "2m")
-	t.Setenv("TIMEOUTS_IDLE", "90s")
+	t.Setenv("APIP_CP_TIMEOUTS_READ_HEADER", "5s")
+	t.Setenv("APIP_CP_TIMEOUTS_READ", "30s")
+	t.Setenv("APIP_CP_TIMEOUTS_WRITE", "2m")
+	t.Setenv("APIP_CP_TIMEOUTS_IDLE", "90s")
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err)
@@ -241,11 +241,11 @@ func TestLoadConfig_Timeouts_EnvOverride(t *testing.T) {
 // than being silently replaced by the default.
 func TestLoadConfig_Timeouts_ZeroDisablesTimeout(t *testing.T) {
 	setValidKeys(t)
-	t.Setenv("TIMEOUTS_WRITE", "0")
+	t.Setenv("APIP_CP_TIMEOUTS_WRITE", "0")
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err)
-	assert.Zero(t, cfg.Timeouts.Write, "TIMEOUTS_WRITE=0 must disable the write timeout")
+	assert.Zero(t, cfg.Timeouts.Write, "APIP_CP_TIMEOUTS_WRITE=0 must disable the write timeout")
 }
 
 // A negative duration would expire immediately and break every request; a
@@ -254,7 +254,7 @@ func TestLoadConfig_Timeouts_ZeroDisablesTimeout(t *testing.T) {
 func TestLoadConfig_Timeouts_RejectsInvalidValues(t *testing.T) {
 	t.Run("negative", func(t *testing.T) {
 		setValidKeys(t)
-		t.Setenv("TIMEOUTS_READ", "-1s")
+		t.Setenv("APIP_CP_TIMEOUTS_READ", "-1s")
 
 		_, err := LoadConfig("")
 		require.Error(t, err)
@@ -263,8 +263,8 @@ func TestLoadConfig_Timeouts_RejectsInvalidValues(t *testing.T) {
 
 	t.Run("read_header exceeds read", func(t *testing.T) {
 		setValidKeys(t)
-		t.Setenv("TIMEOUTS_READ_HEADER", "30s")
-		t.Setenv("TIMEOUTS_READ", "10s")
+		t.Setenv("APIP_CP_TIMEOUTS_READ_HEADER", "30s")
+		t.Setenv("APIP_CP_TIMEOUTS_READ", "10s")
 
 		_, err := LoadConfig("")
 		require.Error(t, err)
@@ -272,15 +272,15 @@ func TestLoadConfig_Timeouts_RejectsInvalidValues(t *testing.T) {
 	})
 }
 
-// The legacy single-port PORT and TLS_CERT_DIR env vars still map onto the
-// HTTPS listener for backward compatibility.
+// The legacy single-port APIP_CP_PORT and APIP_CP_TLS_CERT_DIR env vars still map
+// onto the HTTPS listener for backward compatibility.
 func TestLoadConfig_LegacyTLSEnvAliases(t *testing.T) {
 	setValidKeys(t)
-	t.Setenv("PORT", "8443")
-	t.Setenv("TLS_CERT_DIR", "/custom/certs")
+	t.Setenv("APIP_CP_PORT", "8443")
+	t.Setenv("APIP_CP_TLS_CERT_DIR", "/custom/certs")
 
 	cfg, err := LoadConfig("")
 	require.NoError(t, err)
-	assert.Equal(t, "8443", cfg.HTTPS.Port, "legacy PORT must map to https.port")
-	assert.Equal(t, "/custom/certs", cfg.HTTPS.CertDir, "legacy TLS_CERT_DIR must map to https.cert_dir")
+	assert.Equal(t, "8443", cfg.HTTPS.Port, "legacy APIP_CP_PORT must map to https.port")
+	assert.Equal(t, "/custom/certs", cfg.HTTPS.CertDir, "legacy APIP_CP_TLS_CERT_DIR must map to https.cert_dir")
 }
