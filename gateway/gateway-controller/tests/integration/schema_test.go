@@ -160,7 +160,7 @@ func TestSchemaInitialization(t *testing.T) {
 
 	// Verify per-resource-type tables exist
 	t.Run("ResourceTypeTablesExist", func(t *testing.T) {
-		tables := []string{"rest_apis", "websub_apis", "llm_providers", "llm_proxies", "mcp_proxies"}
+		tables := []string{"rest_apis", "llm_providers", "llm_proxies", "mcp_proxies"}
 		for _, table := range tables {
 			var tableName string
 			err := rawDB.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&tableName)

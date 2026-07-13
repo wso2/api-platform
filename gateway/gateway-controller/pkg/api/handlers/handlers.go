@@ -363,11 +363,6 @@ func (s *APIServer) waitForDeploymentAndPush(configID string, correlationID stri
 	s.deploymentPusher().WaitForDeploymentAndPush(configID, correlationID, minDeployedAt, log)
 }
 
-// publishWebSubEvent publishes an event for WebSub API lifecycle changes.
-func (s *APIServer) publishWebSubEvent(eventType eventhub.EventType, action, entityID, correlationID string, logger *slog.Logger) {
-	(&handlerkit.EventPublisher{EventHub: s.eventHub, GatewayID: s.gatewayID}).PublishEvent(eventType, action, entityID, correlationID, logger)
-}
-
 // GetConfigDump implements the GET /config_dump endpoint
 func (s *APIServer) GetConfigDump(w http.ResponseWriter, r *http.Request) {
 	log := middleware.GetLogger(r, s.logger)
