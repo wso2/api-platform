@@ -31,7 +31,7 @@ WORKDIR /src/portals/ai-workspace/bff
 COPY --from=common go.mod go.sum /src/common/
 COPY --from=httpkit go.mod go.sum /src/httpkit/
 COPY bff/go.mod bff/go.sum ./
-ENV CGO_ENABLED=0 GOFLAGS=-mod=mod GOWORK=off
+ENV CGO_ENABLED=0 GOWORK=off
 RUN go mod download
 
 COPY --from=common . /src/common

@@ -333,8 +333,9 @@ Attempting to delete a secret that is still in use returns HTTP 409. To remove i
 
 ## Configuration
 
-The following environment variable controls encryption for the Platform API:
-**required and never auto-generated** — the Platform API fails to start if missing or malformed:
+The following environment variable controls encryption for the Platform API. It is
+required and never auto-generated — the Platform API fails to start if it is missing or
+malformed.
 
 | Key | Purpose |
 |-----|---------|

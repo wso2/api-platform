@@ -213,6 +213,11 @@ func Load(path string) (*Config, error) {
 	}
 
 	authMode := strings.ToLower(s.get("auth_mode", "basic"))
+	// A typo'd mode must not silently degrade to basic auth: any value other than
+	// "oidc" would leave OIDC.Enabled false and hand the SPA an unknown login UX.
+	if authMode != "basic" && authMode != "oidc" {
+		return nil, fmt.Errorf("invalid auth_mode %q: must be \"basic\" or \"oidc\"", authMode)
+	}
 
 	// Parse typed values up front so a malformed one fails startup instead of
 	// being silently replaced with the default.
@@ -338,6 +343,15 @@ func Load(path string) (*Config, error) {
 	if cfg.OIDC.Enabled {
 		if cfg.OIDC.Issuer == "" || cfg.OIDC.ClientID == "" || cfg.OIDC.ClientSecret == "" || cfg.OIDC.RedirectURL == "" {
 			return nil, fmt.Errorf("OIDC mode requires [oidc] authority, client_id, client_secret and redirect_url")
+		}
+	}
+	// Empty is fine (the key is optional), but a relative value would be forwarded as an
+	// invalid post_logout_redirect_uri and only fail at logout time — catch it here.
+	if cfg.OIDC.PostLogoutRedirectURL != "" {
+		u, err := url.Parse(cfg.OIDC.PostLogoutRedirectURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return nil, fmt.Errorf("[oidc] post_logout_redirect_url must be an absolute http:// or https:// URL, got %q",
+				cfg.OIDC.PostLogoutRedirectURL)
 		}
 	}
 
