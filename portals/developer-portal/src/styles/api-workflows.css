@@ -14,7 +14,7 @@
     width: 100%;
     padding: 2rem 2rem;
     border-radius: 0.75rem;
-    background: var(--primary-lightest-color);
+    background: var(--primary-surface);
     margin-bottom: 2rem;
     display: flex;
     flex-direction: column;
@@ -23,14 +23,14 @@
 }
 
 .flows-hero h1 {
-    color: var(--primary-main-color);
+    color: var(--primary);
     font-size: 2rem;
     font-weight: 600;
     margin: 0 0 0.5rem 0;
 }
 
 .flows-hero p {
-    color: var(--main-text-color);
+    color: var(--text);
     font-weight: 300;
     margin: 0.5rem 0 0 0;
 }
@@ -39,8 +39,8 @@
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    background: var(--primary-main-color);
-    color: var(--light-text-color);
+    background: var(--primary);
+    color: var(--white);
     border: none;
     padding: 0.5rem 1rem;
     border-radius: 0.375rem;
@@ -55,7 +55,7 @@
 
 .btn-manage-workflows:hover {
     opacity: 0.85;
-    color: var(--light-text-color);
+    color: var(--white);
 }
 
 .flows-grid {
@@ -67,7 +67,7 @@
 }
 
 .flow-card {
-    background: var(--main-bg-color);
+    background: var(--surface);
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.75rem;
     overflow: hidden;
@@ -80,18 +80,18 @@
 
 .flow-card:hover {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-    border-color: var(--primary-main-color);
+    border-color: var(--primary);
     transform: translateY(-4px);
 }
 
 .flow-card-header {
     padding: 1.5rem;
     border-bottom: 1px solid var(--bs-gray-200);
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken, #f8f9fa);
 }
 
 .flow-card-title {
-    color: var(--primary-main-color);
+    color: var(--primary);
     font-size: 1.25rem;
     font-weight: 600;
     margin: 0;
@@ -106,7 +106,7 @@
 }
 
 .flow-description {
-    color: var(--main-text-color);
+    color: var(--text);
     line-height: 1.6;
     margin: 0 0 1.5rem 0;
     font-size: 0.95rem;
@@ -124,7 +124,7 @@
 
 .flow-apis-label {
     display: block;
-    color: var(--main-text-color);
+    color: var(--text);
     font-weight: 600;
     margin-bottom: 0.75rem;
     font-size: 0.8rem;
@@ -141,26 +141,26 @@
 
 .flow-api-chip {
     display: inline-block;
-    background: var(--primary-lightest-color, #f0f0f8);
-    color: var(--primary-main-color);
+    background: var(--primary-surface, #f0f0f8);
+    color: var(--primary);
     padding: 0.2rem 0.575rem;
     border-radius: 0.375rem;
     font-size: 0.85rem;
     font-weight: 500;
     transition: all 0.2s ease;
     flex-shrink: 0;
-    border: 1px solid var(--primary-light-color, #e8e8f4);
+    border: 1px solid var(--primary-light, #e8e8f4);
 }
 
 .flow-api-chip:hover {
-    background: var(--primary-light-color, #e8e8f4);
-    border-color: var(--primary-main-color);
+    background: var(--primary-light, #e8e8f4);
+    border-color: var(--primary);
 }
 
 .flow-api-chip--more {
     background: transparent;
     border-color: transparent;
-    color: var(--primary-main-color);
+    color: var(--primary);
     font-weight: 600;
     padding-left: 0.1rem;
 }
@@ -171,7 +171,7 @@
 }
 
 .flow-arrow {
-    color: var(--main-text-color);
+    color: var(--text);
     font-size: 0.9rem;
     font-weight: 300;
     opacity: 0.6;
@@ -182,7 +182,7 @@
 .flow-card-footer {
     padding: 0.875rem 1.5rem;
     border-top: 1px solid var(--bs-gray-200);
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken, #f8f9fa);
     display: flex;
     align-items: center;
     gap: 0.375rem;
@@ -210,23 +210,23 @@
 
 .flow-visibility-private {
     background-color: var(--bs-gray-500);
-    color: var(--light-text-color);
+    color: var(--white);
 }
 
 .flow-agent-visible {
-    background-color: var(--secondary-main-color);
-    color: var(--light-text-color);
+    background-color: var(--accent);
+    color: var(--white);
 }
 
 .flow-agent-hidden {
-    background-color: color-mix(in srgb, var(--warning-color) 15%, white);
-    color: color-mix(in srgb, var(--warning-color) 80%, black);
+    background-color: color-mix(in srgb, var(--warning) 15%, white);
+    color: color-mix(in srgb, var(--warning) 80%, black);
 }
 
 .flows-empty {
     text-align: center;
     padding: 3rem 2rem;
-    background: var(--main-bg-color);
+    background: var(--surface);
     border: 1px dashed var(--bs-gray-300);
     border-radius: 0.75rem;
     width: 100%;
@@ -234,19 +234,19 @@
 
 .flows-empty i {
     font-size: 3rem;
-    color: var(--primary-light-color, #e8e8f4);
+    color: var(--primary-light, #e8e8f4);
     margin-bottom: 1rem;
     display: block;
 }
 
 .flows-empty h3 {
     font-size: 1.2rem;
-    color: var(--main-text-color);
+    color: var(--text);
     margin: 0 0 0.5rem 0;
 }
 
 .flows-empty p {
-    color: var(--main-text-color);
+    color: var(--text);
     margin: 0;
     font-size: 0.9rem;
 }
@@ -278,7 +278,7 @@
 }
 
 .prompt-modal-content {
-    background: var(--main-bg-color);
+    background: var(--surface);
     border-radius: 0.75rem;
     max-width: 700px;
     width: 100%;
@@ -306,7 +306,7 @@
 .prompt-modal-header h3 {
     margin: 0;
     font-size: 1.2rem;
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 .prompt-modal-close {
@@ -320,7 +320,7 @@
 }
 
 .prompt-modal-close:hover {
-    color: var(--main-text-color);
+    color: var(--text);
 }
 
 .prompt-modal-body {
@@ -331,13 +331,13 @@
 
 
 .prompt-text {
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken, #f8f9fa);
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.25rem;
     padding: 1rem;
     font-size: 0.85rem;
     line-height: 1.5;
-    color: var(--main-text-color);
+    color: var(--text);
     overflow-x: auto;
     margin: 0;
 }
@@ -346,7 +346,7 @@
     position: fixed;
     bottom: 1.25rem;
     right: 1.25rem;
-    background: var(--main-bg-color);
+    background: var(--surface);
     border-radius: 0.5rem;
     padding: 1rem 1.25rem;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -362,11 +362,11 @@
 }
 
 .notification-success {
-    border-left: 4px solid var(--success-color);
+    border-left: 4px solid var(--success);
 }
 
 .notification-error {
-    border-left: 4px solid var(--danger-color);
+    border-left: 4px solid var(--danger);
 }
 
 .notification-content {
@@ -378,11 +378,11 @@
 }
 
 .notification-success .notification-content {
-    color: var(--success-color);
+    color: var(--success);
 }
 
 .notification-error .notification-content {
-    color: var(--danger-color);
+    color: var(--danger);
 }
 
 /* ===== API Workflow — Detail Page ===== */
@@ -401,7 +401,7 @@
     max-width: 1300px;
     padding: 2rem 3.5rem;
     border-radius: 0.75rem;
-    background: var(--primary-lightest-color);
+    background: var(--primary-surface);
     margin-bottom: 2rem;
     display: flex;
     justify-content: space-between;
@@ -417,14 +417,14 @@
 }
 
 .flow-detail-header h1 {
-    color: var(--primary-main-color);
+    color: var(--primary);
     font-size: 2rem;
     font-weight: 600;
     margin: 0 0 0.5rem 0;
 }
 
 .flow-detail-header p {
-    color: var(--main-text-color);
+    color: var(--text);
     font-weight: 300;
     margin: 0.5rem 0 0 0;
 }
@@ -437,7 +437,7 @@
 
 .flow-detail-back {
     background: none;
-    color: var(--primary-main-color);
+    color: var(--primary);
     border: none;
     padding: 0;
     border-radius: 0;
@@ -453,7 +453,7 @@
 }
 
 .flow-detail-back:hover {
-    color: var(--primary-light-color);
+    color: var(--primary-light);
 }
 
 .flow-detail-content {
@@ -462,7 +462,7 @@
 }
 
 .arazzo-viewer-container {
-    background: var(--main-bg-color);
+    background: var(--surface);
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.75rem;
     overflow: hidden;
@@ -546,11 +546,11 @@
     max-width: 860px;
     margin: 1.5rem auto 3rem;
     padding: 3rem 3.5rem;
-    background: var(--main-bg-color, #fff);
+    background: var(--surface, var(--white));
     border: 1px solid var(--bs-gray-200, #e9ecef);
     border-radius: 0.75rem;
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
-    color: var(--main-text-color);
+    color: var(--text);
     font-size: 0.9375rem;
     line-height: 1.75;
 }
@@ -559,7 +559,7 @@
 .af-md-detail-container h2,
 .af-md-detail-container h3,
 .af-md-detail-container h4 {
-    color: var(--main-text-color);
+    color: var(--text);
     font-weight: 600;
     margin-top: 1.75rem;
     margin-bottom: 0.5rem;
@@ -627,15 +627,15 @@
 }
 
 .af-md-detail-container tr:nth-child(even) td {
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken, #f8f9fa);
 }
 
 .af-md-detail-container blockquote {
-    border-left: 3px solid var(--primary-main-color);
+    border-left: 3px solid var(--primary);
     padding: 0.5rem 1rem;
     margin: 0 0 1rem;
     color: var(--bs-secondary, #6c757d);
-    background: color-mix(in srgb, var(--primary-main-color) 4%, transparent);
+    background: color-mix(in srgb, var(--primary) 4%, transparent);
     border-radius: 0 0.375rem 0.375rem 0;
 }
 
@@ -646,7 +646,7 @@
 }
 
 .af-md-detail-container a {
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 .af-md-empty {

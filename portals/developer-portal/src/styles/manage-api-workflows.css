@@ -1,7 +1,7 @@
 /* ===== Configure Page — Header & Tabs ===== */
 
 .container-fluid .container-header {
-    color: var(--primary-main-color);
+    color: var(--primary);
     font-size: 1.5rem;
     font-weight: 600;
 }
@@ -31,15 +31,15 @@
 }
 
 .configure-tabs .nav-link:hover {
-    color: var(--primary-main-color);
-    border-bottom-color: var(--primary-main-color);
+    color: var(--primary);
+    border-bottom-color: var(--primary);
     background-color: transparent;
 }
 
 .configure-tabs .nav-link.active {
-    color: var(--primary-main-color);
+    color: var(--primary);
     background: transparent;
-    border-bottom-color: var(--primary-main-color);
+    border-bottom-color: var(--primary);
     font-weight: 600;
 }
 
@@ -64,7 +64,7 @@
 .api-workflow-card {
     display: flex;
     flex-direction: column;
-    background: var(--main-bg-color);
+    background: var(--surface);
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.875rem;
     overflow: hidden;
@@ -74,7 +74,7 @@
 
 .api-workflow-card:hover {
     box-shadow: 0px 0.5rem 1.5rem rgba(0, 0, 0, 0.12);
-    border-color: var(--primary-main-color);
+    border-color: var(--primary);
 }
 
 .api-workflow-card-header {
@@ -136,8 +136,8 @@
 }
 
 .api-workflow-content-type--arazzo {
-    background: color-mix(in srgb, var(--primary-main-color) 10%, transparent);
-    color: var(--primary-main-color);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--primary);
 }
 
 .api-workflow-content-type--md {
@@ -160,7 +160,7 @@
 .api-workflow-card-title {
     font-size: 1.0625rem;
     font-weight: 700;
-    color: var(--main-text-color);
+    color: var(--text);
     margin-bottom: 0.5rem;
     line-height: 1.3;
 }
@@ -218,17 +218,17 @@
 
 .api-workflow-visibility-private {
     background: var(--bs-gray-500);
-    color: var(--light-text-color);
+    color: var(--white);
 }
 
 .api-workflow-agent-visible {
-    background-color: color-mix(in srgb, var(--success-color) 15%, white);
-    color: var(--primary-main-color);
+    background-color: color-mix(in srgb, var(--success) 15%, white);
+    color: var(--primary);
 }
 
 .api-workflow-agent-hidden {
-    background-color: color-mix(in srgb, var(--warning-color) 15%, white);
-    color: color-mix(in srgb, var(--warning-color) 80%, black);
+    background-color: color-mix(in srgb, var(--warning) 15%, white);
+    color: color-mix(in srgb, var(--warning) 80%, black);
 }
 
 .api-workflow-card-body {
@@ -271,23 +271,23 @@
     height: 2rem;
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.5rem;
-    background: var(--main-bg-color);
-    color: var(--main-text-color);
+    background: var(--surface);
+    color: var(--text);
     font-size: 0.875rem;
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .api-workflow-action-btn:hover {
-    border-color: var(--primary-main-color);
-    color: var(--primary-main-color);
-    background: var(--primary-light-color);
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-light);
 }
 
 .api-workflow-action-btn--danger:hover {
-    border-color: var(--danger-color);
-    color: var(--danger-color);
-    background: var(--main-bg-color);
+    border-color: var(--danger);
+    color: var(--danger);
+    background: var(--surface);
 }
 
 
@@ -298,7 +298,7 @@
     justify-content: space-between;
     padding: 0.625rem 1rem;
     border-bottom: 1px solid var(--bs-gray-200);
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken, #f8f9fa);
 }
 
 .prompt-modal-toolbar {
@@ -317,15 +317,15 @@
     align-items: center;
     justify-content: center;
     font-size: 1rem;
-    color: var(--main-text-color);
+    color: var(--text);
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .prompt-tool-btn:hover {
-    border-color: var(--primary-main-color);
-    color: var(--primary-main-color);
-    background: var(--primary-lightest-color);
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-surface);
 }
 
 .prompt-run-dropdown {
@@ -340,7 +340,7 @@
     height: 34px;
     white-space: nowrap;
     background: #D97757;;
-    color: #fff;
+    color: var(--white);
     border: none;
     border-radius: 0.375rem;
     font-size: 0.875rem;
@@ -358,7 +358,7 @@
     position: absolute;
     top: calc(100% + 6px);
     right: 0;
-    background: var(--main-bg-color);
+    background: var(--surface);
     border: 1px solid var(--bs-gray-200);
     border-radius: 0.5rem;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
@@ -379,14 +379,14 @@
     background: none;
     border: none;
     font-size: 0.875rem;
-    color: var(--main-text-color);
+    color: var(--text);
     cursor: pointer;
     transition: background 0.15s ease;
 }
 
 .run-option:hover {
-    background: var(--primary-lightest-color);
-    color: var(--primary-main-color);
+    background: var(--primary-surface);
+    color: var(--primary);
 }
 
 .api-workflow-prompt-pre {
@@ -396,8 +396,8 @@
     line-height: 1.7;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    background: var(--main-bg-color);
-    color: var(--main-text-color);
+    background: var(--surface);
+    color: var(--text);
     border: none;
     border-radius: 0;
 }
@@ -428,8 +428,8 @@
     width: 2rem;
     height: 2rem;
     border-radius: 50%;
-    background: var(--secondary-main-color);
-    color: var(--light-text-color);
+    background: var(--accent);
+    color: var(--white);
     font-size: 0.8125rem;
     font-weight: 700;
     display: flex;
@@ -441,7 +441,7 @@
 .af-section-title {
     font-size: 0.9375rem;
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
     line-height: 1.3;
 }
 
@@ -488,7 +488,7 @@
 }
 
 .af-seg-option:hover {
-    background: color-mix(in srgb, var(--primary-main-color) 5%, transparent);
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
 }
 
 .af-seg-option--disabled {
@@ -499,7 +499,7 @@
 
 .af-seg .btn-check:checked + .af-seg-option {
     background: rgba(89, 82, 173, 0.1);
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 .af-seg-icon {
@@ -580,12 +580,12 @@
 }
 
 .af-flow-tab:hover {
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 .af-flow-tab.active {
-    color: var(--primary-main-color);
-    border-bottom-color: var(--primary-main-color);
+    color: var(--primary);
+    border-bottom-color: var(--primary);
     font-weight: 600;
 }
 
@@ -681,7 +681,7 @@
     padding: 0.625rem 0.75rem;
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.625rem;
-    background: var(--main-bg-color);
+    background: var(--surface);
     cursor: pointer;
     transition: border-color 0.15s ease, background 0.15s ease;
     user-select: none;
@@ -689,8 +689,8 @@
 }
 
 .af-api-card:hover {
-    border-color: var(--primary-main-color);
-    background: var(--main-bg-color);
+    border-color: var(--primary);
+    background: var(--surface);
 }
 
 .af-api-card-check {
@@ -702,7 +702,7 @@
 }
 
 .af-api-card--selected .af-api-card-check {
-    color: var(--primary-light-color);
+    color: var(--primary-light);
 }
 
 .af-api-card-body {
@@ -749,8 +749,8 @@
     font-size: 0.65rem;
     font-weight: 600;
     border-radius: 999px;
-    background: var(--primary-lightest-color, #e8e8f4);
-    color: var(--primary-main-color);
+    background: var(--primary-surface, #e8e8f4);
+    color: var(--primary);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     white-space: nowrap;
@@ -782,7 +782,7 @@
 
 .af-api-card--disabled:hover {
     border-color: var(--bs-gray-300);
-    background: var(--main-bg-color);
+    background: var(--surface);
 }
 
 .af-api-card--disabled:hover .af-api-card-tooltip {
@@ -798,7 +798,7 @@
     inset: 0;
     border-radius: 0.625rem;
     background-color: rgba(0, 0, 0, 0.75);
-    color: #fff;
+    color: var(--white);
     font-size: 0.72rem;
     line-height: 1.4;
     text-align: center;
@@ -864,7 +864,7 @@
     gap: 0.5rem;
     padding: 0.875rem 1.5rem;
     margin: 1.25rem -1.5rem -1.5rem -1.5rem;
-    background: var(--main-bg-color);
+    background: var(--surface);
     border-top: 1px solid var(--bs-gray-200);
     box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.07);
     border-radius: 0 0 0.5rem 0.5rem;
@@ -890,9 +890,9 @@
 }
 
 .af-collapse-btn:hover {
-    border-color: var(--primary-main-color);
-    color: var(--primary-main-color);
-    background: var(--primary-lightest-color, #e8e8f4);
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-surface, #e8e8f4);
 }
 
 .af-section-body--collapsed {
@@ -918,7 +918,7 @@
     gap: 0.375rem;
     min-height: 2rem;
     padding: 0.375rem 0.625rem;
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken, #f8f9fa);
     border: 1px solid var(--bs-gray-200);
     border-radius: 0.5rem;
 }
@@ -927,8 +927,8 @@
     display: inline-flex;
     align-items: center;
     padding: 0.2em 0.65em;
-    background: color-mix(in srgb, var(--primary-main-color) 10%, transparent);
-    color: var(--primary-main-color);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--primary);
     border-radius: 999px;
     font-size: 0.74rem;
     font-weight: 500;
@@ -944,18 +944,18 @@
 }
 
 .af-show-selected-active {
-    border-color: var(--primary-main-color) !important;
-    color: var(--primary-main-color) !important;
-    background: color-mix(in srgb, var(--primary-main-color) 6%, transparent) !important;
+    border-color: var(--primary) !important;
+    color: var(--primary) !important;
+    background: color-mix(in srgb, var(--primary) 6%, transparent) !important;
 }
 
 /* ===== Selected API Card — stronger visual ===== */
 
 .af-api-card--selected {
-    border-color: var(--primary-main-color);
+    border-color: var(--primary);
     border-width: 1px;
-    background: color-mix(in srgb, var(--primary-main-color) 3.5%, transparent);
-    border-left: 3px solid var(--primary-main-color);
+    background: color-mix(in srgb, var(--primary) 3.5%, transparent);
+    border-left: 3px solid var(--primary);
 }
 
 /* ===== CodeMirror Editor ===== */
@@ -972,8 +972,8 @@
     font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
     font-size: 0.8125rem;
     line-height: 1.6;
-    background: var(--main-bg-color);
-    color: var(--main-text-color);
+    background: var(--surface);
+    color: var(--text);
     border: none;
 }
 
@@ -982,7 +982,7 @@
 }
 
 .af-cm-host .CodeMirror-gutters {
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken, #f8f9fa);
     border-right: 1px solid var(--bs-gray-200);
 }
 
@@ -992,8 +992,8 @@
 }
 
 .af-cm-host:focus-within {
-    border-color: var(--primary-main-color);
-    box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--primary-main-color) 15%, transparent);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .af-cm-invalid {
@@ -1021,20 +1021,20 @@
     border: 1px solid var(--bs-gray-200, #e9ecef);
     border-radius: 1rem;
     cursor: pointer;
-    background: var(--main-bg-color);
+    background: var(--surface);
     transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
     user-select: none;
     position: relative;
 }
 
 .af-path-card:hover {
-    border-color: var(--primary-main-color);
-    box-shadow: 0 2px 12px color-mix(in srgb, var(--primary-main-color) 10%, transparent);
+    border-color: var(--primary);
+    box-shadow: 0 2px 12px color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 .af-path-card--active {
-    border-color: var(--primary-main-color);
-    background: color-mix(in srgb, var(--primary-main-color) 4%, transparent);
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 4%, transparent);
 }
 
 .af-path-card-icon-wrap {
@@ -1042,7 +1042,7 @@
     width: 2.75rem;
     height: 2.75rem;
     border-radius: 0.75rem;
-    background: color-mix(in srgb, var(--primary-main-color) 10%, transparent);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1051,12 +1051,12 @@
 
 .af-path-card--active .af-path-card-icon-wrap,
 .af-path-card:hover .af-path-card-icon-wrap {
-    background: color-mix(in srgb, var(--primary-main-color) 15%, transparent);
+    background: color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .af-path-card-icon {
     font-size: 1.4rem;
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 .af-path-card-content {
@@ -1067,7 +1067,7 @@
 .af-path-card-title {
     font-size: 0.9375rem;
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
     margin-bottom: 0.2rem;
 }
 
@@ -1079,7 +1079,7 @@
 
 .af-path-card-check {
     font-size: 1.25rem;
-    color: var(--primary-main-color);
+    color: var(--primary);
     flex-shrink: 0;
     opacity: 0;
     transition: opacity 0.18s ease;
@@ -1102,8 +1102,8 @@
 
 .af-upload-zone:hover,
 .af-upload-zone--dragover {
-    border-color: var(--primary-main-color);
-    background: color-mix(in srgb, var(--primary-main-color) 4%, transparent);
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 4%, transparent);
 }
 
 .af-upload-zone-inner {
@@ -1120,14 +1120,14 @@
 
 .af-upload-zone:hover .af-upload-zone-icon,
 .af-upload-zone--dragover .af-upload-zone-icon {
-    color: var(--primary-main-color);
+    color: var(--primary);
     transform: translateY(-3px);
 }
 
 .af-upload-zone-title {
     font-size: 1rem;
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
     margin-bottom: 0.375rem;
 }
 
@@ -1140,7 +1140,7 @@
 .af-upload-browse-btn {
     background: none;
     border: none;
-    color: var(--primary-main-color);
+    color: var(--primary);
     font-size: inherit;
     cursor: pointer;
     padding: 0;
@@ -1176,8 +1176,8 @@
 }
 
 .af-upload-format-pill--arazzo {
-    background: color-mix(in srgb, var(--primary-main-color) 10%, transparent);
-    color: var(--primary-main-color);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--primary);
 }
 
 .af-upload-format-pill--md {
@@ -1192,7 +1192,7 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.625rem 1rem;
-    background: color-mix(in srgb, var(--bs-success, #198754) 8%, var(--main-bg-color));
+    background: color-mix(in srgb, var(--bs-success, #198754) 8%, var(--surface));
     border: 1px solid color-mix(in srgb, var(--bs-success, #198754) 30%, var(--bs-gray-200));
     border-radius: 0.625rem;
 }
@@ -1207,7 +1207,7 @@
     flex: 1;
     font-weight: 500;
     font-size: 0.875rem;
-    color: var(--main-text-color);
+    color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1225,8 +1225,8 @@
 }
 
 .af-upload-type-badge--arazzo {
-    background: color-mix(in srgb, var(--primary-main-color) 10%, transparent);
-    color: var(--primary-main-color);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--primary);
 }
 
 .af-upload-type-badge--md {
@@ -1267,7 +1267,7 @@
 .af-sd-validation-header {
     width: 100%;
     padding: 0.5rem 0.875rem;
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken, #f8f9fa);
     font-size: 0.78rem;
     font-weight: 600;
     color: var(--bs-secondary, #6c757d);
@@ -1322,7 +1322,7 @@
 
 .af-sd-item-name {
     font-weight: 500;
-    color: var(--main-text-color);
+    color: var(--text);
     display: flex;
     align-items: center;
     gap: 0.375rem;
@@ -1377,7 +1377,7 @@
     width: 0.875rem;
     height: 0.875rem;
     border: 2px solid var(--bs-gray-300);
-    border-top-color: var(--primary-main-color);
+    border-top-color: var(--primary);
     border-radius: 50%;
     animation: af-spin 0.7s linear infinite;
     flex-shrink: 0;
@@ -1394,7 +1394,7 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.5rem 0.875rem;
-    background: color-mix(in srgb, #16a34a 6%, var(--main-bg-color));
+    background: color-mix(in srgb, #16a34a 6%, var(--surface));
     border: 1px solid color-mix(in srgb, #16a34a 20%, var(--bs-gray-200));
     border-radius: 0.5rem;
     font-size: 0.8125rem;
@@ -1446,19 +1446,19 @@
 }
 
 .af-create-format-btn:hover {
-    color: var(--main-text-color);
-    background: color-mix(in srgb, var(--primary-main-color) 6%, transparent);
+    color: var(--text);
+    background: color-mix(in srgb, var(--primary) 6%, transparent);
 }
 
 .af-create-format-btn--active {
-    background: var(--main-bg-color);
-    color: var(--primary-main-color);
+    background: var(--surface);
+    color: var(--primary);
     font-weight: 600;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .af-create-format-btn--active:hover {
-    background: var(--main-bg-color);
+    background: var(--surface);
 }
 
 .af-create-format-btn:disabled {
@@ -1477,7 +1477,7 @@
 .af-spec-editor-card {
     border: 1px solid var(--bs-gray-300, #dee2e6);
     border-radius: 0.5rem;
-    background: var(--main-bg-color, #fff);
+    background: var(--surface, var(--white));
     overflow: hidden;
     margin-top: 0.75rem;
 }
@@ -1488,7 +1488,7 @@
     gap: 0.625rem;
     padding: 0.75rem 1rem;
     border-bottom: 1px solid var(--bs-gray-200, #e9ecef);
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken, #f8f9fa);
 }
 
 .af-spec-format-label {
@@ -1522,10 +1522,10 @@
     gap: 0.25rem;
     padding: 0 0.4rem;
     height: calc(0.75rem * 1.8);
-    border: 1px solid var(--primary-main-color);
+    border: 1px solid var(--primary);
     background: none;
     font-size: 0.75rem;
-    color: var(--primary-main-color);
+    color: var(--primary);
     cursor: pointer;
     border-radius: 4px;
     line-height: 1;
@@ -1534,12 +1534,12 @@
 }
 
 .af-bring-back-btn:hover {
-    background-color: var(--primary-main-color);
-    color: #fff;
+    background-color: var(--primary);
+    color: var(--white);
 }
 
 .af-bring-back-btn:focus-visible {
-    outline: 2px solid var(--primary-main-color);
+    outline: 2px solid var(--primary);
     outline-offset: 2px;
 }
 
@@ -1557,7 +1557,7 @@
 }
 
 .af-bring-back-feedback--success {
-    color: var(--success-color, #198754);
+    color: var(--success, #198754);
     font-weight: 500;
 }
 
@@ -1575,7 +1575,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.35rem 0.75rem;
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken, #f8f9fa);
     border-bottom: 1px solid var(--bs-gray-200, #e9ecef);
     font-size: 0.75rem;
 }
@@ -1612,7 +1612,7 @@
 .af-editor-empty-title {
     font-size: 0.9375rem;
     font-weight: 600;
-    color: var(--main-text-color, #212529);
+    color: var(--text, #212529);
     margin: 0;
 }
 
@@ -1633,7 +1633,7 @@
     align-items: center;
     padding: 0.625rem 0.875rem;
     border-top: 1px solid var(--bs-gray-200, #e9ecef);
-    background: var(--main-bg-color, #fff);
+    background: var(--surface, var(--white));
 }
 
 .af-editor-status {
@@ -1673,7 +1673,7 @@
     gap: 0.375rem;
     padding: 0.35rem 0.875rem;
     background: #c96a43;
-    color: #fff;
+    color: var(--white);
     border: 1px solid #b85c39;
     border-radius: 0.5rem;
     font-size: 0.8rem;
@@ -1694,7 +1694,7 @@
 .af-generate-claude-btn[disabled] {
     background: #e0c3b5;
     border-color: #d4b0a0;
-    color: #fff;
+    color: var(--white);
     cursor: not-allowed;
     opacity: 0.6;
 }
@@ -1705,7 +1705,7 @@
     gap: 0.5rem;
     padding: 0.5rem 1.125rem;
     background: #10a37f;
-    color: #fff;
+    color: var(--white);
     border: 1px solid #0d8f6e;
     border-radius: 0.5rem;
     font-size: 0.875rem;
@@ -1728,7 +1728,7 @@
     gap: 0.375rem;
     padding: 0.35rem 0.875rem;
     background: #007acc;
-    color: #fff;
+    color: var(--white);
     border: 1px solid #006bb3;
     border-radius: 0.5rem;
     font-size: 0.8rem;
@@ -1749,7 +1749,7 @@
 .af-vscode-btn[disabled] {
     background: #a0c4e0;
     border-color: #8fb8d8;
-    color: #fff;
+    color: var(--white);
     cursor: not-allowed;
     opacity: 0.6;
 }
@@ -1760,8 +1760,8 @@
     gap: 0.375rem;
     padding: 0.35rem 0.875rem;
     background: transparent;
-    color: var(--primary-main-color);
-    border: 1px solid var(--primary-main-color);
+    color: var(--primary);
+    border: 1px solid var(--primary);
     border-radius: 0.5rem;
     font-size: 0.8rem;
     font-weight: 600;
@@ -1770,8 +1770,8 @@
 }
 
 .af-rp-outlined-btn:hover {
-    background: var(--primary-main-color);
-    color: #fff;
+    background: var(--primary);
+    color: var(--white);
 }
 
 .af-rp-outlined-btn:disabled,
@@ -1805,7 +1805,7 @@
 }
 
 .af-info-tip:hover {
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 .af-info-tip-content {
@@ -1874,7 +1874,7 @@
 
 .af-wizard-header {
     padding: 1rem 1.5rem 1rem;
-    background: var(--main-bg-color);
+    background: var(--surface);
 }
 
 
@@ -1919,7 +1919,7 @@
 
 /* Section card — wraps header + content in a white rounded card */
 .af-rp-section-card {
-    background:var(--main-bg-color);
+    background:var(--surface);
     border:1px solid var(--bs-gray-200, #e9ecef);
     border-radius:0.75rem;
     padding:0.875rem 1rem;
@@ -1936,7 +1936,7 @@
 
 /* Agent preview card */
 .af-agent-preview-card {
-    background:var(--main-bg-color);
+    background:var(--surface);
     border:1px solid var(--bs-gray-200);
     border-radius:0.625rem;
     padding:0.875rem 1rem;
@@ -1966,8 +1966,8 @@
     max-width: 70px
 }
 .af-preview-badge--public {
-    background:color-mix(in srgb, var(--primary-main-color) 10%, transparent);
-    color:var(--primary-main-color);
+    background:color-mix(in srgb, var(--primary) 10%, transparent);
+    color:var(--primary);
 }
 .af-preview-empty {
     font-size:0.8125rem; color:var(--bs-gray-400);
@@ -1981,7 +1981,7 @@
     font-size:0.8125rem; color:var(--bs-secondary);
     padding:0.5rem 0.75rem;
     border-radius:0.5rem;
-    background:var(--main-bg-color);
+    background:var(--surface);
     border:1px solid var(--bs-gray-200);
     transition:all 0.2s;
 }
@@ -1991,7 +1991,7 @@
     margin-top:0.05rem;
     background:var(--bs-gray-200);
 }
-.af-checklist-item.is-ok { color:var(--main-text-color); }
+.af-checklist-item.is-ok { color:var(--text); }
 .af-checklist-item.is-ok::before {
     background:color-mix(in srgb,#16a34a 15%,transparent);
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%2316a34a' d='M13.485 1.431a1.473 1.473 0 0 0-2.084 0l-6.073 6.073-2.521-2.521a1.473 1.473 0 0 0-2.083 2.083l3.561 3.561a1.473 1.473 0 0 0 2.084 0l7.115-7.114a1.473 1.473 0 0 0 0-2.082'/%3E%3C/svg%3E");
@@ -2005,7 +2005,7 @@
     background-size:10px;
 }
 .af-checklist-item.is-info::before {
-    background:color-mix(in srgb,var(--primary-main-color) 10%,transparent);
+    background:color-mix(in srgb,var(--primary) 10%,transparent);
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%235952ad' d='M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16'/%3E%3Cpath fill='%235952ad' d='m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0'/%3E%3C/svg%3E");
     background-repeat:no-repeat; background-position:center;
     background-size:10px;
@@ -2033,27 +2033,27 @@
     border:2px solid var(--bs-gray-200, #e9ecef);
     border-radius:0.75rem;
     cursor:pointer;
-    background:var(--main-bg-color);
+    background:var(--surface);
     transition:border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
     user-select:none;
 }
 
 .af-visibility-card:hover {
-    border-color:var(--primary-main-color);
-    box-shadow:0 2px 8px color-mix(in srgb, var(--primary-main-color) 10%, transparent);
+    border-color:var(--primary);
+    box-shadow:0 2px 8px color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 .af-visibility-card--active {
-    border-color:var(--primary-main-color);
-    background:color-mix(in srgb, var(--primary-main-color) 4%, transparent);
-    box-shadow:0 0 0 1px var(--primary-main-color);
+    border-color:var(--primary);
+    background:color-mix(in srgb, var(--primary) 4%, transparent);
+    box-shadow:0 0 0 1px var(--primary);
 }
 
 .af-visibility-card-icon {
     flex-shrink:0;
     width:2.25rem; height:2.25rem;
     border-radius:0.5rem;
-    background:color-mix(in srgb, var(--primary-main-color) 8%, transparent);
+    background:color-mix(in srgb, var(--primary) 8%, transparent);
     display:flex; align-items:center; justify-content:center;
     font-size:1rem;
     color:var(--bs-secondary);
@@ -2062,15 +2062,15 @@
 
 .af-visibility-card--active .af-visibility-card-icon,
 .af-visibility-card:hover .af-visibility-card-icon {
-    background:color-mix(in srgb, var(--primary-main-color) 14%, transparent);
-    color:var(--primary-main-color);
+    background:color-mix(in srgb, var(--primary) 14%, transparent);
+    color:var(--primary);
 }
 
 .af-visibility-card-content { flex:1; min-width:0; }
 
 .af-visibility-card-title {
     font-size:0.875rem; font-weight:600;
-    color:var(--main-text-color); margin-bottom:0.125rem;
+    color:var(--text); margin-bottom:0.125rem;
 }
 
 .af-visibility-card-desc {
@@ -2079,7 +2079,7 @@
 
 .af-visibility-card-check {
     font-size:1.1rem;
-    color:var(--primary-main-color);
+    color:var(--primary);
     flex-shrink:0;
     opacity:0;
     transition:opacity 0.18s ease;
@@ -2125,9 +2125,9 @@
     align-items: center;
     gap: 0.375rem;
     padding: 0.3rem 0.65rem;
-    background: var(--primary-light-color);
-    color: #fff;
-    border: 1px solid var(--primary-light-color);
+    background: var(--primary-light);
+    color: var(--white);
+    border: 1px solid var(--primary-light);
     border-radius: 0.5rem;
     font-size: 0.8125rem;
     font-weight: 600;
@@ -2153,7 +2153,7 @@
 .af-prompt-section {
     border: 1px solid var(--bs-gray-200, #e9ecef);
     border-radius: 0.625rem;
-    background: var(--main-bg-color);
+    background: var(--surface);
     overflow: hidden;
 }
 
@@ -2162,7 +2162,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.625rem 0.875rem;
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken, #f8f9fa);
     border-bottom: 1px solid var(--bs-gray-200);
     cursor: default;
     user-select: none;
@@ -2182,7 +2182,7 @@
 .af-prompt-section-title {
     font-size: 0.875rem;
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
     flex: 1;
 }
 
@@ -2194,7 +2194,7 @@
     height: 1.75rem;
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.375rem;
-    background: var(--main-bg-color);
+    background: var(--surface);
     color: var(--bs-secondary);
     font-size: 0.8rem;
     cursor: pointer;
@@ -2202,8 +2202,8 @@
     flex-shrink: 0;
 }
 .af-prompt-sec-btn:hover {
-    border-color: var(--primary-main-color);
-    color: var(--primary-main-color);
+    border-color: var(--primary);
+    color: var(--primary);
 }
 
 .af-prompt-section-body {
@@ -2217,7 +2217,7 @@
 .af-prompt-section-view {
     font-size: 0.8125rem;
     line-height: 1.65;
-    color: var(--main-text-color);
+    color: var(--text);
     white-space: pre-wrap;
     overflow-wrap: break-word;
 }
@@ -2232,13 +2232,13 @@
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.375rem;
     padding: 0.5rem 0.625rem;
-    background: var(--main-bg-color);
-    color: var(--main-text-color);
+    background: var(--surface);
+    color: var(--text);
 }
 .af-prompt-section-edit:focus {
     outline: none;
-    border-color: var(--primary-main-color);
-    box-shadow: 0 0 0 0.15rem color-mix(in srgb, var(--primary-main-color) 15%, transparent);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 0.15rem color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .af-prompt-empty {
@@ -2260,7 +2260,7 @@
 .af-regen-spin { animation: af-regen-spin 0.7s linear infinite; }
 
 .af-field-readonly {
-    background-color: var(--secondary-bg-color, #f8f9fa) !important;
+    background-color: var(--surface-sunken, #f8f9fa) !important;
     color: var(--bs-secondary, #6c757d) !important;
     cursor: not-allowed !important;
 }
@@ -2270,8 +2270,8 @@
     font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
     font-size: 0.75rem;
     line-height: 1.65;
-    color: var(--main-text-color);
-    background: var(--secondary-bg-color, #f8f9fa);
+    color: var(--text);
+    background: var(--surface-sunken, #f8f9fa);
     border: 1px solid var(--bs-gray-200);
     border-radius: 0.375rem;
     padding: 0.75rem;
@@ -2287,7 +2287,7 @@
 .llms-config-toggle-card {
     border: 1px solid var(--bs-gray-200);
     border-radius: 0.75rem;
-    background: color-mix(in srgb, var(--primary-main-color) 4%, var(--main-bg-color));
+    background: color-mix(in srgb, var(--primary) 4%, var(--surface));
     padding: 1rem 1.25rem;
 }
 
@@ -2296,18 +2296,18 @@
     width: 2.5rem;
     height: 2.5rem;
     border-radius: 0.625rem;
-    background: color-mix(in srgb, var(--primary-main-color) 10%, transparent);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 1.1rem;
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 .llms-url-code {
     font-size: 0.78rem;
-    color: var(--primary-main-color);
-    background: color-mix(in srgb, var(--primary-main-color) 8%, transparent);
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
     padding: 0.1em 0.4em;
     border-radius: 0.25rem;
 }
@@ -2353,7 +2353,7 @@
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.75rem;
     overflow: hidden;
-    background: var(--main-bg-color);
+    background: var(--surface);
     min-width: 0;
 }
 
@@ -2363,7 +2363,7 @@
     justify-content: space-between;
     padding: 0.625rem 1rem;
     border-bottom: 1px solid var(--bs-gray-200);
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken, #f8f9fa);
 }
 
 .llms-preview-link {
@@ -2372,7 +2372,7 @@
 }
 
 .llms-preview-link:hover {
-    color: var(--primary-main-color) !important;
+    color: var(--primary) !important;
 }
 
 .llms-config-preview-body {
@@ -2385,7 +2385,7 @@
     overflow-wrap: anywhere;
     max-height: 70vh;
     overflow-y: auto;
-    color: var(--main-text-color);
+    color: var(--text);
 }
 
 .llms-config-preview-body:empty::before {
@@ -2404,7 +2404,7 @@
 }
 
 .common-btn-danger {
-    background-color: var(--danger-color);
+    background-color: var(--danger);
 }
 
 .common-btn-danger:hover {
@@ -2413,7 +2413,7 @@
 
 .btn.common-btn-danger:disabled,
 .btn.common-btn-danger.disabled {
-    background-color: var(--danger-color);
+    background-color: var(--danger);
     opacity: 0.65;
 }
 
@@ -2431,9 +2431,9 @@
 }
 
 .af-api-filter-toggle--active {
-    background: color-mix(in srgb, var(--primary-main-color) 12%, transparent);
-    border-color: var(--primary-main-color) !important;
-    color: var(--primary-main-color) !important;
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    border-color: var(--primary) !important;
+    color: var(--primary) !important;
 }
 
 .af-api-filter-badge {
@@ -2447,8 +2447,8 @@
     font-weight: 700;
     line-height: 1;
     border-radius: 999px;
-    background: var(--primary-main-color);
-    color: var(--light-text-color, #fff);
+    background: var(--primary);
+    color: var(--white);
 }
 
 .af-api-filter-menu {
@@ -2458,7 +2458,7 @@
     right: 0;
     z-index: 200;
     min-width: 170px;
-    background: var(--main-bg-color, #fff);
+    background: var(--surface, var(--white));
     border: 1px solid #dee2e6;
     border-radius: 0.5rem;
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
@@ -2476,18 +2476,18 @@
     padding: 0.45rem 0.85rem;
     font-size: 0.8rem;
     font-weight: 500;
-    color: var(--main-text-color);
+    color: var(--text);
     cursor: pointer;
     margin: 0;
     user-select: none;
 }
 
 .af-api-filter-option:hover {
-    background: color-mix(in srgb, var(--primary-main-color) 8%, transparent);
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
 }
 
 .af-api-filter-option input[type="checkbox"] {
-    accent-color: var(--primary-main-color);
+    accent-color: var(--primary);
     width: 0.9rem;
     height: 0.9rem;
     flex-shrink: 0;

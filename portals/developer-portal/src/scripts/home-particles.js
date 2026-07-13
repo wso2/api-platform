@@ -26,7 +26,7 @@
     window.particlesJS('hero-particles', {
       particles: {
         number: { value: 64, density: { enable: true, value_area: 900 } },
-        color: { value: ['#ffffff', '#f9a04b', '#5cd1ff'] },
+        color: { value: ['var(--white)', '#f9a04b', '#5cd1ff'] },
         shape: { type: 'circle' },
         opacity: { value: 0.5, random: true },
         size: { value: 2.6, random: true },

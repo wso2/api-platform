@@ -1,5 +1,5 @@
 .custom-navbar {
-  background-color: var(--white-color);
+  background-color: var(--white);
   padding: 0.5rem;
 }
 
@@ -8,22 +8,22 @@
 }
 
 .nav-link {
-  color: var(--main-text-color);
+  color: var(--text);
   margin: 0 0.3125rem;
 }
 
 .nav-item {
-  color: var(--main-text-color);
+  color: var(--text);
 }
 
 .nav-link:hover,
 .nav-link:focus,
 .nav-link.active {
-  color: var(--primary-main-color);
+  color: var(--primary);
 }
 
 .profile-link {
-  color: var(--main-text-color);
+  color: var(--text);
   text-decoration: none;
 }
 
@@ -38,13 +38,13 @@
 }
 
 .profile-dropdown-link {
-  color: var(--main-text-color);
+  color: var(--text);
   text-decoration: none;
 }
 
 .navbar-toggler:focus {
   box-shadow: none;
-  border: 0.0625rem solid var(--primary-main-color);
+  border: 0.0625rem solid var(--primary);
 }
 
 @media (max-width: 61.5rem) {
@@ -66,7 +66,7 @@
   display: inline-flex;
   align-items: center;
   background: #143b52;
-  color: #fff;
+  color: var(--white);
   border: 1px solid #143b52;
   border-radius: 1.25rem;
   padding: 0.5625rem 1.375rem;
@@ -80,7 +80,7 @@
 
 .login-btn:hover {
   opacity: 0.88;
-  color: #fff;
+  color: var(--white);
 }
 
 @media (max-width: 48rem) {

@@ -1187,7 +1187,7 @@ body {
 .aui-root *, .aui-root :after, .aui-root :before {
     --tw-ring-inset: var(--tw-empty, /*!*/ /*!*/);
     --tw-ring-offset-width: 0px;
-    --tw-ring-offset-color: #fff;
+    --tw-ring-offset-color: var(--white);
     --tw-ring-color: rgba(66, 153, 225, 0.5);
     --tw-ring-offset-shadow: 0 0 transparent;
     --tw-ring-shadow: 0 0 transparent;

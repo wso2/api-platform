@@ -25,7 +25,7 @@ body {
 
 /* Login Box */
 .login-box {
-    background: var(--primary-light-color);
+    background: var(--primary-light);
     padding: 40px 30px;
     border-radius: 12px;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
@@ -38,7 +38,7 @@ body {
 .login-title {
     font-size: 1.875rem;
     font-weight: bold;
-    color: var(--primary-main-color);
+    color: var(--primary);
     margin-bottom: 10px;
 }
 
@@ -51,7 +51,7 @@ body {
 .login-form label {
     display: block;
     font-size: 14px;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.7;
     margin-bottom: 8px;
 }
@@ -60,7 +60,7 @@ body {
     width: 100%;
     padding: 10px 15px;
     font-size: 14px;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.7;
     background: #ecf0f1;
     border: 1px solid #bdc3c7;
@@ -79,7 +79,7 @@ body {
     width: 100%;
     padding: 12px 15px;
     font-size: 16px;
-    color: #fff;
+    color: var(--white);
     background: #3498db;
     border: none;
     border-radius: 6px;

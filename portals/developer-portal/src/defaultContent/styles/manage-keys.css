@@ -23,10 +23,10 @@
     padding: 0.875rem 0;
     text-align: center;
     font-weight: 500;
-    background: var(--secondary-bg-color);
+    background: var(--surface-sunken);
     border: 1px solid var(--bs-gray-200);
     border-bottom: none;
-    color: var(--main-text-color);
+    color: var(--text);
     border-radius: 0;
     border-top-left-radius: 0.75rem;
     border-top-right-radius: 0.75rem;
@@ -36,23 +36,23 @@
   }
 
   .keys-section .key-btn:hover {
-    background: var(--main-bg-color);
+    background: var(--surface);
     opacity: 0.9;
   }
 
   .keys-section .key-btn:focus {
-    outline: 0.1px solid var(--primary-lightest-color);
+    outline: 0.1px solid var(--primary-surface);
     outline-offset: 0.1px;
   }
 
   .keys-section .key-btn.active {
-    background: var(--main-bg-color);
+    background: var(--surface);
     z-index: 3;
     border-top-left-radius: 0.75rem;
     border-top-right-radius: 0.75rem;
     border: 1px solid var(--bs-gray-200);
     border-bottom: none;
-    color: var(--primary-main-color);
+    color: var(--primary);
     font-weight: 600;
     opacity: 1;
     box-shadow:
@@ -61,7 +61,7 @@
   }
 
   .keys-section #keysTabContent {
-    background: var(--main-bg-color);
+    background: var(--surface);
     padding: 1.5rem;
     border: 1px solid var(--bs-gray-200);
     border-radius: 0 0 0.75rem 0.75rem;
@@ -77,20 +77,20 @@
 
 /* Accordion Headers - Changed from primary color to neutral with subtle accent */
 .keys-section .accordion-button {
-    background-color: var(--secondary-bg-color);
-    color: var(--main-text-color);
+    background-color: var(--surface-sunken);
+    color: var(--text);
     box-shadow: none;
     font-weight: 600;
 }
 
 .keys-section .accordion-button:not(.collapsed) {
-    background-color: var(--secondary-bg-color);
-    color: var(--main-text-color);
+    background-color: var(--surface-sunken);
+    color: var(--text);
     box-shadow: none;
 }
 
 .keys-section .accordion-button:hover {
-    background-color: var(--primary-lightest-color);
+    background-color: var(--primary-surface);
 }
 
 .keys-section #sandbox-oauth2.accordion-header,
@@ -101,8 +101,8 @@
 }
 
 .keys-section .accordion-header {
-    background-color: var(--main-bg-color);
-    color: var(--main-text-color);
+    background-color: var(--surface);
+    color: var(--text);
     border: 1px solid var(--bs-gray-300);
     border-radius: var(--bs-accordion-border-radius);
     padding: 0;
@@ -111,7 +111,7 @@
 /* Accordion arrow indicator - Darker for better visibility */
 .keys-section .accordion-button::after,
 .keys-section .accordion-button:not(.collapsed)::after {
-    background-color: var(--main-text-color);
+    background-color: var(--text);
     mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
     -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
     mask-repeat: no-repeat;
@@ -123,7 +123,7 @@
 
 .keys-section .accordion-body {
     padding: 1.25rem 1.25rem 1.25rem 0;
-    background-color: var(--main-bg-color);
+    background-color: var(--surface);
     border-top: none;
     max-height: 60vh;
     overflow-y: auto;
@@ -154,40 +154,40 @@
     border-radius: 0.5rem;
     overflow: hidden;
     border: 1px solid var(--bs-gray-300);
-    background: var(--secondary-bg-color);
+    background: var(--surface-sunken);
 }
 
 /* Table header styling */
 .keys-section .app-table thead {
-    background-color: var(--primary-lightest-color);
+    background-color: var(--primary-surface);
 }
 
 .keys-section .app-table thead tr {
-    background-color: var(--primary-lightest-color);
+    background-color: var(--primary-surface);
 }
 
 .keys-section .app-table .app-th {
-    background-color: var(--primary-lightest-color);
+    background-color: var(--primary-surface);
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
     padding: 0.75rem 1rem;
 }
 
 /* Primary action buttons - scoped to keys section */
 .keys-section .common-btn-primary.btn-sm {
-    background-color: var(--primary-main-color);
-    color: var(--light-text-color);
+    background-color: var(--primary);
+    color: var(--white);
     border: none;
 }
 
 .keys-section .common-btn-primary.btn-sm:hover {
-    background-color: var(--primary-light-color);
+    background-color: var(--primary-light);
 }
 
 /* Main Generate Key button styling - make it more compact and visually appealing */
 .keys-section button[id^="generateKeyBtn-"][data-cyid^="generateKey-"] {
-    background-color: var(--primary-main-color) !important;
-    color: var(--light-text-color) !important;
+    background-color: var(--primary) !important;
+    color: var(--white) !important;
     border: none !important;
     border-radius: 0.5rem !important;
     padding: 0.75rem 1.5rem !important;
@@ -201,7 +201,7 @@
 }
 
 .keys-section button[id^="generateKeyBtn-"][data-cyid^="generateKey-"]:hover {
-    background-color: var(--primary-light-color) !important;
+    background-color: var(--primary-light) !important;
     transform: translateY(-0.0625rem) !important;
 }
 
@@ -226,7 +226,7 @@
 .api-key-name-modal .custom-modal-title {
     font-size: 1.15rem;
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
 }
 
 .api-key-name-modal .form-label {
@@ -243,8 +243,8 @@
 
 /* Consistent focus styling for modal */
 .api-key-name-modal .form-control:focus {
-    border-color: var(--primary-light-color);
-    box-shadow: 0 0 0 0.125rem var(--primary-light-color);
+    border-color: var(--primary-light);
+    box-shadow: 0 0 0 0.125rem var(--primary-light);
 }
 
 /* Fix modal close button - prevent our styles from affecting it */
@@ -282,8 +282,8 @@
 
 /* Form inputs - Better focus states - SCOPED to keys section only */
 .keys-section .form-control:focus {
-    border-color: var(--primary-light-color);
-    box-shadow: 0 0 0 0.125rem var(--primary-light-color);
+    border-color: var(--primary-light);
+    box-shadow: 0 0 0 0.125rem var(--primary-light);
 }
 
 /* Password toggle container improvements */
@@ -299,7 +299,7 @@
 .keys-section .password-copy-btn {
     background: transparent;
     border: none;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.6;
     padding: 0.375rem 0.5rem;
     cursor: pointer;
@@ -308,7 +308,7 @@
 
 .keys-section .password-toggle-btn:hover,
 .keys-section .password-copy-btn:hover {
-    color: var(--secondary-main-color);
+    color: var(--accent);
     opacity: 1;
 }
 
@@ -326,7 +326,7 @@
 
 /* Table row hover effect */
 .keys-section .app-table tbody tr:hover {
-    background-color: var(--secondary-bg-color);
+    background-color: var(--surface-sunken);
 }
 
 /* Better button spacing and alignment in action rows */

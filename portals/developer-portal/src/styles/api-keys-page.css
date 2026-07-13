@@ -138,7 +138,7 @@
   cursor: pointer;
   transition: background 0.15s;
   white-space: nowrap;
-  background: #fff;
+  background: var(--white);
 }
 
 .ak-btn-app    { border: 1px solid #d7dce3; color: #52607a; }
@@ -170,7 +170,7 @@
 .ak-modal {
   width: 30rem;
   max-width: calc(100vw - 2rem);
-  background: #fff;
+  background: var(--white);
   border-radius: 1rem;
   box-shadow: 0 24px 60px rgba(10, 25, 50, 0.34);
   overflow: hidden;
@@ -265,7 +265,7 @@
   font-size: 0.875rem;
   font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
   color: #1a2433;
-  background: #fff;
+  background: var(--white);
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
   box-sizing: border-box;
@@ -301,7 +301,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--white);
   font-size: 1.5rem;
   box-shadow: 0 8px 22px rgba(46, 125, 50, 0.34), 0 0 0 7px rgba(46, 125, 50, 0.10);
 }
@@ -412,7 +412,7 @@
 .ak-revoke-modal {
   width: 26.25rem;
   max-width: calc(100vw - 2rem);
-  background: #fff;
+  background: var(--white);
   border-radius: 1rem;
   padding: 1.875rem;
   box-shadow: 0 24px 60px rgba(10, 25, 50, 0.34);

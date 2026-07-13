@@ -8,12 +8,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: var(--primary-lightest-color);
+  background-color: var(--primary-surface);
   padding: 0.9375rem 1.25rem;
   border-radius: 0.5rem;
   margin-bottom: 0.9375rem;
   margin-right: 2rem;
-  border-left: 4px solid var(--primary-light-color);
+  border-left: 4px solid var(--primary-light);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   transition: all 0.2s ease;
   position: relative;
@@ -39,7 +39,7 @@
 
 .defaultapi-development-label {
   font-weight: 600;
-  color: var(--main-text-color);
+  color: var(--text);
   margin-bottom: 0.5rem;
   font-size: 0.875rem;
 }
@@ -53,7 +53,7 @@
 
 .defaultapi-endpoint-url {
   font-family: var(--font-family-mono);
-  color: var(--main-text-color);
+  color: var(--text);
   font-size: 0.9375rem;
   flex-grow: 1;
   overflow: hidden;
@@ -62,7 +62,7 @@
 
 .defaultapi-description {
   line-height: 1.7;
-  color: var(--main-text-color);
+  color: var(--text);
   opacity: 0.7;
   margin-bottom: 1.25rem;
 }

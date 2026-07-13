@@ -186,7 +186,7 @@
   position: relative;
   width: 32.5rem;
   max-width: 100%;
-  background: #fff;
+  background: var(--white);
   border-radius: 1.125rem;
   box-shadow: 0 28px 70px rgba(10, 25, 50, .38);
   animation: mc-pop .3s ease;
@@ -208,7 +208,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--white);
   font-size: 1.5rem;
   box-shadow: 0 8px 22px rgba(46,125,50,.34), 0 0 0 7px rgba(46,125,50,.10);
 }
@@ -338,7 +338,7 @@
 .mc-manage-modal {
   width: 31.25rem;
   max-width: 100%;
-  background: #fff;
+  background: var(--white);
   border-radius: 1.125rem;
   box-shadow: 0 28px 70px rgba(10, 25, 50, .38);
   animation: mc-pop .3s ease;
@@ -446,7 +446,7 @@
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, opacity 0.15s;
-  background: #fff;
+  background: var(--white);
 }
 .mc-manage-action-btn.mc-manage-action-btn--regenerate { border: 1px solid #a9c1e6; color: #1f6feb; }
 .mc-manage-action-btn.mc-manage-action-btn--regenerate:hover { background: #f2f7fd; }
@@ -461,7 +461,7 @@
 .mc-unsub-dialog {
   width: 27.5rem;
   max-width: 100%;
-  background: #fff;
+  background: var(--white);
   border-radius: 1rem;
   padding: 1.875rem 1.875rem 1.625rem;
   box-shadow: 0 24px 60px rgba(10, 25, 50, .34);
@@ -511,7 +511,7 @@
 .mc-unsub-confirm-btn {
   background: #c62828;
   border: none;
-  color: #fff;
+  color: var(--white);
   border-radius: 1.25rem;
   padding: 0.625rem 1.375rem;
   font-size: 0.875rem;

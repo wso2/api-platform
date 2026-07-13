@@ -9,7 +9,7 @@
     padding: 12px 15px;
     gap: 10px;
     border-radius: 6px;
-    background-color: #ffffff;
+    background-color: var(--white);
     color: #40404b;
     border: 1px solid #e0e0e0;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);

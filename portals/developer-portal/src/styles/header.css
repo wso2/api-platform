@@ -1,5 +1,5 @@
 .custom-navbar {
-  background-color: var(--white-color);
+  background-color: var(--white);
   padding: 0.5rem 3.75rem;
   height: 64px;
 }
@@ -34,7 +34,7 @@
 
 .navbar-nav .nav-link {
   white-space: nowrap;
-  color: var(--main-text-color);
+  color: var(--text);
   margin-right: 20px;
   font-size: 14px;
   text-align: center;
@@ -44,26 +44,26 @@
 
 .navbar-nav .nav-link:hover,
 .navbar-nav .nav-link.active {
-  color: var(--main-text-color);
+  color: var(--text);
 }
 
 .navbar-nav .dropdown-menu {
-  background-color: var(--main-text-color);
+  background-color: var(--text);
   border: none;
 }
 
 .navbar-nav .dropdown-item {
-  color: var(--main-text-color);
+  color: var(--text);
 }
 
 .navbar-nav .dropdown-item:hover {
-  background-color: var(--main-bg-color);
+  background-color: var(--surface);
 }
 
 .custom-signup-btn {
-  background-color: var(--secondary-main-color);
-  border-color: var(--border-color);
-  color: var(--main-text-color);
+  background-color: var(--accent);
+  border-color: var(--border);
+  color: var(--text);
   border-radius: 25px;
   padding: 8px 20px;
   margin-right: 10px;
@@ -72,14 +72,14 @@
 }
 
 .custom-signup-btn:hover {
-  background-color: var(--secondary-main-color);
-  border-color: var(--border-color);
+  background-color: var(--accent);
+  border-color: var(--border);
 }
 
 .custom-signup-btn:focus {
   box-shadow: 0 0 0 1px rgba(226, 225, 252, 0.5);
-  background-color: var(--primary-dark-color);
-  color: var(--main-text-color);
+  background-color: var(--primary-dark);
+  color: var(--text);
 }
 
 .custom-signup-btn:active {
@@ -87,7 +87,7 @@
 }
 
 .custom-login-btn {
-  color: var(--main-text-color);
+  color: var(--text);
   border-radius: 20px;
   padding: 10px 20px;
   border: 0px;
@@ -98,13 +98,13 @@
 
 .custom-login-btn:hover {
   background-color: rgba(255, 255, 255, 0.1);
-  color: var(--main-text-color);
+  color: var(--text);
 }
 
 .custom-login-btn:focus {
   box-shadow: 0 0 0 1px rgba(226, 225, 252, 0.5);
-  background-color: var(--primary-dark-color);
-  color: var(--main-text-color);
+  background-color: var(--primary-dark);
+  color: var(--text);
 }
 
 .custom-login-btn:active {
@@ -112,7 +112,7 @@
 }
 
 .dropdown-menu {
-  background-color: var(--white-color);
+  background-color: var(--white);
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   padding: 10px;
@@ -124,10 +124,10 @@
   align-items: center;
   padding: 5px 10px;
   border-radius: 8px;
-  background-color: var(--main-bg-color);
+  background-color: var(--surface);
   font-weight: bold;
-  color: var(--main-text-color);
-  border: 1px solid var(--main-bg-color);
+  color: var(--text);
+  border: 1px solid var(--surface);
   border-radius: 25px;
 }
 
@@ -158,7 +158,7 @@
   align-items: center;
   justify-content: flex-start;
   padding: 15px;
-  border-bottom: 0.5px solid var(--border-color);
+  border-bottom: 0.5px solid var(--border);
   max-width: 211px;
 }
 
@@ -183,13 +183,13 @@
 
 .user-email {
   font-size: 12px;
-  color: var(--main-text-color);
+  color: var(--text);
 }
 
 .user-status {
   font-size: 10px;
-  color: var(--secondary-bg-color);
-  background-color: var(--primary-main-color);
+  color: var(--surface-sunken);
+  background-color: var(--primary);
   padding: 2px 6px;
   border-radius: 12px;
   margin-top: 4px;
@@ -197,7 +197,7 @@
 
 .dropdown-item i {
   margin-right: 10px;
-  color: var(--primary-main-color);
+  color: var(--primary);
   font-size: 16px;
   min-width: 20px;
   text-align: center;
@@ -217,7 +217,7 @@
 }
 
 .dropdown-item:hover {
-  background-color: var(--main-bg-color);
+  background-color: var(--surface);
   border-radius: 8px;
 }
 
@@ -232,13 +232,13 @@
 }
 
 .dropdown-menu hr {
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
   margin: 10px 0;
 }
 
 .user-email {
   font-size: 12px;
-  color: var(--border-color);
+  color: var(--border);
   white-space: normal;
   word-wrap: break-word;
   overflow-wrap: break-word;

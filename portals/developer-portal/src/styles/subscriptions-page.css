@@ -116,7 +116,7 @@
   flex: none;
   border-radius: 0.5rem;
   border: 1px solid;
-  background: #fff;
+  background: var(--white);
   display: flex;
   align-items: center;
   justify-content: center;

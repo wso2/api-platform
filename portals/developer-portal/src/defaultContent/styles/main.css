@@ -15,28 +15,80 @@
 @import "/styles/mcp-landing.css";
 
 :root {
-  --main-bg-color: #ffffff;
-  --secondary-bg-color:#F7F8FB;
-  /* primary colors */
-  --primary-main-color: #1A4C6D;
-  --primary-dark-color: #043556;
-  --primary-light-color: #2b719f;
-  --primary-lightest-color: #D4E8F64D;
-  /* secondary colors */
-  --secondary-main-color: #FE8C3A;
-  /* font colors */
-  --main-text-color: #40404b;
-  --light-text-color: #ffffff;
-  --dark-text-color: #000000;
-  /* other special colors */
-  --success-color: #28a745;
-  --danger-color: #a40e26;
-  --warning-color: #ffc107;
-  --white-color: #ffffff;
-  --border-color: #e6eaf0;
-  /* Gradient */
-  --primary-gradient: linear-gradient(135deg, #ef4223 0%, #ff8636 100%);
+  /* ============================================================
+     THEME PALETTE
+     Edit the SEEDS to re-theme the whole portal. Everything under
+     DERIVED updates itself via color-mix().
+     ============================================================ */
 
+  /* ---- SEEDS · brand (these cascade everywhere) ----
+     Values taken verbatim from the original (pre-theme) palette so the same
+     hue can be reused directly across the portal rather than re-derived as a
+     slight variation. Only gradients and translucent overlays are derived. */
+  --primary:       #1a4c6d;   /* structure, links, focus, primary buttons */
+  --primary-dark:  #043556;   /* primary hover / pressed / deep navy panels */
+  --primary-light: #2b719f;   /* lifted primary states, on-dark highlights  */
+  --accent:        #fe8c3a;   /* solid highlights, badges, env dots, borders */
+  --accent-dark:   #ef4223;   /* accent shade */
+  --accent-light:  #ff8636;   /* accent tint */
+
+  /* ---- SEEDS · neutral foundation ---- */
+  --ink:     #1a2433;   /* darkest text / navy — generates the grey ramp */
+  --surface: #ffffff;   /* page background — the ramp mixes toward this */
+  --white:   #ffffff;   /* pure white — text / fills on colored or dark surfaces (kept distinct from --surface) */
+
+  /* ---- SEEDS · semantic (stay independent of the brand) ---- */
+  --success: #2e7d32;
+  --warning: #e39a00;
+  --danger:  #c62828;
+  --info:    #0277bd;
+
+  /* ---- DERIVED · text & neutrals (from --ink → --surface) ---- */
+  --text-strong:    var(--ink);
+  --text:           color-mix(in srgb, var(--ink) 80%, var(--surface));
+  --text-muted:     color-mix(in srgb, var(--ink) 52%, var(--surface));
+  --text-subtle:    color-mix(in srgb, var(--ink) 38%, var(--surface));
+  --border:         color-mix(in srgb, var(--ink) 12%, var(--surface));
+  --border-strong:  color-mix(in srgb, var(--ink) 22%, var(--surface));
+  --surface-sunken: color-mix(in srgb, var(--ink) 4%,  var(--surface));
+  --overlay:        color-mix(in srgb, var(--ink) 55%, transparent);
+  --ink-deep:       color-mix(in oklch, var(--primary) 55%, #000);
+
+  /* ---- DERIVED · primary family (dark & light are seeds above) ---- */
+  --primary-surface: color-mix(in srgb, var(--primary) 8%,  var(--surface));
+  --focus-ring:      color-mix(in srgb, var(--primary) 40%, transparent);
+
+  /* ---- DERIVED · accent family + CTA gradient ---- */
+  --accent-surface: color-mix(in srgb,  var(--accent) 12%, var(--surface));
+  --cta-gradient:   linear-gradient(135deg, var(--accent-dark) 0%, var(--accent-light) 100%);
+
+  /* ---- DERIVED · semantic surfaces (tinted badge / banner backgrounds) ---- */
+  --success-surface: color-mix(in srgb, var(--success) 12%, var(--surface));
+  --warning-surface: color-mix(in srgb, var(--warning) 14%, var(--surface));
+  --danger-surface:  color-mix(in srgb, var(--danger)  10%, var(--surface));
+  --info-surface:    color-mix(in srgb, var(--info)    12%, var(--surface));
+
+  /* ---- DERIVED · auth brand panel ----
+     The dark hero shared by the sign-in, login and org-select shell. The ground
+     and glows come from the brand seeds; text is white; only the gradient and
+     translucent overlays are derived. The tenant pill is --primary-light
+     lightened for legibility on the navy — no separate seed. */
+  --panel-bg:
+    radial-gradient(56.25rem 37.5rem at 12% 8%, color-mix(in srgb, var(--primary-light) 42%, transparent), transparent 60%),
+    radial-gradient(43.75rem 37.5rem at 95% 100%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 55%),
+    linear-gradient(160deg,
+      var(--primary-dark) 0%,
+      color-mix(in srgb, var(--primary-dark) 72%, #000) 60%,
+      color-mix(in srgb, var(--primary-dark) 58%, #000) 100%);
+  --panel-pill:        color-mix(in oklch, var(--primary-light) 60%, var(--white));
+  --panel-pill-bg:     color-mix(in srgb,  var(--primary-light) 16%, transparent);
+  --panel-pill-border: color-mix(in srgb,  var(--primary-light) 34%, transparent);
+  --panel-text:        color-mix(in srgb, var(--white) 74%, transparent);
+  --panel-text-muted:  color-mix(in srgb, var(--white) 52%, transparent);
+  --panel-fill:        color-mix(in srgb, var(--white) 6%,  transparent);
+  --panel-fill-border: color-mix(in srgb, var(--white) 12%, transparent);
+
+  /* ---- Non-color tokens ---- */
   --font-family-sans: Inter, "Montserrat", "Quicksand", "Noto Sans", "Poppins", sans-serif;
   --font-family-mono: "Roboto", monospace;
 
@@ -54,7 +106,7 @@ html {
   display: flex;
   flex-direction: column;
   font-family: var(--font-family-sans);
-  background-color: var(--main-bg-color);
+  background-color: var(--surface);
 }
 
 /* Row between fixed navbar and fixed footer */
@@ -93,12 +145,12 @@ html {
   font-size: 1.875rem;
   margin-bottom: 3.5rem;
   font-weight: 600;
-  color: var(--main-text-color);
+  color: var(--text);
 }
 
 .container-header {
   display: block;
-  color: var(--primary-main-color);
+  color: var(--primary);
   font-size: 1.5rem;
   font-weight: 600;
 }

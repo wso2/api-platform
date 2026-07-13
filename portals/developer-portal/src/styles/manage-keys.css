@@ -8,13 +8,13 @@
 .keys-section .mk-title {
     font-size: 1.4rem;
     font-weight: 700;
-    color: var(--main-text-color);
+    color: var(--text);
     margin-bottom: 0.25rem;
 }
 
 .keys-section .mk-subtitle {
     font-size: 0.9rem;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.7;
     margin: 0;
 }
@@ -34,7 +34,7 @@
     padding: 0.9rem 1.1rem;
     border: 1.5px solid var(--bs-gray-200);
     border-radius: 12px;
-    background: var(--main-bg-color);
+    background: var(--surface);
     cursor: pointer;
     text-align: left;
     transition: border-color 0.18s, box-shadow 0.18s;
@@ -56,7 +56,7 @@
     flex-shrink: 0;
 }
 
-.keys-section .mk-env-dot-prod { background: var(--secondary-main-color); }
+.keys-section .mk-env-dot-prod { background: var(--accent); }
 .keys-section .mk-env-dot-sandbox { background: #5c9fcf; }
 
 .keys-section .mk-env-text {
@@ -67,12 +67,12 @@
 .keys-section .mk-env-name {
     font-weight: 600;
     font-size: 0.9rem;
-    color: var(--main-text-color);
+    color: var(--text);
 }
 
 .keys-section .mk-env-desc {
     font-size: 0.78rem;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.6;
 }
 
@@ -96,23 +96,23 @@
 }
 
 .keys-section .mk-context-banner-prod {
-    background: color-mix(in srgb, var(--secondary-main-color) 10%, transparent);
-    color: var(--main-text-color);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--text);
 }
 
 .keys-section .mk-context-banner-sandbox {
     background: color-mix(in srgb, #5c9fcf 10%, transparent);
-    color: var(--main-text-color);
+    color: var(--text);
 }
 
-.keys-section .mk-env-dot-prod-icon { color: var(--secondary-main-color); font-size: 0.55rem; }
+.keys-section .mk-env-dot-prod-icon { color: var(--accent); font-size: 0.55rem; }
 .keys-section .mk-env-dot-sandbox-icon { color: #5c9fcf; font-size: 0.55rem; }
 
 /* ── Key manager card ── */
 .keys-section .mk-km-card {
     border: 1px solid var(--bs-gray-200);
     border-radius: 14px;
-    background: var(--main-bg-color);
+    background: var(--surface);
     overflow: hidden;
     margin-bottom: 1.25rem;
 }
@@ -130,8 +130,8 @@
     width: 38px;
     height: 38px;
     border-radius: 10px;
-    background: var(--primary-main-color);
-    color: #fff;
+    background: var(--primary);
+    color: var(--white);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -152,7 +152,7 @@
 .keys-section .mk-km-name {
     font-weight: 600;
     font-size: 0.95rem;
-    color: var(--main-text-color);
+    color: var(--text);
 }
 
 .keys-section .mk-km-badge {
@@ -163,9 +163,9 @@
     font-size: 0.775rem;
     font-weight: 600;
     border-radius: 999px;
-    border: 1.5px solid var(--secondary-main-color);
-    color: var(--secondary-main-color);
-    background: color-mix(in srgb, var(--secondary-main-color) 8%, transparent);
+    border: 1.5px solid var(--accent);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .keys-section .mk-km-badge-sandbox {
@@ -188,7 +188,7 @@
     border-bottom: 1px solid var(--bs-gray-200);
     padding: 0 1.25rem;
     gap: 0;
-    background: var(--main-bg-color);
+    background: var(--surface);
 }
 
 .keys-section .mk-km-tab {
@@ -198,7 +198,7 @@
     padding: 0.65rem 0.9rem;
     font-size: 0.85rem;
     font-weight: 500;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.6;
     cursor: pointer;
     display: flex;
@@ -211,12 +211,12 @@
 
 .keys-section .mk-km-tab:hover {
     opacity: 0.9;
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 .keys-section .mk-km-tab.active {
-    border-bottom-color: var(--primary-main-color);
-    color: var(--primary-main-color);
+    border-bottom-color: var(--primary);
+    color: var(--primary);
     opacity: 1;
     font-weight: 600;
 }
@@ -254,7 +254,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.55;
 }
 
@@ -264,13 +264,13 @@
     border: 1px solid var(--bs-gray-300);
     border-radius: 8px;
     overflow: hidden;
-    background: var(--main-bg-color);
+    background: var(--surface);
     transition: border-color 0.15s;
 }
 
 .keys-section .mk-input-row:focus-within {
-    border-color: var(--primary-main-color);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-main-color) 15%, transparent);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .keys-section .mk-input {
@@ -281,13 +281,13 @@
     font-size: 0.875rem;
     font-family: var(--font-family-mono);
     background: transparent;
-    color: var(--main-text-color);
+    color: var(--text);
     min-width: 0;
 }
 
 .keys-section .mk-input:disabled {
     background: transparent;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.85;
 }
 
@@ -303,7 +303,7 @@
     border: none;
     border-left: 1px solid var(--bs-gray-200);
     padding: 0.55rem 0.65rem;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.55;
     cursor: pointer;
     transition: opacity 0.15s, color 0.15s;
@@ -314,7 +314,7 @@
 
 .keys-section .mk-icon-btn:hover {
     opacity: 1;
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 /* ── Grant types metadata row ── */
@@ -337,7 +337,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.5;
 }
 
@@ -354,7 +354,7 @@
     font-size: 0.775rem;
     font-weight: 500;
     border-radius: 999px;
-    background: #ffffff;
+    background: var(--white);
     color: #40404b;
     border: 1.5px solid #d0d0d8;
 }
@@ -376,7 +376,7 @@
     align-items: center;
     gap: 0.4rem;
     font-size: 0.8rem;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.6;
     flex: 1;
     min-width: 200px;
@@ -413,36 +413,36 @@
 }
 
 .keys-section .mk-btn-primary {
-    background: var(--primary-main-color);
-    color: #fff;
-    border-color: var(--primary-main-color);
+    background: var(--primary);
+    color: var(--white);
+    border-color: var(--primary);
 }
 
 .keys-section .mk-btn-primary:hover {
-    background: color-mix(in srgb, var(--primary-main-color) 85%, black);
+    background: color-mix(in srgb, var(--primary) 85%, black);
 }
 
 .keys-section .mk-btn-outline {
-    background: var(--main-bg-color);
-    color: var(--main-text-color);
+    background: var(--surface);
+    color: var(--text);
     border-color: var(--bs-gray-300);
 }
 
 .keys-section .mk-btn-outline:hover {
-    background: var(--primary-light-color);
-    border-color: var(--primary-main-color);
-    color: var(--primary-main-color);
+    background: var(--primary-light);
+    border-color: var(--primary);
+    color: var(--primary);
 }
 
 .keys-section .mk-btn-danger {
     background: transparent;
-    color: var(--danger-color);
+    color: var(--danger);
     border-color: transparent;
 }
 
 .keys-section .mk-btn-danger:hover {
-    background: color-mix(in srgb, var(--danger-color) 8%, transparent);
-    border-color: color-mix(in srgb, var(--danger-color) 35%, transparent);
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    border-color: color-mix(in srgb, var(--danger) 35%, transparent);
 }
 
 /* ── Empty state ── */
@@ -459,8 +459,8 @@
     width: 52px;
     height: 52px;
     border-radius: 14px;
-    background: var(--primary-light-color);
-    color: var(--primary-main-color);
+    background: var(--primary-light);
+    color: var(--primary);
     font-size: 1.5rem;
     display: flex;
     align-items: center;
@@ -476,13 +476,13 @@
 .keys-section .mk-empty-title {
     font-weight: 600;
     font-size: 1rem;
-    color: var(--main-text-color);
+    color: var(--text);
     margin: 0;
 }
 
 .keys-section .mk-empty-desc {
     font-size: 0.855rem;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.6;
     max-width: 400px;
     margin: 0 0 0.75rem;
@@ -503,9 +503,9 @@
 /* ── Error container ── */
 .keys-section .mk-error {
     padding: 0.75rem 1.25rem;
-    background: color-mix(in srgb, var(--danger-color) 8%, transparent);
-    border-top: 1px solid color-mix(in srgb, var(--danger-color) 25%, transparent);
-    color: var(--danger-color);
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
+    color: var(--danger);
     font-size: 0.85rem;
 }
 
@@ -517,8 +517,8 @@
     padding: 1rem 1.25rem;
     border-radius: 10px;
     border: 1px solid var(--bs-gray-200);
-    background: var(--secondary-bg-color);
-    color: var(--main-text-color);
+    background: var(--surface-sunken);
+    color: var(--text);
     opacity: 0.7;
     font-size: 0.875rem;
 }
@@ -568,7 +568,7 @@
 .keys-section .mk-config-label {
     font-size: 0.875rem;
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
 }
 
 .keys-section .mk-config-value {
@@ -581,13 +581,13 @@
 .keys-section .mk-config-code {
     font-size: 0.855rem;
     font-family: var(--font-family-mono);
-    color: var(--main-text-color);
+    color: var(--text);
     word-break: break-all;
 }
 
 .keys-section .mk-config-text {
     font-size: 0.875rem;
-    color: var(--main-text-color);
+    color: var(--text);
 }
 
 .keys-section .mk-config-footer {
@@ -603,7 +603,7 @@
 
 .keys-section .mk-config-note {
     font-size: 0.8rem;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.6;
     flex: 1;
 }
@@ -619,14 +619,14 @@
 .keys-section .mk-check-item input[type="checkbox"] {
     width: 15px;
     height: 15px;
-    accent-color: var(--primary-main-color);
+    accent-color: var(--primary);
     cursor: pointer;
 }
 
 .keys-section .mk-check-item label {
     font-size: 0.875rem;
     cursor: pointer;
-    color: var(--main-text-color);
+    color: var(--text);
 }
 
 .keys-section .mk-inline-input {
@@ -636,15 +636,15 @@
     border-radius: 8px;
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
-    color: var(--main-text-color);
-    background: var(--main-bg-color);
+    color: var(--text);
+    background: var(--surface);
     outline: none;
     transition: border-color 0.15s;
 }
 
 .keys-section .mk-inline-input:focus {
-    border-color: var(--primary-main-color);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-main-color) 15%, transparent);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .keys-section .mk-btn-sm {
@@ -654,7 +654,7 @@
 
 .keys-section .mk-field-hint {
     font-size: 0.775rem;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.55;
     margin-top: 0.25rem;
 }
@@ -682,7 +682,7 @@
 .keys-section .mk-edit-label {
     font-size: 0.835rem;
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
 }
 
 .keys-section .mk-edit-input {
@@ -691,15 +691,15 @@
     border-radius: 8px;
     padding: 0.55rem 0.8rem;
     font-size: 0.875rem;
-    color: var(--main-text-color);
-    background: var(--main-bg-color);
+    color: var(--text);
+    background: var(--surface);
     outline: none;
     transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .keys-section .mk-edit-input:focus {
-    border-color: var(--primary-main-color);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-main-color) 12%, transparent);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
 /* Grant type card grid */
@@ -719,8 +719,8 @@
     cursor: pointer;
     font-size: 0.855rem;
     font-weight: 500;
-    color: var(--main-text-color);
-    background: var(--main-bg-color);
+    color: var(--text);
+    background: var(--surface);
     transition: border-color 0.15s, background 0.15s;
     user-select: none;
 }
@@ -743,8 +743,8 @@
 }
 
 .keys-section .mk-grant-card input[type="checkbox"]:checked {
-    background-color: var(--secondary-main-color);
-    border-color: var(--secondary-main-color);
+    background-color: var(--accent);
+    border-color: var(--accent);
 }
 
 .keys-section .mk-grant-card input[type="checkbox"]:checked::after {
@@ -754,15 +754,15 @@
     top: 1px;
     width: 5px;
     height: 9px;
-    border: 2px solid #fff;
+    border: 2px solid var(--white);
     border-top: none;
     border-left: none;
     transform: rotate(45deg);
 }
 
 .keys-section .mk-grant-card:has(input:checked) {
-    border-color: var(--secondary-main-color);
-    background: color-mix(in srgb, var(--secondary-main-color) 6%, transparent);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
 /* Additional props 2-col grid */
@@ -806,8 +806,8 @@
 }
 
 .keys-section .mk-scope-input:focus-within {
-    border-color: var(--primary-main-color);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-main-color) 15%, transparent);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .keys-section .mk-scope-input .text-input {
@@ -817,7 +817,7 @@
     min-width: 160px;
     flex: 1;
     background: transparent;
-    color: var(--main-text-color);
+    color: var(--text);
 }
 
 .keys-section .mk-scope-input .span-tag {
@@ -828,9 +828,9 @@
     border-radius: 999px;
     font-size: 0.775rem;
     font-family: var(--font-family-mono);
-    background: color-mix(in srgb, var(--secondary-main-color) 12%, transparent);
-    color: var(--primary-dark-color);
-    border: 1px solid color-mix(in srgb, var(--secondary-main-color) 30%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--primary-dark);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .keys-section .mk-scope-input .span-tag .remove {
@@ -852,7 +852,7 @@
 
 .keys-section .mk-token-note {
     font-size: 0.815rem;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.6;
 }
 
@@ -865,7 +865,7 @@
 
 .keys-section .mk-curl-desc {
     font-size: 0.855rem;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.7;
     margin: 0;
 }
@@ -891,7 +891,7 @@
 .keys-section .mk-curl-label {
     font-size: 0.775rem;
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.55;
     min-width: 140px;
     flex-shrink: 0;
@@ -901,13 +901,13 @@
 .keys-section .mk-curl-value {
     font-size: 0.825rem;
     font-family: var(--font-family-mono);
-    color: var(--main-text-color);
+    color: var(--text);
     word-break: break-all;
 }
 
 .keys-section .mk-code-block {
     position: relative;
-    background: color-mix(in srgb, var(--main-text-color) 4%, var(--main-bg-color));
+    background: color-mix(in srgb, var(--text) 4%, var(--surface));
     border: 1px solid var(--bs-gray-200);
     border-radius: 10px;
     padding: 1rem 1rem 1rem 1.1rem;
@@ -917,7 +917,7 @@
 .keys-section .mk-code-block code {
     font-size: 0.815rem;
     font-family: var(--font-family-mono);
-    color: var(--main-text-color);
+    color: var(--text);
     white-space: pre-wrap;
     word-break: break-all;
     display: block;
@@ -928,12 +928,12 @@
     position: absolute;
     top: 0.6rem;
     right: 0.6rem;
-    background: var(--main-bg-color);
+    background: var(--surface);
     border: 1px solid var(--bs-gray-200);
     border-radius: 6px;
     padding: 0.3rem 0.5rem;
     cursor: pointer;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.65;
     transition: opacity 0.15s;
     font-size: 0.8rem;
@@ -961,7 +961,7 @@
     border: 1.5px dashed var(--bs-gray-300);
     border-radius: 10px;
     background: transparent;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.65;
     font-size: 0.875rem;
     font-weight: 500;
@@ -970,8 +970,8 @@
 }
 
 .keys-section .mk-add-km-btn:hover {
-    border-color: var(--primary-main-color);
-    color: var(--primary-main-color);
+    border-color: var(--primary);
+    color: var(--primary);
     opacity: 1;
 }
 
@@ -987,7 +987,7 @@
     left: 0;
     min-width: 240px;
     max-width: 360px;
-    background: #fff;
+    background: var(--white);
     border: 1px solid var(--bs-gray-200);
     border-radius: 10px;
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
@@ -1007,14 +1007,14 @@
     gap: 0.55rem;
     padding: 0.55rem 1rem;
     font-size: 0.855rem;
-    color: var(--main-text-color);
+    color: var(--text);
     cursor: pointer;
     transition: background 0.12s;
 }
 
 .keys-section .mk-km-dropdown-item:hover {
-    background: var(--primary-light-color);
-    color: var(--primary-main-color);
+    background: var(--primary-light);
+    color: var(--primary);
 }
 
 .keys-section .mk-km-dropdown-item i {
@@ -1029,7 +1029,7 @@
 .keys-section .mk-add-km-spinner {
     display: inline-flex;
     align-items: center;
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 /* ── Tab content transitions ── */
@@ -1066,10 +1066,10 @@
     padding: 14px 0;
     text-align: center;
     font-weight: 500;
-    background: var(--secondary-bg-color);
+    background: var(--surface-sunken);
     border: 1px solid var(--bs-gray-200);
     border-bottom: none;
-    color: var(--main-text-color);
+    color: var(--text);
     border-radius: 0;
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
@@ -1079,23 +1079,23 @@
   }
 
   .keys-section .key-btn:hover {
-    background: var(--main-bg-color);
+    background: var(--surface);
     opacity: 0.9;
   }
 
   .keys-section .key-btn:focus {
-    outline: 0.1px solid var(--primary-lightest-color);
+    outline: 0.1px solid var(--primary-surface);
     outline-offset: 0.1px;
   }
 
   .keys-section .key-btn.active {
-    background: var(--main-bg-color);
+    background: var(--surface);
     z-index: 3;
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
     border: 1px solid var(--bs-gray-200);
     border-bottom: none;
-    color: var(--primary-main-color);
+    color: var(--primary);
     font-weight: 600;
     opacity: 1;
     box-shadow:
@@ -1104,7 +1104,7 @@
   }
 
   .keys-section #keysTabContent {
-    background: var(--main-bg-color);
+    background: var(--surface);
     padding: 24px;
     border: 1px solid var(--bs-gray-200);
     border-radius: 0 0 12px 12px;
@@ -1120,20 +1120,20 @@
 
 /* Accordion Headers - Changed from primary color to neutral with subtle accent */
 .keys-section .accordion-button {
-    background-color: var(--secondary-bg-color);
-    color: var(--main-text-color);
+    background-color: var(--surface-sunken);
+    color: var(--text);
     box-shadow: none;
     font-weight: 600;
 }
 
 .keys-section .accordion-button:not(.collapsed) {
-    background-color: var(--secondary-bg-color);
-    color: var(--main-text-color);
+    background-color: var(--surface-sunken);
+    color: var(--text);
     box-shadow: none;
 }
 
 .keys-section .accordion-button:hover {
-    background-color: var(--primary-lightest-color);
+    background-color: var(--primary-surface);
 }
 
 .keys-section #sandbox-oauth2.accordion-header,
@@ -1144,8 +1144,8 @@
 }
 
 .keys-section .accordion-header {
-    background-color: var(--main-bg-color);
-    color: var(--main-text-color);
+    background-color: var(--surface);
+    color: var(--text);
     border: 1px solid var(--bs-gray-300);
     border-radius: var(--bs-accordion-border-radius);
     padding: 0;
@@ -1154,7 +1154,7 @@
 /* Accordion arrow indicator - Darker for better visibility */
 .keys-section .accordion-button::after,
 .keys-section .accordion-button:not(.collapsed)::after {
-    background-color: var(--main-text-color);
+    background-color: var(--text);
     mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
     -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
     mask-repeat: no-repeat;
@@ -1166,7 +1166,7 @@
 
 .keys-section .accordion-body {
     padding: 1.25rem 1.25rem 1.25rem 0;
-    background-color: var(--main-bg-color);
+    background-color: var(--surface);
     border-top: none;
     max-height: 60vh;
     overflow-y: auto;
@@ -1197,40 +1197,40 @@
     border-radius: 8px;
     overflow: hidden;
     border: 1px solid var(--bs-gray-300);
-    background: var(--secondary-bg-color);
+    background: var(--surface-sunken);
 }
 
 /* Table header styling */
 .keys-section .app-table thead {
-    background-color: var(--primary-lightest-color);
+    background-color: var(--primary-surface);
 }
 
 .keys-section .app-table thead tr {
-    background-color: var(--primary-lightest-color);
+    background-color: var(--primary-surface);
 }
 
 .keys-section .app-table .app-th {
-    background-color: var(--primary-lightest-color);
+    background-color: var(--primary-surface);
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
     padding: 0.75rem 1rem;
 }
 
 /* Primary action buttons - scoped to keys section */
 .keys-section .common-btn-primary.btn-sm {
-    background-color: var(--primary-main-color);
-    color: var(--light-text-color);
+    background-color: var(--primary);
+    color: var(--white);
     border: none;
 }
 
 .keys-section .common-btn-primary.btn-sm:hover {
-    background-color: var(--primary-light-color);
+    background-color: var(--primary-light);
 }
 
 /* Main Generate Key button styling - make it more compact and visually appealing */
 .keys-section button[id^="generateKeyBtn-"][data-cyid^="generateKey-"] {
-    background-color: var(--primary-main-color) !important;
-    color: var(--light-text-color) !important;
+    background-color: var(--primary) !important;
+    color: var(--white) !important;
     border: none !important;
     border-radius: 0.5rem !important;
     padding: 0.75rem 1.5rem !important;
@@ -1244,7 +1244,7 @@
 }
 
 .keys-section button[id^="generateKeyBtn-"][data-cyid^="generateKey-"]:hover {
-    background-color: var(--primary-light-color) !important;
+    background-color: var(--primary-light) !important;
     transform: translateY(-1px) !important;
 }
 
@@ -1269,7 +1269,7 @@
 .api-key-name-modal .custom-modal-title {
     font-size: 1.15rem;
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
 }
 
 .api-key-name-modal .form-label {
@@ -1286,8 +1286,8 @@
 
 /* Consistent focus styling for modal */
 .api-key-name-modal .form-control:focus {
-    border-color: var(--primary-light-color);
-    box-shadow: 0 0 0 0.125rem var(--primary-light-color);
+    border-color: var(--primary-light);
+    box-shadow: 0 0 0 0.125rem var(--primary-light);
 }
 
 /* Fix modal close button - prevent our styles from affecting it */
@@ -1325,8 +1325,8 @@
 
 /* Form inputs - Better focus states - SCOPED to keys section only */
 .keys-section .form-control:focus {
-    border-color: var(--primary-light-color);
-    box-shadow: 0 0 0 0.125rem var(--primary-light-color);
+    border-color: var(--primary-light);
+    box-shadow: 0 0 0 0.125rem var(--primary-light);
 }
 
 /* Password toggle container improvements */
@@ -1342,7 +1342,7 @@
 .keys-section .password-copy-btn {
     background: transparent;
     border: none;
-    color: var(--main-text-color);
+    color: var(--text);
     opacity: 0.6;
     padding: 0.375rem 0.5rem;
     cursor: pointer;
@@ -1351,7 +1351,7 @@
 
 .keys-section .password-toggle-btn:hover,
 .keys-section .password-copy-btn:hover {
-    color: var(--secondary-main-color);
+    color: var(--accent);
     opacity: 1;
 }
 
@@ -1369,7 +1369,7 @@
 
 /* Table row hover effect */
 .keys-section .app-table tbody tr:hover {
-    background-color: var(--secondary-bg-color);
+    background-color: var(--surface-sunken);
 }
 
 /* Better button spacing and alignment in action rows */

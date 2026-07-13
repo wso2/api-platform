@@ -19,19 +19,19 @@
   width: 2.625rem;
   height: 2.625rem;
   border-radius: 0.6875rem;
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.12);
+  background: var(--panel-fill);
+  border: 1px solid var(--panel-fill-border);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #f8a35a;
+  color: var(--accent-light);
   font-size: 1.0625rem;
 }
 
 .ln-feature-text {
   font-size: 0.96875rem;
   line-height: 1.45;
-  color: rgba(232,242,251,.92);
+  color: var(--white);
 }
 
 /* ── Right panel width override ─────────────────────────────── */
@@ -59,14 +59,14 @@
   border: none;
   padding: 0.25rem;
   cursor: pointer;
-  color: #9aa7b4;
+  color: var(--text-subtle);
   font-size: 1rem;
   line-height: 1;
   display: flex;
   align-items: center;
 }
 
-.ln-pw-toggle:hover { color: #44505f; }
+.ln-pw-toggle:hover { color: var(--text); }
 
 
 /* Sign in button — reuses auth-continue-btn, just change the tag */
@@ -81,12 +81,12 @@
   gap: 0.5625rem;
   margin-top: 1.125rem;
   padding: 0.6875rem 0.875rem;
-  background: #fff2f2;
-  border: 1px solid #fcc8c8;
-  border-radius: 0.5rem;
+  background: var(--danger-surface);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--surface));
+  border-radius: var(--border-radius);
   font-size: 0.84375rem;
   line-height: 1.45;
-  color: #c62828;
+  color: var(--danger);
 }
 
 .ln-error-banner i { flex: none; font-size: 0.9375rem; }

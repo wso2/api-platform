@@ -66,12 +66,12 @@
 
 .nav-link:hover {
     background: rgba(255, 255, 255, 0.07);
-    color: #fff;
+    color: var(--white);
 }
 
 .nav-link.active {
     background: rgba(92, 162, 212, 0.34);
-    color: #fff;
+    color: var(--white);
 }
 
 /* ── Icons ── */
@@ -164,12 +164,12 @@
 
 .submenu-link:hover {
     background: rgba(255, 255, 255, 0.07);
-    color: #fff;
+    color: var(--white);
 }
 
 .submenu-link.active {
     background: rgba(92, 162, 212, 0.34);
-    color: #fff;
+    color: var(--white);
     border-radius: 0.5rem;
 }
 
@@ -225,7 +225,7 @@
 
 .collapse-btn:hover {
     background: rgba(255, 255, 255, 0.07);
-    color: #fff;
+    color: var(--white);
 }
 
 .collapse-btn i {

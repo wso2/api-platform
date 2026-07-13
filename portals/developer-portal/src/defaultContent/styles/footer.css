@@ -6,7 +6,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  background-color: #fff;
+  background-color: var(--white);
   height: 3rem;
   box-sizing: border-box;
   border-top: 1px solid #e6eaf0;
@@ -35,7 +35,7 @@
 
 .footer-links a {
   text-decoration: none;
-  color: var(--main-text-color);
+  color: var(--text);
   opacity: 0.7;
   font-size: 0.875rem;
   transition: color 0.3s ease, opacity 0.3s ease;
@@ -44,7 +44,7 @@
 
 .footer-links a:hover,
 .footer-links a:active {
-  color: var(--main-text-color);
+  color: var(--text);
   opacity: 1;
 }
 
@@ -56,7 +56,7 @@
 
 .footer-icons a {
   text-decoration: none;
-  color: var(--main-text-color);
+  color: var(--text);
   opacity: 0.7;
   font-size: 0.875rem;
   transition: color 0.3s ease, opacity 0.3s ease;
@@ -65,19 +65,19 @@
 
 .footer-icons a:hover,
 .footer-icons a:active {
-  color: var(--main-text-color);
+  color: var(--text);
   opacity: 1;
 }
 
 .social-icon {
-  color: var(--main-text-color);
+  color: var(--text);
   opacity: 0.7;
   font-size: 1.25rem;
   transition: transform 0.3s ease, color 0.3s ease, opacity 0.3s ease;
 }
 
 .social-icon:hover {
-  color: var(--primary-main-color);
+  color: var(--primary);
   opacity: 1;
   transform: scale(1.2);
 }

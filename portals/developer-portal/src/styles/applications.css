@@ -1,6 +1,6 @@
 .applicationspage-container .container-header {
   display: block;
-  color: var(--primary-main-color);
+  color: var(--primary);
   font-size: 1.5rem;
   font-weight: 600;
 }
@@ -26,7 +26,7 @@
   border-radius: 0.75rem;
   text-align: center;
   padding: 3.5rem;
-  background: var(--primary-lightest-color);
+  background: var(--primary-surface);
   height: 11.25rem;
 }
 
@@ -34,18 +34,18 @@
   font-size: 1.5rem;
   line-height: 1.5rem;
   font-weight: 300;
-  color: var(--primary-main-color);
+  color: var(--primary);
   display: block;
 }
 
 .create-text {
   font-size: 1rem;
   font-weight: 500;
-  color: var(--primary-main-color);
+  color: var(--primary);
 }
 
 .application-name-link {
-  color: var(--main-text-color);
+  color: var(--text);
   text-decoration: none;
   font-size: 1rem;
   font-weight: 500;
@@ -58,8 +58,8 @@
   border-radius: 4px;
   font-size: 10px;
   text-transform: lowercase;
-  background-color: var(--secondary-bg-color);
-  color: var(--main-text-color);
+  background-color: var(--surface-sunken);
+  color: var(--text);
   border: 1px solid;
 }
 
@@ -68,8 +68,8 @@
 }
 
 .subscription-count-badge {
-  background-color: var(--main-bg-color);
-  color: var(--primary-main-color);
+  background-color: var(--surface);
+  color: var(--primary);
   border-radius: 0.25rem;
   font-size: 0.6875rem;
   margin-right: 0.5rem;
@@ -81,7 +81,7 @@
 .application-card {
   height: 11.25rem;
   padding: 1.5rem;
-  background: var(--main-bg-color);
+  background: var(--surface);
   position: relative;
 }
 
@@ -89,7 +89,7 @@
   height: 11.25rem;
   padding: 1.5rem;
   border-radius: 0.75rem;
-  background: var(--primary-lightest-color);
+  background: var(--primary-surface);
   position: relative;
 }
 
@@ -171,7 +171,7 @@
   flex-direction: column;
   flex-grow: 1;
 
-  color: var(--main-text-color);
+  color: var(--text);
   text-decoration: none;
   font-size: 1rem;
   font-weight: 500;
@@ -192,23 +192,23 @@
 }
 
 .applicationlist-tags .badge-custom1 {
-  border: 0.0625rem solid var(--success-color);
-  background-color: var(--main-bg-color);
-  color: var(--success-color);
+  border: 0.0625rem solid var(--success);
+  background-color: var(--surface);
+  color: var(--success);
   margin: 0.125rem 0.3125rem 0.25rem 0;
 }
 
 .applicationlist-tags .badge-custom2 {
-  border: 0.0625rem solid var(--primary-main-color);
-  background-color: var(--main-bg-color);
-  color: var(--primary-main-color);
+  border: 0.0625rem solid var(--primary);
+  background-color: var(--surface);
+  color: var(--primary);
   margin: 0.125rem 0.3125rem 0.25rem 0;
 }
 
 .applicationlist-tags .badge-custom3 {
   border: 0.0625rem solid rgba(99, 99, 110, 0.25);
   background-color: transparent;
-  color: var(--main-text-color);
+  color: var(--text);
   font-weight: 0;
   margin: 0.125rem 0.3125rem 0.25rem 0;
 }
@@ -216,13 +216,13 @@
 .application-card-meta p {
   display: flex;
   font-size: 0.75rem;
-  color: var(--main-text-color);
+  color: var(--text);
   margin: 0.3125rem 0;
 }
 
 .application-card-meta i {
   margin-right: 0.5rem;
-  color: var(--main-text-color);
+  color: var(--text);
 }
 
 .application-card-actions {
@@ -243,31 +243,31 @@
   border: none;
   padding: 0 0 0 0.75rem;
   background-color: transparent;
-  color: var(--main-text-color);
+  color: var(--text);
   font-size: 1rem;
   cursor: pointer;
 }
 
 .application-btn-icon:hover {
-  color: var(--primary-main-color);
+  color: var(--primary);
 }
 
 /* Add specific styling for delete button */
 .application-btn-icon.delete-button {
-  color: var(--danger-color);
+  color: var(--danger);
 }
 
 .application-btn-icon.delete-button:hover {
-  color: var(--danger-color);
+  color: var(--danger);
   opacity: 0.8;
 }
 
 .application-btn-icon.edit-button {
-  color: var(--main-text-color);
+  color: var(--text);
 }
 
 .application-btn-icon.edit-button:hover {
-  color: var(--main-text-color);
+  color: var(--text);
   opacity: 0.8;
 }
 
@@ -298,7 +298,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: var(--main-bg-color, #ffffff);
+  background-color: var(--surface, var(--white));
   padding: 0.625rem 0.75rem;
   z-index: 10;
   transition: all 0.3s ease;
@@ -308,15 +308,15 @@
 }
 
 .message-overlay.success {
-  background-color: var(--main-bg-color, #ffffff);
-  border: 1px solid var(--success-color, #28a745);
-  border-left: 4px solid var(--success-color, #28a745);
+  background-color: var(--surface, var(--white));
+  border: 1px solid var(--success, #28a745);
+  border-left: 4px solid var(--success, #28a745);
 }
 
 .message-overlay.error {
-  background-color: var(--main-bg-color, #ffffff);
-  border: 1px solid var(--danger-color, #dc3545);
-  border-left: 4px solid var(--danger-color, #dc3545);
+  background-color: var(--surface, var(--white));
+  border: 1px solid var(--danger, #dc3545);
+  border-left: 4px solid var(--danger, #dc3545);
 }
 
 .message-overlay.hidden {
@@ -344,17 +344,17 @@
 }
 
 .message-icon.success {
-  color: var(--success-color, #28a745);
+  color: var(--success, #28a745);
 }
 
 .message-icon.error {
-  color: var(--danger-color, #dc3545);
+  color: var(--danger, #dc3545);
 }
 
 .message-text {
   font-size: 0.8125rem;
   font-weight: 500;
-  color: var(--main-text-color);
+  color: var(--text);
   margin: 0;
   line-height: 1.2;
   overflow: hidden;
@@ -373,7 +373,7 @@
   line-height: 1;
   opacity: 0.6;
   transition: opacity 0.2s;
-  color: var(--main-text-color);
+  color: var(--text);
   background: transparent;
   border: none;
   display: flex;
@@ -435,8 +435,8 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--primary-gradient);
-  color: #fff;
+  background: var(--cta-gradient);
+  color: var(--white);
   border: none;
   border-radius: 20px;
   padding: 11px 22px;
@@ -509,7 +509,7 @@
   border: 1px solid #e6eaf0;
   border-radius: 14px;
   padding: 22px;
-  background: var(--main-bg-color, #fff);
+  background: var(--surface, var(--white));
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
@@ -617,7 +617,7 @@
 .app-modal {
   width: 480px;
   max-width: calc(100vw - 32px);
-  background: #fff;
+  background: var(--white);
   border-radius: 16px;
   padding: 28px 30px 24px;
   box-shadow: 0 24px 60px rgba(10, 25, 50, 0.34);
@@ -728,7 +728,7 @@
   font-size: 0.875rem;
   font-family: inherit;
   color: #1a2433;
-  background: #fff;
+  background: var(--white);
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -744,8 +744,8 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--primary-gradient);
-  color: #fff;
+  background: var(--cta-gradient);
+  color: var(--white);
   border: none;
   border-radius: 20px;
   padding: 10px 22px;
@@ -761,7 +761,7 @@
 .app-btn-secondary {
   display: inline-flex;
   align-items: center;
-  background: #fff;
+  background: var(--white);
   border: 1px solid #cdd8e6;
   color: #1f3d5c;
   border-radius: 20px;
@@ -779,7 +779,7 @@
   align-items: center;
   background: #c62828;
   border: none;
-  color: #fff;
+  color: var(--white);
   border-radius: 20px;
   padding: 10px 22px;
   font-size: 0.875rem;

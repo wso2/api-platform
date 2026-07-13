@@ -18,7 +18,7 @@
 
 .key-benefit-item {
   position: relative;
-  background-color: var(--primary-lightest-color);
+  background-color: var(--primary-surface);
   border-radius: 0.75rem;
   padding: 1.875rem;
   text-align: left;
@@ -55,19 +55,19 @@
 .key-benefit-item h3 {
   font-size: 1rem;
   font-weight: 600;
-  color: var(--primary-main-color);
+  color: var(--primary);
   margin-bottom: 0.625rem;
 }
 
 .key-benefit-item p {
   font-size: 0.875rem;
-  color: var(--main-text-color);
+  color: var(--text);
   margin-bottom: 1.25rem;
   line-height: 1.5;
 }
 
 .key-benefit-link {
-  color: var(--primary-main-color);
+  color: var(--primary);
   font-size: 0.75rem;
   text-decoration: none;
   display: inline-block;
@@ -90,13 +90,13 @@
   padding: 2.5rem;
   overflow: hidden;
   border-radius: 1.5rem;
-  background: var(--primary-lightest-color);
+  background: var(--primary-surface);
   box-shadow: 0 0.125rem 0.125rem #7d7c7c1a;
 }
 
 .overview-title {
   font-size: 2.25rem;
-  color: var(--main-text-color);
+  color: var(--text);
   margin-bottom: 1.25rem;
 }
 
@@ -105,7 +105,7 @@
 }
 
 .intro-text-des {
-  color: var(--primary-main-color);
+  color: var(--primary);
 }
 
 .api-content-text .intro-text,
@@ -119,7 +119,7 @@
 
 .section-title {
   font-size: 1rem;
-  color: var(--main-text-color);
+  color: var(--text);
   margin-bottom: 1.25rem;
   font-weight: 600;
   margin-bottom: 0.625rem;
@@ -141,7 +141,7 @@
   position: absolute;
   left: 0;
   top: 0;
-  color: var(--primary-main-color);
+  color: var(--primary);
   font-size: 1rem;
 }
 
@@ -150,7 +150,7 @@
 }
 
 .api-sidebar {
-  border: 0.0625rem solid var(--primary-main-color);
+  border: 0.0625rem solid var(--primary);
   padding: 0 2.1875rem;
   border-radius: 2rem;
   background-color: transparent;
@@ -179,7 +179,7 @@
   top: 0.5rem;
   width: 0.5rem;
   height: 0.5rem;
-  background-color: var(--primary-main-color);
+  background-color: var(--primary);
   border-radius: 50%;
 }
 
@@ -192,7 +192,7 @@
 }
 
 .faq-container {
-  border: 0.03125rem solid var(--secondary-main-color);
+  border: 0.03125rem solid var(--accent);
   padding: 2.5rem;
   overflow: hidden;
   border-radius: 1.5625rem;
@@ -209,12 +209,12 @@
 
 .faq-container p {
   font-size: 1rem;
-  color: var(--main-text-color);
+  color: var(--text);
 }
 
 .faq-container a {
   font-size: 1rem;
-  color: var(--secondary-main-color);
+  color: var(--accent);
   text-decoration: none;
 }
 
@@ -231,7 +231,7 @@
 .faq-question {
   font-size: 1.125rem;
   font-weight: 600;
-  color: var(--main-text-color);
+  color: var(--text);
   margin-bottom: 0.5rem;
 }
 
@@ -240,8 +240,8 @@
 }
 
 .faq-badge-custom1 {
-  border: 0.0625rem solid var(--main-text-color);
-  color: var(--main-text-color);
+  border: 0.0625rem solid var(--text);
+  color: var(--text);
   margin: 0 0.3125rem 0.625rem 0;
   padding: 0.375rem 1.25rem;
   border-radius: 1.875rem;
@@ -251,7 +251,7 @@
 .faq-answer {
   font-size: 1rem;
   line-height: 1.6;
-  color: var(--main-text-color);
+  color: var(--text);
   opacity: 0.7;
 }
 
@@ -278,7 +278,7 @@ hr {
 }
 
 .api-banner-content {
-  background-color: var(--primary-lightest-color);
+  background-color: var(--primary-surface);
   border-radius: 0.75rem;
   padding: 2.5rem 3.75rem;
   text-align: left;
@@ -336,14 +336,14 @@ hr {
 .api-version {
   font-weight: 700;
   margin: 0;
-  color: var(--dark-text-color);
+  color: var(--ink);
   padding: 0.25rem 0;
 }
 
 .api-badge-custom1 {
-  border: 1px solid var(--secondary-main-color);
+  border: 1px solid var(--accent);
   background-color: transparent;
-  color: var(--secondary-main-color);
+  color: var(--accent);
   padding: 0.3rem 0.75rem;
   border-radius: 1.25rem;
   font-size: 0.875rem;
@@ -351,7 +351,7 @@ hr {
 
 .api-description {
   margin-bottom: 1rem;
-  color: var(--main-text-color);
+  color: var(--text);
 }
 
 .api-tags {
@@ -362,9 +362,9 @@ hr {
 }
 
 .api-badge-custom2 {
-  border: 1px solid var(--main-text-color);
+  border: 1px solid var(--text);
   background-color: transparent;
-  color: var(--main-text-color);
+  color: var(--text);
   opacity: 0.7;
   padding: 0.3rem 1rem;
   border-radius: 1.25rem;
@@ -390,7 +390,7 @@ hr {
 .api-title h4 {
   font-size: 2.25rem;
   font-weight: 600;
-  color: var(--primary-main-color);
+  color: var(--primary);
   margin: 0;
   min-width: 0;
   overflow: hidden;
@@ -401,13 +401,13 @@ hr {
 .api-version {
   font-weight: 700;
   margin-bottom: 0.5rem;
-  color: var(--dark-text-color);
+  color: var(--ink);
 }
 
 .api-badge-custom1 {
-  border: 1px solid var(--secondary-main-color);
+  border: 1px solid var(--accent);
   background-color: transparent;
-  color: var(--secondary-main-color);
+  color: var(--accent);
   padding: 0.3rem 0.75rem;
   border-radius: 1.25rem;
   font-size: 0.875rem;
@@ -415,7 +415,7 @@ hr {
 
 .api-description {
   margin-bottom: 1rem;
-  color: var(--main-text-color);
+  color: var(--text);
 }
 
 .api-tags {
@@ -426,9 +426,9 @@ hr {
 }
 
 .api-badge-custom2 {
-  border: 1px solid var(--main-text-color);
+  border: 1px solid var(--text);
   background-color: transparent;
-  color: var(--main-text-color);
+  color: var(--text);
   opacity: 0.7;
   padding: 0.3rem 1rem;
   border-radius: 1.25rem;
@@ -461,7 +461,7 @@ hr {
 }
 
 .custom-plans-card {
-  border: 0.2px solid var(--secondary-main-color);
+  border: 0.2px solid var(--accent);
   transition: all 0.3s ease-in-out;
   max-width: 23.75rem;
 }
@@ -473,18 +473,18 @@ hr {
 .custom-plans-card h5 {
   font-size: 1.3rem;
   font-weight: 500;
-  color: var(--primary-main-color);
+  color: var(--primary);
 }
 
 .custom-plans-card h4 {
   font-size: 2rem;
   font-weight: 700;
-  color: var(--primary-main-color);
+  color: var(--primary);
 }
 
 .custom-plans-description {
   font-size: 1rem;
-  color: var(--main-text-color);
+  color: var(--text);
   opacity: 0.7;
 }
 
@@ -516,13 +516,13 @@ hr {
 }
 
 .subscription-plans-card-title {
-  color: var(--primary-main-color);
+  color: var(--primary);
   font-size: 1.25rem;
   font-weight: 700;
 }
 
 .subscription-plans-request-count {
-  color: var(--primary-main-color);
+  color: var(--primary);
   font-weight: 600;
   padding-top: 1.5rem;
   font-size: clamp(1rem, 2vw, 2rem);
@@ -534,7 +534,7 @@ hr {
 }
 
 .subscription-plans-card-subtitle {
-  color: var(--main-text-color) !important;
+  color: var(--text) !important;
   opacity: 0.7;
   font-size: 0.85rem !important;
   font-weight: 500;
@@ -1094,7 +1094,7 @@ hr {
   gap: 0.45rem;
   background: linear-gradient(135deg, #6B4FE8, #E040D0);
   background-size: 200% 200%;
-  color: #ffffff;
+  color: var(--white);
   border: none;
   padding: 0.5rem 1.1rem;
   border-radius: 2rem;
