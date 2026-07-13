@@ -130,6 +130,37 @@ class StreamBody:
 
 
 @dataclass(slots=True)
+class DownstreamContext:
+    """Immutable snapshot of the original client request headers, captured
+    before any policy mutation.
+
+    ``None`` on older gateways that predate this field. Policies MUST treat a
+    ``None`` ``downstream`` (or a ``None`` ``headers``) as "not available" and
+    fall back to legacy validation against the mutable headers.
+
+    ``headers`` is ``Headers | None`` (defaulting to ``None``) to mirror the Go
+    SDK's nilable ``Headers *Headers``: the kernel leaves it ``None`` when no
+    snapshot is available, rather than substituting an empty ``Headers()`` that
+    a policy could not distinguish from "the client sent no headers".
+    """
+
+    headers: Headers | None = None
+
+
+@dataclass(slots=True)
+class UpstreamContext:
+    """Immutable snapshot of the original upstream response headers, captured
+    before any policy mutation. ``None`` on older gateways; see
+    :class:`DownstreamContext` for the backward-compat contract.
+
+    ``headers`` is ``Headers | None`` (defaulting to ``None``), mirroring the Go
+    SDK's nilable ``Headers *Headers`` — see :class:`DownstreamContext`.
+    """
+
+    headers: Headers | None = None
+
+
+@dataclass(slots=True)
 class RequestHeaderContext:
     shared: SharedContext
     headers: Headers = field(default_factory=Headers)
@@ -138,6 +169,7 @@ class RequestHeaderContext:
     authority: str = ""
     scheme: str = ""
     vhost: str = ""
+    downstream: DownstreamContext | None = None
 
 
 @dataclass(slots=True)
@@ -150,6 +182,7 @@ class RequestContext:
     authority: str = ""
     scheme: str = ""
     vhost: str = ""
+    downstream: DownstreamContext | None = None
 
 
 @dataclass(slots=True)
@@ -161,6 +194,8 @@ class ResponseHeaderContext:
     request_method: str = ""
     response_headers: Headers = field(default_factory=Headers)
     response_status: int = 200
+    downstream: DownstreamContext | None = None
+    upstream: UpstreamContext | None = None
 
 
 @dataclass(slots=True)
@@ -173,6 +208,8 @@ class ResponseContext:
     response_headers: Headers = field(default_factory=Headers)
     response_body: Body | None = None
     response_status: int = 200
+    downstream: DownstreamContext | None = None
+    upstream: UpstreamContext | None = None
 
 
 @dataclass(slots=True)
@@ -184,6 +221,7 @@ class RequestStreamContext:
     authority: str = ""
     scheme: str = ""
     vhost: str = ""
+    downstream: DownstreamContext | None = None
 
 
 @dataclass(slots=True)
@@ -195,6 +233,8 @@ class ResponseStreamContext:
     request_method: str = ""
     response_headers: Headers = field(default_factory=Headers)
     response_status: int = 200
+    downstream: DownstreamContext | None = None
+    upstream: UpstreamContext | None = None
 
 
 @dataclass(slots=True)
