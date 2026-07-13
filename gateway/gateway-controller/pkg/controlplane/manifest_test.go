@@ -35,7 +35,7 @@ import (
 // util methods for tests
 
 // makePolicyDef creates a PolicyDefinition for use in tests.
-// Parameters and SystemParameters are only set for customer-managed policies,
+// Parameters and SystemParameters are only set for organization-managed policies,
 // matching the manifest format sent to the control plane.
 func makePolicyDef(name, version, managedBy string) models.PolicyDefinition {
 	def := models.PolicyDefinition{
@@ -44,7 +44,7 @@ func makePolicyDef(name, version, managedBy string) models.PolicyDefinition {
 		DisplayName: name,
 		ManagedBy:   managedBy,
 	}
-	if managedBy == "customer" {
+	if managedBy == "organization" {
 		params := map[string]interface{}{
 			"type":       "object",
 			"properties": map[string]interface{}{},
@@ -208,10 +208,10 @@ func TestPushGatewayManifest_ServerUnreachable(t *testing.T) {
 	}
 }
 
-// TestPushGatewayManifestOnConnect_ParamsOnlyForCustomerPolicies verifies that
-// Parameters and SystemParameters are included in the manifest only for customer-managed
+// TestPushGatewayManifestOnConnect_ParamsOnlyForOrganizationPolicies verifies that
+// Parameters and SystemParameters are included in the manifest only for organization-managed
 // policies, and are absent for wso2-managed policies.
-func TestPushGatewayManifestOnConnect_ParamsOnlyForCustomerPolicies(t *testing.T) {
+func TestPushGatewayManifestOnConnect_ParamsOnlyForOrganizationPolicies(t *testing.T) {
 	var capturedBody []byte
 	client := newManifestTLSServer(t, func(w http.ResponseWriter, r *http.Request) {
 		capturedBody, _ = io.ReadAll(r.Body)
@@ -219,7 +219,7 @@ func TestPushGatewayManifestOnConnect_ParamsOnlyForCustomerPolicies(t *testing.T
 	})
 	client.policyDefinitions = map[string]models.PolicyDefinition{
 		"rate-limit":    makePolicyDef("rate-limit", "v1.0.0", "wso2"),
-		"custom-policy": makePolicyDef("custom-policy", "v1.0.0", "customer"),
+		"custom-policy": makePolicyDef("custom-policy", "v1.0.0", "organization"),
 	}
 
 	client.pushGatewayManifestOnConnect(testGatewayID)
@@ -232,14 +232,14 @@ func TestPushGatewayManifestOnConnect_ParamsOnlyForCustomerPolicies(t *testing.T
 	if len(payload.Policies) != 2 {
 		t.Fatalf("expected 2 policies, got %d", len(payload.Policies))
 	}
-	seenCustomer := false
+	seenOrganization := false
 	seenWSO2 := false
 
 	for _, p := range payload.Policies {
-		if p.ManagedBy == "customer" {
-			seenCustomer = true
+		if p.ManagedBy == "organization" {
+			seenOrganization = true
 			if p.Parameters == nil || p.SystemParameters == nil {
-				t.Errorf("customer policy %q should have Parameters and SystemParameters set", p.Name)
+				t.Errorf("organization policy %q should have Parameters and SystemParameters set", p.Name)
 			}
 		} else {
 			seenWSO2 = true
@@ -248,8 +248,8 @@ func TestPushGatewayManifestOnConnect_ParamsOnlyForCustomerPolicies(t *testing.T
 			}
 		}
 	}
-	if !seenCustomer || !seenWSO2 {
-		t.Fatalf("expected both customer and wso2-managed policies, got customer=%t wso2=%t", seenCustomer, seenWSO2)
+	if !seenOrganization || !seenWSO2 {
+		t.Fatalf("expected both organization and wso2-managed policies, got organization=%t wso2=%t", seenOrganization, seenWSO2)
 	}
 }
 
@@ -326,7 +326,7 @@ func TestPushGatewayManifestOnConnect_AllRetriesFail(t *testing.T) {
 
 // TestPushGatewayManifestOnConnect_FilterSystemPolicies verifies that policies with
 // the wso2_apip_sys_ prefix are excluded from the manifest payload, while non-system
-// policies (both wso2 and customer) are included.
+// policies (both wso2 and organization) are included.
 func TestPushGatewayManifestOnConnect_FilterSystemPolicies(t *testing.T) {
 	var capturedBody []byte
 	client := newManifestTLSServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -337,7 +337,7 @@ func TestPushGatewayManifestOnConnect_FilterSystemPolicies(t *testing.T) {
 		"wso2_apip_sys_auth": makePolicyDef("wso2_apip_sys_auth", "v1.0.0", "wso2"),
 		"wso2_apip_sys_log":  makePolicyDef("wso2_apip_sys_log", "v1.0.0", "wso2"),
 		"rate-limit":         makePolicyDef("rate-limit", "v1.0.0", "wso2"),
-		"custom-policy":      makePolicyDef("custom-policy", "v1.0.0", "customer"),
+		"custom-policy":      makePolicyDef("custom-policy", "v1.0.0", "organization"),
 	}
 
 	client.pushGatewayManifestOnConnect(testGatewayID)

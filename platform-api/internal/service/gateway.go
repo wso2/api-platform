@@ -238,8 +238,13 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 	}
 
 	entries := make([]GatewayPolicyDefinition, 0, len(policies))
+	organizationCount := 0
 	for _, p := range policies {
-		if !constants.ValidPolicyManagedBy[p.ManagedBy] {
+		managedBy := p.ManagedBy
+		if managedBy == constants.PolicyManagedByLegacyCustomer {
+			managedBy = constants.PolicyManagedByOrganization
+		}
+		if !constants.ValidPolicyManagedBy[managedBy] {
 			s.slogger.Warn("Skipping policy with unknown managed_by value",
 				slog.String("gateway_id", gatewayID),
 				slog.String("policy_name", p.Name),
@@ -252,9 +257,10 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 			Version:     p.Version,
 			DisplayName: p.DisplayName,
 			Description: p.Description,
-			ManagedBy:   p.ManagedBy,
+			ManagedBy:   managedBy,
 		}
-		if p.ManagedBy == constants.PolicyManagedByCustomer {
+		if managedBy == constants.PolicyManagedByOrganization {
+			organizationCount++
 			policyDef := map[string]interface{}{}
 			if p.Parameters != nil {
 				policyDef["parameters"] = p.Parameters
@@ -281,19 +287,13 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 		return fmt.Errorf("failed to update gateway version: %w", err)
 	}
 
-	customerCount := 0
-	for _, p := range policies {
-		if p.ManagedBy == constants.PolicyManagedByCustomer {
-			customerCount++
-		}
-	}
 	s.slogger.Info("Gateway manifest received and stored",
 		slog.String("org_id", orgID),
 		slog.String("gateway_id", gatewayID),
 		slog.String("gateway_version", reported),
 		slog.String("functionality_type", reportedType),
 		slog.Int("total_policy_count", len(entries)),
-		slog.Int("customer_policy_count", customerCount),
+		slog.Int("organization_policy_count", organizationCount),
 	)
 	return nil
 }
@@ -371,7 +371,7 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 		return nil, apperror.CustomPolicyVersionNotFnd.New().
 			WithLogMessage(fmt.Sprintf("policy '%s' version '%s' not found in gateway manifest", policyName, version))
 	}
-	if found.ManagedBy != constants.PolicyManagedByCustomer {
+	if found.ManagedBy != constants.PolicyManagedByOrganization {
 		s.slogger.Error("policy is not a custom policy", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("version", version))
 		return nil, apperror.PolicyInvalidState.New().
 			WithLogMessage(fmt.Sprintf("policy '%s' version '%s' is not a custom policy", policyName, version))
