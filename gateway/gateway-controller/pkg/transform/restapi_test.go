@@ -781,6 +781,48 @@ func TestRestAPITransformer_PerOpSandboxInheritsSandboxHostRewrite(t *testing.T)
 		"main route must keep API-level main hostRewrite (auto)")
 }
 
+// TestRestAPITransformer_PerOpRouteCarriesDefinitionDefault asserts every route's
+// Upstream.Default carries its own compiled-in upstream: the referenced definition
+// for a per-op route, the API-level main for a plain route, and the API-level
+// sandbox for a patched sandbox route. The policy engine reads this field as the
+// route's default upstream, so a nil or wrong value breaks no-policy fallbacks.
+func TestRestAPITransformer_PerOpRouteCarriesDefinitionDefault(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+	cfg := makeRestAPIWithOps([]api.Operation{
+		{
+			Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users"),
+			Upstream: &api.OperationUpstream{
+				Main: opRef("user-svc-cluster"),
+			},
+		},
+		{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/orders")},
+	})
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+
+	perOp := rdc.Routes["GET|/test/users|main.local"]
+	require.NotNil(t, perOp)
+	require.NotNil(t, perOp.Upstream.Default, "per-op route must expose a default upstream to the policy engine")
+	assert.Equal(t, clusterkey.DefinitionName("RestApi", cfg.UUID, "user-svc-cluster"), perOp.Upstream.Default.ClusterName,
+		"per-op route default must be the referenced definition cluster")
+	assert.Equal(t, "http://user-svc:8080", perOp.Upstream.Default.URL)
+	assert.Equal(t, "/", perOp.Upstream.Default.BasePath,
+		"definition without basePath must default to '/'")
+
+	plain := rdc.Routes["GET|/test/orders|main.local"]
+	require.NotNil(t, plain)
+	require.NotNil(t, plain.Upstream.Default)
+	assert.Equal(t, clusterkey.HashedName("main", cfg.UUID), plain.Upstream.Default.ClusterName,
+		"plain route default must be the API-level main cluster")
+
+	sandbox := rdc.Routes["GET|/test/users|sandbox.local"]
+	require.NotNil(t, sandbox)
+	require.NotNil(t, sandbox.Upstream.Default)
+	assert.Equal(t, clusterkey.HashedName("sandbox", cfg.UUID), sandbox.Upstream.Default.ClusterName,
+		"patched sandbox route default must be the API-level sandbox cluster, not main's")
+}
+
 // TestResolvePort checks port resolution with explicit, default-http and default-https.
 func TestResolvePort(t *testing.T) {
 	tests := []struct {

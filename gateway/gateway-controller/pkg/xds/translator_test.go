@@ -2872,3 +2872,77 @@ func TestTranslateConfigs_PerOpRoutesUseClusterHeaderAndDefinitionBasePath(t *te
 		assertPerOpRoute(t, sandboxRoute, "/sb-svc")
 	})
 }
+
+// TestTranslateConfigs_PerOpSandboxSkipsOpsWithoutOverride asserts that when sandbox
+// is active only through per-op refs (no API-level sandbox upstream), operations
+// WITHOUT their own sandbox override get no sandbox-vhost route: routing them there
+// would point at a cluster that does not exist.
+func TestTranslateConfigs_PerOpSandboxSkipsOpsWithoutOverride(t *testing.T) {
+	translator := createTestTranslator()
+	sbVhost := "sandbox.local"
+	apiData := api.APIConfigData{
+		DisplayName: "Test API",
+		Context:     "/test",
+		Version:     "v1.0",
+		Vhosts: &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: "localhost", Sandbox: &sbVhost},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{Main: api.Upstream{Url: strPtr("http://api-main:8080")}},
+		UpstreamDefinitions: &[]api.UpstreamDefinition{
+			{Name: "sb-svc", BasePath: strPtr("/sb-svc"), Upstreams: []struct {
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{{Url: "http://sb-svc:8080"}}},
+		},
+		Operations: []api.Operation{
+			{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/users"),
+				Upstream: &api.OperationUpstream{
+					Sandbox: opRef("sb-svc"),
+				}},
+			{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/orders")},
+		},
+	}
+	cfg := &models.StoredConfig{
+		UUID: "sandbox-skip-api",
+		Kind: string(api.RestAPIKindRestApi),
+		Configuration: api.RestAPI{
+			Kind:     api.RestAPIKindRestApi,
+			Metadata: api.Metadata{Name: "sandbox-skip-api"},
+			Spec:     apiData,
+		},
+	}
+
+	resources, err := translator.TranslateConfigs([]*models.StoredConfig{cfg}, "test-correlation")
+	require.NoError(t, err)
+
+	var sandboxUsers, sandboxOrders, mainOrders bool
+	for _, rc := range resources[resource.RouteType] {
+		for _, vh := range rc.(*route.RouteConfiguration).GetVirtualHosts() {
+			isSandbox := false
+			for _, d := range vh.GetDomains() {
+				if strings.Contains(d, "sandbox.local") {
+					isSandbox = true
+					break
+				}
+			}
+			for _, rt := range vh.GetRoutes() {
+				regex := rt.GetMatch().GetSafeRegex().GetRegex()
+				switch {
+				case isSandbox && strings.Contains(regex, "users"):
+					sandboxUsers = true
+				case isSandbox && strings.Contains(regex, "orders"):
+					sandboxOrders = true
+				case !isSandbox && strings.Contains(regex, "orders"):
+					mainOrders = true
+				}
+			}
+		}
+	}
+	assert.True(t, sandboxUsers, "op with a per-op sandbox ref must get a sandbox-vhost route")
+	assert.False(t, sandboxOrders, "op without a sandbox override must NOT get a sandbox-vhost route")
+	assert.True(t, mainOrders, "op without overrides must keep its main-vhost route")
+}
