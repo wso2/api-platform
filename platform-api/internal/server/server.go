@@ -721,19 +721,15 @@ func generateSelfSignedCert(certPath, keyPath string, logger *slog.Logger) (tls.
 	return cert, nil
 }
 
-// Start starts the HTTPS server
-func (s *Server) Start(port string, certDir string) error {
-	if port == "" {
-		s.logger.Error("Port cannot be empty")
-		return fmt.Errorf("port cannot be empty")
-	}
-
-	// Build certificate paths
+// buildTLSConfig resolves the TLS listener configuration. The caller invokes it
+// only when the HTTPS listener is enabled, so certificates are always read (or,
+// in demo mode, generated) here.
+func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, error) {
+	certDir := httpsCfg.CertDir
 	certPath := filepath.Join(certDir, "cert.pem")
 	keyPath := filepath.Join(certDir, "key.pem")
 
 	var cert tls.Certificate
-	certGenerated := false
 
 	// Try to load existing certificates first
 	if _, certErr := os.Stat(certPath); certErr == nil {
