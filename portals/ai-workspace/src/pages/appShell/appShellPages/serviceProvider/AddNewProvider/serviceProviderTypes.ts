@@ -27,8 +27,6 @@ export type FormState = {
   upstreamAuthHeader: string;
   upstreamAuthValue: string;
   valuePrefix: string;
-  securityKeyName: string;
-  securityKeyPrefix: string;
 };
 
 export type GuardrailSelection = {
