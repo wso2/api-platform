@@ -2264,6 +2264,7 @@ function initTheming() {
     const errEl     = document.getElementById('theming-zip-error');
     const applyBtn  = document.getElementById('theming-apply-btn');
     const resetBtn  = document.getElementById('theming-reset-btn');
+    const downloadBtn = document.getElementById('theming-download-btn');
 
     function handleThemeZipFile(f) {
         if (!f) return;
@@ -2308,6 +2309,8 @@ function initTheming() {
 
     if (applyBtn) applyBtn.addEventListener('click', applyTheme);
 
+    if (downloadBtn) downloadBtn.addEventListener('click', downloadTheme);
+
     if (resetBtn) resetBtn.addEventListener('click', function () {
         const viewLabel = document.getElementById('cfg-reset-theme-view-txt');
         if (viewLabel) viewLabel.textContent = themingViewName;
@@ -2338,6 +2341,41 @@ function setThemingStatus(hasCustomTheme) {
         hint.textContent = hasCustomTheme
             ? 'This view is using a custom uploaded theme.'
             : 'This view is using the built-in default theme.';
+    }
+}
+
+async function downloadTheme() {
+    const downloadBtn = document.getElementById('theming-download-btn');
+    if (downloadBtn) {
+        downloadBtn.disabled = true;
+        downloadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Preparing…';
+    }
+    try {
+        const response = await fetch(window.devportalApi.root(`/views/${themingViewName}/export-theme`), {
+            method: 'GET',
+            credentials: 'same-origin'
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ message: 'Download failed' }));
+            showAlert(err.message || 'Download failed', 'error');
+            return;
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `theme-${themingViewName}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        showAlert(e.message || 'Network error', 'error');
+    } finally {
+        if (downloadBtn) {
+            downloadBtn.innerHTML = '<i class="bi bi-download"></i> Download theme';
+            downloadBtn.disabled = false;
+        }
     }
 }
 

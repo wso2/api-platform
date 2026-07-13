@@ -206,3 +206,67 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Theme reset successfully.|None|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+## Download the current theme
+
+<a id="opIdexportTheme"></a>
+
+`GET /views/{viewId}/export-theme`
+
+> Code samples
+
+```shell
+
+curl -X GET https://localhost:3000/api/v0.9/views/{viewId}/export-theme \
+  -u {username}:{password} \
+  -H 'Accept: application/zip' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+Bundles the view's current custom theme assets into a single ZIP archive for download. The archive is wrapped in a top-level folder so it can be re-uploaded via the apply-theme endpoint. Returns 404 when the view has no custom theme.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+</aside>
+
+<h3 id="download-the-current-theme-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
+
+> Example responses
+
+> 200 Response
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
+}
+```
+
+<h3 id="download-the-current-theme-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Theme archive.|string|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|

@@ -29,4 +29,5 @@ module.exports = {
     getOrgAsset: devportalService.getOrgContent,
     applyTheme: compose(requireCsrfForMutatingApi, adminService.applyTheme),
     resetTheme: compose(requireCsrfForMutatingApi, adminService.resetTheme),
+    exportTheme: adminService.exportTheme,
 };

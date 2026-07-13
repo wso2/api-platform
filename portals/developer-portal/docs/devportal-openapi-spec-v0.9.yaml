@@ -242,6 +242,34 @@ paths:
         - OAuth2Security:
             - dp:org_content_manage
             - dp:org_manage
+  /views/{viewId}/export-theme:
+    parameters:
+      - $ref: "#/components/parameters/viewId"
+    get:
+      tags:
+        - Organization Content
+      summary: Download the current theme
+      description: >-
+        Bundles the view's current custom theme assets into a single ZIP archive for download.
+        The archive is wrapped in a top-level folder so it can be re-uploaded via the apply-theme
+        endpoint. Returns 404 when the view has no custom theme.
+      operationId: exportTheme
+      responses:
+        "200":
+          description: Theme archive.
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:org_content_read
+            - dp:org_manage
   /apis:
     post:
       tags:
