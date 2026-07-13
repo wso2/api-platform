@@ -29,8 +29,10 @@ import (
 // as an operation field.
 
 const (
-	redirectPolicyName    = "redirect"
-	redirectPolicyVersion = "v1"
+	redirectPolicyName = "redirect"
+	// redirectPolicyVersion must match the major version the redirect policy is built
+	// at in gateway/build.yaml. The policy is currently under review at v0.9.0
+	redirectPolicyVersion = "v0"
 
 	// defaultRedirectStatus is the Gateway-API default when a RequestRedirect filter
 	// omits statusCode.
