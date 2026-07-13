@@ -490,7 +490,7 @@ function ServiceProviderOverviewContent() {
 
   const isProxyQuotaReached = false;
   const proxyQuotaTooltip =
-    'You cannot create more App LLM Proxies because your organization has reached the maximum limit of 5 proxies.';
+    'You cannot create more App AI Proxies because your organization has reached the maximum limit of 5 proxies.';
   const isReadOnlyProvider = Boolean(provider?.readOnly);
   const createProxyTooltip = isProxyQuotaReached ? proxyQuotaTooltip : '';
 
@@ -567,7 +567,7 @@ function ServiceProviderOverviewContent() {
   ) => {
     if (!currentOrganization?.uuid) {
       showSnackbar(
-        'Unable to verify App LLM Proxy usage because organization details are unavailable.',
+        'Unable to verify App AI Proxy usage because organization details are unavailable.',
         'error'
       );
       return;
@@ -595,7 +595,7 @@ function ServiceProviderOverviewContent() {
       setDeleteConfirmationInput('');
     } catch {
       showSnackbar(
-        'Failed to verify App LLM Proxy usage for this provider. Deletion has been blocked. Please try again.',
+        'Failed to verify App AI Proxy usage for this provider. Deletion has been blocked. Please try again.',
         'error'
       );
     } finally {
@@ -945,12 +945,12 @@ function ServiceProviderOverviewContent() {
       <DialogTitle>
         <FormattedMessage
           id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.projectPicker.title"
-          defaultMessage="Create App LLM Proxy"
+          defaultMessage="Create App AI Proxy"
         />
         <Typography variant="body2" color="text.secondary">
           <FormattedMessage
             id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.projectPicker.description"
-            defaultMessage="Select a project to continue creating the App LLM Proxy."
+            defaultMessage="Select a project to continue creating the App AI Proxy."
           />
         </Typography>
       </DialogTitle>
@@ -1229,7 +1229,7 @@ function ServiceProviderOverviewContent() {
                     >
                       <FormattedMessage
                         id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
-                        defaultMessage="Create App LLM Proxy"
+                        defaultMessage="Create App AI Proxy"
                       />
                     </Button>
                   </Box>
@@ -1534,7 +1534,7 @@ function ServiceProviderOverviewContent() {
                   >
                     <FormattedMessage
                       id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.create.llm.proxy"
-                      defaultMessage="Create App LLM Proxy"
+                      defaultMessage="Create App AI Proxy"
                     />
                   </Button>
                 </DisabledActionTooltip>

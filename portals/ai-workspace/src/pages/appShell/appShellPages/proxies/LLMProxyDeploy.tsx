@@ -50,7 +50,7 @@ function LLMProxyDeployContent() {
         startIcon={<ChevronLeft size={24} />}
         onClick={() => navigate(-1)}
       >
-        Back to App LLM Proxy
+        Back to App AI Proxy
       </Button>
 
       <GatewayDeployProvider
@@ -68,7 +68,7 @@ function LLMProxyDeployContent() {
           <Typography variant="subtitle2">
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDeploy.deploy.llm.proxy.to.your.gateways"
-              defaultMessage={'Deploy App LLM Proxy to your Gateways'}
+              defaultMessage={'Deploy App AI Proxy to your Gateways'}
             />
           </Typography>
           {proxy?.readOnly && (

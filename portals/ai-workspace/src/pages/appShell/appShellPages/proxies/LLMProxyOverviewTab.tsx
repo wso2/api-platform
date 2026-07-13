@@ -651,7 +651,7 @@ export default function LLMProxyOverviewTab() {
                   <Typography variant="h6" sx={{ mb: 1.5, fontWeight: 600 }}>
                     <FormattedMessage
                       id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverviewTab.api.keys"
-                      defaultMessage={'App LLM Proxy Keys'}
+                      defaultMessage={'App AI Proxy Keys'}
                     />
                   </Typography>
                   <Stack spacing={2}>

@@ -559,7 +559,7 @@ function LLMProxyNewContent({
           <PageTitle.Header>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.create.llm.proxy"
-              defaultMessage="Create App LLM Proxy"
+              defaultMessage="Create App AI Proxy"
             />
           </PageTitle.Header>
         </PageTitle>

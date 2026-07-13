@@ -71,20 +71,20 @@ export default function ExploreMoreCard() {
       ],
     },
     {
-      title: 'App LLM Proxy Management',
-      subtitle: 'Create and operate App LLM Proxies for secure and governed access.',
+      title: 'App AI Proxy Management',
+      subtitle: 'Create and operate App AI Proxies for secure and governed access.',
       icon: Network,
       links: [
         {
-          label: 'App LLM Proxies Overview',
+          label: 'App AI Proxies Overview',
           href: 'https://wso2.com/bijira/docs/ai-workspace/llm-proxies/overview/',
         },
         {
-          label: 'Create a New App LLM Proxy',
+          label: 'Create a New App AI Proxy',
           href: 'https://wso2.com/api-platform/docs/ai-workspace/llm-proxies/configure-proxy/',
         },
         {
-          label: 'Manage Existing App LLM Proxies',
+          label: 'Manage Existing App AI Proxies',
           href: 'https://wso2.com/bijira/docs/ai-workspace/llm-proxies/manage-proxy/',
         },
       ],

@@ -326,21 +326,21 @@ export default function ProxyQuickStartBanner() {
     () => [
       {
         id: 'create-proxy',
-        title: 'Create\nApp LLM Proxy',
+        title: 'Create\nApp AI Proxy',
         icon: Plus,
         path: createProxyPath,
         completed: completion.hasProxies,
       },
       {
         id: 'deploy-proxy',
-        title: 'Deploy\nApp LLM Proxy',
+        title: 'Deploy\nApp AI Proxy',
         icon: Rocket,
         path: deployProxyPath,
         completed: completion.hasProxyDeployments,
       },
       {
         id: 'consume-proxy',
-        title: 'Consume\nApp LLM Proxy',
+        title: 'Consume\nApp AI Proxy',
         icon: Package,
         path: consumeProxyPath,
         completed: completion.hasProxyConsumptions,
@@ -458,7 +458,7 @@ export default function ProxyQuickStartBanner() {
                     fontSize: 24,
                   }}
                 >
-                  Expose your 1st App LLM Proxy
+                  Expose your 1st App AI Proxy
                 </Typography>
               </Box>
 

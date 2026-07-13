@@ -96,7 +96,7 @@ export default function LLMProxiesSummaryCardSection({
 
       {!isEmptyState ? (
         <CardHeader
-          title="App LLM Proxies"
+          title="App AI Proxies"
           subheader={
             isLoading
               ? 'Loading…'
@@ -189,7 +189,7 @@ export default function LLMProxiesSummaryCardSection({
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               <FormattedMessage
                 id="aiWorkspace.pages.appShell.appShellPages.overview.Overview.create.your.first.llm.proxy"
-                defaultMessage={'Create your first App LLM Proxy'}
+                defaultMessage={'Create your first App AI Proxy'}
               />
             </Typography>
             <Typography
@@ -200,7 +200,7 @@ export default function LLMProxiesSummaryCardSection({
               <FormattedMessage
                 id="aiWorkspace.pages.appShell.appShellPages.overview.Overview.create.your.first.llm.proxy.description"
                 defaultMessage={
-                  'Set up an App LLM Proxy to route model traffic and manage AI access across your applications.'
+                  'Set up an App AI Proxy to route model traffic and manage AI access across your applications.'
                 }
               />
             </Typography>
@@ -212,7 +212,7 @@ export default function LLMProxiesSummaryCardSection({
             >
               <FormattedMessage
                 id="aiWorkspace.pages.appShell.appShellPages.overview.Overview.create.llm.proxy"
-                defaultMessage={'Create App LLM Proxy'}
+                defaultMessage={'Create App AI Proxy'}
               />
             </Button>
           </Stack>

@@ -190,7 +190,7 @@ export default function ServiceProviders() {
   ) => {
     if (!currentOrganization?.uuid) {
       showSnackbar(
-        'Unable to verify App LLM Proxy usage because organization details are unavailable.',
+        'Unable to verify App AI Proxy usage because organization details are unavailable.',
         'error'
       );
       return;
@@ -218,7 +218,7 @@ export default function ServiceProviders() {
       setDeleteConfirmationInput('');
     } catch {
       showSnackbar(
-        'Failed to verify App LLM Proxy usage for this provider. Deletion has been blocked. Please try again.',
+        'Failed to verify App AI Proxy usage for this provider. Deletion has been blocked. Please try again.',
         'error'
       );
     } finally {

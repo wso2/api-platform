@@ -236,7 +236,7 @@ export default function AppSidebar({
                       <Sidebar.ItemIcon>
                         <Workflow size={20} />
                       </Sidebar.ItemIcon>
-                      <Sidebar.ItemLabel>App LLM Proxies</Sidebar.ItemLabel>
+                      <Sidebar.ItemLabel>App AI Proxies</Sidebar.ItemLabel>
                     </Sidebar.Item>
                   </NavLink>
                 )}

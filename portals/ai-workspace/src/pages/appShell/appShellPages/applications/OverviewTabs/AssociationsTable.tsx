@@ -109,7 +109,7 @@ function renderPrimaryActions(
         startIcon={<Plus size={16} />}
         onClick={() => void onOpenProxyDrawer()}
       >
-        Add LLM Proxy
+        Add AI Proxy
       </Button>
     </Stack>
   );
@@ -274,7 +274,7 @@ export default function AssociationsTable({
                             label={
                               association.kind === 'LlmProvider'
                                 ? 'AI Provider'
-                                : 'LLM Proxy'
+                                : 'AI Proxy'
                             }
                             size="small"
                             variant="outlined"
