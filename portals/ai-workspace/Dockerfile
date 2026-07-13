@@ -61,11 +61,11 @@ COPY --chown=$USER_UID:$USER_GID --from=bff /bff /usr/local/bin/bff
 
 USER $USER_UID
 
-# No ENV config defaults are baked in on purpose. The BFF's built-in defaults
-# already match what this image needs (static dir /app, listener :5380, self-signed
-# TLS, in-memory sessions, Secure/Lax cookies), and an APIP_AIW_* variable set here
-# would take precedence over the operator's mounted config.toml — silently shadowing
-# it. Override at deploy time with APIP_AIW_* env vars or config.toml instead.
+# No ENV config defaults are baked in on purpose: the BFF's built-in defaults already
+# match what this image needs (static dir /app, listener :5380, self-signed TLS,
+# in-memory sessions, Secure/Lax cookies). Configure a deployment by mounting a
+# config.toml at /etc/ai-workspace/config.toml; its '{{ env "APIP_AIW_..." }}' tokens
+# are what pull values in from the environment.
 
 EXPOSE 5380
 

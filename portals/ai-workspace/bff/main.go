@@ -24,6 +24,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net"
@@ -87,7 +88,12 @@ func portalURL(addr string, tlsEnabled bool) string {
 }
 
 func main() {
-	cfg, err := config.Load()
+	// The container reads its mounted config.toml, so -config is only needed to run
+	// the BFF outside one (see `make bff-run`).
+	configFile := flag.String("config", config.DefaultConfigFile, "path to config.toml")
+	flag.Parse()
+
+	cfg, err := config.Load(*configFile)
 	if err != nil {
 		slog.SetDefault(logger.NewLogger(logger.Config{Level: "info", Format: "text"}))
 		slog.Error("configuration error", "err", err)

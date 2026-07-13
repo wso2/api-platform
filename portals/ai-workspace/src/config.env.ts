@@ -43,12 +43,12 @@ export const DOMAIN = getEnvOrDefault('APIP_AIW_DOMAIN', 'localhost:5380');
 export const OIDC_AUTHORITY  = getEnvOrDefault('APIP_AIW_OIDC_AUTHORITY', '');
 export const OIDC_CLIENT_ID  = getEnvOrDefault('APIP_AIW_OIDC_CLIENT_ID', '');
 
-// JWT claim name mappings — configure to match your IDP's token structure.
-// These must match AUTH_IDP_ORGANIZATION_CLAIM_NAME / AUTH_IDP_ORG_NAME_CLAIM_NAME /
-// AUTH_IDP_ORG_HANDLE_CLAIM_NAME on the Platform API side.
-export const OIDC_ORG_ID_CLAIM     = getEnvOrDefault('APIP_AIW_OIDC_ORG_ID_CLAIM',     'org_id');
-export const OIDC_ORG_NAME_CLAIM   = getEnvOrDefault('APIP_AIW_OIDC_ORG_NAME_CLAIM',   'org_name');
-export const OIDC_ORG_HANDLE_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_ORG_HANDLE_CLAIM', 'org_handle');
+// JWT claim name mappings — configure to match your IDP's token structure. The names
+// mirror the Platform API's [auth.idp.claim_mappings] key for key, and must agree with
+// them: both sides read the same claims out of the same token.
+export const OIDC_ORG_ID_CLAIM     = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME', 'org_id');
+export const OIDC_ORG_NAME_CLAIM   = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_ORG_NAME_CLAIM_NAME',     'org_name');
+export const OIDC_ORG_HANDLE_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_ORG_HANDLE_CLAIM_NAME',   'org_handle');
 
 // Default region used when auto-registering an organization on first login.
 export const DEFAULT_ORG_REGION = getEnvOrDefault('APIP_AIW_DEFAULT_ORG_REGION', 'us');
@@ -189,8 +189,8 @@ export const CSRF_VALUE = 'ai-workspace';
 
 // JWT claim names for user display — configure to match your IDP's token structure.
 // Common alternatives: 'name', 'preferred_username' (Keycloak), 'upn' (Azure AD)
-export const OIDC_USERNAME_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_USERNAME_CLAIM', 'given_name');
-export const OIDC_EMAIL_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_EMAIL_CLAIM', 'email');
+export const OIDC_USERNAME_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_USERNAME_CLAIM_NAME', 'given_name');
+export const OIDC_EMAIL_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_EMAIL_CLAIM_NAME', 'email');
 
 // Auth mode: 'oidc' (default) uses react-oidc-context; 'basic' posts credentials to /api/portal/v0.9/auth/login.
 export const AUTH_MODE = getEnvOrDefault('APIP_AIW_AUTH_MODE', 'basic') as 'oidc' | 'basic';

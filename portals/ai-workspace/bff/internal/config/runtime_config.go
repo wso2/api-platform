@@ -23,8 +23,8 @@ import "strings"
 // reach the browser, so a new server-side key (a secret, an upstream URL, a cookie
 // setting) cannot leak into the page merely by being added to config.toml.
 //
-// oidc_client_secret / oidc_client_id / oidc_authority are deliberately absent — the
-// BFF performs the whole OIDC handshake, so the SPA needs no client identity.
+// [oidc] client_secret / client_id / authority are deliberately absent — the BFF
+// performs the whole OIDC handshake, so the SPA needs no client identity.
 var browserSafeKeys = []string{
 	// Identity of the deployment
 	"domain",
@@ -35,13 +35,14 @@ var browserSafeKeys = []string{
 	"csrf_header",
 	"debug",
 
-	// Claim names the SPA displays user/org identity from
-	"oidc_scope",
-	"oidc_username_claim",
-	"oidc_email_claim",
-	"oidc_org_id_claim",
-	"oidc_org_name_claim",
-	"oidc_org_handle_claim",
+	// Claim names the SPA displays user/org identity from. The keys mirror the
+	// Platform API's [auth.idp.claim_mappings] exactly — same claim, same name.
+	"oidc.scope",
+	"oidc.claim_mappings.username_claim_name",
+	"oidc.claim_mappings.email_claim_name",
+	"oidc.claim_mappings.organization_claim_name",
+	"oidc.claim_mappings.org_name_claim_name",
+	"oidc.claim_mappings.org_handle_claim_name",
 
 	// External links and SPA-only endpoints
 	"dev_portal_base_url",
@@ -51,12 +52,13 @@ var browserSafeKeys = []string{
 	"moesif_app_api_key",
 }
 
-// runtimeKey converts a config key into the name the SPA reads. It is the same
-// spelling as the key's environment-variable override (APIP_AIW_ + the uppercased
-// key), so a value has exactly one name across config.toml, the environment, Vite's
-// import.meta.env, and window.__RUNTIME_CONFIG__.
+// runtimeKey converts a config key into the name the SPA reads: APIP_AIW_ + the key's
+// dotted path uppercased, with dots as underscores ("oidc.scope" ->
+// APIP_AIW_OIDC_SCOPE). It is the same spelling the key's {{ env }} token
+// conventionally names, so a value has one name across config.toml, the environment,
+// Vite's import.meta.env, and window.__RUNTIME_CONFIG__.
 func runtimeKey(configKey string) string {
-	return EnvPrefix + strings.ToUpper(configKey)
+	return EnvPrefix + strings.ToUpper(strings.ReplaceAll(configKey, ".", "_"))
 }
 
 // buildRuntimeConfig collects the browser-safe values the SPA reads from
