@@ -91,18 +91,13 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 	//   pass3: RestApi, WebSubApi, LlmProxy, Mcp — LlmProxy depends on LlmProvider
 	var pass1, pass2, pass3 []artifact
 
-	if err := filepath.WalkDir(g.cfg.ArtifactsDir, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return fmt.Errorf("error accessing path %s: %w", path, walkErr)
-		}
-		if d.IsDir() {
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(path))
-		if ext != ".yaml" && ext != ".yml" && ext != ".json" {
-			return nil
-		}
+	artifactPaths, err := collectArtifacts(g.cfg.ArtifactsDir)
+	if err != nil {
+		return err
+	}
 
+	for _, path := range artifactPaths {
+		ext := strings.ToLower(filepath.Ext(path))
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("failed to read artifact %s: %w", path, err)
@@ -134,9 +129,6 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 		default:
 			return fmt.Errorf("artifact %s has unsupported kind %q", path, envelope.Kind)
 		}
-		return nil
-	}); err != nil {
-		return err
 	}
 
 	total := len(pass1) + len(pass2) + len(pass3)
