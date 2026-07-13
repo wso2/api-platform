@@ -157,16 +157,20 @@ controlplane_host    = "<platform-api-host>"
 default_org_region   = "us"
 ```
 
-The **client secret and redirect URLs are BFF settings, not `config.toml` keys** (the secret
-must never reach the browser). Set them as environment variables on the AI Workspace container:
+The redirect URLs and the client secret are BFF settings and never reach the browser. The
+redirect URLs are ordinary `config.toml` keys; the secret is referenced with an interpolation
+token so the raw value never lands in the file:
 
-```bash
-OIDC_CLIENT_SECRET=<ai-workspace-client-secret>
-OIDC_REDIRECT_URL=https://<your-domain>/api/auth/callback        # the BFF callback (section 2)
-OIDC_POST_LOGOUT_REDIRECT_URL=https://<your-domain>/login
+```toml
+oidc_redirect_url             = "https://<your-domain>/api/auth/callback"   # the BFF callback (section 2)
+oidc_post_logout_redirect_url = "https://<your-domain>/login"
+
+# Preferred — a mounted secret file. Or set APIP_AIW_OIDC_CLIENT_SECRET in a git-ignored .env.
+oidc_client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
 ```
 
-> `OIDC_REDIRECT_URL` must exactly match the authorized redirect URL registered in section 2.
+> `oidc_redirect_url` must exactly match the authorized redirect URL registered in section 2.
+> A missing client secret fails startup — see [Configuration → Secrets](../configuration.md#secrets).
 
 ---
 

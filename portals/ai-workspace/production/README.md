@@ -151,14 +151,14 @@ oidc_authority = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
 # Client ID of the AI Workspace confidential application (from the IDP Protocol tab).
 oidc_client_id = "<ai-workspace-client-id>"
 
-# JWT claim name mappings — must match AUTH_IDP_*_CLAIM_NAME values in Platform API (section 2).
+# JWT claim name mappings — must match the [auth.idp.claim_mappings] names in Platform API (section 2).
 oidc_org_id_claim     = "org_id"
 oidc_org_name_claim   = "org_name"
 oidc_org_handle_claim = "org_handle"
 
 # Platform API base URL the browser uses — the same-origin BFF proxy path
 # (proxy_prefix + /api/v0.9). Keep it relative; the BFF forwards these calls to the
-# upstream Platform API set via PLATFORM_API_URL, so this does not point at the host.
+# upstream Platform API set via platform_api_url, so this does not point at the host.
 platform_api_base_url = "/api/proxy/api/v0.9"
 
 # Externally reachable host:port that deployed gateways use to reach the Platform API.
@@ -172,40 +172,55 @@ default_org_region = "us"
 platform_gateway_versions = '[{"version":"1.2","latestVersion":"v1.2.0-M1","channel":"STS"}]'
 ```
 
-> **The client secret and redirect URLs are BFF settings, not `config.toml` keys** — the
-> secret must never be exposed to the browser. Provide them as environment variables on the
-> AI Workspace container (e.g. in `docker-compose.yaml` / your orchestrator), alongside
-> `oidc_authority`/`oidc_client_id` from the file above:
->
-> ```bash
-> OIDC_CLIENT_SECRET=<ai-workspace-client-secret>
-> OIDC_REDIRECT_URL=https://<your-domain>/api/auth/callback        # the BFF callback
-> OIDC_POST_LOGOUT_REDIRECT_URL=https://<your-domain>/login
-> ```
->
-> `OIDC_REDIRECT_URL` must exactly match the authorized redirect URL registered in the IDP
-> application (section 1.2). The redirect is the **BFF callback** `/api/auth/callback` — not the
-> SPA `/signin` route; the BFF, not the browser, completes the code exchange.
+The redirect URLs are ordinary `config.toml` keys. The **client secret is never written into the
+file** — it is referenced with an interpolation token resolved at startup. In production, mount it
+as a secret file (a Docker/Kubernetes secret) so the value never enters the environment at all:
 
-### config.toml → environment variable mapping
+```toml
+# BFF callback registered in the IDP (section 1.2) — NOT the SPA /signin route.
+oidc_redirect_url             = "https://<your-domain>/api/auth/callback"
+oidc_post_logout_redirect_url = "https://<your-domain>/login"
 
-| config.toml key              | Environment variable              |
-|------------------------------|-----------------------------------|
-| `domain`                     | `VITE_DOMAIN`                     |
-| `auth_mode`                  | `VITE_AUTH_MODE`                  |
-| `oidc_authority`             | `VITE_OIDC_AUTHORITY`             |
-| `oidc_client_id`             | `VITE_OIDC_CLIENT_ID`             |
-| `oidc_org_id_claim`          | `VITE_OIDC_ORG_ID_CLAIM`          |
-| `oidc_org_name_claim`        | `VITE_OIDC_ORG_NAME_CLAIM`        |
-| `oidc_org_handle_claim`      | `VITE_OIDC_ORG_HANDLE_CLAIM`      |
-| `oidc_scope`                 | `VITE_OIDC_SCOPE`                 |
-| `platform_api_base_url`      | `VITE_PLATFORM_API_BASE_URL`      |
-| `controlplane_host`          | `VITE_CONTROLPLANE_HOST`          |
-| `default_org_region`         | `VITE_DEFAULT_ORG_REGION`         |
-| `platform_gateway_versions`  | `VITE_PLATFORM_GATEWAY_VERSIONS`  |
+# Preferred in production — a mounted secret file under an allowed directory.
+oidc_client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
+```
 
-Environment variables (e.g. passed via `docker run -e` or a Kubernetes `env:` block) always
-override the corresponding `config.toml` value.
+Mount the secret at that path, e.g. in `docker-compose.yaml`:
+
+```yaml
+    volumes:
+      - ./secrets/oidc_client_secret:/secrets/ai-workspace/oidc_client_secret:ro
+```
+
+Resolution fails closed: a missing or unreadable secret file aborts startup rather than yielding an
+empty credential. `{{ file }}` paths must live under `/etc/ai-workspace` or `/secrets/ai-workspace`
+(override with `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`). For a simpler local setup, omit the key and set
+`APIP_AIW_OIDC_CLIENT_SECRET` in a git-ignored `.env` instead.
+
+> `oidc_redirect_url` must exactly match the authorized redirect URL registered in the IDP
+> application (section 1.2). The BFF, not the browser, completes the code exchange.
+
+### Overriding config.toml from the environment
+
+Every key can be overridden by an environment variable: **uppercase the key and prefix it with
+`APIP_AIW_`**. The same convention gives the Platform API `APIP_CP_` and the Developer Portal
+`APIP_DP_`.
+
+| config.toml key              | Environment override                     |
+|------------------------------|------------------------------------------|
+| `domain`                     | `APIP_AIW_DOMAIN`                        |
+| `auth_mode`                  | `APIP_AIW_AUTH_MODE`                     |
+| `oidc_authority`             | `APIP_AIW_OIDC_AUTHORITY`                |
+| `oidc_client_id`             | `APIP_AIW_OIDC_CLIENT_ID`                |
+| `oidc_client_secret`         | `APIP_AIW_OIDC_CLIENT_SECRET`            |
+| `oidc_redirect_url`          | `APIP_AIW_OIDC_REDIRECT_URL`             |
+| `platform_api_url`           | `APIP_AIW_PLATFORM_API_URL`              |
+| `controlplane_host`          | `APIP_AIW_CONTROLPLANE_HOST`             |
+| `log_level`                  | `APIP_AIW_LOG_LEVEL`                     |
+
+Environment variables (e.g. `docker run -e` or a Kubernetes `env:` block) always override the
+corresponding `config.toml` value. Prefer the config file plus a mounted secret over passing
+credentials as environment variables.
 
 ---
 

@@ -42,7 +42,7 @@ func TestReverseProxy_InjectsBearerStripsCookieAndPrefix(t *testing.T) {
 	rp := ReverseProxy(target, "/api/proxy", backend.Client().Transport)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/proxy/api/v0.9/projects", nil)
-	req.Header.Set("Cookie", "_bff_session=secret-session-id")
+	req.Header.Set("Cookie", "_ai_workspace_session=secret-session-id")
 	req = WithToken(req, "injected-bearer-token")
 
 	rec := httptest.NewRecorder()

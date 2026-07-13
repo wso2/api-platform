@@ -41,17 +41,23 @@ platform_api_base_url = "https://api.example.com/api/v1"
 controlplane_host    = "api.example.com"
 ```
 
-The **client secret and redirect URLs are BFF settings, not `config.toml` keys** (the secret
-must never reach the browser). Provide them as environment variables on the AI Workspace
-container:
+The redirect URLs and the client secret are BFF settings — they are **never sent to the browser**.
+The redirect URLs are ordinary `config.toml` keys; the secret is *referenced* by the config rather
+than written into it, so the raw value never lands in a committed file:
 
-```bash
-OIDC_CLIENT_SECRET=<client-secret>
-OIDC_REDIRECT_URL=https://<domain>/api/auth/callback        # the BFF callback
-OIDC_POST_LOGOUT_REDIRECT_URL=https://<domain>/login
+```toml
+oidc_redirect_url             = "https://<domain>/api/auth/callback"   # the BFF callback
+oidc_post_logout_redirect_url = "https://<domain>/login"
+
+# Preferred: read from a mounted secret file (the value never enters the environment).
+oidc_client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
 ```
 
-`OIDC_REDIRECT_URL` (the BFF callback `/api/auth/callback`) and `OIDC_POST_LOGOUT_REDIRECT_URL`
+For a simpler local setup, omit the key entirely and set `APIP_AIW_OIDC_CLIENT_SECRET` in a
+git-ignored `.env` instead. Either way a missing secret aborts startup rather than yielding an
+empty credential. See [Configuration → Secrets](../configuration.md#secrets).
+
+`oidc_redirect_url` (the BFF callback `/api/auth/callback`) and `oidc_post_logout_redirect_url`
 must be registered as allowed redirect URIs in your IDP application. The redirect is **not** the
 SPA `/signin` route — the BFF, not the browser, completes the code exchange.
 
@@ -125,11 +131,11 @@ You must register the `ap:*` scopes as an API resource in your IDP and grant the
 **Users see a blank screen or redirect loop after login**
 - Verify `domain` in `config.toml` matches the actual host:port in the browser.
 - Verify the redirect URI `https://<domain>/api/auth/callback` (the BFF callback) is registered
-  in the IDP and matches `OIDC_REDIRECT_URL`.
+  in the IDP and matches `oidc_redirect_url`.
 
 **Token endpoint rejects the BFF with `unauthorized_client` / "not authorized to use the requested grant type"**
 - The app is registered as a public/SPA client. Re-register it as a **confidential** client
-  (authorization-code + refresh-token grants, PKCE) and set `OIDC_CLIENT_SECRET`.
+  (authorization-code + refresh-token grants, PKCE) and set `oidc_client_secret`.
 
 **Platform API returns 401**
 - Check that `jwks_url` and `issuer` in Platform API config match the IDP's discovery doc values.

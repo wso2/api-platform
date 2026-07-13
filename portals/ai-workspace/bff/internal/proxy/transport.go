@@ -75,14 +75,14 @@ func NewTransport(opts TLSClientOptions) (*http.Transport, error) {
 func caPool(path string) (*x509.CertPool, error) {
 	pem, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read PLATFORM_API_CA_FILE %q: %w", path, err)
+		return nil, fmt.Errorf("read platform_api_ca_file %q: %w", path, err)
 	}
 	pool, err := x509.SystemCertPool()
 	if err != nil || pool == nil {
 		pool = x509.NewCertPool()
 	}
 	if !pool.AppendCertsFromPEM(pem) {
-		return nil, fmt.Errorf("no valid certificates in PLATFORM_API_CA_FILE %q", path)
+		return nil, fmt.Errorf("no valid certificates in platform_api_ca_file %q", path)
 	}
 	return pool, nil
 }

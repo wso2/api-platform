@@ -16,44 +16,64 @@
 
 package config
 
-import (
-	"os"
-	"strings"
-)
+import "strings"
 
-// secretViteKeys are VITE_* values that must NEVER be shipped to the browser.
-// (The OIDC handshake is done entirely by the BFF, so the SPA needs no client
-// id/secret. We strip both to keep the browser surface minimal.)
-var secretViteKeys = map[string]bool{
-	"VITE_OIDC_CLIENT_SECRET": true,
-	"VITE_OIDC_CLIENT_ID":     true,
-	"VITE_OIDC_AUTHORITY":     true,
+// browserSafeKeys is the allowlist of config keys the SPA may read from
+// window.__RUNTIME_CONFIG__. It is an allowlist, not a filter: only these keys ever
+// reach the browser, so a new server-side key (a secret, an upstream URL, a cookie
+// setting) cannot leak into the page merely by being added to config.toml.
+//
+// oidc_client_secret / oidc_client_id / oidc_authority are deliberately absent — the
+// BFF performs the whole OIDC handshake, so the SPA needs no client identity.
+var browserSafeKeys = []string{
+	// Identity of the deployment
+	"domain",
+	"auth_mode",
+	"default_org_region",
+	"controlplane_host",
+	"platform_gateway_versions",
+	"csrf_header",
+	"debug",
+
+	// Claim names the SPA displays user/org identity from
+	"oidc_scope",
+	"oidc_username_claim",
+	"oidc_email_claim",
+	"oidc_org_id_claim",
+	"oidc_org_name_claim",
+	"oidc_org_handle_claim",
+
+	// External links and SPA-only endpoints
+	"dev_portal_base_url",
+	"api_policy_hub",
+	"policy_hub_web_url",
+	"moesif_web_url",
+	"moesif_app_api_key",
 }
 
-// buildRuntimeConfig collects the browser-safe VITE_* values that the SPA reads
-// from window.__RUNTIME_CONFIG__. It mirrors the old entrypoint.sh behaviour
-// (export every VITE_* var) but:
-//   - drops secret/OIDC-client keys (the BFF, not the SPA, talks to the IDP), and
-//   - rewrites the Platform/Portal API base URLs to the same-origin proxy prefix
-//     so the SPA only ever talks to the BFF.
-func buildRuntimeConfig(cfg *Config) map[string]string {
-	out := map[string]string{}
-	for _, kv := range os.Environ() {
-		eq := strings.IndexByte(kv, '=')
-		if eq < 0 {
-			continue
+// runtimeKey converts a config key into the name the SPA reads. It is the same
+// spelling as the key's environment-variable override (APIP_AIW_ + the uppercased
+// key), so a value has exactly one name across config.toml, the environment, Vite's
+// import.meta.env, and window.__RUNTIME_CONFIG__.
+func runtimeKey(configKey string) string {
+	return EnvPrefix + strings.ToUpper(configKey)
+}
+
+// buildRuntimeConfig collects the browser-safe values the SPA reads from
+// window.__RUNTIME_CONFIG__, then forces the API base URLs onto the same-origin
+// proxy prefix so the browser only ever talks to the BFF.
+func buildRuntimeConfig(cfg *Config, s settings) map[string]string {
+	out := make(map[string]string, len(browserSafeKeys)+3)
+	for _, key := range browserSafeKeys {
+		if v, ok := s[key]; ok && v != "" {
+			out[runtimeKey(key)] = v
 		}
-		key := kv[:eq]
-		if !strings.HasPrefix(key, "VITE_") || secretViteKeys[key] {
-			continue
-		}
-		out[key] = kv[eq+1:]
 	}
 
 	// Force the SPA's API base URLs through the BFF same-origin proxy.
-	out["VITE_PLATFORM_API_BASE_URL"] = cfg.ProxyPrefix + "/api/v0.9"
-	out["VITE_PORTAL_API_BASE_URL"] = cfg.ProxyPrefix + "/api/portal/v0.9"
-	out["VITE_AUTH_MODE"] = cfg.AuthMode
+	out[runtimeKey("platform_api_base_url")] = cfg.ProxyPrefix + "/api/v0.9"
+	out[runtimeKey("portal_api_base_url")] = cfg.ProxyPrefix + "/api/portal/v0.9"
+	out[runtimeKey("auth_mode")] = cfg.AuthMode
 
 	return out
 }

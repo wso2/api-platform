@@ -34,31 +34,31 @@ import { getEnvOrDefault } from './utils/getEnvOrDefault';
  */
 
 // Debug mode
-export const DEBUG = getEnvOrDefault('VITE_DEBUG', false);
+export const DEBUG = getEnvOrDefault('APIP_AIW_DEBUG', false);
 
 // Domain and environment settings
-export const DOMAIN = getEnvOrDefault('VITE_DOMAIN', 'localhost:5380');
+export const DOMAIN = getEnvOrDefault('APIP_AIW_DOMAIN', 'localhost:5380');
 //Static OIDC configuration — set these to match the root-org OIDC app in your IDP.
 // Authority is the issuer URL; the OIDC client will auto-discover endpoints from {authority}/.well-known/openid-configuration.
-export const OIDC_AUTHORITY  = getEnvOrDefault('VITE_OIDC_AUTHORITY', '');
-export const OIDC_CLIENT_ID  = getEnvOrDefault('VITE_OIDC_CLIENT_ID', '');
+export const OIDC_AUTHORITY  = getEnvOrDefault('APIP_AIW_OIDC_AUTHORITY', '');
+export const OIDC_CLIENT_ID  = getEnvOrDefault('APIP_AIW_OIDC_CLIENT_ID', '');
 
 // JWT claim name mappings — configure to match your IDP's token structure.
 // These must match AUTH_IDP_ORGANIZATION_CLAIM_NAME / AUTH_IDP_ORG_NAME_CLAIM_NAME /
 // AUTH_IDP_ORG_HANDLE_CLAIM_NAME on the Platform API side.
-export const OIDC_ORG_ID_CLAIM     = getEnvOrDefault('VITE_OIDC_ORG_ID_CLAIM',     'org_id');
-export const OIDC_ORG_NAME_CLAIM   = getEnvOrDefault('VITE_OIDC_ORG_NAME_CLAIM',   'org_name');
-export const OIDC_ORG_HANDLE_CLAIM = getEnvOrDefault('VITE_OIDC_ORG_HANDLE_CLAIM', 'org_handle');
+export const OIDC_ORG_ID_CLAIM     = getEnvOrDefault('APIP_AIW_OIDC_ORG_ID_CLAIM',     'org_id');
+export const OIDC_ORG_NAME_CLAIM   = getEnvOrDefault('APIP_AIW_OIDC_ORG_NAME_CLAIM',   'org_name');
+export const OIDC_ORG_HANDLE_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_ORG_HANDLE_CLAIM', 'org_handle');
 
 // Default region used when auto-registering an organization on first login.
-export const DEFAULT_ORG_REGION = getEnvOrDefault('VITE_DEFAULT_ORG_REGION', 'us');
+export const DEFAULT_ORG_REGION = getEnvOrDefault('APIP_AIW_DEFAULT_ORG_REGION', 'us');
 
 // Scopes to request at login — derived from openapi.yaml x-required-scopes (ap: prefix).
 // offline_access is required so the IDP issues a refresh token; without it the
 // BFF cannot silently renew the access token and the user is logged out as soon
 // as it expires. Keep it if you override this scope list.
 export const OIDC_SCOPE = getEnvOrDefault(
-  'VITE_OIDC_SCOPE',
+  'APIP_AIW_OIDC_SCOPE',
   'openid profile email offline_access' +
   ' ap:organization:read ap:organization:manage' +
   ' ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage' +
@@ -99,37 +99,37 @@ export const OIDC_SCOPE = getEnvOrDefault(
 
 // OIDC redirect URIs — app-specific, not IDP-specific.
 export const OIDC_REDIRECT_URI = getEnvOrDefault(
-  'VITE_OIDC_REDIRECT_URI',
+  'APIP_AIW_OIDC_REDIRECT_URI',
   `https://${DOMAIN}/signin`
 );
 export const OIDC_POST_LOGOUT_REDIRECT_URI = getEnvOrDefault(
-  'VITE_OIDC_POST_LOGOUT_REDIRECT_URI',
+  'APIP_AIW_OIDC_POST_LOGOUT_REDIRECT_URI',
   `https://${DOMAIN}/login`
 );
 
 // API Base URLs
 export const DEV_PORTAL_BASE_URL = getEnvOrDefault(
-  'VITE_DEV_PORTAL_BASE_URL',
+  'APIP_AIW_DEV_PORTAL_BASE_URL',
   ''
 );
 
 export const API_BASE_URLS = {
   policyHubApi: getEnvOrDefault(
-    'VITE_API_POLICY_HUB',
+    'APIP_AIW_API_POLICY_HUB',
     'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0'
   ),
 } as const;
 
 // Moesif web console base URL
 export const MOESIF_WEB_URL = getEnvOrDefault(
-  'VITE_MOESIF_WEB_URL',
+  'APIP_AIW_MOESIF_WEB_URL',
   'https://web-dev.moesif.com'
 );
 
 // Moesif Application API Key for event tracking
 export const MOESIF_APP_API_KEY = getEnvOrDefault(
-  'VITE_MOESIF_APP_API_KEY',
-  'eyJhcHAiOiI5Mjo1NjYiLCJ2ZXIiOiIyLjEiLCJvcmciOiI2Mjg6NDE3IiwicHViIjp0cnVlLCJpYXQiOjE3Njk5MDQwMDB9.gxcZJ7eybasZ5JY_JJj2ARuTiWZNnYIeAtL8oQbhfxk'
+  'APIP_AIW_MOESIF_APP_API_KEY',
+  ''
 );
 
 export interface GatewayVersionEntry {
@@ -139,7 +139,7 @@ export interface GatewayVersionEntry {
 }
 
 export const PLATFORM_GATEWAY_VERSIONS = getEnvOrDefault<GatewayVersionEntry[]>(
-  'VITE_PLATFORM_GATEWAY_VERSIONS',
+  'APIP_AIW_PLATFORM_GATEWAY_VERSIONS',
   [
     { version: '1.2', latestVersion: 'v1.2.0-M1', channel: 'STS' }
   ]
@@ -148,7 +148,7 @@ export const PLATFORM_GATEWAY_VERSIONS = getEnvOrDefault<GatewayVersionEntry[]>(
 
 // Policy Hub web URL
 export const POLICY_HUB_WEB_URL = getEnvOrDefault(
-  'VITE_POLICY_HUB_WEB_URL',
+  'APIP_AIW_POLICY_HUB_WEB_URL',
   'https://wso2.com/api-platform/policy-hub/'
 );
 
@@ -160,7 +160,7 @@ export const POLICY_HUB_WEB_URL = getEnvOrDefault(
 // BFF-only auth flow, so a direct override also requires a separate authentication
 // path to attach credentials to those calls.
 export const PLATFORM_API_BASE_URL = getEnvOrDefault(
-  'VITE_PLATFORM_API_BASE_URL',
+  'APIP_AIW_PLATFORM_API_BASE_URL',
   '/api/proxy/api/v0.9'
 );
 
@@ -172,25 +172,25 @@ export const BFF_COMPOSITE_BASE_URL = '/api/bff';
 // Control-plane host shown in gateway setup instructions (host:port).
 // Distinct from PLATFORM_API_BASE_URL which may be a relative nginx proxy path.
 export const CONTROLPLANE_HOST = getEnvOrDefault(
-  'VITE_CONTROLPLANE_HOST',
+  'APIP_AIW_CONTROLPLANE_HOST',
   'host.docker.internal:9243'
 );
 
 export const PORTAL_API_BASE_URL = getEnvOrDefault(
-  'VITE_PORTAL_API_BASE_URL',
+  'APIP_AIW_PORTAL_API_BASE_URL',
   '/api/proxy/api/portal/v0.9'
 );
 
 // CSRF header sent on all BFF requests. Cross-site attackers cannot set a custom
 // header (CORS is closed), so its presence proves the request is same-origin.
 // Must match the BFF's CSRF_HEADER config (default: X-Requested-By).
-export const CSRF_HEADER = getEnvOrDefault('VITE_CSRF_HEADER', 'X-Requested-By');
+export const CSRF_HEADER = getEnvOrDefault('APIP_AIW_CSRF_HEADER', 'X-Requested-By');
 export const CSRF_VALUE = 'ai-workspace';
 
 // JWT claim names for user display — configure to match your IDP's token structure.
 // Common alternatives: 'name', 'preferred_username' (Keycloak), 'upn' (Azure AD)
-export const OIDC_USERNAME_CLAIM = getEnvOrDefault('VITE_OIDC_USERNAME_CLAIM', 'given_name');
-export const OIDC_EMAIL_CLAIM = getEnvOrDefault('VITE_OIDC_EMAIL_CLAIM', 'email');
+export const OIDC_USERNAME_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_USERNAME_CLAIM', 'given_name');
+export const OIDC_EMAIL_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_EMAIL_CLAIM', 'email');
 
 // Auth mode: 'oidc' (default) uses react-oidc-context; 'basic' posts credentials to /api/portal/v0.9/auth/login.
-export const AUTH_MODE = getEnvOrDefault('VITE_AUTH_MODE', 'basic') as 'oidc' | 'basic';
+export const AUTH_MODE = getEnvOrDefault('APIP_AIW_AUTH_MODE', 'basic') as 'oidc' | 'basic';

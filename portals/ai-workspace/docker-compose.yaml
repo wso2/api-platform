@@ -13,22 +13,27 @@
 #   Edit configs/config.toml for AI Workspace settings.
 #   Edit configs/config-platform-api.toml for Platform API settings.
 #
+#   Any key in either file can be overridden with an environment variable: the key
+#   uppercased, prefixed with APIP_AIW_ (AI Workspace) or APIP_CP_ (Platform API) —
+#   e.g. APIP_AIW_LOG_LEVEL, APIP_CP_DATABASE_HOST.
+#
 # Secrets (REQUIRED — never hardcode them here or in the config TOML):
-#   Set the environment variables below for secrets — either export them
-#   in your shell, or create a .env file:
+#   Copy .env.example to .env (git-ignored) and fill it in:
 #
 #     AUTH_JWT_SECRET_KEY=$(openssl rand -hex 32)   # signs login JWTs
 #     ENCRYPTION_KEY=$(openssl rand -hex 32)        # encrypts secrets
+#     APIP_AIW_OIDC_CLIENT_SECRET=...               # only in OIDC mode
 #
-#   The Platform API reads them from config-platform-api.toml via {{ env "..." }}
-#   tokens. For production, prefer mounting a secret file and using {{ file "..." }}.
+#   Each service pulls .env into its container (env_file, below), and each config TOML
+#   references the values with {{ env "..." }} tokens. For production, prefer mounting
+#   a secret file and referencing it with {{ file "..." }} instead.
 #
 # Authentication:
 #   Out of the box the stack uses file-based auth (login admin / admin) — no
-#   configuration needed. To delegate to any OIDC provider, uncomment the OIDC
-#   blocks on both services below and set the OIDC_* values in your shell or a
-#   .env file. See README.md → "Testing with an IDP locally" (worked example:
-#   Asgardeo).
+#   configuration needed. To delegate to any OIDC provider, uncomment the IDP block
+#   on the Platform API below and set auth_mode = "oidc" plus the oidc_* keys in
+#   configs/config.toml. See README.md → "Testing with an IDP locally" (worked
+#   example: Asgardeo).
 #
 # Usage:
 #   docker compose up -d
@@ -73,6 +78,13 @@ services:
       # - APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME=${OIDC_ORG_ID_CLAIM:-}
       # - APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORG_NAME_CLAIM_NAME=${OIDC_ORG_NAME_CLAIM:-}
       # - APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORG_HANDLE_CLAIM_NAME=${OIDC_ORG_HANDLE_CLAIM:-}
+    env_file:
+      # Supplies AUTH_JWT_SECRET_KEY / ENCRYPTION_KEY to the container, where the
+      # {{ env "..." }} tokens in config-platform-api.toml resolve them. A compose
+      # .env alone is not enough: it only substitutes ${...} in this file, it does
+      # not put the values inside the container.
+      - path: .env
+        required: false
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
@@ -104,23 +116,27 @@ services:
       platform-api:
         condition: service_healthy
     environment:
+      # Config-override env vars carry the APIP_AIW_ prefix; the suffix is the
+      # config.toml key (APIP_AIW_COOKIE_SECURE -> cookie_secure). Only deployment-
+      # specific values live here — everything else belongs in configs/config.toml.
+      #
       # The BFF talks to the Platform API over the internal compose network.
-      - PLATFORM_API_URL=https://platform-api:9243
-      - PLATFORM_API_TLS_SKIP_VERIFY=true
-      - SESSION_STORE=memory
-      - COOKIE_SECURE=true
-      - COOKIE_SAMESITE=lax
-      - BFF_TLS_SELF_SIGNED=true
-      # ── OIDC — uncomment to delegate login to any OIDC provider. The BFF is a
-      # confidential client (holds the secret, never sent to the browser). Set
-      # the OIDC_* values in .env; keep the IDP block above in sync.
-      # - VITE_AUTH_MODE=oidc
-      # - OIDC_ISSUER=${OIDC_ISSUER:-}
-      # - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
-      # - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
-      # - OIDC_REDIRECT_URL=${OIDC_REDIRECT_URL:-https://localhost:5380/api/auth/callback}
-      # - OIDC_POST_LOGOUT_REDIRECT_URL=${OIDC_POST_LOGOUT_REDIRECT_URL:-https://localhost:5380/login}
-      # - OIDC_SCOPES=${OIDC_SCOPES:-openid profile email ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read ap:secret:manage}
+      - APIP_AIW_PLATFORM_API_URL=https://platform-api:9243
+      - APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY=true
+      - APIP_DEMO_MODE=${APIP_DEMO_MODE:-true}
+      # ── OIDC — to delegate login to any OIDC provider, set auth_mode = "oidc" and
+      # the oidc_* keys in configs/config.toml, and keep the IDP block above in sync.
+      # The BFF is a confidential client: its secret stays server-side and is never
+      # sent to the browser. Put it in .env as APIP_AIW_OIDC_CLIENT_SECRET (injected
+      # below via env_file); config.toml references it with
+      #   oidc_client_secret = '{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'
+      # In production prefer mounting a secret file and swapping that for
+      #   oidc_client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
+    env_file:
+      # Supplies APIP_AIW_OIDC_CLIENT_SECRET to the container. Never hardcode the
+      # secret in the environment block above.
+      - path: .env
+        required: false
     volumes:
       - ./configs/config.toml:/etc/ai-workspace/config.toml:ro
       # Optional: mount your own TLS certificate to remove the browser trust warning.

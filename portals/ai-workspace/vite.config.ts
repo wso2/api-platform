@@ -68,6 +68,12 @@ const plugins: PluginOption[] = [
 
 export default defineConfig({
   plugins,
+  // Expose APIP_AIW_-prefixed variables to client code via import.meta.env, instead
+  // of Vite's default VITE_ prefix. The whole platform namespaces its configuration
+  // this way (APIP_AIW_ here, APIP_CP_ for the Platform API, APIP_DP_ for the
+  // Developer Portal), and the BFF serves the same names in window.__RUNTIME_CONFIG__,
+  // so one key spelling works at build time and at runtime.
+  envPrefix: 'APIP_AIW_',
   resolve: {
     dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
   },
@@ -86,8 +92,8 @@ export default defineConfig({
     proxy: {
       // In dev, run the BFF locally (default https://localhost:8081) and route
       // all same-origin BFF traffic to it, mirroring the production topology.
-      //   cd bff && PLATFORM_API_URL=https://localhost:9243 \
-      //     PLATFORM_API_TLS_SKIP_VERIFY=true BFF_ADDR=:8081 go run .
+      //   cd bff && APIP_AIW_PLATFORM_API_URL=https://localhost:9243 \
+      //     APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY=true APIP_AIW_LISTEN_ADDR=:8081 go run .
       '/api': {
         target: process.env.BFF_DEV_TARGET || 'https://localhost:8081',
         changeOrigin: true,
