@@ -64,15 +64,15 @@ services:
       # ── OIDC IDP — uncomment to validate tokens against any OIDC provider's
       # JWKS instead of file-based auth. Set the OIDC_* values in .env. Claim
       # overrides are optional (default: organization / org_name / org_handle).
-      # - AUTH_IDP_ENABLED=true
-      # - AUTH_JWT_ENABLED=false
-      # - AUTH_FILE_BASED_ENABLED=false
-      # - AUTH_IDP_JWKS_URL=${OIDC_JWKS_URL:-}
-      # - AUTH_IDP_ISSUER=${OIDC_ISSUER:-}
-      # - AUTH_IDP_AUDIENCE=${OIDC_AUDIENCE:-}
-      # - AUTH_IDP_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME=${OIDC_ORG_ID_CLAIM:-}
-      # - AUTH_IDP_CLAIM_MAPPINGS_ORG_NAME_CLAIM_NAME=${OIDC_ORG_NAME_CLAIM:-}
-      # - AUTH_IDP_CLAIM_MAPPINGS_ORG_HANDLE_CLAIM_NAME=${OIDC_ORG_HANDLE_CLAIM:-}
+      # - APIP_CP_AUTH_IDP_ENABLED=true
+      # - APIP_CP_AUTH_JWT_ENABLED=false
+      # - APIP_CP_AUTH_FILE_BASED_ENABLED=false
+      # - APIP_CP_AUTH_IDP_JWKS_URL=${OIDC_JWKS_URL:-}
+      # - APIP_CP_AUTH_IDP_ISSUER=${OIDC_ISSUER:-}
+      # - APIP_CP_AUTH_IDP_AUDIENCE=${OIDC_AUDIENCE:-}
+      # - APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME=${OIDC_ORG_ID_CLAIM:-}
+      # - APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORG_NAME_CLAIM_NAME=${OIDC_ORG_NAME_CLAIM:-}
+      # - APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORG_HANDLE_CLAIM_NAME=${OIDC_ORG_HANDLE_CLAIM:-}
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data

@@ -229,44 +229,54 @@ The connected gateway will receive a deployment event via WebSocket:
 
 ## Configuration
 
-All configuration is supplied via environment variables.
+Configuration comes from a TOML config file and/or environment variables (env vars
+override the file). **Config-override environment variables are prefixed with `APIP_CP_`**
+The prefix is stripped and the remainder mapped to a config key — e.g. `APIP_CP_LOG_LEVEL` → `log_level`,
+`APIP_CP_DATABASE_HOST` → `database.host`. The variable names in the tables below are shown
+with the prefix.
+
+Two variables are intentionally **not** prefixed: `APIP_DEMO_MODE` (a standalone runtime
+flag) and the shared `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`. Separately, the `{{ env "NAME" }}`
+interpolation tokens used inside the config file read **bare** names via `os.LookupEnv`, so
+`{{ env "ENCRYPTION_KEY" }}` reads `ENCRYPTION_KEY` while the direct override for the same
+key is `APIP_CP_ENCRYPTION_KEY` (see "Providing secrets via the config file" below).
 
 ### Authentication
 
 Two authentication modes are supported. Exactly one should be active at a time.
 
 ```
-AUTH_IDP_ENABLED=false (default)  →  Local JWT mode  (HMAC signature verification)
-AUTH_IDP_ENABLED=true             →  IDP mode        (JWKS-based verification)
+APIP_CP_AUTH_IDP_ENABLED=false (default)  →  Local JWT mode  (HMAC signature verification)
+APIP_CP_AUTH_IDP_ENABLED=true             →  IDP mode        (JWKS-based verification)
 ```
 
 > **Demo mode (`APIP_DEMO_MODE`).** Defaults to `true`; an explicit `false`/`0` opts into
-> production-grade startup checks. Note that `ENCRYPTION_KEY` and `AUTH_JWT_SECRET_KEY` are **required**.
+> production-grade startup checks. Note that `APIP_CP_ENCRYPTION_KEY` and `APIP_CP_AUTH_JWT_SECRET_KEY` are **required**.
 
 ---
 
 #### Local JWT Mode (default)
 
-The server signs and validates HMAC login tokens using `AUTH_JWT_SECRET_KEY` — a 32-byte key (64 hex chars or base64). Set `AUTH_JWT_SKIP_VALIDATION=true` only in local development environments where you do not have a token issuer available — all bearer values will be accepted without any signature check.
+The server signs and validates HMAC login tokens using `APIP_CP_AUTH_JWT_SECRET_KEY` — a 32-byte key (64 hex chars or base64). Set `APIP_CP_AUTH_JWT_SKIP_VALIDATION=true` only in local development environments where you do not have a token issuer available — all bearer values will be accepted without any signature check.
 
 | Variable | Default | Description                                                         |
 |---|---|---------------------------------------------------------------------|
-| `AUTH_JWT_SECRET_KEY` | _(empty)_ | HMAC key for signing/verifying login JWTs — 32-byte value (64 hex or base64; `openssl rand -hex 32`) |
-| `AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value                                          |
-| `AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only**                  |
-| `DEV_MODE` | `false` | Suppresses the startup warning when `AUTH_JWT_SKIP_VALIDATION=true` |
+| `APIP_CP_AUTH_JWT_SECRET_KEY` | _(empty)_ | HMAC key for signing/verifying login JWTs — 32-byte value (64 hex or base64; `openssl rand -hex 32`) |
+| `APIP_CP_AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value                                          |
+| `APIP_CP_AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only**                  |
+| `DEV_MODE` | `false` | Suppresses the startup warning when `APIP_CP_AUTH_JWT_SKIP_VALIDATION=true` |
 
 Local development with no token issuer:
 ```bash
-export AUTH_JWT_SKIP_VALIDATION=true
+export APIP_CP_AUTH_JWT_SKIP_VALIDATION=true
 export DEV_MODE=true
 go run ./cmd/main.go
 ```
 
 Production with HMAC verification:
 ```bash
-export AUTH_JWT_SECRET_KEY=<strong-random-key>
-export AUTH_JWT_ISSUER=https://your-token-issuer
+export APIP_CP_AUTH_JWT_SECRET_KEY=<strong-random-key>
+export APIP_CP_AUTH_JWT_ISSUER=https://your-token-issuer
 go run ./cmd/main.go
 ```
 
@@ -274,45 +284,45 @@ go run ./cmd/main.go
 
 | Old name | New name |
 |---|---|
-| `JWT_SECRET_KEY` | `AUTH_JWT_SECRET_KEY` |
-| `JWT_ISSUER` | `AUTH_JWT_ISSUER` |
-| `JWT_SKIP_VALIDATION` | `AUTH_JWT_SKIP_VALIDATION` |
-| `JWT_SKIP_PATHS` | `AUTH_SKIP_PATHS` |
+| `JWT_SECRET_KEY` | `APIP_CP_AUTH_JWT_SECRET_KEY` |
+| `JWT_ISSUER` | `APIP_CP_AUTH_JWT_ISSUER` |
+| `JWT_SKIP_VALIDATION` | `APIP_CP_AUTH_JWT_SKIP_VALIDATION` |
+| `JWT_SKIP_PATHS` | `APIP_CP_AUTH_SKIP_PATHS` |
 
 ---
 
 #### IDP Mode
 
-Tokens are validated against any standards-compliant identity provider (Thunder, Asgardeo, Keycloak, Azure AD, Okta, etc.) using its JWKS endpoint. Set `AUTH_IDP_ENABLED=true` and supply at minimum `AUTH_IDP_JWKS_URL` and `AUTH_IDP_ISSUER`.
+Tokens are validated against any standards-compliant identity provider (Thunder, Asgardeo, Keycloak, Azure AD, Okta, etc.) using its JWKS endpoint. Set `APIP_CP_AUTH_IDP_ENABLED=true` and supply at minimum `APIP_CP_AUTH_IDP_JWKS_URL` and `APIP_CP_AUTH_IDP_ISSUER`.
 
 | Variable | Default | Description |
 |---|---|---|
-| `AUTH_IDP_ENABLED` | `false` | Set to `true` to activate IDP mode |
-| `AUTH_IDP_NAME` | _(empty)_ | Optional label shown in startup logs (e.g. `thunder`, `asgardeo`) |
-| `AUTH_IDP_JWKS_URL` | _(required)_ | IDP's JWKS endpoint for public key retrieval |
-| `AUTH_IDP_ISSUER` | _(required)_ | Accepted JWT issuer |
-| `AUTH_IDP_AUDIENCE` | _(empty)_ | Accepted JWT audience. When set, the token's `aud` claim must contain this value; empty skips the check |
-| `AUTH_IDP_ORGANIZATION_CLAIM_NAME` | `organization` | JWT claim holding the org UUID for the active session |
-| `AUTH_IDP_ORG_NAME_CLAIM_NAME` | `org_name` | JWT claim for the org display name |
-| `AUTH_IDP_ORG_HANDLE_CLAIM_NAME` | `org_handle` | JWT claim for the org URL-safe handle |
-| `AUTH_IDP_USER_ID_CLAIM_NAME` | `sub` | JWT claim used as the canonical user identifier |
-| `AUTH_IDP_USERNAME_CLAIM_NAME` | `username` | JWT claim for the human-readable username |
-| `AUTH_IDP_EMAIL_CLAIM_NAME` | `email` | JWT claim for the user's email address |
-| `AUTH_IDP_SCOPE_CLAIM_NAME` | `scope` | JWT claim carrying granted OAuth2 scopes |
-| `AUTH_IDP_VALIDATION_MODE` | `scope` | Authorization mode: `scope` (validate scope claim directly) or `role` (expand IDP roles to platform roles) |
-| `AUTH_IDP_ROLES_CLAIM_PATH` | _(empty)_ | Dot-notation path to the roles claim (e.g. `realm_access.roles`). Required when `AUTH_IDP_VALIDATION_MODE=role` |
-| `AUTH_IDP_ROLE_MAPPINGS` | _(empty)_ | Comma-separated `idp-role=platform-role` pairs (e.g. `PLATFORM_ADMIN=admin,PLATFORM_DEV=developer`). When empty, IDP role values are used as-is |
+| `APIP_CP_AUTH_IDP_ENABLED` | `false` | Set to `true` to activate IDP mode |
+| `APIP_CP_AUTH_IDP_NAME` | _(empty)_ | Optional label shown in startup logs (e.g. `thunder`, `asgardeo`) |
+| `APIP_CP_AUTH_IDP_JWKS_URL` | _(required)_ | IDP's JWKS endpoint for public key retrieval |
+| `APIP_CP_AUTH_IDP_ISSUER` | _(required)_ | Accepted JWT issuer |
+| `APIP_CP_AUTH_IDP_AUDIENCE` | _(empty)_ | Accepted JWT audience. When set, the token's `aud` claim must contain this value; empty skips the check |
+| `APIP_CP_AUTH_IDP_ORGANIZATION_CLAIM_NAME` | `organization` | JWT claim holding the org UUID for the active session |
+| `APIP_CP_AUTH_IDP_ORG_NAME_CLAIM_NAME` | `org_name` | JWT claim for the org display name |
+| `APIP_CP_AUTH_IDP_ORG_HANDLE_CLAIM_NAME` | `org_handle` | JWT claim for the org URL-safe handle |
+| `APIP_CP_AUTH_IDP_USER_ID_CLAIM_NAME` | `sub` | JWT claim used as the canonical user identifier |
+| `APIP_CP_AUTH_IDP_USERNAME_CLAIM_NAME` | `username` | JWT claim for the human-readable username |
+| `APIP_CP_AUTH_IDP_EMAIL_CLAIM_NAME` | `email` | JWT claim for the user's email address |
+| `APIP_CP_AUTH_IDP_SCOPE_CLAIM_NAME` | `scope` | JWT claim carrying granted OAuth2 scopes |
+| `APIP_CP_AUTH_IDP_VALIDATION_MODE` | `scope` | Authorization mode: `scope` (validate scope claim directly) or `role` (expand IDP roles to platform roles) |
+| `APIP_CP_AUTH_IDP_ROLES_CLAIM_PATH` | _(empty)_ | Dot-notation path to the roles claim (e.g. `realm_access.roles`). Required when `APIP_CP_AUTH_IDP_VALIDATION_MODE=role` |
+| `APIP_CP_AUTH_IDP_ROLE_MAPPINGS` | _(empty)_ | Comma-separated `idp-role=platform-role` pairs (e.g. `PLATFORM_ADMIN=admin,PLATFORM_DEV=developer`). When empty, IDP role values are used as-is |
 
 **Example — Asgardeo:**
 ```bash
-export AUTH_IDP_ENABLED=true
-export AUTH_IDP_NAME=asgardeo
-export AUTH_IDP_JWKS_URL=https://api.asgardeo.io/t/<org>/oauth2/jwks
-export AUTH_IDP_ISSUER=https://api.asgardeo.io/t/<org>/oauth2/token
-export AUTH_IDP_AUDIENCE=<client-id>
-export AUTH_IDP_ORGANIZATION_CLAIM_NAME=organizationId
-export AUTH_IDP_VALIDATION_MODE=scope
-export AUTH_IDP_ROLES_CLAIM_PATH=scope
+export APIP_CP_AUTH_IDP_ENABLED=true
+export APIP_CP_AUTH_IDP_NAME=asgardeo
+export APIP_CP_AUTH_IDP_JWKS_URL=https://api.asgardeo.io/t/<org>/oauth2/jwks
+export APIP_CP_AUTH_IDP_ISSUER=https://api.asgardeo.io/t/<org>/oauth2/token
+export APIP_CP_AUTH_IDP_AUDIENCE=<client-id>
+export APIP_CP_AUTH_IDP_ORGANIZATION_CLAIM_NAME=organizationId
+export APIP_CP_AUTH_IDP_VALIDATION_MODE=scope
+export APIP_CP_AUTH_IDP_ROLES_CLAIM_PATH=scope
 ```
 
 ---
@@ -323,18 +333,18 @@ Path prefixes listed here bypass authentication entirely. Used for internal gate
 
 | Variable | Default |
 |---|---|
-| `AUTH_SKIP_PATHS` | `/health,/metrics,/api/internal/v1/ws/gateways/connect,...` |
+| `APIP_CP_AUTH_SKIP_PATHS` | `/health,/metrics,/api/internal/v1/ws/gateways/connect,...` |
 
 To extend the default list:
 ```bash
-export AUTH_SKIP_PATHS="/health,/metrics,/api/internal/v1/ws/gateways/connect,/my-custom-path"
+export APIP_CP_AUTH_SKIP_PATHS="/health,/metrics,/api/internal/v1/ws/gateways/connect,/my-custom-path"
 ```
 
 ---
 
 ### Role-Based Access Control (RBAC)
 
-Per-route scope checks are enforced when `ENABLE_SCOPE_VALIDATION=true`. Five built-in platform roles exist:
+Per-route scope checks are enforced when `APIP_CP_ENABLE_SCOPE_VALIDATION=true`. Five built-in platform roles exist:
 
 | Role | Persona | Access level |
 |---|---|---|
@@ -346,11 +356,11 @@ Per-route scope checks are enforced when `ENABLE_SCOPE_VALIDATION=true`. Five bu
 
 | Variable | Default | Description |
 |---|---|---|
-| `ENABLE_SCOPE_VALIDATION` | `false` | Set to `true` to enforce per-route scope/role checks |
+| `APIP_CP_ENABLE_SCOPE_VALIDATION` | `false` | Set to `true` to enforce per-route scope/role checks |
 
 In **local JWT mode**, scopes are read directly from the `scope` claim in the token.  
-In **IDP mode with `AUTH_IDP_VALIDATION_MODE=scope`**, scopes are read from the claim named by `AUTH_IDP_SCOPE_CLAIM_NAME`.  
-In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved from `AUTH_IDP_ROLES_CLAIM_PATH`, mapped via `AUTH_IDP_ROLE_MAPPINGS`, and matched against the required roles for each route.
+In **IDP mode with `APIP_CP_AUTH_IDP_VALIDATION_MODE=scope`**, scopes are read from the claim named by `APIP_CP_AUTH_IDP_SCOPE_CLAIM_NAME`.  
+In **IDP mode with `APIP_CP_AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved from `APIP_CP_AUTH_IDP_ROLES_CLAIM_PATH`, mapped via `APIP_CP_AUTH_IDP_ROLE_MAPPINGS`, and matched against the required roles for each route.
 
 ---
 
@@ -358,25 +368,25 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 
 | Variable | Default | Description |
 |---|---|---|
-| `DATABASE_DRIVER` | `sqlite3` | `sqlite3` or `postgres` |
-| `DATABASE_DB_PATH` | `./data/api_platform.db` | SQLite file path (ignored for Postgres) |
-| `DATABASE_HOST` | `localhost` | Postgres host |
-| `DATABASE_PORT` | `5432` | Postgres port |
-| `DATABASE_NAME` | `platform_api` | Postgres database name |
-| `DATABASE_USER` | _(empty)_ | Postgres username |
-| `DATABASE_PASSWORD` | _(empty)_ | Postgres password |
-| `DATABASE_SSL_MODE` | `disable` | Postgres SSL mode (`disable`, `require`, `verify-full`) |
-| `DATABASE_EXECUTE_SCHEMA_DDL` | `true` | Set to `false` when the DB user lacks DDL privileges |
+| `APIP_CP_DATABASE_DRIVER` | `sqlite3` | `sqlite3` or `postgres` |
+| `APIP_CP_DATABASE_DB_PATH` | `./data/api_platform.db` | SQLite file path (ignored for Postgres) |
+| `APIP_CP_DATABASE_HOST` | `localhost` | Postgres host |
+| `APIP_CP_DATABASE_PORT` | `5432` | Postgres port |
+| `APIP_CP_DATABASE_NAME` | `platform_api` | Postgres database name |
+| `APIP_CP_DATABASE_USER` | _(empty)_ | Postgres username |
+| `APIP_CP_DATABASE_PASSWORD` | _(empty)_ | Postgres password |
+| `APIP_CP_DATABASE_SSL_MODE` | `disable` | Postgres SSL mode (`disable`, `require`, `verify-full`) |
+| `APIP_CP_DATABASE_EXECUTE_SCHEMA_DDL` | `true` | Set to `false` when the DB user lacks DDL privileges |
 
 ---
 
 ### Encryption
 
-`ENCRYPTION_KEY` protects all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets). It is **never auto-generated** — the operator must provide it.
+`APIP_CP_ENCRYPTION_KEY` protects all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets). It is **never auto-generated** — the operator must provide it.
 
 | Variable | Default | Description |
 |---|---|---|
-| `ENCRYPTION_KEY` | _(empty)_ | **Required.** 32-byte AES-256 key as 64 hex chars or base64 (32 bytes). Generate with `openssl rand -hex 32`. Startup fails if missing or malformed. |
+| `APIP_CP_ENCRYPTION_KEY` | _(empty)_ | **Required.** 32-byte AES-256 key as 64 hex chars or base64 (32 bytes). Generate with `openssl rand -hex 32`. Startup fails if missing or malformed. |
 
 #### Providing secrets via the config file (preferred over raw values)
 

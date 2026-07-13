@@ -38,8 +38,8 @@ const (
 // the previous values automatically at test end.
 func setValidKeys(t *testing.T) {
 	t.Helper()
-	t.Setenv("ENCRYPTION_KEY", validInlineKey)
-	t.Setenv("AUTH_JWT_SECRET_KEY", validJWTKey)
+	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
+	t.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", validJWTKey)
 	t.Setenv("APIP_DEMO_MODE", "")
 }
 
@@ -56,7 +56,7 @@ func TestLoadConfig_ValidKeys_Succeeds(t *testing.T) {
 func TestLoadConfig_MissingEncryptionKey_Errors(t *testing.T) {
 	setValidKeys(t)
 	t.Setenv("APIP_DEMO_MODE", "true") // demo does not relax the requirement
-	t.Setenv("ENCRYPTION_KEY", "")
+	t.Setenv("APIP_CP_ENCRYPTION_KEY", "")
 
 	_, err := LoadConfig("")
 	require.Error(t, err)
@@ -66,7 +66,7 @@ func TestLoadConfig_MissingEncryptionKey_Errors(t *testing.T) {
 // A provided ENCRYPTION_KEY must be an AES-256-sized key (64 hex / base64→32 bytes).
 func TestLoadConfig_InvalidEncryptionKey_Errors(t *testing.T) {
 	setValidKeys(t)
-	t.Setenv("ENCRYPTION_KEY", "not-a-valid-32-byte-key")
+	t.Setenv("APIP_CP_ENCRYPTION_KEY", "not-a-valid-32-byte-key")
 
 	_, err := LoadConfig("")
 	require.Error(t, err)
@@ -77,7 +77,7 @@ func TestLoadConfig_InvalidEncryptionKey_Errors(t *testing.T) {
 func TestLoadConfig_MissingJWTSecretKey_Errors(t *testing.T) {
 	setValidKeys(t)
 	t.Setenv("APIP_DEMO_MODE", "true") // demo does not relax the requirement
-	t.Setenv("AUTH_JWT_SECRET_KEY", "")
+	t.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", "")
 
 	_, err := LoadConfig("")
 	require.Error(t, err)
@@ -87,11 +87,24 @@ func TestLoadConfig_MissingJWTSecretKey_Errors(t *testing.T) {
 // A provided AUTH_JWT_SECRET_KEY must be an AES-256-sized key (64 hex / base64→32 bytes).
 func TestLoadConfig_InvalidJWTSecretKey_Errors(t *testing.T) {
 	setValidKeys(t)
-	t.Setenv("AUTH_JWT_SECRET_KEY", "not-a-valid-32-byte-key")
+	t.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", "not-a-valid-32-byte-key")
 
 	_, err := LoadConfig("")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid AUTH_JWT_SECRET_KEY")
+}
+
+// Config-override env vars must be APIP_CP_-prefixed: a prefixed var is honored, while
+// the same name without the prefix is ignored (bare names are only read by {{ env }}
+// interpolation tokens). Guards against a regression to the old empty-prefix behavior.
+func TestLoadConfig_EnvPrefix(t *testing.T) {
+	setValidKeys(t)
+	t.Setenv("APIP_CP_LOG_LEVEL", "debug") // honored
+	t.Setenv("LOG_LEVEL", "error")         // ignored — no prefix
+
+	cfg, err := LoadConfig("")
+	require.NoError(t, err)
+	assert.Equal(t, "debug", cfg.LogLevel, "APIP_CP_-prefixed var must override; bare name must be ignored")
 }
 
 // --- valid32ByteKey unit coverage ---
@@ -109,8 +122,8 @@ func TestValid32ByteKey(t *testing.T) {
 // environment values don't leak into assertions.
 func init() {
 	for _, v := range []string{
-		"ENCRYPTION_KEY",
-		"AUTH_JWT_SECRET_KEY",
+		"APIP_CP_ENCRYPTION_KEY",
+		"APIP_CP_AUTH_JWT_SECRET_KEY",
 		"APIP_DEMO_MODE",
 	} {
 		os.Unsetenv(v)

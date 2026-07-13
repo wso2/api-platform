@@ -63,18 +63,18 @@ services:
     volumes:
       - platform-api-data:/api-platform/data
     environment:
-      - DEFAULT_DEVPORTAL_API_URL=http://devportal:3001
-      - DATABASE_DRIVER=postgres
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_NAME=platform_api
-      - DATABASE_USER=postgres
-      - DATABASE_PASSWORD=postgres
-      - DATABASE_SSL_MODE=disable
-      - DATABASE_MAX_OPEN_CONNS=25
-      - DATABASE_MAX_IDLE_CONNS=10
-      - DATABASE_CONN_MAX_LIFETIME=300
-      - DATABASE_EXECUTE_SCHEMA_DDL=true
+      - APIP_CP_DEFAULT_DEVPORTAL_API_URL=http://devportal:3001
+      - APIP_CP_DATABASE_DRIVER=postgres
+      - APIP_CP_DATABASE_HOST=postgres
+      - APIP_CP_DATABASE_PORT=5432
+      - APIP_CP_DATABASE_NAME=platform_api
+      - APIP_CP_DATABASE_USER=postgres
+      - APIP_CP_DATABASE_PASSWORD=postgres
+      - APIP_CP_DATABASE_SSL_MODE=disable
+      - APIP_CP_DATABASE_MAX_OPEN_CONNS=25
+      - APIP_CP_DATABASE_MAX_IDLE_CONNS=10
+      - APIP_CP_DATABASE_CONN_MAX_LIFETIME=300
+      - APIP_CP_DATABASE_EXECUTE_SCHEMA_DDL=true
     depends_on:
       postgres:
         condition: service_healthy

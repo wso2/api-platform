@@ -79,16 +79,16 @@ func validateAuthConfig(cfg *config.Server) error {
 		return nil
 	}
 	if cfg.Auth.FileBased.Enabled {
-		return fmt.Errorf("file-based authentication (AUTH_FILE_BASED_ENABLED=true) is not allowed when APIP_DEMO_MODE=false; configure an IDP (AUTH_IDP_ENABLED=true) or JWT (AUTH_JWT_ENABLED=true) instead")
+		return fmt.Errorf("file-based authentication (APIP_CP_AUTH_FILE_BASED_ENABLED=true) is not allowed when APIP_DEMO_MODE=false; configure an IDP (APIP_CP_AUTH_IDP_ENABLED=true) or JWT (APIP_CP_AUTH_JWT_ENABLED=true) instead")
 	}
 	if !cfg.Auth.IDP.Enabled && !cfg.Auth.JWT.Enabled {
-		return fmt.Errorf("APIP_DEMO_MODE=false requires a real auth mode; set AUTH_IDP_ENABLED=true or AUTH_JWT_ENABLED=true")
+		return fmt.Errorf("APIP_DEMO_MODE=false requires a real auth mode; set APIP_CP_AUTH_IDP_ENABLED=true or APIP_CP_AUTH_JWT_ENABLED=true")
 	}
 	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SkipValidation {
-		return fmt.Errorf("JWT signature validation cannot be skipped (AUTH_JWT_SKIP_VALIDATION=true) when APIP_DEMO_MODE=false; set AUTH_JWT_SKIP_VALIDATION=false for production")
+		return fmt.Errorf("JWT signature validation cannot be skipped (APIP_CP_AUTH_JWT_SKIP_VALIDATION=true) when APIP_DEMO_MODE=false; set APIP_CP_AUTH_JWT_SKIP_VALIDATION=false for production")
 	}
 	if len(cfg.CORS.AllowedOrigins) == 0 || slices.Contains(cfg.CORS.AllowedOrigins, "*") {
-		return fmt.Errorf("CORS_ALLOWED_ORIGINS must be set to an explicit, non-wildcard list of origins when APIP_DEMO_MODE=false")
+		return fmt.Errorf("APIP_CP_CORS_ALLOWED_ORIGINS must be set to an explicit, non-wildcard list of origins when APIP_DEMO_MODE=false")
 	}
 	return nil
 }
@@ -576,11 +576,11 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	if !cfg.Auth.IDP.Enabled {
 		if cfg.Auth.JWT.SkipValidation {
 			if !demoMode() {
-				slogger.Warn("WARNING: JWT signature validation is DISABLED (AUTH_JWT_SKIP_VALIDATION=true) but APIP_DEMO_MODE=false. " +
+				slogger.Warn("WARNING: JWT signature validation is DISABLED (APIP_CP_AUTH_JWT_SKIP_VALIDATION=true) but APIP_DEMO_MODE=false. " +
 					"Tokens are NOT verified — any bearer value will be accepted. " +
-					"Set APIP_DEMO_MODE=true to suppress this warning, or set AUTH_JWT_SKIP_VALIDATION=false for production.")
+					"Set APIP_DEMO_MODE=true to suppress this warning, or set APIP_CP_AUTH_JWT_SKIP_VALIDATION=false for production.")
 			} else {
-				slogger.Warn("JWT mode: signature validation disabled (AUTH_JWT_SKIP_VALIDATION=true) [APIP_DEMO_MODE=true]")
+				slogger.Warn("JWT mode: signature validation disabled (APIP_CP_AUTH_JWT_SKIP_VALIDATION=true) [APIP_DEMO_MODE=true]")
 			}
 		} else {
 			slogger.Info("JWT mode: HMAC signature validation enabled")
@@ -721,15 +721,19 @@ func generateSelfSignedCert(certPath, keyPath string, logger *slog.Logger) (tls.
 	return cert, nil
 }
 
-// buildTLSConfig resolves the TLS listener configuration. The caller invokes it
-// only when the HTTPS listener is enabled, so certificates are always read (or,
-// in demo mode, generated) here.
-func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, error) {
-	certDir := httpsCfg.CertDir
+// Start starts the HTTPS server
+func (s *Server) Start(port string, certDir string) error {
+	if port == "" {
+		s.logger.Error("Port cannot be empty")
+		return fmt.Errorf("port cannot be empty")
+	}
+
+	// Build certificate paths
 	certPath := filepath.Join(certDir, "cert.pem")
 	keyPath := filepath.Join(certDir, "key.pem")
 
 	var cert tls.Certificate
+	certGenerated := false
 
 	// Try to load existing certificates first
 	if _, certErr := os.Stat(certPath); certErr == nil {
@@ -749,8 +753,8 @@ func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, err
 		if !demoMode() {
 			return nil, fmt.Errorf(
 				"no TLS certificates found at %q (cert.pem / key.pem) and APIP_DEMO_MODE=false: "+
-					"mount real certificates, set HTTPS_CERT_DIR to a directory containing cert.pem and key.pem, "+
-					"or set HTTPS_ENABLED=false to serve plain HTTP behind a TLS-terminating proxy; "+
+					"mount real certificates, set APIP_CP_HTTPS_CERT_DIR to a directory containing cert.pem and key.pem, "+
+					"or set APIP_CP_HTTPS_ENABLED=false to serve plain HTTP behind a TLS-terminating proxy; "+
 					"self-signed certificate generation is only permitted in demo mode",
 				certDir,
 			)

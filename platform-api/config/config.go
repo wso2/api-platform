@@ -337,6 +337,11 @@ func GetConfig() *Server {
 	return settingInstance
 }
 
+// EnvPrefix namespaces the environment variables that override configuration keys.
+// The prefix is stripped before the remainder is mapped to a koanf key (see envToKoanfKey),
+// e.g. APIP_CP_LOG_LEVEL -> log_level, APIP_CP_DATABASE_HOST -> database.host.
+const EnvPrefix = "APIP_CP_"
+
 // defaultFileSourceAllowlist is the platform-api's default set of directories that a
 // {{ file "..." }} config-interpolation token may read from. It can be overridden via
 // the shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var (see configinterpolate.ResolveAllowlist).
@@ -357,15 +362,16 @@ func LoadConfig(configPath string) (*Server, error) {
 		}
 	}
 
-	// Load environment variables. The callback maps known env var names to koanf
-	// dot-notation keys; unknown vars or empty values return "" and are skipped.
-	// Empty values are skipped so that ${VAR:-} placeholders in docker-compose
-	// do not override non-empty values already loaded from the config file.
-	if err := k.Load(kenv.ProviderWithValue("", ".", func(s, v string) (string, interface{}) {
+	// Load environment variables. Only APIP_CP_-prefixed vars are considered; the
+	// prefix is stripped and the remainder mapped to a koanf dot-notation key by the
+	// callback. Unknown keys or empty values return "" and are skipped. Empty values
+	// are skipped so that ${VAR:-} placeholders in docker-compose do not override
+	// non-empty values already loaded from the config file.
+	if err := k.Load(kenv.ProviderWithValue(EnvPrefix, ".", func(s, v string) (string, interface{}) {
 		if v == "" {
 			return "", nil
 		}
-		return envToKoanfKey(strings.ToLower(s)), v
+		return envToKoanfKey(strings.ToLower(strings.TrimPrefix(s, EnvPrefix))), v
 	}), nil); err != nil {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
 	}
@@ -820,8 +826,9 @@ func validateJWTConfig(jwt *JWT) error {
 		return nil
 	}
 	if jwt.SecretKey == "" {
-		return fmt.Errorf("AUTH_JWT_SECRET_KEY is required when JWT authentication is enabled; " +
-			"generate one with: openssl rand -hex 32")
+		return fmt.Errorf("AUTH_JWT_SECRET_KEY is required when JWT authentication is enabled " +
+			"(set auth.jwt.secret_key in config via {{ env }}/{{ file }}, or the " +
+			"APIP_CP_AUTH_JWT_SECRET_KEY env var); generate one with: openssl rand -hex 32")
 	}
 	if !valid32ByteKey(jwt.SecretKey) {
 		return fmt.Errorf("invalid AUTH_JWT_SECRET_KEY: must be 64 hex characters or " +
@@ -834,7 +841,9 @@ func validateJWTConfig(jwt *JWT) error {
 // A missing or malformed key fails startup.
 func validateEncryptionKey(key string) error {
 	if key == "" {
-		return fmt.Errorf("ENCRYPTION_KEY is required; generate one with: openssl rand -hex 32")
+		return fmt.Errorf("ENCRYPTION_KEY is required (set encryption_key in config via " +
+			"{{ env }}/{{ file }}, or the APIP_CP_ENCRYPTION_KEY env var); " +
+			"generate one with: openssl rand -hex 32")
 	}
 	if !valid32ByteKey(key) {
 		return fmt.Errorf("invalid ENCRYPTION_KEY: must be 64 hex characters or " +
