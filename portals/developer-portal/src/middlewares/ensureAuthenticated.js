@@ -97,6 +97,26 @@ function hasRole(roleClaimValue, roleName) {
     return String(roleClaimValue).split(/[\s,]+/).includes(roleName);
 }
 
+// Aligns the org-membership check across the local-auth and token/OAuth2 branches of
+// ensureAuthenticated: the caller's org claim must resolve to the target org's
+// idp_ref_id (or be present in authorizedOrgs). Enforced fail-closed once the caller's
+// session carries an org claim — a target org with no resolvable idp_ref_id counts as
+// "no match" and is rejected, never silently skipped (GO-AUTH-005 / JS-AUTH-005
+// multi-tenant isolation; avoids the org check being bypassable just because the
+// looked-up org row happens to have a blank idp_ref_id). Sessions with no org claim at
+// all (e.g. an IDP that doesn't emit one) are left to the role-based ensurePermission
+// gate below, which is the existing, separate authorization mechanism for that case.
+function belongsToTargetOrg(req, orgDetails) {
+    const tokenOrgClaim = req.user?.[constants.ROLES.ORGANIZATION_CLAIM];
+    if (!tokenOrgClaim) return true;
+    const orgIdentifier = orgDetails?.idp_ref_id;
+    const authorizedOrgs = req.user?.authorizedOrgs;
+    return !!orgIdentifier && (
+        tokenOrgClaim === orgIdentifier ||
+        (Array.isArray(authorizedOrgs) && authorizedOrgs.includes(orgIdentifier))
+    );
+}
+
 const ensurePermission = (currentPage, role, req) => {
     let adminRole, superAdminRole, subscriberRole;
     if (req.user) {
@@ -105,7 +125,7 @@ const ensurePermission = (currentPage, role, req) => {
         subscriberRole = req.user[constants.ROLES.SUBSCRIBER];
         if (constants.ROUTE.DEVPORTAL_CONFIGURE.some(pattern => minimatch.minimatch(currentPage, pattern))) {
             return hasRole(role, superAdminRole) || hasRole(role, adminRole);
-        } else if (constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+        } else if (constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(currentPage, pattern))) {
             return hasRole(role, superAdminRole);
         } else if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(currentPage, pattern))) {
             return hasRole(role, subscriberRole) || hasRole(role, adminRole) || hasRole(role, superAdminRole);
@@ -170,8 +190,14 @@ const ensureAuthenticated = async (req, res, next) => {
             }
         }
     }
-    if (req.originalUrl !== '/favicon.ico' && req.originalUrl !== '/images' &&
-        AUTHENTICATED_PAGES.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+    // Glob patterns below (AUTHENTICATED_PAGES/AUTHORIZED_PAGES/DEVPORTAL_ROOT) match the
+    // full string with no implicit query-string handling, so req.originalUrl (which retains
+    // "?...") would silently fail to match any pattern lacking an explicit "?**" suffix —
+    // e.g. "/*/settings" never matches "/org/settings?view=x", which would skip this entire
+    // auth block. Match against the query-stripped pathname instead.
+    const pathname = req.originalUrl.split('?')[0];
+    if (pathname !== '/favicon.ico' && pathname !== '/images' &&
+        AUTHENTICATED_PAGES.some(pattern => minimatch.minimatch(pathname, pattern))) {
         const orgId = req.params.orgName;
         let orgDetails;
         if (orgId !== undefined) {
@@ -184,7 +210,16 @@ const ensureAuthenticated = async (req, res, next) => {
             if (req.user && req.user.isLocalAuth && !config.idp?.clientId) {
                 req.orgId = req.orgId || orgDetails?.uuid;
                 req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
-                if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+                if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(pathname, pattern))) {
+                    // Reject cross-org access: the URL's :orgName must resolve (via orgDetails.idp_ref_id)
+                    // to the org the authenticated (local-auth) user's token claims it belongs to — the
+                    // same comparison the token/OAuth2 branch below uses (belongsToTargetOrg).
+                    const isDevportalRoot = constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(pathname, pattern));
+                    if (!isDevportalRoot && !belongsToTargetOrg(req, orgDetails)) {
+                        const err = new Error('Forbidden');
+                        err.status = 403;
+                        return next(err);
+                    }
                     if (req.user) {
                         req.user[constants.ROLES.ADMIN] = adminRole;
                         req.user[constants.ROLES.SUPER_ADMIN] = superAdminRole;
@@ -196,7 +231,7 @@ const ensureAuthenticated = async (req, res, next) => {
                     }
                     if (config.security.roleValidation) {
                         role = req.user[constants.ROLES.ROLE_CLAIM];
-                        if (ensurePermission(req.originalUrl, role, req)) {
+                        if (ensurePermission(pathname, role, req)) {
                             return next();
                         } else {
                             const err = new Error('Forbidden');
@@ -213,7 +248,7 @@ const ensureAuthenticated = async (req, res, next) => {
                 req.orgId = req.orgId || orgDetails?.uuid;
                 req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
             }
-            if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(req.originalUrl, pattern))) {
+            if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(pathname, pattern))) {
                 role = req.user[constants.ROLES.ROLE_CLAIM];
                 if (req.user) {
                     req.user[constants.ROLES.ADMIN] = adminRole;
@@ -224,18 +259,14 @@ const ensureAuthenticated = async (req, res, next) => {
                         req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                     }
                 }
-                const isMatch = constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(req.originalUrl, pattern));
-                if (!isMatch) {
-                    const orgIdentifier = orgDetails?.idp_ref_id;
-                    const tokenOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
-                    if (orgIdentifier && tokenOrgClaim && tokenOrgClaim !== orgIdentifier) {
-                        const err = new Error('Forbidden');
-                        err.status = 403;
-                        return next(err);
-                    }
+                const isMatch = constants.ROUTE.DEVPORTAL_ROOT.some(pattern => minimatch.minimatch(pathname, pattern));
+                if (!isMatch && !belongsToTargetOrg(req, orgDetails)) {
+                    const err = new Error('Forbidden');
+                    err.status = 403;
+                    return next(err);
                 }
                 if (config.security.roleValidation) {
-                    if (ensurePermission(req.originalUrl, role, req)) {
+                    if (ensurePermission(pathname, role, req)) {
                         return next();
                     } else {
                         const err = new Error('Forbidden');

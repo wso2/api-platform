@@ -10,9 +10,11 @@
     <div>
         <h2 class="cfg-panel-title">LLM Instructions</h2>
         <p class="cfg-panel-desc">Control how AI agents discover and understand your developer portal via
-        <a href="{{baseUrl}}/llms.txt" target="_blank" class="text-muted text-decoration-none"><code>llms.txt</code></p>
+        <a href="{{baseUrl}}/llms.txt" target="_blank" class="text-muted text-decoration-none"><code>llms.txt</code></a>.</p>
     </div>
 </div>
+
+{{> view-combo hash="cfg-llm" label="instructions"}}
 
 {{!-- AI-discoverable toggle --}}
 <div class="llms-config-toggle-card mb-4">
@@ -65,10 +67,6 @@
                     placeholder="Describe your portal in 1–2 sentences…"></textarea>
             </div>
 
-            <button type="button" class="dp-btn dp-btn--primary dp-btn--lg" id="saveLlmsConfigBtn">
-                <i class="bi bi-floppy me-1"></i> Publish
-            </button>
-
         </div>
 
         {{!-- Right: preview --}}
@@ -88,3 +86,8 @@
         </div>
     </div>
 </div>
+
+{{!-- Outside llmsConfigFormArea so it stays clickable when AI-discoverable is toggled off --}}
+<button type="button" class="dp-btn dp-btn--primary dp-btn--lg mt-4" id="saveLlmsConfigBtn">
+    <i class="bi bi-floppy me-1"></i> Publish
+</button>

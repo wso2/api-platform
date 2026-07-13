@@ -1,0 +1,56 @@
+{{!--
+  View-scoped setting banner, used in the LLM Instructions and API Workflows panels.
+  Always rendered — communicates that the panel's content is scoped to a single view.
+  When the org has more than one view, the pill on the right becomes a searchable
+  switcher: each option is a plain link to ?view=<id>#<hash> so navigation is native;
+  the JS in page.hbs handles open/close, type-to-filter, and keyboard nav.
+  Params: hash = target panel id (e.g. "cfg-llm"). label = noun phrase describing what's
+  being edited (e.g. "instructions", "workflows", "the theme") — defaults to "settings".
+--}}
+<div class="cfg-view-banner">
+  <div class="cfg-view-banner-info">
+    <span class="cfg-view-banner-icon"><i class="bi bi-grid-1x2-fill" aria-hidden="true"></i></span>
+    <div>
+      <div class="cfg-view-banner-caption">View-scoped setting</div>
+      <div class="cfg-view-banner-sub">
+        {{#compare views.length ">" 1}}
+          You're editing {{#unless label}}settings{{else}}{{label}}{{/unless}} for one of {{views.length}} views
+        {{else}}
+          You're editing {{#unless label}}settings{{else}}{{label}}{{/unless}} for one view
+        {{/compare}}
+      </div>
+    </div>
+  </div>
+
+  <div class="cfg-view-combo" data-hash="{{hash}}">
+    <button type="button" class="cfg-view-combo-trigger" aria-haspopup="listbox" aria-expanded="false"
+      aria-controls="cfg-view-combo-listbox-{{hash}}"
+      {{#compare views.length "<=" 1}}disabled{{/compare}}>
+      <span class="cfg-view-combo-dot" aria-hidden="true"></span>
+      <span class="cfg-view-combo-current">
+        {{~#each views~}}{{#if (eq id ../selectedView)}}{{displayName}}{{/if}}{{~/each~}}
+      </span>
+      <i class="bi bi-chevron-expand" aria-hidden="true"></i>
+    </button>
+    {{#compare views.length ">" 1}}
+    <div class="cfg-view-combo-menu" hidden>
+      <div class="cfg-view-combo-search">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input type="text" class="cfg-view-combo-input" placeholder="Filter views…" aria-label="Filter views"
+          role="combobox" aria-expanded="true" aria-controls="cfg-view-combo-listbox-{{hash}}" autocomplete="off">
+      </div>
+      <div class="cfg-view-combo-list" id="cfg-view-combo-listbox-{{hash}}" role="listbox" aria-label="Views">
+        {{#views}}
+        <a role="option" class="cfg-view-combo-option{{#if (eq id ../selectedView)}} selected{{/if}}"
+           aria-selected="{{#if (eq id ../selectedView)}}true{{else}}false{{/if}}"
+           href="{{../settingsUrl}}?view={{id}}#{{../hash}}"
+           data-name="{{displayName}}" data-value="{{id}}">
+          <i class="bi bi-check2" aria-hidden="true"></i><span>{{displayName}}</span>
+        </a>
+        {{/views}}
+      </div>
+      <div class="cfg-view-combo-empty" hidden>No views match</div>
+    </div>
+    {{/compare}}
+  </div>
+</div>

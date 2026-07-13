@@ -29,6 +29,7 @@ Base URLs:
 - [Get a theme asset](organization-content.md#get-a-theme-asset)
 - [Apply a theme](organization-content.md#apply-a-theme)
 - [Reset theme to defaults](organization-content.md#reset-theme-to-defaults)
+- [Download the current theme](organization-content.md#download-the-current-theme)
 
 ### [APIs](apis.md)
 

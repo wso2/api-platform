@@ -43,8 +43,8 @@ router.get('/views/:viewName/mcp/:apiHandle/docs/:docType/:docName', registerPar
 router.get('/views/:viewName/applications', registerPartials, applicationController.loadApplications);
 
 // eslint-disable-next-line no-useless-escape
-// Exclude specific paths (login, applications, configure intentionally disabled in design mode)
-router.get(['/favicon.ico', '/images/*', '/styles/*', '/login*', '/devportal/*', '/views/*'], (req, res) => {
+// Exclude specific paths (login, applications, org settings intentionally disabled in design mode)
+router.get(['/favicon.ico', '/images/*', '/styles/*', '/login*', '/devportal/*', '/views/*', '/:orgName/settings'], (req, res) => {
     res.status(404).send('Not found');
 });
 

@@ -63,13 +63,24 @@ const registerPartials = async (req, res, next) => {
       const orgDetails = await orgDao.get(req.params.orgName);
       devportalMode = orgDetails.configuration?.devportalMode || devportalMode;
       
-      const isViewConfigure = req.params.orgName && req.params.orgName !== "portal"
-        && req.params.viewName && /views\/.+\/settings/i.test(matchURL);
+      // Org-scoped settings page (/:orgName/settings) has no view segment, but still
+      // renders the default-content chrome (sidebar/header/footer) and its own partials.
+      // Register them against the default view's baseUrl.
+      const isOrgSettings = req.params.orgName && req.params.orgName !== "portal"
+        && !req.params.viewName && /^\/[^/]+\/settings(?:[/?#]|$)/i.test(matchURL);
       const isNonConfigure = req.params.orgName && req.params.orgName !== "portal"
-        && req.params.viewName && (!(/views\/.+\/settings/i.test(matchURL)));
+        && req.params.viewName;
 
-      if (isNonConfigure || isViewConfigure) {
-        const baseUrl = config.server.baseUrl + "/" + req.params.orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName;
+      if (isNonConfigure || isOrgSettings) {
+        // The org-scoped settings route carries no view segment. Downstream partial
+        // resolution (registerPartialsFromFile) reads req.params.viewName to look up
+        // per-view custom overrides, so default it to 'default' — the settings page
+        // renders the default view's chrome and its own default-content partials.
+        if (isOrgSettings && !req.params.viewName) {
+          req.params.viewName = 'default';
+        }
+        const viewSegment = req.params.viewName || 'default';
+        const baseUrl = config.server.baseUrl + "/" + req.params.orgName + constants.ROUTE.VIEWS_PATH + viewSegment;
         await registerAllPartialsFromFile(baseUrl, req, './src/defaultContent');
 
         if (isNonConfigure) {

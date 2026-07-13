@@ -10,17 +10,13 @@
     <script src='/technical-scripts/manage-api-workflows.js' defer></script>
 {{/pageScripts}}
 
-<!-- Hidden tab buttons kept for manage-api-workflows.js compatibility -->
-<div style="display:none;" aria-hidden="true">
-  <button id="llms-tab-btn"      aria-controls="llmsTabContent"     type="button"></button>
-  <button id="workflows-tab-btn" aria-controls="workflowsTabContent" type="button"></button>
-</div>
-
 <!-- Server-side data for JS -->
-<script type="application/json" id="cfg-org-apis-data">{{{ json orgAPIs }}}</script>
+<script type="application/json" id="cfg-org-apis-data">{{{ json orgAllAPIs }}}</script>
 <script type="application/json" id="cfg-plans-data">{{{ json orgPlans }}}</script>
 <script type="application/json" id="cfg-webhooks-data">{{{ json webhookSubscribers }}}</script>
 <script type="application/json" id="cfg-keymanagers-data">{{{ json keyManagers }}}</script>
+<script type="application/json" id="cfg-views-data">{{{ json views }}}</script>
+<script type="application/json" id="cfg-orglabels-data">{{{ json orgLabels }}}</script>
 
 <div class="cfg-page">
 
@@ -34,6 +30,42 @@
     <!-- ── Left sub-nav ── -->
     <nav class="cfg-nav" aria-label="Settings navigation">
 
+      <div class="cfg-nav-section">ORGANIZATION</div>
+      <div class="cfg-nav-items">
+        <a href="#cfg-organizations" class="cfg-nav-item" data-panel="cfg-organizations">
+          <i class="bi bi-building"></i><span>Organization</span>
+        </a>
+        <a href="#cfg-views" class="cfg-nav-item" data-panel="cfg-views">
+          <i class="bi bi-layout-text-window"></i><span>Views</span>
+        </a>
+        <a href="#cfg-labels" class="cfg-nav-item" data-panel="cfg-labels">
+          <i class="bi bi-tags"></i><span>Labels</span>
+        </a>
+        <a href="#cfg-plans" class="cfg-nav-item" data-panel="cfg-plans">
+          <i class="bi bi-speedometer2"></i><span>Subscription Plans</span>
+        </a>
+        <a href="#cfg-keymanagers" class="cfg-nav-item" data-panel="cfg-keymanagers">
+          <i class="bi bi-key"></i><span>Key Managers</span>
+        </a>
+      </div>
+
+      <div class="cfg-nav-section">CONTENT</div>
+      <div class="cfg-nav-items">
+        <a href="#cfg-apis" class="cfg-nav-item" data-panel="cfg-apis">
+          <i class="bi bi-boxes"></i><span>APIs</span>
+        </a>
+        <a href="#cfg-mcps" class="cfg-nav-item" data-panel="cfg-mcps">
+          <i class="bi bi-hdd-network"></i><span>MCP Servers</span>
+        </a>
+      </div>
+
+      <div class="cfg-nav-section">INTEGRATIONS</div>
+      <div class="cfg-nav-items">
+        <a href="#cfg-webhooks" class="cfg-nav-item" data-panel="cfg-webhooks">
+          <i class="bi bi-broadcast"></i><span>Webhooks</span>
+        </a>
+      </div>
+
       <div class="cfg-nav-section">AI &amp; DISCOVERY</div>
       <div class="cfg-nav-items">
         <a href="#cfg-llm" class="cfg-nav-item" data-panel="cfg-llm">
@@ -44,19 +76,10 @@
         </a>
       </div>
 
-      <div class="cfg-nav-section">MANAGEMENT</div>
+      <div class="cfg-nav-section">APPEARANCE</div>
       <div class="cfg-nav-items">
-        <a href="#cfg-apis" class="cfg-nav-item" data-panel="cfg-apis">
-          <i class="bi bi-boxes"></i><span>APIs</span>
-        </a>
-        <a href="#cfg-plans" class="cfg-nav-item" data-panel="cfg-plans">
-          <i class="bi bi-speedometer2"></i><span>Subscription Plans</span>
-        </a>
-        <a href="#cfg-webhooks" class="cfg-nav-item" data-panel="cfg-webhooks">
-          <i class="bi bi-broadcast"></i><span>Webhooks</span>
-        </a>
-        <a href="#cfg-keymanagers" class="cfg-nav-item" data-panel="cfg-keymanagers">
-          <i class="bi bi-key"></i><span>Key Managers</span>
+        <a href="#cfg-theming" class="cfg-nav-item" data-panel="cfg-theming">
+          <i class="bi bi-palette"></i><span>Theming</span>
         </a>
       </div>
 
@@ -76,6 +99,13 @@
       <div class="cfg-panel" id="cfg-workflows">
         <div id="workflowsTabContent">
           {{> api-workflows}}
+        </div>
+      </div>
+
+      <!-- ══ Theming ══ -->
+      <div class="cfg-panel" id="cfg-theming">
+        <div id="themingTabContent">
+          {{> theming}}
         </div>
       </div>
 
@@ -228,6 +258,10 @@
             <div class="cfg-step-connector"></div>
             <div class="cfg-step" data-step="2">
               <span class="cfg-step-circle">3</span><span class="cfg-step-label">Documentation</span>
+            </div>
+            <div class="cfg-step-connector" id="cfg-step-connector-content" style="display:none;"></div>
+            <div class="cfg-step" data-step="3" id="cfg-step-content" style="display:none;">
+              <span class="cfg-step-circle">4</span><span class="cfg-step-label">Content</span>
             </div>
           </div>
 
@@ -399,6 +433,33 @@
             <div id="wz-docs-list" class="cfg-docs-list"></div>
           </div>
 
+          <!-- Step 3: Content (landing page & assets) — edit mode only -->
+          <div class="cfg-wizard-step" id="cfg-wstep-3" style="display:none;">
+            <p class="cfg-wstep-desc">Upload a ZIP to set this API's developer-portal content. Include a <code>web/</code> folder for landing-page assets (Markdown, HTML, CSS, JS, images) and/or a <code>docs/</code> folder for downloadable documents. Files with a matching name are replaced; others are added. This uploads immediately when you click <strong>Upload content</strong> — it is independent of the <strong>Save changes</strong> button.</p>
+            <label class="cfg-upload-zone" id="wz-content-zone">
+              <span class="cfg-upload-icon"><i class="bi bi-file-earmark-zip"></i></span>
+              <span class="cfg-upload-label">Drag &amp; drop or <span>browse</span> to upload</span>
+              <span class="cfg-upload-hint">Single ZIP file · up to 10 MB</span>
+              <input type="file" id="wz-content-input" accept=".zip" />
+            </label>
+            <p id="wz-content-error" style="display:none;color:#c62828;font-size:.813rem;margin:8px 0 0;"></p>
+            <div class="cfg-spec-chip" id="wz-content-chip">
+              <span class="cfg-spec-icon"><i class="bi bi-file-earmark-zip-fill"></i></span>
+              <div>
+                <div class="cfg-spec-name" id="wz-content-name"></div>
+                <div class="cfg-spec-sub">Ready to upload</div>
+              </div>
+              <button type="button" class="cfg-action-btn" id="wz-content-remove" style="margin-left:auto;">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <div class="d-flex align-items-center gap-3 mt-3">
+              <button type="button" class="cfg-btn-primary" id="wz-content-upload-btn" disabled>
+                <i class="bi bi-cloud-upload"></i> Upload content
+              </button>
+            </div>
+          </div>
+
           <!-- Wizard actions -->
           <div class="cfg-wizard-actions">
             <div class="cfg-wizard-actions-right">
@@ -411,7 +472,104 @@
 
       </div><!-- /#cfg-apis -->
 
-      <!-- ══ Manage Labels ══ -->
+      <!-- ══ MCP Servers ══ -->
+      <div class="cfg-panel" id="cfg-mcps">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">MCP Servers</h2>
+            <p class="cfg-panel-desc">Add, edit, and remove the MCP servers exposed in this developer portal.</p>
+          </div>
+          <div style="display:flex; gap:10px;">
+            <button class="cfg-btn-primary" id="cfg-add-mcp-btn" type="button">
+              <i class="bi bi-plus"></i> Add MCP Server
+            </button>
+          </div>
+        </div>
+
+        <div class="cfg-bulk-bar" id="cfg-mcps-bulk-bar" style="display:none;" role="region" aria-label="Bulk actions">
+          <span class="cfg-bulk-bar-count" id="cfg-mcps-bulk-bar-count"></span>
+          <button type="button" class="cfg-btn-danger cfg-btn-sm" id="cfg-mcps-bulk-delete-btn">
+            <i class="bi bi-trash"></i> Delete selected
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th class="cfg-th-check"><input type="checkbox" id="cfg-mcps-select-all" aria-label="Select all MCP servers"></th>
+                <th>MCP Server</th>
+                <th>Version</th>
+                <th>Status</th>
+                <th style="width:52px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-mcps-tbody">
+              {{#orgMCPs}}
+              <tr id="cfg-api-row-{{apiId}}">
+                <td class="cfg-td-check">
+                  <input type="checkbox" class="cfg-row-check"
+                    data-id="{{apiId}}" data-name="{{apiName}}"
+                    aria-label="Select {{apiName}}">
+                </td>
+                <td>
+                  <div class="cfg-api-cell">
+                    <span class="cfg-api-avatar cfg-api-avatar--mcp">{{firstTwoLetters apiName}}</span>
+                    <div>
+                      <div class="cfg-cell-name">{{apiName}}</div>
+                      <div class="cfg-cell-context">/{{apiHandle}}</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="cfg-cell-version">{{apiVersion}}</td>
+                <td>
+                  {{#if (eq apiStatus "PUBLISHED")}}
+                  <span class="cfg-status-badge cfg-status-published">
+                    <span class="cfg-status-dot"></span>Published
+                  </span>
+                  {{else if (eq apiStatus "DEPRECATED")}}
+                  <span class="cfg-status-badge cfg-status-deprecated">
+                    <span class="cfg-status-dot"></span>Deprecated
+                  </span>
+                  {{else}}
+                  <span class="cfg-status-badge cfg-status-draft">
+                    <span class="cfg-status-dot"></span>Draft
+                  </span>
+                  {{/if}}
+                </td>
+                <td class="cfg-cell-actions">
+                  <button class="cfg-action-btn cfg-menu-trigger" type="button" aria-label="MCP server actions">
+                    <i class="bi bi-three-dots-vertical"></i>
+                  </button>
+                  <div class="cfg-dropdown">
+                    <button class="cfg-dropdown-item cfg-edit-trigger" type="button" data-id="{{apiId}}">
+                      <i class="bi bi-pencil"></i> Edit
+                    </button>
+                    {{#if (eq apiStatus "PUBLISHED")}}
+                    <button class="cfg-dropdown-item cfg-unpublish-trigger" type="button" data-id="{{apiId}}" data-name="{{apiName}}">
+                      <i class="bi bi-archive"></i> Deprecate
+                    </button>
+                    {{else}}
+                    <button class="cfg-dropdown-item cfg-publish-trigger" type="button" data-id="{{apiId}}" data-name="{{apiName}}">
+                      <i class="bi bi-cloud-upload"></i> Publish
+                    </button>
+                    {{/if}}
+                    <div class="cfg-dropdown-divider"></div>
+                    <button class="cfg-dropdown-item cfg-dropdown-item--danger cfg-delete-trigger" type="button"
+                      data-id="{{apiId}}" data-name="{{apiName}}">
+                      <i class="bi bi-trash"></i> Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{/orgMCPs}}
+              {{#unless orgMCPs.length}}
+              <tr><td colspan="5" class="cfg-empty-row">No MCP servers found. Click <strong>Add MCP Server</strong> to get started.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-mcps -->
 
       <!-- ══ Subscription Plans ══ -->
       <div class="cfg-panel" id="cfg-plans">
@@ -613,7 +771,164 @@
         </div>
       </div><!-- /#cfg-keymanagers -->
 
-      <!-- ══ Manage Organizations ══ -->
+      <!-- ══ Organization (current org only) ══ -->
+      <div class="cfg-panel" id="cfg-organizations">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Organization</h2>
+            <p class="cfg-panel-desc">Manage the details of this organization.</p>
+          </div>
+        </div>
+
+        {{#if currentOrg}}
+        <div class="cfg-form-grid" style="max-width:760px;">
+          <div class="cfg-form-group">
+            <label for="org-display">Name <span class="required">*</span></label>
+            <input type="text" id="org-display" class="cfg-form-input" value="{{currentOrg.displayName}}" />
+          </div>
+          <div class="cfg-form-group">
+            <label for="org-handle">Handle</label>
+            <input type="text" id="org-handle" class="cfg-form-input cfg-form-input--mono" value="{{currentOrg.id}}" readonly />
+            <p class="cfg-field-hint">Identifier used in URLs. Cannot be changed.</p>
+          </div>
+          <div class="cfg-form-group">
+            <label for="org-owner">Business owner</label>
+            <input type="text" id="org-owner" class="cfg-form-input" value="{{currentOrg.businessOwner}}" />
+          </div>
+          <div class="cfg-form-group">
+            <label for="org-owner-contact">Business owner contact</label>
+            <input type="text" id="org-owner-contact" class="cfg-form-input" value="{{currentOrg.businessOwnerContact}}" />
+          </div>
+          <div class="cfg-form-group">
+            <label for="org-owner-email">Business owner email</label>
+            <input type="email" id="org-owner-email" class="cfg-form-input" value="{{currentOrg.businessOwnerEmail}}" />
+          </div>
+          <div class="cfg-form-group">
+            <label for="org-idp-ref">IDP reference ID</label>
+            <input type="text" id="org-idp-ref" class="cfg-form-input" value="{{currentOrg.idpRefId}}" />
+          </div>
+          <div class="cfg-form-group">
+            <label for="org-cp-ref">Control plane reference ID</label>
+            <input type="text" id="org-cp-ref" class="cfg-form-input" value="{{currentOrg.cpRefId}}" />
+          </div>
+        </div>
+        <div style="margin-top:20px;">
+          <button class="cfg-btn-primary" id="cfg-save-org-btn" type="button" data-handle="{{currentOrg.id}}">
+            <i class="bi bi-floppy me-1"></i> Save changes
+          </button>
+        </div>
+        {{else}}
+        <p class="cfg-tbl-empty">Organization details are unavailable.</p>
+        {{/if}}
+      </div><!-- /#cfg-organizations -->
+
+      <!-- ══ Manage Views ══ -->
+      <div class="cfg-panel" id="cfg-views">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Views</h2>
+            <p class="cfg-panel-desc">Views scope which labelled APIs are visible. LLM Instructions and API Workflows are configured per view.</p>
+          </div>
+          <button class="cfg-btn-primary" id="cfg-add-view-btn" type="button">
+            <i class="bi bi-plus"></i> Add view
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th>Handle</th>
+                <th>Name</th>
+                <th>Labels</th>
+                <th style="width:90px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-views-tbody">
+              {{#views}}
+              <tr id="cfg-view-row-{{id}}" data-id="{{id}}">
+                <td><span class="cfg-name-chip">{{id}}</span></td>
+                <td>
+                  <button type="button" class="cfg-view-edit-btn" data-id="{{id}}"
+                    style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{displayName}}</button>
+                </td>
+                <td>
+                  <div class="d-flex flex-wrap gap-1">
+                    {{#each labels}}<span class="cfg-name-chip">{{this}}</span>{{/each}}
+                  </div>
+                </td>
+                <td>
+                  <div class="cfg-row-actions">
+                    <button class="cfg-icon-btn cfg-view-edit-btn" type="button" data-id="{{id}}" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    {{#unless (eq id "default")}}
+                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-view-delete-btn" type="button"
+                      data-id="{{id}}" data-name="{{displayName}}" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                    {{/unless}}
+                  </div>
+                </td>
+              </tr>
+              {{/views}}
+              {{#unless views.length}}
+              <tr><td colspan="4" class="cfg-tbl-empty">No views yet. Add one to get started.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-views -->
+
+      <!-- ══ Manage Labels ══ -->
+      <div class="cfg-panel" id="cfg-labels">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Labels</h2>
+            <p class="cfg-panel-desc">Labels group APIs; views make labelled APIs visible to consumers.</p>
+          </div>
+          <button class="cfg-btn-primary" id="cfg-add-label-btn" type="button">
+            <i class="bi bi-plus"></i> Add label
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th>Display name</th>
+                <th>Name</th>
+                <th style="width:90px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-labels-tbody">
+              {{#orgLabels}}
+              <tr id="cfg-label-row-{{id}}" data-id="{{id}}">
+                <td>
+                  <button type="button" class="cfg-label-edit-btn" data-name="{{id}}" data-display="{{displayName}}"
+                    style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{displayName}}</button>
+                </td>
+                <td><span class="cfg-name-chip">{{id}}</span></td>
+                <td>
+                  <div class="cfg-row-actions">
+                    <button class="cfg-icon-btn cfg-label-edit-btn" type="button" data-name="{{id}}" data-display="{{displayName}}" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-label-delete-btn" type="button"
+                      data-name="{{id}}" data-display="{{displayName}}" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{/orgLabels}}
+              {{#unless orgLabels.length}}
+              <tr><td colspan="3" class="cfg-tbl-empty">No labels yet. Add one to get started.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-labels -->
 
     </div><!-- /.cfg-content -->
   </div><!-- /.cfg-layout -->
@@ -730,6 +1045,74 @@
     <div class="cfg-modal-actions">
       <button type="button" class="cfg-btn-secondary" id="cfg-label-modal-cancel">Cancel</button>
       <button type="button" class="cfg-btn-primary" id="cfg-label-modal-save">Add label</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete View modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-view-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete View</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-view-name-txt"></strong>? Its LLM Instructions and API Workflows will be removed. This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-view-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-view-confirm">Delete view</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reset Theme modal -->
+<div class="cfg-modal-overlay" id="cfg-reset-theme-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-arrow-counterclockwise"></i></span>
+      <h2 class="cfg-modal-title">Reset Theme</h2>
+    </div>
+    <p class="cfg-modal-body">Reset <strong id="cfg-reset-theme-view-txt"></strong> to the built-in default theme? Its custom CSS, layout, partials, and images will be removed. This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-reset-theme-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-reset-theme-confirm">Reset theme</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit View modal -->
+<div class="cfg-modal-overlay" id="cfg-view-modal" style="display:none;">
+  <div class="cfg-form-modal">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title" id="cfg-view-modal-title">Add view</h2>
+      <button type="button" class="cfg-modal-close" id="cfg-view-modal-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="view-handle">Handle <span class="required">*</span></label>
+      <input type="text" id="view-handle" class="cfg-form-input cfg-form-input--mono" placeholder="partner-apis" />
+      <p class="cfg-field-hint">Lowercase identifier used in URLs. Cannot be changed later.</p>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="view-display">Name</label>
+      <input type="text" id="view-display" class="cfg-form-input" placeholder="e.g. Partner APIs" />
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:24px;">
+      <label>Labels</label>
+      {{#if orgLabels.length}}
+      <div id="view-labels" class="cfg-label-picker" role="group" aria-label="View labels">
+        {{#orgLabels}}
+        <button type="button" class="cfg-label-toggle" data-value="{{id}}" aria-pressed="false">
+          <i class="bi bi-check2"></i><span>{{displayName}}</span>
+        </button>
+        {{/orgLabels}}
+      </div>
+      <p class="cfg-field-hint">Click labels to toggle. APIs with these labels appear in this view.</p>
+      {{else}}
+      <p class="cfg-field-hint">No labels yet — create labels first to attach them to this view.</p>
+      {{/if}}
+    </div>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-view-modal-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-view-modal-save">Add view</button>
     </div>
   </div>
 </div>
@@ -928,20 +1311,25 @@
 <!-- ══ Panel navigation ══ -->
 <script>
 (function () {
-  var PANELS   = ['cfg-llm', 'cfg-workflows', 'cfg-apis', 'cfg-plans', 'cfg-webhooks', 'cfg-keymanagers'];
+  var PANELS   = ['cfg-organizations', 'cfg-views', 'cfg-labels', 'cfg-plans', 'cfg-keymanagers', 'cfg-apis', 'cfg-mcps', 'cfg-webhooks', 'cfg-llm', 'cfg-workflows', 'cfg-theming'];
   var navItems = document.querySelectorAll('.cfg-nav-item');
   var panels   = document.querySelectorAll('.cfg-panel');
 
   function activate(id) {
-    if (!PANELS.includes(id)) id = 'cfg-llm';
+    if (!PANELS.includes(id)) id = 'cfg-organizations';
+    // The shared API/MCP wizard lives inside #cfg-apis. Any sidebar navigation exits it
+    // and restores the APIs list, so we never land on a panel with the wizard still open.
+    var wizard = document.getElementById('cfg-apis-wizard');
+    if (wizard) wizard.style.display = 'none';
+    var apisList = document.getElementById('cfg-apis-list');
+    if (apisList) apisList.style.display = '';
     navItems.forEach(function(a) { a.classList.toggle('active', a.dataset.panel === id); });
     panels.forEach(function(p)   { p.style.display = p.id === id ? 'flex' : 'none'; });
-    if (id === 'cfg-llm') {
-      var el = document.getElementById('llmsTabContent');
-      if (el) el.style.display = 'block';
-    }
     history.replaceState(null, '', location.pathname + '#' + id);
   }
+  // Exposed so the API/MCP wizard (defined in the Manage-APIs script) can restore the
+  // originating tab when it closes.
+  window.cfgActivatePanel = activate;
 
   navItems.forEach(function(a) {
     a.addEventListener('click', function(e) { e.preventDefault(); activate(a.dataset.panel); });
@@ -950,6 +1338,66 @@
   var hash = location.hash.replace('#', '');
   var legacyMap = { 'apiworkflows': 'cfg-workflows', 'llm-instruction': 'cfg-llm' };
   activate(legacyMap[hash] || hash);
+}());
+</script>
+
+<!-- ══ View switcher (searchable combobox) ══ -->
+<script>
+(function () {
+  document.querySelectorAll('.cfg-view-combo').forEach(function (combo) {
+    var trigger = combo.querySelector('.cfg-view-combo-trigger');
+    var menu    = combo.querySelector('.cfg-view-combo-menu');
+    if (!trigger || !menu) return; // single-view org: trigger is a disabled display-only pill
+    var input   = combo.querySelector('.cfg-view-combo-input');
+    var empty   = combo.querySelector('.cfg-view-combo-empty');
+    var options = Array.prototype.slice.call(combo.querySelectorAll('.cfg-view-combo-option'));
+
+    function visibleOptions() { return options.filter(function (o) { return o.style.display !== 'none'; }); }
+    function filter(q) {
+      q = (q || '').toLowerCase().trim();
+      var any = false;
+      options.forEach(function (o) {
+        var hit = o.dataset.name.toLowerCase().indexOf(q) !== -1 || o.dataset.value.toLowerCase().indexOf(q) !== -1;
+        o.style.display = hit ? '' : 'none';
+        if (hit) any = true;
+      });
+      if (empty) empty.hidden = any;
+    }
+    function open() {
+      menu.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+      input.value = ''; filter('');
+      input.focus();
+    }
+    function close() {
+      menu.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+
+    trigger.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (menu.hidden) open(); else close();
+    });
+    input.addEventListener('input', function () { filter(this.value); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { close(); trigger.focus(); }
+      else if (e.key === 'Enter') {
+        var first = visibleOptions()[0];
+        if (first) { e.preventDefault(); window.location.href = first.getAttribute('href'); }
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault(); var v = visibleOptions(); if (v[0]) v[0].focus();
+      }
+    });
+    options.forEach(function (o) {
+      o.addEventListener('keydown', function (e) {
+        var v = visibleOptions(); var i = v.indexOf(o);
+        if (e.key === 'ArrowDown') { e.preventDefault(); (v[i + 1] || v[0]).focus(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); if (i <= 0) input.focus(); else v[i - 1].focus(); }
+        else if (e.key === 'Escape') { close(); trigger.focus(); }
+      });
+    });
+    document.addEventListener('click', function (e) { if (!combo.contains(e.target)) close(); });
+  });
 }());
 </script>
 
@@ -968,6 +1416,9 @@
   var agentVis    = 'Visible';
   var allPolicies = [];
   var policyChips = [];
+  var contentZipFile = null;
+  var hasContentStep = false;   /* the Content step exists only for existing, non-MCP APIs */
+  var wizardOrigin = 'cfg-apis'; /* tab that launched the wizard: 'cfg-apis' or 'cfg-mcps' */
 
   /* build id→api lookup and load all policies from server-rendered data blobs */
   var apiMap = {};
@@ -1132,16 +1583,41 @@
   }());
 
   /* ── wizard show/hide ── */
-  function showWizard(api) {
+  function showWizard(api, kindHint) {
+    /* MCP servers and APIs share this wizard. Derive the "kind" from the record being
+       edited, or from the launching button (kindHint) when adding. */
+    var isMcp = api ? (api.apiType === 'Mcp') : (kindHint === 'mcp');
+    wizardOrigin = isMcp ? 'cfg-mcps' : 'cfg-apis';
+
+    /* The wizard markup lives inside #cfg-apis; reveal that panel (with its list hidden)
+       regardless of which tab launched it, and keep the launching tab highlighted. */
+    document.querySelectorAll('.cfg-panel').forEach(function(p) { p.style.display = p.id === 'cfg-apis' ? 'flex' : 'none'; });
+    document.querySelectorAll('.cfg-nav-item').forEach(function(a) { a.classList.toggle('active', a.dataset.panel === wizardOrigin); });
     document.getElementById('cfg-apis-list').style.display = 'none';
     document.getElementById('cfg-apis-wizard').style.display = 'flex';
+
+    var backLink = document.getElementById('cfg-wizard-back-link');
+    if (backLink) backLink.innerHTML = '<i class="bi bi-arrow-left"></i> ' + (isMcp ? 'Back to MCP Servers' : 'Back to Manage APIs');
+
+    /* MCP servers carry a tools schema instead of an API contract — relabel the Spec step. */
+    var specStepLabel = document.querySelector('#cfg-apis-wizard .cfg-step[data-step="1"] .cfg-step-label');
+    if (specStepLabel) specStepLabel.textContent = isMcp ? 'Tools Schema' : 'Spec';
+    var specDesc = document.querySelector('#cfg-wstep-1 .cfg-wstep-desc');
+    if (specDesc) specDesc.innerHTML = isMcp
+      ? 'Upload the MCP tools schema that defines this server’s tools. <span class="required">*</span> Required. Accepted: YAML or JSON (e.g. <code>schemaDefinition.yaml</code>).'
+      : 'Upload the contract that defines this API. <span class="required">*</span> Required. Accepted: OpenAPI (.json / .yaml), AsyncAPI, GraphQL SDL (.graphql), or WSDL (.wsdl / .xml).';
+    var specOnFileTxt = document.querySelector('#wz-spec-onfile span');
+    if (specOnFileTxt) specOnFileTxt.textContent = isMcp
+      ? 'Existing tools schema on file — attach a new file above to replace it'
+      : 'Existing spec on file — attach a new file above to replace it';
+
     currentStep = 0; specFile = null; docFiles = []; handleTouched = false;
     editMode = !!api; existingDocs = []; docsToRemove = [];
 
     if (api) {
       /* edit mode */
       editingId = api.apiId;
-      document.getElementById('cfg-wizard-title').textContent = 'Edit API';
+      document.getElementById('cfg-wizard-title').textContent = isMcp ? 'Edit MCP Server' : 'Edit API';
       sv('wz-name',       api.apiName);
       sv('wz-handle',     api.apiHandle);   handleTouched = true;
       sv('wz-version',    api.apiVersion);
@@ -1164,9 +1640,9 @@
     } else {
       /* add mode */
       editingId = null;
-      document.getElementById('cfg-wizard-title').textContent = 'Add API';
+      document.getElementById('cfg-wizard-title').textContent = isMcp ? 'Add MCP Server' : 'Add API';
       ['wz-name','wz-version','wz-handle','wz-desc','wz-tags','wz-prod','wz-sandbox','wz-tech-owner','wz-tech-email','wz-biz-owner','wz-biz-email'].forEach(function(id){ sv(id,''); });
-      sel('wz-type','RestApi'); sel('wz-status','PUBLISHED');
+      sel('wz-type', isMcp ? 'Mcp' : 'RestApi'); sel('wz-status','PUBLISHED');
       agentVis = 'Visible';
       document.getElementById('wz-vis-visible').classList.add('active');
       document.getElementById('wz-vis-hidden').classList.remove('active');
@@ -1191,19 +1667,34 @@
     document.getElementById('wz-docs-list').innerHTML = '';
     renderExistingDocs();
     document.getElementById('wz-docs-empty').style.display = 'block';
+
+    /* The Content step (landing page & assets) exists only for existing, non-MCP APIs.
+       The /apis/{handle}/assets endpoint resolves only REST/SOAP/WS/WebSub/GraphQL APIs;
+       MCP servers manage content via /mcp-servers/{id}/assets instead. */
+    hasContentStep = editMode && !!api && api.apiType !== 'Mcp';
+    var contentStepEl = document.getElementById('cfg-step-content');
+    var contentConnEl = document.getElementById('cfg-step-connector-content');
+    if (contentStepEl) contentStepEl.style.display = hasContentStep ? '' : 'none';
+    if (contentConnEl) contentConnEl.style.display = hasContentStep ? '' : 'none';
+    resetContentUpload();
+
     updateWizardStep(0);
   }
 
   function hideWizard() {
-    document.getElementById('cfg-apis-list').style.display = '';
     document.getElementById('cfg-apis-wizard').style.display = 'none';
+    document.getElementById('cfg-apis-list').style.display = '';
     editingId = null;
+    /* Return to the tab that launched the wizard (activate() also clears wizard state). */
+    if (window.cfgActivatePanel) window.cfgActivatePanel(wizardOrigin || 'cfg-apis');
   }
 
   /* ── step navigation ── */
   function updateWizardStep(step) {
     currentStep = step;
-    for (var i=0; i<3; i++) {
+    /* Content (step 3) is the terminal step when present (edit, non-MCP); otherwise Documentation (2). */
+    var lastStep = hasContentStep ? 3 : 2;
+    for (var i=0; i<4; i++) {
       var p = document.getElementById('cfg-wstep-'+i);
       if (p) p.style.display = i===step ? 'flex' : 'none';
     }
@@ -1219,7 +1710,7 @@
     var backBtn = document.getElementById('cfg-wizard-back-step');
     var nextBtn = document.getElementById('cfg-wizard-next');
     backBtn.style.display = step > 0 ? 'inline-flex' : 'none';
-    nextBtn.textContent = step === 2 ? (editingId ? 'Save changes' : 'Save API') : 'Next';
+    nextBtn.textContent = step === lastStep ? (editingId ? 'Save changes' : 'Save API') : 'Next';
     nextBtn.disabled = false;
     nextBtn.title = '';
   }
@@ -1259,12 +1750,17 @@
 
     var fd = new FormData();
     fd.append('apiMetadata', JSON.stringify(meta));
-    if (specFile) fd.append('apiDefinition', specFile);
+    /* For MCP servers the uploaded contract is the tools schema (stored as SCHEMA_DEFINITION),
+       so it goes in the schemaDefinition field; every other type uses apiDefinition. */
+    if (specFile) fd.append(meta.type === 'Mcp' ? 'schemaDefinition' : 'apiDefinition', specFile);
     docFiles.forEach(function(f) { fd.append('docs', f); });
 
+    /* MCP servers are created/updated via /mcp-servers (which requires type MCP and rejects
+       non-MCP); everything else goes through /apis (which rejects MCP). */
+    var base   = meta.type === 'Mcp' ? '/mcp-servers' : '/apis';
     var url    = editingId
-      ? window.devportalApi.root('/apis/' + encodeURIComponent(editingId))
-      : window.devportalApi.root('/apis');
+      ? window.devportalApi.root(base + '/' + encodeURIComponent(editingId))
+      : window.devportalApi.root(base);
     var method = editingId ? 'PUT' : 'POST';
 
     try {
@@ -1274,7 +1770,8 @@
         body: fd,
       });
       if (res.ok) {
-        await showAlert(editingId ? 'API updated successfully.' : 'API created successfully.', 'success');
+        var savedNoun = meta.type === 'Mcp' ? 'MCP server' : 'API';
+        await showAlert(savedNoun + (editingId ? ' updated successfully.' : ' created successfully.'), 'success');
         window.location.reload();
       } else {
         var err = await res.json().catch(function(){ return {}; });
@@ -1285,46 +1782,55 @@
     }
   }
 
-  /* ── bulk selection ── */
+  /* ── bulk selection (shared by the APIs and MCP tables, each scoped to its own tbody) ── */
   var pendingBulkIds = null;
 
-  function selectedChecks() {
-    return Array.prototype.slice.call(document.querySelectorAll('.cfg-row-check:checked'));
-  }
+  function initBulkSelect(cfg) {
+    var tbody = document.getElementById(cfg.tbodyId);
+    if (!tbody) return;
 
-  function syncBulkBar() {
-    var checks = selectedChecks();
-    var bar = document.getElementById('cfg-bulk-bar');
-    var countEl = document.getElementById('cfg-bulk-bar-count');
-    bar.style.display = checks.length > 0 ? 'flex' : 'none';
-    countEl.textContent = checks.length + (checks.length === 1 ? ' API selected' : ' APIs selected');
-    var allChecks = document.querySelectorAll('.cfg-row-check');
-    var selectAll = document.getElementById('cfg-select-all');
-    if (selectAll) {
-      selectAll.checked = allChecks.length > 0 && checks.length === allChecks.length;
-      selectAll.indeterminate = checks.length > 0 && checks.length < allChecks.length;
+    function selected() {
+      return Array.prototype.slice.call(tbody.querySelectorAll('.cfg-row-check:checked'));
     }
+    function sync() {
+      var checks = selected();
+      var bar = document.getElementById(cfg.barId);
+      var countEl = document.getElementById(cfg.countId);
+      if (bar) bar.style.display = checks.length > 0 ? 'flex' : 'none';
+      if (countEl) countEl.textContent = checks.length + ' ' + cfg.noun + (checks.length === 1 ? '' : 's') + ' selected';
+      var allChecks = tbody.querySelectorAll('.cfg-row-check');
+      var selectAll = document.getElementById(cfg.selectAllId);
+      if (selectAll) {
+        selectAll.checked = allChecks.length > 0 && checks.length === allChecks.length;
+        selectAll.indeterminate = checks.length > 0 && checks.length < allChecks.length;
+      }
+    }
+
+    var selectAll = document.getElementById(cfg.selectAllId);
+    if (selectAll) selectAll.addEventListener('change', function() {
+      var checked = this.checked;
+      tbody.querySelectorAll('.cfg-row-check').forEach(function(c) { c.checked = checked; });
+      sync();
+    });
+
+    tbody.addEventListener('change', function(e) {
+      if (e.target.classList.contains('cfg-row-check')) sync();
+    });
+
+    var delBtn = document.getElementById(cfg.deleteBtnId);
+    if (delBtn) delBtn.addEventListener('click', function() {
+      var checks = selected();
+      if (!checks.length) return;
+      pendingBulkIds = checks.map(function(c) { return { id: c.dataset.id, name: c.dataset.name }; });
+      pendingDelId = null;
+      var label = checks.length + ' selected ' + cfg.noun + (checks.length === 1 ? '' : 's');
+      document.getElementById('cfg-del-api-name-txt').textContent = label;
+      document.getElementById('cfg-delete-api-modal').style.display = 'flex';
+    });
   }
 
-  document.getElementById('cfg-select-all').addEventListener('change', function() {
-    var checked = this.checked;
-    document.querySelectorAll('.cfg-row-check').forEach(function(c) { c.checked = checked; });
-    syncBulkBar();
-  });
-
-  document.getElementById('cfg-apis-tbody').addEventListener('change', function(e) {
-    if (e.target.classList.contains('cfg-row-check')) syncBulkBar();
-  });
-
-  document.getElementById('cfg-bulk-delete-btn').addEventListener('click', function() {
-    var checks = selectedChecks();
-    if (!checks.length) return;
-    pendingBulkIds = checks.map(function(c) { return { id: c.dataset.id, name: c.dataset.name }; });
-    pendingDelId = null;
-    var label = checks.length + (checks.length === 1 ? ' selected API' : ' selected APIs');
-    document.getElementById('cfg-del-api-name-txt').textContent = label;
-    document.getElementById('cfg-delete-api-modal').style.display = 'flex';
-  });
+  initBulkSelect({ tbodyId: 'cfg-apis-tbody', selectAllId: 'cfg-select-all',      barId: 'cfg-bulk-bar',      countId: 'cfg-bulk-bar-count',      deleteBtnId: 'cfg-bulk-delete-btn',      noun: 'API' });
+  initBulkSelect({ tbodyId: 'cfg-mcps-tbody', selectAllId: 'cfg-mcps-select-all', barId: 'cfg-mcps-bulk-bar', countId: 'cfg-mcps-bulk-bar-count', deleteBtnId: 'cfg-mcps-bulk-delete-btn', noun: 'MCP server' });
 
   /* ── delete ── */
   var pendingDelId = null;
@@ -1343,7 +1849,7 @@
       var failCount = 0;
       await Promise.all(ids.map(async function(item) {
         try {
-          var r = await fetch(window.devportalApi.root('/apis/'+encodeURIComponent(item.id)), {
+          var r = await fetch(window.devportalApi.root(mutationBasePath(item.id)+'/'+encodeURIComponent(item.id)), {
             method: 'DELETE',
             headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
           });
@@ -1354,11 +1860,10 @@
         } catch(e) { failCount++; }
       }));
       document.querySelectorAll('.cfg-row-check').forEach(function(c){ c.checked = false; });
-      var sa = document.getElementById('cfg-select-all');
-      if (sa) { sa.checked = false; sa.indeterminate = false; }
-      document.getElementById('cfg-bulk-bar').style.display = 'none';
+      document.querySelectorAll('#cfg-select-all, #cfg-mcps-select-all').forEach(function(sa){ sa.checked = false; sa.indeterminate = false; });
+      document.querySelectorAll('.cfg-bulk-bar').forEach(function(b){ b.style.display = 'none'; });
       await showAlert(
-        failCount > 0 ? failCount + ' API(s) could not be deleted.' : 'APIs deleted.',
+        failCount > 0 ? failCount + ' record(s) could not be deleted.' : 'Deleted.',
         failCount > 0 ? 'error' : 'success'
       );
       return;
@@ -1366,12 +1871,12 @@
 
     if (!pendingDelId) return;
     try {
-      var res = await fetch(window.devportalApi.root('/apis/'+encodeURIComponent(pendingDelId)), {
+      var res = await fetch(window.devportalApi.root(mutationBasePath(pendingDelId)+'/'+encodeURIComponent(pendingDelId)), {
         method: 'DELETE',
         headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
       });
       if (res.ok || res.status===204) {
-        await showAlert('API deleted.', 'success');
+        await showAlert(mutationBasePath(pendingDelId) === '/mcp-servers' ? 'MCP server deleted.' : 'API deleted.', 'success');
         var row = document.getElementById('cfg-api-row-'+pendingDelId);
         if (row) row.remove();
         pendingDelId = null;
@@ -1401,9 +1906,10 @@
 
   /* ── publish/unpublish ── */
   async function setApiStatus(apiId, apiName, newStatus) {
-    /* fetch current metadata, patch status, PUT back */
+    /* fetch current metadata, patch status, PUT back — MCP records use /mcp-servers */
+    var base = mutationBasePath(apiId);
     try {
-      var res = await fetch(window.devportalApi.root('/apis/'+encodeURIComponent(apiId)), {
+      var res = await fetch(window.devportalApi.root(base+'/'+encodeURIComponent(apiId)), {
         headers: { 'Content-Type':'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() }
       });
       if (!res.ok) throw new Error(res.statusText);
@@ -1416,7 +1922,7 @@
       });
       var fd = new FormData();
       fd.append('apiMetadata', JSON.stringify(meta));
-      var putRes = await fetch(window.devportalApi.root('/apis/'+encodeURIComponent(apiId)), {
+      var putRes = await fetch(window.devportalApi.root(base+'/'+encodeURIComponent(apiId)), {
         method: 'PUT',
         headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
         body: fd,
@@ -1433,6 +1939,13 @@
 
   /* ── load API data from pre-built map ── */
   function apiDataFromRow(id) { return apiMap[id] || null; }
+
+  /* Which REST resource family owns this handle — MCP servers are managed via /mcp-servers,
+     everything else via /apis. Falls back to /apis for unknown ids. */
+  function mutationBasePath(id) {
+    var api = apiMap[id];
+    return (api && api.apiType === 'Mcp') ? '/mcp-servers' : '/apis';
+  }
 
   /* ── event delegation for table actions ── */
   document.addEventListener('click', function(e) {
@@ -1563,6 +2076,7 @@
   }
 
   document.getElementById('cfg-add-api-btn').addEventListener('click', function() { showWizard(null); });
+  document.getElementById('cfg-add-mcp-btn').addEventListener('click', function() { showWizard(null, 'mcp'); });
 
   /* ── Seed sample APIs (demo mode only) ── */
   (function() {
@@ -1610,6 +2124,8 @@
         return;
       }
       updateWizardStep(2);
+    } else if (currentStep === 2 && hasContentStep) {
+      updateWizardStep(3);
     } else {
       await saveApi();
     }
@@ -1745,6 +2261,95 @@
     });
     list.appendChild(item);
   }
+
+  /* ── API content (landing page & assets) ZIP upload — edit mode only ──
+     Independent of the wizard's metadata Save: uploads immediately to
+     PUT /apis/{handle}/assets, mirroring the org-theming apply flow. */
+  function resetContentUpload() {
+    contentZipFile = null;
+    var input  = document.getElementById('wz-content-input');
+    var chip   = document.getElementById('wz-content-chip');
+    var errEl  = document.getElementById('wz-content-error');
+    var btn    = document.getElementById('wz-content-upload-btn');
+    if (input) input.value = '';
+    if (chip)  chip.classList.remove('visible');
+    if (errEl) errEl.style.display = 'none';
+    if (btn)   btn.disabled = true;
+  }
+
+  function handleContentZipFile(f) {
+    var errEl = document.getElementById('wz-content-error');
+    if (!f) return;
+    if (!/\.zip$/i.test(f.name)) {
+      if (errEl) { errEl.textContent = 'Unsupported file type. Accepted: .zip'; errEl.style.display = 'block'; }
+      return;
+    }
+    contentZipFile = f;
+    var nameEl = document.getElementById('wz-content-name');
+    var chip   = document.getElementById('wz-content-chip');
+    var btn    = document.getElementById('wz-content-upload-btn');
+    if (nameEl) nameEl.textContent = f.name;
+    if (chip)   chip.classList.add('visible');
+    if (errEl)  errEl.style.display = 'none';
+    if (btn)    btn.disabled = false;
+  }
+
+  async function uploadApiContent() {
+    if (!contentZipFile || !editingId) return;
+    var btn = document.getElementById('wz-content-upload-btn');
+    var original = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Uploading…';
+    }
+    try {
+      var fd = new FormData();
+      fd.append('apiContent', contentZipFile);
+      var res = await fetch(window.devportalApi.root('/apis/' + encodeURIComponent(editingId) + '/assets'), {
+        method: 'PUT',
+        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        credentials: 'same-origin',
+        body: fd,
+      });
+      if (res.ok) {
+        await showAlert('API content uploaded successfully.', 'success');
+        resetContentUpload();
+      } else {
+        var err = await res.json().catch(function(){ return {}; });
+        await showAlert('Upload failed: ' + (err.description || err.message || res.statusText), 'error');
+      }
+    } catch (e) {
+      await showAlert('Error: ' + e.message, 'error');
+    } finally {
+      if (btn) { btn.innerHTML = original; btn.disabled = !contentZipFile; }
+    }
+  }
+
+  (function() {
+    var input  = document.getElementById('wz-content-input');
+    var zone   = document.getElementById('wz-content-zone');
+    var remove = document.getElementById('wz-content-remove');
+    var btn    = document.getElementById('wz-content-upload-btn');
+    if (input) input.addEventListener('change', function(e) {
+      handleContentZipFile(e.target.files && e.target.files[0]);
+    });
+    if (remove) remove.addEventListener('click', resetContentUpload);
+    if (btn) btn.addEventListener('click', uploadApiContent);
+    if (zone) {
+      zone.addEventListener('dragover', function(e) {
+        e.preventDefault(); e.stopPropagation();
+        zone.classList.add('cfg-upload-zone--active');
+      });
+      zone.addEventListener('dragleave', function(e) {
+        if (!zone.contains(e.relatedTarget)) zone.classList.remove('cfg-upload-zone--active');
+      });
+      zone.addEventListener('drop', function(e) {
+        e.preventDefault(); e.stopPropagation();
+        zone.classList.remove('cfg-upload-zone--active');
+        handleContentZipFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+      });
+    }
+  }());
 
   /* ── API Detail Drawer ── */
   function openDrawer(api) {
@@ -1911,6 +2516,186 @@
       }
     } catch(e) { await showAlert('Error: '+e.message, 'error'); }
     pendingDelName = null;
+  });
+}());
+</script>
+
+<!-- ══ Organization JS (current org only) ══ -->
+<script>
+(function () {
+  function g(id) { return document.getElementById(id); }
+  var saveBtn = g('cfg-save-org-btn');
+  if (!saveBtn) return;
+
+  var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  saveBtn.addEventListener('click', async function () {
+    var handle = saveBtn.dataset.handle;
+    var name = g('org-display').value.trim();
+    if (!name) { await showAlert('Name is required.', 'error'); return; }
+    var oe = g('org-owner-email').value.trim();
+    if (oe && !emailRe.test(oe)) { await showAlert('Business owner email is not a valid email address.', 'error'); return; }
+    // displayName, id and idpRefId are required by the update schema; send them always.
+    var body = {
+      displayName: name,
+      id: handle,
+      idpRefId: g('org-idp-ref').value.trim(),
+    };
+    // Optional fields — only send non-blank (businessOwnerEmail is format-validated above).
+    var owner = g('org-owner').value.trim();         if (owner) body.businessOwner = owner;
+    var oc    = g('org-owner-contact').value.trim(); if (oc)    body.businessOwnerContact = oc;
+    if (oe) body.businessOwnerEmail = oe;
+    var cp    = g('org-cp-ref').value.trim();         if (cp)    body.cpRefId = cp;
+    saveBtn.disabled = true;
+    try {
+      var res = await fetch(window.devportalApi.root('/organizations/' + encodeURIComponent(handle)), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+        credentials: 'same-origin', body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        await showAlert('Organization updated.', 'success');
+        window.location.reload();
+      } else {
+        var err = await res.json().catch(function () { return {}; });
+        await showAlert('Failed: ' + (err.description || err.message || res.statusText), 'error');
+      }
+    } catch (e) { await showAlert('Error: ' + e.message, 'error'); }
+    finally { saveBtn.disabled = false; }
+  });
+}());
+</script>
+
+<!-- ══ Manage Views JS ══ -->
+<script>
+(function () {
+  var views = [];
+  try { views = JSON.parse(document.getElementById('cfg-views-data').textContent) || []; } catch (e) { /* ignore */ }
+  var editHandle = null;
+  var modal = document.getElementById('cfg-view-modal');
+  if (!modal) return;
+  function g(id) { return document.getElementById(id); }
+
+  // Labels are chosen via toggle chips (no cmd+click multi-select).
+  var labelPicker = g('view-labels');
+  if (labelPicker) {
+    labelPicker.addEventListener('click', function (e) {
+      var chip = e.target.closest('.cfg-label-toggle');
+      if (!chip) return;
+      var on = chip.getAttribute('aria-pressed') === 'true';
+      chip.setAttribute('aria-pressed', on ? 'false' : 'true');
+      chip.classList.toggle('selected', !on);
+    });
+  }
+  function setSelectedLabels(labels) {
+    if (!labelPicker) return;
+    var set = {}; (labels || []).forEach(function (l) { set[l] = true; });
+    labelPicker.querySelectorAll('.cfg-label-toggle').forEach(function (chip) {
+      var on = !!set[chip.dataset.value];
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+      chip.classList.toggle('selected', on);
+    });
+  }
+  function getSelectedLabels() {
+    if (!labelPicker) return [];
+    return Array.prototype.map.call(
+      labelPicker.querySelectorAll('.cfg-label-toggle[aria-pressed="true"]'),
+      function (chip) { return chip.dataset.value; }
+    );
+  }
+
+  function openModal(mode, view) {
+    editHandle = mode === 'edit' ? view.id : null;
+    g('cfg-view-modal-title').textContent = mode === 'edit' ? 'Edit view' : 'Add view';
+    g('cfg-view-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add view';
+    g('view-handle').value    = view ? (view.id || '') : '';
+    g('view-handle').readOnly = mode === 'edit';
+    g('view-display').value   = view ? (view.displayName || '') : '';
+    setSelectedLabels(view ? view.labels : []);
+    modal.style.display = 'flex';
+    g('view-handle').focus();
+  }
+  function closeModal() { modal.style.display = 'none'; editHandle = null; }
+
+  var addBtn = g('cfg-add-view-btn');
+  if (addBtn) addBtn.addEventListener('click', function () { openModal('add'); });
+  g('cfg-view-modal-close').addEventListener('click', closeModal);
+  g('cfg-view-modal-cancel').addEventListener('click', closeModal);
+  modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
+
+  /* ── auto-slug display → handle ── */
+  var viewHandleRe = /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/;
+  g('view-display').addEventListener('input', function () {
+    if (editHandle) return;
+    g('view-handle').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  });
+
+  g('cfg-view-modal-save').addEventListener('click', async function () {
+    var handle  = g('view-handle').value.trim();
+    var display = g('view-display').value.trim();
+    var labels  = getSelectedLabels();
+    if (!handle) { await showAlert('Handle is required.', 'error'); return; }
+    if (!viewHandleRe.test(handle)) {
+      await showAlert('Handle must be lowercase letters, numbers and hyphens only.', 'error');
+      return;
+    }
+    try {
+      var res;
+      if (editHandle) {
+        res = await fetch(window.devportalApi.root('/views/' + encodeURIComponent(editHandle)), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          credentials: 'same-origin', body: JSON.stringify({ displayName: display, labels: labels }),
+        });
+      } else {
+        var body = { id: handle, labels: labels };
+        if (display) body.displayName = display;
+        res = await fetch(window.devportalApi.root('/views'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
+          credentials: 'same-origin', body: JSON.stringify(body),
+        });
+      }
+      if (res.ok) {
+        await showAlert(editHandle ? 'View updated.' : 'View created.', 'success');
+        window.location.reload();
+      } else {
+        var err = await res.json().catch(function () { return {}; });
+        await showAlert('Failed: ' + (err.description || err.message || res.statusText), 'error');
+      }
+    } catch (e) { await showAlert('Error: ' + e.message, 'error'); }
+  });
+
+  var pendingDel = null;
+  document.addEventListener('click', function (e) {
+    var editBtn = e.target.closest('.cfg-view-edit-btn');
+    if (editBtn) {
+      var view = views.filter(function (vw) { return vw.id === editBtn.dataset.id; })[0];
+      if (view) openModal('edit', view);
+      return;
+    }
+    var delBtn = e.target.closest('.cfg-view-delete-btn');
+    if (delBtn) {
+      pendingDel = delBtn.dataset.id;
+      g('cfg-del-view-name-txt').textContent = delBtn.dataset.name || delBtn.dataset.id;
+      g('cfg-delete-view-modal').style.display = 'flex';
+      return;
+    }
+  });
+  g('cfg-del-view-cancel').addEventListener('click', function () { g('cfg-delete-view-modal').style.display = 'none'; });
+  g('cfg-delete-view-modal').addEventListener('click', function (e) { if (e.target === this) this.style.display = 'none'; });
+  g('cfg-del-view-confirm').addEventListener('click', async function () {
+    if (!pendingDel) return;
+    g('cfg-delete-view-modal').style.display = 'none';
+    try {
+      var res = await fetch(window.devportalApi.root('/views/' + encodeURIComponent(pendingDel)), {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() }, credentials: 'same-origin',
+      });
+      if (res.ok || res.status === 204) { await showAlert('View deleted.', 'success'); window.location.reload(); }
+      else { var err = await res.json().catch(function () { return {}; }); await showAlert('Delete failed: ' + (err.description || err.message || res.statusText), 'error'); }
+    } catch (e) { await showAlert('Error: ' + e.message, 'error'); }
+    pendingDel = null;
   });
 }());
 </script>

@@ -670,13 +670,26 @@ const listDocNamesForApis = async (orgId, apiIds) => {
 
 const deleteByFileName = async (fileName, orgId, apiId, t) => {
     try {
+        // Scope to document rows only (type LIKE 'DOC_%'), matching listDocNames. Without this,
+        // a non-doc row (image, spec) that happens to share the file_name would also be deleted.
         const contentsToDelete = await APIContent.findAll({
-            where: { file_name: fileName, api_uuid: apiId },
+            where: {
+                file_name: fileName,
+                api_uuid: apiId,
+                type: { [Op.like]: `${constants.DOC_TYPES.DOC_ID}%` },
+            },
             include: [{ model: APIMetadata, required: true, attributes: [], where: { org_uuid: orgId } }],
             transaction: t
         });
         for (const content of contentsToDelete) {
-            await APIContent.destroy({ where: { file_name: content.dataValues.file_name, api_uuid: apiId }, transaction: t });
+            await APIContent.destroy({
+                where: {
+                    api_uuid: apiId,
+                    file_name: content.dataValues.file_name,
+                    type: content.dataValues.type,
+                },
+                transaction: t
+            });
         }
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) throw error;

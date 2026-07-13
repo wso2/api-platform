@@ -374,6 +374,9 @@ const loadAPIContent = async (req, res, next) => {
             let schemaFileName = constants.FILE_NAME.API_DEFINITION_XML;
             if (metaData.type === constants.API_TYPE.GRAPHQL) {
                 schemaFileName = constants.FILE_NAME.API_DEFINITION_GRAPHQL;
+            } else if (metaData.type === constants.API_TYPE.MCP) {
+                // An MCP server's contract is its tools schema, not an apiDefinition.
+                schemaFileName = constants.FILE_NAME.SCHEMA_DEFINITION_YAML_FILE_NAME;
             }
 
             let apiDefinitionForNav = null;

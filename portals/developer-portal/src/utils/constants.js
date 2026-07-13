@@ -171,7 +171,7 @@ module.exports = {
         API_FILE_PATH: '/apis/',
         API_LANDING_PAGE_PATH: '/api/',
         API_DOCS_PATH: '/docs/',
-        DEVPORTAL_CONFIGURE: ['/*/settings', '/*/views/*/settings'],
+        DEVPORTAL_CONFIGURE: ['/*/settings'],
         DEVPORTAL_ROOT: ['/portal', '/portal/*/edit', '/devportal'],
         DEVPORTAL_API_LISTING: '/*/apis',
         DEVPORTAL_TECHNICAL_PAGES: ['*/application'],
@@ -186,7 +186,6 @@ module.exports = {
             '**/api-keys?**',
             '**/subscriptions',
             '/*/settings',
-            '/*/views/*/settings',
         ],
         SYSTEM_AUTHORIZED_PAGES: [
             '**/applications',
@@ -195,7 +194,6 @@ module.exports = {
             '**/api-keys?**',
             '**/subscriptions',
             '/*/settings',
-            '/*/views/*/settings',
         ],
     },
     ROLES: {
@@ -211,6 +209,10 @@ module.exports = {
         TEMPLATE: 'template',
         LLMS_CONFIG: 'llms-config',
     },
+    // The literal fileType values util.readFilesInDirectory assigns when unzipping an
+    // uploaded theme (style/layout/partial/markDown/template/image) — used to scope
+    // theme reset/replace to just these rows, leaving llms-config untouched.
+    THEME_FILE_TYPES: ['style', 'layout', 'partial', 'markDown', 'template', 'image'],
     KEY_TYPE: {
         PRODUCTION: 'PRODUCTION',
         SANDBOX: 'SANDBOX',

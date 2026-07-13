@@ -30,35 +30,72 @@ const kmDao = require('../dao/keyManagerDao');
 const { KeyManagerDTO } = require('../dto/keyManagerDto');
 const { VALID_EVENT_TYPES } = require('../services/webhooks/eventPublisher');
 const apiWorkflowService = require('../services/apiWorkflowService');
+const apiMetadataService = require('../services/apiMetadataService');
 const util = require('../utils/util');
 const { renderGivenTemplate, loadLayoutFromAPI } = require('../utils/util');
 const { getSessionCsrfToken } = require('../middlewares/csrfProtection');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 
-const loadViewSettingsPage = async (req, res) => {
+// Org-scoped settings page. The URL is /:orgName/settings (no view segment) —
+// almost all settings data is keyed by org. The two genuinely view-scoped panels
+// (LLM Instructions, API Workflows) render for an initial view (default, or the
+// first view) and switch client-side via the in-page view selector.
+const loadSettingsPage = async (req, res) => {
 
     let orgId;
-    const viewName = req.params.viewName || 'default';
     const completeTemplatePath = path.join(require.main.filename, '..', 'pages', 'settings', 'page.hbs');
     const layoutPath = path.join(process.cwd(), 'src', 'defaultContent', 'layout', 'main.hbs');
 
-    const baseUrl = '/' + req.params.orgName + '/views/' + viewName;
+    const orgName = req.params.orgName;
+    // Org-scoped self-links (view selector switches the two view-scoped panels client-side).
+    const settingsUrl = '/' + orgName + '/settings';
     const csrfToken = getSessionCsrfToken(req);
     let templateContent = {
-        baseUrl,
-        viewName,
+        settingsUrl,
         csrfToken,
         showApiWorkflowsNav: config.features?.apiWorkflows === true,
         demoMode: config.demo?.enabled === true
     };
     try {
-        const orgName = req.params.orgName;
         templateContent.loggedOrg = orgName;
         orgId = await orgDao.getId(orgName);
         const orgDetails = await orgDao.get(orgName);
         templateContent.devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
         templateContent.orgId = orgId;
+
+        // The Organization tab manages only the current org (no listing/add/delete).
+        const cur = orgDetails.dataValues || orgDetails;
+        templateContent.currentOrg = {
+            id: cur.handle,
+            displayName: cur.display_name,
+            businessOwner: cur.business_owner || '',
+            businessOwnerContact: cur.business_owner_contact || '',
+            businessOwnerEmail: cur.business_owner_email || '',
+            idpRefId: orgDetails.idp_ref_id || '',
+            cpRefId: orgDetails.cp_ref_id || '',
+        };
+
+        // Views for the selector and the merged Views management tab. The in-page
+        // view selector picks which view the LLM + API Workflow panels edit via the
+        // ?view= query param (the path stays org-scoped). Default to 'default', then
+        // fall back to the first view; ignore an unknown ?view value.
+        const views = await apiMetadataService.getViewsFromDB(orgId);
+        templateContent.views = views;
+        const requestedView = typeof req.query.view === 'string' ? req.query.view : '';
+        const viewExists = (name) => views.some(v => v.id === name);
+        let viewName = 'default';
+        if (requestedView && viewExists(requestedView)) {
+            viewName = requestedView;
+        } else if (!viewExists('default') && views.length > 0) {
+            viewName = views[0].id;
+        }
+        templateContent.viewName = viewName;
+        templateContent.selectedView = viewName;
+
+        // Portal chrome (sidebar/header/home link) is inherently view-scoped.
+        const baseUrl = '/' + orgName + '/views/' + viewName;
+        templateContent.baseUrl = baseUrl;
 
         const viewId = await viewDao.getId(orgId, viewName);
         const apiWorkflows = await apiWorkflowService.getAllAPIWorkflowsFromDB(orgId, viewId);
@@ -66,7 +103,7 @@ const loadViewSettingsPage = async (req, res) => {
 
         const allAPIs = await apiDao.getByCondition({ org_uuid: orgId });
         const docNamesByApiId = await apiFileDao.listDocNamesForApis(orgId, allAPIs.map(api => api.uuid));
-        templateContent.orgAPIs = allAPIs.map(api => ({
+        const mappedAPIs = allAPIs.map(api => ({
             apiId: api.handle,
             apiName: api.name,
             apiHandle: api.handle,
@@ -81,6 +118,11 @@ const loadViewSettingsPage = async (req, res) => {
             subscriptionPlans: (api.dp_subscription_plans || []).map(p => p.display_name),
             existingDocs: docNamesByApiId[api.uuid] || [],
         }));
+        // MCP servers get their own admin tab; keep REST/WS/GraphQL/SOAP/WebSub in the APIs tab.
+        // orgAllAPIs backs the client-side apiMap (edit/drawer lookups) shared by both tables.
+        templateContent.orgAllAPIs = mappedAPIs;
+        templateContent.orgAPIs = mappedAPIs.filter(api => api.apiType !== constants.API_TYPE.MCP);
+        templateContent.orgMCPs = mappedAPIs.filter(api => api.apiType === constants.API_TYPE.MCP);
 
         let orgLabels = [];
         try {
@@ -139,7 +181,11 @@ const loadViewSettingsPage = async (req, res) => {
             try { llmsConfig = { ...llmsConfig, ...JSON.parse(configAsset.file_content.toString('utf8')) }; } catch (e) { /* ignore */ }
         }
         templateContent.llmsConfig = llmsConfig;
-        templateContent.llmsConfigContext = { orgId, viewName, csrfToken, baseUrl };
+        // orgName + views let the client rebuild view-scoped URLs when the selector changes.
+        templateContent.llmsConfigContext = { orgId, orgName, viewName, csrfToken, baseUrl, views };
+
+        const hasCustomTheme = await orgDao.hasThemeContent(orgId, viewName);
+        templateContent.themingContext = { orgId, orgName, viewName, csrfToken, baseUrl, views, hasCustomTheme };
 
         templateContent.profile = req.user;
         const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
@@ -153,11 +199,11 @@ const loadViewSettingsPage = async (req, res) => {
         }
         res.send(html);
     } catch (error) {
-        logger.error(`Error while loading view settings page`, {
+        logger.error(`Error while loading settings page`, {
             error: error.message,
             stack: error.stack
         });
-        res.status(500).send('Error loading view configuration page');
+        res.status(500).send('Error loading settings page');
     }
 };
 
@@ -212,7 +258,7 @@ const saveLlmsConfig = async (req, res) => {
 };
 
 module.exports = {
-    loadViewSettingsPage,
+    loadSettingsPage,
     getLlmsConfig,
     saveLlmsConfig,
 };

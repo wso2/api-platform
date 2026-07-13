@@ -60,12 +60,15 @@ const createAPIMetadata = async (req, res) => {
         if (apiArtifactFile?.buffer) {
             fullApiBundle = await extractFullApiBundleFromUploadedZip(apiArtifactFile, orgId, 'new-api');
             apiMetadata = fullApiBundle.apiMetadata;
-            const preparedDefinition = prepareApiDefinitionForStorage(
-                fullApiBundle.apiDefinitionFileName,
-                fullApiBundle.apiDefinitionFile
-            );
-            apiDefinitionFile = preparedDefinition.apiDefinitionFile;
-            apiFileName = preparedDefinition.apiDefinitionFileName;
+            // MCP bundles carry a schemaDefinition (handled by the MCP branch) and no apiDefinition.
+            if (fullApiBundle.apiDefinitionFile) {
+                const preparedDefinition = prepareApiDefinitionForStorage(
+                    fullApiBundle.apiDefinitionFileName,
+                    fullApiBundle.apiDefinitionFile
+                );
+                apiDefinitionFile = preparedDefinition.apiDefinitionFile;
+                apiFileName = preparedDefinition.apiDefinitionFileName;
+            }
             artifactApiContent = await extractApiContentFromUploadedZip(apiArtifactFile, orgId, 'new-api', 'artifact');
             resolvedImageMetadata = buildImageMetadataFromContent(artifactApiContent);
             const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
@@ -100,10 +103,18 @@ const createAPIMetadata = async (req, res) => {
 
         apiMetadata.type = resolveTypeOrReject(apiMetadata.type, req.__forceApiType);
 
-        // Validate input
+        // Validate input. An MCP server's contract IS its tools schema (schemaDefinition) —
+        // it has no OpenAPI-style apiDefinition, so it requires a schemaDefinition and any
+        // apiDefinition sent alongside is ignored (mirrors how sampleSeeder creates MCP servers
+        // from api.yaml + schemaDefinition.yaml with no definition file). GraphQL may carry its
+        // SDL as a schemaDefinition; every other type requires an apiDefinition.
+        const isMcp = apiMetadata.type === constants.API_TYPE.MCP;
         const hasGraphQLSchema = apiMetadata.type === constants.API_TYPE.GRAPHQL &&
             req.files?.schemaDefinition?.[0];
-        if (!apiMetadata.name || (!apiDefinitionFile && !hasGraphQLSchema) || !apiMetadata.endPoints) {
+        const hasMcpSchema = isMcp &&
+            (req.files?.schemaDefinition?.[0] || fullApiBundle?.schemaDefinitionFile);
+        const hasContract = isMcp ? hasMcpSchema : (apiDefinitionFile || hasGraphQLSchema);
+        if (!apiMetadata.name || !hasContract || !apiMetadata.endPoints) {
             throw new Sequelize.ValidationError(
                 "Missing or Invalid fields in the request payload"
             );
@@ -172,8 +183,9 @@ const createAPIMetadata = async (req, res) => {
                 }
                 await tagDao.createApiMapping(orgId, apiId, tags, userId, t);
             }
-            // store api definition file (skipped for GraphQL — schema stored below via schemaDefinition)
-            if (apiDefinitionFile) {
+            // store api definition file (skipped for GraphQL — schema stored below via schemaDefinition;
+            // and for MCP, whose contract is its schemaDefinition — an MCP has no apiDefinition)
+            if (apiDefinitionFile && !isMcp) {
                 await apiFileDao.store(apiDefinitionFile, apiFileName, apiId, constants.DOC_TYPES.API_DEFINITION, userId, t);
             }
             // store uploaded documentation files
@@ -474,12 +486,15 @@ const updateAPIMetadata = async (req, res) => {
         if (apiArtifactFile?.buffer) {
             fullApiBundle = await extractFullApiBundleFromUploadedZip(apiArtifactFile, orgId, apiId);
             apiMetadata = fullApiBundle.apiMetadata;
-            const preparedDefinition = prepareApiDefinitionForStorage(
-                fullApiBundle.apiDefinitionFileName,
-                fullApiBundle.apiDefinitionFile
-            );
-            apiDefinitionFile = preparedDefinition.apiDefinitionFile;
-            apiFileName = preparedDefinition.apiDefinitionFileName;
+            // MCP bundles carry a schemaDefinition (handled by the MCP branch) and no apiDefinition.
+            if (fullApiBundle.apiDefinitionFile) {
+                const preparedDefinition = prepareApiDefinitionForStorage(
+                    fullApiBundle.apiDefinitionFileName,
+                    fullApiBundle.apiDefinitionFile
+                );
+                apiDefinitionFile = preparedDefinition.apiDefinitionFile;
+                apiFileName = preparedDefinition.apiDefinitionFileName;
+            }
             artifactApiContent = await extractApiContentFromUploadedZip(apiArtifactFile, orgId, apiId, 'artifact');
             resolvedImageMetadata = buildImageMetadataFromContent(artifactApiContent);
             const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
@@ -516,6 +531,8 @@ const updateAPIMetadata = async (req, res) => {
         if (existingType && apiMetadata.type !== existingType) {
             throw new CustomError(409, 'Conflict', `API type cannot be changed after creation (existing type is '${existingType}')`);
         }
+        // An MCP server's contract is its tools schema (handled below); it has no apiDefinition.
+        const isMcp = apiMetadata.type === constants.API_TYPE.MCP;
 
         // Validate input — spec file is optional on update (already stored from create)
         if (!apiMetadata.name || !apiMetadata.endPoints) {
@@ -620,8 +637,9 @@ const updateAPIMetadata = async (req, res) => {
                 await subscriptionPlanDao.updateApiMapping(subscriptionPlans, apiId, userId, t);
                 updatedAPI[0].dataValues["dp_subscription_plans"] = await subscriptionPlanDao.listByApi(apiId, t);
             }
-            // update api definition file (only when a new file was uploaded)
-            if (apiDefinitionFile) {
+            // update api definition file (only when a new file was uploaded; never for MCP,
+            // whose contract is its schemaDefinition rather than an apiDefinition)
+            if (apiDefinitionFile && !isMcp) {
                 const updatedFileCount = await apiFileDao.update(apiDefinitionFile, apiFileName, apiId, orgId,
                     constants.DOC_TYPES.API_DEFINITION, userId, t);
                 if (!updatedFileCount) {
@@ -634,10 +652,12 @@ const updateAPIMetadata = async (req, res) => {
                     await apiFileDao.deleteByFileName(fileName, orgId, apiId, t);
                 }
             }
-            // upsert newly uploaded documentation files
+            // upsert newly uploaded documentation files — use update (upsert by file_name+type)
+            // rather than store (create), so re-uploading a doc with an existing name replaces it
+            // instead of hitting the (api_uuid, type, file_name) unique index and aborting the PUT.
             if (req.files?.docs) {
                 for (const doc of req.files.docs) {
-                    await apiFileDao.store(doc.buffer, doc.originalname, apiId, constants.DOC_TYPES.DOC_ID + constants.DOC_TYPES.DOCS.OTHER, userId, t);
+                    await apiFileDao.update(doc.buffer, doc.originalname, apiId, orgId, constants.DOC_TYPES.DOC_ID + constants.DOC_TYPES.DOCS.OTHER, userId, t);
                 }
             }
             // Update MCP tools schema definition if the API type is MCP
@@ -1663,6 +1683,11 @@ const deleteView = async (req, res) => {
     const orgId = req.orgId;
     const name = req.params.viewId;
     try {
+        // The "default" view can't be deleted — required as a fallback view for the
+        // portal/settings UI. Rejected here regardless of what the UI already hides.
+        if (name === 'default') {
+            throw new CustomError(400, constants.ERROR_CODE[400], "The default view cannot be deleted");
+        }
         const viewUuid = await viewDao.getId(orgId, name);
         const viewDelete = await viewDao.delete(orgId, name);
         if (viewDelete === 0) {
@@ -1878,23 +1903,11 @@ async function extractFullApiBundleFromUploadedZip(zipFile, orgId, apiId) {
             throw new Sequelize.ValidationError("Invalid full API zip: missing api.yaml, mcp.yaml or devportal.yaml");
         }
 
-        const definitionFilePath = await util.findFileByNameRecursive(rootPath, [
-            'definition.yaml',
-            'definition.yml',
-            'definition.json',
-            'apiDefinition.yaml',
-            'apiDefinition.yml',
-            'apiDefinition.json',
-        ]);
-        if (!definitionFilePath) {
-            throw new Sequelize.ValidationError("Invalid full API zip: missing definition file (definition.yaml/yml/json)");
-        }
-
         const apiMetadataBuffer = await fs.readFile(metadataFilePath);
         const apiMetadata = parseApiMetadataFromYamlFile(path.basename(metadataFilePath), apiMetadataBuffer);
-        const apiDefinitionFile = await fs.readFile(definitionFilePath);
-        const apiDefinitionFileName = path.basename(definitionFilePath);
+        const isMcp = apiMetadata.type === constants.API_TYPE.MCP;
 
+        // The tools schema (MCP) lives in its own file, distinct from an apiDefinition.
         const schemaDefinitionFilePath = await util.findFileByNameRecursive(rootPath, [
             constants.FILE_NAME.SCHEMA_DEFINITION_FILE_NAME,
             constants.FILE_NAME.SCHEMA_DEFINITION_YAML_FILE_NAME,
@@ -1904,6 +1917,31 @@ async function extractFullApiBundleFromUploadedZip(zipFile, orgId, apiId) {
         if (schemaDefinitionFilePath) {
             schemaDefinitionFile = await fs.readFile(schemaDefinitionFilePath);
             schemaDefinitionFileName = path.basename(schemaDefinitionFilePath);
+        }
+
+        // An MCP server's contract IS its schemaDefinition (tools) — it has no apiDefinition,
+        // so an MCP zip must carry a schemaDefinition and needs no definition file. Every other
+        // API type requires a definition file and has no schemaDefinition here.
+        let apiDefinitionFile;
+        let apiDefinitionFileName;
+        if (isMcp) {
+            if (!schemaDefinitionFile) {
+                throw new Sequelize.ValidationError("Invalid MCP server zip: missing schemaDefinition file (schemaDefinition.yaml/json)");
+            }
+        } else {
+            const definitionFilePath = await util.findFileByNameRecursive(rootPath, [
+                'definition.yaml',
+                'definition.yml',
+                'definition.json',
+                'apiDefinition.yaml',
+                'apiDefinition.yml',
+                'apiDefinition.json',
+            ]);
+            if (!definitionFilePath) {
+                throw new Sequelize.ValidationError("Invalid full API zip: missing definition file (definition.yaml/yml/json)");
+            }
+            apiDefinitionFile = await fs.readFile(definitionFilePath);
+            apiDefinitionFileName = path.basename(definitionFilePath);
         }
 
         return {

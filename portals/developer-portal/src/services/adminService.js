@@ -27,6 +27,7 @@ const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const util = require('../utils/util');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const constants = require('../utils/constants');
@@ -441,7 +442,7 @@ const applyTheme = async (req, res) => {
     const viewName = req.params.viewId;
     const zipFile = req.files?.file?.[0] ?? req.file;
     const userId = util.resolveActor(req);
-    const extractPath = path.join(process.cwd(), '..', '.tmp', `${orgId}-${viewName}-${Date.now()}`);
+    const extractPath = path.join(require('os').tmpdir(), `theme-extract-${crypto.randomUUID()}`);
     let tempZipPath;
     try {
         if (!zipFile) {
@@ -460,7 +461,7 @@ const applyTheme = async (req, res) => {
         await util.unzipDirectory(zipPath, extractPath);
         const files = await util.readFilesInDirectory(extractPath, orgId, req.protocol, req.get('host'), viewName);
         await sequelize.transaction(async (t) => {
-            await orgDao.deleteAllContent(orgId, viewName, t);
+            await orgDao.deleteThemeContent(orgId, viewName, t);
             for (const { filePath, fileName, fileContent, fileType } of files) {
                 await createContent(filePath, fileName, fileContent, fileType, orgId, viewName, userId, t);
             }
@@ -481,10 +482,58 @@ const resetTheme = async (req, res) => {
     const orgId = req.orgId;
     const viewName = req.params.viewId;
     try {
-        await orgDao.deleteAllContent(orgId, viewName);
+        await orgDao.deleteThemeContent(orgId, viewName);
         res.status(204).send();
     } catch (error) {
         logger.error('Reset theme failed', { error: error.message, stack: error.stack, orgId, viewName });
+        util.handleError(res, error);
+    }
+};
+
+// Bundles the view's theme assets into a ZIP for download. If the view has a custom theme,
+// its stored assets are exported; otherwise the built-in default theme is bundled from disk
+// (src/defaultContent) so a theme is always downloadable. The archive is wrapped in a
+// top-level folder named after the view so it round-trips back through applyTheme (which
+// strips the first path segment when re-importing).
+const exportTheme = async (req, res) => {
+    const orgId = req.orgId;
+    const viewName = req.params.viewId;
+    try {
+        const rows = [];
+        for (const fileType of constants.THEME_FILE_TYPES) {
+            const content = await orgDao.getContent({ orgId, viewName, fileType });
+            if (Array.isArray(content)) {
+                rows.push(...content);
+            } else if (content) {
+                rows.push(content);
+            }
+        }
+        const wrapper = viewName || 'theme';
+        let entries;
+        if (rows.length > 0) {
+            entries = rows.map((row) => {
+                const dir = row.file_path && row.file_path !== '/'
+                    ? row.file_path.replace(/^\/+/, '').replace(/\/+$/, '')
+                    : '';
+                const zipPath = [wrapper, dir, row.file_name].filter(Boolean).join('/');
+                return { path: zipPath, content: row.file_content };
+            });
+        } else {
+            // No custom theme — bundle the built-in default theme from disk.
+            const defaultRoot = path.join(process.cwd(), 'src', 'defaultContent');
+            const files = util.readDirTree(defaultRoot);
+            if (files.length === 0) {
+                throw new CustomError(404, 'Not Found', 'No theme content available to download.');
+            }
+            entries = files.map((f) => ({ path: `${wrapper}/${f.relativePath}`, content: f.content }));
+        }
+        const zipBuffer = util.createZipBuffer(entries);
+        res.setHeader(constants.MIME_TYPES.CONTENT_DISPOSITION,
+            `attachment; filename="theme-${wrapper}.zip"`);
+        res.setHeader(constants.MIME_TYPES.CONYEMT_TYPE, 'application/zip');
+        res.status(200).send(zipBuffer);
+    } catch (error) {
+        logger.error('Export theme failed', { error: error.message, stack: error.stack, orgId, viewName });
         util.handleError(res, error);
     }
 };
@@ -496,6 +545,7 @@ module.exports = {
     getOrgContent,
     applyTheme,
     resetTheme,
+    exportTheme,
     getOrganizations,
     getAllOrganizations,
     getApplicationKeyMap,
