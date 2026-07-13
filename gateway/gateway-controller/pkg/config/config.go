@@ -21,7 +21,6 @@ package config
 import (
 	"fmt"
 	"log/slog"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -533,7 +532,6 @@ type RouterConfig struct {
 	Upstream           RouterUpstream     `koanf:"upstream"`
 	PolicyEngine       PolicyEngineConfig `koanf:"policy_engine"`
 	DownstreamTLS      DownstreamTLS      `koanf:"downstream_tls"`
-	EventGateway       EventGatewayConfig `koanf:"event_gateway"`
 	VHosts             VHostsConfig       `koanf:"vhosts"`
 	TracingServiceName string             `koanf:"tracing_service_name"`
 
@@ -573,16 +571,6 @@ type RouterLuaConfig struct {
 // LuaScriptConfig holds Lua script path configuration.
 type LuaScriptConfig struct {
 	ScriptPath string `koanf:"script_path"`
-}
-
-// EventGatewayConfig holds event gateway specific configurations
-type EventGatewayConfig struct {
-	Enabled               bool   `koanf:"enabled"`
-	WebSubHubURL          string `koanf:"websub_hub_url"`
-	WebSubHubPort         int    `koanf:"websub_hub_port"`
-	RouterHost            string `koanf:"router_host"`
-	WebSubHubListenerPort int    `koanf:"websub_hub_listener_port"`
-	TimeoutSeconds        int    `koanf:"timeout_seconds"`
 }
 
 // DownstreamTLS holds downstream (listener) TLS configuration
@@ -952,14 +940,6 @@ func defaultConfig() *Config {
 			},
 		},
 		Router: RouterConfig{
-			EventGateway: EventGatewayConfig{
-				Enabled:               false,
-				WebSubHubURL:          "http://host.docker.internal",
-				WebSubHubPort:         9098,
-				RouterHost:            "localhost",
-				WebSubHubListenerPort: 8083,
-				TimeoutSeconds:        30,
-			},
 			AccessLogs: AccessLogsConfig{
 				Enabled: true,
 				Format:  "text",
@@ -1424,13 +1404,6 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("event_hub.retention_period must be positive, got: %s", eh.RetentionPeriod)
 	}
 
-	// Validate event gateway configuration if enabled
-	if c.Router.EventGateway.Enabled {
-		if err := c.validateEventGatewayConfig(); err != nil {
-			return err
-		}
-	}
-
 	// Validate control plane configuration
 	if err := c.validateControlPlaneConfig(); err != nil {
 		return err
@@ -1482,29 +1455,6 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func (c *Config) validateEventGatewayConfig() error {
-	if c.Router.EventGateway.WebSubHubPort < 1 || c.Router.EventGateway.WebSubHubPort > 65535 {
-		return fmt.Errorf("router.event_gateway.websub_hub_port must be between 1 and 65535, got: %d", c.Router.EventGateway.WebSubHubPort)
-	}
-	if c.Router.EventGateway.WebSubHubListenerPort < 1 || c.Router.EventGateway.WebSubHubListenerPort > 65535 {
-		return fmt.Errorf("router.event_gateway.websub_hub_listener_port must be between 1 and 65535, got: %d", c.Router.EventGateway.WebSubHubListenerPort)
-	}
-
-	// Validate WebSubHubURL if provided - must be a valid http(s) URL
-	if strings.TrimSpace(c.Router.EventGateway.WebSubHubURL) != "" {
-		u, err := url.Parse(c.Router.EventGateway.WebSubHubURL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-			return fmt.Errorf("router.event_gateway.websub_hub_url must be a valid URL with http or https scheme, got: %s", c.Router.EventGateway.WebSubHubURL)
-		}
-		if u.Host == "" {
-			return fmt.Errorf("router.event_gateway.websub_hub_url must include a valid host, got: %s", c.Router.EventGateway.WebSubHubURL)
-		}
-	}
-	if c.Router.EventGateway.TimeoutSeconds <= 0 {
-		return fmt.Errorf("router.event_gateway.timeout_seconds must be positive, got: %d", c.Router.EventGateway.TimeoutSeconds)
-	}
-	return nil
-}
 
 // validateControlPlaneConfig validates the control plane configuration
 func (c *Config) validateControlPlaneConfig() error {

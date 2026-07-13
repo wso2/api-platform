@@ -56,21 +56,6 @@ func (p *Parser) ParseAPIConfigYAML(data []byte, configParsed interface{}) error
 		}
 		*target = config
 		return nil
-	case *api.WebSubAPI:
-		var config api.WebSubAPI
-		var intermediate map[string]interface{}
-		if err := yaml.Unmarshal(data, &intermediate); err != nil {
-			return fmt.Errorf("failed to unmarshal YAML: %w", err)
-		}
-		jsonBytes, err := json.Marshal(intermediate)
-		if err != nil {
-			return fmt.Errorf("failed to marshal intermediate to JSON: %w", err)
-		}
-		if err := p.ParseJSON(jsonBytes, &config); err != nil {
-			return fmt.Errorf("failed to unmarshal JSON into WebSubAPI: %w", err)
-		}
-		*target = config
-		return nil
 	default:
 		_ = target
 		if err := yaml.Unmarshal(data, target); err != nil {

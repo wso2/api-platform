@@ -379,21 +379,29 @@ func extractConfigDisplayNameVersion(kind string, configuration any) (string, st
 			return "", "", fmt.Errorf("configuration is not a LLMProviderConfiguration (kind: %s)", kind)
 		}
 		return providerCfg.Spec.DisplayName, providerCfg.Spec.Version, nil
-	case models.KindWebSubApi:
-		webSubCfg, ok := configuration.(api.WebSubAPI)
-		if !ok {
-			return "", "", fmt.Errorf("configuration is not a WebSubAPI (kind: %s)", kind)
-		}
-		return webSubCfg.Spec.DisplayName, webSubCfg.Spec.Version, nil
-	case models.KindWebBrokerApi:
-		webBrokerCfg, ok := configuration.(api.WebBrokerApi)
-		if !ok {
-			return "", "", fmt.Errorf("configuration is not a WebBrokerApi (kind: %s)", kind)
-		}
-		return webBrokerCfg.Spec.DisplayName, webBrokerCfg.Spec.Version, nil
 	default:
+		if fn, ok := kindDisplayNameVersionExtractors[kind]; ok {
+			return fn(configuration)
+		}
 		return "", "", fmt.Errorf("unsupported kind for API key operation: '%s'", kind)
 	}
+}
+
+// KindDisplayNameVersionExtractor extracts DisplayName/Version from a
+// configuration of a kind not known to core (e.g. "WebSubApi").
+type KindDisplayNameVersionExtractor func(configuration any) (displayName, version string, err error)
+
+// kindDisplayNameVersionExtractors holds KindDisplayNameVersionExtractor
+// functions for kinds not known to core — registered by an
+// event-gateway-controller binary via RegisterKindDisplayNameVersionExtractor.
+var kindDisplayNameVersionExtractors = map[string]KindDisplayNameVersionExtractor{}
+
+// RegisterKindDisplayNameVersionExtractor registers a display-name/version
+// extractor for a resource kind not known to core. Intended to be called from
+// an init() in a binary that links in support for that kind (e.g.
+// event-gateway-controller).
+func RegisterKindDisplayNameVersionExtractor(resourceKind string, fn KindDisplayNameVersionExtractor) {
+	kindDisplayNameVersionExtractors[resourceKind] = fn
 }
 
 // RevokeAPIKey handles the API key revocation process

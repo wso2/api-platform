@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package handlers
+package handler
 
 import (
 	"fmt"
@@ -26,22 +26,23 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/common/eventhub"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/go-httpkit/httputil"
+
+	eventgateway "github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/api/eventgateway"
 )
 
 // CreateWebBrokerApi handles POST /webbroker-apis
-func (s *APIServer) CreateWebBrokerApi(w http.ResponseWriter, r *http.Request) {
+func (s *WebSubServer) CreateWebBrokerApi(w http.ResponseWriter, r *http.Request) {
 	log := middleware.GetLogger(r, s.logger)
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Error("Failed to read request body", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
 		})
@@ -62,7 +63,7 @@ func (s *APIServer) CreateWebBrokerApi(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Error("Failed to deploy WebBrokerApi configuration", slog.Any("error", err))
 		if storage.IsConflictError(err) {
-			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusConflict, eventgateway.ErrorResponse{
 				Status:  "error",
 				Message: err.Error(),
 			})
@@ -71,7 +72,7 @@ func (s *APIServer) CreateWebBrokerApi(w http.ResponseWriter, r *http.Request) {
 		if mapRenderError(w, "create", err) {
 			return
 		}
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: err.Error(),
 		})
@@ -92,11 +93,11 @@ func (s *APIServer) CreateWebBrokerApi(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListWebBrokerApis handles GET /webbroker-apis
-func (s *APIServer) ListWebBrokerApis(w http.ResponseWriter, r *http.Request, params api.ListWebBrokerApisParams) {
+func (s *WebSubServer) ListWebBrokerApis(w http.ResponseWriter, r *http.Request, params eventgateway.ListWebBrokerApisParams) {
 	configs, err := s.db.GetAllConfigsByKind(string(models.KindWebBrokerApi))
 	if err != nil {
 		s.logger.Error("Failed to list WebBrokerApis", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to list WebBrokerApi configurations",
 		})
@@ -118,7 +119,7 @@ func (s *APIServer) ListWebBrokerApis(w http.ResponseWriter, r *http.Request, pa
 }
 
 // GetWebBrokerApiById handles GET /webbroker-apis/{id}
-func (s *APIServer) GetWebBrokerApiById(w http.ResponseWriter, r *http.Request, id string) {
+func (s *WebSubServer) GetWebBrokerApiById(w http.ResponseWriter, r *http.Request, id string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 
@@ -126,14 +127,14 @@ func (s *APIServer) GetWebBrokerApiById(w http.ResponseWriter, r *http.Request, 
 	if err != nil {
 		if storage.IsDatabaseUnavailableError(err) {
 			log.Error("Database unavailable", slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusServiceUnavailable, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, eventgateway.ErrorResponse{
 				Status:  "error",
 				Message: "Database is temporarily unavailable",
 			})
 			return
 		}
 		log.Warn("WebBrokerApi not found", slog.String("handle", handle))
-		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: "WebBrokerApi not found",
 		})
@@ -144,7 +145,7 @@ func (s *APIServer) GetWebBrokerApiById(w http.ResponseWriter, r *http.Request, 
 }
 
 // DeleteWebBrokerApiById handles DELETE /webbroker-apis/{id}
-func (s *APIServer) DeleteWebBrokerApiById(w http.ResponseWriter, r *http.Request, id string) {
+func (s *WebSubServer) DeleteWebBrokerApiById(w http.ResponseWriter, r *http.Request, id string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 
@@ -152,14 +153,14 @@ func (s *APIServer) DeleteWebBrokerApiById(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		if storage.IsDatabaseUnavailableError(err) {
 			log.Error("Database unavailable", slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusServiceUnavailable, api.ErrorResponse{
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, eventgateway.ErrorResponse{
 				Status:  "error",
 				Message: "Database is temporarily unavailable",
 			})
 			return
 		}
 		log.Warn("WebBrokerApi not found", slog.String("handle", handle))
-		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: "WebBrokerApi not found",
 		})
@@ -170,7 +171,7 @@ func (s *APIServer) DeleteWebBrokerApiById(w http.ResponseWriter, r *http.Reques
 
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		log.Error("Failed to delete WebBrokerApi from database", slog.Any("error", err))
-		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{
+		httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to delete configuration",
 		})
@@ -192,7 +193,7 @@ func (s *APIServer) DeleteWebBrokerApiById(w http.ResponseWriter, r *http.Reques
 
 // CreateWebBrokerAPIKey implements ServerInterface.CreateWebBrokerAPIKey
 // (POST /webbroker-apis/{id}/api-keys)
-func (s *APIServer) CreateWebBrokerAPIKey(w http.ResponseWriter, r *http.Request, id string) {
+func (s *WebSubServer) CreateWebBrokerAPIKey(w http.ResponseWriter, r *http.Request, id string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(r)
@@ -202,20 +203,20 @@ func (s *APIServer) CreateWebBrokerAPIKey(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var request api.APIKeyCreationRequest
+	var request eventgateway.APIKeyCreationRequest
 	if err := s.bindRequestBody(r, &request); err != nil {
 		log.Error("Failed to parse request body for WebBroker API key creation",
 			slog.Any("error", err),
 			slog.String("handle", handle),
 			slog.String("correlation_id", correlationID))
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
 		return
 	}
 
 	params := utils.APIKeyCreationParams{
 		Kind:          models.KindWebBrokerApi,
 		Handle:        handle,
-		Request:       request,
+		Request:       toManagementAPIKeyCreationRequest(request),
 		User:          user,
 		CorrelationID: correlationID,
 		Logger:        log,
@@ -224,12 +225,12 @@ func (s *APIServer) CreateWebBrokerAPIKey(w http.ResponseWriter, r *http.Request
 	result, err := s.apiKeyService.CreateAPIKey(params)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebBroker API '%s' not found", handle)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebBroker API '%s' not found", handle)})
 		} else if storage.IsConflictError(err) {
-			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusConflict, eventgateway.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			log.Error("Failed to create WebBroker API key", slog.String("handle", handle), slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create API key"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Failed to create API key"})
 		}
 		return
 	}
@@ -239,7 +240,7 @@ func (s *APIServer) CreateWebBrokerAPIKey(w http.ResponseWriter, r *http.Request
 
 // ListWebBrokerAPIKeys implements ServerInterface.ListWebBrokerAPIKeys
 // (GET /webbroker-apis/{id}/api-keys)
-func (s *APIServer) ListWebBrokerAPIKeys(w http.ResponseWriter, r *http.Request, id string) {
+func (s *WebSubServer) ListWebBrokerAPIKeys(w http.ResponseWriter, r *http.Request, id string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(r)
@@ -260,10 +261,10 @@ func (s *APIServer) ListWebBrokerAPIKeys(w http.ResponseWriter, r *http.Request,
 	result, err := s.apiKeyService.ListAPIKeys(params)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebBroker API '%s' not found", handle)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebBroker API '%s' not found", handle)})
 		} else {
 			log.Error("Failed to list WebBroker API keys", slog.String("handle", handle), slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to list API keys"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Failed to list API keys"})
 		}
 		return
 	}
@@ -273,7 +274,7 @@ func (s *APIServer) ListWebBrokerAPIKeys(w http.ResponseWriter, r *http.Request,
 
 // RevokeWebBrokerAPIKey implements ServerInterface.RevokeWebBrokerAPIKey
 // (DELETE /webbroker-apis/{id}/api-keys/{apiKeyName})
-func (s *APIServer) RevokeWebBrokerAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+func (s *WebSubServer) RevokeWebBrokerAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(r)
@@ -295,10 +296,10 @@ func (s *APIServer) RevokeWebBrokerAPIKey(w http.ResponseWriter, r *http.Request
 	result, err := s.apiKeyService.RevokeAPIKey(params)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebBroker API '%s' not found", handle)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebBroker API '%s' not found", handle)})
 		} else {
 			log.Error("Failed to revoke WebBroker API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to revoke API key"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Failed to revoke API key"})
 		}
 		return
 	}
@@ -308,7 +309,7 @@ func (s *APIServer) RevokeWebBrokerAPIKey(w http.ResponseWriter, r *http.Request
 
 // UpdateWebBrokerAPIKey implements ServerInterface.UpdateWebBrokerAPIKey
 // (PUT /webbroker-apis/{id}/api-keys/{apiKeyName})
-func (s *APIServer) UpdateWebBrokerAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+func (s *WebSubServer) UpdateWebBrokerAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(r)
@@ -318,14 +319,14 @@ func (s *APIServer) UpdateWebBrokerAPIKey(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var request api.APIKeyCreationRequest
+	var request eventgateway.APIKeyCreationRequest
 	if err := s.bindRequestBody(r, &request); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
 		return
 	}
 
 	if request.ApiKey == nil || strings.TrimSpace(*request.ApiKey) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "apiKey is required"})
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{Status: "error", Message: "apiKey is required"})
 		return
 	}
 
@@ -333,7 +334,7 @@ func (s *APIServer) UpdateWebBrokerAPIKey(w http.ResponseWriter, r *http.Request
 		Kind:          models.KindWebBrokerApi,
 		Handle:        handle,
 		APIKeyName:    apiKeyName,
-		Request:       request,
+		Request:       toManagementAPIKeyCreationRequest(request),
 		User:          user,
 		CorrelationID: correlationID,
 		Logger:        log,
@@ -342,14 +343,14 @@ func (s *APIServer) UpdateWebBrokerAPIKey(w http.ResponseWriter, r *http.Request
 	result, err := s.apiKeyService.UpdateAPIKey(params)
 	if err != nil {
 		if storage.IsOperationNotAllowedError(err) {
-			httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{Status: "error", Message: err.Error()})
 		} else if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebBroker API or API key '%s' not found", apiKeyName)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebBroker API or API key '%s' not found", apiKeyName)})
 		} else if storage.IsConflictError(err) {
-			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+			httputil.WriteJSON(w, http.StatusConflict, eventgateway.ErrorResponse{Status: "error", Message: err.Error()})
 		} else {
 			log.Error("Failed to update WebBroker API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to update API key"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Failed to update API key"})
 		}
 		return
 	}
@@ -359,7 +360,7 @@ func (s *APIServer) UpdateWebBrokerAPIKey(w http.ResponseWriter, r *http.Request
 
 // RegenerateWebBrokerAPIKey implements ServerInterface.RegenerateWebBrokerAPIKey
 // (POST /webbroker-apis/{id}/api-keys/{apiKeyName}/regenerate)
-func (s *APIServer) RegenerateWebBrokerAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
+func (s *WebSubServer) RegenerateWebBrokerAPIKey(w http.ResponseWriter, r *http.Request, id string, apiKeyName string) {
 	log := middleware.GetLogger(r, s.logger)
 	handle := id
 	correlationID := middleware.GetCorrelationID(r)
@@ -369,9 +370,9 @@ func (s *APIServer) RegenerateWebBrokerAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	var request api.APIKeyRegenerationRequest
+	var request eventgateway.APIKeyRegenerationRequest
 	if err := s.bindRequestBody(r, &request); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
+		httputil.WriteJSON(w, http.StatusBadRequest, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("Invalid request body: %v", err)})
 		return
 	}
 
@@ -379,7 +380,7 @@ func (s *APIServer) RegenerateWebBrokerAPIKey(w http.ResponseWriter, r *http.Req
 		Kind:          models.KindWebBrokerApi,
 		Handle:        handle,
 		APIKeyName:    apiKeyName,
-		Request:       request,
+		Request:       toManagementAPIKeyRegenerationRequest(request),
 		User:          user,
 		CorrelationID: correlationID,
 		Logger:        log,
@@ -388,10 +389,10 @@ func (s *APIServer) RegenerateWebBrokerAPIKey(w http.ResponseWriter, r *http.Req
 	result, err := s.apiKeyService.RegenerateAPIKey(params)
 	if err != nil {
 		if storage.IsNotFoundError(err) {
-			httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebBroker API or API key '%s' not found", apiKeyName)})
+			httputil.WriteJSON(w, http.StatusNotFound, eventgateway.ErrorResponse{Status: "error", Message: fmt.Sprintf("WebBroker API or API key '%s' not found", apiKeyName)})
 		} else {
 			log.Error("Failed to regenerate WebBroker API key", slog.String("handle", handle), slog.String("key", apiKeyName), slog.Any("error", err))
-			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to regenerate API key"})
+			httputil.WriteJSON(w, http.StatusInternalServerError, eventgateway.ErrorResponse{Status: "error", Message: "Failed to regenerate API key"})
 		}
 		return
 	}

@@ -47,7 +47,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -109,6 +108,15 @@ type secretSyncer interface {
 	UpsertFromPlatform(handle, displayName, plaintext string) error
 }
 
+// WebhookSecretSnapshotRefresher is the extension point through which an
+// external event-gateway-controller binary supplies webhook-secret xDS
+// snapshot refresh. Core never implements this interface itself; it is only
+// ever satisfied by a webhooksecretxds.SnapshotManager living outside this
+// module.
+type WebhookSecretSnapshotRefresher interface {
+	RefreshSnapshot() error
+}
+
 // Client manages the WebSocket connection to the control plane
 type Client struct {
 	config                       config.ControlPlaneConfig
@@ -143,7 +151,7 @@ type Client struct {
 	syncOnce                     sync.Once   // ensures deployment sync runs only on first connect
 	isFirstConnect               atomic.Bool // true on first connect, flipped to false after
 	webhookSecretStore           *webhooksecret.WebhookSecretStore
-	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager
+	webhookSecretSnapshotManager WebhookSecretSnapshotRefresher
 	secretSyncer                 secretSyncer
 	secretHashCache              sync.Map // handle → last-known Platform API hash (string)
 
@@ -174,7 +182,7 @@ func NewClient(
 	eventHubInstance eventhub.EventHub,
 	secretResolver funcs.SecretResolver,
 	webhookSecretStore *webhooksecret.WebhookSecretStore,
-	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager,
+	webhookSecretSnapshotManager WebhookSecretSnapshotRefresher,
 ) *Client {
 	if db == nil {
 		panic("control plane client requires non-nil storage")

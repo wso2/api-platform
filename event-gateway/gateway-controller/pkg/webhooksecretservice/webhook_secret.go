@@ -16,7 +16,14 @@
  * under the License.
  */
 
-package utils
+// Package webhooksecretservice manages per-API HMAC secrets for the
+// websub-hmac-auth policy. Moved out of gateway-controller (core)
+// pkg/utils/webhook_secret.go — the underlying DB row model
+// (models.WebhookSecret) and storage.Storage CRUD methods stay in core since
+// they are generic storage-layer infrastructure that pkg/storage itself
+// depends on; only this service (encryption + in-memory store sync + event
+// publication, all WebSub-specific) moves.
+package webhooksecretservice
 
 import (
 	"crypto/rand"
@@ -65,7 +72,13 @@ func NewWebhookSecretService(
 	if db == nil {
 		panic("WebhookSecretService requires non-nil storage")
 	}
-	trimmedGatewayID := requireReplicaSyncWiring("WebhookSecretService", eventHub, gatewayID)
+	if eventHub == nil {
+		panic("WebhookSecretService requires non-nil EventHub")
+	}
+	trimmedGatewayID := strings.TrimSpace(gatewayID)
+	if trimmedGatewayID == "" {
+		panic("WebhookSecretService requires non-empty gateway ID")
+	}
 	return &WebhookSecretService{
 		db:              db,
 		providerManager: providerManager,

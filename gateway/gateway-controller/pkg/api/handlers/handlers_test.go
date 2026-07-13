@@ -1072,9 +1072,6 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	routerCfg := &config.RouterConfig{
 		GatewayHost: "localhost",
 		VHosts:      *vhosts,
-		EventGateway: config.EventGatewayConfig{
-			TimeoutSeconds: 10,
-		},
 	}
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	systemCfg := &config.Config{
@@ -3484,27 +3481,6 @@ func BenchmarkListRestAPIs(b *testing.B) {
 }
 
 // Test for WebSubApi kind in buildStoredPolicyFromAPI
-func TestBuildStoredPolicyFromAPIWebSubApi(t *testing.T) {
-	server := createTestAPIServer()
-
-	// Note: WebSubApi requires different data structure than RestApi
-	// The function will return nil if parsing fails
-	apiConfig := api.WebSubAPI{
-		Kind: api.WebSubAPIKindWebSubApi,
-	}
-	cfg := &models.StoredConfig{
-		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.WebSubAPIKindWebSubApi),
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
-		Origin:              models.OriginGatewayAPI,
-	}
-
-	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
-	// Should return nil because the spec can't be parsed as WebhookAPIData without proper setup
-	assert.Nil(t, result)
-}
-
 // Test GetConfigDump with config missing handle
 func TestGetConfigDumpMissingHandle(t *testing.T) {
 	server := createTestAPIServer()
@@ -3738,27 +3714,6 @@ func TestAPIKeyServiceNotConfigured(t *testing.T) {
 }
 
 // Test for WebSubAPI - simplified test
-func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
-	server := createTestAPIServer()
-
-	// WebSubApi requires specific data structure that's complex to mock
-	// Testing that the function handles WebSubApi kind without panicking
-	apiConfig := api.WebSubAPI{
-		Kind: api.WebSubAPIKindWebSubApi,
-	}
-	cfg := &models.StoredConfig{
-		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.WebSubAPIKindWebSubApi),
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
-		Origin:              models.OriginGatewayAPI,
-	}
-
-	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
-	// Should return nil since we don't have valid spec data
-	assert.Nil(t, result)
-}
-
 // Test ListMCPProxies with stored configs that have unmarshal issues
 func TestListMCPProxiesUnmarshalError(t *testing.T) {
 	server := createTestAPIServer()

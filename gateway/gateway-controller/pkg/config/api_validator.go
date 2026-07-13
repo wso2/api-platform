@@ -67,18 +67,11 @@ func (v *APIValidator) Validate(config interface{}) []ValidationError {
 		return v.validateRestAPIConfiguration(cfg)
 	case api.RestAPI:
 		return v.validateRestAPIConfiguration(&cfg)
-	case *api.WebSubAPI:
-		if cfg == nil {
-			return []ValidationError{{Field: "config", Message: "WebSubAPI configuration is nil"}}
-		}
-		return v.validateWebSubAPIConfiguration(cfg)
-	case api.WebSubAPI:
-		return v.validateWebSubAPIConfiguration(&cfg)
 	default:
 		return []ValidationError{
 			{
 				Field:   "config",
-				Message: "Unsupported configuration type for APIValidator (expected RestAPI or WebSubAPI)",
+				Message: "Unsupported configuration type for APIValidator (expected RestAPI)",
 			},
 		}
 	}
@@ -112,35 +105,6 @@ func (v *APIValidator) validateRestAPIConfiguration(config *api.RestAPI) []Valid
 		policyErrors := v.policyValidator.ValidateRestAPIPolicies(config)
 		errors = append(errors, policyErrors...)
 	}
-
-	// Validate metadata (including labels)
-	errors = append(errors, ValidateMetadata(&config.Metadata)...)
-
-	return errors
-}
-
-// validateWebSubAPIConfiguration performs comprehensive validation on a WebSub API configuration
-func (v *APIValidator) validateWebSubAPIConfiguration(config *api.WebSubAPI) []ValidationError {
-	var errors []ValidationError
-
-	// Validate kind
-	if config.Kind != api.WebSubAPIKindWebSubApi {
-		errors = append(errors, ValidationError{
-			Field:   "kind",
-			Message: "Unsupported kind (must be 'WebSubApi')",
-		})
-	}
-
-	// Validate version
-	if config.ApiVersion != api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1 {
-		errors = append(errors, ValidationError{
-			Field:   "version",
-			Message: "Unsupported API version (must be 'gateway.api-platform.wso2.com/v1')",
-		})
-	}
-
-	// Validate data section
-	errors = append(errors, v.validateAsyncData(&config.Spec)...)
 
 	// Validate metadata (including labels)
 	errors = append(errors, ValidateMetadata(&config.Metadata)...)
@@ -488,7 +452,7 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 	}
 
 	// Validate context
-	errors = append(errors, v.validateContext(spec.Context)...)
+	errors = append(errors, v.ValidateContext(spec.Context)...)
 
 	// Validate upstreamDefinitions first
 	errors = append(errors, v.validateUpstreamDefinitions(spec.UpstreamDefinitions)...)
@@ -556,88 +520,11 @@ func validateResilienceTimeouts(fieldPrefix string, r *api.Resilience) []Validat
 	return errors
 }
 
-// validateAsyncData validates the data section of the configuration for http/rest kind
-func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData) []ValidationError {
-	var errors []ValidationError
-
-	// Validate name
-	if spec.DisplayName == "" {
-		errors = append(errors, ValidationError{
-			Field:   "spec.name",
-			Message: "API name is required",
-		})
-	} else if len(spec.DisplayName) > 100 {
-		errors = append(errors, ValidationError{
-			Field:   "spec.name",
-			Message: "API name must be 1-100 characters",
-		})
-	} else if !v.urlFriendlyNameRegex.MatchString(spec.DisplayName) {
-		errors = append(errors, ValidationError{
-			Field:   "spec.name",
-			Message: "API name must be URL-friendly (only letters, numbers, spaces, hyphens, underscores, and dots allowed)",
-		})
-	}
-
-	// Validate version
-	if spec.Version == "" {
-		errors = append(errors, ValidationError{
-			Field:   "spec.version",
-			Message: "API version is required",
-		})
-	} else if !v.versionRegex.MatchString(spec.Version) {
-		errors = append(errors, ValidationError{
-			Field:   "spec.version",
-			Message: "API version must follow semantic versioning pattern (e.g., v1.0, v2.1.3)",
-		})
-	}
-
-	// Validate context
-	errors = append(errors, v.validateContext(spec.Context)...)
-
-	// Validate channel policies
-	var channels map[string]api.WebSubChannel
-	if spec.Channels != nil {
-		channels = *spec.Channels
-	}
-	errors = append(errors, v.validateChannelPolicies(channels)...)
-
-	return errors
-}
-
-// validateChannelPolicies validates the channels map configuration
-func (v *APIValidator) validateChannelPolicies(channelPolicies map[string]api.WebSubChannel) []ValidationError {
-	var errors []ValidationError
-
-	if len(channelPolicies) == 0 {
-		errors = append(errors, ValidationError{
-			Field:   "spec.channels",
-			Message: "At least one channel is required",
-		})
-		return errors
-	}
-
-	for chName := range channelPolicies {
-		if strings.TrimSpace(chName) == "" {
-			errors = append(errors, ValidationError{
-				Field:   "spec.channels",
-				Message: "Channel name (key) must not be empty",
-			})
-			continue
-		}
-
-		if !v.validatePathParametersForAsyncAPIs(chName) {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.channels.%s", chName),
-				Message: "Channel name has {} in parameters",
-			})
-		}
-	}
-
-	return errors
-}
-
 // validateContext validates the context path
-func (v *APIValidator) validateContext(context string) []ValidationError {
+// ValidateContext validates a resource's context path. Exported so it can be
+// reused by other kinds' validators (e.g. an event-gateway-controller binary
+// validating WebSubApi/WebBrokerApi configs).
+func (v *APIValidator) ValidateContext(context string) []ValidationError {
 	var errors []ValidationError
 
 	if context == "" {
@@ -670,15 +557,6 @@ func (v *APIValidator) validateContext(context string) []ValidationError {
 	}
 
 	return errors
-}
-
-// validatePathParametersForAsyncAPIs returns true when the path does not contain '{' or '}'.
-// Async/WebSub channel paths do not currently support templated path parameters.
-func (v *APIValidator) validatePathParametersForAsyncAPIs(path string) bool {
-
-	openCount := strings.Count(path, "{")
-	closeCount := strings.Count(path, "}")
-	return openCount == 0 && closeCount == 0
 }
 
 // validateOperations validates the operations configuration
