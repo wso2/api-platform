@@ -37,6 +37,7 @@ type WebBrokerAPI struct {
 	UpdatedAt        time.Time                 `json:"updatedAt" db:"-"`
 	Configuration    WebBrokerAPIConfiguration `json:"configuration" db:"-"`
 	Origin           string                    `json:"origin,omitempty" db:"origin"`
+	DataVersion      string                    `json:"dataVersion,omitempty" db:"data_version"`
 }
 
 // WebBrokerAPIConfiguration holds the WebBroker API configuration stored as JSON in the DB

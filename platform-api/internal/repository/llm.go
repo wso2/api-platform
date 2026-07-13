@@ -27,6 +27,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
@@ -779,16 +780,20 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 		origin = constants.OriginCP
 	}
 
+	if p.DataVersion == "" {
+		p.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.LLMProvider, constants.GatewayApiVersion))
+	}
+
 	// Insert into llm_providers table (handle/name/version/timestamps now live here)
 	query := `
 		INSERT INTO llm_providers (
 			uuid, handle, display_name, version, description, created_by, template_uuid, openapi_spec, model_list,
-		                           configuration, origin, created_at, updated_at, organization_uuid
+		                           configuration, origin, data_version, created_at, updated_at, organization_uuid
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
 		p.UUID, p.ID, p.Name, p.Version, p.Description, p.CreatedBy, p.TemplateUUID,
-		[]byte(p.OpenAPISpec), modelProvidersJSON, configurationJSON, origin, p.CreatedAt, p.UpdatedAt,
+		[]byte(p.OpenAPISpec), modelProvidersJSON, configurationJSON, origin, p.DataVersion, p.CreatedAt, p.UpdatedAt,
 		p.OrganizationUUID,
 	)
 	if err != nil {
@@ -813,7 +818,7 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvider, error) {
 	query := `
 		SELECT
-			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
 			description, created_by, template_uuid, openapi_spec, model_list, configuration
 		FROM llm_providers
 		WHERE handle = ? AND organization_uuid = ?`
@@ -824,7 +829,7 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 	var openAPISpec, modelProvidersRaw []byte
 	var configurationJSON []byte
 	if err := row.Scan(
-		&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
+		&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
 		&p.Description, &createdBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -872,7 +877,7 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 	args := append([]any{orgUUID}, pageArgs...)
 	query := `
 		SELECT
-			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
 			description, created_by, template_uuid, openapi_spec, model_list, configuration
 		FROM llm_providers
 		WHERE organization_uuid = ?
@@ -891,7 +896,7 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 		var openAPISpec, modelProvidersRaw []byte
 		var configurationJSON []byte
 		err := rows.Scan(
-			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
+			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
 			&p.Description, &createdBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
 		)
 		if err != nil {
@@ -954,13 +959,17 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 		return err
 	}
 
+	if p.DataVersion == "" {
+		p.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.LLMProvider, constants.GatewayApiVersion))
+	}
+
 	// Update llm_providers table (name/version/updated_at now live here)
 	query = `
 		UPDATE llm_providers
-		SET display_name = ?, version = ?, description = ?, template_uuid = ?, openapi_spec = ?, model_list = ?, configuration = ?, updated_by = ?, updated_at = ?
+		SET display_name = ?, version = ?, description = ?, template_uuid = ?, openapi_spec = ?, model_list = ?, configuration = ?, data_version = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
-		p.Name, p.Version, p.Description, p.TemplateUUID, []byte(p.OpenAPISpec), modelProvidersJSON, configurationJSON, p.UpdatedBy, now,
+		p.Name, p.Version, p.Description, p.TemplateUUID, []byte(p.OpenAPISpec), modelProvidersJSON, configurationJSON, p.DataVersion, p.UpdatedBy, now,
 		providerUUID,
 	)
 	if err != nil {
@@ -1078,16 +1087,20 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 		origin = constants.OriginCP
 	}
 
+	if p.DataVersion == "" {
+		p.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.LLMProxy, constants.GatewayApiVersion))
+	}
+
 	// Insert into llm_proxies table (handle/name/version/timestamps now live here)
 	query := `
 		INSERT INTO llm_proxies (
 			uuid, handle, display_name, version, project_uuid, description, created_by, provider_uuid, openapi_spec,
-		                         configuration, origin, created_at, updated_at, organization_uuid
+		                         configuration, origin, data_version, created_at, updated_at, organization_uuid
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
 		p.UUID, p.ID, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, p.ProviderUUID,
-		[]byte(p.OpenAPISpec), configurationJSON, origin, p.CreatedAt, p.UpdatedAt,
+		[]byte(p.OpenAPISpec), configurationJSON, origin, p.DataVersion, p.CreatedAt, p.UpdatedAt,
 		p.OrganizationUUID,
 	)
 	if err != nil {
@@ -1112,7 +1125,7 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error) {
 	query := `
 		SELECT
-			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
 			project_uuid, description, created_by, provider_uuid, openapi_spec, configuration
 		FROM llm_proxies
 		WHERE handle = ? AND organization_uuid = ?`
@@ -1122,7 +1135,7 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 	var createdBy sql.NullString
 	var openAPISpec, configurationJSON []byte
 	if err := row.Scan(
-		&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
+		&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
 		&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
 		&openAPISpec, &configurationJSON,
 	); err != nil {
@@ -1158,7 +1171,7 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 	args := append([]any{orgUUID}, pageArgs...)
 	query := `
 		SELECT
-			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
 			project_uuid, description, created_by, provider_uuid,
 			openapi_spec, configuration
 		FROM llm_proxies
@@ -1177,7 +1190,7 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 		var createdBy sql.NullString
 		var openAPISpec, configurationJSON []byte
 		err := rows.Scan(
-			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
+			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
 			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
 			&openAPISpec, &configurationJSON,
 		)
@@ -1205,7 +1218,7 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 	args := append([]any{orgUUID, projectUUID}, pageArgs...)
 	query := `
 		SELECT
-			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
 			project_uuid, description, created_by, provider_uuid,
 			openapi_spec, configuration
 		FROM llm_proxies
@@ -1224,7 +1237,7 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 		var createdBy sql.NullString
 		var openAPISpec, configurationJSON []byte
 		err := rows.Scan(
-			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
+			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
 			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
 			&openAPISpec, &configurationJSON,
 		)
@@ -1252,7 +1265,7 @@ func (r *LLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offse
 	args := append([]any{orgUUID, providerUUID}, pageArgs...)
 	query := `
 		SELECT
-			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
 			project_uuid, description, created_by, provider_uuid,
 			openapi_spec, configuration
 		FROM llm_proxies
@@ -1271,7 +1284,7 @@ func (r *LLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offse
 		var createdBy sql.NullString
 		var openAPISpec, configurationJSON []byte
 		err := rows.Scan(
-			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
+			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
 			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
 			&openAPISpec, &configurationJSON,
 		)
@@ -1349,15 +1362,19 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 		return err
 	}
 
+	if p.DataVersion == "" {
+		p.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.LLMProxy, constants.GatewayApiVersion))
+	}
+
 	// Update llm_proxies table (name/version/updated_at now live here)
 	query = `
 		UPDATE llm_proxies
 		SET display_name = ?, version = ?, description = ?, provider_uuid = ?,
-			openapi_spec = ?, configuration = ?, updated_by = ?, updated_at = ?
+			openapi_spec = ?, configuration = ?, data_version = ?, updated_by = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
 		p.Name, p.Version, p.Description, p.ProviderUUID,
-		[]byte(p.OpenAPISpec), configurationJSON, p.UpdatedBy, now,
+		[]byte(p.OpenAPISpec), configurationJSON, p.DataVersion, p.UpdatedBy, now,
 		proxyUUID,
 	)
 	if err != nil {

@@ -15,22 +15,17 @@
  *
  */
 
-package deploymenttransform
+package gatewaytranslator
 
 import (
 	"strconv"
 	"strings"
 )
 
-// MinSplitPoliciesVersion is the first gateway release that understands
-// globalPolicies/operationPolicies. Use this constant in tests and call sites
-// instead of a raw string literal so a future version-boundary change is a
-// one-place edit.
-const MinSplitPoliciesVersion = "1.2.0"
-
-// Version is a parsed, comparable gateway semver. Empty or unparseable version
-// strings are treated as 1.0.0 — the implicit version for gateways that predate
-// version reporting.
+// Version is a parsed, comparable gateway semver — the "gateway target
+// version" the deploy orchestration layer resolves from a gateway record.
+// Empty or unparseable version strings are treated as 1.0.0 — the implicit
+// version for gateways that predate version reporting.
 type Version struct {
 	Major, Minor, Patch int
 }
@@ -62,8 +57,8 @@ func ParseVersion(s string) Version {
 	return Version{major, minor, patch}
 }
 
-// GTE reports whether v is greater than or equal to o.
-func (v Version) GTE(o Version) bool {
+// AtLeast reports whether v is greater than or equal to o.
+func (v Version) AtLeast(o Version) bool {
 	if v.Major != o.Major {
 		return v.Major > o.Major
 	}
@@ -71,4 +66,9 @@ func (v Version) GTE(o Version) bool {
 		return v.Minor > o.Minor
 	}
 	return v.Patch >= o.Patch
+}
+
+// Below reports whether v is strictly older than o.
+func (v Version) Below(o Version) bool {
+	return !v.AtLeast(o)
 }

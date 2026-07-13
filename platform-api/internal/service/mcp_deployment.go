@@ -29,6 +29,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -264,6 +265,11 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		if endpointURL != nil {
 			d.Spec.Upstream.URL = *endpointURL
 			s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
+		}
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(mcpProxy.DataVersion)
+		targetDataVersion := gatewaytranslator.TargetGatewayDataVersion(gatewaytranslator.ParseVersion(gateway.Version))
+		if err := gatewaytranslator.Translate(constants.MCPProxy, sourceDataVersion, targetDataVersion, d); err != nil {
+			return nil, fmt.Errorf("failed to transform MCP proxy deployment for gateway %s: %w", gateway.Version, err)
 		}
 		contentBytes, err = yaml.Marshal(d)
 		if err != nil {

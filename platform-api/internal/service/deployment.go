@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -245,6 +246,11 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 			return nil, fmt.Errorf("failed to build API deployment YAML: %w", err)
 		}
 		applyStructOverrides(apiDeployment, endpointURL, vhostMain, vhostSandbox)
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(apiModel.DataVersion)
+		targetDataVersion := gatewaytranslator.TargetGatewayDataVersion(gatewaytranslator.ParseVersion(gateway.Version))
+		if err := gatewaytranslator.Translate(apiModel.Kind, sourceDataVersion, targetDataVersion, apiDeployment); err != nil {
+			return nil, fmt.Errorf("failed to transform API deployment for gateway %s: %w", gateway.Version, err)
+		}
 		contentBytes, err = yaml.Marshal(apiDeployment)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal API deployment YAML: %w", err)

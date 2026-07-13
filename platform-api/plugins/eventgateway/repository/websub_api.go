@@ -28,6 +28,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	corerepo "github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -80,15 +81,19 @@ func (r *WebSubAPIRepo) Create(a *model.WebSubAPI) error {
 		origin = constants.OriginCP
 	}
 
+	if a.DataVersion == "" {
+		a.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.WebSubApi, constants.GatewayApiVersion))
+	}
+
 	// Insert into websub_apis table
 	query := `
 		INSERT INTO websub_apis (
-			uuid, organization_uuid, handle, display_name, version, project_uuid, description, created_by, lifecycle_status, configuration, origin, created_at, updated_at
+			uuid, organization_uuid, handle, display_name, version, project_uuid, description, created_by, lifecycle_status, configuration, origin, data_version, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
 		a.UUID, a.OrganizationUUID, a.Handle, a.Name, a.Version, a.ProjectUUID, a.Description, a.CreatedBy, a.LifeCycleStatus,
-		configurationJSON, origin, a.CreatedAt, a.UpdatedAt,
+		configurationJSON, origin, a.DataVersion, a.CreatedAt, a.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create WebSub API: %w", err)
@@ -105,7 +110,7 @@ func (r *WebSubAPIRepo) GetByHandle(handle, orgUUID string) (*model.WebSubAPI, e
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
-			project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+			project_uuid, description, created_by, updated_by, lifecycle_status, configuration, data_version
 		FROM websub_apis
 		WHERE handle = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), handle, orgUUID)
@@ -117,7 +122,7 @@ func (r *WebSubAPIRepo) GetByUUID(uuid, orgUUID string) (*model.WebSubAPI, error
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
-			project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+			project_uuid, description, created_by, updated_by, lifecycle_status, configuration, data_version
 		FROM websub_apis
 		WHERE uuid = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), uuid, orgUUID)
@@ -134,7 +139,7 @@ func (r *WebSubAPIRepo) List(orgUUID, projectUUID string, limit, offset int) ([]
 		query = `
 			SELECT
 				uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
-				project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+				project_uuid, description, created_by, updated_by, lifecycle_status, configuration, data_version
 			FROM websub_apis
 			WHERE organization_uuid = ? AND project_uuid = ?
 			ORDER BY created_at DESC
@@ -144,7 +149,7 @@ func (r *WebSubAPIRepo) List(orgUUID, projectUUID string, limit, offset int) ([]
 		query = `
 			SELECT
 				uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
-				project_uuid, description, created_by, updated_by, lifecycle_status, configuration
+				project_uuid, description, created_by, updated_by, lifecycle_status, configuration, data_version
 			FROM websub_apis
 			WHERE organization_uuid = ?
 			ORDER BY created_at DESC
@@ -215,13 +220,17 @@ func (r *WebSubAPIRepo) Update(a *model.WebSubAPI) error {
 		return err
 	}
 
+	if a.DataVersion == "" {
+		a.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.WebSubApi, constants.GatewayApiVersion))
+	}
+
 	// Update websub_apis table (name/version/updated_at now live here)
 	query = `
 		UPDATE websub_apis
-		SET display_name = ?, version = ?, description = ?, lifecycle_status = ?, configuration = ?, updated_by = ?, updated_at = ?
+		SET display_name = ?, version = ?, description = ?, lifecycle_status = ?, configuration = ?, updated_by = ?, data_version = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
-		a.Name, a.Version, a.Description, a.LifeCycleStatus, configurationJSON, a.UpdatedBy, now,
+		a.Name, a.Version, a.Description, a.LifeCycleStatus, configurationJSON, a.UpdatedBy, a.DataVersion, now,
 		apiUUID,
 	)
 	if err != nil {
@@ -289,7 +298,7 @@ func (r *WebSubAPIRepo) scanWebSubAPI(row *sql.Row) (*model.WebSubAPI, error) {
 	var configurationJSON []byte
 	if err := row.Scan(
 		&a.UUID, &a.Handle, &a.Name, &a.Version, &a.OrganizationUUID, &a.Origin, &a.CreatedAt, &a.UpdatedAt,
-		&a.ProjectUUID, &a.Description, &createdBy, &updatedBy, &a.LifeCycleStatus, &configurationJSON,
+		&a.ProjectUUID, &a.Description, &createdBy, &updatedBy, &a.LifeCycleStatus, &configurationJSON, &a.DataVersion,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -315,7 +324,7 @@ func (r *WebSubAPIRepo) scanWebSubAPIFromRows(rows *sql.Rows) (*model.WebSubAPI,
 	var configurationJSON []byte
 	if err := rows.Scan(
 		&a.UUID, &a.Handle, &a.Name, &a.Version, &a.OrganizationUUID, &a.Origin, &a.CreatedAt, &a.UpdatedAt,
-		&a.ProjectUUID, &a.Description, &createdBy, &updatedBy, &a.LifeCycleStatus, &configurationJSON,
+		&a.ProjectUUID, &a.Description, &createdBy, &updatedBy, &a.LifeCycleStatus, &configurationJSON, &a.DataVersion,
 	); err != nil {
 		return nil, err
 	}
