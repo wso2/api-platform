@@ -19,6 +19,7 @@
 import { Alert, Button } from '@wso2/oxygen-ui';
 import { LogOut, RefreshCcw } from '@wso2/oxygen-ui-icons-react';
 import { forceLogoutAndRedirect } from '../../auth/logout';
+import { getErrorMessage as getShortErrorMessage, getTrackingId } from '../../utils/apiError';
 
 /**
  * Extract HTTP status code from various error shapes:
@@ -41,24 +42,6 @@ function getHttpStatusCode(error?: Error | null): number | null {
   return null;
 }
 
-function getErrorMessage(error?: Error | null): string {
-  if (!error) return 'Something went wrong.';
-
-  const status = getHttpStatusCode(error);
-
-  if (status !== null && status >= 400) {
-    return 'Something went wrong.';
-  }
-
-  const description = (error as any)?.response?.data?.description;
-  if (description) return description;
-
-  const dataMessage = (error as any)?.response?.data?.message;
-  if (dataMessage) return dataMessage;
-
-  return error.message || 'Something went wrong.';
-}
-
 interface ErrorAlertProps {
   error?: Error | null;
   onRetry: () => void;
@@ -66,7 +49,8 @@ interface ErrorAlertProps {
 
 export default function ErrorAlert({ error, onRetry }: ErrorAlertProps) {
   const status = getHttpStatusCode(error);
-  const isServerOrClientError = status !== null && status >= 400;
+  const isServerError = status !== null && status >= 500;
+  const isClientOrServerError = status !== null && status >= 400;
 
   // A 401 means the session is expired/invalid — retrying re-fires the same
   // doomed request (the spinner never resolves). Offer a logout that clears the
@@ -91,7 +75,15 @@ export default function ErrorAlert({ error, onRetry }: ErrorAlertProps) {
     );
   }
 
-  if (isServerOrClientError) {
+  if (isClientOrServerError) {
+    // 5xx: don't surface the (possibly unhelpful) backend message — show a
+    // generic notice with the trackingId so the user can quote it to support.
+    // 4xx: the backend message is short, user-facing, and safe to show as-is.
+    const trackingId = getTrackingId(error);
+    const message = isServerError
+      ? 'Something went wrong.'
+      : getShortErrorMessage(error, 'Something went wrong.');
+
     return (
       <Alert
         severity="error"
@@ -106,14 +98,20 @@ export default function ErrorAlert({ error, onRetry }: ErrorAlertProps) {
           </Button>
         }
       >
-        Something went wrong.
+        {message}
+        {trackingId && (
+          <>
+            {' '}
+            <em>(Reference ID: {trackingId})</em>
+          </>
+        )}
       </Alert>
     );
   }
 
   return (
     <Alert severity="error">
-      {getErrorMessage(error)}
+      {getShortErrorMessage(error)}
     </Alert>
   );
 }

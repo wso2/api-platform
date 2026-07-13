@@ -16,8 +16,9 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// POST/GET/PUT/DELETE /key-managers. type must be one of
-// ASGARDEO | WSO2IS | KEYCLOAK | GENERIC_OIDC (KeyManagerRequest schema).
+// POST/GET/PUT/DELETE /key-managers. Every key manager is a generic OAuth2
+// client_credentials OIDC provider (type is fixed server-side at GENERIC_OIDC
+// and is not client-configurable).
 // Body accepts YAML or JSON per the handler; keep the fixture JSON-only.
 // `admin` manages org-level integration config.
 
@@ -29,23 +30,22 @@ describe('key managers', () => {
         await client.login('admin');
     });
 
-    it('creates a key manager (type: ASGARDEO) with a token endpoint', async () => {
+    it('creates a key manager with a token endpoint', async () => {
         const id = uniqueHandle('km');
         const res = await client.as('admin').post('/key-managers', {
             id,
-            displayName: 'Test Asgardeo KM',
-            type: 'ASGARDEO',
+            displayName: 'Test KM',
             tokenEndpoint: 'https://asgardeo.example.invalid/oauth2/token',
         });
         expect(res.status).toBe(201);
         expect(res.body.id).toBe(id);
-        expect(res.body.type).toBe('ASGARDEO');
+        expect(res.body.type).toBe('GENERIC_OIDC');
     });
 
     it('retrieves a key manager', async () => {
         const id = uniqueHandle('km');
         await client.as('admin').post('/key-managers', {
-            id, displayName: 'Test KM', type: 'ASGARDEO', tokenEndpoint: 'https://asgardeo.example.invalid/oauth2/token',
+            id, displayName: 'Test KM', tokenEndpoint: 'https://asgardeo.example.invalid/oauth2/token',
         });
 
         const res = await client.as('admin').get(`/key-managers/${id}`);
@@ -56,7 +56,7 @@ describe('key managers', () => {
     it('updates a key manager', async () => {
         const id = uniqueHandle('km');
         await client.as('admin').post('/key-managers', {
-            id, displayName: 'Original KM', type: 'ASGARDEO', tokenEndpoint: 'https://asgardeo.example.invalid/oauth2/token',
+            id, displayName: 'Original KM', tokenEndpoint: 'https://asgardeo.example.invalid/oauth2/token',
         });
 
         const res = await client.as('admin').put(`/key-managers/${id}`, { displayName: 'Renamed KM' });
@@ -67,7 +67,7 @@ describe('key managers', () => {
     it('deletes a key manager', async () => {
         const id = uniqueHandle('km');
         await client.as('admin').post('/key-managers', {
-            id, displayName: 'To Delete', type: 'ASGARDEO', tokenEndpoint: 'https://asgardeo.example.invalid/oauth2/token',
+            id, displayName: 'To Delete', tokenEndpoint: 'https://asgardeo.example.invalid/oauth2/token',
         });
 
         const del = await client.as('admin').del(`/key-managers/${id}`);
@@ -80,7 +80,7 @@ describe('key managers', () => {
     it('lists key managers for an org', async () => {
         const id = uniqueHandle('km');
         await client.as('admin').post('/key-managers', {
-            id, displayName: 'Listed KM', type: 'ASGARDEO', tokenEndpoint: 'https://asgardeo.example.invalid/oauth2/token',
+            id, displayName: 'Listed KM', tokenEndpoint: 'https://asgardeo.example.invalid/oauth2/token',
         });
 
         const res = await client.as('admin').get('/key-managers');
@@ -88,13 +88,13 @@ describe('key managers', () => {
         expect(res.body.list.some((km) => km.id === id)).toBe(true);
     });
 
-    it('rejects an unsupported type value', async () => {
+    it('every created key manager is GENERIC_OIDC by default', async () => {
         const res = await client.as('admin').post('/key-managers', {
             id: uniqueHandle('km'),
-            displayName: 'Bad Type KM',
-            type: 'NOT_A_REAL_TYPE',
+            displayName: 'Default Type KM',
             tokenEndpoint: 'https://asgardeo.example.invalid/oauth2/token',
         });
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(201);
+        expect(res.body.type).toBe('GENERIC_OIDC');
     });
 });

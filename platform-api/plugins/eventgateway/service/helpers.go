@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -39,11 +40,13 @@ func isSQLiteUniqueConstraint(err error) bool {
 	return strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
-// ensureOriginMutable returns ErrArtifactReadOnly when the artifact originated from
-// a data-plane gateway. DP artifacts are read-only in the control plane.
+// ensureOriginMutable returns an ARTIFACT_READ_ONLY error when the artifact
+// originated from a data-plane gateway. DP artifacts are read-only in the
+// control plane.
 func ensureOriginMutable(origin string) error {
 	if origin == constants.OriginDP {
-		return constants.ErrArtifactReadOnly
+		return apperror.ArtifactReadOnly.New(
+			"This artifact is read-only because it originated from a data-plane gateway.")
 	}
 	return nil
 }

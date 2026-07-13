@@ -61,6 +61,7 @@ import {
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { FormattedMessage } from 'react-intl';
 import NoProjects from '../../../../assets/images/NoProjects.svg';
+import { getErrorMessage } from '../../../../utils/apiError';
 
 
 function ProjectListViewInner() {
@@ -129,11 +130,7 @@ function ProjectListViewInner() {
       await deleteProject(deleteTargetId);
       showSnackbar('Project deleted successfully.', 'success');
     } catch (err: unknown) {
-      const msg =
-        (err as any)?.response?.data?.description ||
-        (err as any)?.response?.data?.message ||
-        (err instanceof Error ? err.message : null) ||
-        'Failed to delete project.';
+      const msg = getErrorMessage(err, 'Failed to delete project.');
       showSnackbar(msg, 'error');
     } finally {
       setIsDeleting(false);

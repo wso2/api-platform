@@ -60,17 +60,23 @@ type Server struct {
 // session store, the file-based authenticator, and (when enabled) the OIDC
 // authenticator — discovering the IDP endpoints up front.
 func New(ctx context.Context, cfg *config.Config) (*Server, error) {
-	target, err := url.Parse(cfg.PlatformAPIURL)
+	target, err := url.Parse(cfg.PlatformAPI.URL)
 	if err != nil {
 		return nil, err
 	}
 
-	transport := proxy.NewTransport(cfg.PlatformTLSSkipVerify)
+	transport, err := proxy.NewTransport(proxy.TLSClientOptions{
+		CAFile:     cfg.PlatformAPI.CAFile,
+		SkipVerify: cfg.PlatformAPI.TLSSkipVerify,
+	})
+	if err != nil {
+		return nil, err
+	}
 	upstream := &http.Client{Transport: transport, Timeout: 60 * time.Second}
 
 	s := &Server{
 		cfg:          cfg,
-		fileBased:    auth.NewFileBased(upstream, cfg.PlatformAPIURL, cfg.PlatformLoginPath, cfg.Session.AbsoluteTTL),
+		fileBased:    auth.NewFileBased(upstream, cfg.PlatformAPI.URL, cfg.PlatformAPI.LoginPath, cfg.Session.AbsoluteTTL),
 		proxy:        proxy.ReverseProxy(target, cfg.ProxyPrefix, transport),
 		refreshLocks: make(map[string]*refreshLock),
 	}

@@ -39,6 +39,14 @@ const (
 	// Must match the gateway-controller constant
 	UpstreamDefinitionClusterPrefix = "upstream_"
 
+	// CurrentUpstreamKey is the dynamic metadata key for the request's current effective
+	// upstream (an UpstreamInfo object: cluster_name/url/base_path). Always present —
+	// starts as the route's compiled-in default and is overwritten in place whenever a
+	// dynamic-routing policy (UpstreamName) redirects the request, so
+	// downstream consumers (Lua filter, analytics, response-phase processing) always see
+	// the request's actual destination.
+	CurrentUpstreamKey = "current_upstream"
+
 	// Policy Engine Socket Path (matches gateway-controller constant)
 	DefaultPolicyEngineSocketPath = "/var/run/api-platform/policy-engine.sock"
 

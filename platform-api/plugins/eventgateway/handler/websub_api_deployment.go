@@ -21,16 +21,15 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 	egservice "github.com/wso2/api-platform/platform-api/plugins/eventgateway/service"
 
 	"github.com/wso2/go-httpkit/httputil"
@@ -66,32 +65,32 @@ func (h *WebSubAPIDeploymentHandler) RegisterRoutes(mux *http.ServeMux) {
 func (h *WebSubAPIDeploymentHandler) DeployWebSubAPI(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, apperror.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
 	apiId := r.PathValue("webSubApiId")
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "API ID is required"))
 		return
 	}
 
 	var req api.DeployRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}
 
 	if req.Name == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "name is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "name is required"))
 		return
 	}
 	if req.Base == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "base is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "base is required"))
 		return
 	}
 	if strings.TrimSpace(req.GatewayId) == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
 		return
 	}
 
@@ -101,9 +100,6 @@ func (h *WebSubAPIDeploymentHandler) DeployWebSubAPI(w http.ResponseWriter, r *h
 	}
 	deployment, err := h.websubAPIDeploymentService.DeployWebSubAPIByHandle(apiId, &req, orgId, createdBy)
 	if err != nil {
-		if respondArtifactGuardError(w, err) {
-			return
-		}
 		h.handleDeploymentError(w, err, apiId)
 		return
 	}
@@ -115,7 +111,7 @@ func (h *WebSubAPIDeploymentHandler) DeployWebSubAPI(w http.ResponseWriter, r *h
 func (h *WebSubAPIDeploymentHandler) UndeployDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, apperror.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
@@ -123,19 +119,16 @@ func (h *WebSubAPIDeploymentHandler) UndeployDeployment(w http.ResponseWriter, r
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "deploymentId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "deploymentId is required"))
 		return
 	}
 	if gatewayId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
 		return
 	}
 
 	deployment, err := h.websubAPIDeploymentService.UndeployWebSubAPIDeploymentByHandle(apiId, deploymentId, gatewayId, orgId)
 	if err != nil {
-		if respondArtifactGuardError(w, err) {
-			return
-		}
 		h.handleDeploymentError(w, err, apiId)
 		return
 	}
@@ -147,7 +140,7 @@ func (h *WebSubAPIDeploymentHandler) UndeployDeployment(w http.ResponseWriter, r
 func (h *WebSubAPIDeploymentHandler) RestoreDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, apperror.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
@@ -155,19 +148,16 @@ func (h *WebSubAPIDeploymentHandler) RestoreDeployment(w http.ResponseWriter, r 
 	deploymentId := r.PathValue("deploymentId")
 	gatewayId := r.URL.Query().Get("gatewayId")
 	if deploymentId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "deploymentId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "deploymentId is required"))
 		return
 	}
 	if gatewayId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "gatewayId is required"))
 		return
 	}
 
 	deployment, err := h.websubAPIDeploymentService.RestoreWebSubAPIDeploymentByHandle(apiId, deploymentId, gatewayId, orgId)
 	if err != nil {
-		if respondArtifactGuardError(w, err) {
-			return
-		}
 		h.handleDeploymentError(w, err, apiId)
 		return
 	}
@@ -179,13 +169,13 @@ func (h *WebSubAPIDeploymentHandler) RestoreDeployment(w http.ResponseWriter, r 
 func (h *WebSubAPIDeploymentHandler) GetDeployments(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, apperror.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
 	apiId := r.PathValue("webSubApiId")
 	if apiId == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "API ID is required"))
 		return
 	}
 
@@ -220,7 +210,7 @@ func (h *WebSubAPIDeploymentHandler) GetDeployments(w http.ResponseWriter, r *ht
 func (h *WebSubAPIDeploymentHandler) GetDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, apperror.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
@@ -240,7 +230,7 @@ func (h *WebSubAPIDeploymentHandler) GetDeployment(w http.ResponseWriter, r *htt
 func (h *WebSubAPIDeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *http.Request) {
 	orgId, exists := middleware.GetOrganizationFromRequest(r)
 	if !exists {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, apperror.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
@@ -256,29 +246,12 @@ func (h *WebSubAPIDeploymentHandler) DeleteDeployment(w http.ResponseWriter, r *
 }
 
 func (h *WebSubAPIDeploymentHandler) handleDeploymentError(w http.ResponseWriter, err error, apiId string) {
-	switch {
-	case errors.Is(err, constants.ErrWebSubAPINotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebSub API not found"))
-	case errors.Is(err, constants.ErrGatewayNotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Gateway not found"))
-	case errors.Is(err, constants.ErrDeploymentNotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Deployment not found"))
-	case errors.Is(err, constants.ErrBaseDeploymentNotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Base deployment not found"))
-	case errors.Is(err, constants.ErrDeploymentNotActive):
-		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "No active deployment found for this API on the gateway"))
-	case errors.Is(err, constants.ErrDeploymentIsDeployed):
-		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Cannot delete an active deployment - undeploy it first"))
-	case errors.Is(err, constants.ErrDeploymentAlreadyDeployed):
-		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Cannot restore currently deployed deployment"))
-	case errors.Is(err, constants.ErrInvalidDeploymentRestoreState):
-		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Deployment cannot be restored: only ARCHIVED or UNDEPLOYED deployments are eligible"))
-	case errors.Is(err, constants.ErrGatewayIDMismatch):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Deployment is bound to a different gateway"))
-	case errors.Is(err, constants.ErrAPINoBackendServices):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API must have at least one backend service configured"))
-	default:
-		h.slogger.Error("WebSub API deployment error", "apiId", apiId, "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
+	// Deployment conditions (gateway/deployment not found, restore conflicts,
+	// gateway mismatch, validation failures) are catalog errors raised by the
+	// service and already carry status, code, and a sterile client message.
+	if respondCatalogError(w, h.slogger, err) {
+		return
 	}
+	h.slogger.Error("WebSub API deployment error", "apiId", apiId, "error", err)
+	httputil.WriteJSON(w, http.StatusInternalServerError, apperror.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
 }

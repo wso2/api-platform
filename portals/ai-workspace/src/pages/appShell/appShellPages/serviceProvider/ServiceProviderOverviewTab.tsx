@@ -450,7 +450,7 @@ export default function ServiceProviderOverviewTab({
       try {
         const response = await getProviderAPIKeys();
         if (!isMounted) return;
-        setApiKeys(response.items || []);
+        setApiKeys(response.list || []);
         fetchedApiKeysProviderIdRef.current = providerId;
       } catch (fetchError) {
         if (!isMounted) return;
@@ -525,7 +525,7 @@ export default function ServiceProviderOverviewTab({
       setIsApiKeyModalOpen(true);
       try {
         const refreshedApiKeys = await getProviderAPIKeys();
-        setApiKeys(refreshedApiKeys.items || []);
+        setApiKeys(refreshedApiKeys.list || []);
       } catch (fetchError) {
         logger.error(
           `Failed to refresh API keys for provider ${provider.id}:`,

@@ -26,6 +26,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -239,6 +240,14 @@ func main() {
 	grpcServer := grpc.NewServer()
 	extprocv3.RegisterExternalProcessorServer(grpcServer, extprocServer)
 
+	// Enable block/mutex profiling sampling when pprof is enabled. These are the
+	// only profiles that need explicit rate setup; 0 leaves them disabled. Gated so
+	// the sampling overhead is never paid unless pprof is deliberately turned on.
+	if cfg.PolicyEngine.Admin.Pprof.Enabled {
+		runtime.SetBlockProfileRate(cfg.PolicyEngine.Admin.Pprof.BlockProfileRate)
+		runtime.SetMutexProfileFraction(cfg.PolicyEngine.Admin.Pprof.MutexProfileFraction)
+	}
+
 	// Start admin HTTP server if enabled
 	var adminServer *admin.Server
 	if cfg.PolicyEngine.Admin.Enabled {
@@ -268,10 +277,12 @@ func main() {
 		metrics.StartMemoryMetricsUpdater(ctx, 15*time.Second)
 	}
 
-	// Start access log service server if enabled
+	// Start the access log service server when the collector is enabled. The
+	// collector is the shared transport that carries collected data to its
+	// consumers (analytics, traffic logging).
 	var alsServer *grpc.Server
-	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.Analytics.AccessLogsServiceCfg)
-	if cfg.Analytics.Enabled {
+	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.Collector.Server)
+	if cfg.IsCollectorEnabled() {
 		// Start the access log service server
 		slog.Info("Starting the ALS gRPC server...")
 		alsServer = utils.StartAccessLogServiceServer(cfg)

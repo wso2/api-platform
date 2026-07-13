@@ -31,7 +31,7 @@ RUN go build -trimpath -ldflags "-s -w" -o /bff .
 ###########################
 # Stage 3 — Runtime        #
 ###########################
-FROM alpine:3.20
+FROM alpine:3.24
 
 ARG USERNAME=aiworkspace
 ARG USER_UID=10001

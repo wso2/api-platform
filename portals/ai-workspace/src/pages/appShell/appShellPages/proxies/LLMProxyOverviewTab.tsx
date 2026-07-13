@@ -336,7 +336,7 @@ export default function LLMProxyOverviewTab() {
       try {
         const response = await getProxyAPIKeys();
         if (!isMounted) return;
-        setApiKeys(response.items || []);
+        setApiKeys(response.list || []);
         fetchedApiKeysProxyIdRef.current = proxyId;
       } catch (fetchError) {
         if (!isMounted) return;
@@ -407,7 +407,7 @@ export default function LLMProxyOverviewTab() {
       setIsApiKeyModalOpen(true);
       try {
         const refreshedApiKeys = await getProxyAPIKeys();
-        setApiKeys(refreshedApiKeys.items || []);
+        setApiKeys(refreshedApiKeys.list || []);
       } catch (fetchError) {
         logger.error(
           `Failed to refresh API keys for proxy ${proxy.id}:`,

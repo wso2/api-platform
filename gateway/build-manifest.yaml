@@ -7,7 +7,7 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/analytics-header-filter@v1
     - name: api-key-auth
-      version: v1.0.4
+      version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v1
     - name: aws-bedrock-guardrail
       version: v1.0.2
@@ -46,7 +46,7 @@ policies:
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v1
     - name: jwt-auth
-      version: v1.1.0
+      version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v1
     - name: llm-cost
       version: v1.0.3
@@ -61,7 +61,7 @@ policies:
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v1
     - name: mcp-auth
-      version: v1.0.3
+      version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v1
     - name: mcp-authz
       version: v1.0.1
@@ -93,6 +93,9 @@ policies:
     - name: prompt-template
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/prompt-template@v1
+    - name: redirect
+      version: v0.9.0
+      gomodule: github.com/wso2/gateway-controllers/policies/redirect@v0
     - name: regex-guardrail
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/regex-guardrail@v1

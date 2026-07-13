@@ -447,8 +447,9 @@ const applyTheme = async (req, res) => {
         if (!zipFile) {
             throw new CustomError(400, 'Bad Request', 'Missing required zip file');
         }
-        if (zipFile.size > 50 * 1024 * 1024) {
-            throw new CustomError(400, 'Bad Request', 'File size exceeds the 50MB limit');
+        const maxUploadBytes = config.uploads?.maxBytes || 10485760;
+        if (zipFile.size > maxUploadBytes) {
+            throw new CustomError(413, 'Payload Too Large', 'Uploaded file exceeds the maximum allowed size.');
         }
         let zipPath = zipFile.path;
         if (!zipPath && zipFile.buffer) {

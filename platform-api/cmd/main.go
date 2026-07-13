@@ -49,9 +49,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	slogger.Info("Starting HTTPS server", "port", cfg.Port)
-	if err := srv.Start(cfg.Port, cfg.TLS.CertDir); err != nil {
-		slogger.Error("Failed to start HTTPS server", "error", err)
+	slogger.Info("Starting server",
+		"http_enabled", cfg.HTTP.Enabled, "http_port", cfg.HTTP.Port,
+		"https_enabled", cfg.HTTPS.Enabled, "https_port", cfg.HTTPS.Port)
+	if err := srv.Start(cfg.HTTP, cfg.HTTPS, cfg.Timeouts); err != nil {
+		slogger.Error("Failed to start server", "error", err)
 		os.Exit(1)
 	}
 }

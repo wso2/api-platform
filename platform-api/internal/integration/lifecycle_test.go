@@ -183,7 +183,7 @@ func TestLifecycle_ProjectPagination(t *testing.T) {
 
 	seen := map[string]bool{}
 	for offset := 0; offset < n; offset += 2 {
-		page, err := projectRepo.ListProjects(org.ID, 2, offset)
+		page, err := projectRepo.ListProjects(org.ID, repository.ListOptions{Limit: 2, Offset: offset})
 		if err != nil {
 			t.Fatalf("[%s] ListProjects(2,%d) failed: %v", it.driver, offset, err)
 		}

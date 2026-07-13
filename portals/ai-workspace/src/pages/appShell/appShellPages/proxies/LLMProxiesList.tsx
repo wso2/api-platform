@@ -63,6 +63,7 @@ import { FormattedMessage } from 'react-intl';
 import NoProxies from '../../../../assets/images/NoProxies.svg';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
+import { getErrorMessage } from '../../../../utils/apiError';
 
 function getHttpStatusCode(error?: Error | null): number | null {
   if (!error) return null;
@@ -77,12 +78,7 @@ function getHttpStatusCode(error?: Error | null): number | null {
 }
 
 function getErrorDescription(error: unknown, fallbackMessage: string): string {
-  return (
-    (error as any)?.response?.data?.description ||
-    (error as any)?.response?.data?.message ||
-    (error instanceof Error ? error.message : null) ||
-    fallbackMessage
-  );
+  return getErrorMessage(error, fallbackMessage);
 }
 
 type LLMProxyListLocationState = {

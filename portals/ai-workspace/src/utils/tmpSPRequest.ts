@@ -118,6 +118,8 @@ export function buildFullProviderRequest(
     template: request.template,
     upstream: request.upstream,
     accessControl: request.accessControl,
+    globalPolicies: request.globalPolicies ?? [],
+    operationPolicies: request.operationPolicies ?? [],
     policies: request.policies ?? [],
 
     // Hardcoded default values for missing fields
@@ -125,7 +127,7 @@ export function buildFullProviderRequest(
     modelProviders:
       request.modelProviders ?? buildModelProvidersFromTemplate(request.template),
     rateLimiting: {},
-    security: {
+    security: request.security ?? {
       enabled: true,
       apiKey: {
         enabled: true,

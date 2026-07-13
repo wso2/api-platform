@@ -32,19 +32,28 @@ const aiTemp = path.resolve(rushTemp, 'ai-workspace')
 const aiNodeModules = path.resolve(aiTemp, 'node_modules')
 const aiPnpm = path.resolve(aiNodeModules, '.pnpm')
 
+const BANNER_WIDTH = 72
+
+const centerInBanner = (s: string): string =>
+  s.length >= BANNER_WIDTH ? s : ' '.repeat(Math.floor((BANNER_WIDTH - s.length) / 2)) + s
+
 const readyLogPlugin: PluginOption = {
   name: 'ready-log',
   configureServer(server) {
     server.httpServer?.once('listening', () => {
+      const address = server.httpServer?.address()
+      // A wildcard or unknown listen host is not clickable — show localhost instead.
+      const port = typeof address === 'object' && address ? address.port : server.config.server.port
+      const scheme = server.config.server.https ? 'https' : 'http'
+      const rule = '='.repeat(BANNER_WIDTH)
       console.log(
         '\n\n' +
-        '========================================================================\n' +
+        rule + '\n' +
         '\n' +
+        centerInBanner('AI Workspace Started') + '\n' +
+        centerInBanner(`Visit ${scheme}://localhost:${port}`) + '\n' +
         '\n' +
-        '                      AI Workspace Started\n' +
-        '\n' +
-        '\n' +
-        '========================================================================\n' +
+        rule + '\n' +
         '\n'
       )
     })

@@ -378,14 +378,20 @@ func (v *LLMValidator) validateProviderSpec(spec *api.LLMProviderConfigData) []V
 		})
 	}
 
-	// Validate upstreams
-	errors = append(errors, v.validateUpstreamWithAuth(fmt.Sprintf("spec.upstream"), &spec.Upstream)...)
+	// Validate upstream definitions (name/url/connect timeout), then the upstream itself (which
+	// may reference one of them via `ref`).
+	errors = append(errors, validateUpstreamDefinitionsList("spec.upstreamDefinitions", spec.UpstreamDefinitions)...)
+	errors = append(errors, v.validateUpstreamWithAuth("spec.upstream", &spec.Upstream, spec.UpstreamDefinitions)...)
 
 	// Validate access control
 	errors = append(errors, v.validateAccessControl("spec.accessControl", &spec.AccessControl)...)
 
 	// The deprecated `policies` list must not coexist with the new policy lists
 	errors = append(errors, v.validatePolicyListExclusivity(spec.GlobalPolicies, spec.OperationPolicies, spec.Policies)...)
+
+	// Validate API-level resilience (timeout / idleTimeout). LLM kinds support resilience at
+	// the API level only.
+	errors = append(errors, validateResilienceTimeouts("spec.resilience", spec.Resilience)...)
 
 	return errors
 }
@@ -412,9 +418,10 @@ func (v *LLMValidator) validatePolicyListExclusivity(globalPolicies *[]api.Polic
 	return nil
 }
 
-// validateUpstreamWithAuth validates an UpstreamWithAuth configuration
+// validateUpstreamWithAuth validates an UpstreamWithAuth configuration. The upstream may specify
+// either a direct `url` or a `ref` to one of the provided upstream definitions (exactly one).
 func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
-	upstream *api.LLMProviderConfigData_Upstream) []ValidationError {
+	upstream *api.LLMProviderConfigData_Upstream, definitions *[]api.UpstreamDefinition) []ValidationError {
 	var errors []ValidationError
 
 	if upstream == nil {
@@ -425,14 +432,23 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
 		return errors
 	}
 
-	// Validate URL
-	if upstream.Url == nil || *upstream.Url == "" {
+	// Validate url XOR ref
+	hasURL := upstream.Url != nil && strings.TrimSpace(*upstream.Url) != ""
+	hasRef := upstream.Ref != nil && strings.TrimSpace(*upstream.Ref) != ""
+	switch {
+	case hasURL && hasRef:
 		errors = append(errors, ValidationError{
-			Field:   fmt.Sprintf("%s.url", fieldPrefix),
-			Message: "Upstream URL is required",
+			Field:   fieldPrefix,
+			Message: "Specify exactly one of 'url' or 'ref'",
 		})
-	} else {
-		parsedURL, err := url.Parse(*upstream.Url)
+	case !hasURL && !hasRef:
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix,
+			Message: "Must specify either 'url' or 'ref'",
+		})
+	case hasURL:
+		// Trim first, consistent with the hasURL check, so surrounding whitespace does not fail parsing.
+		parsedURL, err := url.Parse(strings.TrimSpace(*upstream.Url))
 		if err != nil {
 			errors = append(errors, ValidationError{
 				Field:   fmt.Sprintf("%s.url", fieldPrefix),
@@ -447,6 +463,13 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
 			errors = append(errors, ValidationError{
 				Field:   fmt.Sprintf("%s.url", fieldPrefix),
 				Message: "Upstream URL must include a host",
+			})
+		}
+	case hasRef:
+		if !upstreamRefResolves(*upstream.Ref, definitions) {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s.ref", fieldPrefix),
+				Message: fmt.Sprintf("Referenced upstream definition '%s' not found in upstreamDefinitions", strings.TrimSpace(*upstream.Ref)),
 			})
 		}
 	}
@@ -590,10 +613,115 @@ func (v *LLMValidator) validateProxyData(spec *api.LLMProxyConfigData) []Validat
 			Message: "spec.provider.id must consist of lowercase alphanumeric characters, hyphens, or dots, and must start and end with an alphanumeric character",
 		})
 	}
+	if spec.Provider.Auth != nil {
+		errors = append(errors, v.validateLLMUpstreamAuth("spec.provider.auth", spec.Provider.Auth)...)
+	}
+
+	if spec.AdditionalProviders != nil {
+		seen := map[string]bool{spec.Provider.Id: true}
+		for i, provider := range *spec.AdditionalProviders {
+			fieldPrefix := fmt.Sprintf("spec.additionalProviders[%d]", i)
+			if provider.Id == "" {
+				errors = append(errors, ValidationError{
+					Field:   fieldPrefix + ".id",
+					Message: "Provider is required",
+				})
+			} else if !v.metadataNameRegex.MatchString(provider.Id) {
+				errors = append(errors, ValidationError{
+					Field:   fieldPrefix + ".id",
+					Message: fieldPrefix + ".id must consist of lowercase alphanumeric characters, hyphens, or dots, and must start and end with an alphanumeric character",
+				})
+			}
+
+			upstreamName := provider.Id
+			if provider.As != nil && *provider.As != "" {
+				upstreamName = *provider.As
+				if !regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`).MatchString(upstreamName) {
+					errors = append(errors, ValidationError{
+						Field:   fieldPrefix + ".as",
+						Message: fieldPrefix + ".as must contain only letters, numbers, hyphens, or underscores",
+					})
+				}
+			}
+			if upstreamName != "" {
+				if seen[upstreamName] {
+					errors = append(errors, ValidationError{
+						Field:   fieldPrefix,
+						Message: fmt.Sprintf("duplicate upstream name '%s' in additionalProviders", upstreamName),
+					})
+				}
+				seen[upstreamName] = true
+			}
+
+			if provider.Auth != nil {
+				errors = append(errors, v.validateLLMUpstreamAuth(fieldPrefix+".auth", provider.Auth)...)
+			}
+
+			if provider.Transformer != nil {
+				errors = append(errors, v.validateLLMProxyTransformer(fieldPrefix+".transformer", provider.Transformer)...)
+			}
+		}
+	}
 
 	// The deprecated `policies` list must not coexist with the new policy lists
 	errors = append(errors, v.validatePolicyListExclusivity(spec.GlobalPolicies, spec.OperationPolicies, spec.Policies)...)
 
+	// Validate API-level resilience (timeout / idleTimeout). LLM kinds support resilience at
+	// the API level only.
+	errors = append(errors, validateResilienceTimeouts("spec.resilience", spec.Resilience)...)
+
+	return errors
+}
+
+func (v *LLMValidator) validateLLMProxyTransformer(fieldPrefix string, transformer *api.LLMProxyTransformer) []ValidationError {
+	var errors []ValidationError
+	if transformer.Type == "" {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".type",
+			Message: "Transformer type is required",
+		})
+	}
+	if transformer.Version == "" {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".version",
+			Message: "Transformer version is required",
+		})
+	} else if !majorVersionPattern.MatchString(transformer.Version) {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".version",
+			Message: "Transformer version must be major-only (e.g. v1)",
+		})
+	}
+	return errors
+}
+
+func (v *LLMValidator) validateLLMUpstreamAuth(fieldPrefix string, auth *api.LLMUpstreamAuth) []ValidationError {
+	var errors []ValidationError
+	if auth.Type == "" {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".type",
+			Message: "Auth type is required",
+		})
+	} else if auth.Type != api.LLMUpstreamAuthTypeApiKey {
+		errors = append(errors, ValidationError{
+			Field:   fieldPrefix + ".type",
+			Message: "Auth type must be 'api-key'",
+		})
+	}
+	if auth.Type == api.LLMUpstreamAuthTypeApiKey {
+		if auth.Header == nil || *auth.Header == "" {
+			errors = append(errors, ValidationError{
+				Field:   fieldPrefix + ".header",
+				Message: "Auth header is required when api-key auth type is set",
+			})
+		}
+		if auth.Value == nil || *auth.Value == "" {
+			errors = append(errors, ValidationError{
+				Field:   fieldPrefix + ".value",
+				Message: "Auth value is required when api-key auth type is set",
+			})
+		}
+	}
 	return errors
 }
 

@@ -130,7 +130,6 @@ const loadViewSettingsPage = async (req, res) => {
             logger.warn('Failed to load key managers for settings page', { error: err.message });
         }
         templateContent.keyManagers = keyManagers;
-        templateContent.keyManagerTypes = ['ASGARDEO', 'WSO2IS', 'KEYCLOAK', 'GENERIC_OIDC'];
 
         const configAsset = await orgDao.getContent({
             orgId: orgId, fileType: constants.FILE_TYPE.LLMS_CONFIG, viewName, fileName: constants.FILE_NAME.LLMS_CONFIG
@@ -175,7 +174,7 @@ const getLlmsConfig = async (req, res) => {
         res.json(JSON.parse(asset.file_content.toString('utf8')));
     } catch (err) {
         logger.error('Error getting llms config', { error: err.message, stack: err.stack });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Failed to get LLMs configuration' });
     }
 };
 
@@ -208,7 +207,7 @@ const saveLlmsConfig = async (req, res) => {
         res.json({ message: 'Saved successfully' });
     } catch (err) {
         logger.error('Error saving llms config', { error: err.message, stack: err.stack });
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Failed to save LLMs configuration' });
     }
 };
 

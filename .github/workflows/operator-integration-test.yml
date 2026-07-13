@@ -29,7 +29,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.2'
+          go-version: '1.26.5'
           cache-dependency-path: '**/go.sum'
 
       - name: Set up QEMU
@@ -821,7 +821,7 @@ jobs:
         run: |
           # Port forward the router
           sleep 10
-          kubectl port-forward svc/test-gateway-gateway-gateway-runtime 8080:8080 &
+          kubectl port-forward svc/test-gateway-gw-gateway-runtime 8080:8080 &
           sleep 10
 
           echo "Testing API invocation..."
@@ -1106,7 +1106,7 @@ jobs:
           fi
 
           echo "Pre-check: waiting until management API can resolve rest-api handle hello-sub-api..."
-          kubectl port-forward svc/test-gateway-gateway-controller 9090:9090 >/tmp/subscription-precheck-port-forward.log 2>&1 &
+          kubectl port-forward svc/test-gateway-gw-controller 9090:9090 >/tmp/subscription-precheck-port-forward.log 2>&1 &
           PF_MGMT_PID=$!
           trap 'kill "${PF_MGMT_PID}" >/dev/null 2>&1 || true' EXIT
           sleep 5
@@ -1131,7 +1131,7 @@ jobs:
             echo "Last management response body:"
             cat /tmp/subscription-precheck-body.txt || true
             kubectl get restapi hello-sub-api -n apigateway-demo -o yaml || true
-            kubectl logs -n default deployment/test-gateway-gateway-controller --tail=200 || true
+            kubectl logs -n default deployment/test-gateway-gw-controller --tail=200 || true
             kubectl logs -n operator deployment/gateway-operator --tail=200 || true
             exit 1
           fi
@@ -1162,7 +1162,7 @@ jobs:
             kubectl get subscriptionplan demo-plan -n apigateway-demo -o yaml || true
             kubectl get events -n apigateway-demo --sort-by=.lastTimestamp | tail -n 40 || true
             kubectl logs -n operator deployment/gateway-operator --tail=300 || true
-            kubectl logs -n default deployment/test-gateway-gateway-controller --tail=300 || true
+            kubectl logs -n default deployment/test-gateway-gw-controller --tail=300 || true
             exit 1
           fi
           kubectl wait --for=condition=Programmed apikey/demo-restapi-apikey -n apigateway-demo --timeout=1000s
@@ -1177,7 +1177,7 @@ jobs:
           set -euo pipefail
           pkill -f "kubectl port-forward.*8080:8080" || true
           sleep 2
-          kubectl port-forward svc/test-gateway-gateway-gateway-runtime 8080:8080 &
+          kubectl port-forward svc/test-gateway-gw-gateway-runtime 8080:8080 &
           PF_PID=$!
           sleep 10
 
@@ -1306,13 +1306,13 @@ jobs:
           echo "Waiting for deployment update..."
           # Give the operator a moment to detect and start the upgrade
           sleep 5
-          kubectl wait --for=jsonpath='{.metadata.annotations.helm-upgrade-test}=true' deployment/test-gateway-gateway-gateway-runtime --timeout=180s
+          kubectl wait --for=jsonpath='{.metadata.annotations.helm-upgrade-test}=true' deployment/test-gateway-gw-gateway-runtime --timeout=180s
           
           echo "Deployment metadata updated. Waiting for rollout to complete..."
           
           # Wait for the deployments to finish rolling out to ensure stability
-          kubectl rollout status deployment/test-gateway-gateway-controller --timeout=300s
-          kubectl rollout status deployment/test-gateway-gateway-gateway-runtime --timeout=300s
+          kubectl rollout status deployment/test-gateway-gw-controller --timeout=300s
+          kubectl rollout status deployment/test-gateway-gw-gateway-runtime --timeout=300s
           
           echo "Waiting for Gateway CR to be Programmed..."
           kubectl wait --for=condition=Programmed apigateway/test-gateway --timeout=180s
@@ -1323,7 +1323,7 @@ jobs:
           # Use deploy/ (not svc/) because the admin port (9092) is no longer published on
           # the controller Service by default (gateway.controller.service.expose.admin=false);
           # the container still listens on 9092, so forward to the pod via the Deployment.
-          kubectl port-forward deploy/test-gateway-gateway-controller 9092:9092 &
+          kubectl port-forward deploy/test-gateway-gw-controller 9092:9092 &
           PF_PID=$!
           sleep 5
 
@@ -1344,7 +1344,7 @@ jobs:
           # Re-establish port-forward (previous one died during Helm upgrade rollout)
           pkill -f "kubectl port-forward.*8080:8080" || true
           sleep 2
-          kubectl port-forward svc/test-gateway-gateway-gateway-runtime 8080:8080 &
+          kubectl port-forward svc/test-gateway-gw-gateway-runtime 8080:8080 &
           sleep 5
 
           echo "Creating namespace test-ns..."
@@ -1537,7 +1537,8 @@ jobs:
           fi
 
           echo "Port-forwarding K8s Gateway runtime and testing invocation..."
-          kubectl port-forward svc/test-k8s-gw-gateway-gateway-runtime -n "${TEST_NS}" 8082:8080 &
+          K8S_RUNTIME_SVC=$(kubectl get svc -n "${TEST_NS}" -l app.kubernetes.io/component=gateway-runtime -o jsonpath='{.items[0].metadata.name}')
+          kubectl port-forward "svc/${K8S_RUNTIME_SVC}" -n "${TEST_NS}" 8082:8080 &
           PF_K8S_PID=$!
           sleep 8
 
@@ -1614,7 +1615,8 @@ jobs:
           fi
 
           echo "Testing updated PUT operation..."
-          kubectl port-forward svc/test-k8s-gw-gateway-gateway-runtime -n "${TEST_NS}" 8082:8080 &
+          K8S_RUNTIME_SVC=$(kubectl get svc -n "${TEST_NS}" -l app.kubernetes.io/component=gateway-runtime -o jsonpath='{.items[0].metadata.name}')
+          kubectl port-forward "svc/${K8S_RUNTIME_SVC}" -n "${TEST_NS}" 8082:8080 &
           PF_K8S_UPD_PID=$!
           sleep 8
 
@@ -1716,7 +1718,8 @@ jobs:
           TOKEN=$(curl -s http://localhost:8081/token)
           kill $PF_JWKS_PID || true
 
-          kubectl port-forward svc/test-k8s-gw-gateway-gateway-runtime -n "${TEST_NS}" 8082:8080 &
+          K8S_RUNTIME_SVC=$(kubectl get svc -n "${TEST_NS}" -l app.kubernetes.io/component=gateway-runtime -o jsonpath='{.items[0].metadata.name}')
+          kubectl port-forward "svc/${K8S_RUNTIME_SVC}" -n "${TEST_NS}" 8082:8080 &
           PF_K8S_POL_PID=$!
           sleep 8
 
@@ -1852,7 +1855,7 @@ jobs:
           echo "Verifying gateway resources are removed..."
           
           # Check for pods with the gateway labels
-          pods=$(kubectl get pods -l app.kubernetes.io/instance=test-gateway-gateway --no-headers | wc -l)
+          pods=$(kubectl get pods -l app.kubernetes.io/instance=test-gateway-gw --no-headers | wc -l)
           echo "Found $pods pods remaining."
           
           if [ "$pods" -ne "0" ]; then
@@ -1862,7 +1865,7 @@ jobs:
           fi
           
           # Check for services
-          services=$(kubectl get svc -l app.kubernetes.io/instance=test-gateway-gateway --no-headers | wc -l)
+          services=$(kubectl get svc -l app.kubernetes.io/instance=test-gateway-gw --no-headers | wc -l)
           echo "Found $services services remaining."
           
           if [ "$services" -ne "0" ]; then
@@ -1983,14 +1986,14 @@ jobs:
           
           # Wait for the router deployment to be fully ready
           echo "Waiting for scoped gateway router deployment rollout..."
-          kubectl rollout status deployment/scoped-gateway-gateway-gateway-runtime -n scoped-test --timeout=120s
+          kubectl rollout status deployment/scoped-gateway-gw-gateway-runtime -n scoped-test --timeout=120s
           
           # Additional wait for Envoy to initialize and start listening
           echo "Waiting for router to be ready to accept connections..."
           sleep 10
           
           # Port forward the scoped gateway router
-          kubectl port-forward svc/scoped-gateway-gateway-gateway-runtime -n scoped-test 9090:8080 &
+          kubectl port-forward svc/scoped-gateway-gw-gateway-runtime -n scoped-test 9090:8080 &
           PF_PID=$!
           sleep 5
           

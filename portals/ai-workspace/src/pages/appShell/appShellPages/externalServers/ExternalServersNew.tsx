@@ -64,6 +64,16 @@ import type { MCPServerInfoFetchRequest, CreateMCPServerRequest } from '../../..
 import ExternalServersCreateForm from './ExternalServersCreateForm';
 import ExternalServersValidationDetails from './ExternalServersValidationDetails';
 import type { EndpointValidationResponse } from './externalServersValidationTypes';
+import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
+
+// Backend field names (from CreateMCPServerRequest) mapped onto this form's state keys.
+// "displayName" maps to the server name field; the rest match one-to-one.
+const FIELD_NAME_MAP: Record<string, 'name' | 'version' | 'description' | 'context' | 'target'> = {
+  displayName: 'name',
+  version: 'version',
+  description: 'description',
+  context: 'context',
+};
 
 const SAMPLE_MCP_SERVER_URL = 'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-prod.e1-us-east-azure.choreoapis.dev/godzilla/mcp-everything-server/v1.0/mcp';
 
@@ -87,33 +97,8 @@ function normalizeVersion(version: string): string {
   return `v${major}.${minor}`;
 }
 
-type ErrorResponse = {
-  response?: {
-    data?: {
-      description?: unknown;
-      message?: unknown;
-    };
-  };
-};
-
 function getErrorDescription(error: unknown, fallback: string): string {
-  const responseData = (error as ErrorResponse)?.response?.data;
-  const description = responseData?.description;
-  const message = responseData?.message;
-
-  if (typeof description === 'string' && description.trim()) {
-    return description;
-  }
-
-  if (typeof message === 'string' && message.trim()) {
-    return message;
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return fallback;
+  return getErrorMessage(error, fallback);
 }
 
 export default function ExternalServersNew(): JSX.Element {
@@ -134,6 +119,7 @@ export default function ExternalServersNew(): JSX.Element {
   } = useMCPServerValidation();
   const showSnackbar = useAIWorkspaceSnackbar();
   const [isCreating, setIsCreating] = useState(false);
+  const [createFieldErrors, setCreateFieldErrors] = useState<Record<string, string>>({});
   const routeProject = useMemo(
     () =>
       projectsForCurrentOrganization.find(
@@ -306,6 +292,7 @@ export default function ExternalServersNew(): JSX.Element {
 
     try {
       setIsCreating(true);
+      setCreateFieldErrors({});
       const created = await mcpProxiesApis.createMCPServer(payload, PLATFORM_API_BASE_URL);
       showSnackbar('Successfully created MCP Proxy.', 'success');
       navigate(
@@ -316,10 +303,26 @@ export default function ExternalServersNew(): JSX.Element {
         )
       );
     } catch (err) {
-      showSnackbar(
-        getErrorDescription(err, 'Failed to create MCP Proxy'),
-        'error'
-      );
+      const backendFieldErrors = getFieldErrors(err);
+      const mappedErrors: Record<string, string> = {};
+      let hasUnmapped = false;
+      backendFieldErrors?.forEach(({ field, message }) => {
+        const formField = FIELD_NAME_MAP[field];
+        if (formField) {
+          mappedErrors[formField] = message;
+        } else {
+          hasUnmapped = true;
+        }
+      });
+      if (Object.keys(mappedErrors).length > 0) {
+        setCreateFieldErrors(mappedErrors);
+      }
+      if (hasUnmapped || Object.keys(mappedErrors).length === 0) {
+        showSnackbar(
+          getErrorDescription(err, 'Failed to create MCP Proxy'),
+          'error'
+        );
+      }
     } finally {
       setIsCreating(false);
     }
@@ -371,6 +374,7 @@ export default function ExternalServersNew(): JSX.Element {
           serverName={serverName}
           serverTarget={serverTarget}
           serverVersion={serverVersion}
+          fieldErrors={createFieldErrors}
           onCancel={handleCancelCreate}
           onCreate={handleCreate}
           onContextChange={setServerContextOverride}

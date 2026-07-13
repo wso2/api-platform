@@ -56,9 +56,21 @@ import type {
 import type { ProviderTemplate } from '../../../../utils/types';
 import { familyHandle } from '../../../../utils/providerTemplateDisplay';
 import TemplateVersionDialog from './AddNewProvider/TemplateVersionDialog';
+import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 import { FormattedMessage } from 'react-intl';
 
 const VERSION_PATTERN = /^v\d+\.\d+$/;
+
+// Backend field names (from CreateLLMProviderRequest) mapped onto this form's state keys.
+// Auth sub-fields ("upstream.main.auth.*") are not mapped here — best-effort only,
+// they surface via the general error banner instead of forcing an unclear match.
+const FIELD_NAME_MAP: Partial<Record<string, keyof FormState>> = {
+  displayName: 'name',
+  description: 'description',
+  version: 'version',
+  context: 'context',
+  'upstream.main.url': 'upstreamUrl',
+};
 
 type TemplateBasedFormFieldsContainerProps = {
   formState: FormState;
@@ -66,6 +78,7 @@ type TemplateBasedFormFieldsContainerProps = {
   showCredential: boolean;
   setShowCredential: React.Dispatch<React.SetStateAction<boolean>>;
   setOpenapiSpec: React.Dispatch<React.SetStateAction<string>>;
+  fieldErrors: Partial<Record<keyof FormState, string>>;
 };
 
 function TemplateBasedFormFieldsContainer({
@@ -74,6 +87,7 @@ function TemplateBasedFormFieldsContainer({
   showCredential,
   setShowCredential,
   setOpenapiSpec,
+  fieldErrors,
 }: TemplateBasedFormFieldsContainerProps) {
   const { template, isLoading, error } = useProviderTemplate();
   const lastTemplateIdRef = useRef<string | null>(null);
@@ -97,6 +111,14 @@ function TemplateBasedFormFieldsContainer({
         : prev.upstreamAuthHeader,
       upstreamAuthValue: templateChanged ? '' : prev.upstreamAuthValue,
       valuePrefix: template?.metadata?.auth?.valuePrefix || '',
+      // Consumer-facing security config (how callers authenticate to our
+      // gateway) mirrors the template's upstream auth metadata, when present.
+      securityKeyName: templateChanged
+        ? template?.metadata?.auth?.header || 'X-API-Key'
+        : prev.securityKeyName,
+      securityKeyPrefix: templateChanged
+        ? template?.metadata?.auth?.valuePrefix || ''
+        : prev.securityKeyPrefix,
     }));
 
     // Resolve OpenAPI spec. Prefer the inline spec stored on the template
@@ -132,6 +154,7 @@ function TemplateBasedFormFieldsContainer({
       template={template}
       isLoading={isLoading}
       error={error}
+      fieldErrors={fieldErrors}
     />
   );
 }
@@ -183,8 +206,11 @@ export default function ServiceProviderNew() {
     upstreamAuthHeader: 'Authorization',
     upstreamAuthValue: '',
     valuePrefix: '',
+    securityKeyName: 'X-API-Key',
+    securityKeyPrefix: '',
   });
   const isVersionValid = VERSION_PATTERN.test(formState.version.trim());
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [showCredential, setShowCredential] = useState(false);
   const [guardrails, setGuardrails] = useState<GuardrailSelection[]>([]);
   const [guardrailDrawerOpen, setGuardrailDrawerOpen] = useState(false);
@@ -307,8 +333,7 @@ export default function ServiceProviderNew() {
       isVersionValid &&
       selectedTemplateId &&
       formState.upstreamUrl.trim() &&
-      formState.upstreamAuthType &&
-      formState.upstreamAuthValue.trim()
+      formState.upstreamAuthType
   );
 
   const toProviderId = (name: string): string =>
@@ -322,6 +347,7 @@ export default function ServiceProviderNew() {
     if (!isFormValid || !selectedTemplateId) return;
 
     try {
+      setFieldErrors({});
       const providerId = toProviderId(formState.name);
 
       const upstream = {
@@ -332,10 +358,23 @@ export default function ServiceProviderNew() {
             type: formState.upstreamAuthType,
             header: formState.upstreamAuthHeader,
 
-            value: formState.valuePrefix
-              ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
-              : formState.upstreamAuthValue,
+            value:
+              formState.valuePrefix && formState.upstreamAuthValue.trim()
+                ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
+                : formState.upstreamAuthValue,
           },
+        },
+      };
+
+      const security = {
+        enabled: true,
+        apiKey: {
+          enabled: true,
+          key: formState.securityKeyName || 'X-API-Key',
+          in: 'header' as const,
+          ...(formState.securityKeyPrefix
+            ? { keyPrefix: formState.securityKeyPrefix }
+            : {}),
         },
       };
 
@@ -348,6 +387,7 @@ export default function ServiceProviderNew() {
         template: selectedVersionTemplateId ?? selectedTemplateId,
         openapi: openapiSpec,
         upstream,
+        security,
         globalPolicies: [
           ...(familyHandle(selectedTemplateId) !== 'azure-openai' &&
           familyHandle(selectedTemplateId) !== 'azureai-foundry'
@@ -385,12 +425,24 @@ export default function ServiceProviderNew() {
       );
     } catch (error) {
       logger.error('Failed to create LLM provider:', error);
-      const description =
-        (error as any)?.response?.data?.description ||
-        (error as any)?.response?.data?.message ||
-        (error instanceof Error ? error.message : null) ||
-        'Failed to create LLM provider.';
-      showSnackbar(description, 'error');
+      const backendFieldErrors = getFieldErrors(error);
+      const mappedErrors: Partial<Record<keyof FormState, string>> = {};
+      let hasUnmapped = false;
+      backendFieldErrors?.forEach(({ field, message }) => {
+        const formField = FIELD_NAME_MAP[field];
+        if (formField) {
+          mappedErrors[formField] = message;
+        } else {
+          hasUnmapped = true;
+        }
+      });
+      if (Object.keys(mappedErrors).length > 0) {
+        setFieldErrors(mappedErrors);
+      }
+      if (hasUnmapped || Object.keys(mappedErrors).length === 0) {
+        const description = getErrorMessage(error, 'Failed to create LLM provider.');
+        showSnackbar(description, 'error');
+      }
     }
   };
 
@@ -525,6 +577,7 @@ export default function ServiceProviderNew() {
                 showCredential={showCredential}
                 setShowCredential={setShowCredential}
                 setOpenapiSpec={setOpenapiSpec}
+                fieldErrors={fieldErrors}
               />
             </ProviderTemplateProvider>
           )}

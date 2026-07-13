@@ -18,7 +18,11 @@
 
 package models
 
-import "time"
+import (
+	"time"
+
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
+)
 
 // RuntimeDeployConfig is the kind-agnostic intermediate representation produced by
 // each transformer (RestAPI, LLM Provider, LLM Proxy). Both the Envoy xDS translator
@@ -50,20 +54,39 @@ type LLMMetadata struct {
 	ProviderName   string
 }
 
+// RouteHeaderMatch mirrors Gateway API header matching for Envoy route selection.
+type RouteHeaderMatch struct {
+	Name  string
+	Value string
+	Type  string // Exact or RegularExpression
+}
+
 // Route represents a single Envoy route derived from an API operation.
 type Route struct {
 	Method          string
 	Path            string // full path including context prefix (set by transformer)
 	OperationPath   string // original operation path without context prefix
+	PathMatchType   string // Exact or PathPrefix (empty defaults to Exact semantics for legacy APIs)
+	MatchHeaders    []RouteHeaderMatch
 	Vhost           string // "" = default vhost
 	AutoHostRewrite bool
 	Timeout         *RouteTimeout
 	Upstream        RouteUpstream
+	// Order is the operation/rule index from the source API spec. It is used as the
+	// Gateway-API "earlier-rule-wins" tie-break when two routes share the same match
+	// precedence (same path, method, and header-match count). Routes are emitted in
+	// ascending Order so the stable route sorter preserves rule order for ties.
+	Order int
 }
 
 // RouteTimeout holds parsed timeout values for a route.
+// Timeout and IdleTimeout come from the resilience block (operation-level overriding
+// API-level). A nil field means "not configured" — the global route timeout default
+// applies. A non-nil zero value means "explicitly disabled".
 type RouteTimeout struct {
-	Connect *time.Duration
+	Connect     *time.Duration
+	Timeout     *time.Duration // route timeout -> RouteAction.Timeout
+	IdleTimeout *time.Duration // route idle timeout -> RouteAction.IdleTimeout
 }
 
 // RouteUpstream links a route to its upstream cluster.
@@ -71,6 +94,12 @@ type RouteUpstream struct {
 	ClusterKey       string // key into UpstreamClusters map
 	UseClusterHeader bool   // if true, policy selects upstream dynamically
 	DefaultCluster   string // default cluster name when UseClusterHeader is true
+
+	// Default is this route's own compiled-in upstream (cluster name, URL, base
+	// path) — whichever slot this route belongs to (main or sandbox). Exposed to
+	// the policy engine as the route's single default upstream field, regardless
+	// of which slot it is.
+	Default *policyenginev1.UpstreamInfo
 }
 
 // PolicyChain is an ordered list of policies for a route.
@@ -96,8 +125,9 @@ type UpstreamCluster struct {
 
 // Endpoint is a single upstream host:port target.
 type Endpoint struct {
-	Host string
-	Port int
+	Host   string
+	Port   int
+	Weight *int
 }
 
 // UpstreamTLS holds TLS configuration for an upstream cluster.

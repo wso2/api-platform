@@ -19,10 +19,13 @@
 package policyengine
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -551,6 +554,10 @@ func TestUpdateGoMod_RemotePolicy_InvalidModule(t *testing.T) {
 	tmpDir := t.TempDir()
 	testutils.WritePolicyEngineGoMod(t, tmpDir)
 
+	// A nonexistent module fails deterministically, not transiently — pin to a
+	// single attempt so this test isn't slowed down by retry/backoff.
+	withSingleGoGetAttempt(t)
+
 	// Create a remote policy (IsFilePathEntry: false) with invalid module
 	policies := []*types.DiscoveredPolicy{
 		testutils.NewRemoteDiscoveredPolicy("ratelimit", "v1.0.0", "github.com/nonexistent-org-12345/nonexistent-module", "v1.0.0"),
@@ -625,6 +632,10 @@ func TestUpdateGoMod_OnlyRemotePolicies_AllFail(t *testing.T) {
 	tmpDir := t.TempDir()
 	testutils.WritePolicyEngineGoMod(t, tmpDir)
 
+	// A nonexistent module fails deterministically, not transiently — pin to a
+	// single attempt so this test isn't slowed down by retry/backoff.
+	withSingleGoGetAttempt(t)
+
 	// Only remote policies, all with invalid modules
 	policies := []*types.DiscoveredPolicy{
 		testutils.NewRemoteDiscoveredPolicy("remote-policy", "v1.0.0", "github.com/definitely-not-real-org/fake-module", "v1.0.0"),
@@ -633,4 +644,75 @@ func TestUpdateGoMod_OnlyRemotePolicies_AllFail(t *testing.T) {
 	err := UpdateGoMod(tmpDir, policies)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "go get failed")
+}
+
+// withSingleGoGetAttempt temporarily pins goGetMaxAttempts to 1, restoring the
+// original value on test cleanup. Use for tests exercising a deterministic
+// (non-transient) 'go get' failure, so they aren't slowed by retry/backoff.
+func withSingleGoGetAttempt(t *testing.T) {
+	t.Helper()
+	original := goGetMaxAttempts
+	goGetMaxAttempts = 1
+	t.Cleanup(func() { goGetMaxAttempts = original })
+}
+
+// withStubbedGoGet replaces runGoGet with a stub for the duration of the
+// test, restoring the original implementation on cleanup. The stub receives
+// the 1-indexed attempt number so tests can vary behavior across retries. It
+// also shrinks the retry backoff so retry tests run fast, and returns a
+// pointer to the running call count.
+func withStubbedGoGet(t *testing.T, stub func(attempt int, ctx context.Context, dir, target string) ([]byte, error)) *int {
+	t.Helper()
+	callCount := 0
+	originalRunGoGet := runGoGet
+	originalBackoff := goGetRetryBackoff
+	runGoGet = func(ctx context.Context, dir, target string) ([]byte, error) {
+		callCount++
+		return stub(callCount, ctx, dir, target)
+	}
+	goGetRetryBackoff = time.Millisecond
+	t.Cleanup(func() {
+		runGoGet = originalRunGoGet
+		goGetRetryBackoff = originalBackoff
+	})
+	return &callCount
+}
+
+func TestUpdateGoMod_RemotePolicy_RetriesTransientFailureThenSucceeds(t *testing.T) {
+	tmpDir := t.TempDir()
+	testutils.WritePolicyEngineGoMod(t, tmpDir)
+
+	callCount := withStubbedGoGet(t, func(attempt int, ctx context.Context, dir, target string) ([]byte, error) {
+		if attempt < 3 {
+			return []byte("stream error: stream ID 1; INTERNAL_ERROR"), errors.New("exit status 1")
+		}
+		return nil, nil
+	})
+
+	policies := []*types.DiscoveredPolicy{
+		testutils.NewRemoteDiscoveredPolicy("semantic-cache", "v1.0.1", "github.com/wso2/gateway-controllers/policies/semantic-cache", "v1.0.1"),
+	}
+
+	err := UpdateGoMod(tmpDir, policies)
+	require.NoError(t, err)
+	assert.Equal(t, 3, *callCount, "expected 2 failed attempts followed by 1 successful attempt")
+}
+
+func TestUpdateGoMod_RemotePolicy_ExhaustsRetriesOnPersistentFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	testutils.WritePolicyEngineGoMod(t, tmpDir)
+
+	callCount := withStubbedGoGet(t, func(attempt int, ctx context.Context, dir, target string) ([]byte, error) {
+		return []byte("module not found"), errors.New("exit status 1")
+	})
+
+	policies := []*types.DiscoveredPolicy{
+		testutils.NewRemoteDiscoveredPolicy("ratelimit", "v1.0.0", "github.com/example/policies/ratelimit", "v1.0.0"),
+	}
+
+	err := UpdateGoMod(tmpDir, policies)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "go get failed")
+	assert.Contains(t, err.Error(), "after 3 attempts")
+	assert.Equal(t, goGetMaxAttempts, *callCount)
 }

@@ -33,14 +33,13 @@ import (
 const (
 	DeleteCmdLiteral = "delete"
 	DeleteCmdExample = `# Delete an API artifact using the active devportal
-ap devportal rest-api delete --org org_1 --api-id api_1
+ap devportal rest-api delete --api-id api_1
 
 # Delete an API artifact using a specific devportal
-ap devportal rest-api delete --org org_1 --api-id api_1 --display-name my-portal --platform eu`
+ap devportal rest-api delete --api-id api_1 --display-name my-portal --platform eu`
 )
 
 var (
-	deleteOrgID    string
 	deleteAPIID    string
 	deleteName     string
 	deletePlatform string
@@ -61,21 +60,14 @@ var deleteCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(deleteCmd, utils.FlagOrgID, &deleteOrgID, "", "Organization ID")
 	utils.AddStringFlag(deleteCmd, utils.FlagAPIID, &deleteAPIID, "", "API ID")
 	utils.AddStringFlag(deleteCmd, utils.FlagName, &deleteName, "", "DevPortal display name")
 	utils.AddStringFlag(deleteCmd, utils.FlagPlatform, &deletePlatform, "", "Platform name")
 	deleteCmd.Flags().BoolVar(&deleteInsecure, "insecure", false, "Skip TLS certificate verification")
-	_ = deleteCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = deleteCmd.MarkFlagRequired(utils.FlagAPIID)
 }
 
 func runDeleteCommand() error {
-	orgID := strings.TrimSpace(deleteOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	apiID := strings.TrimSpace(deleteAPIID)
 	if apiID == "" {
 		return fmt.Errorf("api ID is required")
@@ -92,7 +84,7 @@ func runDeleteCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, deleteInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "apis/"+url.PathEscape(apiID))
+	path := internaldevportal.ResourcePath("apis/" + url.PathEscape(apiID))
 	resp, err := client.Delete(path)
 	if err != nil {
 		return internaldevportal.WrapRequestError("delete api artifact", err, deleteInsecure)

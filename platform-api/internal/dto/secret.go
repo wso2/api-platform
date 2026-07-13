@@ -63,6 +63,7 @@ type SecretSummary struct {
 
 // SecretListResponse wraps the paginated list of secrets.
 type SecretListResponse struct {
+	Count      int              `json:"count"`
 	List       []*SecretSummary `json:"list"`
 	Pagination Pagination       `json:"pagination"`
 }
@@ -88,15 +89,16 @@ type SecretSyncListResponse struct {
 	Count int              `json:"count"`
 }
 
-// SecretDeleteConflictResponse is returned with 409 when a secret has active references.
-type SecretDeleteConflictResponse struct {
-	Error      string               `json:"error"`
-	References []SecretReferenceDTO `json:"references"`
-}
-
-// SecretReferenceDTO identifies a resource that references a secret.
+// SecretReferenceDTO identifies a resource that references a secret. Carried
+// in the standard error response's `details.references` when a delete is
+// blocked by SECRET_IN_USE (see apperror.ErrorResponse.Details).
 type SecretReferenceDTO struct {
 	Type   string `json:"type"`
 	Handle string `json:"handle"`
 	Name   string `json:"name"`
+}
+
+// SecretInUseDetails is the `details` payload for a SECRET_IN_USE error.
+type SecretInUseDetails struct {
+	References []SecretReferenceDTO `json:"references"`
 }

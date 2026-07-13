@@ -63,8 +63,8 @@ func validAnalyticsConfigForValidation(analytics config.AnalyticsConfig) *config
 		},
 		Analytics: analytics,
 	}
-	cfg.Analytics.Enabled = true
-	cfg.Analytics.AccessLogsServiceCfg = config.AccessLogsServiceConfig{
+	cfg.Analytics.Enabled = true // a consumer being on makes the collector implicit
+	cfg.Collector.Server = config.AccessLogsServiceConfig{
 		Mode:                  "uds",
 		ShutdownTimeout:       600 * time.Second,
 		ExtProcMaxMessageSize: 1000000,
@@ -136,6 +136,18 @@ func TestNewAnalytics_EnabledWithUnknownPublisherType(t *testing.T) {
 
 	require.NotNil(t, analytics)
 	assert.Empty(t, analytics.publishers) // Unknown type should not be added
+}
+
+func TestNewAnalytics_TrafficLoggingEnabled(t *testing.T) {
+	// Traffic logging is a standalone consumer, independent of analytics.
+	cfg := &config.Config{
+		TrafficLogging: config.TrafficLoggingConfig{Enabled: true},
+	}
+
+	analytics := NewAnalytics(cfg)
+
+	require.NotNil(t, analytics)
+	assert.Len(t, analytics.publishers, 1) // traffic-logging publisher should be registered
 }
 
 // =============================================================================
@@ -251,6 +263,24 @@ func TestProcess_WithMockPublisher(t *testing.T) {
 	assert.True(t, mockPub.called)
 	require.NotNil(t, mockPub.event)
 	assert.Equal(t, "TestAPI", mockPub.event.API.APIName)
+}
+
+// Path-based suppression moved to the traffic-logging publisher, so
+// Analytics.Process no longer filters by path — every valid event reaches the
+// publishers (each decides what to do with it). Ignored-path coverage lives in
+// publishers/log_test.go.
+func TestProcess_PublishesEvent(t *testing.T) {
+	analytics := NewAnalytics(&config.Config{})
+	mockPub := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers, mockPub)
+
+	logEntry := &v3.HTTPAccessLogEntry{
+		Response: &v3.HTTPResponseProperties{ResponseCode: wrapperspb.UInt32(200)},
+		Request:  &v3.HTTPRequestProperties{OriginalPath: "/api/v1/orders", RequestMethod: corev3.RequestMethod_GET},
+	}
+	analytics.Process(logEntry)
+
+	assert.True(t, mockPub.called, "publisher must be called")
 }
 
 func TestProcess_PanicRecovery(t *testing.T) {
@@ -446,6 +476,11 @@ func TestPrepareAnalyticEvent_WithLatencies(t *testing.T) {
 	require.NotNil(t, event)
 	require.NotNil(t, event.Latencies)
 	assert.True(t, event.Latencies.BackendLatency >= 0)
+
+	// Traffic-log latencies are computed in microseconds from the same timepoints.
+	require.NotNil(t, event.TrafficLogLatencies)
+	assert.Equal(t, int64(250000), event.TrafficLogLatencies.DurationUs)               // DS_RX_BEG → DS_TX_END = 250ms
+	assert.Equal(t, int64(50000), event.TrafficLogLatencies.RequestMediationLatencyUs) // 100ms - 50ms
 }
 
 func TestPrepareAnalyticEvent_WithUserID(t *testing.T) {
@@ -464,13 +499,98 @@ func TestPrepareAnalyticEvent_WithUserID(t *testing.T) {
 	assert.Equal(t, "user-123", userID)
 }
 
+// prepareAnalyticEvent copies the auth-context metadata the collector system policy
+// stamps (gateway/system-policies/analytics) straight into Event.Properties, keyed 1:1
+// with no case translation, so the stdout traffic-logging publisher's global properties
+// can resolve $ctx:auth.* from it (see internal/analytics/publishers/global_properties.go).
+func TestPrepareAnalyticEvent_WithAuthContextMetadata(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		dto.PropKeyAuthType:         "jwt",
+		dto.PropKeyAuthIssuer:       "https://issuer.example.com",
+		dto.PropKeyAuthCredentialID: "client-123",
+		dto.PropKeyAuthTokenID:      "jti-abc",
+		dto.PropKeyAuthAudience:     "aud1,aud2",
+		dto.PropKeyAuthScopes:       "admin read",
+		dto.PropKeyAuthProperties:   `{"tenant":"acme"}`,
+		dto.PropKeyAuthAuthorized:   "true",
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	assert.Equal(t, "jwt", event.Properties[dto.PropKeyAuthType])
+	assert.Equal(t, "https://issuer.example.com", event.Properties[dto.PropKeyAuthIssuer])
+	assert.Equal(t, "client-123", event.Properties[dto.PropKeyAuthCredentialID])
+	assert.Equal(t, "jti-abc", event.Properties[dto.PropKeyAuthTokenID])
+	assert.Equal(t, "aud1,aud2", event.Properties[dto.PropKeyAuthAudience])
+	assert.Equal(t, "admin read", event.Properties[dto.PropKeyAuthScopes])
+	assert.Equal(t, "true", event.Properties[dto.PropKeyAuthAuthorized])
+	assert.Equal(t, `{"tenant":"acme"}`, event.Properties[dto.PropKeyAuthProperties])
+}
+
+// Absent auth-context metadata (unauthenticated request) must not add any auth.* keys.
+func TestPrepareAnalyticEvent_NoAuthContextMetadataOmitsKeys(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	for _, key := range []string{
+		dto.PropKeyAuthType, dto.PropKeyAuthIssuer, dto.PropKeyAuthCredentialID,
+		dto.PropKeyAuthTokenID, dto.PropKeyAuthAudience, dto.PropKeyAuthScopes, dto.PropKeyAuthProperties,
+		dto.PropKeyAuthAuthorized,
+	} {
+		_, ok := event.Properties[key]
+		assert.False(t, ok, "expected %s to be absent", key)
+	}
+}
+
+// prepareAnalyticEvent copies the generic SharedContext.Metadata blob the collector
+// system policy stamps (via populateGenericMetadata) straight into Event.Properties,
+// same as the auth-context keys, so the stdout traffic-logging publisher's global
+// properties can resolve $ctx:metadata['<key>'] from it.
+func TestPrepareAnalyticEvent_WithGenericMetadata(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		dto.PropKeyMetadata: `{"applicationId":"app-42","isTrial":true}`,
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	assert.Equal(t, `{"applicationId":"app-42","isTrial":true}`, event.Properties[dto.PropKeyMetadata])
+}
+
+// Absent generic metadata (no policy wrote to SharedContext.Metadata) must not add
+// the key at all.
+func TestPrepareAnalyticEvent_NoGenericMetadataOmitsKey(t *testing.T) {
+	cfg := &config.Config{}
+	analytics := NewAnalytics(cfg)
+
+	logEntry := createLogEntryWithMetadata(map[string]string{})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	_, ok := event.Properties[dto.PropKeyMetadata]
+	assert.False(t, ok, "expected %s to be absent", dto.PropKeyMetadata)
+}
+
 func TestPrepareAnalyticEvent_WithLLMCost(t *testing.T) {
 	cfg := &config.Config{}
 	analytics := NewAnalytics(cfg)
 
 	logEntry := createLogEntryWithMetadata(map[string]string{
-		AIProviderNameMetadataKey: "openai",
-		ModelIDMetadataKey:        "gpt-4",
+		AIProviderNameMetadataKey:    "openai",
+		ModelIDMetadataKey:           "gpt-4",
 		constants.LLMCostMetadataKey: "0.0000423100",
 	})
 
@@ -525,9 +645,9 @@ func TestPrepareAnalyticEvent_WithRequestResponseHeaders(t *testing.T) {
 
 func TestPrepareAnalyticEvent_WithPayloadsEnabled(t *testing.T) {
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			SendRequestBody:  true,
-			SendResponseBody: true,
+		Collector: config.CollectorConfig{
+			RequestBody:  true,
+			ResponseBody: true,
 		},
 	}
 	analytics := NewAnalytics(cfg)
@@ -551,9 +671,9 @@ func TestPrepareAnalyticEvent_WithPayloadsEnabled(t *testing.T) {
 
 func TestPrepareAnalyticEvent_WithPayloadsDisabled(t *testing.T) {
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			SendRequestBody:  false,
-			SendResponseBody: false,
+		Collector: config.CollectorConfig{
+			RequestBody:  false,
+			ResponseBody: false,
 		},
 	}
 	analytics := NewAnalytics(cfg)
@@ -574,9 +694,9 @@ func TestPrepareAnalyticEvent_WithPayloadsDisabled(t *testing.T) {
 
 func TestPrepareAnalyticEvent_RequestPayloadOnly(t *testing.T) {
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			SendRequestBody:  true,
-			SendResponseBody: false,
+		Collector: config.CollectorConfig{
+			RequestBody:  true,
+			ResponseBody: false,
 		},
 	}
 	analytics := NewAnalytics(cfg)
@@ -598,9 +718,9 @@ func TestPrepareAnalyticEvent_RequestPayloadOnly(t *testing.T) {
 
 func TestPrepareAnalyticEvent_ResponsePayloadOnly(t *testing.T) {
 	cfg := &config.Config{
-		Analytics: config.AnalyticsConfig{
-			SendRequestBody:  false,
-			SendResponseBody: true,
+		Collector: config.CollectorConfig{
+			RequestBody:  false,
+			ResponseBody: true,
 		},
 	}
 	analytics := NewAnalytics(cfg)

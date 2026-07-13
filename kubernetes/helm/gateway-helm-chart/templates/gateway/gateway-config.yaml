@@ -143,6 +143,16 @@ data:
     route_idle_timeout_ms = {{ $router.upstream.timeouts.route_idle_timeout_ms }}
     connect_timeout_ms = {{ $router.upstream.timeouts.connect_timeout_ms }}
 
+    [router.http_listener]
+    server_header_transformation = {{ $router.http_listener.server_header_transformation | quote }}
+    server_header_value = {{ $router.http_listener.server_header_value | quote }}
+
+    [router.http_listener.timeouts]
+    request_timeout = {{ $router.http_listener.timeouts.request_timeout | quote }}
+    request_headers_timeout = {{ $router.http_listener.timeouts.request_headers_timeout | quote }}
+    stream_idle_timeout = {{ $router.http_listener.timeouts.stream_idle_timeout | quote }}
+    idle_timeout = {{ $router.http_listener.timeouts.idle_timeout | quote }}
+
     [router.policy_engine]
     mode = {{ $router.policy_engine.mode | quote }}
     host = {{ $router.policy_engine.host | default "" | quote }}
@@ -253,6 +263,86 @@ data:
     als_plain_text = {{ .Values.gateway.config.analytics.grpc_event_server.als_plain_text }}
     max_message_size = {{ .Values.gateway.config.analytics.grpc_event_server.max_message_size }}
     max_header_limit = {{ .Values.gateway.config.analytics.grpc_event_server.max_header_limit }}
+    {{- end }}
+    {{- end }}
+
+    {{- if .Values.gateway.config.collector }}
+    [collector]
+    {{- if .Values.gateway.config.collector.request_body }}
+    request_body = {{ .Values.gateway.config.collector.request_body }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.response_body }}
+    response_body = {{ .Values.gateway.config.collector.response_body }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.request_headers }}
+    request_headers = {{ .Values.gateway.config.collector.request_headers }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.response_headers }}
+    response_headers = {{ .Values.gateway.config.collector.response_headers }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.ignore_path_prefixes }}
+    ignore_path_prefixes = [{{- range $i, $p := .Values.gateway.config.collector.ignore_path_prefixes }}{{- if gt $i 0 }}, {{ end }}{{ $p | quote }}{{- end }}]
+    {{- end }}
+
+    {{- if .Values.gateway.config.collector.server }}
+    [collector.server]
+    {{- if .Values.gateway.config.collector.server.mode }}
+    mode = {{ .Values.gateway.config.collector.server.mode | quote }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.buffer_flush_interval }}
+    buffer_flush_interval = {{ .Values.gateway.config.collector.server.buffer_flush_interval | int64 }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.buffer_size_bytes }}
+    buffer_size_bytes = {{ .Values.gateway.config.collector.server.buffer_size_bytes | int64 }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.grpc_request_timeout }}
+    grpc_request_timeout = {{ .Values.gateway.config.collector.server.grpc_request_timeout | int64 }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.shutdown_timeout }}
+    shutdown_timeout = {{ .Values.gateway.config.collector.server.shutdown_timeout | quote }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.public_key_path }}
+    public_key_path = {{ .Values.gateway.config.collector.server.public_key_path | quote }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.private_key_path }}
+    private_key_path = {{ .Values.gateway.config.collector.server.private_key_path | quote }}
+    {{- end }}
+    {{- if kindIs "bool" .Values.gateway.config.collector.server.als_plain_text }}
+    als_plain_text = {{ .Values.gateway.config.collector.server.als_plain_text }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.max_message_size }}
+    max_message_size = {{ .Values.gateway.config.collector.server.max_message_size | int64 }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.max_header_limit }}
+    max_header_limit = {{ .Values.gateway.config.collector.server.max_header_limit | int64 }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+
+    {{- if .Values.gateway.config.traffic_logging }}
+    {{- $trafficLoggingEnabled := and (kindIs "bool" .Values.gateway.config.traffic_logging.enabled) .Values.gateway.config.traffic_logging.enabled }}
+    [traffic_logging]
+    enabled = {{ $trafficLoggingEnabled }}
+    {{- if .Values.gateway.config.traffic_logging.masked_headers }}
+    masked_headers = [{{- range $i, $h := .Values.gateway.config.traffic_logging.masked_headers }}{{- if gt $i 0 }}, {{ end }}{{ $h | quote }}{{- end }}]
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.max_payload_size }}
+    max_payload_size = {{ .Values.gateway.config.traffic_logging.max_payload_size | int64 }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.request_headers }}
+    request_headers = {{ .Values.gateway.config.traffic_logging.request_headers }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.request_body }}
+    request_body = {{ .Values.gateway.config.traffic_logging.request_body }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.response_headers }}
+    response_headers = {{ .Values.gateway.config.traffic_logging.response_headers }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.response_body }}
+    response_body = {{ .Values.gateway.config.traffic_logging.response_body }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.exclude_fields }}
+    exclude_fields = [{{- range $i, $f := .Values.gateway.config.traffic_logging.exclude_fields }}{{- if gt $i 0 }}, {{ end }}{{ $f | quote }}{{- end }}]
     {{- end }}
     {{- end }}
 

@@ -160,10 +160,10 @@ func (w *world) verifySubPlan() error {
 		st, body, err := apiCall(http.MethodGet, "/subscriptions?apiId="+w.apiID, suite.token, nil)
 		if err == nil && st == http.StatusOK {
 			var env struct {
-				Subscriptions []map[string]any `json:"subscriptions"`
+				List []map[string]any `json:"list"`
 			}
-			if json.Unmarshal(body, &env) == nil && len(env.Subscriptions) > 0 {
-				last = stringField(env.Subscriptions[0], "subscriptionPlanName")
+			if json.Unmarshal(body, &env) == nil && len(env.List) > 0 {
+				last = stringField(env.List[0], "subscriptionPlanName")
 				if last == w.plan2ID {
 					return nil
 				}

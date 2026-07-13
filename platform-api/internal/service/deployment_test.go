@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -434,7 +434,7 @@ func TestRestoreDeployment(t *testing.T) {
 			mockDeployment:      nil,
 			mockDeploymentError: nil,
 			wantErr:             true,
-			expectedErr:         constants.ErrDeploymentNotFound,
+			expectedErr:         apperror.DeploymentNotFound.New(),
 		},
 		{
 			name:                "deployment fetch error",
@@ -458,7 +458,7 @@ func TestRestoreDeployment(t *testing.T) {
 			mockCurrentDeployment: testDeploymentID, // Same as target
 			mockCurrentStatus:     model.DeploymentStatusDeployed,
 			wantErr:               true,
-			expectedErr:           constants.ErrDeploymentAlreadyDeployed,
+			expectedErr:           apperror.DeploymentRestoreConflict.New(),
 		},
 		{
 			name:         "deployment status fetch error",
@@ -490,7 +490,7 @@ func TestRestoreDeployment(t *testing.T) {
 			mockCurrentStatus:     model.DeploymentStatusUndeployed,
 			mockGateway:           nil,
 			wantErr:               true,
-			expectedErr:           constants.ErrGatewayNotFound,
+			expectedErr:           apperror.GatewayNotFound.New(),
 		},
 		{
 			name:         "gateway organization mismatch",
@@ -511,7 +511,7 @@ func TestRestoreDeployment(t *testing.T) {
 				Endpoints:      []string{"https://api.example.com"},
 			},
 			wantErr:     true,
-			expectedErr: constants.ErrGatewayNotFound,
+			expectedErr: apperror.GatewayNotFound.New(),
 		},
 		{
 			name:         "set current deployment fails",
@@ -669,7 +669,7 @@ func TestUndeployDeployment(t *testing.T) {
 			mockDeployment:      nil,
 			mockDeploymentError: nil,
 			wantErr:             true,
-			expectedErr:         constants.ErrDeploymentNotFound,
+			expectedErr:         apperror.DeploymentNotFound.New(),
 		},
 		{
 			name:         "deployment not active (UNDEPLOYED)",
@@ -683,7 +683,7 @@ func TestUndeployDeployment(t *testing.T) {
 				Status:       &undeployedStatus,
 			},
 			wantErr:     true,
-			expectedErr: constants.ErrDeploymentNotActive,
+			expectedErr: apperror.DeploymentNotActive.New("API"),
 		},
 		{
 			name:         "deployment not active (nil status - ARCHIVED)",
@@ -697,7 +697,7 @@ func TestUndeployDeployment(t *testing.T) {
 				Status:       nil, // ARCHIVED
 			},
 			wantErr:     true,
-			expectedErr: constants.ErrDeploymentNotActive,
+			expectedErr: apperror.DeploymentNotActive.New("API"),
 		},
 		{
 			name:         "gateway not found",
@@ -712,7 +712,7 @@ func TestUndeployDeployment(t *testing.T) {
 			},
 			mockGateway: nil,
 			wantErr:     true,
-			expectedErr: constants.ErrGatewayNotFound,
+			expectedErr: apperror.GatewayNotFound.New(),
 		},
 		{
 			name:         "set current deployment fails",
@@ -746,7 +746,7 @@ func TestUndeployDeployment(t *testing.T) {
 				Status:       &deployedStatus,
 			},
 			wantErr:     true,
-			expectedErr: constants.ErrGatewayIDMismatch,
+			expectedErr: apperror.DeploymentGatewayMismatch.New(),
 		},
 	}
 
@@ -872,7 +872,7 @@ func TestDeleteDeployment(t *testing.T) {
 			mockDeployment:      nil,
 			mockDeploymentError: nil,
 			wantErr:             true,
-			expectedErr:         constants.ErrDeploymentNotFound,
+			expectedErr:         apperror.DeploymentNotFound.New(),
 		},
 		{
 			name:         "cannot delete DEPLOYED deployment",
@@ -885,7 +885,7 @@ func TestDeleteDeployment(t *testing.T) {
 				Status:       &deployedStatus,
 			},
 			wantErr:     true,
-			expectedErr: constants.ErrDeploymentIsDeployed,
+			expectedErr: apperror.DeploymentActive.New(),
 		},
 		{
 			name:         "delete operation fails",
@@ -1029,7 +1029,7 @@ func TestGetDeployments(t *testing.T) {
 			mockAPI:      nil,
 			mockAPIError: nil,
 			wantErr:      true,
-			expectedErr:  constants.ErrAPINotFound,
+			expectedErr:  apperror.RESTAPINotFound.New(),
 		},
 		{
 			name:      "invalid status parameter",
@@ -1040,7 +1040,7 @@ func TestGetDeployments(t *testing.T) {
 				OrganizationID: testOrgUUID,
 			},
 			wantErr:     true,
-			expectedErr: constants.ErrInvalidDeploymentStatus,
+			expectedErr: apperror.DeploymentInvalidStatus.New(),
 		},
 	}
 
@@ -1126,7 +1126,7 @@ func TestGetDeployment(t *testing.T) {
 			mockAPI:      nil,
 			mockAPIError: nil,
 			wantErr:      true,
-			expectedErr:  constants.ErrAPINotFound,
+			expectedErr:  apperror.RESTAPINotFound.New(),
 		},
 		{
 			name: "deployment not found",
@@ -1136,7 +1136,7 @@ func TestGetDeployment(t *testing.T) {
 			},
 			mockDeployment: nil,
 			wantErr:        true,
-			expectedErr:    constants.ErrDeploymentNotFound,
+			expectedErr:    apperror.DeploymentNotFound.New(),
 		},
 	}
 
@@ -1638,7 +1638,7 @@ func TestRollbackDeployment_CurrentlyDeployedSameID(t *testing.T) {
 		t.Fatal("Expected error when restoring to currently DEPLOYED deployment")
 	}
 
-	if !errors.Is(err, constants.ErrDeploymentAlreadyDeployed) {
+	if !apperror.DeploymentRestoreConflict.Is(err) {
 		t.Errorf("Expected ErrDeploymentAlreadyDeployed, got %v", err)
 	}
 
@@ -1676,7 +1676,7 @@ func TestDeleteDeployment_CannotDeleteDeployed(t *testing.T) {
 		t.Fatal("Expected error when deleting DEPLOYED deployment")
 	}
 
-	if !errors.Is(err, constants.ErrDeploymentIsDeployed) {
+	if !apperror.DeploymentActive.Is(err) {
 		t.Errorf("Expected ErrDeploymentIsDeployed, got %v", err)
 	}
 

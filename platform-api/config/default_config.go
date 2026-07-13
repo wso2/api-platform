@@ -28,7 +28,6 @@ func defaultConfig() *Server {
 	return &Server{
 		LogLevel:                   "INFO",
 		LogFormat:                  "text",
-		Port:                       "9243",
 		DBSchemaPath:               "./internal/database/schema.sql",
 		OpenAPISpecPath:            "./resources/openapi.yaml",
 		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
@@ -132,8 +131,27 @@ func defaultConfig() *Server {
 		// a specific artifact kind per organization by setting a positive value
 		// (config file key artifact_limits.max_* or env ARTIFACT_LIMITS_MAX_*).
 		ArtifactLimits: ArtifactLimits{},
-		TLS: TLS{
+		// By default the HTTPS listener serves on 9243 and the plain-HTTP listener
+		// is off — preserving the historical single-TLS-port behavior. Enable the
+		// HTTP listener (and/or move ports) via the [http] / [https] config or the
+		// HTTP_* / HTTPS_* env vars.
+		HTTP: HTTPListener{
+			Enabled: false,
+			Port:    "9080",
+		},
+		HTTPS: HTTPSListener{
+			Enabled: true,
+			Port:    "9243",
 			CertDir: "./data/certs",
+		},
+		// Finite by default so a slow or idle peer cannot hold a connection open
+		// indefinitely. Write is the loosest of the four because some handlers
+		// proxy slow upstreams (LLM completions, deployments).
+		Timeouts: Timeouts{
+			ReadHeader: 10 * time.Second,
+			Read:       60 * time.Second,
+			Write:      120 * time.Second,
+			Idle:       120 * time.Second,
 		},
 		APIKey: APIKey{
 			HashingAlgorithms: []string{"sha256"},

@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -44,6 +45,7 @@ type APIService struct {
 	subscriptionPlanRepo repository.SubscriptionPlanRepository
 	customPolicyRepo     repository.CustomPolicyRepository
 	gatewayEventsService *GatewayEventsService
+	secretService        *SecretService
 	apiUtil              *utils.APIUtil
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
@@ -74,6 +76,13 @@ func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.Proj
 	}
 }
 
+// SetSecretService injects the SecretService used to validate {{ secret "..." }}
+// placeholders on Create/Update. Called after both services are constructed to
+// avoid circular dependency.
+func (s *APIService) SetSecretService(ss *SecretService) {
+	s.secretService = ss
+}
+
 // resolveRESTAPIIdentity replaces resp's createdBy/updatedBy UUIDs with the
 // raw external identity (or constants.DeletedUser), in place.
 func (s *APIService) resolveRESTAPIIdentity(resp *api.RESTAPI) error {
@@ -93,6 +102,20 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 		return nil, err
 	}
 
+	// Validate {{ secret "..." }} placeholders anywhere in the request — the
+	// gateway-controller's template engine resolves placeholders generically
+	// across the whole artifact (upstream auth and policies alike), so
+	// validation must cover the same surface.
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+			return nil, err
+		}
+	}
+
 	projectHandle := strings.TrimSpace(req.ProjectId)
 	// Check if project exists
 	project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgUUID)
@@ -100,7 +123,7 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 		return nil, err
 	}
 	if project == nil {
-		return nil, constants.ErrProjectNotFound
+		return nil, apperror.ProjectNotFound.New()
 	}
 
 	// Handle the API handle (user-facing identifier)
@@ -184,7 +207,7 @@ func (s *APIService) modelToRESTAPI(apiModel *model.API) (*api.RESTAPI, error) {
 // GetAPIByUUID retrieves an API by its ID
 func (s *APIService) GetAPIByUUID(apiUUID, orgUUID string) (*api.RESTAPI, error) {
 	if apiUUID == "" {
-		return nil, errors.New("API id is required")
+		return nil, apperror.ValidationFailed.New("API id is required")
 	}
 
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
@@ -192,10 +215,10 @@ func (s *APIService) GetAPIByUUID(apiUUID, orgUUID string) (*api.RESTAPI, error)
 		return nil, fmt.Errorf("failed to get api: %w", err)
 	}
 	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 	if apiModel.OrganizationID != orgUUID {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 
 	return s.modelToRESTAPI(apiModel)
@@ -227,7 +250,7 @@ func (s *APIService) HandleExistsCheck(orgUUID string) func(string) bool {
 // This is a lightweight operation that only fetches minimal metadata.
 func (s *APIService) getAPIUUIDByHandle(handle, orgUUID string) (string, error) {
 	if handle == "" {
-		return "", errors.New("API handle is required")
+		return "", apperror.ValidationFailed.New("API handle is required")
 	}
 
 	metadata, err := s.apiRepo.GetAPIMetadataByHandle(handle, orgUUID)
@@ -235,7 +258,7 @@ func (s *APIService) getAPIUUIDByHandle(handle, orgUUID string) (string, error) 
 		return "", err
 	}
 	if metadata == nil {
-		return "", constants.ErrAPINotFound
+		return "", apperror.RESTAPINotFound.New()
 	}
 
 	return metadata.ID, nil
@@ -243,30 +266,35 @@ func (s *APIService) getAPIUUIDByHandle(handle, orgUUID string) (string, error) 
 
 // GetAPIsByOrganization retrieves all APIs for an organization with optional project filter.
 // projectHandle, when provided, is the project's handle (not UUID).
-func (s *APIService) GetAPIsByOrganization(orgUUID string, projectHandle string) ([]api.RESTAPI, error) {
+func (s *APIService) GetAPIsByOrganization(orgUUID string, projectHandle string, opts repository.ListOptions) ([]api.RESTAPI, int, error) {
 	projectUUID := ""
 	// If project handle is provided, resolve it and validate that it belongs to the organization
 	if projectHandle != "" {
 		project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgUUID)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if project == nil {
-			return nil, constants.ErrProjectNotFound
+			return nil, 0, apperror.ProjectNotFound.New()
 		}
 		projectUUID = project.ID
 	}
 
-	apiModels, err := s.apiRepo.GetAPIsByOrganizationUUID(orgUUID, projectUUID)
+	total, err := s.apiRepo.CountAPIsByOrganizationUUID(orgUUID, projectUUID, opts.Search)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get apis: %w", err)
+		return nil, 0, fmt.Errorf("failed to count apis: %w", err)
+	}
+
+	apiModels, err := s.apiRepo.GetAPIsByOrganizationUUIDPaginated(orgUUID, projectUUID, opts)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get apis: %w", err)
 	}
 
 	apis := make([]api.RESTAPI, 0)
 	for _, apiModel := range apiModels {
 		apiResponse, err := s.modelToRESTAPI(apiModel)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if apiResponse != nil {
 			// updatedBy is detail-only; omit it from list responses.
@@ -274,13 +302,13 @@ func (s *APIService) GetAPIsByOrganization(orgUUID string, projectHandle string)
 			apis = append(apis, *apiResponse)
 		}
 	}
-	return apis, nil
+	return apis, total, nil
 }
 
 // UpdateAPI updates an existing API
 func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, updatedBy string) (*api.RESTAPI, error) {
 	if apiUUID == "" {
-		return nil, errors.New("API id is required")
+		return nil, apperror.ValidationFailed.New("API id is required")
 	}
 
 	// Get existing API
@@ -289,10 +317,22 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 		return nil, err
 	}
 	if existingAPIModel == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 	if existingAPIModel.OrganizationID != orgUUID {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
+	}
+
+	// Validate {{ secret "..." }} placeholders anywhere in the request — see
+	// CreateAPI for why this covers the whole request, not just upstream.
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+			return nil, err
+		}
 	}
 
 	// Apply updates using shared helper
@@ -325,6 +365,26 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 		return nil, err
 	}
 
+	// Best-effort: delete secrets rotated away from on Main/Sandbox auth. Must
+	// run after the update above persists the new reference, so the in-use
+	// check no longer sees this API pointing at the old handle.
+	if s.secretService != nil {
+		s.secretService.cleanupRotatedSecret(
+			orgUUID,
+			mainUpstreamAuthValue(&existingAPIModel.Configuration.Upstream),
+			mainUpstreamAuthValue(&updatedAPIModel.Configuration.Upstream),
+			updatedBy,
+			s.slogger,
+		)
+		s.secretService.cleanupRotatedSecret(
+			orgUUID,
+			sandboxUpstreamAuthValue(&existingAPIModel.Configuration.Upstream),
+			sandboxUpstreamAuthValue(&updatedAPIModel.Configuration.Upstream),
+			updatedBy,
+			s.slogger,
+		)
+	}
+
 	s.refreshCustomPolicyUsages(apiUUID, orgUUID, updatedAPIModel)
 
 	_ = s.auditRepo.Record("UPDATE", apiUUID, "rest_api", orgUUID, updatedBy)
@@ -345,7 +405,11 @@ func (s *APIService) ensureRESTRuntimeArtifactUnchanged(existing, updated *model
 	}
 	existingArtifact, err := s.apiUtil.BuildAPIDeploymentYAML(existing)
 	if err != nil {
-		return constants.ErrArtifactRuntimeImmutable
+		// Fail closed: without the existing runtime artifact we cannot prove the update
+		// leaves it unchanged, so treat it as a change the control plane may not make.
+		return apperror.ArtifactRuntimeImmutable.Wrap(err,
+			"The update changes the gateway runtime configuration, which is owned by the data-plane "+
+				"gateway and cannot be modified from the control plane.")
 	}
 	updatedArtifact, err := s.apiUtil.BuildAPIDeploymentYAML(updated)
 	if err != nil {
@@ -357,7 +421,7 @@ func (s *APIService) ensureRESTRuntimeArtifactUnchanged(existing, updated *model
 // DeleteAPI deletes an API
 func (s *APIService) DeleteAPI(apiUUID, orgUUID, deletedBy string) error {
 	if apiUUID == "" {
-		return errors.New("API id is required")
+		return apperror.ValidationFailed.New("API id is required")
 	}
 
 	// Check if API exists
@@ -366,10 +430,10 @@ func (s *APIService) DeleteAPI(apiUUID, orgUUID, deletedBy string) error {
 		return err
 	}
 	if api == nil {
-		return constants.ErrAPINotFound
+		return apperror.RESTAPINotFound.New()
 	}
 	if api.OrganizationID != orgUUID {
-		return constants.ErrAPINotFound
+		return apperror.RESTAPINotFound.New()
 	}
 
 	// DP-originated artifacts may only be deleted once undeployed on all gateways.
@@ -452,13 +516,46 @@ func (s *APIService) AddGatewaysToAPIByHandle(handle string, gatewayIds []string
 	return s.AddGatewaysToAPI(apiUUID, gatewayIds, orgId)
 }
 
-// GetAPIGatewaysByHandle retrieves all gateways associated with an API identified by handle
-func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string) (*api.RESTAPIGatewayListResponse, error) {
+// GetAPIGatewaysByHandle retrieves a page of gateways associated with an API
+// identified by handle, applying the requested limit/offset window.
+func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string, limit, offset int) (*api.RESTAPIGatewayListResponse, error) {
 	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
 		return nil, err
 	}
-	return s.GetAPIGateways(apiUUID, orgId)
+
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgId)
+	if err != nil {
+		return nil, err
+	}
+	if apiModel == nil || apiModel.OrganizationID != orgId {
+		return nil, apperror.RESTAPINotFound.New()
+	}
+
+	gatewayDetails, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgId)
+	if err != nil {
+		return nil, err
+	}
+	org, err := s.orgRepo.GetOrganizationByUUID(orgId)
+	if err != nil {
+		return nil, err
+	}
+	orgHandle := ""
+	if org != nil {
+		orgHandle = org.Handle
+	}
+
+	// The gateways associated with a single API are a small, bounded set, so the
+	// requested window is applied in memory while the total reflects the full set.
+	total := len(gatewayDetails)
+	page := paginateSlice(gatewayDetails, limit, offset)
+
+	response, err := apiGatewayDetailsToAPIList(page, orgHandle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert API gateway details: %w", err)
+	}
+	response.Pagination = api.Pagination{Total: total, Offset: offset, Limit: limit}
+	return response, nil
 }
 
 // AddGatewaysToAPI associates multiple gateways with an API
@@ -468,10 +565,10 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 		return nil, err
 	}
 	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 	if apiModel.OrganizationID != orgUUID {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 	var validGateways []*model.Gateway
 	for _, gatewayId := range gatewayIds {
@@ -480,7 +577,7 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 			return nil, err
 		}
 		if gateway == nil {
-			return nil, constants.ErrGatewayNotFound
+			return nil, apperror.GatewayNotFound.New()
 		}
 		validGateways = append(validGateways, gateway)
 	}
@@ -521,10 +618,10 @@ func (s *APIService) GetAPIGateways(apiUUID, orgUUID string) (*api.RESTAPIGatewa
 		return nil, err
 	}
 	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 	if apiModel.OrganizationID != orgUUID {
-		return nil, constants.ErrAPINotFound
+		return nil, apperror.RESTAPINotFound.New()
 	}
 	gatewayDetails, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgUUID)
 	if err != nil {
@@ -560,20 +657,20 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 			return err
 		}
 		if handleExists {
-			return constants.ErrHandleExists
+			return apperror.RESTAPIExists.New("An API with this id already exists.")
 		}
 	}
 	if req.DisplayName == "" {
-		return constants.ErrInvalidAPIName
+		return apperror.ValidationFailed.New("The displayName field is required.")
 	}
 	if !s.isValidContext(req.Context) {
-		return constants.ErrInvalidAPIContext
+		return apperror.ValidationFailed.New("Invalid API context format.")
 	}
 	if !s.isValidVersion(req.Version) {
-		return constants.ErrInvalidAPIVersion
+		return apperror.ValidationFailed.New("Invalid API version format.")
 	}
 	if strings.TrimSpace(req.ProjectId) == "" {
-		return errors.New("project id is required")
+		return apperror.ValidationFailed.New("project id is required")
 	}
 
 	nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.DisplayName, req.Version, orgUUID, "")
@@ -581,17 +678,17 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 		return err
 	}
 	if nameVersionExists {
-		return constants.ErrAPINameVersionAlreadyExists
+		return apperror.RESTAPIExists.New("An API with the same name and version already exists in the organization.")
 	}
 
 	// Validate lifecycle status if provided
 	if req.LifeCycleStatus != nil && !constants.ValidLifecycleStates[string(*req.LifeCycleStatus)] {
-		return constants.ErrInvalidLifecycleState
+		return apperror.ValidationFailed.New("Invalid lifecycle status.")
 	}
 
 	// Validate API type if provided
 	if req.Kind != nil && !strings.EqualFold(*req.Kind, constants.RestApi) {
-		return constants.ErrInvalidAPIType
+		return apperror.ValidationFailed.New("Invalid API type.")
 	}
 
 	// Type-specific validations
@@ -604,12 +701,12 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 	case constants.APITypeWebSub:
 		// For WebSub APIs, ensure that at least one channel is defined
 		if req.Operations != nil && len(*req.Operations) > 0 {
-			return errors.New("WebSub APIs cannot have operations defined")
+			return apperror.ValidationFailed.New("WebSub APIs cannot have operations defined")
 		}
 	case constants.APITypeHTTP:
 		// For HTTP APIs, ensure that at least one operation is defined
 		if req.Channels != nil && len(*req.Channels) > 0 {
-			return errors.New("HTTP APIs cannot have channels defined")
+			return apperror.ValidationFailed.New("HTTP APIs cannot have channels defined")
 		}
 	}
 
@@ -617,9 +714,13 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 	if req.Transport != nil && len(*req.Transport) > 0 {
 		for _, transport := range *req.Transport {
 			if !constants.ValidTransports[strings.ToLower(transport)] {
-				return constants.ErrInvalidTransport
+				return apperror.ValidationFailed.New(fmt.Sprintf("Invalid transport protocol %q.", transport))
 			}
 		}
+	}
+
+	if err := validateOperationAndChannelPolicyVersions(req.Operations, req.Channels); err != nil {
+		return err
 	}
 
 	// Validate subscription plans if provided
@@ -646,12 +747,14 @@ func (s *APIService) validateSubscriptionPlans(planHandles *[]string, orgUUID st
 		plan, err := s.subscriptionPlanRepo.GetByHandleAndOrg(handle, orgUUID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return fmt.Errorf("%w: plan %q", constants.ErrSubscriptionPlanNotFoundOrInactive, handle)
+				return apperror.ValidationFailed.Wrap(err, fmt.Sprintf(
+					"Subscription plan %q was not found or is not active.", handle))
 			}
 			return err
 		}
 		if plan == nil || plan.Status != model.SubscriptionPlanStatusActive {
-			return fmt.Errorf("%w: plan %q", constants.ErrSubscriptionPlanNotFoundOrInactive, handle)
+			return apperror.ValidationFailed.New(fmt.Sprintf(
+				"Subscription plan %q was not found or is not active.", handle))
 		}
 	}
 	return nil
@@ -692,10 +795,51 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.RESTA
 	existingAPI.Policies = req.Policies
 	existingAPI.SubscriptionPlans = req.SubscriptionPlans
 	if !s.isEmptyUpstream(req.Upstream) {
-		existingAPI.Upstream = req.Upstream
+		// isEmptyUpstream only looks at Url/Ref, so a request that updates the
+		// URL but omits auth (routine — auth.value is redacted on GET, so a
+		// naive read-modify-write round-trip never has it to resend) must not
+		// wipe the stored credential. Preserve auth from the existing model
+		// (unredacted) whenever the incoming value is empty.
+		existingAPI.Upstream = preserveUpstreamAuthOnAPIUpdate(existingAPIModel.Configuration.Upstream, req.Upstream)
 	}
 
 	return existingAPI, nil
+}
+
+// preserveUpstreamAuthOnAPIUpdate merges updated's Main/Sandbox auth onto
+// existing's stored (unredacted) values whenever updated's auth value is
+// empty, then returns updated with those merged auth blocks. Non-auth fields
+// (Url, Ref) are taken from updated as-is.
+func preserveUpstreamAuthOnAPIUpdate(existing model.UpstreamConfig, updated api.Upstream) api.Upstream {
+	updated.Main.Auth = preserveAPIUpstreamAuth(existing.Main, updated.Main.Auth)
+	if updated.Sandbox != nil {
+		updated.Sandbox.Auth = preserveAPIUpstreamAuth(existing.Sandbox, updated.Sandbox.Auth)
+	}
+	return updated
+}
+
+// preserveAPIUpstreamAuth backfills updated's Value from existing's stored
+// value when updated is nil or has an empty value. The stored value is only
+// reused when updated's Type matches existing's (or leaves Type unspecified);
+// an explicit Type change means the old secret is for a different auth
+// scheme and must not be silently reattached.
+func preserveAPIUpstreamAuth(existing *model.UpstreamEndpoint, updated *api.UpstreamAuth) *api.UpstreamAuth {
+	if existing == nil || existing.Auth == nil || existing.Auth.Value == "" {
+		return updated
+	}
+	if updated == nil {
+		authType := api.UpstreamAuthType(existing.Auth.Type)
+		return &api.UpstreamAuth{
+			Type:   &authType,
+			Header: utils.StringPtrIfNotEmpty(existing.Auth.Header),
+			Value:  utils.StringPtrIfNotEmpty(existing.Auth.Value),
+		}
+	}
+	typeChanged := updated.Type != nil && string(*updated.Type) != existing.Auth.Type
+	if !typeChanged && (updated.Value == nil || *updated.Value == "") {
+		updated.Value = utils.StringPtrIfNotEmpty(existing.Auth.Value)
+	}
+	return updated
 }
 
 // validateUpdateAPIRequest checks the validity of the update API request
@@ -707,27 +851,31 @@ func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *
 			return err
 		}
 		if nameVersionExists {
-			return constants.ErrAPINameVersionAlreadyExists
+			return apperror.RESTAPIExists.New("An API with the same name and version already exists in the organization.")
 		}
 	}
 
 	// Validate lifecycle status if provided
 	if req.LifeCycleStatus != nil && !constants.ValidLifecycleStates[string(*req.LifeCycleStatus)] {
-		return constants.ErrInvalidLifecycleState
+		return apperror.ValidationFailed.New("Invalid lifecycle status.")
 	}
 
 	// Validate API type if provided
 	if req.Kind != nil && !strings.EqualFold(*req.Kind, constants.RestApi) {
-		return constants.ErrInvalidAPIType
+		return apperror.ValidationFailed.New("Invalid API type.")
 	}
 
 	// Validate transport protocols if provided
 	if req.Transport != nil {
 		for _, transport := range *req.Transport {
 			if !constants.ValidTransports[strings.ToLower(transport)] {
-				return constants.ErrInvalidTransport
+				return apperror.ValidationFailed.New(fmt.Sprintf("Invalid transport protocol %q.", transport))
 			}
 		}
+	}
+
+	if err := validateOperationAndChannelPolicyVersions(req.Operations, req.Channels); err != nil {
+		return err
 	}
 
 	// Validate subscription plans if provided

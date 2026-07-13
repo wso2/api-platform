@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -91,7 +92,7 @@ func NewApplicationService(
 
 func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest, orgID, createdBy string) (*api.Application, error) {
 	if strings.TrimSpace(req.DisplayName) == "" {
-		return nil, constants.ErrInvalidApplicationName
+		return nil, apperror.ValidationFailed.New("The displayName field is required.")
 	}
 	appType, err := normalizeApplicationType(string(req.Type))
 	if err != nil {
@@ -103,7 +104,7 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 		return nil, err
 	}
 	if org == nil {
-		return nil, constants.ErrOrganizationNotFound
+		return nil, apperror.OrganizationNotFound.New()
 	}
 
 	// project_uuid is optional. When a project handle is supplied it must resolve, and name
@@ -116,7 +117,7 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 			return nil, err
 		}
 		if project == nil {
-			return nil, constants.ErrProjectNotFound
+			return nil, apperror.ProjectNotFound.New()
 		}
 		projectID = project.ID
 
@@ -125,7 +126,7 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 			return nil, err
 		}
 		if existingByName != nil {
-			return nil, constants.ErrApplicationExists
+			return nil, apperror.ApplicationExists.New()
 		}
 	}
 
@@ -144,7 +145,7 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 			return nil, err
 		}
 		if exists {
-			return nil, constants.ErrHandleExists
+			return nil, apperror.ApplicationExists.New()
 		}
 	}
 
@@ -176,32 +177,32 @@ func (s *ApplicationService) GetApplicationByID(appIDOrHandle, orgID string) (*a
 		return nil, err
 	}
 	if app == nil {
-		return nil, constants.ErrApplicationNotFound
+		return nil, apperror.ApplicationNotFound.New()
 	}
 
 	return s.modelToApplicationResponse(app)
 }
 
-func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle string, limit, offset int) (*api.ApplicationListResponse, error) {
+func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle string, opts repository.ListOptions) (*api.ApplicationListResponse, error) {
 	org, err := s.orgRepo.GetOrganizationByUUID(orgID)
 	if err != nil {
 		return nil, err
 	}
 	if org == nil {
-		return nil, constants.ErrOrganizationNotFound
+		return nil, apperror.OrganizationNotFound.New()
 	}
 
-	if limit <= 0 {
-		limit = 20
+	if opts.Limit <= 0 {
+		opts.Limit = 20
 	}
-	if limit > 100 {
-		limit = 100
+	if opts.Limit > 100 {
+		opts.Limit = 100
 	}
-	if offset < 0 {
-		offset = 0
+	if opts.Offset < 0 {
+		opts.Offset = 0
 	}
 	if strings.TrimSpace(projectHandle) == "" {
-		return nil, constants.ErrProjectNotFound
+		return nil, apperror.ValidationFailed.New("The project handle is required.")
 	}
 
 	project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgID)
@@ -209,38 +210,26 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle 
 		return nil, err
 	}
 	if project == nil {
-		return nil, constants.ErrProjectNotFound
+		return nil, apperror.ProjectNotFound.New()
 	}
 
-	apps, err := s.appRepo.GetApplicationsByProjectID(project.ID, orgID)
+	totalCount, err := s.appRepo.CountApplicationsByProjectID(project.ID, orgID, opts.Search)
 	if err != nil {
 		return nil, err
 	}
 
-	totalCount := len(apps)
-	if offset > totalCount {
-		offset = totalCount
+	pagedApps, err := s.appRepo.GetApplicationsByProjectIDPaginated(project.ID, orgID, opts)
+	if err != nil {
+		return nil, err
 	}
-
-	end := totalCount
-	effectiveLimit := totalCount
-	if limit > 0 {
-		effectiveLimit = limit
-		end = offset + limit
-		if end > totalCount {
-			end = totalCount
-		}
-	}
-
-	pagedApps := apps[offset:end]
 
 	response := &api.ApplicationListResponse{
 		Count: len(pagedApps),
 		List:  make([]api.Application, 0, len(pagedApps)),
 		Pagination: api.Pagination{
 			Total:  totalCount,
-			Offset: offset,
-			Limit:  effectiveLimit,
+			Offset: opts.Offset,
+			Limit:  opts.Limit,
 		},
 	}
 
@@ -265,7 +254,7 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Ap
 		return nil, err
 	}
 	if app == nil {
-		return nil, constants.ErrApplicationNotFound
+		return nil, apperror.ApplicationNotFound.New()
 	}
 
 	// The id (handle) is immutable: body id must be present and match the application being updated.
@@ -275,7 +264,7 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Ap
 
 	name := strings.TrimSpace(req.DisplayName)
 	if name == "" {
-		return nil, constants.ErrInvalidApplicationName
+		return nil, apperror.ValidationFailed.New("The displayName field is required.")
 	}
 	if name != app.Name {
 		existing, err := s.appRepo.GetApplicationByNameInProject(name, app.ProjectUUID, orgID)
@@ -283,7 +272,7 @@ func (s *ApplicationService) UpdateApplication(appIDOrHandle string, req *api.Ap
 			return nil, err
 		}
 		if existing != nil && existing.UUID != app.UUID {
-			return nil, constants.ErrApplicationExists
+			return nil, apperror.ApplicationExists.New()
 		}
 		app.Name = name
 	}
@@ -325,7 +314,7 @@ func (s *ApplicationService) DeleteApplication(appIDOrHandle, orgID, actor strin
 		return err
 	}
 	if app == nil {
-		return constants.ErrApplicationNotFound
+		return apperror.ApplicationNotFound.New()
 	}
 
 	// Capture the mapped keys before deletion so we can tell the gateways to drop them. Deleting the
@@ -386,7 +375,7 @@ func (s *ApplicationService) ListMappedAPIKeysForAssociation(appIDOrHandle, asso
 		return nil, err
 	}
 	if target == nil {
-		return nil, constants.ErrArtifactNotFound
+		return nil, apperror.ArtifactNotFound.New()
 	}
 
 	if err := s.validateAssociationTargetForApplication(target, app, orgID); err != nil {
@@ -483,13 +472,13 @@ func (s *ApplicationService) SetAPIKeyApplication(keyName, artifactRef, kind, ap
 		return err
 	}
 	if key == nil {
-		return constants.ErrAPIKeyNotFound
+		return apperror.ApplicationAPIKeyNotFound.New()
 	}
 	// Enforce kind scoping: the resolved key must belong to an artifact of the requested kind. A
 	// handle can collide across kinds, so a key found under a same-named handle of another kind is
 	// treated as not found for this event.
 	if kind != "" && key.ArtifactType != kind {
-		return constants.ErrAPIKeyNotFound
+		return apperror.ApplicationAPIKeyNotFound.New()
 	}
 
 	// Capture the applications the key currently belongs to before removing the mapping, so a
@@ -607,7 +596,7 @@ func (s *ApplicationService) RemoveApplicationAssociation(appIDOrHandle, associa
 		return err
 	}
 	if target == nil {
-		return constants.ErrArtifactNotFound
+		return apperror.ArtifactNotFound.New()
 	}
 
 	if err := s.validateAssociationTargetForApplication(target, app, orgID); err != nil {
@@ -633,7 +622,7 @@ func (s *ApplicationService) getApplication(appIDOrHandle, orgID string) (*model
 		return nil, err
 	}
 	if app == nil {
-		return nil, constants.ErrApplicationNotFound
+		return nil, apperror.ApplicationNotFound.New()
 	}
 	return app, nil
 }
@@ -683,7 +672,7 @@ func (s *ApplicationService) resolveAssociationTargets(selectors []ApplicationAs
 	for _, selector := range selectors {
 		targetID := strings.TrimSpace(selector.Id)
 		if targetID == "" {
-			return nil, constants.ErrInvalidInput
+			return nil, apperror.ValidationFailed.New("Each association selector must specify a non-empty id.")
 		}
 
 		kind, err := normalizeApplicationAssociationKind(selector.Kind)
@@ -696,7 +685,7 @@ func (s *ApplicationService) resolveAssociationTargets(selectors []ApplicationAs
 			return nil, err
 		}
 		if target == nil {
-			return nil, constants.ErrArtifactNotFound
+			return nil, apperror.ArtifactNotFound.New()
 		}
 
 		if err := s.validateAssociationTargetForApplication(target, app, orgID); err != nil {
@@ -716,7 +705,7 @@ func (s *ApplicationService) resolveAssociationTargets(selectors []ApplicationAs
 func normalizeApplicationAssociationKind(kind string) (string, error) {
 	trimmed := strings.TrimSpace(kind)
 	if trimmed == "" {
-		return "", constants.ErrArtifactInvalidKind
+		return "", apperror.ValidationFailed.New("Invalid association kind. Only LlmProvider and LlmProxy are supported.")
 	}
 
 	switch {
@@ -725,21 +714,21 @@ func normalizeApplicationAssociationKind(kind string) (string, error) {
 	case strings.EqualFold(trimmed, constants.LLMProxy):
 		return constants.LLMProxy, nil
 	default:
-		return "", constants.ErrArtifactInvalidKind
+		return "", apperror.ValidationFailed.New("Invalid association kind. Only LlmProvider and LlmProxy are supported.")
 	}
 }
 
 func (s *ApplicationService) validateAssociationTargetForApplication(target *model.Artifact, app *model.Application, orgID string) error {
 	if target == nil {
-		return constants.ErrArtifactNotFound
+		return apperror.ArtifactNotFound.New()
 	}
 
 	if target.OrganizationUUID != orgID {
-		return constants.ErrArtifactNotFound
+		return apperror.ArtifactNotFound.New()
 	}
 
 	if target.Type != constants.LLMProvider && target.Type != constants.LLMProxy {
-		return constants.ErrArtifactInvalidKind
+		return apperror.ValidationFailed.New("Invalid association kind. Only LlmProvider and LlmProxy are supported.")
 	}
 
 	if target.Type == constants.LLMProxy {
@@ -748,10 +737,11 @@ func (s *ApplicationService) validateAssociationTargetForApplication(target *mod
 			return err
 		}
 		if strings.TrimSpace(proxyProjectUUID) == "" {
-			return constants.ErrArtifactNotFound
+			return apperror.ArtifactNotFound.New()
 		}
 		if proxyProjectUUID != app.ProjectUUID {
-			return constants.ErrInvalidInput
+			return apperror.ValidationFailed.New(
+				"The LLM proxy belongs to a different project than the application.")
 		}
 	}
 
@@ -763,7 +753,7 @@ func (s *ApplicationService) resolveAPIKey(selector api.APIKeyMappingSelector, o
 	entityID := strings.TrimSpace(selector.AssociatedEntity.Id)
 
 	if keyID == "" || entityID == "" {
-		return nil, constants.ErrInvalidAPIKey
+		return nil, apperror.ValidationFailed.New("The API key id and associated entity id are required.")
 	}
 
 	key, err := s.appRepo.GetAPIKeyByNameAndArtifactHandle(keyID, entityID, orgID)
@@ -771,7 +761,7 @@ func (s *ApplicationService) resolveAPIKey(selector api.APIKeyMappingSelector, o
 		return nil, err
 	}
 	if key == nil {
-		return nil, constants.ErrAPIKeyNotFound
+		return nil, apperror.ApplicationAPIKeyNotFound.New()
 	}
 
 	return key, nil
@@ -779,7 +769,7 @@ func (s *ApplicationService) resolveAPIKey(selector api.APIKeyMappingSelector, o
 
 func (s *ApplicationService) validateAPIKeyBindingPermission(key *model.ApplicationAPIKey, userID string) error {
 	if key == nil {
-		return constants.ErrAPIKeyNotFound
+		return apperror.ApplicationAPIKeyNotFound.New()
 	}
 
 	creator := strings.TrimSpace(key.CreatedBy)
@@ -790,7 +780,7 @@ func (s *ApplicationService) validateAPIKeyBindingPermission(key *model.Applicat
 	}
 
 	if creator != requester {
-		return constants.ErrAPIKeyForbidden
+		return apperror.ApplicationAPIKeyForbidden.New()
 	}
 
 	return nil
@@ -820,7 +810,7 @@ func (s *ApplicationService) buildMappedAPIKeyListForAssociationPaginated(applic
 		}
 	}
 	if !associated {
-		return nil, constants.ErrArtifactNotFound
+		return nil, apperror.ArtifactNotFound.New()
 	}
 
 	for _, key := range keys {
@@ -838,25 +828,10 @@ func (s *ApplicationService) buildApplicationAssociationListPaginated(applicatio
 		return nil, err
 	}
 
-	if offset < 0 {
-		offset = 0
-	}
-
+	// Associations for one application are a small, bounded set, so the total is
+	// the full count and the requested window is applied in memory.
 	total := len(associations)
-	if offset > total {
-		offset = total
-	}
-
-	pagedAssociations := associations
-	effectiveLimit := len(associations)
-	if limit > 0 {
-		effectiveLimit = limit
-		end := offset + limit
-		if end > total {
-			end = total
-		}
-		pagedAssociations = associations[offset:end]
-	}
+	pagedAssociations := paginateSlice(associations, limit, offset)
 
 	response := &ApplicationAssociationListResponse{
 		Count: len(pagedAssociations),
@@ -864,7 +839,7 @@ func (s *ApplicationService) buildApplicationAssociationListPaginated(applicatio
 		Pagination: api.Pagination{
 			Total:  total,
 			Offset: offset,
-			Limit:  effectiveLimit,
+			Limit:  limit,
 		},
 	}
 
@@ -887,26 +862,10 @@ func (s *ApplicationService) buildMappedAPIKeyListPaginated(applicationUUID stri
 }
 
 func (s *ApplicationService) buildMappedAPIKeyResponse(keys []*model.ApplicationAPIKey, limit, offset int) (*api.MappedAPIKeyListResponse, error) {
-
-	if offset < 0 {
-		offset = 0
-	}
-
+	// Mapped API keys for one application are a small, bounded set, so the total
+	// is the full count and the requested window is applied in memory.
 	total := len(keys)
-	if offset > total {
-		offset = total
-	}
-
-	pagedKeys := keys
-	effectiveLimit := len(keys)
-	if limit > 0 {
-		effectiveLimit = limit
-		end := offset + limit
-		if end > total {
-			end = total
-		}
-		pagedKeys = keys[offset:end]
-	}
+	pagedKeys := paginateSlice(keys, limit, offset)
 
 	response := &api.MappedAPIKeyListResponse{
 		Count: len(pagedKeys),
@@ -914,7 +873,7 @@ func (s *ApplicationService) buildMappedAPIKeyResponse(keys []*model.Application
 		Pagination: api.Pagination{
 			Total:  total,
 			Offset: offset,
-			Limit:  effectiveLimit,
+			Limit:  limit,
 		},
 	}
 
@@ -942,7 +901,7 @@ func (s *ApplicationService) modelToApplicationResponse(app *model.Application) 
 			return nil, err
 		}
 		if project == nil {
-			return nil, constants.ErrProjectNotFound
+			return nil, apperror.ProjectNotFound.New()
 		}
 		projectHandle = project.Handle
 	}
@@ -1018,7 +977,7 @@ func valueOrEmptyApplication(value *string) string {
 func normalizeApplicationType(appType string) (string, error) {
 	trimmed := strings.TrimSpace(appType)
 	if trimmed == "" {
-		return "", constants.ErrInvalidApplicationType
+		return "", apperror.ValidationFailed.New("The application type is required.")
 	}
 	if strings.EqualFold(trimmed, "genai") {
 		return "genai", nil
@@ -1026,7 +985,7 @@ func normalizeApplicationType(appType string) (string, error) {
 	if strings.EqualFold(trimmed, "web") {
 		return "web", nil
 	}
-	return "", constants.ErrUnsupportedApplicationType
+	return "", apperror.ValidationFailed.New("Invalid application type. Only 'genai' and 'web' are supported.")
 }
 
 func (s *ApplicationService) broadcastApplicationMappingUpdate(app *model.Application, userID string, keys []*model.ApplicationAPIKey) error {

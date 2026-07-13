@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"fmt"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 
@@ -54,7 +55,8 @@ func ensureArtifactMutableByUUID(repo repository.ArtifactRepository, artifactUUI
 // do not call this guard.
 func ensureOriginMutable(origin string) error {
 	if origin == constants.OriginDP {
-		return constants.ErrArtifactReadOnly
+		return apperror.ArtifactReadOnly.New(
+			"This artifact is read-only because it originated from a data-plane gateway.")
 	}
 	return nil
 }
@@ -108,7 +110,9 @@ func ensureRuntimeArtifactUnchanged(origin string, existing, proposed []byte) er
 	if bytes.Equal(existing, proposed) {
 		return nil
 	}
-	return constants.ErrArtifactRuntimeImmutable
+	return apperror.ArtifactRuntimeImmutable.New(
+		"The update changes the gateway runtime configuration, which is owned by the data-plane " +
+			"gateway and cannot be modified from the control plane.")
 }
 
 // ensureOriginDeletable enforces the deletion rule for DP-originated artifacts: they
@@ -126,7 +130,8 @@ func ensureOriginDeletable(deploymentRepo repository.DeploymentRepository, origi
 		return err
 	}
 	if active {
-		return constants.ErrArtifactDeployed
+		return apperror.ArtifactDeployed.New(
+			"This artifact is still deployed on a gateway and cannot be deleted.")
 	}
 	return nil
 }

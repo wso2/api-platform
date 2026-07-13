@@ -52,6 +52,7 @@ func (s *APIKeyUserService) ListAPIKeysByUser(
 	ctx context.Context,
 	orgID, username string,
 	types []string,
+	limit, offset int,
 ) (*api.UserAPIKeyListResponse, error) {
 
 	keys, err := s.apiKeyRepo.ListAPIKeysByUser(orgID, username, types)
@@ -83,8 +84,14 @@ func (s *APIKeyUserService) ListAPIKeysByUser(
 		items = append(items, item)
 	}
 
+	// A user's API keys are a small, bounded set, so the total is the full count
+	// and the window is applied in memory.
+	total := len(items)
+	page := paginateSlice(items, limit, offset)
+
 	return &api.UserAPIKeyListResponse{
-		Items: items,
-		Count: len(items),
+		List:       page,
+		Count:      len(page),
+		Pagination: api.Pagination{Total: total, Offset: offset, Limit: limit},
 	}, nil
 }

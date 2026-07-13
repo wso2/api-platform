@@ -23,15 +23,19 @@ import (
 	"math"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
+	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -694,6 +698,56 @@ func TestTranslator_WildcardUpstreamRewrite(t *testing.T) {
 	}
 }
 
+// TestTranslator_MCPUpstreamRewrite verifies that for MCP proxies the gateway-facing "/mcp"
+// resource is forwarded to EXACTLY the configured upstream URL path — the "/mcp" segment is
+// not appended to the backend. The upstream is expected to be the full MCP endpoint URL, and
+// some backends don't serve a "/mcp" sub-path. Regression test for the double-"/mcp" bug.
+func TestTranslator_MCPUpstreamRewrite(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	mcpKind := string(models.KindMcp)
+	mcpPath := constants.MCP_RESOURCE_PATH
+
+	tests := []struct {
+		name         string
+		apiKind      string
+		context      string
+		path         string
+		upstreamPath string
+		request      string
+		wantUpstream string
+	}{
+		// Upstream already points at the backend's "/mcp" endpoint: forward there as-is,
+		// do NOT produce "/mcp/mcp".
+		{"mcp endpoint upstream", mcpKind, "/mcpauth", mcpPath, "/mcp", "/mcpauth/mcp", "/mcp"},
+		// Upstream has no path (e.g. http://backend:3001): forward to root, not "/mcp".
+		{"root upstream", mcpKind, "/mcpauth", mcpPath, "", "/mcpauth/mcp", "/"},
+		// Upstream serves MCP at a custom path: forward to exactly that path.
+		{"custom path upstream", mcpKind, "/mcpauth", mcpPath, "/api/v1/mcp-server", "/mcpauth/mcp", "/api/v1/mcp-server"},
+		// Trailing slash on the gateway-facing request is accepted and rewrites the same way.
+		{"trailing slash request", mcpKind, "/mcpauth", mcpPath, "/mcp", "/mcpauth/mcp/", "/mcp"},
+		// Non-MCP kind with a "/mcp" operation path keeps the standard behavior (path preserved
+		// on the upstream) — the special-casing is scoped to MCP proxies only.
+		{"non-mcp kind unaffected", "http/rest", "/mcpauth", mcpPath, "/base", "/mcpauth/mcp", "/base/mcp"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := translator.createRoute(
+				"test-id", "TestMCP", "v1.0", tt.context,
+				"POST", tt.path, "test-cluster", tt.upstreamPath,
+				"localhost", tt.apiKind, "", "", nil, "", nil,
+				false, nil,
+			)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
+		})
+	}
+}
+
 // TestTranslator_WildcardUpstreamRewriteFromRDC verifies the same prefix-preserving behavior on
 // the RuntimeDeployConfig path (createRouteFromRDC), which the policy/runtime xDS pipeline uses.
 func TestTranslator_WildcardUpstreamRewriteFromRDC(t *testing.T) {
@@ -736,6 +790,220 @@ func TestTranslator_WildcardUpstreamRewriteFromRDC(t *testing.T) {
 			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
 		})
 	}
+}
+
+// TestTranslator_RouteResilienceTimeoutsFromRDC verifies that per-route resilience
+// timeouts on a models.Route flow into the Envoy RouteAction, with fallback to the
+// global defaults (60s / 300s from testRouterConfig) when unset, and that an explicit
+// 0s is preserved (disables the timeout).
+func TestTranslator_RouteResilienceTimeoutsFromRDC(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	dur := func(d time.Duration) *time.Duration { return &d }
+
+	tests := []struct {
+		name        string
+		timeout     *models.RouteTimeout
+		wantTimeout time.Duration
+		wantIdle    time.Duration
+	}{
+		{name: "nil timeout uses global defaults", timeout: nil, wantTimeout: 60 * time.Second, wantIdle: 300 * time.Second},
+		{name: "configured values applied", timeout: &models.RouteTimeout{Timeout: dur(2 * time.Second), IdleTimeout: dur(10 * time.Second)}, wantTimeout: 2 * time.Second, wantIdle: 10 * time.Second},
+		{name: "timeout set, idle falls back", timeout: &models.RouteTimeout{Timeout: dur(3 * time.Second)}, wantTimeout: 3 * time.Second, wantIdle: 300 * time.Second},
+		{name: "explicit 0s disables route timeout", timeout: &models.RouteTimeout{Timeout: dur(0)}, wantTimeout: 0, wantIdle: 300 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdc := &models.RuntimeDeployConfig{
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"main": {Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+				},
+			}
+			rdcRoute := &models.Route{
+				Method:          "GET",
+				Path:            "/api/v1.0/items",
+				OperationPath:   "/items",
+				AutoHostRewrite: true,
+				Timeout:         tt.timeout,
+				Upstream:        models.RouteUpstream{ClusterKey: "main"},
+			}
+			r := translator.createRouteFromRDC("GET|/api/v1.0/items|", rdcRoute, rdc)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantTimeout, r.GetRoute().GetTimeout().AsDuration(), "route timeout")
+			assert.Equal(t, tt.wantIdle, r.GetRoute().GetIdleTimeout().AsDuration(), "route idle timeout")
+		})
+	}
+}
+
+// TestTranslator_MCPUpstreamRewriteFromRDC verifies the MCP "/mcp"-not-appended behavior on the
+// RuntimeDeployConfig path (createRouteFromRDC), which the policy/runtime xDS pipeline uses.
+func TestTranslator_MCPUpstreamRewriteFromRDC(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	mcpPath := constants.MCP_RESOURCE_PATH
+
+	tests := []struct {
+		name         string
+		kind         string
+		fullPath     string
+		basePath     string
+		request      string
+		wantUpstream string
+	}{
+		{"mcp endpoint upstream", string(models.KindMcp), "/mcpauth" + mcpPath, "/mcp", "/mcpauth/mcp", "/mcp"},
+		{"root upstream", string(models.KindMcp), "/mcpauth" + mcpPath, "", "/mcpauth/mcp", "/"},
+		{"custom path upstream", string(models.KindMcp), "/mcpauth" + mcpPath, "/api/v1/mcp-server", "/mcpauth/mcp", "/api/v1/mcp-server"},
+		{"trailing slash request", string(models.KindMcp), "/mcpauth" + mcpPath, "/mcp", "/mcpauth/mcp/", "/mcp"},
+		// Non-MCP kind keeps the standard behavior (operation path preserved on the upstream).
+		{"non-mcp kind unaffected", string(models.KindRestApi), "/mcpauth" + mcpPath, "/base", "/mcpauth/mcp", "/base/mcp"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rdc := &models.RuntimeDeployConfig{
+				Metadata: models.Metadata{Kind: tt.kind},
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"main": {BasePath: tt.basePath, Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+				},
+			}
+			rdcRoute := &models.Route{
+				Method:          "POST",
+				Path:            tt.fullPath,
+				OperationPath:   mcpPath,
+				AutoHostRewrite: true,
+				Upstream:        models.RouteUpstream{ClusterKey: "main"},
+			}
+			r := translator.createRouteFromRDC("POST|"+tt.fullPath+"|", rdcRoute, rdc)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
+		})
+	}
+}
+
+// TestTranslator_MCPAppendResourcePathToBackend verifies that when
+// mcp.append_resource_path_to_backend is enabled, MCP "/mcp" routes fall back to the
+// legacy behaviour of appending "/mcp" to the backend upstream path. This preserves
+// compatibility for MCP API definitions authored against the previous gateway version.
+func TestTranslator_MCPAppendResourcePathToBackend(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.MCP.AppendResourcePathToBackend = true
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	mcpKind := string(models.KindMcp)
+	mcpPath := constants.MCP_RESOURCE_PATH
+
+	tests := []struct {
+		name         string
+		context      string
+		upstreamPath string
+		request      string
+		wantUpstream string
+	}{
+		// Legacy behaviour: "/mcp" IS appended to the configured upstream path.
+		{"root upstream", "/mcpauth", "", "/mcpauth/mcp", "/mcp"},
+		{"base-path upstream", "/mcpauth", "/api/v2", "/mcpauth/mcp", "/api/v2/mcp"},
+		{"trailing slash request", "/mcpauth", "/api/v2", "/mcpauth/mcp/", "/api/v2/mcp/"},
+	}
+
+	for _, tt := range tests {
+		t.Run("createRoute/"+tt.name, func(t *testing.T) {
+			r := translator.createRoute(
+				"test-id", "TestMCP", "v1.0", tt.context,
+				"POST", mcpPath, "test-cluster", tt.upstreamPath,
+				"localhost", mcpKind, "", "", nil, "", nil,
+				false, nil,
+			)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
+		})
+
+		t.Run("createRouteFromRDC/"+tt.name, func(t *testing.T) {
+			rdc := &models.RuntimeDeployConfig{
+				Metadata: models.Metadata{Kind: mcpKind},
+				UpstreamClusters: map[string]*models.UpstreamCluster{
+					"main": {BasePath: tt.upstreamPath, Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+				},
+			}
+			rdcRoute := &models.Route{
+				Method:          "POST",
+				Path:            tt.context + mcpPath,
+				OperationPath:   mcpPath,
+				AutoHostRewrite: true,
+				Upstream:        models.RouteUpstream{ClusterKey: "main"},
+			}
+			r := translator.createRouteFromRDC("POST|"+tt.context+mcpPath+"|", rdcRoute, rdc)
+			require.NotNil(t, r)
+			assert.Equal(t, tt.wantUpstream, applyEnvoyRewrite(t, r, tt.request))
+		})
+	}
+}
+
+// TestTranslator_ExactPathUsesNativeMatcher guards the fix for HTTPRoutePathMatchOrder:
+// an Exact path match must be emitted as Envoy's native exact matcher (RouteMatch_Path),
+// NOT as a safe_regex. Rendering it as a regex made SortRoutesByPriority treat every route
+// as a Regex, so it fell back to regex-string length and let a longer prefix regex
+// (^/match(?:/.*)?$) outrank a shorter exact (^/match/exact$).
+func TestTranslator_ExactPathUsesNativeMatcher(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	rdc := &models.RuntimeDeployConfig{
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"main": {BasePath: "", Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+		},
+	}
+	rdcRoute := &models.Route{
+		Method:        "GET",
+		Path:          "/match/exact",
+		OperationPath: "/match/exact",
+		PathMatchType: "Exact",
+		Upstream:      models.RouteUpstream{ClusterKey: "main"},
+	}
+	r := translator.createRouteFromRDC("GET|/match/exact|", rdcRoute, rdc)
+	require.NotNil(t, r)
+	pathSpec, ok := r.GetMatch().GetPathSpecifier().(*route.RouteMatch_Path)
+	require.True(t, ok, "exact path should use RouteMatch_Path, got %T", r.GetMatch().GetPathSpecifier())
+	assert.Equal(t, "/match/exact", pathSpec.Path)
+	assert.Equal(t, pathMatchTypeExact, getPathMatchType(r.GetMatch()),
+		"exact route must rank as Exact for SortRoutesByPriority")
+}
+
+// TestSortRoutesByPriority_ExactBeatsLongerPrefixRegex reproduces the HTTPRoutePathMatchOrder
+// conformance shape: an exact /match must outrank the /match/ prefix even though the prefix's
+// regex string is longer. Before the fix the exact route was a safe_regex and lost on length.
+func TestSortRoutesByPriority_ExactBeatsLongerPrefixRegex(t *testing.T) {
+	exactMatch := &route.Route{
+		Name:  "exact-match",
+		Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Path{Path: "/match"}},
+	}
+	exactMatchExact := &route.Route{
+		Name:  "exact-match-exact",
+		Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Path{Path: "/match/exact"}},
+	}
+	prefixMatch := &route.Route{
+		Name: "prefix-match",
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_SafeRegex{
+				SafeRegex: &matcher.RegexMatcher{Regex: "^/match(?:/.*)?$"},
+			},
+		},
+	}
+
+	sorted := SortRoutesByPriority([]*route.Route{prefixMatch, exactMatch, exactMatchExact})
+
+	// Both exacts must precede the prefix regex.
+	assert.Equal(t, "exact-match-exact", sorted[0].Name)
+	assert.Equal(t, "exact-match", sorted[1].Name)
+	assert.Equal(t, "prefix-match", sorted[2].Name)
 }
 
 func TestTranslator_SanitizeClusterName(t *testing.T) {
@@ -948,6 +1216,55 @@ func TestTranslator_ExtractProviderName_NilSourceConfig(t *testing.T) {
 	assert.Equal(t, "", result)
 }
 
+// extractHCM pulls the HttpConnectionManager out of the listener's first filter chain.
+func extractHCM(t *testing.T, lis *listener.Listener) *hcm.HttpConnectionManager {
+	t.Helper()
+	require.NotEmpty(t, lis.GetFilterChains())
+	require.NotEmpty(t, lis.GetFilterChains()[0].GetFilters())
+	typedConfig := lis.GetFilterChains()[0].GetFilters()[0].GetTypedConfig()
+	require.NotNil(t, typedConfig)
+	manager := &hcm.HttpConnectionManager{}
+	require.NoError(t, typedConfig.UnmarshalTo(manager))
+	return manager
+}
+
+func TestTranslator_CreateListener_HCMTimeouts(t *testing.T) {
+	tests := []struct {
+		name     string
+		timeouts config.HCMTimeouts
+	}{
+		{
+			name:     "configured values",
+			timeouts: config.HCMTimeouts{RequestTimeout: 30 * time.Second, RequestHeadersTimeout: 10 * time.Second, StreamIdleTimeout: 2 * time.Minute, IdleTimeout: 30 * time.Minute},
+		},
+		{
+			name:     "envoy defaults flow through unchanged",
+			timeouts: config.HCMTimeouts{RequestTimeout: 0, RequestHeadersTimeout: 0, StreamIdleTimeout: 5 * time.Minute, IdleTimeout: time.Hour},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := createTestLogger()
+			routerCfg := testRouterConfig()
+			routerCfg.HTTPListener.Timeouts = tt.timeouts
+			cfg := testConfig()
+			cfg.Router = *routerCfg
+			translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+			lis, _, err := translator.createListener(nil, false)
+			require.NoError(t, err)
+
+			manager := extractHCM(t, lis)
+			assert.Equal(t, tt.timeouts.RequestTimeout, manager.GetRequestTimeout().AsDuration(), "request_timeout")
+			assert.Equal(t, tt.timeouts.RequestHeadersTimeout, manager.GetRequestHeadersTimeout().AsDuration(), "request_headers_timeout")
+			assert.Equal(t, tt.timeouts.StreamIdleTimeout, manager.GetStreamIdleTimeout().AsDuration(), "stream_idle_timeout")
+			require.NotNil(t, manager.GetCommonHttpProtocolOptions(), "common_http_protocol_options must be set")
+			assert.Equal(t, tt.timeouts.IdleTimeout, manager.GetCommonHttpProtocolOptions().GetIdleTimeout().AsDuration(), "idle_timeout")
+		})
+	}
+}
+
 func TestTranslator_CreateAccessLogConfig_Disabled(t *testing.T) {
 	// Note: createAccessLogConfig should only be called when access logs are enabled.
 	// The check for enabled is done at the caller level. When called directly with disabled
@@ -1147,6 +1464,36 @@ func TestTranslator_TranslateConfigs_EmptyConfigs(t *testing.T) {
 	assert.NotNil(t, resources)
 }
 
+// Every API virtual host must strip any client-supplied x-envoy-original-path so it
+// cannot survive to the collector.ignore_path_prefixes access-log filter on a route
+// that never rewrites :path (see the comment on this field in TranslateConfigs).
+// vhostMap is pre-seeded with the wildcard "*" vhost, so this is exercised even with
+// no APIs deployed.
+func TestTranslator_TranslateConfigs_StripsClientOriginalPathHeader(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	resources, err := translator.TranslateConfigs([]*models.StoredConfig{}, "test-correlation-id")
+	require.NoError(t, err)
+
+	routeConfigs := resources[resource.RouteType]
+	require.NotEmpty(t, routeConfigs)
+
+	found := false
+	for _, res := range routeConfigs {
+		rc, ok := res.(*route.RouteConfiguration)
+		require.True(t, ok)
+		for _, vh := range rc.VirtualHosts {
+			found = true
+			assert.Contains(t, vh.RequestHeadersToRemove, envoyOriginalPathHeader,
+				"virtual host %q must strip client-supplied x-envoy-original-path", vh.Name)
+		}
+	}
+	assert.True(t, found, "expected at least one virtual host in the shared route config")
+}
+
 func TestTranslator_GetVHostDomains(t *testing.T) {
 	logger := createTestLogger()
 
@@ -1330,7 +1677,7 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 		routerCfg := testRouterConfig()
 		cfg := testConfig()
 		cfg.Analytics.Enabled = true
-		cfg.Analytics.GRPCEventServerCfg = config.GRPCEventServerConfig{
+		cfg.Collector.Server = config.GRPCEventServerConfig{
 			Mode:                "uds",
 			BufferFlushInterval: 1000000000,
 			BufferSizeBytes:     16384,
@@ -1357,7 +1704,7 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 		routerCfg := testRouterConfig()
 		cfg := testConfig()
 		cfg.Analytics.Enabled = true
-		cfg.Analytics.GRPCEventServerCfg = config.GRPCEventServerConfig{
+		cfg.Collector.Server = config.GRPCEventServerConfig{
 			Mode:                "",
 			BufferFlushInterval: 1000000000,
 			BufferSizeBytes:     16384,
@@ -1383,9 +1730,8 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 		routerCfg := testRouterConfig()
 		cfg := testConfig()
 		cfg.Analytics.Enabled = true
-		cfg.Analytics.GRPCEventServerCfg = config.GRPCEventServerConfig{
+		cfg.Collector.Server = config.GRPCEventServerConfig{
 			Mode:                "tcp",
-			Port:                18090,
 			BufferFlushInterval: 1000000000,
 			BufferSizeBytes:     16384,
 			GRPCRequestTimeout:  20000000000,
@@ -1409,15 +1755,37 @@ func TestTranslator_CreateALSCluster(t *testing.T) {
 		assert.Equal(t, "policy-engine", socketAddr.Address)
 		assert.Equal(t, uint32(18090), socketAddr.GetPortValue())
 	})
+
+	t.Run("TCP mode honors deprecated port override (backward compat)", func(t *testing.T) {
+		routerCfg := testRouterConfig()
+		cfg := testConfig()
+		cfg.Analytics.Enabled = true
+		cfg.Collector.Server = config.GRPCEventServerConfig{
+			Mode:                "tcp",
+			Port:                9099,
+			BufferFlushInterval: 1000000000,
+			BufferSizeBytes:     16384,
+			GRPCRequestTimeout:  20000000000,
+		}
+		cfg.Router.PolicyEngine.Host = "policy-engine"
+		translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+		c := translator.createALSCluster()
+		assert.NotNil(t, c)
+
+		lbEndpoint := c.LoadAssignment.Endpoints[0].LbEndpoints[0]
+		socketAddr := lbEndpoint.GetEndpoint().Address.GetSocketAddress()
+		assert.NotNil(t, socketAddr)
+		assert.Equal(t, uint32(9099), socketAddr.GetPortValue())
+	})
 }
 
 func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
 	cfg := testConfig()
-	cfg.Analytics.GRPCEventServerCfg = config.GRPCEventServerConfig{
+	cfg.Collector.Server = config.GRPCEventServerConfig{
 		Mode:                "tcp",
-		Port:                18090,
 		BufferFlushInterval: 1000,
 		BufferSizeBytes:     16384,
 		GRPCRequestTimeout:  5000,
@@ -1427,19 +1795,37 @@ func TestTranslator_CreateGRPCAccessLog(t *testing.T) {
 	accessLog, err := translator.createGRPCAccessLog()
 	assert.NoError(t, err)
 	assert.NotNil(t, accessLog)
+	assert.Nil(t, accessLog.Filter, "no ignore_path_prefixes configured -> no filter")
+}
+
+func TestTranslator_CreateGRPCAccessLog_WithIgnorePathPrefixes(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.Collector.Server = config.GRPCEventServerConfig{
+		Mode:                "tcp",
+		BufferFlushInterval: 1000,
+		BufferSizeBytes:     16384,
+		GRPCRequestTimeout:  5000,
+	}
+	cfg.Collector.IgnorePathPrefixes = []string{"/health"}
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	accessLog, err := translator.createGRPCAccessLog()
+	assert.NoError(t, err)
+	assert.NotNil(t, accessLog)
+	assert.NotNil(t, accessLog.Filter, "ignore_path_prefixes configured -> filter attached")
 }
 
 func TestTranslator_CreateGRPCAccessLog_BufferSizeOverflow(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
 	cfg := testConfig()
-	cfg.Analytics.GRPCEventServerCfg = config.GRPCEventServerConfig{
+	cfg.Collector.Server = config.GRPCEventServerConfig{
 		Mode:                "tcp",
-		Port:                18090,
 		BufferFlushInterval: 1000,
 		BufferSizeBytes:     math.MaxInt,
 		GRPCRequestTimeout:  5000,
-		ServerPort:          18090,
 	}
 	translator := NewTranslator(logger, routerCfg, nil, cfg)
 
@@ -1447,6 +1833,142 @@ func TestTranslator_CreateGRPCAccessLog_BufferSizeOverflow(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, accessLog)
 	assert.Contains(t, err.Error(), "buffer_size_bytes")
+}
+
+// evalAccessLogFilter walks a constructed AccessLogFilter tree and evaluates it
+// against a synthetic header set, mirroring how Envoy itself would evaluate the
+// filter. This proves actual matching behavior, not just proto shape.
+func evalAccessLogFilter(t *testing.T, filter *accesslog.AccessLogFilter, headers map[string]string) bool {
+	t.Helper()
+	switch fs := filter.FilterSpecifier.(type) {
+	case *accesslog.AccessLogFilter_HeaderFilter:
+		return evalHeaderMatcher(t, fs.HeaderFilter.Header, headers)
+	case *accesslog.AccessLogFilter_AndFilter:
+		for _, f := range fs.AndFilter.Filters {
+			if !evalAccessLogFilter(t, f, headers) {
+				return false
+			}
+		}
+		return true
+	case *accesslog.AccessLogFilter_OrFilter:
+		for _, f := range fs.OrFilter.Filters {
+			if evalAccessLogFilter(t, f, headers) {
+				return true
+			}
+		}
+		return false
+	default:
+		t.Fatalf("evalAccessLogFilter: unsupported filter specifier %T", fs)
+		return false
+	}
+}
+
+func evalHeaderMatcher(t *testing.T, m *route.HeaderMatcher, headers map[string]string) bool {
+	t.Helper()
+	val, present := headers[m.Name]
+	var result bool
+	switch spec := m.HeaderMatchSpecifier.(type) {
+	case *route.HeaderMatcher_PresentMatch:
+		result = present == spec.PresentMatch
+	case *route.HeaderMatcher_PrefixMatch:
+		result = present && strings.HasPrefix(val, spec.PrefixMatch)
+	default:
+		t.Fatalf("evalHeaderMatcher: unsupported header match specifier %T", spec)
+	}
+	if m.InvertMatch {
+		result = !result
+	}
+	return result
+}
+
+func TestBuildIgnorePathsAccessLogFilter(t *testing.T) {
+	t.Run("nil prefixes -> nil filter", func(t *testing.T) {
+		assert.Nil(t, buildIgnorePathsAccessLogFilter(nil))
+	})
+
+	t.Run("empty prefixes -> nil filter", func(t *testing.T) {
+		assert.Nil(t, buildIgnorePathsAccessLogFilter([]string{}))
+	})
+
+	t.Run("whitespace-only entries -> nil filter", func(t *testing.T) {
+		assert.Nil(t, buildIgnorePathsAccessLogFilter([]string{"", "   "}))
+	})
+
+	t.Run("single prefix -> unwrapped per-prefix filter", func(t *testing.T) {
+		filter := buildIgnorePathsAccessLogFilter([]string{"/health"})
+		require.NotNil(t, filter)
+		_, isAnd := filter.FilterSpecifier.(*accesslog.AccessLogFilter_AndFilter)
+		assert.False(t, isAnd, "single prefix should not be wrapped in an outer AndFilter")
+
+		assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+			"x-envoy-original-path": "/health/live",
+		}), "matching original path -> suppressed")
+		assert.True(t, evalAccessLogFilter(t, filter, map[string]string{
+			"x-envoy-original-path": "/orders",
+		}), "non-matching original path -> logged")
+		assert.True(t, evalAccessLogFilter(t, filter, map[string]string{
+			":path": "/health/live",
+		}), "no original-path header -> logged regardless of :path")
+	})
+
+	t.Run("multiple prefixes -> outer AndFilter", func(t *testing.T) {
+		filter := buildIgnorePathsAccessLogFilter([]string{"/health", "/metrics", ""})
+		require.NotNil(t, filter)
+		andFilter, isAnd := filter.FilterSpecifier.(*accesslog.AccessLogFilter_AndFilter)
+		require.True(t, isAnd, "multiple prefixes should be wrapped in an outer AndFilter")
+		assert.Len(t, andFilter.AndFilter.Filters, 2, "blank entry must be dropped")
+
+		assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+			"x-envoy-original-path": "/health/live",
+		}), "matches first prefix -> suppressed")
+		assert.False(t, evalAccessLogFilter(t, filter, map[string]string{
+			"x-envoy-original-path": "/metrics/scrape",
+		}), "matches second prefix -> suppressed")
+		assert.True(t, evalAccessLogFilter(t, filter, map[string]string{
+			"x-envoy-original-path": "/orders",
+		}), "matches neither prefix -> logged")
+	})
+}
+
+func TestNotEffectivelyMatchesPrefix(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers map[string]string
+		wantLog bool
+	}{
+		{
+			name:    "original present and has prefix -> suppress even if :path (rewritten backend path) differs",
+			headers: map[string]string{envoyOriginalPathHeader: "/health/live", ":path": "/some/rewritten/backend/path"},
+			wantLog: false,
+		},
+		{
+			name:    "original present and does not have prefix -> log, original is authoritative",
+			headers: map[string]string{envoyOriginalPathHeader: "/orders", ":path": "/health"},
+			wantLog: true,
+		},
+		{
+			name:    "original absent, :path happens to have prefix -> log anyway, no :path fallback",
+			headers: map[string]string{":path": "/health/live"},
+			wantLog: true,
+		},
+		{
+			name:    "original absent, :path does not have prefix -> log",
+			headers: map[string]string{":path": "/orders"},
+			wantLog: true,
+		},
+		{
+			name:    "no headers at all -> log",
+			headers: map[string]string{},
+			wantLog: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filter := notEffectivelyMatchesPrefix("/health")
+			assert.Equal(t, tt.wantLog, evalAccessLogFilter(t, filter, tt.headers))
+		})
+	}
 }
 
 func TestTranslator_CreateDynamicForwardProxyCluster(t *testing.T) {
@@ -2162,4 +2684,149 @@ func TestTranslator_CreateDynamicFwdListenerForWebSubHub(t *testing.T) {
 		assert.Equal(t, "0.0.0.0", listener.GetAddress().GetSocketAddress().GetAddress())
 		assert.Equal(t, core.SocketAddress_TCP, listener.GetAddress().GetSocketAddress().GetProtocol())
 	})
+}
+
+// TestCreateWeightedCluster_TLS guards the fix for the reviewer concern
+// "Configure TLS for weighted HTTPS upstreams." A multi-endpoint (weighted) upstream
+// definition whose endpoints are HTTPS must be dialed over TLS, mirroring the single-endpoint
+// createCluster path. Before the fix createWeightedCluster discarded the scheme and produced a
+// plain cluster with no transport socket, silently downgrading HTTPS weighted upstreams to
+// plaintext.
+func TestCreateWeightedCluster_TLS(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+	w := func(n int) *int { return &n }
+	endpoints := []models.Endpoint{
+		{Host: "a.example.com", Port: 443, Weight: w(70)},
+		{Host: "b.example.com", Port: 443, Weight: w(30)},
+	}
+
+	t.Run("https weighted upstream gets per-endpoint TLS transport sockets", func(t *testing.T) {
+		c := translator.createWeightedCluster("upstream_secure", endpoints, &models.UpstreamTLS{Enabled: true}, nil)
+		require.NotNil(t, c)
+
+		// One transport socket match per endpoint, each carrying a TLS transport socket.
+		require.Len(t, c.GetTransportSocketMatches(), len(endpoints),
+			"each HTTPS endpoint must get its own transport socket match")
+		for i, tsm := range c.GetTransportSocketMatches() {
+			matchID := strconv.Itoa(i)
+			assert.Equal(t, "ts"+matchID, tsm.GetName())
+			assert.Equal(t, matchID, tsm.GetMatch().GetFields()["lb_id"].GetStringValue())
+			require.NotNil(t, tsm.GetTransportSocket())
+			assert.Equal(t, "envoy.transport_sockets.tls", tsm.GetTransportSocket().GetName())
+
+			// The transport socket must hold an UpstreamTlsContext with the endpoint's host as SNI.
+			tc := &tlsv3.UpstreamTlsContext{}
+			require.NoError(t, tsm.GetTransportSocket().GetTypedConfig().UnmarshalTo(tc))
+			assert.Equal(t, endpoints[i].Host, tc.GetSni(),
+				"each endpoint's TLS context must use its own hostname as SNI")
+		}
+
+		// Every LbEndpoint must be tagged with the matching lb_id so Envoy selects its socket.
+		lbs := c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints()
+		require.Len(t, lbs, len(endpoints))
+		for i, lb := range lbs {
+			md := lb.GetMetadata().GetFilterMetadata()["envoy.transport_socket_match"]
+			require.NotNil(t, md, "HTTPS endpoint must carry transport_socket_match metadata")
+			assert.Equal(t, strconv.Itoa(i), md.GetFields()["lb_id"].GetStringValue())
+		}
+	})
+
+	t.Run("plaintext weighted upstream is unchanged (no transport socket)", func(t *testing.T) {
+		plain := []models.Endpoint{
+			{Host: "a.internal", Port: 8080, Weight: w(1)},
+			{Host: "b.internal", Port: 8080, Weight: w(1)},
+		}
+		// Both nil TLS and explicitly-disabled TLS must produce a plain cluster.
+		for _, tls := range []*models.UpstreamTLS{nil, {Enabled: false}} {
+			c := translator.createWeightedCluster("upstream_plain", plain, tls, nil)
+			require.NotNil(t, c)
+			assert.Empty(t, c.GetTransportSocketMatches(),
+				"plaintext weighted upstream must not get transport socket matches")
+			for _, lb := range c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints() {
+				assert.Nil(t, lb.GetMetadata(), "plaintext endpoint must not carry transport-socket metadata")
+			}
+		}
+	})
+}
+
+// parseDurationAllowZero must accept exactly what the CRD admission controller accepts
+// (constants.ResilienceDurationPattern): single-unit durations including "0s" to disable, while
+// rejecting compound, negative, and unitless values.
+func TestParseDurationAllowZero_MatchesCRDPattern(t *testing.T) {
+	ptr := func(s string) *string { return &s }
+
+	t.Run("accepts single-unit and zero", func(t *testing.T) {
+		for _, in := range []string{"30s", "500ms", "1m", "2h", "1.5s", "0s", "0ms"} {
+			d, err := parseDurationAllowZero(ptr(in))
+			if err != nil {
+				t.Errorf("expected %q to be accepted, got error: %v", in, err)
+				continue
+			}
+			if d == nil {
+				t.Errorf("expected %q to yield a non-nil duration", in)
+			}
+		}
+	})
+
+	t.Run("nil and empty yield nil without error", func(t *testing.T) {
+		for _, in := range []*string{nil, ptr(""), ptr("  ")} {
+			d, err := parseDurationAllowZero(in)
+			if err != nil || d != nil {
+				t.Errorf("expected nil,nil for empty input, got %v,%v", d, err)
+			}
+		}
+	})
+
+	t.Run("rejects compound, negative, and unitless", func(t *testing.T) {
+		for _, in := range []string{"1h30m", "1m30s", "-30s", "-5s", "30", "0", "15seconds", "abc"} {
+			if _, err := parseDurationAllowZero(ptr(in)); err == nil {
+				t.Errorf("expected %q to be rejected, but it was accepted", in)
+			}
+		}
+	})
+}
+
+// TestBuildMatchHeaders_HeaderMatchersRendered guards that configured header matches are rendered
+// as Envoy header matchers on the route (the mechanism that makes header-based route selection and
+// cross-HTTPRoute precedence work), and that a RegularExpression match becomes a safe_regex rather
+// than being downgraded to an exact match.
+func TestBuildMatchHeaders_HeaderMatchersRendered(t *testing.T) {
+	logger := createTestLogger()
+	translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+	rdc := &models.RuntimeDeployConfig{
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"main": {BasePath: "", Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+		},
+	}
+
+	route1 := &models.Route{
+		Method: "GET", Path: "/svc/v1/things", OperationPath: "/things",
+		Upstream: models.RouteUpstream{ClusterKey: "main"},
+		MatchHeaders: []models.RouteHeaderMatch{
+			{Name: "Version", Type: "Exact", Value: "two"},
+			{Name: "X-Flavor", Type: "RegularExpression", Value: "red|blue"},
+		},
+	}
+	r := translator.createRouteFromRDC("GET|/svc/v1/things|main.local|abc123", route1, rdc)
+	require.NotNil(t, r)
+
+	var version, flavor *route.HeaderMatcher
+	for _, h := range r.GetMatch().GetHeaders() {
+		switch h.GetName() {
+		case "version":
+			version = h
+		case "x-flavor":
+			flavor = h
+		}
+	}
+	require.NotNil(t, version, "expected a lower-cased 'version' header matcher")
+	_, exactOK := version.GetHeaderMatchSpecifier().(*route.HeaderMatcher_StringMatch)
+	require.True(t, exactOK, "Exact header match must be a string_match, got %T", version.GetHeaderMatchSpecifier())
+
+	require.NotNil(t, flavor, "expected an 'x-flavor' header matcher")
+	rx, ok := flavor.GetHeaderMatchSpecifier().(*route.HeaderMatcher_SafeRegexMatch)
+	require.True(t, ok, "RegularExpression header match must stay a safe_regex, got %T", flavor.GetHeaderMatchSpecifier())
+	assert.Equal(t, "red|blue", rx.SafeRegexMatch.GetRegex())
 }

@@ -133,7 +133,7 @@ async function generateApiKey(req, res) {
         return res.status(201).json(result);
     } catch (err) {
         logger.error('Failed to generate API key', { error: err.message, orgId, apiId: apiHandle });
-        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
+        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: 'Failed to generate API key' });
     }
 }
 
@@ -187,7 +187,7 @@ async function listApiKeys(req, res) {
         return res.status(errorStatus(err)).json({
             status: 'error',
             code: 'INTERNAL_SERVER_ERROR',
-            message: err.message,
+            message: 'Failed to list API keys',
             errors: [],
         });
     }
@@ -218,7 +218,7 @@ async function regenerateApiKey(req, res) {
         return res.status(200).json(result);
     } catch (err) {
         logger.error('Failed to regenerate API key', { error: err.message, orgId, apiId: apiHandle, keyHandle });
-        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
+        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: 'Failed to regenerate API key' });
     }
 }
 
@@ -245,7 +245,7 @@ async function revokeApiKey(req, res) {
         return res.status(204).send();
     } catch (err) {
         logger.error('Failed to revoke API key', { error: err.message, orgId, apiId: apiHandle, keyHandle });
-        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
+        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: 'Failed to revoke API key' });
     }
 }
 
@@ -281,7 +281,7 @@ async function associateApiKeyApplication(req, res) {
         return res.status(200).json(result);
     } catch (err) {
         logger.error('Failed to associate application with API key', { error: err.message, orgId, apiId: apiHandle, keyHandle });
-        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
+        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: 'Failed to associate application with API key' });
     }
 }
 
@@ -308,7 +308,7 @@ async function removeApiKeyApplication(req, res) {
         return res.status(204).send();
     } catch (err) {
         logger.error('Failed to remove application association from API key', { error: err.message, orgId, apiId: apiHandle, keyHandle });
-        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: err.message });
+        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: 'Failed to remove application association from API key' });
     }
 }
 
@@ -333,7 +333,7 @@ async function listApplicationApiKeys(req, res) {
         return res.status(errorStatus(err)).json({
             status: 'error',
             code: 'INTERNAL_SERVER_ERROR',
-            message: err.message,
+            message: 'Failed to list application API keys',
             errors: [],
         });
     }

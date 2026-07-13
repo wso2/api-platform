@@ -69,6 +69,7 @@ import type {
   Proxy as LLMProxy,
   UpdateProxyRequest,
 } from '../../../../utils/types';
+import { getErrorMessage } from '../../../../utils/apiError';
 import {
   GatewayArtifactReadOnlyBanner,
 } from '../../../../utils/readOnlyArtifacts';
@@ -92,12 +93,7 @@ const UNSAVED_CHANGES_MESSAGE =
   'You have unsaved changes. Please save or cancel before leaving this page.';
 
 function getErrorDescription(error: unknown, fallbackMessage: string): string {
-  return (
-    (error as any)?.response?.data?.description ||
-    (error as any)?.response?.data?.message ||
-    (error instanceof Error ? error.message : null) ||
-    fallbackMessage
-  );
+  return getErrorMessage(error, fallbackMessage);
 }
 
 type LLMProxyOverviewLocationState = {
@@ -238,9 +234,9 @@ function ProxyOverviewContent() {
       setSavedProxy(updatedProxy);
       showSnackbar('Proxy updated successfully.', 'success');
     } catch (err) {
-      setUpdateError(
-        err instanceof Error ? err.message : 'Failed to update proxy'
-      );
+      const message = err instanceof Error ? err.message : 'Failed to update proxy';
+      setUpdateError(message);
+      showSnackbar(message, 'error');
     } finally {
       setIsSavingChanges(false);
     }

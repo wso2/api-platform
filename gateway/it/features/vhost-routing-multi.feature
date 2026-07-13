@@ -220,3 +220,78 @@ Feature: Gateway vhost routing with multi-domain defaults
     Given I authenticate using basic auth as "admin"
     When I delete the API "vhost-multi-sentinel-v1.0"
     Then the response should be successful
+
+  Scenario: Semicolon-separated vhosts.main routes every listed production host to the main upstream
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: vhost-multi-list-v1.0
+      spec:
+        displayName: VHost-Multi-List
+        version: v1.0
+        context: /vhost-multi-list/$version
+        vhosts:
+          main: "alpha.example.com;beta.example.com;*.wild.example.com"
+          sandbox: sandbox.example.com
+        upstream:
+          main:
+            url: http://sample-backend:9080
+          sandbox:
+            url: http://sample-backend:9080/sandbox
+        operations:
+          - method: GET
+            path: /whoami
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/vhost-multi-list/v1.0/whoami" to be ready with host "alpha.example.com"
+
+    # First listed host (the primary vhost) routes to the main upstream
+    When I clear all headers
+    And I set request host to "alpha.example.com"
+    And I send a GET request to "http://localhost:8080/vhost-multi-list/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/whoami"
+
+    # Second listed host also routes to the main upstream
+    When I clear all headers
+    And I set request host to "beta.example.com"
+    And I send a GET request to "http://localhost:8080/vhost-multi-list/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/whoami"
+
+    # A subdomain of the listed wildcard host routes to the main upstream
+    When I clear all headers
+    And I set request host to "node1.wild.example.com"
+    And I send a GET request to "http://localhost:8080/vhost-multi-list/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/whoami"
+
+    # Sandbox stays a single host and routes to the sandbox upstream
+    When I clear all headers
+    And I set request host to "sandbox.example.com"
+    And I send a GET request to "http://localhost:8080/vhost-multi-list/v1.0/whoami"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "environment" should be "sandbox"
+    And the JSON response field "path" should be "/sandbox/whoami"
+
+    # A gateway-default host is not in the API's list, so it must not match this API
+    When I clear all headers
+    And I set request host to "api.wso2.com"
+    And I send a GET request to "http://localhost:8080/vhost-multi-list/v1.0/whoami"
+    Then the response status code should be 404
+
+    # The wildcard apex (no subdomain) must not match "*.wild.example.com"
+    When I clear all headers
+    And I set request host to "wild.example.com"
+    And I send a GET request to "http://localhost:8080/vhost-multi-list/v1.0/whoami"
+    Then the response status code should be 404
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "vhost-multi-list-v1.0"
+    Then the response should be successful

@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
@@ -84,14 +84,14 @@ func (s *SubscriptionService) ResolveOrgHandle(orgUUID string) string {
 // where the caller specifies the kind so the handle is resolved against exactly one table.
 func (s *SubscriptionService) resolveArtifactUUIDByKind(apiId, kind, orgUUID string) (string, error) {
 	if apiId == "" || kind == "" {
-		return "", constants.ErrAPINotFound
+		return "", apperror.ArtifactNotFound.New()
 	}
 	metadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiId, kind, orgUUID)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve artifact by handle and kind: %w", err)
 	}
 	if metadata == nil {
-		return "", constants.ErrAPINotFound
+		return "", apperror.ArtifactNotFound.New()
 	}
 	return metadata.ID, nil
 }
@@ -99,11 +99,11 @@ func (s *SubscriptionService) resolveArtifactUUIDByKind(apiId, kind, orgUUID str
 // resolveAPIUUID resolves apiId (handle or UUID) to rest_apis.uuid for the organization
 func (s *SubscriptionService) resolveAPIUUID(apiId, orgUUID string) (string, error) {
 	if apiId == "" {
-		return "", constants.ErrAPINotFound
+		return "", apperror.ArtifactNotFound.New()
 	}
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiId, orgUUID)
 	if err != nil {
-		if !errors.Is(err, constants.ErrAPINotFound) {
+		if !apperror.RESTAPINotFound.Is(err) {
 			return "", fmt.Errorf("failed to resolve API by UUID: %w", err)
 		}
 	} else if apiModel != nil {
@@ -112,13 +112,13 @@ func (s *SubscriptionService) resolveAPIUUID(apiId, orgUUID string) (string, err
 
 	metadata, err := s.artifactRepo.GetAPIMetadataByHandle(apiId, orgUUID)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return "", constants.ErrAPINotFound
+		if apperror.RESTAPINotFound.Is(err) {
+			return "", apperror.ArtifactNotFound.New()
 		}
 		return "", fmt.Errorf("failed to resolve API by handle: %w", err)
 	}
 	if metadata == nil {
-		return "", constants.ErrAPINotFound
+		return "", apperror.ArtifactNotFound.New()
 	}
 	return metadata.ID, nil
 }
@@ -172,14 +172,14 @@ func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, su
 	}
 
 	if subscriberID == "" {
-		return nil, fmt.Errorf("subscriberId is required")
+		return nil, apperror.ValidationFailed.New("subscriberId is required")
 	}
 	exists, err := s.subscriptionRepo.ExistsByAPIAndSubscriber(apiUUID, subscriberID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 	if exists {
-		return nil, constants.ErrSubscriptionAlreadyExists
+		return nil, apperror.SubscriptionExists.New()
 	}
 
 	// subscriptionPlanId carries the Developer Portal subscription plan handle. Resolve it to the
@@ -188,12 +188,12 @@ func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, su
 		plan, err := s.planRepo.GetByHandleAndOrg(*subscriptionPlanId, orgUUID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return nil, constants.ErrSubscriptionPlanNotFound
+				return nil, apperror.SubscriptionPlanNotFound.New()
 			}
 			return nil, err
 		}
 		if plan == nil {
-			return nil, constants.ErrSubscriptionPlanNotFound
+			return nil, apperror.SubscriptionPlanNotFound.New()
 		}
 		subscriptionPlanId = &plan.UUID
 	}
@@ -256,13 +256,13 @@ func (s *SubscriptionService) CreateSubscription(apiId, kind, orgUUID string, su
 func (s *SubscriptionService) GetSubscription(subscriptionId, orgUUID string) (*model.Subscription, error) {
 	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
 	if err != nil {
-		if errors.Is(err, constants.ErrSubscriptionNotFound) {
-			return nil, constants.ErrSubscriptionNotFound
+		if apperror.SubscriptionNotFound.Is(err) {
+			return nil, apperror.SubscriptionNotFound.New()
 		}
 		return nil, err
 	}
 	if sub == nil {
-		return nil, constants.ErrSubscriptionNotFound
+		return nil, apperror.SubscriptionNotFound.New()
 	}
 	return sub, nil
 }
@@ -315,16 +315,16 @@ func (s *SubscriptionService) FindByArtifactKindAndSubscriber(orgUUID, apiHandle
 func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscriberID, status, actor string) (*model.Subscription, error) {
 	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
 	if err != nil {
-		if errors.Is(err, constants.ErrSubscriptionNotFound) {
-			return nil, constants.ErrSubscriptionNotFound
+		if apperror.SubscriptionNotFound.Is(err) {
+			return nil, apperror.SubscriptionNotFound.New()
 		}
 		return nil, err
 	}
 	if sub == nil {
-		return nil, constants.ErrSubscriptionNotFound
+		return nil, apperror.SubscriptionNotFound.New()
 	}
 	if sub.SubscriberID != subscriberID {
-		return nil, constants.ErrSubscriptionSubscriberMismatch
+		return nil, apperror.SubscriptionForbidden.New()
 	}
 	if status != "" {
 		st := model.SubscriptionStatus(status)
@@ -381,16 +381,16 @@ func (s *SubscriptionService) UpdateSubscription(subscriptionId, orgUUID, subscr
 func (s *SubscriptionService) ChangePlan(subscriptionId, orgUUID, subscriberID, planHandle string) (*model.Subscription, error) {
 	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
 	if err != nil {
-		if errors.Is(err, constants.ErrSubscriptionNotFound) {
-			return nil, constants.ErrSubscriptionNotFound
+		if apperror.SubscriptionNotFound.Is(err) {
+			return nil, apperror.SubscriptionNotFound.New()
 		}
 		return nil, err
 	}
 	if sub == nil {
-		return nil, constants.ErrSubscriptionNotFound
+		return nil, apperror.SubscriptionNotFound.New()
 	}
 	if sub.SubscriberID != subscriberID {
-		return nil, constants.ErrSubscriptionSubscriberMismatch
+		return nil, apperror.SubscriptionForbidden.New()
 	}
 
 	// planHandle carries the Developer Portal subscription plan handle. Resolve it to the plan's
@@ -398,12 +398,12 @@ func (s *SubscriptionService) ChangePlan(subscriptionId, orgUUID, subscriberID, 
 	planRecord, err := s.planRepo.GetByHandleAndOrg(planHandle, orgUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrSubscriptionPlanNotFound
+			return nil, apperror.SubscriptionPlanNotFound.New()
 		}
 		return nil, err
 	}
 	if planRecord == nil {
-		return nil, constants.ErrSubscriptionPlanNotFound
+		return nil, apperror.SubscriptionPlanNotFound.New()
 	}
 	plan := planRecord.UUID
 	sub.SubscriptionPlanID = &plan
@@ -446,20 +446,20 @@ func (s *SubscriptionService) ChangePlan(subscriptionId, orgUUID, subscriberID, 
 // deployed. subscriberID must match the stored subscriber_id.
 func (s *SubscriptionService) RegenerateToken(subscriptionId, orgUUID, subscriberID, newToken string) (*model.Subscription, error) {
 	if newToken == "" {
-		return nil, fmt.Errorf("subscription token is required")
+		return nil, apperror.ValidationFailed.New("subscription token is required")
 	}
 	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
 	if err != nil {
-		if errors.Is(err, constants.ErrSubscriptionNotFound) {
-			return nil, constants.ErrSubscriptionNotFound
+		if apperror.SubscriptionNotFound.Is(err) {
+			return nil, apperror.SubscriptionNotFound.New()
 		}
 		return nil, err
 	}
 	if sub == nil {
-		return nil, constants.ErrSubscriptionNotFound
+		return nil, apperror.SubscriptionNotFound.New()
 	}
 	if sub.SubscriberID != subscriberID {
-		return nil, constants.ErrSubscriptionSubscriberMismatch
+		return nil, apperror.SubscriptionForbidden.New()
 	}
 
 	if err := s.subscriptionRepo.UpdateToken(subscriptionId, orgUUID, newToken); err != nil {
@@ -502,16 +502,16 @@ func (s *SubscriptionService) RegenerateToken(subscriptionId, orgUUID, subscribe
 func (s *SubscriptionService) DeleteSubscription(subscriptionId, orgUUID, subscriberID, actor string) error {
 	sub, err := s.subscriptionRepo.GetByID(subscriptionId, orgUUID)
 	if err != nil {
-		if errors.Is(err, constants.ErrSubscriptionNotFound) {
-			return constants.ErrSubscriptionNotFound
+		if apperror.SubscriptionNotFound.Is(err) {
+			return apperror.SubscriptionNotFound.New()
 		}
 		return err
 	}
 	if sub == nil {
-		return constants.ErrSubscriptionNotFound
+		return apperror.SubscriptionNotFound.New()
 	}
 	if sub.SubscriberID != subscriberID {
-		return constants.ErrSubscriptionSubscriberMismatch
+		return apperror.SubscriptionForbidden.New()
 	}
 
 	if err := s.subscriptionRepo.Delete(subscriptionId, orgUUID); err != nil {

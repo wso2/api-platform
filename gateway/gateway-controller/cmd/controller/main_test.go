@@ -294,8 +294,8 @@ func TestDerivePolicyFromAPIConfig(t *testing.T) {
 				},
 				Operations: []api.Operation{
 					{
-						Method: api.OperationMethodGET,
-						Path:   "/resource",
+						Method: api.Ptr(api.OperationMethodGET),
+						Path:   api.Ptr("/resource"),
 						Policies: &[]api.Policy{
 							{
 								Name:    "MultiVersionPolicy",
@@ -401,8 +401,8 @@ func createTestStoredConfig(name, version, context string, apiPolicies []api.Pol
 		Policies:    policiesPtr,
 		Operations: []api.Operation{
 			{
-				Method:   api.OperationMethodGET,
-				Path:     "/resource",
+				Method:   api.Ptr(api.OperationMethodGET),
+				Path:     api.Ptr("/resource"),
 				Policies: opPoliciesPtr,
 			},
 		},
@@ -452,8 +452,8 @@ func createTestStoredConfigWithSandbox(name, version, context string, apiPolicie
 		Policies:    policiesPtr,
 		Operations: []api.Operation{
 			{
-				Method: api.OperationMethodGET,
-				Path:   "/resource",
+				Method: api.Ptr(api.OperationMethodGET),
+				Path:   api.Ptr("/resource"),
 			},
 		},
 		Upstream: struct {
@@ -508,8 +508,8 @@ func createTestStoredConfigWithVhosts(name, version, context string, apiPolicies
 		},
 		Operations: []api.Operation{
 			{
-				Method: api.OperationMethodGET,
-				Path:   "/resource",
+				Method: api.Ptr(api.OperationMethodGET),
+				Path:   api.Ptr("/resource"),
 			},
 		},
 		Upstream: struct {
@@ -814,16 +814,16 @@ func createTestStoredConfigMultipleOps(name, version, context string, apiPolicie
 		Policies:    policiesPtr,
 		Operations: []api.Operation{
 			{
-				Method: api.OperationMethodGET,
-				Path:   "/resource",
+				Method: api.Ptr(api.OperationMethodGET),
+				Path:   api.Ptr("/resource"),
 			},
 			{
-				Method: api.OperationMethodPOST,
-				Path:   "/resource",
+				Method: api.Ptr(api.OperationMethodPOST),
+				Path:   api.Ptr("/resource"),
 			},
 			{
-				Method: api.OperationMethodGET,
-				Path:   "/other",
+				Method: api.Ptr(api.OperationMethodGET),
+				Path:   api.Ptr("/other"),
 			},
 		},
 		Upstream: struct {

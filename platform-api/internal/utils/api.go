@@ -461,7 +461,9 @@ func (u *APIUtil) upstreamAuthToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth 
 		apiAuth.Type = &value
 	}
 	apiAuth.Header = StringPtrIfNotEmpty(auth.Header)
-	apiAuth.Value = StringPtrIfNotEmpty(auth.Value)
+	// Redact value — never expose the auth credential in a read response,
+	// matching the LLM Provider/Proxy and MCP Proxy mappers.
+	apiAuth.Value = nil
 	return apiAuth
 }
 

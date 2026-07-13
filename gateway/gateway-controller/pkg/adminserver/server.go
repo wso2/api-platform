@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"time"
 
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
@@ -63,6 +64,19 @@ func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, logger *slog.
 			deprecatedAdminPathMiddleware(AdminAPIBasePath),
 		},
 	})
+
+	// Go runtime profiling endpoints, registered only when explicitly enabled.
+	// They are wrapped in the same IP whitelist as the other admin routes — the
+	// selective middleware here (not on the mux itself) is what protects them, so
+	// registering directly on the mux without it would leave pprof unauthenticated.
+	if cfg.Pprof.Enabled {
+		ipmw := createSelectiveIPWhitelistMiddleware(cfg.AllowedIPs)
+		mux.Handle("/debug/pprof/", ipmw(http.HandlerFunc(pprof.Index)))
+		mux.Handle("/debug/pprof/cmdline", ipmw(http.HandlerFunc(pprof.Cmdline)))
+		mux.Handle("/debug/pprof/profile", ipmw(http.HandlerFunc(pprof.Profile)))
+		mux.Handle("/debug/pprof/symbol", ipmw(http.HandlerFunc(pprof.Symbol)))
+		mux.Handle("/debug/pprof/trace", ipmw(http.HandlerFunc(pprof.Trace)))
+	}
 
 	s.httpSrv = &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),

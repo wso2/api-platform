@@ -44,7 +44,7 @@ type loginRequest struct {
 // handleLogin (POST /api/login) — file-based credentials → server-side session.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if s.fileBased == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "file-based auth is not enabled"})
+		writeErrorJSON(w, http.StatusBadRequest, "AUTH_METHOD_DISABLED", "file-based auth is not enabled")
 		return
 	}
 
@@ -52,7 +52,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("Content-Type")
 	if strings.HasPrefix(ct, "application/json") {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			writeErrorJSON(w, http.StatusBadRequest, "INVALID_REQUEST_BODY", "invalid request body")
 			return
 		}
 	} else {
@@ -61,7 +61,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		req.Password = r.PostForm.Get("password")
 	}
 	if req.Username == "" || req.Password == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "username and password are required"})
+		writeErrorJSON(w, http.StatusBadRequest, "MISSING_CREDENTIALS", "username and password are required")
 		return
 	}
 
@@ -69,11 +69,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var bad auth.ErrInvalidCredentials
 		if errors.As(err, &bad) {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
+			writeErrorJSON(w, http.StatusUnauthorized, "INVALID_CREDENTIALS", "invalid credentials")
 			return
 		}
 		slog.Error("file-based login failed", "err", err)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "login failed"})
+		writeServerErrorJSON(w, http.StatusBadGateway, "LOGIN_FAILED", "login failed", w.Header().Get("X-Request-Id"))
 		return
 	}
 
@@ -125,14 +125,14 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 // handleOIDCLogin (GET /api/auth/login) — redirect to the IDP authorize endpoint.
 func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 	if s.oidc == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "oidc auth is not enabled"})
+		writeErrorJSON(w, http.StatusBadRequest, "AUTH_METHOD_DISABLED", "oidc auth is not enabled")
 		return
 	}
 	ret := sanitizeReturn(r.URL.Query().Get("return"))
 	authURL, txID, err := s.oidc.AuthCodeURL(ret)
 	if err != nil {
 		slog.Error("oidc authorize url failed", "err", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "login init failed"})
+		writeServerErrorJSON(w, http.StatusInternalServerError, "LOGIN_INIT_FAILED", "login init failed", w.Header().Get("X-Request-Id"))
 		return
 	}
 	s.setTxCookie(w, txID)
@@ -142,7 +142,7 @@ func (s *Server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 // handleOIDCCallback (GET /api/auth/callback) — exchange code, create session.
 func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	if s.oidc == nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "oidc auth is not enabled"})
+		writeErrorJSON(w, http.StatusBadRequest, "AUTH_METHOD_DISABLED", "oidc auth is not enabled")
 		return
 	}
 	q := r.URL.Query()
@@ -184,7 +184,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	jwt, ok := s.tokenFromCookie(r)
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not authenticated"})
+		writeErrorJSON(w, http.StatusUnauthorized, "NOT_AUTHENTICATED", "not authenticated")
 		return
 	}
 
@@ -199,7 +199,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 				slog.Warn("token refresh failed", "err", err)
 				_ = s.store.Delete(r.Context(), jwt)
 				s.clearSessionCookie(w)
-				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session expired"})
+				writeErrorJSON(w, http.StatusUnauthorized, "SESSION_EXPIRED", "session expired")
 				return
 			}
 			jwt = refreshed.AccessToken
@@ -347,6 +347,30 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+// errorBody mirrors the Platform API's standard error shape (see
+// platform-api/resources/openapi.yaml "Error" schema) so the frontend can
+// parse every error response — proxied or BFF-originated — the same way.
+type errorBody struct {
+	Status     string `json:"status"`
+	Code       string `json:"code"`
+	Message    string `json:"message"`
+	TrackingID string `json:"trackingId,omitempty"`
+}
+
+// writeErrorJSON writes a BFF-originated error (auth/session/CSRF failures
+// that never reach the Platform API) in the same shape as Platform API
+// errors. code must match ^[A-Z][A-Z0-9_]*$.
+func writeErrorJSON(w http.ResponseWriter, status int, code, message string) {
+	writeJSON(w, status, errorBody{Status: "error", Code: code, Message: message})
+}
+
+// writeServerErrorJSON writes a 5xx BFF-originated error, echoing the
+// request's correlation id as trackingId — matching the Platform API
+// contract that trackingId is present on server-side failures.
+func writeServerErrorJSON(w http.ResponseWriter, status int, code, message, trackingID string) {
+	writeJSON(w, status, errorBody{Status: "error", Code: code, Message: message, TrackingID: trackingID})
 }
 
 // sanitizeReturn ensures redirect targets are local paths (no open redirect).

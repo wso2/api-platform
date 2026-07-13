@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/common/authenticators"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 )
 
 const (
@@ -93,7 +94,7 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) func(http.H
 				}
 			}
 
-			writeJSONError(w, http.StatusForbidden, "insufficient permissions")
+			writeError(w, apperror.Forbidden.New(), "insufficient scopes for route")
 		})
 	}
 }

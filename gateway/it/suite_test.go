@@ -118,6 +118,7 @@ func getFeaturePaths() []string {
 		"features/request-rewrite.feature",
 		"features/host-rewrite.feature",
 		"features/respond.feature",
+		"features/redirect.feature",
 		"features/llm-provider.feature",
 		"features/certificates.feature",
 		"features/config-dump.feature",
@@ -141,8 +142,12 @@ func getFeaturePaths() []string {
 		"features/llm-provider-wide-ratelimit.feature",
 		"features/log-message.feature",
 		"features/route-path-matching.feature",
+		"features/header-routing.feature",
 		"features/secrets.feature",
 		"features/template-functions.feature",
+		"features/upstream-connect-timeout.feature",
+		"features/backend-timeout.feature",
+		"features/llm-backend-timeout.feature",
 		// Runs late: it restarts the gateway-controller (reject/reconnect scenario), so keep it
 		// after features that assume an uninterrupted controller. Verifies the DP->CP artifact push.
 		"features/dp-to-cp.feature",
@@ -339,7 +344,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterMetricsSteps(ctx, testState, httpSteps)
 		RegisterAuthSteps(ctx, testState, httpSteps)
 		RegisterAPISteps(ctx, testState, httpSteps)
-		RegisterBackendTimeoutSteps(ctx, testState)
+		RegisterTimeoutSteps(ctx, testState)
 		RegisterMCPSteps(ctx, testState, httpSteps, jwtSteps)
 		RegisterLLMSteps(ctx, testState, httpSteps)
 		RegisterJWTSteps(ctx, testState, httpSteps, jwtSteps)

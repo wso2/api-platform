@@ -22,7 +22,14 @@
 # ---------------------------------------------------------------------------
 log_level  = "INFO"   # DEBUG | INFO | WARN | ERROR
 log_format = "text"   # text | json
-port       = "9243"
+
+# ---------------------------------------------------------------------------
+# Encryption
+# ---------------------------------------------------------------------------
+# Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
+# (secrets, subscription tokens, WebSub HMAC secrets)
+# Env: ENCRYPTION_KEY. Generate with: openssl rand -hex 32.
+# encryption_key = ""
 
 # ---------------------------------------------------------------------------
 # Database
@@ -44,8 +51,8 @@ driver = "sqlite3"          # "sqlite3" or "postgres"
 # ---------------------------------------------------------------------------
 
 # JWT (local HMAC) — issues signed tokens after file-based login.
-# secret_key is auto-generated at startup when not set (ephemeral — sessions reset on restart).
-# Set AUTH_JWT_SECRET_KEY env var or secret_key here to persist sessions across restarts.
+# secret_key is a 32-byte key (64 hex chars or base64; openssl rand -hex 32)
+# Env: AUTH_JWT_SECRET_KEY. Generate with: openssl rand -hex 32.
 [auth.jwt]
 enabled = true
 issuer  = "platform-api"
@@ -80,10 +87,53 @@ password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
 scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage"
 
 # ---------------------------------------------------------------------------
-# TLS
+# Listeners (HTTP + HTTPS)
 # ---------------------------------------------------------------------------
-# [tls]
+# The plain-HTTP and TLS listeners are independent — enable either or both, each
+# on its own port. This follows the gateway router's http/https split, and lets
+# you serve plain HTTP internally, HTTPS externally, or run both at once (e.g. to
+# migrate clients between them without downtime).
+#
+# Defaults: the HTTPS listener is on at 9243; the plain-HTTP listener is off.
+# Enable the plain-HTTP listener only when a trusted upstream (ingress,
+# service-mesh sidecar) terminates TLS, or for internal traffic — never expose it
+# directly to untrusted networks.
+#
+# https.cert_dir must contain cert.pem and key.pem when https.enabled = true and
+# APIP_DEMO_MODE=false. In demo mode a self-signed pair is generated there.
+#
+# Override with HTTP_ENABLED / HTTP_PORT and HTTPS_ENABLED / HTTPS_PORT /
+# HTTPS_CERT_DIR. Legacy TLS_ENABLED / TLS_CERT_DIR / PORT still map onto the
+# HTTPS listener.
+# [http]
+# enabled = false
+# port    = "9080"
+# [https]
+# enabled  = true
+# port     = "9243"
 # cert_dir = "/app/data/certs"
+
+# ---------------------------------------------------------------------------
+# Listener timeouts
+# ---------------------------------------------------------------------------
+# Bound the lifetime of a connection so a slow or idle peer cannot hold one open
+# indefinitely (Slowloris). These apply to both listeners, which serve the same
+# handler. Values are durations, e.g. "10s", "2m".
+#
+# 0 disables a timeout (net/http semantics). Disabling read or read_header
+# removes the Slowloris protection — only do so behind a proxy that enforces its
+# own bounds. Keep `write` generous: it bounds handler execution, and some
+# handlers proxy slow upstreams (LLM completions, deployments).
+#
+# WebSocket routes are unaffected — the deadlines are cleared on upgrade.
+#
+# Override with TIMEOUTS_READ_HEADER / TIMEOUTS_READ / TIMEOUTS_WRITE /
+# TIMEOUTS_IDLE.
+# [timeouts]
+# read_header = "10s"
+# read        = "60s"
+# write       = "120s"
+# idle        = "120s"
 
 # ---------------------------------------------------------------------------
 # CORS

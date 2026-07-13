@@ -67,7 +67,7 @@ func extractSecretHandles(body []byte) []string {
 // platformDo performs a single authenticated request against the Platform API,
 // returning the raw response. The caller is responsible for closing the body.
 func (s *Server) platformDo(ctx context.Context, jwt, method, path string, header http.Header, body []byte) (*http.Response, error) {
-	url := strings.TrimRight(s.cfg.PlatformAPIURL, "/") + path
+	url := strings.TrimRight(s.cfg.PlatformAPI.URL, "/") + path
 	var reqBody io.Reader
 	if len(body) > 0 {
 		reqBody = bytes.NewReader(body)
@@ -135,7 +135,7 @@ func (s *Server) deleteSecretAsync(jwt, handle, apiBase string) {
 func (s *Server) handleCreateWithSecretCompensation(w http.ResponseWriter, r *http.Request, resourcePath, apiBasePath string) {
 	jwt, ok := s.tokenFromCookie(r)
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not authenticated"})
+		writeErrorJSON(w, http.StatusUnauthorized, "NOT_AUTHENTICATED", "not authenticated")
 		return
 	}
 
@@ -143,7 +143,7 @@ func (s *Server) handleCreateWithSecretCompensation(w http.ResponseWriter, r *ht
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
+		writeErrorJSON(w, http.StatusBadRequest, "INVALID_REQUEST_BODY", "failed to read request body")
 		return
 	}
 
@@ -155,7 +155,7 @@ func (s *Server) handleCreateWithSecretCompensation(w http.ResponseWriter, r *ht
 	resp, err := s.platformDo(r.Context(), jwt, http.MethodPost, path, r.Header, body)
 	if err != nil {
 		slog.Error("bff: platform API call failed", "path", resourcePath, "err", err)
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "upstream request failed"})
+		writeServerErrorJSON(w, http.StatusBadGateway, "UPSTREAM_REQUEST_FAILED", "upstream request failed", w.Header().Get("X-Request-Id"))
 		return
 	}
 	defer resp.Body.Close()

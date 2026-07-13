@@ -22,27 +22,31 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
-	"github.com/wso2/api-platform/platform-api/internal/model"
-	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
 
 // mockGatewayRepoForPolicy mocks only the GatewayRepository methods used by custom-policy operations.
 type mockGatewayRepoForPolicy struct {
 	repository.GatewayRepository
 
-	gateway         *model.Gateway
-	gatewayErr      error
-	manifest        []byte
-	manifestErr     error
+	gateway     *model.Gateway
+	gatewayErr  error
+	manifest    []byte
+	manifestErr error
 
 	// call tracking
 	getByUUIDCalled      bool
 	getManifestCalled    bool
 	lastGatewayID        string
+	storedManifest       []byte
+	updatedVersion       string
 }
 
 func (m *mockGatewayRepoForPolicy) GetByUUID(gatewayID string) (*model.Gateway, error) {
@@ -54,6 +58,16 @@ func (m *mockGatewayRepoForPolicy) GetByUUID(gatewayID string) (*model.Gateway, 
 func (m *mockGatewayRepoForPolicy) GetGatewayManifest(gatewayID string) ([]byte, error) {
 	m.getManifestCalled = true
 	return m.manifest, m.manifestErr
+}
+
+func (m *mockGatewayRepoForPolicy) UpdateGatewayManifest(gatewayID string, manifest []byte) error {
+	m.storedManifest = manifest
+	return nil
+}
+
+func (m *mockGatewayRepoForPolicy) UpdateGatewayVersion(gatewayID, version string) error {
+	m.updatedVersion = version
+	return nil
 }
 
 // mockCustomPolicyRepo mocks all CustomPolicyRepository methods.
@@ -72,10 +86,10 @@ type mockCustomPolicyRepo struct {
 	deleteIfUnusedErr         error
 	countUsages               int
 	countUsagesErr            error
-	insertCalled         bool
-	updateCalled         bool
-	updateOldVersion     string
-	deleteIfUnusedCalled bool
+	insertCalled              bool
+	updateCalled              bool
+	updateOldVersion          string
+	deleteIfUnusedCalled      bool
 }
 
 func (m *mockCustomPolicyRepo) InsertCustomPolicy(policy *model.CustomPolicy) error {
@@ -139,7 +153,7 @@ func sampleManifest(name, version string) []byte {
 		{
 			Name:      name,
 			Version:   version,
-			ManagedBy: constants.PolicyManagedByCustomer,
+			ManagedBy: constants.PolicyManagedByOrganization,
 			PolicyDefinition: map[string]interface{}{
 				"parameters": map[string]interface{}{
 					"type":       "object",
@@ -166,38 +180,38 @@ func newTestGatewayService(gwRepo repository.GatewayRepository, cpRepo repositor
 
 func TestSyncCustomPolicy(t *testing.T) {
 	const (
-		orgID     = "org-uuid-0001"
-		gwID      = "gw-uuid-0001"
-		otherOrg  = "org-uuid-OTHER"
+		orgID      = "org-uuid-0001"
+		gwID       = "gw-uuid-0001"
+		otherOrg   = "org-uuid-OTHER"
 		policyUUID = "pol-uuid-0001"
 	)
 
 	tests := []struct {
-		name string
-		gateway    *model.Gateway
-		gatewayErr error
-		manifest   []byte
-		manifestErr error
+		name                string
+		gateway             *model.Gateway
+		gatewayErr          error
+		manifest            []byte
+		manifestErr         error
 		existingPolicies    []*model.CustomPolicy
 		existingPoliciesErr error
 		insertErr           error
 		updateErr           error
-		persistedPolicy *model.CustomPolicy
-		policyName string
-		version    string
-		wantErr     bool
-		errContains string
-		wantInsert bool
-		wantUpdate bool
+		persistedPolicy     *model.CustomPolicy
+		policyName          string
+		version             string
+		wantErr             bool
+		errContains         string
+		wantInsert          bool
+		wantUpdate          bool
 	}{
-		// gateway validation 
+		// gateway validation
 		{
 			name:        "gateway not found - repo error",
 			gatewayErr:  errors.New("db error"),
 			policyName:  "rate-limit",
 			version:     "1.0.0",
 			wantErr:     true,
-			errContains: "gateway not found",
+			errContains: "GATEWAY_NOT_FOUND",
 		},
 		{
 			name:        "gateway not found - nil returned",
@@ -205,15 +219,15 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.0.0",
 			wantErr:     true,
-			errContains: "gateway not found",
+			errContains: "GATEWAY_NOT_FOUND",
 		},
 		{
-			name: "gateway belongs to different org",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: otherOrg},
-			policyName: "rate-limit",
-			version:    "1.0.0",
-			wantErr:    true,
-			errContains: "gateway not found",
+			name:        "gateway belongs to different org",
+			gateway:     &model.Gateway{ID: gwID, OrganizationID: otherOrg},
+			policyName:  "rate-limit",
+			version:     "1.0.0",
+			wantErr:     true,
+			errContains: "GATEWAY_NOT_FOUND",
 		},
 
 		// manifest validation
@@ -233,29 +247,29 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.0.0",
 			wantErr:     true,
-			errContains: "gateway manifest is not available",
+			errContains: "POLICY_INVALID_STATE",
 		},
 		{
 			name:    "policy not found in manifest",
 			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: makeManifest([]GatewayPolicyDefinition{
-				{Name: "other-policy", Version: "1.0.0", ManagedBy: constants.PolicyManagedByCustomer},
+				{Name: "other-policy", Version: "1.0.0", ManagedBy: constants.PolicyManagedByOrganization},
 			}),
 			policyName:  "rate-limit",
 			version:     "1.0.0",
 			wantErr:     true,
-			errContains: "not found in gateway manifest",
+			errContains: "CUSTOM_POLICY_VERSION_NOT_FOUND",
 		},
 		{
 			name:    "policy version mismatch in manifest",
 			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: makeManifest([]GatewayPolicyDefinition{
-				{Name: "rate-limit", Version: "1.1.0", ManagedBy: constants.PolicyManagedByCustomer},
+				{Name: "rate-limit", Version: "1.1.0", ManagedBy: constants.PolicyManagedByOrganization},
 			}),
 			policyName:  "rate-limit",
 			version:     "1.0.0",
 			wantErr:     true,
-			errContains: "not found in gateway manifest",
+			errContains: "CUSTOM_POLICY_VERSION_NOT_FOUND",
 		},
 		{
 			name:    "policy is not a custom policy (wso2 managed)",
@@ -266,13 +280,13 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.0.0",
 			wantErr:     true,
-			errContains: "not a custom policy",
+			errContains: "POLICY_INVALID_STATE",
 		},
 
 		// version conflict rules
 		{
-			name:    "exact same version already exists",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
+			name:     "exact same version already exists",
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: sampleManifest("rate-limit", "1.2.0"),
 			existingPolicies: []*model.CustomPolicy{
 				makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.2.0"),
@@ -280,11 +294,11 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.2.0",
 			wantErr:     true,
-			errContains: "already exists",
+			errContains: "POLICY_VERSION_CONFLICT",
 		},
 		{
-			name:    "patch version update is not allowed",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
+			name:     "patch version update is not allowed",
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: sampleManifest("rate-limit", "1.2.1"),
 			existingPolicies: []*model.CustomPolicy{
 				makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.2.0"),
@@ -292,11 +306,11 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.2.1",
 			wantErr:     true,
-			errContains: "patch version updates are not allowed",
+			errContains: "POLICY_VERSION_CONFLICT",
 		},
 		{
-			name:    "downgrade is not allowed",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
+			name:     "downgrade is not allowed",
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: sampleManifest("rate-limit", "1.1.0"),
 			existingPolicies: []*model.CustomPolicy{
 				makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.3.0"),
@@ -304,7 +318,7 @@ func TestSyncCustomPolicy(t *testing.T) {
 			policyName:  "rate-limit",
 			version:     "1.1.0",
 			wantErr:     true,
-			errContains: "cannot downgrade",
+			errContains: "POLICY_VERSION_CONFLICT",
 		},
 
 		//  custom policy successful paths
@@ -321,8 +335,8 @@ func TestSyncCustomPolicy(t *testing.T) {
 			wantUpdate:       false,
 		},
 		{
-			name:    "minor version bump - existing record updated",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
+			name:     "minor version bump - existing record updated",
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: sampleManifest("rate-limit", "1.3.0"),
 			existingPolicies: []*model.CustomPolicy{
 				makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.2.0"),
@@ -335,8 +349,8 @@ func TestSyncCustomPolicy(t *testing.T) {
 			wantUpdate:      true,
 		},
 		{
-			name:    "new major version - separate record inserted",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
+			name:     "new major version - separate record inserted",
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: sampleManifest("rate-limit", "2.0.0"),
 			existingPolicies: []*model.CustomPolicy{
 				makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.5.0"),
@@ -349,9 +363,9 @@ func TestSyncCustomPolicy(t *testing.T) {
 			wantUpdate:      false,
 		},
 		{
-			name:    "policy name normalised to lowercase before lookup",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
-			manifest: sampleManifest("rate-limit", "1.0.0"),
+			name:             "policy name normalised to lowercase before lookup",
+			gateway:          &model.Gateway{ID: gwID, OrganizationID: orgID},
+			manifest:         sampleManifest("rate-limit", "1.0.0"),
 			existingPolicies: []*model.CustomPolicy{},
 			persistedPolicy:  makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.0.0"),
 			policyName:       "Rate-Limit",
@@ -360,8 +374,8 @@ func TestSyncCustomPolicy(t *testing.T) {
 			wantInsert:       true,
 		},
 		{
-			name:    "minor version update preserves the existing UUID",
-			gateway: &model.Gateway{ID: gwID, OrganizationID: orgID},
+			name:     "minor version update preserves the existing UUID",
+			gateway:  &model.Gateway{ID: gwID, OrganizationID: orgID},
 			manifest: sampleManifest("auth-policy", "1.2.0"),
 			existingPolicies: []*model.CustomPolicy{
 				makeCustomPolicy("stable-uuid", orgID, "auth-policy", "1.1.0"),
@@ -383,10 +397,10 @@ func TestSyncCustomPolicy(t *testing.T) {
 				manifestErr: tt.manifestErr,
 			}
 			cpRepo := &mockCustomPolicyRepo{
-				getPoliciesByName:    tt.existingPolicies,
-				getPoliciesByNameErr: tt.existingPoliciesErr,
-				insertErr:            tt.insertErr,
-				updateErr:            tt.updateErr,
+				getPoliciesByName:      tt.existingPolicies,
+				getPoliciesByNameErr:   tt.existingPoliciesErr,
+				insertErr:              tt.insertErr,
+				updateErr:              tt.updateErr,
 				getPolicyByNameVersion: tt.persistedPolicy,
 			}
 
@@ -470,37 +484,37 @@ func TestGetCustomPolicyByUUID(t *testing.T) {
 		expectedErr error
 	}{
 		{
-			name:        "policy found with matching version",
-			repoPolicy:  makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.0.0"),
-			version:     "1.0.0",
-			wantErr:     false,
+			name:       "policy found with matching version",
+			repoPolicy: makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.0.0"),
+			version:    "1.0.0",
+			wantErr:    false,
 		},
 		{
 			name:        "policy not found - nil from repo",
 			repoPolicy:  nil,
 			version:     "1.0.0",
 			wantErr:     true,
-			expectedErr: constants.ErrCustomPolicyNotFound,
+			expectedErr: apperror.CustomPolicyNotFound.New(),
 		},
 		{
-			name:        "repo returns error",
-			repoErr:     errors.New("db failure"),
-			version:     "1.0.0",
-			wantErr:     true,
+			name:    "repo returns error",
+			repoErr: errors.New("db failure"),
+			version: "1.0.0",
+			wantErr: true,
 		},
 		{
 			name:        "version mismatch",
 			repoPolicy:  makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.0.0"),
 			version:     "1.1.0",
 			wantErr:     true,
-			expectedErr: constants.ErrCustomPolicyVersionMismatch,
+			expectedErr: apperror.CustomPolicyVersionNotFnd.New(),
 		},
 		{
 			name:        "major version mismatch",
 			repoPolicy:  makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.0.0"),
 			version:     "2.0.0",
 			wantErr:     true,
-			expectedErr: constants.ErrCustomPolicyVersionMismatch,
+			expectedErr: apperror.CustomPolicyVersionNotFnd.New(),
 		},
 	}
 
@@ -561,28 +575,28 @@ func TestDeleteCustomPolicyByUUID(t *testing.T) {
 			repoPolicy:  nil,
 			version:     "1.0.0",
 			wantErr:     true,
-			expectedErr: constants.ErrCustomPolicyNotFound,
+			expectedErr: apperror.CustomPolicyNotFound.New(),
 		},
 		{
-			name:        "repo returns error on lookup",
-			repoErr:     errors.New("db failure"),
-			version:     "1.0.0",
-			wantErr:     true,
+			name:    "repo returns error on lookup",
+			repoErr: errors.New("db failure"),
+			version: "1.0.0",
+			wantErr: true,
 		},
 		{
 			name:        "version mismatch",
 			repoPolicy:  makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.0.0"),
 			version:     "2.0.0",
 			wantErr:     true,
-			expectedErr: constants.ErrCustomPolicyVersionMismatch,
+			expectedErr: apperror.CustomPolicyVersionNotFnd.New(),
 		},
 		{
 			name:              "policy in use by APIs",
 			repoPolicy:        makeCustomPolicy(policyUUID, orgID, "rate-limit", "1.0.0"),
 			version:           "1.0.0",
-			deleteIfUnusedErr: constants.ErrCustomPolicyInUse,
+			deleteIfUnusedErr: apperror.PolicyInUse.New(),
 			wantErr:           true,
-			expectedErr:       constants.ErrCustomPolicyInUse,
+			expectedErr:       apperror.PolicyInUse.New(),
 			wantDeleteCalled:  true,
 		},
 	}
@@ -621,11 +635,11 @@ func TestListCustomPolicies(t *testing.T) {
 	const orgID = "org-uuid-0001"
 
 	tests := []struct {
-		name        string
+		name         string
 		repoPolicies []*model.CustomPolicy
-		repoErr     error
-		wantCount   int
-		wantErr     bool
+		repoErr      error
+		wantCount    int
+		wantErr      bool
 	}{
 		{
 			name: "returns all policies for org",
@@ -655,7 +669,7 @@ func TestListCustomPolicies(t *testing.T) {
 			}
 			svc := newTestGatewayService(&mockGatewayRepoForPolicy{}, cpRepo)
 
-			policies, err := svc.ListCustomPolicies(orgID)
+			policies, _, err := svc.ListCustomPolicies(orgID, 20, 0)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ListCustomPolicies() error = %v, wantErr %v", err, tt.wantErr)
@@ -665,5 +679,57 @@ func TestListCustomPolicies(t *testing.T) {
 				t.Errorf("ListCustomPolicies() count = %d, want %d", len(policies), tt.wantCount)
 			}
 		})
+	}
+}
+
+// TestReceiveGatewayManifest_LegacyCustomerNormalized verifies that when a gateway manifest is received, any policies marked as "legacy customer" are normalized to "organization" in the stored manifest.
+func TestReceiveGatewayManifest_LegacyCustomerNormalized(t *testing.T) {
+	const (
+		orgID = "org-uuid-0001"
+		gwID  = "gw-uuid-0001"
+	)
+
+	gwRepo := &mockGatewayRepoForPolicy{
+		gateway: &model.Gateway{OrganizationID: orgID, Version: "1.1.0"},
+	}
+	svc := newTestGatewayService(gwRepo, &mockCustomPolicyRepo{})
+
+	params := map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}
+	policies := []GatewayPolicyInput{
+		{Name: "legacy-custom", Version: "v1.0.0", ManagedBy: constants.PolicyManagedByLegacyCustomer, Parameters: params},
+		{Name: "new-custom", Version: "v1.0.0", ManagedBy: constants.PolicyManagedByOrganization, Parameters: params},
+		{Name: "built-in", Version: "v1.0.0", ManagedBy: constants.PolicyManagedByWSO2},
+		{Name: "bogus", Version: "v1.0.0", ManagedBy: "somebody-else"},
+	}
+
+	if err := svc.ReceiveGatewayManifest(orgID, gwID, "1.1.0", "", policies); err != nil {
+		t.Fatalf("ReceiveGatewayManifest() error = %v", err)
+	}
+
+	var stored []GatewayPolicyDefinition
+	if err := json.Unmarshal(gwRepo.storedManifest, &stored); err != nil {
+		t.Fatalf("failed to unmarshal stored manifest: %v", err)
+	}
+	if len(stored) != 3 {
+		t.Fatalf("expected 3 stored policies (bogus skipped), got %d", len(stored))
+	}
+	byName := map[string]GatewayPolicyDefinition{}
+	for _, p := range stored {
+		byName[p.Name] = p
+	}
+	for _, name := range []string{"legacy-custom", "new-custom"} {
+		p, ok := byName[name]
+		if !ok {
+			t.Fatalf("policy %q missing from stored manifest", name)
+		}
+		if p.ManagedBy != constants.PolicyManagedByOrganization {
+			t.Errorf("policy %q stored with managedBy %q, want %q", name, p.ManagedBy, constants.PolicyManagedByOrganization)
+		}
+		if p.PolicyDefinition == nil {
+			t.Errorf("policy %q should have its policy definition stored", name)
+		}
+	}
+	if p := byName["built-in"]; p.ManagedBy != constants.PolicyManagedByWSO2 {
+		t.Errorf("built-in policy stored with managedBy %q, want %q", p.ManagedBy, constants.PolicyManagedByWSO2)
 	}
 }

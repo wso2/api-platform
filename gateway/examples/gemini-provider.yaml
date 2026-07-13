@@ -1,0 +1,60 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+# Gemini LLM Provider Configuration
+#
+# Uses the built-in `gemini` template and points to Google's Gemini API.
+# The openai-to-gemini policy on the proxy layer translates OpenAI-format
+# requests into Gemini's generateContent API format.
+#
+# Auth: upstream.auth is the gateway -> Gemini vendor auth
+# (header: x-goog-api-key). Proxies inherit this vendor auth automatically.
+# --------------------------------------------------------------------
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProvider
+metadata:
+  name: gemini-provider
+spec:
+  displayName: Gemini Provider
+  version: v1.0
+  template: gemini
+  upstream:
+    url: https://generativelanguage.googleapis.com
+    auth:
+      type: api-key
+      header: x-goog-api-key
+      value: REPLACE_WITH_GEMINI_API_KEY
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /v1beta/models/{model}:generateContent
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+        - path: /v1beta/models/{model}:streamGenerateContent
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /v1beta/models/{model}:generateContent
+        methods: [POST]
+      - path: /v1beta/models/{model}:streamGenerateContent
+        methods: [POST]
+
+# The proxy in front of this provider authenticates over the internal loopback
+# route with an API key issued for this LlmProvider. Create one as shown in
+# api-key.yaml, then set the issued value as the proxy's provider.auth.value.

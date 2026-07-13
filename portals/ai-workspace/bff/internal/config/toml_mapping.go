@@ -53,6 +53,7 @@ var tomlKeyToEnv = map[string]string{
 
 	// --- BFF listener & TLS ---
 	"bff_addr":        "BFF_ADDR",
+	"tls_enabled":     "BFF_TLS_ENABLED",
 	"tls_self_signed": "BFF_TLS_SELF_SIGNED",
 	"tls_cert_file":   "BFF_TLS_CERT_FILE",
 	"tls_key_file":    "BFF_TLS_KEY_FILE",
@@ -63,6 +64,7 @@ var tomlKeyToEnv = map[string]string{
 
 	// --- Upstream Platform API ---
 	"platform_api_url":             "PLATFORM_API_URL",
+	"platform_api_ca_file":         "PLATFORM_API_CA_FILE",
 	"platform_api_tls_skip_verify": "PLATFORM_API_TLS_SKIP_VERIFY",
 	"platform_login_path":          "PLATFORM_LOGIN_PATH",
 	"proxy_prefix":                 "PROXY_PREFIX",

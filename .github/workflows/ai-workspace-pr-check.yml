@@ -17,7 +17,8 @@ jobs:
   pr-check:
     runs-on: ubuntu-24.04
     env:
-      AUTH_JWT_SECRET_KEY: ai-workspace-pr-check-secret-key
+      ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      AUTH_JWT_SECRET_KEY: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
     steps:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -70,7 +71,7 @@ jobs:
         # requests; 502/000 means it is still warming up.
         run: |
           for i in $(seq 1 30); do
-            STATUS=$(curl -sk -o /dev/null -w "%{http_code}" https://host.docker.internal:5380/api-proxy/api/v1/organizations)
+            STATUS=$(curl -sk -o /dev/null -w "%{http_code}" https://host.docker.internal:5380/api/proxy/api/v0.9/organizations)
             if [ "$STATUS" = "200" ] || [ "$STATUS" = "401" ] || [ "$STATUS" = "403" ]; then
               echo "API proxy ready (HTTP $STATUS)"
               exit 0

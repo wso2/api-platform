@@ -33,9 +33,11 @@
 #   4. Open https://localhost:3000/default/views/default  (accept the self-signed cert warning)
 #      Login with a user defined in configs/config-platform-api.toml (default: admin / admin)
 #
-# Secrets:
-#   Set AUTH_JWT_SECRET_KEY in your shell or in a .env file to persist login sessions
-#   across Platform API restarts. When unset a random key is generated at startup.
+# Secrets (both are 32-byte keys — 64 hex chars / base64; generate with openssl rand -hex 32):
+#   AUTH_JWT_SECRET_KEY  — signs login JWTs; the devportal verifies with the same value.
+#   ENCRYPTION_KEY       — encrypts secrets/subscription tokens at rest.
+#   Both are REQUIRED — set them in your shell or a .env file; the Platform API fails to
+#   start if either is missing.
 #
 # TLS:
 #   A self-signed certificate is generated automatically on first start and stored
@@ -69,6 +71,7 @@ services:
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
       - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
@@ -127,8 +130,8 @@ services:
       APIP_DP_LOGGING_CONSOLEONLY: "true"
 
       # Platform API — used for local auth credential validation.
-      # Set APIP_DP_PLATFORMAPI_JWTSECRET to the same value as AUTH_JWT_SECRET_KEY so
-      # the devportal can verify Platform API JWTs locally (no per-request login call).
+      # Set APIP_DP_PLATFORMAPI_JWTSECRET to the same value as the Platform API's AUTH_JWT_SECRET_KEY
+      # so the devportal can verify Platform API JWTs locally (no per-request login call).
       APIP_DP_PLATFORMAPI_BASEURL: "https://platform-api:9243"
       APIP_DP_PLATFORMAPI_JWTSECRET: ${AUTH_JWT_SECRET_KEY:-}
       APIP_DP_PLATFORMAPI_INSECURE: "true"   # Platform API uses a self-signed cert in this dev setup

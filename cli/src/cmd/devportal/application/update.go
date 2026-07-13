@@ -34,17 +34,16 @@ import (
 const (
 	UpdateCmdLiteral = "update"
 	UpdateCmdExample = `# Update an application
-ap devportal application update --org org_1 --app-id app_1 --name "Weather App" --type WEB
+ap devportal application update --app-id app_1 --name "Weather App" --type WEB
 
 # Update with a description
-ap devportal application update --org org_1 --app-id app_1 --name "Weather App" --type WEB --description "Calls the Weather APIs"
+ap devportal application update --app-id app_1 --name "Weather App" --type WEB --description "Calls the Weather APIs"
 
 # Update using a specific devportal
-ap devportal application update --org org_1 --app-id app_1 --name "Weather App" --type WEB --display-name my-portal --platform eu`
+ap devportal application update --app-id app_1 --name "Weather App" --type WEB --display-name my-portal --platform eu`
 )
 
 var (
-	updateOrgID       string
 	updateAppID       string
 	updateAppName     string
 	updateType        string
@@ -69,7 +68,6 @@ var updateCmd = &cobra.Command{
 }
 
 func init() {
-	utils.AddStringFlag(updateCmd, utils.FlagOrgID, &updateOrgID, "", "Organization ID")
 	utils.AddStringFlag(updateCmd, utils.FlagAppID, &updateAppID, "", "Application ID")
 	utils.AddStringFlag(updateCmd, utils.FlagPropertyName, &updateAppName, "", "Application name")
 	utils.AddStringFlag(updateCmd, utils.FlagType, &updateType, "", "Application type (e.g. WEB)")
@@ -77,18 +75,12 @@ func init() {
 	utils.AddStringFlag(updateCmd, utils.FlagName, &updateName, "", "DevPortal display name")
 	utils.AddStringFlag(updateCmd, utils.FlagPlatform, &updatePlatform, "", "Platform name")
 	utils.AddBoolFlag(updateCmd, utils.FlagInsecure, &updateInsecure, false, "Skip TLS certificate verification")
-	_ = updateCmd.MarkFlagRequired(utils.FlagOrgID)
 	_ = updateCmd.MarkFlagRequired(utils.FlagAppID)
 	_ = updateCmd.MarkFlagRequired(utils.FlagPropertyName)
 	_ = updateCmd.MarkFlagRequired(utils.FlagType)
 }
 
 func runUpdateCommand() error {
-	orgID := strings.TrimSpace(updateOrgID)
-	if orgID == "" {
-		return fmt.Errorf("organization ID is required")
-	}
-
 	appID := strings.TrimSpace(updateAppID)
 	if appID == "" {
 		return fmt.Errorf("application ID is required")
@@ -110,7 +102,7 @@ func runUpdateCommand() error {
 	}
 
 	client := internaldevportal.NewClientWithOptions(devPortal, updateInsecure)
-	path := internaldevportal.OrgScopedPath(orgID, "applications/"+url.PathEscape(appID))
+	path := internaldevportal.ResourcePath("applications/" + url.PathEscape(appID))
 	resp, err := client.PutJSON(path, payload)
 	if err != nil {
 		return internaldevportal.WrapRequestError("update application", err, updateInsecure)

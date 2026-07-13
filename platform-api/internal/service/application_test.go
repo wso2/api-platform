@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -85,20 +86,20 @@ func (m *mockApplicationRepository) GetApplicationsByOrganizationID(orgID string
 	return m.applications, nil
 }
 
-func (m *mockApplicationRepository) GetApplicationsByProjectIDPaginated(projectID, orgID string, limit, offset int) ([]*model.Application, error) {
+func (m *mockApplicationRepository) GetApplicationsByProjectIDPaginated(projectID, orgID string, opts repository.ListOptions) ([]*model.Application, error) {
 	if m.appErr != nil {
 		return nil, m.appErr
 	}
 
-	end := offset + limit
-	if offset > len(m.applications) {
+	end := opts.Offset + opts.Limit
+	if opts.Offset > len(m.applications) {
 		return []*model.Application{}, nil
 	}
 	if end > len(m.applications) {
 		end = len(m.applications)
 	}
 
-	return m.applications[offset:end], nil
+	return m.applications[opts.Offset:end], nil
 }
 
 func (m *mockApplicationRepository) GetApplicationsByOrganizationIDPaginated(orgID string, limit, offset int) ([]*model.Application, error) {
@@ -117,7 +118,7 @@ func (m *mockApplicationRepository) GetApplicationsByOrganizationIDPaginated(org
 	return m.applications[offset:end], nil
 }
 
-func (m *mockApplicationRepository) CountApplicationsByProjectID(projectID, orgID string) (int, error) {
+func (m *mockApplicationRepository) CountApplicationsByProjectID(projectID, orgID, search string) (int, error) {
 	if m.appErr != nil {
 		return 0, m.appErr
 	}
@@ -493,7 +494,7 @@ func TestListMappedAPIKeysForAssociation_ErrorsWhenAssociationMissing(t *testing
 	svc := &ApplicationService{appRepo: appRepo, identity: newTestIdentityService()}
 
 	_, err := svc.ListMappedAPIKeysForAssociation("my-app", "provider-1", "org-1", 20, 0)
-	if !errors.Is(err, constants.ErrArtifactNotFound) {
+	if !apperror.ArtifactNotFound.Is(err) {
 		t.Fatalf("expected ErrArtifactNotFound, got %v", err)
 	}
 }
@@ -523,7 +524,7 @@ func TestGetApplicationsByOrganization_AppliesPagination(t *testing.T) {
 		identity:    newTestIdentityService(),
 	}
 
-	resp, err := svc.GetApplicationsByOrganization(orgID, projectID, 1, 1)
+	resp, err := svc.GetApplicationsByOrganization(orgID, projectID, repository.ListOptions{Limit: 1, Offset: 1})
 	if err != nil {
 		t.Fatalf("GetApplicationsByOrganization returned error: %v", err)
 	}
@@ -568,7 +569,7 @@ func TestAddMappedAPIKeys_RejectsWhenRequesterIsNotCreator(t *testing.T) {
 			Id: "orders-api",
 		},
 	}}}, "org-1", "different-user")
-	if !errors.Is(err, constants.ErrAPIKeyForbidden) {
+	if !apperror.ApplicationAPIKeyForbidden.Is(err) {
 		t.Fatalf("expected ErrAPIKeyForbidden, got %v", err)
 	}
 	if appRepo.addMappedCalled {
@@ -726,7 +727,7 @@ func TestAddApplicationAssociations_RejectsCrossProjectProxy(t *testing.T) {
 		Id:   "proxy-1",
 		Kind: constants.LLMProxy,
 	}}}, "org-1")
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput, got %v", err)
 	}
 }
@@ -993,7 +994,7 @@ func TestCreateApplication_RejectsUnsupportedType(t *testing.T) {
 		DisplayName: "Bad Type App",
 		Type:        api.ApplicationType("mobile"),
 	}, orgID, "")
-	if !errors.Is(err, constants.ErrUnsupportedApplicationType) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrUnsupportedApplicationType, got %v", err)
 	}
 }
@@ -1009,7 +1010,7 @@ func TestUpdateApplication_RejectsHandleChange(t *testing.T) {
 	resp, err := svc.UpdateApplication("my-app", &api.Application{
 		Id: "renamed-app",
 	}, orgID, "user-1")
-	if !errors.Is(err, constants.ErrHandleImmutable) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrHandleImmutable, got %v", err)
 	}
 	if resp != nil {
@@ -1038,7 +1039,7 @@ func TestCreateApplication_ValidatesProvidedProjectID(t *testing.T) {
 		ProjectId:   "some-project-handle",
 		Type:        api.ApplicationType("genai"),
 	}, orgID, "")
-	if !errors.Is(err, constants.ErrProjectNotFound) {
+	if !apperror.ProjectNotFound.Is(err) {
 		t.Fatalf("expected ErrProjectNotFound, got %v", err)
 	}
 }

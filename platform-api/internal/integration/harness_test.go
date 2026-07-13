@@ -1,3 +1,5 @@
+//go:build integration
+
 /*
  *  Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
@@ -22,11 +24,6 @@
 // data-access behavior — pagination, multi-table writes and delete cascades —
 // so backend-specific bugs (e.g. SQL Server LIMIT/cascade-path issues) are
 // caught instead of being hidden behind the SQLite unit-test path.
-//
-// Build-tagged `integration` so it is excluded from the default `go test ./...`.
-//
-//go:build integration
-
 package integration
 
 import (
@@ -44,9 +41,11 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// Allow GetConfig() to generate an ephemeral secret_encryption_key so tests
-	// that exercise subscription_repository.go don't panic at startup.
+	// ENCRYPTION_KEY and AUTH_JWT_SECRET_KEY are required
+	// provide valid 64-hex keys so GetConfig() succeeds for tests that exercise subscription_repository.go.
 	os.Setenv("APIP_DEMO_MODE", "true")
+	os.Setenv("ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	os.Setenv("AUTH_JWT_SECRET_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 	os.Exit(m.Run())
 }
 

@@ -241,21 +241,19 @@ AUTH_IDP_ENABLED=true             →  IDP mode        (JWKS-based verification)
 ```
 
 > **Demo mode (`APIP_DEMO_MODE`).** Defaults to `true`; an explicit `false`/`0` opts into
-> production-grade startup checks. With demo mode off, the server will not fall back to an
-> ephemeral secret encryption key (set `PLATFORM_SECRET_ENCRYPTION_KEY` or
-> `DATABASE_ENCRYPTION_KEY`) and warns loudly if `AUTH_JWT_SKIP_VALIDATION=true`.
+> production-grade startup checks. Note that `ENCRYPTION_KEY` and `AUTH_JWT_SECRET_KEY` are **required**.
 
 ---
 
 #### Local JWT Mode (default)
 
-The server validates HMAC-signed tokens using `AUTH_JWT_SECRET_KEY`. Set `AUTH_JWT_SKIP_VALIDATION=true` only in local development environments where you do not have a token issuer available — all bearer values will be accepted without any signature check.
+The server signs and validates HMAC login tokens using `AUTH_JWT_SECRET_KEY` — a 32-byte key (64 hex chars or base64). Set `AUTH_JWT_SKIP_VALIDATION=true` only in local development environments where you do not have a token issuer available — all bearer values will be accepted without any signature check.
 
-| Variable | Default | Description |
-|---|---|---|
-| `AUTH_JWT_SECRET_KEY` | `your-secret-key-change-in-production` | HMAC signing key for token verification |
-| `AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value |
-| `AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only** |
+| Variable | Default | Description                                                         |
+|---|---|---------------------------------------------------------------------|
+| `AUTH_JWT_SECRET_KEY` | _(empty)_ | HMAC key for signing/verifying login JWTs — 32-byte value (64 hex or base64; `openssl rand -hex 32`) |
+| `AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value                                          |
+| `AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only**                  |
 | `DEV_MODE` | `false` | Suppresses the startup warning when `AUTH_JWT_SKIP_VALIDATION=true` |
 
 Local development with no token issuer:
@@ -369,7 +367,16 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 | `DATABASE_PASSWORD` | _(empty)_ | Postgres password |
 | `DATABASE_SSL_MODE` | `disable` | Postgres SSL mode (`disable`, `require`, `verify-full`) |
 | `DATABASE_EXECUTE_SCHEMA_DDL` | `true` | Set to `false` when the DB user lacks DDL privileges |
-| `DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY` | _(empty)_ | 32-byte key (64 hex or 44 base64 chars) for AES-256-GCM token encryption. |
+
+---
+
+### Encryption
+
+`ENCRYPTION_KEY` protects all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets). It is **never auto-generated** — the operator must provide it.
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENCRYPTION_KEY` | _(empty)_ | **Required.** 32-byte AES-256 key as 64 hex chars or base64 (32 bytes). Generate with `openssl rand -hex 32`. Startup fails if missing or malformed. |
 
 ---
 
@@ -377,9 +384,16 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 
 | Variable | Default | Description |
 |---|---|---|
-| `PORT` | `9243` | HTTP/HTTPS server port |
 | `LOG_LEVEL` | `DEBUG` | Log verbosity (`DEBUG`, `INFO`, `WARN`, `ERROR`) |
-| `TLS_CERT_DIR` | `./data/certs` | Directory for TLS certificates |
+| `HTTPS_ENABLED` | `true` | Enable the TLS listener. Certificates are read from `HTTPS_CERT_DIR` (or generated in demo mode) |
+| `HTTPS_PORT` | `9243` | Port for the TLS listener |
+| `HTTPS_CERT_DIR` | `./data/certs` | Directory holding `cert.pem` / `key.pem` (used only when `HTTPS_ENABLED=true`) |
+| `HTTP_ENABLED` | `false` | Enable the plain-HTTP listener. Use only behind a TLS-terminating ingress/sidecar or for internal traffic — never expose directly to untrusted networks |
+| `HTTP_PORT` | `9080` | Port for the plain-HTTP listener |
+| `TIMEOUTS_READ_HEADER` | `10s` | Max time to read request headers, on both listeners (`0` disables) |
+| `TIMEOUTS_READ` | `60s` | Max time to read the whole request, including the body (`0` disables) |
+| `TIMEOUTS_WRITE` | `120s` | Max time for handler execution plus response write (`0` disables) |
+| `TIMEOUTS_IDLE` | `120s` | Max time a keep-alive connection may sit unused (`0` disables) |
 | `DEPLOYMENTS_MAX_PER_API_GATEWAY` | `20` | Maximum deployments per API per gateway |
 | `DEPLOYMENTS_TRANSITIONAL_STATUS_ENABLED` | `false` | Show `DEPLOYING`/`UNDEPLOYING` status before gateway ack |
 | `ARTIFACT_LIMITS_MAX_LLM_PROVIDERS_PER_ORG` | _unlimited_ | Max LLM providers per organization (`0` or unset = unlimited) |
@@ -389,6 +403,8 @@ In **IDP mode with `AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved fro
 | `ARTIFACT_LIMITS_MAX_WEBBROKER_APIS_PER_ORG` | _unlimited_ | Max WebBroker APIs per organization (`0` or unset = unlimited) |
 | `GATEWAY_ENABLE_VERSION_VERIFICATION` | `false` | Reject gateway connections with mismatched versions |
 | `API_KEY_HASHING_ALGORITHMS` | `sha256` | Comma-separated hash algorithms for API key storage |
+
+> The legacy `PORT`, `TLS_ENABLED`, and `TLS_CERT_DIR` env vars are still honored and map onto the HTTPS listener (`HTTPS_PORT`, `HTTPS_ENABLED`, `HTTPS_CERT_DIR`).
 
 ## Documentation
 

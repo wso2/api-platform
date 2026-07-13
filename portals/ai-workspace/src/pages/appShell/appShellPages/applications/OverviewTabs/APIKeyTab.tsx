@@ -46,18 +46,14 @@ import useAIWorkspaceSnackbar from '../../../../../hooks/aiWorkspaceSnackbar';
 import { PLATFORM_API_BASE_URL } from '../../../../../config.env';
 import { keyManagementApis } from '../../../../../apis/keyManagementApis';
 import type { MappedAPIKey, UserAPIKey } from '../../../../../utils/types';
+import { getErrorMessage } from '../../../../../utils/apiError';
 
 type APIKeyTabProps = {
   applicationId: string;
 };
 
 function getErrorDescription(error: unknown, fallback: string): string {
-  return (
-    (error as any)?.response?.data?.description ||
-    (error as any)?.response?.data?.message ||
-    (error instanceof Error ? error.message : null) ||
-    fallback
-  );
+  return getErrorMessage(error, fallback);
 }
 
 function formatDate(value?: string): string {
@@ -206,7 +202,7 @@ export default function APIKeyTab({ applicationId }: APIKeyTabProps) {
         currentOrganization?.uuid ?? '',
         apimBaseUrl
       );
-      setAvailableKeys(response.items ?? []);
+      setAvailableKeys(response.list ?? []);
     } catch (error) {
       showSnackbar(
         getErrorDescription(error, 'Failed to load available API keys.'),

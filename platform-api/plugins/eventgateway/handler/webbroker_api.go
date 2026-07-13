@@ -21,13 +21,13 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
@@ -66,14 +66,14 @@ func (h *WebBrokerAPIHandler) RegisterRoutes(mux *http.ServeMux) {
 func (h *WebBrokerAPIHandler) CreateWebBrokerAPI(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, apperror.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
 	var req api.WebBrokerAPI
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("WebBroker API request validation failed", "org_id", orgID, "error", err)
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 
@@ -95,13 +95,13 @@ func (h *WebBrokerAPIHandler) CreateWebBrokerAPI(w http.ResponseWriter, r *http.
 func (h *WebBrokerAPIHandler) ListWebBrokerAPIs(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, apperror.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
 	projectID := strings.TrimSpace(r.URL.Query().Get("projectId"))
 	if projectID == "" {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "projectId query parameter is required"))
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "projectId query parameter is required"))
 		return
 	}
 
@@ -139,7 +139,7 @@ func (h *WebBrokerAPIHandler) ListWebBrokerAPIs(w http.ResponseWriter, r *http.R
 func (h *WebBrokerAPIHandler) GetWebBrokerAPI(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, apperror.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
@@ -157,7 +157,7 @@ func (h *WebBrokerAPIHandler) GetWebBrokerAPI(w http.ResponseWriter, r *http.Req
 func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, apperror.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
@@ -166,12 +166,12 @@ func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(w http.ResponseWriter, r *http.
 	var req api.WebBrokerAPI
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.slogger.Error("WebBroker API update validation failed", "org_id", orgID, "api_id", id, "error", err)
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid request body"))
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request", "Invalid request body"))
 		return
 	}
 
 	if err := utils.ValidateHandleImmutable(id, req.Id); err != nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+		httputil.WriteJSON(w, http.StatusBadRequest, apperror.NewErrorResponse(400, "Bad Request",
 			"WebBroker API id is immutable and cannot be changed"))
 		return
 	}
@@ -193,7 +193,7 @@ func (h *WebBrokerAPIHandler) UpdateWebBrokerAPI(w http.ResponseWriter, r *http.
 func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.GetOrganizationFromRequest(r)
 	if !ok {
-		httputil.WriteJSON(w, http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
+		httputil.WriteJSON(w, http.StatusUnauthorized, apperror.NewErrorResponse(401, "Unauthorized", "Organization claim not found in token"))
 		return
 	}
 
@@ -213,26 +213,12 @@ func (h *WebBrokerAPIHandler) DeleteWebBrokerAPI(w http.ResponseWriter, r *http.
 
 // handleServiceError maps service errors to HTTP responses
 func (h *WebBrokerAPIHandler) handleServiceError(w http.ResponseWriter, err error) {
-	if respondArtifactGuardError(w, err) {
+	// The service builds every client-facing failure from the error catalog, so
+	// the error already carries its status, code, and sterile client message.
+	// Anything reaching the fallback is an unmapped internal failure.
+	if respondCatalogError(w, h.slogger, err) {
 		return
 	}
-	switch {
-	case errors.Is(err, constants.ErrHandleImmutable):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-	case errors.Is(err, constants.ErrInvalidInput):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-	case errors.Is(err, constants.ErrWebBrokerAPINotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
-	case errors.Is(err, constants.ErrWebBrokerAPIExists):
-		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "WebBroker API with this ID already exists"))
-	case errors.Is(err, constants.ErrWebBrokerAPILimitReached):
-		httputil.WriteJSON(w, http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "WebBroker API limit reached for the organization"))
-	case errors.Is(err, constants.ErrProjectNotFound):
-		httputil.WriteJSON(w, http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project not found"))
-	case errors.Is(err, constants.ErrDevPortalNotFound):
-		httputil.WriteJSON(w, http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "DevPortal not found"))
-	default:
-		h.slogger.Error("WebBroker API service error", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
-	}
+	h.slogger.Error("WebBroker API service error", "error", err)
+	httputil.WriteJSON(w, http.StatusInternalServerError, apperror.NewErrorResponse(500, "Internal Server Error", "An unexpected error occurred"))
 }

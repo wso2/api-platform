@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	versionutil "github.com/wso2/api-platform/common/version"
@@ -107,12 +108,15 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	// Collect validated API-level policies
 	apiPolicies := t.collectAPIPolicies(apiData.Policies)
 
-	// Determine effective vhosts
-	effectiveMainVHost := t.routerConfig.VHosts.Main.Default
+	// Determine effective vhosts. vhosts.main may carry several production hostnames separated
+	// by ";" (e.g. when a Gateway-API HTTPRoute attaches to multiple listener hostnames); every
+	// entry serves the main upstream and the first is the primary vhost. When unset, the gateway
+	// default applies. Sandbox is always a single hostname.
 	effectiveSandboxVHost := t.routerConfig.VHosts.Sandbox.Default
+	mainVhosts := []string{t.routerConfig.VHosts.Main.Default}
 	if apiData.Vhosts != nil {
-		if strings.TrimSpace(apiData.Vhosts.Main) != "" {
-			effectiveMainVHost = apiData.Vhosts.Main
+		if parsed := splitVhosts(apiData.Vhosts.Main); len(parsed) > 0 {
+			mainVhosts = parsed
 		}
 		if apiData.Vhosts.Sandbox != nil && strings.TrimSpace(*apiData.Vhosts.Sandbox) != "" {
 			effectiveSandboxVHost = *apiData.Vhosts.Sandbox
@@ -124,12 +128,30 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve main upstream: %w", err)
 	}
+	mainUpstreamInfo := mainUpstream.UpstreamInfo()
 
-	// Check if dynamic cluster selection should be used
-	useClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
+	// Determine vhosts to create routes for.
+	// Sandbox is active when a sandbox upstream is configured via either url or ref.
+	hasSandbox := apiData.Upstream.Sandbox != nil &&
+		((apiData.Upstream.Sandbox.Url != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != "") ||
+			(apiData.Upstream.Sandbox.Ref != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Ref) != ""))
+
+	// Check if dynamic cluster selection should be used. Enabled whenever the API has named
+	// upstream definitions (so a policy can select one) OR a sandbox upstream (so a policy can
+	// redirect between the API's own main/sandbox slots). Must mirror pkg/xds/translator.go's
+	// useClusterHeader computation exactly — that's what determines whether Envoy's route uses
+	// cluster_header routing; if this RDC (which feeds the policy engine's default-cluster
+	// fallback) disagrees, Envoy expects a header the policy engine never sets.
+	hasUpstreamDefinitions := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
+	useClusterHeader := hasUpstreamDefinitions || hasSandbox
 	defaultCluster := ""
 	if useClusterHeader {
-		defaultCluster = mainUpstream.EnvoyClusterName
+		// The default cluster must be the name Envoy actually knows the cluster by.
+		// translateRuntimeConfig names clusters by their rdc.UpstreamClusters map key
+		// (ClusterKey, e.g. "upstream_main_<host>_<port>"), NOT the sanitized
+		// "cluster_<scheme>_<host>" form (EnvoyClusterName), so the cluster-header
+		// fallback must reference ClusterKey or it points at a non-existent cluster.
+		defaultCluster = mainUpstream.ClusterKey
 	}
 
 	// Determine auto host rewrite for main upstream
@@ -138,42 +160,74 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		mainAutoHostRewrite = false
 	}
 
-	// Determine vhosts to create routes for.
-	// Sandbox is active when a sandbox upstream is configured via either url or ref.
-	hasSandbox := apiData.Upstream.Sandbox != nil &&
-		((apiData.Upstream.Sandbox.Url != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != "") ||
-			(apiData.Upstream.Sandbox.Ref != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Ref) != ""))
-
 	// Guard: sandbox and main vhosts must differ, otherwise sandbox routes would
 	// overwrite main routes (same route key) and the sandbox patch would leave only
 	// a sandbox-cluster route with no main-cluster route at all.
-	if hasSandbox && effectiveMainVHost == effectiveSandboxVHost {
-		return nil, fmt.Errorf("sandbox upstream is configured but resolves to the same vhost %q as the main upstream; configure distinct vhosts to avoid route conflicts", effectiveMainVHost)
+	if hasSandbox {
+		for _, mv := range mainVhosts {
+			if mv == effectiveSandboxVHost {
+				return nil, fmt.Errorf("sandbox upstream is configured but resolves to the same vhost %q as a main upstream; configure distinct vhosts to avoid route conflicts", effectiveSandboxVHost)
+			}
+		}
+	}
+
+	// Resolve API-level resilience timeouts once; operation-level values override these.
+	apiTimeout, apiIdleTimeout, err := xds.ResolveResilience(apiData.Resilience)
+	if err != nil {
+		return nil, fmt.Errorf("invalid API-level resilience: %w", err)
 	}
 
 	// Build routes and policy chains for each operation
-	for _, op := range apiData.Operations {
-		vhosts := []string{effectiveMainVHost}
+	for i, op := range apiData.Operations {
+		// Operation-level resilience overrides API-level (per field); nil leaves the
+		// global route timeout default in effect.
+		opTimeout, opIdleTimeout, err := xds.ResolveResilience(op.Resilience)
+		if err != nil {
+			return nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.EffectiveMethod(), op.EffectivePath(), err)
+		}
+		routeTimeout := buildRouteTimeout(opTimeout, apiTimeout, opIdleTimeout, apiIdleTimeout)
+
+		vhosts := append([]string{}, mainVhosts...)
 		if hasSandbox {
 			vhosts = append(vhosts, effectiveSandboxVHost)
 		}
 
-		for _, vhost := range vhosts {
-			routeKey := xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost)
+		// Resolve the effective matching criteria (simple top-level form or the richer match
+		// block) once per operation. Header matchers and their discriminator are vhost-
+		// independent; the discriminator keeps the route key unique across operations that
+		// share method/path/vhost but match on different headers (e.g. multiple Gateway-API
+		// HTTPRoute rules on the same path).
+		method := op.EffectiveMethod()
+		opPath := op.EffectivePath()
+		pathMatchType := op.EffectivePathMatchType()
+		headerMatches := routeHeaderMatches(op)
+		discriminator := xds.HeaderMatchDiscriminator(headerMatches)
 
-			// Build route
-			rdc.Routes[routeKey] = &models.Route{
-				Method:          string(op.Method),
-				Path:            xds.ConstructFullPath(apiData.Context, apiData.Version, op.Path),
-				OperationPath:   op.Path,
+		for _, vhost := range vhosts {
+			routeKey := xds.GenerateRouteNameWithDiscriminator(method, apiData.Context, apiData.Version, opPath, vhost, discriminator)
+
+			// Build route. Default is this route's own upstream (main's, until the sandbox
+			// patch below overwrites it for sandbox-vhost routes) — the single field exposed
+			// to the policy engine as the route's compiled-in upstream, regardless of slot.
+			routeMainInfo := mainUpstreamInfo
+			rdcRoute := &models.Route{
+				Method:          method,
+				Path:            xds.ConstructFullPath(apiData.Context, apiData.Version, opPath),
+				OperationPath:   opPath,
 				Vhost:           vhost,
 				AutoHostRewrite: mainAutoHostRewrite,
+				MatchHeaders:    headerMatches,
+				PathMatchType:   pathMatchType,
+				Order:           i,
+				Timeout:         routeTimeout,
 				Upstream: models.RouteUpstream{
 					ClusterKey:       mainUpstream.ClusterKey,
 					UseClusterHeader: useClusterHeader,
 					DefaultCluster:   defaultCluster,
+					Default:          &routeMainInfo,
 				},
 			}
+			rdc.Routes[routeKey] = rdcRoute
 
 			// Build policy chain: API-level + operation-level + system policies
 			chain := t.buildPolicyChain(apiPolicies, apiData.Policies, op.Policies)
@@ -189,25 +243,45 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 				continue
 			}
 			defClusterKey := "upstream_" + cfg.Kind + "_" + cfg.UUID + "_" + SanitizeUpstreamDefinitionName(def.Name)
-			parsedURL, err := url.Parse(def.Upstreams[0].Url)
-			if err != nil {
-				return nil, fmt.Errorf("invalid URL in upstream definition '%s': %w", def.Name, err)
-			}
-			port := ResolvePort(parsedURL)
-			// Base path comes solely from the explicit basePath field; upstreamDefinitions
-			// URLs are host[:port] only (a path in the URL is rejected during validation).
 			basePath := "/"
 			if def.BasePath != nil && *def.BasePath != "" {
 				basePath = *def.BasePath
 			}
+			endpoints := make([]models.Endpoint, 0, len(def.Upstreams))
+			tlsExists := false
+			plaintextExists := false
+			for _, up := range def.Upstreams {
+				parsedURL, err := url.Parse(up.Url)
+				if err != nil {
+					return nil, fmt.Errorf("invalid URL in upstream definition '%s': %w", def.Name, err)
+				}
+				port := ResolvePort(parsedURL)
+				ep := models.Endpoint{Host: parsedURL.Hostname(), Port: port}
+				if up.Weight != nil {
+					ep.Weight = up.Weight
+				}
+				endpoints = append(endpoints, ep)
+				if parsedURL.Scheme == "https" {
+					tlsExists = true
+				} else {
+					plaintextExists = true
+				}
+			}
+			// A single Envoy cluster has one transport socket, and the model carries one TLS bit
+			// for the whole cluster (createWeightedCluster applies it to every endpoint). A weighted
+			// definition that mixes https and non-https endpoints therefore cannot be represented —
+			// the plaintext endpoints would be silently dialed over TLS. Reject it with a clear error
+			// instead of collapsing to an ambiguous single flag. Uniform definitions (all https or all
+			// plaintext) are unaffected: Enabled = tlsExists matches the previous "any https" result.
+			if tlsExists && plaintextExists {
+				return nil, fmt.Errorf("upstream definition '%s' mixes https and non-https endpoints; "+
+					"all endpoints in a definition must use the same scheme", def.Name)
+			}
 			rdc.UpstreamClusters[defClusterKey] = &models.UpstreamCluster{
-				Name:     def.Name,
-				BasePath: basePath,
-				Endpoints: []models.Endpoint{{
-					Host: parsedURL.Hostname(),
-					Port: port,
-				}},
-				TLS: &models.UpstreamTLS{Enabled: parsedURL.Scheme == "https"},
+				Name:      def.Name,
+				BasePath:  basePath,
+				Endpoints: endpoints,
+				TLS:       &models.UpstreamTLS{Enabled: tlsExists},
 			}
 		}
 	}
@@ -218,25 +292,35 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve sandbox upstream: %w", err)
 		}
+		sbUpstreamInfo := sbUpstream.UpstreamInfo()
 
 		sbAutoHostRewrite := true
 		if apiData.Upstream.Sandbox.HostRewrite != nil && *apiData.Upstream.Sandbox.HostRewrite == api.Manual {
 			sbAutoHostRewrite = false
 		}
 
-		// Update sandbox vhost routes to point to sandbox cluster
+		// Update sandbox vhost routes to point to sandbox cluster. The route key must be
+		// derived with the same header-match discriminator used when the routes were built
+		// above, otherwise header-matched routes would not be found and re-pointed.
 		for _, op := range apiData.Operations {
-			routeKey := xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, effectiveSandboxVHost)
+			discriminator := xds.HeaderMatchDiscriminator(routeHeaderMatches(op))
+			routeKey := xds.GenerateRouteNameWithDiscriminator(op.EffectiveMethod(), apiData.Context, apiData.Version, op.EffectivePath(), effectiveSandboxVHost, discriminator)
 			if r, exists := rdc.Routes[routeKey]; exists {
 				r.Upstream.ClusterKey = sbUpstream.ClusterKey
 				// Mirror main on sandbox routes: cluster_header lets a dynamic-endpoint policy
 				// divert sandbox traffic, defaulting to the sandbox cluster when none does.
 				r.Upstream.UseClusterHeader = useClusterHeader
 				if useClusterHeader {
-					r.Upstream.DefaultCluster = sbUpstream.EnvoyClusterName
+					// Use ClusterKey (the name Envoy knows the cluster by), not
+					// EnvoyClusterName — see the main-cluster default above.
+					r.Upstream.DefaultCluster = sbUpstream.ClusterKey
 				} else {
 					r.Upstream.DefaultCluster = ""
 				}
+				// This route belongs to the sandbox slot — its own default upstream is
+				// the sandbox's, not main's.
+				routeSbInfo := sbUpstreamInfo
+				r.Upstream.Default = &routeSbInfo
 				r.AutoHostRewrite = sbAutoHostRewrite
 			}
 		}
@@ -245,7 +329,70 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	return rdc, nil
 }
 
+// splitVhosts parses a vhosts.main value into its individual production hostnames. Multiple
+// hostnames may be provided separated by ";" (each serves the main upstream); surrounding
+// whitespace is trimmed, empty entries are dropped, and duplicates are removed while preserving
+// order. A single hostname (the common case) returns a one-element slice.
+func splitVhosts(raw string) []string {
+	parts := strings.Split(raw, ";")
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, p)
+	}
+	return out
+}
+
+// routeHeaderMatches converts an operation's Gateway-API-style header matchers into the model form
+// used for both the Envoy route match and the route-key discriminator. Returning a single canonical
+// slice keeps the main route build and the sandbox patch loop in agreement on the route key.
+func routeHeaderMatches(op api.Operation) []models.RouteHeaderMatch {
+	headers := op.EffectiveHeaders()
+	if len(headers) == 0 {
+		return nil
+	}
+	matches := make([]models.RouteHeaderMatch, 0, len(headers))
+	for _, h := range headers {
+		headerType := "Exact"
+		if h.Type != nil {
+			headerType = string(*h.Type)
+		}
+		matches = append(matches, models.RouteHeaderMatch{
+			Name:  h.Name,
+			Value: h.Value,
+			Type:  headerType,
+		})
+	}
+	return matches
+}
+
 // collectAPIPolicies validates and collects API-level policies into SDK format.
+// buildRouteTimeout applies operation-over-API precedence (per field) and returns a
+// *models.RouteTimeout, or nil when neither level configured any timeout (so the global
+// route timeout default applies).
+func buildRouteTimeout(opTimeout, apiTimeout, opIdle, apiIdle *time.Duration) *models.RouteTimeout {
+	timeout := opTimeout
+	if timeout == nil {
+		timeout = apiTimeout
+	}
+	idle := opIdle
+	if idle == nil {
+		idle = apiIdle
+	}
+	if timeout == nil && idle == nil {
+		return nil
+	}
+	return &models.RouteTimeout{Timeout: timeout, IdleTimeout: idle}
+}
+
 func (t *RestAPITransformer) collectAPIPolicies(policies *[]api.Policy) map[string]policyenginev1.PolicyInstance {
 	result := make(map[string]policyenginev1.PolicyInstance)
 	if policies == nil {
@@ -304,6 +451,18 @@ type upstreamClusterResult struct {
 	EnvoyClusterName string
 	// BasePath is the URL path component of the upstream (e.g. "/anything/foo").
 	BasePath string
+	// URL is the resolved upstream origin (scheme://host[:port], no path — see BasePath).
+	URL string
+}
+
+// UpstreamInfo converts the resolved cluster result into the shared wire shape
+// carried to the policy engine (sdk/core/policyengine.UpstreamInfo).
+func (r *upstreamClusterResult) UpstreamInfo() policyenginev1.UpstreamInfo {
+	return policyenginev1.UpstreamInfo{
+		ClusterName: r.EnvoyClusterName,
+		URL:         r.URL,
+		BasePath:    r.BasePath,
+	}
 }
 
 // addUpstreamCluster resolves an upstream and adds it to the RuntimeDeployConfig.
@@ -352,6 +511,7 @@ func (t *RestAPITransformer) addUpstreamCluster(
 		ClusterKey:       clusterKey,
 		EnvoyClusterName: sanitizeEnvoyClusterName(parsedURL.Host, parsedURL.Scheme),
 		BasePath:         basePath,
+		URL:              fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host),
 	}, nil
 }
 

@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -64,14 +64,14 @@ type mockSecretRepo struct {
 
 	secrets map[string]*model.Secret
 
-	createFn      func(*model.Secret) error
-	existsFn      func(orgID, handle string) (bool, error)
-	getByHandleFn func(orgID, handle string) (*model.Secret, error)
-	updateFn      func(*model.Secret) error
+	createFn                func(*model.Secret) error
+	existsFn                func(orgID, handle string) (bool, error)
+	getByHandleFn           func(orgID, handle string) (*model.Secret, error)
+	updateFn                func(*model.Secret) error
 	findRefsAndSoftDeleteFn func(orgID, handle, by string) ([]model.SecretReference, error)
 	findRefsFn              func(orgID, handle string) ([]model.SecretReference, error)
-	listFn        func(orgID string, limit, offset int, after *time.Time) ([]*model.Secret, error)
-	countFn       func(orgID string) (int, error)
+	listFn                  func(orgID string, limit, offset int, after *time.Time) ([]*model.Secret, error)
+	countFn                 func(orgID string) (int, error)
 }
 
 func newMockRepo() *mockSecretRepo {
@@ -83,7 +83,7 @@ func (m *mockSecretRepo) Create(s *model.Secret) error {
 		return m.createFn(s)
 	}
 	if _, exists := m.secrets[s.Handle]; exists {
-		return constants.ErrSecretAlreadyExists
+		return apperror.SecretExists.New()
 	}
 	if s.UUID == "" {
 		s.UUID = "uuid-" + s.Handle
@@ -106,7 +106,7 @@ func (m *mockSecretRepo) GetByHandle(orgID, handle string) (*model.Secret, error
 	}
 	s, ok := m.secrets[handle]
 	if !ok {
-		return nil, constants.ErrSecretNotFound
+		return nil, apperror.SecretNotFound.New()
 	}
 	return s, nil
 }
@@ -116,7 +116,7 @@ func (m *mockSecretRepo) Update(s *model.Secret) error {
 		return m.updateFn(s)
 	}
 	if _, ok := m.secrets[s.Handle]; !ok {
-		return constants.ErrSecretNotFound
+		return apperror.SecretNotFound.New()
 	}
 	m.secrets[s.Handle] = s
 	return nil
@@ -134,7 +134,7 @@ func (m *mockSecretRepo) FindRefsAndSoftDelete(orgID, handle, by string) ([]mode
 	}
 	s, ok := m.secrets[handle]
 	if !ok {
-		return nil, constants.ErrSecretNotFound
+		return nil, apperror.SecretNotFound.New()
 	}
 	s.Status = model.SecretStatusDeprecated
 	return nil, nil
@@ -221,7 +221,7 @@ func TestSecretService_Create_DuplicateHandle_ReturnsError(t *testing.T) {
 		Handle: "dup",
 		Value:  "val",
 	})
-	if !errors.Is(err, constants.ErrSecretAlreadyExists) {
+	if !apperror.SecretExists.Is(err) {
 		t.Errorf("expected ErrSecretAlreadyExists, got %v", err)
 	}
 }
@@ -271,10 +271,11 @@ func TestSecretService_Create_InvalidType_ReturnsError(t *testing.T) {
 		Value:  "val",
 		Type:   "API_KEY",
 	})
-	if !errors.Is(err, constants.ErrInvalidSecretType) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Errorf("expected ErrInvalidSecretType, got %v", err)
 	}
 }
+
 // ---- List tests -------------------------------------------------------------
 
 func TestSecretService_List_ReturnsPagination(t *testing.T) {
@@ -323,7 +324,7 @@ func TestSecretService_Get_NotFound(t *testing.T) {
 	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	_, err := svc.Get("org1", "missing")
-	if !errors.Is(err, constants.ErrSecretNotFound) {
+	if !apperror.SecretNotFound.Is(err) {
 		t.Errorf("expected ErrSecretNotFound, got %v", err)
 	}
 }
@@ -353,7 +354,7 @@ func TestSecretService_Update_NotFound(t *testing.T) {
 	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	_, err := svc.Update("org1", "ghost", "alice", &dto.UpdateSecretRequest{Value: "v"})
-	if !errors.Is(err, constants.ErrSecretNotFound) {
+	if !apperror.SecretNotFound.Is(err) {
 		t.Errorf("expected ErrSecretNotFound, got %v", err)
 	}
 }
@@ -436,7 +437,7 @@ func TestSecretService_Delete_NotFound(t *testing.T) {
 	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
 
 	err := svc.Delete("org1", "ghost", "alice")
-	if !errors.Is(err, constants.ErrSecretNotFound) {
+	if !apperror.SecretNotFound.Is(err) {
 		t.Errorf("expected ErrSecretNotFound, got %v", err)
 	}
 }
@@ -473,7 +474,7 @@ func TestSecretService_ValidateSecretRefs_MissingHandle(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing secret handle")
 	}
-	if !errors.Is(err, constants.ErrSecretRefMissing) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Errorf("expected ErrSecretRefMissing, got %v", err)
 	}
 }
@@ -500,7 +501,7 @@ func TestSecretService_ValidateSecretRefs_JSONEscapedForm_Missing(t *testing.T) 
 	if err == nil {
 		t.Fatal("expected error for missing JSON-escaped secret handle")
 	}
-	if !errors.Is(err, constants.ErrSecretRefMissing) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Errorf("expected ErrSecretRefMissing, got %v", err)
 	}
 }
@@ -555,5 +556,30 @@ func TestSecretService_Decrypt_DeprecatedSecret_ReturnsError(t *testing.T) {
 	_, err := svc.Decrypt("org1", "dep-secret")
 	if err == nil {
 		t.Fatal("expected error decrypting deprecated secret")
+	}
+}
+
+// TestCleanupRotatedSecret_NilLogger_DoesNotPanicOnDeleteFailure proves
+// cleanupRotatedSecret treats logging as best-effort: a nil *slog.Logger must
+// not crash the caller when the underlying Delete fails (e.g. the old secret
+// is still referenced elsewhere and Delete returns a SecretInUseError).
+func TestCleanupRotatedSecret_NilLogger_DoesNotPanicOnDeleteFailure(t *testing.T) {
+	repo := newMockRepo()
+	repo.secrets["old-handle"] = &model.Secret{Handle: "old-handle", Status: model.SecretStatusActive}
+	repo.findRefsFn = func(orgID, handle string) ([]model.SecretReference, error) {
+		return []model.SecretReference{{Type: "llm_provider", Handle: "still-using-it"}}, nil
+	}
+
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("cleanupRotatedSecret panicked with nil logger: %v", r)
+		}
+	}()
+	svc.cleanupRotatedSecret("org1", `{{ secret "old-handle" }}`, `{{ secret "new-handle" }}`, "alice", nil)
+
+	if got := repo.secrets["old-handle"].Status; got != model.SecretStatusActive {
+		t.Errorf("expected still-referenced secret to remain ACTIVE (Delete should have failed), got %q", got)
 	}
 }

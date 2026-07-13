@@ -13,6 +13,14 @@ const (
 	APIKindWebSubApi   APIKind = "WebSubApi"
 )
 
+// UpstreamSlot identifies one of an API's built-in upstream slots.
+type UpstreamSlot string
+
+const (
+	UpstreamSlotMain    UpstreamSlot = "main"
+	UpstreamSlotSandbox UpstreamSlot = "sandbox"
+)
+
 // ParameterType defines the type of a policy parameter
 type ParameterType string
 

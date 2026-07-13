@@ -238,6 +238,17 @@ func (r *SubscriptionPlanRepo) ListByOrganization(orgUUID string, limit, offset 
 	return list, rows.Err()
 }
 
+// CountByOrganization returns the total number of subscription plans in an
+// organization, independent of any pagination applied by ListByOrganization.
+func (r *SubscriptionPlanRepo) CountByOrganization(orgUUID string) (int, error) {
+	var total int
+	query := `SELECT COUNT(*) FROM subscription_plans WHERE organization_uuid = ?`
+	if err := r.db.QueryRow(r.db.Rebind(query), orgUUID).Scan(&total); err != nil {
+		return 0, fmt.Errorf("failed to count subscription plans: %w", err)
+	}
+	return total, nil
+}
+
 // Update updates an existing subscription plan
 func (r *SubscriptionPlanRepo) Update(plan *model.SubscriptionPlan) error {
 	if plan == nil {

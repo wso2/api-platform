@@ -26,10 +26,8 @@ import type {
 import * as llmProviderApis from '../../apis/llmProviderApis';
 import {
   createSecret,
-  deleteSecret,
   buildSecretPlaceholder,
   generateSecretHandle,
-  extractSecretHandle,
 } from '../../apis/secretApis';
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../config.env';
@@ -123,8 +121,10 @@ export function LLMProviderProvider({ children, providerId }: LLMProviderProvide
     try {
       // If the upstream auth value is a new plain-text credential (not already a
       // placeholder), create a new secret and substitute the placeholder before
-      // persisting. After a successful provider update the old secret is deleted
-      // best-effort so the gateway is not left with a dangling reference.
+      // persisting. Cleanup of the secret being rotated away from happens
+      // server-side (platform-api), since auth.value is writeOnly and never
+      // comes back on a GET — this context's own state can never reliably
+      // hold the true prior value to delete.
       let updatesPayload = updates;
       const authValue = updates.upstream?.main?.auth?.value;
       const isAlreadyPlaceholder =
@@ -159,18 +159,6 @@ export function LLMProviderProvider({ children, providerId }: LLMProviderProvide
 
       const updatedProvider = await llmProviderApis.updateLLMProvider(providerId, updatesPayload, organizationId, PLATFORM_API_BASE_URL);
       setProvider(updatedProvider);
-
-      // Best-effort: delete the old secret only after the provider update succeeds.
-      if (authValue && !isAlreadyPlaceholder) {
-        const oldHandle = provider?.upstream?.main?.auth?.value
-          ? extractSecretHandle(provider.upstream.main.auth.value)
-          : null;
-        if (oldHandle) {
-          deleteSecret(oldHandle).catch((err) => {
-            logger.warn('Could not delete old secret after provider update', { oldHandle, err });
-          });
-        }
-      }
 
       return updatedProvider;
     } catch (err) {

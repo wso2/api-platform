@@ -18,7 +18,11 @@
 
 package admin
 
-import "time"
+import (
+	"time"
+
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
+)
 
 // ConfigDumpResponse is the top-level response structure for the config_dump endpoint
 type ConfigDumpResponse struct {
@@ -111,6 +115,10 @@ type RouteMetadataEntry struct {
 	DefaultUpstreamCluster  string            `json:"default_upstream_cluster"`
 	UpstreamBasePath        string            `json:"upstream_base_path"`
 	UpstreamDefinitionPaths map[string]string `json:"upstream_definition_paths"`
+
+	// DefaultUpstream is this route's own compiled-in upstream (whichever slot it
+	// belongs to).
+	DefaultUpstream *policyenginev1.UpstreamInfo `json:"default_upstream,omitempty"`
 }
 
 // PolicySpec contains specification for a policy instance

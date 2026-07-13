@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/gateway/gateway-controller
 
-go 1.26.2
+go 1.26.5
 
 require (
 	github.com/envoyproxy/go-control-plane v0.14.0
@@ -12,6 +12,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/knadh/koanf/parsers/toml/v2 v2.2.0
+	github.com/knadh/koanf/providers/confmap v1.0.0
 	github.com/knadh/koanf/providers/env v1.1.0
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/v2 v2.3.2
@@ -22,7 +23,7 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
 	github.com/wso2/api-platform/common v0.0.0
-	github.com/wso2/api-platform/sdk/core v0.2.12
+	github.com/wso2/api-platform/sdk/core v0.2.18
 	github.com/wso2/go-httpkit v0.0.0-local
 	github.com/xeipuuv/gojsonschema v1.2.0
 	google.golang.org/grpc v1.79.3

@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -79,7 +80,7 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 		t.Version = "v1.0"
 	}
 	if t.ManagedBy == "" {
-		t.ManagedBy = "customer"
+		t.ManagedBy = constants.TemplateManagedByOrganization
 	}
 	if t.GroupID == "" {
 		t.GroupID = t.ID
@@ -177,7 +178,7 @@ func (r *LLMProviderTemplateRepo) createNewVersionOnce(t *model.LLMProviderTempl
 		return err
 	}
 	if sameVersion > 0 {
-		return constants.ErrLLMProviderTemplateVersionExists
+		return apperror.LLMProviderTemplateVersionExists.New()
 	}
 
 	// Demote the current latest within this family (same group_id).
