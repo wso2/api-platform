@@ -946,12 +946,14 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	}
 	defer tx.Rollback()
 
-	// Get the provider UUID from handle
-	var providerUUID string
+	// Get the provider UUID from handle (and its current data_version, so an
+	// unrelated edit that doesn't carry DataVersion forward on the incoming
+	// model preserves the stored value instead of blindly recomputing it).
+	var providerUUID, existingDataVersion string
 	query := `
-		SELECT uuid FROM llm_providers
+		SELECT uuid, data_version FROM llm_providers
 		WHERE handle = ? AND organization_uuid = ?`
-	err = tx.QueryRow(r.db.Rebind(query), p.ID, p.OrganizationUUID).Scan(&providerUUID)
+	err = tx.QueryRow(r.db.Rebind(query), p.ID, p.OrganizationUUID).Scan(&providerUUID, &existingDataVersion)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows
@@ -960,7 +962,11 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	}
 
 	if p.DataVersion == "" {
-		p.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.LLMProvider, constants.GatewayApiVersion))
+		if existingDataVersion != "" {
+			p.DataVersion = existingDataVersion
+		} else {
+			p.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.LLMProvider, constants.GatewayApiVersion))
+		}
 	}
 
 	// Update llm_providers table (name/version/updated_at now live here)
@@ -1349,12 +1355,14 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 	}
 	defer tx.Rollback()
 
-	// Get the proxy UUID from handle
-	var proxyUUID string
+	// Get the proxy UUID from handle (and its current data_version, so an
+	// unrelated edit that doesn't carry DataVersion forward on the incoming
+	// model preserves the stored value instead of blindly recomputing it).
+	var proxyUUID, existingDataVersion string
 	query := `
-		SELECT uuid FROM llm_proxies
+		SELECT uuid, data_version FROM llm_proxies
 		WHERE handle = ? AND organization_uuid = ?`
-	err = tx.QueryRow(r.db.Rebind(query), p.ID, p.OrganizationUUID).Scan(&proxyUUID)
+	err = tx.QueryRow(r.db.Rebind(query), p.ID, p.OrganizationUUID).Scan(&proxyUUID, &existingDataVersion)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows
@@ -1363,7 +1371,11 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 	}
 
 	if p.DataVersion == "" {
-		p.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.LLMProxy, constants.GatewayApiVersion))
+		if existingDataVersion != "" {
+			p.DataVersion = existingDataVersion
+		} else {
+			p.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.LLMProxy, constants.GatewayApiVersion))
+		}
 	}
 
 	// Update llm_proxies table (name/version/updated_at now live here)

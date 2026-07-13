@@ -87,7 +87,7 @@ func TestIT_RestAPI_DataVersionStamped_AndTranslate(t *testing.T) {
 
 	newGw120 := seedGateway(t, it, orgID, "1.2.0")
 	artifactForNew := &dto.APIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.RestApi}
-	targetNew := gatewaytranslator.TargetGatewayDataVersion(gatewaytranslator.ParseVersion(newGw120AsVersion(it, newGw120)))
+	targetNew := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, newGw120))
 	if err := gatewaytranslator.Translate(constants.RestApi, sourceDataVersion, targetNew, artifactForNew); err != nil {
 		t.Fatalf("[%s] Translate to 1.2.0 gateway failed: %v", it.driver, err)
 	}
@@ -97,7 +97,7 @@ func TestIT_RestAPI_DataVersionStamped_AndTranslate(t *testing.T) {
 
 	oldGw110 := seedGateway(t, it, orgID, "1.1.0")
 	artifactForOld := &dto.APIDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.RestApi}
-	targetOld := gatewaytranslator.TargetGatewayDataVersion(gatewaytranslator.ParseVersion(newGw120AsVersion(it, oldGw110)))
+	targetOld := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, oldGw110))
 	if err := gatewaytranslator.Translate(constants.RestApi, sourceDataVersion, targetOld, artifactForOld); err != nil {
 		t.Fatalf("[%s] Translate to 1.1.0 gateway failed: %v", it.driver, err)
 	}
@@ -107,11 +107,18 @@ func TestIT_RestAPI_DataVersionStamped_AndTranslate(t *testing.T) {
 }
 
 // newGw120AsVersion reads back the gateway's stored semver so the test exercises
-// the same ParseVersion(gateway.Version) path the deploy services use.
-func newGw120AsVersion(it *itDB, gatewayUUID string) string {
+// the same ParseVersion(gateway.Version) path the deploy services use. Fails the
+// test immediately on a lookup error, rather than silently falling through to an
+// empty string — an empty version resolves to "latest" (see
+// GatewayDataVersionForGateway), which would make a lookup bug masquerade as a
+// passing "new gateway" assertion instead of a test failure.
+func newGw120AsVersion(t *testing.T, it *itDB, gatewayUUID string) string {
+	t.Helper()
 	var v string
 	q := it.db.Rebind(`SELECT version FROM gateways WHERE uuid = ?`)
-	_ = it.db.QueryRow(q, gatewayUUID).Scan(&v)
+	if err := it.db.QueryRow(q, gatewayUUID).Scan(&v); err != nil {
+		t.Fatalf("[%s] failed to look up gateway version for %s: %v", it.driver, gatewayUUID, err)
+	}
 	return v
 }
 
@@ -144,7 +151,7 @@ func TestIT_MCPProxy_DataVersionStamped_AndTranslate(t *testing.T) {
 
 	gwOld := seedGateway(t, it, orgID, "1.1.0")
 	artifact := &model.MCPProxyDeploymentYAML{ApiVersion: constants.GatewayApiVersion, Kind: constants.MCPProxy}
-	target := gatewaytranslator.TargetGatewayDataVersion(gatewaytranslator.ParseVersion(newGw120AsVersion(it, gwOld)))
+	target := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwOld))
 	if err := gatewaytranslator.Translate(constants.MCPProxy, gatewaytranslator.PlatformDataVersion(stored.DataVersion), target, artifact); err != nil {
 		t.Fatalf("[%s] Translate to 1.1.0 gateway failed: %v", it.driver, err)
 	}
@@ -203,7 +210,7 @@ func TestIT_LLMProvider_CurrentDataVersion_SplitPoliciesPreservedOnNewGateway_Fl
 	gwNew := seedGateway(t, it, orgID, "1.2.0")
 	artifactNew := &dto.LLMProviderDeploymentYAML{ApiVersion: constants.GatewayApiVersion}
 	artifactNew.Spec.GlobalPolicies = []api.Policy{{Name: "llm-cost-based-ratelimit", Version: "v1"}}
-	targetNew := gatewaytranslator.TargetGatewayDataVersion(gatewaytranslator.ParseVersion(newGw120AsVersion(it, gwNew)))
+	targetNew := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwNew))
 	if err := gatewaytranslator.Translate(constants.LLMProvider, sourceDataVersion, targetNew, artifactNew); err != nil {
 		t.Fatalf("[%s] Translate to 1.2.0 gateway failed: %v", it.driver, err)
 	}
@@ -218,7 +225,7 @@ func TestIT_LLMProvider_CurrentDataVersion_SplitPoliciesPreservedOnNewGateway_Fl
 	gwOld := seedGateway(t, it, orgID, "1.1.0")
 	artifactOld := &dto.LLMProviderDeploymentYAML{ApiVersion: constants.GatewayApiVersion}
 	artifactOld.Spec.GlobalPolicies = []api.Policy{{Name: "llm-cost-based-ratelimit", Version: "v1"}}
-	targetOld := gatewaytranslator.TargetGatewayDataVersion(gatewaytranslator.ParseVersion(newGw120AsVersion(it, gwOld)))
+	targetOld := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwOld))
 	if err := gatewaytranslator.Translate(constants.LLMProvider, sourceDataVersion, targetOld, artifactOld); err != nil {
 		t.Fatalf("[%s] Translate to 1.1.0 gateway failed: %v", it.driver, err)
 	}
@@ -238,8 +245,9 @@ func TestIT_LLMProvider_CurrentDataVersion_SplitPoliciesPreservedOnNewGateway_Fl
 // the "legacy data which has not been updated by the platform-api remains 1.0"
 // case: an LLM provider whose data_version is explicitly stamped "1.0" (as any
 // pre-existing row would be) with legacy flat policies still deploys correctly to
-// a 1.2.0 gateway — normalized up to the split shape by gatewaytranslator's
-// normalizer — and to a 1.1.0 gateway, where it stays flat.
+// a 1.2.0 gateway (normalized up to the split shape by gatewaytranslator's
+// normalizer) and to a 1.1.0 gateway (stays flat) — same stored legacy provider
+// data used for both target gateways.
 func TestIT_LLMProvider_LegacyDataVersion_FlatPoliciesNormalizedOnNewGateway(t *testing.T) {
 	it := openITDB(t)
 	defer it.db.Close()
@@ -279,7 +287,7 @@ func TestIT_LLMProvider_LegacyDataVersion_FlatPoliciesNormalizedOnNewGateway(t *
 		Name:  "llm-cost-based-ratelimit",
 		Paths: []api.LLMPolicyPath{{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: map[string]interface{}{}}},
 	}}
-	targetNew := gatewaytranslator.TargetGatewayDataVersion(gatewaytranslator.ParseVersion(newGw120AsVersion(it, gwNew)))
+	targetNew := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwNew))
 	if err := gatewaytranslator.Translate(constants.LLMProvider, gatewaytranslator.PlatformDataVersion(stored.DataVersion), targetNew, artifactNew); err != nil {
 		t.Fatalf("[%s] Translate legacy source to 1.2.0 gateway failed: %v", it.driver, err)
 	}
@@ -289,5 +297,26 @@ func TestIT_LLMProvider_LegacyDataVersion_FlatPoliciesNormalizedOnNewGateway(t *
 	if len(artifactNew.Spec.GlobalPolicies) != 1 || len(artifactNew.Spec.Policies) != 0 {
 		t.Fatalf("[%s] gateway 1.2.0: want legacy source normalized up to split shape, got globalPolicies=%d legacyPolicies=%d",
 			it.driver, len(artifactNew.Spec.GlobalPolicies), len(artifactNew.Spec.Policies))
+	}
+
+	// Same stored legacy provider data (data_version "1.0", flat policies),
+	// deployed to a 1.1.0 gateway instead: it must stay flat, not be normalized
+	// up then immediately re-flattened into a different-shaped list.
+	gwOld := seedGateway(t, it, orgID, "1.1.0")
+	artifactOld := &dto.LLMProviderDeploymentYAML{ApiVersion: constants.GatewayApiVersion}
+	artifactOld.Spec.Policies = []api.LLMPolicy{{
+		Name:  "llm-cost-based-ratelimit",
+		Paths: []api.LLMPolicyPath{{Path: "/*", Methods: []api.LLMPolicyPathMethods{"*"}, Params: map[string]interface{}{}}},
+	}}
+	targetOld := gatewaytranslator.GatewayDataVersionForGateway(newGw120AsVersion(t, it, gwOld))
+	if err := gatewaytranslator.Translate(constants.LLMProvider, gatewaytranslator.PlatformDataVersion(stored.DataVersion), targetOld, artifactOld); err != nil {
+		t.Fatalf("[%s] Translate legacy source to 1.1.0 gateway failed: %v", it.driver, err)
+	}
+	if artifactOld.ApiVersion != constants.GatewayApiVersionV1Alpha1 {
+		t.Fatalf("[%s] gateway 1.1.0: want apiVersion %q, got %q", it.driver, constants.GatewayApiVersionV1Alpha1, artifactOld.ApiVersion)
+	}
+	if len(artifactOld.Spec.GlobalPolicies) != 0 || len(artifactOld.Spec.Policies) != 1 {
+		t.Fatalf("[%s] gateway 1.1.0: want legacy source to stay flat, got globalPolicies=%d legacyPolicies=%d",
+			it.driver, len(artifactOld.Spec.GlobalPolicies), len(artifactOld.Spec.Policies))
 	}
 }

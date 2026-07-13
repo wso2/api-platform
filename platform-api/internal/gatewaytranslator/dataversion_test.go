@@ -42,10 +42,40 @@ func TestComputeDataVersion(t *testing.T) {
 		{"empty apiVersion falls back to 1.0", constants.LLMProvider, "", "1.0"},
 		{"unparseable apiVersion falls back to 1.0", constants.LLMProvider, "not-a-version", "1.0"},
 		{"unknown kind defaults minor to 0", "SomeFutureKind", constants.GatewayApiVersion, "1.0"},
+		// Regression: an unknown kind must fall back to the default "1.0" outright,
+		// not "<major>.0" for whatever major the apiVersion happens to carry — a
+		// v2 gateway apiVersion with an unrecognized kind must not compute "2.0".
+		{"unknown kind with non-v1 apiVersion still defaults to 1.0", "SomeFutureKind", "gateway.api-platform.wso2.com/v2", "1.0"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, ComputeDataVersion(tt.kind, tt.apiVersion))
+		})
+	}
+}
+
+func TestGatewayDataVersionForGateway(t *testing.T) {
+	tests := []struct {
+		name    string
+		version string
+		want    GatewayDataVersion
+	}{
+		// Empty/blank/unreported version must NOT down-convert: an unversioned
+		// gateway is assumed to be latest (v1). This is the regression guard for
+		// the e2e failure where the gateway registered without a version and every
+		// REST/MCP/WebSub artifact was wrongly shipped as v1alpha1 (→ no route → 404).
+		{"empty is latest v1", "", GatewayDataVersionV1},
+		{"blank is latest v1", "   ", GatewayDataVersionV1},
+		// A gateway that positively reports an old version still down-converts.
+		{"reported 1.1 is v1alpha1", "1.1", GatewayDataVersionV1Alpha1},
+		{"reported 1.1.9 is v1alpha1", "1.1.9", GatewayDataVersionV1Alpha1},
+		{"reported 1.2 is v1", "1.2", GatewayDataVersionV1},
+		{"reported 1.2.0 is v1", "1.2.0", GatewayDataVersionV1},
+		{"reported 1.3.0 is v1", "1.3.0", GatewayDataVersionV1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, GatewayDataVersionForGateway(tt.version))
 		})
 	}
 }

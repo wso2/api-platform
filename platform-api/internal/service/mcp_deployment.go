@@ -267,7 +267,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 			s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
 		}
 		sourceDataVersion := gatewaytranslator.PlatformDataVersion(mcpProxy.DataVersion)
-		targetDataVersion := gatewaytranslator.TargetGatewayDataVersion(gatewaytranslator.ParseVersion(gateway.Version))
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
 		if err := gatewaytranslator.Translate(constants.MCPProxy, sourceDataVersion, targetDataVersion, d); err != nil {
 			return nil, fmt.Errorf("failed to transform MCP proxy deployment for gateway %s: %w", gateway.Version, err)
 		}

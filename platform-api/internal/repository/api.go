@@ -402,7 +402,21 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 	}
 
 	if api.DataVersion == "" {
-		api.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.RestApi, constants.GatewayApiVersion))
+		// The caller (e.g. the service layer, which builds the updated model fresh
+		// from the request DTO) may not carry the existing row's data_version
+		// forward. Preserve whatever is already stored rather than blindly
+		// recomputing — an unrelated edit (e.g. description) must not silently
+		// overwrite a legacy row's data_version.
+		var existing string
+		err := tx.QueryRow(r.db.Rebind(`SELECT data_version FROM rest_apis WHERE uuid = ?`), api.ID).Scan(&existing)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if existing != "" {
+			api.DataVersion = existing
+		} else {
+			api.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.RestApi, constants.GatewayApiVersion))
+		}
 	}
 
 	// Update main API record (name and version now live in rest_apis)

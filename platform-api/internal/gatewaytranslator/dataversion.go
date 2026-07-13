@@ -54,6 +54,24 @@ func TargetGatewayDataVersion(gatewayTargetVersion Version) GatewayDataVersion {
 	return GatewayDataVersionV1Alpha1
 }
 
+// GatewayDataVersionForGateway resolves the gateway data version a target
+// gateway accepts from its raw reported version string (model.Gateway.Version).
+//
+// An empty/blank version is treated as the LATEST (v1): down-conversion is the
+// lossy operation, so we only down-convert when a gateway POSITIVELY reports a
+// version older than MinGatewayV1Version. A gateway may legitimately be
+// registered without a version (its reported semver is not persisted onto the
+// record), and mis-down-converting such a current gateway to v1alpha1 produces
+// an artifact it will not route. Assuming latest for an unknown version matches
+// the pre-translation behaviour (REST/MCP/WebSub always shipped v1) and keeps
+// the down-convert path scoped to gateways that explicitly report < 1.2.0.
+func GatewayDataVersionForGateway(rawVersion string) GatewayDataVersion {
+	if strings.TrimSpace(rawVersion) == "" {
+		return GatewayDataVersionV1
+	}
+	return TargetGatewayDataVersion(ParseVersion(rawVersion))
+}
+
 // PlatformDataVersion is the shape platform-api stored an entity as, recorded
 // in the DB data_version column as "<major>.<minor>" (e.g. "1.0", "1.1").
 type PlatformDataVersion string
@@ -108,10 +126,13 @@ func majorFromApiVersion(apiVersion string) string {
 // (gateway/gateway-controller/pkg/models/data_version.go) so both sides
 // compute the same value for the same inputs.
 func ComputeDataVersion(kind string, apiVersion string) PlatformDataVersion {
+	minor, known := platformDataMinorVersions[kind]
+	if !known {
+		return defaultPlatformDataVersion
+	}
 	major := majorFromApiVersion(apiVersion)
 	if major == "" {
 		return defaultPlatformDataVersion
 	}
-	minor := platformDataMinorVersions[kind] // missing kind -> 0
 	return PlatformDataVersion(fmt.Sprintf("%s.%d", major, minor))
 }

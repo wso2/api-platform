@@ -199,7 +199,7 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 	if req.Base == "current" {
 		d := buildWebBrokerAPIDeploymentYAML(webbrokerAPI)
 		sourceDataVersion := gatewaytranslator.PlatformDataVersion(webbrokerAPI.DataVersion)
-		targetDataVersion := gatewaytranslator.TargetGatewayDataVersion(gatewaytranslator.ParseVersion(gateway.Version))
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
 		if err := gatewaytranslator.Translate(constants.WebBrokerApi, sourceDataVersion, targetDataVersion, d); err != nil {
 			return nil, fmt.Errorf("failed to transform WebBroker API deployment for gateway %s: %w", gateway.Version, err)
 		}

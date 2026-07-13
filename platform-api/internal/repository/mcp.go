@@ -309,12 +309,14 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 	}
 	defer tx.Rollback()
 
-	// Get the proxy UUID from handle
-	var proxyUUID string
+	// Get the proxy UUID from handle (and its current data_version, so an
+	// unrelated edit that doesn't carry DataVersion forward on the incoming
+	// model preserves the stored value instead of blindly recomputing it).
+	var proxyUUID, existingDataVersion string
 	query := `
-		SELECT uuid FROM mcp_proxies
+		SELECT uuid, data_version FROM mcp_proxies
 		WHERE handle = ? AND organization_uuid = ?`
-	err = tx.QueryRow(r.db.Rebind(query), p.Handle, p.OrganizationUUID).Scan(&proxyUUID)
+	err = tx.QueryRow(r.db.Rebind(query), p.Handle, p.OrganizationUUID).Scan(&proxyUUID, &existingDataVersion)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows
@@ -323,7 +325,11 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 	}
 
 	if p.DataVersion == "" {
-		p.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.MCPProxy, constants.GatewayApiVersion))
+		if existingDataVersion != "" {
+			p.DataVersion = existingDataVersion
+		} else {
+			p.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.MCPProxy, constants.GatewayApiVersion))
+		}
 	}
 
 	// Update mcp_proxies table (name/version/updated_at now live here)

@@ -200,7 +200,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 			return nil, fmt.Errorf("failed to generate LLM provider deployment YAML: %w", err)
 		}
 		sourceDataVersion := gatewaytranslator.PlatformDataVersion(provider.DataVersion)
-		targetDataVersion := gatewaytranslator.TargetGatewayDataVersion(gatewaytranslator.ParseVersion(gateway.Version))
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
 		if err := gatewaytranslator.Translate(
 			constants.LLMProvider,
 			sourceDataVersion,
@@ -1333,7 +1333,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 			return nil, fmt.Errorf("failed to generate LLM proxy deployment YAML: %w", err)
 		}
 		sourceDataVersion := gatewaytranslator.PlatformDataVersion(proxy.DataVersion)
-		targetDataVersion := gatewaytranslator.TargetGatewayDataVersion(gatewaytranslator.ParseVersion(gateway.Version))
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
 		if err := gatewaytranslator.Translate(
 			constants.LLMProxy,
 			sourceDataVersion,

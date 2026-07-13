@@ -199,7 +199,7 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 	if req.Base == "current" {
 		d := buildWebSubAPIDeploymentYAML(websubAPI)
 		sourceDataVersion := gatewaytranslator.PlatformDataVersion(websubAPI.DataVersion)
-		targetDataVersion := gatewaytranslator.TargetGatewayDataVersion(gatewaytranslator.ParseVersion(gateway.Version))
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
 		if err := gatewaytranslator.Translate(constants.WebSubApi, sourceDataVersion, targetDataVersion, d); err != nil {
 			return nil, fmt.Errorf("failed to transform WebSub API deployment for gateway %s: %w", gateway.Version, err)
 		}

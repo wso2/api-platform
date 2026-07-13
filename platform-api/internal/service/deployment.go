@@ -247,7 +247,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		}
 		applyStructOverrides(apiDeployment, endpointURL, vhostMain, vhostSandbox)
 		sourceDataVersion := gatewaytranslator.PlatformDataVersion(apiModel.DataVersion)
-		targetDataVersion := gatewaytranslator.TargetGatewayDataVersion(gatewaytranslator.ParseVersion(gateway.Version))
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
 		if err := gatewaytranslator.Translate(apiModel.Kind, sourceDataVersion, targetDataVersion, apiDeployment); err != nil {
 			return nil, fmt.Errorf("failed to transform API deployment for gateway %s: %w", gateway.Version, err)
 		}
