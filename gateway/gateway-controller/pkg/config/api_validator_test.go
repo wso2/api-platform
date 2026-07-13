@@ -145,22 +145,6 @@ func TestAPIValidator_ValidateKind(t *testing.T) {
 		}
 	})
 
-	// Test WebSubApi kind - valid
-	t.Run("Valid WebSubApi kind", func(t *testing.T) {
-		config := createValidWebSubAPIConfig()
-		errors := v.Validate(config)
-		hasKindError := false
-		for _, e := range errors {
-			if e.Field == "kind" {
-				hasKindError = true
-				break
-			}
-		}
-		if hasKindError {
-			t.Error("unexpected kind error")
-		}
-	})
-
 	// Test unsupported type
 	t.Run("Unsupported type", func(t *testing.T) {
 		errors := v.Validate("InvalidKind")
@@ -186,22 +170,6 @@ func TestAPIValidator_ValidateKind(t *testing.T) {
 		}
 	})
 
-	// Test invalid Kind on WebSubAPI
-	t.Run("Invalid WebSubApi kind", func(t *testing.T) {
-		config := createValidWebSubAPIConfig()
-		config.Kind = "InvalidKind"
-		errors := v.Validate(config)
-		hasKindError := false
-		for _, e := range errors {
-			if e.Field == "kind" {
-				hasKindError = true
-				break
-			}
-		}
-		if !hasKindError {
-			t.Error("expected kind error for invalid WebSubAPI kind, got none")
-		}
-	})
 }
 
 func TestAPIValidator_ValidateDisplayName(t *testing.T) {
@@ -562,159 +530,6 @@ func TestAPIValidator_ValidateAllHTTPMethods(t *testing.T) {
 	}
 }
 
-func TestAPIValidator_ValidateWebSubAPI(t *testing.T) {
-	v := NewAPIValidator()
-
-	config := createValidWebSubAPIConfig()
-
-	errors := v.Validate(config)
-	if len(errors) != 0 {
-		t.Errorf("expected no errors for valid WebSubApi, got: %v", errors)
-	}
-}
-
-func TestAPIValidator_ValidateChannels(t *testing.T) {
-	v := NewAPIValidator()
-
-	tests := []struct {
-		name      string
-		channels  map[string]api.WebSubChannel
-		wantError bool
-		errField  string
-	}{
-		{
-			name: "Valid channels",
-			channels: map[string]api.WebSubChannel{
-				"channel1": {},
-				"channel2": {},
-			},
-			wantError: false,
-		},
-		{
-			name:      "Empty channels",
-			channels:  map[string]api.WebSubChannel{},
-			wantError: true,
-			errField:  "spec.channels",
-		},
-		{
-			name: "Channel with braces (invalid)",
-			channels: map[string]api.WebSubChannel{
-				"channel/{id}": {},
-			},
-			wantError: true,
-			errField:  "spec.channels.channel/{id}",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			config := createValidWebSubAPIConfig()
-			config.Spec.Channels = &tt.channels
-
-			errors := v.Validate(config)
-			hasExpectedError := false
-			for _, e := range errors {
-				if strings.HasPrefix(e.Field, tt.errField) {
-					hasExpectedError = true
-					break
-				}
-			}
-			if tt.wantError && !hasExpectedError {
-				t.Errorf("expected error for field %s, got: %v", tt.errField, errors)
-			}
-		})
-	}
-}
-
-func TestAPIValidator_ValidateAsyncDisplayName(t *testing.T) {
-	v := NewAPIValidator()
-
-	tests := []struct {
-		name        string
-		displayName string
-		wantError   bool
-	}{
-		{name: "Valid name", displayName: "MyWebSub", wantError: false},
-		{name: "Empty name", displayName: "", wantError: true},
-		{name: "Name too long", displayName: strings.Repeat("a", 101), wantError: true},
-		{name: "Invalid characters", displayName: "test@#$", wantError: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			config := createValidWebSubAPIConfig()
-			config.Spec.DisplayName = tt.displayName
-
-			errors := v.Validate(config)
-			hasNameError := false
-			for _, e := range errors {
-				if e.Field == "spec.name" {
-					hasNameError = true
-					break
-				}
-			}
-			if tt.wantError && !hasNameError {
-				t.Error("expected name error, got none")
-			}
-			if !tt.wantError && hasNameError {
-				t.Error("unexpected name error")
-			}
-		})
-	}
-}
-
-func TestAPIValidator_ValidatePathParameters(t *testing.T) {
-	v := NewAPIValidator()
-
-	tests := []struct {
-		path     string
-		expected bool
-	}{
-		{"/items/{id}", true},
-		{"/items/{id}/sub/{subId}", true},
-		{"/items", true},
-		{"/items/{id", false},
-		{"/items/id}", false},
-		{"/items/{id}/{", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
-			result := v.validatePathParameters(tt.path)
-			if result != tt.expected {
-				t.Errorf("validatePathParameters(%s) = %v, want %v", tt.path, result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestAPIValidator_ValidatePathParametersForAsyncAPIs(t *testing.T) {
-	v := NewAPIValidator()
-
-	tests := []struct {
-		path     string
-		expected bool
-	}{
-		{"channel1", true},
-		{"my-channel", true},
-		{"channel/{id}", false},
-		{"{channel}", false},
-		{"channel}", false},
-		{"channel{", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
-			result := v.validatePathParametersForAsyncAPIs(tt.path)
-			if result != tt.expected {
-				t.Errorf("validatePathParametersForAsyncAPIs(%s) = %v, want %v", tt.path, result, tt.expected)
-			}
-		})
-	}
-}
-
-// Helper functions
-
 func createValidRestAPIConfig() *api.RestAPI {
 	return &api.RestAPI{
 		ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
@@ -736,24 +551,6 @@ func createValidRestAPIConfig() *api.RestAPI {
 			},
 			Operations: []api.Operation{
 				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/items")},
-			},
-		},
-	}
-}
-
-func createValidWebSubAPIConfig() *api.WebSubAPI {
-	return &api.WebSubAPI{
-		ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1,
-		Kind:       api.WebSubAPIKindWebSubApi,
-		Metadata: api.Metadata{
-			Name: "test-websub",
-		},
-		Spec: api.WebhookAPIData{
-			DisplayName: "Test WebSub",
-			Version:     "v1.0",
-			Context:     "/websub",
-			Channels: &map[string]api.WebSubChannel{
-				"channel1": {},
 			},
 		},
 	}

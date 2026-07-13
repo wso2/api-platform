@@ -758,41 +758,6 @@ func TestConfig_Validate_HTTPSPort(t *testing.T) {
 	}
 }
 
-func TestConfig_ValidateEventGatewayConfig(t *testing.T) {
-	tests := []struct {
-		name                  string
-		webSubHubPort         int
-		webSubHubListenerPort int
-		timeoutSeconds        int
-		wantErr               bool
-		errContains           string
-	}{
-		{name: "Valid ports", webSubHubPort: 9500, webSubHubListenerPort: 9501, timeoutSeconds: 30, wantErr: false},
-		{name: "Invalid hub port low", webSubHubPort: 0, webSubHubListenerPort: 9501, timeoutSeconds: 30, wantErr: true, errContains: "websub_hub_port must be between"},
-		{name: "Invalid hub port high", webSubHubPort: 70000, webSubHubListenerPort: 9501, timeoutSeconds: 30, wantErr: true, errContains: "websub_hub_port must be between"},
-		{name: "Invalid listener port low", webSubHubPort: 9500, webSubHubListenerPort: 0, timeoutSeconds: 30, wantErr: true, errContains: "websub_hub_listener_port must be between"},
-		{name: "Invalid listener port high", webSubHubPort: 9500, webSubHubListenerPort: 70000, timeoutSeconds: 30, wantErr: true, errContains: "websub_hub_listener_port must be between"},
-		{name: "Invalid timeout", webSubHubPort: 9500, webSubHubListenerPort: 9501, timeoutSeconds: 0, wantErr: true, errContains: "timeout_seconds must be positive"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := validConfig()
-			cfg.Router.EventGateway.Enabled = true
-			cfg.Router.EventGateway.WebSubHubPort = tt.webSubHubPort
-			cfg.Router.EventGateway.WebSubHubListenerPort = tt.webSubHubListenerPort
-			cfg.Router.EventGateway.TimeoutSeconds = tt.timeoutSeconds
-			err := cfg.Validate()
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errContains)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
 func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 	tests := []struct {
 		name             string

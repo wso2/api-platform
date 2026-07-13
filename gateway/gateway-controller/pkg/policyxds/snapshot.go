@@ -42,6 +42,12 @@ const (
 
 	// EventChannelConfigTypeURL is the custom type URL for event gateway channel configurations
 	EventChannelConfigTypeURL = "api-platform.wso2.org/v1.EventChannelConfig"
+
+	// WebhookSecretStateTypeURL is the custom type URL for webhook-secret (HMAC)
+	// state snapshots. Must match event-gateway/gateway-controller's
+	// pkg/webhooksecretxds.WebhookSecretStateTypeURL — core only routes xDS
+	// watches for this type here; it never produces the resource itself.
+	WebhookSecretStateTypeURL = "api-platform.wso2.org/v1.WebhookSecretState"
 )
 
 // SnapshotManager manages xDS snapshots for policy and route configurations.
@@ -91,6 +97,12 @@ func (sm *SnapshotManager) SetRuntimeStore(store *storage.RuntimeConfigStore) {
 // SetConfigStore sets the ConfigStore for translating WebSubApi configs to EventChannelConfig resources.
 func (sm *SnapshotManager) SetConfigStore(store *storage.ConfigStore) {
 	sm.configStore = store
+}
+
+// GetTranslator returns the underlying policy Translator, so an
+// event-gateway-controller binary can register its EventChannelTranslator hook.
+func (sm *SnapshotManager) GetTranslator() *Translator {
+	return sm.translator
 }
 
 // GetRouteCache returns the route config cache.
@@ -148,11 +160,11 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	sm.routeCache.SetResources(routeById)
 
 	// Update event channel config cache from WebSubApi configs
-	if sm.configStore != nil {
-		eventChannelResources := sm.translator.TranslateWebSubApisToEventChannelConfigs(sm.configStore.GetAllByKind("WebSubApi"))
+	if sm.configStore != nil && sm.translator.eventChannelHooks != nil {
+		eventChannelResources := sm.translator.eventChannelHooks.TranslateWebSubApisToEventChannelConfigs(sm.configStore.GetAllByKind("WebSubApi"))
 
 		// Also translate WebBrokerApi configs
-		webBrokerResources := sm.translator.TranslateWebBrokerApisToEventChannelConfigs(sm.configStore.GetAllByKind("WebBrokerApi"))
+		webBrokerResources := sm.translator.eventChannelHooks.TranslateWebBrokerApisToEventChannelConfigs(sm.configStore.GetAllByKind("WebBrokerApi"))
 
 		// Merge both resource maps
 		for uuid, resource := range webBrokerResources {
@@ -196,6 +208,25 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 // Translator converts RuntimeDeployConfig to xDS resources.
 type Translator struct {
 	logger *slog.Logger
+
+	// eventChannelHooks is an optional hook, set by an event-gateway-controller
+	// binary, that translates WebSubApi/WebBrokerApi configs into event-channel
+	// xDS resources. Nil (and skipped) when event-gateway support is not
+	// compiled in.
+	eventChannelHooks EventChannelTranslator
+}
+
+// EventChannelTranslator is the extension point through which an external
+// event-gateway-controller binary supplies WebSub/WebBroker event-channel xDS
+// translation. Core never implements this interface itself.
+type EventChannelTranslator interface {
+	TranslateWebSubApisToEventChannelConfigs(configs []*models.StoredConfig) map[string]types.Resource
+	TranslateWebBrokerApisToEventChannelConfigs(configs []*models.StoredConfig) map[string]types.Resource
+}
+
+// SetEventChannelHooks registers the event-gateway event-channel translation hook.
+func (t *Translator) SetEventChannelHooks(h EventChannelTranslator) {
+	t.eventChannelHooks = h
 }
 
 // NewTranslator creates a new policy translator.
@@ -394,6 +425,12 @@ func toAnyResource(data map[string]interface{}, typeURL string) (types.Resource,
 
 	anyMsg.TypeUrl = typeURL
 	return anyMsg, nil
+}
+
+// ToAnyResource exposes toAnyResource for use by EventChannelTranslator
+// implementations living outside this module.
+func ToAnyResource(data map[string]interface{}, typeURL string) (types.Resource, error) {
+	return toAnyResource(data, typeURL)
 }
 
 // slogAdapter adapts slog.Logger to the go-control-plane Logger interface

@@ -129,10 +129,6 @@ func apiVersionOf(cfg any) string {
 	switch sc := cfg.(type) {
 	case api.RestAPI:
 		return string(sc.ApiVersion)
-	case api.WebSubAPI:
-		return string(sc.ApiVersion)
-	case api.WebBrokerApi:
-		return string(sc.ApiVersion)
 	case api.LLMProviderConfiguration:
 		return string(sc.ApiVersion)
 	case api.LLMProxyConfiguration:
@@ -147,8 +143,6 @@ func apiVersionOf(cfg any) string {
 func (c *StoredConfig) GetContext() (string, error) {
 	switch sc := c.SourceConfiguration.(type) {
 	case api.RestAPI:
-		return strings.ReplaceAll(sc.Spec.Context, "$version", c.Version), nil
-	case api.WebSubAPI:
 		return strings.ReplaceAll(sc.Spec.Context, "$version", c.Version), nil
 	case api.LLMProviderConfiguration:
 		if sc.Spec.Context != nil {
@@ -182,8 +176,6 @@ func (c *StoredConfig) GetMetadata() *api.Metadata {
 	switch cfg := c.Configuration.(type) {
 	case api.RestAPI:
 		return &cfg.Metadata
-	case api.WebSubAPI:
-		return &cfg.Metadata
 	}
 	return nil
 }
@@ -193,8 +185,6 @@ func (c *StoredConfig) GetLabels() *map[string]string {
 	switch cfg := c.Configuration.(type) {
 	case api.RestAPI:
 		return cfg.Metadata.Labels
-	case api.WebSubAPI:
-		return cfg.Metadata.Labels
 	}
 	return nil
 }
@@ -203,8 +193,6 @@ func (c *StoredConfig) GetLabels() *map[string]string {
 func (c *StoredConfig) GetAnnotations() *map[string]string {
 	switch cfg := c.Configuration.(type) {
 	case api.RestAPI:
-		return cfg.Metadata.Annotations
-	case api.WebSubAPI:
 		return cfg.Metadata.Annotations
 	}
 	return nil

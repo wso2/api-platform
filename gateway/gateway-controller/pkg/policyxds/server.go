@@ -30,7 +30,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
@@ -40,6 +39,15 @@ import (
 	"google.golang.org/grpc/keepalive"
 )
 
+// WebhookSecretCacheProvider is the extension point through which an external
+// event-gateway-controller binary supplies the xDS cache backing webhook-secret
+// (HMAC) resources. Core never implements this interface itself; it is only
+// ever satisfied by a webhooksecretxds.SnapshotManager living outside this
+// module.
+type WebhookSecretCacheProvider interface {
+	GetCache() cache.Cache
+}
+
 // Server is the policy xDS gRPC server
 type Server struct {
 	grpcServer               *grpc.Server
@@ -48,7 +56,7 @@ type Server struct {
 	apiKeySnapshotMgr        *apikeyxds.APIKeySnapshotManager
 	lazyResourceSnapshotMgr  *lazyresourcexds.LazyResourceSnapshotManager
 	subscriptionSnapshotMgr  *subscriptionxds.SnapshotManager
-	webhookSecretSnapshotMgr *webhooksecretxds.SnapshotManager
+	webhookSecretSnapshotMgr WebhookSecretCacheProvider
 	port                     int
 	tlsConfig                *TLSConfig
 	onFirstConnect           chan struct{}
@@ -84,7 +92,7 @@ func WithOnFirstConnect(ch chan struct{}) ServerOption {
 }
 
 // NewServer creates a new policy xDS server
-func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager, subscriptionSnapshotMgr *subscriptionxds.SnapshotManager, webhookSecretSnapshotMgr *webhooksecretxds.SnapshotManager, port int, logger *slog.Logger, opts ...ServerOption) *Server {
+func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, lazyResourceSnapshotMgr *lazyresourcexds.LazyResourceSnapshotManager, subscriptionSnapshotMgr *subscriptionxds.SnapshotManager, webhookSecretSnapshotMgr WebhookSecretCacheProvider, port int, logger *slog.Logger, opts ...ServerOption) *Server {
 	s := &Server{
 		snapshotManager:          snapshotManager,
 		apiKeySnapshotMgr:        apiKeySnapshotMgr,

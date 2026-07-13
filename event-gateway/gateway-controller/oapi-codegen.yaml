@@ -1,0 +1,9 @@
+package: eventgateway
+output: pkg/api/eventgateway/generated.go
+generate:
+  std-http-server: true
+  models: true
+  embedded-spec: true
+  strict-server: false
+output-options:
+  yaml-tags: true

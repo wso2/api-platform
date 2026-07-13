@@ -296,8 +296,21 @@ func kindToResourceTable(kind string) (string, error) {
 	}
 }
 
+// kindUnmarshalers holds JSON-unmarshaling functions for artifact kinds not
+// known to core — registered by an event-gateway-controller binary (e.g. for
+// "WebSubApi"/"WebBrokerApi") via RegisterKindUnmarshaler. This mirrors the
+// self-registering init() idiom already used by pkg/templateengine/funcs.
+var kindUnmarshalers = map[string]func(cfg *models.StoredConfig, jsonData string) error{}
+
+// RegisterKindUnmarshaler registers a JSON-unmarshaling function for an
+// artifact kind not known to core. Intended to be called from an init() in a
+// binary that links in support for that kind (e.g. event-gateway-controller).
+func RegisterKindUnmarshaler(kind string, fn func(cfg *models.StoredConfig, jsonData string) error) {
+	kindUnmarshalers[kind] = fn
+}
+
 // unmarshalSourceConfig unmarshals JSON into the correct typed struct for the given kind.
-// RestApi/WebSubApi rows can populate Configuration directly because the stored
+// RestApi rows can populate Configuration directly because the stored
 // payload is already the deployable shape. LLM provider/proxy rows only restore
 // SourceConfiguration; their derived RestAPI form is rebuilt later by the
 // deployment/event-listener layer once templates and policies are available.
@@ -305,20 +318,6 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 	switch cfg.Kind {
 	case "RestApi":
 		var config api.RestAPI
-		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
-			return fmt.Errorf("failed to unmarshal configuration: %w", err)
-		}
-		cfg.SourceConfiguration = config
-		cfg.Configuration = config
-	case "WebSubApi":
-		var config api.WebSubAPI
-		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
-			return fmt.Errorf("failed to unmarshal configuration: %w", err)
-		}
-		cfg.SourceConfiguration = config
-		cfg.Configuration = config
-	case "WebBrokerApi":
-		var config api.WebBrokerApi
 		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
 			return fmt.Errorf("failed to unmarshal configuration: %w", err)
 		}
@@ -352,6 +351,9 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 		}
 		cfg.SourceConfiguration = config
 	default:
+		if fn, ok := kindUnmarshalers[cfg.Kind]; ok {
+			return fn(cfg, jsonData)
+		}
 		return fmt.Errorf("unknown kind: %s", cfg.Kind)
 	}
 	return nil

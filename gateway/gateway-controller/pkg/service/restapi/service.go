@@ -19,13 +19,10 @@
 package restapi
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/wso2/api-platform/common/eventhub"
@@ -89,6 +86,17 @@ type RestAPIService struct {
 	logger             *slog.Logger
 	eventHub           eventhub.EventHub
 	secretResolver     funcs.SecretResolver
+
+	// webSubTopicDeregistrar is an optional hook, set by an event-gateway-controller
+	// binary, that deregisters WebSub hub topics for a deleted WebSubApi config.
+	// It is nil (and skipped) when event-gateway support is not compiled in.
+	webSubTopicDeregistrar func(cfg *models.StoredConfig, log *slog.Logger) error
+}
+
+// SetWebSubTopicDeregistrar registers the event-gateway hook invoked from Delete
+// when a WebSubApi config is removed. Passing nil (the default) disables it.
+func (s *RestAPIService) SetWebSubTopicDeregistrar(fn func(cfg *models.StoredConfig, log *slog.Logger) error) {
+	s.webSubTopicDeregistrar = fn
 }
 
 // NewRestAPIService creates a new RestAPIService.
@@ -412,9 +420,9 @@ func (s *RestAPIService) Delete(params DeleteParams) (*DeleteResult, error) {
 	}
 	//
 
-	// WebSub topic deregistration
-	if cfg.Kind == "WebSubApi" {
-		if err := s.deregisterWebSubTopics(cfg, log); err != nil {
+	// WebSub topic deregistration (event-gateway-controller only)
+	if cfg.Kind == "WebSubApi" && s.webSubTopicDeregistrar != nil {
+		if err := s.webSubTopicDeregistrar(cfg, log); err != nil {
 			return nil, err
 		}
 	}
@@ -532,55 +540,6 @@ func (s *RestAPIService) waitForDeploymentAndPush(configID string, correlationID
 			return
 		}
 	}
-}
-
-// deregisterWebSubTopics handles WebSub topic deregistration on delete.
-func (s *RestAPIService) deregisterWebSubTopics(cfg *models.StoredConfig, log *slog.Logger) error {
-	topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
-
-	var deregErrs int32
-	var wg sync.WaitGroup
-
-	if len(topicsToUnregister) > 0 {
-		wg.Add(1)
-		go func(list []string) {
-			defer wg.Done()
-			log.Info("Starting topic deregistration", slog.Int("total_topics", len(list)), slog.String("api_id", cfg.UUID))
-			var childWg sync.WaitGroup
-			for _, topic := range list {
-				childWg.Add(1)
-				go func(topic string) {
-					defer childWg.Done()
-					ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
-					defer cancel()
-					if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
-						log.Error("Failed to deregister topic from WebSubHub",
-							slog.Any("error", err),
-							slog.String("topic", topic),
-							slog.String("api_id", cfg.UUID))
-						atomic.AddInt32(&deregErrs, 1)
-					} else {
-						log.Info("Successfully deregistered topic from WebSubHub",
-							slog.String("topic", topic),
-							slog.String("api_id", cfg.UUID))
-					}
-				}(topic)
-			}
-			childWg.Wait()
-		}(topicsToUnregister)
-	}
-
-	wg.Wait()
-
-	log.Info("Topic lifecycle operations completed",
-		slog.String("api_id", cfg.UUID),
-		slog.Int("deregistered", len(topicsToUnregister)),
-		slog.Int("deregister_errors", int(deregErrs)))
-
-	if deregErrs > 0 {
-		return fmt.Errorf("topic lifecycle operations failed")
-	}
-	return nil
 }
 
 func stringPtr(s string) *string {

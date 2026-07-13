@@ -69,30 +69,9 @@ help: ## Show this help message
 build: build-event-gateway-controller build-gateway-runtime build-webhook-listener ## Build all event gateway components
 
 .PHONY: build-event-gateway-controller
-# TODO: drop the manual `policies` build-context (and event-gateway/default-policies/)
-# once gateway-builder is integrated into the event-gateway build pipeline.
 build-event-gateway-controller: ## Build event-gateway-controller Docker image
 	@echo "Building event-gateway-controller Docker image ($(VERSION))..."
-	@mkdir -p ../gateway/gateway-controller/target
-	@cp ../LICENSE ../gateway/gateway-controller/target/
-	@cd ../gateway/gateway-controller && \
-		docker buildx build -f Dockerfile \
-			--build-context sdk=../../sdk \
-			--build-context sdk-core=../../sdk/core \
-			--build-context common=../../common \
-			--build-context httpkit=../../httpkit \
-			--build-context build-manifest=.. \
-			--build-context policies=../../event-gateway/default-policies \
-			--build-context target=target \
-			--build-arg VERSION=$(VERSION) \
-			--build-arg FUNCTIONALITY_TYPE=event \
-			--build-arg GIT_COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
-			--target production \
-			-t $(EVENT_GATEWAY_CONTROLLER_IMAGE):$(VERSION) \
-			-t $(EVENT_GATEWAY_CONTROLLER_IMAGE):latest \
-			--load \
-			.
-	@rm -rf ../gateway/gateway-controller/target
+	$(MAKE) -C gateway-controller build VERSION=$(VERSION)
 
 .PHONY: build-gateway-runtime
 build-gateway-runtime: ## Build event-gateway-runtime Docker image
@@ -109,31 +88,9 @@ build-webhook-listener: ## Build webhook-listener Docker image
 build-and-push-multiarch: build-and-push-multiarch-event-gateway-controller build-and-push-multiarch-gateway-runtime ## Build and push all event gateway components for multiple architectures
 
 .PHONY: build-and-push-multiarch-event-gateway-controller
-# TODO: drop the manual `policies` build-context (and event-gateway/default-policies/)
-# once gateway-builder is integrated into the event-gateway build pipeline.
 build-and-push-multiarch-event-gateway-controller: ## Build and push event-gateway-controller Docker image for multiple architectures
 	@echo "Building and pushing multi-arch event-gateway-controller Docker image ($(VERSION))..."
-	@mkdir -p ../gateway/gateway-controller/target
-	@cp ../LICENSE ../gateway/gateway-controller/target/
-	@cd ../gateway/gateway-controller && \
-		docker buildx build -f Dockerfile \
-			--build-context sdk=../../sdk \
-			--build-context sdk-core=../../sdk/core \
-			--build-context common=../../common \
-			--build-context httpkit=../../httpkit \
-			--build-context build-manifest=.. \
-			--build-context policies=../../event-gateway/default-policies \
-			--build-context target=target \
-			--platform linux/amd64,linux/arm64 \
-			--build-arg VERSION=$(VERSION) \
-			--build-arg FUNCTIONALITY_TYPE=event \
-			--build-arg GIT_COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
-			--target production \
-			-t $(EVENT_GATEWAY_CONTROLLER_IMAGE):$(VERSION) \
-			-t $(EVENT_GATEWAY_CONTROLLER_IMAGE):latest \
-			--push \
-			.
-	@rm -rf ../gateway/gateway-controller/target
+	$(MAKE) -C gateway-controller build-and-push-multiarch VERSION=$(VERSION)
 
 .PHONY: build-and-push-multiarch-gateway-runtime
 build-and-push-multiarch-gateway-runtime: ## Build and push event-gateway-runtime Docker image for multiple architectures
@@ -151,7 +108,7 @@ test: test-event-gateway-controller test-gateway-runtime ## Run all tests
 
 .PHONY: test-event-gateway-controller
 test-event-gateway-controller: ## Test event-gateway-controller
-	$(MAKE) -C ../gateway/gateway-controller test
+	$(MAKE) -C gateway-controller test
 
 .PHONY: test-gateway-runtime
 test-gateway-runtime: ## Test event-gateway-runtime
@@ -202,6 +159,6 @@ version-get-release: ## Get release version (strips SNAPSHOT suffix)
 # Clean Targets
 .PHONY: clean
 clean: ## Clean all build artifacts
-	$(MAKE) -C ../gateway/gateway-controller clean
+	$(MAKE) -C gateway-controller clean
 	$(MAKE) -C gateway-runtime clean
 	$(MAKE) -C webhook-listener clean
