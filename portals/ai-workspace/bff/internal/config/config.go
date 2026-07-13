@@ -14,17 +14,18 @@
  * under the License.
  */
 
-// Package config loads BFF configuration from environment variables (and an
-// optional config.toml whose values are surfaced to the SPA as VITE_* runtime
-// config). The BFF never validates tokens, so there are no signing keys here —
-// only the IDP client credentials needed to perform the OAuth2 code exchange.
+// Package config loads BFF configuration from a flat config.toml and APIP_AIW_*
+// environment variables (env wins), resolving {{ env }} / {{ file }} interpolation
+// tokens through the shared configinterpolate library. Browser-safe keys are
+// surfaced to the SPA as APIP_AIW_* runtime config. The BFF never validates tokens, so
+// there are no signing keys here — only the IDP client credentials needed to
+// perform the OAuth2 code exchange.
 package config
 
 import (
 	"fmt"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -92,8 +93,8 @@ type PlatformAPIConfig struct {
 // behind a component that terminates TLS on its behalf.
 type TLSConfig struct {
 	// TerminateTLS makes the BFF serve HTTPS on its own listener: it presents the
-	// certificate and decrypts inbound TLS itself. Defaults to true (env
-	// BFF_TLS_ENABLED). Set to false only when a trusted upstream (ingress,
+	// certificate and decrypts inbound TLS itself. Defaults to true (config key
+	// tls_enabled). Set to false only when a trusted upstream (ingress,
 	// service-mesh sidecar) terminates TLS and forwards plain HTTP to the BFF; no
 	// certificate is then read, generated, or required.
 	TerminateTLS bool
@@ -148,8 +149,8 @@ type ClaimMappingConfig struct {
 // defaultOIDCScopes is the full set of scopes the BFF requests in OIDC mode so a
 // logged-in user's access token carries every ap:* permission the Platform API
 // authorizes against. The IDP must still have these scopes registered and granted
-// to the user, otherwise it drops the ungranted ones. Override with OIDC_SCOPES
-// (or VITE_OIDC_SCOPE) to request a narrower set.
+// to the user, otherwise it drops the ungranted ones. Override with the oidc_scope
+// config key to request a narrower set.
 //
 // offline_access is required: without it most IDPs (Asgardeo, WSO2 IS, Okta,
 // Azure AD) issue no refresh token, so the BFF cannot silently renew the access
@@ -192,132 +193,149 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage" +
 	" ap:git:read"
 
-// Load resolves configuration from config.toml (if present) and environment
-// variables. Environment variables always win over the config file.
+// configFileEnv names the environment variable that points at the config file.
+// It is read before the config file exists, so it cannot itself be a config key.
+const configFileEnv = "APIP_AIW_CONFIG_FILE"
+
+// defaultConfigFile is where the container mounts config.toml.
+const defaultConfigFile = "/etc/ai-workspace/config.toml"
+
+// Load resolves configuration from config.toml (if present) and APIP_AIW_*
+// environment variables, which always win over the config file. Interpolation
+// tokens ({{ env }} / {{ file }}) in either source are resolved first, so any key
+// — the OIDC client secret in particular — can be pulled from an environment
+// variable or a mounted secret file instead of being written in the clear.
 func Load() (*Config, error) {
-	// config.toml -> VITE_* env, only filling vars not already set (env wins).
-	tomlPath := getenv("BFF_CONFIG_FILE", "/etc/ai-workspace/config.toml")
-	applyTOMLToEnv(tomlPath)
+	tomlPath := defaultConfigFile
+	if v := os.Getenv(configFileEnv); v != "" {
+		tomlPath = v
+	}
+	s, err := loadSettings(tomlPath)
+	if err != nil {
+		return nil, err
+	}
 
-	authMode := strings.ToLower(getenv("VITE_AUTH_MODE", getenv("AUTH_MODE", "basic")))
+	authMode := strings.ToLower(s.get("auth_mode", "basic"))
 
-	// Parse typed env values up front so malformed values fail startup instead of
-	// being silently replaced with defaults.
-	selfSigned, err := getbool("BFF_TLS_SELF_SIGNED", true)
+	// Parse typed values up front so a malformed one fails startup instead of
+	// being silently replaced with the default.
+	selfSigned, err := s.getbool("tls_self_signed", true)
 	if err != nil {
 		return nil, err
 	}
-	tlsEnabled, err := getbool("BFF_TLS_ENABLED", true)
+	tlsEnabled, err := s.getbool("tls_enabled", true)
 	if err != nil {
 		return nil, err
 	}
-	platformTLSSkipVerify, err := getbool("PLATFORM_API_TLS_SKIP_VERIFY", false)
+	platformTLSSkipVerify, err := s.getbool("platform_api_tls_skip_verify", false)
 	if err != nil {
 		return nil, err
 	}
-	idleTimeout, err := getdur("SESSION_IDLE_TIMEOUT", 30*time.Minute)
+	idleTimeout, err := s.getdur("session_idle_timeout", 30*time.Minute)
 	if err != nil {
 		return nil, err
 	}
-	absoluteTTL, err := getdur("SESSION_ABSOLUTE_TTL", 8*time.Hour)
+	absoluteTTL, err := s.getdur("session_absolute_ttl", 8*time.Hour)
 	if err != nil {
 		return nil, err
 	}
-	cookieSecure, err := getbool("COOKIE_SECURE", true)
+	cookieSecure, err := s.getbool("cookie_secure", true)
 	if err != nil {
 		return nil, err
 	}
-	oidcEnabled, err := getbool("OIDC_ENABLED", false)
+	oidcEnabled, err := s.getbool("oidc_enabled", false)
 	if err != nil {
 		return nil, err
 	}
 
 	cfg := &Config{
-		Addr:      getenv("BFF_ADDR", ":5380"),
-		StaticDir: getenv("STATIC_DIR", "/app"),
-		LogLevel:  strings.ToLower(getenv("LOG_LEVEL", "info")),
-		LogFormat: strings.ToLower(getenv("LOG_FORMAT", "text")),
+		Addr:      s.get("listen_addr", ":5380"),
+		StaticDir: s.get("static_dir", "/app"),
+		LogLevel:  strings.ToLower(s.get("log_level", "info")),
+		LogFormat: strings.ToLower(s.get("log_format", "text")),
 		TLS: TLSConfig{
 			TerminateTLS: tlsEnabled,
 			SelfSigned:   selfSigned,
-			// Convention matches the legacy entrypoint.sh mount path. buildTLS
-			// falls back to a self-signed cert when these files are absent.
-			CertFile: getenv("BFF_TLS_CERT_FILE", "/etc/ai-workspace/tls/tls.crt"),
-			KeyFile:  getenv("BFF_TLS_KEY_FILE", "/etc/ai-workspace/tls/tls.key"),
+			// Convention matches the container's mount path. buildTLS falls back to
+			// a self-signed cert when these files are absent.
+			CertFile: s.get("tls_cert_file", "/etc/ai-workspace/tls/tls.crt"),
+			KeyFile:  s.get("tls_key_file", "/etc/ai-workspace/tls/tls.key"),
 		},
 		PlatformAPI: PlatformAPIConfig{
-			URL:           strings.TrimRight(getenv("PLATFORM_API_URL", ""), "/"),
-			CAFile:        getenv("PLATFORM_API_CA_FILE", ""),
+			URL:           strings.TrimRight(s.get("platform_api_url", ""), "/"),
+			CAFile:        s.get("platform_api_ca_file", ""),
 			TLSSkipVerify: platformTLSSkipVerify,
-			LoginPath:     getenv("PLATFORM_LOGIN_PATH", "/api/portal/v0.9/auth/login"),
+			LoginPath:     s.get("platform_login_path", "/api/portal/v0.9/auth/login"),
 		},
-		ProxyPrefix: strings.TrimRight(getenv("PROXY_PREFIX", "/api/proxy"), "/"),
+		ProxyPrefix: strings.TrimRight(s.get("proxy_prefix", "/api/proxy"), "/"),
 		Session: SessionConfig{
-			Store:       getenv("SESSION_STORE", "memory"),
+			Store:       s.get("session_store", "memory"),
 			IdleTimeout: idleTimeout,
 			AbsoluteTTL: absoluteTTL,
 		},
 		Cookie: CookieConfig{
-			Name:     getenv("COOKIE_NAME", "_bff_session"),
+			Name:     s.get("cookie_name", "_ai_workspace_session"),
 			Secure:   cookieSecure,
-			SameSite: strings.ToLower(getenv("COOKIE_SAMESITE", "lax")),
+			SameSite: strings.ToLower(s.get("cookie_samesite", "lax")),
 		},
-		CSRFHeader: getenv("CSRF_HEADER", "X-Requested-By"),
+		CSRFHeader: s.get("csrf_header", "X-Requested-By"),
 		AuthMode:   authMode,
 		DemoMode:   demoMode(),
 		OIDC: OIDCConfig{
-			Enabled:      authMode == "oidc" || oidcEnabled,
-			Issuer:       strings.TrimRight(getenv("OIDC_ISSUER", getenv("VITE_OIDC_AUTHORITY", "")), "/"),
-			ClientID:     getenv("OIDC_CLIENT_ID", getenv("VITE_OIDC_CLIENT_ID", "")),
-			ClientSecret: getenv("OIDC_CLIENT_SECRET", ""),
-			RedirectURL:  getenv("OIDC_REDIRECT_URL", ""),
+			Enabled:  authMode == "oidc" || oidcEnabled,
+			Issuer:   strings.TrimRight(s.get("oidc_authority", ""), "/"),
+			ClientID: s.get("oidc_client_id", ""),
+			// Never write the secret itself into config.toml: set it via the
+			// APIP_AIW_OIDC_CLIENT_SECRET env var, or — preferably — read it from a
+			// mounted file with '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'.
+			ClientSecret: s.get("oidc_client_secret", ""),
+			RedirectURL:  s.get("oidc_redirect_url", ""),
 			// Empty by default: LogoutURL() forwards this as post_logout_redirect_uri,
 			// which IDPs require to be an absolute, pre-registered URL. A relative
 			// default would produce an invalid logout request, so leave it unset
 			// unless an absolute URL is explicitly configured.
-			PostLogoutRedirectURL: getenv("OIDC_POST_LOGOUT_REDIRECT_URL", ""),
-			Scopes:                getenv("OIDC_SCOPES", getenv("VITE_OIDC_SCOPE", defaultOIDCScopes)),
-			// Claim names fall back to the same VITE_OIDC_*_CLAIM vars the SPA reads
-			// (set via config.toml) so one config drives both layers, then to the
-			// built-in defaults.
+			PostLogoutRedirectURL: s.get("oidc_post_logout_redirect_url", ""),
+			Scopes:                s.get("oidc_scope", defaultOIDCScopes),
+			// The same claim-name keys drive both the BFF's session mapping and the
+			// SPA's runtime config, so one config entry keeps both layers in sync.
 			Claims: ClaimMappingConfig{
-				Username:  getenv("OIDC_CLAIM_USERNAME", getenv("VITE_OIDC_USERNAME_CLAIM", "username")),
-				Email:     getenv("OIDC_CLAIM_EMAIL", "email"),
-				Role:      getenv("OIDC_CLAIM_ROLE", "platform_role"),
-				Scope:     getenv("OIDC_CLAIM_SCOPE", "scope"),
-				OrgID:     getenv("OIDC_CLAIM_ORG_ID", getenv("VITE_OIDC_ORG_ID_CLAIM", "org_id")),
-				OrgName:   getenv("OIDC_CLAIM_ORG_NAME", getenv("VITE_OIDC_ORG_NAME_CLAIM", "org_name")),
-				OrgHandle: getenv("OIDC_CLAIM_ORG_HANDLE", getenv("VITE_OIDC_ORG_HANDLE_CLAIM", "org_handle")),
+				Username:  s.get("oidc_username_claim", "username"),
+				Email:     s.get("oidc_email_claim", "email"),
+				Role:      s.get("oidc_role_claim", "platform_role"),
+				Scope:     s.get("oidc_scope_claim", "scope"),
+				OrgID:     s.get("oidc_org_id_claim", "org_id"),
+				OrgName:   s.get("oidc_org_name_claim", "org_name"),
+				OrgHandle: s.get("oidc_org_handle_claim", "org_handle"),
 			},
 		},
 	}
 
 	if cfg.PlatformAPI.URL == "" {
-		return nil, fmt.Errorf("PLATFORM_API_URL is required")
+		return nil, fmt.Errorf("platform_api_url is required (set it in config.toml or via %sPLATFORM_API_URL)", EnvPrefix)
 	}
 	// The scheme is the single source of truth for the outbound TLS decision, so a
 	// missing/typo'd scheme must fail at startup rather than surface as an opaque
 	// dial error on the first proxied request.
 	u, err := url.Parse(cfg.PlatformAPI.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, fmt.Errorf("PLATFORM_API_URL must be an absolute http:// or https:// URL, got %q", cfg.PlatformAPI.URL)
+		return nil, fmt.Errorf("platform_api_url must be an absolute http:// or https:// URL, got %q", cfg.PlatformAPI.URL)
 	}
 	// Trust knobs only apply to an https upstream; flag them on a plain-http URL so a
 	// mistaken belief that TLS is in effect is caught early.
 	if u.Scheme == "http" {
 		if cfg.PlatformAPI.CAFile != "" || cfg.PlatformAPI.TLSSkipVerify {
-			return nil, fmt.Errorf("PLATFORM_API_CA_FILE / PLATFORM_API_TLS_SKIP_VERIFY are set but PLATFORM_API_URL is http:// (no TLS on the upstream hop)")
+			return nil, fmt.Errorf("platform_api_ca_file / platform_api_tls_skip_verify are set but platform_api_url is http:// (no TLS on the upstream hop)")
 		}
 	}
 	// Skipping verification outside demo mode is a security downgrade; require an
 	// operator to reach it deliberately rather than inheriting it silently.
 	if u.Scheme == "https" && cfg.PlatformAPI.TLSSkipVerify && !cfg.DemoMode {
-		return nil, fmt.Errorf("PLATFORM_API_TLS_SKIP_VERIFY=true is not allowed while APIP_DEMO_MODE=false; " +
-			"trust the upstream certificate with PLATFORM_API_CA_FILE instead")
+		return nil, fmt.Errorf("platform_api_tls_skip_verify = true is not allowed while APIP_DEMO_MODE=false; " +
+			"trust the upstream certificate with platform_api_ca_file instead")
 	}
 	if cfg.OIDC.Enabled {
 		if cfg.OIDC.Issuer == "" || cfg.OIDC.ClientID == "" || cfg.OIDC.ClientSecret == "" || cfg.OIDC.RedirectURL == "" {
-			return nil, fmt.Errorf("OIDC mode requires OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET and OIDC_REDIRECT_URL")
+			return nil, fmt.Errorf("OIDC mode requires oidc_authority, oidc_client_id, oidc_client_secret and oidc_redirect_url")
 		}
 	}
 
@@ -325,51 +343,21 @@ func Load() (*Config, error) {
 	// Platform API's built-in admin/admin credentials and is dev-only.
 	if !cfg.DemoMode && !cfg.OIDC.Enabled {
 		return nil, fmt.Errorf("APIP_DEMO_MODE=false does not allow basic (file-based) auth; " +
-			"configure OIDC (set VITE_AUTH_MODE=oidc and OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_REDIRECT_URL)")
+			"configure OIDC (set auth_mode = \"oidc\" and oidc_authority, oidc_client_id, oidc_client_secret, oidc_redirect_url)")
 	}
 
-	cfg.RuntimeConfig = buildRuntimeConfig(cfg)
+	cfg.RuntimeConfig = buildRuntimeConfig(cfg, s)
 	return cfg, nil
 }
 
 // demoMode reports whether APIP_DEMO_MODE is enabled. Defaults to true when the
-// variable is unset; only an explicit "false"/"0" opts out. Matches the Platform
-// API semantics so a single APIP_DEMO_MODE drives the whole stack.
+// variable is unset; only an explicit "false"/"0" opts out. It is intentionally
+// unprefixed: the same variable drives the Platform API, so one value governs the
+// whole stack.
 func demoMode() bool {
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
 	if v == "" {
 		return true
 	}
 	return v == "true" || v == "1"
-}
-
-func getenv(key, def string) string {
-	if v, ok := os.LookupEnv(key); ok && v != "" {
-		return v
-	}
-	return def
-}
-
-func getbool(key string, def bool) (bool, error) {
-	v, ok := os.LookupEnv(key)
-	if !ok || v == "" {
-		return def, nil
-	}
-	b, err := strconv.ParseBool(strings.TrimSpace(v))
-	if err != nil {
-		return false, fmt.Errorf("invalid boolean for %s=%q: %w", key, v, err)
-	}
-	return b, nil
-}
-
-func getdur(key string, def time.Duration) (time.Duration, error) {
-	v, ok := os.LookupEnv(key)
-	if !ok || v == "" {
-		return def, nil
-	}
-	d, err := time.ParseDuration(strings.TrimSpace(v))
-	if err != nil {
-		return 0, fmt.Errorf("invalid duration for %s=%q: %w", key, v, err)
-	}
-	return d, nil
 }

@@ -46,15 +46,18 @@ run: ## Start AI Workspace dev server locally (installs deps if needed)
 	fi
 	npm run dev
 
-bff-build: ## Build the BFF binary (stdlib-only Go module)
+bff-build: ## Build the BFF binary
 	cd $(BFF_DIR) && GOWORK=off CGO_ENABLED=0 go build -o ../target/ai-workspace-bff .
 
+# Config-override env vars carry the APIP_AIW_ prefix; the suffix is the config.toml
+# key (APIP_AIW_LISTEN_ADDR -> listen_addr). No config.toml is mounted locally, so
+# these few overrides are the whole configuration.
 bff-run: ## Run the BFF locally (proxies to PLATFORM_API_URL; pair with `make run`)
 	cd $(BFF_DIR) && \
-		PLATFORM_API_URL=$(PLATFORM_API_URL) \
-		PLATFORM_API_TLS_SKIP_VERIFY=true \
-		BFF_ADDR=$(BFF_DEV_ADDR) \
-		STATIC_DIR=../dist \
+		APIP_AIW_PLATFORM_API_URL=$(PLATFORM_API_URL) \
+		APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY=true \
+		APIP_AIW_LISTEN_ADDR=$(BFF_DEV_ADDR) \
+		APIP_AIW_STATIC_DIR=../dist \
 		go run .
 
 bff-test: ## Run BFF unit tests
@@ -106,6 +109,8 @@ e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
 build: ## Build Docker image
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	docker buildx build \
+		--build-context common=../../common \
+		--build-context httpkit=../../httpkit \
 		--build-arg VERSION=$(VERSION) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
@@ -116,6 +121,8 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 	@echo "Building and pushing multi-arch ai-workspace Docker image: $(IMAGE_NAME):$(VERSION)"
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
+		--build-context common=../../common \
+		--build-context httpkit=../../httpkit \
 		--build-arg VERSION=$(VERSION) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		--push \

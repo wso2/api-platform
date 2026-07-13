@@ -18,14 +18,14 @@ The AI Workspace is a React/Vite SPA served by a **Go BFF (Backend-for-Frontend)
 ## Technology stack
 
 - **React** + **TypeScript** + **Vite**
-- **Go BFF** (stdlib-only) — serves the SPA, reverse-proxies `/api/proxy/*` to the Platform API (injecting the session bearer token), and handles login/logout/session + the OIDC code flow
+- **Go BFF** — serves the SPA, reverse-proxies `/api/proxy/*` to the Platform API (injecting the session bearer token), and handles login/logout/session + the OIDC code flow
 - **Docker Compose** — orchestrates AI Workspace + Platform API
 
 ---
 
 ## Auth modes
 
-Controlled by `auth_mode` in `configs/config.toml` (or `VITE_AUTH_MODE` env var):
+Controlled by `auth_mode` in `configs/config.toml` (or the `APIP_AIW_AUTH_MODE` env var):
 
 | Mode | When to use |
 |---|---|
@@ -38,13 +38,31 @@ See [production/README.md](production/README.md) for the full OIDC setup walkthr
 
 ## Configuration
 
-Runtime config is injected by the BFF at startup:
+Runtime config is resolved by the BFF at startup:
 
 1. Values are read from the `config.toml` mounted at `/etc/ai-workspace/config.toml`.
-2. Each key is mapped to a `VITE_*` env var (env vars already set take priority).
-3. The BFF serves the browser-safe `VITE_*` values at `GET /runtime-config.js` (as `window.__RUNTIME_CONFIG__`) so the SPA can read them without a rebuild. Secrets (e.g. the OIDC client secret) are never emitted here.
+2. Any key can be overridden by an environment variable: uppercase it and prefix `APIP_AIW_`
+   (`log_level` → `APIP_AIW_LOG_LEVEL`, `platform_api_url` → `APIP_AIW_PLATFORM_API_URL`).
+   Environment variables always win over the file.
+3. `{{ env "NAME" }}` and `{{ file "/path" }}` tokens in any value are resolved next, so a secret
+   is *referenced* by the config rather than written into it. Resolution **fails closed**: an unset
+   variable or an unreadable/disallowed file aborts startup instead of yielding an empty credential.
+   A `{{ file }}` path must sit under `/etc/ai-workspace` or `/secrets/ai-workspace` (override with
+   `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`).
+4. The BFF then serves the browser-safe subset at `GET /runtime-config.js` (as
+   `window.__RUNTIME_CONFIG__`) so the SPA can read it without a rebuild. That subset is an
+   explicit allowlist — server-side settings and the OIDC client credentials are never emitted.
 
-The full key → `VITE_*` mapping and all available options are documented in
+```toml
+# Preferred in production — the secret never enters the environment at all.
+oidc_client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
+```
+
+For a simpler local setup, leave the key out of the file and set
+`APIP_AIW_OIDC_CLIENT_SECRET` in a git-ignored `.env` instead — the standard prefix rule sets
+`oidc_client_secret` directly, so no token is needed.
+
+All available options are documented in
 [configs/config-template.toml](configs/config-template.toml).
 
 ---
@@ -60,7 +78,7 @@ portals/ai-workspace/
 │   └── config-platform-api.toml         # Active Platform API config
 ├── production/
 │   └── README.md                        # Production setup guide (Asgardeo)
-├── bff/                                # Go BFF — serves SPA, proxy, auth (stdlib-only)
+├── bff/                                # Go BFF — serves SPA, proxy, auth
 │   ├── main.go
 │   └── internal/{config,session,auth,proxy,server,tlsutil}
 ├── src/
@@ -130,8 +148,8 @@ cd portals/ai-workspace
 make bff-run            # serves /api/* on https://localhost:8081, proxies to the Platform API
 ```
 The Vite dev server proxies `/api` and `/runtime-config.js` to the BFF, so the browser
-talks only to the app origin (same topology as production). Set `PLATFORM_API_URL` if the
-Platform API is not on `https://localhost:9243`.
+talks only to the app origin (same topology as production). Set `PLATFORM_API_URL` (consumed by
+`make bff-run`) if the Platform API is not on `https://localhost:9243`.
 
 Ensure all three services are running before accessing the application.
 
@@ -213,36 +231,46 @@ walkthrough.
 
 #### Option 1 (docker compose) — recommended
 
-`docker-compose.yaml` ships the OIDC env blocks pre-written but commented out. To enable OIDC,
-**uncomment the `OIDC` block on both services** (`platform-api` and `ai-workspace`) and put your
-IDP's values in a `.env` file next to `docker-compose.yaml`:
+Non-secret OIDC settings go in `configs/config.toml`; the client secret is the only value that
+stays out of the file, referenced there by an interpolation token:
+
+```toml
+# portals/ai-workspace/configs/config.toml
+auth_mode          = "oidc"
+oidc_authority     = "https://idp.example.com/oauth2/token"   # Asgardeo: https://api.asgardeo.io/t/acme/oauth2/token
+oidc_client_id     = "<your-client-id>"
+oidc_redirect_url  = "https://localhost:5380/api/auth/callback"
+oidc_post_logout_redirect_url = "https://localhost:5380/login"
+```
+
+The client secret is **not** written into the config file. Put it — along with the Platform API's
+IDP endpoints, which the compose file substitutes into its `APIP_CP_AUTH_IDP_*` variables — in a
+git-ignored `.env` next to `docker-compose.yaml`:
 
 ```bash
-# portals/ai-workspace/.env — generic OIDC (replace with your IDP's URLs/credentials)
-OIDC_ISSUER=https://idp.example.com/oauth2/token
+# portals/ai-workspace/.env — see .env.example
+APIP_AIW_OIDC_CLIENT_SECRET=<your-client-secret>   # sets oidc_client_secret directly
 OIDC_JWKS_URL=https://idp.example.com/oauth2/jwks
-OIDC_CLIENT_ID=<your-client-id>
-OIDC_CLIENT_SECRET=<your-client-secret>
+OIDC_ISSUER=https://idp.example.com/oauth2/token
 OIDC_AUDIENCE=<your-client-id>          # optional; omit to skip the aud check
 # OIDC_ORG_ID_CLAIM=org_id              # set only if your IDP names the org claim differently
-
-# Asgardeo example (tenant "acme"):
-#   OIDC_ISSUER=https://api.asgardeo.io/t/acme/oauth2/token
-#   OIDC_JWKS_URL=https://api.asgardeo.io/t/acme/oauth2/jwks
-#   OIDC_ORG_ID_CLAIM=org_id            # Asgardeo names the org UUID claim org_id
 ```
+
+Then **uncomment the IDP block on the `platform-api` service** and start the stack:
 
 ```bash
 docker compose up -d
 ```
 
-The redirect URLs and `ap:*` scopes are pre-filled in the compose blocks, so `.env` only needs
-your IDP endpoints and client credentials. Leave the OIDC blocks commented (the default) to keep
-the zero-config file-based quickstart (`admin` / `admin`).
+In production, prefer mounting the secret as a file and referencing it with
+`oidc_client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'` — the value then
+never enters the environment at all. Leave `auth_mode = "basic"` (the default) to keep the
+zero-config file-based quickstart (`admin` / `admin`).
 
 > The Platform API and BFF auth modes are mutually exclusive: enabling the IDP while local JWT
 > or file-based auth is also on is rejected at startup. The commented `platform-api` block already
-> sets `AUTH_JWT_ENABLED=false` and `AUTH_FILE_BASED_ENABLED=false` — keep those uncommented too.
+> sets `APIP_CP_AUTH_JWT_ENABLED=false` and `APIP_CP_AUTH_FILE_BASED_ENABLED=false` — keep those
+> uncommented too.
 
 #### Option 2 (local `make bff-run`)
 
@@ -272,24 +300,26 @@ org_handle_claim_name   = "org_handle"
 enabled = false            # required: mutually exclusive with the IDP
 ```
 
-Then export the BFF settings and start it. Point it at the locally published Platform API port
-— the `platform-api` compose hostname does **not** resolve outside the compose network:
+Then export the BFF settings and start it. Every config key can be set as an environment
+variable by uppercasing it and prefixing `APIP_AIW_` (`oidc_client_id` →
+`APIP_AIW_OIDC_CLIENT_ID`). Point it at the locally published Platform API port — the
+`platform-api` compose hostname does **not** resolve outside the compose network:
 
-> `OIDC_ISSUER` is Asgardeo's **token base** — the BFF appends
+> `oidc_authority` is Asgardeo's **token base** — the BFF appends
 > `/.well-known/openid-configuration` itself, so do **not** include the discovery suffix.
 
 ```bash
 cd portals/ai-workspace
-export PLATFORM_API_URL=https://localhost:9243        # NOT https://platform-api:9243 when run locally
-export PLATFORM_API_TLS_SKIP_VERIFY=true
-export AUTH_MODE=oidc
-export OIDC_ISSUER=https://api.asgardeo.io/t/<your-tenant>/oauth2/token
-export OIDC_CLIENT_ID=<your-client-id>
-export OIDC_CLIENT_SECRET=<your-client-secret>
-export OIDC_REDIRECT_URL=https://localhost:5380/api/auth/callback
-export OIDC_POST_LOGOUT_REDIRECT_URL=https://localhost:5380/login
+export APIP_AIW_PLATFORM_API_URL=https://localhost:9243   # NOT https://platform-api:9243 when run locally
+export APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY=true
+export APIP_AIW_AUTH_MODE=oidc
+export APIP_AIW_OIDC_AUTHORITY=https://api.asgardeo.io/t/<your-tenant>/oauth2/token
+export APIP_AIW_OIDC_CLIENT_ID=<your-client-id>
+export APIP_AIW_OIDC_CLIENT_SECRET=<your-client-secret>
+export APIP_AIW_OIDC_REDIRECT_URL=https://localhost:5380/api/auth/callback
+export APIP_AIW_OIDC_POST_LOGOUT_REDIRECT_URL=https://localhost:5380/login
 # Keep `offline_access` — without it the IDP issues no refresh token and the BFF cannot silently renew the session.
-export OIDC_SCOPES="openid profile email offline_access ap:organization:manage ap:gateway:manage ap:rest_api:manage ..."
+export APIP_AIW_OIDC_SCOPE="openid profile email offline_access ap:organization:manage ap:gateway:manage ap:rest_api:manage ..."
 make bff-run
 ```
 
@@ -301,13 +331,13 @@ failures, by symptom:
 | Symptom | Cause | Fix |
 |---|---|---|
 | `unauthorized_client` / *"not authorized to use the requested grant type"* | App registered as SPA, or Code/Refresh grant not enabled | Recreate as Standard-Based OIDC app; enable **Code** + **Refresh Token** (step 1) |
-| Platform API exits at startup with *"auth.idp.enabled=true and auth.jwt.enabled=true are mutually exclusive"* | Local auth left on alongside the IDP | Compose: uncomment the full `platform-api` OIDC block (it sets `AUTH_JWT_ENABLED=false` + `AUTH_FILE_BASED_ENABLED=false`). Local: set `auth.jwt.enabled=false` and `auth.file_based.enabled=false` (step 3, Option 2) |
-| `502` + `dial tcp: lookup platform-api: no such host` | BFF run locally but `PLATFORM_API_URL` points at the compose hostname | Set `PLATFORM_API_URL=https://localhost:9243` (step 3, Option 2) |
+| Platform API exits at startup with *"auth.idp.enabled=true and auth.jwt.enabled=true are mutually exclusive"* | Local auth left on alongside the IDP | Compose: uncomment the full `platform-api` OIDC block (it sets `APIP_CP_AUTH_JWT_ENABLED=false` + `APIP_CP_AUTH_FILE_BASED_ENABLED=false`). Local: set `auth.jwt.enabled=false` and `auth.file_based.enabled=false` (step 3, Option 2) |
+| `502` + `dial tcp: lookup platform-api: no such host` | BFF run locally but `platform_api_url` points at the compose hostname | Set `APIP_AIW_PLATFORM_API_URL=https://localhost:9243` (step 3, Option 2) |
 | Proxied calls return `authentication_failed` | Platform API still on local JWT/file-based, validating the IDP token with the wrong validator | Switch it to the IDP — compose: uncomment the `platform-api` OIDC block; local: enable `[auth.idp]` (step 3, Option 2) |
 | Proxied calls return `authentication_failed`, Platform API logs `token contains an invalid number of segments` | IDP is issuing **opaque** access tokens — the BFF forwards the access token and the Platform API can only validate a **JWT** via JWKS | Set **Access Token Type = JWT** on the app's Protocol tab (step 1) and re-login |
 | Login works, then proxied calls return `403` | Access token lacks `ap:*` scopes, or Platform API IDP/claim mapping wrong | Grant `ap:*` scopes to the user (step 2); check `[auth.idp]` issuer/JWKS/claim mappings |
 | User shows as a UUID and email is blank in the UI | Token carries no name/email claims — the BFF falls back to the `sub` (user UUID) | Release the `given_name` (or `name`/`preferred_username`) and `email` claims to the app and ensure the user has those attributes set; the `profile` and `email` scopes must be granted (both are in the default request) |
-| Logged out as soon as the access token expires; never silently refreshed | IDP returned no refresh token — `offline_access` scope missing from the request, or not permitted for the app | Keep `offline_access` in `OIDC_SCOPES` (it's in the default); allow it for the app in the IDP (step 1) |
+| Logged out as soon as the access token expires; never silently refreshed | IDP returned no refresh token — `offline_access` scope missing from the request, or not permitted for the app | Keep `offline_access` in `oidc_scope` (it's in the default); allow it for the app in the IDP (step 1) |
 | Refresh fails minutes after login | **Refresh Token** grant not enabled on the app | Enable it on the Protocol tab (step 1) |
 
 ## Session lifetime & token refresh
@@ -419,9 +449,9 @@ rather than run insecurely:
 
 | Service | Demo mode (`true`, default) | Production (`false`) |
 |---|---|---|
-| **AI Workspace (BFF)** — auth | Basic / file-based auth allowed | Basic auth **rejected** — OIDC required (`VITE_AUTH_MODE=oidc` + the `OIDC_*` values) |
-| **AI Workspace (BFF)** — inbound TLS | Auto-generates a self-signed cert when none is mounted | Self-signed fallback **disabled** — a cert/key must be mounted (`BFF_TLS_CERT_FILE` / `BFF_TLS_KEY_FILE`), or TLS turned off with `BFF_TLS_ENABLED=false` when an ingress terminates it |
-| **AI Workspace (BFF)** — upstream TLS | `PLATFORM_API_TLS_SKIP_VERIFY=true` accepts the Platform API's self-signed cert | Skip-verify **rejected** — trust the upstream cert with `PLATFORM_API_CA_FILE` (a PEM bundle) so verification stays on |
+| **AI Workspace (BFF)** — auth | Basic / file-based auth allowed | Basic auth **rejected** — OIDC required (`auth_mode = "oidc"` + the `oidc_*` keys) |
+| **AI Workspace (BFF)** — inbound TLS | Auto-generates a self-signed cert when none is mounted | Self-signed fallback **disabled** — a cert/key must be mounted (`tls_cert_file` / `tls_key_file`), or TLS turned off with `tls_enabled = false` when an ingress terminates it |
+| **AI Workspace (BFF)** — upstream TLS | `platform_api_tls_skip_verify = true` accepts the Platform API's self-signed cert | Skip-verify **rejected** — trust the upstream cert with `platform_api_ca_file` (a PEM bundle) so verification stays on |
 | **Platform API** — secrets | `ENCRYPTION_KEY` and `AUTH_JWT_SECRET_KEY` are **required** | Same — both keys required |
 
 So before flipping `APIP_DEMO_MODE=false`, make sure you have:

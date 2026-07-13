@@ -19,13 +19,24 @@ RUN npm run build
 ###########################
 FROM golang:1.26-alpine AS bff
 
-WORKDIR /src
+# The BFF depends on the shared common module (configinterpolate) via a relative
+# replace directive, so the module tree is reproduced under /src and common /
+# httpkit are supplied as named build contexts:
+#   docker buildx build --build-context common=../../common \
+#                       --build-context httpkit=../../httpkit ...
+# The workspace is disabled so the image builds from these copies alone.
+WORKDIR /src/portals/ai-workspace/bff
 
-# The BFF is a standalone, dependency-free module (stdlib only); build it without
-# the workspace so the image is self-contained.
-COPY bff/go.mod ./
-COPY bff/ ./
+# go.mod/go.sum first for better layer caching.
+COPY --from=common go.mod go.sum /src/common/
+COPY --from=httpkit go.mod go.sum /src/httpkit/
+COPY bff/go.mod bff/go.sum ./
 ENV CGO_ENABLED=0 GOFLAGS=-mod=mod GOWORK=off
+RUN go mod download
+
+COPY --from=common . /src/common
+COPY --from=httpkit . /src/httpkit
+COPY bff/ ./
 RUN go build -trimpath -ldflags "-s -w" -o /bff .
 
 ###########################
@@ -50,18 +61,16 @@ COPY --chown=$USER_UID:$USER_GID --from=bff /bff /usr/local/bin/bff
 
 USER $USER_UID
 
-# BFF defaults: serve /app, self-signed TLS, listen on 5380.
-ENV STATIC_DIR=/app \
-    BFF_ADDR=:5380 \
-    BFF_TLS_SELF_SIGNED=true \
-    SESSION_STORE=memory \
-    COOKIE_SECURE=true \
-    COOKIE_SAMESITE=lax
+# No ENV config defaults are baked in on purpose. The BFF's built-in defaults
+# already match what this image needs (static dir /app, listener :5380, self-signed
+# TLS, in-memory sessions, Secure/Lax cookies), and an APIP_AIW_* variable set here
+# would take precedence over the operator's mounted config.toml — silently shadowing
+# it. Override at deploy time with APIP_AIW_* env vars or config.toml instead.
 
 EXPOSE 5380
 
 # Probe HTTPS first (the default), then fall back to HTTP so the check also works
-# when TLS is disabled (BFF_TLS_SELF_SIGNED=false and no cert mounted).
+# when TLS is disabled (tls_self_signed = false and no cert mounted).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -fk https://localhost:5380/healthz || curl -f http://localhost:5380/healthz || exit 1
 

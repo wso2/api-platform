@@ -169,11 +169,11 @@ func buildTLS(c config.TLSConfig, demoMode bool) (*tls.Config, error) {
 	if !c.TerminateTLS {
 		// Plain HTTP is only safe when something upstream terminates TLS.
 		if !demoMode {
-			slog.Warn("TLS: disabled (BFF_TLS_ENABLED=false) while APIP_DEMO_MODE=false — " +
+			slog.Warn("TLS: disabled (tls_enabled = false) while APIP_DEMO_MODE=false — " +
 				"serving plain HTTP. Terminate TLS at an ingress or service-mesh sidecar and " +
 				"never expose this listener directly to untrusted networks.")
 		} else {
-			slog.Info("TLS: disabled (BFF_TLS_ENABLED=false) — serving plain HTTP")
+			slog.Info("TLS: disabled (tls_enabled = false) — serving plain HTTP")
 		}
 		return nil, nil
 	}
@@ -194,8 +194,8 @@ func buildTLS(c config.TLSConfig, demoMode bool) (*tls.Config, error) {
 	// convenience — outside demo mode, require the operator to mount a real cert.
 	if !demoMode {
 		return nil, fmt.Errorf("APIP_DEMO_MODE=false requires a mounted TLS certificate: "+
-			"set BFF_TLS_CERT_FILE (%q) and BFF_TLS_KEY_FILE (%q) to existing files, "+
-			"or set BFF_TLS_ENABLED=false to serve plain HTTP behind a TLS-terminating proxy. "+
+			"set tls_cert_file (%q) and tls_key_file (%q) to existing files, "+
+			"or set tls_enabled = false to serve plain HTTP behind a TLS-terminating proxy. "+
 			"Self-signed certificates are only auto-generated in demo mode", c.CertFile, c.KeyFile)
 	}
 	if c.SelfSigned {

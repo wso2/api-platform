@@ -19,7 +19,7 @@
 import { DEBUG } from '../config.env';
 
 /**
- * Logger utility that respects the VITE_DEBUG environment variable.
+ * Logger utility that respects the APIP_AIW_DEBUG environment variable.
  * All console output is suppressed when DEBUG is disabled (default).
  * 
  * Usage:
