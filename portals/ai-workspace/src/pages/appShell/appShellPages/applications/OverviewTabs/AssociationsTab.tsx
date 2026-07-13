@@ -815,7 +815,7 @@ export default function AssociationsTab() {
     try {
       await loadOrganizationProviders();
     } catch {
-      setProviderDrawerLoadError('Failed to load LLM providers.');
+      setProviderDrawerLoadError('Failed to load AI providers.');
     } finally {
       setIsProviderDrawerLoading(false);
     }
@@ -919,13 +919,13 @@ export default function AssociationsTab() {
       const keyCount = linkedProviderKeyPayload.length;
       showSnackbar(
         providerCount > 0 && keyCount > 0
-          ? `${providerCount} LLM provider${
+          ? `${providerCount} AI provider${
               providerCount > 1 ? 's' : ''
             } associated and ${keyCount} API key${
               keyCount > 1 ? 's' : ''
             } added successfully.`
           : providerCount > 0
-          ? `${providerCount} LLM provider${
+          ? `${providerCount} AI provider${
               providerCount > 1 ? 's' : ''
             } associated successfully.`
           : `${keyCount} API key${keyCount > 1 ? 's' : ''} added successfully.`,
@@ -1120,7 +1120,7 @@ export default function AssociationsTab() {
       });
 
       const label =
-        deleteTarget.kind === 'LlmProvider' ? 'LLM provider' : 'LLM proxy';
+        deleteTarget.kind === 'LlmProvider' ? 'AI provider' : 'LLM proxy';
       setDeleteTarget(null);
       showSnackbar(`${label} association removed successfully.`, 'success');
     } catch (error) {
@@ -1417,7 +1417,7 @@ export default function AssociationsTab() {
 
       <AssociationSelectionDrawer
         open={providerDrawerOpen}
-        title="Add LLM Providers"
+        title="Add AI Providers"
         description="Select providers and their API keys to associate with this application."
         searchPlaceholder="Search providers..."
         searchValue={providerDrawerSearch}
@@ -1427,7 +1427,7 @@ export default function AssociationsTab() {
         isLoading={isProviderDrawerLoading}
         loadError={providerDrawerLoadError}
         items={filteredOrgProviders}
-        emptyStateText="No LLM providers found in this organization."
+        emptyStateText="No AI providers found in this organization."
         emptySearchText="No providers match your search."
         linkedIds={linkedProviderIds}
         selectedIds={selectedProviderIds}
@@ -1766,7 +1766,7 @@ export default function AssociationsTab() {
       >
         <DialogTitle>
           Remove{' '}
-          {deleteTarget?.kind === 'LlmProvider' ? 'LLM Provider' : 'LLM Proxy'}{' '}
+          {deleteTarget?.kind === 'LlmProvider' ? 'AI Provider' : 'LLM Proxy'}{' '}
           association
         </DialogTitle>
         <DialogContent>

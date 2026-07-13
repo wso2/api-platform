@@ -51,21 +51,21 @@ export default function ExploreMoreCard() {
       ],
     },
     {
-      title: 'LLM Provider Integration',
+      title: 'AI Provider Integration',
       subtitle:
         'Connect, configure, and maintain model providers for your workspace.',
       icon: Server,
       links: [
         {
-          label: 'LLM Providers Overview',
+          label: 'AI Providers Overview',
           href: 'https://wso2.com/bijira/docs/ai-workspace/llm-providers/overview/',
         },
         {
-          label: 'Configure a New LLM Provider',
+          label: 'Configure a New AI Provider',
           href: 'https://wso2.com/bijira/docs/ai-workspace/llm-providers/configure-provider/',
         },
         {
-          label: 'Manage Existing LLM Providers',
+          label: 'Manage Existing AI Providers',
           href: 'https://wso2.com/bijira/docs/ai-workspace/llm-providers/manage-provider/',
         },
       ],

@@ -101,7 +101,7 @@ function renderPrimaryActions(
         startIcon={<Plus size={16} />}
         onClick={() => void onOpenProviderDrawer()}
       >
-        Add LLM Provider
+        Add AI Provider
       </Button>
       <Button
         variant="contained"
@@ -273,7 +273,7 @@ export default function AssociationsTable({
                           <Chip
                             label={
                               association.kind === 'LlmProvider'
-                                ? 'LLM Provider'
+                                ? 'AI Provider'
                                 : 'LLM Proxy'
                             }
                             size="small"
@@ -466,7 +466,7 @@ export default function AssociationsTable({
           description={
             showNoSearchResults
               ? 'No associations match your search.'
-              : 'Associate LLM providers and proxies to enable AI capabilities for this application.'
+              : 'Associate AI providers and proxies to enable AI capabilities for this application.'
           }
           action={
             showNoSearchResults ? (

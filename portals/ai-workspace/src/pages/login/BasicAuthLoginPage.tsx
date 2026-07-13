@@ -48,7 +48,7 @@ interface Props {
 }
 
 const sloganItems = [
-  { icon: <Cloud size={20} />, title: 'Connect multiple LLM providers and models' },
+  { icon: <Cloud size={20} />, title: 'Connect multiple AI providers and models' },
   { icon: <AppWindow size={20} />, title: 'Build, run, and iterate AI workflows' },
   { icon: <Cog size={20} />, title: 'Configure prompts, tools, and runtime settings' },
   { icon: <FlaskConical size={20} />, title: 'Test, evaluate, and compare model responses' },

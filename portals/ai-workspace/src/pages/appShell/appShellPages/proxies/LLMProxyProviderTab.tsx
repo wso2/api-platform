@@ -185,7 +185,7 @@ export default function LLMProxyProviderTab() {
           <Typography variant="h6" sx={{ mb: 1.5, fontWeight: 600 }}>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyProviderTab.llm.service.provider"
-              defaultMessage={'LLM Provider'}
+              defaultMessage={'AI Provider'}
             />
           </Typography>
 

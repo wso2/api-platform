@@ -337,7 +337,7 @@ export default function ServiceProviderDeploymentsCard({
             <Typography variant="body2" color="text.secondary">
               <FormattedMessage
                 id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderDeploymentsCard.start.using.this.llm.provider"
-                defaultMessage={'Start using this LLM provider'}
+                defaultMessage={'Start using this AI provider'}
               />
             </Typography>
           </Box> */}

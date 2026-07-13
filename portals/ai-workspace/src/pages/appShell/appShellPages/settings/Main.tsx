@@ -54,7 +54,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   {
     key: 'templates',
-    label: 'LLM Provider Templates',
+    label: 'AI Provider Templates',
     icon: <LayoutTemplate size={18} />,
     path: '/settings/llm-provider-templates',
   },

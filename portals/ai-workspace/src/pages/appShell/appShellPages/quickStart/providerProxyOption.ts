@@ -23,14 +23,14 @@ import type { QuickStartOption } from './types';
 export function getProviderProxyOption(getNextPath: () => string): QuickStartOption {
   return {
     id: 'provider-proxy',
-    label: 'Expose My LLM Providers Securely',
-    description: 'Register an LLM provider your applications can use.',
-    title: 'Set up an LLM provider and expose it with a proxy',
+    label: 'Expose My AI Providers Securely',
+    description: 'Register an AI provider your applications can use.',
+    title: 'Set up an AI provider and expose it with a proxy',
     subtitle:
       'Connect your model provider, define a reusable proxy, and prepare it for deployment through your AI workspace.',
     steps: [
       {
-        title: 'Add LLM provider',
+        title: 'Add AI provider',
         description:
           'Register the provider, credentials, and models you want to make available.',
       },

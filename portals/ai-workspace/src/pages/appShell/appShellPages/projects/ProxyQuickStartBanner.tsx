@@ -467,7 +467,7 @@ export default function ProxyQuickStartBanner() {
                   severity="warning"
                   sx={{ fontSize: 14, maxWidth: 'fit-content' }}
                 >
-                  You need one or more Gateways and LLM Providers please contact
+                  You need one or more Gateways and AI Providers please contact
                   Organization admin.
                 </Alert>
               ) : (

@@ -427,7 +427,7 @@ export default function ServiceProviderNew() {
         setFieldErrors(mappedErrors);
       }
       if (hasUnmapped || Object.keys(mappedErrors).length === 0) {
-        const description = getErrorMessage(error, 'Failed to create LLM provider.');
+        const description = getErrorMessage(error, 'Failed to create AI provider.');
         showSnackbar(description, 'error');
       }
     }
@@ -515,7 +515,7 @@ export default function ServiceProviderNew() {
           <PageTitle.Header>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderNew.add.llm.service.provider"
-              defaultMessage={'Add LLM Provider'}
+              defaultMessage={'Add AI Provider'}
             />
           </PageTitle.Header>
         </PageTitle>

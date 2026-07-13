@@ -1032,7 +1032,7 @@ function ServiceProviderOverviewContent() {
       }}
     >
       <DialogTitle>
-        Are you sure you want to remove the LLM Provider{' '}
+        Are you sure you want to remove the AI Provider{' '}
         <strong>'{deleteTarget?.name ?? ''}'</strong>?
       </DialogTitle>
       <DialogContent>

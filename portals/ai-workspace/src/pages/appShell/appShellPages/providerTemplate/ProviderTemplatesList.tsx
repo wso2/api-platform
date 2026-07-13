@@ -276,14 +276,14 @@ export default function ProviderTemplatesList({
           <PageTitle.Header>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.title"
-              defaultMessage={'LLM Provider Templates'}
+              defaultMessage={'AI Provider Templates'}
             />
           </PageTitle.Header>
           <PageTitle.SubHeader>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.subtitle"
               defaultMessage={
-                'Define reusable templates for connecting LLM providers.'
+                'Define reusable templates for connecting AI providers.'
               }
             />
           </PageTitle.SubHeader>
@@ -342,7 +342,7 @@ export default function ProviderTemplatesList({
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.empty.title"
-                  defaultMessage={'Create your first LLM Provider Template'}
+                  defaultMessage={'Create your first AI Provider Template'}
                 />
               </Typography>
               <Typography
@@ -353,7 +353,7 @@ export default function ProviderTemplatesList({
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.empty.subtitle"
                   defaultMessage={
-                    'A template holds the endpoint and auth details for connecting a custom LLM provider.'
+                    'A template holds the endpoint and auth details for connecting a custom AI provider.'
                   }
                 />
               </Typography>
@@ -404,10 +404,10 @@ export default function ProviderTemplatesList({
               variant="h6"
               sx={{ fontWeight: 700, mb: 0.5, mt: 0 }}
             >
-              Custom LLM Providers
+              Custom AI Providers
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Templates you create to connect your own LLM providers.
+              Templates you create to connect your own AI providers.
             </Typography>
 
             {filteredTemplates.length > 0 ? (
@@ -488,7 +488,7 @@ export default function ProviderTemplatesList({
                     <FormattedMessage
                       id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.empty.title"
                       defaultMessage={
-                        'Create your first LLM Provider Template'
+                        'Create your first AI Provider Template'
                       }
                     />
                   </Typography>
@@ -500,7 +500,7 @@ export default function ProviderTemplatesList({
                     <FormattedMessage
                       id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplatesList.empty.subtitle"
                       defaultMessage={
-                        'A template holds the endpoint and auth details for connecting a custom LLM provider.'
+                        'A template holds the endpoint and auth details for connecting a custom AI provider.'
                       }
                     />
                   </Typography>
@@ -530,7 +530,7 @@ export default function ProviderTemplatesList({
                   Built-in Templates
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Built-in LLM providers, included by default.
+                  Built-in AI providers, included by default.
                 </Typography>
                 {filteredBuiltIn.length > 0 ? (
                   <Box sx={cardGridSx}>

@@ -222,7 +222,7 @@ export default function AppSidebar({
                       <Sidebar.ItemIcon>
                         <Handshake size={20} />
                       </Sidebar.ItemIcon>
-                      <Sidebar.ItemLabel>LLM Providers</Sidebar.ItemLabel>
+                      <Sidebar.ItemLabel>AI Providers</Sidebar.ItemLabel>
                     </Sidebar.Item>
                   </NavLink>
                 )}
