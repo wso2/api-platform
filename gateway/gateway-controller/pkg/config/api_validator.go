@@ -38,8 +38,8 @@ type APIValidator struct {
 	versionRegex *regexp.Regexp
 	// urlFriendlyNameRegex matches URL-safe characters for API names
 	urlFriendlyNameRegex *regexp.Regexp
-	// upstreamRefRegex enforces the schema pattern shared by upstream refs
-	// (API-level and per-op) and upstream definition names
+	// upstreamRefRegex enforces the schema pattern for API-level and per-op
+	// upstream refs
 	upstreamRefRegex *regexp.Regexp
 	// policyValidator validates policy references and parameters
 	policyValidator *PolicyValidator
