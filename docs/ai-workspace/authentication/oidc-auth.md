@@ -37,9 +37,19 @@ authority = "https://idp.example.com/realms/my-realm"
 # Confidential client ID registered in your IDP
 client_id = "ai-workspace"
 
+# BFF-side redirect URLs — never sent to the browser.
+redirect_url             = "https://<domain>/api/auth/callback"   # the BFF callback
+post_logout_redirect_url = "https://<domain>/login"
+
+# Preferred: read the client secret from a mounted secret file (the value never
+# enters the environment or the committed file).
+client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
+
 # JWT claim names for organization identity. This table mirrors
 # [auth.idp.claim_mappings] in the Platform API config (below) key for key — both
 # services read the same claims out of the same token, so the two must agree.
+# Must stay the last table under [oidc]: plain [oidc] keys placed below this
+# header would land in [oidc.claim_mappings] instead.
 [oidc.claim_mappings]
 organization_claim_name = "org_id"
 org_name_claim_name     = "org_name"
@@ -48,18 +58,9 @@ org_handle_claim_name   = "org_handle"
 
 The redirect URLs and the client secret are BFF settings — they are **never sent to the browser**.
 The redirect URLs are ordinary `config.toml` keys; the secret is *referenced* by the config rather
-than written into it, so the raw value never lands in a committed file:
+than written into it, so the raw value never lands in a committed file.
 
-```toml
-[oidc]
-redirect_url             = "https://<domain>/api/auth/callback"   # the BFF callback
-post_logout_redirect_url = "https://<domain>/login"
-
-# Preferred: read from a mounted secret file (the value never enters the environment).
-client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
-```
-
-For a simpler local setup, swap the token for `'{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'` and keep
+For a simpler local setup, swap the `{{ file }}` token for `'{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'` and keep
 the value in a git-ignored `.env`. The key must carry one token or the other — a variable set with
 no token to read it is ignored. Either token fails closed: a missing secret aborts startup rather
 than yielding an empty credential. See [Configuration → Secrets](../configuration.md#secrets).

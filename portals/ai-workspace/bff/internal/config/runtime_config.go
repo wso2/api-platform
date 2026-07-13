@@ -26,9 +26,9 @@ import "strings"
 // [oidc] client_secret / client_id / authority are deliberately absent — the BFF
 // performs the whole OIDC handshake, so the SPA needs no client identity.
 var browserSafeKeys = []string{
-	// Identity of the deployment
+	// Identity of the deployment. auth_mode is not listed: buildRuntimeConfig
+	// always emits it from the parsed cfg.AuthMode instead.
 	"domain",
-	"auth_mode",
 	"default_org_region",
 	"controlplane_host",
 	"platform_gateway_versions",

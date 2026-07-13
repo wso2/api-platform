@@ -175,11 +175,11 @@ func buildTLS(c config.TLSConfig, demoMode bool) (*tls.Config, error) {
 	if !c.TerminateTLS {
 		// Plain HTTP is only safe when something upstream terminates TLS.
 		if !demoMode {
-			slog.Warn("TLS: disabled (tls_enabled = false) while APIP_DEMO_MODE=false — " +
+			slog.Warn("TLS: disabled ([tls] enabled = false) while demo mode is disabled — " +
 				"serving plain HTTP. Terminate TLS at an ingress or service-mesh sidecar and " +
 				"never expose this listener directly to untrusted networks.")
 		} else {
-			slog.Info("TLS: disabled (tls_enabled = false) — serving plain HTTP")
+			slog.Info("TLS: disabled ([tls] enabled = false) — serving plain HTTP")
 		}
 		return nil, nil
 	}
@@ -199,9 +199,9 @@ func buildTLS(c config.TLSConfig, demoMode bool) (*tls.Config, error) {
 	// No mounted cert. Auto-generating a self-signed certificate is a dev-only
 	// convenience — outside demo mode, require the operator to mount a real cert.
 	if !demoMode {
-		return nil, fmt.Errorf("APIP_DEMO_MODE=false requires a mounted TLS certificate: "+
-			"set tls_cert_file (%q) and tls_key_file (%q) to existing files, "+
-			"or set tls_enabled = false to serve plain HTTP behind a TLS-terminating proxy. "+
+		return nil, fmt.Errorf("disabling demo mode requires a mounted TLS certificate: "+
+			"set [tls] cert_file (%q) and key_file (%q) to existing files, "+
+			"or set [tls] enabled = false to serve plain HTTP behind a TLS-terminating proxy. "+
 			"Self-signed certificates are only auto-generated in demo mode", c.CertFile, c.KeyFile)
 	}
 	if c.SelfSigned {

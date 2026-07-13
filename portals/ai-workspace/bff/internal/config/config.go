@@ -317,8 +317,8 @@ func Load(path string) (*Config, error) {
 	}
 
 	if cfg.PlatformAPI.URL == "" {
-		return nil, fmt.Errorf("[platform_api] url is required: set it in config.toml, "+
-			"either as a literal or as '{{ env \"%sPLATFORM_API_URL\" }}'", EnvPrefix)
+		return nil, fmt.Errorf("[platform_api] url is required: set it in config.toml, " +
+			"either as a literal or via an {{ env }} / {{ file }} token")
 	}
 	// The scheme is the single source of truth for the outbound TLS decision, so a
 	// missing/typo'd scheme must fail at startup rather than surface as an opaque
@@ -337,7 +337,7 @@ func Load(path string) (*Config, error) {
 	// Skipping verification outside demo mode is a security downgrade; require an
 	// operator to reach it deliberately rather than inheriting it silently.
 	if u.Scheme == "https" && cfg.PlatformAPI.TLSSkipVerify && !cfg.DemoMode {
-		return nil, fmt.Errorf("[platform_api] tls_skip_verify = true is not allowed while APIP_DEMO_MODE=false; " +
+		return nil, fmt.Errorf("[platform_api] tls_skip_verify = true is not allowed when demo mode is disabled; " +
 			"trust the upstream certificate with [platform_api] ca_file instead")
 	}
 	if cfg.OIDC.Enabled {
@@ -358,7 +358,7 @@ func Load(path string) (*Config, error) {
 	// Outside demo mode, basic (file-based) auth is not allowed — it relies on the
 	// Platform API's built-in admin/admin credentials and is dev-only.
 	if !cfg.DemoMode && !cfg.OIDC.Enabled {
-		return nil, fmt.Errorf("APIP_DEMO_MODE=false does not allow basic (file-based) auth; " +
+		return nil, fmt.Errorf("basic (file-based) auth is not allowed when demo mode is disabled; " +
 			"configure OIDC (set auth_mode = \"oidc\" and [oidc] authority, client_id, client_secret, redirect_url)")
 	}
 

@@ -24,8 +24,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pelletier/go-toml/v2"
-
 	"github.com/wso2/api-platform/common/configinterpolate"
 )
 
@@ -96,8 +94,9 @@ func loadSettings(tomlPath string) (settings, error) {
 	return s, nil
 }
 
-// parseTOML decodes the config file. A missing file yields an empty tree rather than
-// an error, leaving every key on its default — Load then fails on the required ones.
+// parseTOML decodes the config file with the stdlib subset parser (see toml.go).
+// A missing file yields an empty tree rather than an error, leaving every key on
+// its default — Load then fails on the required ones.
 func parseTOML(path string) (map[string]any, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -107,8 +106,8 @@ func parseTOML(path string) (map[string]any, error) {
 		return nil, fmt.Errorf("failed to read config file %q: %w", path, err)
 	}
 
-	var raw map[string]any
-	if err := toml.Unmarshal(data, &raw); err != nil {
+	raw, err := parseTOMLSubset(data)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse config file %q: %w", path, err)
 	}
 	return raw, nil
@@ -117,7 +116,7 @@ func parseTOML(path string) (map[string]any, error) {
 // flatten collapses the decoded tree into dotted keys ([oidc] client_id ->
 // "oidc.client_id"), stringifying scalars so a value may be written either quoted or
 // bare — tls.enabled = true and tls.enabled = "true" both reach getbool as "true".
-// Arrays have no config key today and are skipped rather than guessed at.
+// Arrays have no config key and are rejected by the parser before reaching here.
 func flatten(dst settings, prefix string, tree map[string]any) {
 	for k, v := range tree {
 		key := strings.ToLower(k)
@@ -157,7 +156,9 @@ func (s settings) getbool(key string, def bool) (bool, error) {
 	return b, nil
 }
 
-// getdur parses key as a Go duration. A malformed value fails startup.
+// getdur parses key as a Go duration. A malformed, zero, or negative value fails
+// startup — every duration setting is a lifetime or timeout, where <= 0 is never
+// meaningful.
 func (s settings) getdur(key string, def time.Duration) (time.Duration, error) {
 	v, ok := s[key]
 	if !ok || v == "" {
@@ -166,6 +167,9 @@ func (s settings) getdur(key string, def time.Duration) (time.Duration, error) {
 	d, err := time.ParseDuration(strings.TrimSpace(v))
 	if err != nil {
 		return 0, fmt.Errorf("invalid duration for %s=%q: %w", key, v, err)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("invalid duration for %s=%q: must be positive", key, v)
 	}
 	return d, nil
 }

@@ -228,9 +228,10 @@ redirect_url = '{{ env "APIP_AIW_OIDC_REDIRECT_URL" "https://localhost:5380/api/
 # Absolute URL the IDP redirects to after logout (must be pre-registered there).
 post_logout_redirect_url = '{{ env "APIP_AIW_OIDC_POST_LOGOUT_REDIRECT_URL" "https://localhost:5380/login" }}'
 
-# Scopes requested at login (space-separated). Leave unset to request the full ap:*
-# set (recommended). Override only to request a narrower set.
-scope = '{{ env "APIP_AIW_OIDC_SCOPE" "openid profile email offline_access ap:organization:manage ..." }}'
+# Scopes requested at login (space-separated). Leave APIP_AIW_OIDC_SCOPE unset to
+# request the built-in full ap:* set (recommended). Override only to request a
+# narrower set — and keep offline_access in any override, or token refresh breaks.
+scope = '{{ env "APIP_AIW_OIDC_SCOPE" "" }}'
 
 
 # ---------------------------------------------------------------------------

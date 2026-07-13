@@ -164,7 +164,7 @@ Sensitive values (JWT signing key, database password) must be passed as environm
 
 ## Environment Variable Override
 
-Any `config.toml` key can be overridden with `APIP_AIW_` + the uppercased key. This is useful in container orchestration environments (Kubernetes `env:` blocks, Docker Compose `environment:` sections) where file mounts are less convenient.
+A key can be overridden from the environment only when its value carries an `{{ env }}` token naming the variable — there is no implicit environment overlay, so a literal or absent key ignores the environment entirely. Every key in the shipped `config-template.toml` carries such a token, conventionally named `APIP_AIW_` + the uppercased dotted key path (`[oidc] authority` → `APIP_AIW_OIDC_AUTHORITY`). This is useful in container orchestration environments (Kubernetes `env:` blocks, Docker Compose `environment:` sections) where file mounts are less convenient.
 
 Example — override just the authority for a staging environment:
 
@@ -175,6 +175,6 @@ docker run \
   ghcr.io/wso2/api-platform/ai-workspace:<version>
 ```
 
-A browser-safe key keeps the **same name everywhere** — in `config.toml` (`domain`), as an environment override (`APIP_AIW_DOMAIN`), in Vite's `import.meta.env` at build time, and in the `window.__RUNTIME_CONFIG__` payload the BFF serves to the SPA. (Vite is configured with `envPrefix: 'APIP_AIW_'` for this reason; the legacy `VITE_*` names are gone and setting one has no effect.)
+A browser-safe key keeps the **same name everywhere** — in `config.toml` (`domain`), as an environment override (`APIP_AIW_DOMAIN`), in Vite's `import.meta.env` at build time, and in the `window.__RUNTIME_CONFIG__` payload the BFF serves to the SPA. (Vite's `envPrefix` is configured with an explicit allowlist of these browser-safe `APIP_AIW_*` names — mirroring the BFF allowlist — so secrets sharing the namespace never reach the bundle; the legacy `VITE_*` names are gone and setting one has no effect.)
 
 Only keys on the BFF's browser-safe allowlist (`bff/internal/config/runtime_config.go`) are ever emitted to the page — server-side settings and the OIDC client credentials are not.
