@@ -24,8 +24,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pelletier/go-toml/v2"
-
 	"github.com/wso2/api-platform/common/configinterpolate"
 )
 
@@ -96,8 +94,9 @@ func loadSettings(tomlPath string) (settings, error) {
 	return s, nil
 }
 
-// parseTOML decodes the config file. A missing file yields an empty tree rather than
-// an error, leaving every key on its default — Load then fails on the required ones.
+// parseTOML decodes the config file with the in-tree TOML subset decoder (see toml.go).
+// A missing file yields an empty tree rather than an error, leaving every key on its
+// default — Load then fails on the required ones.
 func parseTOML(path string) (map[string]any, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -107,8 +106,8 @@ func parseTOML(path string) (map[string]any, error) {
 		return nil, fmt.Errorf("failed to read config file %q: %w", path, err)
 	}
 
-	var raw map[string]any
-	if err := toml.Unmarshal(data, &raw); err != nil {
+	raw, err := decodeTOML(string(data))
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse config file %q: %w", path, err)
 	}
 	return raw, nil
