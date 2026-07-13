@@ -1,0 +1,186 @@
+# WSO2 API Platform Gateway
+
+A standalone, container-based API gateway built on Envoy Proxy with a GitOps-driven control plane and a compiled-in policy engine. This distribution contains everything needed to run the gateway locally or in production using Docker Compose.
+
+## Contents
+
+```
+wso2apip-api-gateway-<version>/
+├── README.md
+├── docker-compose.yaml          # Core services + optional observability profiles
+├── build.yaml                   # Policy manifest (used to build a custom gateway image)
+├── build-manifest.yaml          # Exact policy versions included in this release
+├── configs/
+│   ├── config.toml              # Active configuration (edit before starting)
+│   └── config-template.toml    # Fully-documented reference for all settings
+│   └── llm-pricing/             # LLM token pricing data (used by llm-cost policy)
+├── observability/
+│   ├── prometheus/              # Prometheus scrape config
+│   ├── grafana/                 # Grafana dashboards and datasource provisioning
+│   ├── otel-collector/          # OpenTelemetry Collector pipeline config
+│   └── fluent-bit/              # Fluent Bit log-shipping config
+└── resources/
+    ├── certificates/            # CA certificate for upstream TLS verification
+    ├── listener-certs/          # Self-signed TLS certificate/key for the HTTPS listener
+    └── secure-backend/          # Test certificates for mTLS backend testing
+```
+
+## Prerequisites
+
+- Docker Engine 24+
+- Docker Compose v2
+
+No other tools are required to run the gateway.
+
+## Quick Start
+
+```bash
+docker compose up -d
+```
+
+Verify the gateway is healthy:
+
+```bash
+curl -s http://localhost:9090/health
+```
+
+The controller REST API is now reachable at `http://localhost:9090` and the gateway is listening for API traffic on `http://localhost:8080` (HTTP) and `https://localhost:8443` (HTTPS).
+
+## Exposed Ports
+
+| Port | Service | Description |
+|------|---------|-------------|
+| `9090` | Gateway Controller | REST API (deploy/manage APIs) |
+| `9094` | Gateway Controller | Admin / debug API |
+| `9011` | Gateway Controller | Metrics (Prometheus) |
+| `8080` | Router (Envoy) | HTTP ingress |
+| `8443` | Router (Envoy) | HTTPS ingress |
+| `8081` | Router (Envoy) | xDS-managed API listener |
+| `9901` | Router (Envoy) | Envoy admin console |
+| `9002` | Policy Engine | Admin API |
+| `9003` | Policy Engine | Metrics (Prometheus) |
+
+## Configuration
+
+Edit `configs/config.toml` before starting the gateway. The most commonly changed settings are:
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `controller.auth.basic.users` | Admin credentials for the controller REST API | `admin` / `admin` |
+| `controller.server.gateway_id` | Unique identifier for this gateway instance | `platform-gateway-id` |
+| `controller.logging.level` | Controller log level (`debug`, `info`, `warn`, `error`) | `info` |
+| `policy_engine.logging.level` | Policy engine log level | `info` |
+| `analytics.enabled` | Enable Moesif analytics publishing | `false` |
+| `traffic_logging.enabled` | Write per-request JSON lines to stdout | `false` |
+| `tracing.enabled` | Enable OpenTelemetry tracing | `false` |
+
+See `configs/config-template.toml` for a fully-commented reference of every available setting.
+
+## Connecting to WSO2 API Platform
+
+To connect this gateway to a WSO2 API Platform control plane, set these variables before starting:
+
+```bash
+# .env (place alongside docker-compose.yaml)
+GATEWAY_CONTROLPLANE_HOST=https://your-platform-host:9243
+GATEWAY_REGISTRATION_TOKEN=<token-from-platform>
+```
+
+Then start the stack:
+
+```bash
+docker compose up -d
+```
+
+The gateway will register itself with the control plane, receive API deployments, and sync policy configurations automatically.
+
+## Optional Observability Profiles
+
+The `docker-compose.yaml` uses Compose profiles to keep the core stack minimal. Start additional observability services as needed:
+
+**Distributed tracing** (Jaeger + OpenTelemetry Collector):
+
+```bash
+docker compose --profile tracing up -d
+```
+
+| URL | Description |
+|-----|-------------|
+| `http://localhost:16686` | Jaeger UI |
+| `localhost:4317` | OTLP gRPC receiver |
+| `localhost:4318` | OTLP HTTP receiver |
+
+Enable tracing in `configs/config.toml` (`tracing.enabled = true`) and point the endpoint at `otel-collector:4317`.
+
+**Log shipping** (OpenSearch + Fluent Bit + Dashboards):
+
+```bash
+docker compose --profile logging up -d
+```
+
+| URL | Description |
+|-----|-------------|
+| `http://localhost:9200` | OpenSearch API |
+| `http://localhost:5601` | OpenSearch Dashboards |
+
+Enable traffic logging in `configs/config.toml` (`traffic_logging.enabled = true`) to emit structured JSON log lines that Fluent Bit will forward to OpenSearch.
+
+**Metrics** (Prometheus + Grafana):
+
+```bash
+docker compose --profile metrics up -d
+```
+
+| URL | Description |
+|-----|-------------|
+| `http://localhost:9092` | Prometheus UI |
+| `http://localhost:3000` | Grafana (admin / admin) |
+
+Multiple profiles can be combined:
+
+```bash
+docker compose --profile metrics --profile tracing up -d
+```
+
+## Analytics (Moesif)
+
+To publish API analytics to Moesif, set your application ID before starting:
+
+```bash
+# .env
+MOESIF_KEY=<your-moesif-application-id>
+```
+
+Then enable analytics in `configs/config.toml`:
+
+```toml
+[analytics]
+enabled = true
+enabled_publishers = ["moesif"]
+
+[analytics.publishers.moesif]
+application_id = "<MOESIF_APPLICATION_ID>"
+```
+
+## Building a Custom Gateway Image
+
+The gateway images in this distribution are pre-built with the policy set listed in `build-manifest.yaml`. To add custom policies or modify the included set, edit `build.yaml` and rebuild the images using the `ap` CLI:
+
+```bash
+ap gateway image build --config build.yaml --name my-gateway
+```
+
+This produces two images:
+- `my-gateway-gateway-runtime:<version>` — Router + Policy Engine
+- `my-gateway-gateway-controller:<version>` — Control plane
+
+Update the image references in `docker-compose.yaml` to use your custom builds.
+
+See the [API Platform CLI documentation](https://apim.docs.wso2.com/en/latest/api-platform/gateway/) for full build options.
+
+## License
+
+Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com)
+
+Licensed under the Apache License, Version 2.0. You may obtain a copy of the License at
+http://www.apache.org/licenses/LICENSE-2.0

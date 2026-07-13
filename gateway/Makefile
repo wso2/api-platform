@@ -241,6 +241,7 @@ dist: clean-dist ## Build standalone gateway distribution zip
 	@cp gateway-controller/listener-certs/default-listener.key $(DIST_DIR)/resources/listener-certs/
 	@cp -R resources/secure-backend/. $(DIST_DIR)/resources/secure-backend/
 	@cp distribution/docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
+	@cp distribution/README.md $(DIST_DIR)/README.md
 	@sed -i.bak \
 	    -e 's|/gateway-controller:[^[:space:]]*|/gateway-controller:$(DIST_VERSION)|g' \
 	    -e 's|/gateway-runtime:[^[:space:]]*|/gateway-runtime:$(DIST_VERSION)|g' \
