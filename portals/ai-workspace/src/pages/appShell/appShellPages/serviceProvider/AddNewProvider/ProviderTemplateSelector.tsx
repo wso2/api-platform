@@ -74,7 +74,7 @@ const getShortNameForTemplate = (templateName: string): string => {
   return templateName.substring(0, 2).toUpperCase();
 };
 
-const COMING_SOON_TEMPLATE_IDS = new Set(['awsbedrock', 'aws-bedrock']);
+const COMING_SOON_TEMPLATE_IDS = new Set<string>([]);
 
 type ProviderTemplateSelectorProps = {
   templatesLoading: boolean;
