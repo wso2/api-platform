@@ -1,0 +1,54 @@
+name: AI Workspace CLI E2E (daily)
+
+# Daily end-to-end check that the `ap` CLI's AI Workspace behaviour persists
+# against a real platform-api backend. It builds the platform-api image and the
+# CLI from source, boots platform-api (SQLite) as the AI Workspace backend, then
+# drives the CLI: register the workspace, `ap project init` the three artifact
+# kinds (LLM provider, LLM proxy, MCP proxy), and `ap ai-workspace build`/`apply`
+# each — asserting create, read-back, and update all persist.
+#
+# This is intentionally NOT on the per-PR critical path (it builds the
+# platform-api image and CLI). It runs once a day and on demand.
+on:
+  schedule:
+    - cron: '0 3 * * *'   # 03:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  ai-workspace-cli-e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: '**/go.sum'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Build platform-api image
+        run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-e2e
+
+      - name: Build ap CLI binary
+        run: make -C cli/src build-skip-tests
+
+      - name: Run AI Workspace CLI e2e
+        # PLATFORM_API_IMAGE pins the compose to the image built above; the suite
+        # boots it, logs in, and drives the CLI built at cli/src/build/ap.
+        env:
+          PLATFORM_API_IMAGE: platform-api:it-e2e
+        run: go test -run TestFeatures -count=1 -v -timeout 20m ./...
+        working-directory: tests/ai-workspace-cli-e2e

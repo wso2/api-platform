@@ -1,0 +1,102 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProvider
+metadata:
+    name: claude-provider
+spec:
+    displayName: wso2 claude provider
+    version: v1.0
+    context: /wso2-claude
+    template: anthropic
+    upstream:
+        url: https://api.anthropic.com
+        auth:
+            header: x-api-key
+            type: api-key
+            value: "11111"
+    accessControl:
+        mode: allow_all
+    policies:
+        - name: api-key-auth
+          paths:
+            - methods:
+                - '*'
+              params:
+                in: header
+                key: X-API-Key
+              path: /*
+          version: ""
+        - name: llm-cost
+          paths:
+            - methods:
+                - '*'
+              params: {}
+              path: /*
+          version: v1
+        - name: advanced-ratelimit
+          paths:
+            - methods:
+                - '*'
+              params:
+                quotas:
+                    - limits:
+                        - duration: 1h
+                          limit: 10
+                      name: request-limit
+              path: /v1/experimental/generate_prompt
+          version: ""
+        - name: token-based-ratelimit
+          paths:
+            - methods:
+                - '*'
+              params:
+                totalTokenLimits:
+                    - count: 5
+                      duration: 1h
+              path: /v1/experimental/improve_prompt
+          version: ""
+        - name: llm-cost-based-ratelimit
+          paths:
+            - methods:
+                - '*'
+              params:
+                budgetLimits:
+                    - amount: 2
+                      duration: 1h
+              path: /v1/experimental/improve_prompt
+          version: ""
+        - name: llm-cost
+          paths:
+            - methods:
+                - '*'
+              params: {}
+              path: /*
+          version: ""
+        - name: advanced-ratelimit
+          paths:
+            - methods:
+                - '*'
+              params:
+                quotas:
+                    - keyExtraction:
+                        - type: routename
+                        - key: x-wso2-application-id
+                          type: metadata
+                      limits:
+                        - duration: 2h
+                          limit: 100
+                      name: consumer-request-limit
+              path: /v1/experimental/improve_prompt
+            - methods:
+                - '*'
+              params:
+                quotas:
+                    - keyExtraction:
+                        - type: routename
+                        - key: x-wso2-application-id
+                          type: metadata
+                      limits:
+                        - duration: 1h
+                          limit: 1
+                      name: consumer-request-limit
+              path: /v1/files
+          version: ""

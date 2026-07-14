@@ -1,0 +1,7 @@
+apiVersion: ai-workspace.api-platform.wso2.com/v1alpha
+kind: LlmProvider
+metadata:
+  name: claude-provider
+spec:
+  displayName: wso2 claude provider
+  version: v1.0
