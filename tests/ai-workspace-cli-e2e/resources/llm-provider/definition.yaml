@@ -1383,11 +1383,11 @@ components:
         ephemeral_1h_input_tokens:
           type: integer
           default: 0
-          minimum: 1
+          minimum: 0
         ephemeral_5m_input_tokens:
           type: integer
           default: 0
-          minimum: 1
+          minimum: 0
 
     ServerToolUseUsage:
       type: object
@@ -1398,7 +1398,7 @@ components:
         web_search_requests:
           type: integer
           default: 0
-          minimum: 1
+          minimum: 0
           description: The number of web search tool requests.
 
     Usage:
@@ -4190,7 +4190,7 @@ paths:
               schema:
                 type: object
                 required:
-                  - message
+                  - messages
                   - system
                   - usage
                 properties:
@@ -4238,7 +4238,7 @@ paths:
             schema:
               type: object
               required:
-                - message
+                - messages
               properties:
                 messages:
                   type: array
@@ -4308,7 +4308,7 @@ paths:
               schema:
                 type: object
                 required:
-                  - message
+                  - messages
                   - system
                   - usage
                 properties:
@@ -4356,7 +4356,7 @@ paths:
             schema:
               type: object
               required:
-                - message
+                - messages
               properties:
                 messages:
                   type: array
@@ -4417,7 +4417,7 @@ paths:
               schema:
                 type: object
                 required:
-                  - message
+                  - messages
                   - system
                   - usage
                   - variable_values

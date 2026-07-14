@@ -61,7 +61,7 @@ spec:
                 exposedHeaders: []
                 forwardPreflight: false
                 maxAge: 3600
-              path: /v1/experimental/generate_prompt
+              path: /v1/messages
           version: v1
         - name: content-length-guardrail
           paths:
@@ -82,5 +82,5 @@ spec:
                     max: 0
                     min: 0
                     showAssessment: false
-              path: /v1/experimental/generate_prompt
+              path: /v1/messages
           version: v1
