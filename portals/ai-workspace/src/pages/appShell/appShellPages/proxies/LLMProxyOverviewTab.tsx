@@ -567,6 +567,7 @@ export default function LLMProxyOverviewTab() {
                 docExpansion="list"
                 defaultModelsExpandDepth={-1}
                 displayRequestDuration
+                enableResourceSearch
               />
             )}
           </Box>

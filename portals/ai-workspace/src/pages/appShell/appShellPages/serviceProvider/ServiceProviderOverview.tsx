@@ -932,6 +932,7 @@ function ServiceProviderOverviewContent() {
         docExpansion="list"
         defaultModelsExpandDepth={-1}
         displayRequestDuration
+        enableResourceSearch
       />
     );
   };
