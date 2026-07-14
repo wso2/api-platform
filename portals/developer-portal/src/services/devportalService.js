@@ -82,7 +82,7 @@ const getOrgContent = async (req, res) => {
             orgId: req.orgId,
             viewId: req.params.viewId
         });
-        util.sendError(res, 404, 'Not Found');
+        return util.sendError(res, 500, 'Internal Server Error');
     }
 };
 

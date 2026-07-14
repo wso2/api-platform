@@ -61,6 +61,16 @@ Retrieves a single organization theme asset (CSS, image, etc.) by `fileType` and
 }
 ```
 
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
+}
+```
+
 <h3 id="get-a-theme-asset-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
@@ -68,6 +78,7 @@ Retrieves a single organization theme asset (CSS, image, etc.) by `fileType` and
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Stored organization content asset.|string|
 |400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="get-a-theme-asset-responseschema">Response Schema</h3>
 
