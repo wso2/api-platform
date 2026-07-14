@@ -16,7 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const { renderTemplate, resolveActor } = require('../utils/util');
+const { renderTemplateWithView, resolveActor } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
@@ -152,7 +152,7 @@ const loadAPIApiKeys = async (req, res, next) => {
             csrfToken: getSessionCsrfToken(req),
         };
 
-        html = renderTemplate('../pages/api-keys/page.hbs', './src/defaultContent/layout/main.hbs', templateContent, true);
+        html = await renderTemplateWithView('../pages/api-keys/page.hbs', './src/defaultContent/layout/main.hbs', templateContent, true, orgId, req.params.viewName);
         res.send(html);
     } catch (error) {
         logger.error('Error loading API keys page', {

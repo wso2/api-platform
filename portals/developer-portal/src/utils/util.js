@@ -70,6 +70,23 @@ function resolveDesignFallback(filePath) {
     return abs;
 }
 
+/**
+ * Rewrite `/styles/` references (in a layout or stylesheet) to the view asset
+ * endpoint, carrying orgId so the PUBLIC endpoint can resolve the view's theme
+ * even without a session — e.g. anonymous view pages and the pre-auth login page.
+ *
+ * Centralised on purpose: this rewrite used to be hand-written at every render
+ * and upload site, and any site that omitted orgId served the default stylesheet
+ * to logged-out users. Route all `/styles/` rewrites through here so theming
+ * stays consistent across every page instead of breaking one scenario at a time.
+ */
+function rewriteViewStyles(content, orgId, viewName) {
+    return content.replace(
+        /\/styles\//g,
+        `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?orgId=${orgId}&fileType=style&fileName=`
+    );
+}
+
 function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) {
 
     let completeTemplatePath;
@@ -82,6 +99,49 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
     const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
     const completeLayoutPath = resolveDesignFallback(layoutPath);
     const layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8)
+
+    const template = Handlebars.compile(templateResponse.toString());
+    const layout = Handlebars.compile(layoutResponse.toString());
+
+    const slots = {};
+    const showApiWorkflowsNav = config.features?.apiWorkflows === true;
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
+    return layout({
+        ...enrichedContent,
+        body: template(enrichedContent),
+        devportalApiConfig: {
+            base: constants.DEVPORTAL_API.BASE_SEGMENT,
+            version: constants.DEVPORTAL_API.VERSION,
+        },
+        devReloadEnabled: process.env.NODE_ENV === 'development',
+    });
+}
+
+/**
+ * Like renderTemplate, but applies the active view's uploaded theme: when the
+ * view has a custom main.css, the layout's `/styles/` references are rewritten to
+ * the view asset endpoint, so themed CSS loads (and inherited stylesheets resolve
+ * via the endpoint's defaultContent fallback). Used by logged-in "technical" pages
+ * (subscriptions, API keys) and the login page so they match the view theme
+ * instead of always rendering the packaged default stylesheet.
+ */
+async function renderTemplateWithView(templatePath, layoutPath, templateContent, isTechnical, orgId, viewName) {
+    const completeTemplatePath = isTechnical
+        ? path.join(require.main.filename, templatePath)
+        : resolveDesignFallback(templatePath);
+    const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
+
+    const completeLayoutPath = resolveDesignFallback(layoutPath);
+    let layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8);
+
+    if (orgId && viewName) {
+        const styleContent = await orgDao.getContent({ orgId, fileType: 'style', viewName, fileName: 'main.css' });
+        if (styleContent) {
+            // Carry orgId so the (public) asset endpoint can resolve the view's theme even
+            // when there's no session yet — e.g. the pre-auth login page.
+            layoutResponse = rewriteViewStyles(layoutResponse, orgId, viewName);
+        }
+    }
 
     const template = Handlebars.compile(templateResponse.toString());
     const layout = Handlebars.compile(layoutResponse.toString());
@@ -135,7 +195,7 @@ async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, 
     layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8);
     const styleContent = await orgDao.getContent({ orgId: orgId, fileType: 'style', viewName: viewName, fileName: 'main.css' });
     if (styleContent) {
-        layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=`);
+        layoutResponse = rewriteViewStyles(layoutResponse, orgId, viewName);
     }
 
     const template = Handlebars.compile(templateResponse.toString());
@@ -816,7 +876,7 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("layout")) {
                     fileType = "layout"
                     if (file.name === "main.hbs") {
-                        strContent = strContent.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=`);
+                        strContent = rewriteViewStyles(strContent, orgId, viewName);
                         content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     }
                     validateScripts(strContent);
@@ -1124,6 +1184,8 @@ async function isAiDisabledForPortal(orgId, viewName) {
 module.exports = {
     loadMarkdown,
     renderTemplate,
+    renderTemplateWithView,
+    rewriteViewStyles,
     loadLayoutFromAPI,
     loadTemplateFromAPI,
     renderTemplateFromAPI,

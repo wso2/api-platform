@@ -350,8 +350,11 @@ module.exports = {
     },
     CUSTOMIZABLE_FILES: [
         'header',
+        'footer',
         'main',
         'home',
+        'api-listing',
+        'api-detail-banner',
         'api-content',
         'apis-md',
         'api-landing-md',

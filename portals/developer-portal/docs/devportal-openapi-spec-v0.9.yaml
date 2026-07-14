@@ -184,6 +184,15 @@ paths:
         - $ref: "#/components/parameters/orgContentFileTypeQuery"
         - $ref: "#/components/parameters/orgContentFileNameQuery"
         - $ref: "#/components/parameters/filePathQuery"
+        - name: orgId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >-
+            Organization ID used to resolve a view's public style/image asset when no
+            session is present (e.g. the pre-auth login page). Ignored for authenticated
+            requests, which use the session organization.
       responses:
         "200":
           $ref: "#/components/responses/OrganizationContentAssetResponse"

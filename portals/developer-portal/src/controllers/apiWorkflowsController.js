@@ -21,7 +21,7 @@ const apiDao = require('../dao/apiDao');
 const viewDao = require('../dao/viewDao');
 const apiWorkflowService = require('../services/apiWorkflowService');
 const logger = require('../config/logger');
-const { loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, isAiDisabledForPortal } = require('../utils/util');
+const { loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, rewriteViewStyles, isAiDisabledForPortal } = require('../utils/util');
 const constants = require('../utils/constants');
 const { config } = require('../config/configLoader');
 const fs = require('fs');
@@ -125,7 +125,7 @@ const loadAPIWorkflows = async (req, res, next) => {
             const templateResponse = fs.readFileSync(templatePath, 'utf8');
             const styleContent = await orgDao.getContent({ orgId: orgId, fileType: 'style', viewName: viewName, fileName: 'main.css' });
             const themedLayout = styleContent
-                ? dbLayout.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=`)
+                ? rewriteViewStyles(dbLayout, orgId, viewName)
                 : dbLayout;
             html = await renderGivenTemplate(templateResponse, themedLayout, templateContent);
         } else {
@@ -208,7 +208,7 @@ const loadAPIWorkflowDetail = async (req, res, next) => {
             const templateResponse = fs.readFileSync(templatePath, 'utf8');
             const styleContent = await orgDao.getContent({ orgId: orgId, fileType: 'style', viewName: viewName, fileName: 'main.css' });
             const themedLayout = styleContent
-                ? dbLayout.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=`)
+                ? rewriteViewStyles(dbLayout, orgId, viewName)
                 : dbLayout;
             html = await renderGivenTemplate(templateResponse, themedLayout, templateContent);
         } else {
