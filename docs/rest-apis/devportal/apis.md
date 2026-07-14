@@ -64,7 +64,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "weather-api-v1",
   "refId": "cp-api-12345",
   "name": "Weather API",
-  "apiTitle": "Weather Forecast API",
+  "title": "Weather Forecast API",
   "version": "v1",
   "status": "PUBLISHED",
   "description": "Weather forecast API.",
@@ -310,7 +310,7 @@ Status Code **200**
 |---|---|---|---|---|
 |»» *anonymous*|[ApiInfoResponse](schemas.md#schemaapiinforesponse)|false|none|Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.|
 |»»» name|string|false|none|none|
-|»»» apiTitle|string¦null|false|none|none|
+|»»» title|string¦null|false|none|none|
 |»»» remotes|[object]|false|none|none|
 |»»» version|string|false|none|none|
 |»»» status|string|false|none|API lifecycle status.|
@@ -455,7 +455,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "weather-api-v1",
   "refId": "cp-api-12345",
   "name": "Weather API",
-  "apiTitle": "Weather Forecast API",
+  "title": "Weather Forecast API",
   "remotes": [],
   "version": "v1",
   "status": "PUBLISHED",
@@ -611,7 +611,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "weather-api-v1",
   "refId": "cp-api-12345",
   "name": "Weather API",
-  "apiTitle": "Weather Forecast API",
+  "title": "Weather Forecast API",
   "remotes": [],
   "version": "v1",
   "status": "PUBLISHED",

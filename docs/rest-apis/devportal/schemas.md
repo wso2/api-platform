@@ -345,7 +345,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 ```json
 {
   "name": "string",
-  "apiTitle": "string",
+  "title": "string",
   "remotes": [
     {}
   ],
@@ -436,7 +436,7 @@ and
 ```json
 {
   "name": "string",
-  "apiTitle": "string",
+  "title": "string",
   "remotes": [
     {}
   ],
@@ -539,7 +539,7 @@ and
 ```json
 {
   "name": "string",
-  "apiTitle": "string",
+  "title": "string",
   "remotes": [
     {}
   ],
@@ -582,7 +582,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|false|none|none|
-|apiTitle|string¦null|false|none|none|
+|title|string¦null|false|none|none|
 |remotes|[object]|false|none|none|
 |version|string|false|none|none|
 |status|string|false|none|API lifecycle status.|

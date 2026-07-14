@@ -3567,7 +3567,7 @@ components:
             id: weather-api-v1
             refId: cp-api-12345
             name: Weather API
-            apiTitle: Weather Forecast API
+            title: Weather Forecast API
             version: v1
             status: PUBLISHED
             description: Weather forecast API.
@@ -3592,7 +3592,7 @@ components:
             id: weather-api-v1
             refId: cp-api-12345
             name: Weather API
-            apiTitle: Weather Forecast API
+            title: Weather Forecast API
             remotes: []
             version: v1
             status: PUBLISHED
@@ -3658,7 +3658,7 @@ components:
             id: weather-api-v1
             refId: cp-api-12345
             name: Weather API
-            apiTitle: Weather Forecast API
+            title: Weather Forecast API
             version: v1
             status: PUBLISHED
             description: Weather forecast API.
@@ -3683,7 +3683,7 @@ components:
             id: weather-api-v1
             refId: cp-api-12345
             name: Weather API
-            apiTitle: Weather Forecast API
+            title: Weather Forecast API
             remotes: []
             version: v1
             status: PUBLISHED
@@ -4418,7 +4418,7 @@ components:
       properties:
         name:
           type: string
-        apiTitle:
+        title:
           type: string
           nullable: true
         remotes:

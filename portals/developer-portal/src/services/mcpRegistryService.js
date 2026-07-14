@@ -199,7 +199,7 @@ function buildApiMetadataPayload(name, version, description, remotes, title, pub
         referenceId: null,
         name: name,
         handle: apiHandle,
-        apiTitle: title || null,
+        title: title || null,
         description: description || `${name} MCP proxy`,
         version: version,
         type: constants.API_TYPE.MCP,
