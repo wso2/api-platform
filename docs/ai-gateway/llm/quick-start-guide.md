@@ -22,7 +22,7 @@ docker compose version
 Replace ${version} with the actual release version of the API Platform Gateway.
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/ai-gateway/v1.2.0-M1/wso2apip-ai-gateway-1.2.0-M1.zip
+wget https://github.com/wso2/api-platform/releases/download/ai-gateway/v1.2.0-alpha/wso2apip-ai-gateway-1.2.0-M1.zip
 
 # Unzip the downloaded distribution.
 unzip wso2apip-ai-gateway-1.2.0-M1.zip

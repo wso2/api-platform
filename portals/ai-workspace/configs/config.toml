@@ -52,7 +52,7 @@ controlplane_host = '{{ env "APIP_AIW_CONTROLPLANE_HOST" "host.docker.internal:9
 default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
 
 # Gateway versions shown in the create-gateway version selector (JSON array string).
-platform_gateway_versions = '{{ env "APIP_AIW_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-M1\",\"channel\":\"STS\"}]" }}'
+platform_gateway_versions = '{{ env "APIP_AIW_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha\",\"channel\":\"STS\"}]" }}'
 
 # Server. The defaults are the container's: the port it publishes, and the SPA baked
 # into the image. `make bff-run` points the variables elsewhere to run the same config

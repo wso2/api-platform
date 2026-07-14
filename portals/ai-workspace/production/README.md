@@ -152,7 +152,7 @@ default_org_region = "us"
 
 # Available gateway versions shown in the create-gateway version selector (JSON array string).
 # Each entry: version (helm chart minor), latestVersion (image/chart tag), channel ("STS" | "LTS").
-platform_gateway_versions = '[{"version":"1.2","latestVersion":"v1.2.0-M1","channel":"STS"}]'
+platform_gateway_versions = '[{"version":"1.2","latestVersion":"v1.2.0-alpha","channel":"STS"}]'
 
 [platform_api]
 # The upstream the BFF proxies to, server-to-server. An origin, not a base path — the
