@@ -1,0 +1,403 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License. You may obtain a copy of the
+ * License at http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// writeConfig writes a config.toml into a temp dir and returns the path to pass Load(cfgPath).
+func writeConfig(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	return path
+}
+
+// A literal config.toml value is used as written.
+func TestLoad_ConfigFileValue(t *testing.T) {
+	cfgPath := writeConfig(t, `
+log_level = "warn"
+
+[platform_api]
+url = "https://platform-api:9243"
+`)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.PlatformAPI.URL != "https://platform-api:9243" {
+		t.Errorf("PlatformAPI.URL = %q, want the config.toml value", cfg.PlatformAPI.URL)
+	}
+	if cfg.LogLevel != "warn" {
+		t.Errorf("LogLevel = %q, want %q", cfg.LogLevel, "warn")
+	}
+}
+
+// The environment reaches a key only through that key's {{ env }} token: the token
+// supplies the variable's value, and its default applies when the variable is unset.
+func TestLoad_EnvTokenSuppliesValueAndDefault(t *testing.T) {
+	cfgPath := writeConfig(t, `
+log_level  = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'
+log_format = '{{ env "APIP_AIW_LOG_FORMAT" "text" }}'
+
+[platform_api]
+url = "https://platform-api:9243"
+`)
+	t.Setenv("APIP_AIW_LOG_LEVEL", "debug") // named by the token
+	// APIP_AIW_LOG_FORMAT is left unset, so the token's default stands.
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.LogLevel != "debug" {
+		t.Errorf("LogLevel = %q, want %q (the token's variable is set)", cfg.LogLevel, "debug")
+	}
+	if cfg.LogFormat != "text" {
+		t.Errorf("LogFormat = %q, want the token default %q", cfg.LogFormat, "text")
+	}
+}
+
+// There is no implicit environment overlay: a key written as a literal keeps that
+// literal even when the conventionally-named APIP_AIW_ variable is set. Only a token
+// pulls a value in from the environment.
+func TestLoad_EnvVarWithoutTokenIsIgnored(t *testing.T) {
+	cfgPath := writeConfig(t, `
+log_level = "warn"
+
+[platform_api]
+url = "https://platform-api:9243"
+`)
+	t.Setenv("APIP_AIW_LOG_LEVEL", "debug")
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.LogLevel != "warn" {
+		t.Errorf("LogLevel = %q, want the config.toml literal %q — an env var must not override a key with no token",
+			cfg.LogLevel, "warn")
+	}
+}
+
+// An {{ env }} token names its variable explicitly, so a key may be pointed at any
+// variable — the APIP_AIW_ prefix is a convention, not a requirement.
+func TestLoad_InterpolatesEnvToken(t *testing.T) {
+	cfgPath := writeConfig(t, `
+auth_mode = "oidc"
+
+[platform_api]
+url = "https://platform-api:9243"
+
+[oidc]
+authority     = "https://idp.example.com"
+client_id     = "client-id"
+client_secret = '{{ env "CUSTOM_SECRET_VAR" }}'
+redirect_url  = "https://localhost:5380/api/auth/callback"
+`)
+	t.Setenv("CUSTOM_SECRET_VAR", "s3cr3t")
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.OIDC.ClientSecret != "s3cr3t" {
+		t.Errorf("OIDC.ClientSecret = %q, want the value resolved from the env token", cfg.OIDC.ClientSecret)
+	}
+}
+
+// A {{ file }} token reads a mounted secret file inside an allowed directory.
+func TestLoad_InterpolatesFileToken(t *testing.T) {
+	secretDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(secretDir, "oidc_client_secret"), []byte("from-file\n"), 0o600); err != nil {
+		t.Fatalf("write secret: %v", err)
+	}
+	t.Setenv("APIP_CONFIG_FILE_SOURCE_ALLOWLIST", secretDir)
+
+	cfgPath := writeConfig(t, `
+auth_mode = "oidc"
+
+[platform_api]
+url = "https://platform-api:9243"
+
+[oidc]
+authority     = "https://idp.example.com"
+client_id     = "client-id"
+client_secret = '{{ file "`+filepath.Join(secretDir, "oidc_client_secret")+`" }}'
+redirect_url  = "https://localhost:5380/api/auth/callback"
+`)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	// The trailing newline every secret file ends with must be trimmed.
+	if cfg.OIDC.ClientSecret != "from-file" {
+		t.Errorf("OIDC.ClientSecret = %q, want %q", cfg.OIDC.ClientSecret, "from-file")
+	}
+}
+
+// Interpolation fails closed: a file outside the allowlist must abort startup
+// rather than resolve to an empty credential.
+func TestLoad_FileTokenOutsideAllowlist_Errors(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(outside, []byte("nope"), 0o600); err != nil {
+		t.Fatalf("write secret: %v", err)
+	}
+	t.Setenv("APIP_CONFIG_FILE_SOURCE_ALLOWLIST", t.TempDir()) // a different directory
+
+	cfgPath := writeConfig(t, `
+[platform_api]
+url = "https://platform-api:9243"
+
+[oidc]
+client_secret = '{{ file "`+outside+`" }}'
+`)
+
+	if _, err := Load(cfgPath); err == nil {
+		t.Fatal("Load() succeeded, want an error for a file outside the allowlist")
+	}
+}
+
+// An {{ env }} token whose variable is unset must abort startup, not silently
+// yield an empty secret.
+func TestLoad_MissingEnvToken_Errors(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[platform_api]
+url = "https://platform-api:9243"
+
+[oidc]
+client_secret = '{{ env "CUSTOM_SECRET_VAR" }}'
+`)
+	t.Setenv("CUSTOM_SECRET_VAR", "")
+
+	_, err := Load(cfgPath)
+	if err == nil {
+		t.Fatal("Load() succeeded, want an error for an unset env token")
+	}
+	if !strings.Contains(err.Error(), "CUSTOM_SECRET_VAR") {
+		t.Errorf("error = %v, want it to name the missing variable", err)
+	}
+}
+
+// The upstream URL is mandatory — the BFF has nothing to proxy to without it.
+func TestLoad_MissingPlatformAPIURL_Errors(t *testing.T) {
+	cfgPath := writeConfig(t, `log_level = "info"`)
+
+	_, err := Load(cfgPath)
+	if err == nil {
+		t.Fatal("Load() succeeded, want an error when [platform_api] url is unset")
+	}
+	if !strings.Contains(err.Error(), "[platform_api] url") {
+		t.Errorf("error = %v, want it to name [platform_api] url", err)
+	}
+}
+
+// The runtime config served to the browser is an allowlist: server-side settings
+// and OIDC client credentials must never appear in it.
+func TestLoad_RuntimeConfigExcludesServerSideKeys(t *testing.T) {
+	cfgPath := writeConfig(t, `
+auth_mode = "oidc"
+domain    = "localhost:5380"
+
+[platform_api]
+url = "https://platform-api:9243"
+
+[oidc]
+authority     = "https://idp.example.com"
+client_id     = "client-id"
+client_secret = "s3cr3t"
+redirect_url  = "https://localhost:5380/api/auth/callback"
+`)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if got := cfg.RuntimeConfig["APIP_AIW_DOMAIN"]; got != "localhost:5380" {
+		t.Errorf("APIP_AIW_DOMAIN = %q, want the browser-safe domain to be surfaced", got)
+	}
+	for _, v := range cfg.RuntimeConfig {
+		if strings.Contains(v, "s3cr3t") || strings.Contains(v, "platform-api:9243") {
+			t.Errorf("runtime config leaked a server-side value: %q", v)
+		}
+	}
+	for _, key := range []string{"APIP_AIW_OIDC_CLIENT_SECRET", "APIP_AIW_OIDC_CLIENT_ID", "APIP_AIW_OIDC_AUTHORITY"} {
+		if _, ok := cfg.RuntimeConfig[key]; ok {
+			t.Errorf("runtime config must not contain %s — the BFF owns the OIDC handshake", key)
+		}
+	}
+}
+
+// A browser-safe key reaches the SPA under the same name its {{ env }} token
+// conventionally uses, so one spelling works in config.toml, the environment, and the
+// browser.
+func TestLoad_BrowserSafeKeyUsesSameName(t *testing.T) {
+	cfgPath := writeConfig(t, `
+moesif_web_url = "https://moesif.example.com"
+
+[platform_api]
+url = "https://platform-api:9243"
+`)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := cfg.RuntimeConfig["APIP_AIW_MOESIF_WEB_URL"]; got != "https://moesif.example.com" {
+		t.Errorf("APIP_AIW_MOESIF_WEB_URL = %q, want the config.toml value", got)
+	}
+}
+
+// A browser-safe key whose token resolves from the environment must reach the SPA
+// under that same name, exactly as if it had been written as a literal.
+func TestLoad_BrowserSafeKeyFromEnvToken(t *testing.T) {
+	cfgPath := writeConfig(t, `
+domain = '{{ env "APIP_AIW_DOMAIN" "localhost:5380" }}'
+
+[platform_api]
+url = "https://platform-api:9243"
+`)
+	t.Setenv("APIP_AIW_DOMAIN", "app.example.com")
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := cfg.RuntimeConfig["APIP_AIW_DOMAIN"]; got != "app.example.com" {
+		t.Errorf("APIP_AIW_DOMAIN = %q, want the token-resolved value to reach the browser", got)
+	}
+}
+
+// TOML scalars may be written bare, not only as quoted strings: a token has to be a
+// string, but a plain literal is naturally typed. Both forms must reach the same value.
+func TestLoad_BareTOMLScalars(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[platform_api]
+url = "https://platform-api:9243"
+
+[cookie]
+secure = false
+
+[session]
+absolute_ttl = "2h"
+`)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Cookie.Secure {
+		t.Error("Cookie.Secure = true, want false from the bare TOML boolean")
+	}
+	if cfg.Session.AbsoluteTTL != 2*time.Hour {
+		t.Errorf("Session.AbsoluteTTL = %s, want 2h", cfg.Session.AbsoluteTTL)
+	}
+}
+
+// A key in a table must not collide with the same key in another table — they are
+// distinct dotted paths, so [tls] enabled and [oidc] enabled are independent.
+func TestLoad_SameKeyInDifferentTables(t *testing.T) {
+	cfgPath := writeConfig(t, `
+auth_mode = "oidc"
+
+[platform_api]
+url = "https://platform-api:9243"
+
+[tls]
+enabled = false
+
+[oidc]
+enabled       = true
+authority     = "https://idp.example.com"
+client_id     = "client-id"
+client_secret = "s3cr3t"
+redirect_url  = "https://localhost:5380/api/auth/callback"
+`)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.TLS.TerminateTLS {
+		t.Error("TLS.TerminateTLS = true, want false — [tls] enabled must not read [oidc] enabled")
+	}
+	if !cfg.OIDC.Enabled {
+		t.Error("OIDC.Enabled = false, want true")
+	}
+}
+
+// [oidc.claim_mappings] mirrors the Platform API's [auth.idp.claim_mappings] key for
+// key. The BFF reads those keys for its own session mapping, and the browser-safe ones
+// reach the SPA under the matching APIP_AIW_OIDC_CLAIM_MAPPINGS_* names that
+// src/config.env.ts looks up.
+func TestLoad_ClaimMappingsMirrorPlatformAPI(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[platform_api]
+url = "https://platform-api:9243"
+
+[oidc.claim_mappings]
+organization_claim_name = "org_uuid"
+username_claim_name     = "given_name"
+role_claim_name         = "roles"
+`)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.OIDC.Claims.OrgID != "org_uuid" {
+		t.Errorf("Claims.OrgID = %q, want %q from organization_claim_name", cfg.OIDC.Claims.OrgID, "org_uuid")
+	}
+	if cfg.OIDC.Claims.Role != "roles" {
+		t.Errorf("Claims.Role = %q, want %q from role_claim_name", cfg.OIDC.Claims.Role, "roles")
+	}
+	if got := cfg.RuntimeConfig["APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME"]; got != "org_uuid" {
+		t.Errorf("runtime APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME = %q, want %q", got, "org_uuid")
+	}
+	if got := cfg.RuntimeConfig["APIP_AIW_OIDC_CLAIM_MAPPINGS_USERNAME_CLAIM_NAME"]; got != "given_name" {
+		t.Errorf("runtime APIP_AIW_OIDC_CLAIM_MAPPINGS_USERNAME_CLAIM_NAME = %q, want %q", got, "given_name")
+	}
+	// role_claim_name drives the BFF's session mapping only — it must not be published.
+	if _, ok := cfg.RuntimeConfig["APIP_AIW_OIDC_CLAIM_MAPPINGS_ROLE_CLAIM_NAME"]; ok {
+		t.Error("role_claim_name must not reach the browser — it is not in the browser-safe allowlist")
+	}
+}
+
+// A malformed boolean must fail startup rather than fall back to the default.
+func TestLoad_InvalidBool_Errors(t *testing.T) {
+	cfgPath := writeConfig(t, `
+[platform_api]
+url = "https://platform-api:9243"
+
+[cookie]
+secure = "maybe"
+`)
+
+	if _, err := Load(cfgPath); err == nil {
+		t.Fatal("Load() succeeded, want an error for a malformed boolean")
+	}
+}

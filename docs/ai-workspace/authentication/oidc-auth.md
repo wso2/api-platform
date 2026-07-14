@@ -22,36 +22,50 @@ Tested IDPs: [Asgardeo](asgardeo-setup.md), Keycloak, Auth0, Okta.
 ### AI Workspace (`configs/config.toml`)
 
 ```toml
-domain               = "app.example.com"
-auth_mode            = "oidc"
+domain            = "app.example.com"
+auth_mode         = "oidc"
+controlplane_host = "api.example.com"
 
-# IDP issuer URL — OIDC discovery doc fetched from {oidc_authority}/.well-known/openid-configuration
-oidc_authority       = "https://idp.example.com/realms/my-realm"
+[platform_api]
+# The upstream the BFF proxies to (an origin — the API paths are appended by the proxy).
+url = "https://api.example.com"
+
+[oidc]
+# IDP issuer URL — the discovery doc is fetched from {authority}/.well-known/openid-configuration
+authority = "https://idp.example.com/realms/my-realm"
 
 # Confidential client ID registered in your IDP
-oidc_client_id       = "ai-workspace"
+client_id = "ai-workspace"
 
-# JWT claim names for organization identity
-# These must match the claim_mappings in Platform API config (see below)
-oidc_org_id_claim    = "org_id"
-oidc_org_name_claim  = "org_name"
-oidc_org_handle_claim = "org_handle"
+# BFF-side redirect URLs — never sent to the browser.
+redirect_url             = "https://<domain>/api/auth/callback"   # the BFF callback
+post_logout_redirect_url = "https://<domain>/login"
 
-platform_api_base_url = "https://api.example.com/api/v1"
-controlplane_host    = "api.example.com"
+# Preferred: read the client secret from a mounted secret file (the value never
+# enters the environment or the committed file).
+client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
+
+# JWT claim names for organization identity. This table mirrors
+# [auth.idp.claim_mappings] in the Platform API config (below) key for key — both
+# services read the same claims out of the same token, so the two must agree.
+# Must stay the last table under [oidc]: plain [oidc] keys placed below this
+# header would land in [oidc.claim_mappings] instead.
+[oidc.claim_mappings]
+organization_claim_name = "org_id"
+org_name_claim_name     = "org_name"
+org_handle_claim_name   = "org_handle"
 ```
 
-The **client secret and redirect URLs are BFF settings, not `config.toml` keys** (the secret
-must never reach the browser). Provide them as environment variables on the AI Workspace
-container:
+The redirect URLs and the client secret are BFF settings — they are **never sent to the browser**.
+The redirect URLs are ordinary `config.toml` keys; the secret is *referenced* by the config rather
+than written into it, so the raw value never lands in a committed file.
 
-```bash
-OIDC_CLIENT_SECRET=<client-secret>
-OIDC_REDIRECT_URL=https://<domain>/api/auth/callback        # the BFF callback
-OIDC_POST_LOGOUT_REDIRECT_URL=https://<domain>/login
-```
+For a simpler local setup, swap the `{{ file }}` token for `'{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'` and keep
+the value in a git-ignored `.env`. The key must carry one token or the other — a variable set with
+no token to read it is ignored. Either token fails closed: a missing secret aborts startup rather
+than yielding an empty credential. See [Configuration → Secrets](../configuration.md#secrets).
 
-`OIDC_REDIRECT_URL` (the BFF callback `/api/auth/callback`) and `OIDC_POST_LOGOUT_REDIRECT_URL`
+`[oidc] redirect_url` (the BFF callback `/api/auth/callback`) and `post_logout_redirect_url`
 must be registered as allowed redirect URIs in your IDP application. The redirect is **not** the
 SPA `/signin` route — the BFF, not the browser, completes the code exchange.
 
@@ -68,10 +82,10 @@ enabled  = true
 name     = "my-idp"
 jwks_url = "https://idp.example.com/realms/my-realm/protocol/openid-connect/certs"
 issuer   = ["https://idp.example.com/realms/my-realm"]
-audience = ["ai-workspace"]   # must match oidc_client_id
+audience = ["ai-workspace"]   # must match [oidc] client_id
 
 # Map IDP-specific claim names to Platform API's expected fields
-# These must match oidc_org_*_claim values in config.toml above
+# These must match the [oidc.claim_mappings] values in config.toml above
 [auth.idp.claim_mappings]
 organization_claim_name = "org_id"
 org_name_claim_name     = "org_name"
@@ -125,16 +139,16 @@ You must register the `ap:*` scopes as an API resource in your IDP and grant the
 **Users see a blank screen or redirect loop after login**
 - Verify `domain` in `config.toml` matches the actual host:port in the browser.
 - Verify the redirect URI `https://<domain>/api/auth/callback` (the BFF callback) is registered
-  in the IDP and matches `OIDC_REDIRECT_URL`.
+  in the IDP and matches `[oidc] redirect_url`.
 
 **Token endpoint rejects the BFF with `unauthorized_client` / "not authorized to use the requested grant type"**
 - The app is registered as a public/SPA client. Re-register it as a **confidential** client
-  (authorization-code + refresh-token grants, PKCE) and set `OIDC_CLIENT_SECRET`.
+  (authorization-code + refresh-token grants, PKCE) and set `[oidc] client_secret`.
 
 **Platform API returns 401**
 - Check that `jwks_url` and `issuer` in Platform API config match the IDP's discovery doc values.
-- Check that `audience` matches the `oidc_client_id` of the confidential application.
-- Ensure `organization_claim_name` in Platform API matches `oidc_org_id_claim` in AI Workspace config.
+- Check that `audience` matches the `[oidc] client_id` of the confidential application.
+- Ensure `organization_claim_name` matches on both sides — `[auth.idp.claim_mappings]` in the Platform API and `[oidc.claim_mappings]` in AI Workspace.
 
 **"Organization not found" error**
 - The `org_id` claim in the token does not match any organization in Platform API's database.
