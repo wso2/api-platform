@@ -28,7 +28,6 @@ const create = async (orgId, kmData, createdBy) => {
             org_uuid: orgId,
             handle: kmData.handle,
             display_name: kmData.displayName,
-            type: kmData.type,
             ...(kmData.enabled !== undefined && { enabled: kmData.enabled ? 1 : 0 }),
             token_endpoint: kmData.tokenEndpoint,
             created_by: createdBy,
@@ -52,7 +51,6 @@ const update = async (kmId, kmData, updatedBy) => {
         const updatePayload = {
             ...(kmData.handle && { handle: kmData.handle }),
             ...(kmData.displayName && { display_name: kmData.displayName }),
-            ...(kmData.type && { type: kmData.type }),
             ...(kmData.enabled !== undefined && { enabled: kmData.enabled ? 1 : 0 }),
             ...(kmData.tokenEndpoint && { token_endpoint: kmData.tokenEndpoint }),
             updated_by: updatedBy,
