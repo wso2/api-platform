@@ -3411,25 +3411,16 @@ components:
               $ref: "#/components/schemas/OrganizationContentListItemResponse"
     BadRequest:
       description: >-
-        Bad request. Input validation failures are returned as an array; other bad request errors are returned as a
-        standard error object.
+        Bad request. Validation and other bad-request errors are returned as a standard error object
+        (field-level details, when present, are carried in its `errors` array); some legacy handlers
+        return a message-only object.
       content:
         application/json:
           schema:
             oneOf:
-              - $ref: "#/components/schemas/ValidationErrorList"
               - $ref: "#/components/schemas/ErrorResponse"
               - $ref: "#/components/schemas/MessageResponse"
           examples:
-            validationError:
-              summary: Validation failure
-              value:
-                - status: error
-                  code: COMMON_VALIDATION_ERROR
-                  message: Input validation failed.
-                  errors:
-                    - field: name
-                      message: name is required.
             badRequest:
               summary: Bad request error
               value:
@@ -4185,44 +4176,6 @@ components:
         errors:
           type: array
           description: Optional per-field validation errors.
-          items:
-            type: object
-            required:
-              - field
-              - message
-            properties:
-              field:
-                type: string
-              message:
-                type: string
-            additionalProperties: false
-      additionalProperties: false
-    ValidationErrorList:
-      type: array
-      items:
-        $ref: "#/components/schemas/ValidationError"
-    ValidationError:
-      type: object
-      required:
-        - status
-        - code
-        - message
-      properties:
-        status:
-          type: string
-          enum:
-            - error
-        code:
-          type: string
-          pattern: ^[A-Z][A-Z0-9_]*$
-          description: Machine-readable catalog code.
-          example: COMMON_VALIDATION_ERROR
-        message:
-          type: string
-          example: Input validation failed.
-        errors:
-          type: array
-          description: Per-field validation errors.
           items:
             type: object
             required:

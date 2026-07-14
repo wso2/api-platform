@@ -76,23 +76,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "name",
-        "message": "name is required."
-      }
-    ]
-  }
-]
-```
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
 {
@@ -133,7 +117,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
@@ -143,7 +127,6 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 |Property|Value|
 |---|---|
-|status|error|
 |status|error|
 
 ## Replace API content
@@ -219,23 +202,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "name",
-        "message": "name is required."
-      }
-    ]
-  }
-]
-```
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
 {
@@ -276,7 +243,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|JSON message response.|[MessageResponse](schemas.md#schemamessageresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
@@ -286,7 +253,6 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 |Property|Value|
 |---|---|
-|status|error|
 |status|error|
 
 ## Get an API content file
@@ -345,23 +311,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "name",
-        "message": "name is required."
-      }
-    ]
-  }
-]
-```
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
 {
@@ -398,7 +348,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Stored API content asset. The concrete media type depends on the stored file extension or whether the content is an external document link.|string|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Plain text success response.|string|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
@@ -408,7 +358,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Property|Value|
 |---|---|
-|status|error|
 |status|error|
 
 ## Delete API content files
@@ -450,23 +399,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 > Example responses
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "name",
-        "message": "name is required."
-      }
-    ]
-  }
-]
-```
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
 {
@@ -503,7 +436,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|API content deleted successfully.|None|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Plain text success response.|string|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
@@ -513,5 +446,4 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Property|Value|
 |---|---|
-|status|error|
 |status|error|
