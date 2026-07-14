@@ -371,12 +371,30 @@ const loadAPIContent = async (req, res, next) => {
                     isAdmin: req.user.isAdmin,
                 }
             }
-            let schemaFileName = constants.FILE_NAME.API_DEFINITION_XML;
-            if (metaData.type === constants.API_TYPE.GRAPHQL) {
-                schemaFileName = constants.FILE_NAME.API_DEFINITION_GRAPHQL;
-            } else if (metaData.type === constants.API_TYPE.MCP) {
-                // An MCP server's contract is its tools schema, not an apiDefinition.
-                schemaFileName = constants.FILE_NAME.SCHEMA_DEFINITION_YAML_FILE_NAME;
+            // Build the definition download link from the file that is actually stored, resolved
+            // by its doc-type (one definition per API). The stored name is the uploaded basename,
+            // not a fixed constant, so guessing a filename here would 404 for any file uploaded
+            // under a different name (e.g. a SOAP WSDL named 'service.wsdl'). MCP tools schemas live
+            // under SCHEMA_DEFINITION and are served from /mcp-servers; everything else under
+            // API_DEFINITION from /apis.
+            const definitionDocType = metaData.type === constants.API_TYPE.MCP
+                ? constants.DOC_TYPES.SCHEMA_DEFINITION
+                : constants.DOC_TYPES.API_DEFINITION;
+            const definitionAssetBasePath = metaData.type === constants.API_TYPE.MCP
+                ? '/mcp-servers/'
+                : constants.ROUTE.API_FILE_PATH;
+            let schemaUrl = null;
+            try {
+                const definitionDoc = await apiFileDao.getByType(definitionDocType, orgId, apiId);
+                if (definitionDoc?.file_name) {
+                    schemaUrl = `${req.protocol}://${req.get('host')}${constants.DEVPORTAL_API.orgPath(orgId)}`
+                        + `${definitionAssetBasePath}${apiId}/assets?type=${definitionDocType}`
+                        + `&fileName=${encodeURIComponent(definitionDoc.file_name)}`;
+                }
+            } catch (schemaErr) {
+                logger.debug('Could not resolve definition file for download link', {
+                    orgId, apiId, error: schemaErr.message
+                });
             }
 
             let apiDefinitionForNav = null;
@@ -398,7 +416,7 @@ const loadAPIContent = async (req, res, next) => {
                 subscriptionPlans: subscriptionPlans,
                 subscriptions: subscriptions,
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                schemaUrl: `${req.protocol}://${req.get('host')}${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${apiId}${constants.API_TEMPLATE_FILE_NAME}${schemaFileName}`,
+                schemaUrl: schemaUrl,
                 loadDefault: loadDefault,
                 resources: apiDetails,
                 orgId: orgId,
@@ -1074,20 +1092,19 @@ const loadAPIContentMd = async (req, res) => {
         let specHeading = 'OpenAPI Specification';
         const apiType = metaData?.type;
         try {
-            if (apiType === constants.API_TYPE.GRAPHQL) {
-                specHeading = 'GraphQL Schema';
-                const raw = await apiFileDao.get(constants.FILE_NAME.API_DEFINITION_GRAPHQL, constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
-                if (raw) apiDefinition = raw.file_content.toString(constants.CHARSET_UTF8);
-            } else if (apiType === constants.API_TYPE.MCP) {
-                specHeading = 'Tool Schema';
-                const raw = await apiFileDao.getDoc(constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, apiId, null);
-                if (raw) apiDefinition = raw.file_content.toString(constants.CHARSET_UTF8);
-            } else {
-                if (apiType === constants.API_TYPE.WS || apiType === constants.API_TYPE.WEBSUB) specHeading = 'AsyncAPI Specification';
-                else if (apiType === 'SOAP') specHeading = 'WSDL';
-                const raw = await apiFileDao.get(constants.FILE_NAME.API_DEFINITION_FILE_NAME, constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
-                if (raw) apiDefinition = raw.file_content.toString(constants.CHARSET_UTF8);
-            }
+            // Resolve the definition by its doc-type rather than a guessed filename: the stored
+            // name is the uploaded basename, so a fixed name would miss anything uploaded under a
+            // different name. There is one definition per API (SCHEMA_DEFINITION for MCP tools
+            // schemas, API_DEFINITION for every other type).
+            if (apiType === constants.API_TYPE.GRAPHQL) specHeading = 'GraphQL Schema';
+            else if (apiType === constants.API_TYPE.MCP) specHeading = 'Tool Schema';
+            else if (apiType === constants.API_TYPE.WS || apiType === constants.API_TYPE.WEBSUB) specHeading = 'AsyncAPI Specification';
+            else if (apiType === 'SOAP') specHeading = 'WSDL';
+            const definitionDocType = apiType === constants.API_TYPE.MCP
+                ? constants.DOC_TYPES.SCHEMA_DEFINITION
+                : constants.DOC_TYPES.API_DEFINITION;
+            const raw = await apiFileDao.getDoc(definitionDocType, orgId, apiId, null);
+            if (raw) apiDefinition = raw.file_content.toString(constants.CHARSET_UTF8);
         } catch (defErr) {
             logger.warn('Could not load API definition for markdown', { orgId, apiId, error: defErr.message });
         }

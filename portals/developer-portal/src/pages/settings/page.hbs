@@ -1604,7 +1604,7 @@
     if (specStepLabel) specStepLabel.textContent = isMcp ? 'Tools Schema' : 'Spec';
     var specDesc = document.querySelector('#cfg-wstep-1 .cfg-wstep-desc');
     if (specDesc) specDesc.innerHTML = isMcp
-      ? 'Upload the MCP tools schema that defines this server’s tools. <span class="required">*</span> Required. Accepted: YAML or JSON (e.g. <code>schemaDefinition.yaml</code>).'
+      ? 'Upload the MCP tools schema that defines this server’s tools. <span class="required">*</span> Required. Accepted: YAML or JSON (e.g. <code>definition.yaml</code>).'
       : 'Upload the contract that defines this API. <span class="required">*</span> Required. Accepted: OpenAPI (.json / .yaml), AsyncAPI, GraphQL SDL (.graphql), or WSDL (.wsdl / .xml).';
     var specOnFileTxt = document.querySelector('#wz-spec-onfile span');
     if (specOnFileTxt) specOnFileTxt.textContent = isMcp
@@ -1749,10 +1749,10 @@
     };
 
     var fd = new FormData();
-    fd.append('apiMetadata', JSON.stringify(meta));
-    /* For MCP servers the uploaded contract is the tools schema (stored as SCHEMA_DEFINITION),
-       so it goes in the schemaDefinition field; every other type uses apiDefinition. */
-    if (specFile) fd.append(meta.type === 'Mcp' ? 'schemaDefinition' : 'apiDefinition', specFile);
+    fd.append('metadata', JSON.stringify(meta));
+    /* The single `definition` field carries the contract for every type. For MCP servers it is
+       the tools schema (stored as SCHEMA_DEFINITION); for other types it is the API definition. */
+    if (specFile) fd.append('definition', specFile);
     docFiles.forEach(function(f) { fd.append('docs', f); });
 
     /* MCP servers are created/updated via /mcp-servers (which requires type MCP and rejects
@@ -1921,7 +1921,7 @@
         subscriptionPlans: apiData.subscriptionPlans || [],
       });
       var fd = new FormData();
-      fd.append('apiMetadata', JSON.stringify(meta));
+      fd.append('metadata', JSON.stringify(meta));
       var putRes = await fetch(window.devportalApi.root(base+'/'+encodeURIComponent(apiId)), {
         method: 'PUT',
         headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },

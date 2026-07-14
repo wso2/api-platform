@@ -35,7 +35,7 @@ const VERSION_RANGE_PATTERN = /^[\^~]|^>=?|^<=?|\*|(^|\.)x(\.|$)/i;
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
 // Canonical stored schema filename/shape across the whole platform: a flat, type-tagged
-// YAML array (schemaDefinition.yaml) — the same format the admin /mcp-servers API and the
+// YAML array (definition.yaml) — the same format the admin /mcp-servers API and the
 // sample seeder write. Registry writes arrive grouped and are flattened to this on write
 // (see toFlatSchema); parseSchema regroups on read.
 const SCHEMA_FILE_NAME = constants.FILE_NAME.SCHEMA_DEFINITION_YAML_FILE_NAME;

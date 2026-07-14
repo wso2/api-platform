@@ -17,7 +17,7 @@
 // --------------------------------------------------------------------
 
 // POST/GET/PUT/DELETE /apis (type: REST). See docs/devportal-openapi-spec-v0.9.yaml
-// ApiMetadataMultipartBody — creation is multipart (apiMetadata JSON + apiDefinition
+// ApiMetadataMultipartBody — creation is multipart (metadata JSON + definition
 // file). Publisher owns API management; follow support/fixtures.js createApi()
 // for the request shape; organizations.spec.js for the assertion style.
 
@@ -53,14 +53,14 @@ describe('REST APIs', () => {
         const put = await client
             .as('publisher')
             .putMultipart(`/apis/${api.id}`)
-            .field('apiMetadata', JSON.stringify({
+            .field('metadata', JSON.stringify({
                 name: 'Updated Name',
                 version: 'v1.0',
                 type: 'REST',
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://updated.example.invalid', sandboxURL: 'https://updated-sandbox.example.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
+            .attach('definition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
         expect(put.status).toBe(200);
         expect(put.body.name).toBe('Updated Name');
     });
@@ -88,7 +88,7 @@ describe('REST APIs', () => {
         const res = await client
             .as('publisher')
             .postMultipart('/apis')
-            .field('apiMetadata', JSON.stringify({
+            .field('metadata', JSON.stringify({
                 id,
                 name: 'Bad API',
                 version: 'v1.0',
@@ -96,7 +96,7 @@ describe('REST APIs', () => {
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://x.invalid', sandboxURL: 'https://x.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from('not a valid openapi document'), 'definition.json');
+            .attach('definition', Buffer.from('not a valid openapi document'), 'definition.json');
         expect(res.status).toBe(400);
     });
 
@@ -105,14 +105,14 @@ describe('REST APIs', () => {
         const res = await client
             .as('publisher')
             .postMultipart('/apis')
-            .field('apiMetadata', JSON.stringify({
+            .field('metadata', JSON.stringify({
                 id,
                 name: 'No Type API',
                 version: 'v1.0',
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://x.invalid', sandboxURL: 'https://x.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
+            .attach('definition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
         expect(res.status).toBe(400);
     });
 
@@ -121,13 +121,13 @@ describe('REST APIs', () => {
         const put = await client
             .as('publisher')
             .putMultipart(`/apis/${api.id}`)
-            .field('apiMetadata', JSON.stringify({
+            .field('metadata', JSON.stringify({
                 name: 'Updated Without Type',
                 version: 'v1.0',
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://updated.example.invalid', sandboxURL: 'https://updated-sandbox.example.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
+            .attach('definition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
         expect(put.status).toBe(400);
     });
 
@@ -139,14 +139,14 @@ describe('REST APIs', () => {
         const put = await client
             .as('publisher')
             .putMultipart(`/apis/${api.id}`)
-            .field('apiMetadata', JSON.stringify({
+            .field('metadata', JSON.stringify({
                 name: 'Should Stay REST',
                 version: 'v1.0',
                 type: 'SOAP',
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://updated.example.invalid', sandboxURL: 'https://updated-sandbox.example.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from('<wsdl/>'), 'definition.wsdl');
+            .attach('definition', Buffer.from('<wsdl/>'), 'definition.wsdl');
         expect(put.status).toBe(409);
 
         const get = await client.as('publisher').get(`/apis/${api.id}`);
@@ -165,7 +165,7 @@ describe('REST APIs', () => {
         const res = await client
             .as('publisher')
             .postMultipart('/apis')
-            .field('apiMetadata', JSON.stringify({
+            .field('metadata', JSON.stringify({
                 id,
                 name: 'Should Be MCP',
                 version: 'v1.0',
@@ -173,7 +173,7 @@ describe('REST APIs', () => {
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://x.invalid', sandboxURL: 'https://x.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
+            .attach('definition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
         expect(res.status).toBe(400);
     });
 
@@ -183,7 +183,7 @@ describe('REST APIs', () => {
         const res = await client
             .as('developer')
             .postMultipart('/apis')
-            .field('apiMetadata', JSON.stringify({
+            .field('metadata', JSON.stringify({
                 id,
                 name: 'Should Be Forbidden',
                 version: 'v1.0',
@@ -191,13 +191,13 @@ describe('REST APIs', () => {
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://x.invalid', sandboxURL: 'https://x.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
+            .attach('definition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
         expect(res.status).toBe(403);
     });
 
     it('uploads and retrieves an OpenAPI definition', async () => {
         // createApi()'s default upload (support/fixtures.js) — fileName must match
-        // what was actually persisted, not a hardcoded 'apiDefinition.json': the file
+        // what was actually persisted, not a hardcoded 'definition.json': the file
         // keeps its original uploaded name ('definition.json') under type=API_DEFINITION
         // (src/utils/constants.js DOC_TYPES.API_DEFINITION).
         const api = await createApi({ type: 'REST' });
@@ -229,7 +229,7 @@ describe('REST APIs', () => {
     describe('label updates', () => {
         // apiDao.update() has no `labels` column — labels only ever change via the
         // add/remove diff computed in updateAPIMetadata, which used to only run for
-        // YAML/artifact uploads. A `labels` array sent via the plain JSON apiMetadata
+        // YAML/artifact uploads. A `labels` array sent via the plain JSON metadata
         // field (what every other update test in this suite uses) was a silent no-op.
         //
         // NOTE: every PUT body here includes `id: api.id`. Without it, apiDao.update()
@@ -248,7 +248,7 @@ describe('REST APIs', () => {
             const put = await client
                 .as('publisher')
                 .putMultipart(`/apis/${api.id}`)
-                .field('apiMetadata', JSON.stringify({
+                .field('metadata', JSON.stringify({
                     id: api.id,
                     name: api.name,
                     version: api.version,
@@ -257,7 +257,7 @@ describe('REST APIs', () => {
                     labels: [labelB.id],
                     endPoints: { productionURL: 'https://updated.example.invalid', sandboxURL: 'https://updated-sandbox.example.invalid' },
                 }))
-                .attach('apiDefinition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
+                .attach('definition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
             expect(put.status).toBe(200);
 
             const get = await client.as('publisher').get(`/apis/${api.id}`);
@@ -271,7 +271,7 @@ describe('REST APIs', () => {
             const put = await client
                 .as('publisher')
                 .putMultipart(`/apis/${api.id}`)
-                .field('apiMetadata', JSON.stringify({
+                .field('metadata', JSON.stringify({
                     id: api.id,
                     name: 'Same Labels Resent',
                     version: api.version,
@@ -280,7 +280,7 @@ describe('REST APIs', () => {
                     labels: [label.id],
                     endPoints: { productionURL: 'https://updated.example.invalid', sandboxURL: 'https://updated-sandbox.example.invalid' },
                 }))
-                .attach('apiDefinition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
+                .attach('definition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
             expect(put.status).toBe(200);
 
             const get = await client.as('publisher').get(`/apis/${api.id}`);
@@ -297,7 +297,7 @@ describe('REST APIs', () => {
             const put = await client
                 .as('publisher')
                 .putMultipart(`/apis/${api.id}`)
-                .field('apiMetadata', JSON.stringify({
+                .field('metadata', JSON.stringify({
                     id: api.id,
                     name: api.name,
                     version: api.version,
@@ -306,7 +306,7 @@ describe('REST APIs', () => {
                     labels: [label.id],
                     endPoints: { productionURL: 'https://updated.example.invalid', sandboxURL: 'https://updated-sandbox.example.invalid' },
                 }))
-                .attach('apiDefinition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
+                .attach('definition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
             expect(put.status).toBe(200);
 
             const get = await client.as('publisher').get(`/apis/${api.id}`);
@@ -320,7 +320,7 @@ describe('REST APIs', () => {
             const put = await client
                 .as('publisher')
                 .putMultipart(`/apis/${api.id}`)
-                .field('apiMetadata', JSON.stringify({
+                .field('metadata', JSON.stringify({
                     id: api.id,
                     name: api.name,
                     version: api.version,
@@ -329,7 +329,7 @@ describe('REST APIs', () => {
                     labels: [],
                     endPoints: { productionURL: 'https://updated.example.invalid', sandboxURL: 'https://updated-sandbox.example.invalid' },
                 }))
-                .attach('apiDefinition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
+                .attach('definition', Buffer.from(JSON.stringify({ openapi: '3.0.3', info: { title: 'x', version: '1' }, paths: {} })), 'definition.json');
             expect(put.status).toBe(200);
 
             const get = await client.as('publisher').get(`/apis/${api.id}`);

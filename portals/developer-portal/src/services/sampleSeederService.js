@@ -170,7 +170,7 @@ async function seedSampleAPIs(orgId) {
 
 /**
  * Deploy all sample MCP servers from samples/mcps/ into the given org.
- * Each subdirectory must contain api.yaml and optionally schemaDefinition.yaml and docs/.
+ * Each subdirectory must contain api.yaml and optionally definition.yaml and docs/.
  * Returns an array of { name, status ('ok'|'exists'|'failed'), apiId?, error? }.
  */
 async function seedSampleMCPs(orgId) {
