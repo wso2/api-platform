@@ -123,17 +123,34 @@ kubectl wait --namespace cert-manager \
   --for=condition=available deployment --all --timeout=180s
 
 # --- 2. Gateway operator (installs the bundled Gateway API CRDs too) --------
+# Derive the image tags from the same sources the build and load-images.sh use, so helm
+# deploys exactly the images that were built and loaded (imagePullPolicy=IfNotPresent).
+# Hardcoding these caused the loaded (freshly built) images to be ignored. Overridable
+# via env to stay in lock-step with load-images.sh.
+REGISTRY="${REGISTRY:-ghcr.io/wso2/api-platform}"
+GW_VERSION="${GW_VERSION:-$(cat "${REPO_ROOT}/gateway/VERSION")}"
+OPERATOR_VERSION="${OPERATOR_VERSION:-$(sed -nE 's/^VERSION[[:space:]]*\?=[[:space:]]*([^[:space:]]+).*/\1/p' \
+  "${REPO_ROOT}/kubernetes/gateway-operator/Makefile" | head -1)}"
+
+if [ -z "${GW_VERSION}" ] || [ -z "${OPERATOR_VERSION}" ]; then
+  echo "error: could not determine image versions (GW_VERSION='${GW_VERSION}', OPERATOR_VERSION='${OPERATOR_VERSION}')." >&2
+  exit 1
+fi
+
 echo ">> Installing the gateway operator from ${OPERATOR_CHART}"
+echo "   gateway-controller -> ${GW_VERSION}"
+echo "   gateway-runtime -> ${GW_VERSION}"
+echo "   gateway-operator -> ${OPERATOR_VERSION}"
 helm upgrade --install gateway-operator "${OPERATOR_CHART}" \
   --namespace "${OPERATOR_NS}" --create-namespace \
-  --set image.repository=ghcr.io/wso2/api-platform/gateway-operator \
-  --set image.tag=0.8.1-SNAPSHOT \
+  --set image.repository="${REGISTRY}/gateway-operator" \
+  --set image.tag="${OPERATOR_VERSION}" \
   --set image.pullPolicy=IfNotPresent \
-  --set gateway.values.gateway.controller.image.repository=ghcr.io/wso2/api-platform/gateway-controller \
-  --set gateway.values.gateway.controller.image.tag=1.2.0-M2-SNAPSHOT \
+  --set gateway.values.gateway.controller.image.repository="${REGISTRY}/gateway-controller" \
+  --set gateway.values.gateway.controller.image.tag="${GW_VERSION}" \
   --set gateway.values.gateway.controller.image.pullPolicy=IfNotPresent \
-  --set gateway.values.gateway.gatewayRuntime.image.repository=ghcr.io/wso2/api-platform/gateway-runtime \
-  --set gateway.values.gateway.gatewayRuntime.image.tag=1.2.0-M2-SNAPSHOT \
+  --set gateway.values.gateway.gatewayRuntime.image.repository="${REGISTRY}/gateway-runtime" \
+  --set gateway.values.gateway.gatewayRuntime.image.tag="${GW_VERSION}" \
   --set gateway.values.gateway.gatewayRuntime.image.pullPolicy=IfNotPresent \
   --set gateway.values.gateway.config.controller.storage.type=memory \
   --set gateway.values.gateway.controller.storage.type=sqlite \
