@@ -427,7 +427,7 @@ export default function ServiceProviderModelsTab() {
                         onClick={() => setSelectedProviderId(p.id)}
                         removeDisabled={isSaving || isReadOnlyProvider}
                         onRemove={
-                          p.id === 'azureai-foundry' && !isReadOnlyProvider
+                          !isReadOnlyProvider
                             ? () => {
                                 void removeProvider(p.id);
                               }
