@@ -110,7 +110,7 @@ When `APIP_DEMO_MODE=false`, any missing requirement causes the affected service
 No setup required. The default `admin` / `admin` credentials are defined in `configs/config-platform-api.toml`. To change the password, generate a new bcrypt hash:
 
 ```bash
-htpasswd -bnBC 12 "" <new-password> | tr -d ':\n'
+htpasswd -bnBC 12 "" NEW_PASSWORD | tr -d ':\n'
 ```
 
 Replace the `password_hash` value in `configs/config-platform-api.toml` before starting.
@@ -119,7 +119,7 @@ Replace the `password_hash` value in `configs/config-platform-api.toml` before s
 
 To delegate login to an external OIDC-compliant provider (Asgardeo, Keycloak, Auth0, etc.):
 
-1. Register a **confidential** OIDC application in your IDP with redirect URL `https://localhost:5380/api/auth/callback` and enable the **Authorization Code** and **Refresh Token** grants.
+1. Register a **confidential** OIDC application in your IDP with redirect URL `https://<your-domain>/api/auth/callback` (use `https://localhost:5380/api/auth/callback` for local development) and enable the **Authorization Code** and **Refresh Token** grants.
 2. Uncomment the `OIDC` environment variable blocks on **both** services in `docker-compose.yaml`.
 3. Add your IDP credentials to `.env`:
 
