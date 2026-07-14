@@ -41,6 +41,7 @@ module.exports = {
     TEXT: 'text',
     CHARSET_UTF8: 'utf-8',
     FILE_NAME_PARAM: '&fileName=',
+    ORG_ID_PARAM: '&orgId=',
     API_ICON: 'api-icon',
     API_TEMPLATE_FILE_NAME: '/assets?type=IMAGE&fileName=',
     API_TYPE_QUERY: '/assets?type=',

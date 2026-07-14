@@ -839,10 +839,16 @@ async function loadAPIMetaData(req, orgId, apiId, viewName) {
         const data = metaData ? JSON.stringify(metaData) : {};
         metaData = JSON.parse(data);
         //replace image urls
+        // Use the handle (metaData.id), not the raw uuid — the /apis/{apiId}/assets
+        // endpoint resolves apiId via getIdExcludingType, which matches on `handle`.
+        // A uuid here never matches and the asset request 404s. This mirrors
+        // appendAPIImageURL (listing page), which already uses the handle.
+        // orgId is appended so the (public) image endpoint can resolve the view for
+        // anonymous visitors with no session — mirrors appendAPIImageURL and getOrgAsset.
         let images = metaData.apiImageMetadata;
         for (const key in images) {
-            let apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${apiId}${constants.API_TEMPLATE_FILE_NAME}`;
-            const modifiedApiImageURL = apiImageUrl + images[key];
+            let apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${metaData.id}${constants.API_TEMPLATE_FILE_NAME}`;
+            const modifiedApiImageURL = apiImageUrl + images[key] + `${constants.ORG_ID_PARAM}${orgId}`;
             images[key] = modifiedApiImageURL;
         }
     }

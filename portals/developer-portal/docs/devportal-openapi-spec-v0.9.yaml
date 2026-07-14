@@ -600,14 +600,25 @@ paths:
         The `type` query parameter selects the stored content category and `fileName` selects the file
         within that category. Text files and external document links are returned as text. Image files are
         returned as binary content with a media type derived from the file extension.
+
+        Image files (`type=IMAGE`) are publicly readable so that an API's icon renders on the public
+        listing and landing pages without a session — pass `orgId` to resolve the view when no session
+        is present (mirrors `GET /views/{viewId}/asset`). All other content categories require a session:
+        an anonymous request for a non-image type is rejected.
       operationId: getApiContentFile
-      security:
-        - OAuth2Security:
-            - dp:api_content_read
-            - dp:api_content_manage
+      security: []
       parameters:
         - $ref: "#/components/parameters/contentTypeQuery"
         - $ref: "#/components/parameters/contentFileNameQuery"
+        - name: orgId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >-
+            Organization ID used to resolve the API's public image asset when no session is present
+            (e.g. the pre-auth listing/landing page). Ignored for authenticated requests, which use the
+            session organization. Only honored for `type=IMAGE`.
       responses:
         "200":
           $ref: "#/components/responses/ContentAssetResponse"

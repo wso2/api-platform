@@ -1020,7 +1020,9 @@ function appendAPIImageURL(subList, req, orgId) {
         let apiImageUrl = '';
         for (const key in images) {
             apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.id}${constants.API_TEMPLATE_FILE_NAME}`;
-            const modifiedApiImageURL = apiImageUrl + images[key];
+            // orgId is appended so the (public) image endpoint can resolve the view for
+            // anonymous visitors with no session — mirrors getOrgAsset.
+            const modifiedApiImageURL = apiImageUrl + images[key] + `${constants.ORG_ID_PARAM}${orgId}`;
             element.apiImageMetadata[key] = modifiedApiImageURL;
         }
     });

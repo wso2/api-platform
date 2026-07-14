@@ -1123,15 +1123,25 @@ const updateAPIContent = async (req, res) => {
 
 const getAPIFile = async (req, res) => {
 
-    const orgId = req.orgId;
     const { apiId: apiHandle } = req.params;
     const apiFileName = req.query.fileName;
     const type = req.query.type;
+    // The endpoint is public (security: []) so an API icon renders on the public
+    // listing/landing pages without a session. Anonymous access is limited to
+    // images: the session org always wins, and only image reads may fall back to
+    // the orgId query param. A request with no session org for any non-image type
+    // is rejected — non-image content stays session-scoped. Mirrors getOrgAsset.
+    const isImageType = type === constants.DOC_TYPES.IMAGES;
+    const orgId = req.orgId || (isImageType ? req.query.orgId : undefined);
     let apiFileResponse = "";
     let apiFile;
     let contentType = "";
     let apiId;
     try {
+        if (!orgId) {
+            // No session org, and either a non-image type or a missing orgId query param.
+            return res.status(401).send("Authentication required");
+        }
         apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
             return util.sendError(res, 404, 'API not found');
