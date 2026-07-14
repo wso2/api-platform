@@ -168,6 +168,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "displayName": "Premium APIs"
     }
   ],
+  "count": 1,
   "pagination": {
     "total": 42,
     "limit": 20,
@@ -235,6 +236,7 @@ Status Code **200**
 |» list|[[LabelResponse](schemas.md#schemalabelresponse)]|false|none|none|
 |»» id|string|false|none|The label's handle (unique per org). Not the internal database uuid.|
 |»» displayName|string|false|none|none|
+|» count|integer|false|none|Number of items returned in this page.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|

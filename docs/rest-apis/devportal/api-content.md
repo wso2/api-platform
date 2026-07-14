@@ -21,7 +21,7 @@ curl -X POST https://localhost:3000/api/v0.9/apis/{apiId}/assets \
 
 Uploads the static content package for an API.
 
-The `apiContent` ZIP must contain at least one of these root directories:
+The `content` ZIP must contain at least one of these root directories:
 - `web/` for API landing-page assets such as markdown, HTML, CSS, JavaScript, and images.
 - `docs/` for downloadable API documents.
 
@@ -31,7 +31,7 @@ Use `imageMetadata` to map uploaded images to API image roles such as the API ic
 > Payload
 
 ```yaml
-apiContent: string
+content: string
 docMetadata: '[{"name":"External
   guide","url":"https://example.com/docs/guide","type":"LINK"}]'
 imageMetadata: '{"api-icon":"icon.png"}'
@@ -50,7 +50,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|object|true|API content ZIP upload.|
-|» apiContent|body|string(binary)|true|ZIP upload field named `apiContent`.|
+|» content|body|string(binary)|true|ZIP upload field named `content`.|
 |» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
 |» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|
@@ -174,7 +174,7 @@ Image metadata is updated only when image metadata can be resolved from the uplo
 > Payload
 
 ```yaml
-apiContent: string
+content: string
 docMetadata: '[{"name":"External
   guide","url":"https://example.com/docs/guide","type":"LINK"}]'
 imageMetadata: '{"api-icon":"icon.png"}'
@@ -193,7 +193,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|object|true|API content ZIP upload.|
-|» apiContent|body|string(binary)|true|ZIP upload field named `apiContent`.|
+|» content|body|string(binary)|true|ZIP upload field named `content`.|
 |» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
 |» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
 |apiId|path|string|true|The API's handle (unique per org). Resolves only to REST/SOAP/WS/WebSub/GraphQL APIs — MCP servers are addressed via `/mcp-servers`.|

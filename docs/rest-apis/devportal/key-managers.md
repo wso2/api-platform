@@ -200,6 +200,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "updatedAt": "2026-05-07T08:30:00Z"
     }
   ],
+  "count": 1,
   "pagination": {
     "total": 42,
     "limit": 20,
@@ -263,6 +264,7 @@ Status Code **200**
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|» count|integer|false|none|Number of items returned in this page.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|

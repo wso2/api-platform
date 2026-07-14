@@ -212,6 +212,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "updatedAt": "2019-08-24T14:15:22Z"
     }
   ],
+  "count": 1,
   "pagination": {
     "total": 42,
     "limit": 20,
@@ -257,6 +258,7 @@ Status Code **200**
 |»» updatedBy|string|false|none|Identity of the user who last updated this webhook subscriber, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
 |»» createdAt|string(date-time)|false|none|none|
 |»» updatedAt|string(date-time)|false|none|none|
+|» count|integer|false|none|Number of items returned in this page.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|

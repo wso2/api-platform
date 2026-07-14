@@ -145,32 +145,6 @@ xor
 |---|---|
 |status|error|
 
-<h2 id="tocS_SimpleErrorResponse">SimpleErrorResponse</h2>
-
-<a id="schemasimpleerrorresponse"></a>
-<a id="schema_SimpleErrorResponse"></a>
-<a id="tocSsimpleerrorresponse"></a>
-<a id="tocssimpleerrorresponse"></a>
-
-```json
-{
-  "code": "404",
-  "message": "Not Found",
-  "description": "Subscription not found"
-}
-
-```
-
-Ad hoc error shape used by the Subscriptions and API Keys handlers, which build error bodies inline instead of going through the shared error formatter. `code` is the HTTP status code as a string, not a catalog code.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|code|string|true|none|none|
-|message|string|true|none|none|
-|description|string¦null|false|none|none|
-
 <h2 id="tocS_ValidationErrorList">ValidationErrorList</h2>
 
 <a id="schemavalidationerrorlist"></a>
@@ -1123,7 +1097,7 @@ xor
 
 ```json
 {
-  "apiId": "weather-api-v1",
+  "artifactId": "weather-api-v1",
   "subscriptionPlanId": "Gold"
 }
 
@@ -1133,7 +1107,7 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiId|string|true|none|Developer Portal API ID.|
+|artifactId|string|true|none|Developer Portal API ID.|
 |subscriptionPlanId|string|true|none|Developer Portal subscription plan ID.|
 
 <h2 id="tocS_SubscriptionUpdateRequest">SubscriptionUpdateRequest</h2>
@@ -1172,7 +1146,7 @@ xor
 
 ```json
 {
-  "apiId": "weather-api-v1",
+  "artifactId": "weather-api-v1",
   "planId": "Gold"
 }
 
@@ -1182,7 +1156,7 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiId|string|false|none|Developer Portal API ID the subscription belongs to. Optional — if provided, it is validated against the API derived from the existing subscription record and the request is rejected with 400 if they don't match. It is never used as a fallback: if the API cannot be derived from the subscription record, the request fails with 400 regardless of this value.|
+|artifactId|string|false|none|Developer Portal API ID the subscription belongs to. Optional — if provided, it is validated against the API derived from the existing subscription record and the request is rejected with 400 if they don't match. It is never used as a fallback: if the API cannot be derived from the subscription record, the request fails with 400 regardless of this value.|
 |planId|string|true|none|Developer Portal subscription plan ID to switch to.|
 
 <h2 id="tocS_SubscriptionResponse">SubscriptionResponse</h2>
@@ -1195,7 +1169,7 @@ xor
 ```json
 {
   "subscriptionId": "sub-12345",
-  "apiId": "weather-api-v1",
+  "artifactId": "weather-api-v1",
   "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
@@ -1214,7 +1188,7 @@ Subscription payload.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |subscriptionId|string|false|none|none|
-|apiId|string|false|none|Developer Portal API ID.|
+|artifactId|string|false|none|Developer Portal API ID.|
 |subscriptionToken|string¦null|false|none|Plaintext subscription token, decrypted on every read (not just on create). Null if decryption fails (e.g. the encryption key changed since the token was stored).|
 |subscriptionPlanName|string|false|none|none|
 |status|string|false|none|none|

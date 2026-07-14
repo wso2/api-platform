@@ -24,7 +24,7 @@ Uploads the static content package for an MCP server. Mirrors `POST /api/v0.9/ap
 > Payload
 
 ```yaml
-apiContent: string
+content: string
 docMetadata: '[{"name":"External
   guide","url":"https://example.com/docs/guide","type":"LINK"}]'
 imageMetadata: '{"api-icon":"icon.png"}'
@@ -43,7 +43,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|object|true|API content ZIP upload.|
-|» apiContent|body|string(binary)|true|ZIP upload field named `apiContent`.|
+|» content|body|string(binary)|true|ZIP upload field named `content`.|
 |» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
 |» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
@@ -163,7 +163,7 @@ Replaces or adds static content files for an existing MCP server. Mirrors `PUT /
 > Payload
 
 ```yaml
-apiContent: string
+content: string
 docMetadata: '[{"name":"External
   guide","url":"https://example.com/docs/guide","type":"LINK"}]'
 imageMetadata: '{"api-icon":"icon.png"}'
@@ -182,7 +182,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |body|body|object|true|API content ZIP upload.|
-|» apiContent|body|string(binary)|true|ZIP upload field named `apiContent`.|
+|» content|body|string(binary)|true|ZIP upload field named `content`.|
 |» docMetadata|body|string|false|Optional JSON string containing API document link metadata.|
 |» imageMetadata|body|string|false|Optional JSON string containing API image metadata.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
