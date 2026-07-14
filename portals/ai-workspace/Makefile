@@ -184,14 +184,15 @@ ifeq ($(PLATFORM_API_FROM_TAG),true)
 	if ! git -C ../.. rev-parse -q --verify "refs/tags/$$tag" >/dev/null 2>&1; then \
 		echo "Error: tag $$tag not found (check PLATFORM_API_VERSION)" >&2; exit 1; \
 	fi; \
-	files=$$(git -C ../.. ls-tree -r --name-only "$$tag" -- platform-api/internal/database | grep '\.sql$$'); \
+	files=$$(git -C ../.. ls-tree -r --name-only "$$tag" -- platform-api/internal/database | grep 'schema\.[^.]*\.sql$$'); \
 	if [ -z "$$files" ]; then echo "Error: no .sql files found under platform-api/internal/database at $$tag" >&2; exit 1; fi; \
 	for f in $$files; do git -C ../.. show "$$tag:$$f" > "$$dest/$$(basename $$f)"; done; \
 	echo "✓ Fetched $$(echo "$$files" | wc -l | tr -d ' ') db-script(s) from $$tag"
 else
-	@cp ../../platform-api/internal/database/*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
+	@cp ../../platform-api/internal/database/schema.*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
 endif
 	@cp docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
+	@cp distribution/README.md $(DIST_DIR)/README.md
 	@sed -i.bak -E \
 	    -e 's|^([[:space:]]*image:[[:space:]]*.*/ai-workspace):[^[:space:]]*|\1:$(DIST_VERSION)|' \
 	    -e 's|^([[:space:]]*image:[[:space:]]*.*/platform-api):[^[:space:]]*|\1:$(PLATFORM_API_VERSION)|' \
