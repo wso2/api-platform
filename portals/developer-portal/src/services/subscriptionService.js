@@ -85,41 +85,29 @@ const createSubscription = async (req, res) => {
     let apiId;
 
     if (!apiHandle || typeof apiHandle !== 'string' || !apiHandle.trim()) {
-        return res.status(400).json({
-            code: '400', message: 'Bad Request', description: 'apiId is required',
-        });
+        return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'apiId is required' }] });
     }
 
     try {
         apiId = await apiDao.getId(orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).json({
-                code: '404', message: 'Not Found', description: 'API not found',
-            });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'API not found' }] });
         }
         const apiMetadataResponse = await apiDao.get(orgId, apiId);
         if (!apiMetadataResponse || apiMetadataResponse.length === 0) {
-            return res.status(404).json({
-                code: '404', message: 'Not Found', description: 'API not found',
-            });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'API not found' }] });
         }
 
         const apiMetadata = apiMetadataResponse[0];
 
         const plans = apiMetadata.dp_subscription_plans || [];
         if (plans.length === 0) {
-            return res.status(400).json({
-                code: '400', message: 'Bad Request',
-                description: 'This API does not support subscriptions',
-            });
+            return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'This API does not support subscriptions' }] });
         }
 
         const matchedPlan = plans.find(p => p.handle === reqPlanHandle);
         if (!matchedPlan) {
-            return res.status(400).json({
-                code: '400', message: 'Bad Request',
-                description: 'Subscription plan not found for this API',
-            });
+            return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'Subscription plan not found for this API' }] });
         }
         const planId = matchedPlan.uuid;
 
@@ -143,10 +131,7 @@ const createSubscription = async (req, res) => {
         return res.status(201).json(formatSubscriptionResponse(created, audit));
     } catch (error) {
         if (error.name === 'SequelizeUniqueConstraintError') {
-            return res.status(409).json({
-                code: '409', message: 'Conflict',
-                description: 'A subscription for this API already exists',
-            });
+            return util.sendError(res, 409, 'Conflict', { errors: [{ message: 'A subscription for this API already exists' }] });
         }
         logger.error('Error creating subscription', {
             error: error.message, orgId, apiId,
@@ -164,9 +149,7 @@ const listSubscriptions = async (req, res) => {
         if (apiHandle) {
             apiId = await apiDao.getId(orgId, apiHandle);
             if (!apiId) {
-                return res.status(404).json({
-                    code: '404', message: 'Not Found', description: 'API not found',
-                });
+                return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'API not found' }] });
             }
         }
 
@@ -188,9 +171,7 @@ const getSubscription = async (req, res) => {
     try {
         const sub = await subDao.get(orgId, subscriptionId, util.resolveActor(req));
         if (!sub) {
-            return res.status(404).json({
-                code: '404', message: 'Not Found', description: 'Subscription not found',
-            });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Subscription not found' }] });
         }
         const audit = await userIdpReferenceDao.buildSingleAuditFields(sub);
         return res.status(200).json(formatSubscriptionResponse(sub, audit));
@@ -207,16 +188,14 @@ const updateSubscription = async (req, res) => {
     const subscriptionId = req.params.subId;
     const { status } = req.body;
     if (!Object.values(constants.SUBSCRIPTION_STATUS).includes(status)) {
-        return res.status(400).json({ code: '400', message: 'Bad Request', description: `Invalid status. Must be one of: ${Object.values(constants.SUBSCRIPTION_STATUS).join(', ')}.` });
+        return util.sendError(res, 400, 'Bad Request', { errors: [{ message: `Invalid status. Must be one of: ${Object.values(constants.SUBSCRIPTION_STATUS).join(', ')}.` }] });
     }
 
     const actorId = util.resolveActor(req);
     try {
         const existing = await subDao.get(orgId, subscriptionId, actorId);
         if (!existing) {
-            return res.status(404).json({
-                code: '404', message: 'Not Found', description: 'Subscription not found',
-            });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Subscription not found' }] });
         }
 
         let sub;
@@ -236,7 +215,7 @@ const updateSubscription = async (req, res) => {
         return res.status(200).json(formatSubscriptionResponse(sub, audit));
     } catch (error) {
         if (error.status === 404) {
-            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Subscription not found' });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Subscription not found' }] });
         }
         logger.error('Error updating subscription', {
             error: error.message, subscriptionId, status,
@@ -254,37 +233,27 @@ const changePlan = async (req, res) => {
     try {
         const existing = await subDao.get(orgId, subscriptionId, actorId);
         if (!existing) {
-            return res.status(404).json({
-                code: '404', message: 'Not Found', description: 'Subscription not found',
-            });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Subscription not found' }] });
         }
 
         const apiId = existing.api_uuid || (existing.dp_api_metadata ? existing.dp_api_metadata.uuid : null) || null;
         if (!apiId) {
-            return res.status(400).json({
-                code: '400', message: 'Bad Request', description: 'API not found for this subscription',
-            });
+            return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'API not found for this subscription' }] });
         }
         const apiHandle = existing.dp_api_metadata ? existing.dp_api_metadata.handle : null;
         if (reqApiHandle && reqApiHandle !== apiHandle) {
-            return res.status(400).json({
-                code: '400', message: 'Bad Request', description: 'apiId does not match this subscription',
-            });
+            return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'apiId does not match this subscription' }] });
         }
 
         const apiMetadataResponse = await apiDao.get(orgId, apiId);
         if (!apiMetadataResponse || apiMetadataResponse.length === 0) {
-            return res.status(404).json({
-                code: '404', message: 'Not Found', description: 'API not found',
-            });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'API not found' }] });
         }
         const apiMetadata = apiMetadataResponse[0];
         const plans = apiMetadata.dp_subscription_plans || [];
         const newPlan = plans.find(p => p.handle === reqPlanHandle);
         if (!newPlan) {
-            return res.status(400).json({
-                code: '400', message: 'Bad Request', description: 'Subscription plan not found for this API',
-            });
+            return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'Subscription plan not found for this API' }] });
         }
         const planId = newPlan.uuid;
 
@@ -315,7 +284,7 @@ const changePlan = async (req, res) => {
         return res.status(200).json(formatSubscriptionResponse(updated, audit));
     } catch (error) {
         if (error.status === 404) {
-            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Subscription not found' });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Subscription not found' }] });
         }
         logger.error('Error changing subscription plan', { error: error.message, subscriptionId });
         util.handleError(res, error);
@@ -330,9 +299,7 @@ const regenerateSubscriptionToken = async (req, res) => {
     try {
         const existing = await subDao.get(orgId, subscriptionId, actorId);
         if (!existing) {
-            return res.status(404).json({
-                code: '404', message: 'Not Found', description: 'Subscription not found',
-            });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Subscription not found' }] });
         }
 
         const apiMetadata = existing.dp_api_metadata;
@@ -358,7 +325,7 @@ const regenerateSubscriptionToken = async (req, res) => {
         return res.status(200).json(formatSubscriptionResponse(updated, audit));
     } catch (error) {
         if (error.status === 404) {
-            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Subscription not found' });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Subscription not found' }] });
         }
         logger.error('Error regenerating subscription token', { error: error.message, subscriptionId });
         util.handleError(res, error);
@@ -373,9 +340,7 @@ const deleteSubscription = async (req, res) => {
     try {
         const existing = await subDao.get(orgId, subscriptionId, actorId);
         if (!existing) {
-            return res.status(404).json({
-                code: '404', message: 'Not Found', description: 'Subscription not found',
-            });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Subscription not found' }] });
         }
 
         const apiMetadata = existing.dp_api_metadata;
@@ -396,9 +361,7 @@ const deleteSubscription = async (req, res) => {
         return res.status(200).json({ message: 'Subscription deleted successfully' });
     } catch (error) {
         if (error.statusCode === 404) {
-            return res.status(404).json({
-                code: '404', message: 'Not Found', description: 'Subscription not found',
-            });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Subscription not found' }] });
         }
         logger.error('Error deleting subscription', {
             error: error.message, subscriptionId,

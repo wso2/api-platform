@@ -1397,13 +1397,13 @@ const loadAPIDefinitionRaw = async (req, res) => {
         const orgId = orgDetails.uuid;
 
         if (await isAiDisabledForPortal(orgId, viewName)) {
-            return res.status(404).json({ message: 'Not Found' });
+            return util.sendError(res, 404, 'Not Found');
         }
 
         const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
 
         if (definitionResponse.metaData?.agentVisibility === 'HIDDEN') {
-            return res.status(404).json({ message: 'API specification not found' });
+            return util.sendError(res, 404, 'API specification not found');
         }
 
         const typeConfig = SPEC_FORMAT_MAP[definitionResponse.apiType] || SPEC_FORMAT_DEFAULT;
@@ -1413,7 +1413,7 @@ const loadAPIDefinitionRaw = async (req, res) => {
         }
 
         const raw = definitionResponse[typeConfig.field];
-        if (!raw) return res.status(404).json({ message: 'API specification not found' });
+        if (!raw) return util.sendError(res, 404, 'API specification not found');
 
         const apiType = definitionResponse.apiType;
 
@@ -1451,7 +1451,7 @@ const loadAPIDefinitionRaw = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        res.status(500).json({ message: 'Failed to load specification.' });
+        util.sendError(res, 500, 'Failed to load specification.');
     }
 };
 
@@ -1501,7 +1501,7 @@ const seedSamples = async (req, res) => {
     // anyone (including anonymous visitors) populate a public demo instance with samples.
     // Outside demo mode this is unreachable regardless of login/role.
     if (!config.demo?.enabled) {
-        return res.status(403).json({ error: 'Demo mode disabled' });
+        return util.sendError(res, 403, 'Demo mode disabled');
     }
     try {
         const orgDetails = await orgDao.get(orgName);
@@ -1516,7 +1516,7 @@ const seedSamples = async (req, res) => {
         res.json({ results, deployed, skipped, failed });
     } catch (err) {
         logger.error('Sample seed error', { orgName, error: err.message });
-        res.status(500).json({ error: 'Failed to seed samples' });
+        util.sendError(res, 500, 'Failed to seed samples');
     }
 };
 

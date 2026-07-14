@@ -267,7 +267,7 @@ const generateKeys = async (req, res) => {
         const appHandle = req.params.applicationId;
         const appRecord = await appDao.getId(orgId, userId, appHandle);
         if (!appRecord) {
-            return res.status(404).json({ message: 'Application not found' });
+            return util.sendError(res, 404, 'Application not found');
         }
         appId = appRecord.uuid;
         logger.info('Initiate create application key mapping...', { orgId: orgId, appId: appId });
@@ -278,17 +278,17 @@ const generateKeys = async (req, res) => {
         } = req.body;
 
         if (!consumerKey) {
-            return res.status(400).json({ message: 'consumerKey is required.' });
+            return util.sendError(res, 400, 'consumerKey is required.');
         }
 
         const kmRecord = await kmDao.getByHandle(orgId, kmName);
         if (!kmRecord) {
-            return res.status(404).json({ message: `Key manager '${kmName}' not found.` });
+            return util.sendError(res, 404, `Key manager '${kmName}' not found.`);
         }
 
         const keyType = (rawKeyType || constants.KEY_TYPE.PRODUCTION).toUpperCase();
         if (!Object.values(constants.KEY_TYPE).includes(keyType)) {
-            return res.status(400).json({ message: `Invalid type. Must be one of: ${Object.values(constants.KEY_TYPE).join(', ')}.` });
+            return util.sendError(res, 400, `Invalid type. Must be one of: ${Object.values(constants.KEY_TYPE).join(', ')}.`);
         }
 
         const appKeyMapping = {

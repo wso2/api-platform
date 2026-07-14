@@ -368,7 +368,7 @@ const getAPIMetadata = async (req, res) => {
             // Create response object
             res.status(200).send(retrievedAPI);
         } else {
-            res.status(404).send("API not found");
+            util.sendError(res, 404, 'API not found');
         }
     } catch (error) {
         logger.error('API metadata retrieval failed', {
@@ -468,7 +468,7 @@ const updateAPIMetadata = async (req, res) => {
     try {
         apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).send("API not found");
+            return util.sendError(res, 404, 'API not found');
         }
         // `type` is immutable after creation — resolveTypeOrReject below only enforces the
         // /apis-vs-/mcp-servers family boundary, not that the value matches this specific
@@ -741,7 +741,7 @@ const deleteAPIMetadata = async (req, res) => {
         try {
             apiId = await resolveScopedApiId(req, orgId, apiHandle);
             if (!apiId) {
-                return res.status(404).send("API not found");
+                return util.sendError(res, 404, 'API not found');
             }
             const subApis = await subDao.listByApi(orgId, apiId);
             if (subApis.length > 0) {
@@ -787,7 +787,7 @@ const createAPITemplate = async (req, res) => {
         const { apiId: apiHandle } = req.params;
         const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).send("API not found");
+            return util.sendError(res, 404, 'API not found');
         }
         const userId = util.resolveActor(req);
         const zipFilePath = req.file.path;
@@ -901,7 +901,7 @@ const createAPIContent = async (req, res) => {
         const { apiId: apiHandle } = req.params;
         const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).send("API not found");
+            return util.sendError(res, 404, 'API not found');
         }
         const userId = util.resolveActor(req);
         let apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic');
@@ -960,7 +960,7 @@ const updateAPITemplate = async (req, res) => {
         const { apiId: apiHandle } = req.params;
         const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).send("API not found");
+            return util.sendError(res, 404, 'API not found');
         }
         const userId = util.resolveActor(req);
         let imageMetadata;
@@ -1069,7 +1069,7 @@ const updateAPIContent = async (req, res) => {
         const { apiId: apiHandle } = req.params;
         const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).send("API not found");
+            return util.sendError(res, 404, 'API not found');
         }
         const userId = util.resolveActor(req);
         let imageMetadata;
@@ -1128,12 +1128,12 @@ const getAPIFile = async (req, res) => {
     try {
         apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).send("API not found");
+            return util.sendError(res, 404, 'API not found');
         }
         const fileExtension = path.extname(apiFileName).toLowerCase();
         apiFileResponse = await apiFileDao.get(apiFileName, type, orgId, apiId);
         if (!apiFileResponse) {
-            return res.status(404).send("API File not found");
+            return util.sendError(res, 404, 'API File not found');
         }
         apiFile = apiFileResponse.file_content;
         //convert to text to check if link
@@ -1193,7 +1193,7 @@ const deleteAPIFile = async (req, res) => {
     try {
         const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).send("API not found");
+            return util.sendError(res, 404, 'API not found');
         }
         let apiFileResponse;
         if (apiFileName) {
@@ -1204,7 +1204,7 @@ const deleteAPIFile = async (req, res) => {
         if (!apiFileResponse) {
             res.status(204).send();
         } else {
-            res.status(404).send("API Content not found");
+            util.sendError(res, 404, 'API Content not found');
         }
     } catch (error) {
         logger.error('API content deletion failed', {
@@ -1267,7 +1267,7 @@ const createSubscriptionPlan = async (req, res) => {
     });
 
     if (!subscriptionPlan || typeof subscriptionPlan !== "object") {
-        return res.status(400).json({ message: "Request body is missing or invalid" });
+        return util.sendError(res, 400, "Request body is missing or invalid");
     }
 
     try {
@@ -1309,7 +1309,7 @@ const createSubscriptionPlans = async (req, res) => {
             const userId = util.resolveActor(req);
 
             if (!Array.isArray(subscriptionPlans) || subscriptionPlans.length === 0) {
-                return res.status(400).json({ message: "Missing or invalid fields in the request payload" });
+                return util.sendError(res, 400, "Missing or invalid fields in the request payload");
             }
 
             const createdRecords = [];
@@ -1356,7 +1356,7 @@ const updateSubscriptionPlan = async (req, res) => {
     const userId = util.resolveActor(req);
 
     if (!subscriptionPlan || typeof subscriptionPlan !== "object") {
-        return res.status(400).json({ message: "Request body is missing or invalid" });
+        return util.sendError(res, 400, "Request body is missing or invalid");
     }
 
     try {
@@ -1395,7 +1395,7 @@ const updateSubscriptionPlans = async (req, res) => {
             const userId = util.resolveActor(req);
 
             if (!Array.isArray(subscriptionPlans) || subscriptionPlans.length === 0) {
-                return res.status(400).json({ message: "Missing or invalid fields in the request payload" });
+                return util.sendError(res, 400, "Missing or invalid fields in the request payload");
             }
 
             const updatedRecords = [];
@@ -1536,7 +1536,7 @@ const getLabel = async (req, res) => {
     try {
         const labelId = await labelDao.getIdByHandle(orgId, labelHandle);
         if (!labelId) {
-            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Label not found' });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Label not found' }] });
         }
         const record = await labelDao.findById(orgId, labelId);
         res.status(200).json(new LabelDTO(record));
@@ -1555,7 +1555,7 @@ const updateLabel = async (req, res) => {
     try {
         const labelId = await labelDao.getIdByHandle(orgId, labelHandle);
         if (!labelId) {
-            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Label not found' });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Label not found' }] });
         }
         const record = await labelDao.updateById(orgId, labelId, label, userId);
         res.status(200).json(new LabelDTO(record));
@@ -1572,7 +1572,7 @@ const deleteLabel = async (req, res) => {
     try {
         const labelId = await labelDao.getIdByHandle(orgId, labelHandle);
         if (!labelId) {
-            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Label not found' });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Label not found' }] });
         }
         await labelDao.deleteById(orgId, labelId);
         res.status(204).send();
@@ -1712,7 +1712,7 @@ const getView = async (req, res) => {
         if (view) {
             res.status(200).send(view);
         } else {
-            res.status(404).send(`View ${name} not found`);
+            util.sendError(res, 404, `View ${name} not found`);
         }
     } catch (error) {
         logger.error('view retrieve error failed', {

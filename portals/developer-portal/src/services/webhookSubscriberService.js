@@ -57,7 +57,7 @@ const createWebhookSubscriber = async (req, res) => {
 
         const validationError = _validateRequiredFields(payload);
         if (validationError) {
-            return res.status(400).json({ error: validationError });
+            return util.sendError(res, 400, validationError);
         }
 
         const userId = util.resolveActor(req);
@@ -68,12 +68,10 @@ const createWebhookSubscriber = async (req, res) => {
         return res.status(201).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
-            return res.status(409).json({
-                error: _uniqueConstraintMessage(error, req.body)
-            });
+            return util.sendError(res, 409, _uniqueConstraintMessage(error, req.body));
         }
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_CREATE_ERROR, { error });
-        return res.status(500).json({ error: constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_CREATE_ERROR });
+        return util.sendError(res, 500, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_CREATE_ERROR);
     }
 };
 
@@ -94,15 +92,13 @@ const updateWebhookSubscriber = async (req, res) => {
         return res.status(200).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
-            return res.status(404).json({ error: constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND);
         }
         if (error instanceof Sequelize.UniqueConstraintError) {
-            return res.status(409).json({
-                error: _uniqueConstraintMessage(error, req.body)
-            });
+            return util.sendError(res, 409, _uniqueConstraintMessage(error, req.body));
         }
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_UPDATE_ERROR, { error });
-        return res.status(500).json({ error: constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_UPDATE_ERROR });
+        return util.sendError(res, 500, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_UPDATE_ERROR);
     }
 };
 
@@ -115,7 +111,7 @@ const getWebhookSubscribers = async (req, res) => {
         return res.status(200).json(util.toPaginatedList(dtos, req));
     } catch (error) {
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_RETRIEVE_ERROR, { error });
-        return res.status(500).json({ error: constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_RETRIEVE_ERROR });
+        return util.sendError(res, 500, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_RETRIEVE_ERROR);
     }
 };
 
@@ -129,10 +125,10 @@ const getWebhookSubscriber = async (req, res) => {
         return res.status(200).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
-            return res.status(404).json({ error: constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND);
         }
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_RETRIEVE_ERROR, { error });
-        return res.status(500).json({ error: constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_RETRIEVE_ERROR });
+        return util.sendError(res, 500, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_RETRIEVE_ERROR);
     }
 };
 
@@ -156,13 +152,13 @@ const getWebhookSubscriberDeliveries = async (req, res) => {
         const { subscriberId } = req.params;
         const sub = await whDao.get(orgId, subscriberId);
         const deliveries = await eventDao.listDeliveriesForSubscriber(orgId, sub.uuid, 20);
-        return res.status(200).json({ list: deliveries.map(_formatDeliverySummary) });
+        return res.status(200).json(util.toPaginatedList(deliveries.map(_formatDeliverySummary), req));
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
-            return res.status(404).json({ error: constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND);
         }
         logger.error('Error fetching webhook subscriber deliveries', { error });
-        return res.status(500).json({ error: 'Failed to fetch webhook subscriber deliveries' });
+        return util.sendError(res, 500, 'Failed to fetch webhook subscriber deliveries');
     }
 };
 
@@ -176,10 +172,10 @@ const deleteWebhookSubscriber = async (req, res) => {
         return res.status(204).send();
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
-            return res.status(404).json({ error: constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND);
         }
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_DELETE_ERROR, { error });
-        return res.status(500).json({ error: constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_DELETE_ERROR });
+        return util.sendError(res, 500, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_DELETE_ERROR);
     }
 };
 

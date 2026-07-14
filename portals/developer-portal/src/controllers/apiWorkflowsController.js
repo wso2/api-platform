@@ -234,13 +234,13 @@ const getFlowPromptJSON = async (req, res) => {
     try {
         const orgDetails = await orgDao.get(orgName);
         if (!orgDetails) {
-            return res.status(404).json({ error: 'Organization not found' });
+            return util.sendError(res, 404, 'Organization not found');
         }
 
         const orgId = orgDetails.uuid;
 
         if (await isAiDisabledForPortal(orgId, viewName)) {
-            return res.status(404).json({ error: 'Not Found' });
+            return util.sendError(res, 404, 'Not Found');
         }
 
         const viewId = await resolveViewId(orgId, viewName);
@@ -248,7 +248,7 @@ const getFlowPromptJSON = async (req, res) => {
         const apiWorkflow = await apiWorkflowDao.getPublishedByHandle(orgId, viewId, handle, { agentVisibility: 'VISIBLE' });
 
         if (!apiWorkflow) {
-            return res.status(404).json({ error: 'API Workflow not found or not published' });
+            return util.sendError(res, 404, 'API Workflow not found or not published');
         }
 
         const rawContent = apiWorkflow.file_content;
@@ -275,7 +275,7 @@ const getFlowPromptJSON = async (req, res) => {
             viewName,
             handle
         });
-        res.status(500).json({ error: 'Error fetching API workflow' });
+        util.sendError(res, 500, 'Error fetching API workflow');
     }
 };
 
@@ -431,7 +431,7 @@ const generatePrompt = async (req, res) => {
         res.status(200).json({ agentPrompt: prompt });
     } catch (error) {
         logger.error('Error generating agent prompt', { error: error.message });
-        res.status(500).json({ message: 'Error generating agent prompt' });
+        util.sendError(res, 500, 'Error generating agent prompt');
     }
 };
 
@@ -441,28 +441,28 @@ const getWorkflowArazzoSpec = async (req, res) => {
     try {
         const orgDetails = await orgDao.get(orgName);
         if (!orgDetails) {
-            return res.status(404).json({ error: 'Organization not found' });
+            return util.sendError(res, 404, 'Organization not found');
         }
 
         const orgId = orgDetails.uuid;
 
         if (await isAiDisabledForPortal(orgId, viewName)) {
-            return res.status(404).json({ error: 'Not Found' });
+            return util.sendError(res, 404, 'Not Found');
         }
 
         const viewId = await resolveViewId(orgId, viewName);
 
         const apiWorkflow = await apiWorkflowDao.getPublishedByHandle(orgId, viewId, handle);
         if (!apiWorkflow) {
-            return res.status(404).json({ error: 'API Workflow not found or not published' });
+            return util.sendError(res, 404, 'API Workflow not found or not published');
         }
 
         if ((apiWorkflow.agent_visibility || constants.AGENT_VISIBILITY.VISIBLE) === constants.AGENT_VISIBILITY.HIDDEN) {
-            return res.status(404).json({ error: 'API Workflow not found or not published' });
+            return util.sendError(res, 404, 'API Workflow not found or not published');
         }
 
         if (apiWorkflow.content_type !== 'ARAZZO') {
-            return res.status(404).json({ error: 'This workflow does not have an Arazzo specification' });
+            return util.sendError(res, 404, 'This workflow does not have an Arazzo specification');
         }
 
         const rawContent = apiWorkflow.file_content;
@@ -478,7 +478,7 @@ const getWorkflowArazzoSpec = async (req, res) => {
             viewName,
             handle
         });
-        res.status(500).json({ error: 'Error fetching Arazzo specification' });
+        util.sendError(res, 500, 'Error fetching Arazzo specification');
     }
 };
 
