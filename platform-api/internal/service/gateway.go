@@ -538,7 +538,14 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 	return nil
 }
 
-// defaultGatewayVersion is the value stored when a client registers a gateway without a version.
+// defaultGatewayVersion is the assumed major.minor used ONLY when comparing a
+// controller-reported manifest version against a gateway that was registered
+// without a version (see ReceiveGatewayManifest). It is deliberately NOT used
+// to stamp a version at registration time: a version-less registration means
+// "unknown", and the deploy transform must assume such a gateway is a current
+// build (latest data version), not down-convert it to the legacy shape. Only a
+// gateway that positively reports an old semver — via this registration field
+// or its manifest — should be down-converted.
 const defaultGatewayVersion = "1.0"
 
 // RegisterGateway registers a new gateway with organization validation
@@ -569,10 +576,16 @@ func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, 
 		normalizedEndpoints[i] = strings.TrimSpace(endpoint)
 	}
 
+	// A version-less registration is stored as "" (unknown), NOT a fabricated
+	// "1.0": the gateway reports its real version via its manifest on connect,
+	// and until then the deploy transform must treat it as a current build
+	// (GatewayDataVersionForGateway maps "" -> latest v1). Stamping "1.0" here
+	// would wrongly down-convert every artifact to v1alpha1 for a current
+	// gateway that then refuses to route it. The manifest-version comparison
+	// still treats an empty registered version as defaultGatewayVersion via the
+	// registeredMinor fallback in ReceiveGatewayManifest, so that check is
+	// unaffected.
 	version = strings.TrimSpace(version)
-	if version == "" {
-		version = defaultGatewayVersion
-	}
 	// CalVer versions (e.g. "2026.05.13") are persisted verbatim so the exact
 	// build is preserved. Two-segment `major.minor` versions are canonicalized
 	// so equality checks against controller-reported versions (also normalized
