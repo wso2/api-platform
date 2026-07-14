@@ -72,7 +72,7 @@ function formatSubscriptionResponse(sub, audit) {
         subscriptionId: sub.uuid,
         subscriptionToken: sub.token,
         status: sub.status,
-        apiId: api.handle || sub.api_uuid,
+        artifactId: api.handle || sub.api_uuid,
         subscriptionPlanName: plan.display_name || null,
         ...audit,
     };
@@ -80,12 +80,12 @@ function formatSubscriptionResponse(sub, audit) {
 
 const createSubscription = async (req, res) => {
     const orgId = req.orgId;
-    const { apiId: apiHandle, subscriptionPlanId: reqPlanHandle } = req.body;
+    const { artifactId: apiHandle, subscriptionPlanId: reqPlanHandle } = req.body;
     const createdBy = util.resolveActor(req);
     let apiId;
 
     if (!apiHandle || typeof apiHandle !== 'string' || !apiHandle.trim()) {
-        return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'apiId is required' }] });
+        return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'artifactId is required' }] });
     }
 
     try {
@@ -142,7 +142,7 @@ const createSubscription = async (req, res) => {
 
 const listSubscriptions = async (req, res) => {
     const orgId = req.orgId;
-    const apiHandle = req.query.apiId;
+    const apiHandle = req.query.artifactId;
     let apiId;
 
     try {
@@ -227,7 +227,7 @@ const updateSubscription = async (req, res) => {
 const changePlan = async (req, res) => {
     const orgId = req.orgId;
     const subscriptionId = req.params.subId;
-    const { apiId: reqApiHandle, planId: reqPlanHandle } = req.body;
+    const { artifactId: reqApiHandle, planId: reqPlanHandle } = req.body;
     const actorId = util.resolveActor(req);
 
     try {
@@ -242,7 +242,7 @@ const changePlan = async (req, res) => {
         }
         const apiHandle = existing.dp_api_metadata ? existing.dp_api_metadata.handle : null;
         if (reqApiHandle && reqApiHandle !== apiHandle) {
-            return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'apiId does not match this subscription' }] });
+            return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'artifactId does not match this subscription' }] });
         }
 
         const apiMetadataResponse = await apiDao.get(orgId, apiId);

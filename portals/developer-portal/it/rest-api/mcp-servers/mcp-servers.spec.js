@@ -168,7 +168,7 @@ describe('MCP servers', () => {
         const name = uniqueHandle('Listable MCP Server');
         await createMcpServer({ name });
 
-        const res = await client.as('publisher').get(`/mcp-servers?apiName=${encodeURIComponent(name)}`);
+        const res = await client.as('publisher').get(`/mcp-servers?name=${encodeURIComponent(name)}`);
         expect(res.status).toBe(200);
         expect(res.body.list.some((m) => m.name === name)).toBe(true);
     });
@@ -318,7 +318,7 @@ describe('MCP servers', () => {
             const name = uniqueHandle('Should Not Appear In MCP List');
             await createApi({ name });
 
-            const res = await client.as('publisher').get(`/mcp-servers?apiName=${encodeURIComponent(name)}`);
+            const res = await client.as('publisher').get(`/mcp-servers?name=${encodeURIComponent(name)}`);
             expect(res.status).toBe(200);
             expect(res.body.list.some((m) => m.name === name)).toBe(false);
         });
@@ -327,7 +327,7 @@ describe('MCP servers', () => {
             const name = uniqueHandle('Should Not Appear In Apis List');
             await createMcpServer({ name });
 
-            const res = await client.as('publisher').get(`/apis?apiName=${encodeURIComponent(name)}`);
+            const res = await client.as('publisher').get(`/apis?name=${encodeURIComponent(name)}`);
             expect(res.status).toBe(200);
             expect(res.body.list.some((a) => a.name === name)).toBe(false);
         });

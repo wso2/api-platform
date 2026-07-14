@@ -400,7 +400,7 @@ const getAllAPIMetadata = async (req, res) => {
     try {
         const orgId = req.orgId;
         const searchTerm = req.query.query;
-        const apiName = req.query.apiName;
+        const apiName = req.query.name;
         const apiVersion = req.query.version;
         const tags = req.query.tags;
         const view = req.query.view;
@@ -412,7 +412,7 @@ const getAllAPIMetadata = async (req, res) => {
             stack: error.stack,
             orgId: req.orgId,
             searchTerm: req.query.query,
-            apiName: req.query.apiName,
+            apiName: req.query.name,
             apiVersion: req.query.version,
             tags: req.query.tags,
             view: req.query.view
@@ -890,7 +890,7 @@ const createAPITemplate = async (req, res) => {
 };
 
 const createAPIContent = async (req, res) => {
-    const uploadedFile = req.files?.apiContent?.[0] ?? req.file;
+    const uploadedFile = req.files?.content?.[0] ?? req.file;
     logger.info('Creating API content...', {
         orgId: req.orgId,
         apiId: req.params.apiId,
@@ -1058,7 +1058,7 @@ const updateAPITemplate = async (req, res) => {
 };
 
 const updateAPIContent = async (req, res) => {
-    const uploadedFile = req.files?.apiContent?.[0] ?? req.file;
+    const uploadedFile = req.files?.content?.[0] ?? req.file;
     logger.info('Updating API content...', {
         orgId: req.orgId,
         apiId: req.params.apiId,

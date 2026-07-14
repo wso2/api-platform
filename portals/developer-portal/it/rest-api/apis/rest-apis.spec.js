@@ -78,7 +78,7 @@ describe('REST APIs', () => {
         const name = uniqueHandle('Filterable API');
         await createApi({ type: 'REST', name, version: 'v2.0' });
 
-        const res = await client.as('publisher').get(`/apis?apiName=${encodeURIComponent(name)}&version=v2.0`);
+        const res = await client.as('publisher').get(`/apis?name=${encodeURIComponent(name)}&version=v2.0`);
         expect(res.status).toBe(200);
         expect(res.body.list.some((a) => a.name === name)).toBe(true);
     });
