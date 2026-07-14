@@ -83,6 +83,9 @@ const createAPIMetadata = async (req, res) => {
             // `metadata` supplied as an uploaded YAML/JSON file (k8s-style artifact document).
             apiMetadata = parseApiMetadataFromYamlRequest(req);
         } else {
+            if (!req.body.metadata) {
+                throw new Sequelize.ValidationError("Missing or invalid fields in the request payload");
+            }
             apiMetadata = JSON.parse(req.body.metadata);
             // Type is resolved centrally below, using this raw (possibly omitted) value —
             // don't resolve here, or an omitted type on a /mcp-servers request can no
@@ -507,6 +510,9 @@ const updateAPIMetadata = async (req, res) => {
             // `metadata` supplied as an uploaded YAML/JSON file (k8s-style artifact document).
             apiMetadata = parseApiMetadataFromYamlRequest(req);
         } else {
+            if (!req.body.metadata) {
+                throw new Sequelize.ValidationError("Missing or invalid fields in the request payload");
+            }
             apiMetadata = JSON.parse(req.body.metadata);
             // Type is resolved centrally below, using this raw (possibly omitted) value —
             // don't resolve here, or an omitted type on a /mcp-servers request can no

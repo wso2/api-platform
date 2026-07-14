@@ -35,13 +35,64 @@ Retrieves a single organization theme asset (CSS, image, etc.) by `fileType` and
 "string"
 ```
 
+> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
+
+```json
+[
+  {
+    "status": "error",
+    "code": "COMMON_VALIDATION_ERROR",
+    "message": "Input validation failed.",
+    "errors": [
+      {
+        "field": "name",
+        "message": "name is required."
+      }
+    ]
+  }
+]
+```
+
+```json
+{
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
+}
+```
+
+```json
+{
+  "message": "Missing or invalid fields in the request payload"
+}
+```
+
+> 404 Response
+
+```json
+{
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
+}
+```
+
 <h3 id="get-a-theme-asset-responses">Responses</h3>
 
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Stored organization content asset.|string|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Invalid or missing `fileType`/`fileName` query parameters.|string|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|No matching organization content asset was found.|string|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<h3 id="get-a-theme-asset-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+|status|error|
 
 ## Apply a theme
 

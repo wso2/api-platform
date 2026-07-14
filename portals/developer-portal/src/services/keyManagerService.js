@@ -164,10 +164,10 @@ const createKeyManager = async (req, res) => {
         return res.status(201).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
-            return util.sendError(res, 409, `A key manager with id "${req.body?.id}" already exists in this organization.`);
+            return util.sendError(res, 409, `A key manager with that id already exists in this organization.`);
         }
         if (error.name === 'YAMLException' || error.name === 'ValidationError') {
-            return util.sendError(res, 400, error.message);
+            return util.sendError(res, 400, 'Invalid payload format or validation failed.');
         }
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_CREATE_ERROR, { error });
         return util.sendError(res, 500, constants.ERROR_MESSAGE.KEY_MANAGER_CREATE_ERROR);
@@ -210,7 +210,7 @@ const updateKeyManager = async (req, res) => {
             return util.sendError(res, 409, `A key manager with that id already exists in this organization.`);
         }
         if (error.name === 'YAMLException' || error.name === 'ValidationError') {
-            return util.sendError(res, 400, error.message);
+            return util.sendError(res, 400, 'Invalid payload format or validation failed.');
         }
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_UPDATE_ERROR, { error });
         return util.sendError(res, 500, constants.ERROR_MESSAGE.KEY_MANAGER_UPDATE_ERROR);

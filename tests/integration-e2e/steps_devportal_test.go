@@ -295,7 +295,7 @@ func (w *world) subscribeInDevportal() error {
 	}
 
 	st, body, err = dpCall(http.MethodPost, "/subscriptions", map[string]any{
-		"apiId":              w.dpApiID, // the devportal API handle, not the referenceId
+		"artifactId":         w.dpApiID, // the devportal API handle, not the referenceId
 		"subscriptionPlanId": w.planID,
 	})
 	if err != nil {

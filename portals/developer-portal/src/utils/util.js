@@ -308,8 +308,8 @@ function sendError(res, statusCode, message, opts = {}) {
  */
 function toPaginatedList(list, req) {
     const total = list.length;
-    const limit = Math.min(parseInt((req.query && req.query.limit) || '20', 10) || 20, 100);
-    const offset = parseInt((req.query && req.query.offset) || '0', 10) || 0;
+    const limit = Math.min(Math.max(parseInt((req.query && req.query.limit) || '20', 10) || 20, 0), 100);
+    const offset = Math.max(parseInt((req.query && req.query.offset) || '0', 10) || 0, 0);
     const page = list.slice(offset, offset + limit);
     return {
         count: page.length,

@@ -188,17 +188,9 @@ paths:
         "200":
           $ref: "#/components/responses/OrganizationContentAssetResponse"
         "400":
-          description: Invalid or missing `fileType`/`fileName` query parameters.
-          content:
-            text/plain:
-              schema:
-                type: string
+          $ref: "#/components/responses/BadRequest"
         "404":
-          description: No matching organization content asset was found.
-          content:
-            text/plain:
-              schema:
-                type: string
+          $ref: "#/components/responses/NotFound"
       security: []
   /views/{viewId}/apply-theme:
     parameters:
