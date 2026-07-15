@@ -23,6 +23,8 @@ apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: ecommerce-api-v1
+  annotations:
+    "gateway.api-platform.wso2.com/project-id": "default"
 spec:
   displayName: E-Commerce API with Rate Limiting
   version: v1.0

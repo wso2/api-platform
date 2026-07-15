@@ -107,7 +107,7 @@ func setupImportTest(t *testing.T) *importTestDeps {
 	}
 	if _, err := db.Exec(`INSERT INTO projects (uuid, handle, display_name, organization_uuid, description, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-		importTestProjectID, "default", "default", importTestOrgID, ""); err != nil {
+		importTestProjectID, "default", "Default", importTestOrgID, ""); err != nil {
 		t.Fatalf("seed project: %v", err)
 	}
 	if _, err := db.Exec(`INSERT INTO gateways (uuid, organization_uuid, handle, display_name, description, properties, created_at, updated_at)
@@ -245,6 +245,45 @@ func TestArtifactImport_NonexistentProject(t *testing.T) {
 	}
 	if art != nil {
 		t.Errorf("artifact was created despite the project not existing in the org")
+	}
+}
+
+// TestArtifactImport_ResolvesProjectByHandleNotDisplayName is the regression guard for #2678:
+// the project-id annotation carries the project handle, not the display name. The seeded
+// project has handle "default" and display name "Default". A push whose annotation is the
+// handle ("default") must resolve and create the artifact; a push whose annotation is the
+// display name ("Default") must be rejected with ProjectNotFound.
+func TestArtifactImport_ResolvesProjectByHandleNotDisplayName(t *testing.T) {
+	d := setupImportTest(t)
+
+	// The display name ("Default") is not a handle -> the import must fail.
+	byDisplayName := restImportRequest("55555555-5555-5555-5555-555555555555", "by-display-name", "By Display Name")
+	byDisplayName.Configuration.Metadata.Annotations = projectAnnotations("Default")
+	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, byDisplayName); !apperror.ProjectNotFound.Is(err) {
+		t.Fatalf("Import(display name) error = %v, want ErrProjectNotFound", err)
+	}
+	if art, err := d.artifactRepo.GetByHandle("by-display-name", importTestOrgID); err != nil {
+		t.Fatalf("GetByHandle: %v", err)
+	} else if art != nil {
+		t.Errorf("artifact was created for a display-name project reference")
+	}
+
+	// The handle ("default") resolves -> the import succeeds and lands in the project.
+	byHandle := restImportRequest("66666666-6666-6666-6666-666666666666", "by-handle", "By Handle")
+	byHandle.Configuration.Metadata.Annotations = projectAnnotations("default")
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, byHandle)
+	if err != nil {
+		t.Fatalf("Import(handle) error = %v", err)
+	}
+	apiModel, err := d.apiRepo.GetAPIByUUID(resp.ID, importTestOrgID)
+	if err != nil {
+		t.Fatalf("GetAPIByUUID: %v", err)
+	}
+	if apiModel == nil {
+		t.Fatalf("artifact was not created for a valid handle project reference")
+	}
+	if apiModel.ProjectID != importTestProjectID {
+		t.Errorf("artifact ProjectID = %q, want %q (the project resolved by handle)", apiModel.ProjectID, importTestProjectID)
 	}
 }
 

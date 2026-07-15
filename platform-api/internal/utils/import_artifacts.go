@@ -142,14 +142,14 @@ func ArtifactImportRank(kind string) int {
 	return len(artifactImportOrder)
 }
 
-// ResolveImportProject extracts the project identifier from the k8s-shaped metadata.
-// The project is identified by the domain-prefixed project-id annotation or the label as a fallback.
+// ResolveImportProject extracts the project handle from the k8s-shaped metadata.
+// The project is identified by the domain-prefixed project-id annotation or the deprecated bare label as a fallback.
 func ResolveImportProject(md dto.ArtifactImportMetadata) string {
-	projectId := md.Annotations[commonconstants.AnnotationProjectID]
-	if projectId == "" {
-		projectId = md.Labels[commonconstants.DeprecatedLabelProjectID]
+	projectHandle := md.Annotations[commonconstants.AnnotationProjectID]
+	if projectHandle == "" {
+		projectHandle = md.Labels[commonconstants.DeprecatedLabelProjectID]
 	}
-	return projectId
+	return projectHandle
 }
 
 // IsNewerDeployment reports whether incoming supersedes the working copy's current

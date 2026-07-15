@@ -30,6 +30,8 @@ apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProxy
 metadata:
   name: openai-to-azure-openai
+  annotations:
+    "gateway.api-platform.wso2.com/project-id": "default"
 spec:
   displayName: OpenAI to Azure OpenAI Proxy
   version: v1.0
