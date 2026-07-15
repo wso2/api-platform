@@ -363,12 +363,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	// Append because the proxy may already hold an api-level host-header policy (see Step 3).
 	if proxy.Spec.GlobalPolicies != nil && len(*proxy.Spec.GlobalPolicies) > 0 {
 		gp := make([]api.Policy, len(*proxy.Spec.GlobalPolicies))
-		for i, p := range *proxy.Spec.GlobalPolicies {
-			if p.Name == "advanced-ratelimit" {
-				p = withGlobalAdvancedRatelimitKeyExtraction(p)
-			}
-			gp[i] = p
-		}
+		copy(gp, *proxy.Spec.GlobalPolicies)
 		if spec.Policies == nil {
 			spec.Policies = &gp
 		} else {
@@ -718,12 +713,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 	// applied across ALL operations as one shared scope, evaluated before operation-level policies.
 	if provider.Spec.GlobalPolicies != nil && len(*provider.Spec.GlobalPolicies) > 0 {
 		gp := make([]api.Policy, len(*provider.Spec.GlobalPolicies))
-		for i, p := range *provider.Spec.GlobalPolicies {
-			if p.Name == "advanced-ratelimit" {
-				p = withGlobalAdvancedRatelimitKeyExtraction(p)
-			}
-			gp[i] = p
-		}
+		copy(gp, *provider.Spec.GlobalPolicies)
 		if spec.Policies == nil {
 			spec.Policies = &gp
 		} else {
@@ -798,9 +788,9 @@ func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAu
 }
 
 // proxyTransformerPolicy builds a translator policy for an additional provider's
-// inline transformer. The provider's upstream name is passed to the translator as
-// its "id" param so it targets the correct upstream, and gates execution so the
-// translator runs only when this provider is the selected upstream.
+// inline transformer. The provider's upstream name is passed to the translator
+// as its "providerId" param so it targets the correct upstream, and gates
+// execution so the translator runs only when this provider is selected.
 func (t *LLMProviderTransformer) proxyTransformerPolicy(transformer *api.LLMProxyTransformer, name, field string) (*api.Policy, error) {
 	if transformer == nil {
 		return nil, nil
@@ -818,7 +808,7 @@ func (t *LLMProviderTransformer) proxyTransformerPolicy(transformer *api.LLMProx
 			params[k] = v
 		}
 	}
-	params["id"] = name
+	params["providerId"] = name
 
 	condition := selectedProviderExecutionCondition(name, false)
 	return &api.Policy{
@@ -982,29 +972,6 @@ func legacyToOperationPolicy(p api.LLMPolicy) api.OperationPolicy {
 		op.Paths = append(op.Paths, api.OperationPolicyPath{Path: pe.Path, Methods: methods, Params: pe.Params})
 	}
 	return op
-}
-
-// withGlobalAdvancedRatelimitKeyExtraction returns a copy of p with
-// keyExtraction set to [{type:"apiname"}] in params if not already present,
-// so that advanced-ratelimit in globalPolicies uses one shared API-level
-// counter rather than the default per-route (routename) bucket.
-func withGlobalAdvancedRatelimitKeyExtraction(p api.Policy) api.Policy {
-	// Treat nil params as an empty map so the apiname key-extraction default is
-	// injected even when the policy carried no params.
-	var existing map[string]interface{}
-	if p.Params != nil {
-		if _, ok := (*p.Params)["keyExtraction"]; ok {
-			return p
-		}
-		existing = *p.Params
-	}
-	newParams := make(map[string]interface{}, len(existing)+1)
-	for k, v := range existing {
-		newParams[k] = v
-	}
-	newParams["keyExtraction"] = []map[string]interface{}{{"type": "apiname"}}
-	p.Params = &newParams
-	return p
 }
 
 // collectOperationLevelLLMPolicies merges the operation-level policies with the deprecated

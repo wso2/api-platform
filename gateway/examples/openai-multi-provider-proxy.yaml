@@ -20,9 +20,9 @@
 #
 #   * Multi-provider mode    — put openai-header-router first. It writes
 #     the chosen provider into metadata["selected_provider"]. Each
-#     translator then runs only when that selection equals its own "id".
-#     The "id" doubles as the upstream cluster name, so it must match an
-#     entry in additionalProviders (id or as).
+#     translator then runs only when that selection equals its own
+#     "providerId". The "providerId" doubles as the upstream cluster
+#     name, so it must match an entry in additionalProviders (id or as).
 #
 # --------------------------------------------------------------------
 

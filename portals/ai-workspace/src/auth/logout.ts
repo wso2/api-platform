@@ -76,7 +76,7 @@ const clearSiteCache = async (): Promise<void> => {
  *
  * Used when the platform API rejects a request with 401 (expired/invalid
  * session): retrying is futile. We first ask the BFF to tear down the session
- * (`POST /api/logout`) so the HttpOnly `_bff_session` cookie is cleared
+ * (`POST /api/logout`) so the HttpOnly `_ai_workspace_session` cookie is cleared
  * server-side — clearing client storage alone leaves that cookie intact, which
  * would silently re-hydrate the dead session on the next `/login` and loop the
  * user back to the error screen. We then clear all client-side session state and

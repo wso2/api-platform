@@ -1,197 +1,360 @@
 <section class="section mb-4">
     <div class="container-fluid">
-        <div class="petstore-showcase mb-4">
-            <style>
-                .petstore-showcase {
-                    position: relative;
-                    background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
-                    border-radius: 28px;
-                    padding: 32px 28px;
-                    overflow: hidden;
-                }
-                .petstore-showcase::after {
-                    content: '';
-                    position: absolute;
-                    top: -40px;
-                    right: -40px;
-                    width: 200px;
-                    height: 200px;
-                    background: rgba(59, 130, 246, 0.16);
-                    border-radius: 50%;
-                    z-index: 0;
-                }
-                .petstore-showcase-card {
-                    position: relative;
-                    z-index: 1;
-                }
-                .petstore-showcase-title {
-                    font-size: 2rem;
-                    font-weight: 800;
-                    color: #0f172a;
-                    margin-bottom: 16px;
-                }
-                .petstore-showcase-copy {
-                    color: #334155;
-                    font-size: 1rem;
-                    line-height: 1.75;
-                    margin-bottom: 24px;
-                }
-                .petstore-showcase-features {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-                    gap: 16px;
-                }
-                .petstore-showcase-item {
-                    background: #ffffff;
-                    border-radius: 20px;
-                    border: 1px solid rgba(148, 163, 184, 0.18);
-                    padding: 18px;
-                    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
-                }
-                .petstore-showcase-label {
-                    font-size: 0.9rem;
-                    font-weight: 700;
-                    color: #2563eb;
-                    margin-bottom: 10px;
-                    display: inline-block;
-                }
-                .petstore-showcase-summary {
-                    margin: 0;
-                    color: #475569;
-                    line-height: 1.8;
-                }
-                .petstore-showcase-actions {
-                    margin-top: 26px;
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 12px;
-                }
-                .petstore-showcase-button {
-                    padding: 12px 22px;
-                    border-radius: 999px;
-                    font-weight: 700;
-                    text-decoration: none;
-                }
-                .petstore-showcase-button-primary {
-                    background: #2563eb;
-                    color: #ffffff;
-                }
-                .petstore-showcase-button-secondary {
-                    background: #e0f2fe;
-                    color: #0f172a;
-                }
-                @media (max-width: 768px) {
-                    .petstore-showcase { padding: 24px; }
-                }
-            </style>
+        <style>
+            /* All colors reference theme variables so this marketing page
+               automatically respects the organization's theme. */
+            .petstore-showcase {
+                position: relative;
+                background: var(--primary-surface);
+                border: 1px solid var(--border);
+                border-radius: 1.5rem;
+                padding: 2.5rem 2rem;
+                overflow: hidden;
+                margin-bottom: 2rem;
+            }
+            .petstore-showcase::after {
+                content: '';
+                position: absolute;
+                top: -3rem;
+                right: -3rem;
+                width: 14rem;
+                height: 14rem;
+                background: var(--accent-surface);
+                border-radius: 50%;
+                z-index: 0;
+            }
+            .petstore-showcase-card {
+                position: relative;
+                z-index: 1;
+            }
+            .petstore-showcase-eyebrow {
+                display: inline-block;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                font-size: 0.75rem;
+                font-weight: 700;
+                color: var(--accent);
+                margin-bottom: 0.75rem;
+            }
+            .petstore-showcase-title {
+                font-size: 2.25rem;
+                font-weight: 800;
+                color: var(--text-strong);
+                margin-bottom: 1rem;
+                max-width: 40rem;
+            }
+            .petstore-showcase-copy {
+                color: var(--text);
+                font-size: 1.05rem;
+                line-height: 1.75;
+                margin-bottom: 1.5rem;
+                max-width: 44rem;
+            }
+            .petstore-showcase-features {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+                gap: 1rem;
+            }
+            .petstore-showcase-item {
+                background: var(--surface);
+                border-radius: 1rem;
+                border: 1px solid var(--border);
+                padding: 1.25rem;
+                box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.04);
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+            }
+            .petstore-showcase-item:hover {
+                transform: translateY(-0.25rem);
+                box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.08);
+            }
+            .petstore-showcase-icon {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 2.5rem;
+                height: 2.5rem;
+                border-radius: 0.75rem;
+                background: var(--primary-surface);
+                color: var(--primary);
+                font-size: 1.25rem;
+                margin-bottom: 0.75rem;
+            }
+            .petstore-showcase-label {
+                font-size: 1rem;
+                font-weight: 700;
+                color: var(--primary);
+                margin-bottom: 0.5rem;
+                display: block;
+            }
+            .petstore-showcase-summary {
+                margin: 0;
+                color: var(--text);
+                font-size: 0.9rem;
+                line-height: 1.7;
+            }
+            .petstore-showcase-actions {
+                margin-top: 1.75rem;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.75rem;
+            }
+            .petstore-showcase-button {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.5rem;
+                padding: 0.75rem 1.5rem;
+                border-radius: 2rem;
+                font-weight: 700;
+                text-decoration: none;
+                transition: filter 0.2s ease, transform 0.2s ease;
+            }
+            .petstore-showcase-button:hover {
+                transform: translateY(-0.125rem);
+                text-decoration: none;
+            }
+            .petstore-showcase-button-primary {
+                background: var(--primary);
+                color: var(--white);
+            }
+            .petstore-showcase-button-primary:hover {
+                background: var(--primary-dark);
+                color: var(--white);
+            }
+            .petstore-showcase-button-secondary {
+                background: var(--surface);
+                color: var(--primary);
+                border: 1px solid var(--primary);
+            }
+
+            .petstore-section {
+                margin-bottom: 2rem;
+            }
+            .petstore-section-header {
+                font-size: 1.25rem;
+                font-weight: 700;
+                color: var(--text-strong);
+                margin-bottom: 1rem;
+            }
+            .petstore-endpoint-row {
+                background: var(--surface-sunken);
+                border: 1px solid var(--border);
+                border-radius: 0.875rem;
+                padding: 1rem 1.25rem;
+                margin-bottom: 0.75rem;
+                max-width: 42rem;
+            }
+            .petstore-endpoint-label {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.4rem;
+                font-size: 0.8rem;
+                font-weight: 700;
+                color: var(--text-muted);
+                margin-bottom: 0.5rem;
+            }
+            .petstore-endpoint-dot {
+                width: 0.5rem;
+                height: 0.5rem;
+                border-radius: 50%;
+                background: var(--accent);
+            }
+            .petstore-endpoint-url-container {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+            }
+            .petstore-endpoint-url {
+                flex: 1;
+                margin: 0;
+                font-family: var(--font-family-mono);
+                font-size: 0.85rem;
+                color: var(--text-strong);
+                overflow-x: auto;
+            }
+            .petstore-copy-button {
+                background: transparent;
+                border: none;
+                color: var(--primary);
+                cursor: pointer;
+                padding: 0.25rem 0.5rem;
+            }
+
+            .petstore-scopes .api-span-tag {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.35rem;
+                border: 1px solid var(--primary);
+                color: var(--primary);
+                background: var(--primary-surface);
+                padding: 0.35rem 0.9rem;
+                border-radius: 2rem;
+                font-size: 0.8rem;
+                font-weight: 600;
+                margin: 0 0.5rem 0.5rem 0;
+            }
+
+            .petstore-resource-item {
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 0.75rem;
+                padding: 0.75rem 1rem;
+                margin-bottom: 0.5rem;
+                max-width: 46rem;
+            }
+            .petstore-http-method {
+                flex: none;
+                min-width: 3.75rem;
+                text-align: center;
+                font-size: 0.72rem;
+                font-weight: 800;
+                letter-spacing: 0.03em;
+                padding: 0.3rem 0.5rem;
+                border-radius: 0.4rem;
+                color: var(--white);
+            }
+            .petstore-http-method-GET { background: var(--info); }
+            .petstore-http-method-POST { background: var(--success); }
+            .petstore-http-method-PUT { background: var(--warning); }
+            .petstore-http-method-DELETE { background: var(--danger); }
+            .petstore-resource-path {
+                font-family: var(--font-family-mono);
+                font-size: 0.85rem;
+                color: var(--text-strong);
+                font-weight: 600;
+            }
+            .petstore-resource-summary {
+                color: var(--text-muted);
+                font-size: 0.85rem;
+                margin-left: auto;
+                text-align: right;
+            }
+
+            .petstore-faq-item {
+                border-bottom: 1px solid var(--border);
+                padding: 1rem 0;
+                max-width: 46rem;
+            }
+            .petstore-faq-question {
+                font-size: 1rem;
+                font-weight: 700;
+                color: var(--text-strong);
+                margin-bottom: 0.4rem;
+            }
+            .petstore-faq-answer {
+                font-size: 0.9rem;
+                line-height: 1.7;
+                color: var(--text);
+                margin: 0;
+            }
+
+            @media (max-width: 768px) {
+                .petstore-showcase { padding: 1.75rem 1.25rem; }
+                .petstore-showcase-title { font-size: 1.6rem; }
+                .petstore-resource-summary { display: none; }
+            }
+        </style>
+
+        <div class="petstore-showcase">
             <div class="petstore-showcase-card">
+                <span class="petstore-showcase-eyebrow">Swagger Petstore</span>
+                <h1 class="petstore-showcase-title">A friendly storefront API for pets, orders, and users</h1>
                 <p class="petstore-showcase-copy">Welcome to Petstore, a playful API experience built like a pet shop website. Browse pets, place orders, and manage user accounts with a friendly API page that feels like a real retail storefront.</p>
                 <div class="petstore-showcase-features">
                     <div class="petstore-showcase-item">
-                        <div class="petstore-showcase-label">Pet catalog</div>
-                        <p class="petstore-showcase-summary">Display pets by status with search and filtering so developers can build “find a pet” experiences.</p>
+                        <span class="petstore-showcase-icon"><i class="bi bi-shop"></i></span>
+                        <span class="petstore-showcase-label">Pet catalog</span>
+                        <p class="petstore-showcase-summary">Display pets by status with search and filtering so developers can build &ldquo;find a pet&rdquo; experiences.</p>
                     </div>
                     <div class="petstore-showcase-item">
-                        <div class="petstore-showcase-label">Order journey</div>
+                        <span class="petstore-showcase-icon"><i class="bi bi-bag-check"></i></span>
+                        <span class="petstore-showcase-label">Order journey</span>
                         <p class="petstore-showcase-summary">Simulate the full shopping flow from adding pets to placing and tracking orders.</p>
                     </div>
                     <div class="petstore-showcase-item">
-                        <div class="petstore-showcase-label">User management</div>
+                        <span class="petstore-showcase-icon"><i class="bi bi-person-gear"></i></span>
+                        <span class="petstore-showcase-label">User management</span>
                         <p class="petstore-showcase-summary">Create, update, and manage users so the API feels like a polished customer portal.</p>
                     </div>
                 </div>
                 <div class="petstore-showcase-actions">
-                    <a id="petstore-spec-link" href="#" class="petstore-showcase-button petstore-showcase-button-primary">Open API Spec</a>
-                    <a id="petstore-guides-link" href="#" class="petstore-showcase-button petstore-showcase-button-secondary">View Guides</a>
-                </div>
-            </div>
-        </div>
-        <script>
-            (function() {
-                const basePath = window.location.pathname.replace(/\/?$/, '');
-                const apiBase = basePath.endsWith('/api') ? basePath : basePath;
-                const specLink = document.getElementById('petstore-spec-link');
-                const guidesLink = document.getElementById('petstore-guides-link');
-                if (specLink) {
-                    specLink.href = `${apiBase}/docs/specification`;
-                }
-                if (guidesLink) {
-                    guidesLink.href = `${apiBase}/docs/Other/overview`;
-                }
-            })();
-        </script>
-
-        <div class="defaultapi-section">
-            <div class="container-header mb-4">Endpoints</div>
-            <div class="defaultapi-endpoint-row col-12 col-xl-9">
-                <div class="defaultapi-endpoint-content">
-                    <span class="defaultapi-development-label">Production Endpoint</span>
-                    <div class="defaultapi-endpoint-url-container d-flex">
-                        <pre id="token_api_prod_url" class="defaultapi-endpoint-url token-text mb-0">https://petstore.swagger.io/v2</pre>
-                        <a class="copy-button" aria-label="Copy token" type="button" onclick="copyToken('api_prod_url')">
-                            <i class="bi bi-copy"></i>
-                        </a>
-                    </div>
-                </div>
-            </div>
-            <div class="defaultapi-endpoint-row col-12 col-xl-9">
-                <div class="defaultapi-endpoint-content">
-                    <span class="defaultapi-development-label">Sandbox Endpoint</span>
-                    <div class="defaultapi-endpoint-url-container d-flex">
-                        <pre id="token_api_dev_url" class="defaultapi-endpoint-url token-text mb-0">https://petstore.swagger.io/v2</pre>
-                        <a class="copy-button" aria-label="Copy token" type="button" onclick="copyToken('api_dev_url')">
-                            <i class="bi bi-copy"></i>
-                        </a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="defaultapi-section">
-                <div class="container-header mb-4">Scopes</div>
-                <span class="api-span-tag">read:pets</span>
-                <span class="api-span-tag">write:pets</span>
-            </div>
-
-            <div class="defaultapi-section">
-                <div class="container-header mb-4">Resources</div>
-                <div class="defaultapi-resources col-12">
-                    <div class="defaultapi-resource-item defaultapi-resource-item-GET">
-                        <div class="defaultapi-http-method defaultapi-http-method-GET">GET</div>
-                        <div class="defaultapi-resource-path">/pet/findByStatus</div>
-                        <div class="defaultapi-resource-summary">Finds pets by status.</div>
-                    </div>
-                    <div class="defaultapi-resource-item defaultapi-resource-item-POST">
-                        <div class="defaultapi-http-method defaultapi-http-method-POST">POST</div>
-                        <div class="defaultapi-resource-path">/pet</div>
-                        <div class="defaultapi-resource-summary">Add a new pet to the store.</div>
-                    </div>
-                    <div class="defaultapi-resource-item defaultapi-resource-item-GET">
-                        <div class="defaultapi-http-method defaultapi-http-method-GET">GET</div>
-                        <div class="defaultapi-resource-path">/store/order/{orderId}</div>
-                        <div class="defaultapi-resource-summary">Find purchase order by ID.</div>
-                    </div>
-                    <div class="defaultapi-resource-item defaultapi-resource-item-POST">
-                        <div class="defaultapi-http-method defaultapi-http-method-POST">POST</div>
-                        <div class="defaultapi-resource-path">/user</div>
-                        <div class="defaultapi-resource-summary">Create a new user.</div>
-                    </div>
+                    <a href="{{baseUrl}}/api/{{apiMetadata.id}}/docs/specification" class="petstore-showcase-button petstore-showcase-button-primary">
+                        <i class="bi bi-file-earmark-code"></i> Open API Spec
+                    </a>
+                    <a href="{{baseUrl}}/api/{{apiMetadata.id}}/docs/Other/getting-started" class="petstore-showcase-button petstore-showcase-button-secondary">
+                        <i class="bi bi-book"></i> View Guides
+                    </a>
                 </div>
             </div>
         </div>
 
-        <div class="defaultapi-section">
-            <div class="container-header mb-4">FAQ</div>
-            <div class="faq-item">
-                <p class="faq-question">How do I access API docs?</p>
-                <p class="faq-answer">Use the "View API Documentation" button above to open the interactive Swagger specification.</p>
+        <div class="petstore-section">
+            <div class="petstore-section-header">Endpoints</div>
+            <div class="petstore-endpoint-row">
+                <span class="petstore-endpoint-label"><span class="petstore-endpoint-dot"></span>Production Endpoint</span>
+                <div class="petstore-endpoint-url-container">
+                    <pre id="token_api_prod_url" class="petstore-endpoint-url token-text">https://petstore.swagger.io/v2</pre>
+                    <button class="petstore-copy-button" aria-label="Copy production endpoint" type="button" onclick="copyToken(this, 'api_prod_url')">
+                        <i class="bi bi-copy"></i>
+                    </button>
+                </div>
             </div>
-            <div class="faq-item">
-                <p class="faq-question">What authentication methods are supported?</p>
-                <p class="faq-answer">This API supports API key authentication via the `api_key` header and OAuth2 implicit flow with `petstore_auth`.</p>
+            <div class="petstore-endpoint-row">
+                <span class="petstore-endpoint-label"><span class="petstore-endpoint-dot"></span>Sandbox Endpoint</span>
+                <div class="petstore-endpoint-url-container">
+                    <pre id="token_api_dev_url" class="petstore-endpoint-url token-text">https://petstore.swagger.io/v2</pre>
+                    <button class="petstore-copy-button" aria-label="Copy sandbox endpoint" type="button" onclick="copyToken(this, 'api_dev_url')">
+                        <i class="bi bi-copy"></i>
+                    </button>
+                </div>
             </div>
-            <div class="faq-item">
-                <p class="faq-question">What resources are available?</p>
-                <p class="faq-answer">You can manage pets, view inventory, place orders, and create or update users using the REST endpoints.</p>
+        </div>
+
+        <div class="petstore-section petstore-scopes">
+            <div class="petstore-section-header">Scopes</div>
+            <span class="api-span-tag"><i class="bi bi-shield-check"></i>read:pets</span>
+            <span class="api-span-tag"><i class="bi bi-shield-check"></i>write:pets</span>
+        </div>
+
+        <div class="petstore-section">
+            <div class="petstore-section-header">Resources</div>
+            <div class="petstore-resource-item">
+                <span class="petstore-http-method petstore-http-method-GET">GET</span>
+                <span class="petstore-resource-path">/pet/findByStatus</span>
+                <span class="petstore-resource-summary">Finds pets by status.</span>
+            </div>
+            <div class="petstore-resource-item">
+                <span class="petstore-http-method petstore-http-method-POST">POST</span>
+                <span class="petstore-resource-path">/pet</span>
+                <span class="petstore-resource-summary">Add a new pet to the store.</span>
+            </div>
+            <div class="petstore-resource-item">
+                <span class="petstore-http-method petstore-http-method-GET">GET</span>
+                <span class="petstore-resource-path">/store/order/{orderId}</span>
+                <span class="petstore-resource-summary">Find purchase order by ID.</span>
+            </div>
+            <div class="petstore-resource-item">
+                <span class="petstore-http-method petstore-http-method-POST">POST</span>
+                <span class="petstore-resource-path">/user</span>
+                <span class="petstore-resource-summary">Create a new user.</span>
+            </div>
+        </div>
+
+        <div class="petstore-section">
+            <div class="petstore-section-header">FAQ</div>
+            <div class="petstore-faq-item">
+                <p class="petstore-faq-question">How do I access API docs?</p>
+                <p class="petstore-faq-answer">Use the &ldquo;Open API Spec&rdquo; button above to open the interactive Swagger specification.</p>
+            </div>
+            <div class="petstore-faq-item">
+                <p class="petstore-faq-question">What authentication methods are supported?</p>
+                <p class="petstore-faq-answer">This API supports API key authentication via the <code>api_key</code> header and OAuth2 implicit flow with <code>petstore_auth</code>.</p>
+            </div>
+            <div class="petstore-faq-item">
+                <p class="petstore-faq-question">What resources are available?</p>
+                <p class="petstore-faq-answer">You can manage pets, view inventory, place orders, and create or update users using the REST endpoints.</p>
             </div>
         </div>
     </div>

@@ -103,7 +103,7 @@ func buildTestServer(t *testing.T, platformURL, jwt string) (*Server, *httptest.
 	cfg := &config.Config{
 		PlatformAPI: config.PlatformAPIConfig{URL: platformURL},
 		ProxyPrefix: "/api/proxy",
-		Cookie:      config.CookieConfig{Name: "_bff_session"},
+		Cookie:      config.CookieConfig{Name: "_ai_workspace_session"},
 		CSRFHeader:  "X-Requested-By",
 	}
 
@@ -273,7 +273,7 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 	cfg := &config.Config{
 		PlatformAPI: config.PlatformAPIConfig{URL: platform.URL},
 		ProxyPrefix: "/api/proxy",
-		Cookie:      config.CookieConfig{Name: "_bff_session"},
+		Cookie:      config.CookieConfig{Name: "_ai_workspace_session"},
 	}
 	transport, err := proxy.NewTransport(proxy.TLSClientOptions{SkipVerify: true})
 	if err != nil {
@@ -295,7 +295,10 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 	}
 	var body map[string]string
 	_ = json.NewDecoder(w.Body).Decode(&body)
-	if body["error"] != "not authenticated" {
-		t.Errorf("error = %q, want %q", body["error"], "not authenticated")
+	if body["code"] != "UNAUTHORIZED" {
+		t.Errorf("code = %q, want %q", body["code"], "UNAUTHORIZED")
+	}
+	if body["message"] != "Invalid or expired credentials." {
+		t.Errorf("message = %q, want %q", body["message"], "Invalid or expired credentials.")
 	}
 }

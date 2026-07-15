@@ -17,10 +17,19 @@
 package server
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"io"
 	"log/slog"
+	"math/big"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
 )
@@ -29,29 +38,63 @@ func testServer() *Server {
 	return &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 }
 
-// HTTPS listener outside demo mode with no certificates: a fatal misconfiguration.
-func TestBuildTLSConfig_NonDemo_MissingCert_Errors(t *testing.T) {
-	t.Setenv("APIP_DEMO_MODE", "false")
-
+// HTTPS listener with no certificates: a fatal misconfiguration — certificates
+// are always required, there is no self-signed fallback.
+func TestBuildTLSConfig_MissingCert_Errors(t *testing.T) {
 	_, err := testServer().buildTLSConfig(config.HTTPSListener{
 		Enabled: true,
 		CertDir: filepath.Join(t.TempDir(), "does-not-exist"),
 	})
 	if err == nil {
-		t.Fatal("expected an error when the HTTPS listener has no certificates outside demo mode")
+		t.Fatal("expected an error when the HTTPS listener has no certificates")
 	}
 }
 
-// HTTPS listener in demo mode with no certificates: a self-signed pair is generated.
-func TestBuildTLSConfig_Demo_GeneratesSelfSigned(t *testing.T) {
-	t.Setenv("APIP_DEMO_MODE", "true")
-	certDir := filepath.Join(t.TempDir(), "certs")
+// HTTPS listener with a mounted certificate pair: loaded successfully.
+func TestBuildTLSConfig_MountedCert_Loads(t *testing.T) {
+	certDir := t.TempDir()
+	writeTestCertPair(t, certDir)
 
 	tlsConfig, err := testServer().buildTLSConfig(config.HTTPSListener{Enabled: true, Port: "9243", CertDir: certDir})
 	if err != nil {
-		t.Fatalf("expected self-signed generation to succeed in demo mode, got %v", err)
+		t.Fatalf("expected mounted certificates to load, got %v", err)
 	}
 	if tlsConfig == nil || len(tlsConfig.Certificates) != 1 {
-		t.Fatal("expected exactly one generated certificate in demo mode")
+		t.Fatal("expected exactly one loaded certificate")
+	}
+}
+
+// writeTestCertPair writes a throwaway self-signed cert.pem / key.pem into dir.
+func writeTestCertPair(t *testing.T, dir string) {
+	t.Helper()
+
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{Organization: []string{"Platform API Test"}},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:     []string{"localhost"},
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	if err != nil {
+		t.Fatalf("create certificate: %v", err)
+	}
+	keyDER, err := x509.MarshalECPrivateKey(priv)
+	if err != nil {
+		t.Fatalf("marshal key: %v", err)
+	}
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	if err := os.WriteFile(filepath.Join(dir, "cert.pem"), certPEM, 0o644); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "key.pem"), keyPEM, 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
 	}
 }

@@ -4,3 +4,5 @@ reports
 target
 .env
 .vscode
+api-platform.env
+resources/certificates/

@@ -105,7 +105,7 @@ func defaultConfig() *Server {
 			MetricsLogInterval:   10,
 		},
 		DefaultDevPortal: DefaultDevPortal{
-			Enabled:               true,
+			Enabled:               false,
 			Name:                  "Default DevPortal",
 			Identifier:            "default",
 			APIUrl:                "http://localhost:3001",

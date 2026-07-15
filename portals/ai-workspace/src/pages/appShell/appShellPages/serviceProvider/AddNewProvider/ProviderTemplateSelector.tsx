@@ -49,9 +49,11 @@ import {
   truncateProviderDisplayName,
 } from '../../../../../utils/providerTemplateDisplay';
 
-// Logo mapping for provider templates by name (case-insensitive partial match)
-const getLogoForTemplate = (templateName: string): string | null => {
-  const lowerName = templateName.toLowerCase();
+const getLogoForTemplate = (template: ProviderTemplate): string | null => {
+  const logoUrl =
+    template.metadata?.logoUrl?.trim() || template.logoUrl?.trim();
+  if (logoUrl) return logoUrl;
+  const lowerName = template.displayName.toLowerCase();
   if (lowerName.includes('bedrock') || lowerName.includes('aws'))
     return awsBedrockLogo;
   if (lowerName.includes('openai') && !lowerName.includes('azure'))
@@ -74,7 +76,7 @@ const getShortNameForTemplate = (templateName: string): string => {
   return templateName.substring(0, 2).toUpperCase();
 };
 
-const COMING_SOON_TEMPLATE_IDS = new Set(['awsbedrock', 'aws-bedrock']);
+const COMING_SOON_TEMPLATE_IDS = new Set<string>([]);
 
 type ProviderTemplateSelectorProps = {
   templatesLoading: boolean;
@@ -160,7 +162,7 @@ export default function ProviderTemplateSelector({
                 familyHandle(templateId)
               );
               const isSelected = !isComingSoon && selectedTemplateId === template.id;
-              const logo = getLogoForTemplate(template.displayName);
+              const logo = getLogoForTemplate(template);
               const shortName = getShortNameForTemplate(template.displayName);
               return (
                 <Form.CardButton

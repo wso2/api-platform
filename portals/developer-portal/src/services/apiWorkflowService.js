@@ -186,23 +186,23 @@ const createAPIWorkflow = async (req, res) => {
         resolvedHandle = `workflow-${suffix}`;
     }
     if (id && id.trim() && !HANDLE_PATTERN.test(resolvedHandle)) {
-        return res.status(400).json({ message: "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens." });
+        return util.sendError(res, 400, "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens.");
     }
     const resolvedContentType = contentType || constants.API_WORKFLOW_CONTENT_TYPE.ARAZZO;
     if (!Object.values(constants.API_WORKFLOW_CONTENT_TYPE).includes(resolvedContentType)) {
-        return res.status(400).json({ message: `Invalid contentType. Must be one of: ${Object.values(constants.API_WORKFLOW_CONTENT_TYPE).join(', ')}.` });
+        return util.sendError(res, 400, `Invalid contentType. Must be one of: ${Object.values(constants.API_WORKFLOW_CONTENT_TYPE).join(', ')}.`);
     }
     if (status && !Object.values(constants.API_WORKFLOW_STATUS).includes(status)) {
-        return res.status(400).json({ message: `Invalid status. Must be one of: ${Object.values(constants.API_WORKFLOW_STATUS).join(', ')}.` });
+        return util.sendError(res, 400, `Invalid status. Must be one of: ${Object.values(constants.API_WORKFLOW_STATUS).join(', ')}.`);
     }
     if (agentVisibility && !Object.values(constants.AGENT_VISIBILITY).includes(agentVisibility)) {
-        return res.status(400).json({ message: `Invalid agentVisibility. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.` });
+        return util.sendError(res, 400, `Invalid agentVisibility. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
     }
     const resolvedContent = resolvedContentType === 'MD'
         ? (markdownContent || null)
         : normalizeToJSON(apiWorkflowDefinition);
     if (resolvedContentType !== 'MD' && resolvedContent === null) {
-        return res.status(400).json({ message: 'Invalid API workflow definition: content could not be parsed as valid JSON or YAML.' });
+        return util.sendError(res, 400, 'Invalid API workflow definition: content could not be parsed as valid JSON or YAML.');
     }
     let t;
     try {
@@ -235,13 +235,13 @@ const createAPIWorkflow = async (req, res) => {
     } catch (error) {
         if (t) await t.rollback();
         if (error instanceof UniqueConstraintError) {
-            return res.status(409).json({ message: 'An API workflow with this handle already exists. Please use a different handle.' });
+            return util.sendError(res, 409, 'An API workflow with this handle already exists. Please use a different handle.');
         }
         if (error instanceof CustomError) {
-            return res.status(error.statusCode).json({ message: error.message });
+            return util.sendError(res, error.statusCode, error.message);
         }
         logger.error('Error creating API Workflow', { error: error.message, stack: error.stack });
-        res.status(500).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_CREATE_ERROR });
+        util.sendError(res, 500, constants.ERROR_MESSAGE.API_WORKFLOW_CREATE_ERROR);
     }
 };
 
@@ -251,23 +251,23 @@ const updateAPIWorkflow = async (req, res) => {
     const userId = util.resolveActor(req);
     const { displayName, id, description, agentPrompt, status, agentVisibility, apiWorkflowDefinition, markdownContent, contentType } = req.body;
     if (status !== undefined && !Object.values(constants.API_WORKFLOW_STATUS).includes(status)) {
-        return res.status(400).json({ message: `Invalid status. Must be one of: ${Object.values(constants.API_WORKFLOW_STATUS).join(', ')}.` });
+        return util.sendError(res, 400, `Invalid status. Must be one of: ${Object.values(constants.API_WORKFLOW_STATUS).join(', ')}.`);
     }
     if (agentVisibility !== undefined && !Object.values(constants.AGENT_VISIBILITY).includes(agentVisibility)) {
-        return res.status(400).json({ message: `Invalid agentVisibility. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.` });
+        return util.sendError(res, 400, `Invalid agentVisibility. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
     }
     if (contentType !== undefined && !Object.values(constants.API_WORKFLOW_CONTENT_TYPE).includes(contentType)) {
-        return res.status(400).json({ message: `Invalid contentType. Must be one of: ${Object.values(constants.API_WORKFLOW_CONTENT_TYPE).join(', ')}.` });
+        return util.sendError(res, 400, `Invalid contentType. Must be one of: ${Object.values(constants.API_WORKFLOW_CONTENT_TYPE).join(', ')}.`);
     }
     if (id !== undefined && !HANDLE_PATTERN.test(id)) {
-        return res.status(400).json({ message: "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens." });
+        return util.sendError(res, 400, "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens.");
     }
     const resolvedContentType = contentType;
     const resolvedContent = resolvedContentType === 'MD'
         ? (markdownContent !== undefined ? markdownContent : undefined)
         : (apiWorkflowDefinition !== undefined ? normalizeToJSON(apiWorkflowDefinition) : undefined);
     if (resolvedContentType !== 'MD' && apiWorkflowDefinition !== undefined && resolvedContent === null) {
-        return res.status(400).json({ message: 'Invalid API workflow definition: content could not be parsed as valid JSON or YAML.' });
+        return util.sendError(res, 400, 'Invalid API workflow definition: content could not be parsed as valid JSON or YAML.');
     }
     const t = await sequelize.transaction();
     try {
@@ -275,7 +275,7 @@ const updateAPIWorkflow = async (req, res) => {
         const existing = await apiWorkflowDao.getByHandle(orgId, viewId, apiWorkflowHandle);
         if (!existing) {
             await t.rollback();
-            return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND);
         }
         const [count] = await apiWorkflowDao.update(orgId, viewId, existing.uuid, {
             displayName,
@@ -290,7 +290,7 @@ const updateAPIWorkflow = async (req, res) => {
 
         if (count === 0) {
             await t.rollback();
-            return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND);
         }
 
         await t.commit();
@@ -300,13 +300,13 @@ const updateAPIWorkflow = async (req, res) => {
     } catch (error) {
         await t.rollback();
         if (error instanceof UniqueConstraintError) {
-            return res.status(409).json({ message: 'An API workflow with this handle already exists. Please use a different handle.' });
+            return util.sendError(res, 409, 'An API workflow with this handle already exists. Please use a different handle.');
         }
         if (error instanceof CustomError) {
-            return res.status(error.statusCode).json({ message: error.message });
+            return util.sendError(res, error.statusCode, error.message);
         }
         logger.error('Error updating API Workflow', { error: error.message, stack: error.stack });
-        res.status(500).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_UPDATE_ERROR });
+        util.sendError(res, 500, constants.ERROR_MESSAGE.API_WORKFLOW_UPDATE_ERROR);
     }
 };
 
@@ -319,12 +319,12 @@ const deleteAPIWorkflow = async (req, res) => {
         const existing = await apiWorkflowDao.getByHandle(orgId, viewId, apiWorkflowHandle);
         if (!existing) {
             await t.rollback();
-            return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND);
         }
         const count = await apiWorkflowDao.delete(orgId, viewId, existing.uuid, t);
         if (count === 0) {
             await t.rollback();
-            return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND);
         }
         await t.commit();
         logger.info('API Workflow deleted', { apiWorkflowId: existing.uuid, orgId, viewId });
@@ -333,10 +333,10 @@ const deleteAPIWorkflow = async (req, res) => {
     } catch (error) {
         await t.rollback();
         if (error instanceof CustomError) {
-            return res.status(error.statusCode).json({ message: error.message });
+            return util.sendError(res, error.statusCode, error.message);
         }
         logger.error('Error deleting API Workflow', { error: error.message, stack: error.stack });
-        res.status(500).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_DELETE_ERROR });
+        util.sendError(res, 500, constants.ERROR_MESSAGE.API_WORKFLOW_DELETE_ERROR);
     }
 };
 
@@ -347,16 +347,16 @@ const getAPIWorkflow = async (req, res) => {
         const viewId = await resolveViewId(orgId, viewHandle);
         const apiWorkflow = await apiWorkflowDao.getByHandle(orgId, viewId, apiWorkflowHandle);
         if (!apiWorkflow) {
-            return res.status(404).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND);
         }
         const audit = await userIdpReferenceDao.buildSingleAuditFields(apiWorkflow);
         res.status(200).json(toAPIWorkflowDTO(apiWorkflow, audit));
     } catch (error) {
         if (error instanceof CustomError) {
-            return res.status(error.statusCode).json({ message: error.message });
+            return util.sendError(res, error.statusCode, error.message);
         }
         logger.error('Error fetching API Workflow', { error: error.message, stack: error.stack });
-        res.status(500).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_RETRIEVE_ERROR });
+        util.sendError(res, 500, constants.ERROR_MESSAGE.API_WORKFLOW_RETRIEVE_ERROR);
     }
 };
 
@@ -369,10 +369,10 @@ const getAllAPIWorkflows = async (req, res) => {
         res.status(200).json(util.toPaginatedList(await toAPIWorkflowListDTOs(apiWorkflows), req));
     } catch (error) {
         if (error instanceof CustomError) {
-            return res.status(error.statusCode).json({ message: error.message });
+            return util.sendError(res, error.statusCode, error.message);
         }
         logger.error('Error fetching API Workflows', { error: error.message, stack: error.stack });
-        res.status(500).json({ message: constants.ERROR_MESSAGE.API_WORKFLOW_RETRIEVE_ERROR });
+        util.sendError(res, 500, constants.ERROR_MESSAGE.API_WORKFLOW_RETRIEVE_ERROR);
     }
 };
 
@@ -384,11 +384,11 @@ const generatePrompt = async (req, res) => {
         res.status(200).json({ agentPrompt: prompt });
     } catch (error) {
         logger.error('Error generating agent prompt', { error: error.message });
-        res.status(500).json({ message: 'Error generating agent prompt' });
+        util.sendError(res, 500, 'Error generating agent prompt');
     }
 };
 
-// Internal utility used by settingsController
+// Internal utility for listing an org/view's API workflows (used by the settings page and llms.txt generation)
 const getAllAPIWorkflowsFromDB = async (orgId, viewId) => {
     const apiWorkflows = await apiWorkflowDao.list(orgId, viewId);
     return toAPIWorkflowListDTOs(apiWorkflows);

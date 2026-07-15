@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -857,6 +858,10 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if tpl == nil {
 		return nil, apperror.LLMProviderTemplateRefNotFound.New()
 	}
+	if !tpl.Enabled {
+		return nil, apperror.LLMProviderTemplateDisabled.New().
+			WithLogMessage("llm provider template is disabled")
+	}
 
 	// Determine handle: use provided id or auto-generate from displayName
 	var handle string
@@ -902,13 +907,10 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if err := validateLLMResourceLimit(providerCount, s.cfg.ArtifactLimits.MaxLLMProvidersPerOrg, apperror.LLMProviderLimitReached.New()); err != nil {
 		return nil, err
 	}
-	if !tpl.Enabled {
-		return nil, apperror.ValidationFailed.New("The referenced LLM provider template version is disabled.")
-	}
 
 	openapiSpec := utils.ValueOrEmpty(req.Openapi)
 	if openapiSpec == "" {
-		openapiSpec = tpl.OpenAPISpec
+		openapiSpec = resolveTemplateOpenAPISpec(context.Background(), tpl, openAPISpecFetchLimit(s.cfg), s.slogger)
 	}
 
 	// Resolve any associated gateways up-front so they can be persisted within the
@@ -1085,6 +1087,10 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	}
 	if tpl == nil {
 		return nil, apperror.LLMProviderTemplateRefNotFound.New()
+	}
+	if !tpl.Enabled {
+		return nil, apperror.LLMProviderTemplateDisabled.New().
+			WithLogMessage("llm provider template is disabled")
 	}
 
 	// Validate {{ secret "..." }} placeholders anywhere in the request — see
@@ -1380,6 +1386,11 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		return nil, err
 	}
 
+	openapiSpec := utils.ValueOrEmpty(req.Openapi)
+	if openapiSpec == "" {
+		openapiSpec = prov.OpenAPISpec
+	}
+
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
@@ -1390,7 +1401,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		CreatedBy:        createdBy,
 		Version:          req.Version,
 		ProviderUUID:     prov.UUID,
-		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
+		OpenAPISpec:      openapiSpec,
 		Configuration: model.LLMProxyConfig{
 			Context:             &contextValue,
 			Vhost:               req.Vhost,
@@ -2204,6 +2215,8 @@ func normalizeUpstreamAuthType(authType string) string {
 		return string(api.Basic)
 	case "bearer":
 		return string(api.Bearer)
+	case "other":
+		return string(api.Other)
 	default:
 		return normalized
 	}
@@ -3241,4 +3254,42 @@ func resolveAssociatedGateways(gatewayRepo repository.GatewayRepository, orgUUID
 		})
 	}
 	return resolved, nil
+}
+
+// openAPISpecFetchLimit returns the configured maximum size for a template OpenAPI spec
+// fetch, or 0 (which the fetcher treats as its safe built-in default) when unset.
+func openAPISpecFetchLimit(cfg *config.Server) int64 {
+	if cfg == nil {
+		return 0
+	}
+	return cfg.OpenAPISpecMaxFetchBytes
+}
+
+// resolveTemplateOpenAPISpec derives the OpenAPI spec to store for an artifact from its template.
+func resolveTemplateOpenAPISpec(ctx context.Context, tpl *model.LLMProviderTemplate, maxBytes int64, logger *slog.Logger) string {
+	if tpl == nil {
+		return ""
+	}
+
+	specURL := ""
+	if tpl.Metadata != nil {
+		specURL = strings.TrimSpace(tpl.Metadata.OpenapiSpecURL)
+	}
+
+	if specURL != "" {
+		spec, err := utils.FetchOpenAPISpecFromURL(ctx, specURL, maxBytes)
+		if err != nil {
+			if logger != nil {
+				logger.Warn("failed to fetch OpenAPI spec from template URL; falling back to inline spec if present",
+					"template", tpl.ID, "error", err)
+			}
+		} else if strings.TrimSpace(spec) != "" {
+			return spec
+		}
+	}
+
+	if strings.TrimSpace(tpl.OpenAPISpec) != "" {
+		return tpl.OpenAPISpec
+	}
+	return ""
 }

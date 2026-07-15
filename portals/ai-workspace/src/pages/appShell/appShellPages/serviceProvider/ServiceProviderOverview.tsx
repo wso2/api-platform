@@ -91,7 +91,6 @@ import {
   getProviderTemplateDisplayName,
   truncateProviderDisplayName,
 } from '../../../../utils/providerTemplateDisplay';
-import { filterOpenApiSpecByAccessControl } from '../../../../utils/openApiAccessControl';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
@@ -342,11 +341,6 @@ function ServiceProviderOverviewContent() {
     [openApiSpecText]
   );
   const activeAccessControl = (draftProvider ?? provider)?.accessControl;
-  const filteredOpenApiSpec = useMemo(
-    () =>
-      filterOpenApiSpecByAccessControl(parsedOpenApiSpec, activeAccessControl),
-    [parsedOpenApiSpec, activeAccessControl]
-  );
   const hasOpenApiSpecText = openApiSpecText.trim().length > 0;
   const apiKeyHeaderName = provider?.security?.apiKey?.key?.trim()
     ? provider.security.apiKey.key.trim()
@@ -921,7 +915,8 @@ function ServiceProviderOverviewContent() {
 
     return (
       <SwaggerSpecViewer
-        spec={filteredOpenApiSpec ?? parsedOpenApiSpec ?? {}}
+        spec={parsedOpenApiSpec ?? {}}
+        accessControl={activeAccessControl}
         requestBaseUrl={generatedInvokeUrl}
         defaultHeaders={swaggerDefaultHeaders}
         disableTryOutBtn={gateways.length === 0}
@@ -932,6 +927,7 @@ function ServiceProviderOverviewContent() {
         docExpansion="list"
         defaultModelsExpandDepth={-1}
         displayRequestDuration
+        enableResourceSearch
       />
     );
   };

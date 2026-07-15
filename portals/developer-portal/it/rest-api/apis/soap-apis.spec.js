@@ -16,7 +16,7 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// POST/GET/PUT/DELETE /apis (type: SOAP). apiDefinition is a WSDL file instead
+// POST/GET/PUT/DELETE /apis (type: SOAP). definition is a WSDL file instead
 // of an OpenAPI document.
 
 const client = require('../support/client');
@@ -41,14 +41,14 @@ describe('SOAP APIs', () => {
         const put = await client
             .as('publisher')
             .putMultipart(`/apis/${api.id}`)
-            .field('apiMetadata', JSON.stringify({
+            .field('metadata', JSON.stringify({
                 name: 'Updated SOAP API',
                 version: 'v1.0',
                 type: 'SOAP',
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://updated.example.invalid', sandboxURL: 'https://updated-sandbox.example.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from(SAMPLE_WSDL), 'definition.wsdl');
+            .attach('definition', Buffer.from(SAMPLE_WSDL), 'definition.wsdl');
         expect(put.status).toBe(200);
         expect(put.body.name).toBe('Updated SOAP API');
     });
@@ -67,7 +67,7 @@ describe('SOAP APIs', () => {
         const res = await client
             .as('publisher')
             .postMultipart('/apis')
-            .field('apiMetadata', JSON.stringify({
+            .field('metadata', JSON.stringify({
                 id,
                 name: 'No Definition SOAP API',
                 version: 'v1.0',

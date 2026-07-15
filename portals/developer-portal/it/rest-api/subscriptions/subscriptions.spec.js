@@ -39,23 +39,23 @@ describe('subscriptions', () => {
     });
 
     it('creates a subscription for an application to an API plan', async () => {
-        const res = await client.as('developer').post('/subscriptions', { apiId: api.id, subscriptionPlanId: 'Gold' });
+        const res = await client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: 'Gold' });
         expect(res.status).toBe(201);
-        expect(res.body.apiId).toBe(api.id);
+        expect(res.body.artifactId).toBe(api.id);
         expect(res.body.subscriptionPlanName).toBe('Gold');
         expect(res.body.status).toBe('ACTIVE');
         expect(res.body.subscriptionToken).toBeDefined();
     });
 
     it('retrieves a subscription', async () => {
-        const create = await client.as('developer').post('/subscriptions', { apiId: api.id, subscriptionPlanId: 'Gold' });
+        const create = await client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: 'Gold' });
         const res = await client.as('developer').get(`/subscriptions/${create.body.subscriptionId}`);
         expect(res.status).toBe(200);
-        expect(res.body.apiId).toBe(api.id);
+        expect(res.body.artifactId).toBe(api.id);
     });
 
     it('changes a subscription plan', async () => {
-        const create = await client.as('developer').post('/subscriptions', { apiId: api.id, subscriptionPlanId: 'Gold' });
+        const create = await client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: 'Gold' });
         const res = await client.as('developer').post(`/subscriptions/${create.body.subscriptionId}/change-plan`, { planId: 'Silver' });
         expect(res.status).toBe(200);
         expect(res.body.subscriptionPlanName).toBe('Silver');
@@ -64,7 +64,7 @@ describe('subscriptions', () => {
     });
 
     it('regenerates a subscription token', async () => {
-        const create = await client.as('developer').post('/subscriptions', { apiId: api.id, subscriptionPlanId: 'Gold' });
+        const create = await client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: 'Gold' });
         const res = await client.as('developer').post(`/subscriptions/${create.body.subscriptionId}/regenerate-token`, {});
         expect(res.status).toBe(200);
         expect(res.body.subscriptionToken).toBeDefined();
@@ -72,7 +72,7 @@ describe('subscriptions', () => {
     });
 
     it('deletes a subscription', async () => {
-        const create = await client.as('developer').post('/subscriptions', { apiId: api.id, subscriptionPlanId: 'Gold' });
+        const create = await client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: 'Gold' });
         const del = await client.as('developer').del(`/subscriptions/${create.body.subscriptionId}`);
         expect(del.status).toBe(200);
 
@@ -81,17 +81,17 @@ describe('subscriptions', () => {
     });
 
     it('rejects subscribing with a plan not linked to the API', async () => {
-        const res = await client.as('developer').post('/subscriptions', { apiId: api.id, subscriptionPlanId: 'Bronze' });
+        const res = await client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: 'Bronze' });
         expect(res.status).toBe(400);
     });
 
     it('rejects subscribing to a non-existent API', async () => {
-        const res = await client.as('developer').post('/subscriptions', { apiId: 'does-not-exist', subscriptionPlanId: 'Gold' });
+        const res = await client.as('developer').post('/subscriptions', { artifactId: 'does-not-exist', subscriptionPlanId: 'Gold' });
         expect(res.status).toBe(404);
     });
 
     it('rejects change-plan to a plan that does not exist in the org', async () => {
-        const create = await client.as('developer').post('/subscriptions', { apiId: api.id, subscriptionPlanId: 'Gold' });
+        const create = await client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: 'Gold' });
         const res = await client.as('developer').post(`/subscriptions/${create.body.subscriptionId}/change-plan`, { planId: 'DoesNotExist' });
         expect(res.status).toBe(400);
     });

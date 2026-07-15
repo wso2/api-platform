@@ -49,11 +49,12 @@ func hashSubscriptionToken(token string) string {
 }
 
 // getSubscriptionTokenEncryptionKey returns the 32-byte key for subscription token encryption.
-// The single configured ENCRYPTION_KEY is used for all at-rest encryption.
+// The single configured EncryptionKey is used for all at-rest encryption.
 func getSubscriptionTokenEncryptionKey() ([]byte, error) {
 	cfg := config.GetConfig()
 	if cfg.EncryptionKey == "" {
-		return nil, fmt.Errorf("subscription token encryption requires ENCRYPTION_KEY")
+		return nil, fmt.Errorf("subscription token encryption requires EncryptionKey. Set encryption_key" +
+			" in config via {{ env }}/{{ file }}")
 	}
 	return utils.DeriveEncryptionKey(cfg.EncryptionKey)
 }
@@ -235,7 +236,7 @@ func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscr
 }
 
 // decryptionKeyCandidates returns the derived key(s) to try during decryption.
-// With the single consolidated ENCRYPTION_KEY there is at most one candidate; the slice
+// With the single consolidated EncryptionKey there is at most one candidate; the slice
 // shape is retained so callers can keep iterating (and so back-compat candidates could be
 // re-introduced for a migration if ever needed).
 func decryptionKeyCandidates() [][]byte {

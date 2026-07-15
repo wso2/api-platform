@@ -276,12 +276,12 @@ export default function ServiceProviderSecurityTab() {
                     defaultMessage={'header'}
                   />
                 </MenuItem>
-                <MenuItem value="query">
+                {/* <MenuItem value="query">
                   <FormattedMessage
                     id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderSecurityTab.query"
                     defaultMessage={'query'}
                   />
-                </MenuItem>
+                </MenuItem> */}
               </Select>
             </FormControl>
           </Stack>

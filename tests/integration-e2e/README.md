@@ -166,7 +166,7 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
    - Webhooks are signed `t=<unix>,v1=<hmac>` over `"<t>.<body>"` and the key /
      token fields are hybrid-encrypted (RSA-OAEP-SHA256 + AES-256-GCM). platform-api
      re-encrypts the subscription token at rest, so
-     `ENCRYPTION_KEY` must be 32 bytes (64 hex chars).
+     `APIP_CP_ENCRYPTION_KEY` must be 32 bytes (64 hex chars).
    - platform-api resolves the event's **org, API and plan by handle**, so the
      devportal org's `cpRefId`, the published API's `referenceId`, and the synced
      plan's `refId` are each set to the corresponding platform-api handle.

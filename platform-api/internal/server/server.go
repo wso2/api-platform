@@ -19,17 +19,10 @@ package server
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/big"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -73,22 +66,17 @@ type Server struct {
 	logger         *slog.Logger
 }
 
-// validateAuthConfig enforces production auth requirements when demo mode is off.
+// validateAuthConfig enforces auth requirements at startup. All checks are
+// unconditional: there is no relaxed/demo mode.
 func validateAuthConfig(cfg *config.Server) error {
-	if demoMode() {
-		return nil
-	}
-	if cfg.Auth.FileBased.Enabled {
-		return fmt.Errorf("file-based authentication (AUTH_FILE_BASED_ENABLED=true) is not allowed when APIP_DEMO_MODE=false; configure an IDP (AUTH_IDP_ENABLED=true) or JWT (AUTH_JWT_ENABLED=true) instead")
-	}
-	if !cfg.Auth.IDP.Enabled && !cfg.Auth.JWT.Enabled {
-		return fmt.Errorf("APIP_DEMO_MODE=false requires a real auth mode; set AUTH_IDP_ENABLED=true or AUTH_JWT_ENABLED=true")
+	if !cfg.Auth.FileBased.Enabled && !cfg.Auth.IDP.Enabled && !cfg.Auth.JWT.Enabled {
+		return fmt.Errorf("no authentication mode is enabled; set auth.file_based.enabled=true, auth.jwt.enabled=true, or auth.idp.enabled=true")
 	}
 	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SkipValidation {
-		return fmt.Errorf("JWT signature validation cannot be skipped (AUTH_JWT_SKIP_VALIDATION=true) when APIP_DEMO_MODE=false; set AUTH_JWT_SKIP_VALIDATION=false for production")
+		return fmt.Errorf("JWT signature validation cannot be skipped (auth.jwt.skip_validation=true / APIP_CP_AUTH_JWT_SKIP_VALIDATION=true); set it to false")
 	}
-	if len(cfg.CORS.AllowedOrigins) == 0 || slices.Contains(cfg.CORS.AllowedOrigins, "*") {
-		return fmt.Errorf("CORS_ALLOWED_ORIGINS must be set to an explicit, non-wildcard list of origins when APIP_DEMO_MODE=false")
+	if slices.Contains(cfg.CORS.AllowedOrigins, "*") {
+		return fmt.Errorf("cors.allowed_origins (APIP_CP_CORS_ALLOWED_ORIGINS) must not contain \"*\"; list explicit origins, or leave it empty to disable cross-origin access")
 	}
 	return nil
 }
@@ -257,13 +245,13 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
 	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.APIKey.HashingAlgorithms, slogger)
-	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, apiUtil, cfg, slogger)
+	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
 	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 
-	// The single configured encryption key (ENCRYPTION_KEY) is used for all encrypted DB
+	// The single configured encryption key (APIP_CP_ENCRYPTION_KEY) is used for all encrypted DB
 	// columns (secrets, subscription tokens, WebSub HMAC secrets)
 	dbEncryptionKey := cfg.EncryptionKey
 	llmProviderDeploymentService := service.NewLLMProviderDeploymentService(
@@ -272,18 +260,20 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		deploymentRepo,
 		gatewayRepo,
 		orgRepo,
+		apiKeyRepo,
 		gatewayEventsService,
 		cfg,
 		slogger,
 	)
-	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
-	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
+	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
+	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
 	apiKeyUserService := service.NewAPIKeyUserService(apiKeyRepo, identityService, slogger)
 	llmProxyDeploymentService := service.NewLLMProxyDeploymentService(
 		llmProxyRepo,
 		deploymentRepo,
 		gatewayRepo,
 		orgRepo,
+		apiKeyRepo,
 		gatewayEventsService,
 		cfg,
 		slogger,
@@ -294,6 +284,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		gatewayRepo,
 		orgRepo,
 		artifactRepo,
+		apiKeyRepo,
 		gatewayEventsService,
 		cfg,
 		slogger,
@@ -359,7 +350,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	timeoutService := service.NewDeploymentTimeoutService(deploymentRepo, timeoutConfig, slogger)
 
 	slogger.Info("Initialized all services and handlers successfully")
-	slogger.Info("Platform API configuration", slog.Bool("demoMode", demoMode()))
 
 	// Setup mux and register all routes.
 	mux := http.NewServeMux()
@@ -481,27 +471,24 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// Order: CORS → auth → scope enforcer → mux
 	var chain []func(http.Handler) http.Handler
 
-	// validateAuthConfig already rejected a missing/wildcard allowlist outside demo mode.
 	// Cross-origin access is disabled by default (empty AllowedOrigins fails closed in the
-	// CORS middleware); operators must opt in explicitly via CORS_ALLOWED_ORIGINS.
+	// CORS middleware); operators must opt in explicitly via CORS.AllowedOrigins in config.
 	corsOrigins := cfg.CORS.AllowedOrigins
 	if len(corsOrigins) == 0 {
-		slogger.Warn("CORS_ALLOWED_ORIGINS not set — cross-origin requests are disabled")
+		slogger.Warn("cors.allowed_origins not set in config — cross-origin requests are disabled")
 	} else if slices.Contains(corsOrigins, "*") {
-		slogger.Warn("CORS_ALLOWED_ORIGINS contains \"*\" — allowing all origins without credentials")
+		slogger.Warn("cors.allowed_origins contains \"*\" — allowing all origins without credentials")
 	}
 	chain = append(chain, gohttpkit.CORSMiddleware(gohttpkit.CORSOptions{
 		AllowedOrigins:   corsOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
 		AllowedHeaders:   []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
-		AllowCredentials: !slices.Contains(corsOrigins, "*"),
+		AllowCredentials: true,
 	}))
 
 	if cfg.Auth.FileBased.Enabled {
 		slogger.Info("Auth mode: file-based (HMAC-signed JWT)")
-		if !demoMode() {
-			slogger.Warn("file-based authentication is enabled — this is not recommended for production; please configure an IDP of your choice")
-		}
+		slogger.Warn("file-based authentication is enabled — this is not recommended for production; please configure an IDP of your choice")
 		chain = append(chain, middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
 			SecretKey:      cfg.Auth.JWT.SecretKey,
 			TokenIssuer:    cfg.Auth.JWT.Issuer,
@@ -560,37 +547,19 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}, nil
 }
 
-// demoMode reports whether APIP_DEMO_MODE is enabled.
-// Defaults to true when the variable is unset.
-func demoMode() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
-	if v == "" {
-		return true
-	}
-	return v == "true" || v == "1"
-}
-
 // buildAuthenticator constructs an Authenticator from the server configuration.
 // Only called when file-based auth is disabled.
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
 	if !cfg.Auth.IDP.Enabled {
-		if cfg.Auth.JWT.SkipValidation {
-			if !demoMode() {
-				slogger.Warn("WARNING: JWT signature validation is DISABLED (AUTH_JWT_SKIP_VALIDATION=true) but APIP_DEMO_MODE=false. " +
-					"Tokens are NOT verified — any bearer value will be accepted. " +
-					"Set APIP_DEMO_MODE=true to suppress this warning, or set AUTH_JWT_SKIP_VALIDATION=false for production.")
-			} else {
-				slogger.Warn("JWT mode: signature validation disabled (AUTH_JWT_SKIP_VALIDATION=true) [APIP_DEMO_MODE=true]")
-			}
-		} else {
-			slogger.Info("JWT mode: HMAC signature validation enabled")
-		}
+		// validateAuthConfig already rejected skip_validation=true, so signatures
+		// are always verified here.
+		slogger.Info("JWT mode: HMAC signature validation enabled")
 		return middleware.NewJWTAuthenticator(
 			middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
 				SecretKey:      cfg.Auth.JWT.SecretKey,
 				TokenIssuer:    cfg.Auth.JWT.Issuer,
 				SkipPaths:      cfg.Auth.SkipPaths,
-				SkipValidation: cfg.Auth.JWT.SkipValidation,
+				SkipValidation: false,
 			}),
 		), nil
 	}
@@ -665,110 +634,25 @@ func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, sl
 	return m, nil
 }
 
-// generateSelfSignedCert creates a self-signed certificate for development and saves it to disk
-func generateSelfSignedCert(certPath, keyPath string, logger *slog.Logger) (tls.Certificate, error) {
-	// Generate private key
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	// CreateOrganization certificate template
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			Organization:  []string{"Platform API Dev"},
-			Country:       []string{"US"},
-			Province:      []string{""},
-			Locality:      []string{""},
-			StreetAddress: []string{""},
-			PostalCode:    []string{""},
-		},
-		NotBefore:   time.Now(),
-		NotAfter:    time.Now().Add(365 * 24 * time.Hour), // Valid for 1 year
-		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
-		DNSNames:    []string{"localhost"},
-	}
-
-	// CreateOrganization certificate
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	// CreateOrganization PEM blocks
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
-
-	// Save certificate and key to disk for persistence
-	if err := os.WriteFile(certPath, certPEM, 0644); err != nil {
-		return tls.Certificate{}, fmt.Errorf("failed to save certificate: %v", err)
-	}
-	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
-		return tls.Certificate{}, fmt.Errorf("failed to save private key: %v", err)
-	}
-	logger.Info("Saved certificate", "certPath", certPath, "keyPath", keyPath)
-
-	// CreateOrganization TLS certificate
-	cert, err := tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		logger.Error("Failed to create TLS certificate", "error", err)
-		return tls.Certificate{}, err
-	}
-
-	return cert, nil
-}
-
 // buildTLSConfig resolves the TLS listener configuration. The caller invokes it
-// only when the HTTPS listener is enabled, so certificates are always read (or,
-// in demo mode, generated) here.
+// only when the HTTPS listener is enabled. Certificates are always required —
+// there is no self-signed fallback; use the quickstart setup script (or your
+// own tooling) to generate a pair and mount it.
 func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, error) {
 	certDir := httpsCfg.CertDir
 	certPath := filepath.Join(certDir, "cert.pem")
 	keyPath := filepath.Join(certDir, "key.pem")
 
-	var cert tls.Certificate
-
-	// Try to load existing certificates first
-	if _, certErr := os.Stat(certPath); certErr == nil {
-		if _, keyErr := os.Stat(keyPath); keyErr == nil {
-			loadedCert, err := tls.LoadX509KeyPair(certPath, keyPath)
-			if err != nil {
-				s.logger.Warn("Failed to load certificates", "error", err)
-			} else {
-				s.logger.Info("Using existing certificates", "certDir", certDir)
-				cert = loadedCert
-			}
-		}
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to load TLS certificates from %q (cert.pem / key.pem): %w. "+
+				"Mount certificates there, set APIP_CP_HTTPS_CERT_DIR to a directory containing cert.pem and key.pem, "+
+				"or set APIP_CP_HTTPS_ENABLED=false to serve plain HTTP behind a TLS-terminating proxy",
+			certDir, err,
+		)
 	}
-
-	// Generate new certificate if not loaded
-	if cert.Certificate == nil {
-		if !demoMode() {
-			return nil, fmt.Errorf(
-				"no TLS certificates found at %q (cert.pem / key.pem) and APIP_DEMO_MODE=false: "+
-					"mount real certificates, set HTTPS_CERT_DIR to a directory containing cert.pem and key.pem, "+
-					"or set HTTPS_ENABLED=false to serve plain HTTP behind a TLS-terminating proxy; "+
-					"self-signed certificate generation is only permitted in demo mode",
-				certDir,
-			)
-		}
-		s.logger.Info("Generating self-signed certificate for development...")
-		// Ensure cert directory exists
-		if err := os.MkdirAll(certDir, 0755); err != nil {
-			s.logger.Error("Failed to create cert directory", "error", err)
-			return nil, fmt.Errorf("failed to create cert directory: %v", err)
-		}
-		generatedCert, err := generateSelfSignedCert(certPath, keyPath, s.logger)
-		if err != nil {
-			s.logger.Error("Failed to generate self-signed certificate", "error", err)
-			return nil, fmt.Errorf("failed to generate self-signed certificate: %v", err)
-		}
-		cert = generatedCert
-		s.logger.Warn("Note: Using self-signed certificate for development. Browsers will show security warnings.")
-	}
+	s.logger.Info("Using mounted certificates", "certDir", certDir)
 
 	return &tls.Config{
 		Certificates: []tls.Certificate{cert},
@@ -786,7 +670,23 @@ func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, err
 func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListener, timeouts config.Timeouts) error {
 	if !httpCfg.Enabled && !httpsCfg.Enabled {
 		s.logger.Error("No listeners enabled")
-		return fmt.Errorf("no listeners enabled: set HTTP_ENABLED=true and/or HTTPS_ENABLED=true")
+		return fmt.Errorf("no listeners enabled: set http.enabled=true and/or https.enabled=true in config")
+	}
+
+	// Preflight: validate listener configuration and build the TLS config before
+	// starting any listener, background job, or goroutine
+	if httpCfg.Enabled && httpCfg.Port == "" {
+		return fmt.Errorf("HTTP listener enabled but http.port is empty")
+	}
+	var tlsConfig *tls.Config
+	if httpsCfg.Enabled {
+		if httpsCfg.Port == "" {
+			return fmt.Errorf("HTTPS listener enabled but https.port is empty")
+		}
+		var err error
+		if tlsConfig, err = s.buildTLSConfig(httpsCfg); err != nil {
+			return err
+		}
 	}
 
 	// Add a health endpoint. Routes added to s.mux after startup are reachable
@@ -807,16 +707,11 @@ func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListene
 
 	// Plain-HTTP listener.
 	if httpCfg.Enabled {
-		if httpCfg.Port == "" {
-			return fmt.Errorf("HTTP listener enabled but port is empty (HTTP_PORT)")
-		}
 		// Plain HTTP is only safe when something upstream terminates TLS, or for
-		// internal traffic. Say so loudly outside demo mode.
-		if !demoMode() {
-			s.logger.Warn("Plain-HTTP listener is enabled (HTTP_ENABLED=true) while APIP_DEMO_MODE=false: " +
+		// internal traffic. Say so loudly.
+		s.logger.Warn("Plain-HTTP listener is enabled (http.enabled=true)" +
 				"terminate TLS at an ingress or service-mesh sidecar and never expose this listener " +
 				"directly to untrusted networks.")
-		}
 		httpServer := &http.Server{
 			Addr:              ":" + httpCfg.Port,
 			Handler:           s.handler,
@@ -834,13 +729,6 @@ func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListene
 
 	// TLS listener.
 	if httpsCfg.Enabled {
-		if httpsCfg.Port == "" {
-			return fmt.Errorf("HTTPS listener enabled but port is empty (HTTPS_PORT)")
-		}
-		tlsConfig, err := s.buildTLSConfig(httpsCfg)
-		if err != nil {
-			return err
-		}
 		httpsServer := &http.Server{
 			Addr:              ":" + httpsCfg.Port,
 			Handler:           s.handler,
@@ -857,11 +745,7 @@ func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListene
 		}()
 	}
 
-	mode := "PRODUCTION"
-	if demoMode() {
-		mode = "DEMO"
-	}
-	s.logger.Info("Platform API started", "mode", mode)
+	s.logger.Info("Platform API started")
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

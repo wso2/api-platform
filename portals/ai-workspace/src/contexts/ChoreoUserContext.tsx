@@ -65,7 +65,7 @@ const ChoreoUserContext = createContext<ChoreoUserContextType | null>(null);
  * Returns a single org wrapped in an array (Platform API returns one org per JWT).
  *
  * Routed same-origin through the BFF: the request carries the HttpOnly
- * `_bff_session` cookie (credentials: 'include') and the BFF injects the bearer
+ * `_ai_workspace_session` cookie (credentials: 'include') and the BFF injects the bearer
  * token. The browser holds no token, so no Authorization header is set here.
  */
 async function fetchPlatformOrganization(): Promise<Organization[]> {

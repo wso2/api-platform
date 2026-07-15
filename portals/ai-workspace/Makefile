@@ -46,16 +46,26 @@ run: ## Start AI Workspace dev server locally (installs deps if needed)
 	fi
 	npm run dev
 
-bff-build: ## Build the BFF binary (stdlib-only Go module)
+bff-build: ## Build the BFF binary
 	cd $(BFF_DIR) && GOWORK=off CGO_ENABLED=0 go build -o ../target/ai-workspace-bff .
 
+# Runs the deployed config — configs/config.toml, the same file the container mounts —
+# with the container-shaped defaults pointed at this machine. Each variable below is
+# read by that key's '{{ env "APIP_AIW_..." }}' token in the file; the token is the only
+# thing that lets an environment variable reach a key, so a key absent from the file
+# cannot be set here. To test against an IDP, add APIP_AIW_AUTH_MODE=oidc and the
+# APIP_AIW_OIDC_* variables the [oidc] tokens name — see README.md.
 bff-run: ## Run the BFF locally (proxies to PLATFORM_API_URL; pair with `make run`)
+	./setup.sh --certs-only
 	cd $(BFF_DIR) && \
-		PLATFORM_API_URL=$(PLATFORM_API_URL) \
-		PLATFORM_API_TLS_SKIP_VERIFY=true \
-		BFF_ADDR=$(BFF_DEV_ADDR) \
-		STATIC_DIR=../dist \
-		go run .
+		APIP_AIW_PLATFORM_API_URL=$(PLATFORM_API_URL) \
+		APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY=true \
+		APIP_AIW_TLS_CERT_FILE=../resources/certificates/cert.pem \
+		APIP_AIW_TLS_KEY_FILE=../resources/certificates/key.pem \
+		APIP_AIW_LISTEN_ADDR=$(BFF_DEV_ADDR) \
+		APIP_AIW_STATIC_DIR=../dist \
+		APIP_AIW_LOG_LEVEL=debug \
+		go run . -config ../configs/config.toml
 
 bff-test: ## Run BFF unit tests
 	cd $(BFF_DIR) && GOWORK=off go test ./...
@@ -106,6 +116,8 @@ e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
 build: ## Build Docker image
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	docker buildx build \
+		--build-context common=../../common \
+		--build-context httpkit=../../httpkit \
 		--build-arg VERSION=$(VERSION) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
@@ -116,6 +128,8 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 	@echo "Building and pushing multi-arch ai-workspace Docker image: $(IMAGE_NAME):$(VERSION)"
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
+		--build-context common=../../common \
+		--build-context httpkit=../../httpkit \
 		--build-arg VERSION=$(VERSION) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		--push \
@@ -172,7 +186,7 @@ endif
 .PHONY: dist clean-dist
 dist: clean-dist ## Build standalone AI Workspace + Platform API distribution zip
 	@echo "Building distribution $(DIST_NAME)..."
-	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/resources/certificates $(DIST_DIR)/resources/platform-api/db-scripts
+	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/scripts $(DIST_DIR)/resources/certificates $(DIST_DIR)/resources/platform-api/db-scripts
 	@cp -R configs/. $(DIST_DIR)/configs/
 	@cp ../../platform-api/resources/roles.yaml $(DIST_DIR)/resources/roles.yaml
 ifeq ($(PLATFORM_API_FROM_TAG),true)
@@ -184,14 +198,25 @@ ifeq ($(PLATFORM_API_FROM_TAG),true)
 	if ! git -C ../.. rev-parse -q --verify "refs/tags/$$tag" >/dev/null 2>&1; then \
 		echo "Error: tag $$tag not found (check PLATFORM_API_VERSION)" >&2; exit 1; \
 	fi; \
-	files=$$(git -C ../.. ls-tree -r --name-only "$$tag" -- platform-api/internal/database | grep '\.sql$$'); \
+	files=$$(git -C ../.. ls-tree -r --name-only "$$tag" -- platform-api/internal/database | grep 'schema\.[^.]*\.sql$$'); \
 	if [ -z "$$files" ]; then echo "Error: no .sql files found under platform-api/internal/database at $$tag" >&2; exit 1; fi; \
 	for f in $$files; do git -C ../.. show "$$tag:$$f" > "$$dest/$$(basename $$f)"; done; \
 	echo "✓ Fetched $$(echo "$$files" | wc -l | tr -d ' ') db-script(s) from $$tag"
+	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/config/config-template.toml" \
+		> $(DIST_DIR)/configs/config-platform-api-template.toml
 else
-	@cp ../../platform-api/internal/database/*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
+	@cp ../../platform-api/internal/database/schema.*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
+	@cp ../../platform-api/config/config-template.toml $(DIST_DIR)/configs/config-platform-api-template.toml
 endif
+	@printf '%s\n' \
+		'# Generated secrets — never commit these.' \
+		'*.env' \
+		'resources/certificates/*' \
+		> $(DIST_DIR)/.gitignore
+	@cp setup.sh $(DIST_DIR)/scripts/setup.sh
+	@chmod +x $(DIST_DIR)/scripts/setup.sh
 	@cp docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
+	@cp distribution/README.md $(DIST_DIR)/README.md
 	@sed -i.bak -E \
 	    -e 's|^([[:space:]]*image:[[:space:]]*.*/ai-workspace):[^[:space:]]*|\1:$(DIST_VERSION)|' \
 	    -e 's|^([[:space:]]*image:[[:space:]]*.*/platform-api):[^[:space:]]*|\1:$(PLATFORM_API_VERSION)|' \

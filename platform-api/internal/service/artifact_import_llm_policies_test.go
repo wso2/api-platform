@@ -154,7 +154,7 @@ func TestLiftLLMPolicies_RoundTrip(t *testing.T) {
 	for _, p := range remaining {
 		switch p.Name {
 		case importPolicyAPIKeyAuth, importPolicyTokenRateLimit, importPolicyAdvancedRateLimit,
-			importPolicyCostRateLimit:
+			importPolicyBasicRateLimit, importPolicyCostRateLimit:
 			t.Errorf("security/rate-limit policy %q leaked into remaining policies", p.Name)
 		}
 	}

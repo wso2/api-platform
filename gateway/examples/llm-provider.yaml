@@ -23,6 +23,7 @@ metadata:
 spec:
   displayName: WSO2 My LLM Provider
   version: v1.0
+  context: /my-llm-provider
   template: my-llm-provider-template
   vhost: api.my-llm-provider.local
   upstream:

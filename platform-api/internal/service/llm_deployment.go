@@ -29,8 +29,8 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
-	"github.com/wso2/api-platform/platform-api/internal/deploymenttransform"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -43,6 +43,7 @@ import (
 const (
 	tokenBasedRateLimitPolicyName   = "token-based-ratelimit"
 	advancedRateLimitPolicyName     = "advanced-ratelimit"
+	basicRateLimitPolicyName        = "basic-ratelimit"
 	apiKeyAuthPolicyName            = "api-key-auth"
 	llmCostPolicyName               = "llm-cost"
 	llmCostBasedRateLimitPolicyName = "llm-cost-based-ratelimit"
@@ -56,6 +57,7 @@ type LLMProviderDeploymentService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -68,6 +70,7 @@ type LLMProxyDeploymentService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -80,6 +83,7 @@ func NewLLMProviderDeploymentService(
 	deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository,
+	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
@@ -90,6 +94,7 @@ func NewLLMProviderDeploymentService(
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -102,6 +107,7 @@ func NewLLMProxyDeploymentService(
 	deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository,
+	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
@@ -111,6 +117,7 @@ func NewLLMProxyDeploymentService(
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -198,10 +205,12 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate LLM provider deployment YAML: %w", err)
 		}
-		target := deploymenttransform.ParseVersion(gateway.Version)
-		if err := deploymenttransform.Default().Transform(
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(provider.DataVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(
 			constants.LLMProvider,
-			target,
+			sourceDataVersion,
+			targetDataVersion,
 			&providerDeployment,
 		); err != nil {
 			return nil, fmt.Errorf("failed to transform LLM provider deployment for gateway %s: %w", gateway.Version, err)
@@ -276,6 +285,11 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		if err := s.gatewayEventsService.BroadcastLLMProviderDeploymentEvent(gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM provider deployment event", "error", err)
 		}
+
+		// Push existing active API keys for this provider to the (possibly newly
+		// associated) gateway so keys created before this association are recognized
+		// immediately, rather than only after the controller's next reconnect sync.
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, provider.UUID, gatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -368,6 +382,9 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		if err := s.gatewayEventsService.BroadcastLLMProviderDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM provider deployment event", "error", err)
 		}
+
+		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, provider.UUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -715,19 +732,11 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid request reset window: %w", err)
 					}
 					params := map[string]interface{}{
-						"quotas": []map[string]interface{}{
-							{
-								"name": "request-limit",
-								"limits": []map[string]interface{}{
-									{"limit": requestLimit.Count, "duration": duration},
-								},
-							},
-						},
-						"keyExtraction": []map[string]interface{}{
-							{"type": "apiname"},
+						"limits": []map[string]interface{}{
+							{"requests": requestLimit.Count, "duration": duration},
 						},
 					}
-					globalPolicies = append(globalPolicies, api.Policy{Name: advancedRateLimitPolicyName, Version: "", Params: &params})
+					globalPolicies = append(globalPolicies, api.Policy{Name: basicRateLimitPolicyName, Version: "", Params: &params})
 				}
 				if providerLevel.Global.Cost != nil && providerLevel.Global.Cost.Enabled {
 					costLimit := providerLevel.Global.Cost
@@ -773,17 +782,12 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					if err != nil {
 						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid request reset window: %w", err)
 					}
-					addOrAppendOperationPolicyPath(&operationPolicies, advancedRateLimitPolicyName, "", api.OperationPolicyPath{
+					addOrAppendOperationPolicyPath(&operationPolicies, basicRateLimitPolicyName, "", api.OperationPolicyPath{
 						Path:    "/*",
 						Methods: []api.OperationPolicyPathMethods{api.OperationPolicyPathMethodsAsterisk},
 						Params: map[string]interface{}{
-							"quotas": []map[string]interface{}{
-								{
-									"name": "request-limit",
-									"limits": []map[string]interface{}{
-										{"limit": requestLimit.Count, "duration": duration},
-									},
-								},
+							"limits": []map[string]interface{}{
+								{"requests": requestLimit.Count, "duration": duration},
 							},
 						},
 					})
@@ -835,17 +839,12 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 						if err != nil {
 							return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid request reset window for resource %s: %w", r.Resource, err)
 						}
-						addOrAppendOperationPolicyPath(&operationPolicies, advancedRateLimitPolicyName, "", api.OperationPolicyPath{
+						addOrAppendOperationPolicyPath(&operationPolicies, basicRateLimitPolicyName, "", api.OperationPolicyPath{
 							Path:    r.Resource,
 							Methods: []api.OperationPolicyPathMethods{api.OperationPolicyPathMethodsAsterisk},
 							Params: map[string]interface{}{
-								"quotas": []map[string]interface{}{
-									{
-										"name": "request-limit",
-										"limits": []map[string]interface{}{
-											{"limit": requestLimit.Count, "duration": duration},
-										},
-									},
+								"limits": []map[string]interface{}{
+									{"requests": requestLimit.Count, "duration": duration},
 								},
 							},
 						})
@@ -912,33 +911,21 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 					if err != nil {
 						return dto.LLMProviderDeploymentYAML{}, fmt.Errorf("invalid consumer request reset window: %w", err)
 					}
-					policies = append(policies, api.LLMPolicy{
-						Name:    advancedRateLimitPolicyName,
-						Version: "",
-						Paths: []api.LLMPolicyPath{
+					params := map[string]interface{}{
+						"quotas": []map[string]interface{}{
 							{
-								Path:    "/*",
-								Methods: []api.LLMPolicyPathMethods{"*"},
-								Params: map[string]interface{}{
-									"quotas": []map[string]interface{}{
-										{
-											"name": "consumer-request-limit",
-											"limits": []map[string]interface{}{
-												{
-													"limit":    requestLimit.Count,
-													"duration": duration,
-												},
-											},
-											"keyExtraction": []map[string]interface{}{
-												{"type": "routename"},
-												{"type": "metadata", "key": "x-wso2-application-id"},
-											},
-										},
-									},
+								"name": "consumer-request-limit",
+								"limits": []map[string]interface{}{
+									{"limit": requestLimit.Count, "duration": duration},
+								},
+								"keyExtraction": []map[string]interface{}{
+									{"type": "apiname"},
+									{"type": "metadata", "key": "x-wso2-application-id"},
 								},
 							},
 						},
-					})
+					}
+					globalPolicies = append(globalPolicies, api.Policy{Name: advancedRateLimitPolicyName, Version: "", Params: &params})
 				}
 				if consumerLevel.Global.Cost != nil && consumerLevel.Global.Cost.Enabled {
 					costLimit := consumerLevel.Global.Cost
@@ -1067,9 +1054,6 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 			continue
 		}
 		params := p.Params
-		if p.Name == advancedRateLimitPolicyName && params != nil {
-			params = withGlobalAdvancedRatelimitKeyExtraction(params)
-		}
 		entry := api.Policy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version)}
 		if p.ExecutionCondition != "" {
 			entry.ExecutionCondition = &p.ExecutionCondition
@@ -1120,7 +1104,10 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 	policies = orderLLMPolicies(policies)
 
 	upstream := dto.LLMUpstreamYAML{URL: main.URL, Ref: main.Ref}
-	if main.Auth != nil {
+	// "other" means auth to the upstream is handled entirely by user-attached
+	// policies (e.g. aws-authentication) - omit the auth block from the deployment
+	// artifact so the gateway does not attach a header-setting policy of its own.
+	if main.Auth != nil && normalizeUpstreamAuthType(main.Auth.Type) != "other" {
 		upstream.Auth = mapModelAuthToAPI(main.Auth)
 	}
 
@@ -1365,10 +1352,12 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate LLM proxy deployment YAML: %w", err)
 		}
-		target := deploymenttransform.ParseVersion(gateway.Version)
-		if err := deploymenttransform.Default().Transform(
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(proxy.DataVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(
 			constants.LLMProxy,
-			target,
+			sourceDataVersion,
+			targetDataVersion,
 			&proxyDeployment,
 		); err != nil {
 			return nil, fmt.Errorf("failed to transform LLM proxy deployment for gateway %s: %w", gateway.Version, err)
@@ -1443,6 +1432,9 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		if err := s.gatewayEventsService.BroadcastLLMProxyDeploymentEvent(gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM proxy deployment event", "error", err)
 		}
+
+		// Push existing active API keys for this proxy to the gateway (see BackfillAPIKeysToGateway).
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxy.UUID, gatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -1535,6 +1527,9 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		if err := s.gatewayEventsService.BroadcastLLMProxyDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM proxy deployment event", "error", err)
 		}
+
+		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxy.UUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -1821,9 +1816,6 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 			continue
 		}
 		params := p.Params
-		if p.Name == advancedRateLimitPolicyName && params != nil {
-			params = withGlobalAdvancedRatelimitKeyExtraction(params)
-		}
 		entry := api.Policy{Name: p.Name, Version: normalizePolicyVersionToMajor(p.Version)}
 		if p.ExecutionCondition != "" {
 			entry.ExecutionCondition = &p.ExecutionCondition
@@ -1886,7 +1878,10 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 		},
 	}
 
-	if proxy.Configuration.UpstreamAuth != nil {
+	// "other" means auth to the upstream is handled entirely by user-attached
+	// policies - omit the auth block from the deployment artifact so the gateway
+	// does not attach a header-setting policy of its own.
+	if proxy.Configuration.UpstreamAuth != nil && normalizeUpstreamAuthType(proxy.Configuration.UpstreamAuth.Type) != "other" {
 		proxyDeployment.Spec.Provider.Auth = mapModelUpstreamAuthToAPI(proxy.Configuration.UpstreamAuth)
 	}
 
@@ -1974,27 +1969,6 @@ func orderLLMPolicies(policies []api.LLMPolicy) []api.LLMPolicy {
 		policies[costIdx], policies[rateLimitIdx] = policies[rateLimitIdx], policies[costIdx]
 	}
 	return policies
-}
-
-// withGlobalAdvancedRatelimitKeyExtraction returns a copy of params with
-// keyExtraction defaulted to [{type:"apiname"}] when the caller did not set one.
-// advanced-ratelimit defaults to a per-route (routename) key; in globalPolicies
-// that would create one bucket per operation, so an apiname key is injected to
-// give a single shared API-level counter.
-//
-// An explicit keyExtraction is intentionally preserved untouched: a user who sets
-// it (e.g. a per-consumer header key, or routename on purpose) has made a
-// deliberate choice that this default must not override.
-func withGlobalAdvancedRatelimitKeyExtraction(params map[string]interface{}) map[string]interface{} {
-	if _, ok := params["keyExtraction"]; ok {
-		return params
-	}
-	out := make(map[string]interface{}, len(params)+1)
-	for k, v := range params {
-		out[k] = v
-	}
-	out["keyExtraction"] = []map[string]interface{}{{"type": "apiname"}}
-	return out
 }
 
 // orderLLMGlobalPolicies ensures llm-cost-based-ratelimit precedes llm-cost in the global policy list.

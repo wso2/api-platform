@@ -73,6 +73,8 @@ import (
 
 	eventgateway "github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/api/eventgateway"
 	eventgatewayconfig "github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/controlplanehooks"
+	"github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/dbschema"
 	"github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/eventlistener"
 	"github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/handler"
 	"github.com/wso2/api-platform/event-gateway/gateway-controller/pkg/hubtopic"
@@ -200,6 +202,14 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+
+	// websub_apis, webbroker_apis, and webhook_secrets are event-gateway-specific
+	// tables that core's own schema scripts do not define. Apply them against the
+	// same database connection core just opened.
+	if err := dbschema.Apply(context.Background(), db.GetDB(), cfg.Controller.Storage.Type); err != nil {
+		log.Error("Failed to initialize event-gateway database schema", slog.Any("error", err))
+		os.Exit(1)
+	}
 
 	var eventHubInstance eventhub.EventHub
 	var eventHubStorage storage.Storage
@@ -471,6 +481,7 @@ func main() {
 		lazyResourceXDSManager, templateDefinitions, subscriptionSnapshotManager, eventHubInstance,
 		secretsService, webhookSecretStore, webhookSecretSnapshotManager,
 	)
+	cpClient.SetControlPlaneEventGatewayHooks(controlplanehooks.Hooks{})
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
 	}

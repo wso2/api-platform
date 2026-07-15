@@ -22,7 +22,7 @@
 // Native-fetch client for the Platform API, routed same-origin through the BFF.
 //
 // Auth model (BFF):
-//   Every request rides the HttpOnly `_bff_session` cookie (credentials:
+//   Every request rides the HttpOnly `_ai_workspace_session` cookie (credentials:
 //   'include'), which now carries the JWT itself; the BFF reads that token
 //   straight from the cookie and injects it as the bearer when proxying to the
 //   Platform API. State-mutating requests carry a custom CSRF header that

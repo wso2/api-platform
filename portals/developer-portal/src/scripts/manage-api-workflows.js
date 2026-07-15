@@ -1355,7 +1355,7 @@ function openDeleteApiWorkflowModal(orgId, viewName, apiWorkflowId) {
 async function deleteApiWorkflow(orgId, viewName, apiWorkflowId) {
     const confirmBtn = document.getElementById('deleteApiWorkflowConfirmBtn');
     confirmBtn.disabled = true;
-    confirmBtn.style.backgroundColor = 'var(--danger-color)';
+    confirmBtn.style.backgroundColor = 'var(--danger)';
     confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Deleting…';
 
     const resetBtn = () => {

@@ -33,7 +33,7 @@ Feature: Interceptor Service Policy Integration Tests
                     passthroughOnError: false
       """
     Then the response should be successful
-    And I wait for policy snapshot sync
+    And I wait for the endpoint "http://localhost:8080/interceptor-request/v1.0/mutate" to be ready with method "POST" and body '{"client":"payload"}'
     And I set header "Content-Type" to "application/json"
     When I send a POST request to "http://localhost:8080/interceptor-request/v1.0/mutate" with body:
       """
@@ -75,6 +75,7 @@ Feature: Interceptor Service Policy Integration Tests
                     passthroughOnError: false
       """
     Then the response should be successful
+    And I wait for 10 seconds
     And I wait for policy snapshot sync
     When I send a GET request to "http://localhost:8080/interceptor-direct/v1.0/block"
     Then the response status code should be 403
@@ -119,6 +120,7 @@ Feature: Interceptor Service Policy Integration Tests
                     passthroughOnError: false
       """
     Then the response should be successful
+    And I wait for 10 seconds
     And I wait for policy snapshot sync
     When I send a GET request to "http://localhost:8080/interceptor-response/v1.0/response-rewrite"
     Then the response status code should be 202

@@ -192,7 +192,7 @@ export interface ModelProvider {
  * Authentication configuration for upstream
  */
 export interface UpstreamAuth {
-  type: 'api-key' | 'oauth2' | 'basic' | string;
+  type: 'api-key' | 'oauth2' | 'basic' | 'other' | string;
   header?: string;
   valuePrefix?: string;
   value?: string;

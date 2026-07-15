@@ -50,23 +50,10 @@ CREATE TABLE dbo.rest_apis (
     FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
-IF OBJECT_ID(N'dbo.websub_apis', N'U') IS NULL
-CREATE TABLE dbo.websub_apis (
-    uuid NVARCHAR(64) NOT NULL,
-    gateway_id NVARCHAR(64) NOT NULL,
-    configuration NVARCHAR(MAX) NOT NULL,
-    PRIMARY KEY (gateway_id, uuid),
-    FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
-);
-
-IF OBJECT_ID(N'dbo.webbroker_apis', N'U') IS NULL
-CREATE TABLE dbo.webbroker_apis (
-    uuid NVARCHAR(64) NOT NULL,
-    gateway_id NVARCHAR(64) NOT NULL,
-    configuration NVARCHAR(MAX) NOT NULL,
-    PRIMARY KEY (gateway_id, uuid),
-    FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
-);
+-- Note: websub_apis, webbroker_apis, and webhook_secrets tables are NOT defined
+-- here. They are event-gateway-specific and owned by the event-gateway-controller
+-- module (event-gateway/gateway-controller/pkg/dbschema), which applies its own
+-- supplemental DDL against this same database at startup.
 
 IF OBJECT_ID(N'dbo.llm_providers', N'U') IS NULL
 CREATE TABLE dbo.llm_providers (
@@ -263,22 +250,5 @@ CREATE TABLE dbo.secrets (
     PRIMARY KEY (gateway_id, handle)
 );
 
--- Table for encrypted per-artifact webhook secrets (gateway-scoped)
-IF OBJECT_ID(N'dbo.webhook_secrets', N'U') IS NULL
-CREATE TABLE dbo.webhook_secrets (
-    uuid NVARCHAR(64) NOT NULL,
-    gateway_id NVARCHAR(64) NOT NULL,
-    artifact_uuid NVARCHAR(64) NOT NULL,
-    name NVARCHAR(255) NOT NULL,
-    display_name NVARCHAR(255) NOT NULL,
-    ciphertext VARBINARY(MAX) NOT NULL,
-    status NVARCHAR(20) NOT NULL CHECK(status IN ('active', 'revoked')) DEFAULT 'active',
-    created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
-    updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
-    PRIMARY KEY (gateway_id, uuid),
-    CONSTRAINT uq_webhook_secrets_artifact_name UNIQUE (gateway_id, artifact_uuid, name),
-    FOREIGN KEY (gateway_id, artifact_uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
-);
-
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_webhook_secrets_artifact' AND object_id = OBJECT_ID(N'dbo.webhook_secrets'))
-CREATE INDEX idx_webhook_secrets_artifact ON dbo.webhook_secrets(gateway_id, artifact_uuid);
+-- Note: webhook_secrets (per-API HMAC secrets for the websub-hmac-auth policy)
+-- is also owned by event-gateway/gateway-controller/pkg/dbschema — see note above.

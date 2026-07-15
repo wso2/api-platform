@@ -76,7 +76,7 @@ const MINIMAL_OPENAPI_DEFINITION = JSON.stringify({
     paths: { '/ping': { get: { responses: { 200: { description: 'ok' } } } } },
 });
 
-// POST /apis takes multipart/form-data: `apiMetadata` (JSON string) + `apiDefinition`
+// POST /apis takes multipart/form-data: `metadata` (JSON string) + `definition`
 // (file) — see docs/devportal-openapi-spec-v0.9.yaml ApiMetadataMultipartBody.
 // `publisher` holds the API-management scopes; pass `role` to override.
 async function createApi(overrides = {}) {
@@ -103,8 +103,8 @@ async function createApi(overrides = {}) {
     const res = await client
         .as(role)
         .postMultipart('/apis')
-        .field('apiMetadata', JSON.stringify(metadata))
-        .attach('apiDefinition', Buffer.from(overrides.definition || MINIMAL_OPENAPI_DEFINITION), definitionFileName);
+        .field('metadata', JSON.stringify(metadata))
+        .attach('definition', Buffer.from(overrides.definition || MINIMAL_OPENAPI_DEFINITION), definitionFileName);
     if (res.status !== 201) {
         throw new Error(`Failed to seed API: ${res.status} ${JSON.stringify(res.body)}`);
     }

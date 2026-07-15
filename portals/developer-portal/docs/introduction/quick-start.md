@@ -173,8 +173,8 @@ paths:
 Scripts and CLI tools authenticate with a Bearer token obtained directly from the Platform API. Get one once, then reuse it until it expires:
 
 ```bash
-# Get a token from the Platform API (runs alongside the devportal)
-# Basic auth against the Platform API is only available in demo mode
+# Get a token from the Platform API (runs alongside the devportal).
+# Login uses the file-based credentials from the Platform API config.
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 

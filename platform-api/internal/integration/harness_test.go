@@ -41,12 +41,24 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// ENCRYPTION_KEY and AUTH_JWT_SECRET_KEY are required
-	// provide valid 64-hex keys so GetConfig() succeeds for tests that exercise subscription_repository.go.
-	os.Setenv("APIP_DEMO_MODE", "true")
-	os.Setenv("ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-	os.Setenv("AUTH_JWT_SECRET_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-	os.Exit(m.Run())
+	// config.GetConfig() is a process-wide singleton (used by subscription_repository.go for
+	// the at-rest encryption key). It resolves keys from the config file only — env vars reach
+	// config exclusively through {{ env }} tokens now — so seed the singleton with a temp
+	// config carrying throwaway 64-hex test keys.
+	const testKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	f, err := os.CreateTemp("", "it-config-*.toml")
+	if err != nil {
+		panic(fmt.Sprintf("integration harness: create temp config: %v", err))
+	}
+	if _, err := fmt.Fprintf(f, "encryption_key = %q\n\n[auth.jwt]\nenabled = true\nsecret_key = %q\n", testKey, testKey); err != nil {
+		panic(fmt.Sprintf("integration harness: write temp config: %v", err))
+	}
+	_ = f.Close()
+	config.SetConfigPath(f.Name())
+
+	code := m.Run()
+	_ = os.Remove(f.Name())
+	os.Exit(code)
 }
 
 // itDB describes the database engine under test.

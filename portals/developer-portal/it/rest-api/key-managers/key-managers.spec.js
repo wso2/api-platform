@@ -16,9 +16,8 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// POST/GET/PUT/DELETE /key-managers. Every key manager is a generic OAuth2
-// client_credentials OIDC provider (type is fixed server-side at GENERIC_OIDC
-// and is not client-configurable).
+// POST/GET/PUT/DELETE /key-managers. Every key manager is an OAuth2
+// client_credentials provider.
 // Body accepts YAML or JSON per the handler; keep the fixture JSON-only.
 // `admin` manages org-level integration config.
 
@@ -39,7 +38,6 @@ describe('key managers', () => {
         });
         expect(res.status).toBe(201);
         expect(res.body.id).toBe(id);
-        expect(res.body.type).toBe('GENERIC_OIDC');
     });
 
     it('retrieves a key manager', async () => {
@@ -86,15 +84,5 @@ describe('key managers', () => {
         const res = await client.as('admin').get('/key-managers');
         expect(res.status).toBe(200);
         expect(res.body.list.some((km) => km.id === id)).toBe(true);
-    });
-
-    it('every created key manager is GENERIC_OIDC by default', async () => {
-        const res = await client.as('admin').post('/key-managers', {
-            id: uniqueHandle('km'),
-            displayName: 'Default Type KM',
-            tokenEndpoint: 'https://asgardeo.example.invalid/oauth2/token',
-        });
-        expect(res.status).toBe(201);
-        expect(res.body.type).toBe('GENERIC_OIDC');
     });
 });

@@ -84,7 +84,6 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 	tables := []string{
 		"artifacts",
 		"rest_apis",
-		"websub_apis",
 		"llm_providers",
 		"llm_proxies",
 		"mcp_proxies",

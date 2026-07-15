@@ -278,7 +278,7 @@ const updateOrganization = async (req, res) => {
 
         const devportalMode = payload.configuration?.devportalMode;
         if (devportalMode !== undefined && !Object.values(constants.DEVPORTAL_MODE).includes(devportalMode)) {
-            return res.status(400).json({ error: `Invalid devportalMode '${devportalMode}'. Must be one of: ${Object.values(constants.DEVPORTAL_MODE).join(', ')}.` });
+            return util.sendError(res, 400, `Invalid devportalMode '${devportalMode}'. Must be one of: ${Object.values(constants.DEVPORTAL_MODE).join(', ')}.`);
         }
 
         let updatedOrg;

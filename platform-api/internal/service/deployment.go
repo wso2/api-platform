@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -47,6 +48,7 @@ type DeploymentService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	auditRepo            repository.AuditRepository
 	apiUtil              *utils.APIUtil
@@ -61,6 +63,7 @@ func NewDeploymentService(
 	deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository,
+	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
 	auditRepo repository.AuditRepository,
 	apiUtil *utils.APIUtil,
@@ -73,6 +76,7 @@ func NewDeploymentService(
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		auditRepo:            auditRepo,
 		apiUtil:              apiUtil,
@@ -245,6 +249,11 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 			return nil, fmt.Errorf("failed to build API deployment YAML: %w", err)
 		}
 		applyStructOverrides(apiDeployment, endpointURL, vhostMain, vhostSandbox)
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(apiModel.DataVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(apiModel.Kind, sourceDataVersion, targetDataVersion, apiDeployment); err != nil {
+			return nil, fmt.Errorf("failed to transform API deployment for gateway %s: %w", gateway.Version, err)
+		}
 		contentBytes, err = yaml.Marshal(apiDeployment)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal API deployment YAML: %w", err)
@@ -341,6 +350,11 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		if err := s.gatewayEventsService.BroadcastDeploymentEvent(gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast deployment event", "error", err)
 		}
+
+		// Push existing active API keys for this artifact to the (possibly newly
+		// associated) gateway so keys created before this association are recognized
+		// immediately, rather than only after the controller's next reconnect sync.
+		s.backfillAPIKeysToGateway(apiUUID, gatewayID, createdBy)
 	}
 
 	return toAPIDeploymentResponse(
@@ -423,6 +437,10 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 		if err := s.gatewayEventsService.BroadcastDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast deployment event", "error", err)
 		}
+
+		// Push existing active API keys for this artifact to the gateway so a restored
+		// deployment recognizes pre-existing keys immediately (see backfillAPIKeysToGateway).
+		s.backfillAPIKeysToGateway(apiUUID, targetDeployment.GatewayID, actor)
 	}
 
 	if s.auditRepo != nil {
@@ -873,6 +891,13 @@ func (s *DeploymentService) ensureAPIGatewayAssociation(apiUUID, gatewayID, orgU
 	}
 
 	return s.apiRepo.CreateAPIAssociation(association)
+}
+
+// backfillAPIKeysToGateway delegates to the shared BackfillAPIKeysToGateway helper so
+// every deploy path (REST, LLM provider/proxy, MCP, WebSub, WebBroker) pushes existing
+// keys identically.
+func (s *DeploymentService) backfillAPIKeysToGateway(apiUUID, gatewayID, actor string) {
+	BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, actor)
 }
 
 // DeployAPIByHandle creates a new immutable deployment artifact using API handle

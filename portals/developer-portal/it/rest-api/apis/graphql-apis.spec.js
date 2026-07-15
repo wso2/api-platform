@@ -17,7 +17,7 @@
 // --------------------------------------------------------------------
 
 // POST/GET/PUT/DELETE /apis (type: GRAPHQL). Unlike REST/SOAP, GraphQL takes a
-// `schemaDefinition` multipart field in addition to (or instead of) apiDefinition.
+// `definition` multipart field carrying the SDL.
 
 const client = require('../support/client');
 const { uniqueHandle } = require('../support/fixtures');
@@ -40,8 +40,8 @@ async function createGraphQLApi(overrides = {}) {
     const res = await client
         .as('publisher')
         .postMultipart('/apis')
-        .field('apiMetadata', JSON.stringify(metadata))
-        .attach('schemaDefinition', Buffer.from(overrides.schema || SAMPLE_SCHEMA), 'schema.graphql');
+        .field('metadata', JSON.stringify(metadata))
+        .attach('definition', Buffer.from(overrides.schema || SAMPLE_SCHEMA), 'schema.graphql');
     if (res.status !== 201) {
         throw new Error(`Failed to seed GraphQL API: ${res.status} ${JSON.stringify(res.body)}`);
     }
@@ -53,7 +53,7 @@ describe('GraphQL APIs', () => {
         await client.login('publisher');
     });
 
-    it('creates a GraphQL API with a schemaDefinition file', async () => {
+    it('creates a GraphQL API with a definition file', async () => {
         const api = await createGraphQLApi();
         const res = await client.as('publisher').get(`/apis/${api.id}`);
         expect(res.status).toBe(200);
@@ -65,14 +65,14 @@ describe('GraphQL APIs', () => {
         const put = await client
             .as('publisher')
             .putMultipart(`/apis/${api.id}`)
-            .field('apiMetadata', JSON.stringify({
+            .field('metadata', JSON.stringify({
                 name: 'Updated GraphQL API',
                 version: 'v1.0',
                 type: 'GRAPHQL',
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://updated.example.invalid', sandboxURL: 'https://updated-sandbox.example.invalid' },
             }))
-            .attach('schemaDefinition', Buffer.from('type Query { goodbye: String }'), 'schema.graphql');
+            .attach('definition', Buffer.from('type Query { goodbye: String }'), 'schema.graphql');
         expect(put.status).toBe(200);
         expect(put.body.name).toBe('Updated GraphQL API');
     });
@@ -86,12 +86,12 @@ describe('GraphQL APIs', () => {
         expect(get.status).toBe(404);
     });
 
-    it('rejects a GraphQL API created without a schemaDefinition or apiDefinition', async () => {
+    it('rejects a GraphQL API created without a definition', async () => {
         const id = uniqueHandle('graphql-api-no-schema');
         const res = await client
             .as('publisher')
             .postMultipart('/apis')
-            .field('apiMetadata', JSON.stringify({
+            .field('metadata', JSON.stringify({
                 id,
                 name: 'No Schema API',
                 version: 'v1.0',
@@ -104,13 +104,13 @@ describe('GraphQL APIs', () => {
 
     it('retrieves the stored GraphQL schema', async () => {
         // The uploaded file's own name ('schema.graphql') isn't what's persisted — the
-        // schema is always stored under the fixed name apiDefinition.graphql and
+        // schema is always stored under the fixed name definition.graphql and
         // type=API_DEFINITION (apiMetadataService.js's createAPIMetadata, using
         // constants.FILE_NAME.API_DEFINITION_GRAPHQL), same category REST/SOAP
         // definitions use.
         const schema = 'type Query { hello: String }';
         const api = await createGraphQLApi({ schema });
-        const res = await client.as('publisher').get(`/apis/${api.id}/assets?type=API_DEFINITION&fileName=apiDefinition.graphql`);
+        const res = await client.as('publisher').get(`/apis/${api.id}/assets?type=API_DEFINITION&fileName=definition.graphql`);
         expect(res.status).toBe(200);
         // .graphql isn't in util.isTextFile's allowlist, so it's served with a generic
         // binary content-type rather than text/plain — read whichever field supertest
@@ -124,7 +124,7 @@ describe('GraphQL APIs', () => {
         const res = await client
             .as('publisher')
             .postMultipart('/apis')
-            .field('apiMetadata', JSON.stringify({
+            .field('metadata', JSON.stringify({
                 id,
                 name: 'No File API',
                 version: 'v1.0',
@@ -132,7 +132,7 @@ describe('GraphQL APIs', () => {
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://x.invalid', sandboxURL: 'https://x.invalid' },
             }))
-            .attach('schemaDefinition', Buffer.from('type Query { hello: String }'), 'schema.graphql');
+            .attach('definition', Buffer.from('type Query { hello: String }'), 'schema.graphql');
         expect(res.status).toBe(201);
 
         const get = await client.as('publisher').get(`/apis/${res.body.id}/assets?type=API_DEFINITION&fileName=does-not-exist.graphql`);

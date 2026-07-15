@@ -39,8 +39,8 @@ jobs:
       - name: Validate release tag is available
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          if git ls-remote --exit-code --tags origin "refs/tags/ai-workspace/v${VERSION}" >/dev/null 2>&1; then
-            echo "Release tag ai-workspace/v${VERSION} already exists"
+          if git ls-remote --exit-code --tags origin "refs/tags/portals/ai-workspace/v${VERSION}" >/dev/null 2>&1; then
+            echo "Release tag portals/ai-workspace/v${VERSION} already exists"
             exit 1
           fi
 
@@ -91,8 +91,8 @@ jobs:
           if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
             git commit -am "Release ai-workspace version ${{ steps.version.outputs.version }}"
           fi
-          git tag -a ai-workspace/v${{ steps.version.outputs.version }} -m "AI Workspace ${{ steps.version.outputs.version }}"
-          git push origin ai-workspace/v${{ steps.version.outputs.version }}
+          git tag -a portals/ai-workspace/v${{ steps.version.outputs.version }} -m "AI Workspace ${{ steps.version.outputs.version }}"
+          git push origin portals/ai-workspace/v${{ steps.version.outputs.version }}
 
       - name: Build distribution zip
         run: |
@@ -102,7 +102,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ai-workspace/v${{ steps.version.outputs.version }}
+          tag_name: portals/ai-workspace/v${{ steps.version.outputs.version }}
           name: AI Workspace ${{ steps.version.outputs.version }}
           body: |
             ## AI Workspace Release ${{ steps.version.outputs.version }}
@@ -146,7 +146,7 @@ jobs:
           commit-message: "Bump ai-workspace to next dev version"
           title: "chore: Bump ai-workspace to next dev version"
           body: |
-            Automated version bump after release `ai-workspace/v${{ steps.version.outputs.version }}`
+            Automated version bump after release `portals/ai-workspace/v${{ steps.version.outputs.version }}`
 
             This PR bumps the ai-workspace version to the next development version.
           branch: ai-workspace-version-bump-${{ github.run_id }}

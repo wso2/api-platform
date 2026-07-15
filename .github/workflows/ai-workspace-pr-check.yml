@@ -16,9 +16,6 @@ concurrency:
 jobs:
   pr-check:
     runs-on: ubuntu-24.04
-    env:
-      ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-      AUTH_JWT_SECRET_KEY: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
     steps:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -57,6 +54,22 @@ jobs:
       # that Cypress will use — not a different one via localhost.
       - name: Map host.docker.internal on CI host
         run: echo "127.0.0.1 host.docker.internal" | sudo tee -a /etc/hosts
+
+      - name: Generate quickstart keys, credentials and certificates
+        # setup.sh writes api-platform.env (encryption/JWT keys + admin credentials) and
+        # the TLS certs both services now require. Credentials are pinned to the
+        # Cypress defaults (admin/admin) for the E2E suite.
+        run: ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./setup.sh
+        working-directory: portals/ai-workspace
+
+      - name: Export quickstart credentials as environment variables
+        # api-platform.env is loaded into the containers via docker-compose's env_file,
+        # but later steps in this job (readiness probe, Cypress) run outside those
+        # containers and need the same values as real env vars. Export every generated
+        # key to $GITHUB_ENV so each subsequent step ("test") in this job sees them.
+        run: |
+          grep -v '^#' api-platform.env | grep -v '^\s*$' >> "$GITHUB_ENV"
+        working-directory: portals/ai-workspace
 
       - name: Start quickstart stack
         # --wait blocks until all healthchecks pass. The ai-workspace healthcheck

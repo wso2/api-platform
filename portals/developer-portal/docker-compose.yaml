@@ -29,15 +29,16 @@
 #        cd ../../platform-api && make build
 #      Required — the published 0.10.0 image on ghcr.io predates the /auth/login
 #      endpoint that the username/password login form here uses.
-#   3. docker compose up
+#   3. docker compose --env-file keys.env up
 #   4. Open https://localhost:3000/default/views/default  (accept the self-signed cert warning)
 #      Login with a user defined in configs/config-platform-api.toml (default: admin / admin)
 #
 # Secrets (both are 32-byte keys — 64 hex chars / base64; generate with openssl rand -hex 32):
-#   AUTH_JWT_SECRET_KEY  — signs login JWTs; the devportal verifies with the same value.
-#   ENCRYPTION_KEY       — encrypts secrets/subscription tokens at rest.
-#   Both are REQUIRED — set them in your shell or a .env file; the Platform API fails to
-#   start if either is missing.
+#   APIP_CP_AUTH_JWT_SECRET_KEY  — signs login JWTs; the devportal verifies with the same value.
+#   APIP_CP_ENCRYPTION_KEY       — encrypts secrets/subscription tokens at rest.
+#   Both are REQUIRED. Put them in `keys.env` file and start
+#   with `docker compose --env-file keys.env up`; the Platform API reads them from
+#   config-platform-api.toml via {{ env "..." }} tokens and fails to start if either is missing.
 #
 # TLS:
 #   A self-signed certificate is generated automatically on first start and stored
@@ -64,19 +65,38 @@
 
 services:
   # ── Platform API (Go HTTPS backend — handles local auth) ────────────────────
+  # One-shot init container: generates the TLS pair the platform-api HTTPS
+  # listener requires (the server no longer generates a self-signed fallback).
+  platform-api-certgen:
+    image: alpine/openssl
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        [ -f /certs/cert.pem ] && [ -f /certs/key.pem ] && exit 0
+        openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+          -keyout /certs/key.pem -out /certs/cert.pem \
+          -subj "/O=WSO2 API Platform/CN=platform-api" \
+          -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
+    volumes:
+      - platform-api-certs:/certs
+
   platform-api:
     image: ghcr.io/wso2/api-platform/platform-api:0.11.0
     container_name: platform-api
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
-      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - APIP_CP_ENCRYPTION_KEY=${APIP_CP_ENCRYPTION_KEY:-}
+      - APIP_CP_AUTH_JWT_SECRET_KEY=${APIP_CP_AUTH_JWT_SECRET_KEY:-}
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
+      - platform-api-certs:/app/data/certs
     ports:
       - "9243:9243"
+    depends_on:
+      platform-api-certgen:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
       interval: 30s
@@ -86,7 +106,7 @@ services:
 
   devportal:
     build: .
-    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-beta-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-alpha2-SNAPSHOT
     depends_on:
       platform-api:
         condition: service_healthy
@@ -130,10 +150,10 @@ services:
       APIP_DP_LOGGING_CONSOLEONLY: "true"
 
       # Platform API — used for local auth credential validation.
-      # Set APIP_DP_PLATFORMAPI_JWTSECRET to the same value as the Platform API's AUTH_JWT_SECRET_KEY
+      # Set APIP_DP_PLATFORMAPI_JWTSECRET to the same value as the Platform API's APIP_CP_AUTH_JWT_SECRET_KEY
       # so the devportal can verify Platform API JWTs locally (no per-request login call).
       APIP_DP_PLATFORMAPI_BASEURL: "https://platform-api:9243"
-      APIP_DP_PLATFORMAPI_JWTSECRET: ${AUTH_JWT_SECRET_KEY:-}
+      APIP_DP_PLATFORMAPI_JWTSECRET: ${APIP_CP_AUTH_JWT_SECRET_KEY:-}
       APIP_DP_PLATFORMAPI_INSECURE: "true"   # Platform API uses a self-signed cert in this dev setup
 
       # AES-256-GCM key for encrypting subscription tokens and webhook secrets at rest.
@@ -149,3 +169,4 @@ volumes:
   sqlite_data:
   certs_data:
   platform-api-data:
+  platform-api-certs:

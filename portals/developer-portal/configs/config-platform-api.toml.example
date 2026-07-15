@@ -20,9 +20,14 @@
 #   Default credentials below: admin / admin
 #
 # Secrets:
-#   Set AUTH_JWT_SECRET_KEY in your environment (or .env file) to keep
-#   sessions alive across Platform API restarts. When unset, a random key
-#   is generated at startup and all sessions are invalidated on restart.
+#   APIP_CP_AUTH_JWT_SECRET_KEY (signs login JWTs; the Developer Portal verifies them with
+#   the same value via APIP_DP_PLATFORMAPI_JWTSECRET) and APIP_CP_ENCRYPTION_KEY (encrypts
+#   data at rest) are both REQUIRED 32-byte keys and are never auto-generated — the
+#   Platform API fails to start if either is missing or malformed. Generate each
+#   with: openssl rand -hex 32. Put the values in `keys.env` file and
+#   let the {{ env "..." }} tokens below resolve them — never hardcode raw values
+#   here or as literals in docker-compose.yaml. Files are preferred in production
+#   ({{ file "..." }}).
 # --------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
@@ -30,6 +35,14 @@
 # ---------------------------------------------------------------------------
 log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
 port      = "9243"
+
+# ---------------------------------------------------------------------------
+# Encryption
+# ---------------------------------------------------------------------------
+# 32-byte key (64 hex chars or base64) for all at-rest encryption. REQUIRED.
+# Resolved from the APIP_CP_ENCRYPTION_KEY env var in `keys.env` file. Files preferred:
+#   encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
 # ---------------------------------------------------------------------------
 # Database
@@ -44,6 +57,10 @@ path   = "/app/data/platform-api-devportal.db"
 [auth.jwt]
 enabled = true
 issuer  = "platform-api"
+# 32-byte key that signs login JWTs, shared with the Developer Portal
+# (APIP_DP_PLATFORMAPI_JWTSECRET must match). Resolved from APIP_CP_AUTH_JWT_SECRET_KEY
+# from `keys.env` file; files preferred: secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
+secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
 
 [auth.idp]
 enabled = false

@@ -58,7 +58,7 @@ Feature: Timeouts
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And I wait for policy snapshot sync
+    And I wait for 10 seconds
     And I record the current time as "request_start"
     When I send a GET request to "http://localhost:8080/timeout-api/v1.0/"
     Then the response status code should be 503
@@ -94,7 +94,7 @@ Feature: Timeouts
     Then the response should be successful
     And the response should be valid JSON
     And the JSON response field "status" should be "success"
-    And I wait for policy snapshot sync
+    And I wait for 10 seconds
     And I record the current time as "request_start"
     When I send a GET request to "http://localhost:8080/timeout-global/v1.0/"
     Then the response status code should be 503
@@ -169,7 +169,7 @@ Feature: Timeouts
           mode: allow_all
       """
     Then the response status code should be 201
-    And I wait for policy snapshot sync
+    And I wait for 10 seconds
     And I record the current time as "request_start"
     When I send a GET request to "http://localhost:8080/llm-connect-timeout/get"
     Then the response status code should be 503
@@ -206,7 +206,7 @@ Feature: Timeouts
         prompts: []
       """
     Then the response should be successful
-    And I wait for policy snapshot sync
+    And I wait for 10 seconds
     And I record the current time as "request_start"
     When I send a GET request to "http://localhost:8080/mcp-connect-timeout/mcp"
     Then the response status code should be 503

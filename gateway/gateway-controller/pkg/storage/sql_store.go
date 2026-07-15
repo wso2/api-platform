@@ -279,10 +279,6 @@ func kindToResourceTable(kind string) (string, error) {
 	switch kind {
 	case "RestApi":
 		return "rest_apis", nil
-	case "WebSubApi":
-		return "websub_apis", nil
-	case "WebBrokerApi":
-		return "webbroker_apis", nil
 	case "LlmProvider":
 		return "llm_providers", nil
 	case "LlmProviderTemplate":
@@ -292,8 +288,32 @@ func kindToResourceTable(kind string) (string, error) {
 	case "Mcp":
 		return "mcp_proxies", nil
 	default:
+		if table, ok := extraResourceTables[kind]; ok {
+			return table, nil
+		}
 		return "", fmt.Errorf("unknown kind: %s", kind)
 	}
+}
+
+// extraResourceTables holds kind->table entries for kinds not known to core
+// (e.g. "WebSubApi"/"WebBrokerApi") — registered by an event-gateway-controller
+// binary via RegisterKindResourceTable. This mirrors kindUnmarshalers below:
+// core's own schema scripts never define these tables (see
+// event-gateway/gateway-controller/pkg/dbschema), only the module that
+// registers a kind here knows which table backs it.
+var extraResourceTables = map[string]string{}
+
+// builtinResourceTables lists the per-kind tables core defines natively.
+// GetAllConfigs unions these with every table in extraResourceTables so
+// cross-kind listing also covers kinds registered by an external module.
+var builtinResourceTables = []string{"rest_apis", "llm_providers", "llm_proxies", "mcp_proxies"}
+
+// RegisterKindResourceTable registers the resource table name for an artifact
+// kind not known to core. Intended to be called from an init() (or equivalent
+// startup wiring) in a binary that links in support for that kind, before any
+// Storage method for that kind is used.
+func RegisterKindResourceTable(kind, table string) {
+	extraResourceTables[kind] = table
 }
 
 // kindUnmarshalers holds JSON-unmarshaling functions for artifact kinds not
@@ -993,57 +1013,38 @@ func (s *sqlStore) GetConfigByKindNameAndVersion(kind, displayName, version stri
 	return &cfg, nil
 }
 
-// GetAllConfigs retrieves all artifact configurations
+// getAllConfigsColumns is the shared SELECT list every per-table block in
+// GetAllConfigs uses, so scanConfigRows sees a consistent column order
+// regardless of which table (built-in or externally-registered) a row came from.
+const getAllConfigsColumns = `a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, r.configuration, a.desired_state,
+			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
+			a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id`
+
+// GetAllConfigs retrieves all artifact configurations.
 // TODO: (renuka) Remove this method once the in memory cache is removed.
 func (s *sqlStore) GetAllConfigs() ([]*models.StoredConfig, error) {
-	// Use UNION ALL across all type tables joined with artifacts
-	query := `
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, r.configuration, a.desired_state,
-				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
-				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
+	// Union every built-in resource table with every externally-registered one
+	// (see RegisterKindResourceTable) so cross-kind listing also covers kinds
+	// core doesn't know about natively (e.g. WebSubApi/WebBrokerApi).
+	tables := append([]string{}, builtinResourceTables...)
+	for _, table := range extraResourceTables {
+		tables = append(tables, table)
+	}
+	sort.Strings(tables)
+
+	blocks := make([]string, len(tables))
+	args := make([]interface{}, len(tables))
+	for i, table := range tables {
+		blocks[i] = fmt.Sprintf(`
+			SELECT %s
 			FROM artifacts a
-			JOIN rest_apis r ON a.uuid = r.uuid AND a.gateway_id = r.gateway_id
-			WHERE a.gateway_id = ?
+			JOIN %s r ON a.uuid = r.uuid AND a.gateway_id = r.gateway_id
+			WHERE a.gateway_id = ?`, getAllConfigsColumns, table)
+		args[i] = s.gatewayId
+	}
+	query := strings.Join(blocks, "\n\n\t\tUNION ALL\n") + "\n\t\tORDER BY created_at DESC"
 
-		UNION ALL
-
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, w.configuration, a.desired_state,
-				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
-				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
-			FROM artifacts a
-			JOIN websub_apis w ON a.uuid = w.uuid AND a.gateway_id = w.gateway_id
-			WHERE a.gateway_id = ?
-
-		UNION ALL
-
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, lp.configuration, a.desired_state,
-				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
-				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
-			FROM artifacts a
-			JOIN llm_providers lp ON a.uuid = lp.uuid AND a.gateway_id = lp.gateway_id
-			WHERE a.gateway_id = ?
-
-		UNION ALL
-
-			SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, lx.configuration, a.desired_state,
-				a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
-				a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
-			FROM artifacts a
-			JOIN llm_proxies lx ON a.uuid = lx.uuid AND a.gateway_id = lx.gateway_id
-			WHERE a.gateway_id = ?
-
-		UNION ALL
-
-		SELECT a.uuid, a.kind, a.handle, a.display_name, a.version, a.data_version, m.configuration, a.desired_state,
-			a.deployment_id, a.origin, a.created_at, a.updated_at, a.deployed_at,
-			a.cp_sync_status, a.cp_sync_info, a.cp_artifact_id
-		FROM artifacts a
-		JOIN mcp_proxies m ON a.uuid = m.uuid AND a.gateway_id = m.gateway_id
-		WHERE a.gateway_id = ?
-		ORDER BY created_at DESC
-	`
-
-	rows, err := s.query(query, s.gatewayId, s.gatewayId, s.gatewayId, s.gatewayId, s.gatewayId)
+	rows, err := s.query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query configurations: %w", err)
 	}
