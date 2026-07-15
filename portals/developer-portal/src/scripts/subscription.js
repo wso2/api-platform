@@ -44,7 +44,7 @@ window.resetSubscribeButtonState = function(button) {
 
 async function subscribe(orgId, apiId, planName, planId) {
     try {
-        const body = { apiId, subscriptionPlanId: planId };
+        const body = { artifactId: apiId, subscriptionPlanId: planId };
 
         const response = await fetch(devportalApi.root('/subscriptions'), {
             method: 'POST',
@@ -194,7 +194,7 @@ async function runPendingPlanSwitch(orgId, apiId, planName, displayName, subscri
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
-                body: JSON.stringify({ apiId, planId }),
+                body: JSON.stringify({ artifactId: apiId, planId }),
             }
         );
 
@@ -235,7 +235,7 @@ async function refreshLandingPageSubscriptions() {
     if (!apiId) { window.location.reload(); return; }
 
     try {
-        var resp = await fetch(devportalApi.root('/subscriptions?apiId=' + encodeURIComponent(apiId)), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
+        var resp = await fetch(devportalApi.root('/subscriptions?artifactId=' + encodeURIComponent(apiId)), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
         if (!resp.ok) { window.location.reload(); return; }
         var data = await resp.json();
         var existing = data.list || data || [];
