@@ -22,6 +22,74 @@ func TestMapModelAuthToAPI_NormalizesApiKeyType(t *testing.T) {
 
 func float32Ptr(f float32) *float32 { return &f }
 
+// TestGenerateLLMProviderDeploymentYAML_OtherAuthOmitsUpstreamAuth verifies that when the
+// upstream auth type is "other", the deployment artifact sent to the gateway omits the auth
+// block entirely - the gateway must never see a credential-less "other" auth type; it must
+// see no auth block at all, exactly as if auth were never configured.
+func TestGenerateLLMProviderDeploymentYAML_OtherAuthOmitsUpstreamAuth(t *testing.T) {
+	provider := &model.LLMProvider{
+		ID:      "test-provider",
+		Name:    "Test Provider",
+		Version: "v1.0",
+		Configuration: model.LLMProviderConfig{
+			Context: strPtr("/test"),
+			Upstream: &model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{
+					URL:  "https://api.anthropic.com",
+					Auth: &model.UpstreamAuth{Type: "other"},
+				},
+			},
+			AccessControl: &model.LLMAccessControl{Mode: "allow_all"},
+		},
+	}
+
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(provider, "anthropic")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if yamlArtifact.Spec.Upstream.Auth != nil {
+		t.Fatalf("expected upstream auth to be omitted for auth type 'other', got %+v", yamlArtifact.Spec.Upstream.Auth)
+	}
+
+	out, err := yaml.Marshal(yamlArtifact)
+	if err != nil {
+		t.Fatalf("unexpected marshal error: %v", err)
+	}
+	if strings.Contains(string(out), "auth:") {
+		t.Fatalf("expected marshaled YAML to omit the auth block entirely, got:\n%s", out)
+	}
+}
+
+// TestGenerateLLMProxyDeploymentYAML_OtherAuthOmitsProviderAuth is the LLM Proxy counterpart
+// of TestGenerateLLMProviderDeploymentYAML_OtherAuthOmitsUpstreamAuth.
+func TestGenerateLLMProxyDeploymentYAML_OtherAuthOmitsProviderAuth(t *testing.T) {
+	proxy := &model.LLMProxy{
+		ID:      "test-proxy",
+		Name:    "Test Proxy",
+		Version: "v1.0",
+		Configuration: model.LLMProxyConfig{
+			Provider:     "test-provider",
+			UpstreamAuth: &model.UpstreamAuth{Type: "other"},
+		},
+	}
+
+	yamlArtifact, err := generateLLMProxyDeploymentYAML(proxy)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if yamlArtifact.Spec.Provider.Auth != nil {
+		t.Fatalf("expected provider auth to be omitted for auth type 'other', got %+v", yamlArtifact.Spec.Provider.Auth)
+	}
+
+	out, err := yaml.Marshal(yamlArtifact)
+	if err != nil {
+		t.Fatalf("unexpected marshal error: %v", err)
+	}
+	if strings.Contains(string(out), "auth:") {
+		t.Fatalf("expected marshaled YAML to omit the auth block entirely, got:\n%s", out)
+	}
+}
+
 // providerWithConsumerLimits builds a minimal LLMProvider model with the given
 // consumer-level rate limiting config and no backend (provider-level) limits.
 func providerWithConsumerLimits(rl *model.LLMRateLimitingConfig) *model.LLMProvider {

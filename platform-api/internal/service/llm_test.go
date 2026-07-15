@@ -75,6 +75,7 @@ func TestNormalizeUpstreamAuthType(t *testing.T) {
 		{name: "api key upper with underscore", input: "API_KEY", expected: "api-key"},
 		{name: "basic", input: "basic", expected: "basic"},
 		{name: "bearer", input: "bearer", expected: "bearer"},
+		{name: "other", input: "other", expected: "other"},
 		{name: "unknown preserved", input: "custom", expected: "custom"},
 		{name: "empty", input: "", expected: ""},
 	}
