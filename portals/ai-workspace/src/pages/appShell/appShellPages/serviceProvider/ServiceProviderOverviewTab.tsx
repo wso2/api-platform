@@ -65,7 +65,6 @@ import NoData from '../../../../assets/images/NoData.svg';
 import { FormattedMessage } from 'react-intl';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import SwaggerSpecViewer from '../../../../Components/SwaggerSpecViewer';
-import { filterOpenApiSpecByAccessControl } from '../../../../utils/openApiAccessControl';
 import { buildProjectPath } from '../../../../utils/projectRouting';
 import {
   DisabledActionTooltip,
@@ -166,14 +165,6 @@ export default function ServiceProviderOverviewTab({
     () => parseOpenApiSpec(provider?.openapi || ''),
     [provider?.openapi]
   );
-  const filteredOpenApiSpec = useMemo(
-    () =>
-      filterOpenApiSpecByAccessControl(
-        parsedOpenApiSpec,
-        provider?.accessControl
-      ),
-    [parsedOpenApiSpec, provider?.accessControl]
-  );
   const selectedGateway = useMemo(
     () => gateways.find((gateway) => gateway.id === selectedGatewayId) ?? null,
     [gateways, selectedGatewayId]
@@ -194,7 +185,7 @@ export default function ServiceProviderOverviewTab({
     return `${normalizedBase}${normalizedContext}`;
   }, [provider?.context, selectedGateway?.endpoints, selectedGateway?.vhost]);
   const swaggerSpecWithGatewayServer = useMemo<OpenApiSpec>(() => {
-    const baseSpec = filteredOpenApiSpec ?? parsedOpenApiSpec;
+    const baseSpec = parsedOpenApiSpec;
     if (!baseSpec) return {};
     if (!generatedGatewayUrl) return baseSpec;
 
@@ -212,7 +203,7 @@ export default function ServiceProviderOverviewTab({
       ...baseSpec,
       servers: [{ url: generatedGatewayUrl }, ...nonDuplicateServers],
     };
-  }, [filteredOpenApiSpec, generatedGatewayUrl, parsedOpenApiSpec]);
+  }, [generatedGatewayUrl, parsedOpenApiSpec]);
   const swaggerDefaultHeaders = useMemo<
     Record<string, string> | undefined
   >(() => {
@@ -708,6 +699,7 @@ export default function ServiceProviderOverviewTab({
                 defaultModelsExpandDepth={-1}
                 displayRequestDuration
                 enableResourceSearch
+                accessControl={provider?.accessControl}
               />
             )}
           </Box>
