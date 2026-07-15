@@ -33,6 +33,10 @@ func TestIsPublicIP(t *testing.T) {
 		{"8.8.8.8", true},
 		{"1.1.1.1", true},
 		{"93.184.216.34", true},    // example.com
+		{"100.64.0.1", false},      // RFC 6598 shared address space (CGNAT)
+		{"100.127.255.255", false}, // CGNAT upper bound
+		{"100.63.255.255", true},   // just below the CGNAT range — public
+		{"100.128.0.1", true},      // just above the CGNAT range — public
 		{"127.0.0.1", false},       // loopback
 		{"::1", false},             // loopback v6
 		{"10.0.0.1", false},        // private

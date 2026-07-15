@@ -171,9 +171,18 @@ func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, e
 	return nil, fmt.Errorf("failed to connect to host")
 }
 
+// cgnatRange is RFC 6598 shared address space (carrier-grade NAT): 100.64.0.0/10.
+// net.IP.IsPrivate does not cover it, yet it can route to internal infrastructure, so
+// it is refused explicitly.
+var cgnatRange = func() *net.IPNet {
+	_, n, _ := net.ParseCIDR("100.64.0.0/10")
+	return n
+}()
+
 // isPublicIP reports whether ip is a routable public address safe to fetch from. It
-// rejects loopback, private (RFC 1918 / IPv6 ULA), link-local (which includes the
-// 169.254.169.254 cloud metadata endpoint), unspecified, multicast and broadcast ranges.
+// rejects loopback, private (RFC 1918 / IPv6 ULA), RFC 6598 shared address space
+// (100.64.0.0/10), link-local (which includes the 169.254.169.254 cloud metadata
+// endpoint), unspecified, multicast and broadcast ranges.
 func isPublicIP(ip net.IP) bool {
 	if ip == nil {
 		return false
@@ -184,7 +193,8 @@ func isPublicIP(ip net.IP) bool {
 		ip.IsLinkLocalMulticast() ||
 		ip.IsMulticast() ||
 		ip.IsUnspecified() ||
-		ip.Equal(net.IPv4bcast) {
+		ip.Equal(net.IPv4bcast) ||
+		(cgnatRange != nil && cgnatRange.Contains(ip)) {
 		return false
 	}
 	return true
