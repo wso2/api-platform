@@ -214,9 +214,9 @@ CREATE TABLE IF NOT EXISTS artifact_gateway_mappings (
     gateway_uuid VARCHAR(40) NOT NULL,
     metadata BYTEA,
     created_by VARCHAR(200),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(200),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_uuid, artifact_uuid, gateway_uuid),
     FOREIGN KEY (artifact_uuid) REFERENCES artifacts(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
@@ -540,9 +540,9 @@ CREATE TABLE IF NOT EXISTS secrets (
     type              VARCHAR(20)   NOT NULL DEFAULT 'GENERIC',
     provider          VARCHAR(20)   NOT NULL DEFAULT 'IN_BUILT',
     status            VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE',
-    created_at        TIMESTAMP     NOT NULL,
+    created_at        TIMESTAMPTZ   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by        VARCHAR(255),
-    updated_at        TIMESTAMP     NOT NULL,
+    updated_at        TIMESTAMPTZ   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by        VARCHAR(255),
     UNIQUE (organization_uuid, handle),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
@@ -568,7 +568,7 @@ CREATE TABLE IF NOT EXISTS artifact_secret_refs (
     artifact_uuid     VARCHAR(40)  NOT NULL,
     secret_handle     VARCHAR(40)  NOT NULL,
     gateway_id        VARCHAR(40)  NOT NULL DEFAULT '',
-    created_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at        TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_uuid, artifact_uuid, secret_handle, gateway_id),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (artifact_uuid)     REFERENCES artifacts(uuid)     ON DELETE CASCADE
@@ -587,7 +587,7 @@ CREATE INDEX IF NOT EXISTS idx_asr_org_gateway
 CREATE TABLE IF NOT EXISTS user_idp_references (
     uuid       VARCHAR(40)  PRIMARY KEY,
     idp_id     VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(idp_id)
 );
 
@@ -595,7 +595,7 @@ CREATE TABLE IF NOT EXISTS user_idp_references (
 CREATE TABLE IF NOT EXISTS user_organization_mappings (
     user_uuid  VARCHAR(40) NOT NULL,
     org_uuid   VARCHAR(40) NOT NULL,
-    created_at TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_uuid, org_uuid),
     FOREIGN KEY (user_uuid) REFERENCES user_idp_references(uuid) ON DELETE CASCADE,
     FOREIGN KEY (org_uuid)  REFERENCES organizations(uuid)       ON DELETE CASCADE

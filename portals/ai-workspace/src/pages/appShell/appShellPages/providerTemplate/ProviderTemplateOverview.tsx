@@ -813,6 +813,15 @@ export default function ProviderTemplateOverview() {
                     {lastUpdated ? formatRelativeTime(lastUpdated) : '—'}
                   </Typography>
                 </Stack>
+                {template.createdBy && (
+                  <Typography variant="caption" color="text.secondary">
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplateOverview.createdBy"
+                      defaultMessage="Created by: {createdBy}"
+                      values={{ createdBy: template.createdBy }}
+                    />
+                  </Typography>
+                )}
               </Stack>
             </Box>
 

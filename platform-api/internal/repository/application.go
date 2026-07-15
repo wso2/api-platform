@@ -37,7 +37,7 @@ func NewApplicationRepo(db *database.DB, reg *ArtifactTableRegistry) Application
 }
 
 func (r *ApplicationRepo) CreateApplication(app *model.Application) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	app.CreatedAt = now
 	app.UpdatedAt = now
 
@@ -334,7 +334,7 @@ func (r *ApplicationRepo) CheckApplicationHandleExists(handle, orgID string) (bo
 }
 
 func (r *ApplicationRepo) UpdateApplication(app *model.Application) error {
-	app.UpdatedAt = time.Now()
+	app.UpdatedAt = time.Now().UTC()
 
 	_, err := r.db.Exec(r.db.Rebind(`
 		UPDATE applications
@@ -484,7 +484,7 @@ func (r *ApplicationRepo) AddApplicationAPIKeys(applicationUUID string, apiKeyID
 		if _, ok := existing[apiKeyID]; ok {
 			continue
 		}
-		now := time.Now()
+		now := time.Now().UTC()
 		if _, err = tx.Exec(r.db.Rebind(`
 			INSERT INTO application_api_key_mappings (application_uuid, api_key_id, created_at)
 			VALUES (?, ?, ?)
@@ -504,7 +504,7 @@ func (r *ApplicationRepo) AddApplicationAssociations(applicationUUID string, tar
 	defer tx.Rollback()
 
 	for _, targetUUID := range uniqueStrings(targetUUIDs) {
-		now := time.Now()
+		now := time.Now().UTC()
 		if _, err = tx.Exec(r.db.Rebind(`
 			INSERT INTO application_artifact_mappings (application_uuid, artifact_uuid, created_at)
 			VALUES (?, ?, ?)

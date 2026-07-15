@@ -388,6 +388,7 @@ export interface LLMProvider {
   createdAt?: string;
   createdBy?: string;
   updatedAt?: string;
+  updatedBy?: string;
   lastUpdated?: string;
 }
 
@@ -418,6 +419,7 @@ type LLMProviderReadOnlyFields =
   | 'createdAt'
   | 'createdBy'
   | 'updatedAt'
+  | 'updatedBy'
   | 'lastUpdated';
 
 /**
@@ -493,6 +495,7 @@ export interface ProviderTemplate {
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
+  updatedBy?: string;
   /** Flat logo URL, present on list responses (LLMProviderTemplateListItem). */
   logoUrl?: string;
 }
@@ -608,7 +611,9 @@ export interface Proxy {
   security?: ProxySecurityConfig;
   readOnly?: boolean;
   createdAt?: string;
+  createdBy?: string;
   updatedAt?: string;
+  updatedBy?: string;
 }
 // LLM Provider Deployment Types
 // ============================================================================
@@ -653,7 +658,7 @@ export interface CreateProxyRequest {
 }
 
 /** Read-only fields from API (excluded from update requests) */
-type ProxyReadOnlyFields = 'createdAt' | 'updatedAt';
+type ProxyReadOnlyFields = 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy';
 
 /**
  * Update Proxy request - all fields optional, read-only excluded
@@ -787,7 +792,9 @@ export interface MCPServer {
   capabilities?: MCPServerCapabilities;
   readOnly?: boolean;
   createdAt?: string;
+  createdBy?: string;
   updatedAt?: string;
+  updatedBy?: string;
 }
 
 /**
@@ -809,7 +816,7 @@ export interface CreateMCPServerRequest {
 }
 
 /** Read-only fields from API (excluded from update requests) */
-type MCPServerReadOnlyFields = 'id' | 'createdAt' | 'updatedAt';
+type MCPServerReadOnlyFields = 'id' | 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy';
 
 /**
  * Update MCP Server request - all fields optional, read-only excluded

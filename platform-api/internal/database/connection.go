@@ -86,8 +86,16 @@ func NewConnection(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
 			return nil, fmt.Errorf("failed to create database directory: %w", err)
 		}
 
-		// Open SQLite connection to the api_platform.db file
-		db, err = sql.Open(DriverSQLite, cfg.Path)
+		// Open SQLite connection to the api_platform.db file.
+		// _loc=UTC forces the driver to interpret and return timestamps in UTC,
+		// matching the time.Now().UTC() values written throughout the codebase.
+		dsn := cfg.Path
+		if strings.Contains(dsn, "?") {
+			dsn += "&_loc=UTC"
+		} else {
+			dsn += "?_loc=UTC"
+		}
+		db, err = sql.Open(DriverSQLite, dsn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open database: %w", err)
 		}

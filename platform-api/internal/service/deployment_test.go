@@ -270,11 +270,12 @@ type mockDeploymentRepo struct {
 	createWithLimitError error
 
 	// Call tracking
-	setCurrentCalled     bool
-	setCurrentArtifactID string
-	setCurrentGatewayID  string
-	setCurrentStatus     model.DeploymentStatus
-	deleteCalled         bool
+	setCurrentCalled      bool
+	setCurrentArtifactID  string
+	setCurrentGatewayID   string
+	setCurrentStatus      model.DeploymentStatus
+	setCurrentPerformedAt *time.Time
+	deleteCalled          bool
 }
 
 func (m *mockDeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID string) (*model.Deployment, error) {
@@ -321,6 +322,7 @@ func (m *mockDeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewa
 	m.setCurrentArtifactID = artifactUUID
 	m.setCurrentGatewayID = gatewayID
 	m.setCurrentStatus = status
+	m.setCurrentPerformedAt = performedAt
 	if m.setCurrentError != nil {
 		return time.Time{}, m.setCurrentError
 	}
@@ -611,6 +613,56 @@ func TestRestoreDeployment(t *testing.T) {
 				t.Errorf("SetCurrent called with status %v, want %v", mockDeploymentRepo.setCurrentStatus, model.DeploymentStatusDeployed)
 			}
 		})
+	}
+}
+
+// TestRestoreDeployment_PerformedAtIsUTC guards against a prior gap where
+// performedAt was computed with local-server-time time.Now() instead of
+// time.Now().UTC(), leaving deployment_status.performed_at in a different
+// timezone convention than the sibling updated_at column (which the
+// repository always computes as UTC).
+func TestRestoreDeployment_PerformedAtIsUTC(t *testing.T) {
+	testOrgUUID := "00000000-0000-0000-0000-000000000123"
+	testAPIUUID := "11111111-1111-1111-1111-111111111111"
+	testGatewayID := "22222222-2222-2222-2222-222222222222"
+	testDeploymentID := "33333333-3333-3333-3333-333333333333"
+
+	mockAPIRepo := &mockDeploymentAPIRepository{}
+	mockDeploymentRepo := &mockDeploymentRepo{
+		deploymentWithContent: &model.Deployment{
+			DeploymentID: testDeploymentID,
+			Name:         "test-deployment",
+			ArtifactID:   testAPIUUID,
+			GatewayID:    testGatewayID,
+			Content:      []byte("test content"),
+		},
+		currentDeploymentID: "44444444-4444-4444-4444-444444444444",
+		currentStatus:       model.DeploymentStatusUndeployed,
+	}
+	mockGatewayRepo := &mockDeploymentGatewayRepository{
+		gateway: &model.Gateway{
+			ID:             testGatewayID,
+			OrganizationID: testOrgUUID,
+			Endpoints:      []string{"https://api.example.com"},
+		},
+	}
+
+	service := &DeploymentService{
+		apiRepo:        mockAPIRepo,
+		deploymentRepo: mockDeploymentRepo,
+		gatewayRepo:    mockGatewayRepo,
+		cfg:            &config.Server{},
+	}
+
+	if _, err := service.RestoreDeployment(testAPIUUID, testDeploymentID, testGatewayID, testOrgUUID, "actor"); err != nil {
+		t.Fatalf("RestoreDeployment failed: %v", err)
+	}
+
+	if mockDeploymentRepo.setCurrentPerformedAt == nil {
+		t.Fatal("expected SetCurrentWithDetails to be called with a non-nil performedAt")
+	}
+	if mockDeploymentRepo.setCurrentPerformedAt.Location() != time.UTC {
+		t.Fatalf("expected performedAt to be computed in UTC, got location %v", mockDeploymentRepo.setCurrentPerformedAt.Location())
 	}
 }
 

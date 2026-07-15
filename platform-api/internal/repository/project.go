@@ -38,8 +38,8 @@ func NewProjectRepo(db *database.DB) ProjectRepository {
 
 // CreateProject inserts a new project
 func (r *ProjectRepo) CreateProject(project *model.Project) error {
-	project.CreatedAt = time.Now()
-	project.UpdatedAt = time.Now()
+	project.CreatedAt = time.Now().UTC()
+	project.UpdatedAt = time.Now().UTC()
 
 	query := `
 		INSERT INTO projects (uuid, handle, display_name, organization_uuid, description, created_by, created_at, updated_by, updated_at)
@@ -159,7 +159,7 @@ func (r *ProjectRepo) GetProjectsByOrganizationID(orgID string) ([]*model.Projec
 
 // UpdateProject modifies an existing project
 func (r *ProjectRepo) UpdateProject(project *model.Project) error {
-	project.UpdatedAt = time.Now()
+	project.UpdatedAt = time.Now().UTC()
 	query := `
 		UPDATE projects
 		SET display_name = ?, description = ?, updated_by = ?, updated_at = ?

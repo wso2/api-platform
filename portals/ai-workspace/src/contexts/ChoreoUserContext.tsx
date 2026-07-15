@@ -61,8 +61,7 @@ const ChoreoUserContext = createContext<ChoreoUserContextType | null>(null);
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Fetch the current user's organization from the Platform API.
- * Returns a single org wrapped in an array (Platform API returns one org per JWT).
+ * Fetch the organizations the current user is a member of from the Platform API.
  *
  * Routed same-origin through the BFF: the request carries the HttpOnly
  * `_ai_workspace_session` cookie (credentials: 'include') and the BFF injects the bearer
@@ -74,33 +73,56 @@ async function fetchPlatformOrganization(): Promise<Organization[]> {
     'Content-Type': 'application/json',
   };
 
-  const res = await fetch(`${PLATFORM_API_BASE_URL}/organizations`, {
-    credentials: 'include',
-    headers,
-  });
-
-  if (!res.ok) {
-    if (res.status === 404) {
-      logger.warn('[ChoreoUserContext] No organization found — register one at /register-org');
-      return [];
-    }
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body?.message ?? `GET /organizations failed: HTTP ${res.status}`);
-  }
-
-  // Platform API returns a single Organization object (not an array)
-  const platformOrg = await res.json();
-  logger.info('[ChoreoUserContext] Loaded organization:', platformOrg.handle);
-
-  const org: Organization = {
-    id: platformOrg.id,      // UUID string
-    uuid: platformOrg.id,    // alias kept for backward compat
-    handle: platformOrg.handle,
+  // The API's `id` field is the organization's handle (a URL-safe slug), not
+  // a UUID — there is no separate handle field, and no internal UUID is ever
+  // exposed to clients.
+  const mapOrg = (platformOrg: { id: string; displayName: string; region?: string }): Organization => ({
+    id: platformOrg.id,
+    uuid: platformOrg.id,
+    handle: platformOrg.id,
     name: platformOrg.displayName,
     region: platformOrg.region,
     owner: { id: 0, idpId: '' },
-  };
-  return [org];
+  });
+
+  // GET /organizations is paginated ({ count, list, pagination }); a caller who
+  // belongs to more organizations than one page holds spans several pages, so
+  // follow pagination.total and merge every page rather than keeping only the
+  // first.
+  const orgs: Organization[] = [];
+  let offset = 0;
+  for (;;) {
+    const res = await fetch(`${PLATFORM_API_BASE_URL}/organizations?offset=${offset}`, {
+      credentials: 'include',
+      headers,
+    });
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        logger.warn('[ChoreoUserContext] No organization found — register one at /register-org');
+        return [];
+      }
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body?.message ?? `GET /organizations failed: HTTP ${res.status}`);
+    }
+
+    const body = await res.json();
+    const page: Array<{ id: string; displayName: string; region?: string }> = Array.isArray(body?.list)
+      ? body.list
+      : [];
+    orgs.push(...page.map(mapOrg));
+
+    const total = typeof body?.pagination?.total === 'number' ? body.pagination.total : orgs.length;
+    // Stop once every organization is collected, or defensively if a page comes
+    // back empty (so a stale/growing total can never spin this forever).
+    if (orgs.length >= total || page.length === 0) {
+      break;
+    }
+    offset = orgs.length;
+  }
+
+  logger.info('[ChoreoUserContext] Loaded organizations:', orgs.map((o) => o.id));
+  return orgs;
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────

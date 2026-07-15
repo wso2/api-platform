@@ -238,7 +238,12 @@ func (h *APIHandler) AddGatewaysToAPI(w http.ResponseWriter, r *http.Request) er
 		gatewayIds[i] = gw.GatewayId
 	}
 
-	gatewaysResponse, err := h.apiService.AddGatewaysToAPIByHandle(apiId, gatewayIds, orgId)
+	createdBy, err := resolveActorErr(r, h.identity, "associate gateways with API")
+	if err != nil {
+		return err
+	}
+
+	gatewaysResponse, err := h.apiService.AddGatewaysToAPIByHandle(apiId, gatewayIds, orgId, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to associate gateways with API %s in org %s", apiId, orgId))
 	}

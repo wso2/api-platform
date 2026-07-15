@@ -227,7 +227,7 @@ const UNSAVED_CHANGES_MESSAGE =
 const stripReadOnlyProviderFields = (
   value: LLMProvider
 ): UpdateLLMProviderRequest => {
-  const { status, createdAt, createdBy, updatedAt, lastUpdated, ...payload } =
+  const { status, createdAt, createdBy, updatedAt, updatedBy, lastUpdated, ...payload } =
     value;
   return payload;
 };
@@ -1205,6 +1205,15 @@ function ServiceProviderOverviewContent() {
                           {lastUpdated ? formatRelativeTime(lastUpdated) : '—'}
                         </Typography>
                       </Stack>
+                      {provider.createdBy && (
+                        <Typography variant="caption" color="text.secondary">
+                          <FormattedMessage
+                            id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.createdBy"
+                            defaultMessage="Created by: {createdBy}"
+                            values={{ createdBy: provider.createdBy }}
+                          />
+                        </Typography>
+                      )}
                     </Stack>
                   </Stack>
                 </Box>
@@ -1482,6 +1491,15 @@ function ServiceProviderOverviewContent() {
                       {lastUpdated ? formatRelativeTime(lastUpdated) : '—'}
                     </Typography>
                   </Stack>
+                  {provider.createdBy && (
+                    <Typography variant="caption" color="text.secondary">
+                      <FormattedMessage
+                        id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.createdBy.2"
+                        defaultMessage="Created by: {createdBy}"
+                        values={{ createdBy: provider.createdBy }}
+                      />
+                    </Typography>
+                  )}
                 </Stack>
               </Stack>
             </Box>

@@ -39,6 +39,6 @@ func NewAuditRepo(db *database.DB) AuditRepository {
 func (r *AuditRepo) Record(action, resourceUUID, resourceType, orgUUID, performedBy string) error {
 	id := uuid.New().String()
 	query := `INSERT INTO audit (uuid, action, resource_uuid, resource_type, organization_uuid, performed_by, performed_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
-	_, err := r.db.Exec(r.db.Rebind(query), id, action, resourceUUID, resourceType, orgUUID, performedBy, time.Now())
+	_, err := r.db.Exec(r.db.Rebind(query), id, action, resourceUUID, resourceType, orgUUID, performedBy, time.Now().UTC())
 	return err
 }

@@ -246,6 +246,7 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		APIKeyHashes:   apiKeyHashesJSON,
 		Status:         "active",
 		CreatedBy:      userID,
+		UpdatedBy:      userID,
 		ExpiresAt:      req.ExpiresAt,
 		Issuer:         issuer,
 		AllowedTargets: allowedTargets,

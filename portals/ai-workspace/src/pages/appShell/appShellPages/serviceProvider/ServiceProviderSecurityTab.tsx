@@ -68,6 +68,7 @@ export default function ServiceProviderSecurityTab() {
       createdAt,
       createdBy,
       updatedAt,
+      updatedBy,
       lastUpdated,
       ...updatePayload
     } = provider;

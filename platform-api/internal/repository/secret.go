@@ -42,7 +42,7 @@ func NewSecretRepo(db *database.DB) SecretRepository {
 }
 
 func (r *SecretRepo) Create(s *model.Secret) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	s.CreatedAt = now
 	s.UpdatedAt = now
 
@@ -202,7 +202,7 @@ func (r *SecretRepo) Count(orgID string) (int, error) {
 }
 
 func (r *SecretRepo) Update(s *model.Secret) error {
-	s.UpdatedAt = time.Now()
+	s.UpdatedAt = time.Now().UTC()
 
 	query := r.db.Rebind(`
 		UPDATE secrets
@@ -294,7 +294,7 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 		SET status = 'DEPRECATED', updated_at = ?, updated_by = ?
 		WHERE organization_uuid = ? AND handle = ?
 	`)
-	result, err := tx.Exec(deleteQuery, time.Now(), updatedBy, orgID, handle)
+	result, err := tx.Exec(deleteQuery, time.Now().UTC(), updatedBy, orgID, handle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deprecate secret: %w", err)
 	}

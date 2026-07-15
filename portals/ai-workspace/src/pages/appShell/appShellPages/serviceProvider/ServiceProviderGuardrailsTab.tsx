@@ -504,6 +504,7 @@ export default function ServiceProviderGuardrailsTab() {
       createdAt,
       createdBy,
       updatedAt,
+      updatedBy,
       lastUpdated,
       ...updatePayload
     } = provider;
@@ -631,6 +632,7 @@ export default function ServiceProviderGuardrailsTab() {
       createdAt,
       createdBy,
       updatedAt,
+      updatedBy,
       lastUpdated,
       ...updatePayload
     } = provider;

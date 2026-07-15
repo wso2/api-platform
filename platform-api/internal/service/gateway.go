@@ -673,8 +673,9 @@ func (s *GatewayService) ListGateways(orgID *string, opts repository.ListOptions
 
 	// Convert to API types
 	responses := make([]api.GatewayResponse, 0, len(gateways))
+	createdByFields := make([]**string, 0, len(gateways))
 	for _, gw := range gateways {
-		resp, err := s.gatewayModelToAPI(gw)
+		resp, err := s.gatewayModelToAPIUnresolved(gw)
 		if err != nil {
 			return nil, err
 		}
@@ -682,7 +683,11 @@ func (s *GatewayService) ListGateways(orgID *string, opts repository.ListOptions
 			// updatedBy is detail-only; omit it from list responses.
 			resp.UpdatedBy = nil
 			responses = append(responses, *resp)
+			createdByFields = append(createdByFields, &responses[len(responses)-1].CreatedBy)
 		}
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 
 	// Build constitution-compliant list response with pagination metadata
@@ -736,7 +741,6 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, req *
 		gateway.Properties = *req.Properties
 	}
 	gateway.UpdatedBy = updatedBy
-	gateway.UpdatedAt = time.Now()
 
 	err = s.gatewayRepo.UpdateGateway(gateway)
 	if err != nil {
@@ -1078,7 +1082,12 @@ func hashToken(plainToken string) string {
 // Mapping functions
 
 // gatewayModelToAPI converts a Gateway model to GatewayResponse API type
-func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) (*api.GatewayResponse, error) {
+// gatewayModelToAPIUnresolved converts gateway to its API representation,
+// resolving the organization handle, but leaving createdBy/updatedBy as raw
+// internal UUIDs. Used by list endpoints, which batch-resolve identity across
+// the whole page afterward instead of one-by-one — see gatewayModelToAPI for
+// the single-item equivalent that resolves inline.
+func (s *GatewayService) gatewayModelToAPIUnresolved(gateway *model.Gateway) (*api.GatewayResponse, error) {
 	if gateway == nil {
 		return nil, nil
 	}
@@ -1089,7 +1098,7 @@ func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) (*api.Gateway
 	}
 	functionalityType := api.GatewayResponseFunctionalityType(gateway.FunctionalityType)
 
-	resp := &api.GatewayResponse{
+	return &api.GatewayResponse{
 		Id:                &gateway.Handle,
 		OrganizationId:    &orgHandle,
 		DisplayName:       gateway.Name,
@@ -1104,6 +1113,13 @@ func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) (*api.Gateway
 		UpdatedBy:         utils.StringPtrIfNotEmpty(gateway.UpdatedBy),
 		CreatedAt:         &gateway.CreatedAt,
 		UpdatedAt:         &gateway.UpdatedAt,
+	}, nil
+}
+
+func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) (*api.GatewayResponse, error) {
+	resp, err := s.gatewayModelToAPIUnresolved(gateway)
+	if err != nil || resp == nil {
+		return resp, err
 	}
 	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
 		return nil, err

@@ -38,7 +38,7 @@ func NewUserOrganizationMappingRepo(db *database.DB) UserOrganizationMappingRepo
 // duplicate (userUUID, orgUUID) pair is treated as success, not an error.
 func (r *UserOrganizationMappingRepo) AddMembership(userUUID, orgUUID string) error {
 	query := `INSERT INTO user_organization_mappings (user_uuid, org_uuid, created_at) VALUES (?, ?, ?)`
-	_, err := r.db.Exec(r.db.Rebind(query), userUUID, orgUUID, time.Now())
+	_, err := r.db.Exec(r.db.Rebind(query), userUUID, orgUUID, time.Now().UTC())
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil
@@ -48,17 +48,19 @@ func (r *UserOrganizationMappingRepo) AddMembership(userUUID, orgUUID string) er
 	return nil
 }
 
-// DeleteByUser removes all membership rows for userUUID, within tx. Callers
-// must run this before deleting the referenced user_idp_references row (no
-// ON DELETE CASCADE on that FK by design).
+// DeleteByUser removes all membership rows for userUUID, within tx. The FK to
+// user_idp_references is declared ON DELETE CASCADE, so this is normally
+// redundant; it exists as defense-in-depth for pooled SQLite connections that
+// may not enforce foreign keys.
 func (r *UserOrganizationMappingRepo) DeleteByUser(tx *sql.Tx, userUUID string) error {
 	_, err := tx.Exec(r.db.Rebind(`DELETE FROM user_organization_mappings WHERE user_uuid = ?`), userUUID)
 	return err
 }
 
-// DeleteByOrg removes all membership rows for orgUUID, within tx. Callers
-// must run this before deleting the referenced organizations row (no
-// ON DELETE CASCADE on that FK by design).
+// DeleteByOrg removes all membership rows for orgUUID, within tx. The FK to
+// organizations is declared ON DELETE CASCADE, so this is normally redundant;
+// it exists as defense-in-depth for pooled SQLite connections that may not
+// enforce foreign keys.
 func (r *UserOrganizationMappingRepo) DeleteByOrg(tx *sql.Tx, orgUUID string) error {
 	_, err := tx.Exec(r.db.Rebind(`DELETE FROM user_organization_mappings WHERE org_uuid = ?`), orgUUID)
 	return err

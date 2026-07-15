@@ -88,11 +88,11 @@ func (r *WebBrokerAPIRepo) Create(a *model.WebBrokerAPI) error {
 	// Insert into webbroker_apis table
 	query := `
 		INSERT INTO webbroker_apis (
-			uuid, organization_uuid, handle, display_name, version, project_uuid, description, created_by, lifecycle_status, configuration, origin, data_version, created_at, updated_at
+			uuid, organization_uuid, handle, display_name, version, project_uuid, description, created_by, updated_by, lifecycle_status, configuration, origin, data_version, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
-		a.UUID, a.OrganizationUUID, a.Handle, a.Name, a.Version, a.ProjectUUID, a.Description, a.CreatedBy, a.LifeCycleStatus,
+		a.UUID, a.OrganizationUUID, a.Handle, a.Name, a.Version, a.ProjectUUID, a.Description, a.CreatedBy, a.UpdatedBy, a.LifeCycleStatus,
 		configurationJSON, origin, a.DataVersion, a.CreatedAt, a.UpdatedAt,
 	)
 	if err != nil {

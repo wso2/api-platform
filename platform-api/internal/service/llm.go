@@ -98,16 +98,6 @@ func (s *LLMProviderTemplateService) toTemplateAPI(m *model.LLMProviderTemplate)
 	return resp, nil
 }
 
-// templateListItemResolved converts t via templateListItem and resolves its
-// createdBy UUID to its raw external identity.
-func (s *LLMProviderTemplateService) templateListItemResolved(t *model.LLMProviderTemplate) (api.LLMProviderTemplateListItem, error) {
-	item := templateListItem(t)
-	if err := s.identity.ResolveIdentityField(&item.CreatedBy); err != nil {
-		return item, err
-	}
-	return item, nil
-}
-
 func NewLLMProviderService(
 	repo repository.LLMProviderRepository,
 	templateRepo repository.LLMProviderTemplateRepository,
@@ -307,12 +297,13 @@ func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int, lat
 		},
 	}
 	resp.List = make([]api.LLMProviderTemplateListItem, 0, len(items))
+	createdByFields := make([]**string, 0, len(items))
 	for _, t := range items {
-		item, err := s.templateListItemResolved(t)
-		if err != nil {
-			return nil, err
-		}
-		resp.List = append(resp.List, item)
+		resp.List = append(resp.List, templateListItem(t))
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
@@ -656,12 +647,13 @@ func (s *LLMProviderTemplateService) ListVersions(orgUUID, groupID string, limit
 		},
 	}
 	resp.List = make([]api.LLMProviderTemplateListItem, 0, len(items))
+	createdByFields := make([]**string, 0, len(items))
 	for _, t := range items {
-		item, err := s.templateListItemResolved(t)
-		if err != nil {
-			return nil, err
-		}
-		resp.List = append(resp.List, item)
+		resp.List = append(resp.List, templateListItem(t))
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
@@ -927,6 +919,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
+		UpdatedBy:        createdBy,
 		Version:          req.Version,
 		TemplateUUID:     tpl.UUID,
 		OpenAPISpec:      openapiSpec,
@@ -985,6 +978,7 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 		},
 	}
 	resp.List = make([]api.LLMProviderListItem, 0, len(items))
+	createdByFields := make([]**string, 0, len(items))
 	for _, p := range items {
 		// Look up template handle from UUID
 		tplHandle := ""
@@ -1001,9 +995,6 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 		name := p.Name
 		desc := utils.StringPtrIfNotEmpty(p.Description)
 		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
-		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
-			return nil, err
-		}
 		version := p.Version
 		template := utils.StringPtrIfNotEmpty(tplHandle)
 		resp.List = append(resp.List, api.LLMProviderListItem{
@@ -1017,6 +1008,10 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
@@ -1399,6 +1394,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
+		UpdatedBy:        createdBy,
 		Version:          req.Version,
 		ProviderUUID:     prov.UUID,
 		OpenAPISpec:      openapiSpec,
@@ -1480,14 +1476,12 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 		},
 	}
 	resp.List = make([]api.LLMProxyListItem, 0, len(items))
+	createdByFields := make([]**string, 0, len(items))
 	for _, p := range items {
 		id := p.ID
 		name := p.Name
 		desc := utils.StringPtrIfNotEmpty(p.Description)
 		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
-		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
-			return nil, err
-		}
 		contextValue := (*string)(nil)
 		if p.Configuration.Context != nil {
 			v := *p.Configuration.Context
@@ -1509,6 +1503,10 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
@@ -1545,14 +1543,12 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 		},
 	}
 	resp.List = make([]api.LLMProxyListItem, 0, len(items))
+	createdByFields := make([]**string, 0, len(items))
 	for _, p := range items {
 		id := p.ID
 		name := p.Name
 		desc := utils.StringPtrIfNotEmpty(p.Description)
 		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
-		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
-			return nil, err
-		}
 		contextValue := (*string)(nil)
 		if p.Configuration.Context != nil {
 			v := *p.Configuration.Context
@@ -1574,6 +1570,10 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }

@@ -321,7 +321,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	}
 
 	// Ensure API-Gateway association exists
-	if err := s.ensureAPIGatewayAssociation(apiUUID, gatewayID, orgUUID); err != nil {
+	if err := s.ensureAPIGatewayAssociation(apiUUID, gatewayID, orgUUID, createdBy); err != nil {
 		s.slogger.Warn("Failed to ensure API-gateway association", "error", err)
 	}
 
@@ -330,7 +330,7 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgUUID, gatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -416,7 +416,7 @@ func (s *DeploymentService) RestoreDeployment(apiUUID, deploymentID, gatewayID, 
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgUUID, targetDeployment.GatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -503,7 +503,7 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, gatewayID,
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusUndeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgUUID, deployment.GatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusUndeployed),
@@ -867,7 +867,7 @@ func (s *DeploymentService) GetDeploymentContent(apiUUID, deploymentID, orgUUID 
 }
 
 // ensureAPIGatewayAssociation ensures an association exists between API and gateway
-func (s *DeploymentService) ensureAPIGatewayAssociation(apiUUID, gatewayID, orgUUID string) error {
+func (s *DeploymentService) ensureAPIGatewayAssociation(apiUUID, gatewayID, orgUUID, createdBy string) error {
 	// Check if association already exists
 	associations, err := s.apiRepo.GetAPIAssociations(apiUUID, constants.AssociationTypeGateway, orgUUID)
 	if err != nil {
@@ -886,8 +886,7 @@ func (s *DeploymentService) ensureAPIGatewayAssociation(apiUUID, gatewayID, orgU
 		ArtifactID:     apiUUID,
 		OrganizationID: orgUUID,
 		GatewayID:      gatewayID,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		CreatedBy:      createdBy,
 	}
 
 	return s.apiRepo.CreateAPIAssociation(association)

@@ -125,7 +125,7 @@ func NewLLMProxyDeploymentService(
 }
 
 // DeployLLMProvider creates a new immutable deployment artifact and deploys it to a gateway
-func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req *api.DeployRequest, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	// Validate request
 	if req == nil {
 		return nil, apperror.LLMProviderDeploymentValidationFailed.New("A request body is required.")
@@ -184,7 +184,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if err != nil {
 		return nil, err
 	}
-	effectiveMetaJSON, err := s.providerRepo.EnsureGatewayAssociation(provider.UUID, gatewayID, orgUUID, deployMetaJSON, metadataProvided)
+	effectiveMetaJSON, err := s.providerRepo.EnsureGatewayAssociation(provider.UUID, gatewayID, orgUUID, createdBy, deployMetaJSON, metadataProvided)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
 	}
@@ -265,7 +265,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		provider.UUID, orgUUID, gatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -361,7 +361,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		provider.UUID, orgUUID, targetDeployment.GatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -453,7 +453,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusUndeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		provider.UUID, orgUUID, deployment.GatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusUndeployed),
@@ -1277,7 +1277,7 @@ func unmarshalDeploymentMetadata(s string) (map[string]any, error) {
 }
 
 // DeployLLMProxy creates a new immutable deployment artifact and deploys it to a gateway
-func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.DeployRequest, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	// Validate request
 	if req == nil {
 		return nil, apperror.LLMProxyDeploymentValidationFailed.New("A request body is required.")
@@ -1332,7 +1332,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	if err != nil {
 		return nil, err
 	}
-	effectiveMetaJSON, err := s.proxyRepo.EnsureGatewayAssociation(proxy.UUID, gatewayID, orgUUID, deployMetaJSON, metadataProvided)
+	effectiveMetaJSON, err := s.proxyRepo.EnsureGatewayAssociation(proxy.UUID, gatewayID, orgUUID, createdBy, deployMetaJSON, metadataProvided)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
 	}
@@ -1409,7 +1409,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxy.UUID, orgUUID, gatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -1503,7 +1503,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxy.UUID, orgUUID, targetDeployment.GatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -1595,7 +1595,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusUndeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxy.UUID, orgUUID, deployment.GatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusUndeployed),

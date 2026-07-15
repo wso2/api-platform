@@ -102,7 +102,12 @@ func (h *SecretHandler) ListSecrets(w http.ResponseWriter, r *http.Request) erro
 		if err != nil {
 			return apperror.ValidationFailed.Wrap(err, "updatedAfter must be an RFC3339 timestamp")
 		}
-		updatedAfter = &t
+		// Normalize to UTC so the comparison against UTC-stored updated_at
+		// values is a correct chronological comparison regardless of the
+		// offset the client sent (some drivers compare timestamp bind
+		// parameters as text, where mixed offsets sort incorrectly).
+		utc := t.UTC()
+		updatedAfter = &utc
 	}
 
 	resp, err := h.secretService.List(orgID, limit, offset, updatedAfter)

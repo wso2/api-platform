@@ -103,7 +103,7 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 	}
 
 	// Persist gateway associations (if any) within the same transaction.
-	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.CreatedBy, p.AssociatedGateways, now); err != nil {
 		return err
 	}
 
@@ -359,7 +359,7 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 	// Replace the full set of gateway associations within the same transaction when the
 	// caller manages associations. Deployments are intentionally left untouched.
 	if p.ReplaceAssociatedGateways {
-		if err := replaceArtifactGatewayAssociations(tx, r.db, proxyUUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+		if err := replaceArtifactGatewayAssociations(tx, r.db, proxyUUID, p.OrganizationUUID, p.UpdatedBy, p.AssociatedGateways, now); err != nil {
 			return err
 		}
 	}
@@ -373,8 +373,8 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 // EnsureGatewayAssociation creates a gateway association for the MCP proxy if one does not
 // already exist and resolves the metadata to use for the deployment. See
 // ensureArtifactGatewayAssociation for the full semantics.
-func (r *MCPProxyRepo) EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
-	return ensureArtifactGatewayAssociation(r.db, proxyUUID, gatewayUUID, orgUUID, deployMetadata, metadataProvided)
+func (r *MCPProxyRepo) EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error) {
+	return ensureArtifactGatewayAssociation(r.db, proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata, metadataProvided)
 }
 
 // Delete deletes an MCP proxy by its handle and organization UUID

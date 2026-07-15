@@ -89,18 +89,6 @@ func (s *WebSubAPIService) toWebSubAPI(m *model.WebSubAPI) (*api.WebSubAPI, erro
 	return resp, nil
 }
 
-// webSubAPIListItemResolved converts m via mapWebSubAPIModelToListItem and
-// resolves its createdBy UUID to its raw external identity.
-func (s *WebSubAPIService) webSubAPIListItemResolved(m *model.WebSubAPI) (*api.WebSubAPIListItem, error) {
-	item := mapWebSubAPIModelToListItem(m)
-	if item == nil {
-		return nil, nil
-	}
-	if err := s.identity.ResolveIdentityField(&item.CreatedBy); err != nil {
-		return nil, err
-	}
-	return item, nil
-}
 
 // Create creates a new WebSub API
 func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI) (*api.WebSubAPI, error) {
@@ -173,6 +161,7 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
+		UpdatedBy:        createdBy,
 		Version:          req.Version,
 		LifeCycleStatus:  lifeCycleStatus,
 		Origin:           constants.OriginCP,
@@ -245,14 +234,17 @@ func (s *WebSubAPIService) List(orgUUID, projectUUID string, limit, offset int) 
 	}
 
 	resp.List = make([]api.WebSubAPIListItem, 0, len(apis))
+	createdByFields := make([]**string, 0, len(apis))
 	for _, a := range apis {
-		item, err := s.webSubAPIListItemResolved(a)
-		if err != nil {
-			return nil, err
+		item := mapWebSubAPIModelToListItem(a)
+		if item == nil {
+			continue
 		}
-		if item != nil {
-			resp.List = append(resp.List, *item)
-		}
+		resp.List = append(resp.List, *item)
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 
 	return resp, nil

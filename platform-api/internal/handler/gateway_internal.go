@@ -914,7 +914,12 @@ func (h *GatewayInternalAPIHandler) GetGatewaySecrets(w http.ResponseWriter, r *
 				"Invalid 'updatedAfter' parameter. Expected RFC3339 format."))
 			return
 		}
-		updatedAfter = &t
+		// Normalize to UTC so the comparison against UTC-stored updated_at
+		// values is a correct chronological comparison regardless of the
+		// offset the client sent (some drivers compare timestamp bind
+		// parameters as text, where mixed offsets sort incorrectly).
+		utc := t.UTC()
+		updatedAfter = &utc
 	}
 
 	includeValues := r.URL.Query().Get("includeValues") == "true"

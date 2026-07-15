@@ -235,6 +235,7 @@ export default function ServiceProviderModelsTab() {
       createdAt,
       createdBy,
       updatedAt,
+      updatedBy,
       lastUpdated,
       ...updatePayload
     } = provider;
