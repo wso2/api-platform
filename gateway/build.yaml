@@ -1,6 +1,6 @@
 version: v1
 gateway:
-  version: 1.2.0-beta-SNAPSHOT
+  version: 1.2.0-alpha2-SNAPSHOT
 policies:
   - name: advanced-ratelimit
     gomodule: github.com/wso2/gateway-controllers/policies/advanced-ratelimit@v1
