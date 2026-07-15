@@ -172,4 +172,13 @@ if (!config.security.encryptionKey || !/^[0-9a-fA-F]{64}$/.test(config.security.
     );
 }
 
+if (!config.security.sessionSecret || !/^[0-9a-fA-F]{64}$/.test(config.security.sessionSecret)) {
+    config.security.sessionSecret = crypto.randomBytes(32).toString('hex');
+    process.stderr.write(
+        '[WARN] security.sessionSecret is not set — generated an ephemeral key. ' +
+        'Existing sessions will be invalidated on restart. ' +
+        'Set APIP_DP_SECURITY_SESSIONSECRET in your .env file to persist it.\n'
+    );
+}
+
 module.exports = { config };

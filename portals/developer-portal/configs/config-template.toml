@@ -66,6 +66,7 @@ ca_file = "./resources/security/ca.pem"
 
 [security]
 encryption_key = ""     # 64-char hex — AES-256-GCM key for encrypting secrets at rest
+session_secret = ""     # 64-char hex — express-session signing secret
 role_validation = false # Enforce per-operation role validation
 
 # Static shared-secret header for calling the devportal's own REST API.

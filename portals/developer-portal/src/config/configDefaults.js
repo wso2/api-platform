@@ -56,6 +56,7 @@ const DEFAULTS = {
     },
     security: {
         encryptionKey: '',
+        sessionSecret: '',
         roleValidation: false,   // was: advanced.disabledRoleValidation, inverted
         serviceApiKey: {
             enabled: true,

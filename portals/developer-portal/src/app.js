@@ -45,8 +45,7 @@ const { configurePassport } = require('./middlewares/passportConfig');
 const app = express();
 // Do not advertise Express in response headers.
 app.disable('x-powered-by');
-// const secret = crypto.randomBytes(64).toString('hex');
-const sessionSecret = 'my-secret';
+const sessionSecret = config.security.sessionSecret;
 
 const SERVER_ID = uuidv4();
 
