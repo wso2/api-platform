@@ -10,7 +10,6 @@
 # Platform API configuration — quickstart (file-based auth)
 #
 # This file is read by the Platform API (Go binary).
-# Environment variables always override values set here.
 #
 # Default login: username = admin, password = admin
 # Change the password hash before deploying to a shared environment.
@@ -31,8 +30,6 @@ enable_scope_validation = true
 # ---------------------------------------------------------------------------
 # Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
 # (secrets, subscription tokens, WebSub HMAC secrets)
-# Generate with: openssl rand -hex 32.
-# encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
 # ---------------------------------------------------------------------------
@@ -42,21 +39,11 @@ encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 driver = "sqlite3"          # "sqlite3" or "postgres"
 path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 
-# PostgreSQL — uncomment when driver = "postgres"
-# host     = "localhost"
-# port     = 5432
-# name     = "platform_api"
-# user     = "platform_api"
-# password = '{{ file "/secrets/platform-api/postgres_password" }}'
-# ssl_mode = "disable"
-
 # ---------------------------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------------------------
 
 # JWT (local HMAC) — issues signed tokens after file-based login.
-# secret_key is a 32-byte key (64 hex chars or base64; openssl rand -hex 32).
-# secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
 [auth.jwt]
 enabled         = true
 issuer          = "platform-api"

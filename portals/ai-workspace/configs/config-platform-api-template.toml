@@ -23,7 +23,7 @@
 #   1. Copy this file to config-platform-api.toml.
 #   2. Generate two 32-byte keys: openssl rand -hex 32 (one for APIP_CP_ENCRYPTION_KEY,
 #      one for APIP_CP_AUTH_JWT_SECRET_KEY).
-#   3. Put both in `keys.env` file.
+#   3. Put both in `api-platform.env` file.
 #      The encryption_key / secret_key fields below read them via {{ env "..." }}
 #      tokens — never paste raw key values into this file.
 #   4. Set [auth.file_based] enabled = true and configure users.
@@ -62,7 +62,7 @@ enable_scope_validation = true
 # ---------------------------------------------------------------------------
 # Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
 # (secrets, subscription tokens, WebSub HMAC secrets)
-# Resolved from the APIP_CP_ENCRYPTION_KEY env var in `keys.env` file. Files preferred:
+# Resolved from the APIP_CP_ENCRYPTION_KEY env var in `api-platform.env` file. Files preferred:
 #   encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
@@ -72,7 +72,7 @@ encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 [database]
 driver = "sqlite3"   # "sqlite3" or "postgres"
 
-# SQLite — ignored when driver = "postgres". Env var is DATABASE_DB_PATH.
+# SQLite — ignored when driver = "postgres".
 path = "/app/data/api_platform.db"
 
 # PostgreSQL — uncomment and set driver = "postgres" above to use
@@ -100,22 +100,20 @@ path = "/app/data/api_platform.db"
 # health/metrics probes, the file-based login endpoint, and the internal gateway
 # routes (which authenticate with a gateway token instead). Setting this key
 # REPLACES the default list — include the defaults you still need.
-# skip_paths is under [auth]; env var is AUTH_SKIP_PATHS (comma-separated).
+# skip_paths is under [auth] comma-separated.
 # [auth]
 # skip_paths = ["/health", "/metrics", "/api/portal/v0.9/auth/login"]
 
 # JWT (local HMAC) — the default for self-hosted deployments.
 # Disable when delegating auth entirely to an external IDP.
-# Resolved from APIP_CP_AUTH_JWT_SECRET_KEY in `keys.env` file;
+# Resolved from APIP_CP_AUTH_JWT_SECRET_KEY in `api-platform.env` file;
 # secret files preferred: secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
 [auth.jwt]
 enabled    = true
 issuer     = "platform-api"
-# Signing key. Auto-generated (ephemeral — sessions reset on restart) when
-# unset in demo mode; REQUIRED when APIP_DEMO_MODE=false.
- secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
-# Skip signature verification. Defaults to true for the zero-config quickstart
-# and is rejected outright when APIP_DEMO_MODE=false. NEVER set true in production.
+secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+# Skip signature verification. Defaults to true for the zero-config quickstart.
+# NEVER set true in production.
 # skip_validation = true
 
 # IDP (JWKS-based) — enable instead of JWT when using Asgardeo, Keycloak, Auth0, etc.
@@ -124,7 +122,10 @@ enabled  = false
 # name     = "asgardeo"                              # friendly name for logging
 # jwks_url = "https://accounts.example.com/oauth2/jwks"
 # issuer   = ["https://accounts.example.com"]       # list of accepted issuers
-# audience = []                                      # list of accepted audiences; empty = skip audience check
+# audience — list of accepted "aud" values. When set, a token is rejected
+# unless its "aud" claim contains at least one of these values. Leave empty
+# to skip the check.
+# audience = []
 
 # Authorization mode: "scope" (default) checks the scope claim;
 # "role" checks a roles claim at claim_mappings.roles_claim_path.
@@ -142,8 +143,7 @@ enabled  = false
 # scope_claim_name        = "scope"          # space-separated scope string
 # roles_claim_path        = ""               # JSON path to roles array, e.g. "realm_access.roles"
 
-# File-based auth — local username/password login. Ideal for initial / air-gapped
-# setup, and rejected outright when APIP_DEMO_MODE=false.
+# File-based auth — local username/password login. Ideal for initial / air-gapped setup
 # When enabled, IDP is NOT used for Platform API authentication.
 [auth.file_based]
 enabled = true
@@ -159,7 +159,7 @@ region       = "us"
 
 # Add one [[auth.file_based.users]] block per user.
 # Generate a bcrypt hash with: htpasswd -bnBC 12 "" <password> | tr -d ':\n'
-# The env-var equivalent (AUTH_FILE_BASED_USERS) takes a JSON array instead.
+# The env-var equivalent (APIP_CP_AUTH_FILE_BASED_USERS) takes a JSON array instead.
 [[auth.file_based.users]]
 username      = "admin"
 password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
@@ -171,6 +171,55 @@ scopes = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:mana
 # username      = "readonly"
 # password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
 # scopes        = "ap:organization:read ap:gateway:read ap:rest_api:read ap:llm_provider:read"
+
+# ---------------------------------------------------------------------------
+# Listeners (HTTP + HTTPS)
+# ---------------------------------------------------------------------------
+# The plain-HTTP and TLS listeners are independent — enable either or both, each
+# on its own port. This follows the gateway router's http/https split, and lets
+# you serve plain HTTP internally, HTTPS externally, or run both at once (e.g. to
+# migrate clients between them without downtime).
+#
+# Defaults: the HTTPS listener is on at 9243; the plain-HTTP listener is off.
+# Enable the plain-HTTP listener only when a trusted upstream (ingress,
+# service-mesh sidecar) terminates TLS, or for internal traffic — never expose it
+# directly to untrusted networks.
+#
+# https.cert_dir must contain cert.pem and key.pem when https.enabled = true and
+# APIP_DEMO_MODE=false. In demo mode a self-signed pair is generated there.
+#
+# Override with HTTP_ENABLED / HTTP_PORT and HTTPS_ENABLED / HTTPS_PORT /
+# HTTPS_CERT_DIR. Legacy TLS_ENABLED / TLS_CERT_DIR / PORT still map onto the
+# HTTPS listener.
+# [http]
+# enabled = false
+# port    = "9080"
+# [https]
+# enabled  = true
+# port     = "9243"
+# cert_dir = "/app/data/certs"
+
+# ---------------------------------------------------------------------------
+# Listener timeouts
+# ---------------------------------------------------------------------------
+# Bound the lifetime of a connection so a slow or idle peer cannot hold one open
+# indefinitely (Slowloris). These apply to both listeners, which serve the same
+# handler. Values are durations, e.g. "10s", "2m".
+#
+# 0 disables a timeout (net/http semantics). Disabling read or read_header
+# removes the Slowloris protection — only do so behind a proxy that enforces its
+# own bounds. Keep `write` generous: it bounds handler execution, and some
+# handlers proxy slow upstreams (LLM completions, deployments).
+#
+# WebSocket routes are unaffected — the deadlines are cleared on upgrade.
+#
+# Override with TIMEOUTS_READ_HEADER / TIMEOUTS_READ / TIMEOUTS_WRITE /
+# TIMEOUTS_IDLE.
+# [timeouts]
+# read_header = "10s"
+# read        = "60s"
+# write       = "120s"
+# idle        = "120s"
 
 # ---------------------------------------------------------------------------
 # TLS
@@ -193,7 +242,7 @@ cert_dir = "/app/data/certs"
 # Origins allowed to make credentialed cross-origin requests, e.g. the Developer
 # Portal and AI Workspace origins. Unset (or ["*"]) is permitted only in demo
 # mode; an explicit non-wildcard list is REQUIRED when APIP_DEMO_MODE=false.
-# Env var is CORS_ALLOWED_ORIGINS (comma-separated).
+# Env var is APIP_CP_CORS_ALLOWED_ORIGINS (comma-separated).
 # [cors]
 # allowed_origins = ["https://workspace.example.com", "https://devportal.example.com"]
 

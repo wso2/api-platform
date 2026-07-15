@@ -414,7 +414,7 @@ func LoadConfig(configPath string) (*Server, error) {
 	if err := validateAuthModeExclusivity(&cfg.Auth); err != nil {
 		return nil, err
 	}
-	if err := validateJWTConfig(&cfg.Auth.JWT); err != nil {
+	if err := validateJWTConfig(&cfg.Auth.JWT, cfg.Auth.FileBased.Enabled); err != nil {
 		return nil, err
 	}
 	if err := validateEncryptionKey(cfg.EncryptionKey); err != nil {
@@ -560,14 +560,16 @@ func validateAuthModeExclusivity(auth *Auth) error {
 	return nil
 }
 
-// validateJWTConfig verifies the local HMAC JWT secret when JWT auth is enabled. The
-// secret is required and never generated: a missing or malformed key fails startup.
-func validateJWTConfig(jwt *JWT) error {
-	if !jwt.Enabled {
+// validateJWTConfig verifies the local HMAC JWT secret. The same secret signs and
+// verifies the login tokens issued in file-based mode, so it is required whenever
+// either JWT auth or file-based auth is enabled. The secret is never generated: a
+// missing or malformed key fails startup.
+func validateJWTConfig(jwt *JWT, fileBasedEnabled bool) error {
+	if !jwt.Enabled && !fileBasedEnabled {
 		return nil
 	}
 	if jwt.SecretKey == "" {
-		return fmt.Errorf("Auth.JWT.SecretKey is required when JWT authentication is enabled " +
+		return fmt.Errorf("Auth.JWT.SecretKey is required when JWT or file-based authentication is enabled " +
 			"(set auth.jwt.secret_key in config via {{ env }}/{{ file }})")
 	}
 	if !valid32ByteKey(jwt.SecretKey) {
