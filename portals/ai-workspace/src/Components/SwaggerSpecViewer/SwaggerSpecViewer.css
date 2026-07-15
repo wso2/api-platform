@@ -96,6 +96,154 @@
   display: none;
 }
 
+.swagger-spec-viewer .swagger-ui .access-control-not-allowed {
+  position: relative;
+}
+
+.swagger-spec-viewer
+  .swagger-ui
+  .opblock:has(> .access-control-not-allowed),
+.swagger-spec-viewer
+  .swagger-ui
+  .opblock-tag-section:has(
+    > .opblock-tag[data-tag='__wso2_not_allowed_resources__']
+  )
+  .opblock {
+  background: #f5f5f5 !important;
+  border-color: #bdbdbd !important;
+  box-shadow: none !important;
+  opacity: 0.72;
+}
+
+.swagger-spec-viewer
+  .swagger-ui
+  .access-control-not-allowed
+  .opblock-summary,
+.swagger-spec-viewer
+  .swagger-ui
+  .opblock-tag-section:has(
+    > .opblock-tag[data-tag='__wso2_not_allowed_resources__']
+  )
+  .opblock-summary {
+  position: relative;
+  background: #f5f5f5 !important;
+  cursor: pointer;
+}
+
+.swagger-spec-viewer
+  .swagger-ui
+  .access-control-not-allowed
+  .opblock-summary-method,
+.swagger-spec-viewer
+  .swagger-ui
+  .opblock-tag-section:has(
+    > .opblock-tag[data-tag='__wso2_not_allowed_resources__']
+  )
+  .opblock-summary-method {
+  background: #757575 !important;
+  color: #fff !important;
+  text-shadow: none;
+}
+
+.swagger-spec-viewer
+  .swagger-ui
+  .access-control-not-allowed
+  :is(.opblock-summary-path, .opblock-summary-description),
+.swagger-spec-viewer
+  .swagger-ui
+  .opblock-tag-section:has(
+    > .opblock-tag[data-tag='__wso2_not_allowed_resources__']
+  )
+  :is(.opblock-summary-path, .opblock-summary-description) {
+  color: #757575 !important;
+  text-decoration: none;
+}
+
+.swagger-spec-viewer
+  .swagger-ui
+  .opblock-tag-section:has(
+    > .opblock-tag[data-tag='__wso2_not_allowed_resources__']
+  )
+  .opblock-summary::after {
+  content: 'Not allowed';
+  position: absolute;
+  top: 50%;
+  right: 48px;
+  transform: translateY(-50%);
+  padding: 3px 9px;
+  color: #616161;
+  background: #e0e0e0;
+  border: 1px solid #bdbdbd;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  .opblock:has(> .access-control-not-allowed),
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  .access-control-not-allowed
+  .opblock-summary,
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  .opblock-tag-section:has(
+    > .opblock-tag[data-tag='__wso2_not_allowed_resources__']
+  )
+  .opblock,
+:is(
+    html[data-mui-color-scheme='dark'],
+    body[data-mui-color-scheme='dark'],
+    html[data-color-scheme='dark'],
+    body[data-color-scheme='dark'],
+    html[data-theme='dark'],
+    body[data-theme='dark'],
+    html.dark,
+    body.dark
+  )
+  .swagger-spec-viewer
+  .swagger-ui
+  .opblock-tag-section:has(
+    > .opblock-tag[data-tag='__wso2_not_allowed_resources__']
+  )
+  .opblock-summary {
+  background: #2f2f2f !important;
+  border-color: #616161 !important;
+}
+
 :is(
     html[data-mui-color-scheme='dark'],
     body[data-mui-color-scheme='dark'],
