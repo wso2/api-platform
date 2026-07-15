@@ -144,7 +144,7 @@ const (
 
 // Gateway artifact apiVersion (the `apiVersion:` field on deployment artifacts).
 // GatewayApiVersionV1Alpha1 is the legacy value for gateways < 1.2.0 — use it only
-// in down-convert paths (deploymenttransform) that must produce artifacts
+// in down-convert paths (gatewaytranslator) that must produce artifacts
 // consumable by old gateways. New code should use GatewayApiVersion.
 const (
 	GatewayApiVersionV1Alpha1 = "gateway.api-platform.wso2.com/v1alpha1"

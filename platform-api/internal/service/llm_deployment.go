@@ -29,8 +29,8 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
-	"github.com/wso2/api-platform/platform-api/internal/deploymenttransform"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -205,10 +205,12 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate LLM provider deployment YAML: %w", err)
 		}
-		target := deploymenttransform.ParseVersion(gateway.Version)
-		if err := deploymenttransform.Default().Transform(
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(provider.DataVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(
 			constants.LLMProvider,
-			target,
+			sourceDataVersion,
+			targetDataVersion,
 			&providerDeployment,
 		); err != nil {
 			return nil, fmt.Errorf("failed to transform LLM provider deployment for gateway %s: %w", gateway.Version, err)
@@ -1344,10 +1346,12 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate LLM proxy deployment YAML: %w", err)
 		}
-		target := deploymenttransform.ParseVersion(gateway.Version)
-		if err := deploymenttransform.Default().Transform(
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(proxy.DataVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(
 			constants.LLMProxy,
-			target,
+			sourceDataVersion,
+			targetDataVersion,
 			&proxyDeployment,
 		); err != nil {
 			return nil, fmt.Errorf("failed to transform LLM proxy deployment for gateway %s: %w", gateway.Version, err)

@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	coreservice "github.com/wso2/api-platform/platform-api/internal/service"
@@ -200,6 +201,11 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 
 	if req.Base == "current" {
 		d := buildWebBrokerAPIDeploymentYAML(webbrokerAPI)
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(webbrokerAPI.DataVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(constants.WebBrokerApi, sourceDataVersion, targetDataVersion, d); err != nil {
+			return nil, fmt.Errorf("failed to transform WebBroker API deployment for gateway %s: %w", gateway.Version, err)
+		}
 		contentBytes, err = yaml.Marshal(d)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal WebBroker API deployment YAML: %w", err)
