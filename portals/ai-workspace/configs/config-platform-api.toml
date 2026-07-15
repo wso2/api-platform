@@ -8,40 +8,40 @@
 # --------------------------------------------------------------------
 # Platform API configuration — quickstart (file-based auth). See README.md.
 
-log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
-enable_scope_validation = true
+log_level = '{{ env "APIP_CP_LOG_LEVEL" "INFO" }}'   # DEBUG | INFO | WARN | ERROR
+enable_scope_validation = '{{ env "APIP_CP_ENABLE_SCOPE_VALIDATION" "true" }}'
 
 # encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
+[https]
+enabled  = '{{ env "APIP_CP_HTTPS_ENABLED" "true" }}'
+port     = '{{ env "APIP_CP_HTTPS_PORT" "9243" }}'
+cert_dir = "/etc/platform-api/tls"
+
 [database]
-driver = "sqlite3"          # "sqlite3" or "postgres"
+driver = '{{ env "APIP_CP_DATABASE_DRIVER" "sqlite3" }}'   # "sqlite3" or "postgres"
 path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 
 # secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
 [auth.jwt]
-enabled         = true
-issuer          = "platform-api"
+enabled         = '{{ env "APIP_CP_AUTH_JWT_ENABLED" "true" }}'
+issuer          = '{{ env "APIP_CP_AUTH_JWT_ISSUER" "platform-api" }}'
 secret_key      = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
-skip_validation = false   # verify JWT signature
+skip_validation = '{{ env "APIP_CP_AUTH_JWT_SKIP_VALIDATION" "false" }}'   # verify JWT signature
 
 [auth.idp]
-enabled = false
+enabled = '{{ env "APIP_CP_AUTH_IDP_ENABLED" "false" }}'
 
 [auth.file_based]
-enabled = true
+enabled = '{{ env "APIP_CP_AUTH_FILE_BASED_ENABLED" "true" }}'
 
 [auth.file_based.organization]
-id   = "default"
-display_name = "Default"
-region = "us"
+id           = '{{ env "APIP_CP_AUTH_FILE_BASED_ORGANIZATION_ID" "default" }}'
+display_name = '{{ env "APIP_CP_AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME" "Default" }}'
+region       = '{{ env "APIP_CP_AUTH_FILE_BASED_ORGANIZATION_REGION" "us" }}'
 
 [[auth.file_based.users]]
 username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'
 password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
-scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage"
-
-[https]
-enabled  = true
-port     = "9243"
-cert_dir = "/etc/platform-api/tls"
+scopes        = '{{ env "APIP_CP_ADMIN_SCOPES" "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage" }}'

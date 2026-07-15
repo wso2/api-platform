@@ -53,6 +53,9 @@ services:
           -keyout /certs/key.pem -out /certs/cert.pem \
           -subj "/O=WSO2 API Platform/CN=platform-api" \
           -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
+        # certgen runs as root; platform-api runs as uid 10001, so the key must be
+        # made world-readable or the server fails to start with "permission denied".
+        chmod 0644 /certs/key.pem
     volumes:
       - platform-api-certs:/certs
     networks: [e2e]

@@ -116,10 +116,10 @@ static_dir = '{{ env "APIP_AIW_STATIC_DIR" "/app" }}'
 # Same-origin prefix the SPA calls; it is stripped before forwarding upstream. The
 # browser's API base URL is derived from this, so the browser only ever talks to the
 # app origin and never hits the platform-api certificate directly.
-# proxy_prefix = '{{ env "APIP_AIW_PROXY_PREFIX" "/api/proxy" }}'
+proxy_prefix = '{{ env "APIP_AIW_PROXY_PREFIX" "/api/proxy" }}'
 
 # Custom header required on state-mutating requests (CSRF protection).
-# csrf_header = '{{ env "APIP_AIW_CSRF_HEADER" "X-Requested-By" }}'
+csrf_header = '{{ env "APIP_AIW_CSRF_HEADER" "X-Requested-By" }}'
 
 log_level  = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'    # debug | info | warn | error
 log_format = '{{ env "APIP_AIW_LOG_FORMAT" "text" }}'   # text | json
