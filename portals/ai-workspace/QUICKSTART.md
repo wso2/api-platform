@@ -21,23 +21,32 @@ curl -sLO https://github.com/wso2/api-platform/releases/download/ai-workspace/v1
 unzip wso2apip-ai-workspace-1.0.0-alpha.zip
 ```
 
-### 2. Start the stack
+### 2. Run the setup script
 
 ```bash
 cd wso2apip-ai-workspace-1.0.0-alpha
-docker compose up -d
+./setup.sh
 ```
 
-### 3. Open the workspace
+The script generates everything the stack requires: the encryption and JWT
+signing keys and the admin login credentials (written to `keys.env`), and the
+TLS certificates for both services (written to `certs/`).
 
-Navigate to **https://localhost:5380** and sign in:
+> **Save the printed admin username and password** — the password is shown only
+> once and stored nowhere. Rerun `./setup.sh --force` to rotate it.
 
-| Field    | Value   |
-|----------|---------|
-| Username | `admin` |
-| Password | `admin` |
+### 3. Start the stack
 
-> **Browser trust warning?** Both services use a self-signed TLS certificate by default. Click **Advanced → Proceed** to continue, then return to the workspace. See [Custom TLS certificates](README.md#custom-tls-certificates) to remove the warning permanently.
+```bash
+docker compose --env-file keys.env up -d
+```
+
+### 4. Open the workspace
+
+Navigate to **https://localhost:5380** and sign in with the admin credentials
+printed by `setup.sh`.
+
+> **Browser trust warning?** The generated TLS certificates are self-signed. Click **Advanced → Proceed** to continue, then return to the workspace. See [Custom TLS certificates](README.md#custom-tls-certificates) to remove the warning permanently.
 
 ---
 

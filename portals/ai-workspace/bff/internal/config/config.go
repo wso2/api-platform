@@ -25,8 +25,8 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 )
@@ -61,11 +61,6 @@ type Config struct {
 	AuthMode string // "basic" | "oidc" — informs the SPA which login UX to show
 	OIDC     OIDCConfig
 
-	// DemoMode mirrors Platform API's APIP_DEMO_MODE: defaults to true, and an
-	// explicit "false"/"0" opts into production-grade startup checks (no
-	// file-based/basic auth, no auto-generated self-signed TLS certificate).
-	DemoMode bool
-
 	// Runtime config surfaced to the SPA (window.__RUNTIME_CONFIG__)
 	RuntimeConfig map[string]string
 }
@@ -99,7 +94,6 @@ type TLSConfig struct {
 	// service-mesh sidecar) terminates TLS and forwards plain HTTP to the BFF; no
 	// certificate is then read, generated, or required.
 	TerminateTLS bool
-	SelfSigned   bool
 	CertFile     string
 	KeyFile      string
 }
@@ -221,10 +215,6 @@ func Load(path string) (*Config, error) {
 
 	// Parse typed values up front so a malformed one fails startup instead of
 	// being silently replaced with the default.
-	selfSigned, err := s.getbool("tls.self_signed", true)
-	if err != nil {
-		return nil, err
-	}
 	tlsEnabled, err := s.getbool("tls.enabled", true)
 	if err != nil {
 		return nil, err
@@ -257,9 +247,8 @@ func Load(path string) (*Config, error) {
 		LogFormat: strings.ToLower(s.get("log_format", "text")),
 		TLS: TLSConfig{
 			TerminateTLS: tlsEnabled,
-			SelfSigned:   selfSigned,
-			// Convention matches the container's mount path. buildTLS falls back to
-			// a self-signed cert when these files are absent.
+			// Convention matches the container's mount path. A certificate pair is
+			// required there whenever TerminateTLS is on.
 			CertFile: s.get("tls.cert_file", "/etc/ai-workspace/tls/tls.crt"),
 			KeyFile:  s.get("tls.key_file", "/etc/ai-workspace/tls/tls.key"),
 		},
@@ -282,7 +271,6 @@ func Load(path string) (*Config, error) {
 		},
 		CSRFHeader: s.get("csrf_header", "X-Requested-By"),
 		AuthMode:   authMode,
-		DemoMode:   demoMode(),
 		OIDC: OIDCConfig{
 			Enabled:  authMode == "oidc" || oidcEnabled,
 			Issuer:   strings.TrimRight(s.get("oidc.authority", ""), "/"),
@@ -334,11 +322,11 @@ func Load(path string) (*Config, error) {
 			return nil, fmt.Errorf("[platform_api] ca_file / tls_skip_verify are set but [platform_api] url is http:// (no TLS on the upstream hop)")
 		}
 	}
-	// Skipping verification outside demo mode is a security downgrade; require an
-	// operator to reach it deliberately rather than inheriting it silently.
-	if u.Scheme == "https" && cfg.PlatformAPI.TLSSkipVerify && !cfg.DemoMode {
-		return nil, fmt.Errorf("[platform_api] tls_skip_verify = true is not allowed when demo mode is disabled; " +
-			"trust the upstream certificate with [platform_api] ca_file instead")
+	// Skipping verification is a security downgrade; say so loudly and point at
+	// the supported alternative.
+	if u.Scheme == "https" && cfg.PlatformAPI.TLSSkipVerify {
+		slog.Warn("[platform_api] tls_skip_verify = true — upstream certificate verification is DISABLED. " +
+			"Trust the upstream certificate with [platform_api] ca_file instead.")
 	}
 	if cfg.OIDC.Enabled {
 		if cfg.OIDC.Issuer == "" || cfg.OIDC.ClientID == "" || cfg.OIDC.ClientSecret == "" || cfg.OIDC.RedirectURL == "" {
@@ -355,25 +343,13 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
-	// Outside demo mode, basic (file-based) auth is not allowed — it relies on the
-	// Platform API's built-in admin/admin credentials and is dev-only.
-	if !cfg.DemoMode && !cfg.OIDC.Enabled {
-		return nil, fmt.Errorf("basic (file-based) auth is not allowed when demo mode is disabled; " +
+	// Basic (file-based) auth is supported for quickstart deployments but is not
+	// recommended for production; point operators at OIDC.
+	if !cfg.OIDC.Enabled {
+		slog.Warn("basic (file-based) auth is enabled — this is not recommended for production; " +
 			"configure OIDC (set auth_mode = \"oidc\" and [oidc] authority, client_id, client_secret, redirect_url)")
 	}
 
 	cfg.RuntimeConfig = buildRuntimeConfig(cfg, s)
 	return cfg, nil
-}
-
-// demoMode reports whether APIP_DEMO_MODE is enabled. Defaults to true when the
-// variable is unset; only an explicit "false"/"0" opts out. It is intentionally
-// unprefixed: the same variable drives the Platform API, so one value governs the
-// whole stack.
-func demoMode() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
-	if v == "" {
-		return true
-	}
-	return v == "true" || v == "1"
 }

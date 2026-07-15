@@ -184,8 +184,7 @@ type HTTPListener struct {
 }
 
 // HTTPSListener configures the TLS listener. CertDir must contain cert.pem and
-// key.pem when Enabled is true; in demo mode a self-signed pair is generated
-// there when none is present.
+// key.pem when Enabled is true; there is no self-signed fallback.
 type HTTPSListener struct {
 	Enabled bool   `koanf:"enabled"`
 	Port    string `koanf:"port"`
@@ -219,7 +218,7 @@ type Timeouts struct {
 // CORS holds cross-origin resource sharing configuration.
 type CORS struct {
 	// AllowedOrigins lists the exact origins permitted to make credentialed
-	// cross-origin requests. Must not be ["*"] outside demo mode — wildcard
+	// cross-origin requests. Must never be ["*"] — wildcard
 	// origins cannot be combined with credentialed requests.
 	AllowedOrigins []string `koanf:"allowed_origins"`
 }
@@ -622,6 +621,14 @@ func validateFileBasedConfig(cfg *FileBased) error {
 	}
 	if len(cfg.Users) == 0 {
 		return fmt.Errorf("auth.file_based.enabled=true requires at least one user in auth.file_based.users")
+	}
+	for i, u := range cfg.Users {
+		if u.Username == "" {
+			return fmt.Errorf("auth.file_based.users[%d]: username is required (set it in config via {{ env }}/{{ file }})", i)
+		}
+		if u.PasswordHash == "" {
+			return fmt.Errorf("auth.file_based.users[%d] (%s): password_hash is required (set it in config via {{ env }}/{{ file }})", i, u.Username)
+		}
 	}
 	return nil
 }

@@ -56,9 +56,12 @@ bff-build: ## Build the BFF binary
 # cannot be set here. To test against an IDP, add APIP_AIW_AUTH_MODE=oidc and the
 # APIP_AIW_OIDC_* variables the [oidc] tokens name — see README.md.
 bff-run: ## Run the BFF locally (proxies to PLATFORM_API_URL; pair with `make run`)
+	./setup.sh --certs-only
 	cd $(BFF_DIR) && \
 		APIP_AIW_PLATFORM_API_URL=$(PLATFORM_API_URL) \
 		APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY=true \
+		APIP_AIW_TLS_CERT_FILE=../certs/ai-workspace.crt \
+		APIP_AIW_TLS_KEY_FILE=../certs/ai-workspace.key \
 		APIP_AIW_LISTEN_ADDR=$(BFF_DEV_ADDR) \
 		APIP_AIW_STATIC_DIR=../dist \
 		APIP_AIW_LOG_LEVEL=debug \

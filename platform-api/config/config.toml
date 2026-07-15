@@ -101,8 +101,8 @@ scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_poli
 # service-mesh sidecar) terminates TLS, or for internal traffic — never expose it
 # directly to untrusted networks.
 #
-# https.cert_dir must contain cert.pem and key.pem when https.enabled = true and
-# APIP_DEMO_MODE=false. In demo mode a self-signed pair is generated there.
+# https.cert_dir must contain cert.pem and key.pem when https.enabled = true.
+# Certificates are always required — there is no self-signed fallback.
 #
 # Override with HTTP_ENABLED / HTTP_PORT and HTTPS_ENABLED / HTTPS_PORT /
 # HTTPS_CERT_DIR. Legacy TLS_ENABLED / TLS_CERT_DIR / PORT still map onto the
@@ -140,7 +140,7 @@ scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_poli
 # ---------------------------------------------------------------------------
 # CORS
 # ---------------------------------------------------------------------------
-# Required (non-wildcard) when APIP_DEMO_MODE=false. List the exact origins
+# Optional; must not contain "*". List the exact origins
 # (scheme + host + port) that are allowed to make credentialed cross-origin
 # requests, e.g. the Developer Portal / Admin UI origins.
 # Override with the CORS_ALLOWED_ORIGINS env var (comma-separated).

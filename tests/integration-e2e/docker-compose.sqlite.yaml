@@ -2,6 +2,22 @@
 # each use their own SQLite file (no shared DB server). Same scenario as the
 # PostgreSQL stack; see the godog suite and README.md.
 services:
+  # One-shot init container: generates the TLS pair the platform-api HTTPS
+  # listener requires (the server no longer generates a self-signed fallback).
+  platform-api-certgen:
+    image: alpine/openssl
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        [ -f /certs/cert.pem ] && [ -f /certs/key.pem ] && exit 0
+        openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+          -keyout /certs/key.pem -out /certs/cert.pem \
+          -subj "/O=WSO2 API Platform/CN=platform-api" \
+          -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
+    volumes:
+      - platform-api-certs:/certs
+    networks: [e2e]
+
   platform-api:
     image: ${PLATFORM_API_IMAGE:-platform-api:it-e2e}
     command: ["-config", "/etc/platform-api/config.toml"]
@@ -20,8 +36,12 @@ services:
       - APIP_CP_AUTH_JWT_SECRET_KEY=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
+      - platform-api-certs:/app/data/certs
     ports:
       - "${PA_HOST_PORT:-9243}:9243"
+    depends_on:
+      platform-api-certgen:
+        condition: service_completed_successfully
     networks: [e2e]
 
   gateway-controller:
@@ -75,3 +95,6 @@ services:
 networks:
   e2e:
     driver: bridge
+
+volumes:
+  platform-api-certs:

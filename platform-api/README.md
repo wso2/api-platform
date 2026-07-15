@@ -235,8 +235,7 @@ The prefix is stripped and the remainder mapped to a config key — e.g. `APIP_C
 `APIP_CP_DATABASE_HOST` → `database.host`. The variable names in the tables below are shown
 with the prefix.
 
-Two variables are intentionally **not** prefixed: `APIP_DEMO_MODE` (a standalone runtime
-flag) and the shared `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`. The `{{ env "NAME" }}` interpolation
+One variable is intentionally **not** prefixed: the shared `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`. The `{{ env "NAME" }}` interpolation
 tokens in the config file read the literal name via `os.LookupEnv` (independent of the koanf
 prefix mechanism); the samples use the same `APIP_CP_`-prefixed names for one consistent
 namespace — e.g. `{{ env "APIP_CP_ENCRYPTION_KEY" }}` (see "Providing secrets via the config
@@ -251,14 +250,15 @@ APIP_CP_AUTH_IDP_ENABLED=false (default)  →  Local JWT mode  (HMAC signature v
 APIP_CP_AUTH_IDP_ENABLED=true             →  IDP mode        (JWKS-based verification)
 ```
 
-> **Demo mode (`APIP_DEMO_MODE`).** Defaults to `true`; an explicit `false`/`0` opts into
-> production-grade startup checks. Note that `APIP_CP_ENCRYPTION_KEY` and `APIP_CP_AUTH_JWT_SECRET_KEY` are **required**.
+> `APIP_CP_ENCRYPTION_KEY` and `APIP_CP_AUTH_JWT_SECRET_KEY` are **required**; startup
+> fails without them. TLS certificates are likewise required whenever the HTTPS
+> listener is enabled — the server never generates a self-signed pair.
 
 ---
 
 #### Local JWT Mode (default)
 
-The server signs and validates HMAC login tokens using `APIP_CP_AUTH_JWT_SECRET_KEY` — a 32-byte key (64 hex chars or base64). Set `APIP_CP_AUTH_JWT_SKIP_VALIDATION=true` only in local development environments where you do not have a token issuer available — all bearer values will be accepted without any signature check.
+The server signs and validates HMAC login tokens using `APIP_CP_AUTH_JWT_SECRET_KEY` — a 32-byte key (64 hex chars or base64). `APIP_CP_AUTH_JWT_SKIP_VALIDATION` must remain `false`; the server refuses to start when signature validation is disabled.
 
 | Variable | Default | Description                                                         |
 |---|---|---------------------------------------------------------------------|
@@ -417,7 +417,7 @@ a missing/empty required env var, or a missing/disallowed/oversize file, aborts 
 | Variable | Default | Description |
 |---|---|---|
 | `LOG_LEVEL` | `DEBUG` | Log verbosity (`DEBUG`, `INFO`, `WARN`, `ERROR`) |
-| `HTTPS_ENABLED` | `true` | Enable the TLS listener. Certificates are read from `HTTPS_CERT_DIR` (or generated in demo mode) |
+| `HTTPS_ENABLED` | `true` | Enable the TLS listener. Certificates are read from `HTTPS_CERT_DIR` (cert.pem / key.pem — required) |
 | `HTTPS_PORT` | `9243` | Port for the TLS listener |
 | `HTTPS_CERT_DIR` | `./data/certs` | Directory holding `cert.pem` / `key.pem` (used only when `HTTPS_ENABLED=true`) |
 | `HTTP_ENABLED` | `false` | Enable the plain-HTTP listener. Use only behind a TLS-terminating ingress/sidecar or for internal traffic — never expose directly to untrusted networks |

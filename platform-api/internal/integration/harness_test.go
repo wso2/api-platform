@@ -45,8 +45,6 @@ func TestMain(m *testing.M) {
 	// the at-rest encryption key). It resolves keys from the config file only — env vars reach
 	// config exclusively through {{ env }} tokens now — so seed the singleton with a temp
 	// config carrying throwaway 64-hex test keys.
-	os.Setenv("APIP_DEMO_MODE", "true")
-
 	const testKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	f, err := os.CreateTemp("", "it-config-*.toml")
 	if err != nil {
