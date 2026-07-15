@@ -291,7 +291,8 @@ type SecurityConfig struct {
 }
 
 type APIKeySecurity struct {
-	Enabled *bool  `json:"enabled,omitempty" yaml:"enabled,omitempty"`
-	Key     string `json:"key,omitempty" yaml:"key,omitempty"`
-	In      string `json:"in,omitempty" yaml:"in,omitempty"`
+	Enabled     *bool  `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	Key         string `json:"key,omitempty" yaml:"key,omitempty"`
+	In          string `json:"in,omitempty" yaml:"in,omitempty"`
+	ValuePrefix string `json:"valuePrefix,omitempty" yaml:"valuePrefix,omitempty"`
 }

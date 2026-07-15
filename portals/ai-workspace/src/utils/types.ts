@@ -194,6 +194,7 @@ export interface ModelProvider {
 export interface UpstreamAuth {
   type: 'api-key' | 'oauth2' | 'basic' | string;
   header?: string;
+  valuePrefix?: string;
   value?: string;
 }
 
@@ -325,7 +326,7 @@ export interface ApiKeySecurity {
   enabled: boolean;
   key?: string;
   in?: 'header' | 'query';
-  keyPrefix?: string;
+  valuePrefix?: string;
 }
 
 /**

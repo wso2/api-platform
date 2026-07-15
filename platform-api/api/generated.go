@@ -518,6 +518,9 @@ type APIKeySecurity struct {
 
 	// Key Name of the header or query parameter to be used for the API key
 	Key *string `json:"key,omitempty" yaml:"key,omitempty"`
+
+	// ValuePrefix Optional prefix to strip from the inbound API key value before validation, for example "Bearer"
+	ValuePrefix *string `json:"valuePrefix,omitempty" yaml:"valuePrefix,omitempty"`
 }
 
 // APIKeySecurityIn Location of the API key (header or query)

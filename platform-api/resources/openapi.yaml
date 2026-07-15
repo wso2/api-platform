@@ -5480,6 +5480,10 @@ components:
           type: string
           description: Name of the header or query parameter to be used for the API key
           example: "X-API-Key"
+        valuePrefix:
+          type: string
+          description: Optional prefix to strip from the inbound API key value before validation, for example "Bearer"
+          example: "Bearer"
         in:
           type: string
           description: Location of the API key (header or query)

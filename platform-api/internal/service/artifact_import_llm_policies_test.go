@@ -43,7 +43,7 @@ func TestLiftLLMPolicies_RoundTrip(t *testing.T) {
 			Upstream: &model.UpstreamConfig{Main: &model.UpstreamEndpoint{URL: "https://api.openai.com"}},
 			Security: &model.SecurityConfig{
 				Enabled: bptr(true),
-				APIKey:  &model.APIKeySecurity{Enabled: bptr(true), Key: "secret-key", In: "header"},
+				APIKey:  &model.APIKeySecurity{Enabled: bptr(true), Key: "Authorization", In: "header", ValuePrefix: "Bearer"},
 			},
 			RateLimiting: &model.LLMRateLimitingConfig{
 				// Provider scope: resource-wise (default token + one resource request).
@@ -109,8 +109,8 @@ func TestLiftLLMPolicies_RoundTrip(t *testing.T) {
 	if sec == nil || sec.APIKey == nil {
 		t.Fatalf("security not reconstructed: %+v", sec)
 	}
-	if sec.APIKey.Key != "secret-key" || sec.APIKey.In != "header" {
-		t.Errorf("security apiKey = %+v, want key=secret-key in=header", sec.APIKey)
+	if sec.APIKey.Key != "Authorization" || sec.APIKey.In != "header" || sec.APIKey.ValuePrefix != "Bearer" {
+		t.Errorf("security apiKey = %+v, want key=Authorization in=header valuePrefix=Bearer", sec.APIKey)
 	}
 	if sec.Enabled == nil || !*sec.Enabled {
 		t.Errorf("security.Enabled = %v, want true", sec.Enabled)

@@ -41,6 +41,7 @@ export default function ServiceProviderSecurityTab() {
   const [apiKeyEnabled, setApiKeyEnabled] = useState(true);
   const [keyValue, setKeyValue] = useState('');
   const [keyIn, setKeyIn] = useState<'header' | 'query'>('header');
+  const [valuePrefix, setValuePrefix] = useState('');
   const showSnackbar = useAIWorkspaceSnackbar();
   const isReadOnlyProvider = Boolean(provider?.readOnly);
   const isSecurityFormDisabled =
@@ -55,12 +56,14 @@ export default function ServiceProviderSecurityTab() {
     );
     setKeyValue(provider.security?.apiKey?.key || '');
     setKeyIn(provider.security?.apiKey?.in || 'header');
+    setValuePrefix(provider.security?.apiKey?.valuePrefix || '');
   }, [provider]);
 
   const updateSecurity = async (
     nextKey: string,
     nextIn: 'header' | 'query',
-    nextEnabled: boolean
+    nextEnabled: boolean,
+    nextValuePrefix: string
   ) => {
     if (!provider || isLoading || error || isReadOnlyProvider) return;
     const {
@@ -85,6 +88,7 @@ export default function ServiceProviderSecurityTab() {
             enabled: nextEnabled,
             key: nextKey,
             in: nextIn,
+            valuePrefix: nextValuePrefix,
           },
         },
       });
@@ -102,7 +106,7 @@ export default function ServiceProviderSecurityTab() {
     const nextType = String(event.target.value || '').trim();
     if (!nextType || nextType === authenticationType) return;
     setAuthenticationType(nextType);
-    await updateSecurity(keyValue.trim(), keyIn, apiKeyEnabled);
+    await updateSecurity(keyValue.trim(), keyIn, apiKeyEnabled, valuePrefix.trim());
   };
 
   const handleApiKeyEnabledChange = async (
@@ -111,7 +115,7 @@ export default function ServiceProviderSecurityTab() {
     const nextEnabled = event.target.checked;
     if (nextEnabled === apiKeyEnabled) return;
     setApiKeyEnabled(nextEnabled);
-    await updateSecurity(keyValue.trim(), keyIn, nextEnabled);
+    await updateSecurity(keyValue.trim(), keyIn, nextEnabled, valuePrefix.trim());
   };
 
   const handleKeyBlur = async () => {
@@ -120,14 +124,23 @@ export default function ServiceProviderSecurityTab() {
     if (!nextKey || nextKey === (provider.security?.apiKey?.key || '')) {
       return;
     }
-    await updateSecurity(nextKey, keyIn, apiKeyEnabled);
+    await updateSecurity(nextKey, keyIn, apiKeyEnabled, valuePrefix.trim());
+  };
+
+  const handleValuePrefixBlur = async () => {
+    if (!provider || isLoading || error) return;
+    const nextValuePrefix = valuePrefix.trim();
+    if (nextValuePrefix === (provider.security?.apiKey?.valuePrefix || '')) {
+      return;
+    }
+    await updateSecurity(keyValue.trim(), keyIn, apiKeyEnabled, nextValuePrefix);
   };
 
   const handleKeyInChange = async (event: any) => {
     const nextIn = event.target.value as 'header' | 'query';
     if (nextIn === keyIn) return;
     setKeyIn(nextIn);
-    await updateSecurity(keyValue.trim(), nextIn, apiKeyEnabled);
+    await updateSecurity(keyValue.trim(), nextIn, apiKeyEnabled, valuePrefix.trim());
   };
 
   return (
@@ -204,12 +217,43 @@ export default function ServiceProviderSecurityTab() {
                   const nextKey = event.target.value;
                   setKeyValue(nextKey);
                   if (isDraftMode) {
-                    void updateSecurity(nextKey.trim(), keyIn, apiKeyEnabled);
+                    void updateSecurity(nextKey.trim(), keyIn, apiKeyEnabled, valuePrefix.trim());
                   }
                 }}
                 onBlur={() => {
                   if (!isDraftMode) {
                     void handleKeyBlur();
+                  }
+                }}
+              />
+            </FormControl>
+            <FormControl fullWidth>
+              <FormLabel>
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderSecurityTab.api.key.value.prefix"
+                  defaultMessage={'API Key Value Prefix'}
+                />
+              </FormLabel>
+              <TextField
+                size="small"
+                value={valuePrefix}
+                disabled={isSecurityFormDisabled}
+                placeholder="Bearer"
+                onChange={(event) => {
+                  const nextValuePrefix = event.target.value;
+                  setValuePrefix(nextValuePrefix);
+                  if (isDraftMode) {
+                    void updateSecurity(
+                      keyValue.trim(),
+                      keyIn,
+                      apiKeyEnabled,
+                      nextValuePrefix.trim()
+                    );
+                  }
+                }}
+                onBlur={() => {
+                  if (!isDraftMode) {
+                    void handleValuePrefixBlur();
                   }
                 }}
               />

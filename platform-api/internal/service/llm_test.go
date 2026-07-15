@@ -203,6 +203,47 @@ func TestMapUpstreamConfigToDTO_DoesNotExposeAuthValue(t *testing.T) {
 	}
 }
 
+func TestMapSecurityModelToAPI_PreservesValuePrefix(t *testing.T) {
+	in := &model.SecurityConfig{
+		Enabled: utils.BoolPtr(true),
+		APIKey: &model.APIKeySecurity{
+			Enabled:     utils.BoolPtr(true),
+			Key:         "Authorization",
+			In:          "header",
+			ValuePrefix: "Bearer",
+		},
+	}
+
+	out := mapSecurityModelToAPI(in)
+	if out == nil || out.ApiKey == nil {
+		t.Fatal("expected api key security to be present")
+	}
+	if out.ApiKey.ValuePrefix == nil || *out.ApiKey.ValuePrefix != "Bearer" {
+		t.Fatalf("expected inbound value prefix to be preserved, got %v", out.ApiKey.ValuePrefix)
+	}
+}
+
+func TestMapSecurityAPIToModel_PreservesValuePrefix(t *testing.T) {
+	inLoc := api.APIKeySecurityInHeader
+	in := &api.SecurityConfig{
+		Enabled: utils.BoolPtr(true),
+		ApiKey: &api.APIKeySecurity{
+			Enabled:     utils.BoolPtr(true),
+			Key:         utils.StringPtrIfNotEmpty("Authorization"),
+			In:          &inLoc,
+			ValuePrefix: utils.StringPtrIfNotEmpty("Bearer"),
+		},
+	}
+
+	out := mapSecurityAPIToModel(in)
+	if out == nil || out.APIKey == nil {
+		t.Fatal("expected api key security to be present")
+	}
+	if out.APIKey.ValuePrefix != "Bearer" {
+		t.Fatalf("expected inbound value prefix to be preserved, got %q", out.APIKey.ValuePrefix)
+	}
+}
+
 func TestMapProviderModelToAPI_DoesNotExposeUpstreamAuthValue(t *testing.T) {
 	in := &model.LLMProvider{
 		ID:      "provider-1",
@@ -333,9 +374,10 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAPIKeyPolicy(t *testing.T
 			Security: &model.SecurityConfig{
 				Enabled: &trueValue,
 				APIKey: &model.APIKeySecurity{
-					Enabled: &trueValue,
-					Key:     "X-API-Key",
-					In:      "header",
+					Enabled:     &trueValue,
+					Key:         "Authorization",
+					In:          "header",
+					ValuePrefix: "Bearer",
 				},
 			},
 		},
@@ -395,11 +437,14 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAPIKeyPolicy(t *testing.T
 	if policy.Params == nil {
 		t.Fatalf("expected policy params to be present")
 	}
-	if (*policy.Params)["key"] != "X-API-Key" {
-		t.Fatalf("expected params.key X-API-Key, got: %#v", (*policy.Params)["key"])
+	if (*policy.Params)["key"] != "Authorization" {
+		t.Fatalf("expected params.key Authorization, got: %#v", (*policy.Params)["key"])
 	}
 	if (*policy.Params)["in"] != "header" {
 		t.Fatalf("expected params.in header, got: %#v", (*policy.Params)["in"])
+	}
+	if (*policy.Params)["valuePrefix"] != "Bearer" {
+		t.Fatalf("expected params.valuePrefix Bearer, got: %#v", (*policy.Params)["valuePrefix"])
 	}
 }
 
@@ -429,9 +474,10 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAndAdditionalPolicy(t *te
 			Security: &model.SecurityConfig{
 				Enabled: &trueValue,
 				APIKey: &model.APIKeySecurity{
-					Enabled: &trueValue,
-					Key:     "X-API-Key",
-					In:      "header",
+					Enabled:     &trueValue,
+					Key:         "Authorization",
+					In:          "header",
+					ValuePrefix: "Bearer",
 				},
 			},
 			Policies: []model.LLMPolicy{
@@ -481,8 +527,11 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAndAdditionalPolicy(t *te
 	if apiKeyPolicy.Name != "api-key-auth" {
 		t.Fatalf("expected api-key-auth global policy, got: %s", apiKeyPolicy.Name)
 	}
-	if apiKeyPolicy.Params == nil || (*apiKeyPolicy.Params)["key"] != "X-API-Key" {
-		t.Fatalf("expected api-key-auth params.key X-API-Key")
+	if apiKeyPolicy.Params == nil || (*apiKeyPolicy.Params)["key"] != "Authorization" {
+		t.Fatalf("expected api-key-auth params.key Authorization")
+	}
+	if (*apiKeyPolicy.Params)["valuePrefix"] != "Bearer" {
+		t.Fatalf("expected api-key-auth params.valuePrefix Bearer")
 	}
 
 	guardrailPolicy := findOperationPolicy(out.Spec.OperationPolicies, "word-count-guardrail")

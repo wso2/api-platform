@@ -3124,7 +3124,12 @@ func mapSecurityAPIToModel(in *api.SecurityConfig) *model.SecurityConfig {
 		if in.ApiKey.In != nil {
 			inLoc = string(*in.ApiKey.In)
 		}
-		out.APIKey = &model.APIKeySecurity{Enabled: in.ApiKey.Enabled, Key: key, In: inLoc}
+		out.APIKey = &model.APIKeySecurity{
+			Enabled:     in.ApiKey.Enabled,
+			Key:         key,
+			In:          inLoc,
+			ValuePrefix: utils.ValueOrEmpty(in.ApiKey.ValuePrefix),
+		}
 	}
 	return out
 }
@@ -3140,7 +3145,12 @@ func mapSecurityModelToAPI(in *model.SecurityConfig) *api.SecurityConfig {
 			v := api.APIKeySecurityIn(in.APIKey.In)
 			inLoc = &v
 		}
-		out.ApiKey = &api.APIKeySecurity{Enabled: in.APIKey.Enabled, Key: utils.StringPtrIfNotEmpty(in.APIKey.Key), In: inLoc}
+		out.ApiKey = &api.APIKeySecurity{
+			Enabled:     in.APIKey.Enabled,
+			Key:         utils.StringPtrIfNotEmpty(in.APIKey.Key),
+			In:          inLoc,
+			ValuePrefix: utils.StringPtrIfNotEmpty(in.APIKey.ValuePrefix),
+		}
 	}
 	return out
 }
