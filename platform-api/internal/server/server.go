@@ -486,12 +486,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 
 	// validateAuthConfig already rejected a missing/wildcard allowlist outside demo mode.
 	// Cross-origin access is disabled by default (empty AllowedOrigins fails closed in the
-	// CORS middleware); operators must opt in explicitly via CORS_ALLOWED_ORIGINS.
+	// CORS middleware); operators must opt in explicitly via CORS.AllowedOrigins in config.
 	corsOrigins := cfg.CORS.AllowedOrigins
 	if len(corsOrigins) == 0 {
-		slogger.Warn("CORS_ALLOWED_ORIGINS not set — cross-origin requests are disabled")
+		slogger.Warn("cors.allowed_origins not set in config — cross-origin requests are disabled")
 	} else if slices.Contains(corsOrigins, "*") {
-		slogger.Warn("CORS_ALLOWED_ORIGINS contains \"*\" — allowing all origins without credentials")
+		slogger.Warn("cors.allowed_origins contains \"*\" — allowing all origins without credentials")
 	}
 	chain = append(chain, gohttpkit.CORSMiddleware(gohttpkit.CORSOptions{
 		AllowedOrigins:   corsOrigins,
@@ -789,7 +789,23 @@ func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, err
 func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListener, timeouts config.Timeouts) error {
 	if !httpCfg.Enabled && !httpsCfg.Enabled {
 		s.logger.Error("No listeners enabled")
-		return fmt.Errorf("no listeners enabled: set HTTP_ENABLED=true and/or HTTPS_ENABLED=true")
+		return fmt.Errorf("no listeners enabled: set http.enabled=true and/or https.enabled=true in config")
+	}
+
+	// Preflight: validate listener configuration and build the TLS config before
+	// starting any listener, background job, or goroutine
+	if httpCfg.Enabled && httpCfg.Port == "" {
+		return fmt.Errorf("HTTP listener enabled but http.port is empty")
+	}
+	var tlsConfig *tls.Config
+	if httpsCfg.Enabled {
+		if httpsCfg.Port == "" {
+			return fmt.Errorf("HTTPS listener enabled but https.port is empty")
+		}
+		var err error
+		if tlsConfig, err = s.buildTLSConfig(httpsCfg); err != nil {
+			return err
+		}
 	}
 
 	// Add a health endpoint. Routes added to s.mux after startup are reachable
@@ -810,13 +826,10 @@ func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListene
 
 	// Plain-HTTP listener.
 	if httpCfg.Enabled {
-		if httpCfg.Port == "" {
-			return fmt.Errorf("HTTP listener enabled but port is empty (HTTP_PORT)")
-		}
 		// Plain HTTP is only safe when something upstream terminates TLS, or for
 		// internal traffic. Say so loudly outside demo mode.
 		if !demoMode() {
-			s.logger.Warn("Plain-HTTP listener is enabled (HTTP_ENABLED=true) while APIP_DEMO_MODE=false: " +
+			s.logger.Warn("Plain-HTTP listener is enabled (http.enabled=true)" +
 				"terminate TLS at an ingress or service-mesh sidecar and never expose this listener " +
 				"directly to untrusted networks.")
 		}
@@ -837,13 +850,6 @@ func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListene
 
 	// TLS listener.
 	if httpsCfg.Enabled {
-		if httpsCfg.Port == "" {
-			return fmt.Errorf("HTTPS listener enabled but port is empty (HTTPS_PORT)")
-		}
-		tlsConfig, err := s.buildTLSConfig(httpsCfg)
-		if err != nil {
-			return err
-		}
 		httpsServer := &http.Server{
 			Addr:              ":" + httpsCfg.Port,
 			Handler:           s.handler,
