@@ -60,8 +60,8 @@ bff-run: ## Run the BFF locally (proxies to PLATFORM_API_URL; pair with `make ru
 	cd $(BFF_DIR) && \
 		APIP_AIW_PLATFORM_API_URL=$(PLATFORM_API_URL) \
 		APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY=true \
-		APIP_AIW_TLS_CERT_FILE=../certs/ai-workspace.crt \
-		APIP_AIW_TLS_KEY_FILE=../certs/ai-workspace.key \
+		APIP_AIW_TLS_CERT_FILE=../resources/certificates/cert.pem \
+		APIP_AIW_TLS_KEY_FILE=../resources/certificates/key.pem \
 		APIP_AIW_LISTEN_ADDR=$(BFF_DEV_ADDR) \
 		APIP_AIW_STATIC_DIR=../dist \
 		APIP_AIW_LOG_LEVEL=debug \
@@ -186,7 +186,7 @@ endif
 .PHONY: dist clean-dist
 dist: clean-dist ## Build standalone AI Workspace + Platform API distribution zip
 	@echo "Building distribution $(DIST_NAME)..."
-	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/resources/certificates $(DIST_DIR)/resources/platform-api/db-scripts
+	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/scripts $(DIST_DIR)/resources/certificates $(DIST_DIR)/resources/platform-api/db-scripts
 	@cp -R configs/. $(DIST_DIR)/configs/
 	@cp ../../platform-api/resources/roles.yaml $(DIST_DIR)/resources/roles.yaml
 ifeq ($(PLATFORM_API_FROM_TAG),true)
@@ -208,6 +208,13 @@ else
 	@cp ../../platform-api/internal/database/*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
 	@cp ../../platform-api/config/config-template.toml $(DIST_DIR)/configs/config-platform-api-template.toml
 endif
+	@printf '%s\n' \
+		'# Generated secrets — never commit these.' \
+		'*.env' \
+		'resources/certificates/*' \
+		> $(DIST_DIR)/.gitignore
+	@cp setup.sh $(DIST_DIR)/scripts/setup.sh
+	@chmod +x $(DIST_DIR)/scripts/setup.sh
 	@cp docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
 	@sed -i.bak -E \
 	    -e 's|^([[:space:]]*image:[[:space:]]*.*/ai-workspace):[^[:space:]]*|\1:$(DIST_VERSION)|' \

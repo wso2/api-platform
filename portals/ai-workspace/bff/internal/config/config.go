@@ -249,8 +249,8 @@ func Load(path string) (*Config, error) {
 			TerminateTLS: tlsEnabled,
 			// Convention matches the container's mount path. A certificate pair is
 			// required there whenever TerminateTLS is on.
-			CertFile: s.get("tls.cert_file", "/etc/ai-workspace/tls/tls.crt"),
-			KeyFile:  s.get("tls.key_file", "/etc/ai-workspace/tls/tls.key"),
+			CertFile: s.get("tls.cert_file", "/etc/ai-workspace/tls/cert.pem"),
+			KeyFile:  s.get("tls.key_file", "/etc/ai-workspace/tls/key.pem"),
 		},
 		PlatformAPI: PlatformAPIConfig{
 			URL:           strings.TrimRight(s.get("platform_api.url", ""), "/"),

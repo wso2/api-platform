@@ -62,6 +62,12 @@ func TestShippedConfig_QuickstartLoadsWithNoEnv(t *testing.T) {
 	if cfg.PlatformAPI.TLSSkipVerify {
 		t.Error("PlatformAPI.TLSSkipVerify = true, want false — the quickstart trusts the upstream via ca_file, not by skipping verification")
 	}
+	// docker-compose no longer injects APIP_AIW_PLATFORM_API_CA_FILE — the default
+	// must be the path the compose file mounts the certificate at. The shared
+	// self-signed cert.pem is its own CA.
+	if cfg.PlatformAPI.CAFile != "/etc/ai-workspace/tls/cert.pem" {
+		t.Errorf("PlatformAPI.CAFile = %q, want the docker-compose mount path %q", cfg.PlatformAPI.CAFile, "/etc/ai-workspace/tls/cert.pem")
+	}
 }
 
 // `make bff-run` loads this same file and points the container-shaped defaults at the

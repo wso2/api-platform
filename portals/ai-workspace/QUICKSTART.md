@@ -29,8 +29,8 @@ cd wso2apip-ai-workspace-1.0.0-alpha
 ```
 
 The script generates everything the stack requires: the encryption and JWT
-signing keys and the admin login credentials (written to `keys.env`), and the
-TLS certificates for both services (written to `certs/`).
+signing keys and the admin login credentials (written to `api-platform.env`), and the
+TLS certificate shared by both services (written to `resources/certificates/`).
 
 > **Save the printed admin username and password** — the password is shown only
 > once and stored nowhere. Rerun `./setup.sh --force` to rotate it.
@@ -38,7 +38,7 @@ TLS certificates for both services (written to `certs/`).
 ### 3. Start the stack
 
 ```bash
-docker compose --env-file keys.env up -d
+docker compose up -d
 ```
 
 ### 4. Open the workspace

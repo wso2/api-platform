@@ -347,7 +347,7 @@ Generate a stable key with:
 openssl rand -hex 32
 ```
 
-For Docker Compose deployments, set the key in a `keys.env` file next to `docker-compose.yaml`. First generate a key:
+For Docker Compose deployments, set the key in a `api-platform.env` file next to `docker-compose.yaml`. First generate a key:
 
 ```sh
 openssl rand -hex 32
@@ -378,17 +378,18 @@ a Docker/Kubernetes secret) under an allowed directory (`/etc/platform-api` or
 with `{{ file "..." }}`. The value never appears in the environment or the compose file.
 
 **Simple — an env file (`{{ env "..." }}`).** For local/quickstart Docker Compose, put the
-values in `keys.env` (git-ignored) and start the stack with `--env-file`. The compose forwards them into the container via an `environment:`
-`${APIP_CP_…}` passthrough — never an `env_file:` block or a hardcoded value:
+values in `api-platform.env` (git-ignored). The compose loads it into the container via an
+`env_file:` entry with `format: raw` (raw so the bcrypt hash's `$` is not treated as compose
+interpolation) — never a hardcoded value in an `environment:` block:
 
 ```sh
-cp keys.env.example keys.env
-# then edit keys.env (values are the `openssl rand -hex 32` output — .env files
+cp api-platform.env.example api-platform.env
+# then edit api-platform.env (values are the `openssl rand -hex 32` output — .env files
 # do NOT run command substitution, so paste the generated string, not the command):
 #   APIP_CP_ENCRYPTION_KEY=a3f1e2d4b5c6...
 #   APIP_CP_AUTH_JWT_SECRET_KEY=b7c8d9e0f1a2...
 
-docker compose --env-file keys.env up -d
+docker compose up -d
 ```
 
 > **Warning:** Use the **same** stable keys across restarts and across all replicas. Changing

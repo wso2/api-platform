@@ -13,12 +13,12 @@
 # Generates everything the stack requires before first start — nothing is
 # auto-generated at runtime anymore:
 #
-#   keys.env                  APIP_CP_ENCRYPTION_KEY        at-rest encryption key
+#   api-platform.env                  APIP_CP_ENCRYPTION_KEY        at-rest encryption key
 #                             APIP_CP_AUTH_JWT_SECRET_KEY   JWT signing key
 #                             APIP_CP_ADMIN_USERNAME        admin login username
 #                             APIP_CP_ADMIN_PASSWORD_HASH   bcrypt hash of the password
-#   certs/platform-api.crt|key   TLS pair for the Platform API (SAN: localhost, platform-api)
-#   certs/ai-workspace.crt|key   TLS pair for the AI Workspace  (SAN: localhost, ai-workspace)
+#   resources/certificates/cert.pem|key.pem   TLS pair shared by both services
+#                             (SAN: localhost, platform-api, ai-workspace)
 #
 # The admin password is printed once below and is NOT stored anywhere.
 #
@@ -27,17 +27,23 @@
 #   ./setup.sh --force         regenerate everything (rotates keys and credentials)
 #   ./setup.sh --certs-only    generate only the TLS certificates (used by `make bff-run`)
 #
-#   ADMIN_USERNAME / ADMIN_PASSWORD environment variables override the generated
-#   credentials (used by CI to pin known test credentials).
+# When run interactively, setup.sh prompts for the admin username (default:
+# admin) and password (default: a generated random string).
+#
+#   ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the prompts and
+#   pin the credentials (used by CI to pin known test credentials).
 #
 # Then start the stack:
-#   docker compose --env-file keys.env up -d
+#   docker compose up -d
 # --------------------------------------------------------------------
 set -euo pipefail
 cd "$(dirname "$0")"
+# In the distribution this script lives in scripts/, one level below the
+# docker-compose root; in the repo it sits next to docker-compose.yaml.
+[[ -f docker-compose.yaml ]] || cd ..
 
-ENV_FILE="keys.env"
-CERTS_DIR="certs"
+ENV_FILE="api-platform.env"
+CERTS_DIR="resources/certificates"
 FORCE=false
 CERTS_ONLY=false
 
@@ -55,60 +61,90 @@ done
 
 command -v openssl >/dev/null 2>&1 || { echo "error: openssl is required" >&2; exit 1; }
 
+log() { echo "[setup] $*"; }
+
 # ---------------------------------------------------------------------------
 # TLS certificates
 # ---------------------------------------------------------------------------
 gen_cert() {
-  local name="$1" san="$2"
-  if [[ "$FORCE" == false && -f "$CERTS_DIR/$name.crt" && -f "$CERTS_DIR/$name.key" ]]; then
-    echo "✓ $CERTS_DIR/$name.crt already exists — keeping it"
+  local san="$1"
+  if [[ "$FORCE" == false && -f "$CERTS_DIR/cert.pem" && -f "$CERTS_DIR/key.pem" ]]; then
+    log "  - $CERTS_DIR/cert.pem already exists — keeping it"
     return
   fi
   openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
-    -keyout "$CERTS_DIR/$name.key" -out "$CERTS_DIR/$name.crt" \
-    -subj "/O=WSO2 API Platform/CN=$name" \
+    -keyout "$CERTS_DIR/key.pem" -out "$CERTS_DIR/cert.pem" \
+    -subj "/O=WSO2 API Platform/CN=localhost" \
     -addext "subjectAltName=$san" >/dev/null 2>&1
-  chmod 600 "$CERTS_DIR/$name.key"
-  echo "✓ generated $CERTS_DIR/$name.crt / $name.key"
+  chmod 600 "$CERTS_DIR/key.pem"
+  log "  - self-signed certificate generated at $CERTS_DIR/cert.pem"
 }
 
+log "Provisioning TLS certificate ..."
 mkdir -p "$CERTS_DIR"
-gen_cert "platform-api" "DNS:localhost,DNS:platform-api,DNS:host.docker.internal,IP:127.0.0.1"
-gen_cert "ai-workspace" "DNS:localhost,DNS:ai-workspace,DNS:host.docker.internal,IP:127.0.0.1"
+# One pair serves both services: the SAN list covers both compose hostnames, and
+# because it is self-signed the same cert doubles as the CA bundle the BFF
+# trusts for the upstream platform-api hop. The file names are the ones the
+# platform-api container requires inside its cert dir (cert.pem / key.pem);
+# docker-compose mounts this whole directory into both containers unchanged.
+gen_cert "DNS:localhost,DNS:platform-api,DNS:ai-workspace,DNS:host.docker.internal,IP:127.0.0.1"
 
 if [[ "$CERTS_ONLY" == true ]]; then
   exit 0
 fi
 
 # ---------------------------------------------------------------------------
-# keys.env — secrets and admin credentials
+# api-platform.env — secrets and admin credentials
 # ---------------------------------------------------------------------------
 if [[ "$FORCE" == false && -f "$ENV_FILE" ]]; then
-  echo "✓ $ENV_FILE already exists — keeping it (rerun with --force to rotate keys and credentials)"
+  log "$ENV_FILE already exists — keeping it (rerun with --force to rotate keys and credentials)"
   echo
-  echo "Start the stack with:"
-  echo "  docker compose --env-file $ENV_FILE up -d"
+  log "Setup complete."
+  echo
+  echo "  Next step:"
+  echo "    docker compose up"
   exit 0
 fi
 
 # bcrypt is not in openssl; use htpasswd when available, otherwise the httpd image.
+# The password is fed via stdin (-i) so it never appears in the process list.
 bcrypt_hash() {
   local password="$1"
   if command -v htpasswd >/dev/null 2>&1; then
-    htpasswd -nbB -C 10 "" "$password" | cut -d: -f2 | tr -d '\r\n'
+    printf '%s' "$password" | htpasswd -niB -C 10 "" | cut -d: -f2 | tr -d '\r\n'
   elif command -v docker >/dev/null 2>&1; then
-    docker run --rm httpd:2.4-alpine htpasswd -nbB -C 10 "" "$password" | cut -d: -f2 | tr -d '\r\n'
+    printf '%s' "$password" | docker run --rm -i httpd:2.4-alpine htpasswd -niB -C 10 "" | cut -d: -f2 | tr -d '\r\n'
   else
     echo "error: need either htpasswd (apache2-utils / httpd-tools) or docker to bcrypt-hash the admin password" >&2
     exit 1
   fi
 }
 
+# ---------------------------------------------------------------------------
+# Admin credentials — from env vars, interactive prompts, or defaults
+# ---------------------------------------------------------------------------
+GENERATED_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-20)"
+
+if [[ -z "${ADMIN_USERNAME:-}" && -t 0 ]]; then
+  read -r -p "Admin username [admin]: " ADMIN_USERNAME
+fi
+ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
+
+if [[ -z "${ADMIN_PASSWORD:-}" && -t 0 ]]; then
+  read -r -s -p "Admin password [press Enter to generate one]: " ADMIN_PASSWORD
+  echo
+fi
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-$GENERATED_PASSWORD}"
+
+log "Generating secrets into $ENV_FILE ..."
 ENCRYPTION_KEY="$(openssl rand -hex 32)"
+log "  - APIP_CP_ENCRYPTION_KEY generated"
 JWT_SECRET_KEY="$(openssl rand -hex 32)"
-ADMIN_USERNAME="${ADMIN_USERNAME:-admin-$(openssl rand -hex 2)}"
-ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-16)}"
+log "  - APIP_CP_AUTH_JWT_SECRET_KEY generated"
+
+log "Provisioning admin credentials ..."
 ADMIN_PASSWORD_HASH="$(bcrypt_hash "$ADMIN_PASSWORD")"
+log "  - APIP_CP_ADMIN_PASSWORD_HASH generated (bcrypt)"
 
 umask 177
 cat > "$ENV_FILE" <<EOF
@@ -120,19 +156,16 @@ APIP_CP_ADMIN_USERNAME=$ADMIN_USERNAME
 APIP_CP_ADMIN_PASSWORD_HASH=$ADMIN_PASSWORD_HASH
 EOF
 umask 022
-echo "✓ wrote $ENV_FILE"
+log "  - $ENV_FILE written"
 
 echo
-echo "============================================================"
-echo "  Admin user created"
+log "Setup complete."
 echo
-echo "    username: $ADMIN_USERNAME"
-echo "    password: $ADMIN_PASSWORD"
+echo "  ------------------------------------------------------------------"
+echo "   Admin login:  $ADMIN_USERNAME / $ADMIN_PASSWORD"
+echo "   This password will not be shown again — copy it now."
+echo "   (It is stored, bcrypt-hashed, in $ENV_FILE)"
+echo "  ------------------------------------------------------------------"
 echo
-echo "  Save these now — the password is shown only once and is"
-echo "  stored only as a bcrypt hash in $ENV_FILE."
-echo "  Rotate with: ./setup.sh --force"
-echo "============================================================"
-echo
-echo "Start the stack with:"
-echo "  docker compose --env-file $ENV_FILE up -d"
+echo "  Next step:"
+echo "    docker compose up"

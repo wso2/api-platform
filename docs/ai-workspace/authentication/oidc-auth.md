@@ -61,7 +61,7 @@ The redirect URLs are ordinary `config.toml` keys; the secret is *referenced* by
 than written into it, so the raw value never lands in a committed file.
 
 For a simpler local setup, swap the `{{ file }}` token for `'{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'` and keep
-the value in a git-ignored `.env`. The key must carry one token or the other — a variable set with
+the value in the git-ignored `api-platform.env`. The key must carry one token or the other — a variable set with
 no token to read it is ignored. Either token fails closed: a missing secret aborts startup rather
 than yielding an empty credential. See [Configuration → Secrets](../configuration.md#secrets).
 

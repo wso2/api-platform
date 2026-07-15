@@ -24,7 +24,7 @@ Copy `configs/config-template.toml` to `configs/config.toml` and fill in the val
 
 Never write a secret as a literal in `config.toml`, and never hardcode one in `docker-compose.yaml`. There are two supported ways to supply the OIDC client secret:
 
-**Environment variable (default)** — the key's token names the variable and has no default value, so an unset variable fails startup rather than running with an empty credential. Keep the value in a git-ignored `.env`:
+**Environment variable (default)** — the key's token names the variable and has no default value, so an unset variable fails startup rather than running with an empty credential. Keep the value in the git-ignored `api-platform.env` (loaded into both services via `env_file`):
 
 ```toml
 [oidc]
@@ -164,7 +164,7 @@ encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'            # from an env v
 secret_key     = '{{ file "/secrets/platform-api/jwt_secret" }}' # from a file (preferred)
 ```
 
-Supply the env values from a git-ignored `keys.env` and start with `docker compose --env-file keys.env up`
+Supply the env values from a git-ignored `api-platform.env` and start with `docker compose up`
 Or mount a secret file and use `{{ file }}`.
 
 The `APIP_CP_`-prefixed names referenced by the tokens above:

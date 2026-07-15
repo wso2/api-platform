@@ -199,7 +199,7 @@ Mount the secret at that path, e.g. in `docker-compose.yaml`:
 Resolution fails closed: a missing or unreadable secret file aborts startup rather than yielding an
 empty credential. `{{ file }}` paths must live under `/etc/ai-workspace` or `/secrets/ai-workspace`
 (override with `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`). For a simpler local setup, swap the token for
-`'{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'` and keep the value in a git-ignored `.env`.
+`'{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'` and keep the value in the git-ignored `api-platform.env`.
 
 > `[oidc] redirect_url` must exactly match the authorized redirect URL registered in the IDP
 > application (section 1.2). The BFF, not the browser, completes the code exchange.

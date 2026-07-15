@@ -161,8 +161,8 @@ enabled = '{{ env "APIP_AIW_TLS_ENABLED" "true" }}'
 
 # Paths to a mounted TLS certificate and key. REQUIRED when enabled = true —
 # there is no self-signed fallback; setup.sh generates a pair for the quickstart.
-cert_file = '{{ env "APIP_AIW_TLS_CERT_FILE" "/etc/ai-workspace/tls/tls.crt" }}'
-key_file  = '{{ env "APIP_AIW_TLS_KEY_FILE" "/etc/ai-workspace/tls/tls.key" }}'
+cert_file = '{{ env "APIP_AIW_TLS_CERT_FILE" "/etc/ai-workspace/tls/cert.pem" }}'
+key_file  = '{{ env "APIP_AIW_TLS_KEY_FILE" "/etc/ai-workspace/tls/key.pem" }}'
 
 
 # ---------------------------------------------------------------------------

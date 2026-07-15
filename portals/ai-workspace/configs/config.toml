@@ -72,8 +72,10 @@ log_level   = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'   # debug | info | warn | 
 url = '{{ env "APIP_AIW_PLATFORM_API_URL" "https://platform-api:9243" }}'
 
 # PEM bundle to trust for the upstream's TLS certificate — appended to the system
-# roots. docker-compose mounts the setup.sh-generated platform-api certificate here.
-ca_file = '{{ env "APIP_AIW_PLATFORM_API_CA_FILE" "" }}'
+# roots. The default is the setup.sh-generated certificate shared by both services
+# (self-signed, so it doubles as its own CA), at the path docker-compose mounts
+# resources/certificates/. Ignored when tls_skip_verify below is true.
+ca_file = '{{ env "APIP_AIW_PLATFORM_API_CA_FILE" "/etc/ai-workspace/tls/cert.pem" }}'
 
 # Skip upstream certificate verification entirely. Last-resort escape hatch for
 # local development only — prefer ca_file above.
@@ -82,13 +84,14 @@ tls_skip_verify = '{{ env "APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY" "false" }}'
 
 # ---------------------------------------------------------------------------
 # TLS on the AI Workspace listener. A certificate pair is REQUIRED when enabled —
-# setup.sh generates one and docker-compose mounts it at the default paths below.
+# setup.sh generates one into resources/certificates/ and docker-compose mounts
+# that directory at /etc/ai-workspace/tls, the default paths below.
 # ---------------------------------------------------------------------------
 [tls]
 
 enabled   = '{{ env "APIP_AIW_TLS_ENABLED" "true" }}'
-cert_file = '{{ env "APIP_AIW_TLS_CERT_FILE" "/etc/ai-workspace/tls/tls.crt" }}'
-key_file  = '{{ env "APIP_AIW_TLS_KEY_FILE" "/etc/ai-workspace/tls/tls.key" }}'
+cert_file = '{{ env "APIP_AIW_TLS_CERT_FILE" "/etc/ai-workspace/tls/cert.pem" }}'
+key_file  = '{{ env "APIP_AIW_TLS_KEY_FILE" "/etc/ai-workspace/tls/key.pem" }}'
 
 
 # ---------------------------------------------------------------------------

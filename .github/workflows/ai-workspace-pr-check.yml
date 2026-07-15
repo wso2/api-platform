@@ -56,7 +56,7 @@ jobs:
         run: echo "127.0.0.1 host.docker.internal" | sudo tee -a /etc/hosts
 
       - name: Generate quickstart keys, credentials and certificates
-        # setup.sh writes keys.env (encryption/JWT keys + admin credentials) and
+        # setup.sh writes api-platform.env (encryption/JWT keys + admin credentials) and
         # the TLS certs both services now require. Credentials are pinned to the
         # Cypress defaults (admin/admin) for the E2E suite.
         run: ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./setup.sh
@@ -66,7 +66,7 @@ jobs:
         # --wait blocks until all healthchecks pass. The ai-workspace healthcheck
         # now verifies the nginx→platform-api proxy route (not just the static
         # frontend), so this returns only when the API is ready to serve requests.
-        run: docker compose --env-file keys.env up -d --wait --wait-timeout 300
+        run: docker compose up -d --wait --wait-timeout 300
         working-directory: portals/ai-workspace
 
       - name: Verify API proxy is reachable via host.docker.internal
