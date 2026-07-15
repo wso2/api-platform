@@ -58,7 +58,7 @@ func NewSubscriptionHandler(subscriptionService *service.SubscriptionService, su
 
 // CreateSubscriptionRequest is the body for POST /api/v0.9/subscriptions
 type CreateSubscriptionRequest struct {
-	APIID              string  `json:"apiId" binding:"required"`
+	ArtifactID         string  `json:"artifactId" binding:"required"`
 	Kind               string  `json:"kind" binding:"required"`
 	SubscriberID       string  `json:"subscriberId" binding:"required"`
 	ApplicationID      *string `json:"applicationId,omitempty"`
@@ -78,8 +78,8 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 		return apperror.ValidationFailed.Wrap(err, "Invalid request body").
 			WithLogMessage(fmt.Sprintf("invalid create subscription request body for org %s", orgId))
 	}
-	if req.APIID == "" {
-		return apperror.ValidationFailed.New("API ID is required")
+	if req.ArtifactID == "" {
+		return apperror.ValidationFailed.New("artifactId is required")
 	}
 	if req.SubscriberID == "" {
 		return apperror.ValidationFailed.New("subscriberId is required")
@@ -99,17 +99,17 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 	if err != nil {
 		return err
 	}
-	sub, err := h.subscriptionService.CreateSubscription(req.APIID, req.Kind, orgId, req.SubscriberID, req.ApplicationID, req.SubscriptionPlanID, "", req.Status, actor)
+	sub, err := h.subscriptionService.CreateSubscription(req.ArtifactID, req.Kind, orgId, req.SubscriberID, req.ApplicationID, req.SubscriptionPlanID, "", req.Status, actor)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return serviceError(err, fmt.Sprintf("failed to create subscription for api %s in org %s", req.APIID, orgId))
+		return serviceError(err, fmt.Sprintf("failed to create subscription for artifact %s in org %s", req.ArtifactID, orgId))
 	}
 	resp, err := h.toSubscriptionResponse(sub, orgId)
 	if err != nil {
-		return serviceError(err, fmt.Sprintf("failed to resolve subscription identity for api %s in org %s", req.APIID, orgId))
+		return serviceError(err, fmt.Sprintf("failed to resolve subscription identity for artifact %s in org %s", req.ArtifactID, orgId))
 	}
 	setLocation(w, "subscriptions", sub.UUID)
 	httputil.WriteJSON(w, http.StatusCreated, resp)
@@ -118,7 +118,7 @@ func (h *SubscriptionHandler) CreateSubscription(w http.ResponseWriter, r *http.
 
 // ListSubscriptions handles GET /api/v0.9/subscriptions
 func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.Request) error {
-	apiId := r.URL.Query().Get("apiId")
+	artifactId := r.URL.Query().Get("artifactId")
 	subscriberID := r.URL.Query().Get("subscriberId")
 	applicationID := r.URL.Query().Get("applicationId")
 	status := r.URL.Query().Get("status")
@@ -129,9 +129,9 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 			WithLogMessage("organization claim not found in token")
 	}
 
-	var apiIDPtr, subscriberIDPtr, appIDPtr, statusPtr *string
-	if apiId != "" {
-		apiIDPtr = &apiId
+	var artifactIDPtr, subscriberIDPtr, appIDPtr, statusPtr *string
+	if artifactId != "" {
+		artifactIDPtr = &artifactId
 	}
 	if subscriberID != "" {
 		subscriberIDPtr = &subscriberID
@@ -148,34 +148,34 @@ func (h *SubscriptionHandler) ListSubscriptions(w http.ResponseWriter, r *http.R
 		statusPtr = &status
 	}
 	limit, offset := parsePagination(r)
-	list, total, err := h.subscriptionService.ListSubscriptionsByFilters(orgId, apiIDPtr, subscriberIDPtr, appIDPtr, statusPtr, limit, offset)
+	list, total, err := h.subscriptionService.ListSubscriptionsByFilters(orgId, artifactIDPtr, subscriberIDPtr, appIDPtr, statusPtr, limit, offset)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err
 		}
-		return serviceError(err, fmt.Sprintf("failed to list subscriptions for api %s in org %s", apiId, orgId))
+		return serviceError(err, fmt.Sprintf("failed to list subscriptions for artifact %s in org %s", artifactId, orgId))
 	}
-	// Bulk fetch API handles and plan names to avoid N+1 queries
-	apiUUIDSet := make(map[string]struct{})
+	// Bulk fetch artifact handles and plan names to avoid N+1 queries
+	artifactUUIDSet := make(map[string]struct{})
 	planIDSet := make(map[string]struct{})
 	for _, sub := range list {
 		if sub.ArtifactUUID != "" {
-			apiUUIDSet[sub.ArtifactUUID] = struct{}{}
+			artifactUUIDSet[sub.ArtifactUUID] = struct{}{}
 		}
 		if sub.SubscriptionPlanID != nil && *sub.SubscriptionPlanID != "" {
 			planIDSet[*sub.SubscriptionPlanID] = struct{}{}
 		}
 	}
-	apiUUIDs := make([]string, 0, len(apiUUIDSet))
-	for u := range apiUUIDSet {
-		apiUUIDs = append(apiUUIDs, u)
+	artifactUUIDs := make([]string, 0, len(artifactUUIDSet))
+	for u := range artifactUUIDSet {
+		artifactUUIDs = append(artifactUUIDs, u)
 	}
 	planIDs := make([]string, 0, len(planIDSet))
 	for id := range planIDSet {
 		planIDs = append(planIDs, id)
 	}
-	artifactMetaMap, err := h.subscriptionService.GetArtifactMetadataMap(apiUUIDs, orgId)
+	artifactMetaMap, err := h.subscriptionService.GetArtifactMetadataMap(artifactUUIDs, orgId)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to bulk fetch artifact metadata for list in org %s", orgId))
 	}
@@ -326,10 +326,10 @@ func (h *SubscriptionHandler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, orgId string) (map[string]any, error) {
-	// apiId in response should be the handle (e.g. "samp1"), not the internal UUID
-	apiIdForResponse, kind := h.subscriptionService.ResolveArtifactHandleAndKind(sub.ArtifactUUID, orgId)
-	if apiIdForResponse == "" {
-		apiIdForResponse = sub.ArtifactUUID // fallback to UUID
+	// artifactId in response should be the handle (e.g. "samp1"), not the internal UUID
+	artifactIdForResponse, kind := h.subscriptionService.ResolveArtifactHandleAndKind(sub.ArtifactUUID, orgId)
+	if artifactIdForResponse == "" {
+		artifactIdForResponse = sub.ArtifactUUID // fallback to UUID
 	}
 	createdBy, err := h.identity.SubForUUID(sub.CreatedBy)
 	if err != nil {
@@ -341,7 +341,7 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 	}
 	resp := map[string]any{
 		"id":             sub.UUID,
-		"apiId":          apiIdForResponse,
+		"artifactId":     artifactIdForResponse,
 		"subscriberId":   sub.SubscriberID,
 		"organizationId": h.subscriptionService.ResolveOrgHandle(sub.OrganizationUUID),
 		"status":         string(sub.Status),
@@ -375,11 +375,11 @@ func (h *SubscriptionHandler) toSubscriptionResponse(sub *model.Subscription, or
 // toSubscriptionResponseWithMaps builds a subscription response using pre-fetched lookup maps.
 // Used by ListSubscriptions to avoid N+1 queries.
 func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscription, orgId string, artifactMetaMap map[string]*model.APIMetadata, planNameMap map[string]string, createdByMap map[string]string) map[string]any {
-	apiIdForResponse := sub.ArtifactUUID // fallback to UUID
+	artifactIdForResponse := sub.ArtifactUUID // fallback to UUID
 	var kind string
 	if meta := artifactMetaMap[sub.ArtifactUUID]; meta != nil {
 		if meta.Handle != "" {
-			apiIdForResponse = meta.Handle
+			artifactIdForResponse = meta.Handle
 		}
 		kind = meta.Kind
 	}
@@ -389,7 +389,7 @@ func (h *SubscriptionHandler) toSubscriptionResponseWithMaps(sub *model.Subscrip
 	}
 	resp := map[string]any{
 		"id":             sub.UUID,
-		"apiId":          apiIdForResponse,
+		"artifactId":     artifactIdForResponse,
 		"subscriberId":   sub.SubscriberID,
 		"organizationId": h.subscriptionService.ResolveOrgHandle(sub.OrganizationUUID),
 		"status":         string(sub.Status),

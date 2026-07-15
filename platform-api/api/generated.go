@@ -954,13 +954,13 @@ type CreateSubscriptionPlanRequestStatus string
 
 // CreateSubscriptionRequest defines model for CreateSubscriptionRequest.
 type CreateSubscriptionRequest struct {
-	// ApiId Handle (ID) of the artifact to subscribe to. Resolved against the table for the given kind.
-	ApiId string `binding:"required" json:"apiId" yaml:"apiId"`
-
 	// ApplicationId Handle (ID) of the application this subscription belongs to. Optional in token-based subscriptions.
 	ApplicationId *string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
 
-	// Kind Type of the artifact identified by apiId. Determines which artifact table apiId is resolved against.
+	// ArtifactId Handle (ID) of the artifact to subscribe to. Resolved against the table for the given kind.
+	ArtifactId string `binding:"required" json:"artifactId" yaml:"artifactId"`
+
+	// Kind Type of the artifact identified by artifactId. Determines which artifact table artifactId is resolved against.
 	Kind CreateSubscriptionRequestKind `binding:"required" json:"kind" yaml:"kind"`
 
 	// Status Subscription status (default ACTIVE)
@@ -973,7 +973,7 @@ type CreateSubscriptionRequest struct {
 	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
 }
 
-// CreateSubscriptionRequestKind Type of the artifact identified by apiId. Determines which artifact table apiId is resolved against.
+// CreateSubscriptionRequestKind Type of the artifact identified by artifactId. Determines which artifact table artifactId is resolved against.
 type CreateSubscriptionRequestKind string
 
 // CreateSubscriptionRequestStatus Subscription status (default ACTIVE)
@@ -2334,12 +2334,12 @@ type SecurityConfig struct {
 
 // Subscription defines model for Subscription.
 type Subscription struct {
-	// ApiId Handle (ID) of the subscribed artifact
-	ApiId *string `json:"apiId,omitempty" yaml:"apiId,omitempty"`
-
 	// ApplicationId Handle (ID) of the application this subscription belongs to (optional for token-based subscriptions)
-	ApplicationId *string    `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
-	CreatedAt     *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	ApplicationId *string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+
+	// ArtifactId Handle (ID) of the subscribed artifact
+	ArtifactId *string    `json:"artifactId,omitempty" yaml:"artifactId,omitempty"`
+	CreatedAt  *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
 	// CreatedBy User identifier of the user who created this resource
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
@@ -3143,8 +3143,8 @@ type ListSubscriptionPlansParams struct {
 
 // ListSubscriptionsParams defines parameters for ListSubscriptions.
 type ListSubscriptionsParams struct {
-	// ApiId Filter by API ID (UUID or handle)
-	ApiId *string `form:"apiId,omitempty" json:"apiId,omitempty" yaml:"apiId,omitempty"`
+	// ArtifactId Filter by artifact ID (UUID or handle)
+	ArtifactId *string `form:"artifactId,omitempty" json:"artifactId,omitempty" yaml:"artifactId,omitempty"`
 
 	// SubscriberId Filter by subscriber ID
 	SubscriberId *string `form:"subscriberId,omitempty" json:"subscriberId,omitempty" yaml:"subscriberId,omitempty"`
