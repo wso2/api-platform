@@ -90,7 +90,7 @@ default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
 # Each entry: version (helm chart minor), latestVersion (image/chart tag shown to the
 # user and used in the helm --version flag), channel ("STS" | "LTS"). The first entry
 # is the default selection.
-platform_gateway_versions = '{{ env "APIP_AIW_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-M1\",\"channel\":\"STS\"}]" }}'
+platform_gateway_versions = '{{ env "APIP_AIW_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]" }}'
 
 # Verbose logging in the browser console.
 debug = '{{ env "APIP_AIW_DEBUG" "false" }}'

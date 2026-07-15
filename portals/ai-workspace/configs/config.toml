@@ -13,7 +13,7 @@ auth_mode = '{{ env "APIP_AIW_AUTH_MODE" "basic" }}'
 domain = '{{ env "APIP_AIW_DOMAIN" "localhost:5380" }}'
 controlplane_host = '{{ env "APIP_AIW_CONTROLPLANE_HOST" "host.docker.internal:9243" }}'
 default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
-platform_gateway_versions = '{{ env "APIP_AIW_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-M1\",\"channel\":\"STS\"}]" }}'
+platform_gateway_versions = '{{ env "APIP_AIW_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]" }}'
 
 listen_addr = '{{ env "APIP_AIW_LISTEN_ADDR" ":5380" }}'
 static_dir  = '{{ env "APIP_AIW_STATIC_DIR" "/app" }}'
