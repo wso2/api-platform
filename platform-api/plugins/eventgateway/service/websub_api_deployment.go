@@ -46,6 +46,7 @@ type WebSubAPIDeploymentService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *coreservice.GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -59,6 +60,7 @@ func NewWebSubAPIDeploymentService(
 	orgRepo repository.OrganizationRepository,
 	artifactRepo repository.ArtifactRepository,
 	apiRepo repository.APIRepository,
+	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *coreservice.GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
@@ -70,6 +72,7 @@ func NewWebSubAPIDeploymentService(
 		orgRepo:              orgRepo,
 		artifactRepo:         artifactRepo,
 		apiRepo:              apiRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -261,6 +264,9 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 		if err := s.gatewayEventsService.BroadcastWebSubAPIDeploymentEvent(gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebSub API deployment event", "error", err)
 		}
+
+		// Push existing active API keys for this API to the gateway (see BackfillAPIKeysToGateway).
+		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, createdBy)
 	}
 
 	return toAPIDeploymentResponse(
@@ -442,6 +448,9 @@ func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, 
 		if err := s.gatewayEventsService.BroadcastWebSubAPIDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebSub API deployment event", "error", err)
 		}
+
+		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
+		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(

@@ -46,6 +46,7 @@ type WebBrokerAPIDeploymentService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *coreservice.GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -59,6 +60,7 @@ func NewWebBrokerAPIDeploymentService(
 	orgRepo repository.OrganizationRepository,
 	artifactRepo repository.ArtifactRepository,
 	apiRepo repository.APIRepository,
+	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *coreservice.GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
@@ -70,6 +72,7 @@ func NewWebBrokerAPIDeploymentService(
 		orgRepo:              orgRepo,
 		artifactRepo:         artifactRepo,
 		apiRepo:              apiRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -261,6 +264,9 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 		if err := s.gatewayEventsService.BroadcastWebBrokerAPIDeploymentEvent(gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebBroker API deployment event", "error", err)
 		}
+
+		// Push existing active API keys for this API to the gateway (see BackfillAPIKeysToGateway).
+		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, createdBy)
 	}
 
 	return toAPIDeploymentResponse(
@@ -444,6 +450,9 @@ func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID st
 		if err := s.gatewayEventsService.BroadcastWebBrokerAPIDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebBroker API deployment event", "error", err)
 		}
+
+		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
+		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
