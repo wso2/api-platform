@@ -10,7 +10,6 @@
 # Platform API configuration — quickstart (file-based auth)
 #
 # This file is read by the Platform API (Go binary).
-# Environment variables always override values set here.
 #
 # Default login: username = admin, password = admin
 # Change the password hash before deploying to a shared environment.
@@ -20,16 +19,17 @@
 # ---------------------------------------------------------------------------
 # Server
 # ---------------------------------------------------------------------------
-log_level  = "INFO"   # DEBUG | INFO | WARN | ERROR
-log_format = "text"   # text | json
+log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
+port      = "9243"
+
+# Validate OAuth2 scopes on incoming requests.
+enable_scope_validation = true
 
 # ---------------------------------------------------------------------------
 # Encryption
 # ---------------------------------------------------------------------------
 # Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
 # (secrets, subscription tokens, WebSub HMAC secrets)
-# Generate with: openssl rand -hex 32.
-# encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
 # ---------------------------------------------------------------------------
@@ -37,38 +37,23 @@ encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 # ---------------------------------------------------------------------------
 [database]
 driver = "sqlite3"          # "sqlite3" or "postgres"
-# path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
-
-# PostgreSQL — uncomment when driver = "postgres"
-# host     = "localhost"
-# port     = 5432
-# name     = "platform_api"
-# user     = "platform_api"
-# password = '{{ file "/secrets/platform-api/postgres_password" }}'
-# ssl_mode = "disable"
+path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 
 # ---------------------------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------------------------
 
 # JWT (local HMAC) — issues signed tokens after file-based login.
-# secret_key is a 32-byte key (64 hex chars or base64; openssl rand -hex 32)
-# secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
 [auth.jwt]
 enabled    = true
 issuer     = "platform-api"
 secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+skip_validation = false   # verify JWT signature
 
 # IDP (JWKS-based) — disabled in quickstart mode.
 # Enable and configure when using Asgardeo, Keycloak, Auth0, etc.
 [auth.idp]
 enabled = false
-# jwks_url = "https://idp.example.com/oauth2/jwks"
-# issuer   = ["https://idp.example.com/oauth2/token"]
-# audience — list of accepted "aud" values. When set, a token is rejected
-# unless its "aud" claim contains at least one of these values. Leave empty
-# to skip the check. Override with AUTH_IDP_AUDIENCE.
-audience = []
 
 # File-based auth — local username/password login.
 [auth.file_based]
@@ -78,10 +63,6 @@ enabled = false
 id           = "default"            # organization handle (URL-safe slug)
 display_name = "Default"
 region       = "us"
-# uuid is the platform organization UUID. It is stored as idp_organization_ref_uuid
-# and emitted as the `organization` claim in issued tokens. Leave unset to have one
-# generated at startup, or pin it to keep the org stable across fresh databases.
-# uuid       = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
 
 [[auth.file_based.users]]
 username      = "admin"
@@ -89,63 +70,10 @@ password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
 scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage"
 
 # ---------------------------------------------------------------------------
-# Listeners (HTTP + HTTPS)
+# TLS
 # ---------------------------------------------------------------------------
-# The plain-HTTP and TLS listeners are independent — enable either or both, each
-# on its own port. This follows the gateway router's http/https split, and lets
-# you serve plain HTTP internally, HTTPS externally, or run both at once (e.g. to
-# migrate clients between them without downtime).
-#
-# Defaults: the HTTPS listener is on at 9243; the plain-HTTP listener is off.
-# Enable the plain-HTTP listener only when a trusted upstream (ingress,
-# service-mesh sidecar) terminates TLS, or for internal traffic — never expose it
-# directly to untrusted networks.
-#
-# https.cert_dir must contain cert.pem and key.pem when https.enabled = true and
-# APIP_DEMO_MODE=false. In demo mode a self-signed pair is generated there.
-#
-# Override with HTTP_ENABLED / HTTP_PORT and HTTPS_ENABLED / HTTPS_PORT /
-# HTTPS_CERT_DIR. Legacy TLS_ENABLED / TLS_CERT_DIR / PORT still map onto the
-# HTTPS listener.
-# [http]
-# enabled = false
-# port    = "9080"
-# [https]
-# enabled  = true
-# port     = "9243"
-# cert_dir = "/app/data/certs"
-
-# ---------------------------------------------------------------------------
-# Listener timeouts
-# ---------------------------------------------------------------------------
-# Bound the lifetime of a connection so a slow or idle peer cannot hold one open
-# indefinitely (Slowloris). These apply to both listeners, which serve the same
-# handler. Values are durations, e.g. "10s", "2m".
-#
-# 0 disables a timeout (net/http semantics). Disabling read or read_header
-# removes the Slowloris protection — only do so behind a proxy that enforces its
-# own bounds. Keep `write` generous: it bounds handler execution, and some
-# handlers proxy slow upstreams (LLM completions, deployments).
-#
-# WebSocket routes are unaffected — the deadlines are cleared on upgrade.
-#
-# Override with TIMEOUTS_READ_HEADER / TIMEOUTS_READ / TIMEOUTS_WRITE /
-# TIMEOUTS_IDLE.
-# [timeouts]
-# read_header = "10s"
-# read        = "60s"
-# write       = "120s"
-# idle        = "120s"
-
-# ---------------------------------------------------------------------------
-# CORS
-# ---------------------------------------------------------------------------
-# Required (non-wildcard) when APIP_DEMO_MODE=false. List the exact origins
-# (scheme + host + port) that are allowed to make credentialed cross-origin
-# requests, e.g. the Developer Portal / Admin UI origins.
-# Override with the CORS_ALLOWED_ORIGINS env var (comma-separated).
-# [cors]
-# allowed_origins = ["https://devportal.example.com", "https://admin.example.com"]
+[tls]
+cert_dir = "/app/data/certs"
 
 # ---------------------------------------------------------------------------
 # DevPortal integration — disable for standalone deployments
