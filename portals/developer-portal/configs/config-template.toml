@@ -2,18 +2,34 @@
 # DEVELOPER PORTAL CONFIGURATION TEMPLATE
 # =============================================================================
 # Documentation reference only — enumerates every supported config.toml key
-# with its default value. To actually run the portal, copy config.toml.example
-# instead (same keys, with setup-oriented comments and copy/paste guidance).
+# with its default value, as plain literals. See configs/config.toml for the
+# concrete file this project actually ships, which wires some of these same
+# keys up to environment variables using the syntax below.
 #
 # Precedence (lowest to highest):
-#   1. Built-in defaults (src/config/configLoader.js)
-#   2. configs/config.toml
-#   3. APIP_DP_* environment variables
+#   1. Built-in defaults (src/config/configDefaults.js)
+#   2. configs/config.toml, with any {{ env }} / {{ file }} references resolved
 #
-# Every key below can be overridden via APIP_DP_<LEVEL1>_<LEVEL2>_... (one
-# underscore-separated token per config level, case-insensitive, "__" for a
-# literal underscore in a key name). Example: security.service_api_key.value
-# -> APIP_DP_SECURITY_SERVICEAPIKEY_VALUE.
+# There is no automatic environment-variable override. A key's value comes
+# from an env var or a file ONLY if you explicitly say so, using Handlebars-
+# style template syntax as the value. Use single-quoted TOML literal strings
+# (as below) so the inner double quotes need no backslash-escaping:
+#
+#   base_url = '{{ env "APIP_DP_SERVER_BASEURL" }}'
+#   encryption_key = '{{ file "/secrets/devportal/encryption-key" }}'
+#
+#   {{ env "NAME" }}            -> NAME's value. FAILS CLOSED (aborts startup)
+#                                   if NAME is unset or empty — it does not
+#                                   fall through to the built-in default shown
+#                                   below.
+#   {{ env "NAME" "default" }}  -> NAME's value if set, else the literal
+#                                   "default".
+#   {{ file "/path" }}          -> contents of /path, trimmed. Always
+#                                   required — a missing/unreadable/
+#                                   disallowed file is a hard startup error.
+#
+# Partial substitution works too: 'foo-{{ env "X" }}' resolves to "foo-bar"
+# if X=bar.
 
 # =============================================================================
 # SERVER CONFIGURATION
