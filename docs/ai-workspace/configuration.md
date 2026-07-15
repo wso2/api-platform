@@ -154,13 +154,26 @@ org_handle_claim_name   = "org_handle"
 enabled = false   # Disable file-based auth in production
 ```
 
-Sensitive values (JWT signing key, database password) must be passed as environment variables — never store them in `config.toml`:
+Never write sensitive values (JWT signing key, encryption key, database password) as raw
+literals in `config-platform-api.toml`, and never hardcode them in `docker-compose.yaml`.
+Instead, reference each in the TOML with an interpolation token that is resolved at
+startup — from an environment variable, or preferably from a mounted secret file:
 
-| Platform API env variable | Description |
-|--------------------------|-------------|
-| `AUTH_JWT_SECRET_KEY` | JWT signing key (required when `auth.jwt.enabled = true`) |
-| `ENCRYPTION_KEY` | 32-byte key (64 hex / base64) — encrypts secrets & subscription tokens (required) |
-| `DATABASE_PASSWORD` | Database password |
+```toml
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'            # from an env var
+secret_key     = '{{ file "/secrets/platform-api/jwt_secret" }}' # from a file (preferred)
+```
+
+Supply the env values from a git-ignored `keys.env` and start with `docker compose --env-file keys.env up`
+Or mount a secret file and use `{{ file }}`.
+
+The `APIP_CP_`-prefixed names referenced by the tokens above:
+
+| Key referenced by the token | Description                                                                       |
+|--------------------------|-----------------------------------------------------------------------------------|
+| `APIP_CP_AUTH_JWT_SECRET_KEY` | JWT signing key (required when `auth.jwt.enabled = true`)                         |
+| `APIP_CP_ENCRYPTION_KEY` | 32-byte key (64 hex / base64) — encrypts secrets & subscription tokens (required) |
+| `APIP_CP_DATABASE_PASSWORD` | Database password                                                                 |
 
 ## Environment Variable Override
 

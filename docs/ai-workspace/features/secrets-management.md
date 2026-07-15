@@ -337,9 +337,9 @@ The following environment variable controls encryption for the Platform API. It 
 required and never auto-generated — the Platform API fails to start if it is missing or
 malformed.
 
-| Env Var | Description |
-|---------|-------------|
-| `ENCRYPTION_KEY` | 32-byte AES-256 key as 64 hex characters or base64. **Required in every mode and never auto-generated** — the Platform API fails to start if it is missing or malformed. |
+| Key | Purpose |
+|-----|---------|
+| `APIP_CP_ENCRYPTION_KEY` | Encrypts secrets, subscription tokens, and WebSub HMAC secrets at rest. |
 
 Generate a stable key with:
 
@@ -347,17 +347,50 @@ Generate a stable key with:
 openssl rand -hex 32
 ```
 
-For Docker Compose deployments, set the key in a `.env` file next to `docker-compose.yaml`. First generate a key:
+For Docker Compose deployments, set the key in a `keys.env` file next to `docker-compose.yaml`. First generate a key:
 
 ```sh
 openssl rand -hex 32
 # example output: a3f1e2d4b5c6...
 ```
 
-Then copy the output value into your `.env` file:
+### How keys are provided
 
-```sh
-ENCRYPTION_KEY=a3f1e2d4b5c6...
+Never write a raw key value into `config-platform-api.toml`, and never hardcode one as a
+literal env var in `docker-compose.yaml`. Instead, the config file **references** each key
+with a Go-template token that is resolved at startup — from an environment variable or,
+preferably, from a mounted file:
+
+```toml
+# config-platform-api.toml
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'                   # from an environment variable
+
+# or (preferred) — from a mounted secret file:
+encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
 ```
 
-> **Warning:** Use the **same** stable `ENCRYPTION_KEY` across restarts and across all replicas. Changing it makes existing encrypted secrets unreadable.
+Resolution fails closed: if a referenced env var is unset/empty or a referenced file is
+missing (or outside the allowed directories), the Platform API refuses to start.
+
+**Preferred — mounted files (`{{ file "..." }}`).** Mount each secret as a file (for example
+a Docker/Kubernetes secret) under an allowed directory (`/etc/platform-api` or
+`/secrets/platform-api`; override with `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`) and reference it
+with `{{ file "..." }}`. The value never appears in the environment or the compose file.
+
+**Simple — an env file (`{{ env "..." }}`).** For local/quickstart Docker Compose, put the
+values in `keys.env` (git-ignored) and start the stack with `--env-file`. The compose forwards them into the container via an `environment:`
+`${APIP_CP_…}` passthrough — never an `env_file:` block or a hardcoded value:
+
+```sh
+cp keys.env.example keys.env
+# then edit keys.env (values are the `openssl rand -hex 32` output — .env files
+# do NOT run command substitution, so paste the generated string, not the command):
+#   APIP_CP_ENCRYPTION_KEY=a3f1e2d4b5c6...
+#   APIP_CP_AUTH_JWT_SECRET_KEY=b7c8d9e0f1a2...
+
+docker compose --env-file keys.env up -d
+```
+
+> **Warning:** Use the **same** stable keys across restarts and across all replicas. Changing
+> `APIP_CP_ENCRYPTION_KEY` makes existing encrypted secrets unreadable; changing
+> `APIP_CP_AUTH_JWT_SECRET_KEY` invalidates all issued login tokens.

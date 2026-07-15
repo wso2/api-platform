@@ -24,16 +24,16 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	toml "github.com/knadh/koanf/parsers/toml/v2"
-	kenv "github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
+	"github.com/wso2/api-platform/common/configinterpolate"
 	"github.com/wso2/api-platform/platform-api/internal/logger"
 )
 
@@ -335,7 +335,20 @@ func GetConfig() *Server {
 	return settingInstance
 }
 
-// LoadConfig loads configuration with priority: env vars > config file > defaults.
+// EnvPrefix namespaces the environment variables that override configuration keys.
+// The prefix is stripped before the remainder is mapped to a koanf key (see envToKoanfKey),
+// e.g. APIP_CP_LOG_LEVEL -> log_level, APIP_CP_DATABASE_HOST -> database.host.
+const EnvPrefix = "APIP_CP_"
+
+// defaultFileSourceAllowlist is the platform-api's default set of directories that a
+// {{ file "..." }} config-interpolation token may read from. It can be overridden via
+// the shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var (see configinterpolate.ResolveAllowlist).
+var defaultFileSourceAllowlist = []string{
+	"/etc/platform-api",
+	"/secrets/platform-api",
+}
+
+// LoadConfig loads configuration with priority: config file > defaults.
 // configPath may be empty — when omitted only env vars and defaults are used.
 func LoadConfig(configPath string) (*Server, error) {
 	cfg := defaultConfig()
@@ -347,17 +360,13 @@ func LoadConfig(configPath string) (*Server, error) {
 		}
 	}
 
-	// Load environment variables. The callback maps known env var names to koanf
-	// dot-notation keys; unknown vars or empty values return "" and are skipped.
-	// Empty values are skipped so that ${VAR:-} placeholders in docker-compose
-	// do not override non-empty values already loaded from the config file.
-	if err := k.Load(kenv.ProviderWithValue("", ".", func(s, v string) (string, interface{}) {
-		if v == "" {
-			return "", nil
-		}
-		return envToKoanfKey(strings.ToLower(s)), v
-	}), nil); err != nil {
-		return nil, fmt.Errorf("failed to load environment variables: %w", err)
+	// Resolve {{ env }} / {{ file }} interpolation tokens after the env+file merge
+	// and before unmarshal, so any config field may pull its value from an
+	// environment variable or an allowlisted file. String leaves without a "{{"
+	// token pass through unchanged, so a token-free config is unaffected.
+	k, err := interpolate(k)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
@@ -404,27 +413,42 @@ func LoadConfig(configPath string) (*Server, error) {
 	if err := validateAuthModeExclusivity(&cfg.Auth); err != nil {
 		return nil, err
 	}
-
-	if cfg.Auth.JWT.Enabled {
-		if cfg.Auth.JWT.SecretKey == "" {
-			return nil, fmt.Errorf("AUTH_JWT_SECRET_KEY is required when JWT authentication is enabled; " +
-				"generate one with: openssl rand -hex 32")
-		}
-		if !valid32ByteKey(cfg.Auth.JWT.SecretKey) {
-			return nil, fmt.Errorf("invalid AUTH_JWT_SECRET_KEY: must be 64 hex characters or " +
-				"base64 decoding to 32 bytes (generate one with: openssl rand -hex 32)")
-		}
+	if err := validateJWTConfig(&cfg.Auth.JWT); err != nil {
+		return nil, err
 	}
-
-	if cfg.EncryptionKey == "" {
-		return nil, fmt.Errorf("ENCRYPTION_KEY is required; generate one with: openssl rand -hex 32")
-	}
-	if !valid32ByteKey(cfg.EncryptionKey) {
-		return nil, fmt.Errorf("invalid ENCRYPTION_KEY: must be 64 hex characters or " +
-			"base64 decoding to 32 bytes (generate one with: openssl rand -hex 32)")
+	if err := validateEncryptionKey(cfg.EncryptionKey); err != nil {
+		return nil, err
 	}
 
 	return cfg, nil
+}
+
+// interpolate resolves Go template tokens ({{ env }} / {{ file }}) in the merged
+// config and returns a fresh koanf instance holding the expanded values. It loads the
+// expanded map into a new instance (rather than reloading into k) so no un-expanded
+// leaves survive. The file-source allowlist is the platform-api default, overridable
+// via the shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var. Resolved values are never
+// logged; only reference counts are emitted at info level.
+func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
+	opts := configinterpolate.Options{
+		FileAllowlist: configinterpolate.ResolveAllowlist(defaultFileSourceAllowlist),
+	}
+	expanded, stats, err := configinterpolate.Expand(k.Raw(), opts)
+	if err != nil {
+		return nil, fmt.Errorf("config interpolation failed: %w", err)
+	}
+
+	out := koanf.New(".")
+	if err := out.Load(confmap.Provider(expanded, "."), nil); err != nil {
+		return nil, fmt.Errorf("failed to reload interpolated config: %w", err)
+	}
+	if stats.Fields > 0 {
+		slog.Info("config interpolation complete",
+			slog.Int("env_refs", stats.EnvRefs),
+			slog.Int("file_refs", stats.FileRefs),
+			slog.Int("fields", stats.Fields))
+	}
+	return out, nil
 }
 
 // valid32ByteKey reports whether keyStr is a 32-byte key encoded as 64 hex characters
@@ -439,250 +463,6 @@ func valid32ByteKey(keyStr string) bool {
 		return true
 	}
 	return false
-}
-
-// envToKoanfKey maps a lowercased environment variable name to its koanf dot-notation key.
-// Returns "" for unknown variables, which causes koanf to skip them.
-// Supports both the current env var names (e.g. DATABASE_DB_PATH) and the legacy
-// WEBSOCKET_WS_* naming from the old envconfig setup.
-func envToKoanfKey(s string) string {
-	switch s {
-	// Server-level
-	case "log_level":
-		return "log_level"
-	case "log_format":
-		return "log_format"
-	case "db_schema_path":
-		return "db_schema_path"
-	case "openapi_spec_path":
-		return "openapi_spec_path"
-	case "llm_template_definitions_path":
-		return "llm_template_definitions_path"
-	case "enable_scope_validation":
-		return "enable_scope_validation"
-	case "encryption_key":
-		return "encryption_key"
-
-	// Database
-	case "database_driver":
-		return "database.driver"
-	case "database_db_path":
-		return "database.path"
-	case "database_host":
-		return "database.host"
-	case "database_port":
-		return "database.port"
-	case "database_name":
-		return "database.name"
-	case "database_user":
-		return "database.user"
-	case "database_password":
-		return "database.password"
-	case "database_ssl_mode":
-		return "database.ssl_mode"
-	case "database_max_open_conns":
-		return "database.max_open_conns"
-	case "database_max_idle_conns":
-		return "database.max_idle_conns"
-	case "database_conn_max_lifetime":
-		return "database.conn_max_lifetime"
-
-	// Auth
-	case "auth_skip_paths":
-		return "auth.skip_paths"
-
-	// Auth JWT
-	case "auth_jwt_enabled":
-		return "auth.jwt.enabled"
-	case "auth_jwt_secret_key":
-		return "auth.jwt.secret_key"
-	case "auth_jwt_issuer":
-		return "auth.jwt.issuer"
-	case "auth_jwt_skip_validation":
-		return "auth.jwt.skip_validation"
-
-	// Auth IDP
-	case "auth_idp_enabled":
-		return "auth.idp.enabled"
-	case "auth_idp_name":
-		return "auth.idp.name"
-	case "auth_idp_jwks_url":
-		return "auth.idp.jwks_url"
-	case "auth_idp_issuer":
-		return "auth.idp.issuer"
-	case "auth_idp_audience":
-		return "auth.idp.audience"
-	case "auth_idp_validation_mode":
-		return "auth.idp.validation_mode"
-	case "auth_idp_role_mappings_file":
-		return "auth.idp.role_mappings_file"
-	case "auth_idp_claim_mappings_organization_claim_name":
-		return "auth.idp.claim_mappings.organization_claim_name"
-	case "auth_idp_claim_mappings_org_name_claim_name":
-		return "auth.idp.claim_mappings.org_name_claim_name"
-	case "auth_idp_claim_mappings_org_handle_claim_name":
-		return "auth.idp.claim_mappings.org_handle_claim_name"
-	case "auth_idp_claim_mappings_user_id_claim_name":
-		return "auth.idp.claim_mappings.user_id_claim_name"
-	case "auth_idp_claim_mappings_username_claim_name":
-		return "auth.idp.claim_mappings.username_claim_name"
-	case "auth_idp_claim_mappings_email_claim_name":
-		return "auth.idp.claim_mappings.email_claim_name"
-	case "auth_idp_claim_mappings_scope_claim_name":
-		return "auth.idp.claim_mappings.scope_claim_name"
-	case "auth_idp_claim_mappings_roles_claim_path":
-		return "auth.idp.claim_mappings.roles_claim_path"
-
-	// Auth FileBased
-	case "auth_file_based_enabled":
-		return "auth.file_based.enabled"
-	case "auth_file_based_organization_id":
-		return "auth.file_based.organization.id"
-	case "auth_file_based_organization_uuid":
-		return "auth.file_based.organization.uuid"
-	case "auth_file_based_organization_display_name":
-		return "auth.file_based.organization.display_name"
-	case "auth_file_based_organization_region":
-		return "auth.file_based.organization.region"
-	case "auth_file_based_users":
-		return "auth.file_based.users"
-
-	// WebSocket — accept both legacy WEBSOCKET_WS_* and clean WEBSOCKET_*
-	case "websocket_ws_max_connections", "websocket_max_connections":
-		return "websocket.max_connections"
-	case "websocket_ws_connection_timeout", "websocket_connection_timeout":
-		return "websocket.connection_timeout"
-	case "websocket_ws_rate_limit_per_minute", "websocket_rate_limit_per_min":
-		return "websocket.rate_limit_per_min"
-	case "websocket_ws_max_connections_per_org", "websocket_max_connections_per_org":
-		return "websocket.max_connections_per_org"
-	case "websocket_ws_metrics_log_enabled", "websocket_metrics_log_enabled":
-		return "websocket.metrics_log_enabled"
-	case "websocket_ws_metrics_log_interval", "websocket_metrics_log_interval":
-		return "websocket.metrics_log_interval"
-
-	// Default DevPortal
-	case "default_devportal_enabled":
-		return "default_devportal.enabled"
-	case "default_devportal_name":
-		return "default_devportal.name"
-	case "default_devportal_identifier":
-		return "default_devportal.identifier"
-	case "default_devportal_api_url":
-		return "default_devportal.api_url"
-	case "default_devportal_hostname":
-		return "default_devportal.hostname"
-	case "default_devportal_api_key":
-		return "default_devportal.api_key"
-	case "default_devportal_header_key_name":
-		return "default_devportal.header_key_name"
-	case "default_devportal_timeout":
-		return "default_devportal.timeout"
-	case "default_devportal_role_claim_name":
-		return "default_devportal.role_claim_name"
-	case "default_devportal_groups_claim_name":
-		return "default_devportal.groups_claim_name"
-	case "default_devportal_organization_claim_name":
-		return "default_devportal.organization_claim_name"
-	case "default_devportal_admin_role":
-		return "default_devportal.admin_role"
-	case "default_devportal_subscriber_role":
-		return "default_devportal.subscriber_role"
-	case "default_devportal_super_admin_role":
-		return "default_devportal.super_admin_role"
-
-	// Deployments
-	case "deployments_max_per_api_gateway":
-		return "deployments.max_per_api_gateway"
-	case "deployments_transitional_status_enabled":
-		return "deployments.transitional_status_enabled"
-	case "deployments_timeout_enabled":
-		return "deployments.timeout_enabled"
-	case "deployments_timeout_interval":
-		return "deployments.timeout_interval"
-	case "deployments_timeout_duration":
-		return "deployments.timeout_duration"
-
-	// Artifact limits (per organization; <= 0 means unlimited)
-	case "artifact_limits_max_llm_providers_per_org":
-		return "artifact_limits.max_llm_providers_per_org"
-	case "artifact_limits_max_llm_proxies_per_org":
-		return "artifact_limits.max_llm_proxies_per_org"
-	case "artifact_limits_max_mcp_proxies_per_org":
-		return "artifact_limits.max_mcp_proxies_per_org"
-	case "artifact_limits_max_websub_apis_per_org":
-		return "artifact_limits.max_websub_apis_per_org"
-	case "artifact_limits_max_webbroker_apis_per_org":
-		return "artifact_limits.max_webbroker_apis_per_org"
-
-	// Plain-HTTP listener
-	case "http_enabled":
-		return "http.enabled"
-	case "http_port":
-		return "http.port"
-
-	// HTTPS / TLS listener.
-	// Legacy TLS_ENABLED / TLS_CERT_DIR and the single-listener PORT are still
-	// honored and map onto the HTTPS listener, which historically served on 9243.
-	case "https_enabled", "tls_enabled":
-		return "https.enabled"
-	case "https_port", "port":
-		return "https.port"
-	case "https_cert_dir", "tls_cert_dir":
-		return "https.cert_dir"
-
-	// Listener timeouts (apply to both listeners). Values are durations, e.g.
-	// "10s", "2m". 0 disables the timeout.
-	case "timeouts_read_header":
-		return "timeouts.read_header"
-	case "timeouts_read":
-		return "timeouts.read"
-	case "timeouts_write":
-		return "timeouts.write"
-	case "timeouts_idle":
-		return "timeouts.idle"
-
-	// CORS
-	case "cors_allowed_origins":
-		return "cors.allowed_origins"
-
-	// API Key
-	case "api_key_hashing_algorithms":
-		return "api_key.hashing_algorithms"
-
-	// Gateway
-	case "gateway_enable_version_verification":
-		return "gateway.enable_version_verification"
-	case "gateway_enable_functionality_type_verification":
-		return "gateway.enable_functionality_type_verification"
-
-	// EventHub
-	case "event_hub_poll_interval":
-		return "event_hub.poll_interval"
-	case "event_hub_cleanup_interval":
-		return "event_hub.cleanup_interval"
-	case "event_hub_retention_period":
-		return "event_hub.retention_period"
-
-	// Webhook
-	case "webhook_enabled":
-		return "webhook.enabled"
-	case "webhook_secret":
-		return "webhook.secret"
-	case "webhook_private_key_path":
-		return "webhook.private_key_path"
-	case "webhook_gateway_type":
-		return "webhook.gateway_type"
-	case "webhook_signature_tolerance":
-		return "webhook.signature_tolerance"
-	case "webhook_max_body_size":
-		return "webhook.max_body_size"
-	case "webhook_signature_header":
-		return "webhook.signature_header"
-
-	default:
-		return ""
-	}
 }
 
 // fileBasedUsersDecodeHook handles decoding AUTH_FILE_BASED_USERS from a JSON string
@@ -775,6 +555,36 @@ func validateAuthModeExclusivity(auth *Auth) error {
 	if auth.FileBased.Enabled {
 		return fmt.Errorf("auth.idp.enabled=true and auth.file_based.enabled=true are mutually exclusive: " +
 			"set auth.file_based.enabled=false to delegate authentication to the IDP (tokens are validated against auth.idp.jwks_url)")
+	}
+	return nil
+}
+
+// validateJWTConfig verifies the local HMAC JWT secret when JWT auth is enabled. The
+// secret is required and never generated: a missing or malformed key fails startup.
+func validateJWTConfig(jwt *JWT) error {
+	if !jwt.Enabled {
+		return nil
+	}
+	if jwt.SecretKey == "" {
+		return fmt.Errorf("Auth.JWT.SecretKey is required when JWT authentication is enabled " +
+			"(set auth.jwt.secret_key in config via {{ env }}/{{ file }})")
+	}
+	if !valid32ByteKey(jwt.SecretKey) {
+		return fmt.Errorf("invalid Auth.JWT.SecretKey: must be 64 hex characters or base64 decoding to 32 bytes")
+	}
+	return nil
+}
+
+// validateEncryptionKey verifies the at-rest encryption key.
+// A missing or malformed key fails startup.
+func validateEncryptionKey(key string) error {
+	if key == "" {
+		return fmt.Errorf("EncryptionKey is required (set encryption_key in config via " +
+			"{{ env }}/{{ file }}")
+	}
+	if !valid32ByteKey(key) {
+		return fmt.Errorf("invalid EncryptionKey: must be 64 hex characters or " +
+			"base64 decoding to 32 bytes")
 	}
 	return nil
 }

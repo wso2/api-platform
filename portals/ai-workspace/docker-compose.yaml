@@ -18,10 +18,8 @@
 #   convention the key uppercased and prefixed with APIP_AIW_ (AI Workspace) or APIP_CP_
 #   (Platform API), e.g. APIP_AIW_LOG_LEVEL, APIP_CP_DATABASE_HOST. A key with no token
 #   is not settable from the environment: uncomment or add it in the TOML first.
-#
 # Secrets (REQUIRED — never hardcode them here or in the config TOML):
 #   Copy .env.example to .env (git-ignored) and fill it in:
-#
 #     AUTH_JWT_SECRET_KEY=$(openssl rand -hex 32)   # signs login JWTs
 #     ENCRYPTION_KEY=$(openssl rand -hex 32)        # encrypts secrets
 #     APIP_AIW_OIDC_CLIENT_SECRET=...               # only in OIDC mode
@@ -38,7 +36,7 @@
 #   example: Asgardeo).
 #
 # Usage:
-#   docker compose up -d
+#   docker compose --env-file keys.env up -d
 #
 # Ports:
 #   AI Workspace  →  https://localhost:5380
@@ -67,15 +65,9 @@ services:
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
-      # Secrets — set these in your shell or in a .env file next to this file.
-      # AUTH_JWT_SECRET_KEY signs login JWTs; ENCRYPTION_KEY encrypts secrets/subscription
-      # tokens/HMAC at rest. Both are REQUIRED 32-byte keys (64 hex chars / base64)
-      #   export AUTH_JWT_SECRET_KEY=$(openssl rand -hex 32)
-      #   export ENCRYPTION_KEY=$(openssl rand -hex 32)
-      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
-      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-}
       - APIP_DEMO_MODE=${APIP_DEMO_MODE:-true}
+      - APIP_CP_ENCRYPTION_KEY=${APIP_CP_ENCRYPTION_KEY:-}
+      - APIP_CP_AUTH_JWT_SECRET_KEY=${APIP_CP_AUTH_JWT_SECRET_KEY:-}
       # ── OIDC IDP — uncomment to validate tokens against any OIDC provider's
       # JWKS instead of file-based auth. Set the OIDC_* values in .env. Claim
       # overrides are optional (default: organization / org_name / org_handle).

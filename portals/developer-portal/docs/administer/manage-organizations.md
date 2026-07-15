@@ -148,7 +148,7 @@ The Platform API generates a random JWT signing key at startup. Sessions are inv
 
 ```bash
 # In .env (read by both services via docker-compose env_file / APIP_DP_* override)
-AUTH_JWT_SECRET_KEY=<64-hex-char-string>   # openssl rand -hex 32
+APIP_CP_AUTH_JWT_SECRET_KEY=<64-hex-char-string>   # openssl rand -hex 32
 ```
 
 For scripts and CLI tools, get a Bearer token directly from the Platform API and pass it on each request — no session cookie required:
@@ -160,7 +160,7 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:3000/api/v0.9/organizations
 ```
 
-The token is verified locally by the Developer Portal using the shared `AUTH_JWT_SECRET_KEY` with no extra call to the Platform API per request.
+The token is verified locally by the Developer Portal using the shared `APIP_CP_AUTH_JWT_SECRET_KEY` with no extra call to the Platform API per request.
 
 > **Note:** Local auth is for development only. For production, configure the global OIDC identity provider via `APIP_DP_IDP_*` environment variables.
 

@@ -43,24 +43,24 @@ services:
 
   platform-api:
     image: ${PLATFORM_API_IMAGE:-platform-api:it-e2e}
-    command: ["./platform-api", "-config", "/etc/platform-api/config.toml"]
+    command: ["-config", "/etc/platform-api/config.toml"]
     environment:
-      - DATABASE_DRIVER=sqlserver
-      - DATABASE_HOST=sqlserver
-      - DATABASE_PORT=1433
-      - DATABASE_NAME=platform_api
-      - DATABASE_USER=sa
-      - DATABASE_PASSWORD=${MSSQL_PASSWORD:-Strong!Passw0rd}
-      - DATABASE_SSL_MODE=disable
+      - APIP_CP_DATABASE_DRIVER=sqlserver
+      - APIP_CP_DATABASE_HOST=sqlserver
+      - APIP_CP_DATABASE_PORT=1433
+      - APIP_CP_DATABASE_NAME=platform_api
+      - APIP_CP_DATABASE_USER=sa
+      - APIP_CP_DATABASE_PASSWORD=${MSSQL_PASSWORD:-Strong!Passw0rd}
+      - APIP_CP_DATABASE_SSL_MODE=disable
       # Single encryption key — must be 32 bytes (64 hex chars). Used for all at-rest
       # encryption (secrets, subscription tokens, HMAC)
-      - ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-      - AUTH_FILE_BASED_ENABLED=true
-      - AUTH_FILE_BASED_ORGANIZATION_ID=default
-      - AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
-      - AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
-      - AUTH_FILE_BASED_ORGANIZATION_REGION=us
-      - AUTH_JWT_SECRET_KEY=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+      - APIP_CP_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - APIP_CP_AUTH_FILE_BASED_ENABLED=true
+      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_ID=default
+      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
+      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
+      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_REGION=us
+      - APIP_CP_AUTH_JWT_SECRET_KEY=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
     ports:

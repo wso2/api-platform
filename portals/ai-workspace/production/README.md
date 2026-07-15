@@ -249,7 +249,7 @@ For a production deployment, set `APIP_DEMO_MODE=false` (a single var passed to 
 `platform-api` and `ai-workspace` services). This turns on fail-fast startup checks: basic /
 file-based auth is rejected (the OIDC setup in sections 1–3 becomes mandatory), the BFF and
 Platform API no longer auto-generate self-signed TLS certificates (you must mount your own),
-and the Platform API requires a stable `ENCRYPTION_KEY` and `AUTH_JWT_SECRET_KEY`.
+and the Platform API requires a stable `APIP_CP_ENCRYPTION_KEY` and `APIP_CP_AUTH_JWT_SECRET_KEY`.
 
 See [Production hardening (`APIP_DEMO_MODE`)](../README.md#production-hardening-apip_demo_mode)
 in the main README for the full checklist of what each service requires.

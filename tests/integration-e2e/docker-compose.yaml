@@ -44,37 +44,37 @@ services:
 
   platform-api:
     image: ${PLATFORM_API_IMAGE:-platform-api:it-e2e}
-    command: ["./platform-api", "-config", "/etc/platform-api/config.toml"]
+    command: ["-config", "/etc/platform-api/config.toml"]
     environment:
-      - DATABASE_DRIVER=postgres
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_NAME=platform_api
-      - DATABASE_USER=apip
-      - DATABASE_PASSWORD=apip
-      - DATABASE_SSL_MODE=disable
-      - ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - APIP_CP_DATABASE_DRIVER=postgres
+      - APIP_CP_DATABASE_HOST=postgres
+      - APIP_CP_DATABASE_PORT=5432
+      - APIP_CP_DATABASE_NAME=platform_api
+      - APIP_CP_DATABASE_USER=apip
+      - APIP_CP_DATABASE_PASSWORD=apip
+      - APIP_CP_DATABASE_SSL_MODE=disable
+      - APIP_CP_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       # Force file-based auth + a stable org so the scenario can log in and the
       # org is seeded (env overrides the mounted config file).
-      - AUTH_FILE_BASED_ENABLED=true
-      - AUTH_FILE_BASED_ORGANIZATION_ID=default
-      - AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
-      - AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
-      - AUTH_FILE_BASED_ORGANIZATION_REGION=us
-      - AUTH_JWT_SECRET_KEY=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+      - APIP_CP_AUTH_FILE_BASED_ENABLED=true
+      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_ID=default
+      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
+      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
+      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_REGION=us
+      - APIP_CP_AUTH_JWT_SECRET_KEY=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
       # The @devportal stack injects the admin user (with dp:* scopes) here so the
       # issued JWT is authorized on the developer portal. Empty (the default) means
       # platform-api uses its built-in admin (ap:* scopes only).
-      - AUTH_FILE_BASED_USERS=${AUTH_FILE_BASED_USERS:-}
+      - APIP_CP_AUTH_FILE_BASED_USERS=${AUTH_FILE_BASED_USERS:-}
       # Developer Portal webhook receiver (only the postgres stack runs the devportal).
       # Enabled via env so the sqlite/sqlserver stacks — which have no devportal and no
       # mounted key — leave it off. The private key must be readable by the container
       # user (uid 10001); the suite generates a fresh RSA pair, writes the 0644 private
       # key and points PA_WEBHOOK_KEY at it (see prepareWebhookKey in suite_test.go).
-      - WEBHOOK_ENABLED=true
-      - WEBHOOK_SECRET=5bd108b058ac9b318faf771c82a3f88bf6d3be5cc51c221e7ee213dabdbdee22
-      - WEBHOOK_PRIVATE_KEY_PATH=/etc/platform-api/devportal-webhook.pem
-      - WEBHOOK_GATEWAY_TYPE=wso2/api-platform
+      - APIP_CP_WEBHOOK_ENABLED=true
+      - APIP_CP_WEBHOOK_SECRET=5bd108b058ac9b318faf771c82a3f88bf6d3be5cc51c221e7ee213dabdbdee22
+      - APIP_CP_WEBHOOK_PRIVATE_KEY_PATH=/etc/platform-api/devportal-webhook.pem
+      - APIP_CP_WEBHOOK_GATEWAY_TYPE=wso2/api-platform
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
       # RSA private key that platform-api decrypts the webhook's encrypted key/token
@@ -229,7 +229,7 @@ services:
       - APIP_DP_ORGANIZATION_AUTOCREATESUBSCRIPTIONPLANS=false
       - APIP_DP_LOGGING_CONSOLEONLY=true
       # Validate platform-api-issued JWTs locally: this MUST equal the stack's
-      # AUTH_JWT_SECRET_KEY so the admin token is accepted by the devportal.
+      # APIP_CP_AUTH_JWT_SECRET_KEY so the admin token is accepted by the devportal.
       - APIP_DP_PLATFORMAPI_BASEURL=https://platform-api:9243
       - APIP_DP_PLATFORMAPI_JWTSECRET=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
       - APIP_DP_PLATFORMAPI_INSECURE=true

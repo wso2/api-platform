@@ -31,8 +31,9 @@ enable_scope_validation = true
 # ---------------------------------------------------------------------------
 # Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
 # (secrets, subscription tokens, WebSub HMAC secrets)
-# Env: ENCRYPTION_KEY. Generate with: openssl rand -hex 32.
-# encryption_key = ""
+# Generate with: openssl rand -hex 32.
+# encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
 # ---------------------------------------------------------------------------
 # Database
@@ -46,7 +47,7 @@ path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 # port     = 5432
 # name     = "platform_api"
 # user     = "platform_api"
-# password = "change-me"
+# password = '{{ file "/secrets/platform-api/postgres_password" }}'
 # ssl_mode = "disable"
 
 # ---------------------------------------------------------------------------
@@ -55,10 +56,11 @@ path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 
 # JWT (local HMAC) — issues signed tokens after file-based login.
 # secret_key is a 32-byte key (64 hex chars or base64; openssl rand -hex 32).
-# Set AUTH_JWT_SECRET_KEY env var Generate with: openssl rand -hex 32.
+# secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
 [auth.jwt]
 enabled         = true
 issuer          = "platform-api"
+secret_key      = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
 skip_validation = false   # verify JWT signature
 
 # IDP (JWKS-based) — disabled in quickstart mode.
