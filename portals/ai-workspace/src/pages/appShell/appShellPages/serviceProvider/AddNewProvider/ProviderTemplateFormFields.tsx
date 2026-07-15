@@ -23,6 +23,7 @@ import {
   Chip,
   Divider,
   FormControl,
+  FormHelperText,
   FormLabel,
   Grid,
   IconButton,
@@ -114,6 +115,7 @@ export default function ProviderTemplateFormFields({
   const hasTemplateUrl = Boolean(template?.metadata?.endpointUrl);
   const hasTemplateAuthType = Boolean(template?.metadata?.auth?.type);
   const hasTemplateAuthHeader = Boolean(template?.metadata?.auth?.header);
+  const isOtherAuthType = formState.upstreamAuthType === 'other';
   const trimmedVersion = formState.version.trim();
   const versionErrorMessage = !versionTouched
     ? ''
@@ -277,25 +279,40 @@ export default function ProviderTemplateFormFields({
             </FormLabel>
             <Select
               value={formState.upstreamAuthType}
-              onChange={(e) =>
+              onChange={(e) => {
+                const nextAuthType = e.target.value;
                 setFormState((prev) => ({
                   ...prev,
-                  upstreamAuthType: e.target.value,
-                }))
-              }
+                  upstreamAuthType: nextAuthType,
+                  upstreamAuthHeader:
+                    nextAuthType === 'other' ? '' : prev.upstreamAuthHeader,
+                  upstreamAuthValue:
+                    nextAuthType === 'other' ? '' : prev.upstreamAuthValue,
+                }));
+              }}
             >
-              {['api-key'].map((type) => (
+              {['api-key', 'other'].map((type) => (
                 <MenuItem key={type} value={type}>
                   {type}
                 </MenuItem>
               ))}
             </Select>
+            {isOtherAuthType && (
+              <FormHelperText>
+                <FormattedMessage
+                  id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.AddNewProvider.ProviderTemplateFormFields.authentication.type.other.note"
+                  defaultMessage={
+                    'No credentials are stored for this provider. Use a policy to configure authentication.'
+                  }
+                />
+              </FormHelperText>
+            )}
           </FormControl>
         </Grid>
       )}
 
-      {/* Auth Header - only show if not provided by template */}
-      {!hasTemplateAuthHeader && (
+      {/* Auth Header - only show if not provided by template and auth type is not "other" */}
+      {!hasTemplateAuthHeader && !isOtherAuthType && (
         <Grid size={{ xs: 12, md: 6 }}>
           <FormControl fullWidth>
             <FormLabel>
@@ -319,56 +336,58 @@ export default function ProviderTemplateFormFields({
         </Grid>
       )}
 
-      {/* Auth Value - always show; optional, provider can be created without it */}
-      <Grid size={{ xs: 12 }}>
-        <FormControl fullWidth>
-          <FormLabel>
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.AddNewProvider.ProviderTemplateFormFields.api.key"
-              defaultMessage={'API Key'}
+      {/* Auth Value - shown unless auth type is "other"; optional, provider can be created without it */}
+      {!isOtherAuthType && (
+        <Grid size={{ xs: 12 }}>
+          <FormControl fullWidth>
+            <FormLabel>
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.AddNewProvider.ProviderTemplateFormFields.api.key"
+                defaultMessage={'API Key'}
+              />
+            </FormLabel>
+            <TextField
+              fullWidth
+              value={formState.upstreamAuthValue}
+              onChange={(e) =>
+                setFormState((prev) => ({
+                  ...prev,
+                  upstreamAuthValue: e.target.value,
+                }))
+              }
+              type={showCredential ? 'text' : 'password'}
+              data-cyid="provider-api-key-input"
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        size="small"
+                        onClick={() => setShowCredential((prev) => !prev)}
+                        aria-label={
+                          showCredential ? 'Hide credentials' : 'Show credentials'
+                        }
+                      >
+                        {showCredential ? (
+                          <EyeOff size={18} />
+                        ) : (
+                          <Eye size={18} />
+                        )}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
+              placeholder="Enter your API key or token (optional)"
+              // helperText={
+              //   template?.metadata?.auth?.valuePrefix
+              //     ? `Will be prefixed with: ${template.metadata.auth.valuePrefix}`
+              //     : 'Your authentication credential for the upstream provider'
+              // }
             />
-          </FormLabel>
-          <TextField
-            fullWidth
-            value={formState.upstreamAuthValue}
-            onChange={(e) =>
-              setFormState((prev) => ({
-                ...prev,
-                upstreamAuthValue: e.target.value,
-              }))
-            }
-            type={showCredential ? 'text' : 'password'}
-            data-cyid="provider-api-key-input"
-            slotProps={{
-              input: {
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      size="small"
-                      onClick={() => setShowCredential((prev) => !prev)}
-                      aria-label={
-                        showCredential ? 'Hide credentials' : 'Show credentials'
-                      }
-                    >
-                      {showCredential ? (
-                        <EyeOff size={18} />
-                      ) : (
-                        <Eye size={18} />
-                      )}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              },
-            }}
-            placeholder="Enter your API key or token (optional)"
-            // helperText={
-            //   template?.metadata?.auth?.valuePrefix
-            //     ? `Will be prefixed with: ${template.metadata.auth.valuePrefix}`
-            //     : 'Your authentication credential for the upstream provider'
-            // }
-          />
-        </FormControl>
-      </Grid>
+          </FormControl>
+        </Grid>
+      )}
 
       {/* Show what values are being used from template */}
       {/* {(hasTemplateUrl || hasTemplateAuthType || hasTemplateAuthHeader) && (
