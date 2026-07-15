@@ -295,7 +295,10 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 	}
 	var body map[string]string
 	_ = json.NewDecoder(w.Body).Decode(&body)
-	if body["error"] != "not authenticated" {
-		t.Errorf("error = %q, want %q", body["error"], "not authenticated")
+	if body["code"] != "NOT_AUTHENTICATED" {
+		t.Errorf("code = %q, want %q", body["code"], "NOT_AUTHENTICATED")
+	}
+	if body["message"] != "not authenticated" {
+		t.Errorf("message = %q, want %q", body["message"], "not authenticated")
 	}
 }
