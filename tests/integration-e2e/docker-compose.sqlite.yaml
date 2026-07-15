@@ -9,14 +9,16 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
+        set -e
         [ -f /certs/cert.pem ] && [ -f /certs/key.pem ] && exit 0
         openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
           -keyout /certs/key.pem -out /certs/cert.pem \
           -subj "/O=WSO2 API Platform/CN=platform-api" \
           -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
         # certgen runs as root; platform-api runs as uid 10001, so the key must be
-        # made world-readable or the server fails to start with "permission denied".
-        chmod 0644 /certs/key.pem
+        # owned by that uid, not made world-readable.
+        chown 10001 /certs/key.pem
+        chmod 0600 /certs/key.pem
     volumes:
       - platform-api-certs:/certs
     networks: [e2e]

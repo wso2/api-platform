@@ -460,7 +460,9 @@ docker-compose mounts this directory read-only into both containers
 the BFF trusts for the upstream platform-api hop, referenced by `[platform_api] ca_file` in
 `configs/config.toml`.
 
-Then restart the stack: `docker compose up -d`
+Then restart the stack: `docker compose up -d --force-recreate` (a plain `docker
+compose up -d` won't recreate already-running containers, so they'd keep the
+old certificates loaded)
 
 ---
 
