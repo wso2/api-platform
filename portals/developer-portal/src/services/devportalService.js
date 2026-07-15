@@ -58,7 +58,7 @@ const getOrgContent = async (req, res) => {
                 res.set(constants.MIME_TYPES.CONYEMT_TYPE, contentType);
                 return res.status(200).send(Buffer.isBuffer(asset.file_content) ? asset.file_content : constants.CHARSET_UTF8);
             } else {
-                return res.status(404).send('Not Found');
+                return util.sendError(res, 404, 'Not Found');
             }
         } else if (req.params.fileType) {
             const assets = await adminService.getOrgContent(req.orgId, req.params.viewId, req.params.fileType);
@@ -73,7 +73,7 @@ const getOrgContent = async (req, res) => {
             }
             return res.status(200).send(results);
         } else {
-            res.status(400).send('Invalid request');
+            util.sendError(res, 400, 'Invalid request');
         }
     } catch (error) {
         logger.error('Error while fetching organization content', {
@@ -82,7 +82,7 @@ const getOrgContent = async (req, res) => {
             orgId: req.orgId,
             viewId: req.params.viewId
         });
-        res.status(404).send(error.message);
+        return util.sendError(res, 500, 'Internal Server Error');
     }
 };
 

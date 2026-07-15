@@ -19,15 +19,14 @@ curl -X POST https://localhost:3000/api/v0.9/mcp-servers \
 
 ```
 
-Creates Developer Portal MCP server metadata. Accepts the same metadata input formats as `POST /api/v0.9/apis` (artifact ZIP, `api.yaml` / `devportal.yaml` / `mcp.yaml`, or `apiMetadata` JSON), but the created record is always typed `MCP`. An MCP server's contract is its `schemaDefinition` — the tools, resources, and prompts it exposes — not an OpenAPI-style `apiDefinition`; a `schemaDefinition` is required and any `apiDefinition` sent is ignored. Via the JSON `apiMetadata` field, `type` must be explicitly `MCP`; an omitted type or any other value is rejected with a 400 (use `POST /api/v0.9/apis`).
+Creates Developer Portal MCP server metadata. Accepts the same metadata input formats as `POST /api/v0.9/apis` (artifact ZIP, `api.yaml` / `devportal.yaml` / `mcp.yaml`, or `metadata` JSON), but the created record is always typed `MCP`. An MCP server's contract is its `definition` (tools schema) — the tools, resources, and prompts it exposes — not an OpenAPI-style API contract; a `definition` is required. Via the JSON `metadata` field, `type` must be explicitly `MCP`; an omitted type or any other value is rejected with a 400 (use `POST /api/v0.9/apis`).
 
 > Payload
 
 ```yaml
-api: string
 artifact: string
-schemaDefinition: string
-apiMetadata: '{"name":"Travel Assistant MCP","version":"v1","description":"MCP
+definition: string
+metadata: '{"name":"Travel Assistant MCP","version":"v1","description":"MCP
   server for travel planning
   tools","type":"MCP","agentVisibility":"VISIBLE","status":"PUBLISHED",
   "tags":["mcp"],"labels":["default"],"endPoints":{"productionURL":"https://mcp.example.com",
@@ -46,11 +45,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|object|true|MCP server upload. Provide the server metadata via `apiMetadata` (JSON), an `api` YAML file, or a full `artifact` ZIP, together with its `schemaDefinition` — the tools, resources, and prompts the server exposes. An MCP server has no OpenAPI-style `apiDefinition`; its `schemaDefinition` IS its contract, so it is required on create (and replaces the stored schema when supplied on update).|
-|» api|body|string(binary)|false|MCP server metadata YAML file (kind MCP).|
-|» artifact|body|string(binary)|false|Full MCP server ZIP artifact containing the metadata and the schemaDefinition.|
-|» schemaDefinition|body|string(binary)|false|MCP tools schema (YAML or JSON) listing the tools, resources, and prompts the server exposes. Required on create; when supplied on update it replaces the stored schema.|
-|» apiMetadata|body|string|false|JSON string accepted when the `api` YAML file is not supplied. Accepted top-level fields: `name`, `version`, `description`, `type` (must be `MCP`), `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes the MCP server's stored handle.|
+|body|body|object|true|MCP server upload. Provide the server metadata via `metadata` (a JSON string or an uploaded YAML/JSON file), or a full `artifact` ZIP, together with its `definition` — the tools, resources, and prompts the server exposes. An MCP server has no OpenAPI-style API contract; its `definition` (tools schema) IS its contract, so it is required on create (and replaces the stored schema when supplied on update).|
+|» artifact|body|string(binary)|false|Full MCP server ZIP artifact containing the metadata and the definition.|
+|» definition|body|string(binary)|false|MCP tools schema (YAML or JSON) listing the tools, resources, and prompts the server exposes. Required on create; when supplied on update it replaces the stored schema.|
+|» metadata|body|string|false|MCP server metadata, supplied either as a JSON string field or as an uploaded YAML/JSON file (a k8s-style document of kind `MCP`; file names `metadata.yaml`/`.yml`/`.json`, or the legacy `api.yaml`/`mcp.yaml`/`devportal.yaml`). As a JSON string it accepts these top-level fields: `name`, `version`, `description`, `type` (must be `MCP`), `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes the MCP server's stored handle.|
 
 > Example responses
 
@@ -61,7 +59,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "weather-api-v1",
   "refId": "cp-api-12345",
   "name": "Weather API",
-  "apiTitle": "Weather Forecast API",
+  "title": "Weather Forecast API",
   "version": "v1",
   "status": "PUBLISHED",
   "description": "Weather forecast API.",
@@ -85,23 +83,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "name",
-        "message": "name is required."
-      }
-    ]
-  }
-]
-```
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
 {
@@ -152,7 +134,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Created MCP server metadata payload returned by the service. Always typed `MCP`.|[ApiMetadataCreateResponse](schemas.md#schemaapimetadatacreateresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -163,7 +145,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Property|Value|
 |---|---|
-|status|error|
 |status|error|
 
 ### Response Headers
@@ -203,7 +184,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
 |query|query|string|false|Free-text API metadata search term.|
-|apiName|query|string|false|Exact API name filter.|
+|name|query|string|false|Exact API name filter.|
 |version|query|string|false|Exact API version filter.|
 |tags|query|string|false|Comma-separated tag names. Matches APIs tagged with any of the given names.|
 |view|query|string|false|Developer Portal view name used to filter visible APIs.|
@@ -235,6 +216,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       }
     }
   ],
+  "count": 1,
   "pagination": {
     "total": 1,
     "limit": 20,
@@ -243,23 +225,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "name",
-        "message": "name is required."
-      }
-    ]
-  }
-]
-```
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
 {
@@ -290,7 +256,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of MCP server metadata DTOs. Always typed `MCP`.|Inline|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="list-mcp-server-metadata-responseschema">Response Schema</h3>
@@ -307,7 +273,7 @@ Status Code **200**
 |---|---|---|---|---|
 |»» *anonymous*|[ApiInfoResponse](schemas.md#schemaapiinforesponse)|false|none|Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateResponse (not nested under an `apiInfo` key) — this schema exists only to share the field set between the two via `allOf`.|
 |»»» name|string|false|none|none|
-|»»» apiTitle|string¦null|false|none|none|
+|»»» title|string¦null|false|none|none|
 |»»» remotes|[object]|false|none|none|
 |»»» version|string|false|none|none|
 |»»» status|string|false|none|API lifecycle status.|
@@ -375,6 +341,7 @@ Status Code **200**
 |»»» updatedBy|string|false|none|Identity of the user who last updated this API, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
 |»»» createdAt|string(date-time)|false|none|none|
 |»»» updatedAt|string(date-time)|false|none|none|
+|» count|integer|false|none|Number of items returned in this page.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -408,7 +375,6 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
-|status|error|
 |status|error|
 
 ## Get MCP server metadata
@@ -452,7 +418,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "weather-api-v1",
   "refId": "cp-api-12345",
   "name": "Weather API",
-  "apiTitle": "Weather Forecast API",
+  "title": "Weather Forecast API",
   "remotes": [],
   "version": "v1",
   "status": "PUBLISHED",
@@ -474,23 +440,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "name",
-        "message": "name is required."
-      }
-    ]
-  }
-]
-```
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
 {
@@ -527,7 +477,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|MCP server metadata DTO returned by the service. Always typed `MCP`.|[ApiMetadataResponse](schemas.md#schemaapimetadataresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Plain text success response.|string|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
@@ -537,7 +487,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Property|Value|
 |---|---|
-|status|error|
 |status|error|
 
 ## Update MCP server metadata
@@ -559,15 +508,14 @@ curl -X PUT https://localhost:3000/api/v0.9/mcp-servers/{mcpServerId} \
 
 ```
 
-Updates Developer Portal MCP server metadata and, when a `schemaDefinition` is supplied, its stored tools schema. `type` is required and immutable — it must stay `MCP`; any other value is rejected with `400` via the same resolveTypeOrReject check `POST /mcp-servers` uses. An MCP server has no `apiDefinition`; any `apiDefinition` sent on update is ignored.
+Updates Developer Portal MCP server metadata and, when a `definition` is supplied, its stored tools schema. `type` is required and immutable — it must stay `MCP`; any other value is rejected with `400` via the same resolveTypeOrReject check `POST /mcp-servers` uses. An MCP server's `definition` is its tools schema, not an OpenAPI-style API contract.
 
 > Payload
 
 ```yaml
-api: string
 artifact: string
-schemaDefinition: string
-apiMetadata: '{"name":"Travel Assistant MCP","version":"v1","description":"MCP
+definition: string
+metadata: '{"name":"Travel Assistant MCP","version":"v1","description":"MCP
   server for travel planning
   tools","type":"MCP","agentVisibility":"VISIBLE","status":"PUBLISHED",
   "tags":["mcp"],"labels":["default"],"endPoints":{"productionURL":"https://mcp.example.com",
@@ -586,11 +534,10 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|object|true|MCP server upload. Provide the server metadata via `apiMetadata` (JSON), an `api` YAML file, or a full `artifact` ZIP, together with its `schemaDefinition` — the tools, resources, and prompts the server exposes. An MCP server has no OpenAPI-style `apiDefinition`; its `schemaDefinition` IS its contract, so it is required on create (and replaces the stored schema when supplied on update).|
-|» api|body|string(binary)|false|MCP server metadata YAML file (kind MCP).|
-|» artifact|body|string(binary)|false|Full MCP server ZIP artifact containing the metadata and the schemaDefinition.|
-|» schemaDefinition|body|string(binary)|false|MCP tools schema (YAML or JSON) listing the tools, resources, and prompts the server exposes. Required on create; when supplied on update it replaces the stored schema.|
-|» apiMetadata|body|string|false|JSON string accepted when the `api` YAML file is not supplied. Accepted top-level fields: `name`, `version`, `description`, `type` (must be `MCP`), `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes the MCP server's stored handle.|
+|body|body|object|true|MCP server upload. Provide the server metadata via `metadata` (a JSON string or an uploaded YAML/JSON file), or a full `artifact` ZIP, together with its `definition` — the tools, resources, and prompts the server exposes. An MCP server has no OpenAPI-style API contract; its `definition` (tools schema) IS its contract, so it is required on create (and replaces the stored schema when supplied on update).|
+|» artifact|body|string(binary)|false|Full MCP server ZIP artifact containing the metadata and the definition.|
+|» definition|body|string(binary)|false|MCP tools schema (YAML or JSON) listing the tools, resources, and prompts the server exposes. Required on create; when supplied on update it replaces the stored schema.|
+|» metadata|body|string|false|MCP server metadata, supplied either as a JSON string field or as an uploaded YAML/JSON file (a k8s-style document of kind `MCP`; file names `metadata.yaml`/`.yml`/`.json`, or the legacy `api.yaml`/`mcp.yaml`/`devportal.yaml`). As a JSON string it accepts these top-level fields: `name`, `version`, `description`, `type` (must be `MCP`), `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes the MCP server's stored handle.|
 |mcpServerId|path|string|true|The MCP server's handle (unique per org).|
 
 > Example responses
@@ -602,7 +549,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "weather-api-v1",
   "refId": "cp-api-12345",
   "name": "Weather API",
-  "apiTitle": "Weather Forecast API",
+  "title": "Weather Forecast API",
   "remotes": [],
   "version": "v1",
   "status": "PUBLISHED",
@@ -624,23 +571,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "name",
-        "message": "name is required."
-      }
-    ]
-  }
-]
-```
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
 {
@@ -691,7 +622,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|MCP server metadata DTO returned by the service. Always typed `MCP`.|[ApiMetadataResponse](schemas.md#schemaapimetadataresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -702,7 +633,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Property|Value|
 |---|---|
-|status|error|
 |status|error|
 
 ## Delete MCP server metadata
@@ -745,23 +675,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 "string"
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "name",
-        "message": "name is required."
-      }
-    ]
-  }
-]
-```
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
 {
@@ -812,7 +726,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Plain text success response.|string|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -823,5 +737,4 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Property|Value|
 |---|---|
-|status|error|
 |status|error|

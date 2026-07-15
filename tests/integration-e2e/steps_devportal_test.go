@@ -264,10 +264,10 @@ paths:
 
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
-	if err := addYAMLPart(mw, "api", "api.yaml", apiYAML); err != nil {
+	if err := addYAMLPart(mw, "metadata", "metadata.yaml", apiYAML); err != nil {
 		return "", nil, err
 	}
-	if err := addYAMLPart(mw, "apiDefinition", "definition.yaml", defYAML); err != nil {
+	if err := addYAMLPart(mw, "definition", "definition.yaml", defYAML); err != nil {
 		return "", nil, err
 	}
 	if err := mw.Close(); err != nil {
@@ -295,7 +295,7 @@ func (w *world) subscribeInDevportal() error {
 	}
 
 	st, body, err = dpCall(http.MethodPost, "/subscriptions", map[string]any{
-		"apiId":              w.dpApiID, // the devportal API handle, not the referenceId
+		"artifactId":         w.dpApiID, // the devportal API handle, not the referenceId
 		"subscriptionPlanId": w.planID,
 	})
 	if err != nil {

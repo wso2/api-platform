@@ -73,12 +73,12 @@
           <!-- Top: icon + name + version + type badge -->
           <div class="api-card-top" data-href="{{../baseUrl}}/mcp/{{id}}" style="cursor:pointer;">
             {{#if apiImageMetadata.api-icon}}
-            <img src="{{apiImageMetadata.api-icon}}" class="api-card-img" alt="{{or apiTitle name}}" />
+            <img src="{{apiImageMetadata.api-icon}}" class="api-card-img" alt="{{or title name}}" />
             {{else}}
-            <span class="api-icon api-icon--mcp">{{firstTwoLetters (or apiTitle name)}}</span>
+            <span class="api-icon api-icon--mcp">{{firstTwoLetters (or title name)}}</span>
             {{/if}}
             <div class="api-card-meta">
-              <h5 class="api-card-title">{{or apiTitle name}}</h5>
+              <h5 class="api-card-title">{{or title name}}</h5>
               <div class="api-card-meta-row">
                 <span class="api-version">{{version}}</span>
                 <span class="dp-badge dp-badge--mcp"><i class="bi bi-cpu"></i> MCP</span>

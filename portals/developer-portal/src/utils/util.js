@@ -280,12 +280,41 @@ function handleError(res, error) {
     }
 }
 
+/**
+ * Emit a standard error response body:
+ *   { status: 'error', code, message, errors, [details], [trackingId] }
+ * `code` defaults to the HTTP-status catalog entry; pass opts.code to override
+ * with a resource-specific code. `errors` is always present (empty array when
+ * there are no field-level errors), matching handleError's shape.
+ */
+function sendError(res, statusCode, message, opts = {}) {
+    const body = {
+        status: 'error',
+        code: opts.code || HTTP_CODE_TO_CATALOG[statusCode] || 'INTERNAL_SERVER_ERROR',
+        message,
+        errors: opts.errors || [],
+    };
+    if (opts.details) body.details = opts.details;
+    if (opts.trackingId) body.trackingId = opts.trackingId;
+    return res.status(statusCode).json(body);
+}
+
+/**
+ * Wrap a fully-materialized list in the standard collection envelope:
+ *   { count, list, pagination: { limit, offset, total } }
+ * `total` is the grand total across all pages; `count` is the number of items
+ * returned in this page. limit/offset are applied here (in-memory) so every
+ * list endpoint paginates consistently.
+ */
 function toPaginatedList(list, req) {
-    const limit = Math.min(parseInt((req.query && req.query.limit) || '20', 10) || 20, 100);
-    const offset = parseInt((req.query && req.query.offset) || '0', 10) || 0;
+    const total = list.length;
+    const limit = Math.min(Math.max(parseInt((req.query && req.query.limit) || '20', 10) || 20, 0), 100);
+    const offset = Math.max(parseInt((req.query && req.query.offset) || '0', 10) || 0, 0);
+    const page = list.slice(offset, offset + limit);
     return {
-        list,
-        pagination: { total: list.length, limit, offset },
+        count: page.length,
+        list: page,
+        pagination: { limit, offset, total },
     };
 }
 
@@ -1094,6 +1123,7 @@ module.exports = {
     renderLlmsTxt,
     renderGivenTemplate,
     handleError,
+    sendError,
     retrieveContentType,
     getAPIFileContent,
     getAPIImages,

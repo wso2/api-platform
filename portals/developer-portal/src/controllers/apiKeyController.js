@@ -55,7 +55,7 @@ async function resolveApiId(orgId, apiHandle, req) {
 async function resolveApiIdOrRespond(orgId, apiHandle, res, req) {
     const apiId = await resolveApiId(orgId, apiHandle, req);
     if (!apiId) {
-        res.status(404).json({ code: '404', message: 'Not Found', description: 'API not found' });
+        util.sendError(res, 404, 'Not Found', { errors: [{ message: 'API not found' }] });
         return null;
     }
     return apiId;
@@ -76,7 +76,7 @@ async function resolveKeyId(orgId, apiId, keyHandle) {
 async function resolveKeyIdOrRespond(orgId, apiId, keyHandle, res) {
     const keyId = await resolveKeyId(orgId, apiId, keyHandle);
     if (!keyId) {
-        res.status(404).json({ code: '404', message: 'Not Found', description: 'API key not found' });
+        util.sendError(res, 404, 'Not Found', { errors: [{ message: 'API key not found' }] });
         return null;
     }
     return keyId;
@@ -115,7 +115,7 @@ async function generateApiKey(req, res) {
 
     const appIdResult = normalizeOptionalId(appHandle);
     if (!appIdResult.ok) {
-        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'appId must be a non-empty string' });
+        return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'appId must be a non-empty string' }] });
     }
 
     try {
@@ -123,7 +123,7 @@ async function generateApiKey(req, res) {
         if (!apiId) return;
         const appId = await resolveAppId(orgId, util.resolveActor(req), appIdResult.value);
         if (appIdResult.value && !appId) {
-            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Application not found' });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Application not found' }] });
         }
         const result = await apiKeyService.generate({
             orgId, apiId, subscriptionId, appId, handle: id, displayName, expiresAt,
@@ -133,7 +133,7 @@ async function generateApiKey(req, res) {
         return res.status(201).json(result);
     } catch (err) {
         logger.error('Failed to generate API key', { error: err.message, orgId, apiId: apiHandle });
-        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: 'Failed to generate API key' });
+        return util.sendError(res, errorStatus(err), 'Failed to generate API key');
     }
 }
 
@@ -164,13 +164,13 @@ async function listApiKeys(req, res) {
         const apiId = await resolveApiId(orgId, apiHandle, req);
         if (!apiId) {
             return res.status(404).json({
-                status: 'error', code: '404', message: 'Not Found', errors: [{ field: 'apiId', message: 'API not found' }],
+                status: 'error', code: 'RESOURCE_NOT_FOUND', message: 'Not Found', errors: [{ field: 'apiId', message: 'API not found' }],
             });
         }
         const appId = await resolveAppId(orgId, util.resolveActor(req), appIdResult.value);
         if (appIdResult.value && !appId) {
             return res.status(404).json({
-                status: 'error', code: '404', message: 'Not Found', errors: [{ field: 'appId', message: 'Application not found' }],
+                status: 'error', code: 'RESOURCE_NOT_FOUND', message: 'Not Found', errors: [{ field: 'appId', message: 'Application not found' }],
             });
         }
         const keys = await apiKeyService.list(orgId, {
@@ -203,7 +203,7 @@ async function regenerateApiKey(req, res) {
     const { keyId: keyHandle, expiresAt } = req.body || {};
 
     if (!keyHandle || typeof keyHandle !== 'string' || !keyHandle.trim()) {
-        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'keyId is required' });
+        return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'keyId is required' }] });
     }
 
     try {
@@ -218,7 +218,7 @@ async function regenerateApiKey(req, res) {
         return res.status(200).json(result);
     } catch (err) {
         logger.error('Failed to regenerate API key', { error: err.message, orgId, apiId: apiHandle, keyHandle });
-        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: 'Failed to regenerate API key' });
+        return util.sendError(res, errorStatus(err), 'Failed to regenerate API key');
     }
 }
 
@@ -232,7 +232,7 @@ async function revokeApiKey(req, res) {
     const { keyId: keyHandle } = req.body || {};
 
     if (!keyHandle || typeof keyHandle !== 'string' || !keyHandle.trim()) {
-        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'keyId is required' });
+        return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'keyId is required' }] });
     }
 
     try {
@@ -245,7 +245,7 @@ async function revokeApiKey(req, res) {
         return res.status(204).send();
     } catch (err) {
         logger.error('Failed to revoke API key', { error: err.message, orgId, apiId: apiHandle, keyHandle });
-        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: 'Failed to revoke API key' });
+        return util.sendError(res, errorStatus(err), 'Failed to revoke API key');
     }
 }
 
@@ -259,10 +259,10 @@ async function associateApiKeyApplication(req, res) {
     const { keyId: keyHandle, appId: appHandle } = req.body || {};
 
     if (!keyHandle || typeof keyHandle !== 'string' || !keyHandle.trim()) {
-        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'keyId is required' });
+        return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'keyId is required' }] });
     }
     if (!appHandle || typeof appHandle !== 'string' || !appHandle.trim()) {
-        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'appId is required' });
+        return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'appId is required' }] });
     }
 
     try {
@@ -272,7 +272,7 @@ async function associateApiKeyApplication(req, res) {
         if (!keyId) return;
         const appId = await resolveAppId(orgId, util.resolveActor(req), appHandle.trim());
         if (!appId) {
-            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Application not found' });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Application not found' }] });
         }
         const result = await apiKeyService.associateApplication({
             orgId, apiId, keyId, appId, actor: util.resolveActor(req),
@@ -281,7 +281,7 @@ async function associateApiKeyApplication(req, res) {
         return res.status(200).json(result);
     } catch (err) {
         logger.error('Failed to associate application with API key', { error: err.message, orgId, apiId: apiHandle, keyHandle });
-        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: 'Failed to associate application with API key' });
+        return util.sendError(res, errorStatus(err), 'Failed to associate application with API key');
     }
 }
 
@@ -295,7 +295,7 @@ async function removeApiKeyApplication(req, res) {
     const { keyId: keyHandle } = req.body || {};
 
     if (!keyHandle || typeof keyHandle !== 'string' || !keyHandle.trim()) {
-        return res.status(400).json({ code: '400', message: 'Bad Request', description: 'keyId is required' });
+        return util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'keyId is required' }] });
     }
 
     try {
@@ -308,7 +308,7 @@ async function removeApiKeyApplication(req, res) {
         return res.status(204).send();
     } catch (err) {
         logger.error('Failed to remove application association from API key', { error: err.message, orgId, apiId: apiHandle, keyHandle });
-        return res.status(errorStatus(err)).json({ code: String(errorStatus(err)), message: 'Failed to remove application association from API key' });
+        return util.sendError(res, errorStatus(err), 'Failed to remove application association from API key');
     }
 }
 
@@ -323,7 +323,7 @@ async function listApplicationApiKeys(req, res) {
     try {
         const appRecord = await applicationDao.getId(orgId, util.resolveActor(req), applicationHandle);
         if (!appRecord) {
-            return res.status(404).json({ code: '404', message: 'Application not found' });
+            return util.sendError(res, 404, 'Application not found');
         }
         const applicationId = appRecord.uuid;
         const keys = await apiKeyService.list(orgId, { appId: applicationId });
