@@ -25,6 +25,7 @@ Retrieves a single organization theme asset (CSS, image, etc.) by `fileType` and
 |fileType|query|string|true|Organization content file type, such as style, image, text, template, or partial.|
 |fileName|query|string|true|Stored organization content file name.|
 |filePath|query|string|false|Optional relative content path used together with `fileType` and `fileName`.|
+|orgId|query|string|false|Organization ID used to resolve a view's public style/image asset when no session is present (e.g. the pre-auth login page). Ignored for authenticated requests, which use the session organization.|
 |viewId|path|string|true|The view's handle (unique per org). Not the internal database uuid.|
 
 > Example responses

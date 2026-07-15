@@ -70,6 +70,23 @@ function resolveDesignFallback(filePath) {
     return abs;
 }
 
+/**
+ * Rewrite `/styles/` references (in a layout or stylesheet) to the view asset
+ * endpoint, carrying orgId so the PUBLIC endpoint can resolve the view's theme
+ * even without a session — e.g. anonymous view pages and the pre-auth login page.
+ *
+ * Centralised on purpose: this rewrite used to be hand-written at every render
+ * and upload site, and any site that omitted orgId served the default stylesheet
+ * to logged-out users. Route all `/styles/` rewrites through here so theming
+ * stays consistent across every page instead of breaking one scenario at a time.
+ */
+function rewriteViewStyles(content, orgId, viewName) {
+    return content.replace(
+        /\/styles\//g,
+        `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?orgId=${orgId}&fileType=style&fileName=`
+    );
+}
+
 function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) {
 
     let completeTemplatePath;
@@ -82,6 +99,49 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
     const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
     const completeLayoutPath = resolveDesignFallback(layoutPath);
     const layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8)
+
+    const template = Handlebars.compile(templateResponse.toString());
+    const layout = Handlebars.compile(layoutResponse.toString());
+
+    const slots = {};
+    const showApiWorkflowsNav = config.features?.apiWorkflows === true;
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
+    return layout({
+        ...enrichedContent,
+        body: template(enrichedContent),
+        devportalApiConfig: {
+            base: constants.DEVPORTAL_API.BASE_SEGMENT,
+            version: constants.DEVPORTAL_API.VERSION,
+        },
+        devReloadEnabled: process.env.NODE_ENV === 'development',
+    });
+}
+
+/**
+ * Like renderTemplate, but applies the active view's uploaded theme: when the
+ * view has a custom main.css, the layout's `/styles/` references are rewritten to
+ * the view asset endpoint, so themed CSS loads (and inherited stylesheets resolve
+ * via the endpoint's defaultContent fallback). Used by logged-in "technical" pages
+ * (subscriptions, API keys) and the login page so they match the view theme
+ * instead of always rendering the packaged default stylesheet.
+ */
+async function renderTemplateWithView(templatePath, layoutPath, templateContent, isTechnical, orgId, viewName) {
+    const completeTemplatePath = isTechnical
+        ? path.join(require.main.filename, templatePath)
+        : resolveDesignFallback(templatePath);
+    const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
+
+    const completeLayoutPath = resolveDesignFallback(layoutPath);
+    let layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8);
+
+    if (orgId && viewName) {
+        const styleContent = await orgDao.getContent({ orgId, fileType: 'style', viewName, fileName: 'main.css' });
+        if (styleContent) {
+            // Carry orgId so the (public) asset endpoint can resolve the view's theme even
+            // when there's no session yet — e.g. the pre-auth login page.
+            layoutResponse = rewriteViewStyles(layoutResponse, orgId, viewName);
+        }
+    }
 
     const template = Handlebars.compile(templateResponse.toString());
     const layout = Handlebars.compile(layoutResponse.toString());
@@ -135,7 +195,7 @@ async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, 
     layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8);
     const styleContent = await orgDao.getContent({ orgId: orgId, fileType: 'style', viewName: viewName, fileName: 'main.css' });
     if (styleContent) {
-        layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=`);
+        layoutResponse = rewriteViewStyles(layoutResponse, orgId, viewName);
     }
 
     const template = Handlebars.compile(templateResponse.toString());
@@ -816,7 +876,7 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("layout")) {
                     fileType = "layout"
                     if (file.name === "main.hbs") {
-                        strContent = strContent.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=`);
+                        strContent = rewriteViewStyles(strContent, orgId, viewName);
                         content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     }
                     validateScripts(strContent);
@@ -877,18 +937,24 @@ function validateScripts(strContent) {
             "<script src='/technical-scripts/common.js' defer></script>",
             "<script src='/technical-scripts/subscription.js' defer></script>",
             "<script src='/technical-scripts/subscription-modal.js' defer></script>",
-            "<script src='/technical-scripts/subscriptions-page.js' defer></script>",
-            "<script src='/technical-scripts/api-keys-page.js' defer></script>",
             '<script src="/technical-scripts/oauth2-key-generation.js" defer></script>',
             "<script src='/technical-scripts/delete-confirmation-modal.js' defer></script>",
             "<script src='/technical-scripts/api-workflow-detail.js' defer></script>",
-            "<script src='/technical-scripts/api-workflows.js' defer></script>",
             "<script src='/technical-scripts/api-agent-prompt.js' defer></script>",
             '<script src="/technical-scripts/home-discover.js" defer></script>',
+            "<script src='/technical-scripts/home-particles.js' defer></script>",
+            "<script src='/technical-scripts/listing-cards.js' defer></script>",
+            "<script src='/technical-scripts/mcp-landing.js' defer></script>",
+            "<script src='/technical-scripts/api-subscription-plans.js' defer></script>",
+            "<script src='/technical-scripts/mcp-subscription-plans.js' defer></script>",
+            "<script src='/technical-scripts/onboarding-overlay.js' defer></script>",
+            "<script src='/technical-scripts/dev-reload.js' defer></script>",
             '<script src="https://cdn.jsdelivr.net/npm/@jentic/arazzo-ui@1.0.0-alpha.30/dist/arazzo-ui.js" integrity="sha256-OYzURPQLK+lup5rGo+IQmVbjWOjVgjURBWDDtMHIOaw=" crossorigin="anonymous"></script>',
             '<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" integrity="sha256-Rdw90D3AegZwWiwpibjH9wkBPwS9U4bjJ51ORH8H69c=" crossorigin="anonymous"></script>',
             '<script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js" integrity="sha256-Wt6n2O5BpwD8zBS7nVAxBPBHDMF6hK0+Fn0/UlHq4No=" crossorigin="anonymous"></script>',
             '<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js" integrity="sha512-78KH17QLT5e55GJqP76vutp1D2iAoy06WcYBXB6iBCsmO6wWzx0Qdg8EDpm8mKXv68BcvHOyeeP4wxAL0twJGQ==" crossorigin="anonymous"></script>',
+            "<script src=\"https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js\" integrity=\"sha384-oHYQNeDBTZNj6KnIfJMAzcEn2OTbeMKKXFeEwU6T+pH0oS1yTIzEBaW6BXmCtvs2\" crossorigin=\"anonymous\"></script>",
+            "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js\" integrity=\"sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp\" crossorigin=\"anonymous\"></script>",
         ]);
         const allowedInlineScripts = new Set([
             // Token-map JSON data island (api-landing/partials/api-subscription-plans.hbs)
@@ -908,8 +974,10 @@ function validateScripts(strContent) {
             // tokenMap + orgId bootstrap (api-subscriptions/partials/api-subscription-list.hbs
             // and subscriptions/partials/subscription-list.hbs)
             "<script>\n                window.__tokenMap = window.__tokenMap || {};\n                window.__subscriptionOrgId = \"{{@root.orgId}}\";\n            </script>",
-            // Modal click handler (apis/partials/api-listing.hbs)
-            "<script>\n    (function(){\n      function findClosest(el, selector){\n        while(el && el !== document){\n          if(el.matches && el.matches(selector)) return el;\n          el = el.parentNode;\n        }\n        return null;\n      }\n\n      document.addEventListener('click', function(e){\n        var modalTrigger = findClosest(e.target, '[data-modal]');\n        if(modalTrigger){\n          e.preventDefault();\n          if(modalTrigger.classList.contains('is-readonly') || modalTrigger.getAttribute('aria-disabled') === 'true'){\n            return;\n          }\n          if(typeof loadModal === 'function'){\n            loadModal(modalTrigger.getAttribute('data-modal'));\n          } else {\n            var id = modalTrigger.getAttribute('data-modal');\n            var el = document.getElementById(id);\n            if(el) {\n              el.style.display = 'flex';\n              document.body.classList.add('modal-open');\n              if(typeof prepareSubscriptionModal === 'function') {\n                try { prepareSubscriptionModal(id); } catch(err) { /* noop */ }\n              }\n            }\n          }\n          return;\n        }\n\n        var nav = findClosest(e.target, '[data-href]');\n        if(nav){\n          var href = nav.getAttribute('data-href');\n          if(href){ window.location.href = href; }\n        }\n      }, false);\n    })();\n  </script>",
+            // API config bootstrap (layout/main.hbs)
+            "<script>\n      // Devportal API base segment + version, sourced from server constants.\n      // Browser scripts build invocation URLs via window.devportalApi (common.js).\n      window.__DEVPORTAL_API__ = { base: \"{{devportalApiConfig.base}}\", version: \"{{devportalApiConfig.version}}\" };\n    </script>",
+            // Existing-subs JSON data island (mcp-landing/partials/mcp-subscription-plans.hbs)
+            "<script id=\"mcp-existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
         ]);
 
         const scriptRegex = /<script(?:\s+[^>]*)?>[\s\S]*?<\/script>/gi;
@@ -952,7 +1020,9 @@ function appendAPIImageURL(subList, req, orgId) {
         let apiImageUrl = '';
         for (const key in images) {
             apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.id}${constants.API_TEMPLATE_FILE_NAME}`;
-            const modifiedApiImageURL = apiImageUrl + images[key];
+            // orgId is appended so the (public) image endpoint can resolve the view for
+            // anonymous visitors with no session — mirrors getOrgAsset.
+            const modifiedApiImageURL = apiImageUrl + images[key] + `${constants.ORG_ID_PARAM}${orgId}`;
             element.apiImageMetadata[key] = modifiedApiImageURL;
         }
     });
@@ -1116,6 +1186,8 @@ async function isAiDisabledForPortal(orgId, viewName) {
 module.exports = {
     loadMarkdown,
     renderTemplate,
+    renderTemplateWithView,
+    rewriteViewStyles,
     loadLayoutFromAPI,
     loadTemplateFromAPI,
     renderTemplateFromAPI,

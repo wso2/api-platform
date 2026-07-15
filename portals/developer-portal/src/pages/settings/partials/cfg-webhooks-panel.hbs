@@ -1,0 +1,66 @@
+      <!-- ══ Webhooks ══ -->
+      <div class="cfg-panel" id="cfg-webhooks">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Webhooks</h2>
+            <p class="cfg-panel-desc">Send a notification to your own endpoint when API keys or subscriptions change in this organization.</p>
+          </div>
+          <button class="cfg-btn-primary" id="cfg-add-webhook-btn" type="button">
+            <i class="bi bi-plus"></i> Add webhook
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th>Display name</th>
+                <th>Target URL</th>
+                <th>Events</th>
+                <th>Secret</th>
+                <th>Public key</th>
+                <th>Enabled</th>
+                <th style="width:90px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-webhooks-tbody">
+              {{#webhookSubscribers}}
+              <tr id="cfg-webhook-row-{{id}}" data-id="{{id}}">
+                <td>
+                  <button type="button" class="cfg-webhook-edit-btn" data-id="{{id}}"
+                    style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{displayName}}</button>
+                </td>
+                <td>
+                  <span class="cfg-name-chip" title="{{targetUrl}}"
+                    style="display:inline-block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{targetUrl}}</span>
+                </td>
+                <td>
+                  {{#if events.length}}
+                  {{#each events}}<span class="cfg-name-chip" style="margin-right:4px;">{{this}}</span>{{/each}}
+                  {{else}}
+                  <span style="font-size:.813rem;color:#637282;">All events</span>
+                  {{/if}}
+                </td>
+                <td>{{#if hasSecret}}••••••••{{else}}—{{/if}}</td>
+                <td>{{#if hasPublicKey}}Configured{{else}}—{{/if}}</td>
+                <td>{{#if enabled}}Yes{{else}}No{{/if}}</td>
+                <td>
+                  <div class="cfg-row-actions">
+                    <button class="cfg-icon-btn cfg-webhook-edit-btn" type="button" data-id="{{id}}" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-webhook-delete-btn" type="button"
+                      data-id="{{id}}" data-name="{{displayName}}" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{/webhookSubscribers}}
+              {{#unless webhookSubscribers.length}}
+              <tr><td colspan="7" class="cfg-tbl-empty">No webhooks yet. Add one to get started.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-webhooks -->

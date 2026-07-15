@@ -91,13 +91,6 @@ function confirmAndRevokeKeys(applicationId, keyMappingId, keyType) {
     }
 }
 
-async function removeApplicationKey() {
-    const modal = document.getElementById('deleteConfirmation');
-    const applicationId = modal.dataset.applicationId;
-    const keyMappingId = modal.dataset.param2;
-    await removeApplicationKeys(applicationId, keyMappingId);
-}
-
 async function removeApplicationKeys(applicationId, keyMappingId, keyType) {
     if (!keyMappingId && keyType) {
         const tokenBtn = document.getElementById('tokenKeyBtn-' + keyType);

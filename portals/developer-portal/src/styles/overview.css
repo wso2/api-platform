@@ -1,5 +1,5 @@
 .app-overview-card {
-  background-color: var(--primary-lightest-color) !important;
+  background-color: var(--primary-surface) !important;
   border-radius: 0.75rem !important;
   padding: 2.5rem 2.5rem !important;
   text-align: left;
@@ -11,7 +11,7 @@
 }
 
 .app-description {
-  color: var(--main-text-color);
+  color: var(--text);
   font-size: 14px;
   font-weight: 300;
 }
@@ -19,27 +19,27 @@
 .app-subscription-count {
   font-weight: 500;
   font-size: 14px;
-  color: var(--main-text-color);
+  color: var(--text);
   opacity: 0.7;
 }
 
 .app-overview-title {
   font-size: 1.5rem;
   font-weight: 600;
-  color: var(--primary-main-color);
+  color: var(--primary);
   margin: 0 0 0.5rem 0;
 }
 
 .edit-button {
-  border-color: var(--primary-main-color);
-  color: var(--primary-main-color);
+  border-color: var(--primary);
+  color: var(--primary);
   float: right;
 }
 
 .edit-button:hover {
-  border-color: var(--primary-main-color);
-  background-color: var(--primary-main-color);
-  color: var(--light-text-color);
+  border-color: var(--primary);
+  background-color: var(--primary);
+  color: var(--white);
 }
 
 /* Inline editing styles */
@@ -57,7 +57,7 @@
 .edit-inline-btn {
   opacity: 0.2;
   transition: opacity 0.2s;
-  color: var(--primary-main-color);
+  color: var(--primary);
   padding: 0.25rem 0.5rem;
   align-self: center;
 }
@@ -86,7 +86,7 @@
 }
 
 [contenteditable="true"] {
-  border: 1.5px solid var(--primary-main-color);
+  border: 1.5px solid var(--primary);
   padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
   margin-bottom: 0;
@@ -95,7 +95,7 @@
 
 /* Error message styling */
 .edit-error-message {
-  color: var(--danger-color);
+  color: var(--danger);
   font-size: 0.75rem;
   margin-top: 0.25rem;
   padding-left: 0.25rem;

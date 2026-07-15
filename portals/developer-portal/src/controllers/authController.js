@@ -51,14 +51,16 @@ const login = async (req, res, next) => {
                 await passport.authenticate('oauth2', { ...(orgIdentifier && { org: orgIdentifier }) })(req, res, next);
             }
         } else {
-            // Local auth mode: show username/password form
+            // Local auth mode: show username/password form, themed with the active
+            // view's uploaded layout (falls back to the default styles otherwise).
+            const orgDetails = await orgDao.get(orgName);
             const templateContent = {
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
                 localAuthEnabled: true,
                 loginError: req.query.error || null,
             };
-            const html = util.renderTemplate('../pages/login-page/page.hbs',
-                'src/pages/login-page/layout.hbs', templateContent, true);
+            const html = await util.renderTemplateWithView('../pages/login-page/page.hbs',
+                'src/pages/login-page/layout.hbs', templateContent, true, orgDetails?.uuid, req.params.viewName);
             res.send(html);
         }
     } else {

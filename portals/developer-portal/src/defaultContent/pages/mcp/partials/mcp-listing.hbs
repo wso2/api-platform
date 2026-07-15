@@ -133,22 +133,5 @@
     </div>
   </div>
 
-  <script>
-    (function(){
-      function findClosest(el, selector){
-        while(el && el !== document){
-          if(el.matches && el.matches(selector)) return el;
-          el = el.parentNode;
-        }
-        return null;
-      }
-      document.addEventListener('click', function(e){
-        var nav = findClosest(e.target, '[data-href]');
-        if(nav){
-          var href = nav.getAttribute('data-href');
-          if(href){ window.location.href = href; }
-        }
-      }, false);
-    })();
-  </script>
+  <script src='/technical-scripts/listing-cards.js' defer></script>
 </section>

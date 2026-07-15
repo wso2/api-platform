@@ -1,0 +1,66 @@
+      <!-- ══ Key Managers ══ -->
+      <div class="cfg-panel" id="cfg-keymanagers">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Key Managers</h2>
+            <p class="cfg-panel-desc">Register the OAuth2 key managers applications can obtain tokens from. OAuth applications are created directly in the key manager itself — the portal only proxies token requests to it.</p>
+          </div>
+          <button class="cfg-btn-primary" id="cfg-add-km-btn" type="button">
+            <i class="bi bi-plus"></i> Add key manager
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th>Display name</th>
+                <th>Type</th>
+                <th>Token endpoint</th>
+                <th>Status</th>
+                <th style="width:90px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-keymanagers-tbody">
+              {{#keyManagers}}
+              <tr id="cfg-km-row-{{id}}" data-id="{{id}}">
+                <td>
+                  <button type="button" class="cfg-km-edit-btn" data-id="{{id}}"
+                    style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{displayName}}</button>
+                </td>
+                <td><span class="cfg-name-chip">{{type}}</span></td>
+                <td>
+                  <span class="cfg-name-chip" title="{{tokenEndpoint}}"
+                    style="display:inline-block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{tokenEndpoint}}</span>
+                </td>
+                <td>
+                  {{#if enabled}}
+                  <span class="cfg-status-badge cfg-status-published">
+                    <span class="cfg-status-dot"></span>Enabled
+                  </span>
+                  {{else}}
+                  <span class="cfg-status-badge cfg-status-draft">
+                    <span class="cfg-status-dot"></span>Disabled
+                  </span>
+                  {{/if}}
+                </td>
+                <td>
+                  <div class="cfg-row-actions">
+                    <button class="cfg-icon-btn cfg-km-edit-btn" type="button" data-id="{{id}}" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-km-delete-btn" type="button"
+                      data-id="{{id}}" data-name="{{displayName}}" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{/keyManagers}}
+              {{#unless keyManagers.length}}
+              <tr><td colspan="5" class="cfg-tbl-empty">No key managers yet. Add one to get started.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-keymanagers -->
