@@ -42,6 +42,27 @@ services:
       retries: 60
     networks: [e2e]
 
+  # One-shot init container: generates the TLS pair the platform-api HTTPS
+  # listener requires (the server no longer generates a self-signed fallback).
+  platform-api-certgen:
+    image: alpine/openssl
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        [ -f /certs/cert.pem ] && [ -f /certs/key.pem ] && exit 0
+        openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+          -keyout /certs/key.pem -out /certs/cert.pem \
+          -subj "/O=WSO2 API Platform/CN=platform-api" \
+          -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
+        # certgen runs as root; platform-api runs as uid 10001, so the key must be
+        # owned by that uid, not made world-readable.
+        chown 10001 /certs/key.pem
+        chmod 0600 /certs/key.pem
+    volumes:
+      - platform-api-certs:/certs
+    networks: [e2e]
+
   platform-api:
     image: ${PLATFORM_API_IMAGE:-platform-api:it-e2e}
     command: ["-config", "/etc/platform-api/config.toml"]
@@ -82,11 +103,14 @@ services:
       # suite always sets PA_WEBHOOK_KEY (the generated key); the default is only a
       # fallback for manual `docker compose up` after a suite run has generated it.
       - ${PA_WEBHOOK_KEY:-./.webhook-key.it.pem}:/etc/platform-api/devportal-webhook.pem:ro
+      - platform-api-certs:/app/data/certs
     ports:
       - "${PA_HOST_PORT:-9243}:9243"
     depends_on:
       postgres:
         condition: service_healthy
+      platform-api-certgen:
+        condition: service_completed_successfully
     networks: [e2e]
 
   gateway-controller:
@@ -249,3 +273,6 @@ services:
 networks:
   e2e:
     driver: bridge
+
+volumes:
+  platform-api-certs:

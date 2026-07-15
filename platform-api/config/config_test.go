@@ -61,7 +61,6 @@ func loadWithKeys(t *testing.T, extra string) (*Server, error) {
 	t.Helper()
 	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
 	t.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", validJWTKey)
-	t.Setenv("APIP_DEMO_MODE", "")
 	return loadTOML(t, validKeysBase+extra)
 }
 
@@ -72,11 +71,9 @@ func TestLoadConfig_ValidKeys_Succeeds(t *testing.T) {
 	assert.Equal(t, validInlineKey, cfg.EncryptionKey)
 }
 
-// The encryption key is required and never generated — a config that omits it fails
-// startup (even in demo mode).
+// The encryption key is required and never generated — a config that omits it fails startup.
 func TestLoadConfig_MissingEncryptionKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", validJWTKey)
-	t.Setenv("APIP_DEMO_MODE", "true") // demo does not relax the requirement
 
 	// Encryption key omitted entirely; the JWT secret resolves so the JWT check passes first.
 	_, err := loadTOML(t, `
@@ -106,7 +103,6 @@ secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
 // The JWT secret is required (JWT auth is enabled) and never generated.
 func TestLoadConfig_MissingJWTSecretKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
-	t.Setenv("APIP_DEMO_MODE", "true") // demo does not relax the requirement
 
 	_, err := loadTOML(t, `
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
@@ -150,7 +146,6 @@ func init() {
 	for _, v := range []string{
 		"APIP_CP_ENCRYPTION_KEY",
 		"APIP_CP_AUTH_JWT_SECRET_KEY",
-		"APIP_DEMO_MODE",
 	} {
 		os.Unsetenv(v)
 	}

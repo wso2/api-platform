@@ -71,6 +71,9 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
     cy.intercept('POST', '**/projects').as('setupProject');
     cy.intercept('POST', '**/secrets').as('setupSecret');
     cy.intercept('POST', /\/mcp-proxies(\?|$)/).as('setupServer');
+    // Registered up front so it can't miss the client-side navigation to
+    // /mcp-proxy/:id right after creation (see usage below).
+    cy.intercept('GET', /\/mcp-proxies\/[^/?]+(\?|$)/).as('getServerDetails');
 
     cy.contains('Projects', { timeout: 30000 }).should('be.visible').click();
     cy.contains('button, a', /Create Project|Add New Project/, { timeout: 30000 })
@@ -133,7 +136,13 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
       createdServerId = pi.response.body?.id ?? '';
     });
 
+    // The Overview page re-fetches the server on mount and derives the initial
+    // policy list from it (ExternalServersOverview's mapPolicies effect), which
+    // itself calls GET **/policies*. Wait for that fetch to settle before
+    // switching tabs, so it can't race with the test's own '@getPolicies' wait
+    // below on 'Add Policies'.
     cy.location('pathname', { timeout: 30000 }).should('match', /\/mcp-proxy\/[^/]+$/);
+    cy.wait('@getServerDetails', { timeout: 20000 });
     cy.contains('[role="tab"]', 'Policies', { timeout: 15000 }).click();
   });
 
@@ -236,6 +245,7 @@ describe('AI Workspace — MCP server secret management (update / no-auth server
 
     cy.intercept('POST', '**/projects').as('setupProject2');
     cy.intercept('POST', /\/mcp-proxies(\?|$)/).as('setupServer2');
+    cy.intercept('GET', /\/mcp-proxies\/[^/?]+(\?|$)/).as('getServerDetails2');
 
     cy.contains('Projects', { timeout: 30000 }).should('be.visible').click();
     cy.contains('button, a', /Create Project|Add New Project/, { timeout: 30000 })
@@ -291,6 +301,7 @@ describe('AI Workspace — MCP server secret management (update / no-auth server
     });
 
     cy.location('pathname', { timeout: 30000 }).should('match', /\/mcp-proxy\/[^/]+$/);
+    cy.wait('@getServerDetails2', { timeout: 20000 });
     cy.contains('[role="tab"]', 'Policies', { timeout: 15000 }).click();
   });
 

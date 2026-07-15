@@ -56,12 +56,12 @@ func centerInBanner(s string) string {
 // the console, matching the gateway controller's startup banner style. It's
 // purely decorative — the structured "AI Workspace BFF started" slog.Info
 // line is the source of truth for log parsing.
-func printStartedMarker(mode, url string) {
+func printStartedMarker(url string) {
 	rule := strings.Repeat("=", bannerWidth)
 	fmt.Print("\n\n" +
 		rule + "\n" +
 		"\n" +
-		centerInBanner("AI Workspace Started mode="+mode) + "\n\n" +
+		centerInBanner("AI Workspace Started") + "\n\n" +
 		centerInBanner("Visit "+url) + "\n" +
 		"\n" +
 		rule + "\n" +
@@ -120,7 +120,7 @@ func main() {
 		IdleTimeout:       120 * time.Second,
 	}
 
-	tlsConfig, err := buildTLS(cfg.TLS, cfg.DemoMode)
+	tlsConfig, err := buildTLS(cfg.TLS)
 	if err != nil {
 		slog.Error("failed to set up TLS", "err", err)
 		os.Exit(1)
@@ -128,20 +128,15 @@ func main() {
 	httpServer.TLSConfig = tlsConfig
 
 	go func() {
-		mode := "PRODUCTION"
-		if cfg.DemoMode {
-			mode = "DEMO"
-		}
 		url := portalURL(cfg.Addr, tlsConfig != nil)
 		slog.Info("AI Workspace BFF started",
 			"addr", cfg.Addr,
 			"url", url,
-			"mode", mode,
 			"auth_mode", cfg.AuthMode,
 			"platform_api", cfg.PlatformAPI.URL,
 			"oidc_enabled", cfg.OIDC.Enabled,
 		)
-		printStartedMarker(mode, url)
+		printStartedMarker(url)
 		var serveErr error
 		if tlsConfig != nil {
 			serveErr = httpServer.ListenAndServeTLS("", "")
@@ -167,20 +162,15 @@ func main() {
 }
 
 // buildTLS returns the listener TLS config, or nil for plain HTTP. When TLS is
-// disabled no certificate is read, generated, or required. Otherwise the priority
-// is: mounted cert/key files (when both exist), then in-memory self-signed. In
-// demo mode a missing mounted cert is not fatal — it falls back to a self-signed
-// cert; outside demo mode an operator-provided cert is required.
-func buildTLS(c config.TLSConfig, demoMode bool) (*tls.Config, error) {
+// disabled no certificate is read or required. Otherwise a mounted cert/key pair
+// is required — there is no self-signed fallback; use the quickstart setup
+// script (or your own tooling) to generate a pair and mount it.
+func buildTLS(c config.TLSConfig) (*tls.Config, error) {
 	if !c.TerminateTLS {
 		// Plain HTTP is only safe when something upstream terminates TLS.
-		if !demoMode {
-			slog.Warn("TLS: disabled ([tls] enabled = false) while demo mode is disabled — " +
-				"serving plain HTTP. Terminate TLS at an ingress or service-mesh sidecar and " +
-				"never expose this listener directly to untrusted networks.")
-		} else {
-			slog.Info("TLS: disabled ([tls] enabled = false) — serving plain HTTP")
-		}
+		slog.Warn("TLS: disabled ([tls] enabled = false) — serving plain HTTP. " +
+			"Terminate TLS at an ingress or service-mesh sidecar and " +
+			"never expose this listener directly to untrusted networks.")
 		return nil, nil
 	}
 	// A partial mount (exactly one of cert/key present) is a misconfiguration, not
@@ -188,31 +178,17 @@ func buildTLS(c config.TLSConfig, demoMode bool) (*tls.Config, error) {
 	if fileExists(c.CertFile) != fileExists(c.KeyFile) {
 		return nil, fmt.Errorf("incomplete TLS mount: exactly one of cert (%q) and key (%q) is present", c.CertFile, c.KeyFile)
 	}
-	if fileExists(c.CertFile) && fileExists(c.KeyFile) {
-		cert, err := tlsutil.CertFromFiles(c.CertFile, c.KeyFile)
-		if err != nil {
-			return nil, err
-		}
-		slog.Info("TLS: using mounted certificate", "cert", c.CertFile)
-		return &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, nil
-	}
-	// No mounted cert. Auto-generating a self-signed certificate is a dev-only
-	// convenience — outside demo mode, require the operator to mount a real cert.
-	if !demoMode {
-		return nil, fmt.Errorf("disabling demo mode requires a mounted TLS certificate: "+
+	if !fileExists(c.CertFile) {
+		return nil, fmt.Errorf("TLS is enabled but no certificate is mounted: "+
 			"set [tls] cert_file (%q) and key_file (%q) to existing files, "+
-			"or set [tls] enabled = false to serve plain HTTP behind a TLS-terminating proxy. "+
-			"Self-signed certificates are only auto-generated in demo mode", c.CertFile, c.KeyFile)
+			"or set [tls] enabled = false to serve plain HTTP behind a TLS-terminating proxy", c.CertFile, c.KeyFile)
 	}
-	if c.SelfSigned {
-		cert, err := tlsutil.SelfSigned()
-		if err != nil {
-			return nil, err
-		}
-		slog.Warn("TLS: using in-memory self-signed certificate (browsers will warn)")
-		return &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, nil
+	cert, err := tlsutil.CertFromFiles(c.CertFile, c.KeyFile)
+	if err != nil {
+		return nil, err
 	}
-	return nil, nil
+	slog.Info("TLS: using mounted certificate", "cert", c.CertFile)
+	return &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, nil
 }
 
 func fileExists(p string) bool {
