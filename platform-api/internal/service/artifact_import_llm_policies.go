@@ -96,7 +96,7 @@ func liftAPIKeySecurity(p model.LLMPolicy) *model.SecurityConfig {
 		key := asString(path.Params["key"])
 		in := asString(path.Params["in"])
 		valuePrefix := asString(path.Params["valuePrefix"])
-		if key == "" && in == "" && valuePrefix == "" {
+		if key == "" && in == "" {
 			continue
 		}
 		enabled := true

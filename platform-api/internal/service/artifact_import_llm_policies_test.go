@@ -212,3 +212,58 @@ func TestLiftLLMPolicies_ProxyKeepsRateLimits(t *testing.T) {
 		t.Errorf("api-key-auth leaked into remaining; it should be lifted to Security")
 	}
 }
+
+func TestLiftAPIKeySecurity_RequiresKeyOrIn(t *testing.T) {
+	t.Run("valuePrefix only is ignored", func(t *testing.T) {
+		policy := model.LLMPolicy{
+			Name: importPolicyAPIKeyAuth,
+			Paths: []model.LLMPolicyPath{{
+				Path:    "/*",
+				Methods: []string{"*"},
+				Params:  map[string]interface{}{"valuePrefix": "Bearer"},
+			}},
+		}
+
+		if sec := liftAPIKeySecurity(policy); sec != nil {
+			t.Fatalf("expected nil security when only valuePrefix is present, got %+v", sec)
+		}
+	})
+
+	t.Run("key only still imports", func(t *testing.T) {
+		policy := model.LLMPolicy{
+			Name: importPolicyAPIKeyAuth,
+			Paths: []model.LLMPolicyPath{{
+				Path:    "/*",
+				Methods: []string{"*"},
+				Params:  map[string]interface{}{"key": "Authorization", "valuePrefix": "Bearer"},
+			}},
+		}
+
+		sec := liftAPIKeySecurity(policy)
+		if sec == nil || sec.APIKey == nil {
+			t.Fatalf("expected security to be reconstructed")
+		}
+		if sec.APIKey.Key != "Authorization" || sec.APIKey.In != "" || sec.APIKey.ValuePrefix != "Bearer" {
+			t.Fatalf("unexpected API key security: %+v", sec.APIKey)
+		}
+	})
+
+	t.Run("in only still imports", func(t *testing.T) {
+		policy := model.LLMPolicy{
+			Name: importPolicyAPIKeyAuth,
+			Paths: []model.LLMPolicyPath{{
+				Path:    "/*",
+				Methods: []string{"*"},
+				Params:  map[string]interface{}{"in": "header", "valuePrefix": "Bearer"},
+			}},
+		}
+
+		sec := liftAPIKeySecurity(policy)
+		if sec == nil || sec.APIKey == nil {
+			t.Fatalf("expected security to be reconstructed")
+		}
+		if sec.APIKey.Key != "" || sec.APIKey.In != "header" || sec.APIKey.ValuePrefix != "Bearer" {
+			t.Fatalf("unexpected API key security: %+v", sec.APIKey)
+		}
+	})
+}
