@@ -194,7 +194,7 @@ func createApplication(name, projectID string) (string, error) {
 
 func createSubscription(apiID, appID, planID string) (string, error) {
 	st, body, err := apiCall(http.MethodPost, "/subscriptions", suite.token, map[string]any{
-		"apiId":              apiID,
+		"artifactId":         apiID,
 		"kind":               "RestApi",
 		"subscriberId":       "e2e-subscriber",
 		"applicationId":      appID,

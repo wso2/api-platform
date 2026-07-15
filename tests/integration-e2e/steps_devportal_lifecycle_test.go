@@ -157,7 +157,7 @@ func (w *world) verifySubPlan() error {
 	deadline := time.Now().Add(pollTimeout)
 	var last string
 	for time.Now().Before(deadline) {
-		st, body, err := apiCall(http.MethodGet, "/subscriptions?apiId="+w.apiID, suite.token, nil)
+		st, body, err := apiCall(http.MethodGet, "/subscriptions?artifactId="+w.apiID, suite.token, nil)
 		if err == nil && st == http.StatusOK {
 			var env struct {
 				List []map[string]any `json:"list"`
