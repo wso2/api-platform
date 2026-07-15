@@ -81,6 +81,9 @@ policies:
     - name: opaque-token-auth
       version: v1.0.0
       gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1
+    - name: openai-to-bedrock-transformer
+      version: v0.9.0
+      gomodule: github.com/wso2/gateway-controllers/policies/openai-to-bedrock-transformer@v0
     - name: pii-masking-regex
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v1
