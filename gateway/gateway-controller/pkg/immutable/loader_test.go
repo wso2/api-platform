@@ -79,38 +79,63 @@ func TestCollectArtifacts_ConfigMapMountYieldsFileOnce(t *testing.T) {
 	}
 }
 
-func TestCollectArtifacts_DescendsIntoNonDotDotDirs(t *testing.T) {
-	cases := []struct {
-		name   string
-		subdir string
-	}{
-		{"nested subdirectory", "rest-apis"},
-		{"single-dot directory", ".hidden"},
+func TestCollectArtifacts_ConfigMapNestedDirSymlinkYieldsFileOnce(t *testing.T) {
+	// Kubernetes ConfigMap mount layout with a nested key (rest-apis/petstore.yaml):
+	//   <dir>/
+	//     ..2026_07_13_.../rest-apis/petstore.yaml  (real file in timestamped dir)
+	//     ..data -> ..2026_07_13_.../                (symlink to current revision)
+	//     rest-apis -> ..data/rest-apis              (top-level symlink to DIRECTORY)
+	dir := t.TempDir()
+
+	tsDir := filepath.Join(dir, "..2026_07_13_10_00_00.123456")
+	if err := os.MkdirAll(filepath.Join(tsDir, "rest-apis"), 0o700); err != nil {
+		t.Fatalf("setup: mkdirall: %v", err)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			sub := filepath.Join(dir, tc.subdir)
-			if err := os.Mkdir(sub, 0o700); err != nil {
-				t.Fatalf("setup: %v", err)
-			}
-			want := filepath.Join(sub, "petstore.yaml")
-			if err := os.WriteFile(want, []byte(petstoreArtifact), 0o600); err != nil {
-				t.Fatalf("setup: %v", err)
-			}
+	if err := os.WriteFile(filepath.Join(tsDir, "rest-apis", "petstore.yaml"), []byte(petstoreArtifact), 0o600); err != nil {
+		t.Fatalf("setup: write real file: %v", err)
+	}
 
-			paths, err := collectArtifacts(dir)
+	dotData := filepath.Join(dir, "..data")
+	if err := os.Symlink(tsDir, dotData); err != nil {
+		t.Fatalf("setup: symlink ..data: %v", err)
+	}
 
-			if err != nil {
-				t.Fatalf("collectArtifacts: %v", err)
-			}
-			if len(paths) != 1 {
-				t.Fatalf("got %d path(s) %v; want 1", len(paths), paths)
-			}
-			if paths[0] != want {
-				t.Errorf("got %q; want %q", paths[0], want)
-			}
-		})
+	// Top-level entry is a symlink to a directory, not a file.
+	if err := os.Symlink(filepath.Join(dotData, "rest-apis"), filepath.Join(dir, "rest-apis")); err != nil {
+		t.Fatalf("setup: symlink rest-apis: %v", err)
+	}
+
+	want := filepath.Join(dir, "rest-apis", "petstore.yaml")
+	paths, err := collectArtifacts(dir)
+
+	if err != nil {
+		t.Fatalf("collectArtifacts: unexpected error: %v", err)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("got %d path(s) %v; want exactly 1", len(paths), paths)
+	}
+	if paths[0] != want {
+		t.Errorf("got %q; want %q", paths[0], want)
+	}
+}
+
+func TestCollectArtifacts_SkipsDotPrefixedEntries(t *testing.T) {
+	dir := t.TempDir()
+	hidden := filepath.Join(dir, ".hidden")
+	if err := os.Mkdir(hidden, 0o700); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(hidden, "petstore.yaml"), []byte(petstoreArtifact), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	paths, err := collectArtifacts(dir)
+
+	if err != nil {
+		t.Fatalf("collectArtifacts: %v", err)
+	}
+	if len(paths) != 0 {
+		t.Fatalf("got %d path(s) %v; want 0 (dot-prefixed entries should be skipped)", len(paths), paths)
 	}
 }
 
