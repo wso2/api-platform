@@ -202,8 +202,11 @@ ifeq ($(PLATFORM_API_FROM_TAG),true)
 	if [ -z "$$files" ]; then echo "Error: no .sql files found under platform-api/internal/database at $$tag" >&2; exit 1; fi; \
 	for f in $$files; do git -C ../.. show "$$tag:$$f" > "$$dest/$$(basename $$f)"; done; \
 	echo "✓ Fetched $$(echo "$$files" | wc -l | tr -d ' ') db-script(s) from $$tag"
+	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/config/config-template.toml" \
+		> $(DIST_DIR)/configs/config-platform-api-template.toml
 else
 	@cp ../../platform-api/internal/database/*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
+	@cp ../../platform-api/config/config-template.toml $(DIST_DIR)/configs/config-platform-api-template.toml
 endif
 	@cp docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
 	@sed -i.bak -E \

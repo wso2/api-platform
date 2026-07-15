@@ -11,7 +11,7 @@ The AI Workspace is a React/Vite SPA served by a **Go BFF (Backend-for-Frontend)
 | Get running locally in 5 minutes | [QUICKSTART.md](QUICKSTART.md) |
 | Production setup (Asgardeo IDP) | [production/README.md](production/README.md) |
 | Full runtime configuration reference | [configs/config-template.toml](configs/config-template.toml) |
-| Platform API configuration reference | [configs/config-platform-api-template.toml](configs/config-platform-api-template.toml) |
+| Platform API configuration reference | [../../platform-api/config/config-template.toml](../../platform-api/config/config-template.toml) (copied into the distribution zip as `configs/config-platform-api-template.toml`) |
 
 ---
 
@@ -86,7 +86,6 @@ All available options are documented in
 portals/ai-workspace/
 ├── configs/
 │   ├── config-template.toml             # AI Workspace config reference
-│   ├── config-platform-api-template.toml  # Platform API config reference
 │   ├── config.toml                      # Active config (gitignored in prod)
 │   └── config-platform-api.toml         # Active Platform API config
 ├── production/
