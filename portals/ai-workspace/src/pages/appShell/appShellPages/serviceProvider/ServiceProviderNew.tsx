@@ -333,6 +333,11 @@ export default function ServiceProviderNew() {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
 
+  const toMajorPolicyVersion = (version: string): string => {
+    const majorVersion = version.trim().match(/^v?(\d+)/i)?.[1];
+    return majorVersion ? `v${majorVersion}` : version;
+  };
+
   const handleCreateProvider = async () => {
     if (!isFormValid || !selectedTemplateId) return;
 
@@ -382,7 +387,7 @@ export default function ServiceProviderNew() {
             : []),
           ...guardrails.map((guardrail) => ({
             name: guardrail.name,
-            version: guardrail.version,
+            version: toMajorPolicyVersion(guardrail.version),
             params: guardrail.settings ?? {},
           })),
         ],

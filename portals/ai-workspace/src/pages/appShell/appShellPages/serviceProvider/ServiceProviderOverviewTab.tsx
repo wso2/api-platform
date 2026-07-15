@@ -707,6 +707,7 @@ export default function ServiceProviderOverviewTab({
                 docExpansion="list"
                 defaultModelsExpandDepth={-1}
                 displayRequestDuration
+                enableResourceSearch
               />
             )}
           </Box>
