@@ -25,7 +25,7 @@ unzip wso2apip-ai-workspace-1.0.0-alpha.zip
 
 ```bash
 cd wso2apip-ai-workspace-1.0.0-alpha
-./setup.sh
+./scripts/setup.sh
 ```
 
 The script generates everything the stack requires: the encryption and JWT
@@ -33,7 +33,7 @@ signing keys and the admin login credentials (written to `api-platform.env`), an
 TLS certificate shared by both services (written to `resources/certificates/`).
 
 > **Save the printed admin username and password** — the password is shown only
-> once and stored nowhere. Rerun `./setup.sh --force` to rotate it.
+> once and stored nowhere. Rerun `./scripts/setup.sh --force` to rotate it.
 
 ### 3. Start the stack
 
