@@ -21,6 +21,7 @@ package kernel
 import (
 	"bytes"
 	"compress/gzip"
+	"io"
 	"testing"
 	"time"
 
@@ -279,4 +280,148 @@ func TestStreamDecompressor_RoundTrip(t *testing.T) {
 	final, err := decompressBody(recompressed, "gzip")
 	require.NoError(t, err)
 	assert.Equal(t, original, final)
+}
+
+// =============================================================================
+// streamCompressor Tests
+// =============================================================================
+
+// gzipHeaderCount counts the number of gzip member headers (magic bytes 1f 8b 08)
+// in a byte slice. A correct single continuous stream has exactly one.
+func gzipHeaderCount(data []byte) int {
+	return bytes.Count(data, []byte{0x1f, 0x8b, 0x08})
+}
+
+// singleMemberGunzip decodes only the FIRST gzip member, mimicking downstream HTTP
+// decoders (such as the Claude Code client) that stop at the first member's trailer.
+func singleMemberGunzip(t *testing.T, data []byte) []byte {
+	t.Helper()
+	zr, err := gzip.NewReader(bytes.NewReader(data))
+	require.NoError(t, err)
+	zr.Multistream(false) // do NOT transparently continue into later members
+	out, err := io.ReadAll(zr)
+	require.NoError(t, err)
+	return out
+}
+
+// TestStreamCompressor_Gzip_MultipleChunks is the regression test for the analytics
+// streaming bug: multiple chunks must be re-compressed into ONE continuous gzip stream.
+func TestStreamCompressor_Gzip_MultipleChunks(t *testing.T) {
+	chunks := [][]byte{
+		[]byte("event: message_start\ndata: {\"type\":\"message_start\"}\n\n"),
+		[]byte("event: content_block_delta\ndata: {\"delta\":\"Hi\"}\n\n"),
+		[]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"),
+	}
+	var full []byte
+	for _, c := range chunks {
+		full = append(full, c...)
+	}
+
+	sc := newStreamCompressor("gzip")
+	var compressed []byte
+	for i, c := range chunks {
+		endOfStream := i == len(chunks)-1
+		out, err := sc.FeedChunk(c, endOfStream)
+		require.NoError(t, err)
+		compressed = append(compressed, out...)
+	}
+
+	// The whole body must be a SINGLE gzip member — this is the property the bug violated.
+	assert.Equal(t, 1, gzipHeaderCount(compressed),
+		"streaming compression must emit exactly one gzip member, not one per chunk")
+
+	// A single-member decoder (like the downstream client) must recover ALL chunks,
+	// not just the first. This is what failed for Claude Code before the fix.
+	assert.Equal(t, full, singleMemberGunzip(t, compressed))
+
+	// And a normal (multistream) decode must also yield the full body.
+	final, err := decompressBody(compressed, "gzip")
+	require.NoError(t, err)
+	assert.Equal(t, full, final)
+}
+
+// TestRecompressBody_PerChunk_ProducesMultipleMembers documents the OLD, buggy
+// behaviour that streamCompressor replaces: re-compressing each chunk independently
+// produces N gzip members, and a single-member decoder recovers only the first chunk.
+func TestRecompressBody_PerChunk_ProducesMultipleMembers(t *testing.T) {
+	chunks := [][]byte{
+		[]byte("event: message_start\n\n"),
+		[]byte("event: content_block_delta\n\n"),
+		[]byte("event: message_stop\n\n"),
+	}
+
+	var buggy []byte
+	for _, c := range chunks {
+		out, err := recompressBody(c, "gzip")
+		require.NoError(t, err)
+		buggy = append(buggy, out...)
+	}
+
+	// Per-chunk recompress yields one member per chunk...
+	assert.Equal(t, len(chunks), gzipHeaderCount(buggy))
+	// ...and a single-member decoder sees only the first chunk — the dropped-stream bug.
+	assert.Equal(t, chunks[0], singleMemberGunzip(t, buggy))
+}
+
+// TestStreamCompressor_Brotli_MultipleChunks verifies the brotli path round-trips
+// across multiple chunks into a single continuous stream.
+func TestStreamCompressor_Brotli_MultipleChunks(t *testing.T) {
+	chunks := [][]byte{
+		[]byte("first-chunk-payload"),
+		[]byte("second-chunk-payload"),
+		[]byte("third-chunk-payload"),
+	}
+	var full []byte
+	for _, c := range chunks {
+		full = append(full, c...)
+	}
+
+	sc := newStreamCompressor("br")
+	var compressed []byte
+	for i, c := range chunks {
+		out, err := sc.FeedChunk(c, i == len(chunks)-1)
+		require.NoError(t, err)
+		compressed = append(compressed, out...)
+	}
+
+	final, err := decompressBody(compressed, "br")
+	require.NoError(t, err)
+	assert.Equal(t, full, final)
+}
+
+// TestStreamCompressor_Gzip_EmptyFinalChunk mirrors the real Envoy flow where the
+// EndOfStream chunk carries zero bytes: the trailer must still be emitted so the
+// stream is well-formed.
+func TestStreamCompressor_Gzip_EmptyFinalChunk(t *testing.T) {
+	sc := newStreamCompressor("gzip")
+
+	out1, err := sc.FeedChunk([]byte("payload-one"), false)
+	require.NoError(t, err)
+	out2, err := sc.FeedChunk([]byte("payload-two"), false)
+	require.NoError(t, err)
+	// Final chunk with no data, only EndOfStream — as Envoy delivers it.
+	out3, err := sc.FeedChunk(nil, true)
+	require.NoError(t, err)
+
+	compressed := append(append(append([]byte{}, out1...), out2...), out3...)
+	assert.Equal(t, 1, gzipHeaderCount(compressed))
+	assert.Equal(t, []byte("payload-onepayload-two"), singleMemberGunzip(t, compressed))
+}
+
+// TestStreamCompressor_UnknownEncoding_Passthrough verifies unknown encodings pass
+// bytes through unchanged.
+func TestStreamCompressor_UnknownEncoding_Passthrough(t *testing.T) {
+	sc := newStreamCompressor("identity")
+	out, err := sc.FeedChunk([]byte("raw-bytes"), true)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("raw-bytes"), out)
+}
+
+// TestStreamCompressor_WriteAfterClose returns an error rather than corrupting output.
+func TestStreamCompressor_WriteAfterClose(t *testing.T) {
+	sc := newStreamCompressor("gzip")
+	_, err := sc.FeedChunk([]byte("data"), true)
+	require.NoError(t, err)
+	_, err = sc.FeedChunk([]byte("more"), false)
+	require.Error(t, err)
 }

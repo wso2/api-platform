@@ -168,8 +168,94 @@ func (sd *streamDecompressor) Close() {
 	}
 }
 
+// streamWriteFlushCloser is the common interface implemented by *gzip.Writer and
+// *brotli.Writer: incremental writes, a mid-stream flush that keeps the stream open,
+// and a final close that emits the trailer.
+type streamWriteFlushCloser interface {
+	io.WriteCloser
+	Flush() error
+}
+
+// streamCompressor provides stateful, per-chunk streaming compression that produces
+// a SINGLE continuous compressed stream across all chunks.
+//
+// This is the compression counterpart of streamDecompressor and must be used instead
+// of recompressBody for streaming bodies. recompressBody creates a fresh writer and
+// Close()es it on every call, so each chunk becomes an independent, self-contained
+// gzip/brotli member. A concatenation of independent members is not what the
+// Content-Encoding header promises (one stream for the whole body), and downstream
+// HTTP decoders (e.g. the Anthropic/Claude Code client) decode only the first member,
+// see its end-of-stream trailer, and treat the response as finished — dropping every
+// subsequent chunk. streamCompressor instead keeps one writer alive for the life of
+// the stream, flushing (Z_SYNC_FLUSH) after each chunk and closing only at EndOfStream.
+type streamCompressor struct {
+	buf      *bytes.Buffer
+	writer   streamWriteFlushCloser
+	encoding string
+	closed   bool
+}
+
+// newStreamCompressor returns a streamCompressor for the given Content-Encoding.
+// For unknown encodings the writer is nil and FeedChunk passes bytes through unchanged.
+func newStreamCompressor(encoding string) *streamCompressor {
+	buf := &bytes.Buffer{}
+	switch encoding {
+	case "gzip":
+		return &streamCompressor{buf: buf, writer: gzip.NewWriter(buf), encoding: encoding}
+	case "br":
+		return &streamCompressor{buf: buf, writer: brotli.NewWriter(buf), encoding: encoding}
+	default:
+		return &streamCompressor{buf: buf, encoding: encoding}
+	}
+}
+
+// FeedChunk compresses a chunk of the decompressed body and returns the compressed
+// bytes produced so far. On intermediate chunks the writer is flushed (keeping the
+// stream open); on endOfStream the writer is closed, emitting the final block and
+// trailer. The returned bytes belong to the caller (a fresh copy).
+func (sc *streamCompressor) FeedChunk(chunk []byte, endOfStream bool) ([]byte, error) {
+	// Passthrough for unknown encodings.
+	if sc.writer == nil {
+		return chunk, nil
+	}
+	if sc.closed {
+		return nil, fmt.Errorf("stream compressor: write after close")
+	}
+	if len(chunk) > 0 {
+		if _, err := sc.writer.Write(chunk); err != nil {
+			return nil, fmt.Errorf("stream compressor write: %w", err)
+		}
+	}
+	if endOfStream {
+		if err := sc.writer.Close(); err != nil {
+			return nil, fmt.Errorf("stream compressor close: %w", err)
+		}
+		sc.closed = true
+	} else {
+		if err := sc.writer.Flush(); err != nil {
+			return nil, fmt.Errorf("stream compressor flush: %w", err)
+		}
+	}
+	out := make([]byte, sc.buf.Len())
+	copy(out, sc.buf.Bytes())
+	sc.buf.Reset()
+	return out, nil
+}
+
+// Close releases the compressor's writer on error paths where endOfStream will never
+// arrive. Safe to call multiple times.
+func (sc *streamCompressor) Close() {
+	if sc.writer != nil && !sc.closed {
+		_ = sc.writer.Close()
+		sc.closed = true
+	}
+}
+
 // recompressBody re-compresses body bytes using the original Content-Encoding.
 // Used to restore compression after policies have processed the decompressed body.
+// NOTE: This produces a complete standalone stream and is only correct for
+// non-streaming (fully buffered) bodies. For streaming bodies use streamCompressor,
+// which keeps a single stream open across chunks.
 // Supported encodings: "gzip", "br" (Brotli). Unknown encodings are returned as-is.
 func recompressBody(body []byte, encoding string) ([]byte, error) {
 	switch encoding {
