@@ -27,9 +27,6 @@ export type FormState = {
   upstreamAuthHeader: string;
   upstreamAuthValue: string;
   valuePrefix: string;
-  inboundApiKeyName: string;
-  inboundApiKeyIn: 'header' | 'query';
-  inboundApiKeyValuePrefix: string;
 };
 
 export type GuardrailSelection = {

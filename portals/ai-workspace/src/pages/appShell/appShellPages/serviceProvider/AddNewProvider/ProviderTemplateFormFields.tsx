@@ -319,30 +319,6 @@ export default function ProviderTemplateFormFields({
         </Grid>
       )}
 
-      <Grid size={{ xs: 12, md: 6 }}>
-        <FormControl fullWidth>
-          <FormLabel>
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.AddNewProvider.ProviderTemplateFormFields.auth.value.prefix"
-              defaultMessage={'Auth Value Prefix'}
-            />
-          </FormLabel>
-          <TextField
-            fullWidth
-            value={formState.valuePrefix}
-            onChange={(e) =>
-              setFormState((prev) => ({
-                ...prev,
-                valuePrefix: e.target.value,
-              }))
-            }
-            placeholder="Bearer"
-            helperText="Optional prefix sent before the credential value."
-            data-cyid="provider-auth-value-prefix-input"
-          />
-        </FormControl>
-      </Grid>
-
       {/* Auth Value - always show; optional, provider can be created without it */}
       <Grid size={{ xs: 12 }}>
         <FormControl fullWidth>
@@ -385,91 +361,6 @@ export default function ProviderTemplateFormFields({
               },
             }}
             placeholder="Enter your API key or token (optional)"
-            helperText={
-              formState.valuePrefix.trim()
-                ? `The prefix '${formState.valuePrefix.trim()}' will be sent before this credential.`
-                : 'Your authentication credential for the upstream provider'
-            }
-          />
-        </FormControl>
-      </Grid>
-
-      <Grid size={{ xs: 12 }}>
-        <Divider sx={{ my: 1 }}>
-          <Typography variant="caption" color="text.secondary">
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.AddNewProvider.ProviderTemplateFormFields.inbound.authentication"
-              defaultMessage={'Inbound authentication'}
-            />
-          </Typography>
-        </Divider>
-      </Grid>
-
-      <Grid size={{ xs: 12, md: 6 }}>
-        <FormControl fullWidth>
-          <FormLabel>
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.AddNewProvider.ProviderTemplateFormFields.inbound.api.key.name"
-              defaultMessage={'Inbound API Key Name'}
-            />
-          </FormLabel>
-          <TextField
-            fullWidth
-            value={formState.inboundApiKeyName}
-            onChange={(e) =>
-              setFormState((prev) => ({
-                ...prev,
-                inboundApiKeyName: e.target.value,
-              }))
-            }
-            placeholder="X-API-Key"
-            helperText="Header or query parameter name validated by the gateway"
-          />
-        </FormControl>
-      </Grid>
-
-      <Grid size={{ xs: 12, md: 3 }}>
-        <FormControl fullWidth>
-          <FormLabel>
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.AddNewProvider.ProviderTemplateFormFields.inbound.api.key.location"
-              defaultMessage={'Inbound API Key Location'}
-            />
-          </FormLabel>
-          <Select
-            value={formState.inboundApiKeyIn}
-            onChange={(e) =>
-              setFormState((prev) => ({
-                ...prev,
-                inboundApiKeyIn: e.target.value as 'header' | 'query',
-              }))
-            }
-          >
-            <MenuItem value="header">header</MenuItem>
-            <MenuItem value="query">query</MenuItem>
-          </Select>
-        </FormControl>
-      </Grid>
-
-      <Grid size={{ xs: 12, md: 3 }}>
-        <FormControl fullWidth>
-          <FormLabel>
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.AddNewProvider.ProviderTemplateFormFields.inbound.api.key.value.prefix"
-              defaultMessage={'Inbound API Key Value Prefix'}
-            />
-          </FormLabel>
-          <TextField
-            fullWidth
-            value={formState.inboundApiKeyValuePrefix}
-            onChange={(e) =>
-              setFormState((prev) => ({
-                ...prev,
-                inboundApiKeyValuePrefix: e.target.value,
-              }))
-            }
-            placeholder="Bearer"
-            helperText="Optional prefix stripped before gateway API key validation"
           />
         </FormControl>
       </Grid>

@@ -110,9 +110,7 @@ function TemplateBasedFormFieldsContainer({
         ? template?.metadata?.auth?.header || 'Authorization'
         : prev.upstreamAuthHeader,
       upstreamAuthValue: templateChanged ? '' : prev.upstreamAuthValue,
-      valuePrefix: templateChanged
-        ? template?.metadata?.auth?.valuePrefix || ''
-        : prev.valuePrefix,
+      valuePrefix: template?.metadata?.auth?.valuePrefix || '',
     }));
 
     // Resolve OpenAPI spec. Prefer the inline spec stored on the template
@@ -200,9 +198,6 @@ export default function ServiceProviderNew() {
     upstreamAuthHeader: 'Authorization',
     upstreamAuthValue: '',
     valuePrefix: '',
-    inboundApiKeyName: 'X-API-Key',
-    inboundApiKeyIn: 'header',
-    inboundApiKeyValuePrefix: '',
   });
   const isVersionValid = VERSION_PATTERN.test(formState.version.trim());
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FormState, string>>>({});
@@ -352,7 +347,11 @@ export default function ServiceProviderNew() {
           auth: {
             type: formState.upstreamAuthType,
             header: formState.upstreamAuthHeader,
-            value: formState.upstreamAuthValue,
+
+            value:
+              formState.valuePrefix && formState.upstreamAuthValue.trim()
+                ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
+                : formState.upstreamAuthValue,
           },
         },
       };
@@ -361,9 +360,8 @@ export default function ServiceProviderNew() {
         enabled: true,
         apiKey: {
           enabled: true,
-          key: formState.inboundApiKeyName.trim(),
-          in: formState.inboundApiKeyIn,
-          valuePrefix: formState.inboundApiKeyValuePrefix.trim() || undefined,
+          key: 'X-API-Key',
+          in: 'header' as const,
         },
       };
 
