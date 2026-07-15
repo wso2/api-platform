@@ -1140,7 +1140,7 @@ const getAPIFile = async (req, res) => {
     try {
         if (!orgId) {
             // No session org, and either a non-image type or a missing orgId query param.
-            return res.status(401).send("Authentication required");
+            return util.sendError(res, 401, 'Authentication required');
         }
         apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
