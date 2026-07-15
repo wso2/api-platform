@@ -238,7 +238,7 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderTransformerIsCo
 	require.NotNil(t, transformerPolicy.ExecutionCondition)
 	assert.Contains(t, *transformerPolicy.ExecutionCondition, "anthropic-provider")
 	require.NotNil(t, transformerPolicy.Params)
-	assert.Equal(t, "anthropic-provider", (*transformerPolicy.Params)["id"])
+	assert.Equal(t, "anthropic-provider", (*transformerPolicy.Params)["provider-id"])
 	assert.Equal(t, "claude-sonnet-4-5-20250929", (*transformerPolicy.Params)["model"])
 }
 
