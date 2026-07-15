@@ -62,6 +62,15 @@ jobs:
         run: ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./setup.sh
         working-directory: portals/ai-workspace
 
+      - name: Export quickstart credentials as environment variables
+        # api-platform.env is loaded into the containers via docker-compose's env_file,
+        # but later steps in this job (readiness probe, Cypress) run outside those
+        # containers and need the same values as real env vars. Export every generated
+        # key to $GITHUB_ENV so each subsequent step ("test") in this job sees them.
+        run: |
+          grep -v '^#' api-platform.env | grep -v '^\s*$' >> "$GITHUB_ENV"
+        working-directory: portals/ai-workspace
+
       - name: Start quickstart stack
         # --wait blocks until all healthchecks pass. The ai-workspace healthcheck
         # now verifies the nginx→platform-api proxy route (not just the static

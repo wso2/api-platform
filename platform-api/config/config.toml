@@ -55,9 +55,10 @@ driver = "sqlite3"          # "sqlite3" or "postgres"
 # secret_key is a 32-byte key (64 hex chars or base64; openssl rand -hex 32)
 # secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
 [auth.jwt]
-enabled    = true
-issuer     = "platform-api"
-secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+enabled         = true
+issuer          = "platform-api"
+secret_key      = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+skip_validation = false
 
 # IDP (JWKS-based) — disabled in quickstart mode.
 # Enable and configure when using Asgardeo, Keycloak, Auth0, etc.
