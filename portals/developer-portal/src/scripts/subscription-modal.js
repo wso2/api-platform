@@ -77,7 +77,7 @@ async function prepareSubscriptionModal(modalId) {
     }
 
     try {
-        const resp = await fetch(devportalApi.root(`/subscriptions?apiId=${encodeURIComponent(apiRefId)}`), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
+        const resp = await fetch(devportalApi.root(`/subscriptions?artifactId=${encodeURIComponent(apiRefId)}`), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() } });
         if (!resp.ok) throw new Error('Failed to fetch subscriptions');
         const data = await resp.json();
 

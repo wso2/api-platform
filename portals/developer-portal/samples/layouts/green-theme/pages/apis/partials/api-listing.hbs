@@ -1,0 +1,152 @@
+<!--
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ -->
+
+<section class="apis-section">
+  <div class="container-fluid">
+    <!-- Hero -->
+    <div class="apilist-hero-container">
+      <div class="apilist-hero-content">
+        <h1 class="apilist-hero-title">Dive into the Green API catalog</h1>
+        <p class="apilist-hero-description">Browse every API in this portal, explore the docs, and subscribe in minutes — a fully themed listing page, courtesy of the Green layout.</p>
+      </div>
+      <div class="apilist-hero-image">
+        <svg width="280" height="150" viewBox="0 0 320 190" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M82 62 H128" stroke="#5eead4" stroke-width="2" stroke-dasharray="3 7" stroke-linecap="round"/>
+          <path d="M192 128 H238" stroke="#5eead4" stroke-width="2" stroke-dasharray="3 7" stroke-linecap="round"/>
+          <path d="M160 96 V62 H128" stroke="#5eead4" stroke-width="2" stroke-dasharray="3 7" stroke-linecap="round"/>
+          <rect x="120" y="44" width="120" height="104" rx="16" fill="#ccfbf1" stroke="#5eead4" stroke-width="2"/>
+          <rect x="138" y="66" width="84" height="11" rx="5.5" fill="var(--white)"/>
+          <rect x="138" y="90" width="66" height="8" rx="4" fill="#99f6e4"/>
+          <rect x="138" y="108" width="78" height="8" rx="4" fill="#99f6e4"/>
+          <rect x="138" y="126" width="50" height="8" rx="4" fill="#99f6e4"/>
+          <circle cx="56" cy="62" r="27" fill="#99f6e4" stroke="#2dd4bf" stroke-width="2"/>
+          <circle cx="56" cy="62" r="6" fill="#0f766e"/>
+          <circle cx="266" cy="128" r="27" fill="#fb7185"/>
+          <rect x="256" y="125" width="20" height="15" rx="3" fill="var(--white)"/>
+          <path d="M259 125 v-3.5 a7 7 0 0 1 14 0 V125" stroke="var(--white)" stroke-width="2.4" fill="none"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="container-fluid apilist-container">
+    <!-- Search -->
+    <div class="search-container">
+      <div class="search-input">
+        <i class="bi bi-search search-icon"></i>
+        <input type="text" id="query" placeholder="Search APIs" autocomplete="off" />
+      </div>
+    </div>
+
+    {{#if (eq apiMetadata.length 0)}}
+    <!-- Empty state -->
+    <div class="apilist-empty" id="no-subscription">
+      <div class="apilist-empty-icon">
+        <i class="bi bi-info-circle"></i>
+      </div>
+      <div class="apilist-empty-body">
+        <div class="apilist-empty-title">No APIs available yet</div>
+        <p class="apilist-empty-desc">There are no published APIs in this developer portal right now. Once APIs are published, they'll appear here for you to explore and subscribe to.</p>
+      </div>
+    </div>
+    {{else}}
+    <!-- Results bar -->
+    <div class="apilist-results-bar">
+      <h2 class="apilist-results-heading">APIs <span class="apilist-results-count">{{apiMetadata.length}}</span></h2>
+    </div>
+    {{/if}}
+
+    <!-- Grid -->
+    <div class="row row-gap-4">
+
+      {{#apiMetadata}}
+      {{!-- Green theme: a distinct "cover" API card — coloured header band, an
+            avatar overlapping it, and a full-width footer CTA (a different card
+            type and arrangement, not just a recolour of the default card). --}}
+      <div class="col-lg-4 col-md-6 col-sm-12" id="apiCard-{{id}}">
+        <article class="lgn-apicard{{#if hasSubscription}} lgn-apicard--subscribed{{/if}}">
+          <div class="lgn-apicard-click" data-href="{{../baseUrl}}/api/{{id}}" style="cursor:pointer;">
+
+            <!-- Coloured cover band: subscribed flag on the left, type chip pinned top-right -->
+            <div class="lgn-apicard-cover">
+              {{#if hasSubscription}}<span class="lgn-apicard-sub"><i class="bi bi-check-circle-fill"></i> Subscribed</span>{{/if}}
+              <span class="lgn-apicard-type dp-badge
+                {{#if (eq type "GRAPHQL")}}dp-badge--graphql
+                {{else if (eq type "WS")}}dp-badge--ws
+                {{else if (eq type "WebSubApi")}}dp-badge--ws
+                {{else if (eq type "SOAP")}}dp-badge--soap
+                {{else}}dp-badge--rest{{/if}}">
+                {{#if (eq type "GRAPHQL")}}<i class="bi bi-share"></i> GraphQL
+                {{else if (eq type "WS")}}<i class="bi bi-broadcast"></i> WebSocket
+                {{else if (eq type "WebSubApi")}}<i class="bi bi-broadcast-pin"></i> WebSub
+                {{else if (eq type "SOAP")}}<i class="bi bi-file-code"></i> SOAP
+                {{else}}<i class="bi bi-braces"></i> REST{{/if}}
+              </span>
+            </div>
+
+            <!-- Avatar overlapping the cover band -->
+            <div class="lgn-apicard-avatar">
+              {{#if apiImageMetadata.api-icon}}
+              <img src="{{apiImageMetadata.api-icon}}" alt="{{name}}" />
+              {{else}}
+              <span>{{firstTwoLetters name}}</span>
+              {{/if}}
+            </div>
+
+            <div class="lgn-apicard-body">
+              <h3 class="lgn-apicard-name">{{name}}</h3>
+              <div class="lgn-apicard-meta">
+                <span class="lgn-apicard-version">{{version}}</span>
+                {{#if ../showApiWorkflowsNav}}
+                {{#unless (eq agentVisibility "HIDDEN")}}
+                <span class="dp-badge dp-badge--ai" title="AI agents can discover and use this API"><i class="bi bi-robot"></i> AI Ready</span>
+                {{/unless}}
+                {{/if}}
+                {{#if (eq status "DEPRECATED")}}
+                <span class="dp-badge dp-badge--deprecated"><i class="bi bi-exclamation-circle"></i> Deprecated</span>
+                {{/if}}
+              </div>
+              <p class="lgn-apicard-desc">{{description}}</p>
+              {{#if tags}}
+              <div class="lgn-apicard-tags">
+                {{#tags}}<span class="dp-tag">{{this}}</span>{{/tags}}
+              </div>
+              {{/if}}
+            </div>
+          </div>
+
+          {{#if subscriptionPlans.length}}
+          <div class="lgn-apicard-foot">
+            <span class="lgn-apicard-plans"><i class="bi bi-tag"></i> {{subscriptionPlans.length}} plans</span>
+            {{#if hasSubscription}}
+            <a class="lgn-apicard-cta" href="{{../baseUrl}}/api/{{id}}#subscriptionPlans"><i class="bi bi-check-circle"></i> View</a>
+            {{else}}
+            <a class="lgn-apicard-cta lgn-apicard-cta--primary{{#if @root.isReadOnlyMode}} is-disabled{{/if}}"
+               href="{{../baseUrl}}/api/{{id}}#subscriptionPlans"
+               {{#if @root.isReadOnlyMode}}aria-disabled="true" tabindex="-1"{{/if}}>Subscribe <i class="bi bi-arrow-right"></i></a>
+            {{/if}}
+          </div>
+          {{/if}}
+        </article>
+      </div>
+      {{/apiMetadata}}
+    </div>
+  </div>
+
+  <script src='/technical-scripts/listing-cards.js' defer></script>
+</section>

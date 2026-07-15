@@ -58,40 +58,7 @@
     {{> alert}}
 
     {{!-- ── AGENT PROMPT MODAL ── --}}
-    <div class="modal fade" id="agentPromptModal" tabindex="-1" aria-labelledby="agentPromptModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <div>
-                        <h5 class="modal-title mb-0" id="agentPromptModalLabel">Agent Prompt</h5>
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body p-0">
-                    <div class="api-workflow-prompt-toolbar">
-                        <span class="small text-muted">Use this prompt to let your AI agent execute the workflow—handling API calls, dependencies, and errors automatically</span>
-                        <div class="prompt-modal-toolbar">
-                            <button type="button" class="btn-run-prompt" id="btnRunClaude">
-                                <i class="bi bi-play-fill"></i> Run in Claude
-                            </button>
-                        </div>
-                    </div>
-                    <div class="api-workflow-prompt-pre-wrapper">
-                        <div class="prompt-pre-actions">
-                            <button type="button" class="prompt-tool-btn" id="btnDownloadPrompt" title="Download as .txt">
-                                <i class="bi bi-download"></i>
-                            </button>
-                            <button type="button" class="prompt-tool-btn copy-btn" id="btnCopyPrompt" title="Copy prompt">
-                                <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
-                                <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
-                            </button>
-                        </div>
-                        <pre id="modalAgentPromptText" class="api-workflow-prompt-pre">{{flow.agentPrompt}}</pre>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    {{> agent-prompt-modal}}
 
     {{!-- Hidden container for spec content --}}
     <textarea id="specContent" style="display: none;">{{flow.content}}</textarea>

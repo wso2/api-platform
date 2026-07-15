@@ -208,7 +208,7 @@ function getDefinition(apiHandle, samplesDir = './samples/apis/') {
 }
 
 /**
- * Load and parse the MCP schema definition file (schemaDefinition.yaml or .json).
+ * Load and parse the MCP schema definition file (definition.yaml or .json).
  * Returns { tools, resources, prompts } or null if not found.
  */
 function getMcpSchema(apiHandle, samplesDir = './samples/apis/') {

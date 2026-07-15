@@ -285,91 +285,11 @@ type MCPProxyDeletedEvent struct {
 	CorrelationID string                      `json:"correlationId"`
 }
 
-// WebSubAPIDeployedEventPayload represents the payload of a WebSub API deployment event
-type WebSubAPIDeployedEventPayload struct {
-	APIID        string    `json:"apiId"`
-	DeploymentID string    `json:"deploymentId"`
-	PerformedAt  time.Time `json:"performedAt"`
-}
-
-// WebSubAPIDeployedEvent represents the complete WebSub API deployment event
-type WebSubAPIDeployedEvent struct {
-	Type          string                        `json:"type"`
-	Payload       WebSubAPIDeployedEventPayload `json:"payload"`
-	Timestamp     string                        `json:"timestamp"`
-	CorrelationID string                        `json:"correlationId"`
-}
-
-// WebSubAPIUndeployedEventPayload represents the payload of a WebSub API undeployment event
-type WebSubAPIUndeployedEventPayload struct {
-	APIID        string    `json:"apiId"`
-	DeploymentID string    `json:"deploymentId"`
-	PerformedAt  time.Time `json:"performedAt"`
-}
-
-// WebSubAPIUndeployedEvent represents the complete WebSub API undeployment event
-type WebSubAPIUndeployedEvent struct {
-	Type          string                          `json:"type"`
-	Payload       WebSubAPIUndeployedEventPayload `json:"payload"`
-	Timestamp     string                          `json:"timestamp"`
-	CorrelationID string                          `json:"correlationId"`
-}
-
-// WebSubAPIDeletedEventPayload represents the payload of a WebSub API deletion event
-type WebSubAPIDeletedEventPayload struct {
-	APIID string `json:"apiId"`
-}
-
-// WebSubAPIDeletedEvent represents the complete WebSub API deletion event
-type WebSubAPIDeletedEvent struct {
-	Type          string                       `json:"type"`
-	Payload       WebSubAPIDeletedEventPayload `json:"payload"`
-	Timestamp     string                       `json:"timestamp"`
-	CorrelationID string                       `json:"correlationId"`
-}
-
-// WebBrokerAPIDeployedEventPayload represents the payload of a WebBroker API deployment event
-type WebBrokerAPIDeployedEventPayload struct {
-	APIID        string    `json:"apiId"`
-	DeploymentID string    `json:"deploymentId"`
-	PerformedAt  time.Time `json:"performedAt"`
-}
-
-// WebBrokerAPIDeployedEvent represents the complete WebBroker API deployment event
-type WebBrokerAPIDeployedEvent struct {
-	Type          string                           `json:"type"`
-	Payload       WebBrokerAPIDeployedEventPayload `json:"payload"`
-	Timestamp     string                           `json:"timestamp"`
-	CorrelationID string                           `json:"correlationId"`
-}
-
-// WebBrokerAPIUndeployedEventPayload represents the payload of a WebBroker API undeployment event
-type WebBrokerAPIUndeployedEventPayload struct {
-	APIID        string    `json:"apiId"`
-	DeploymentID string    `json:"deploymentId"`
-	PerformedAt  time.Time `json:"performedAt"`
-}
-
-// WebBrokerAPIUndeployedEvent represents the complete WebBroker API undeployment event
-type WebBrokerAPIUndeployedEvent struct {
-	Type          string                             `json:"type"`
-	Payload       WebBrokerAPIUndeployedEventPayload `json:"payload"`
-	Timestamp     string                             `json:"timestamp"`
-	CorrelationID string                             `json:"correlationId"`
-}
-
-// WebBrokerAPIDeletedEventPayload represents the payload of a WebBroker API deletion event
-type WebBrokerAPIDeletedEventPayload struct {
-	APIID string `json:"apiId"`
-}
-
-// WebBrokerAPIDeletedEvent represents the complete WebBroker API deletion event
-type WebBrokerAPIDeletedEvent struct {
-	Type          string                          `json:"type"`
-	Payload       WebBrokerAPIDeletedEventPayload `json:"payload"`
-	Timestamp     string                          `json:"timestamp"`
-	CorrelationID string                          `json:"correlationId"`
-}
+// Note: WebSub/WebBroker deploy/undeploy/delete event payload types
+// (WebSubAPIDeployedEvent, WebBrokerAPIDeployedEvent, etc.) are NOT defined
+// here. They are event-gateway-specific and owned by the
+// event-gateway-controller module (event-gateway/gateway-controller/pkg/controlplanehooks),
+// which implements controlplane.ControlPlaneEventGatewayHooks.
 
 // SubscriptionCreatedEventPayload represents the payload of a subscription created event.
 type SubscriptionCreatedEventPayload struct {

@@ -102,6 +102,9 @@ function TabPanel({ value, index, children }: TabPanelProps) {
 
 const tabs = ['Overview', 'Connection', 'Token Mapping'];
 
+const UNSAVED_CHANGES_MESSAGE =
+  'You have unsaved changes. Please save or cancel before leaving this page.';
+
 function parseOpenApiSpec(text: string): Record<string, unknown> | null {
   if (!text.trim()) return null;
   try {
@@ -179,6 +182,14 @@ export default function ProviderTemplateOverview() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const listPath = buildOrgPath(currentOrganization, '/settings/llm-provider-templates');
+
+  const handleTabChange = (_: React.SyntheticEvent, value: number) => {
+    if (value !== tabIndex && isDirty) {
+      showSnackbar(UNSAVED_CHANGES_MESSAGE, 'error');
+      return;
+    }
+    setTabIndex(value);
+  };
 
   useEffect(() => {
     const organizationId = currentOrganization?.uuid;
@@ -715,7 +726,7 @@ export default function ProviderTemplateOverview() {
                     endIcon={<ChevronDown size={16} />}
                     sx={{ borderRadius: 5, px: 1.5 }}
                   >
-                    {selectedVersion || template.version || 'v1'}
+                    {selectedVersion || template.version || 'v1.0'}
                   </Button>
                   <Menu
                     anchorEl={versionMenuAnchor}
@@ -744,9 +755,9 @@ export default function ProviderTemplateOverview() {
                             {sectionLabel}
                           </Typography>
                           {visibleVersions.map((v) => {
-                            const ver = v.version || 'v1';
+                            const ver = v.version || 'v1.0';
                             const isSelected =
-                              ver === (selectedVersion || template.version || 'v1');
+                              ver === (selectedVersion || template.version || 'v1.0');
                             return (
                               <MenuItem
                                 key={ver}
@@ -867,7 +878,7 @@ export default function ProviderTemplateOverview() {
         <Card>
           <Tabs
             value={tabIndex}
-            onChange={(_, value) => setTabIndex(value)}
+            onChange={handleTabChange}
             variant="scrollable"
             allowScrollButtonsMobile
           >

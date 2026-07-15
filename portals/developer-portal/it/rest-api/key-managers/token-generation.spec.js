@@ -97,7 +97,7 @@ describe('OAuth token generation', () => {
     async function setupAppWithKeyMapping() {
         const kmId = uniqueHandle('km');
         await client.as('admin').post('/key-managers', {
-            id: kmId, displayName: 'Mock KM', type: 'GENERIC_OIDC', tokenEndpoint: tokenUrl.href,
+            id: kmId, displayName: 'Mock KM', tokenEndpoint: tokenUrl.href,
         });
 
         const appId = uniqueHandle('app');

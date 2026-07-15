@@ -265,7 +265,7 @@ const SAMPLES = [
     // createAPIMetadata: `res.status(201).send({ ...apiMetadata, ...audit })` (line
     // ~247) — spreads the parsed request metadata (name, version, type, status,
     // agentVisibility, tags, labels, owners, endPoints, subscriptionPlans, the
-    // resolved `id`) plus audit fields. NOT an APIDTO — no `refId`/`apiTitle`/
+    // resolved `id`) plus audit fields. NOT an APIDTO — no `refId`/`title`/
     // `remotes`/`apiImageMetadata`, unlike get/update below.
     ['createApiMetadata', 201, {
         name: 'Zip API', version: 'v1.0', description: 'first', type: 'RestApi',
@@ -278,7 +278,7 @@ const SAMPLES = [
     // getApiMetadata: getMetadataFromDB wraps the DAO row in `new APIDTO(...)`
     // (apiDto.js) — a different, larger shape than create's.
     ['getApiMetadata', 200, {
-        id: 'zip-api-1', refId: null, name: 'Zip API', apiTitle: null, remotes: [],
+        id: 'zip-api-1', refId: null, name: 'Zip API', title: null, remotes: [],
         version: 'v1.0', description: 'first', type: 'RestApi', status: 'PUBLISHED',
         agentVisibility: 'VISIBLE', apiImageMetadata: {}, tags: [], labels: [],
         endPoints: { sandboxURL: 'https://sandbox.example.invalid/zip-api-1', productionURL: 'https://backend.example.invalid/zip-api-1' },
@@ -291,7 +291,7 @@ const SAMPLES = [
     // `tags`/`labels` present when the update request didn't touch those fields
     // (APIDTO only sets what its input row/audit actually carried at that point).
     ['updateApiMetadata', 200, {
-        id: 'zip-api-1', refId: null, name: 'Zip API', apiTitle: null, remotes: [],
+        id: 'zip-api-1', refId: null, name: 'Zip API', title: null, remotes: [],
         version: 'v1.0', description: 'second (changed)', type: 'RestApi', status: 'PUBLISHED',
         agentVisibility: 'VISIBLE',
         endPoints: { sandboxURL: 'https://sandbox.example.invalid/zip-api-1', productionURL: 'https://backend.example.invalid/zip-api-1' },
@@ -303,7 +303,7 @@ const SAMPLES = [
     // same per-item shape as getApiMetadata.
     ['getAllApiMetadataForOrganization', 200, {
         list: [{
-            id: 'zip-api-1', refId: null, name: 'Zip API', apiTitle: null, remotes: [],
+            id: 'zip-api-1', refId: null, name: 'Zip API', title: null, remotes: [],
             version: 'v1.0', description: 'first', type: 'RestApi', status: 'PUBLISHED',
             agentVisibility: 'VISIBLE', apiImageMetadata: {}, tags: [], labels: ['default'],
             endPoints: { sandboxURL: 'https://sandbox.example.invalid/zip-api-1', productionURL: 'https://backend.example.invalid/zip-api-1' },
@@ -327,7 +327,7 @@ const SAMPLES = [
         createdAt: '2026-07-07T12:48:30.875Z', updatedAt: '2026-07-07T12:48:30.875Z',
     }],
     ['getMcpServer', 200, {
-        id: 'mcp-server-1', refId: null, name: 'Booking MCP', apiTitle: null, remotes: [],
+        id: 'mcp-server-1', refId: null, name: 'Booking MCP', title: null, remotes: [],
         version: 'v1.0', description: 'first', type: 'Mcp', status: 'PUBLISHED',
         agentVisibility: 'VISIBLE', apiImageMetadata: {}, tags: [], labels: [],
         endPoints: { sandboxURL: 'https://sandbox.example.invalid/mcp-1', productionURL: 'https://backend.example.invalid/mcp-1' },
@@ -336,7 +336,7 @@ const SAMPLES = [
         createdAt: '2026-07-07T12:48:30.875Z', updatedAt: '2026-07-07T12:48:30.875Z',
     }],
     ['updateMcpServer', 200, {
-        id: 'mcp-server-1', refId: null, name: 'Booking MCP', apiTitle: null, remotes: [],
+        id: 'mcp-server-1', refId: null, name: 'Booking MCP', title: null, remotes: [],
         version: 'v1.0', description: 'second (changed)', type: 'Mcp', status: 'PUBLISHED',
         agentVisibility: 'VISIBLE',
         endPoints: { sandboxURL: 'https://sandbox.example.invalid/mcp-1', productionURL: 'https://backend.example.invalid/mcp-1' },
@@ -346,7 +346,7 @@ const SAMPLES = [
     }],
     ['getAllMcpServersForOrganization', 200, {
         list: [{
-            id: 'mcp-server-1', refId: null, name: 'Booking MCP', apiTitle: null, remotes: [],
+            id: 'mcp-server-1', refId: null, name: 'Booking MCP', title: null, remotes: [],
             version: 'v1.0', description: 'first', type: 'Mcp', status: 'PUBLISHED',
             agentVisibility: 'VISIBLE', apiImageMetadata: {}, tags: [], labels: ['default'],
             endPoints: { sandboxURL: 'https://sandbox.example.invalid/mcp-1', productionURL: 'https://backend.example.invalid/mcp-1' },

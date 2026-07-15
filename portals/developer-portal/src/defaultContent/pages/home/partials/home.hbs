@@ -94,37 +94,4 @@
 </div>
 {{/if}}
 
-<script>
-/* Particles init — runs after DOM ready */
-(function () {
-  function init() {
-    if (typeof window.particlesJS === 'undefined') return;
-    var el = document.getElementById('hero-particles');
-    if (!el) return;
-    window.particlesJS('hero-particles', {
-      particles: {
-        number: { value: 64, density: { enable: true, value_area: 900 } },
-        color: { value: ['#ffffff', '#f9a04b', '#5cd1ff'] },
-        shape: { type: 'circle' },
-        opacity: { value: 0.5, random: true },
-        size: { value: 2.6, random: true },
-        line_linked: { enable: true, distance: 150, color: '#9fb6cc', opacity: 0.18, width: 1 },
-        move: { enable: true, speed: 1.1, direction: 'none', out_mode: 'out' },
-      },
-      interactivity: {
-        detect_on: 'canvas',
-        events: { onhover: { enable: true, mode: 'grab' }, resize: true },
-        modes: { grab: { distance: 160, line_linked: { opacity: 0.35 } } },
-      },
-      retina_detect: true,
-    });
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
-  /* Retry once after a short delay in case particles.js loads after this script */
-  setTimeout(init, 400);
-})();
-</script>
+<script src='/technical-scripts/home-particles.js' defer></script>

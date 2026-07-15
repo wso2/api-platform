@@ -1,0 +1,371 @@
+<!-- ══ Modals (position:fixed) ══ -->
+
+<!-- Delete API modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-api-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete API</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-api-name-txt"></strong>? It will be removed from the developer portal along with its spec and documentation. This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-api-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-api-confirm">Delete API</button>
+    </div>
+  </div>
+</div>
+
+<!-- Deprecate API modal -->
+<div class="cfg-modal-overlay" id="cfg-deprecate-api-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-archive"></i></span>
+      <h2 class="cfg-modal-title">Deprecate API</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to deprecate <strong id="cfg-dep-api-name-txt"></strong>? It will remain visible but marked as deprecated. You can publish it again at any time.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-dep-api-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-dep-api-confirm">Deprecate</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Label modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-label-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete Label</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-label-name-txt"></strong>? It will be removed from all APIs using it. This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-label-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-label-confirm">Delete label</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Plan modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-plan-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete Plan</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-plan-name-txt"></strong>? Applications subscribed under it will need a new plan. This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-plan-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-plan-confirm">Delete plan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Webhook modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-webhook-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete Webhook</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-webhook-name-txt"></strong>? This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-webhook-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-webhook-confirm">Delete webhook</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Key Manager modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-km-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete Key Manager</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-km-name-txt"></strong>? Applications relying on it will no longer be able to obtain tokens. This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-km-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-km-confirm">Delete key manager</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Label modal -->
+<div class="cfg-modal-overlay" id="cfg-label-modal" style="display:none;">
+  <div class="cfg-form-modal">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title" id="cfg-label-modal-title">Add label</h2>
+      <button type="button" class="cfg-modal-close" id="cfg-label-modal-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="lbl-display">Display name <span class="required">*</span></label>
+      <input type="text" id="lbl-display" class="cfg-form-input" placeholder="e.g. Public" />
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:24px;">
+      <label for="lbl-name">Name <span class="required">*</span></label>
+      <input type="text" id="lbl-name" class="cfg-form-input cfg-form-input--mono" placeholder="public" />
+      <p class="cfg-field-hint">Lowercase identifier used internally.</p>
+    </div>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-label-modal-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-label-modal-save">Add label</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete View modal -->
+<div class="cfg-modal-overlay" id="cfg-delete-view-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-trash"></i></span>
+      <h2 class="cfg-modal-title">Delete View</h2>
+    </div>
+    <p class="cfg-modal-body">Are you sure you want to delete <strong id="cfg-del-view-name-txt"></strong>? Its LLM Instructions and API Workflows will be removed. This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-del-view-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-del-view-confirm">Delete view</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reset Theme modal -->
+<div class="cfg-modal-overlay" id="cfg-reset-theme-modal" style="display:none;">
+  <div class="cfg-modal">
+    <div class="cfg-modal-header">
+      <span class="cfg-modal-icon"><i class="bi bi-arrow-counterclockwise"></i></span>
+      <h2 class="cfg-modal-title">Reset Theme</h2>
+    </div>
+    <p class="cfg-modal-body">Reset <strong id="cfg-reset-theme-view-txt"></strong> to the built-in default theme? Its custom CSS, layout, partials, and images will be removed. This action can't be undone.</p>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-reset-theme-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-danger" id="cfg-reset-theme-confirm">Reset theme</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit View modal -->
+<div class="cfg-modal-overlay" id="cfg-view-modal" style="display:none;">
+  <div class="cfg-form-modal">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title" id="cfg-view-modal-title">Add view</h2>
+      <button type="button" class="cfg-modal-close" id="cfg-view-modal-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="view-handle">Handle <span class="required">*</span></label>
+      <input type="text" id="view-handle" class="cfg-form-input cfg-form-input--mono" placeholder="partner-apis" />
+      <p class="cfg-field-hint">Lowercase identifier used in URLs. Cannot be changed later.</p>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="view-display">Name</label>
+      <input type="text" id="view-display" class="cfg-form-input" placeholder="e.g. Partner APIs" />
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:24px;">
+      <label>Labels</label>
+      {{#if orgLabels.length}}
+      <div id="view-labels" class="cfg-label-picker" role="group" aria-label="View labels">
+        {{#orgLabels}}
+        <button type="button" class="cfg-label-toggle" data-value="{{id}}" aria-pressed="false">
+          <i class="bi bi-check2"></i><span>{{displayName}}</span>
+        </button>
+        {{/orgLabels}}
+      </div>
+      <p class="cfg-field-hint">Click labels to toggle. APIs with these labels appear in this view.</p>
+      {{else}}
+      <p class="cfg-field-hint">No labels yet — create labels first to attach them to this view.</p>
+      {{/if}}
+    </div>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-view-modal-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-view-modal-save">Add view</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Plan modal -->
+<div class="cfg-modal-overlay" id="cfg-plan-modal" style="display:none;">
+  <div class="cfg-form-modal cfg-form-modal--wide">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title" id="cfg-plan-modal-title">Add subscription plan</h2>
+      <button type="button" class="cfg-modal-close" id="cfg-plan-modal-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="cfg-form-grid" style="margin-bottom:16px;">
+      <div class="cfg-form-group">
+        <label for="pol-display">Display name <span class="required">*</span></label>
+        <input type="text" id="pol-display" class="cfg-form-input" placeholder="e.g. Gold" />
+      </div>
+      <div class="cfg-form-group">
+        <label for="pol-name">Name <span class="required">*</span></label>
+        <input type="text" id="pol-name" class="cfg-form-input cfg-form-input--mono" placeholder="Gold" />
+      </div>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="pol-desc">Description</label>
+      <textarea id="pol-desc" class="cfg-form-input" rows="2" placeholder="Describe this tier…"></textarea>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <label style="margin:0;">Limits</label>
+        <button type="button" class="cfg-btn-secondary cfg-btn-sm" id="pol-add-limit-btn"><i class="bi bi-plus"></i> Add limit</button>
+      </div>
+      <div id="pol-limits-list"></div>
+      <p class="cfg-field-hint">Leave empty for an unlimited plan. Use −1 as the count to mark a limit as unlimited.</p>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:24px;">
+      <label for="pol-refid">External reference ID <span style="color:#9aa3af;font-weight:400;">(optional)</span></label>
+      <input type="text" id="pol-refid" class="cfg-form-input cfg-form-input--mono" placeholder="e.g. 7c9e6679-7425-40de-944b-e07fc1f90ae7" />
+      <p class="cfg-field-hint">UUID linking this plan to an external billing or quota system.</p>
+    </div>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-plan-modal-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-plan-modal-save">Add plan</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .wh-toggle { position: relative; display: inline-block; width: 38px; height: 22px; flex: none; }
+  .wh-toggle input { opacity: 0; width: 0; height: 0; }
+  .wh-toggle-slider { position: absolute; inset: 0; background-color: #d0d7de; border-radius: 34px; cursor: pointer; transition: .2s; }
+  .wh-toggle-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: var(--white); border-radius: 50%; transition: .2s; }
+  .wh-toggle input:checked + .wh-toggle-slider { background-color: #1f6feb; }
+  .wh-toggle input:checked + .wh-toggle-slider:before { transform: translateX(16px); }
+</style>
+
+<!-- Add / Edit Webhook modal -->
+<div class="cfg-modal-overlay" id="cfg-webhook-modal" style="display:none;">
+  <div class="cfg-form-modal cfg-form-modal--wide">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title" id="cfg-webhook-modal-title">Add webhook</h2>
+      <button type="button" class="cfg-modal-close" id="cfg-webhook-modal-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="wh-display">Display name <span class="required">*</span></label>
+      <input type="text" id="wh-display" class="cfg-form-input" placeholder="e.g. Production listener" />
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="wh-handle">Handle <span class="required">*</span></label>
+      <input type="text" id="wh-handle" class="cfg-form-input cfg-form-input--mono" placeholder="production-listener" />
+      <p class="cfg-field-hint">Lowercase identifier used internally.</p>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="wh-url">Target URL <span class="required">*</span></label>
+      <input type="text" id="wh-url" class="cfg-form-input cfg-form-input--mono" placeholder="https://example.com/webhook" />
+    </div>
+    <div class="cfg-form-grid" style="margin-bottom:16px;">
+      <div class="cfg-form-group">
+        <label for="wh-secret">Secret <span style="color:#9aa3af;font-weight:400;">(optional)</span></label>
+        <input type="password" id="wh-secret" class="cfg-form-input" autocomplete="new-password"
+          placeholder="Used to sign payloads (HMAC)" />
+        <p class="cfg-field-hint" id="wh-secret-hint" style="display:none;">
+          A secret is already set. Leave blank to keep it, or enter a new value to replace it.
+        </p>
+      </div>
+      <div class="cfg-form-group">
+        <label for="wh-timeout">Timeout (ms)</label>
+        <input type="number" id="wh-timeout" class="cfg-form-input" min="1" value="5000" />
+      </div>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="wh-publickey">Public key <span style="color:#9aa3af;font-weight:400;">(optional)</span></label>
+      <textarea id="wh-publickey" class="cfg-form-input cfg-form-input--mono" rows="3" placeholder="PEM-encoded RSA public key"></textarea>
+      <p class="cfg-field-hint">
+        Used to encrypt the plaintext API key delivered with apikey.* / subscription.created events, so only you can read it.
+      </p>
+      <p class="cfg-field-hint" id="wh-publickey-hint" style="display:none;">
+        A public key is already set. Leave blank to keep it, or enter a new value to replace it.
+      </p>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label>Events</label>
+      <div class="cfg-vis-toggle" style="margin-bottom:12px;">
+        <button type="button" class="cfg-vis-btn active" id="wh-events-all-btn">
+          <i class="bi bi-broadcast"></i> All events
+        </button>
+        <button type="button" class="cfg-vis-btn" id="wh-events-select-btn">
+          <i class="bi bi-check2-square"></i> Select events
+        </button>
+      </div>
+      <div id="wh-event-list" style="display:none;flex-wrap:wrap;gap:10px 16px;">
+        {{#each webhookEventTypes}}
+        <label style="display:flex;align-items:center;gap:6px;font-size:.813rem;color:#1a2433;cursor:pointer;">
+          <input type="checkbox" class="wh-event-check" value="{{this}}" /> {{this}}
+        </label>
+        {{/each}}
+      </div>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:24px;">
+      <label style="display:flex;align-items:center;gap:10px;font-size:.844rem;color:#1a2433;font-weight:500;cursor:pointer;">
+        <span class="wh-toggle">
+          <input type="checkbox" id="wh-enabled" checked />
+          <span class="wh-toggle-slider"></span>
+        </span>
+        Enabled
+      </label>
+    </div>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-webhook-modal-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-webhook-modal-save">Add webhook</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add / Edit Key Manager modal -->
+<div class="cfg-modal-overlay" id="cfg-km-modal" style="display:none;">
+  <div class="cfg-form-modal cfg-form-modal--wide">
+    <div class="cfg-modal-titlerow">
+      <h2 class="cfg-modal-form-title" id="cfg-km-modal-title">Add key manager</h2>
+      <button type="button" class="cfg-modal-close" id="cfg-km-modal-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="km-display">Display name <span class="required">*</span></label>
+      <input type="text" id="km-display" class="cfg-form-input" placeholder="e.g. Asgardeo" />
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="km-handle">Handle <span class="required">*</span></label>
+      <input type="text" id="km-handle" class="cfg-form-input cfg-form-input--mono" placeholder="asgardeo-prod" />
+      <p class="cfg-field-hint">Lowercase identifier used internally.</p>
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:16px;">
+      <label for="km-token-endpoint">Token endpoint <span class="required">*</span></label>
+      <input type="text" id="km-token-endpoint" class="cfg-form-input cfg-form-input--mono" placeholder="https://api.asgardeo.io/t/myorg/oauth2/token" />
+    </div>
+    <div class="cfg-form-group" style="margin-bottom:24px;">
+      <label style="display:flex;align-items:center;gap:10px;font-size:.844rem;color:#1a2433;font-weight:500;cursor:pointer;">
+        <span class="wh-toggle">
+          <input type="checkbox" id="km-enabled" checked />
+          <span class="wh-toggle-slider"></span>
+        </span>
+        Enabled
+      </label>
+    </div>
+    <div class="cfg-modal-actions">
+      <button type="button" class="cfg-btn-secondary" id="cfg-km-modal-cancel">Cancel</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-km-modal-save">Add key manager</button>
+    </div>
+  </div>
+</div>
+
+<!-- API Detail Drawer -->
+<div class="cfg-drawer-overlay" id="cfg-detail-drawer">
+  <div class="cfg-drawer">
+    <div class="cfg-drawer-head">
+      <span class="cfg-drawer-avatar" id="drw-avatar"></span>
+      <div>
+        <div class="cfg-drawer-name" id="drw-name"></div>
+        <div class="cfg-drawer-handle" id="drw-handle"></div>
+      </div>
+      <button type="button" class="cfg-drawer-close" id="cfg-drawer-close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="cfg-drawer-body">
+      <div class="cfg-drawer-meta-row" id="drw-meta-row"></div>
+      <p class="cfg-drawer-desc" id="drw-desc"></p>
+      <div class="cfg-drawer-grid" id="drw-grid"></div>
+    </div>
+    <div class="cfg-drawer-foot">
+      <button type="button" class="cfg-btn-secondary" id="cfg-drawer-close-foot">Close</button>
+      <button type="button" class="cfg-btn-primary" id="cfg-drawer-edit-btn">
+        <i class="bi bi-pencil"></i> Edit API
+      </button>
+    </div>
+  </div>
+</div>

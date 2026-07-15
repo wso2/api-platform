@@ -33,53 +33,7 @@
 </div>
 
 <div class="adoc-wrap">
-  <aside class="adoc-nav">
-    {{#docTypes}}
-
-    {{#if (eq type "Specification")}}
-    <div class="adoc-nav-group">
-      <div class="adoc-nav-group-title">SPECIFICATION</div>
-      <div class="adoc-nav-items">
-        <a href="{{../baseDocUrl}}/docs/specification"
-          class="adoc-nav-item doc-link{{#if ../isAPIDefinition}} adoc-nav-item--active{{/if}}">
-          <i class="bi bi-code-slash"></i>
-          <span>{{#if (eq ../apiType "Mcp")}}MCP Playground{{else}}API Definition{{/if}}</span>
-        </a>
-        {{#if (eq ../apiType "WS")}}
-        <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="adoc-nav-item doc-link">
-          <i class="bi bi-play-circle"></i><span>Tryout</span>
-        </a>
-        {{/if}}
-        {{#if (eq ../apiType "WebSubApi")}}
-        <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="adoc-nav-item doc-link">
-          <i class="bi bi-play-circle"></i><span>Tryout</span>
-        </a>
-        {{/if}}
-        {{#if (eq ../apiType "GRAPHQL")}}
-        <a href="{{../baseDocUrl}}/docs/specification?tryout=true" class="adoc-nav-item doc-link">
-          <i class="bi bi-play-circle"></i><span>Tryout</span>
-        </a>
-        {{/if}}
-      </div>
-    </div>
-
-    {{else}}
-    <div class="adoc-nav-group">
-      <div class="adoc-nav-group-title">{{type}}</div>
-      <div class="adoc-nav-items">
-        {{#names}}
-        <a href="{{../../baseDocUrl}}/docs/{{../type}}/{{stripMdExtension this}}"
-          class="adoc-nav-item doc-link{{#if (eq ../../currentDocName (stripMdExtension this))}} adoc-nav-item--active{{/if}}">
-          <i class="bi bi-file-text"></i>
-          <span>{{beforeSeparator this "."}}</span>
-        </a>
-        {{/names}}
-      </div>
-    </div>
-    {{/if}}
-
-    {{/docTypes}}
-  </aside>
+  {{> docs-nav}}
 
   <div class="adoc-content-card">
     {{> api-doc}}

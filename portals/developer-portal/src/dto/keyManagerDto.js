@@ -26,7 +26,6 @@ class KeyManagerDTO {
         this.id = km.handle;
         this.displayName = km.display_name;
         this.orgId = km.org_uuid;
-        this.type = km.type;
         this.enabled = !!km.enabled;
         this.tokenEndpoint = km.token_endpoint;
         applyAudit(this, audit);
@@ -41,7 +40,6 @@ class KeyManagerPublicDTO {
     constructor(km) {
         this.id = km.handle;
         this.displayName = km.display_name;
-        this.type = km.type;
         this.tokenEndpoint = km.token_endpoint;
     }
 }

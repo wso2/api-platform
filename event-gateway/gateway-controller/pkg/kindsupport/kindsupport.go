@@ -45,6 +45,9 @@ import (
 // Register wires WebSubApi/WebBrokerApi kind support into every core registry
 // that gateway-controller exposes for kinds it doesn't know about natively.
 func Register() {
+	storage.RegisterKindResourceTable("WebSubApi", "websub_apis")
+	storage.RegisterKindResourceTable("WebBrokerApi", "webbroker_apis")
+
 	storage.RegisterKindUnmarshaler("WebSubApi", unmarshalWebSubAPI)
 	storage.RegisterKindUnmarshaler("WebBrokerApi", unmarshalWebBrokerApi)
 

@@ -29,10 +29,10 @@ RUN rm -rf /app/python-executor
 COPY python-executor/ /app/python-executor/
 
 # Install python dependencies for custom policies
-RUN apt-get update && apt-get install -y --no-install-recommends python3-pip && \
+RUN apt-get update && apt-get install -y --no-install-recommends git python3-pip && \
     pip3 install --no-cache-dir --upgrade pip setuptools wheel && \
     pip3 install --no-cache-dir --target /app/python-libs -r /app/python-executor/requirements.txt && \
-    apt-get purge -y python3-pip && \
+    apt-get purge -y git python3-pip && \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 USER wso2
