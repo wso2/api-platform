@@ -102,7 +102,7 @@ func (r *SubscriptionRepo) Create(sub *model.Subscription) error {
 		return fmt.Errorf("failed to encrypt subscription token: %w", err)
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	sub.CreatedAt = now
 	sub.UpdatedAt = now
 
@@ -294,7 +294,7 @@ func (r *SubscriptionRepo) CountByFilters(orgUUID string, apiUUID *string, subsc
 
 // Update updates an existing subscription with all mutable fields.
 func (r *SubscriptionRepo) Update(sub *model.Subscription) error {
-	sub.UpdatedAt = time.Now()
+	sub.UpdatedAt = time.Now().UTC()
 	query := `
 		UPDATE subscriptions
 		SET subscription_plan_uuid = ?, application_id = ?, status = ?, updated_by = ?, updated_at = ?
@@ -337,7 +337,7 @@ func (r *SubscriptionRepo) UpdateToken(subscriptionID, orgUUID, newToken string)
 		SET subscription_token = ?, subscription_token_hash = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
 	`
-	result, err := r.db.Exec(r.db.Rebind(query), encryptedToken, hashedToken, time.Now(), subscriptionID, orgUUID)
+	result, err := r.db.Exec(r.db.Rebind(query), encryptedToken, hashedToken, time.Now().UTC(), subscriptionID, orgUUID)
 	if err != nil {
 		if isSubscriptionUniqueViolation(err) {
 			return apperror.SubscriptionExists.New()

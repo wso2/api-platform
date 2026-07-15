@@ -39,7 +39,7 @@ func NewCustomPolicyRepo(db *database.DB) CustomPolicyRepository {
 
 // InsertCustomPolicy inserts or updates a custom policy by (organization_uuid, name, version).
 func (r *CustomPolicyRepo) InsertCustomPolicy(policy *model.CustomPolicy) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	query := r.db.BuildUpsertQuery(
 		"gateway_custom_policies",
 		[]string{"uuid", "organization_uuid", "name", "display_name", "version", "description", "policy_definition", "created_by", "updated_by", "created_at", "updated_at"},
@@ -113,7 +113,7 @@ func (r *CustomPolicyRepo) ListCustomPolicyByOrganization(orgUUID string) ([]*mo
 
 // UpdateCustomPolicy updates an existing policy's version and definition identified by (org, name, oldVersion).
 func (r *CustomPolicyRepo) UpdateCustomPolicy(policy *model.CustomPolicy, oldVersion string) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	query := `
 		UPDATE gateway_custom_policies
 		SET version = ?, display_name = ?, description = ?, policy_definition = ?, updated_by = ?, updated_at = ?

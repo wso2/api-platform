@@ -62,18 +62,15 @@ func (s *APIKeyUserService) ListAPIKeysByUser(
 	}
 
 	items := make([]api.UserAPIKeyItem, 0, len(keys))
+	createdByFields := make([]**string, 0, len(keys))
 	for _, k := range keys {
-		createdBy := utils.StringPtrIfNotEmpty(k.CreatedBy)
-		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
-			return nil, err
-		}
 		item := api.UserAPIKeyItem{
 			Id:             &k.Name,
 			DisplayName:    k.DisplayName,
 			MaskedApiKey:   k.MaskedAPIKey,
 			Status:         api.UserAPIKeyItemStatus(k.Status),
 			CreatedAt:      k.CreatedAt,
-			CreatedBy:      createdBy,
+			CreatedBy:      utils.StringPtrIfNotEmpty(k.CreatedBy),
 			UpdatedAt:      k.UpdatedAt,
 			ExpiresAt:      k.ExpiresAt,
 			Issuer:         k.Issuer,
@@ -82,6 +79,10 @@ func (s *APIKeyUserService) ListAPIKeysByUser(
 			ArtifactType:   api.UserAPIKeyItemArtifactType(k.ArtifactType),
 		}
 		items = append(items, item)
+		createdByFields = append(createdByFields, &items[len(items)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 
 	// A user's API keys are a small, bounded set, so the total is the full count

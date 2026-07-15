@@ -131,3 +131,16 @@ func resolveEffectiveScopes(r *http.Request, mode string) []string {
 	scope, _ := GetScopeFromRequest(r)
 	return strings.Fields(scope)
 }
+
+// HasEffectiveScope reports whether the request's effective scopes (the scope
+// claim in "scope" mode, or IDP roles expanded via the role-scope map in
+// "role" mode) satisfy the given scope, honoring ":*" wildcards the same way
+// ScopeEnforcer does.
+func HasEffectiveScope(r *http.Request, mode, scope string) bool {
+	for _, have := range resolveEffectiveScopes(r, mode) {
+		if scopeSatisfies(have, scope) {
+			return true
+		}
+	}
+	return false
+}

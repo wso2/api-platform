@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
@@ -116,6 +117,138 @@ func TestAPIRepo_CreateAndRead(t *testing.T) {
 	}
 	if created.Configuration.Name != api.Configuration.Name || created.Configuration.Version != api.Configuration.Version {
 		t.Fatalf("GetAPIByUUID returned unexpected configuration: %+v", created.Configuration)
+	}
+}
+
+// TestAPIRepo_CreateAPI_SetsUpdatedBy guards against a prior gap where the
+// rest_apis INSERT omitted updated_by, leaving it NULL until the first update.
+func TestAPIRepo_CreateAPI_SetsUpdatedBy(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	repo := NewAPIRepo(db)
+
+	orgUUID := "org-crud-updatedby"
+	projectUUID := "project-crud-updatedby"
+	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
+
+	api := &model.API{
+		Handle:          "updatedby-api",
+		Name:            "UpdatedBy API",
+		Version:         "1.0.0",
+		CreatedBy:       "test-user",
+		UpdatedBy:       "test-user",
+		ProjectID:       projectUUID,
+		OrganizationID:  orgUUID,
+		LifeCycleStatus: "CREATED",
+		Configuration: model.RestAPIConfig{
+			Name:      "UpdatedBy API",
+			Version:   "1.0.0",
+			Transport: []string{"https"},
+		},
+	}
+
+	if err := repo.CreateAPI(api); err != nil {
+		t.Fatalf("CreateAPI failed: %v", err)
+	}
+	defer func() {
+		if err := repo.DeleteAPI(api.ID, orgUUID); err != nil {
+			t.Errorf("DeleteAPI cleanup failed: %v", err)
+		}
+	}()
+
+	created, err := repo.GetAPIByUUID(api.ID, orgUUID)
+	if err != nil {
+		t.Fatalf("GetAPIByUUID failed: %v", err)
+	}
+	if created == nil {
+		t.Fatal("GetAPIByUUID returned nil")
+	}
+	if created.UpdatedBy == "" {
+		t.Fatal("expected updated_by to be set on creation, got empty string")
+	}
+	if created.UpdatedBy != created.CreatedBy {
+		t.Fatalf("expected updated_by == created_by on creation, got created_by=%q updated_by=%q", created.CreatedBy, created.UpdatedBy)
+	}
+}
+
+// TestAPIRepo_CreateAPIAssociation_NormalizesTimestampsToUTC guards against a
+// prior gap where CreateAPIAssociation persisted whatever CreatedAt/UpdatedAt
+// the caller passed in (typically local-server-time time.Now()) instead of
+// normalizing to UTC, unlike every other repository Create method.
+func TestAPIRepo_CreateAPIAssociation_NormalizesTimestampsToUTC(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	apiRepo := NewAPIRepo(db)
+	gatewayRepo := NewGatewayRepo(db)
+
+	orgUUID := "org-assoc-utc"
+	projectUUID := "project-assoc-utc"
+	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
+
+	restAPI := &model.API{
+		Handle:          "assoc-utc-api",
+		Name:            "Assoc UTC API",
+		Version:         "1.0.0",
+		CreatedBy:       "test-user",
+		UpdatedBy:       "test-user",
+		ProjectID:       projectUUID,
+		OrganizationID:  orgUUID,
+		LifeCycleStatus: "CREATED",
+		Configuration: model.RestAPIConfig{
+			Name:      "Assoc UTC API",
+			Version:   "1.0.0",
+			Transport: []string{"https"},
+		},
+	}
+	if err := apiRepo.CreateAPI(restAPI); err != nil {
+		t.Fatalf("CreateAPI failed: %v", err)
+	}
+
+	gateway := &model.Gateway{
+		ID:             "gw-assoc-utc",
+		OrganizationID: orgUUID,
+		Handle:         "gw-assoc-utc",
+		Name:           "Assoc UTC Gateway",
+	}
+	if err := gatewayRepo.Create(gateway); err != nil {
+		t.Fatalf("gateway Create failed: %v", err)
+	}
+
+	// Deliberately pass a non-UTC CreatedAt/UpdatedAt, mimicking a caller that
+	// computed time.Now() (server-local time) instead of time.Now().UTC().
+	localZone := time.FixedZone("Test/Local", 5*60*60)
+	association := &model.APIAssociation{
+		ArtifactID:     restAPI.ID,
+		OrganizationID: orgUUID,
+		GatewayID:      gateway.ID,
+		CreatedAt:      time.Date(2020, 1, 1, 0, 0, 0, 0, localZone),
+		UpdatedAt:      time.Date(2020, 1, 1, 0, 0, 0, 0, localZone),
+	}
+	if err := apiRepo.CreateAPIAssociation(association); err != nil {
+		t.Fatalf("CreateAPIAssociation failed: %v", err)
+	}
+
+	if association.CreatedAt.Location() != time.UTC {
+		t.Fatalf("expected CreateAPIAssociation to normalize CreatedAt to UTC, got location %v", association.CreatedAt.Location())
+	}
+	if !association.UpdatedAt.Equal(association.CreatedAt) {
+		t.Fatalf("expected UpdatedAt == CreatedAt on creation, got created=%v updated=%v", association.CreatedAt, association.UpdatedAt)
+	}
+	if time.Since(association.CreatedAt) > time.Minute {
+		t.Fatalf("expected CreatedAt to be normalized to roughly now, got %v", association.CreatedAt)
+	}
+
+	associations, err := apiRepo.GetAPIAssociations(restAPI.ID, constants.AssociationTypeGateway, orgUUID)
+	if err != nil {
+		t.Fatalf("GetAPIAssociations failed: %v", err)
+	}
+	if len(associations) != 1 {
+		t.Fatalf("expected exactly 1 association, got %d", len(associations))
+	}
+	if associations[0].CreatedAt.Year() == 2020 {
+		t.Fatalf("expected the persisted CreatedAt to be the normalized value, not the caller-supplied 2020 date: %v", associations[0].CreatedAt)
 	}
 }
 

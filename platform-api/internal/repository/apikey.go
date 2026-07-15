@@ -42,16 +42,16 @@ func NewAPIKeyRepo(db *database.DB, reg *ArtifactTableRegistry) APIKeyRepository
 
 // Create inserts a new API key record
 func (r *APIKeyRepo) Create(key *model.APIKey) error {
-	key.CreatedAt = time.Now()
-	key.UpdatedAt = time.Now()
+	key.CreatedAt = time.Now().UTC()
+	key.UpdatedAt = key.CreatedAt
 
 	query := `
-		INSERT INTO api_keys (uuid, artifact_uuid, handle, display_name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, expires_at, issuer, allowed_targets)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO api_keys (uuid, artifact_uuid, handle, display_name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, updated_by, expires_at, issuer, allowed_targets)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(r.db.Rebind(query),
 		key.UUID, key.ArtifactUUID, key.Name, key.DisplayName, key.MaskedAPIKey, []byte(key.APIKeyHashes),
-		key.Status, key.CreatedAt, key.CreatedBy, key.UpdatedAt, key.ExpiresAt,
+		key.Status, key.CreatedAt, key.CreatedBy, key.UpdatedAt, key.UpdatedBy, key.ExpiresAt,
 		key.Issuer, key.AllowedTargets,
 	)
 	return err
@@ -59,15 +59,15 @@ func (r *APIKeyRepo) Create(key *model.APIKey) error {
 
 // Update modifies an existing API key record identified by (artifact_uuid, name)
 func (r *APIKeyRepo) Update(key *model.APIKey) error {
-	key.UpdatedAt = time.Now()
+	key.UpdatedAt = time.Now().UTC()
 
 	query := `
 		UPDATE api_keys
-		SET masked_api_key = ?, api_key_hashes = ?, status = ?, updated_at = ?, expires_at = ?, issuer = ?
+		SET masked_api_key = ?, api_key_hashes = ?, status = ?, updated_at = ?, updated_by = ?, expires_at = ?, issuer = ?
 		WHERE artifact_uuid = ? AND handle = ?
 	`
 	result, err := r.db.Exec(r.db.Rebind(query),
-		key.MaskedAPIKey, []byte(key.APIKeyHashes), key.Status, key.UpdatedAt, key.ExpiresAt, key.Issuer,
+		key.MaskedAPIKey, []byte(key.APIKeyHashes), key.Status, key.UpdatedAt, key.UpdatedBy, key.ExpiresAt, key.Issuer,
 		key.ArtifactUUID, key.Name,
 	)
 	if err != nil {
@@ -83,14 +83,14 @@ func (r *APIKeyRepo) Update(key *model.APIKey) error {
 	return nil
 }
 
-// Revoke marks an API key as revoked
-func (r *APIKeyRepo) Revoke(artifactUUID, name string) error {
+// Revoke marks an API key as revoked, recording the revoking actor in updated_by
+func (r *APIKeyRepo) Revoke(artifactUUID, name, updatedBy string) error {
 	query := `
 		UPDATE api_keys
-		SET status = 'revoked', updated_at = ?
+		SET status = 'revoked', updated_at = ?, updated_by = ?
 		WHERE artifact_uuid = ? AND handle = ?
 	`
-	result, err := r.db.Exec(r.db.Rebind(query), time.Now(), artifactUUID, name)
+	result, err := r.db.Exec(r.db.Rebind(query), time.Now().UTC(), updatedBy, artifactUUID, name)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func (r *APIKeyRepo) Revoke(artifactUUID, name string) error {
 // ListByArtifact retrieves all API keys for a given artifact UUID
 func (r *APIKeyRepo) ListByArtifact(artifactUUID string) ([]*model.APIKey, error) {
 	query := `
-		SELECT uuid, artifact_uuid, handle, display_name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, expires_at, issuer, allowed_targets
+		SELECT uuid, artifact_uuid, handle, display_name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, updated_by, expires_at, issuer, allowed_targets
 		FROM api_keys
 		WHERE artifact_uuid = ?
 		ORDER BY created_at DESC
@@ -121,16 +121,17 @@ func (r *APIKeyRepo) ListByArtifact(artifactUUID string) ([]*model.APIKey, error
 	var keys []*model.APIKey
 	for rows.Next() {
 		key := &model.APIKey{}
-		var issuer sql.NullString
+		var issuer, updatedBy sql.NullString
 		var keyHashes []byte
 		if err := rows.Scan(
 			&key.UUID, &key.ArtifactUUID, &key.Name, &key.DisplayName, &key.MaskedAPIKey, &keyHashes,
-			&key.Status, &key.CreatedAt, &key.CreatedBy, &key.UpdatedAt, &key.ExpiresAt,
+			&key.Status, &key.CreatedAt, &key.CreatedBy, &key.UpdatedAt, &updatedBy, &key.ExpiresAt,
 			&issuer, &key.AllowedTargets,
 		); err != nil {
 			return nil, err
 		}
 		key.APIKeyHashes = string(keyHashes)
+		key.UpdatedBy = updatedBy.String
 		if issuer.Valid {
 			key.Issuer = &issuer.String
 		}
@@ -147,7 +148,7 @@ func (r *APIKeyRepo) ListByArtifact(artifactUUID string) ([]*model.APIKey, error
 func (r *APIKeyRepo) ListByGatewayAndKind(gatewayID, orgID, kind, issuer string) ([]*model.APIKey, error) {
 	base := `
 		SELECT k.uuid, k.artifact_uuid, k.handle, k.display_name, k.masked_api_key, k.api_key_hashes,
-		       k.status, k.created_at, k.created_by, k.updated_at, k.expires_at,
+		       k.status, k.created_at, k.created_by, k.updated_at, k.updated_by, k.expires_at,
 		       k.issuer, k.allowed_targets
 		FROM api_keys k
 		INNER JOIN artifacts a ON k.artifact_uuid = a.uuid
@@ -173,16 +174,17 @@ func (r *APIKeyRepo) ListByGatewayAndKind(gatewayID, orgID, kind, issuer string)
 	var keys []*model.APIKey
 	for rows.Next() {
 		key := &model.APIKey{}
-		var issuerVal sql.NullString
+		var issuerVal, updatedBy sql.NullString
 		var keyHashes []byte
 		if err := rows.Scan(
 			&key.UUID, &key.ArtifactUUID, &key.Name, &key.DisplayName, &key.MaskedAPIKey, &keyHashes,
-			&key.Status, &key.CreatedAt, &key.CreatedBy, &key.UpdatedAt, &key.ExpiresAt,
+			&key.Status, &key.CreatedAt, &key.CreatedBy, &key.UpdatedAt, &updatedBy, &key.ExpiresAt,
 			&issuerVal, &key.AllowedTargets,
 		); err != nil {
 			return nil, err
 		}
 		key.APIKeyHashes = string(keyHashes)
+		key.UpdatedBy = updatedBy.String
 		if issuerVal.Valid {
 			key.Issuer = &issuerVal.String
 		}
@@ -224,7 +226,7 @@ func (r *APIKeyRepo) ListAPIKeysByUser(orgUUID, username string, kinds []string)
 
 	query := fmt.Sprintf(`
 		SELECT ak.uuid, ak.artifact_uuid, ak.handle, ak.display_name, ak.masked_api_key, ak.api_key_hashes,
-		       ak.status, ak.created_at, ak.created_by, ak.updated_at, ak.expires_at,
+		       ak.status, ak.created_at, ak.created_by, ak.updated_at, ak.updated_by, ak.expires_at,
 		       ak.issuer, ak.allowed_targets,
 		       src.handle, a.type
 		FROM api_keys ak
@@ -247,17 +249,18 @@ func (r *APIKeyRepo) ListAPIKeysByUser(orgUUID, username string, kinds []string)
 	var keys []*model.UserAPIKey
 	for rows.Next() {
 		key := &model.UserAPIKey{}
-		var issuer sql.NullString
+		var issuer, updatedBy sql.NullString
 		var keyHashes []byte
 		if err := rows.Scan(
 			&key.UUID, &key.ArtifactUUID, &key.Name, &key.DisplayName, &key.MaskedAPIKey, &keyHashes,
-			&key.Status, &key.CreatedAt, &key.CreatedBy, &key.UpdatedAt, &key.ExpiresAt,
+			&key.Status, &key.CreatedAt, &key.CreatedBy, &key.UpdatedAt, &updatedBy, &key.ExpiresAt,
 			&issuer, &key.AllowedTargets,
 			&key.ArtifactHandle, &key.ArtifactType,
 		); err != nil {
 			return nil, err
 		}
 		key.APIKeyHashes = string(keyHashes)
+		key.UpdatedBy = updatedBy.String
 		if issuer.Valid {
 			key.Issuer = &issuer.String
 		}
@@ -269,16 +272,16 @@ func (r *APIKeyRepo) ListAPIKeysByUser(orgUUID, username string, kinds []string)
 // GetByArtifactAndName retrieves an API key by artifact UUID and name
 func (r *APIKeyRepo) GetByArtifactAndName(artifactUUID, name string) (*model.APIKey, error) {
 	key := &model.APIKey{}
-	var issuer sql.NullString
+	var issuer, updatedBy sql.NullString
 	var keyHashes []byte
 	query := `
-		SELECT uuid, artifact_uuid, handle, display_name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, expires_at, issuer, allowed_targets
+		SELECT uuid, artifact_uuid, handle, display_name, masked_api_key, api_key_hashes, status, created_at, created_by, updated_at, updated_by, expires_at, issuer, allowed_targets
 		FROM api_keys
 		WHERE artifact_uuid = ? AND handle = ?
 	`
 	err := r.db.QueryRow(r.db.Rebind(query), artifactUUID, name).Scan(
 		&key.UUID, &key.ArtifactUUID, &key.Name, &key.DisplayName, &key.MaskedAPIKey, &keyHashes,
-		&key.Status, &key.CreatedAt, &key.CreatedBy, &key.UpdatedAt, &key.ExpiresAt,
+		&key.Status, &key.CreatedAt, &key.CreatedBy, &key.UpdatedAt, &updatedBy, &key.ExpiresAt,
 		&issuer, &key.AllowedTargets,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -288,6 +291,7 @@ func (r *APIKeyRepo) GetByArtifactAndName(artifactUUID, name string) (*model.API
 		return nil, err
 	}
 	key.APIKeyHashes = string(keyHashes)
+	key.UpdatedBy = updatedBy.String
 	if issuer.Valid {
 		key.Issuer = &issuer.String
 	}

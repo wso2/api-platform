@@ -91,19 +91,6 @@ func (s *MCPProxyService) toMCPProxyAPI(m *model.MCPProxy) (*api.MCPProxy, error
 	return resp, nil
 }
 
-// mcpProxyListItemResolved converts m via mapMCPProxyModelToListItem and
-// resolves its createdBy UUID to its raw external identity.
-func (s *MCPProxyService) mcpProxyListItemResolved(m *model.MCPProxy) (*api.MCPProxyListItem, error) {
-	item := mapMCPProxyModelToListItem(m)
-	if item == nil {
-		return nil, nil
-	}
-	if err := s.identity.ResolveIdentityField(&item.CreatedBy); err != nil {
-		return nil, err
-	}
-	return item, nil
-}
-
 // WithSecretService injects the SecretService for secret-ref validation.
 func (s *MCPProxyService) WithSecretService(ss *SecretService) {
 	s.secretService = ss
@@ -254,14 +241,17 @@ func (s *MCPProxyService) List(orgUUID string, limit, offset int) (*api.MCPProxy
 	}
 
 	resp.List = make([]api.MCPProxyListItem, 0, len(proxies))
+	createdByFields := make([]**string, 0, len(proxies))
 	for _, p := range proxies {
-		item, err := s.mcpProxyListItemResolved(p)
-		if err != nil {
-			return nil, err
+		item := mapMCPProxyModelToListItem(p)
+		if item == nil {
+			continue
 		}
-		if item != nil {
-			resp.List = append(resp.List, *item)
-		}
+		resp.List = append(resp.List, *item)
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 
 	return resp, nil
@@ -306,14 +296,17 @@ func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, limit, of
 	}
 
 	resp.List = make([]api.MCPProxyListItem, 0, len(proxies))
+	createdByFields := make([]**string, 0, len(proxies))
 	for _, p := range proxies {
-		item, err := s.mcpProxyListItemResolved(p)
-		if err != nil {
-			return nil, err
+		item := mapMCPProxyModelToListItem(p)
+		if item == nil {
+			continue
 		}
-		if item != nil {
-			resp.List = append(resp.List, *item)
-		}
+		resp.List = append(resp.List, *item)
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 
 	return resp, nil

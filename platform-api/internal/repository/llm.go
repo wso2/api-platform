@@ -70,7 +70,7 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 	// Preserve caller-provided timestamps: the DP->CP import sets created_at/updated_at to the
 	// gateway deployment time (UTC) so they act as the last-in-wins watermark. Default to now
 	// for control-plane-native creates that leave them unset.
-	now := time.Now()
+	now := time.Now().UTC()
 	if t.CreatedAt.IsZero() {
 		t.CreatedAt = now
 	}
@@ -197,7 +197,7 @@ func (r *LLMProviderTemplateRepo) createNewVersionOnce(t *model.LLMProviderTempl
 	t.IsLatest = true
 	t.Enabled = true
 	t.UpdatedBy = t.CreatedBy
-	now := time.Now()
+	now := time.Now().UTC()
 	if t.CreatedAt.IsZero() {
 		t.CreatedAt = now
 	}
@@ -437,7 +437,7 @@ func (r *LLMProviderTemplateRepo) Update(t *model.LLMProviderTemplate) error {
 	// time (UTC) so it acts as the last-in-wins watermark. Default to now for control-plane-native
 	// updates that leave it unset.
 	if t.UpdatedAt.IsZero() {
-		t.UpdatedAt = time.Now()
+		t.UpdatedAt = time.Now().UTC()
 	}
 
 	configJSON, err := json.Marshal(&llmProviderTemplateConfig{
@@ -481,7 +481,7 @@ func (r *LLMProviderTemplateRepo) RenameFamily(baseHandle, orgUUID, name string)
 	_, err := r.db.Exec(r.db.Rebind(`
 		UPDATE llm_provider_templates SET display_name = ?, updated_at = ?
 		WHERE group_id = ? AND organization_uuid = ? AND managed_by != ?
-	`), name, time.Now(), baseHandle, orgUUID, "wso2")
+	`), name, time.Now().UTC(), baseHandle, orgUUID, "wso2")
 	return err
 }
 
@@ -489,7 +489,7 @@ func (r *LLMProviderTemplateRepo) SetEnabled(groupID, orgUUID, version string, e
 	result, err := r.db.Exec(r.db.Rebind(`
 		UPDATE llm_provider_templates SET enabled = ?, updated_at = ?
 		WHERE group_id = ? AND organization_uuid = ? AND version = ?
-	`), boolToInt(enabled), time.Now(), groupID, orgUUID, version)
+	`), boolToInt(enabled), time.Now().UTC(), groupID, orgUUID, version)
 	if err != nil {
 		return err
 	}
@@ -593,21 +593,21 @@ func (r *LLMProviderTemplateRepo) CountProvidersUsingTemplate(groupID, orgUUID, 
 
 // insertArtifactGatewayAssociations writes the given gateway associations for an artifact
 // within the supplied transaction. metadata is a BYTEA column; a nil slice is stored as NULL.
-func insertArtifactGatewayAssociations(tx *sql.Tx, db *database.DB, artifactUUID, orgUUID string, assocs []model.AssociatedGatewayMapping, now time.Time) error {
+func insertArtifactGatewayAssociations(tx *sql.Tx, db *database.DB, artifactUUID, orgUUID, createdBy string, assocs []model.AssociatedGatewayMapping, now time.Time) error {
 	if len(assocs) == 0 {
 		return nil
 	}
 	query := `
 		INSERT INTO artifact_gateway_mappings (
-			artifact_uuid, organization_uuid, gateway_uuid, metadata, created_at, updated_at
+			artifact_uuid, organization_uuid, gateway_uuid, metadata, created_by, updated_by, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 	for _, assoc := range assocs {
 		var metadata []byte
 		if assoc.Metadata != "" {
 			metadata = []byte(assoc.Metadata)
 		}
-		if _, err := tx.Exec(db.Rebind(query), artifactUUID, orgUUID, assoc.GatewayUUID, metadata, now, now); err != nil {
+		if _, err := tx.Exec(db.Rebind(query), artifactUUID, orgUUID, assoc.GatewayUUID, metadata, createdBy, createdBy, now, now); err != nil {
 			return fmt.Errorf("failed to create gateway association: %w", err)
 		}
 	}
@@ -616,13 +616,13 @@ func insertArtifactGatewayAssociations(tx *sql.Tx, db *database.DB, artifactUUID
 
 // replaceArtifactGatewayAssociations replaces the full set of gateway associations for an
 // artifact within the supplied transaction (delete-all then insert). Deployments are not touched.
-func replaceArtifactGatewayAssociations(tx *sql.Tx, db *database.DB, artifactUUID, orgUUID string, assocs []model.AssociatedGatewayMapping, now time.Time) error {
+func replaceArtifactGatewayAssociations(tx *sql.Tx, db *database.DB, artifactUUID, orgUUID, updatedBy string, assocs []model.AssociatedGatewayMapping, now time.Time) error {
 	if _, err := tx.Exec(db.Rebind(
 		`DELETE FROM artifact_gateway_mappings WHERE artifact_uuid = ? AND organization_uuid = ?`),
 		artifactUUID, orgUUID); err != nil {
 		return fmt.Errorf("failed to clear gateway associations: %w", err)
 	}
-	return insertArtifactGatewayAssociations(tx, db, artifactUUID, orgUUID, assocs, now)
+	return insertArtifactGatewayAssociations(tx, db, artifactUUID, orgUUID, updatedBy, assocs, now)
 }
 
 // loadArtifactGatewayAssociations returns the gateway associations for an artifact, joining
@@ -667,7 +667,7 @@ func loadArtifactGatewayAssociations(db *database.DB, artifactUUID, orgUUID stri
 //   - Association exists, metadata omitted → fall back to the association's stored metadata.
 //
 // It returns the metadata to persist on the deployment record. An empty string means "no metadata".
-func ensureArtifactGatewayAssociation(db *database.DB, artifactUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
+func ensureArtifactGatewayAssociation(db *database.DB, artifactUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error) {
 	effectiveMetadata := func(existing []byte) string {
 		if metadataProvided {
 			return deployMetadata
@@ -688,17 +688,17 @@ func ensureArtifactGatewayAssociation(db *database.DB, artifactUUID, gatewayUUID
 	}
 
 	// No association yet → insert one, seeding its metadata from the deploy request.
-	now := time.Now()
+	now := time.Now().UTC()
 	var metaArg []byte
 	if strings.TrimSpace(deployMetadata) != "" {
 		metaArg = []byte(deployMetadata)
 	}
 	insertQuery := `
 		INSERT INTO artifact_gateway_mappings (
-			artifact_uuid, organization_uuid, gateway_uuid, metadata, created_at, updated_at
+			artifact_uuid, organization_uuid, gateway_uuid, metadata, created_by, updated_by, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?)`
-	if _, err := db.Exec(db.Rebind(insertQuery), artifactUUID, orgUUID, gatewayUUID, metaArg, now, now); err != nil {
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	if _, err := db.Exec(db.Rebind(insertQuery), artifactUUID, orgUUID, gatewayUUID, metaArg, createdBy, createdBy, now, now); err != nil {
 		// A concurrent deploy for the same artifact/gateway may have inserted the row
 		// between our read and this insert, tripping the primary key. Re-read: if the row
 		// now exists the ensure has effectively succeeded (idempotent); otherwise the
@@ -746,7 +746,7 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 		return fmt.Errorf("failed to generate LLM provider ID: %w", err)
 	}
 	p.UUID = uuidStr
-	now := time.Now()
+	now := time.Now().UTC()
 	p.CreatedAt = now
 	p.UpdatedAt = now
 
@@ -787,12 +787,12 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 	// Insert into llm_providers table (handle/name/version/timestamps now live here)
 	query := `
 		INSERT INTO llm_providers (
-			uuid, handle, display_name, version, description, created_by, template_uuid, openapi_spec, model_list,
+			uuid, handle, display_name, version, description, created_by, updated_by, template_uuid, openapi_spec, model_list,
 		                           configuration, origin, data_version, created_at, updated_at, organization_uuid
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
-		p.UUID, p.ID, p.Name, p.Version, p.Description, p.CreatedBy, p.TemplateUUID,
+		p.UUID, p.ID, p.Name, p.Version, p.Description, p.CreatedBy, p.UpdatedBy, p.TemplateUUID,
 		[]byte(p.OpenAPISpec), modelProvidersJSON, configurationJSON, origin, p.DataVersion, p.CreatedAt, p.UpdatedAt,
 		p.OrganizationUUID,
 	)
@@ -805,7 +805,7 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 	}
 
 	// Persist gateway associations (if any) within the same transaction.
-	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.CreatedBy, p.AssociatedGateways, now); err != nil {
 		return err
 	}
 
@@ -819,18 +819,18 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
-			description, created_by, template_uuid, openapi_spec, model_list, configuration
+			description, created_by, updated_by, template_uuid, openapi_spec, model_list, configuration
 		FROM llm_providers
 		WHERE handle = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), providerID, orgUUID)
 
 	var p model.LLMProvider
-	var createdBy sql.NullString
+	var createdBy, updatedBy sql.NullString
 	var openAPISpec, modelProvidersRaw []byte
 	var configurationJSON []byte
 	if err := row.Scan(
 		&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
-		&p.Description, &createdBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
+		&p.Description, &createdBy, &updatedBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -838,6 +838,7 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 		return nil, err
 	}
 	p.CreatedBy = createdBy.String
+	p.UpdatedBy = updatedBy.String
 
 	if len(configurationJSON) > 0 {
 		if config, err := deserializeLLMProviderConfiguration(configurationJSON); err != nil {
@@ -868,8 +869,8 @@ func (r *LLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvide
 // EnsureGatewayAssociation creates a gateway association for the provider if one does not
 // already exist and resolves the metadata to use for the deployment. See
 // ensureArtifactGatewayAssociation for the full semantics.
-func (r *LLMProviderRepo) EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
-	return ensureArtifactGatewayAssociation(r.db, providerUUID, gatewayUUID, orgUUID, deployMetadata, metadataProvided)
+func (r *LLMProviderRepo) EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error) {
+	return ensureArtifactGatewayAssociation(r.db, providerUUID, gatewayUUID, orgUUID, createdBy, deployMetadata, metadataProvided)
 }
 
 func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error) {
@@ -878,7 +879,7 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
-			description, created_by, template_uuid, openapi_spec, model_list, configuration
+			description, created_by, updated_by, template_uuid, openapi_spec, model_list, configuration
 		FROM llm_providers
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -892,17 +893,18 @@ func (r *LLMProviderRepo) List(orgUUID string, limit, offset int) ([]*model.LLMP
 	var res []*model.LLMProvider
 	for rows.Next() {
 		var p model.LLMProvider
-		var createdBy sql.NullString
+		var createdBy, updatedBy sql.NullString
 		var openAPISpec, modelProvidersRaw []byte
 		var configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
-			&p.Description, &createdBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
+			&p.Description, &createdBy, &updatedBy, &p.TemplateUUID, &openAPISpec, &modelProvidersRaw, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
 		p.CreatedBy = createdBy.String
+		p.UpdatedBy = updatedBy.String
 		if len(openAPISpec) > 0 {
 			p.OpenAPISpec = string(openAPISpec)
 		}
@@ -928,7 +930,7 @@ func (r *LLMProviderRepo) Count(orgUUID string) (int, error) {
 }
 
 func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	p.UpdatedAt = now
 
 	modelProvidersJSON, err := json.Marshal(p.ModelProviders)
@@ -996,7 +998,7 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	// Replace the full set of gateway associations within the same transaction when the
 	// caller manages associations. Deployments are intentionally left untouched.
 	if p.ReplaceAssociatedGateways {
-		if err := replaceArtifactGatewayAssociations(tx, r.db, providerUUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+		if err := replaceArtifactGatewayAssociations(tx, r.db, providerUUID, p.OrganizationUUID, p.UpdatedBy, p.AssociatedGateways, now); err != nil {
 			return err
 		}
 	}
@@ -1064,7 +1066,7 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 		return fmt.Errorf("failed to generate LLM proxy ID: %w", err)
 	}
 	p.UUID = uuidStr
-	now := time.Now()
+	now := time.Now().UTC()
 	p.CreatedAt = now
 	p.UpdatedAt = now
 
@@ -1100,12 +1102,12 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 	// Insert into llm_proxies table (handle/name/version/timestamps now live here)
 	query := `
 		INSERT INTO llm_proxies (
-			uuid, handle, display_name, version, project_uuid, description, created_by, provider_uuid, openapi_spec,
+			uuid, handle, display_name, version, project_uuid, description, created_by, updated_by, provider_uuid, openapi_spec,
 		                         configuration, origin, data_version, created_at, updated_at, organization_uuid
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
-		p.UUID, p.ID, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, p.ProviderUUID,
+		p.UUID, p.ID, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, p.UpdatedBy, p.ProviderUUID,
 		[]byte(p.OpenAPISpec), configurationJSON, origin, p.DataVersion, p.CreatedAt, p.UpdatedAt,
 		p.OrganizationUUID,
 	)
@@ -1118,7 +1120,7 @@ func (r *LLMProxyRepo) Create(p *model.LLMProxy) error {
 	}
 
 	// Persist gateway associations (if any) within the same transaction.
-	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.CreatedBy, p.AssociatedGateways, now); err != nil {
 		return err
 	}
 
@@ -1132,17 +1134,17 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
-			project_uuid, description, created_by, provider_uuid, openapi_spec, configuration
+			project_uuid, description, created_by, updated_by, provider_uuid, openapi_spec, configuration
 		FROM llm_proxies
 		WHERE handle = ? AND organization_uuid = ?`
 	row := r.db.QueryRow(r.db.Rebind(query), proxyID, orgUUID)
 
 	var p model.LLMProxy
-	var createdBy sql.NullString
+	var createdBy, updatedBy sql.NullString
 	var openAPISpec, configurationJSON []byte
 	if err := row.Scan(
 		&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
-		&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
+		&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &p.ProviderUUID,
 		&openAPISpec, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1151,6 +1153,7 @@ func (r *LLMProxyRepo) GetByID(proxyID, orgUUID string) (*model.LLMProxy, error)
 		return nil, err
 	}
 	p.CreatedBy = createdBy.String
+	p.UpdatedBy = updatedBy.String
 
 	if len(openAPISpec) > 0 {
 		p.OpenAPISpec = string(openAPISpec)
@@ -1178,7 +1181,7 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
-			project_uuid, description, created_by, provider_uuid,
+			project_uuid, description, created_by, updated_by, provider_uuid,
 			openapi_spec, configuration
 		FROM llm_proxies
 		WHERE organization_uuid = ?
@@ -1193,17 +1196,18 @@ func (r *LLMProxyRepo) List(orgUUID string, limit, offset int) ([]*model.LLMProx
 	var res []*model.LLMProxy
 	for rows.Next() {
 		var p model.LLMProxy
-		var createdBy sql.NullString
+		var createdBy, updatedBy sql.NullString
 		var openAPISpec, configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
+			&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &p.ProviderUUID,
 			&openAPISpec, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
 		p.CreatedBy = createdBy.String
+		p.UpdatedBy = updatedBy.String
 		if len(openAPISpec) > 0 {
 			p.OpenAPISpec = string(openAPISpec)
 		}
@@ -1225,7 +1229,7 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
-			project_uuid, description, created_by, provider_uuid,
+			project_uuid, description, created_by, updated_by, provider_uuid,
 			openapi_spec, configuration
 		FROM llm_proxies
 		WHERE organization_uuid = ? AND project_uuid = ?
@@ -1240,17 +1244,18 @@ func (r *LLMProxyRepo) ListByProject(orgUUID, projectUUID string, limit, offset 
 	var res []*model.LLMProxy
 	for rows.Next() {
 		var p model.LLMProxy
-		var createdBy sql.NullString
+		var createdBy, updatedBy sql.NullString
 		var openAPISpec, configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
+			&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &p.ProviderUUID,
 			&openAPISpec, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
 		p.CreatedBy = createdBy.String
+		p.UpdatedBy = updatedBy.String
 		if len(openAPISpec) > 0 {
 			p.OpenAPISpec = string(openAPISpec)
 		}
@@ -1272,7 +1277,7 @@ func (r *LLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offse
 	query := `
 		SELECT
 			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
-			project_uuid, description, created_by, provider_uuid,
+			project_uuid, description, created_by, updated_by, provider_uuid,
 			openapi_spec, configuration
 		FROM llm_proxies
 		WHERE organization_uuid = ? AND provider_uuid = ?
@@ -1287,17 +1292,18 @@ func (r *LLMProxyRepo) ListByProvider(orgUUID, providerUUID string, limit, offse
 	var res []*model.LLMProxy
 	for rows.Next() {
 		var p model.LLMProxy
-		var createdBy sql.NullString
+		var createdBy, updatedBy sql.NullString
 		var openAPISpec, configurationJSON []byte
 		err := rows.Scan(
 			&p.UUID, &p.ID, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
-			&p.ProjectUUID, &p.Description, &createdBy, &p.ProviderUUID,
+			&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &p.ProviderUUID,
 			&openAPISpec, &configurationJSON,
 		)
 		if err != nil {
 			return nil, err
 		}
 		p.CreatedBy = createdBy.String
+		p.UpdatedBy = updatedBy.String
 		if len(openAPISpec) > 0 {
 			p.OpenAPISpec = string(openAPISpec)
 		}
@@ -1341,7 +1347,7 @@ func (r *LLMProxyRepo) CountByProvider(orgUUID, providerUUID string) (int, error
 }
 
 func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	p.UpdatedAt = now
 
 	configurationJSON, err := serializeLLMProxyConfiguration(p.Configuration)
@@ -1407,7 +1413,7 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 	// Replace the full set of gateway associations within the same transaction when the
 	// caller manages associations. Deployments are intentionally left untouched.
 	if p.ReplaceAssociatedGateways {
-		if err := replaceArtifactGatewayAssociations(tx, r.db, proxyUUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+		if err := replaceArtifactGatewayAssociations(tx, r.db, proxyUUID, p.OrganizationUUID, p.UpdatedBy, p.AssociatedGateways, now); err != nil {
 			return err
 		}
 	}
@@ -1421,8 +1427,8 @@ func (r *LLMProxyRepo) Update(p *model.LLMProxy) error {
 // EnsureGatewayAssociation creates a gateway association for the proxy if one does not
 // already exist and resolves the metadata to use for the deployment. See
 // ensureArtifactGatewayAssociation for the full semantics.
-func (r *LLMProxyRepo) EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
-	return ensureArtifactGatewayAssociation(r.db, proxyUUID, gatewayUUID, orgUUID, deployMetadata, metadataProvided)
+func (r *LLMProxyRepo) EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error) {
+	return ensureArtifactGatewayAssociation(r.db, proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata, metadataProvided)
 }
 
 func (r *LLMProxyRepo) Delete(proxyID, orgUUID string) error {

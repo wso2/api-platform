@@ -57,7 +57,7 @@ func (r *UserIdentityMappingRepo) GetOrCreateUUID(identity string) (string, erro
 
 	newUUID := uuid.New().String()
 	query := `INSERT INTO user_idp_references (uuid, idp_id, created_at) VALUES (?, ?, ?)`
-	_, err := r.db.Exec(r.db.Rebind(query), newUUID, identity, time.Now())
+	_, err := r.db.Exec(r.db.Rebind(query), newUUID, identity, time.Now().UTC())
 	if err != nil {
 		if isUniqueViolation(err) {
 			// Lost the race to another concurrent request inserting the same idp_id.

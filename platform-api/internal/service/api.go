@@ -25,7 +25,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -163,6 +162,8 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 	apiREST := s.createRequestToRESTAPI(req, handle)
 	apiModel := s.apiUtil.RESTAPIToModel(apiREST, orgUUID)
 	apiModel.ProjectID = project.ID
+	// On creation the creator is also the last updater.
+	apiModel.UpdatedBy = createdBy
 	// Create API in repository (UUID is generated internally by CreateAPI)
 	if err := s.apiRepo.CreateAPI(apiModel); err != nil {
 		s.slogger.Error("Failed to create API in repository", "apiName", req.DisplayName, "error", err)
@@ -179,10 +180,13 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 	return s.modelToRESTAPI(apiModel)
 }
 
-// modelToRESTAPI converts an internal API model to the API representation,
-// resolving the project's handle for the response's projectId field and the
-// createdBy/updatedBy UUIDs to their raw external identity.
-func (s *APIService) modelToRESTAPI(apiModel *model.API) (*api.RESTAPI, error) {
+// modelToRESTAPIUnresolved converts an internal API model to the API
+// representation, resolving the project's handle for the response's
+// projectId field, but leaving createdBy/updatedBy as raw internal UUIDs.
+// Used by list endpoints, which batch-resolve identity across the whole page
+// afterward instead of one-by-one — see modelToRESTAPI for the single-item
+// equivalent that resolves inline.
+func (s *APIService) modelToRESTAPIUnresolved(apiModel *model.API) (*api.RESTAPI, error) {
 	if apiModel == nil {
 		return nil, nil
 	}
@@ -194,9 +198,16 @@ func (s *APIService) modelToRESTAPI(apiModel *model.API) (*api.RESTAPI, error) {
 	if project != nil {
 		projectHandle = project.Handle
 	}
-	resp, err := s.apiUtil.ModelToRESTAPI(apiModel, projectHandle)
-	if err != nil {
-		return nil, err
+	return s.apiUtil.ModelToRESTAPI(apiModel, projectHandle)
+}
+
+// modelToRESTAPI converts an internal API model to the API representation,
+// resolving the project's handle for the response's projectId field and the
+// createdBy/updatedBy UUIDs to their raw external identity.
+func (s *APIService) modelToRESTAPI(apiModel *model.API) (*api.RESTAPI, error) {
+	resp, err := s.modelToRESTAPIUnresolved(apiModel)
+	if err != nil || resp == nil {
+		return resp, err
 	}
 	if err := s.resolveRESTAPIIdentity(resp); err != nil {
 		return nil, err
@@ -290,9 +301,10 @@ func (s *APIService) GetAPIsByOrganization(orgUUID string, projectHandle string,
 		return nil, 0, fmt.Errorf("failed to get apis: %w", err)
 	}
 
-	apis := make([]api.RESTAPI, 0)
+	apis := make([]api.RESTAPI, 0, len(apiModels))
+	createdByFields := make([]**string, 0, len(apiModels))
 	for _, apiModel := range apiModels {
-		apiResponse, err := s.modelToRESTAPI(apiModel)
+		apiResponse, err := s.modelToRESTAPIUnresolved(apiModel)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -300,7 +312,11 @@ func (s *APIService) GetAPIsByOrganization(orgUUID string, projectHandle string,
 			// updatedBy is detail-only; omit it from list responses.
 			apiResponse.UpdatedBy = nil
 			apis = append(apis, *apiResponse)
+			createdByFields = append(createdByFields, &apis[len(apis)-1].CreatedBy)
 		}
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, 0, err
 	}
 	return apis, total, nil
 }
@@ -352,6 +368,7 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 	updatedAPIModel.ProjectID = existingAPIModel.ProjectID
 	updatedAPIModel.Kind = existingAPIModel.Kind
 	updatedAPIModel.Origin = existingAPIModel.Origin
+	updatedAPIModel.CreatedBy = existingAPIModel.CreatedBy
 
 	// A DP-originated (gateway_api) artifact is read-only in the control plane only for
 	// changes that alter the gateway runtime artifact. Allow edits that leave the
@@ -508,12 +525,12 @@ func (s *APIService) DeleteAPIByHandle(handle, orgId, deletedBy string) error {
 }
 
 // AddGatewaysToAPIByHandle associates multiple gateways with an API identified by handle
-func (s *APIService) AddGatewaysToAPIByHandle(handle string, gatewayIds []string, orgId string) (*api.RESTAPIGatewayListResponse, error) {
+func (s *APIService) AddGatewaysToAPIByHandle(handle string, gatewayIds []string, orgId, createdBy string) (*api.RESTAPIGatewayListResponse, error) {
 	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
 		return nil, err
 	}
-	return s.AddGatewaysToAPI(apiUUID, gatewayIds, orgId)
+	return s.AddGatewaysToAPI(apiUUID, gatewayIds, orgId, createdBy)
 }
 
 // GetAPIGatewaysByHandle retrieves a page of gateways associated with an API
@@ -559,7 +576,7 @@ func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string, limit, offset 
 }
 
 // AddGatewaysToAPI associates multiple gateways with an API
-func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUUID string) (*api.RESTAPIGatewayListResponse, error) {
+func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUUID, createdBy string) (*api.RESTAPIGatewayListResponse, error) {
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
@@ -591,7 +608,7 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 	}
 	for _, gateway := range validGateways {
 		if existingGatewayIds[gateway.ID] {
-			if err := s.apiRepo.UpdateAPIAssociation(apiUUID, gateway.ID, constants.AssociationTypeGateway, orgUUID); err != nil {
+			if err := s.apiRepo.UpdateAPIAssociation(apiUUID, gateway.ID, constants.AssociationTypeGateway, orgUUID, createdBy); err != nil {
 				return nil, err
 			}
 		} else {
@@ -599,8 +616,7 @@ func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUU
 				ArtifactID:     apiUUID,
 				OrganizationID: orgUUID,
 				GatewayID:      gateway.ID,
-				CreatedAt:      time.Now(),
-				UpdatedAt:      time.Now(),
+				CreatedBy:      createdBy,
 			}
 			if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
 				return nil, err

@@ -37,6 +37,7 @@ import (
 // using the shared deployment model.
 type LLMProviderDeploymentHandler struct {
 	deploymentService *service.LLMProviderDeploymentService
+	identity          *service.IdentityService
 	slogger           *slog.Logger
 }
 
@@ -44,15 +45,16 @@ type LLMProviderDeploymentHandler struct {
 // using the shared deployment model.
 type LLMProxyDeploymentHandler struct {
 	deploymentService *service.LLMProxyDeploymentService
+	identity          *service.IdentityService
 	slogger           *slog.Logger
 }
 
-func NewLLMProviderDeploymentHandler(deploymentService *service.LLMProviderDeploymentService, slogger *slog.Logger) *LLMProviderDeploymentHandler {
-	return &LLMProviderDeploymentHandler{deploymentService: deploymentService, slogger: slogger}
+func NewLLMProviderDeploymentHandler(deploymentService *service.LLMProviderDeploymentService, identity *service.IdentityService, slogger *slog.Logger) *LLMProviderDeploymentHandler {
+	return &LLMProviderDeploymentHandler{deploymentService: deploymentService, identity: identity, slogger: slogger}
 }
 
-func NewLLMProxyDeploymentHandler(deploymentService *service.LLMProxyDeploymentService, slogger *slog.Logger) *LLMProxyDeploymentHandler {
-	return &LLMProxyDeploymentHandler{deploymentService: deploymentService, slogger: slogger}
+func NewLLMProxyDeploymentHandler(deploymentService *service.LLMProxyDeploymentService, identity *service.IdentityService, slogger *slog.Logger) *LLMProxyDeploymentHandler {
+	return &LLMProxyDeploymentHandler{deploymentService: deploymentService, identity: identity, slogger: slogger}
 }
 
 // DeployLLMProvider handles POST /api/v0.9/llm-providers/{llmProviderId}/deployments
@@ -84,7 +86,12 @@ func (h *LLMProviderDeploymentHandler) DeployLLMProvider(w http.ResponseWriter, 
 		return apperror.LLMProviderDeploymentValidationFailed.New("gatewayId is required")
 	}
 
-	deployment, err := h.deploymentService.DeployLLMProvider(providerId, &req, orgId)
+	createdBy, err := resolveActorErr(r, h.identity, "deploy LLM provider")
+	if err != nil {
+		return err
+	}
+
+	deployment, err := h.deploymentService.DeployLLMProvider(providerId, &req, orgId, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to deploy LLM provider %s", providerId))
 	}
@@ -272,7 +279,12 @@ func (h *LLMProxyDeploymentHandler) DeployLLMProxy(w http.ResponseWriter, r *htt
 		return apperror.LLMProxyDeploymentValidationFailed.New("gatewayId is required")
 	}
 
-	deployment, err := h.deploymentService.DeployLLMProxy(proxyId, &req, orgId)
+	createdBy, err := resolveActorErr(r, h.identity, "deploy LLM proxy")
+	if err != nil {
+		return err
+	}
+
+	deployment, err := h.deploymentService.DeployLLMProxy(proxyId, &req, orgId, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to deploy LLM proxy %s", proxyId))
 	}

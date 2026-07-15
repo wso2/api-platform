@@ -568,9 +568,10 @@ func RequireOrganization(organizationParam string) func(http.Handler) http.Handl
 }
 
 // NewTestContextMiddleware creates an http.Handler middleware for integration tests.
-// It reads X-Test-Org and X-Test-User request headers and injects the values into
-// the request context so that GetOrganizationFromRequest / GetUsernameFromRequest work
-// without a real JWT. Never use this in production code.
+// It reads X-Test-Org, X-Test-User, and X-Test-Scope request headers and injects the
+// values into the request context so that GetOrganizationFromRequest /
+// GetUsernameFromRequest / GetScopeFromRequest work without a real JWT. Never use this
+// in production code.
 func NewTestContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -580,6 +581,9 @@ func NewTestContextMiddleware(next http.Handler) http.Handler {
 		if user := r.Header.Get("X-Test-User"); user != "" {
 			ctx = context.WithValue(ctx, keyUsername, user)
 			ctx = context.WithValue(ctx, keyUserID, user)
+		}
+		if scope := r.Header.Get("X-Test-Scope"); scope != "" {
+			ctx = context.WithValue(ctx, keyScope, scope)
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

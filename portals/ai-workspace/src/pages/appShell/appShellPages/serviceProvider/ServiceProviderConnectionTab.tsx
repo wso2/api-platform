@@ -121,6 +121,7 @@ export default function ServiceProviderConnectionTab() {
         createdAt,
         createdBy,
         updatedAt,
+        updatedBy,
         lastUpdated,
         ...updatePayload
       } = provider;
@@ -159,6 +160,7 @@ export default function ServiceProviderConnectionTab() {
         createdAt,
         createdBy,
         updatedAt,
+        updatedBy,
         lastUpdated,
         ...updatePayload
       } = provider;
@@ -198,6 +200,7 @@ export default function ServiceProviderConnectionTab() {
         createdAt,
         createdBy,
         updatedAt,
+        updatedBy,
         lastUpdated,
         ...updatePayload
       } = provider;
@@ -245,6 +248,7 @@ export default function ServiceProviderConnectionTab() {
         createdAt,
         createdBy,
         updatedAt,
+        updatedBy,
         lastUpdated,
         ...updatePayload
       } = provider;

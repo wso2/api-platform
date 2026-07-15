@@ -65,7 +65,7 @@ func (r *SubscriptionPlanRepo) Create(plan *model.SubscriptionPlan) error {
 	if plan.UUID == "" {
 		plan.UUID = uuid.New().String()
 	}
-	now := time.Now()
+	now := time.Now().UTC()
 	plan.CreatedAt = now
 	plan.UpdatedAt = now
 
@@ -254,7 +254,7 @@ func (r *SubscriptionPlanRepo) Update(plan *model.SubscriptionPlan) error {
 	if plan == nil {
 		return fmt.Errorf("subscription plan is required")
 	}
-	plan.UpdatedAt = time.Now()
+	plan.UpdatedAt = time.Now().UTC()
 
 	tx, err := r.db.Begin()
 	if err != nil {

@@ -89,19 +89,6 @@ func (s *WebBrokerAPIService) toWebBrokerAPI(m *model.WebBrokerAPI) (*api.WebBro
 	return resp, nil
 }
 
-// webBrokerAPIListItemResolved converts m via mapWebBrokerAPIModelToListItem
-// and resolves its createdBy UUID to its raw external identity.
-func (s *WebBrokerAPIService) webBrokerAPIListItemResolved(m *model.WebBrokerAPI) (*api.WebBrokerAPIListItem, error) {
-	item := mapWebBrokerAPIModelToListItem(m)
-	if item == nil {
-		return nil, nil
-	}
-	if err := s.identity.ResolveIdentityField(&item.CreatedBy); err != nil {
-		return nil, err
-	}
-	return item, nil
-}
-
 // Create creates a new WebBroker API
 func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrokerAPI) (*api.WebBrokerAPI, error) {
 	if req == nil {
@@ -173,6 +160,7 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
+		UpdatedBy:        createdBy,
 		Version:          req.Version,
 		LifeCycleStatus:  lifeCycleStatus,
 		Configuration: model.WebBrokerAPIConfiguration{
@@ -246,14 +234,17 @@ func (s *WebBrokerAPIService) List(orgUUID, projectUUID string, limit, offset in
 	}
 
 	resp.List = make([]api.WebBrokerAPIListItem, 0, len(apis))
+	createdByFields := make([]**string, 0, len(apis))
 	for _, a := range apis {
-		item, err := s.webBrokerAPIListItemResolved(a)
-		if err != nil {
-			return nil, err
+		item := mapWebBrokerAPIModelToListItem(a)
+		if item == nil {
+			continue
 		}
-		if item != nil {
-			resp.List = append(resp.List, *item)
-		}
+		resp.List = append(resp.List, *item)
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 
 	return resp, nil

@@ -60,8 +60,8 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 		return fmt.Errorf("failed to generate API ID: %w", err)
 	}
 	api.ID = apiID
-	api.CreatedAt = time.Now()
-	api.UpdatedAt = time.Now()
+	api.CreatedAt = time.Now().UTC()
+	api.UpdatedAt = api.CreatedAt
 
 	configurationJSON, err := serializeAPIConfigurations(api.Configuration)
 	if err != nil {
@@ -86,12 +86,12 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 	}
 
 	apiQuery := `
-		INSERT INTO rest_apis (uuid, organization_uuid, handle, display_name, version, description, created_by, project_uuid, lifecycle_status, configuration, origin, data_version, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO rest_apis (uuid, organization_uuid, handle, display_name, version, description, created_by, updated_by, project_uuid, lifecycle_status, configuration, origin, data_version, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err = tx.Exec(r.db.Rebind(apiQuery), api.ID, api.OrganizationID, api.Handle, api.Name, api.Version,
-		api.Description, api.CreatedBy, api.ProjectID, api.LifeCycleStatus,
+		api.Description, api.CreatedBy, api.UpdatedBy, api.ProjectID, api.LifeCycleStatus,
 		[]byte(configurationJSON), origin, api.DataVersion, api.CreatedAt, api.UpdatedAt)
 	if err != nil {
 		return err
@@ -394,7 +394,7 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 	}
 	defer tx.Rollback()
 
-	api.UpdatedAt = time.Now()
+	api.UpdatedAt = time.Now().UTC()
 
 	configurationJSON, err := serializeAPIConfigurations(api.Configuration)
 	if err != nil {
@@ -568,25 +568,35 @@ func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, or
 }
 
 // CreateAPIAssociation creates a gateway-API association in artifact_gateway_mappings.
+// created_by/updated_by are seeded from association.CreatedBy (the acting user); on create
+// updated_by mirrors created_by. Both are stored as NULL when the actor is unknown.
 func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error {
+	association.CreatedAt = time.Now().UTC()
+	association.UpdatedAt = association.CreatedAt
+	if association.UpdatedBy == "" {
+		association.UpdatedBy = association.CreatedBy
+	}
+
 	query := `
-		INSERT INTO artifact_gateway_mappings (artifact_uuid, organization_uuid, gateway_uuid, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO artifact_gateway_mappings (artifact_uuid, organization_uuid, gateway_uuid, created_by, updated_by, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(r.db.Rebind(query),
 		association.ArtifactID, association.OrganizationID, association.GatewayID,
+		association.CreatedBy, association.UpdatedBy,
 		association.CreatedAt, association.UpdatedAt)
 	return err
 }
 
-// UpdateAPIAssociation updates the updated_at timestamp for a gateway-API association.
-func (r *APIRepo) UpdateAPIAssociation(apiUUID, resourceId, associationType, orgUUID string) error {
+// UpdateAPIAssociation updates the updated_at timestamp and updated_by actor for a
+// gateway-API association.
+func (r *APIRepo) UpdateAPIAssociation(apiUUID, resourceId, associationType, orgUUID, updatedBy string) error {
 	query := `
 		UPDATE artifact_gateway_mappings
-		SET updated_at = ?
+		SET updated_at = ?, updated_by = ?
 		WHERE artifact_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), time.Now(), apiUUID, resourceId, orgUUID)
+	_, err := r.db.Exec(r.db.Rebind(query), time.Now().UTC(), updatedBy, apiUUID, resourceId, orgUUID)
 	return err
 }
 
@@ -594,7 +604,7 @@ func (r *APIRepo) UpdateAPIAssociation(apiUUID, resourceId, associationType, org
 // associationType is accepted for interface compatibility but only 'gateway' associations are stored.
 func (r *APIRepo) GetAPIAssociations(apiUUID, associationType, orgUUID string) ([]*model.APIAssociation, error) {
 	query := `
-		SELECT artifact_uuid, organization_uuid, gateway_uuid, created_at, updated_at
+		SELECT artifact_uuid, organization_uuid, gateway_uuid, created_by, updated_by, created_at, updated_at
 		FROM artifact_gateway_mappings
 		WHERE artifact_uuid = ? AND organization_uuid = ?
 	`
@@ -607,10 +617,14 @@ func (r *APIRepo) GetAPIAssociations(apiUUID, associationType, orgUUID string) (
 	var associations []*model.APIAssociation
 	for rows.Next() {
 		assoc := &model.APIAssociation{}
-		err := rows.Scan(&assoc.ArtifactID, &assoc.OrganizationID, &assoc.GatewayID, &assoc.CreatedAt, &assoc.UpdatedAt)
+		// created_by/updated_by are nullable (rows predating audit tracking store NULL).
+		var createdBy, updatedBy sql.NullString
+		err := rows.Scan(&assoc.ArtifactID, &assoc.OrganizationID, &assoc.GatewayID, &createdBy, &updatedBy, &assoc.CreatedAt, &assoc.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
+		assoc.CreatedBy = createdBy.String
+		assoc.UpdatedBy = updatedBy.String
 		associations = append(associations, assoc)
 	}
 

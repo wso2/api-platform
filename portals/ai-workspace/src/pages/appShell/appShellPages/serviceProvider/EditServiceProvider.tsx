@@ -94,6 +94,7 @@ function EditServiceProviderForm() {
       delete (fullPayload as any).createdAt;
       delete (fullPayload as any).createdBy;
       delete (fullPayload as any).updatedAt;
+      delete (fullPayload as any).updatedBy;
       delete (fullPayload as any).lastUpdated;
 
       await updateProvider(fullPayload);

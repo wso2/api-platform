@@ -310,6 +310,7 @@ func TestLifecycle_APIKeyCreateListRevoke(t *testing.T) {
 			APIKeyHashes:   `{"sha256":"` + id() + `"}`,
 			Status:         "active",
 			CreatedBy:      "it-user",
+			UpdatedBy:      "it-user",
 			AllowedTargets: "ALL",
 		}
 		if err := keyRepo.Create(key); err != nil {
@@ -353,7 +354,7 @@ func TestLifecycle_APIKeyCreateListRevoke(t *testing.T) {
 	}
 
 	// --- Revoke the key ---
-	if err := keyRepo.Revoke(artifactUUID, "key-0"); err != nil {
+	if err := keyRepo.Revoke(artifactUUID, "key-0", "it-revoker"); err != nil {
 		t.Fatalf("[%s] APIKey Revoke failed: %v", it.driver, err)
 	}
 	revoked, err := keyRepo.GetByArtifactAndName(artifactUUID, "key-0")
@@ -362,5 +363,11 @@ func TestLifecycle_APIKeyCreateListRevoke(t *testing.T) {
 	}
 	if revoked.Status != "revoked" {
 		t.Fatalf("[%s] APIKey Revoke did not persist status: %q", it.driver, revoked.Status)
+	}
+	if revoked.UpdatedBy != "it-revoker" {
+		t.Fatalf("[%s] APIKey Revoke did not persist updated_by actor: %q", it.driver, revoked.UpdatedBy)
+	}
+	if revoked.CreatedBy != "it-user" {
+		t.Fatalf("[%s] APIKey Revoke must not touch created_by: %q", it.driver, revoked.CreatedBy)
 	}
 }

@@ -250,6 +250,7 @@ export default function ServiceProviderResourcesTab() {
       createdAt,
       createdBy,
       updatedAt,
+      updatedBy,
       lastUpdated,
       ...updatePayload
     } = provider;

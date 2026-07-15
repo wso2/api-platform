@@ -72,7 +72,7 @@ function EditProviderTemplateForm({ template }: { template: ProviderTemplate }) 
     if (event) event.preventDefault();
     if (!templateId || !isFormValid || isSubmitting) return;
 
-    const { createdAt, createdBy, updatedAt, ...rest } = template;
+    const { createdAt, createdBy, updatedAt, updatedBy, ...rest } = template;
     const payload: UpdateProviderTemplateRequest = {
       ...rest,
       id: templateId,

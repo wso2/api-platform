@@ -403,13 +403,10 @@ func (s *ArtifactImportService) writeDeployment(ictx *ImportContext, artifactUUI
 		}
 	}
 	if !associated {
-		now := time.Now()
 		if err := s.apiRepo.CreateAPIAssociation(&model.APIAssociation{
 			ArtifactID:     artifactUUID,
 			OrganizationID: ictx.OrgID,
 			GatewayID:      ictx.GatewayID,
-			CreatedAt:      now,
-			UpdatedAt:      now,
 		}); err != nil {
 			return fmt.Errorf("failed to create artifact-gateway association: %w", err)
 		}

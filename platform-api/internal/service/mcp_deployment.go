@@ -234,7 +234,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 	if err != nil {
 		return nil, err
 	}
-	effectiveMetaJSON, err := s.mcpRepo.EnsureGatewayAssociation(mcpProxy.UUID, gatewayID, orgId, deployMetaJSON, metadataProvided)
+	effectiveMetaJSON, err := s.mcpRepo.EnsureGatewayAssociation(mcpProxy.UUID, gatewayID, orgId, createdBy, deployMetaJSON, metadataProvided)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
 	}
@@ -332,7 +332,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxyUUID, orgId, gatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -461,7 +461,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusUndeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxyUUID, orgId, deployment.GatewayID, deployment.DeploymentID,
 		initialStatus, string(model.DeploymentStatusUndeployed),
@@ -543,7 +543,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxyUUID, orgId, targetDeployment.GatewayID, *deploymentId,
 		initialStatus, string(model.DeploymentStatusDeployed),

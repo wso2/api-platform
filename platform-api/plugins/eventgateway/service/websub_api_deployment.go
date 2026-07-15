@@ -251,7 +251,7 @@ func (s *WebSubAPIDeploymentService) deployWebSubAPI(apiUUID string, req *api.De
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgID, gatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -355,7 +355,7 @@ func (s *WebSubAPIDeploymentService) undeployWebSubAPIDeployment(apiUUID string,
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusUndeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgID, deployment.GatewayID, deployment.DeploymentID,
 		initialStatus, string(model.DeploymentStatusUndeployed),
@@ -435,7 +435,7 @@ func (s *WebSubAPIDeploymentService) restoreWebSubAPIDeployment(apiUUID string, 
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgID, targetDeployment.GatewayID, *deploymentId,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -610,8 +610,6 @@ func (s *WebSubAPIDeploymentService) ensureAPIGatewayAssociation(apiUUID, gatewa
 		ArtifactID:     apiUUID,
 		OrganizationID: orgUUID,
 		GatewayID:      gatewayID,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
 	}
 	if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
 		s.slogger.Error("Failed to create API-gateway association", "apiUUID", apiUUID, "gatewayID", gatewayID, "orgUUID", orgUUID, "error", err)

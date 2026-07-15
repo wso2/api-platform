@@ -316,7 +316,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
 
 	// Initialize handlers
-	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
+	orgHandler := handler.NewOrganizationHandler(orgService, identityService, cfg.Auth.IDP.ValidationMode, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, identityService, slogger)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
@@ -328,11 +328,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, identityService, slogger)
 	deploymentHandler := handler.NewDeploymentHandler(deploymentService, identityService, slogger)
 	llmHandler := handler.NewLLMHandler(llmTemplateService, llmProviderService, llmProxyService, identityService, slogger)
-	llmDeploymentHandler := handler.NewLLMProviderDeploymentHandler(llmProviderDeploymentService, slogger)
+	llmDeploymentHandler := handler.NewLLMProviderDeploymentHandler(llmProviderDeploymentService, identityService, slogger)
 	llmProviderAPIKeyHandler := handler.NewLLMProviderAPIKeyHandler(llmProviderAPIKeyService, identityService, slogger)
 	llmProxyAPIKeyHandler := handler.NewLLMProxyAPIKeyHandler(llmProxyAPIKeyService, identityService, slogger)
 	apiKeyUserHandler := handler.NewAPIKeyUserHandler(apiKeyUserService, identityService, slogger)
-	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, slogger)
+	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, identityService, slogger)
 	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, identityService, slogger)
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, identityService, slogger)
 	// Wire secret placeholder validation into dependent services

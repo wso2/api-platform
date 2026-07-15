@@ -221,12 +221,52 @@ func (s *OrganizationService) ListOrganizations(limit, offset int) ([]api.Organi
 	}
 
 	orgs := make([]api.Organization, 0, len(orgModels))
+	identityFields := make([]**string, 0, len(orgModels)*2)
 	for _, orgModel := range orgModels {
-		org, convErr := s.modelToAPI(orgModel)
-		if convErr != nil {
-			return nil, 0, convErr
+		orgs = append(orgs, *s.modelToAPIUnresolved(orgModel))
+		last := &orgs[len(orgs)-1]
+		identityFields = append(identityFields, &last.CreatedBy, &last.UpdatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(identityFields); err != nil {
+		return nil, 0, err
+	}
+
+	return orgs, total, nil
+}
+
+// ListOrganizationsForUser returns a paginated list of the organizations
+// userUUID is a member of, along with the total membership count.
+//
+// It first best-effort heals membership for resolvedOrgUUID, so a caller
+// belonging to an org that predates user_organization_mappings (e.g. a
+// server-seeded org) still sees it. Heal failures are logged at Warn, not
+// returned — listing proceeds with whatever membership already exists.
+func (s *OrganizationService) ListOrganizationsForUser(userUUID, resolvedOrgUUID string, limit, offset int) ([]api.Organization, int, error) {
+	if userUUID != "" && resolvedOrgUUID != "" {
+		if err := s.userOrgMappingRepo.AddMembership(userUUID, resolvedOrgUUID); err != nil {
+			s.slogger.Warn("Failed to heal organization membership", "userUUID", userUUID, "orgUUID", resolvedOrgUUID, "error", err)
 		}
-		orgs = append(orgs, *org)
+	}
+
+	total, err := s.orgRepo.CountOrganizationsForUser(userUUID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	orgModels, err := s.orgRepo.ListOrganizationsForUser(userUUID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	orgs := make([]api.Organization, 0, len(orgModels))
+	identityFields := make([]**string, 0, len(orgModels)*2)
+	for _, orgModel := range orgModels {
+		orgs = append(orgs, *s.modelToAPIUnresolved(orgModel))
+		last := &orgs[len(orgs)-1]
+		identityFields = append(identityFields, &last.CreatedBy, &last.UpdatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(identityFields); err != nil {
+		return nil, 0, err
 	}
 
 	return orgs, total, nil
@@ -275,12 +315,16 @@ func (s *OrganizationService) apiToModel(org *api.Organization, id string) *mode
 	}
 }
 
-func (s *OrganizationService) modelToAPI(orgModel *model.Organization) (*api.Organization, error) {
+// modelToAPIUnresolved converts orgModel to its API representation, leaving
+// createdBy/updatedBy as raw internal UUIDs. Used by list endpoints, which
+// batch-resolve identity across the whole page afterward instead of
+// one-by-one — see modelToAPI for the single-item equivalent that resolves
+// inline.
+func (s *OrganizationService) modelToAPIUnresolved(orgModel *model.Organization) *api.Organization {
 	if orgModel == nil {
-		return nil, nil
+		return nil
 	}
-
-	resp := &api.Organization{
+	return &api.Organization{
 		Id:          &orgModel.Handle,
 		DisplayName: orgModel.Name,
 		Region:      orgModel.Region,
@@ -288,6 +332,13 @@ func (s *OrganizationService) modelToAPI(orgModel *model.Organization) (*api.Org
 		UpdatedBy:   utils.StringPtrIfNotEmpty(orgModel.UpdatedBy),
 		CreatedAt:   utils.TimePtrIfNotZero(orgModel.CreatedAt),
 		UpdatedAt:   utils.TimePtrIfNotZero(orgModel.UpdatedAt),
+	}
+}
+
+func (s *OrganizationService) modelToAPI(orgModel *model.Organization) (*api.Organization, error) {
+	resp := s.modelToAPIUnresolved(orgModel)
+	if resp == nil {
+		return nil, nil
 	}
 	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
 		return nil, err

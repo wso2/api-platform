@@ -104,26 +104,28 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 // API representation, resolving each creator UUID to its raw identity.
 func ownedAPIKeyItems(keys []*model.APIKey, userID string, identity *IdentityService) ([]api.APIKeyItem, error) {
 	items := make([]api.APIKeyItem, 0, len(keys))
+	createdByFields := make([]**string, 0, len(keys))
 	for _, k := range keys {
 		if k.CreatedBy != userID {
 			continue
 		}
-		createdBy := utils.StringPtrIfNotEmpty(k.CreatedBy)
-		if err := identity.ResolveIdentityField(&createdBy); err != nil {
-			return nil, err
-		}
-		items = append(items, api.APIKeyItem{
+		item := api.APIKeyItem{
 			Id:             &k.Name,
 			DisplayName:    k.DisplayName,
 			MaskedApiKey:   k.MaskedAPIKey,
 			Status:         api.APIKeyItemStatus(k.Status),
 			CreatedAt:      k.CreatedAt,
-			CreatedBy:      createdBy,
+			CreatedBy:      utils.StringPtrIfNotEmpty(k.CreatedBy),
 			UpdatedAt:      k.UpdatedAt,
 			ExpiresAt:      k.ExpiresAt,
 			Issuer:         k.Issuer,
 			AllowedTargets: k.AllowedTargets,
-		})
+		}
+		items = append(items, item)
+		createdByFields = append(createdByFields, &items[len(items)-1].CreatedBy)
+	}
+	if err := identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 	return items, nil
 }
@@ -283,6 +285,7 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		APIKeyHashes:   apiKeyHashesJSON,
 		Status:         "active",
 		CreatedBy:      userID,
+		UpdatedBy:      userID,
 		ExpiresAt:      req.ExpiresAt,
 		Issuer:         issuer,
 		AllowedTargets: allowedTargets,

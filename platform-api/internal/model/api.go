@@ -109,6 +109,8 @@ type APIAssociation struct {
 	ArtifactID     string    `json:"artifactId" db:"artifact_uuid"`
 	OrganizationID string    `json:"organizationId" db:"organization_uuid"`
 	GatewayID      string    `json:"gatewayId" db:"gateway_uuid"`
+	CreatedBy      string    `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy      string    `json:"updatedBy,omitempty" db:"updated_by"`
 	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
 	UpdatedAt      time.Time `json:"updatedAt" db:"updated_at"`
 }

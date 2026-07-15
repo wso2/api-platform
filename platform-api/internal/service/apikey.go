@@ -475,6 +475,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		APIKeyHashes:   apiKeyHashesJSON,
 		Status:         constants.APIKeyStatusActive,
 		CreatedBy:      userId,
+		UpdatedBy:      userId,
 		ExpiresAt:      expiresAt,
 		Issuer:         issuer,
 		AllowedTargets: allowedTargets,
@@ -564,6 +565,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		MaskedAPIKey: maskedAPIKey,
 		APIKeyHashes: apiKeyHashesJSON,
 		Status:       constants.APIKeyStatusActive,
+		UpdatedBy:    userId,
 		ExpiresAt:    expiresAt,
 		Issuer:       req.Issuer,
 	}
@@ -654,7 +656,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 	revokeKey, revokeKeyErr := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
 
 	// Revoke the API key in the database before broadcasting
-	if err := s.apiKeyRepo.Revoke(apiId, keyName); err != nil {
+	if err := s.apiKeyRepo.Revoke(apiId, keyName, userId); err != nil {
 		s.slogger.Error("Failed to revoke API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to revoke API key in database: %w", err)
 	}

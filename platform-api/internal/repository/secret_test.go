@@ -292,7 +292,10 @@ func TestSecretRepo_List_UpdatedAfterFilter(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	future := time.Now().Add(time.Hour)
+	// updated_at is stored in UTC; the filter must also be UTC so the
+	// SQLite driver's text-based timestamp comparison stays chronologically
+	// correct (mixed offsets sort incorrectly as strings).
+	future := time.Now().UTC().Add(time.Hour)
 	secrets, err := repo.List(orgID, 25, 0, &future)
 	if err != nil {
 		t.Fatalf("List with future filter: %v", err)
@@ -301,7 +304,7 @@ func TestSecretRepo_List_UpdatedAfterFilter(t *testing.T) {
 		t.Errorf("expected 0 results with future updatedAfter, got %d", len(secrets))
 	}
 
-	past := time.Now().Add(-time.Hour)
+	past := time.Now().UTC().Add(-time.Hour)
 	secrets, err = repo.List(orgID, 25, 0, &past)
 	if err != nil {
 		t.Fatalf("List with past filter: %v", err)
