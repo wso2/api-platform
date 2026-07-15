@@ -62,7 +62,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "asgardeo-prod",
   "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "type": "GENERIC_OIDC",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
   "createdBy": "alice@example.com",
@@ -192,7 +191,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "id": "asgardeo-prod",
       "displayName": "Asgardeo",
       "orgId": "org-12345",
-      "type": "GENERIC_OIDC",
       "enabled": true,
       "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
       "createdBy": "alice@example.com",
@@ -241,7 +239,6 @@ Status Code **200**
 |»»» id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
 |»»» displayName|string|false|none|none|
 |»»» orgId|string|false|none|none|
-|»»» type|string|false|read-only|Fixed at `GENERIC_OIDC` for every key manager. Not client-configurable.|
 |»»» enabled|boolean|false|none|none|
 |»»» tokenEndpoint|string(uri)|false|none|none|
 |»»» createdBy|string|false|none|Identity of the user who created this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
@@ -256,7 +253,6 @@ Status Code **200**
 |»» *anonymous*|[KeyManagerPublicResponseSchema](schemas.md#schemakeymanagerpublicresponseschema)|false|none|Minimal developer-facing key manager view.|
 |»»» id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
 |»»» displayName|string|false|none|none|
-|»»» type|string|false|read-only|Fixed at `GENERIC_OIDC` for every key manager.|
 |»»» tokenEndpoint|string(uri)|false|none|none|
 
 *continued*
@@ -267,13 +263,6 @@ Status Code **200**
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
 |»» offset|integer|true|none|Number of records skipped before this page.|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|type|GENERIC_OIDC|
-|type|GENERIC_OIDC|
 
 ## Get a key manager
 
@@ -316,7 +305,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "asgardeo-prod",
   "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "type": "GENERIC_OIDC",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
   "createdBy": "alice@example.com",
@@ -417,7 +405,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "asgardeo-prod",
   "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "type": "GENERIC_OIDC",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
   "createdBy": "alice@example.com",

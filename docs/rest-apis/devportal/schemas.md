@@ -1449,7 +1449,6 @@ Partial update payload for a key manager. All fields are optional; only supplied
   "id": "asgardeo-prod",
   "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "type": "GENERIC_OIDC",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
   "createdBy": "alice@example.com",
@@ -1469,19 +1468,12 @@ Key manager configuration.
 |id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
 |displayName|string|false|none|none|
 |orgId|string|false|none|none|
-|type|string|false|read-only|Fixed at `GENERIC_OIDC` for every key manager. Not client-configurable.|
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
 |createdBy|string|false|none|Identity of the user who created this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
 |updatedBy|string|false|none|Identity of the user who last updated this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|type|GENERIC_OIDC|
 
 <h2 id="tocS_KeyManagerPublicResponseSchema">KeyManagerPublicResponseSchema</h2>
 
@@ -1494,7 +1486,6 @@ Key manager configuration.
 {
   "id": "asgardeo-prod",
   "displayName": "Asgardeo",
-  "type": "GENERIC_OIDC",
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 
@@ -1508,14 +1499,7 @@ Minimal developer-facing key manager view.
 |---|---|---|---|---|
 |id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
 |displayName|string|false|none|none|
-|type|string|false|read-only|Fixed at `GENERIC_OIDC` for every key manager.|
 |tokenEndpoint|string(uri)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|type|GENERIC_OIDC|
 
 <h2 id="tocS_WebhookSubscriberRequest">WebhookSubscriberRequest</h2>
 

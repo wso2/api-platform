@@ -3945,7 +3945,6 @@ components:
               - id: asgardeo-prod
                 displayName: Asgardeo
                 orgId: org-12345
-                type: GENERIC_OIDC
                 enabled: true
                 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
                 createdBy: alice@example.com
@@ -5161,13 +5160,6 @@ components:
         orgId:
           type: string
           example: org-12345
-        type:
-          type: string
-          description: Fixed at `GENERIC_OIDC` for every key manager. Not client-configurable.
-          enum:
-            - GENERIC_OIDC
-          readOnly: true
-          example: GENERIC_OIDC
         enabled:
           type: boolean
           example: true
@@ -5205,13 +5197,6 @@ components:
         displayName:
           type: string
           example: Asgardeo
-        type:
-          type: string
-          description: Fixed at `GENERIC_OIDC` for every key manager.
-          enum:
-            - GENERIC_OIDC
-          readOnly: true
-          example: GENERIC_OIDC
         tokenEndpoint:
           type: string
           format: uri

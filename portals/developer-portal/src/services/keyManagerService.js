@@ -25,13 +25,6 @@ const util = require('../utils/util');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 
-/**
- * Every key manager is a standard OAuth2 client_credentials-based generic
- * OIDC provider. The `type` column is retained on the model for backward
- * compatibility but is no longer client-configurable.
- */
-const DEFAULT_KM_TYPE = 'GENERIC_OIDC';
-
 // ---------------------------------------------------------------------------
 // YAML ingestion helpers (mirrors parseIdentityProviderFromYamlFile pattern)
 // ---------------------------------------------------------------------------
@@ -44,7 +37,6 @@ function mapYamlToKeyManager(yamlDoc) {
     return {
         handle: yamlDoc.metadata?.name || spec.name,
         displayName: spec.displayName || spec.name,
-        type: DEFAULT_KM_TYPE,
         enabled: spec.enabled !== undefined ? spec.enabled : true,
         tokenEndpoint: spec.tokenEndpoint,
     };
@@ -148,7 +140,7 @@ const createKeyManager = async (req, res) => {
         }
 
         const userId = util.resolveActor(req);
-        const record = await kmDao.create(orgId, { ...payload, handle: resolvedHandle, type: DEFAULT_KM_TYPE }, userId);
+        const record = await kmDao.create(orgId, { ...payload, handle: resolvedHandle }, userId);
         logUserAction('KEY_MANAGER_CREATED', req, { orgId, kmId: record.uuid, resourceUuid: record.uuid, resourceType: 'key_manager' });
         let audit;
         try {
@@ -181,8 +173,6 @@ const updateKeyManager = async (req, res) => {
         const orgId = req.orgId;
         const { kmId: kmHandle } = req.params;
         const payload = _resolvePayload(req);
-        // The key manager type is fixed at GENERIC_OIDC and is not client-configurable.
-        delete payload.type;
 
         const kmId = await kmDao.getIdByHandle(orgId, kmHandle);
         if (!kmId) {
