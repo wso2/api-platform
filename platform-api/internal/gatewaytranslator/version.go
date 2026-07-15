@@ -15,22 +15,17 @@
  *
  */
 
-package deploymenttransform
+package gatewaytranslator
 
 import (
 	"strconv"
 	"strings"
 )
 
-// MinSplitPoliciesVersion is the first gateway release that understands
-// globalPolicies/operationPolicies. Use this constant in tests and call sites
-// instead of a raw string literal so a future version-boundary change is a
-// one-place edit.
-const MinSplitPoliciesVersion = "1.2.0"
-
-// Version is a parsed, comparable gateway semver. Empty or unparseable version
-// strings are treated as 1.0.0 — the implicit version for gateways that predate
-// version reporting.
+// Version is a parsed, comparable gateway semver — the "gateway target
+// version" the deploy orchestration layer resolves from a gateway record.
+// Empty or unparseable version strings are treated as 1.0.0 — the implicit
+// version for gateways that predate version reporting.
 type Version struct {
 	Major, Minor, Patch int
 }
@@ -38,10 +33,26 @@ type Version struct {
 // ParseVersion parses a gateway version string into a Version. Pre-release
 // suffixes (e.g. "-SNAPSHOT", "-RC1") and a leading "v" are stripped before
 // parsing. An empty or unparseable string returns Version{1, 0, 0}.
+//
+// Callers that must distinguish "genuinely old" from "not a semver at all"
+// (e.g. dev/e2e builds versioned "it-e2e") should use parseVersion directly —
+// see GatewayDataVersionForGateway.
 func ParseVersion(s string) Version {
+	v, ok := parseVersion(s)
+	if !ok {
+		return Version{1, 0, 0} // blank/unparseable → treat as oldest known
+	}
+	return v
+}
+
+// parseVersion parses a gateway version string into a Version, reporting
+// whether the string carried a parseable semver. Pre-release suffixes and a
+// leading "v" are stripped before parsing. Blank or unparseable strings return
+// ok=false.
+func parseVersion(s string) (Version, bool) {
 	v := strings.TrimSpace(s)
 	if v == "" {
-		return Version{1, 0, 0}
+		return Version{}, false
 	}
 	// Strip pre-release suffix
 	if i := strings.IndexByte(v, '-'); i >= 0 {
@@ -57,13 +68,13 @@ func ParseVersion(s string) Version {
 	minor, err2 := strconv.Atoi(parts[1])
 	patch, err3 := strconv.Atoi(parts[2])
 	if err1 != nil || err2 != nil || err3 != nil {
-		return Version{1, 0, 0} // unparseable → treat as oldest known
+		return Version{}, false
 	}
-	return Version{major, minor, patch}
+	return Version{major, minor, patch}, true
 }
 
-// GTE reports whether v is greater than or equal to o.
-func (v Version) GTE(o Version) bool {
+// AtLeast reports whether v is greater than or equal to o.
+func (v Version) AtLeast(o Version) bool {
 	if v.Major != o.Major {
 		return v.Major > o.Major
 	}
@@ -71,4 +82,9 @@ func (v Version) GTE(o Version) bool {
 		return v.Minor > o.Minor
 	}
 	return v.Patch >= o.Patch
+}
+
+// Below reports whether v is strictly older than o.
+func (v Version) Below(o Version) bool {
+	return !v.AtLeast(o)
 }

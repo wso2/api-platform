@@ -19,6 +19,7 @@ package service
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -31,11 +32,12 @@ import (
 // llmProxyImporter imports LLM Proxy artifacts (project-scoped).
 type llmProxyImporter struct {
 	proxyRepo    repository.LLMProxyRepository
+	providerRepo repository.LLMProviderRepository
 	artifactRepo repository.ArtifactRepository
 }
 
-func newLLMProxyImporter(proxyRepo repository.LLMProxyRepository, artifactRepo repository.ArtifactRepository) *llmProxyImporter {
-	return &llmProxyImporter{proxyRepo: proxyRepo, artifactRepo: artifactRepo}
+func newLLMProxyImporter(proxyRepo repository.LLMProxyRepository, providerRepo repository.LLMProviderRepository, artifactRepo repository.ArtifactRepository) *llmProxyImporter {
+	return &llmProxyImporter{proxyRepo: proxyRepo, providerRepo: providerRepo, artifactRepo: artifactRepo}
 }
 
 func (i *llmProxyImporter) Kind() string          { return constants.LLMProxy }
@@ -70,6 +72,7 @@ func (i *llmProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 			ProjectUUID:      ctx.ProjectID,
 			Version:          version,
 			ProviderUUID:     providerUUID,
+			OpenAPISpec:      i.providerOpenAPISpec(cfg.Provider, ctx.OrgID),
 			Origin:           constants.OriginDP,
 			Configuration:    cfg,
 		}
@@ -102,6 +105,9 @@ func (i *llmProxyImporter) Import(ctx *ImportContext) (*ImportResult, error) {
 		}
 		existing.ProviderUUID = providerUUID
 		existing.Configuration = cfg
+		if strings.TrimSpace(existing.OpenAPISpec) == "" {
+			existing.OpenAPISpec = i.providerOpenAPISpec(cfg.Provider, ctx.OrgID)
+		}
 	case utils.WriteGatewaySpecificOnly:
 		// CP-owned: only update gateway-specific upstream auth.
 		existing.Configuration.UpstreamAuth = cfg.UpstreamAuth
@@ -128,6 +134,19 @@ func (i *llmProxyImporter) resolveProviderUUID(providerHandle, orgID string) (st
 		return "", apperror.ValidationFailed.New(fmt.Sprintf("The referenced LLM provider %q does not exist.", providerHandle))
 	}
 	return art.UUID, nil
+}
+
+// providerOpenAPISpec best-effort loads the fronted provider and returns its OpenAPI
+// definition. A missing provider or load error yields an empty spec.
+func (i *llmProxyImporter) providerOpenAPISpec(providerHandle, orgID string) string {
+	if i.providerRepo == nil || providerHandle == "" {
+		return ""
+	}
+	prov, err := i.providerRepo.GetByID(providerHandle, orgID)
+	if err != nil || prov == nil {
+		return ""
+	}
+	return prov.OpenAPISpec
 }
 
 // mapLLMProxySpecToConfig reverse-maps a gateway-pushed LLM proxy deployment spec into

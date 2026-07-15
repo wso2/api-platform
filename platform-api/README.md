@@ -229,11 +229,12 @@ The connected gateway will receive a deployment event via WebSocket:
 
 ## Configuration
 
-Configuration comes from a TOML config file and/or environment variables (env vars
-override the file). **Config-override environment variables are prefixed with `APIP_CP_`**
-The prefix is stripped and the remainder mapped to a config key — e.g. `APIP_CP_LOG_LEVEL` → `log_level`,
-`APIP_CP_DATABASE_HOST` → `database.host`. The variable names in the tables below are shown
-with the prefix.
+Configuration is read from a TOML config file (`-config <path>`), layered over built-in
+defaults. **Environment variables do not override config keys directly.** The only way an
+environment variable affects a setting is through an explicit `{{ env "NAME" }}` interpolation
+token placed in the config file, which is resolved at load time via `os.LookupEnv`; a field
+with no token always takes its literal TOML value (or the built-in default). See "Providing
+secrets via the config file" below.
 
 One variable is intentionally **not** prefixed: the shared `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`. The `{{ env "NAME" }}` interpolation
 tokens in the config file read the literal name via `os.LookupEnv` (independent of the koanf
@@ -258,28 +259,27 @@ APIP_CP_AUTH_IDP_ENABLED=true             →  IDP mode        (JWKS-based verif
 
 #### Local JWT Mode (default)
 
-The server signs and validates HMAC login tokens using `APIP_CP_AUTH_JWT_SECRET_KEY` — a 32-byte key (64 hex chars or base64). `APIP_CP_AUTH_JWT_SKIP_VALIDATION` must remain `false`; the server refuses to start when signature validation is disabled.
+The server signs and validates HMAC login tokens using the key that `auth.jwt.secret_key` resolves to — a 32-byte value (64 hex chars or base64). This key is **required** at startup whenever local JWT or file-based auth is enabled and is never generated; a missing or malformed value fails startup. The sample config reads it from `{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}`.
 
-| Variable | Default | Description                                                         |
-|---|---|---------------------------------------------------------------------|
-| `APIP_CP_AUTH_JWT_SECRET_KEY` | _(empty)_ | HMAC key for signing/verifying login JWTs — 32-byte value (64 hex or base64; `openssl rand -hex 32`) |
-| `APIP_CP_AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value                                          |
-| `APIP_CP_AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only**                  |
+`auth.jwt.skip_validation` is a development-only switch that accepts bearer values without a signature check. It is honored **only in demo mode** — startup is rejected if it is `true` while `APIP_DEMO_MODE=false` — and it does **not** remove the required secret key above.
 
-Local development with no token issuer:
+| Variable | Default | Description |
+|---|---|---|
+| `APIP_CP_AUTH_JWT_SECRET_KEY` | _(empty)_ | HMAC key for signing/verifying login JWTs — 32-byte value (64 hex or base64; `openssl rand -hex 32`). **Required** whenever local JWT or file-based auth is enabled. |
+| `APIP_CP_AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value |
+| `APIP_CP_AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only**, honored solely in demo mode |
+
+Run locally. The config file supplies the `{{ env }}` tokens, so export the referenced variable and pass `-config`:
 ```bash
-export APIP_CP_AUTH_JWT_SKIP_VALIDATION=true
-go run ./cmd/main.go
+export APIP_CP_AUTH_JWT_SECRET_KEY="$(openssl rand -hex 32)"
+go run ./cmd/main.go -config config/config.toml
 ```
 
-Production with HMAC verification:
-```bash
-export APIP_CP_AUTH_JWT_SECRET_KEY=<strong-random-key>
-export APIP_CP_AUTH_JWT_ISSUER=https://your-token-issuer
-go run ./cmd/main.go
-```
+To skip signature checks during local development, set `skip_validation = true` under `[auth.jwt]` in the config file (demo mode only) and run the same command.
 
-**Legacy variable names** (still accepted, deprecated):
+**Legacy variable names.** These unprefixed names are **no longer read** — environment
+variables affect configuration only through `{{ env "…" }}` tokens (see above). Use the
+current token variable name (or the config key directly) instead:
 
 | Old name | New name |
 |---|---|
@@ -301,15 +301,15 @@ Tokens are validated against any standards-compliant identity provider (Thunder,
 | `APIP_CP_AUTH_IDP_JWKS_URL` | _(required)_ | IDP's JWKS endpoint for public key retrieval |
 | `APIP_CP_AUTH_IDP_ISSUER` | _(required)_ | Accepted JWT issuer |
 | `APIP_CP_AUTH_IDP_AUDIENCE` | _(empty)_ | Accepted JWT audience. When set, the token's `aud` claim must contain this value; empty skips the check |
-| `APIP_CP_AUTH_IDP_ORGANIZATION_CLAIM_NAME` | `organization` | JWT claim holding the org UUID for the active session |
-| `APIP_CP_AUTH_IDP_ORG_NAME_CLAIM_NAME` | `org_name` | JWT claim for the org display name |
-| `APIP_CP_AUTH_IDP_ORG_HANDLE_CLAIM_NAME` | `org_handle` | JWT claim for the org URL-safe handle |
-| `APIP_CP_AUTH_IDP_USER_ID_CLAIM_NAME` | `sub` | JWT claim used as the canonical user identifier |
-| `APIP_CP_AUTH_IDP_USERNAME_CLAIM_NAME` | `username` | JWT claim for the human-readable username |
-| `APIP_CP_AUTH_IDP_EMAIL_CLAIM_NAME` | `email` | JWT claim for the user's email address |
-| `APIP_CP_AUTH_IDP_SCOPE_CLAIM_NAME` | `scope` | JWT claim carrying granted OAuth2 scopes |
+| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME` | `organization` | JWT claim holding the org UUID for the active session |
+| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORG_NAME_CLAIM_NAME` | `org_name` | JWT claim for the org display name |
+| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORG_HANDLE_CLAIM_NAME` | `org_handle` | JWT claim for the org URL-safe handle |
+| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_USER_ID_CLAIM_NAME` | `sub` | JWT claim used as the canonical user identifier |
+| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_USERNAME_CLAIM_NAME` | `username` | JWT claim for the human-readable username |
+| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_EMAIL_CLAIM_NAME` | `email` | JWT claim for the user's email address |
+| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_SCOPE_CLAIM_NAME` | `scope` | JWT claim carrying granted OAuth2 scopes |
 | `APIP_CP_AUTH_IDP_VALIDATION_MODE` | `scope` | Authorization mode: `scope` (validate scope claim directly) or `role` (expand IDP roles to platform roles) |
-| `APIP_CP_AUTH_IDP_ROLES_CLAIM_PATH` | _(empty)_ | Dot-notation path to the roles claim (e.g. `realm_access.roles`). Required when `APIP_CP_AUTH_IDP_VALIDATION_MODE=role` |
+| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ROLES_CLAIM_PATH` | _(empty)_ | Dot-notation path to the roles claim (e.g. `realm_access.roles`). Required when `APIP_CP_AUTH_IDP_VALIDATION_MODE=role` |
 | `APIP_CP_AUTH_IDP_ROLE_MAPPINGS` | _(empty)_ | Comma-separated `idp-role=platform-role` pairs (e.g. `PLATFORM_ADMIN=admin,PLATFORM_DEV=developer`). When empty, IDP role values are used as-is |
 
 **Example — Asgardeo:**

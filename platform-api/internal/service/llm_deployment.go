@@ -29,8 +29,8 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
-	"github.com/wso2/api-platform/platform-api/internal/deploymenttransform"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -57,6 +57,7 @@ type LLMProviderDeploymentService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -69,6 +70,7 @@ type LLMProxyDeploymentService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -81,6 +83,7 @@ func NewLLMProviderDeploymentService(
 	deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository,
+	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
@@ -91,6 +94,7 @@ func NewLLMProviderDeploymentService(
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -103,6 +107,7 @@ func NewLLMProxyDeploymentService(
 	deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository,
+	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
@@ -112,6 +117,7 @@ func NewLLMProxyDeploymentService(
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -199,10 +205,12 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate LLM provider deployment YAML: %w", err)
 		}
-		target := deploymenttransform.ParseVersion(gateway.Version)
-		if err := deploymenttransform.Default().Transform(
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(provider.DataVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(
 			constants.LLMProvider,
-			target,
+			sourceDataVersion,
+			targetDataVersion,
 			&providerDeployment,
 		); err != nil {
 			return nil, fmt.Errorf("failed to transform LLM provider deployment for gateway %s: %w", gateway.Version, err)
@@ -277,6 +285,11 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		if err := s.gatewayEventsService.BroadcastLLMProviderDeploymentEvent(gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM provider deployment event", "error", err)
 		}
+
+		// Push existing active API keys for this provider to the (possibly newly
+		// associated) gateway so keys created before this association are recognized
+		// immediately, rather than only after the controller's next reconnect sync.
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, provider.UUID, gatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -369,6 +382,9 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		if err := s.gatewayEventsService.BroadcastLLMProviderDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM provider deployment event", "error", err)
 		}
+
+		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, provider.UUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -1330,10 +1346,12 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate LLM proxy deployment YAML: %w", err)
 		}
-		target := deploymenttransform.ParseVersion(gateway.Version)
-		if err := deploymenttransform.Default().Transform(
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(proxy.DataVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(
 			constants.LLMProxy,
-			target,
+			sourceDataVersion,
+			targetDataVersion,
 			&proxyDeployment,
 		); err != nil {
 			return nil, fmt.Errorf("failed to transform LLM proxy deployment for gateway %s: %w", gateway.Version, err)
@@ -1408,6 +1426,9 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		if err := s.gatewayEventsService.BroadcastLLMProxyDeploymentEvent(gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM proxy deployment event", "error", err)
 		}
+
+		// Push existing active API keys for this proxy to the gateway (see BackfillAPIKeysToGateway).
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxy.UUID, gatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -1500,6 +1521,9 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		if err := s.gatewayEventsService.BroadcastLLMProxyDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM proxy deployment event", "error", err)
 		}
+
+		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxy.UUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(

@@ -11,8 +11,7 @@
 log_level = '{{ env "APIP_CP_LOG_LEVEL" "INFO" }}'   # DEBUG | INFO | WARN | ERROR
 enable_scope_validation = '{{ env "APIP_CP_ENABLE_SCOPE_VALIDATION" "true" }}'
 
-# encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
-encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}' # encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
 
 [https]
 enabled  = '{{ env "APIP_CP_HTTPS_ENABLED" "true" }}'
@@ -23,11 +22,11 @@ cert_dir = "/etc/platform-api/tls"
 driver = '{{ env "APIP_CP_DATABASE_DRIVER" "sqlite3" }}'   # "sqlite3" or "postgres"
 path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 
-# secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
+
 [auth.jwt]
 enabled         = '{{ env "APIP_CP_AUTH_JWT_ENABLED" "true" }}'
 issuer          = '{{ env "APIP_CP_AUTH_JWT_ISSUER" "platform-api" }}'
-secret_key      = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+secret_key      = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}' # secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
 skip_validation = '{{ env "APIP_CP_AUTH_JWT_SKIP_VALIDATION" "false" }}'   # verify JWT signature
 
 [auth.idp]

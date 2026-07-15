@@ -144,7 +144,7 @@ See `configs/config-platform-api.toml.example` for the complete scope list used 
 
 ### Session persistence and scripted access
 
-The Platform API generates a random JWT signing key at startup. Sessions are invalidated when it restarts unless you pin the key. Set the **same value** in both services so the devportal can verify JWTs locally without a network round-trip:
+`auth.jwt.secret_key` is **mandatory**: the Platform API requires it at startup and never generates one — it fails to start if the key is missing. Configure the **same value** in both services so the devportal can verify Platform API-issued JWTs locally without a network round-trip (and so sessions survive restarts):
 
 ```bash
 # In .env (read by both services via docker-compose env_file / APIP_DP_* override)

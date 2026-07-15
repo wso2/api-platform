@@ -15,7 +15,7 @@
  *
  */
 
-package deploymenttransform
+package v1alpha1
 
 import (
 	"fmt"
@@ -25,74 +25,53 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 )
 
-// Policy names used when ordering the down-converted legacy list.
-// These must stay in sync with service/llm_deployment.go's constants.
+// Policy names used when ordering the down-converted legacy list. Must stay
+// in sync with service/llm_deployment.go's constants.
 const (
-	policyNameLLMCost              = "llm-cost"
+	policyNameLLMCost               = "llm-cost"
 	policyNameLLMCostBasedRateLimit = "llm-cost-based-ratelimit"
 )
 
 func init() {
-	minVer := ParseVersion(MinSplitPoliciesVersion)
-	isOldGateway := func(target Version) bool { return !target.GTE(minVer) }
-
-	// policy-lists down-convert: gateways < 1.2.0 don't understand
-	// globalPolicies/operationPolicies. Flatten both new lists into the legacy
-	// policies field so those gateways can still consume the artifact.
-	defaultRegistry.Register(Transformation{
-		Name:        "policy-lists/downconvert-pre-1.2.0/llm-provider",
-		Kind:        constants.LLMProvider,
-		AppliesWhen: isOldGateway,
-		Apply: func(payload any) error {
-			artifact, ok := payload.(*dto.LLMProviderDeploymentYAML)
-			if !ok {
-				return fmt.Errorf("expected *dto.LLMProviderDeploymentYAML, got %T", payload)
-			}
-			downconvertPolicyLists(
-				artifact.Spec.GlobalPolicies, artifact.Spec.OperationPolicies,
-				&artifact.Spec.Policies,
-			)
-			artifact.Spec.GlobalPolicies = nil
-			artifact.Spec.OperationPolicies = nil
-			artifact.ApiVersion = constants.GatewayApiVersionV1Alpha1
-			return nil
-		},
-	})
-
-	defaultRegistry.Register(Transformation{
-		Name:        "policy-lists/downconvert-pre-1.2.0/llm-proxy",
-		Kind:        constants.LLMProxy,
-		AppliesWhen: isOldGateway,
-		Apply: func(payload any) error {
-			artifact, ok := payload.(*dto.LLMProxyDeploymentYAML)
-			if !ok {
-				return fmt.Errorf("expected *dto.LLMProxyDeploymentYAML, got %T", payload)
-			}
-			downconvertPolicyLists(
-				artifact.Spec.GlobalPolicies, artifact.Spec.OperationPolicies,
-				&artifact.Spec.Policies,
-			)
-			artifact.Spec.GlobalPolicies = nil
-			artifact.Spec.OperationPolicies = nil
-			artifact.ApiVersion = constants.GatewayApiVersionV1Alpha1
-			return nil
-		},
-	})
+	shapeHandlers[constants.LLMProvider] = downConvertLLMProvider
+	shapeHandlers[constants.LLMProxy] = downConvertLLMProxy
 }
 
-// downconvertPolicyLists flattens globalPolicies and operationPolicies into the
+// downConvertLLMProvider is the only kind with a data-shape transform:
+// gateways < 1.2.0 don't understand globalPolicies/operationPolicies, so both
+// are flattened into the legacy policies field.
+func downConvertLLMProvider(payload any) error {
+	artifact, ok := payload.(*dto.LLMProviderDeploymentYAML)
+	if !ok {
+		return fmt.Errorf("expected *dto.LLMProviderDeploymentYAML, got %T", payload)
+	}
+	flattenPolicyLists(artifact.Spec.GlobalPolicies, artifact.Spec.OperationPolicies, &artifact.Spec.Policies)
+	artifact.Spec.GlobalPolicies = nil
+	artifact.Spec.OperationPolicies = nil
+	return nil
+}
+
+// downConvertLLMProxy is the proxy-config counterpart.
+func downConvertLLMProxy(payload any) error {
+	artifact, ok := payload.(*dto.LLMProxyDeploymentYAML)
+	if !ok {
+		return fmt.Errorf("expected *dto.LLMProxyDeploymentYAML, got %T", payload)
+	}
+	flattenPolicyLists(artifact.Spec.GlobalPolicies, artifact.Spec.OperationPolicies, &artifact.Spec.Policies)
+	artifact.Spec.GlobalPolicies = nil
+	artifact.Spec.OperationPolicies = nil
+	return nil
+}
+
+// flattenPolicyLists flattens globalPolicies and operationPolicies into the
 // legacy policies slice:
-//   - each global policy → a legacy entry with a single {path:"/*", methods:["*"]} path
-//   - each operation policy → a legacy entry with its paths copied 1:1
+//   - each global policy    -> a legacy entry with a single {path:"/*", methods:["*"]} path
+//   - each operation policy -> a legacy entry with its paths copied 1:1
 //
 // The result is appended to *legacyPolicies (which may already contain
 // security/consumer entries the generator assembled), then re-ordered so that
 // llm-cost-based-ratelimit always precedes llm-cost.
-func downconvertPolicyLists(
-	globalPolicies []api.Policy,
-	operationPolicies []api.OperationPolicy,
-	legacyPolicies *[]api.LLMPolicy,
-) {
+func flattenPolicyLists(globalPolicies []api.Policy, operationPolicies []api.OperationPolicy, legacyPolicies *[]api.LLMPolicy) {
 	for _, gp := range globalPolicies {
 		params := map[string]interface{}{}
 		if gp.Params != nil {
@@ -122,8 +101,9 @@ func downconvertPolicyLists(
 	*legacyPolicies = orderLegacyPolicies(*legacyPolicies)
 }
 
-// orderLegacyPolicies ensures llm-cost-based-ratelimit always precedes llm-cost
-// in the legacy policy list (llm-cost depends on the ratelimit policy running first).
+// orderLegacyPolicies ensures llm-cost-based-ratelimit always precedes
+// llm-cost in the legacy policy list (llm-cost depends on the ratelimit
+// policy running first).
 func orderLegacyPolicies(policies []api.LLMPolicy) []api.LLMPolicy {
 	costIdx, rateLimitIdx := -1, -1
 	for i, p := range policies {
