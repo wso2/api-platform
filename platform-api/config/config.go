@@ -80,6 +80,7 @@ type Server struct {
 	DBSchemaPath               string `koanf:"db_schema_path"`
 	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
 	LLMTemplateDefinitionsPath string `koanf:"llm_template_definitions_path"`
+	OpenAPISpecMaxFetchBytes   int64  `koanf:"openapi_spec_max_fetch_bytes"`
 
 	EncryptionKey string `koanf:"encryption_key"`
 
