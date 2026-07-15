@@ -692,6 +692,9 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 			}
 
 			params := map[string]interface{}{"key": key, "in": in}
+			if prefix := strings.TrimSpace(security.APIKey.ValuePrefix); prefix != "" {
+				params["valuePrefix"] = prefix
+			}
 			globalPolicies = append(globalPolicies, api.Policy{
 				Name:   apiKeyAuthPolicyName,
 				Params: &params,
@@ -1797,6 +1800,9 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 			}
 
 			params := map[string]interface{}{"key": key, "in": in}
+			if prefix := strings.TrimSpace(security.APIKey.ValuePrefix); prefix != "" {
+				params["valuePrefix"] = prefix
+			}
 			proxyGlobalPolicies = append(proxyGlobalPolicies, api.Policy{
 				Name:   apiKeyAuthPolicyName,
 				Params: &params,

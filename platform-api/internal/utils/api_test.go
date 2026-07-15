@@ -689,4 +689,3 @@ func TestUpstreamConfigModelToAPI_RedactsAuthValue(t *testing.T) {
 		t.Errorf("expected sandbox auth value to be redacted (nil), got %q", *result.Sandbox.Auth.Value)
 	}
 }
-

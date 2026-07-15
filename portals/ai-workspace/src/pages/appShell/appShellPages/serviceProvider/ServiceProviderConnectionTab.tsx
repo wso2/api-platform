@@ -232,9 +232,6 @@ export default function ServiceProviderConnectionTab() {
     if (isCredentialMasked) return;
     const nextValue = value.trim();
     if (nextValue === MASKED_CREDENTIAL_VALUE) return;
-    // Join the prefix and value with a single space (e.g. "Bearer <key>").
-    // trimEnd() so a template prefix that already carries a trailing space
-    // (e.g. "Bearer ") doesn't produce a double space.
     const prefix = valuePrefix.trimEnd();
     const fullValue = prefix
       ? nextValue.startsWith(prefix)
