@@ -1525,15 +1525,20 @@ func TranslateStreamingRequestChunkAction(result *executor.StreamingRequestExecu
 		}
 		recompressed, err := execCtx.requestStreamComp.FeedChunk(outputBody, originalChunk.EndOfStream)
 		if err != nil {
-			slog.Warn("[streaming] failed to re-compress request body; sending uncompressed — Content-Encoding mismatch",
+			// The Content-Encoding header has already been forwarded to the upstream in
+			// streaming mode and cannot be retracted. Sending the body uncompressed under
+			// a committed Content-Encoding would yield a stream the upstream cannot decode.
+			// Fail the ext_proc stream so Envoy aborts the request rather than delivering
+			// corrupt bytes. The forwarded Content-Encoding state is left intact.
+			slog.Error("[streaming] failed to re-compress request body; terminating stream to avoid Content-Encoding mismatch",
 				"encoding", execCtx.requestContentEncoding,
 				"error", err,
 			)
 			execCtx.requestStreamComp.Close()
-			execCtx.requestContentEncoding = ""
-		} else {
-			outputBody = recompressed
+			return nil, fmt.Errorf("failed to re-compress streaming request body (encoding %q): %w",
+				execCtx.requestContentEncoding, err)
 		}
+		outputBody = recompressed
 	}
 
 	analyticsData := make(map[string]any)
@@ -1613,15 +1618,21 @@ func TranslateStreamingResponseChunkAction(result *executor.StreamingResponseExe
 		}
 		recompressed, err := execCtx.responseStreamComp.FeedChunk(outputBody, endOfStream)
 		if err != nil {
-			slog.Warn("[streaming] failed to re-compress response body; sending uncompressed — Content-Encoding mismatch",
+			// The Content-Encoding header has already been committed to the downstream
+			// client in streaming mode and cannot be changed. Sending the body
+			// uncompressed under a committed Content-Encoding would yield a stream the
+			// client cannot decode. Fail the ext_proc stream so Envoy aborts the response
+			// rather than delivering corrupt bytes. The committed Content-Encoding state
+			// is left intact.
+			slog.Error("[streaming] failed to re-compress response body; terminating stream to avoid Content-Encoding mismatch",
 				"encoding", execCtx.responseContentEncoding,
 				"error", err,
 			)
 			execCtx.responseStreamComp.Close()
-			execCtx.responseContentEncoding = ""
-		} else {
-			outputBody = recompressed
+			return nil, fmt.Errorf("failed to re-compress streaming response body (encoding %q): %w",
+				execCtx.responseContentEncoding, err)
 		}
+		outputBody = recompressed
 	}
 
 	analyticsData := make(map[string]any)
