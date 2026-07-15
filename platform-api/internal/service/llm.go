@@ -857,6 +857,10 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if tpl == nil {
 		return nil, apperror.LLMProviderTemplateRefNotFound.New()
 	}
+	if !tpl.Enabled {
+		return nil, apperror.LLMProviderTemplateDisabled.New().
+			WithLogMessage("llm provider template is disabled")
+	}
 
 	// Determine handle: use provided id or auto-generate from displayName
 	var handle string
@@ -901,9 +905,6 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	}
 	if err := validateLLMResourceLimit(providerCount, s.cfg.ArtifactLimits.MaxLLMProvidersPerOrg, apperror.LLMProviderLimitReached.New()); err != nil {
 		return nil, err
-	}
-	if !tpl.Enabled {
-		return nil, apperror.ValidationFailed.New("The referenced LLM provider template version is disabled.")
 	}
 
 	openapiSpec := utils.ValueOrEmpty(req.Openapi)
@@ -1085,6 +1086,10 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	}
 	if tpl == nil {
 		return nil, apperror.LLMProviderTemplateRefNotFound.New()
+	}
+	if !tpl.Enabled {
+		return nil, apperror.LLMProviderTemplateDisabled.New().
+			WithLogMessage("llm provider template is disabled")
 	}
 
 	// Validate {{ secret "..." }} placeholders anywhere in the request — see

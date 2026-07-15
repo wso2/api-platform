@@ -40,6 +40,7 @@ export interface PlatformErrorBody {
   status: 'error';
   code: string;
   message: string;
+  description?: string;
   errors?: FieldError[];
   details?: Record<string, unknown>;
   trackingId?: string;
@@ -89,9 +90,12 @@ export function buildApiError(
   fallbackMessage = `Request failed (HTTP ${status})`,
 ): ApiError {
   const parsed = asPlatformErrorBody(body);
-  const rawMessage = typeof parsed.message === 'string' && parsed.message.trim().length > 0
-    ? parsed.message
-    : fallbackMessage;
+  const rawMessage =
+    typeof parsed.description === 'string' && parsed.description.trim().length > 0
+      ? parsed.description
+      : typeof parsed.message === 'string' && parsed.message.trim().length > 0
+        ? parsed.message
+        : fallbackMessage;
 
   const err = new Error(shortenMessage(rawMessage)) as ApiError;
   err.status = status;

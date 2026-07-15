@@ -99,6 +99,7 @@ var (
 	LLMProviderTemplateVersionExists     = def(CodeLLMProviderTemplateVersionExists, http.StatusConflict, "This template version already exists.")
 	LLMProviderTemplateManagedByReserved = def(CodeLLMProviderTemplateManagedByReserved, http.StatusBadRequest, "'wso2' is reserved and cannot be used as managedBy on custom templates.")
 	LLMProviderTemplateInUse             = def(CodeLLMProviderTemplateInUse, http.StatusConflict, "This template version is in use by one or more providers.")
+	LLMProviderTemplateDisabled          = def(CodeLLMProviderTemplateDisabled, http.StatusBadRequest, "The referenced LLM provider template is disabled.")
 	LLMProviderTemplateReadOnly          = def(CodeLLMProviderTemplateReadOnly, http.StatusForbidden, "Built-in templates are read-only and cannot be modified.")
 	LLMProviderTemplateNotToggleable     = def(CodeLLMProviderTemplateNotToggleable, http.StatusForbidden, "Only built-in templates can be enabled or disabled.")
 )
