@@ -799,7 +799,7 @@ func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAu
 
 // proxyTransformerPolicy builds a translator policy for an additional provider's
 // inline transformer. The provider's upstream name is passed to the translator
-// as its "provider-id" param so it targets the correct upstream, and gates
+// as its "providerId" param so it targets the correct upstream, and gates
 // execution so the translator runs only when this provider is selected.
 func (t *LLMProviderTransformer) proxyTransformerPolicy(transformer *api.LLMProxyTransformer, name, field string) (*api.Policy, error) {
 	if transformer == nil {
@@ -818,7 +818,7 @@ func (t *LLMProviderTransformer) proxyTransformerPolicy(transformer *api.LLMProx
 			params[k] = v
 		}
 	}
-	params["provider-id"] = name
+	params["providerId"] = name
 
 	condition := selectedProviderExecutionCondition(name, false)
 	return &api.Policy{
