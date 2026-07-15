@@ -175,7 +175,11 @@ export interface GatewayToken {
   createdAt: string;
 }
 
-type GatewayTokenListResponse = GatewayToken[];
+interface GatewayTokenListResponse {
+  count: number;
+  list: GatewayToken[];
+  pagination: { total: number; offset: number; limit: number };
+}
 
 /**
  * List all tokens for a gateway
@@ -183,14 +187,14 @@ type GatewayTokenListResponse = GatewayToken[];
 export async function listGatewayTokens(
   gatewayId: string,
   organizationId: string
-): Promise<GatewayTokenListResponse> {
+): Promise<GatewayToken[]> {
   const data = await getRequest<GatewayTokenListResponse>(
     `${GATEWAY_API_PATH}/${gatewayId}/tokens`,
     undefined,
     PLATFORM_API_BASE_URL
   );
 
-  return data || [];
+  return data?.list || [];
 }
 
 /**
