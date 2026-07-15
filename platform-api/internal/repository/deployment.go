@@ -68,6 +68,8 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 	// deployment time, which drives the last-in-wins watermark); default to now otherwise.
 	if deployment.CreatedAt.IsZero() {
 		deployment.CreatedAt = time.Now().UTC()
+	} else {
+		deployment.CreatedAt = deployment.CreatedAt.UTC()
 	}
 
 	// Status must be provided and should be DEPLOYED for new deployments
@@ -344,7 +346,7 @@ func (r *DeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID,
 	updatedAt := time.Now().UTC()
 	var pat time.Time
 	if performedAt != nil {
-		pat = *performedAt
+		pat = performedAt.UTC()
 	} else {
 		pat = updatedAt
 	}
