@@ -161,7 +161,7 @@ client_id = "<ai-workspace-client-id>"
 redirect_url             = "https://<your-domain>/api/auth/callback"   # the BFF callback (section 2)
 post_logout_redirect_url = "https://<your-domain>/login"
 
-# Preferred — a mounted secret file. To read it from a git-ignored .env instead, swap the
+# Preferred — a mounted secret file. To read it from the git-ignored api-platform.env instead, swap the
 # token for '{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}': the key needs one token or the other.
 client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
 

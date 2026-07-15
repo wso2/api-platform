@@ -318,6 +318,7 @@ const (
 	ApiKey UpstreamAuthType = "api-key"
 	Basic  UpstreamAuthType = "basic"
 	Bearer UpstreamAuthType = "bearer"
+	Other  UpstreamAuthType = "other"
 )
 
 // Defines values for UserAPIKeyItemArtifactType.

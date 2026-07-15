@@ -135,7 +135,7 @@ func (s *Server) deleteSecretAsync(jwt, handle, apiBase string) {
 func (s *Server) handleCreateWithSecretCompensation(w http.ResponseWriter, r *http.Request, resourcePath, apiBasePath string) {
 	jwt, ok := s.tokenFromCookie(r)
 	if !ok {
-		writeErrorJSON(w, http.StatusUnauthorized, "NOT_AUTHENTICATED", "not authenticated")
+		writeErrorJSON(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired credentials.")
 		return
 	}
 

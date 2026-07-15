@@ -37,7 +37,7 @@ encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 # ---------------------------------------------------------------------------
 [database]
 driver = "sqlite3"          # "sqlite3" or "postgres"
-path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
+# path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 
 # ---------------------------------------------------------------------------
 # Authentication
@@ -45,38 +45,17 @@ path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
 
 # JWT (local HMAC) — issues signed tokens after file-based login.
 [auth.jwt]
-enabled    = true
-issuer     = "platform-api"
-secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
-skip_validation = false   # verify JWT signature
+enabled         = true
+issuer          = "platform-api"
+secret_key      = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+skip_validation = false
 
 # IDP (JWKS-based) — disabled in quickstart mode.
 # Enable and configure when using Asgardeo, Keycloak, Auth0, etc.
 [auth.idp]
 enabled = false
+audience = []
 
 # File-based auth — local username/password login.
 [auth.file_based]
-enabled = false
-
-[auth.file_based.organization]
-id           = "default"            # organization handle (URL-safe slug)
-display_name = "Default"
-region       = "us"
-
-[[auth.file_based.users]]
-username      = "admin"
-password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
-scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage"
-
-# ---------------------------------------------------------------------------
-# TLS
-# ---------------------------------------------------------------------------
-[tls]
-cert_dir = "/app/data/certs"
-
-# ---------------------------------------------------------------------------
-# DevPortal integration — disable for standalone deployments
-# ---------------------------------------------------------------------------
-[default_devportal]
 enabled = false

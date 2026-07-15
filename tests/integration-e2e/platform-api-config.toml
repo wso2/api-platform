@@ -15,9 +15,10 @@ password = '{{ env "APIP_CP_DATABASE_PASSWORD" "" }}'
 ssl_mode = '{{ env "APIP_CP_DATABASE_SSL_MODE" "disable" }}'
 
 [auth.jwt]
-enabled    = true
-issuer     = "platform-api"
-secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+enabled         = true
+issuer          = "platform-api"
+secret_key      = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+skip_validation = false
 
 [auth.file_based]
 enabled = true

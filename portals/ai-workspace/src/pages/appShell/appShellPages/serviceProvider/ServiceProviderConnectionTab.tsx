@@ -19,6 +19,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FormControl,
+  FormHelperText,
   FormLabel,
   IconButton,
   InputAdornment,
@@ -55,6 +56,7 @@ export default function ServiceProviderConnectionTab() {
   const showSnackbar = useAIWorkspaceSnackbar();
   const isReadOnlyProvider = Boolean(provider?.readOnly);
   const isFormDisabled = isLoading || Boolean(error) || isReadOnlyProvider;
+  const isOtherAuthType = (authenticationType || 'api-key') === 'other';
 
   const valuePrefix = useMemo(() => {
     return providerTemplate?.metadata?.auth?.valuePrefix || '';
@@ -150,6 +152,7 @@ export default function ServiceProviderConnectionTab() {
     const nextType = value.trim();
     if (!nextType || nextType === (provider.upstream?.main?.auth?.type || ''))
       return;
+    const isOther = nextType === 'other';
     try {
       const {
         status,
@@ -166,8 +169,8 @@ export default function ServiceProviderConnectionTab() {
             url: provider.upstream?.main?.url || '',
             auth: {
               type: nextType,
-              header: provider.upstream?.main?.auth?.header || '',
-              value: provider.upstream?.main?.auth?.value || '',
+              header: isOther ? '' : provider.upstream?.main?.auth?.header || '',
+              value: isOther ? '' : provider.upstream?.main?.auth?.value || '',
             },
           },
         },
@@ -302,6 +305,10 @@ export default function ServiceProviderConnectionTab() {
             onChange={(e) => {
               const nextValue = String(e.target.value);
               setAuthenticationType(nextValue);
+              if (nextValue === 'other') {
+                setAuthenticationHeader('');
+                setCredentialValue('');
+              }
               if (isDraftMode) {
                 void handleUpdateAuthentication(nextValue);
               }
@@ -313,81 +320,98 @@ export default function ServiceProviderConnectionTab() {
             }}
           >
             <MenuItem value="api-key">api-key</MenuItem>
+            <MenuItem value="other">other</MenuItem>
           </Select>
+          {isOtherAuthType && (
+            <FormHelperText>
+              No credentials are stored for this provider. Use a policy to
+              configure authentication.
+            </FormHelperText>
+          )}
         </FormControl>
 
-        <FormControl fullWidth>
-          <FormLabel>Authentication Header</FormLabel>
-          <TextField
-            size="small"
-            value={authenticationHeader}
-            disabled={isFormDisabled}
-            onChange={(e) => {
-              const nextValue = e.target.value;
-              setAuthenticationHeader(nextValue);
-              if (isDraftMode) {
-                void handleUpdateAuthenticationHeader(nextValue);
-              }
-            }}
-            onBlur={() => {
-              if (!isDraftMode) {
-                void handleUpdateAuthenticationHeader();
-              }
-            }}
-          />
-        </FormControl>
+        {!isOtherAuthType && (
+          <>
+            <FormControl fullWidth>
+              <FormLabel>Authentication Header</FormLabel>
+              <TextField
+                size="small"
+                value={authenticationHeader}
+                disabled={isFormDisabled}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  setAuthenticationHeader(nextValue);
+                  if (isDraftMode) {
+                    void handleUpdateAuthenticationHeader(nextValue);
+                  }
+                }}
+                onBlur={() => {
+                  if (!isDraftMode) {
+                    void handleUpdateAuthenticationHeader();
+                  }
+                }}
+              />
+            </FormControl>
 
-        <FormControl fullWidth>
-          <FormLabel>Credentials</FormLabel>
-          <TextField
-            size="small"
-            type={showCredential ? 'text' : 'password'}
-            value={credentialValue}
-            disabled={isFormDisabled}
-            onFocus={() => {
-              if (isCredentialMasked) {
-                setCredentialValue('');
-                setIsCredentialMasked(false);
-                setHasCredentialChanged(false);
-              }
-            }}
-            onChange={(e) => {
-              const nextValue = e.target.value;
-              setCredentialValue(nextValue);
-              setHasCredentialChanged(true);
-              if (isDraftMode && !isCredentialMasked) {
-                void handleUpdateCredential(nextValue);
-              }
-            }}
-            onBlur={() => {
-              if (!isDraftMode && !isCredentialMasked && hasCredentialChanged) {
-                void handleUpdateCredential();
-              }
-            }}
-            slotProps={{
-              input: {
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      size="small"
-                      disabled={isFormDisabled}
-                      onClick={() => setShowCredential((prev) => !prev)}
-                      aria-label={
-                        showCredential ? 'Hide credentials' : 'Show credentials'
-                      }
-                    >
-                      {showCredential ? (
-                        <EyeOff size={18} />
-                      ) : (
-                        <Eye size={18} />
-                      )}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              },
-            }}
-          />
-        </FormControl>
+            <FormControl fullWidth>
+              <FormLabel>Credentials</FormLabel>
+              <TextField
+                size="small"
+                type={showCredential ? 'text' : 'password'}
+                value={credentialValue}
+                disabled={isFormDisabled}
+                onFocus={() => {
+                  if (isCredentialMasked) {
+                    setCredentialValue('');
+                    setIsCredentialMasked(false);
+                    setHasCredentialChanged(false);
+                  }
+                }}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  setCredentialValue(nextValue);
+                  setHasCredentialChanged(true);
+                  if (isDraftMode && !isCredentialMasked) {
+                    void handleUpdateCredential(nextValue);
+                  }
+                }}
+                onBlur={() => {
+                  if (
+                    !isDraftMode &&
+                    !isCredentialMasked &&
+                    hasCredentialChanged
+                  ) {
+                    void handleUpdateCredential();
+                  }
+                }}
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          size="small"
+                          disabled={isFormDisabled}
+                          onClick={() => setShowCredential((prev) => !prev)}
+                          aria-label={
+                            showCredential
+                              ? 'Hide credentials'
+                              : 'Show credentials'
+                          }
+                        >
+                          {showCredential ? (
+                            <EyeOff size={18} />
+                          ) : (
+                            <Eye size={18} />
+                          )}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+            </FormControl>
+          </>
+        )}
       </Stack>
     </>
   );

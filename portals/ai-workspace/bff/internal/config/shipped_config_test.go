@@ -57,10 +57,16 @@ func TestShippedConfig_QuickstartLoadsWithNoEnv(t *testing.T) {
 	if cfg.PlatformAPI.URL != "https://platform-api:9243" {
 		t.Errorf("PlatformAPI.URL = %q, want the compose hostname", cfg.PlatformAPI.URL)
 	}
-	// The Platform API generates its own certificate in demo mode, so the upstream hop
-	// cannot verify it. The https scheme still stands: the hop is encrypted.
-	if !cfg.PlatformAPI.TLSSkipVerify {
-		t.Error("PlatformAPI.TLSSkipVerify = false, want true — the quickstart upstream serves a self-signed certificate")
+	// The quickstart trusts the setup.sh-generated platform-api certificate via
+	// ca_file (mounted by docker-compose); verification stays on by default.
+	if cfg.PlatformAPI.TLSSkipVerify {
+		t.Error("PlatformAPI.TLSSkipVerify = true, want false — the quickstart trusts the upstream via ca_file, not by skipping verification")
+	}
+	// docker-compose no longer injects APIP_AIW_PLATFORM_API_CA_FILE — the default
+	// must be the path the compose file mounts the certificate at. The shared
+	// self-signed cert.pem is its own CA.
+	if cfg.PlatformAPI.CAFile != "/etc/ai-workspace/tls/cert.pem" {
+		t.Errorf("PlatformAPI.CAFile = %q, want the docker-compose mount path %q", cfg.PlatformAPI.CAFile, "/etc/ai-workspace/tls/cert.pem")
 	}
 }
 

@@ -28,9 +28,10 @@ driver = "sqlite3"
 path   = "/app/data/platform-api-it.db"
 
 [auth.jwt]
-enabled    = true
-issuer     = "platform-api-it"
-secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+enabled         = true
+issuer          = "platform-api-it"
+secret_key      = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+skip_validation = false
 
 [auth.idp]
 enabled = false

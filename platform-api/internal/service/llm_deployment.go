@@ -1101,7 +1101,10 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 	policies = orderLLMPolicies(policies)
 
 	upstream := dto.LLMUpstreamYAML{URL: main.URL, Ref: main.Ref}
-	if main.Auth != nil {
+	// "other" means auth to the upstream is handled entirely by user-attached
+	// policies (e.g. aws-authentication) - omit the auth block from the deployment
+	// artifact so the gateway does not attach a header-setting policy of its own.
+	if main.Auth != nil && normalizeUpstreamAuthType(main.Auth.Type) != "other" {
 		upstream.Auth = mapModelAuthToAPI(main.Auth)
 	}
 
@@ -1869,7 +1872,10 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 		},
 	}
 
-	if proxy.Configuration.UpstreamAuth != nil {
+	// "other" means auth to the upstream is handled entirely by user-attached
+	// policies - omit the auth block from the deployment artifact so the gateway
+	// does not attach a header-setting policy of its own.
+	if proxy.Configuration.UpstreamAuth != nil && normalizeUpstreamAuthType(proxy.Configuration.UpstreamAuth.Type) != "other" {
 		proxyDeployment.Spec.Provider.Auth = mapModelUpstreamAuthToAPI(proxy.Configuration.UpstreamAuth)
 	}
 

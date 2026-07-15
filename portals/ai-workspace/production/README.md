@@ -199,7 +199,7 @@ Mount the secret at that path, e.g. in `docker-compose.yaml`:
 Resolution fails closed: a missing or unreadable secret file aborts startup rather than yielding an
 empty credential. `{{ file }}` paths must live under `/etc/ai-workspace` or `/secrets/ai-workspace`
 (override with `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`). For a simpler local setup, swap the token for
-`'{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'` and keep the value in a git-ignored `.env`.
+`'{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'` and keep the value in the git-ignored `api-platform.env`.
 
 > `[oidc] redirect_url` must exactly match the authorized redirect URL registered in the IDP
 > application (section 1.2). The BFF, not the browser, completes the code exchange.
@@ -243,13 +243,14 @@ secret that already exists under its own name. For credentials, prefer a mounted
 
 ---
 
-## 4. Disable demo mode (`APIP_DEMO_MODE=false`)
+## 4. Production requirements
 
-For a production deployment, set `APIP_DEMO_MODE=false` (a single var passed to **both** the
-`platform-api` and `ai-workspace` services). This turns on fail-fast startup checks: basic /
-file-based auth is rejected (the OIDC setup in sections 1–3 becomes mandatory), the BFF and
-Platform API no longer auto-generate self-signed TLS certificates (you must mount your own),
-and the Platform API requires a stable `APIP_CP_ENCRYPTION_KEY` and `APIP_CP_AUTH_JWT_SECRET_KEY`.
+There is no demo mode: startup checks are always on for **both** the `platform-api` and
+`ai-workspace` services and fail fast when a requirement is missing. For production, replace
+the quickstart's `setup.sh` outputs with real values: use OIDC (sections 1–3) instead of the
+generated file-based admin user, mount TLS certificates from your CA instead of the generated
+self-signed pairs, and manage `APIP_CP_ENCRYPTION_KEY` / `APIP_CP_AUTH_JWT_SECRET_KEY` as
+stable, real secrets (prefer `{{ file }}` tokens over environment variables).
 
-See [Production hardening (`APIP_DEMO_MODE`)](../README.md#production-hardening-apip_demo_mode)
-in the main README for the full checklist of what each service requires.
+See [Production hardening](../README.md#production-hardening) in the main README for the
+full checklist of what each service requires.

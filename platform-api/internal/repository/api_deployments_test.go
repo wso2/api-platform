@@ -596,7 +596,6 @@ func TestGetControlPlaneDeploymentsByGateway_ExcludesGatewayOrigin(t *testing.T)
 
 func TestMain(m *testing.M) {
 	// APIP_CP_ENCRYPTION_KEY and APIP_CP_AUTH_JWT_SECRET_KEY are required.
-	os.Setenv("APIP_DEMO_MODE", "true")
 	os.Setenv("APIP_CP_ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 	os.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 

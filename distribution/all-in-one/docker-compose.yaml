@@ -50,6 +50,23 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      platform-api-certgen:
+        condition: service_completed_successfully
+
+  # One-shot init container: generates the TLS pair the platform-api HTTPS
+  # listener requires (the server no longer generates a self-signed fallback).
+  platform-api-certgen:
+    image: alpine/openssl
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        [ -f /certs/cert.pem ] && [ -f /certs/key.pem ] && exit 0
+        openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+          -keyout /certs/key.pem -out /certs/cert.pem \
+          -subj "/O=WSO2 API Platform/CN=platform-api" \
+          -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
+    volumes:
+      - platform-api-certs:/certs
 
   platform-api:
     image: ghcr.io/wso2/api-platform/platform-api:latest 
@@ -62,6 +79,7 @@ services:
       - "9243:9243"
     volumes:
       - platform-api-data:/api-platform/data
+      - platform-api-certs:/app/data/certs
     environment:
       - APIP_CP_DEFAULT_DEVPORTAL_API_URL=http://devportal:3001
       - APIP_CP_DATABASE_DRIVER=postgres
@@ -99,5 +117,7 @@ services:
 
 volumes:
   platform-api-data:
+    driver: local
+  platform-api-certs:
     driver: local
   postgres_data:

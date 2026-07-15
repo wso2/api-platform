@@ -2215,6 +2215,8 @@ func normalizeUpstreamAuthType(authType string) string {
 		return string(api.Basic)
 	case "bearer":
 		return string(api.Bearer)
+	case "other":
+		return string(api.Other)
 	default:
 		return normalized
 	}

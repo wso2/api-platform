@@ -65,6 +65,21 @@
 
 services:
   # ── Platform API (Go HTTPS backend — handles local auth) ────────────────────
+  # One-shot init container: generates the TLS pair the platform-api HTTPS
+  # listener requires (the server no longer generates a self-signed fallback).
+  platform-api-certgen:
+    image: alpine/openssl
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        [ -f /certs/cert.pem ] && [ -f /certs/key.pem ] && exit 0
+        openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+          -keyout /certs/key.pem -out /certs/cert.pem \
+          -subj "/O=WSO2 API Platform/CN=platform-api" \
+          -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
+    volumes:
+      - platform-api-certs:/certs
+
   platform-api:
     image: ghcr.io/wso2/api-platform/platform-api:0.11.0
     container_name: platform-api
@@ -76,8 +91,12 @@ services:
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
+      - platform-api-certs:/app/data/certs
     ports:
       - "9243:9243"
+    depends_on:
+      platform-api-certgen:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
       interval: 30s
@@ -150,3 +169,4 @@ volumes:
   sqlite_data:
   certs_data:
   platform-api-data:
+  platform-api-certs:

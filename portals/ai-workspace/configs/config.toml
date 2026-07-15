@@ -6,92 +6,29 @@
 # in compliance with the License. You may obtain a copy of the
 # License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
-#
-# AI Workspace configuration (quickstart)
-#
-# This file is the only source of configuration for the AI Workspace — both the BFF and
-# the SPA, which is served the browser-safe subset of these keys at startup. The
-# container reads it from its mount, /etc/ai-workspace/config.toml; `make bff-run` reads
-# this same file (bff -config ../configs/config.toml). Keys are grouped into TOML tables
-# ([platform_api], [oidc], ...).
-#
-# Each value below is written as an interpolation token that is resolved at startup:
-#
-#   key = '{{ env "APIP_AIW_KEY" "default" }}'
-#          └── environment variable    └── value used when the variable is unset
-#
-# So a deployment can set any of these keys from the environment without editing this
-# file. The token is what reads the environment — a key written as a plain literal, or
-# absent from the file, is not settable that way. By convention the variable is the
-# key's table path uppercased with underscores: [platform_api] url is
-# APIP_AIW_PLATFORM_API_URL.
-#
-# To source a value from a mounted file instead — the right choice for secrets — swap
-# the token:
-#
-#   key = '{{ file "/secrets/ai-workspace/key" }}'
-#
-# Never write a secret as a raw literal in this file.
-#
-# Only the quickstart keys are here. See configs/config-template.toml for the full
-# set — TLS, session/cookie, claim mappings — with their defaults.
-# --------------------------------------------------------------------
+# AI Workspace configuration (quickstart). See README.md → "Configuration".
+# See configs/config-template.toml for the full set of available settings.
 
-# UI auth mode: "basic" uses the Platform API's file-based login (quickstart);
-# "oidc" delegates login to an external OIDC-compliant IDP (production).
 auth_mode = '{{ env "APIP_AIW_AUTH_MODE" "basic" }}'
-
-# Domain shown in the browser address bar (host:port or just host for port 80/443).
 domain = '{{ env "APIP_AIW_DOMAIN" "localhost:5380" }}'
-
-# Control-plane host — the externally reachable address gateways use to reach the
-# Platform API. Shown in gateway setup instructions (keys.env, helm values).
 controlplane_host = '{{ env "APIP_AIW_CONTROLPLANE_HOST" "host.docker.internal:9243" }}'
-
-# Default region assigned to new organizations on first login.
 default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
-
-# Gateway versions shown in the create-gateway version selector (JSON array string).
 platform_gateway_versions = '{{ env "APIP_AIW_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-M1\",\"channel\":\"STS\"}]" }}'
 
-# Server. The defaults are the container's: the port it publishes, and the SPA baked
-# into the image. `make bff-run` points the variables elsewhere to run the same config
-# outside a container (:8081, ../dist).
 listen_addr = '{{ env "APIP_AIW_LISTEN_ADDR" ":5380" }}'
 static_dir  = '{{ env "APIP_AIW_STATIC_DIR" "/app" }}'
 log_level   = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'   # debug | info | warn | error
 
 
-# ---------------------------------------------------------------------------
-# Upstream Platform API — the server-to-server hop the BFF proxies to.
-# ---------------------------------------------------------------------------
 [platform_api]
 
-# Base URL. In docker compose this is the compose hostname. REQUIRED. Its http/https
-# scheme decides whether the upstream hop uses TLS.
 url = '{{ env "APIP_AIW_PLATFORM_API_URL" "https://platform-api:9243" }}'
-
-# Accept the Platform API's self-signed certificate. True for the quickstart, where the
-# Platform API generates its own; rejected when APIP_DEMO_MODE=false — trust the
-# certificate with [platform_api] ca_file instead (see config-template.toml).
-tls_skip_verify = '{{ env "APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY" "true" }}'
+ca_file = "/etc/ai-workspace/tls/cert.pem"
+tls_skip_verify = '{{ env "APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY" "false" }}'
 
 
-# ---------------------------------------------------------------------------
-# OIDC — used only when auth_mode = "oidc" above.
-#
-# The empty defaults keep basic mode starting with these variables unset; OIDC mode
-# then rejects any that are still empty. The BFF is a confidential client, so the
-# secret stays server-side — set it in .env (or swap the token for
-# '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'), never as a literal here.
-# ---------------------------------------------------------------------------
-[oidc]
+[tls]
 
-authority                = '{{ env "APIP_AIW_OIDC_AUTHORITY" "" }}'
-client_id                = '{{ env "APIP_AIW_OIDC_CLIENT_ID" "" }}'
-client_secret            = '{{ env "APIP_AIW_OIDC_CLIENT_SECRET" "" }}'
-redirect_url             = '{{ env "APIP_AIW_OIDC_REDIRECT_URL" "" }}'
-post_logout_redirect_url = '{{ env "APIP_AIW_OIDC_POST_LOGOUT_REDIRECT_URL" "" }}'
-
-# Left empty, the full ap:* scope set is requested.
-scope                    = '{{ env "APIP_AIW_OIDC_SCOPE" "" }}'
+enabled   = '{{ env "APIP_AIW_TLS_ENABLED" "true" }}'
+cert_file = "/etc/ai-workspace/tls/cert.pem"
+key_file  = "/etc/ai-workspace/tls/key.pem"

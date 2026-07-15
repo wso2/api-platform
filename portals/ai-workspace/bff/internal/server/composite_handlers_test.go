@@ -295,7 +295,10 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 	}
 	var body map[string]string
 	_ = json.NewDecoder(w.Body).Decode(&body)
-	if body["error"] != "not authenticated" {
-		t.Errorf("error = %q, want %q", body["error"], "not authenticated")
+	if body["code"] != "UNAUTHORIZED" {
+		t.Errorf("code = %q, want %q", body["code"], "UNAUTHORIZED")
+	}
+	if body["message"] != "Invalid or expired credentials." {
+		t.Errorf("message = %q, want %q", body["message"], "Invalid or expired credentials.")
 	}
 }
