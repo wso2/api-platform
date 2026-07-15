@@ -572,6 +572,7 @@ export interface ProxyApiKeySecurity {
   enabled: boolean;
   key: string;
   in: 'header' | 'query';
+  valuePrefix?: string;
 }
 
 /**
