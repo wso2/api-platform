@@ -336,29 +336,3 @@ gateway_type        = "wso2/api-platform"
 signature_tolerance = "5m"                     # max age of a signed request (replay protection)
 max_body_size       = 1048576                  # request body cap in bytes (1 MiB)
 signature_header    = "X-Devportal-Signature"  # header carrying the "t=...,v1=..." signature
-
-# ---------------------------------------------------------------------------
-# DevPortal integration
-# ---------------------------------------------------------------------------
-# Enabled by default; disable for standalone deployments that do not use a
-# DevPortal. name, identifier, api_url, hostname, and api_key are required
-# when enabled = true.
-[default_devportal]
-enabled    = false
-name       = "Default DevPortal"
-identifier = "default"                # unique slug used internally
-api_url    = "http://localhost:3001"
-hostname   = "devportal.local"        # public hostname shown in setup instructions
-api_key    = "change-me"
-header_key_name = "x-wso2-api-key"
-timeout    = 10                       # HTTP client timeout in seconds
-
-# JWT claim name mappings for DevPortal token validation.
-role_claim_name         = "roles"
-groups_claim_name       = "groups"
-organization_claim_name = "organizationID"
-
-# Role names that map to DevPortal access levels.
-admin_role       = "admin"
-subscriber_role  = "Internal/subscriber"
-super_admin_role = "superAdmin"

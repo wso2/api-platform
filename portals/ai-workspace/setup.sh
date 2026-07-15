@@ -7,39 +7,10 @@
 # in compliance with the License. You may obtain a copy of the
 # License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
-#
-# AI Workspace quickstart setup.
-#
-# Generates everything the stack requires before first start — nothing is
-# auto-generated at runtime anymore:
-#
-#   api-platform.env                  APIP_CP_ENCRYPTION_KEY        at-rest encryption key
-#                             APIP_CP_AUTH_JWT_SECRET_KEY   JWT signing key
-#                             APIP_CP_ADMIN_USERNAME        admin login username
-#                             APIP_CP_ADMIN_PASSWORD_HASH   bcrypt hash of the password
-#   resources/certificates/cert.pem|key.pem   TLS pair shared by both services
-#                             (SAN: localhost, platform-api, ai-workspace)
-#
-# The admin password is printed once below and is NOT stored anywhere.
-#
-# Usage:
-#   ./setup.sh                 generate anything that is missing
-#   ./setup.sh --force         regenerate everything (rotates keys and credentials)
-#   ./setup.sh --certs-only    generate only the TLS certificates (used by `make bff-run`)
-#
-# When run interactively, setup.sh prompts for the admin username (default:
-# admin) and password (default: a generated random string).
-#
-#   ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the prompts and
-#   pin the credentials (used by CI to pin known test credentials).
-#
-# Then start the stack:
-#   docker compose up -d
-# --------------------------------------------------------------------
+# AI Workspace quickstart setup. See README.md → "Quick Start".
 set -euo pipefail
 cd "$(dirname "$0")"
-# In the distribution this script lives in scripts/, one level below the
-# docker-compose root; in the repo it sits next to docker-compose.yaml.
+# Distribution layout: scripts/setup.sh, one level below docker-compose.yaml.
 [[ -f docker-compose.yaml ]] || cd ..
 
 ENV_FILE="api-platform.env"
@@ -52,7 +23,15 @@ for arg in "$@"; do
     --force) FORCE=true ;;
     --certs-only) CERTS_ONLY=true ;;
     -h|--help)
-      sed -n '11,35p' "$0" | sed 's/^# \{0,1\}//'
+      cat <<'EOF'
+Usage: ./setup.sh [--force] [--certs-only]
+
+  --force         regenerate everything (rotates keys and credentials)
+  --certs-only    generate only the TLS certificates (used by `make bff-run`)
+
+ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the interactive
+prompts and pin the credentials (used by CI). See README.md → "Quick Start".
+EOF
       exit 0
       ;;
     *) echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
@@ -63,9 +42,6 @@ command -v openssl >/dev/null 2>&1 || { echo "error: openssl is required" >&2; e
 
 log() { echo "[setup] $*"; }
 
-# ---------------------------------------------------------------------------
-# TLS certificates
-# ---------------------------------------------------------------------------
 gen_cert() {
   local san="$1"
   if [[ "$FORCE" == false && -f "$CERTS_DIR/cert.pem" && -f "$CERTS_DIR/key.pem" ]]; then
@@ -76,26 +52,20 @@ gen_cert() {
     -keyout "$CERTS_DIR/key.pem" -out "$CERTS_DIR/cert.pem" \
     -subj "/O=WSO2 API Platform/CN=localhost" \
     -addext "subjectAltName=$san" >/dev/null 2>&1
-  chmod 600 "$CERTS_DIR/key.pem"
+  chmod 644 "$CERTS_DIR/key.pem"
   log "  - self-signed certificate generated at $CERTS_DIR/cert.pem"
 }
 
 log "Provisioning TLS certificate ..."
 mkdir -p "$CERTS_DIR"
-# One pair serves both services: the SAN list covers both compose hostnames, and
-# because it is self-signed the same cert doubles as the CA bundle the BFF
-# trusts for the upstream platform-api hop. The file names are the ones the
-# platform-api container requires inside its cert dir (cert.pem / key.pem);
-# docker-compose mounts this whole directory into both containers unchanged.
+# Self-signed, so this one cert also doubles as the CA bundle the BFF trusts
+# for the upstream platform-api hop; SAN covers both compose hostnames.
 gen_cert "DNS:localhost,DNS:platform-api,DNS:ai-workspace,DNS:host.docker.internal,IP:127.0.0.1"
 
 if [[ "$CERTS_ONLY" == true ]]; then
   exit 0
 fi
 
-# ---------------------------------------------------------------------------
-# api-platform.env — secrets and admin credentials
-# ---------------------------------------------------------------------------
 if [[ "$FORCE" == false && -f "$ENV_FILE" ]]; then
   log "$ENV_FILE already exists — keeping it (rerun with --force to rotate keys and credentials)"
   echo
@@ -106,8 +76,7 @@ if [[ "$FORCE" == false && -f "$ENV_FILE" ]]; then
   exit 0
 fi
 
-# bcrypt is not in openssl; use htpasswd when available, otherwise the httpd image.
-# The password is fed via stdin (-i) so it never appears in the process list.
+# bcrypt isn't in openssl; use htpasswd when available, else the httpd image.
 bcrypt_hash() {
   local password="$1"
   if command -v htpasswd >/dev/null 2>&1; then
@@ -120,9 +89,6 @@ bcrypt_hash() {
   fi
 }
 
-# ---------------------------------------------------------------------------
-# Admin credentials — from env vars, interactive prompts, or defaults
-# ---------------------------------------------------------------------------
 GENERATED_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-20)"
 
 if [[ -z "${ADMIN_USERNAME:-}" && -t 0 ]]; then
