@@ -18,8 +18,12 @@
 package service
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 
@@ -34,11 +38,15 @@ type llmProviderImporter struct {
 	providerRepo repository.LLMProviderRepository
 	templateRepo repository.LLMProviderTemplateRepository
 	artifactRepo repository.ArtifactRepository
+	cfg          *config.Server
+	slogger      *slog.Logger
 }
 
 func newLLMProviderImporter(providerRepo repository.LLMProviderRepository,
-	templateRepo repository.LLMProviderTemplateRepository, artifactRepo repository.ArtifactRepository) *llmProviderImporter {
-	return &llmProviderImporter{providerRepo: providerRepo, templateRepo: templateRepo, artifactRepo: artifactRepo}
+	templateRepo repository.LLMProviderTemplateRepository, artifactRepo repository.ArtifactRepository,
+	cfg *config.Server, slogger *slog.Logger) *llmProviderImporter {
+	return &llmProviderImporter{providerRepo: providerRepo, templateRepo: templateRepo, artifactRepo: artifactRepo,
+		cfg: cfg, slogger: slogger}
 }
 
 func (i *llmProviderImporter) Kind() string          { return constants.LLMProvider }
@@ -58,7 +66,7 @@ func (i *llmProviderImporter) Import(ctx *ImportContext) (*ImportResult, error) 
 	cfg := mapLLMProviderSpecToConfig(spec)
 
 	if ctx.Existing == nil {
-		templateUUID, err := i.resolveTemplateUUID(cfg.Template, ctx.OrgID)
+		tmpl, err := i.resolveTemplate(cfg.Template, ctx.OrgID)
 		if err != nil {
 			return nil, err
 		}
@@ -68,7 +76,8 @@ func (i *llmProviderImporter) Import(ctx *ImportContext) (*ImportResult, error) 
 			ID:               utils.ImportHandle(ctx.Configuration),
 			Name:             utils.ImportDisplayName(ctx.Configuration),
 			Version:          version,
-			TemplateUUID:     templateUUID,
+			TemplateUUID:     tmpl.UUID,
+			OpenAPISpec:      resolveTemplateOpenAPISpec(context.Background(), tmpl, openAPISpecFetchLimit(i.cfg), i.slogger),
 			Origin:           constants.OriginDP,
 			Configuration:    cfg,
 		}
@@ -95,11 +104,14 @@ func (i *llmProviderImporter) Import(ctx *ImportContext) (*ImportResult, error) 
 		existing.Version = version
 		existing.Configuration = cfg
 		if cfg.Template != "" {
-			templateUUID, err := i.resolveTemplateUUID(cfg.Template, ctx.OrgID)
+			tmpl, err := i.resolveTemplate(cfg.Template, ctx.OrgID)
 			if err != nil {
 				return nil, err
 			}
-			existing.TemplateUUID = templateUUID
+			existing.TemplateUUID = tmpl.UUID
+			if strings.TrimSpace(existing.OpenAPISpec) == "" {
+				existing.OpenAPISpec = resolveTemplateOpenAPISpec(context.Background(), tmpl, openAPISpecFetchLimit(i.cfg), i.slogger)
+			}
 		}
 	case utils.WriteGatewaySpecificOnly:
 		// CP-owned: only update gateway-specific upstream.
@@ -111,20 +123,20 @@ func (i *llmProviderImporter) Import(ctx *ImportContext) (*ImportResult, error) 
 	return &ImportResult{ID: ctx.ID, DeployedVersion: version, Deployable: true}, nil
 }
 
-// resolveTemplateUUID resolves the template handle referenced by the provider spec
-// to its UUID. The template must already exist (FK requirement).
-func (i *llmProviderImporter) resolveTemplateUUID(templateHandle, orgID string) (string, error) {
+// resolveTemplate resolves the template handle referenced by the provider spec to the
+// full template record. The template must already exist (FK requirement).
+func (i *llmProviderImporter) resolveTemplate(templateHandle, orgID string) (*model.LLMProviderTemplate, error) {
 	if templateHandle == "" {
-		return "", apperror.ValidationFailed.New("The LLM provider import requires a template reference.")
+		return nil, apperror.ValidationFailed.New("The LLM provider import requires a template reference.")
 	}
 	tmpl, err := i.templateRepo.GetByID(templateHandle, orgID)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve LLM provider template %q: %w", templateHandle, err)
+		return nil, fmt.Errorf("failed to resolve LLM provider template %q: %w", templateHandle, err)
 	}
 	if tmpl == nil {
-		return "", apperror.ValidationFailed.New(fmt.Sprintf("The referenced LLM provider template %q does not exist.", templateHandle))
+		return nil, apperror.ValidationFailed.New(fmt.Sprintf("The referenced LLM provider template %q does not exist.", templateHandle))
 	}
-	return tmpl.UUID, nil
+	return tmpl, nil
 }
 
 // mapLLMProviderSpecToConfig reverse-maps a gateway-pushed LLM provider deployment

@@ -132,9 +132,9 @@ func NewArtifactImportService(
 	}
 	s.importers = map[string]GatewayArtifactImporter{
 		constants.RestApi:             newRestAPIImporter(apiRepo, artifactRepo),
-		constants.LLMProvider:         newLLMProviderImporter(providerRepo, templateRepo, artifactRepo),
+		constants.LLMProvider:         newLLMProviderImporter(providerRepo, templateRepo, artifactRepo, cfg, slogger),
 		constants.LLMProviderTemplate: newLLMProviderTemplateImporter(templateRepo),
-		constants.LLMProxy:            newLLMProxyImporter(proxyRepo, artifactRepo),
+		constants.LLMProxy:            newLLMProxyImporter(proxyRepo, providerRepo, artifactRepo),
 		constants.MCPProxy:            newMCPProxyImporter(mcpProxyRepo, artifactRepo, mcpServerInfo),
 	}
 	return s
