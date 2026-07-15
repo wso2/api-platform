@@ -26,6 +26,7 @@ import {
   createDefaultArrayItem,
   deleteValueByPath,
   coerceValuesToSchemaTypes,
+  omitOptionalEmptyValues,
 } from './schemaUtils';
 import SchemaTree from './SchemaTree';
 import { useStyles } from './styles';
@@ -450,7 +451,11 @@ const PolicyParameterEditor: React.FC<PolicyParameterEditorProps> = ({
     // Coerce values to their schema-declared types so booleans, numbers,
     // and objects are not accidentally sent as strings
     const coercedValues = coerceValuesToSchemaTypes(parameters, values);
-    onSubmit(coercedValues);
+    const sanitizedValues = omitOptionalEmptyValues(
+      parameters,
+      coercedValues
+    );
+    onSubmit(sanitizedValues);
   }, [parameters, values, onSubmit]);
 
   return (
