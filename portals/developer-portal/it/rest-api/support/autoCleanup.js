@@ -16,17 +16,14 @@
 // under the License.
 // --------------------------------------------------------------------
 
-module.exports = {
-    testEnvironment: 'node',
-    testMatch: ['**/*.spec.js'],
-    globalSetup: '<rootDir>/support/global-setup.js',
-    globalTeardown: '<rootDir>/support/global-teardown.js',
-    // Registers a per-suite afterAll that deletes resources tracked via
-    // support/cleanup.js, so specs don't accumulate objects in the shared org.
-    setupFilesAfterEnv: ['<rootDir>/support/autoCleanup.js'],
-    testTimeout: 10000,
-    reporters: [
-        'default',
-        ['jest-junit', { outputDirectory: 'reports', outputName: 'rest-api-results.xml' }],
-    ],
-};
+// Registered for every spec file via jest.config.js `setupFilesAfterEnv`. Runs a
+// single afterAll in each suite that deletes every resource tracked through
+// support/cleanup.js during that file's run, so the shared org doesn't accumulate
+// APIs / MCP servers / labels / views / subscriptions across the suite.
+//
+// Registered here (before the spec's own hooks) so it runs LAST among afterAll
+// hooks — after any spec-level afterAll — while the devportal is still up.
+
+const { cleanupResources } = require('./cleanup');
+
+afterAll(cleanupResources);

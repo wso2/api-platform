@@ -43,33 +43,40 @@ ensure-test-tag:
 # Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
 # Service list is explicit — the compose file also defines rest-api-tests, which
 # `up` with no args would otherwise start too.
+# Each target captures the exit code of `docker compose up` itself — which
+# `--exit-code-from <svc>` sets to that service's container exit code, and which
+# is also non-zero when a dependency fails to start — then always tears down and
+# re-exits with it. Do NOT recover the code via `docker compose ps -q <svc> |
+# docker inspect`: `ps -q` lists only RUNNING containers, so once the service has
+# exited it returns nothing and the code is silently lost (the target then passes
+# even when tests fail). Keep the capture in the same shell as `up`.
 test: ensure-test-tag
-	-CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.yaml up devportal cypress --abort-on-container-exit --exit-code-from cypress
-	$(MAKE) _collect-exit COMPOSE_FILE=docker-compose.test.yaml SERVICE=cypress
+	@CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.yaml up devportal cypress --abort-on-container-exit --exit-code-from cypress; \
+	EXIT=$$?; \
+	docker compose -f docker-compose.test.yaml down -v --remove-orphans; \
+	exit $$EXIT
 
 # Run Cypress tests headlessly against PostgreSQL.
 # Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
 test-postgres: ensure-test-tag
-	-CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.postgres.yaml up postgres devportal cypress --abort-on-container-exit --exit-code-from cypress
-	$(MAKE) _collect-exit COMPOSE_FILE=docker-compose.test.postgres.yaml SERVICE=cypress
+	@CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.postgres.yaml up postgres devportal cypress --abort-on-container-exit --exit-code-from cypress; \
+	EXIT=$$?; \
+	docker compose -f docker-compose.test.postgres.yaml down -v --remove-orphans; \
+	exit $$EXIT
 
 # Run the REST API integration test suite (Jest + Supertest) against SQLite.
 # Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
 test-rest-api: ensure-test-tag
-	-DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.yaml up devportal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests
-	$(MAKE) _collect-exit COMPOSE_FILE=docker-compose.test.yaml SERVICE=rest-api-tests
+	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.yaml up devportal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
+	EXIT=$$?; \
+	docker compose -f docker-compose.test.yaml down -v --remove-orphans; \
+	exit $$EXIT
 
 # Run the REST API integration test suite (Jest + Supertest) against PostgreSQL.
 test-rest-api-postgres: ensure-test-tag
-	-DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.postgres.yaml up postgres devportal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests
-	$(MAKE) _collect-exit COMPOSE_FILE=docker-compose.test.postgres.yaml SERVICE=rest-api-tests
-
-# Capture the exit code from the given service container even after compose exits.
-COMPOSE_FILE ?= docker-compose.test.yaml
-SERVICE ?= cypress
-_collect-exit:
-	@EXIT=$$(docker compose -f $(COMPOSE_FILE) ps -q $(SERVICE) | xargs docker inspect --format='{{.State.ExitCode}}' 2>/dev/null || echo 0); \
-	docker compose -f $(COMPOSE_FILE) down -v --remove-orphans; \
+	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.postgres.yaml up postgres devportal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
+	EXIT=$$?; \
+	docker compose -f docker-compose.test.postgres.yaml down -v --remove-orphans; \
 	exit $$EXIT
 
 # Open Cypress interactive UI — runs against a LOCALLY running devportal (not in Docker).

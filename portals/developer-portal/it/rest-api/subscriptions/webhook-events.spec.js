@@ -63,7 +63,7 @@ describe('subscriptions webhook events', () => {
 
     it('publishes and delivers subscription.created', async () => {
         const since = new Date();
-        const create = await client.as('developer').post('/subscriptions', { apiId: api.id, subscriptionPlanId: 'Gold' });
+        const create = await client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: 'Gold' });
         expect(create.status).toBe(201);
 
         const event = await waitForEvent({ orgHandle: client.ORG_HANDLE, type: 'subscription.created', since });
@@ -86,7 +86,7 @@ describe('subscriptions webhook events', () => {
     });
 
     it('publishes and delivers subscription.plan_changed', async () => {
-        const create = await client.as('developer').post('/subscriptions', { apiId: api.id, subscriptionPlanId: 'Gold' });
+        const create = await client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: 'Gold' });
 
         const since = new Date();
         const change = await client.as('developer').post(`/subscriptions/${create.body.subscriptionId}/change-plan`, { planId: 'Silver' });
@@ -111,7 +111,7 @@ describe('subscriptions webhook events', () => {
     });
 
     it('publishes and delivers subscription.token_regenerated', async () => {
-        const create = await client.as('developer').post('/subscriptions', { apiId: api.id, subscriptionPlanId: 'Gold' });
+        const create = await client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: 'Gold' });
 
         const since = new Date();
         const regen = await client.as('developer').post(`/subscriptions/${create.body.subscriptionId}/regenerate-token`, {});
@@ -140,7 +140,7 @@ describe('subscriptions webhook events', () => {
     });
 
     it('publishes and delivers subscription.deleted', async () => {
-        const create = await client.as('developer').post('/subscriptions', { apiId: api.id, subscriptionPlanId: 'Gold' });
+        const create = await client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: 'Gold' });
 
         const since = new Date();
         const del = await client.as('developer').del(`/subscriptions/${create.body.subscriptionId}`);
@@ -177,7 +177,7 @@ describe('subscriptions webhook events', () => {
             publicKey,
         });
 
-        const create = await client.as('developer').post('/subscriptions', { apiId: api.id, subscriptionPlanId: 'Gold' });
+        const create = await client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: 'Gold' });
 
         const since = new Date();
         const regen = await client.as('developer').post(`/subscriptions/${create.body.subscriptionId}/regenerate-token`, {});
@@ -211,7 +211,7 @@ describe('subscriptions webhook events', () => {
     // same call would pass both. Assert the combination directly.
     describe('action + event consistency', () => {
         it('does not publish subscription.plan_changed when change-plan targets a plan not linked to the API', async () => {
-            const create = await client.as('developer').post('/subscriptions', { apiId: api.id, subscriptionPlanId: 'Gold' });
+            const create = await client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: 'Gold' });
 
             const since = new Date();
             const res = await client.as('developer').post(`/subscriptions/${create.body.subscriptionId}/change-plan`, { planId: 'DoesNotExist' });

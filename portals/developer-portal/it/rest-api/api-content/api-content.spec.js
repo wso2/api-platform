@@ -62,7 +62,7 @@ async function uploadContent(role, handle, zip, { method = 'post', imageMetadata
     const req = method === 'put'
         ? client.as(role).putMultipart(`/apis/${handle}/assets`)
         : client.as(role).postMultipart(`/apis/${handle}/assets`);
-    req.attach('apiContent', zip, 'content.zip');
+    req.attach('content', zip, 'content.zip');
     if (imageMetadata) req.field('imageMetadata', JSON.stringify(imageMetadata));
     return req;
 }

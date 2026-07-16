@@ -32,6 +32,7 @@
 // Request as soon as the function returns, before the chaining happens.
 
 const supertest = require('supertest');
+const { autoTrackFromResponse } = require('./cleanup');
 
 const BASE_URL = process.env.DEVPORTAL_BASE_URL || 'http://localhost:3000';
 const API_PREFIX = '/api/v0.9';
@@ -103,12 +104,23 @@ function as(role) {
 
     return {
         get: (path) => agent.get(`${API_PREFIX}${path}`),
-        post: (path, body) => withXsrf(agent.post(`${API_PREFIX}${path}`)).send(body),
+        // post resolves to the response like before (every caller just awaits it —
+        // none chain supertest methods on the return), with a tap that auto-registers
+        // a created top-level resource for afterAll cleanup (support/cleanup.js).
+        post: (path, body) => withXsrf(agent.post(`${API_PREFIX}${path}`)).send(body)
+            .then((res) => { autoTrackFromResponse(path, body, res, role); return res; }),
         put: (path, body) => withXsrf(agent.put(`${API_PREFIX}${path}`)).send(body),
         del: (path) => withXsrf(agent.delete(`${API_PREFIX}${path}`)),
         // For multipart/form-data endpoints (e.g. POST/PUT /apis) — caller chains
-        // .field()/.attach() before awaiting.
-        postMultipart: (path) => withXsrf(agent.post(`${API_PREFIX}${path}`)),
+        // .field()/.attach() before awaiting. Because the request is built by
+        // chaining after this returns, we can't tap it with .then; instead listen
+        // for superagent's 'response' event, which fires with the parsed body on
+        // await and lets us auto-register the created API/MCP for afterAll cleanup.
+        postMultipart: (path) => {
+            const req = withXsrf(agent.post(`${API_PREFIX}${path}`));
+            req.on('response', (res) => autoTrackFromResponse(path, undefined, res, role));
+            return req;
+        },
         putMultipart: (path) => withXsrf(agent.put(`${API_PREFIX}${path}`)),
     };
 }
