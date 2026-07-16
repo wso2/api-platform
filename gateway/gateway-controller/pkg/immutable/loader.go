@@ -21,7 +21,6 @@ package immutable
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -36,6 +35,13 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
+
+// artifactContentTypes maps supported file extensions to their content types.
+var artifactContentTypes = map[string]string{
+	".yaml": "application/x-yaml",
+	".yml":  "application/x-yaml",
+	".json": "application/json",
+}
 
 // ImmutableGW manages immutable gateway mode: artifact loading on startup and
 // read-only enforcement on the management API at runtime.
@@ -91,26 +97,21 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 	//   pass3: RestApi, WebSubApi, LlmProxy, Mcp — LlmProxy depends on LlmProvider
 	var pass1, pass2, pass3 []artifact
 
-	if err := filepath.WalkDir(g.cfg.ArtifactsDir, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return fmt.Errorf("error accessing path %s: %w", path, walkErr)
-		}
-		if d.IsDir() {
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(path))
-		if ext != ".yaml" && ext != ".yml" && ext != ".json" {
-			return nil
-		}
+	filePaths, err := collectArtifacts(g.cfg.ArtifactsDir)
+	if err != nil {
+		return err
+	}
 
+	for _, path := range filePaths {
+		ext := strings.ToLower(filepath.Ext(path))
+		contentType, ok := artifactContentTypes[ext]
+		if !ok {
+			log.Warn("Skipping file with unsupported extension", slog.String("path", path))
+			continue
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("failed to read artifact %s: %w", path, err)
-		}
-
-		contentType := "application/x-yaml"
-		if ext == ".json" {
-			contentType = "application/json"
 		}
 
 		var envelope struct {
@@ -134,9 +135,6 @@ func (g *ImmutableGW) LoadArtifacts(log *slog.Logger) error {
 		default:
 			return fmt.Errorf("artifact %s has unsupported kind %q", path, envelope.Kind)
 		}
-		return nil
-	}); err != nil {
-		return err
 	}
 
 	total := len(pass1) + len(pass2) + len(pass3)
@@ -208,6 +206,35 @@ func (g *ImmutableGW) applyArtifact(path, kind, contentType string, data []byte,
 		}
 	}
 	return nil
+}
+
+// collectArtifacts lists files in dir, skipping dot-prefixed entries.
+func collectArtifacts(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("reading artifacts dir %s: %w", dir, err)
+	}
+	var paths []string
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		fi, err := os.Stat(path)
+		if err != nil {
+			return nil, fmt.Errorf("stat %s: %w", path, err)
+		}
+		if fi.IsDir() {
+			nested, err := collectArtifacts(path)
+			if err != nil {
+				return nil, err
+			}
+			paths = append(paths, nested...)
+			continue
+		}
+		paths = append(paths, path)
+	}
+	return paths, nil
 }
 
 // Middleware returns a handler that rejects POST, PUT, and DELETE with 405
