@@ -679,22 +679,41 @@ func TestLLMProviderTemplateServiceSetVersionEnabled_EnableIgnoresUsage(t *testi
 	}
 }
 
-func TestLLMProviderTemplateServiceSetVersionEnabled_RejectsCustomTemplate(t *testing.T) {
+func TestLLMProviderTemplateServiceSetVersionEnabled_AllowsCustomTemplate(t *testing.T) {
 	repo := &mockLLMProviderTemplateCRUDRepo{
+		getByVersionFunc: func(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{ID: templateID, Version: version, ManagedBy: "organization", Enabled: false}, nil
+		},
+	}
+	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
+
+	resp, err := svc.SetVersionEnabled("org-1", "openai", "v2.0", false)
+	if err != nil {
+		t.Fatalf("expected custom template to be toggleable, got: %v", err)
+	}
+	if !repo.setEnabledCalled || repo.setEnabledEnabled {
+		t.Fatalf("expected SetEnabled to be called with enabled=false, got called=%v enabled=%v", repo.setEnabledCalled, repo.setEnabledEnabled)
+	}
+	if resp == nil || resp.Enabled == nil || *resp.Enabled {
+		t.Fatalf("expected response to reflect disabled state, got: %#v", resp)
+	}
+}
+
+func TestLLMProviderTemplateServiceSetVersionEnabled_CustomTemplateDisableBlocksWhenInUse(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{
+		countProvidersUsingTemplateResult: 1,
 		getByVersionFunc: func(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error) {
 			return &model.LLMProviderTemplate{ID: templateID, Version: version, ManagedBy: "organization"}, nil
 		},
 	}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
-	// Enable/disable is reserved for built-in ('wso2') templates; a custom
-	// ('organization') template must be rejected and never touch SetEnabled.
 	_, err := svc.SetVersionEnabled("org-1", "openai", "v2.0", false)
-	if !apperror.LLMProviderTemplateNotToggleable.Is(err) {
-		t.Fatalf("expected ErrLLMProviderTemplateNotToggleable, got: %v", err)
+	if !apperror.LLMProviderTemplateInUse.Is(err) {
+		t.Fatalf("expected ErrLLMProviderTemplateInUse for in-use custom template, got: %v", err)
 	}
-	if repo.setEnabledCalled || repo.countProvidersUsingTemplateCalled {
-		t.Fatalf("did not expect SetEnabled or usage check for a non-toggleable custom template")
+	if repo.setEnabledCalled {
+		t.Fatalf("did not expect SetEnabled to be called while version is in use")
 	}
 }
 
