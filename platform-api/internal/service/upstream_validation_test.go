@@ -219,6 +219,38 @@ func TestValidateUpstreamRefs(t *testing.T) {
 	t.Run("def url no host rejected", func(t *testing.T) {
 		wantErr(t, []api.ReusableUpstream{mkDef("d", "http://")}, nil, "url no host")
 	})
+	mkDefWithBasePath := func(basePath string) api.ReusableUpstream {
+		d := mkDef("d", "http://b:8080")
+		d.BasePath = &basePath
+		return d
+	}
+	t.Run("def basePath without leading slash rejected", func(t *testing.T) {
+		wantErr(t, []api.ReusableUpstream{mkDefWithBasePath("api/v2")}, nil, "basePath without leading '/'")
+	})
+	t.Run("def basePath with trailing slash rejected", func(t *testing.T) {
+		wantErr(t, []api.ReusableUpstream{mkDefWithBasePath("/api/v2/")}, nil, "basePath with trailing '/'")
+	})
+	t.Run("def basePath bare root slash rejected", func(t *testing.T) {
+		wantErr(t, []api.ReusableUpstream{mkDefWithBasePath("/")}, nil, "bare '/' basePath (root is expressed by omitting)")
+	})
+	t.Run("def basePath with space rejected", func(t *testing.T) {
+		wantErr(t, []api.ReusableUpstream{mkDefWithBasePath("/api v2")}, nil, "basePath with a space")
+	})
+	t.Run("def basePath with query rejected", func(t *testing.T) {
+		wantErr(t, []api.ReusableUpstream{mkDefWithBasePath("/api?x=1")}, nil, "basePath with a query string")
+	})
+	t.Run("def valid basePath accepted", func(t *testing.T) {
+		if err := s.validateUpstreamRefs(&[]api.ReusableUpstream{mkDefWithBasePath("/api/v2")}, validUp, nil); err != nil {
+			t.Errorf("basePath /api/v2 should be valid, got %v", err)
+		}
+	})
+	t.Run("def empty basePath treated as unset", func(t *testing.T) {
+		// omitempty drops an empty basePath from the deployment YAML, so the gateway
+		// never sees it; rejecting it here would be stricter than the deploy contract.
+		if err := s.validateUpstreamRefs(&[]api.ReusableUpstream{mkDefWithBasePath("")}, validUp, nil); err != nil {
+			t.Errorf("empty basePath should be treated as unset, got %v", err)
+		}
+	})
 	t.Run("per-op empty ref rejected", func(t *testing.T) {
 		defs := []api.ReusableUpstream{mkDef("svc", "http://b:8080")}
 		ops := []api.Operation{{Request: api.OperationRequest{Method: api.OperationRequestMethodGET, Path: "/x",
