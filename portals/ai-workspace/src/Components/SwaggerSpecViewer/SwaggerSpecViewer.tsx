@@ -16,10 +16,23 @@
  * under the License.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import {
+  InputAdornment,
+  MenuItem,
+  Stack,
+  TextField,
+  Typography,
+} from '@wso2/oxygen-ui';
+import { Search } from '@wso2/oxygen-ui-icons-react';
 import SwaggerUI from 'swagger-ui-react';
 import 'swagger-ui-react/swagger-ui.css';
 import './SwaggerSpecViewer.css';
+import type { AccessControl } from '../../utils/types';
+import {
+  buildExceptionSet,
+  normalizeAccessControlMode,
+} from '../../utils/openApiAccessControl';
 
 const SwaggerUIComponent =
   SwaggerUI as unknown as React.ComponentType<Record<string, unknown>>;
@@ -40,6 +53,8 @@ type SwaggerSpecViewerProps = {
   hideOperationHeader?: boolean;
   disableTryOutBtn?: boolean;
   disableResponseSection?: boolean;
+  enableResourceSearch?: boolean;
+  accessControl?: AccessControl;
 };
 
 type SwaggerSpec = Record<string, unknown>;
@@ -196,6 +211,143 @@ function mergePlainHeaders(
   return nextHeaders;
 }
 
+type ResourceMethod = 'all' | (typeof HTTP_METHODS)[number];
+
+function filterSpecResources(
+  spec: SwaggerSpec,
+  searchValue: string,
+  selectedMethod: ResourceMethod
+): SwaggerSpec {
+  const query = searchValue.trim().toLowerCase();
+  if (
+    (!query && selectedMethod === 'all') ||
+    !spec.paths ||
+    typeof spec.paths !== 'object'
+  ) {
+    return spec;
+  }
+
+  const filteredPaths: Record<string, unknown> = {};
+  Object.entries(spec.paths as Record<string, unknown>).forEach(
+    ([path, pathValue]) => {
+      if (!pathValue || typeof pathValue !== 'object') return;
+
+      const pathItem = pathValue as Record<string, unknown>;
+      const pathMatches = path.toLowerCase().includes(query);
+      const matchingOperations = HTTP_METHODS.filter((method) => {
+        const operation = pathItem[method];
+        if (!operation || typeof operation !== 'object') return false;
+        if (selectedMethod !== 'all' && method !== selectedMethod) return false;
+        if (pathMatches) return true;
+
+        const { summary, description } = operation as Record<string, unknown>;
+        return [summary, description].some(
+          (value) =>
+            typeof value === 'string' && value.toLowerCase().includes(query)
+        );
+      });
+
+      if (matchingOperations.length === 0) return;
+
+      filteredPaths[path] = Object.fromEntries(
+        Object.entries(pathItem).filter(
+          ([key]) =>
+            !HTTP_METHODS.includes(key as (typeof HTTP_METHODS)[number]) ||
+            matchingOperations.includes(key as (typeof HTTP_METHODS)[number])
+        )
+      );
+    }
+  );
+
+  return { ...spec, paths: filteredPaths };
+}
+
+function hasResourceOperations(spec: SwaggerSpec): boolean {
+  if (!spec.paths || typeof spec.paths !== 'object') return false;
+
+  return Object.values(spec.paths as Record<string, unknown>).some(
+    (pathValue) =>
+      Boolean(pathValue) &&
+      typeof pathValue === 'object' &&
+      HTTP_METHODS.some((method) =>
+        Boolean((pathValue as Record<string, unknown>)[method])
+      )
+  );
+}
+
+const ACCESS_CONTROL_ALLOWED_EXTENSION = 'x-wso2-access-control-allowed';
+const ACCESS_CONTROL_ALLOWED_TAG = '__wso2_allowed_resources__';
+const ACCESS_CONTROL_NOT_ALLOWED_TAG = '__wso2_not_allowed_resources__';
+
+function annotateSpecAccessControl(
+  spec: SwaggerSpec,
+  accessControl?: AccessControl
+): SwaggerSpec {
+  const mode = normalizeAccessControlMode(accessControl?.mode);
+  const paths = spec.paths;
+  if (!mode || !paths || typeof paths !== 'object') return spec;
+
+  const exceptions = buildExceptionSet(accessControl);
+  const annotatedPaths: Record<string, unknown> = {};
+
+  Object.entries(paths as Record<string, unknown>).forEach(([path, value]) => {
+    if (!value || typeof value !== 'object') {
+      annotatedPaths[path] = value;
+      return;
+    }
+
+    const pathItem = value as Record<string, unknown>;
+    const annotatedPathItem: Record<string, unknown> = { ...pathItem };
+    HTTP_METHODS.forEach((method) => {
+      const operation = pathItem[method];
+      if (!operation || typeof operation !== 'object') return;
+
+      const isException = exceptions.has(`${method.toUpperCase()}::${path}`);
+      const allowed = mode === 'allow_all' ? !isException : isException;
+      annotatedPathItem[method] = {
+        ...(operation as Record<string, unknown>),
+        tags: [
+          allowed
+            ? ACCESS_CONTROL_ALLOWED_TAG
+            : ACCESS_CONTROL_NOT_ALLOWED_TAG,
+        ],
+        [ACCESS_CONTROL_ALLOWED_EXTENSION]: allowed,
+      };
+    });
+    annotatedPaths[path] = annotatedPathItem;
+  });
+
+  return {
+    ...spec,
+    // Swagger builds tag groups in this declared order before applying its
+    // optional sorter. Keep the allowed group first even when the first path in
+    // a deny-all specification is denied.
+    tags: [
+      { name: ACCESS_CONTROL_ALLOWED_TAG },
+      { name: ACCESS_CONTROL_NOT_ALLOWED_TAG },
+    ],
+    paths: annotatedPaths,
+  };
+}
+
+function isSwaggerOperationAllowed(operation: unknown): boolean {
+  try {
+    const immutableOperation = operation as {
+      get?: (key: string) => unknown;
+    };
+    const nestedOperation = (immutableOperation?.get?.('operation') ??
+      immutableOperation?.get?.('op')) as {
+      get?: (key: string) => unknown;
+    } | undefined;
+    const allowed =
+      immutableOperation?.get?.(ACCESS_CONTROL_ALLOWED_EXTENSION) ??
+      nestedOperation?.get?.(ACCESS_CONTROL_ALLOWED_EXTENSION);
+    return allowed !== false;
+  } catch {
+    return true;
+  }
+}
+
 export default function SwaggerSpecViewer({
   spec,
   className,
@@ -212,7 +364,12 @@ export default function SwaggerSpecViewer({
   hideOperationHeader = false,
   disableTryOutBtn = false,
   disableResponseSection = false,
+  enableResourceSearch = false,
+  accessControl,
 }: SwaggerSpecViewerProps) {
+  const [resourceSearchValue, setResourceSearchValue] = useState('');
+  const [selectedResourceMethod, setSelectedResourceMethod] =
+    useState<ResourceMethod>('all');
   const normalizedRequestBaseUrl = requestBaseUrl?.trim().replace(/\/+$/, '');
   const normalizedDefaultHeaders = useMemo(
     () =>
@@ -233,10 +390,49 @@ export default function SwaggerSpecViewer({
     return applyRequestBaseUrlToSpec(spec, normalizedRequestBaseUrl);
   }, [normalizedRequestBaseUrl, spec]);
 
+  const displayedSpec = useMemo(
+    () =>
+      annotateSpecAccessControl(
+        filterSpecResources(
+          specWithRequestBaseUrl,
+          resourceSearchValue,
+          selectedResourceMethod
+        ),
+        accessControl
+      ),
+    [
+      accessControl,
+      resourceSearchValue,
+      selectedResourceMethod,
+      specWithRequestBaseUrl,
+    ]
+  );
+  const hasDisplayedResources = useMemo(
+    () => hasResourceOperations(displayedSpec),
+    [displayedSpec]
+  );
+
   const plugin = useMemo(() => {
     const wrapSelectors: Record<string, unknown> = {};
     const wrapComponents: Record<string, unknown> = {};
     const wrapActions: Record<string, unknown> = {};
+
+    if (accessControl) {
+      wrapComponents.OperationSummary =
+        (Original: React.ComponentType<Record<string, unknown>>) =>
+        (props: Record<string, unknown>) => {
+          const allowed = isSwaggerOperationAllowed(props.operationProps);
+          return (
+            <div
+              className={allowed ? undefined : 'access-control-not-allowed'}
+              aria-disabled={!allowed}
+              title={allowed ? undefined : 'This resource is not allowed'}
+            >
+              <Original {...props} />
+            </div>
+          );
+        };
+    }
 
     if (hideAuthorizeButton) {
       wrapComponents.authorizeBtn = () => () => null;
@@ -382,11 +578,34 @@ export default function SwaggerSpecViewer({
   }, [
     defaultHeadersObject,
     disableNetworkExecution,
+    accessControl,
     hideAuthorizeButton,
     hideInfoSection,
   ]);
 
   const plugins = plugin ? [plugin] : undefined;
+
+  const operationsSorter = useMemo(
+    () =>
+      accessControl
+        ? (first: unknown, second: unknown) =>
+            Number(isSwaggerOperationAllowed(second)) -
+            Number(isSwaggerOperationAllowed(first))
+        : undefined,
+    [accessControl]
+  );
+
+  const tagsSorter = useMemo(
+    () =>
+      accessControl
+        ? (first: string, second: string) => {
+            if (first === ACCESS_CONTROL_ALLOWED_TAG) return -1;
+            if (second === ACCESS_CONTROL_ALLOWED_TAG) return 1;
+            return first.localeCompare(second);
+          }
+        : undefined,
+    [accessControl]
+  );
 
   const requestInterceptor = useMemo(() => {
     if (!normalizedRequestBaseUrl && normalizedDefaultHeaders.length === 0) {
@@ -456,17 +675,61 @@ export default function SwaggerSpecViewer({
     .join(' ');
 
   return (
-    <div className={containerClassName}>
-      <SwaggerUIComponent
-        key={swaggerInstanceKey}
-        spec={specWithRequestBaseUrl}
-        docExpansion={docExpansion}
-        defaultModelsExpandDepth={defaultModelsExpandDepth}
-        displayRequestDuration={displayRequestDuration}
-        showMutatedRequest={!disableNetworkExecution}
-        plugins={plugins}
-        requestInterceptor={requestInterceptor}
-      />
-    </div>
+    <Stack className={containerClassName} spacing={2}>
+      {enableResourceSearch ? (
+        <Stack direction="row" spacing={2} sx={{ px: 1 }}>
+          <TextField
+            fullWidth
+            size="small"
+            value={resourceSearchValue}
+            onChange={(event) => setResourceSearchValue(event.target.value)}
+            placeholder="Search resources by path or description"
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search size={18} />
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+          <TextField
+            select
+            size="small"
+            value={selectedResourceMethod}
+            onChange={(event) =>
+              setSelectedResourceMethod(event.target.value as ResourceMethod)
+            }
+            sx={{ width: 180, flexShrink: 0 }}
+          >
+            <MenuItem value="all">All methods</MenuItem>
+            {HTTP_METHODS.map((method) => (
+              <MenuItem key={method} value={method}>
+                {method.toUpperCase()}
+              </MenuItem>
+            ))}
+          </TextField>
+        </Stack>
+      ) : null}
+      {enableResourceSearch && !hasDisplayedResources ? (
+        <Typography variant='body2' color="text.secondary" sx={{ px: 1, py: 2 }}>
+          No resources match your search.
+        </Typography>
+      ) : (
+        <SwaggerUIComponent
+          key={swaggerInstanceKey}
+          spec={displayedSpec}
+          docExpansion={docExpansion}
+          defaultModelsExpandDepth={defaultModelsExpandDepth}
+          displayRequestDuration={displayRequestDuration}
+          showMutatedRequest={!disableNetworkExecution}
+          plugins={plugins}
+          requestInterceptor={requestInterceptor}
+          operationsSorter={operationsSorter}
+          tagsSorter={tagsSorter}
+        />
+      )}
+    </Stack>
   );
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	coreservice "github.com/wso2/api-platform/platform-api/internal/service"
@@ -46,6 +47,7 @@ type WebBrokerAPIDeploymentService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *coreservice.GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -59,6 +61,7 @@ func NewWebBrokerAPIDeploymentService(
 	orgRepo repository.OrganizationRepository,
 	artifactRepo repository.ArtifactRepository,
 	apiRepo repository.APIRepository,
+	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *coreservice.GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
@@ -70,6 +73,7 @@ func NewWebBrokerAPIDeploymentService(
 		orgRepo:              orgRepo,
 		artifactRepo:         artifactRepo,
 		apiRepo:              apiRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -197,6 +201,11 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 
 	if req.Base == "current" {
 		d := buildWebBrokerAPIDeploymentYAML(webbrokerAPI)
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(webbrokerAPI.DataVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(constants.WebBrokerApi, sourceDataVersion, targetDataVersion, d); err != nil {
+			return nil, fmt.Errorf("failed to transform WebBroker API deployment for gateway %s: %w", gateway.Version, err)
+		}
 		contentBytes, err = yaml.Marshal(d)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal WebBroker API deployment YAML: %w", err)
@@ -242,7 +251,7 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgID, gatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -261,6 +270,9 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 		if err := s.gatewayEventsService.BroadcastWebBrokerAPIDeploymentEvent(gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebBroker API deployment event", "error", err)
 		}
+
+		// Push existing active API keys for this API to the gateway (see BackfillAPIKeysToGateway).
+		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, createdBy)
 	}
 
 	return toAPIDeploymentResponse(
@@ -343,7 +355,7 @@ func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(apiUUID s
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusUndeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgID, deployment.GatewayID, deployment.DeploymentID,
 		initialStatus, string(model.DeploymentStatusUndeployed),
@@ -424,7 +436,7 @@ func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID st
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgID, targetDeployment.GatewayID, *deploymentId,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -444,6 +456,9 @@ func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID st
 		if err := s.gatewayEventsService.BroadcastWebBrokerAPIDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebBroker API deployment event", "error", err)
 		}
+
+		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
+		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -597,8 +612,6 @@ func (s *WebBrokerAPIDeploymentService) ensureAPIGatewayAssociation(apiUUID, gat
 		ArtifactID:     apiUUID,
 		OrganizationID: orgUUID,
 		GatewayID:      gatewayID,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
 	}
 	if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
 		s.slogger.Error("Failed to create API-gateway association", "apiUUID", apiUUID, "gatewayID", gatewayID, "orgUUID", orgUUID, "error", err)

@@ -21,7 +21,7 @@ kind: LlmProxy
 metadata:
   name: wso2con-assistant
   annotations:
-    "gateway.api-platform.wso2.com/project-id": "Default"
+    "gateway.api-platform.wso2.com/project-id": "default"
 spec:
   displayName: WSO2 Con Assistant
   version: v1.0

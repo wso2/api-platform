@@ -4160,8 +4160,8 @@ paths:
     post:
       summary: Create subscription
       description: |
-        Creates a subscription for the specified API.
-        `subscriberId` identifies the unique subscriber for this API, allowing multiple subscribers to create subscriptions for the same API.
+        Creates a subscription for the specified artifact.
+        `subscriberId` identifies the unique subscriber for this artifact, allowing multiple subscribers to create subscriptions for the same artifact.
       operationId: CreateSubscription
       security:
         - OAuth2Security:
@@ -4200,8 +4200,8 @@ paths:
     get:
       summary: List subscriptions
       description: |
-        Returns subscriptions filtered by API and/or application.
-        Optional query parameters apiId, subscriberId, applicationId and status filter the list.
+        Returns subscriptions filtered by artifact and/or application.
+        Optional query parameters artifactId, subscriberId, applicationId and status filter the list.
         Supports pagination via limit and offset.
       operationId: ListSubscriptions
       security:
@@ -4211,10 +4211,10 @@ paths:
       tags:
         - Subscriptions
       parameters:
-        - name: apiId
+        - name: artifactId
           in: query
           required: false
-          description: Filter by API ID (UUID or handle)
+          description: Filter by artifact ID (UUID or handle)
           schema:
             type: string
         - name: subscriberId
@@ -5480,6 +5480,10 @@ components:
           type: string
           description: Name of the header or query parameter to be used for the API key
           example: "X-API-Key"
+        valuePrefix:
+          type: string
+          description: Optional prefix to strip from the inbound API key value before validation, for example "Bearer"
+          example: "Bearer"
         in:
           type: string
           description: Location of the API key (header or query)
@@ -6398,18 +6402,18 @@ components:
     CreateSubscriptionRequest:
       type: object
       required:
-        - apiId
+        - artifactId
         - kind
         - subscriberId
       properties:
-        apiId:
+        artifactId:
           type: string
           description: Handle (ID) of the artifact to subscribe to. Resolved against the table for the given kind.
           example: "my-rest-api"
         kind:
           type: string
           enum: [RestApi, LlmProvider, LlmProxy, Mcp]
-          description: Type of the artifact identified by apiId. Determines which artifact table apiId is resolved against.
+          description: Type of the artifact identified by artifactId. Determines which artifact table artifactId is resolved against.
           example: "RestApi"
         subscriberId:
           type: string
@@ -6437,7 +6441,7 @@ components:
           type: string
           format: uuid
           description: Subscription ID
-        apiId:
+        artifactId:
           type: string
           description: Handle (ID) of the subscribed artifact
           example: "my-rest-api"
@@ -6714,7 +6718,7 @@ components:
         type:
           type: string
           description: Authentication type
-          enum: [ basic, bearer, api-key ]
+          enum: [ basic, bearer, api-key, other ]
           example: api-key
         header:
           type: string

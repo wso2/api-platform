@@ -17,7 +17,7 @@
 // --------------------------------------------------------------------
 
 // POST/GET/PUT/DELETE /apis (type: WS). createAPIMetadata still requires *some*
-// apiDefinition file for every non-GraphQL type (src/services/apiMetadataService.js
+// definition file for every non-GraphQL type (src/services/apiMetadataService.js
 // validation), even though WS has no real schema concept — the fixture just
 // attaches a placeholder file to satisfy that.
 
@@ -41,14 +41,14 @@ describe('WebSocket APIs', () => {
         const put = await client
             .as('publisher')
             .putMultipart(`/apis/${api.id}`)
-            .field('apiMetadata', JSON.stringify({
+            .field('metadata', JSON.stringify({
                 name: 'Updated WS API',
                 version: 'v1.0',
                 type: 'WS',
                 status: 'PUBLISHED',
                 endPoints: { productionURL: 'https://updated.example.invalid', sandboxURL: 'https://updated-sandbox.example.invalid' },
             }))
-            .attach('apiDefinition', Buffer.from('{}'), 'definition.json');
+            .attach('definition', Buffer.from('{}'), 'definition.json');
         expect(put.status).toBe(200);
         expect(put.body.name).toBe('Updated WS API');
     });

@@ -116,6 +116,12 @@ type APIDeploymentYAML struct {
 	Spec       APIYAMLData        `yaml:"spec" binding:"required"`
 }
 
+// GetApiVersion returns the artifact's CRD apiVersion.
+func (d *APIDeploymentYAML) GetApiVersion() string { return d.ApiVersion }
+
+// SetApiVersion sets the artifact's CRD apiVersion.
+func (d *APIDeploymentYAML) SetApiVersion(v string) { d.ApiVersion = v }
+
 // DeploymentMetadata represents the metadata section of the API deployment YAML
 type DeploymentMetadata struct {
 	Name        string            `yaml:"name" binding:"required"`

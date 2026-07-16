@@ -67,7 +67,9 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 	// Preserve a caller-provided created_at (the DP->CP import flow sets it to the gateway's
 	// deployment time, which drives the last-in-wins watermark); default to now otherwise.
 	if deployment.CreatedAt.IsZero() {
-		deployment.CreatedAt = time.Now()
+		deployment.CreatedAt = time.Now().UTC()
+	} else {
+		deployment.CreatedAt = deployment.CreatedAt.UTC()
 	}
 
 	// Status must be provided and should be DEPLOYED for new deployments
@@ -76,7 +78,7 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 		deployment.Status = &deployed
 	}
 
-	updatedAt := time.Now()
+	updatedAt := time.Now().UTC()
 	deployment.UpdatedAt = &updatedAt
 
 	// 1. Count total deployments for this artifact+Gateway
@@ -167,9 +169,9 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 	// 4. Insert or update deployment status (UPSERT)
 	statusQuery := r.db.BuildUpsertQuery(
 		"deployment_status",
-		[]string{"artifact_uuid", "organization_uuid", "gateway_uuid", "deployment_uuid", "status", "status_desired", "performed_at", "status_reason", "updated_at"},
+		[]string{"artifact_uuid", "organization_uuid", "gateway_uuid", "deployment_uuid", "status", "status_desired", "performed_at", "performed_by", "status_reason", "updated_at"},
 		[]string{"artifact_uuid", "organization_uuid", "gateway_uuid"},
-		[]string{"deployment_uuid", "status", "status_desired", "performed_at", "status_reason=NULL", "updated_at"},
+		[]string{"deployment_uuid", "status", "status_desired", "performed_at", "performed_by", "status_reason=NULL", "updated_at"},
 	)
 
 	// Status and UpdatedAt are guaranteed to be non-nil by initialization at function start
@@ -181,6 +183,7 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 		*deployment.Status,
 		string(*deployment.Status),
 		*deployment.UpdatedAt,
+		deployment.CreatedBy,
 		nil,
 		*deployment.UpdatedAt,
 	)
@@ -340,10 +343,10 @@ func (r *DeploymentRepo) SetCurrent(artifactUUID, orgUUID, gatewayID, deployment
 // statusReason is an optional error code (cleared on new deployments).
 // Also maintains artifact_secret_refs (gateway_id rows): inserts refs on DEPLOYED, deletes them otherwise.
 func (r *DeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus, statusDesired string, performedAt *time.Time, statusReason string) (time.Time, error) {
-	updatedAt := time.Now()
+	updatedAt := time.Now().UTC()
 	var pat time.Time
 	if performedAt != nil {
-		pat = *performedAt
+		pat = performedAt.UTC()
 	} else {
 		pat = updatedAt
 	}
@@ -452,7 +455,7 @@ func (r *DeploymentRepo) UpdateStatusWithPerformedAtGuard(artifactUUID, orgUUID,
 		reasonVal = statusReason
 	}
 
-	updatedAt := time.Now()
+	updatedAt := time.Now().UTC()
 
 	if len(requireCurrentStatus) > 0 {
 		placeholders := make([]string, len(requireCurrentStatus))
@@ -495,7 +498,7 @@ func (r *DeploymentRepo) UpdateStatusWithPerformedAtGuard(artifactUUID, orgUUID,
 // GetStaleTransitionalStatuses finds deployment_status rows stuck in DEPLOYING/UNDEPLOYING
 // for longer than the given timeout duration.
 func (r *DeploymentRepo) GetStaleTransitionalStatuses(timeout time.Duration) ([]StaleDeploymentStatus, error) {
-	cutoff := time.Now().Add(-timeout)
+	cutoff := time.Now().UTC().Add(-timeout)
 	query := `
 		SELECT artifact_uuid, organization_uuid, gateway_uuid, deployment_uuid, status, status_desired, performed_at
 		FROM deployment_status

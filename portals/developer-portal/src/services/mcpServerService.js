@@ -71,7 +71,7 @@ const getAllMcpServersForOrganization = async (req, res) => {
     try {
         const orgId = req.orgId;
         const searchTerm = req.query.query;
-        const apiName = req.query.apiName;
+        const apiName = req.query.name;
         const apiVersion = req.query.version;
         const tags = req.query.tags;
         const view = req.query.view;

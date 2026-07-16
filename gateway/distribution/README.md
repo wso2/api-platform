@@ -180,7 +180,7 @@ See the [WSO2 API Platform documentation](https://wso2.com/api-platform/docs/) (
 
 ## License
 
-Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com)
+Copyright (c) 2026, WSO2 LLC. (https://wso2.com)
 
 Licensed under the Apache License, Version 2.0. You may obtain a copy of the License at
 http://www.apache.org/licenses/LICENSE-2.0

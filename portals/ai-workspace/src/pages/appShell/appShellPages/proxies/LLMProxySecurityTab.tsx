@@ -51,6 +51,7 @@ export default function LLMProxySecurityTab() {
   const [apiKeyEnabled, setApiKeyEnabled] = useState(true);
   const [keyName, setKeyName] = useState('');
   const [keyLocation, setKeyLocation] = useState<'header' | 'query'>('header');
+  const [valuePrefix, setValuePrefix] = useState('');
 
   const isFormDisabled =
     !apiKeyEnabled || isLoading || Boolean(error) || isReadOnlyProxy;
@@ -63,17 +64,24 @@ export default function LLMProxySecurityTab() {
     setApiKeyEnabled(sec?.apiKey?.enabled ?? sec?.enabled ?? true);
     setKeyName(sec?.apiKey?.key || '');
     setKeyLocation(sec?.apiKey?.in || 'header');
+    setValuePrefix(sec?.apiKey?.valuePrefix || '');
   }, [proxy]);
 
   const stageSecurity = (
     nextAuthType: string,
     nextKey: string,
     nextIn: 'header' | 'query',
-    nextEnabled: boolean
+    nextEnabled: boolean,
+    nextValuePrefix: string = valuePrefix
   ) => {
     const apiKey: ProxyApiKeySecurity | undefined =
       nextAuthType === 'apiKey'
-        ? { enabled: nextEnabled, key: nextKey, in: nextIn }
+        ? {
+            enabled: nextEnabled,
+            key: nextKey,
+            in: nextIn,
+            valuePrefix: nextValuePrefix || undefined,
+          }
         : undefined;
 
     const nextSecurity: ProxySecurityConfig = {
@@ -109,6 +117,21 @@ export default function LLMProxySecurityTab() {
     const nextIn = event.target.value as 'header' | 'query';
     setKeyLocation(nextIn);
     stageSecurity(authenticationType, keyName, nextIn, apiKeyEnabled);
+  };
+
+  const handleValuePrefixChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    if (isReadOnlyProxy) return;
+    const nextValuePrefix = event.target.value;
+    setValuePrefix(nextValuePrefix);
+    stageSecurity(
+      authenticationType,
+      keyName,
+      keyLocation,
+      apiKeyEnabled,
+      nextValuePrefix
+    );
   };
 
   return (
@@ -178,6 +201,17 @@ export default function LLMProxySecurityTab() {
                   <MenuItem value="header">Header</MenuItem>
                   <MenuItem value="query">Query parameter</MenuItem>
                 </Select>
+              </FormControl>
+
+              <FormControl fullWidth>
+                <FormLabel>API Key Value Prefix</FormLabel>
+                <TextField
+                  size="small"
+                  placeholder="Bearer"
+                  value={valuePrefix}
+                  disabled={isFormDisabled}
+                  onChange={handleValuePrefixChange}
+                />
               </FormControl>
             </>
           )}

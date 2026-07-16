@@ -32,7 +32,7 @@
   <nav class="dp-breadcrumb">
     <a class="dp-breadcrumb-item" href="{{baseUrl}}/apis">APIs</a>
     <i class="bi bi-chevron-right dp-breadcrumb-sep"></i>
-    <span class="dp-breadcrumb-current">{{or apiMetadata.apiTitle apiMetadata.name}}</span>
+    <span class="dp-breadcrumb-current">{{or apiMetadata.title apiMetadata.name}}</span>
   </nav>
 </div>
 <div class="container-fluid">
@@ -60,44 +60,6 @@
 {{!-- ── AGENT PROMPT MODAL ── --}}
 {{#if showApiWorkflowsNav}}
 {{#unless (eq apiMetadata.agentVisibility "HIDDEN")}}
-<div class="modal fade" id="apiAgentPromptModal" tabindex="-1" aria-labelledby="apiAgentPromptModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
-    <div class="modal-content hero-modal">
-
-      <div class="hero-modal-header">
-        <div class="hero-modal-title-row">
-          <span class="hero-modal-icon"><i class="bi bi-stars" aria-hidden="true"></i></span>
-          <h2 class="hero-modal-title" id="apiAgentPromptModalLabel">Try with AI agent</h2>
-        </div>
-        <button type="button" class="hero-modal-close" data-bs-dismiss="modal" aria-label="Close">
-          <i class="bi bi-x-lg" aria-hidden="true"></i>
-        </button>
-      </div>
-
-      <div class="hero-modal-info">
-        <p class="hero-modal-info-text">Use this prompt to let your AI agent discover and call this API automatically.</p>
-        <button type="button" class="hero-run-btn" id="apiBtnRunClaude">
-          <i class="bi bi-play-fill" aria-hidden="true"></i> Run in Claude
-        </button>
-      </div>
-
-      <div class="modal-body hero-modal-body">
-        <div class="hero-prompt-card">
-          <div class="hero-prompt-actions">
-            <button type="button" class="hero-prompt-tool" id="apiBtnDownloadPrompt" title="Download as .txt">
-              <i class="bi bi-download"></i>
-            </button>
-            <button type="button" class="hero-prompt-tool copy-btn" id="apiBtnCopyPrompt" title="Copy prompt">
-              <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
-              <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
-            </button>
-          </div>
-          <pre class="hero-prompt-pre" id="apiAgentPromptText">Loading...</pre>
-        </div>
-      </div>
-
-    </div>
-  </div>
-</div>
+{{> api-agent-prompt-modal}}
 {{/unless}}
 {{/if}}

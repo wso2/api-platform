@@ -25,13 +25,6 @@ const util = require('../utils/util');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 
-/**
- * Every key manager is a standard OAuth2 client_credentials-based generic
- * OIDC provider. The `type` column is retained on the model for backward
- * compatibility but is no longer client-configurable.
- */
-const DEFAULT_KM_TYPE = 'GENERIC_OIDC';
-
 // ---------------------------------------------------------------------------
 // YAML ingestion helpers (mirrors parseIdentityProviderFromYamlFile pattern)
 // ---------------------------------------------------------------------------
@@ -44,7 +37,6 @@ function mapYamlToKeyManager(yamlDoc) {
     return {
         handle: yamlDoc.metadata?.name || spec.name,
         displayName: spec.displayName || spec.name,
-        type: DEFAULT_KM_TYPE,
         enabled: spec.enabled !== undefined ? spec.enabled : true,
         tokenEndpoint: spec.tokenEndpoint,
     };
@@ -139,16 +131,16 @@ const createKeyManager = async (req, res) => {
 
         const validationError = _validateRequiredFields(payload);
         if (validationError) {
-            return res.status(400).json({ error: validationError });
+            return util.sendError(res, 400, validationError);
         }
         const hadExplicitHandle = !!(payload.handle && payload.handle.trim());
         const resolvedHandle = hadExplicitHandle ? payload.handle.trim() : generateHandle(payload.displayName);
         if (!resolvedHandle || !HANDLE_PATTERN.test(resolvedHandle)) {
-            return res.status(400).json({ error: "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens." });
+            return util.sendError(res, 400, "Invalid 'id'. Must contain only letters, numbers, underscores, and hyphens.");
         }
 
         const userId = util.resolveActor(req);
-        const record = await kmDao.create(orgId, { ...payload, handle: resolvedHandle, type: DEFAULT_KM_TYPE }, userId);
+        const record = await kmDao.create(orgId, { ...payload, handle: resolvedHandle }, userId);
         logUserAction('KEY_MANAGER_CREATED', req, { orgId, kmId: record.uuid, resourceUuid: record.uuid, resourceType: 'key_manager' });
         let audit;
         try {
@@ -164,15 +156,13 @@ const createKeyManager = async (req, res) => {
         return res.status(201).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.UniqueConstraintError) {
-            return res.status(409).json({
-                error: `A key manager with id "${req.body?.id}" already exists in this organization.`
-            });
+            return util.sendError(res, 409, `A key manager with that id already exists in this organization.`);
         }
         if (error.name === 'YAMLException' || error.name === 'ValidationError') {
-            return res.status(400).json({ error: error.message });
+            return util.sendError(res, 400, 'Invalid payload format or validation failed.');
         }
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_CREATE_ERROR, { error });
-        return res.status(500).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_CREATE_ERROR });
+        return util.sendError(res, 500, constants.ERROR_MESSAGE.KEY_MANAGER_CREATE_ERROR);
     }
 };
 
@@ -181,12 +171,10 @@ const updateKeyManager = async (req, res) => {
         const orgId = req.orgId;
         const { kmId: kmHandle } = req.params;
         const payload = _resolvePayload(req);
-        // The key manager type is fixed at GENERIC_OIDC and is not client-configurable.
-        delete payload.type;
 
         const kmId = await kmDao.getIdByHandle(orgId, kmHandle);
         if (!kmId) {
-            return res.status(404).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND);
         }
 
         const userId = util.resolveActor(req);
@@ -206,18 +194,16 @@ const updateKeyManager = async (req, res) => {
         return res.status(200).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
-            return res.status(404).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND);
         }
         if (error instanceof Sequelize.UniqueConstraintError) {
-            return res.status(409).json({
-                error: `A key manager with that id already exists in this organization.`
-            });
+            return util.sendError(res, 409, `A key manager with that id already exists in this organization.`);
         }
         if (error.name === 'YAMLException' || error.name === 'ValidationError') {
-            return res.status(400).json({ error: error.message });
+            return util.sendError(res, 400, 'Invalid payload format or validation failed.');
         }
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_UPDATE_ERROR, { error });
-        return res.status(500).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_UPDATE_ERROR });
+        return util.sendError(res, 500, constants.ERROR_MESSAGE.KEY_MANAGER_UPDATE_ERROR);
     }
 };
 
@@ -235,7 +221,7 @@ const getKeyManagers = async (req, res) => {
         return res.status(200).json(util.toPaginatedList(dtos, req));
     } catch (error) {
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR, { error });
-        return res.status(500).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR });
+        return util.sendError(res, 500, constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR);
     }
 };
 
@@ -245,7 +231,7 @@ const getKeyManager = async (req, res) => {
         const { kmId: kmHandle } = req.params;
         const kmId = await kmDao.getIdByHandle(orgId, kmHandle);
         if (!kmId) {
-            return res.status(404).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND);
         }
         const record = await kmDao.get(kmId);
         const audit = await userIdpReferenceDao.buildSingleAuditFields(record);
@@ -253,10 +239,10 @@ const getKeyManager = async (req, res) => {
         return res.status(200).json(dto);
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
-            return res.status(404).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND);
         }
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR, { error });
-        return res.status(500).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR });
+        return util.sendError(res, 500, constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR);
     }
 };
 
@@ -266,17 +252,17 @@ const deleteKeyManager = async (req, res) => {
         const { kmId: kmHandle } = req.params;
         const kmId = await kmDao.getIdByHandle(orgId, kmHandle);
         if (!kmId) {
-            return res.status(404).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND);
         }
         await kmDao.delete(kmId);
         logUserAction('KEY_MANAGER_DELETED', req, { orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
         return res.status(204).send();
     } catch (error) {
         if (error instanceof Sequelize.EmptyResultError) {
-            return res.status(404).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND });
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND);
         }
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_DELETE_ERROR, { error });
-        return res.status(500).json({ error: constants.ERROR_MESSAGE.KEY_MANAGER_DELETE_ERROR });
+        return util.sendError(res, 500, constants.ERROR_MESSAGE.KEY_MANAGER_DELETE_ERROR);
     }
 };
 

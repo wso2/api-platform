@@ -108,7 +108,7 @@ func buildCreatePayload() ([]byte, error) {
 	}
 
 	payload := map[string]string{
-		"apiId": apiID,
+		"artifactId": apiID,
 	}
 	if subscriptionPlan != "" {
 		payload["subscriptionPlanId"] = subscriptionPlan

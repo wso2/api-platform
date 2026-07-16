@@ -3,7 +3,7 @@
   flex-direction: column;
   gap: 16px;
   height: 100vh;
-  font-family: 'Montserrat', sans-serif;
+  font-family: var(--font-family-sans);
 }
 
 .graphql-controls {
@@ -12,9 +12,9 @@
   flex-wrap: wrap;
   gap: 16px;
   padding: 16px;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--border-strong);
   border-radius: 12px;
-  background: #f6f8fa;
+  background: var(--surface-sunken);
 }
 
 .graphql-control {
@@ -51,18 +51,18 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #57606a;
+  color: var(--text-muted);
 }
 
 .graphql-control input,
 .graphql-control select {
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 8px 12px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: var(--font-family-mono);
   font-size: 13px;
-  color: #1f2328;
-  background: #fff;
+  color: var(--text-strong);
+  background: var(--white);
   height: 40px;
   box-sizing: border-box;
 }
@@ -88,11 +88,11 @@
 
 .graphql-control .control-hint {
   font-size: 12px;
-  color: #57606a;
+  color: var(--text-muted);
 }
 
 .graphql-control .control-hint strong {
-  color: #1f2328;
+  color: var(--text-strong);
 }
 
 .graphiql-container .graphiql-logo {
@@ -112,7 +112,7 @@
 .graphiql-container .graphiql-execute-button-wrapper button {
   background-color: #3498DB !important;
   border-color: #3498DB !important;
-  color: #ffffff !important;
+  color: var(--white) !important;
 }
 
 .graphiql-container .graphiql-execute-button:hover,
@@ -144,18 +144,18 @@
 .graphql-auth-tabs {
   display: flex;
   gap: 0;
-  border-bottom: 1px solid #d0d7de;
+  border-bottom: 1px solid var(--border-strong);
   margin-bottom: 8px;
 }
 
 .graphql-auth-tab {
   padding: 6px 16px;
-  font-family: 'Montserrat', sans-serif;
+  font-family: var(--font-family-sans);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #57606a;
+  color: var(--text-muted);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -164,7 +164,7 @@
 }
 
 .graphql-auth-tab:hover {
-  color: #1f2328;
+  color: var(--text-strong);
 }
 
 .graphql-auth-tab.active {
@@ -173,7 +173,7 @@
 }
 
 .graphql-control select option:disabled {
-  color: #adb5bd;
+  color: var(--text-subtle);
 }
 
 @media (max-width: 640px) {

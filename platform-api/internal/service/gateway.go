@@ -538,7 +538,14 @@ func (s *GatewayService) DeleteCustomPolicyByUUID(orgID, policyUUID, version str
 	return nil
 }
 
-// defaultGatewayVersion is the value stored when a client registers a gateway without a version.
+// defaultGatewayVersion is the assumed major.minor used ONLY when comparing a
+// controller-reported manifest version against a gateway that was registered
+// without a version (see ReceiveGatewayManifest). It is deliberately NOT used
+// to stamp a version at registration time: a version-less registration means
+// "unknown", and the deploy transform must assume such a gateway is a current
+// build (latest data version), not down-convert it to the legacy shape. Only a
+// gateway that positively reports an old semver — via this registration field
+// or its manifest — should be down-converted.
 const defaultGatewayVersion = "1.0"
 
 // RegisterGateway registers a new gateway with organization validation
@@ -569,10 +576,16 @@ func (s *GatewayService) RegisterGateway(orgID string, id *string, displayName, 
 		normalizedEndpoints[i] = strings.TrimSpace(endpoint)
 	}
 
+	// A version-less registration is stored as "" (unknown), NOT a fabricated
+	// "1.0": the gateway reports its real version via its manifest on connect,
+	// and until then the deploy transform must treat it as a current build
+	// (GatewayDataVersionForGateway maps "" -> latest v1). Stamping "1.0" here
+	// would wrongly down-convert every artifact to v1alpha1 for a current
+	// gateway that then refuses to route it. The manifest-version comparison
+	// still treats an empty registered version as defaultGatewayVersion via the
+	// registeredMinor fallback in ReceiveGatewayManifest, so that check is
+	// unaffected.
 	version = strings.TrimSpace(version)
-	if version == "" {
-		version = defaultGatewayVersion
-	}
 	// CalVer versions (e.g. "2026.05.13") are persisted verbatim so the exact
 	// build is preserved. Two-segment `major.minor` versions are canonicalized
 	// so equality checks against controller-reported versions (also normalized
@@ -660,8 +673,9 @@ func (s *GatewayService) ListGateways(orgID *string, opts repository.ListOptions
 
 	// Convert to API types
 	responses := make([]api.GatewayResponse, 0, len(gateways))
+	createdByFields := make([]**string, 0, len(gateways))
 	for _, gw := range gateways {
-		resp, err := s.gatewayModelToAPI(gw)
+		resp, err := s.gatewayModelToAPIUnresolved(gw)
 		if err != nil {
 			return nil, err
 		}
@@ -669,7 +683,11 @@ func (s *GatewayService) ListGateways(orgID *string, opts repository.ListOptions
 			// updatedBy is detail-only; omit it from list responses.
 			resp.UpdatedBy = nil
 			responses = append(responses, *resp)
+			createdByFields = append(createdByFields, &responses[len(responses)-1].CreatedBy)
 		}
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 
 	// Build constitution-compliant list response with pagination metadata
@@ -723,7 +741,6 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, req *
 		gateway.Properties = *req.Properties
 	}
 	gateway.UpdatedBy = updatedBy
-	gateway.UpdatedAt = time.Now()
 
 	err = s.gatewayRepo.UpdateGateway(gateway)
 	if err != nil {
@@ -1065,7 +1082,12 @@ func hashToken(plainToken string) string {
 // Mapping functions
 
 // gatewayModelToAPI converts a Gateway model to GatewayResponse API type
-func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) (*api.GatewayResponse, error) {
+// gatewayModelToAPIUnresolved converts gateway to its API representation,
+// resolving the organization handle, but leaving createdBy/updatedBy as raw
+// internal UUIDs. Used by list endpoints, which batch-resolve identity across
+// the whole page afterward instead of one-by-one — see gatewayModelToAPI for
+// the single-item equivalent that resolves inline.
+func (s *GatewayService) gatewayModelToAPIUnresolved(gateway *model.Gateway) (*api.GatewayResponse, error) {
 	if gateway == nil {
 		return nil, nil
 	}
@@ -1076,7 +1098,7 @@ func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) (*api.Gateway
 	}
 	functionalityType := api.GatewayResponseFunctionalityType(gateway.FunctionalityType)
 
-	resp := &api.GatewayResponse{
+	return &api.GatewayResponse{
 		Id:                &gateway.Handle,
 		OrganizationId:    &orgHandle,
 		DisplayName:       gateway.Name,
@@ -1091,6 +1113,13 @@ func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) (*api.Gateway
 		UpdatedBy:         utils.StringPtrIfNotEmpty(gateway.UpdatedBy),
 		CreatedAt:         &gateway.CreatedAt,
 		UpdatedAt:         &gateway.UpdatedAt,
+	}, nil
+}
+
+func (s *GatewayService) gatewayModelToAPI(gateway *model.Gateway) (*api.GatewayResponse, error) {
+	resp, err := s.gatewayModelToAPIUnresolved(gateway)
+	if err != nil || resp == nil {
+		return resp, err
 	}
 	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
 		return nil, err

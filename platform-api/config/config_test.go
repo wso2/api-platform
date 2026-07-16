@@ -20,6 +20,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -33,65 +34,99 @@ const (
 	validJWTKey    = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
 )
 
-// setValidKeys provides both required keys so a test starts from a passing baseline.
-// Individual tests override one of them to exercise the failure paths. t.Setenv restores
-// the previous values automatically at test end.
-func setValidKeys(t *testing.T) {
+// validKeysBase is a minimal config whose required secrets resolve from the
+// APIP_CP_ENCRYPTION_KEY / APIP_CP_AUTH_JWT_SECRET_KEY env vars via {{ env }}
+// interpolation. Environment variables reach config ONLY through these tokens now
+// (there is no direct env-key override), so tests must go through a config file.
+const validKeysBase = `
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
+
+[auth.jwt]
+enabled    = true
+secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+`
+
+// loadTOML writes toml to a temp config file and loads it through LoadConfig.
+func loadTOML(t *testing.T, toml string) (*Server, error) {
 	t.Helper()
-	t.Setenv("ENCRYPTION_KEY", validInlineKey)
-	t.Setenv("AUTH_JWT_SECRET_KEY", validJWTKey)
-	t.Setenv("APIP_DEMO_MODE", "")
+	path := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte(toml), 0o600))
+	return LoadConfig(path)
+}
+
+// loadWithKeys sets both required secret env vars, appends extra TOML to the
+// valid-keys base, and loads the result — a passing baseline for tests that then
+// assert defaults, overrides, or validation of other fields.
+func loadWithKeys(t *testing.T, extra string) (*Server, error) {
+	t.Helper()
+	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
+	t.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", validJWTKey)
+	return loadTOML(t, validKeysBase+extra)
 }
 
 // Both keys provided and valid → LoadConfig succeeds and passes the encryption key through.
 func TestLoadConfig_ValidKeys_Succeeds(t *testing.T) {
-	setValidKeys(t)
-
-	cfg, err := LoadConfig("")
+	cfg, err := loadWithKeys(t, "")
 	require.NoError(t, err)
 	assert.Equal(t, validInlineKey, cfg.EncryptionKey)
 }
 
-// ENCRYPTION_KEY is required and never generated — missing it fails startup (even in demo mode).
+// The encryption key is required and never generated — a config that omits it fails startup.
 func TestLoadConfig_MissingEncryptionKey_Errors(t *testing.T) {
-	setValidKeys(t)
-	t.Setenv("APIP_DEMO_MODE", "true") // demo does not relax the requirement
-	t.Setenv("ENCRYPTION_KEY", "")
+	t.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", validJWTKey)
 
-	_, err := LoadConfig("")
+	// Encryption key omitted entirely; the JWT secret resolves so the JWT check passes first.
+	_, err := loadTOML(t, `
+[auth.jwt]
+enabled    = true
+secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+`)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "ENCRYPTION_KEY is required")
+	assert.Contains(t, err.Error(), "EncryptionKey is required")
 }
 
-// A provided ENCRYPTION_KEY must be an AES-256-sized key (64 hex / base64→32 bytes).
+// A provided encryption key must be an AES-256-sized key (64 hex / base64→32 bytes).
 func TestLoadConfig_InvalidEncryptionKey_Errors(t *testing.T) {
-	setValidKeys(t)
-	t.Setenv("ENCRYPTION_KEY", "not-a-valid-32-byte-key")
+	t.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", validJWTKey)
 
-	_, err := LoadConfig("")
+	_, err := loadTOML(t, `
+encryption_key = "not-a-valid-32-byte-key"
+
+[auth.jwt]
+enabled    = true
+secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+`)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid ENCRYPTION_KEY")
+	assert.Contains(t, err.Error(), "invalid EncryptionKey")
 }
 
-// AUTH_JWT_SECRET_KEY is required (JWT auth is enabled by default) and never generated.
+// The JWT secret is required (JWT auth is enabled) and never generated.
 func TestLoadConfig_MissingJWTSecretKey_Errors(t *testing.T) {
-	setValidKeys(t)
-	t.Setenv("APIP_DEMO_MODE", "true") // demo does not relax the requirement
-	t.Setenv("AUTH_JWT_SECRET_KEY", "")
+	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
 
-	_, err := LoadConfig("")
+	_, err := loadTOML(t, `
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
+
+[auth.jwt]
+enabled = true
+`)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "AUTH_JWT_SECRET_KEY is required")
+	assert.Contains(t, err.Error(), "Auth.JWT.SecretKey is required")
 }
 
-// A provided AUTH_JWT_SECRET_KEY must be an AES-256-sized key (64 hex / base64→32 bytes).
+// A provided JWT secret must be an AES-256-sized key (64 hex / base64→32 bytes).
 func TestLoadConfig_InvalidJWTSecretKey_Errors(t *testing.T) {
-	setValidKeys(t)
-	t.Setenv("AUTH_JWT_SECRET_KEY", "not-a-valid-32-byte-key")
+	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
 
-	_, err := LoadConfig("")
+	_, err := loadTOML(t, `
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
+
+[auth.jwt]
+enabled    = true
+secret_key = "not-a-valid-32-byte-key"
+`)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid AUTH_JWT_SECRET_KEY")
+	assert.Contains(t, err.Error(), "invalid Auth.JWT.SecretKey")
 }
 
 // --- valid32ByteKey unit coverage ---
@@ -109,9 +144,8 @@ func TestValid32ByteKey(t *testing.T) {
 // environment values don't leak into assertions.
 func init() {
 	for _, v := range []string{
-		"ENCRYPTION_KEY",
-		"AUTH_JWT_SECRET_KEY",
-		"APIP_DEMO_MODE",
+		"APIP_CP_ENCRYPTION_KEY",
+		"APIP_CP_AUTH_JWT_SECRET_KEY",
 	} {
 		os.Unsetenv(v)
 	}
@@ -163,44 +197,45 @@ func TestValidateAuthModeExclusivity(t *testing.T) {
 // explicitly opts otherwise, so a deployment that forgets the knob never
 // silently downgrades to plain HTTP.
 func TestLoadConfig_HTTPSEnabled_DefaultsToTrue(t *testing.T) {
-	setValidKeys(t)
-
-	cfg, err := LoadConfig("")
+	cfg, err := loadWithKeys(t, "")
 	require.NoError(t, err)
 	assert.True(t, cfg.HTTPS.Enabled, "https.enabled must default to true when unset")
 	assert.Equal(t, "9243", cfg.HTTPS.Port, "https.port must default to 9243")
 	assert.False(t, cfg.HTTP.Enabled, "http.enabled must default to false when unset")
 }
 
-// HTTPS_ENABLED=false must survive koanf's weakly-typed env decode into the bool.
-// The legacy TLS_ENABLED alias must keep working too.
-func TestLoadConfig_HTTPSEnabled_EnvOverrideDisables(t *testing.T) {
-	setValidKeys(t)
-	t.Setenv("HTTPS_ENABLED", "false")
+// A {{ env }} token feeding a bool field must survive koanf's weakly-typed decode,
+// so an operator can disable the TLS listener by pointing the field at an env var.
+func TestLoadConfig_HTTPSEnabled_TokenDisables(t *testing.T) {
+	t.Setenv("APIP_CP_HTTPS_ENABLED", "false")
 
-	cfg, err := LoadConfig("")
+	cfg, err := loadWithKeys(t, `
+[https]
+enabled = '{{ env "APIP_CP_HTTPS_ENABLED" }}'
+`)
 	require.NoError(t, err)
-	assert.False(t, cfg.HTTPS.Enabled, "HTTPS_ENABLED=false must disable the TLS listener")
+	assert.False(t, cfg.HTTPS.Enabled, "https.enabled from a {{ env }} token must decode to false")
 }
 
-// The plain-HTTP listener can be enabled independently on its own port.
-func TestLoadConfig_HTTPListener_EnvOverrideEnables(t *testing.T) {
-	setValidKeys(t)
-	t.Setenv("HTTP_ENABLED", "true")
-	t.Setenv("HTTP_PORT", "9080")
+// The plain-HTTP listener can be enabled independently on its own port via tokens.
+func TestLoadConfig_HTTPListener_TokenEnables(t *testing.T) {
+	t.Setenv("APIP_CP_HTTP_ENABLED", "true")
+	t.Setenv("APIP_CP_HTTP_PORT", "9080")
 
-	cfg, err := LoadConfig("")
+	cfg, err := loadWithKeys(t, `
+[http]
+enabled = '{{ env "APIP_CP_HTTP_ENABLED" }}'
+port    = '{{ env "APIP_CP_HTTP_PORT" }}'
+`)
 	require.NoError(t, err)
-	assert.True(t, cfg.HTTP.Enabled, "HTTP_ENABLED=true must enable the plain-HTTP listener")
+	assert.True(t, cfg.HTTP.Enabled, "http.enabled from a {{ env }} token must decode to true")
 	assert.Equal(t, "9080", cfg.HTTP.Port)
 }
 
 // Listener timeouts must be finite by default, so a deployment that never sets
 // them is still protected against a peer holding connections open (Slowloris).
 func TestLoadConfig_Timeouts_DefaultToFiniteValues(t *testing.T) {
-	setValidKeys(t)
-
-	cfg, err := LoadConfig("")
+	cfg, err := loadWithKeys(t, "")
 	require.NoError(t, err)
 	assert.Equal(t, 10*time.Second, cfg.Timeouts.ReadHeader)
 	assert.Equal(t, 60*time.Second, cfg.Timeouts.Read)
@@ -208,15 +243,20 @@ func TestLoadConfig_Timeouts_DefaultToFiniteValues(t *testing.T) {
 	assert.Equal(t, 120*time.Second, cfg.Timeouts.Idle)
 }
 
-// Duration strings from the environment must decode into time.Duration fields.
-func TestLoadConfig_Timeouts_EnvOverride(t *testing.T) {
-	setValidKeys(t)
-	t.Setenv("TIMEOUTS_READ_HEADER", "5s")
-	t.Setenv("TIMEOUTS_READ", "30s")
-	t.Setenv("TIMEOUTS_WRITE", "2m")
-	t.Setenv("TIMEOUTS_IDLE", "90s")
+// Duration strings resolved from {{ env }} tokens must decode into time.Duration fields.
+func TestLoadConfig_Timeouts_TokenOverride(t *testing.T) {
+	t.Setenv("APIP_CP_TIMEOUTS_READ_HEADER", "5s")
+	t.Setenv("APIP_CP_TIMEOUTS_READ", "30s")
+	t.Setenv("APIP_CP_TIMEOUTS_WRITE", "2m")
+	t.Setenv("APIP_CP_TIMEOUTS_IDLE", "90s")
 
-	cfg, err := LoadConfig("")
+	cfg, err := loadWithKeys(t, `
+[timeouts]
+read_header = '{{ env "APIP_CP_TIMEOUTS_READ_HEADER" }}'
+read        = '{{ env "APIP_CP_TIMEOUTS_READ" }}'
+write       = '{{ env "APIP_CP_TIMEOUTS_WRITE" }}'
+idle        = '{{ env "APIP_CP_TIMEOUTS_IDLE" }}'
+`)
 	require.NoError(t, err)
 	assert.Equal(t, 5*time.Second, cfg.Timeouts.ReadHeader)
 	assert.Equal(t, 30*time.Second, cfg.Timeouts.Read)
@@ -227,12 +267,12 @@ func TestLoadConfig_Timeouts_EnvOverride(t *testing.T) {
 // 0 is the net/http "no timeout" sentinel and must be accepted as-is, rather
 // than being silently replaced by the default.
 func TestLoadConfig_Timeouts_ZeroDisablesTimeout(t *testing.T) {
-	setValidKeys(t)
-	t.Setenv("TIMEOUTS_WRITE", "0")
-
-	cfg, err := LoadConfig("")
+	cfg, err := loadWithKeys(t, `
+[timeouts]
+write = "0s"
+`)
 	require.NoError(t, err)
-	assert.Zero(t, cfg.Timeouts.Write, "TIMEOUTS_WRITE=0 must disable the write timeout")
+	assert.Zero(t, cfg.Timeouts.Write, "timeouts.write = 0 must disable the write timeout")
 }
 
 // A negative duration would expire immediately and break every request; a
@@ -240,34 +280,21 @@ func TestLoadConfig_Timeouts_ZeroDisablesTimeout(t *testing.T) {
 // load time rather than producing a server that fails at request time.
 func TestLoadConfig_Timeouts_RejectsInvalidValues(t *testing.T) {
 	t.Run("negative", func(t *testing.T) {
-		setValidKeys(t)
-		t.Setenv("TIMEOUTS_READ", "-1s")
-
-		_, err := LoadConfig("")
+		_, err := loadWithKeys(t, `
+[timeouts]
+read = "-1s"
+`)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "must not be negative")
 	})
 
 	t.Run("read_header exceeds read", func(t *testing.T) {
-		setValidKeys(t)
-		t.Setenv("TIMEOUTS_READ_HEADER", "30s")
-		t.Setenv("TIMEOUTS_READ", "10s")
-
-		_, err := LoadConfig("")
+		_, err := loadWithKeys(t, `
+[timeouts]
+read_header = "30s"
+read        = "10s"
+`)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "must not exceed")
 	})
-}
-
-// The legacy single-port PORT and TLS_CERT_DIR env vars still map onto the
-// HTTPS listener for backward compatibility.
-func TestLoadConfig_LegacyTLSEnvAliases(t *testing.T) {
-	setValidKeys(t)
-	t.Setenv("PORT", "8443")
-	t.Setenv("TLS_CERT_DIR", "/custom/certs")
-
-	cfg, err := LoadConfig("")
-	require.NoError(t, err)
-	assert.Equal(t, "8443", cfg.HTTPS.Port, "legacy PORT must map to https.port")
-	assert.Equal(t, "/custom/certs", cfg.HTTPS.CertDir, "legacy TLS_CERT_DIR must map to https.cert_dir")
 }

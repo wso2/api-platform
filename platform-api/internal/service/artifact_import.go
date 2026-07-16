@@ -61,8 +61,8 @@ type ImportContext struct {
 	DeployedAt    *time.Time
 	Properties    map[string]interface{}
 
-	ProjectName string // metadata.project (may be empty)
-	ProjectID   string // resolved project UUID (empty for org-level kinds)
+	ProjectHandle string // project handle from the project-id annotation (may be empty)
+	ProjectID     string // resolved project UUID (empty for org-level kinds)
 
 	// Existing is the already-stored artifacts-table row keyed by ID, or nil if new.
 	// It is nil for organization-level kinds that are not backed by the artifacts
@@ -132,9 +132,9 @@ func NewArtifactImportService(
 	}
 	s.importers = map[string]GatewayArtifactImporter{
 		constants.RestApi:             newRestAPIImporter(apiRepo, artifactRepo),
-		constants.LLMProvider:         newLLMProviderImporter(providerRepo, templateRepo, artifactRepo),
+		constants.LLMProvider:         newLLMProviderImporter(providerRepo, templateRepo, artifactRepo, cfg, slogger),
 		constants.LLMProviderTemplate: newLLMProviderTemplateImporter(templateRepo),
-		constants.LLMProxy:            newLLMProxyImporter(proxyRepo, artifactRepo),
+		constants.LLMProxy:            newLLMProxyImporter(proxyRepo, providerRepo, artifactRepo),
 		constants.MCPProxy:            newMCPProxyImporter(mcpProxyRepo, artifactRepo, mcpServerInfo),
 	}
 	return s
@@ -246,30 +246,30 @@ func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto
 		UpdatedAt:     req.UpdatedAt,
 		DeployedAt:    req.DeployedAt,
 		Properties:    req.Properties,
-		ProjectName:   utils.ResolveImportProject(req.Configuration.Metadata),
+		ProjectHandle: utils.ResolveImportProject(req.Configuration.Metadata),
 	}
 
 	// Resolve project for project-scoped kinds. Org-level kinds ignore the project.
 	if importer.RequiresProject() {
-		if ictx.ProjectName == "" {
-			// The gateway must always supply the project (as a metadata label) for
+		if ictx.ProjectHandle == "" {
+			// The gateway must always supply the project (as the project-id annotation) for
 			// project-scoped kinds; a push without one is a contract violation.
 			s.slogger.Error("Project is required for gateway-imported artifact but was not provided",
 				"kind", kind, "artifactId", req.DPID)
 			return nil, apperror.ValidationFailed.New(fmt.Sprintf("A project is required for artifact kind %q.", kind))
 		}
-		project, err := s.projectRepo.GetProjectByNameAndOrgID(ictx.ProjectName, orgID)
+		project, err := s.projectRepo.GetProjectByHandleAndOrgID(ictx.ProjectHandle, orgID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve project %q: %w", ictx.ProjectName, err)
+			return nil, fmt.Errorf("failed to resolve project %q: %w", ictx.ProjectHandle, err)
 		}
 		if project == nil {
 			// The project was provided but does not exist in this organization. Reject the
 			// import with ErrProjectNotFound (the project is never created or defaulted);
 			// the artifact is not created in the control plane.
 			s.slogger.Error("Project is not available in the organization; gateway artifact not imported",
-				"kind", kind, "artifactId", req.DPID, "project", ictx.ProjectName, "orgId", orgID)
+				"kind", kind, "artifactId", req.DPID, "projectHandle", ictx.ProjectHandle, "orgId", orgID)
 			return nil, apperror.ProjectNotFound.New().WithLogMessage(
-				fmt.Sprintf("project %q does not exist in org %q", ictx.ProjectName, orgID))
+				fmt.Sprintf("project with handle %q does not exist in org %q", ictx.ProjectHandle, orgID))
 		}
 		ictx.ProjectID = project.ID
 	}
@@ -403,13 +403,10 @@ func (s *ArtifactImportService) writeDeployment(ictx *ImportContext, artifactUUI
 		}
 	}
 	if !associated {
-		now := time.Now()
 		if err := s.apiRepo.CreateAPIAssociation(&model.APIAssociation{
 			ArtifactID:     artifactUUID,
 			OrganizationID: ictx.OrgID,
 			GatewayID:      ictx.GatewayID,
-			CreatedAt:      now,
-			UpdatedAt:      now,
 		}); err != nil {
 			return fmt.Errorf("failed to create artifact-gateway association: %w", err)
 		}

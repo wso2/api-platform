@@ -212,6 +212,7 @@ type LLMProvider struct {
 	UpdatedAt                 time.Time                  `json:"updatedAt" db:"updated_at"`
 	Configuration             LLMProviderConfig          `json:"configuration" db:"configuration"`
 	Origin                    string                     `json:"origin,omitempty" db:"origin"`
+	DataVersion               string                     `json:"dataVersion,omitempty" db:"data_version"`
 	AssociatedGateways        []AssociatedGatewayMapping `json:"-" db:"-"`
 	ReplaceAssociatedGateways bool                       `json:"-" db:"-"`
 }
@@ -248,6 +249,7 @@ type LLMProxy struct {
 	UpdatedAt                 time.Time                  `json:"updatedAt" db:"updated_at"`
 	Configuration             LLMProxyConfig             `json:"configuration" db:"configuration"`
 	Origin                    string                     `json:"origin,omitempty" db:"origin"`
+	DataVersion               string                     `json:"dataVersion,omitempty" db:"data_version"`
 	AssociatedGateways        []AssociatedGatewayMapping `json:"-" db:"-"`
 	ReplaceAssociatedGateways bool                       `json:"-" db:"-"`
 }
@@ -291,7 +293,8 @@ type SecurityConfig struct {
 }
 
 type APIKeySecurity struct {
-	Enabled *bool  `json:"enabled,omitempty" yaml:"enabled,omitempty"`
-	Key     string `json:"key,omitempty" yaml:"key,omitempty"`
-	In      string `json:"in,omitempty" yaml:"in,omitempty"`
+	Enabled     *bool  `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	Key         string `json:"key,omitempty" yaml:"key,omitempty"`
+	In          string `json:"in,omitempty" yaml:"in,omitempty"`
+	ValuePrefix string `json:"valuePrefix,omitempty" yaml:"valuePrefix,omitempty"`
 }

@@ -22,14 +22,14 @@ Replace `${version}` with the API Platform Gateway release version you want to r
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway/v1.2.0-M1/wso2apip-api-gateway-1.2.0-M1.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway/v1.2.0-alpha2/wso2apip-api-gateway-1.2.0-alpha2.zip
 
 # Unzip the downloaded distribution.
-unzip wso2apip-api-gateway-1.2.0-M1.zip
+unzip wso2apip-api-gateway-1.2.0-alpha2.zip
 
 
 # Start the complete stack
-cd wso2apip-api-gateway-1.2.0-M1/
+cd wso2apip-api-gateway-v1.2.0-alpha2/
 docker compose up -d
 
 # Verify gateway controller admin endpoint is running

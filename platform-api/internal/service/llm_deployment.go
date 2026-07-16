@@ -29,8 +29,8 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
-	"github.com/wso2/api-platform/platform-api/internal/deploymenttransform"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -57,6 +57,7 @@ type LLMProviderDeploymentService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -69,6 +70,7 @@ type LLMProxyDeploymentService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -81,6 +83,7 @@ func NewLLMProviderDeploymentService(
 	deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository,
+	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
@@ -91,6 +94,7 @@ func NewLLMProviderDeploymentService(
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -103,6 +107,7 @@ func NewLLMProxyDeploymentService(
 	deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository,
 	orgRepo repository.OrganizationRepository,
+	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
@@ -112,6 +117,7 @@ func NewLLMProxyDeploymentService(
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -119,7 +125,7 @@ func NewLLMProxyDeploymentService(
 }
 
 // DeployLLMProvider creates a new immutable deployment artifact and deploys it to a gateway
-func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req *api.DeployRequest, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	// Validate request
 	if req == nil {
 		return nil, apperror.LLMProviderDeploymentValidationFailed.New("A request body is required.")
@@ -178,7 +184,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if err != nil {
 		return nil, err
 	}
-	effectiveMetaJSON, err := s.providerRepo.EnsureGatewayAssociation(provider.UUID, gatewayID, orgUUID, deployMetaJSON, metadataProvided)
+	effectiveMetaJSON, err := s.providerRepo.EnsureGatewayAssociation(provider.UUID, gatewayID, orgUUID, createdBy, deployMetaJSON, metadataProvided)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
 	}
@@ -199,10 +205,12 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate LLM provider deployment YAML: %w", err)
 		}
-		target := deploymenttransform.ParseVersion(gateway.Version)
-		if err := deploymenttransform.Default().Transform(
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(provider.DataVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(
 			constants.LLMProvider,
-			target,
+			sourceDataVersion,
+			targetDataVersion,
 			&providerDeployment,
 		); err != nil {
 			return nil, fmt.Errorf("failed to transform LLM provider deployment for gateway %s: %w", gateway.Version, err)
@@ -257,7 +265,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		provider.UUID, orgUUID, gatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -277,6 +285,11 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 		if err := s.gatewayEventsService.BroadcastLLMProviderDeploymentEvent(gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM provider deployment event", "error", err)
 		}
+
+		// Push existing active API keys for this provider to the (possibly newly
+		// associated) gateway so keys created before this association are recognized
+		// immediately, rather than only after the controller's next reconnect sync.
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, provider.UUID, gatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -348,7 +361,7 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		provider.UUID, orgUUID, targetDeployment.GatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -369,6 +382,9 @@ func (s *LLMProviderDeploymentService) RestoreLLMProviderDeployment(providerID, 
 		if err := s.gatewayEventsService.BroadcastLLMProviderDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM provider deployment event", "error", err)
 		}
+
+		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, provider.UUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -437,7 +453,7 @@ func (s *LLMProviderDeploymentService) UndeployLLMProviderDeployment(providerID,
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusUndeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		provider.UUID, orgUUID, deployment.GatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusUndeployed),
@@ -676,6 +692,9 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 			}
 
 			params := map[string]interface{}{"key": key, "in": in}
+			if prefix := strings.TrimSpace(security.APIKey.ValuePrefix); prefix != "" {
+				params["valuePrefix"] = prefix
+			}
 			globalPolicies = append(globalPolicies, api.Policy{
 				Name:   apiKeyAuthPolicyName,
 				Params: &params,
@@ -1085,7 +1104,10 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 	policies = orderLLMPolicies(policies)
 
 	upstream := dto.LLMUpstreamYAML{URL: main.URL, Ref: main.Ref}
-	if main.Auth != nil {
+	// "other" means auth to the upstream is handled entirely by user-attached
+	// policies (e.g. aws-authentication) - omit the auth block from the deployment
+	// artifact so the gateway does not attach a header-setting policy of its own.
+	if main.Auth != nil && normalizeUpstreamAuthType(main.Auth.Type) != "other" {
 		upstream.Auth = mapModelAuthToAPI(main.Auth)
 	}
 
@@ -1258,7 +1280,7 @@ func unmarshalDeploymentMetadata(s string) (map[string]any, error) {
 }
 
 // DeployLLMProxy creates a new immutable deployment artifact and deploys it to a gateway
-func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.DeployRequest, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.DeployRequest, orgUUID, createdBy string) (*api.DeploymentResponse, error) {
 	// Validate request
 	if req == nil {
 		return nil, apperror.LLMProxyDeploymentValidationFailed.New("A request body is required.")
@@ -1313,7 +1335,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	if err != nil {
 		return nil, err
 	}
-	effectiveMetaJSON, err := s.proxyRepo.EnsureGatewayAssociation(proxy.UUID, gatewayID, orgUUID, deployMetaJSON, metadataProvided)
+	effectiveMetaJSON, err := s.proxyRepo.EnsureGatewayAssociation(proxy.UUID, gatewayID, orgUUID, createdBy, deployMetaJSON, metadataProvided)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
 	}
@@ -1330,10 +1352,12 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate LLM proxy deployment YAML: %w", err)
 		}
-		target := deploymenttransform.ParseVersion(gateway.Version)
-		if err := deploymenttransform.Default().Transform(
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(proxy.DataVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(
 			constants.LLMProxy,
-			target,
+			sourceDataVersion,
+			targetDataVersion,
 			&proxyDeployment,
 		); err != nil {
 			return nil, fmt.Errorf("failed to transform LLM proxy deployment for gateway %s: %w", gateway.Version, err)
@@ -1388,7 +1412,7 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxy.UUID, orgUUID, gatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -1408,6 +1432,9 @@ func (s *LLMProxyDeploymentService) DeployLLMProxy(proxyID string, req *api.Depl
 		if err := s.gatewayEventsService.BroadcastLLMProxyDeploymentEvent(gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM proxy deployment event", "error", err)
 		}
+
+		// Push existing active API keys for this proxy to the gateway (see BackfillAPIKeysToGateway).
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxy.UUID, gatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -1479,7 +1506,7 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxy.UUID, orgUUID, targetDeployment.GatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -1500,6 +1527,9 @@ func (s *LLMProxyDeploymentService) RestoreLLMProxyDeployment(proxyID, deploymen
 		if err := s.gatewayEventsService.BroadcastLLMProxyDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast LLM proxy deployment event", "error", err)
 		}
+
+		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxy.UUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -1568,7 +1598,7 @@ func (s *LLMProxyDeploymentService) UndeployLLMProxyDeployment(proxyID, deployme
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusUndeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxy.UUID, orgUUID, deployment.GatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusUndeployed),
@@ -1770,6 +1800,9 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 			}
 
 			params := map[string]interface{}{"key": key, "in": in}
+			if prefix := strings.TrimSpace(security.APIKey.ValuePrefix); prefix != "" {
+				params["valuePrefix"] = prefix
+			}
 			proxyGlobalPolicies = append(proxyGlobalPolicies, api.Policy{
 				Name:   apiKeyAuthPolicyName,
 				Params: &params,
@@ -1845,7 +1878,10 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 		},
 	}
 
-	if proxy.Configuration.UpstreamAuth != nil {
+	// "other" means auth to the upstream is handled entirely by user-attached
+	// policies - omit the auth block from the deployment artifact so the gateway
+	// does not attach a header-setting policy of its own.
+	if proxy.Configuration.UpstreamAuth != nil && normalizeUpstreamAuthType(proxy.Configuration.UpstreamAuth.Type) != "other" {
 		proxyDeployment.Spec.Provider.Auth = mapModelUpstreamAuthToAPI(proxy.Configuration.UpstreamAuth)
 	}
 

@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -95,16 +96,6 @@ func (s *LLMProviderTemplateService) toTemplateAPI(m *model.LLMProviderTemplate)
 		return nil, err
 	}
 	return resp, nil
-}
-
-// templateListItemResolved converts t via templateListItem and resolves its
-// createdBy UUID to its raw external identity.
-func (s *LLMProviderTemplateService) templateListItemResolved(t *model.LLMProviderTemplate) (api.LLMProviderTemplateListItem, error) {
-	item := templateListItem(t)
-	if err := s.identity.ResolveIdentityField(&item.CreatedBy); err != nil {
-		return item, err
-	}
-	return item, nil
 }
 
 func NewLLMProviderService(
@@ -306,12 +297,13 @@ func (s *LLMProviderTemplateService) List(orgUUID string, limit, offset int, lat
 		},
 	}
 	resp.List = make([]api.LLMProviderTemplateListItem, 0, len(items))
+	createdByFields := make([]**string, 0, len(items))
 	for _, t := range items {
-		item, err := s.templateListItemResolved(t)
-		if err != nil {
-			return nil, err
-		}
-		resp.List = append(resp.List, item)
+		resp.List = append(resp.List, templateListItem(t))
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
@@ -655,12 +647,13 @@ func (s *LLMProviderTemplateService) ListVersions(orgUUID, groupID string, limit
 		},
 	}
 	resp.List = make([]api.LLMProviderTemplateListItem, 0, len(items))
+	createdByFields := make([]**string, 0, len(items))
 	for _, t := range items {
-		item, err := s.templateListItemResolved(t)
-		if err != nil {
-			return nil, err
-		}
-		resp.List = append(resp.List, item)
+		resp.List = append(resp.List, templateListItem(t))
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
@@ -857,6 +850,10 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if tpl == nil {
 		return nil, apperror.LLMProviderTemplateRefNotFound.New()
 	}
+	if !tpl.Enabled {
+		return nil, apperror.LLMProviderTemplateDisabled.New().
+			WithLogMessage("llm provider template is disabled")
+	}
 
 	// Determine handle: use provided id or auto-generate from displayName
 	var handle string
@@ -902,13 +899,10 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if err := validateLLMResourceLimit(providerCount, s.cfg.ArtifactLimits.MaxLLMProvidersPerOrg, apperror.LLMProviderLimitReached.New()); err != nil {
 		return nil, err
 	}
-	if !tpl.Enabled {
-		return nil, apperror.ValidationFailed.New("The referenced LLM provider template version is disabled.")
-	}
 
 	openapiSpec := utils.ValueOrEmpty(req.Openapi)
 	if openapiSpec == "" {
-		openapiSpec = tpl.OpenAPISpec
+		openapiSpec = resolveTemplateOpenAPISpec(context.Background(), tpl, openAPISpecFetchLimit(s.cfg), s.slogger)
 	}
 
 	// Resolve any associated gateways up-front so they can be persisted within the
@@ -925,6 +919,7 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
+		UpdatedBy:        createdBy,
 		Version:          req.Version,
 		TemplateUUID:     tpl.UUID,
 		OpenAPISpec:      openapiSpec,
@@ -983,6 +978,7 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 		},
 	}
 	resp.List = make([]api.LLMProviderListItem, 0, len(items))
+	createdByFields := make([]**string, 0, len(items))
 	for _, p := range items {
 		// Look up template handle from UUID
 		tplHandle := ""
@@ -999,9 +995,6 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 		name := p.Name
 		desc := utils.StringPtrIfNotEmpty(p.Description)
 		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
-		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
-			return nil, err
-		}
 		version := p.Version
 		template := utils.StringPtrIfNotEmpty(tplHandle)
 		resp.List = append(resp.List, api.LLMProviderListItem{
@@ -1015,6 +1008,10 @@ func (s *LLMProviderService) List(orgUUID string, limit, offset int) (*api.LLMPr
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
@@ -1085,6 +1082,10 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	}
 	if tpl == nil {
 		return nil, apperror.LLMProviderTemplateRefNotFound.New()
+	}
+	if !tpl.Enabled {
+		return nil, apperror.LLMProviderTemplateDisabled.New().
+			WithLogMessage("llm provider template is disabled")
 	}
 
 	// Validate {{ secret "..." }} placeholders anywhere in the request — see
@@ -1380,6 +1381,11 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		return nil, err
 	}
 
+	openapiSpec := utils.ValueOrEmpty(req.Openapi)
+	if openapiSpec == "" {
+		openapiSpec = prov.OpenAPISpec
+	}
+
 	contextValue := utils.DefaultStringPtr(req.Context, "/")
 	m := &model.LLMProxy{
 		OrganizationUUID: orgUUID,
@@ -1388,9 +1394,10 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
+		UpdatedBy:        createdBy,
 		Version:          req.Version,
 		ProviderUUID:     prov.UUID,
-		OpenAPISpec:      utils.ValueOrEmpty(req.Openapi),
+		OpenAPISpec:      openapiSpec,
 		Configuration: model.LLMProxyConfig{
 			Context:             &contextValue,
 			Vhost:               req.Vhost,
@@ -1469,14 +1476,12 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 		},
 	}
 	resp.List = make([]api.LLMProxyListItem, 0, len(items))
+	createdByFields := make([]**string, 0, len(items))
 	for _, p := range items {
 		id := p.ID
 		name := p.Name
 		desc := utils.StringPtrIfNotEmpty(p.Description)
 		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
-		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
-			return nil, err
-		}
 		contextValue := (*string)(nil)
 		if p.Configuration.Context != nil {
 			v := *p.Configuration.Context
@@ -1498,6 +1503,10 @@ func (s *LLMProxyService) List(orgUUID string, projectHandle *string, limit, off
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
@@ -1534,14 +1543,12 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 		},
 	}
 	resp.List = make([]api.LLMProxyListItem, 0, len(items))
+	createdByFields := make([]**string, 0, len(items))
 	for _, p := range items {
 		id := p.ID
 		name := p.Name
 		desc := utils.StringPtrIfNotEmpty(p.Description)
 		createdBy := utils.StringPtrIfNotEmpty(p.CreatedBy)
-		if err := s.identity.ResolveIdentityField(&createdBy); err != nil {
-			return nil, err
-		}
 		contextValue := (*string)(nil)
 		if p.Configuration.Context != nil {
 			v := *p.Configuration.Context
@@ -1563,6 +1570,10 @@ func (s *LLMProxyService) ListByProvider(orgUUID, providerID string, limit, offs
 			CreatedAt:   utils.TimePtr(p.CreatedAt),
 			UpdatedAt:   utils.TimePtr(p.UpdatedAt),
 		})
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
@@ -2204,6 +2215,8 @@ func normalizeUpstreamAuthType(authType string) string {
 		return string(api.Basic)
 	case "bearer":
 		return string(api.Bearer)
+	case "other":
+		return string(api.Other)
 	default:
 		return normalized
 	}
@@ -3124,7 +3137,12 @@ func mapSecurityAPIToModel(in *api.SecurityConfig) *model.SecurityConfig {
 		if in.ApiKey.In != nil {
 			inLoc = string(*in.ApiKey.In)
 		}
-		out.APIKey = &model.APIKeySecurity{Enabled: in.ApiKey.Enabled, Key: key, In: inLoc}
+		out.APIKey = &model.APIKeySecurity{
+			Enabled:     in.ApiKey.Enabled,
+			Key:         key,
+			In:          inLoc,
+			ValuePrefix: utils.ValueOrEmpty(in.ApiKey.ValuePrefix),
+		}
 	}
 	return out
 }
@@ -3140,7 +3158,12 @@ func mapSecurityModelToAPI(in *model.SecurityConfig) *api.SecurityConfig {
 			v := api.APIKeySecurityIn(in.APIKey.In)
 			inLoc = &v
 		}
-		out.ApiKey = &api.APIKeySecurity{Enabled: in.APIKey.Enabled, Key: utils.StringPtrIfNotEmpty(in.APIKey.Key), In: inLoc}
+		out.ApiKey = &api.APIKeySecurity{
+			Enabled:     in.APIKey.Enabled,
+			Key:         utils.StringPtrIfNotEmpty(in.APIKey.Key),
+			In:          inLoc,
+			ValuePrefix: utils.StringPtrIfNotEmpty(in.APIKey.ValuePrefix),
+		}
 	}
 	return out
 }
@@ -3231,4 +3254,42 @@ func resolveAssociatedGateways(gatewayRepo repository.GatewayRepository, orgUUID
 		})
 	}
 	return resolved, nil
+}
+
+// openAPISpecFetchLimit returns the configured maximum size for a template OpenAPI spec
+// fetch, or 0 (which the fetcher treats as its safe built-in default) when unset.
+func openAPISpecFetchLimit(cfg *config.Server) int64 {
+	if cfg == nil {
+		return 0
+	}
+	return cfg.OpenAPISpecMaxFetchBytes
+}
+
+// resolveTemplateOpenAPISpec derives the OpenAPI spec to store for an artifact from its template.
+func resolveTemplateOpenAPISpec(ctx context.Context, tpl *model.LLMProviderTemplate, maxBytes int64, logger *slog.Logger) string {
+	if tpl == nil {
+		return ""
+	}
+
+	specURL := ""
+	if tpl.Metadata != nil {
+		specURL = strings.TrimSpace(tpl.Metadata.OpenapiSpecURL)
+	}
+
+	if specURL != "" {
+		spec, err := utils.FetchOpenAPISpecFromURL(ctx, specURL, maxBytes)
+		if err != nil {
+			if logger != nil {
+				logger.Warn("failed to fetch OpenAPI spec from template URL; falling back to inline spec if present",
+					"template", tpl.ID, "error", err)
+			}
+		} else if strings.TrimSpace(spec) != "" {
+			return spec
+		}
+	}
+
+	if strings.TrimSpace(tpl.OpenAPISpec) != "" {
+		return tpl.OpenAPISpec
+	}
+	return ""
 }

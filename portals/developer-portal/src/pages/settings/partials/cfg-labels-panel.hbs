@@ -1,0 +1,49 @@
+      <!-- ══ Manage Labels ══ -->
+      <div class="cfg-panel" id="cfg-labels">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Labels</h2>
+            <p class="cfg-panel-desc">Labels group APIs; views make labelled APIs visible to consumers.</p>
+          </div>
+          <button class="cfg-btn-primary" id="cfg-add-label-btn" type="button">
+            <i class="bi bi-plus"></i> Add label
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th>Display name</th>
+                <th>Name</th>
+                <th style="width:90px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-labels-tbody">
+              {{#orgLabels}}
+              <tr id="cfg-label-row-{{id}}" data-id="{{id}}">
+                <td>
+                  <button type="button" class="cfg-label-edit-btn" data-name="{{id}}" data-display="{{displayName}}"
+                    style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{displayName}}</button>
+                </td>
+                <td><span class="cfg-name-chip">{{id}}</span></td>
+                <td>
+                  <div class="cfg-row-actions">
+                    <button class="cfg-icon-btn cfg-label-edit-btn" type="button" data-name="{{id}}" data-display="{{displayName}}" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-label-delete-btn" type="button"
+                      data-name="{{id}}" data-display="{{displayName}}" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{/orgLabels}}
+              {{#unless orgLabels.length}}
+              <tr><td colspan="3" class="cfg-tbl-empty">No labels yet. Add one to get started.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-labels -->

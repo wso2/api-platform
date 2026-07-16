@@ -49,11 +49,12 @@ func hashSubscriptionToken(token string) string {
 }
 
 // getSubscriptionTokenEncryptionKey returns the 32-byte key for subscription token encryption.
-// The single configured ENCRYPTION_KEY is used for all at-rest encryption.
+// The single configured EncryptionKey is used for all at-rest encryption.
 func getSubscriptionTokenEncryptionKey() ([]byte, error) {
 	cfg := config.GetConfig()
 	if cfg.EncryptionKey == "" {
-		return nil, fmt.Errorf("subscription token encryption requires ENCRYPTION_KEY")
+		return nil, fmt.Errorf("subscription token encryption requires EncryptionKey. Set encryption_key" +
+			" in config via {{ env }}/{{ file }}")
 	}
 	return utils.DeriveEncryptionKey(cfg.EncryptionKey)
 }
@@ -101,7 +102,7 @@ func (r *SubscriptionRepo) Create(sub *model.Subscription) error {
 		return fmt.Errorf("failed to encrypt subscription token: %w", err)
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	sub.CreatedAt = now
 	sub.UpdatedAt = now
 
@@ -235,7 +236,7 @@ func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscr
 }
 
 // decryptionKeyCandidates returns the derived key(s) to try during decryption.
-// With the single consolidated ENCRYPTION_KEY there is at most one candidate; the slice
+// With the single consolidated EncryptionKey there is at most one candidate; the slice
 // shape is retained so callers can keep iterating (and so back-compat candidates could be
 // re-introduced for a migration if ever needed).
 func decryptionKeyCandidates() [][]byte {
@@ -293,7 +294,7 @@ func (r *SubscriptionRepo) CountByFilters(orgUUID string, apiUUID *string, subsc
 
 // Update updates an existing subscription with all mutable fields.
 func (r *SubscriptionRepo) Update(sub *model.Subscription) error {
-	sub.UpdatedAt = time.Now()
+	sub.UpdatedAt = time.Now().UTC()
 	query := `
 		UPDATE subscriptions
 		SET subscription_plan_uuid = ?, application_id = ?, status = ?, updated_by = ?, updated_at = ?
@@ -336,7 +337,7 @@ func (r *SubscriptionRepo) UpdateToken(subscriptionID, orgUUID, newToken string)
 		SET subscription_token = ?, subscription_token_hash = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
 	`
-	result, err := r.db.Exec(r.db.Rebind(query), encryptedToken, hashedToken, time.Now(), subscriptionID, orgUUID)
+	result, err := r.db.Exec(r.db.Rebind(query), encryptedToken, hashedToken, time.Now().UTC(), subscriptionID, orgUUID)
 	if err != nil {
 		if isSubscriptionUniqueViolation(err) {
 			return apperror.SubscriptionExists.New()

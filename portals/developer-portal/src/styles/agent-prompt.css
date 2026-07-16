@@ -1,7 +1,7 @@
 .btn-prompt {
     background: linear-gradient(135deg, #6B4FE8, #E040D0);
     background-size: 200% 200%;
-    color: #ffffff;
+    color: var(--white);
     border: none;
     padding: 0.65rem 1.25rem;
     border-radius: 2rem;
@@ -54,8 +54,8 @@
     justify-content: center;
     width: 42px;
     height: 42px;
-    background: var(--primary-main-color);
-    color: #fff;
+    background: var(--primary);
+    color: var(--white);
     border: 2px solid transparent;
     border-radius: 9px;
     cursor: pointer;
@@ -68,7 +68,7 @@
     border-color: rgba(255, 255, 255, 0.4);
     transform: translateY(-2px) scale(1.05);
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
-    color: #fff;
+    color: var(--white);
     text-decoration: none;
 }
 
@@ -82,7 +82,7 @@
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.78);
-    color: #fff;
+    color: var(--white);
     font-size: 0.72rem;
     padding: 4px 10px;
     border-radius: 5px;
@@ -120,7 +120,7 @@
     width: 42px;
     height: 42px;
     background: linear-gradient(135deg, rgba(168,85,247,0.9), rgba(124,58,237,0.9), rgba(236,72,153,0.85));
-    color: #fff;
+    color: var(--white);
     border: none;
     border-radius: 9px;
     cursor: pointer;
@@ -161,7 +161,7 @@
     left: 50%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.78);
-    color: #fff;
+    color: var(--white);
     font-size: 0.72rem;
     padding: 4px 10px;
     border-radius: 5px;
@@ -204,7 +204,7 @@
     justify-content: space-between;
     padding: 0.625rem 1rem;
     border-bottom: 1px solid var(--bs-gray-200);
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken);
 }
 
 .api-workflow-prompt-pre-wrapper {
@@ -227,8 +227,8 @@
     line-height: 1.7;
     white-space: pre-wrap;
     word-break: break-word;
-    background: var(--main-bg-color);
-    color: var(--main-text-color);
+    background: var(--surface);
+    color: var(--text);
     border: none;
     border-radius: 0;
 }
@@ -241,7 +241,7 @@
 
 .prompt-tool-btn {
     background: none;
-    border: 1px solid var(--bs-gray-300, #dee2e6);
+    border: 1px solid var(--bs-gray-300);
     border-radius: 0.375rem;
     width: 34px;
     height: 34px;
@@ -249,15 +249,15 @@
     align-items: center;
     justify-content: center;
     font-size: 1rem;
-    color: var(--main-text-color);
+    color: var(--text);
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .prompt-tool-btn:hover {
-    border-color: var(--primary-main-color);
-    color: var(--primary-main-color);
-    background: var(--primary-lightest-color);
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-surface);
 }
 
 .prompt-run-dropdown {
@@ -272,7 +272,7 @@
     height: 34px;
     white-space: nowrap;
     background: #D97757;;
-    color: #fff;
+    color: var(--white);
     border: none;
     border-radius: 0.375rem;
     font-size: 0.875rem;
@@ -290,7 +290,7 @@
     position: absolute;
     top: calc(100% + 6px);
     right: 0;
-    background: var(--main-bg-color);
+    background: var(--surface);
     border: 1px solid var(--bs-gray-200);
     border-radius: 0.5rem;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
@@ -311,12 +311,12 @@
     background: none;
     border: none;
     font-size: 0.875rem;
-    color: var(--main-text-color);
+    color: var(--text);
     cursor: pointer;
     transition: background 0.15s ease;
 }
 
 .run-option:hover {
-    background: var(--primary-lightest-color);
-    color: var(--primary-main-color);
+    background: var(--primary-surface);
+    color: var(--primary);
 }

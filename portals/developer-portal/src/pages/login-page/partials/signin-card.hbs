@@ -15,10 +15,8 @@
  * specific language governing permissions and limitations
  * under the License.
  -->
-{{#if localAuthEnabled}}
-
-<h2 class="os-form-title">Sign in to continue</h2>
-<p class="os-form-sub">Enter your credentials to access the developer portal.</p>
+<h2 class="auth-form-title">Sign in to continue</h2>
+<p class="auth-form-sub">Enter your credentials to access the developer portal.</p>
 
 {{#if loginError}}
 <div class="ln-error-banner" role="alert">
@@ -30,15 +28,15 @@
 <form id="local-login-form" method="POST" data-base-url="{{baseUrl}}">
   <div class="ln-fields">
 
-    <div class="os-field">
-      <label class="os-field-label" for="username">Username</label>
-      <div class="os-input-wrap">
-        <i class="bi bi-person os-input-icon" aria-hidden="true"></i>
+    <div class="auth-field">
+      <label class="auth-field-label" for="username">Username</label>
+      <div class="auth-input-wrap">
+        <i class="bi bi-person auth-input-icon" aria-hidden="true"></i>
         <input
           type="text"
           id="username"
           name="username"
-          class="os-input"
+          class="auth-input"
           placeholder="Enter username"
           required
           autocomplete="username"
@@ -46,15 +44,15 @@
       </div>
     </div>
 
-    <div class="os-field">
-      <label class="os-field-label" for="password">Password</label>
-      <div class="os-input-wrap">
-        <i class="bi bi-lock os-input-icon" aria-hidden="true"></i>
+    <div class="auth-field">
+      <label class="auth-field-label" for="password">Password</label>
+      <div class="auth-input-wrap">
+        <i class="bi bi-lock auth-input-icon" aria-hidden="true"></i>
         <input
           type="password"
           id="password"
           name="password"
-          class="os-input ln-pw-input"
+          class="auth-input ln-pw-input"
           placeholder="Enter password"
           required
           autocomplete="current-password"
@@ -65,7 +63,7 @@
       </div>
     </div>
 
-    <button type="submit" class="ln-signin-btn os-continue-btn os-continue-btn--active">Sign in</button>
+    <button type="submit" class="ln-signin-btn auth-continue-btn auth-continue-btn--active">Sign in</button>
 
   </div>
 </form>
@@ -83,36 +81,3 @@
     });
   })();
 </script>
-
-{{else}}
-
-<h2 class="os-form-title">Sign in to continue</h2>
-<p class="os-form-sub">Choose how you'd like to sign in.</p>
-
-<div class="ln-social-list">
-  <button class="ln-social-btn" id="login-google">
-    <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Google.svg" alt="" width="18" aria-hidden="true">
-    Continue with Google
-  </button>
-  <button class="ln-social-btn" id="login-github">
-    <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Github.svg" alt="" width="18" aria-hidden="true">
-    Continue with GitHub
-  </button>
-  <button class="ln-social-btn" id="login-microsoft">
-    <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Microsoft.svg" alt="" width="18" aria-hidden="true">
-    Continue with Microsoft
-  </button>
-
-  <div class="ln-divider"><span>or</span></div>
-
-  <button class="ln-social-btn" id="login-email">
-    <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Email.svg" alt="" width="18" aria-hidden="true">
-    Sign in with Email
-  </button>
-  <a class="ln-social-btn ln-social-btn--outline" id="show-enterprise">
-    <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/Enterprise.svg" alt="" width="18" aria-hidden="true">
-    Sign in with Enterprise ID
-  </a>
-</div>
-
-{{/if}}

@@ -140,6 +140,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "updatedBy": "string"
     }
   ],
+  "count": 1,
   "pagination": {
     "total": 42,
     "limit": 20,
@@ -175,6 +176,7 @@ Status Code **200**
 |»» updatedAt|string¦null|false|none|none|
 |»» createdBy|string¦null|false|none|none|
 |»» updatedBy|string¦null|false|none|none|
+|» count|integer|false|none|Number of items returned in this page.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|

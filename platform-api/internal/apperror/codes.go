@@ -65,6 +65,7 @@ const (
 	CodeLLMProviderTemplateVersionExists     = "LLM_PROVIDER_TEMPLATE_VERSION_EXISTS"
 	CodeLLMProviderTemplateManagedByReserved = "LLM_PROVIDER_TEMPLATE_MANAGED_BY_RESERVED"
 	CodeLLMProviderTemplateInUse             = "LLM_PROVIDER_TEMPLATE_IN_USE"
+	CodeLLMProviderTemplateDisabled          = "LLM_PROVIDER_TEMPLATE_DISABLED"
 	CodeLLMProviderTemplateReadOnly          = "LLM_PROVIDER_TEMPLATE_READ_ONLY"
 	CodeLLMProviderTemplateNotToggleable     = "LLM_PROVIDER_TEMPLATE_NOT_TOGGLEABLE"
 )

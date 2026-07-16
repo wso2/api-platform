@@ -33,6 +33,8 @@ apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProxy
 metadata:
   name: openai-to-mistral
+  annotations:
+    "gateway.api-platform.wso2.com/project-id": "default"
 spec:
   displayName: OpenAI to Mistral Proxy
   version: v1.0

@@ -1,0 +1,57 @@
+      <!-- ══ Manage Views ══ -->
+      <div class="cfg-panel" id="cfg-views">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Views</h2>
+            <p class="cfg-panel-desc">Views scope which labelled APIs are visible. LLM Instructions and API Workflows are configured per view.</p>
+          </div>
+          <button class="cfg-btn-primary" id="cfg-add-view-btn" type="button">
+            <i class="bi bi-plus"></i> Add view
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th>Handle</th>
+                <th>Name</th>
+                <th>Labels</th>
+                <th style="width:90px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-views-tbody">
+              {{#views}}
+              <tr id="cfg-view-row-{{id}}" data-id="{{id}}">
+                <td><span class="cfg-name-chip">{{id}}</span></td>
+                <td>
+                  <button type="button" class="cfg-view-edit-btn" data-id="{{id}}"
+                    style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{displayName}}</button>
+                </td>
+                <td>
+                  <div class="d-flex flex-wrap gap-1">
+                    {{#each labels}}<span class="cfg-name-chip">{{this}}</span>{{/each}}
+                  </div>
+                </td>
+                <td>
+                  <div class="cfg-row-actions">
+                    <button class="cfg-icon-btn cfg-view-edit-btn" type="button" data-id="{{id}}" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    {{#unless (eq id "default")}}
+                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-view-delete-btn" type="button"
+                      data-id="{{id}}" data-name="{{displayName}}" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                    {{/unless}}
+                  </div>
+                </td>
+              </tr>
+              {{/views}}
+              {{#unless views.length}}
+              <tr><td colspan="4" class="cfg-tbl-empty">No views yet. Add one to get started.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-views -->

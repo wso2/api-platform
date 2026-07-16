@@ -817,17 +817,6 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /rest-apis/{id}":     {"admin", "developer"},
 		"DELETE /rest-apis/{id}":  {"admin", "developer"},
 
-		"POST /websub-apis":         {"admin", "developer"},
-		"GET /websub-apis":          {"admin", "developer"},
-		"GET /websub-apis/{id}":     {"admin", "developer"},
-		"PUT /websub-apis/{id}":     {"admin", "developer"},
-		"DELETE /websub-apis/{id}":  {"admin", "developer"},
-
-		"POST /webbroker-apis":         {"admin", "developer"},
-		"GET /webbroker-apis":          {"admin", "developer"},
-		"GET /webbroker-apis/{id}":     {"admin", "developer"},
-		"DELETE /webbroker-apis/{id}":  {"admin", "developer"},
-
 		"GET /certificates":          {"admin", "developer"},
 		"POST /certificates":         {"admin", "developer"},
 		"DELETE /certificates/{id}":  {"admin"},
@@ -876,23 +865,6 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /llm-proxies/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
 		"POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
 		"DELETE /llm-proxies/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
-
-		"POST /websub-apis/{id}/api-keys":                          {"admin", "consumer"},
-		"GET /websub-apis/{id}/api-keys":                           {"admin", "consumer"},
-		"PUT /websub-apis/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
-		"POST /websub-apis/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
-		"DELETE /websub-apis/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
-
-		"POST /websub-apis/{id}/secrets":                                {"admin", "consumer"},
-		"GET /websub-apis/{id}/secrets":                                 {"admin", "consumer"},
-		"DELETE /websub-apis/{id}/secrets/{secretName}":                 {"admin", "consumer"},
-		"POST /websub-apis/{id}/secrets/{secretName}/regenerate":        {"admin", "consumer"},
-
-		"POST /webbroker-apis/{id}/api-keys":                          {"admin", "consumer"},
-		"GET /webbroker-apis/{id}/api-keys":                           {"admin", "consumer"},
-		"PUT /webbroker-apis/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
-		"POST /webbroker-apis/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
-		"DELETE /webbroker-apis/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
 
 		// Root-level subscription endpoints
 		"POST /subscriptions":                        {"admin", "developer"},

@@ -35,7 +35,7 @@ import (
 // LLMProviderAPIKeyService handles API key management for LLM providers
 type LLMProviderAPIKeyService struct {
 	llmProviderRepo      repository.LLMProviderRepository
-	gatewayRepo          repository.GatewayRepository
+	apiRepo              repository.APIRepository
 	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	identity             *IdentityService
@@ -45,7 +45,7 @@ type LLMProviderAPIKeyService struct {
 // NewLLMProviderAPIKeyService creates a new LLM provider API key service instance
 func NewLLMProviderAPIKeyService(
 	llmProviderRepo repository.LLMProviderRepository,
-	gatewayRepo repository.GatewayRepository,
+	apiRepo repository.APIRepository,
 	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
 	identity *IdentityService,
@@ -53,7 +53,7 @@ func NewLLMProviderAPIKeyService(
 ) *LLMProviderAPIKeyService {
 	return &LLMProviderAPIKeyService{
 		llmProviderRepo:      llmProviderRepo,
-		gatewayRepo:          gatewayRepo,
+		apiRepo:              apiRepo,
 		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		identity:             identity,
@@ -104,26 +104,28 @@ func (s *LLMProviderAPIKeyService) ListLLMProviderAPIKeys(
 // API representation, resolving each creator UUID to its raw identity.
 func ownedAPIKeyItems(keys []*model.APIKey, userID string, identity *IdentityService) ([]api.APIKeyItem, error) {
 	items := make([]api.APIKeyItem, 0, len(keys))
+	createdByFields := make([]**string, 0, len(keys))
 	for _, k := range keys {
 		if k.CreatedBy != userID {
 			continue
 		}
-		createdBy := utils.StringPtrIfNotEmpty(k.CreatedBy)
-		if err := identity.ResolveIdentityField(&createdBy); err != nil {
-			return nil, err
-		}
-		items = append(items, api.APIKeyItem{
+		item := api.APIKeyItem{
 			Id:             &k.Name,
 			DisplayName:    k.DisplayName,
 			MaskedApiKey:   k.MaskedAPIKey,
 			Status:         api.APIKeyItemStatus(k.Status),
 			CreatedAt:      k.CreatedAt,
-			CreatedBy:      createdBy,
+			CreatedBy:      utils.StringPtrIfNotEmpty(k.CreatedBy),
 			UpdatedAt:      k.UpdatedAt,
 			ExpiresAt:      k.ExpiresAt,
 			Issuer:         k.Issuer,
 			AllowedTargets: k.AllowedTargets,
-		})
+		}
+		items = append(items, item)
+		createdByFields = append(createdByFields, &items[len(items)-1].CreatedBy)
+	}
+	if err := identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 	return items, nil
 }
@@ -163,14 +165,14 @@ func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 
 	s.slogger.Info("Successfully deleted LLM provider API key", "providerId", providerID, "keyName", keyName)
 
-	// Broadcast revoke event to gateways.
-	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
+	// Broadcast revoke only to gateways the provider is associated with (not all org gateways).
+	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(provider.UUID, orgID)
 	if err != nil {
-		s.slogger.Error("Failed to get gateways for API key revoke broadcast", "providerId", providerID, "keyName", keyName, "error", err)
+		s.slogger.Error("Failed to get associated gateways for API key revoke broadcast", "providerId", providerID, "keyName", keyName, "error", err)
 		return nil
 	}
 	if len(gateways) == 0 {
-		s.slogger.Warn("No gateways found for organization; skipping revoke broadcast", "organizationId", orgID)
+		s.slogger.Info("Provider not associated with any gateway; skipping revoke broadcast", "providerId", providerID, "keyName", keyName)
 		return nil
 	}
 
@@ -179,7 +181,7 @@ func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 		KeyName: keyName,
 	}
 
-	for _, gateway := range filterGatewaysByAllowedTargets(gateways, existingKey.AllowedTargets) {
+	for _, gateway := range filterAPIGatewaysByAllowedTargets(gateways, existingKey.AllowedTargets) {
 		gatewayID := gateway.ID
 		if err := s.gatewayEventsService.BroadcastAPIKeyRevokedEvent(gatewayID, userID, event); err != nil {
 			s.slogger.Error("Failed to broadcast LLM provider API key revoked event", "providerId", providerID, "gatewayId", gatewayID, "keyName", keyName, "error", err)
@@ -240,15 +242,13 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		expiresAt = &expiresAtStr
 	}
 
-	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
+	// Broadcast only to gateways the provider is associated with (not all org gateways),
+	// mirroring the REST key path. An empty list is valid: the key is still persisted and
+	// any gateway associated later picks it up via the deploy-time backfill.
+	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(provider.UUID, orgID)
 	if err != nil {
 		s.slogger.Error("Failed to get gateways for API key broadcast", "providerId", providerID, "error", err)
 		return nil, fmt.Errorf("failed to get gateways: %w", err)
-	}
-
-	if len(gateways) == 0 {
-		s.slogger.Warn("No gateways found for organization", "organizationId", orgID)
-		return nil, apperror.GatewayConnectionUnavailable.New()
 	}
 
 	apiKeyHashesJSON, err := buildAPIKeyHashesJSON(apiKey, []string{defaultHashingAlgorithm})
@@ -285,6 +285,7 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		APIKeyHashes:   apiKeyHashesJSON,
 		Status:         "active",
 		CreatedBy:      userID,
+		UpdatedBy:      userID,
 		ExpiresAt:      req.ExpiresAt,
 		Issuer:         issuer,
 		AllowedTargets: allowedTargets,
@@ -306,7 +307,7 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		UpdatedAt:    dbKey.UpdatedAt.Format(time.RFC3339),
 	}
 
-	targetGateways := filterGatewaysByAllowedTargets(gateways, allowedTargets)
+	targetGateways := filterAPIGatewaysByAllowedTargets(gateways, allowedTargets)
 	successCount := 0
 	failureCount := 0
 	var lastError error
@@ -329,8 +330,12 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 
 	s.slogger.Info("LLM provider API key creation broadcast summary", "providerId", providerID, "keyName", name, "total", len(targetGateways), "success", successCount, "failed", failureCount)
 
-	if successCount == 0 {
-		s.slogger.Warn("Failed to deliver LLM provider API key to any gateway; key is saved to the database", "providerId", providerID, "keyName", name, "error", lastError)
+	if len(targetGateways) == 0 {
+		// No gateways associated yet — a valid state. The key is persisted centrally and any
+		// gateway associated later picks it up via the deploy-time backfill.
+		s.slogger.Info("LLM provider not associated with any gateway; API key saved and will be delivered at deploy time", "providerId", providerID, "keyName", name)
+	} else if successCount == 0 {
+		s.slogger.Error("LLM provider API key created event was not broadcast to any associated gateway", "providerId", providerID, "keyName", name, "error", lastError)
 	}
 
 	return &api.CreateLLMProviderAPIKeyResponse{

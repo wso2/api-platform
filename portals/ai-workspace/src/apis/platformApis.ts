@@ -127,28 +127,6 @@ export async function registerOrganization(
 }
 
 /**
- * Get the current user's organization.
- *
- * Endpoint: GET /organizations
- * Auth:     BFF session cookie; the BFF injects the bearer token.
- */
-export async function getOrganization(): Promise<PlatformOrganization> {
-  const response = await fetch(platformUrl('/organizations'), {
-    method: 'GET',
-    credentials: 'include',
-    headers: jsonHeaders(),
-  });
-
-  if (!response.ok) {
-    const err = await parseApiError(response);
-    logger.error('getOrganization failed:', response.status, err.code, err.message, err.trackingId);
-    throw err;
-  }
-
-  return response.json();
-}
-
-/**
  * Fetch an organization by its handle.
  * Returns null when the org is not yet registered (404).
  *

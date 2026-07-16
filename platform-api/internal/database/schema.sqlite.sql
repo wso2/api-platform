@@ -540,9 +540,9 @@ CREATE TABLE IF NOT EXISTS secrets (
     type              VARCHAR(20)   NOT NULL DEFAULT 'GENERIC',
     provider          VARCHAR(20)   NOT NULL DEFAULT 'IN_BUILT',
     status            VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE',
-    created_at        DATETIME      NOT NULL,
+    created_at        DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_by        VARCHAR(255),
-    updated_at        DATETIME      NOT NULL,
+    updated_at        DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by        VARCHAR(255),
     UNIQUE (organization_uuid, handle),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE

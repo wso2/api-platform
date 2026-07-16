@@ -24,8 +24,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -89,19 +87,6 @@ func (s *MCPProxyService) toMCPProxyAPI(m *model.MCPProxy) (*api.MCPProxy, error
 		return nil, err
 	}
 	return resp, nil
-}
-
-// mcpProxyListItemResolved converts m via mapMCPProxyModelToListItem and
-// resolves its createdBy UUID to its raw external identity.
-func (s *MCPProxyService) mcpProxyListItemResolved(m *model.MCPProxy) (*api.MCPProxyListItem, error) {
-	item := mapMCPProxyModelToListItem(m)
-	if item == nil {
-		return nil, nil
-	}
-	if err := s.identity.ResolveIdentityField(&item.CreatedBy); err != nil {
-		return nil, err
-	}
-	return item, nil
 }
 
 // WithSecretService injects the SecretService for secret-ref validation.
@@ -254,14 +239,17 @@ func (s *MCPProxyService) List(orgUUID string, limit, offset int) (*api.MCPProxy
 	}
 
 	resp.List = make([]api.MCPProxyListItem, 0, len(proxies))
+	createdByFields := make([]**string, 0, len(proxies))
 	for _, p := range proxies {
-		item, err := s.mcpProxyListItemResolved(p)
-		if err != nil {
-			return nil, err
+		item := mapMCPProxyModelToListItem(p)
+		if item == nil {
+			continue
 		}
-		if item != nil {
-			resp.List = append(resp.List, *item)
-		}
+		resp.List = append(resp.List, *item)
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 
 	return resp, nil
@@ -306,14 +294,17 @@ func (s *MCPProxyService) ListByProject(orgUUID, projectHandle string, limit, of
 	}
 
 	resp.List = make([]api.MCPProxyListItem, 0, len(proxies))
+	createdByFields := make([]**string, 0, len(proxies))
 	for _, p := range proxies {
-		item, err := s.mcpProxyListItemResolved(p)
-		if err != nil {
-			return nil, err
+		item := mapMCPProxyModelToListItem(p)
+		if item == nil {
+			continue
 		}
-		if item != nil {
-			resp.List = append(resp.List, *item)
-		}
+		resp.List = append(resp.List, *item)
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 
 	return resp, nil
@@ -536,16 +527,13 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 			return nil, apperror.MCPProxyNotFound.New()
 		}
 
-		// Use stored URL from proxy configuration
+		// Use the stored URL from the proxy configuration verbatim. The stored value is the
+		// full MCP endpoint URL that was validated at creation time; the gateway forwards to
+		// exactly this upstream path, so we must not append "/mcp" (or otherwise manipulate it)
+		// here — doing so would diverge from what is stored and deployed to the gateway.
 		if proxy.Configuration.Upstream.Main != nil && proxy.Configuration.Upstream.Main.URL != "" {
 			url = proxy.Configuration.Upstream.Main.URL
 		}
-
-		normalizedURL, err := ensureMCPEndpointURL(url)
-		if err != nil {
-			return nil, apperror.ValidationFailed.Wrap(err, "The configured MCP server URL is invalid.")
-		}
-		url = normalizedURL
 
 		// Use stored auth from proxy configuration
 		if proxy.Configuration.Upstream.Main != nil && proxy.Configuration.Upstream.Main.Auth != nil {
@@ -577,27 +565,6 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 	}
 
 	return utils.FetchMCPServerInfo(url, headerName, headerValue)
-}
-
-func ensureMCPEndpointURL(rawURL string) (string, error) {
-	parsedURL, err := url.Parse(rawURL)
-	if err != nil {
-		return "", err
-	}
-
-	path := strings.TrimRight(parsedURL.Path, "/")
-	if path == "" {
-		parsedURL.Path = "/mcp"
-		return parsedURL.String(), nil
-	}
-
-	if strings.HasSuffix(path, "/mcp") {
-		parsedURL.Path = path
-		return parsedURL.String(), nil
-	}
-
-	parsedURL.Path = path + "/mcp"
-	return parsedURL.String(), nil
 }
 
 // Helper functions

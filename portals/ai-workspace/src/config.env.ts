@@ -141,7 +141,7 @@ export interface GatewayVersionEntry {
 export const PLATFORM_GATEWAY_VERSIONS = getEnvOrDefault<GatewayVersionEntry[]>(
   'APIP_AIW_PLATFORM_GATEWAY_VERSIONS',
   [
-    { version: '1.2', latestVersion: 'v1.2.0-M1', channel: 'STS' }
+    { version: '1.2', latestVersion: 'v1.2.0-alpha2', channel: 'STS' }
   ]
 );
 

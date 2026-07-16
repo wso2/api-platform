@@ -39,6 +39,7 @@ import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { FormattedMessage } from 'react-intl';
 import NoModelsImage from '../../../../assets/images/NoModels.svg';
 import { DisabledActionTooltip } from '../../../../utils/readOnlyArtifacts';
+import { isBuiltInProviderTemplate } from '../../../../utils/providerTemplateDisplay';
 
 type ProviderOption = {
   id: string;
@@ -191,11 +192,16 @@ export default function ServiceProviderModelsTab() {
     []
   );
 
+  const isCustomTemplate = !isBuiltInProviderTemplate(provider?.template);
+
   const [providers, setProviders] = useState(provider?.modelProviders ?? []);
   const [selectedProviderId, setSelectedProviderId] = useState<string>('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const [newModelName, setNewModelName] = useState('');
+  const [newProviderName, setNewProviderName] = useState('');
+  const [isProviderNameInputVisible, setIsProviderNameInputVisible] =
+    useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const showSnackbar = useAIWorkspaceSnackbar();
 
@@ -229,6 +235,7 @@ export default function ServiceProviderModelsTab() {
       createdAt,
       createdBy,
       updatedAt,
+      updatedBy,
       lastUpdated,
       ...updatePayload
     } = provider;
@@ -299,6 +306,45 @@ export default function ServiceProviderModelsTab() {
     if (isProviderAdded) {
       setDrawerOpen(false);
       setSelectedOptionId(null);
+    }
+  };
+
+  const addCustomProvider = async () => {
+    if (!provider || isLoading || error || isSaving) return;
+
+    const trimmedName = newProviderName.trim();
+    if (!trimmedName) return;
+
+    if ((provider.modelProviders ?? []).length >= 1) {
+      return;
+    }
+
+    const slug = trimmedName
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9._-]/g, '');
+    if (!slug) {
+      showSnackbar('Enter a valid provider name.', 'warning');
+      return;
+    }
+
+    const nextProviders = [
+      {
+        id: slug,
+        displayName: trimmedName,
+        models: [],
+      },
+    ];
+
+    const isProviderAdded = await updateModelProviders(
+      nextProviders,
+      'Model provider added successfully.',
+      'Failed to add model provider.',
+      slug
+    );
+    if (isProviderAdded) {
+      setNewProviderName('');
+      setIsProviderNameInputVisible(false);
     }
   };
 
@@ -427,7 +473,7 @@ export default function ServiceProviderModelsTab() {
                         onClick={() => setSelectedProviderId(p.id)}
                         removeDisabled={isSaving || isReadOnlyProvider}
                         onRemove={
-                          p.id === 'azureai-foundry' && !isReadOnlyProvider
+                          !isReadOnlyProvider
                             ? () => {
                                 void removeProvider(p.id);
                               }
@@ -497,20 +543,56 @@ export default function ServiceProviderModelsTab() {
                         defaultMessage={'No providers added yet.'}
                       />
                     </Typography>
-                    <DisabledActionTooltip disabled={isReadOnlyProvider}>
-                      <Button
+                    {isCustomTemplate && isProviderNameInputVisible ? (
+                      <TextField
                         size="small"
-                        variant="outlined"
-                        startIcon={<Plus size={16} />}
+                        fullWidth
+                        autoFocus
+                        value={newProviderName}
                         disabled={isSaving || isReadOnlyProvider}
-                        onClick={() => setDrawerOpen(true)}
-                      >
-                        <FormattedMessage
-                          id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderModelsTab.add.model.provider.2"
-                          defaultMessage={'Add Model Provider'}
-                        />
-                      </Button>
-                    </DisabledActionTooltip>
+                        onChange={(event) =>
+                          setNewProviderName(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            void addCustomProvider();
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!newProviderName.trim()) {
+                            // Nothing typed — collapse back to the button.
+                            setNewProviderName('');
+                            setIsProviderNameInputVisible(false);
+                            return;
+                          }
+                          void addCustomProvider();
+                        }}
+                        placeholder="Enter provider name"
+                        inputProps={{ 'aria-label': 'Model provider name' }}
+                      />
+                    ) : (
+                      <DisabledActionTooltip disabled={isReadOnlyProvider}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<Plus size={16} />}
+                          disabled={isSaving || isReadOnlyProvider}
+                          onClick={() => {
+                            if (isCustomTemplate) {
+                              setIsProviderNameInputVisible(true);
+                            } else {
+                              setDrawerOpen(true);
+                            }
+                          }}
+                        >
+                          <FormattedMessage
+                            id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderModelsTab.add.model.provider.2"
+                            defaultMessage={'Add Model Provider'}
+                          />
+                        </Button>
+                      </DisabledActionTooltip>
+                    )}
                   </Stack>
                 </Box>
               )}

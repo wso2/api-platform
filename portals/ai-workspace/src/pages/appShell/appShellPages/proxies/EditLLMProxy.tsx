@@ -98,6 +98,7 @@ function EditLLMProxyForm() {
       delete (fullPayload as any).createdAt;
       delete (fullPayload as any).createdBy;
       delete (fullPayload as any).updatedAt;
+      delete (fullPayload as any).updatedBy;
 
       await updateProxy(fullPayload);
 

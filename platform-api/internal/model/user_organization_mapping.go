@@ -20,11 +20,12 @@ package model
 import "time"
 
 // UserOrganizationMapping records that a user (identified by their internal
-// UUID) has onboarded to an organization. Populate-only today: no reader
-// depends on this table yet. There is no ON DELETE CASCADE on either FK by
-// design — deleting the referenced user or organization must delete the
-// matching rows here first, in the same transaction (see
-// repository.UserOrganizationMappingRepository).
+// UUID) has onboarded to an organization. Both FKs are declared ON DELETE
+// CASCADE in the schema, so deleting the referenced user or organization
+// removes matching rows here automatically on engines that enforce FKs.
+// repository.UserOrganizationMappingRepository still deletes matching rows
+// explicitly (in the same transaction) as defense-in-depth for pooled SQLite
+// connections that may not enforce foreign keys.
 type UserOrganizationMapping struct {
 	UserUUID  string    `json:"userUuid" db:"user_uuid"`
 	OrgUUID   string    `json:"orgUuid" db:"org_uuid"`

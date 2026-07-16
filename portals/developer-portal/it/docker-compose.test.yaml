@@ -25,15 +25,34 @@
 # The devportal service uses the pre-built image tagged :test (set by make ensure-test-tag).
 
 services:
+  # One-shot init container: generates the TLS pair the platform-api HTTPS
+  # listener requires (the server no longer generates a self-signed fallback).
+  platform-api-certgen:
+    image: alpine/openssl
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        [ -f /certs/cert.pem ] && [ -f /certs/key.pem ] && exit 0
+        openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+          -keyout /certs/key.pem -out /certs/cert.pem \
+          -subj "/O=WSO2 API Platform/CN=platform-api" \
+          -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
+    volumes:
+      - platform-api-certs:/certs
+
   platform-api:
     image: ghcr.io/wso2/api-platform/platform-api:0.11.0
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
-      ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-      AUTH_JWT_SECRET_KEY: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+      APIP_CP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      APIP_CP_AUTH_JWT_SECRET_KEY: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
     volumes:
       - ./configs/config-platform-api-it.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
+      - platform-api-certs:/app/data/certs
+    depends_on:
+      platform-api-certgen:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
       interval: 5s
@@ -129,5 +148,6 @@ networks:
     driver: bridge
 
 volumes:
+  platform-api-certs:
   sqlite-data:
   platform-api-data:

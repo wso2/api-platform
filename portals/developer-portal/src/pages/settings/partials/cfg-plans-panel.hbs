@@ -1,0 +1,67 @@
+      <!-- ══ Subscription Plans ══ -->
+      <div class="cfg-panel" id="cfg-plans">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Subscription Plans</h2>
+            <p class="cfg-panel-desc">Define the rate and quota tiers applications can subscribe to.</p>
+          </div>
+          <button class="cfg-btn-primary" id="cfg-add-plan-btn" type="button">
+            <i class="bi bi-plus"></i> Add plan
+          </button>
+        </div>
+
+        <div class="cfg-table-wrap">
+          <table class="cfg-table">
+            <thead>
+              <tr>
+                <th>Plan</th>
+                <th>Name</th>
+                <th>Limits</th>
+                <th style="width:90px;"></th>
+              </tr>
+            </thead>
+            <tbody id="cfg-plans-tbody">
+              {{#orgPlans}}
+              <tr id="cfg-plan-row-{{planId}}"
+                data-id="{{planId}}"
+                data-name="{{planName}}"
+                data-display="{{displayName}}"
+                data-desc="{{description}}"
+                data-limits="{{{jsonAttr limits}}}"
+                data-refid="{{refId}}">
+                <td>
+                  <div style="font-size:.875rem;font-weight:600;color:#1a2433;">{{displayName}}</div>
+                  {{#if description}}<div style="font-size:.75rem;color:#637282;margin-top:2px;">{{description}}</div>{{/if}}
+                </td>
+                <td><span class="cfg-name-chip">{{planName}}</span></td>
+                <td>
+                  {{#if limits.length}}
+                    {{#limits}}
+                    <span class="cfg-limit-badge">{{limitTypeLabel limitType}} · {{#if (eq limitCount -1)}}∞{{else}}{{limitCount}}{{/if}}{{#if timeUnit}} / {{#unless (eq timeAmount 1)}}{{timeAmount}} {{/unless}}{{timeUnitLabel timeUnit}}{{/if}}</span>
+                    {{/limits}}
+                  {{else}}
+                    <span style="color:#9aa3af;font-size:.8rem;">—</span>
+                  {{/if}}
+                </td>
+                <td>
+                  <div class="cfg-row-actions">
+                    <button class="cfg-icon-btn cfg-plan-edit-btn" type="button"
+                      data-id="{{planId}}" data-name="{{planName}}" data-display="{{displayName}}"
+                      data-desc="{{description}}" data-limits="{{{jsonAttr limits}}}" data-refid="{{refId}}" title="Edit">
+                      <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="cfg-icon-btn cfg-icon-btn--danger cfg-plan-delete-btn" type="button"
+                      data-id="{{planId}}" data-name="{{planName}}" data-display="{{displayName}}" title="Delete">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {{/orgPlans}}
+              {{#unless orgPlans.length}}
+              <tr><td colspan="4" class="cfg-tbl-empty">No subscription plans yet. Add one to get started.</td></tr>
+              {{/unless}}
+            </tbody>
+          </table>
+        </div>
+      </div><!-- /#cfg-plans -->

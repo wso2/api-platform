@@ -42,8 +42,8 @@ func NewGatewayRepo(db *database.DB) GatewayRepository {
 
 // Create inserts a new gateway
 func (r *GatewayRepo) Create(gateway *model.Gateway) error {
-	gateway.CreatedAt = time.Now()
-	gateway.UpdatedAt = time.Now()
+	gateway.CreatedAt = time.Now().UTC()
+	gateway.UpdatedAt = time.Now().UTC()
 	gateway.IsActive = false // Set default value to false at registration
 
 	// Serialize properties to JSON bytes (BYTEA/BLOB column)
@@ -346,6 +346,8 @@ func (r *GatewayRepo) Delete(gatewayID, organizationID string) error {
 
 // UpdateGateway updates gateway details
 func (r *GatewayRepo) UpdateGateway(gateway *model.Gateway) error {
+	gateway.UpdatedAt = time.Now().UTC()
+
 	var propertiesBytes []byte
 	if gateway.Properties != nil {
 		var err error
@@ -401,13 +403,13 @@ func (r *GatewayRepo) UpdateActiveStatus(gatewayId string, isActive bool) error 
 		SET is_active = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), isActiveInt, time.Now(), gatewayId)
+	_, err := r.db.Exec(r.db.Rebind(query), isActiveInt, time.Now().UTC(), gatewayId)
 	return err
 }
 
 // CreateToken inserts a new token
 func (r *GatewayRepo) CreateToken(token *model.GatewayToken) error {
-	token.CreatedAt = time.Now()
+	token.CreatedAt = time.Now().UTC()
 
 	query := `
 		INSERT INTO gateway_tokens (uuid, gateway_uuid, token_hash, salt, status, created_by, created_at, revoked_by, revoked_at)
@@ -516,7 +518,7 @@ func (r *GatewayRepo) GetTokenByUUID(tokenId string) (*model.GatewayToken, error
 
 // RevokeToken updates token status to revoked
 func (r *GatewayRepo) RevokeToken(tokenId, revokedBy string) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	var revokedByVal interface{}
 	if revokedBy != "" {
 		revokedByVal = revokedBy
@@ -591,7 +593,7 @@ func (r *GatewayRepo) UpdateGatewayManifest(gatewayID string, manifest []byte) e
 // UpdateGatewayVersion persists the version string reported by the gateway controller on manifest push.
 func (r *GatewayRepo) UpdateGatewayVersion(gatewayID, version string) error {
 	query := `UPDATE gateways SET version = ?, updated_at = ? WHERE uuid = ?`
-	_, err := r.db.Exec(r.db.Rebind(query), version, time.Now(), gatewayID)
+	_, err := r.db.Exec(r.db.Rebind(query), version, time.Now().UTC(), gatewayID)
 	return err
 }
 

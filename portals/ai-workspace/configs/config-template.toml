@@ -90,7 +90,7 @@ default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
 # Each entry: version (helm chart minor), latestVersion (image/chart tag shown to the
 # user and used in the helm --version flag), channel ("STS" | "LTS"). The first entry
 # is the default selection.
-platform_gateway_versions = '{{ env "APIP_AIW_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-M1\",\"channel\":\"STS\"}]" }}'
+platform_gateway_versions = '{{ env "APIP_AIW_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]" }}'
 
 # Verbose logging in the browser console.
 debug = '{{ env "APIP_AIW_DEBUG" "false" }}'
@@ -116,10 +116,10 @@ static_dir = '{{ env "APIP_AIW_STATIC_DIR" "/app" }}'
 # Same-origin prefix the SPA calls; it is stripped before forwarding upstream. The
 # browser's API base URL is derived from this, so the browser only ever talks to the
 # app origin and never hits the platform-api certificate directly.
-# proxy_prefix = '{{ env "APIP_AIW_PROXY_PREFIX" "/api/proxy" }}'
+proxy_prefix = '{{ env "APIP_AIW_PROXY_PREFIX" "/api/proxy" }}'
 
 # Custom header required on state-mutating requests (CSRF protection).
-# csrf_header = '{{ env "APIP_AIW_CSRF_HEADER" "X-Requested-By" }}'
+csrf_header = '{{ env "APIP_AIW_CSRF_HEADER" "X-Requested-By" }}'
 
 log_level  = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'    # debug | info | warn | error
 log_format = '{{ env "APIP_AIW_LOG_FORMAT" "text" }}'   # text | json
@@ -140,8 +140,8 @@ login_path = '{{ env "APIP_AIW_PLATFORM_API_LOGIN_PATH" "/api/portal/v0.9/auth/l
 
 # --- Trust for the upstream's TLS certificate ---
 
-# Accept the Platform API's self-signed certificate (dev/quickstart only). Rejected
-# when APIP_DEMO_MODE=false — trust the certificate with ca_file instead.
+# Accept the Platform API's self-signed certificate without verification (local
+# development only) — prefer trusting the certificate with ca_file instead.
 tls_skip_verify = '{{ env "APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY" "false" }}'
 
 # PEM bundle to trust for the upstream's TLS certificate. Appended to the system
@@ -159,13 +159,10 @@ ca_file = '{{ env "APIP_AIW_PLATFORM_API_CA_FILE" "" }}'
 # read, generated, or required.
 enabled = '{{ env "APIP_AIW_TLS_ENABLED" "true" }}'
 
-# Use a self-signed certificate when no cert/key files are mounted.
-# Ignored when enabled = false. Never reached when APIP_DEMO_MODE=false.
-self_signed = '{{ env "APIP_AIW_TLS_SELF_SIGNED" "true" }}'
-
-# Paths to a mounted TLS certificate and key (used instead of self-signed).
-cert_file = '{{ env "APIP_AIW_TLS_CERT_FILE" "/etc/ai-workspace/tls/tls.crt" }}'
-key_file  = '{{ env "APIP_AIW_TLS_KEY_FILE" "/etc/ai-workspace/tls/tls.key" }}'
+# Paths to a mounted TLS certificate and key. REQUIRED when enabled = true —
+# there is no self-signed fallback; setup.sh generates a pair for the quickstart.
+cert_file = '{{ env "APIP_AIW_TLS_CERT_FILE" "/etc/ai-workspace/tls/cert.pem" }}'
+key_file  = '{{ env "APIP_AIW_TLS_KEY_FILE" "/etc/ai-workspace/tls/key.pem" }}'
 
 
 # ---------------------------------------------------------------------------
@@ -277,11 +274,3 @@ role_claim_name         = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ROLE_CLAIM_NAME"
 #                        read from. Replaces (not extends) the defaults
 #                        /etc/ai-workspace and /secrets/ai-workspace. Shared by
 #                        every component in the platform.
-#
-#   APIP_DEMO_MODE       "true" (default) relaxes startup checks for quickstart:
-#                        basic auth is allowed and a self-signed TLS certificate
-#                        is generated when none is mounted. Set "false" for
-#                        production, which then requires OIDC, plus either a
-#                        mounted certificate or [tls] enabled = false above.
-#                        The same variable drives the Platform API, so one value
-#                        governs the whole stack.

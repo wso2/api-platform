@@ -186,9 +186,10 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string, opts r
 		return nil, 0, err
 	}
 
-	projects := make([]api.Project, 0)
+	projects := make([]api.Project, 0, len(projectModels))
+	createdByFields := make([]**string, 0, len(projectModels))
 	for _, projectModel := range projectModels {
-		apiProj, err := s.modelToAPI(projectModel, org.Handle)
+		apiProj, err := s.modelToAPIUnresolved(projectModel, org.Handle)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -199,6 +200,10 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string, opts r
 		// updatedBy is detail-only; omit it from list responses.
 		apiProj.UpdatedBy = nil
 		projects = append(projects, *apiProj)
+		createdByFields = append(createdByFields, &projects[len(projects)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, 0, err
 	}
 	return projects, total, nil
 }
@@ -339,7 +344,12 @@ func (s *ProjectService) apiToModel(project *api.Project) *model.Project {
 	}
 }
 
-func (s *ProjectService) modelToAPI(projectModel *model.Project, orgHandle string) (*api.Project, error) {
+// modelToAPIUnresolved converts projectModel to its API representation,
+// leaving createdBy/updatedBy as raw internal UUIDs. Used by list endpoints,
+// which batch-resolve identity across the whole page afterward instead of
+// one-by-one — see modelToAPI for the single-item equivalent that resolves
+// inline.
+func (s *ProjectService) modelToAPIUnresolved(projectModel *model.Project, orgHandle string) (*api.Project, error) {
 	if projectModel == nil {
 		return nil, nil
 	}
@@ -350,7 +360,7 @@ func (s *ProjectService) modelToAPI(projectModel *model.Project, orgHandle strin
 	}
 
 	handle := projectModel.Handle
-	resp := &api.Project{
+	return &api.Project{
 		Id:             &handle,
 		DisplayName:    projectModel.Name,
 		OrganizationId: &orgHandle,
@@ -359,6 +369,13 @@ func (s *ProjectService) modelToAPI(projectModel *model.Project, orgHandle strin
 		UpdatedBy:      utils.StringPtrIfNotEmpty(projectModel.UpdatedBy),
 		CreatedAt:      utils.TimePtrIfNotZero(projectModel.CreatedAt),
 		UpdatedAt:      utils.TimePtrIfNotZero(projectModel.UpdatedAt),
+	}, nil
+}
+
+func (s *ProjectService) modelToAPI(projectModel *model.Project, orgHandle string) (*api.Project, error) {
+	resp, err := s.modelToAPIUnresolved(projectModel, orgHandle)
+	if err != nil || resp == nil {
+		return resp, err
 	}
 	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
 		return nil, err

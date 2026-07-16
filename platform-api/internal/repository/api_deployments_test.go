@@ -595,10 +595,9 @@ func TestGetControlPlaneDeploymentsByGateway_ExcludesGatewayOrigin(t *testing.T)
 }
 
 func TestMain(m *testing.M) {
-	// ENCRYPTION_KEY and AUTH_JWT_SECRET_KEY are required.
-	os.Setenv("APIP_DEMO_MODE", "true")
-	os.Setenv("ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-	os.Setenv("AUTH_JWT_SECRET_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	// APIP_CP_ENCRYPTION_KEY and APIP_CP_AUTH_JWT_SECRET_KEY are required.
+	os.Setenv("APIP_CP_ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	os.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	code := m.Run()

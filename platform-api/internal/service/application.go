@@ -233,8 +233,9 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle 
 		},
 	}
 
+	createdByFields := make([]**string, 0, len(pagedApps))
 	for _, app := range pagedApps {
-		mapped, err := s.modelToApplicationResponse(app)
+		mapped, err := s.modelToApplicationResponseUnresolved(app)
 		if err != nil {
 			return nil, err
 		}
@@ -242,7 +243,11 @@ func (s *ApplicationService) GetApplicationsByOrganization(orgID, projectHandle 
 			// updatedBy is detail-only; omit it from list responses.
 			mapped.UpdatedBy = nil
 			response.List = append(response.List, *mapped)
+			createdByFields = append(createdByFields, &response.List[len(response.List)-1].CreatedBy)
 		}
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 
 	return response, nil
@@ -888,7 +893,13 @@ func (s *ApplicationService) buildMappedAPIKeyResponse(keys []*model.Application
 	return response, nil
 }
 
-func (s *ApplicationService) modelToApplicationResponse(app *model.Application) (*api.Application, error) {
+// modelToApplicationResponseUnresolved converts app to its API representation,
+// resolving the project handle, but leaving createdBy/updatedBy as raw
+// internal UUIDs. Used by list endpoints, which batch-resolve identity across
+// the whole page afterward instead of one-by-one — see
+// modelToApplicationResponse for the single-item equivalent that resolves
+// inline.
+func (s *ApplicationService) modelToApplicationResponseUnresolved(app *model.Application) (*api.Application, error) {
 	if app == nil {
 		return nil, nil
 	}
@@ -906,7 +917,7 @@ func (s *ApplicationService) modelToApplicationResponse(app *model.Application) 
 		projectHandle = project.Handle
 	}
 
-	resp := &api.Application{
+	return &api.Application{
 		Id:          app.Handle,
 		DisplayName: app.Name,
 		ProjectId:   projectHandle,
@@ -916,6 +927,13 @@ func (s *ApplicationService) modelToApplicationResponse(app *model.Application) 
 		UpdatedBy:   utils.StringPtrIfNotEmpty(app.UpdatedBy),
 		CreatedAt:   utils.TimePtrIfNotZero(app.CreatedAt),
 		UpdatedAt:   utils.TimePtrIfNotZero(app.UpdatedAt),
+	}, nil
+}
+
+func (s *ApplicationService) modelToApplicationResponse(app *model.Application) (*api.Application, error) {
+	resp, err := s.modelToApplicationResponseUnresolved(app)
+	if err != nil || resp == nil {
+		return resp, err
 	}
 	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
 		return nil, err

@@ -28,6 +28,12 @@ type LLMProviderDeploymentYAML struct {
 	Spec       LLMProviderDeploymentSpec `yaml:"spec"`
 }
 
+// GetApiVersion returns the artifact's CRD apiVersion.
+func (d *LLMProviderDeploymentYAML) GetApiVersion() string { return d.ApiVersion }
+
+// SetApiVersion sets the artifact's CRD apiVersion.
+func (d *LLMProviderDeploymentYAML) SetApiVersion(v string) { d.ApiVersion = v }
+
 // LLMProviderDeploymentSpec represents the spec section for LLM provider deployments
 type LLMProviderDeploymentSpec struct {
 	DisplayName       string                `yaml:"displayName"`
@@ -58,6 +64,12 @@ type LLMProxyDeploymentYAML struct {
 	Metadata   DeploymentMetadata     `yaml:"metadata"`
 	Spec       LLMProxyDeploymentSpec `yaml:"spec"`
 }
+
+// GetApiVersion returns the artifact's CRD apiVersion.
+func (d *LLMProxyDeploymentYAML) GetApiVersion() string { return d.ApiVersion }
+
+// SetApiVersion sets the artifact's CRD apiVersion.
+func (d *LLMProxyDeploymentYAML) SetApiVersion(v string) { d.ApiVersion = v }
 
 // LLMProxyDeploymentSpec represents the spec section for LLM proxy deployments
 type LLMProxyDeploymentSpec struct {

@@ -42,7 +42,7 @@ class ServerResponseDTO {
         this.server = {
             $schema: 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json',
             name: source.metadata_search?.proxyId || source.name,
-            title: source.metadata_search?.apiTitle || undefined,
+            title: source.metadata_search?.title || undefined,
             version: source.version,
             description: source.description,
             remotes

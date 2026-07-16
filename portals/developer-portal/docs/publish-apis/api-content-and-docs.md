@@ -36,7 +36,7 @@ At least one of `web/` or `docs/` must be present in the ZIP.
 curl -k -X POST \
   "https://localhost:3000/api/v0.9/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
-  -F "apiContent=@my-api-content.zip" \
+  -F "content=@my-api-content.zip" \
   -F 'imageMetadata={"api-icon":"api-icon.png"}'
 ```
 
@@ -46,13 +46,13 @@ To update existing content, use `PUT`:
 curl -k -X PUT \
   "https://localhost:3000/api/v0.9/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
-  -F "apiContent=@my-api-content-v2.zip" \
+  -F "content=@my-api-content-v2.zip" \
   -F 'imageMetadata={"api-icon":"api-icon.png"}'
 ```
 
 | Form field | Description |
 |---|---|
-| `apiContent` | ZIP file containing `web/` and/or `docs/` directories |
+| `content` | ZIP file containing `web/` and/or `docs/` directories |
 | `imageMetadata` | JSON object mapping image tag names to filenames within `web/`. The `api-icon` tag sets the catalog card icon |
 | `docMetadata` | JSON array for external documentation links (see [External Doc Links](#external-doc-links)) |
 
@@ -140,7 +140,7 @@ To link to externally hosted documentation (rather than uploaded files), pass `d
 curl -k -X POST \
   "https://localhost:3000/api/v0.9/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
-  -F "apiContent=@my-api-content.zip" \
+  -F "content=@my-api-content.zip" \
   -F 'docMetadata=[{"name":"External Guide","url":"https://docs.example.com/guide","type":"LINK"}]'
 ```
 

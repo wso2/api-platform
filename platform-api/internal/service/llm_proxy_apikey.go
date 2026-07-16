@@ -35,7 +35,7 @@ import (
 // LLMProxyAPIKeyService handles API key management for LLM proxies
 type LLMProxyAPIKeyService struct {
 	llmProxyRepo         repository.LLMProxyRepository
-	gatewayRepo          repository.GatewayRepository
+	apiRepo              repository.APIRepository
 	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	identity             *IdentityService
@@ -45,7 +45,7 @@ type LLMProxyAPIKeyService struct {
 // NewLLMProxyAPIKeyService creates a new LLM proxy API key service instance
 func NewLLMProxyAPIKeyService(
 	llmProxyRepo repository.LLMProxyRepository,
-	gatewayRepo repository.GatewayRepository,
+	apiRepo repository.APIRepository,
 	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *GatewayEventsService,
 	identity *IdentityService,
@@ -53,7 +53,7 @@ func NewLLMProxyAPIKeyService(
 ) *LLMProxyAPIKeyService {
 	return &LLMProxyAPIKeyService{
 		llmProxyRepo:         llmProxyRepo,
-		gatewayRepo:          gatewayRepo,
+		apiRepo:              apiRepo,
 		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		identity:             identity,
@@ -136,14 +136,14 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 
 	s.slogger.Info("Successfully deleted LLM proxy API key", "proxyId", proxyID, "keyName", keyName)
 
-	// Broadcast revoke event to gateways.
-	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
+	// Broadcast revoke only to gateways the proxy is associated with (not all org gateways).
+	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(proxy.UUID, orgID)
 	if err != nil {
-		s.slogger.Error("Failed to get gateways for API key revoke broadcast", "proxyId", proxyID, "keyName", keyName, "error", err)
+		s.slogger.Error("Failed to get associated gateways for API key revoke broadcast", "proxyId", proxyID, "keyName", keyName, "error", err)
 		return nil
 	}
 	if len(gateways) == 0 {
-		s.slogger.Warn("No gateways found for organization; skipping revoke broadcast", "organizationId", orgID)
+		s.slogger.Info("Proxy not associated with any gateway; skipping revoke broadcast", "proxyId", proxyID, "keyName", keyName)
 		return nil
 	}
 
@@ -152,7 +152,7 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 		KeyName: keyName,
 	}
 
-	for _, gateway := range filterGatewaysByAllowedTargets(gateways, existingKey.AllowedTargets) {
+	for _, gateway := range filterAPIGatewaysByAllowedTargets(gateways, existingKey.AllowedTargets) {
 		gatewayID := gateway.ID
 		if err := s.gatewayEventsService.BroadcastAPIKeyRevokedEvent(gatewayID, userID, event); err != nil {
 			s.slogger.Error("Failed to broadcast LLM proxy API key revoked event", "proxyId", proxyID, "gatewayId", gatewayID, "keyName", keyName, "error", err)
@@ -203,15 +203,13 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		displayName = name
 	}
 
-	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
+	// Broadcast only to gateways the proxy is associated with (not all org gateways),
+	// mirroring the REST key path. An empty list is valid: the key is still persisted and
+	// any gateway associated later picks it up via the deploy-time backfill.
+	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(proxy.UUID, orgID)
 	if err != nil {
 		s.slogger.Error("Failed to get gateways for API key broadcast", "proxyId", proxyID, "error", err)
 		return nil, fmt.Errorf("failed to get gateways: %w", err)
-	}
-
-	if len(gateways) == 0 {
-		s.slogger.Warn("No gateways found for organization", "organizationId", orgID)
-		return nil, apperror.GatewayConnectionUnavailable.New()
 	}
 
 	apiKeyHashesJSON, err := buildAPIKeyHashesJSON(apiKey, []string{defaultHashingAlgorithm})
@@ -248,6 +246,7 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		APIKeyHashes:   apiKeyHashesJSON,
 		Status:         "active",
 		CreatedBy:      userID,
+		UpdatedBy:      userID,
 		ExpiresAt:      req.ExpiresAt,
 		Issuer:         issuer,
 		AllowedTargets: allowedTargets,
@@ -275,7 +274,7 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		UpdatedAt:    dbKey.UpdatedAt.Format(time.RFC3339),
 	}
 
-	targetGateways := filterGatewaysByAllowedTargets(gateways, allowedTargets)
+	targetGateways := filterAPIGatewaysByAllowedTargets(gateways, allowedTargets)
 	successCount := 0
 	failureCount := 0
 	var lastError error
@@ -298,8 +297,12 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 
 	s.slogger.Info("LLM proxy API key creation broadcast summary", "proxyId", proxyID, "keyName", name, "total", len(targetGateways), "success", successCount, "failed", failureCount)
 
-	if successCount == 0 {
-		s.slogger.Warn("Failed to deliver LLM proxy API key to any gateway; key is saved to the database", "proxyId", proxyID, "keyName", name, "error", lastError)
+	if len(targetGateways) == 0 {
+		// No gateways associated yet — a valid state. The key is persisted centrally and any
+		// gateway associated later picks it up via the deploy-time backfill.
+		s.slogger.Info("LLM proxy not associated with any gateway; API key saved and will be delivered at deploy time", "proxyId", proxyID, "keyName", name)
+	} else if successCount == 0 {
+		s.slogger.Error("LLM proxy API key created event was not broadcast to any associated gateway", "proxyId", proxyID, "keyName", name, "error", lastError)
 	}
 
 	return &api.CreateLLMProxyAPIKeyResponse{

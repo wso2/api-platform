@@ -256,7 +256,10 @@ export default function ExternalServersNew(): JSX.Element {
       // vhost: 'mcp.gw.com', --- TODO Remove Tentatively ---
       upstream: {
         main: {
-          url: serverTarget.trim().replace(/\/mcp$/, ''),
+          // Preserve the validated endpoint URL verbatim. This is the exact URL that
+          // fetch-server-info just validated, and the gateway forwards requests to exactly
+          // this upstream path, so we must not strip or otherwise manipulate it.
+          url: serverTarget.trim(),
           ...(authHeaderName.trim() && resolvedAuthValue
             ? {
                 auth: {

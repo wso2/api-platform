@@ -16,7 +16,7 @@ A key written this way can be set from the environment without editing the file.
 
 By convention the variable a token names is the key's full path — table and key, uppercased, dots as underscores — prefixed with **`APIP_AIW_`**: `[oidc] client_id` → `APIP_AIW_OIDC_CLIENT_ID`, `[platform_api] url` → `APIP_AIW_PLATFORM_API_URL`, and a top-level `log_level` → `APIP_AIW_LOG_LEVEL`. (The same prefix convention gives the Platform API `APIP_CP_` and the Developer Portal `APIP_DP_`.) It is only a convention: a token may name any variable, which is what lets a key read an existing secret under its own name.
 
-The file's own location is not a config key — it cannot be, since it is needed before the file is read. The server reads its mount, `/etc/ai-workspace/config.toml`, unless `-config` names another path (`bff -config ../configs/config.toml`, which is what `make bff-run` does). Two variables are likewise read directly by the server rather than through a token: `APIP_DEMO_MODE` (a stack-wide runtime flag) and `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`, which bounds where `{{ file }}` tokens may read from (see below).
+The file's own location is not a config key — it cannot be, since it is needed before the file is read. The server reads its mount, `/etc/ai-workspace/config.toml`, unless `-config` names another path (`bff -config ../configs/config.toml`, which is what `make bff-run` does). One variable is likewise read directly by the server rather than through a token: `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`, which bounds where `{{ file }}` tokens may read from (see below).
 
 Copy `configs/config-template.toml` to `configs/config.toml` and fill in the values for your deployment before starting the stack.
 
@@ -24,7 +24,7 @@ Copy `configs/config-template.toml` to `configs/config.toml` and fill in the val
 
 Never write a secret as a literal in `config.toml`, and never hardcode one in `docker-compose.yaml`. There are two supported ways to supply the OIDC client secret:
 
-**Environment variable (default)** — the key's token names the variable and has no default value, so an unset variable fails startup rather than running with an empty credential. Keep the value in a git-ignored `.env`:
+**Environment variable (default)** — the key's token names the variable and has no default value, so an unset variable fails startup rather than running with an empty credential. Keep the value in the git-ignored `api-platform.env` (loaded into both services via `env_file`):
 
 ```toml
 [oidc]
@@ -59,7 +59,7 @@ The "Env var" column is the variable each key's shipped `{{ env }}` token names 
 | Key | Env var | Default | Description |
 |-----|-------------|---------|-------------|
 | `url` | `APIP_AIW_PLATFORM_API_URL` | — | **Required.** Absolute URL the BFF uses to reach the Platform API server-to-server (e.g. `https://platform-api:9243`) — an origin, not a base path; the API paths are appended by the proxy. Its scheme decides whether the upstream hop uses TLS. |
-| `tls_skip_verify` | `APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY` | `false` | Accept the upstream's self-signed certificate. Rejected when `APIP_DEMO_MODE=false`. |
+| `tls_skip_verify` | `APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY` | `false` | Skip upstream certificate verification entirely (local development only) — prefer `ca_file`. |
 | `ca_file` | `APIP_AIW_PLATFORM_API_CA_FILE` | — | PEM bundle trusted for the upstream certificate, appended to the system roots. Prefer this over `tls_skip_verify`. |
 
 ### `[oidc]` (only required when `auth_mode = "oidc"`)
@@ -154,13 +154,26 @@ org_handle_claim_name   = "org_handle"
 enabled = false   # Disable file-based auth in production
 ```
 
-Sensitive values (JWT signing key, database password) must be passed as environment variables — never store them in `config.toml`:
+Never write sensitive values (JWT signing key, encryption key, database password) as raw
+literals in `config-platform-api.toml`, and never hardcode them in `docker-compose.yaml`.
+Instead, reference each in the TOML with an interpolation token that is resolved at
+startup — from an environment variable, or preferably from a mounted secret file:
 
-| Platform API env variable | Description |
-|--------------------------|-------------|
-| `AUTH_JWT_SECRET_KEY` | JWT signing key (required when `auth.jwt.enabled = true`) |
-| `ENCRYPTION_KEY` | 32-byte key (64 hex / base64) — encrypts secrets & subscription tokens (required) |
-| `DATABASE_PASSWORD` | Database password |
+```toml
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'            # from an env var
+secret_key     = '{{ file "/secrets/platform-api/jwt_secret" }}' # from a file (preferred)
+```
+
+Supply the env values from a git-ignored `api-platform.env` and start with `docker compose up`
+Or mount a secret file and use `{{ file }}`.
+
+The `APIP_CP_`-prefixed names referenced by the tokens above:
+
+| Key referenced by the token | Description                                                                       |
+|--------------------------|-----------------------------------------------------------------------------------|
+| `APIP_CP_AUTH_JWT_SECRET_KEY` | JWT signing key (required when `auth.jwt.enabled = true`)                         |
+| `APIP_CP_ENCRYPTION_KEY` | 32-byte key (64 hex / base64) — encrypts secrets & subscription tokens (required) |
+| `APIP_CP_DATABASE_PASSWORD` | Database password                                                                 |
 
 ## Environment Variable Override
 
