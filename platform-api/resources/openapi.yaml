@@ -6783,6 +6783,7 @@ components:
         basePath:
           type: string
           description: Base path prefix prepended to all requests routed to this upstream (e.g., /api/v2)
+          pattern: '^/[a-zA-Z0-9\-._~!$&''()*+,;=:@%/]*[^/]$'
           example: /api/v2
         timeout:
           $ref: '#/components/schemas/UpstreamTimeout'
