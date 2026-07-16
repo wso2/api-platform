@@ -2268,7 +2268,7 @@ type ReusableUpstream struct {
 		// Url Backend URL (host and port only; path comes from basePath)
 		Url string `json:"url" yaml:"url"`
 
-		// Weight Weight for load balancing (optional, default 100)
+		// Weight Relative weight for load balancing across the definition's targets; when omitted, the gateway applies its default endpoint weight
 		Weight *int `json:"weight,omitempty" yaml:"weight,omitempty"`
 	} `binding:"required" json:"upstreams" yaml:"upstreams"`
 }

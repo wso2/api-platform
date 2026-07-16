@@ -6804,7 +6804,7 @@ components:
                 example: http://prod-backend-1:5000
               weight:
                 type: integer
-                description: Weight for load balancing (optional, default 100)
+                description: Relative weight for load balancing across the definition's targets; when omitted, the gateway applies its default endpoint weight
                 minimum: 0
                 maximum: 100
                 example: 80
