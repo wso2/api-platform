@@ -108,10 +108,10 @@ func buildCreatePayload() ([]byte, error) {
 	}
 
 	payload := map[string]string{
-		"apiId": apiID,
+		"artifactId": apiID,
 	}
 	if subscriptionPlan != "" {
-		payload["subscriptionPlanName"] = subscriptionPlan
+		payload["subscriptionPlanId"] = subscriptionPlan
 	}
 
 	data, err := json.Marshal(payload)
