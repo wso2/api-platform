@@ -15,9 +15,14 @@
 # via the username/password login form. Credentials are validated by the
 # Platform API; the Developer Portal never sees the raw passwords.
 #
-# Changing passwords:
-#   Generate a bcrypt hash: htpasswd -bnBC 12 "" <password> | tr -d ':\n'
-#   Default credentials below: admin / admin
+# Admin credentials:
+#   ./setup.sh generates APIP_CP_ADMIN_USERNAME / APIP_CP_ADMIN_PASSWORD_HASH into
+#   api-platform.env (prompting for a username/password, or randomly generating
+#   one) and the {{ env "..." }} tokens below resolve them. Setting up manually
+#   instead: generate a bcrypt hash with
+#   htpasswd -bnBC 12 "" <password> | tr -d ':\n' and put both values in
+#   `keys.env` file — never hardcode raw values here or as literals in
+#   docker-compose.yaml.
 #
 # Secrets:
 #   APIP_CP_AUTH_JWT_SECRET_KEY (signs login JWTs; the Developer Portal verifies them with
@@ -34,7 +39,6 @@
 # Server
 # ---------------------------------------------------------------------------
 log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
-port      = "9243"
 
 # ---------------------------------------------------------------------------
 # Encryption
@@ -43,6 +47,16 @@ port      = "9243"
 # Resolved from the APIP_CP_ENCRYPTION_KEY env var in `keys.env` file. Files preferred:
 #   encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
+
+# ---------------------------------------------------------------------------
+# HTTPS
+# ---------------------------------------------------------------------------
+[https]
+enabled  = true
+port     = "9243"
+# Directory containing cert.pem and key.pem — must match the volume mount in
+# docker-compose.yaml. There is no self-signed fallback.
+cert_dir = "/etc/platform-api/tls"
 
 # ---------------------------------------------------------------------------
 # Database
@@ -61,6 +75,9 @@ issuer  = "platform-api"
 # (APIP_DP_PLATFORMAPI_JWTSECRET must match). Resolved from APIP_CP_AUTH_JWT_SECRET_KEY
 # from `keys.env` file; files preferred: secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
 secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+# Skip signature verification. MUST stay false — the server refuses to start
+# when signature validation is disabled.
+skip_validation = false
 
 [auth.idp]
 enabled = false
@@ -73,20 +90,14 @@ id           = "default"          # Required: organization handle (URL-safe slug
 display_name = "Default"
 region       = "us"
 
-# Admin user — password: admin
-# Change this before deploying to a shared environment.
+# Admin user — username/password resolved from APIP_CP_ADMIN_USERNAME /
+# APIP_CP_ADMIN_PASSWORD_HASH (see "Admin credentials" note above).
 # Scopes use the dp:* namespace understood by the Developer Portal REST API.
 # Add dp:*_manage scopes to grant full access to every resource area.
 [[auth.file_based.users]]
-username      = "admin"
-password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
+username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'
+password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
 scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read dp:org_read dp:org_write dp:org_manage dp:org_delete dp:org_content_read dp:org_content_write dp:org_content_manage dp:org_content_delete dp:api_read dp:api_write dp:api_manage dp:api_delete dp:api_content_read dp:api_content_write dp:api_content_manage dp:api_content_delete dp:mcp_read dp:mcp_create dp:mcp_update dp:mcp_manage dp:mcp_delete dp:mcp_content_read dp:mcp_content_create dp:mcp_content_update dp:mcp_content_manage dp:mcp_content_delete dp:mcp_key_read dp:mcp_key_create dp:mcp_key_update dp:mcp_key_manage dp:mcp_key_revoke dp:api_key_read dp:api_key_write dp:api_key_manage dp:api_key_revoke dp:api_flow_read dp:api_flow_write dp:api_flow_manage dp:api_flow_delete dp:api_workflow_read dp:api_workflow_create dp:api_workflow_update dp:api_workflow_delete dp:api_workflow_manage dp:app_read dp:app_write dp:app_manage dp:app_delete dp:app_key_write dp:app_key_manage dp:app_key_revoke dp:app_key_mapping_read dp:app_key_mapping_write dp:app_key_mapping_manage dp:subscription_read dp:subscription_write dp:subscription_manage dp:subscription_delete dp:sub_plan_read dp:sub_plan_write dp:sub_plan_manage dp:sub_plan_delete dp:idp_read dp:idp_write dp:idp_manage dp:idp_delete dp:view_read dp:view_write dp:view_manage dp:view_delete dp:km_read dp:km_write dp:km_manage dp:km_delete dp:label_read dp:label_write dp:label_manage dp:label_delete dp:provider_read dp:provider_write dp:provider_manage dp:provider_delete dp:event_read dp:delivery_manage dp:utility_write dp:utility_manage dp:webhook_subscriber_create dp:webhook_subscriber_read dp:webhook_subscriber_update dp:webhook_subscriber_delete dp:webhook_subscriber_manage dev"
-
-# ---------------------------------------------------------------------------
-# TLS
-# ---------------------------------------------------------------------------
-[tls]
-cert_dir = "/app/data/certs"
 
 # ---------------------------------------------------------------------------
 # DevPortal integration — disabled (devportal calls us, not the other way)

@@ -17,8 +17,7 @@ api-platform.env.*
 resources/certificates/
 
 # ── Docker / distribution files ───────────────────────────────────
-docker-compose.yml
-distribution/
+docker-compose*.yaml
 
 # ── Database init / seed scripts (volume-mounted into postgres) ───
 artifacts/

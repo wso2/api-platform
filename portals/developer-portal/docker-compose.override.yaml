@@ -1,5 +1,3 @@
-#!/bin/bash
-
 # --------------------------------------------------------------------
 # Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
 #
@@ -18,20 +16,14 @@
 # under the License.
 # --------------------------------------------------------------------
 
-set -e
+# Local source-build override — auto-merged by `docker compose up` alongside
+# docker-compose.yaml (Compose's default file list). Never copied into the
+# distribution zip (see Makefile's dist target), so the shipped zip always
+# runs the published devportal image untouched.
+#
+# To run against the published image instead of building from source, pass
+# `docker compose -f docker-compose.yaml up` to skip this file.
 
-CERT_DIR=/etc/devportal/tls
-TLS_ENABLED="${APIP_DP_TLS_ENABLED:-false}"
-
-# Fail closed: certificates are generated once by ./setup.sh (host-side, into a
-# bind-mounted directory), never here. Startup only checks that they exist —
-# it never generates a fallback, matching every other required secret.
-if [ "$TLS_ENABLED" = "true" ]; then
-  if [ ! -f "$CERT_DIR/cert.pem" ] || [ ! -f "$CERT_DIR/key.pem" ]; then
-    echo "[entrypoint] ERROR: TLS is enabled (APIP_DP_TLS_ENABLED=true) but no certificate was found at $CERT_DIR/cert.pem / key.pem. Run ./setup.sh first, or mount your own certificate at $CERT_DIR." >&2
-    exit 1
-  fi
-  echo "[entrypoint] TLS certificate found at $CERT_DIR"
-fi
-
-exec node src/server.js
+services:
+  devportal:
+    build: .
