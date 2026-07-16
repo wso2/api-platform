@@ -29,8 +29,8 @@ spec:
       type: apiKey
       header: Authorization
       valuePrefix: "Bearer "
-    logoUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/mistral/icon.png
-    openapiSpecUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/mistral/openapi.yaml
+    logoUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/mistral/icon.png
+    openapiSpecUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/mistral/openapi.yaml
   promptTokens:
     location: payload
     identifier: $.usage.prompt_tokens

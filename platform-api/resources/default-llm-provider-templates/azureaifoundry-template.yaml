@@ -27,7 +27,8 @@ spec:
     auth:
       type: apiKey
       header: api-key
-    logoUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/azure.openai/icon.png
+    logoUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/azureai-foundry/icon.png
+    openapiSpecUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/azureai-foundry/openapi.yaml
   promptTokens:
     location: payload
     identifier: $.usage.prompt_tokens

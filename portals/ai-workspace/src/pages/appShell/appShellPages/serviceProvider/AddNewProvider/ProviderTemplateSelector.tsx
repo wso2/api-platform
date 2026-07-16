@@ -203,7 +203,7 @@ export default function ProviderTemplateSelector({
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      backgroundColor: 'background.default',
+                      backgroundColor: 'common.white',
                       overflow: 'hidden',
                     }}
                   >

@@ -28,8 +28,8 @@ spec:
     auth:
       type: apiKey
       header: x-api-key
-    logoUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/anthropic.claude/icon.png
-    openapiSpecUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/anthropic.claude/openapi.yaml
+    logoUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/anthropic/icon.png
+    openapiSpecUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/anthropic/openapi.yaml
   promptTokens:
     location: payload
     identifier: $.usage.input_tokens
