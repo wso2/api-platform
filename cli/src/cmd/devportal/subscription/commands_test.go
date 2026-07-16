@@ -60,7 +60,7 @@ func TestRunCreateCommand_SendsJSONPayload(t *testing.T) {
 	if err := runCreateCommand(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gotBody != `{"apiId":"api-1","subscriptionPlanName":"gold"}` {
+	if gotBody != `{"artifactId":"api-1","subscriptionPlanId":"gold"}` {
 		t.Fatalf("unexpected request body %q", gotBody)
 	}
 }
@@ -207,7 +207,7 @@ func TestRunCreateCommand_OmitsSubscriptionPlanWhenEmpty(t *testing.T) {
 	if err := runCreateCommand(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gotBody != `{"apiId":"api-1"}` {
+	if gotBody != `{"artifactId":"api-1"}` {
 		t.Fatalf("unexpected request body %q", gotBody)
 	}
 }
