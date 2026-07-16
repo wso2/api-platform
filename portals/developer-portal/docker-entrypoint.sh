@@ -21,17 +21,17 @@
 set -e
 
 CERT_DIR=/app/certs
+TLS_ENABLED="${APIP_DP_TLS_ENABLED:-false}"
 
-if [ ! -f "$CERT_DIR/server.crt" ] || [ ! -f "$CERT_DIR/server.key" ]; then
-  echo "[entrypoint] Generating self-signed TLS certificate..."
-  openssl req -x509 -newkey rsa:4096 \
-    -keyout "$CERT_DIR/server.key" \
-    -out   "$CERT_DIR/server.crt" \
-    -days 36500 -nodes \
-    -subj "/C=US/ST=California/L=San Francisco/O=WSO2/OU=Developer Portal/CN=localhost" \
-    -addext "subjectAltName=DNS:localhost,DNS:*.localhost,IP:127.0.0.1" \
-    2>/dev/null
-  echo "[entrypoint] Self-signed certificate written to $CERT_DIR"
+# Fail closed: certificates are generated once by ./setup.sh (host-side, into a
+# bind-mounted directory), never here. Startup only checks that they exist —
+# it never generates a fallback, matching every other required secret.
+if [ "$TLS_ENABLED" = "true" ]; then
+  if [ ! -f "$CERT_DIR/server.crt" ] || [ ! -f "$CERT_DIR/server.key" ]; then
+    echo "[entrypoint] ERROR: TLS is enabled (APIP_DP_TLS_ENABLED=true) but no certificate was found at $CERT_DIR/server.crt / server.key. Run ./setup.sh first, or mount your own certificate at $CERT_DIR." >&2
+    exit 1
+  fi
+  echo "[entrypoint] TLS certificate found at $CERT_DIR"
 fi
 
 exec node src/server.js

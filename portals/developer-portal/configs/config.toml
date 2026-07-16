@@ -27,6 +27,35 @@
 #
 # Partial substitution works too: 'foo-{{ env "X" }}' resolves to "foo-bar" if
 # X=bar. See src/config/configLoader.js for the full implementation.
+#
+# Every key below except [security] carries a fallback matching its built-in
+# default (src/config/configDefaults.js), so `npm start` with no env vars set
+# behaves exactly as before — docker-compose.yaml / api-platform.env only need
+# to set the env var to override it, never to define config.toml's own default.
+
+[server]
+base_url = '{{ env "APIP_DP_SERVER_BASEURL" "http://localhost:3000" }}'
+
+[tls]
+enabled   = '{{ env "APIP_DP_TLS_ENABLED" "false" }}'
+cert_file = '{{ env "APIP_DP_TLS_CERTFILE" "./resources/security/client-truststore.pem" }}'
+key_file  = '{{ env "APIP_DP_TLS_KEYFILE" "./resources/security/private-key.pem" }}'
+ca_file   = '{{ env "APIP_DP_TLS_CAFILE" "./resources/security/client-truststore.pem" }}'
+
+[logging]
+console_only = '{{ env "APIP_DP_LOGGING_CONSOLEONLY" "true" }}'
+
+[database]
+file = '{{ env "APIP_DP_DATABASE_FILE" "./devportal.db" }}'
+
+[demo]
+enabled = '{{ env "APIP_DP_DEMO_ENABLED" "false" }}'
+
+[platform_api]
+# Used for local auth credential validation when idp.client_id is empty.
+base_url   = '{{ env "APIP_DP_PLATFORMAPI_BASEURL" "" }}'
+jwt_secret = '{{ env "APIP_DP_PLATFORMAPI_JWTSECRET" "" }}'
+insecure   = '{{ env "APIP_DP_PLATFORMAPI_INSECURE" "false" }}'
 
 [security]
 # Required — devportal fails closed at startup if either doesn't resolve to a

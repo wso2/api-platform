@@ -8,6 +8,13 @@ configs/
 sample.config.toml
 .env
 .env.*
+api-platform.env
+api-platform.env.*
+
+# ── setup.sh output: bind-mounted TLS cert ────────────────────────
+# Must never be baked into the image — a stale copy here can silently
+# resurface a removed/rotated secret on `docker compose up` without `--build`.
+resources/certificates/
 
 # ── Docker / distribution files ───────────────────────────────────
 docker-compose.yml

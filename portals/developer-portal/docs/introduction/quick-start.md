@@ -23,7 +23,7 @@ Copy both sample configuration files:
 ```bash
 mkdir -p configs
 cp configs/config.toml.example configs/config.toml
-cp configs/config-platform-api.toml.example configs/config-platform-api.toml
+cp configs/config-platform-api-template.toml configs/config-platform-api.toml
 ```
 
 `config.toml` controls the Developer Portal itself. `config-platform-api.toml` configures the Platform API sidecar that validates login credentials and issues signed tokens. The default credentials in the example file are `admin` / `admin`.

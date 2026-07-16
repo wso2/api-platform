@@ -260,7 +260,7 @@ The full annotated list of settings is in [`configs/config.toml.example`](config
 
 ### Local auth
 
-For quick exploration without an IdP, the portal delegates credential validation to a Platform API sidecar. Users, bcrypt-hashed passwords, and `dp:*` scopes are defined in `configs/config-platform-api.toml` (copy from `configs/config-platform-api.toml.example`):
+For quick exploration without an IdP, the portal delegates credential validation to a Platform API sidecar. Users, bcrypt-hashed passwords, and `dp:*` scopes are defined in `configs/config-platform-api.toml` (copy from `configs/config-platform-api-template.toml`):
 
 ```toml
 [[auth.file_based.users]]

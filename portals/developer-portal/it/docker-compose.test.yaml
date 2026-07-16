@@ -124,7 +124,7 @@ services:
       DEVPORTAL_BASE_URL: "http://devportal:3000"
       # Real session login (config-platform-api-it.toml) — password == username
       # for all three, matching the admin/admin convention documented in
-      # configs/config-platform-api.toml.example.
+      # configs/config-platform-api-template.toml.
       DEVPORTAL_ORG_HANDLE: "default"
       DEVPORTAL_ADMIN_USERNAME: "admin"
       DEVPORTAL_ADMIN_PASSWORD: "admin"
