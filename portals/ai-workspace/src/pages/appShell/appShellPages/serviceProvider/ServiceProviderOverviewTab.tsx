@@ -67,6 +67,10 @@ import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import SwaggerSpecViewer from '../../../../Components/SwaggerSpecViewer';
 import { buildProjectPath } from '../../../../utils/projectRouting';
 import {
+  formatPrefixedKey,
+  resolveApiKeyAuthDisplay,
+} from '../../../../utils/apiKeyAuthDisplay';
+import {
   DisabledActionTooltip,
   GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
 } from '../../../../utils/readOnlyArtifacts';
@@ -156,8 +160,14 @@ export default function ServiceProviderOverviewTab({
   const [isDeletingKey, setIsDeletingKey] = useState(false);
   const [apiKeys, setApiKeys] = useState<UserAPIKey[]>([]);
   const [keysLoading, setKeysLoading] = useState(false);
-  const apiKeyLocation = provider?.security?.apiKey?.in ?? 'header';
-  const apiKeyName = provider?.security?.apiKey?.key ?? 'X-API-Key';
+  const {
+    headerName: apiKeyName,
+    location: apiKeyLocation,
+    valuePrefix: apiKeyValuePrefix,
+  } = useMemo(
+    () => resolveApiKeyAuthDisplay(provider?.security, provider?.globalPolicies),
+    [provider?.security, provider?.globalPolicies]
+  );
   const showSnackbar = useAIWorkspaceSnackbar();
   const isReadOnlyProvider = Boolean(provider?.readOnly);
 
@@ -211,9 +221,12 @@ export default function ServiceProviderOverviewTab({
     const resolvedApiKeyHeaderName = apiKeyName.trim() || 'X-API-Key';
 
     return {
-      [resolvedApiKeyHeaderName]: latestGeneratedKey,
+      [resolvedApiKeyHeaderName]: formatPrefixedKey(
+        apiKeyValuePrefix,
+        latestGeneratedKey
+      ),
     };
-  }, [apiKeyName, latestGeneratedKey]);
+  }, [apiKeyName, apiKeyValuePrefix, latestGeneratedKey]);
   const swaggerViewerKey = useMemo(
     () =>
       [
@@ -1046,6 +1059,7 @@ export default function ServiceProviderOverviewTab({
                 gatewayUrl={generatedGatewayUrl}
                 apiKeyHeaderName={apiKeyName}
                 apiKeyLocation={apiKeyLocation}
+                apiKeyValuePrefix={apiKeyValuePrefix}
                 providerTemplate={provider?.template}
               />
             </>

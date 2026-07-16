@@ -26,6 +26,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { CheckCircle2, Copy, FlaskConical } from '@wso2/oxygen-ui-icons-react';
+import { formatPrefixedKey } from '../../utils/apiKeyAuthDisplay';
 
 interface EndpointOption {
   path: string;
@@ -116,6 +117,7 @@ interface Props {
   gatewayUrl: string;
   apiKeyHeaderName: string;
   apiKeyLocation: 'header' | 'query';
+  apiKeyValuePrefix?: string;
   providerTemplate?: string | null;
 }
 
@@ -130,7 +132,7 @@ function buildCurlCommand(
   const bodyJson = JSON.stringify(body, null, 2);
   const fullUrl =
     apiKeyLocation === 'query'
-      ? `${url}${url.includes('?') ? '&' : '?'}${apiKeyHeaderName}=${apiKey}`
+      ? `${url}${url.includes('?') ? '&' : '?'}${apiKeyHeaderName}=${encodeURIComponent(apiKey)}`
       : url;
 
   const lines = [
@@ -157,6 +159,7 @@ export default function ApiTryOutCurlSnippet({
   gatewayUrl,
   apiKeyHeaderName,
   apiKeyLocation,
+  apiKeyValuePrefix,
   providerTemplate,
 }: Props) {
   const endpoint = useMemo(() => {
@@ -169,8 +172,9 @@ export default function ApiTryOutCurlSnippet({
   const curlCommand = useMemo(() => {
     const base = gatewayUrl ? gatewayUrl.replace(/\/+$/, '') : '<gateway-url>';
     const url = `${base}${endpoint.path}`;
-    return buildCurlCommand(url, apiKeyHeaderName, apiKeyLocation, apiKey, endpoint.body, endpoint.extraHeaders);
-  }, [apiKey, apiKeyHeaderName, apiKeyLocation, gatewayUrl, endpoint]);
+    const keyValue = formatPrefixedKey(apiKeyValuePrefix ?? '', apiKey);
+    return buildCurlCommand(url, apiKeyHeaderName, apiKeyLocation, keyValue, endpoint.body, endpoint.extraHeaders);
+  }, [apiKey, apiKeyHeaderName, apiKeyLocation, apiKeyValuePrefix, gatewayUrl, endpoint]);
 
   const handleCopy = async () => {
     try {
