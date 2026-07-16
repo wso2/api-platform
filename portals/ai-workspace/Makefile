@@ -86,6 +86,11 @@ e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
 	@set -euo pipefail; \
 	backup_file="$$(mktemp)"; \
 	cp docker-compose.yaml "$$backup_file"; \
+	env_backup_file=""; \
+	if [ -f api-platform.env ]; then \
+		env_backup_file="$$(mktemp)"; \
+		cp api-platform.env "$$env_backup_file"; \
+	fi; \
 	cleanup() { \
 		status=$$?; \
 		if [ $$status -ne 0 ]; then \
@@ -93,6 +98,11 @@ e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
 		fi; \
 		docker compose down -v >/dev/null 2>&1 || true; \
 		mv "$$backup_file" docker-compose.yaml; \
+		if [ -n "$$env_backup_file" ]; then \
+			mv "$$env_backup_file" api-platform.env; \
+		else \
+			rm -f api-platform.env; \
+		fi; \
 		exit $$status; \
 	}; \
 	trap cleanup EXIT; \
@@ -110,7 +120,8 @@ e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
 	echo "Pinning ai-workspace compose to platform-api:$${platform_api_version}"; \
 	sed -i.bak -E "s#image: .*/platform-api:.*#image: $(DOCKER_REGISTRY)/platform-api:$${platform_api_version}#" docker-compose.yaml; \
 	rm -f docker-compose.yaml.bak; \
-	docker compose up -d --wait; \
+	ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./setup.sh --force; \
+	docker compose up -d --wait --wait-timeout 300; \
 	$(MAKE) e2e-test
 
 build: ## Build Docker image
