@@ -76,7 +76,6 @@ function logStartupBanner() {
     // shorter and avoids baking view-naming details into the banner.
     const visitUrl = `${config.server.baseUrl}${orgSegment}`;
     printBanner(visitUrl);
-    logger.info('Developer Portal started', { visitUrl });
 
     if (config.demo?.enabled) {
         logger.warn(
