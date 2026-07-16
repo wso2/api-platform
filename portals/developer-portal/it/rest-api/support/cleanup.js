@@ -73,18 +73,32 @@ function autoTrackFromResponse(path, body, res, role) {
 }
 
 // Delete everything tracked, newest-first so dependents (e.g. a subscription) are
-// removed before their parent (e.g. the API it points at). Best-effort: a test
-// may have already deleted a resource, or a role's session may be gone — never
-// let cleanup failures fail the suite.
+// removed before their parent (e.g. the API it points at). A resource whose
+// delete is refused because a sibling still references it (the API delete guards
+// return 409 while subscriptions/active keys exist) is retried on the next pass,
+// once that sibling is gone; passes stop as soon as one makes no progress.
+// Best-effort throughout: a 404 means a test already deleted it, and cleanup
+// failures (blocked deletes, an expired session) never fail the suite.
 async function cleanupResources() {
     const client = require('./client'); // lazy — avoids a load-time require cycle
-    while (registry.length) {
-        const { collection, id, role } = registry.pop();
-        try {
-            await client.as(role).del(`/${collection}/${id}`);
-        } catch (_) {
-            // ignore — cleanup is best-effort
+    let pending = registry.splice(0); // drain the registry into the working set
+    const MAX_PASSES = 3;
+    for (let pass = 0; pass < MAX_PASSES && pending.length; pass++) {
+        const blocked = [];
+        // Newest-first within a pass.
+        for (let i = pending.length - 1; i >= 0; i--) {
+            const entry = pending[i];
+            try {
+                const res = await client.as(entry.role).del(`/${entry.collection}/${entry.id}`);
+                // 2xx = deleted, 404 = already gone; anything else (409/500) may
+                // clear once a sibling is removed, so retry it next pass.
+                if (res.status >= 400 && res.status !== 404) blocked.push(entry);
+            } catch (_) {
+                // session gone or transport error — drop it, cleanup is best-effort
+            }
         }
+        if (blocked.length === pending.length) break; // no progress — stop retrying
+        pending = blocked;
     }
 }
 
