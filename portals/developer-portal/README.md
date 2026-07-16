@@ -139,18 +139,9 @@ Use this for active development, custom IdP configuration, or when you prefer to
 
 `configs/config.toml` already ships with sensible defaults — edit it directly for custom settings. `configs/config-template.toml` is the full annotated reference of every available setting; see [Configuration reference](#configuration-reference) below.
 
-### 2. Configure HTTP mode (optional)
+### 2. Use `npm run start:local`, not `npm start`
 
-Open `configs/config.toml` and confirm these are set (they are the defaults):
-
-```toml
-[tls]
-enabled = false
-
-[server]
-base_url = "http://localhost:3000"
-port = 3000
-```
+`configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `platform_api.base_url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off, `http://localhost:3000`, and `platform_api.base_url` pointed at `localhost` (see [Local auth](#local-auth) if you're running the Platform API sidecar).
 
 ### 3. Configure the Identity Provider (optional)
 
@@ -211,7 +202,7 @@ No manual step is required.
 
 ```bash
 npm install
-npm start
+npm run start:local
 ```
 
 Open **http://localhost:3000/default/views/default**
@@ -224,7 +215,7 @@ Seeds a set of sample APIs into the default organisation. Works with both the Do
 
 Get a Bearer token first, then pass it via `DEVPORTAL_TOKEN`. The examples below use `admin`/`admin` — substitute the credentials `./setup.sh` printed (or run `ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./setup.sh` for this fixed pair):
 
-**npm start (HTTP):**
+**npm run start:local (HTTP):**
 ```bash
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
@@ -257,13 +248,13 @@ password_hash = "$2y$10$..."   # bcrypt hash — generate with: htpasswd -bnBC 1
 scopes        = "dp:org_manage dp:api_manage ..."
 ```
 
-The portal config (or `APIP_DP_PLATFORMAPI_*` env vars) must point to the Platform API. Docker Compose sets these automatically:
+The portal config (or `APIP_DP_PLATFORMAPI_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `base_url` to `https://localhost:9243` (the sidecar's port published to the host) and `insecure = true` (self-signed cert), so no manual edit is needed for that flow:
 
 ```toml
 [platform_api]
-base_url = "https://platform-api:9243"   # env: APIP_DP_PLATFORMAPI_BASEURL
+base_url = "https://localhost:9243"      # env: APIP_DP_PLATFORMAPI_BASEURL
 jwt_secret = ""                           # same as the Platform API's APIP_CP_AUTH_JWT_SECRET_KEY — env: APIP_DP_PLATFORMAPI_JWTSECRET
-insecure = false                          # set true when Platform API uses a self-signed cert
+insecure = true                           # Platform API uses a self-signed cert
 ```
 
 For production, configure an OIDC identity provider per organization instead of local auth.

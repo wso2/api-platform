@@ -41,16 +41,9 @@ services:
       platform-api:
         condition: service_healthy
     environment:
-      APIP_DP_DATABASE_FILE: /app/data/devportal.db
-      APIP_DP_TLS_ENABLED: "true"
-      APIP_DP_SERVER_BASEURL: "https://localhost:3000"
-      APIP_DP_TLS_CERTFILE: "/etc/devportal/tls/cert.pem"
-      APIP_DP_TLS_KEYFILE: "/etc/devportal/tls/key.pem"
-      APIP_DP_TLS_CAFILE: "/etc/devportal/tls/cert.pem"
+      # Per-invocation toggle (demo=false docker compose up) — config.toml can't
+      # express this, since the value is chosen at compose-up time, not fixed.
       APIP_DP_DEMO_ENABLED: "${demo:-true}"
-      APIP_DP_LOGGING_CONSOLEONLY: "true"
-      APIP_DP_PLATFORMAPI_BASEURL: "https://platform-api:9243"
-      APIP_DP_PLATFORMAPI_INSECURE: "true"
     env_file:
       - path: api-platform.env
         required: true

@@ -28,34 +28,53 @@
 # Partial substitution works too: 'foo-{{ env "X" }}' resolves to "foo-bar" if
 # X=bar. See src/config/configLoader.js for the full implementation.
 #
-# Every key below except [security] carries a fallback matching its built-in
-# default (src/config/configDefaults.js), so `npm start` with no env vars set
-# behaves exactly as before — docker-compose.yaml / api-platform.env only need
-# to set the env var to override it, never to define config.toml's own default.
+# This file's own fallbacks (the third arg to {{ env "NAME" "default" }} below)
+# are intentionally wired for the Docker Compose topology (docker-compose.yaml),
+# NOT for src/config/configDefaults.js's generic, dependency-free defaults —
+# e.g. tls.enabled defaults to true here (a real cert is bind-mounted at
+# /etc/devportal/tls) vs. false in configDefaults.js (no cert available for a
+# bare `npm start`). configDefaults.js's DEFAULTS only take effect for keys this
+# file doesn't list at all (idp, organization, uploads, etc.), or if this file
+# itself were absent entirely (e.g. the packaged `pkg` binary run standalone) —
+# see configDefaults.js's own comment for why its values stay generic.
+#
+# Running locally without Docker? Use `npm run start:local` instead of
+# `npm start` (package.json) — it overrides tls.enabled, server.base_url, and
+# platform_api.* to values that make sense outside Compose, all in one place.
+# Plain `npm start` inherits this file's Compose-oriented defaults as-is and
+# will fail trying to read a TLS cert path that only exists in the containers.
 
 [server]
-base_url = '{{ env "APIP_DP_SERVER_BASEURL" "http://localhost:3000" }}'
+base_url = '{{ env "APIP_DP_SERVER_BASEURL" "https://localhost:3000" }}'
 
 [tls]
-enabled   = '{{ env "APIP_DP_TLS_ENABLED" "false" }}'
-cert_file = '{{ env "APIP_DP_TLS_CERTFILE" "./resources/security/client-truststore.pem" }}'
-key_file  = '{{ env "APIP_DP_TLS_KEYFILE" "./resources/security/private-key.pem" }}'
-ca_file   = '{{ env "APIP_DP_TLS_CAFILE" "./resources/security/client-truststore.pem" }}'
+enabled   = '{{ env "APIP_DP_TLS_ENABLED" "true" }}'
+cert_file = '{{ env "APIP_DP_TLS_CERTFILE" "/etc/devportal/tls/cert.pem" }}'
+key_file  = '{{ env "APIP_DP_TLS_KEYFILE" "/etc/devportal/tls/key.pem" }}'
+ca_file   = '{{ env "APIP_DP_TLS_CAFILE" "/etc/devportal/tls/cert.pem" }}'
 
 [logging]
 console_only = '{{ env "APIP_DP_LOGGING_CONSOLEONLY" "true" }}'
 
 [database]
-file = '{{ env "APIP_DP_DATABASE_FILE" "./devportal.db" }}'
+# Relative — resolves to /app/data/devportal.db under Compose (cwd /app),
+# matching the sqlite_data volume mount at /app/data; Docker creates that
+# directory itself as the volume's mount point, so no extra step is needed
+# there. `npm start` (cwd = repo root) resolves this to ./data/devportal.db
+# instead — that directory does NOT get created automatically; see README's
+# "Development (npm start)" section.
+file = '{{ env "APIP_DP_DATABASE_FILE" "./data/devportal.db" }}'
 
 [demo]
+# Left generic (Compose still overrides via the "${demo:-true}" shell toggle —
+# see docker-compose.yaml — since that value is chosen per-invocation, not fixed).
 enabled = '{{ env "APIP_DP_DEMO_ENABLED" "false" }}'
 
 [platform_api]
 # Used for local auth credential validation when idp.client_id is empty.
-base_url   = '{{ env "APIP_DP_PLATFORMAPI_BASEURL" "" }}'
+base_url   = '{{ env "APIP_DP_PLATFORMAPI_BASEURL" "https://platform-api:9243" }}'
 jwt_secret = '{{ env "APIP_DP_PLATFORMAPI_JWTSECRET" "" }}'
-insecure   = '{{ env "APIP_DP_PLATFORMAPI_INSECURE" "false" }}'
+insecure   = '{{ env "APIP_DP_PLATFORMAPI_INSECURE" "true" }}'
 
 [security]
 # Required — devportal fails closed at startup if either doesn't resolve to a

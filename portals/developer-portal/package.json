@@ -6,6 +6,7 @@
   "scripts": {
     "design-mode": "npm run build-css --watch & nodemon src/dev-server.js",
     "start": "npm rebuild better-sqlite3 --ignore-scripts=false && NODE_ENV=development nodemon src/server.js",
+    "start:local": "APIP_DP_TLS_ENABLED=false APIP_DP_SERVER_BASEURL=http://localhost:3000 APIP_DP_PLATFORMAPI_BASEURL=https://localhost:9243 APIP_DP_PLATFORMAPI_INSECURE=true npm run start",
     "debug": "nodemon --inspect src/server.js",
     "multi-tenant": "npm run build-css --watch & nodemon src/multi-tenant.js",
     "build-css": "node watcher.js",
