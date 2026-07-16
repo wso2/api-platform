@@ -794,6 +794,11 @@ var upstreamRefNameRe = regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`)
 // values like "1h30m" that the gateway rejects at deploy.
 var connectTimeoutRe = regexp.MustCompile(`^\d+(\.\d+)?(ms|s|m|h)$`)
 
+// upstreamBasePathRe is the contract an upstreamDefinition basePath must match: it must start
+// with '/' and must not end with '/'. It mirrors the basePath pattern published in the OpenAPI
+// spec and the gateway validator, so a value the platform accepts is never rejected at deploy.
+var upstreamBasePathRe = regexp.MustCompile(`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$`)
+
 // validateUpstreamReferenceName enforces the shared UpstreamReference contract.
 func validateUpstreamReferenceName(value, field string) error {
 	if value == "" {
@@ -857,8 +862,8 @@ func validateAPIUpstreamEndpoint(endpoint api.UpstreamDefinition, field string, 
 }
 
 // validateUpstreamRefs ensures upstreamDefinitions are well-formed (unique, legal name, valid
-// host-only url, in-range weight, positive timeout), validates each API-level url-or-ref union,
-// and ensures every API-level and per-operation ref resolves.
+// host-only url, legal basePath, in-range weight, positive timeout), validates each API-level
+// url-or-ref union, and ensures every API-level and per-operation ref resolves.
 func (s *APIService) validateUpstreamRefs(upstreamDefs *[]api.ReusableUpstream, upstream api.Upstream, operations *[]api.Operation) error {
 	defined := make(map[string]bool)
 	if upstreamDefs != nil {
@@ -902,6 +907,12 @@ func (s *APIService) validateUpstreamRefs(upstreamDefs *[]api.ReusableUpstream, 
 				if backend.Weight != nil && (*backend.Weight < 0 || *backend.Weight > 100) {
 					return fmt.Errorf("%s.weight must be between 0 and 100", backendPath)
 				}
+			}
+			// Match the gateway validator: validated raw (no trim), and an omitted basePath
+			// means root. An empty string is treated as unset because omitempty drops it
+			// from the deployment YAML before the gateway ever sees it.
+			if d.BasePath != nil && *d.BasePath != "" && !upstreamBasePathRe.MatchString(*d.BasePath) {
+				return fmt.Errorf("%s.basePath must start with '/' and must not end with '/'; omit for root (for example /api/v2)", definitionPath)
 			}
 			// Match the gateway validator: trim first and validate only a non-empty
 			// value, so a blank or whitespace-only connect is treated as "unset" here
