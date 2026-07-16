@@ -206,6 +206,7 @@ const loadAPIContent = async (req, res, next) => {
             }
         }
 
+        const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         const templateContent = {
             devMode: true,
             apiContent: '',
@@ -216,7 +217,7 @@ const loadAPIContent = async (req, res, next) => {
             subscriptionPlans: metaData.subscriptionPlans,
             baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
             schemaUrl: `/mock/${apiHandle}/definition.yml`,
-            showApiKeysNav: apiUsesApiKeySecurity(metaData),
+            showApiKeysNav: await resolveShowApiKeysNav(null, null, apiType, metaData, definitionResponse.swagger ?? null),
             showSubscriptionsNav: (metaData.subscriptionPlans || []).length > 0,
         }
         const landingPage = isMCP ? 'pages/mcp-landing' : 'pages/api-landing';
@@ -424,7 +425,7 @@ const loadAPIContent = async (req, res, next) => {
                 profile: req.isAuthenticated() ? profile : null,
                 isReadOnlyMode: config.server.readOnlyMode,
             };
-            templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
+            templateContent.showApiKeysNav = await resolveShowApiKeysNav(orgId, apiId, metaData.type, metaData, apiDefinitionForNav);
             templateContent.showSubscriptionsNav = (metaData?.subscriptionPlans || []).length > 0;
             templateContent.hasSubscriptionToken = !!findSubscriptionTokenHeader(apiDefinitionForNav);
             if (metaData.type == constants.API_TYPE.MCP) {
@@ -514,6 +515,10 @@ const loadDocsPage = async (req, res, next) => {
         const metaForNav = {
             refId: apiMetadata.refId,
         };
+        // Load the definition so the API Keys nav is computed the same way as every
+        // other API-scoped page — without it the check always returns false and the
+        // API Keys item is hidden on the documentation page.
+        const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         const templateContent = {
             apiMD: '',
             baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
@@ -521,7 +526,7 @@ const loadDocsPage = async (req, res, next) => {
             docTypes: docNames,
             apiType: apiMetadata.type,
             apiName: apiMetadata.name || '',
-            showApiKeysNav: apiUsesApiKeySecurity(metaForNav),
+            showApiKeysNav: await resolveShowApiKeysNav(null, null, apiMetadata.type, metaForNav, definitionResponse.swagger ?? null),
         }
         html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
@@ -572,7 +577,7 @@ const loadDocsPage = async (req, res, next) => {
                 apiName: apiMetadata[0].dataValues.name || '',
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
-                showApiKeysNav: apiUsesApiKeySecurity(metaForNav, apiDefinitionForNav),
+                showApiKeysNav: await resolveShowApiKeysNav(orgId, apiId, apiType, metaForNav, apiDefinitionForNav),
             };
             html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/docs", viewName);
         } catch (error) {
@@ -636,7 +641,10 @@ const loadDocument = async (req, res, next) => {
         templateContent.currentDocType = docType || null;
         templateContent.apiName = metaData.name || '';
         const metaForNav = { refId: metaData.refId };
-        templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
+        // Pass the definition so the API Keys nav is computed the same way as every
+        // other API-scoped page — without it the check always returns false and the
+        // API Keys item is hidden on the documentation page.
+        templateContent.showApiKeysNav = await resolveShowApiKeysNav(null, null, definitionResponse.apiType, metaForNav, definitionResponse.swagger ?? null);
         const html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
         res.send(html);
         return;
@@ -782,7 +790,8 @@ const loadDocument = async (req, res, next) => {
             const metaForNav = {
                 refId: row.ref_id,
             };
-            templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
+            // Compute the API Keys nav the same way as every other API-scoped page.
+            templateContent.showApiKeysNav = await resolveShowApiKeysNav(orgId, apiId, apiType, metaForNav, definitionResponse.swagger ?? null);
             html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/docs", viewName);
         } catch (error) {
             logger.error('Failed to load api content', {
@@ -879,6 +888,49 @@ async function getApiDefinitionFileContent(orgId, apiId) {
     }
 
     throw new Error('API definition file not found');
+}
+
+/**
+ * Single source of truth for the "API Keys" sidebar item visibility on any
+ * API-scoped page (landing, documentation, api-keys). It loads the stored API
+ * definition and inspects its security schemes so every page derives the flag
+ * the same way — previously each page computed it separately and some (e.g. the
+ * documentation page) omitted the definition, hiding the nav item inconsistently.
+ *
+ * GraphQL/MCP/SOAP definitions are not OpenAPI security-scheme documents we can
+ * inspect for apiKey security, so they resolve to false without a definition load.
+ *
+ * @param {string} orgId
+ * @param {string} apiId
+ * @param {string} apiType - constants.API_TYPE.*
+ * @param {object} metaData - any truthy metadata object for the API
+ * @param {string|object} [preloadedDefinition] - the API definition if the caller
+ *        already loaded it (pass to avoid a second read); omit to load from storage.
+ * @returns {Promise<boolean>}
+ */
+async function resolveShowApiKeysNav(orgId, apiId, apiType, metaData, preloadedDefinition) {
+    if (!metaData) {
+        return false;
+    }
+    if (apiType === constants.API_TYPE.GRAPHQL
+        || apiType === constants.API_TYPE.MCP
+        || apiType === constants.API_TYPE.SOAP) {
+        return false;
+    }
+    let apiDefinition = preloadedDefinition;
+    if (apiDefinition === undefined) {
+        apiDefinition = null;
+        try {
+            apiDefinition = await getApiDefinitionFileContent(orgId, apiId);
+        } catch (definitionErr) {
+            logger.debug('Could not load API definition for API keys nav check', {
+                orgId,
+                apiId,
+                error: definitionErr.message
+            });
+        }
+    }
+    return apiUsesApiKeySecurity(metaData, apiDefinition);
 }
 
 function parseApiDefinitionContent(apiDefinitionContent) {
@@ -1511,4 +1563,5 @@ module.exports = {
     loadAPIContentMd,
     loadDocumentMd,
     loadSpecificationRaw: loadAPIDefinitionRaw,
+    resolveShowApiKeysNav,
 };

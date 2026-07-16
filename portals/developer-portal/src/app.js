@@ -29,6 +29,7 @@ const apiContent = require('./routes/pages/apiContentRoute');
 const applicationContent = require('./routes/pages/applicationsContentRoute');
 const customContent = require('./routes/pages/customPageRoute');
 const subscriptionsContent = require('./routes/pages/subscriptionsContentRoute');
+const apiKeysOverviewContent = require('./routes/pages/apiKeysOverviewRoute');
 const mcpRegistryRoute = require('./routes/pages/mcpRegistryRoute');
 const { config } = require('./config/configLoader');
 const Handlebars = require('handlebars');
@@ -177,6 +178,7 @@ if (config.designMode?.enabled) {
     app.use(constants.ROUTE.DEFAULT, settingsRoute);
     app.use(constants.ROUTE.DEFAULT, apiWorkflowsRoute);
     app.use(constants.ROUTE.DEFAULT, subscriptionsContent);
+    app.use(constants.ROUTE.DEFAULT, apiKeysOverviewContent);
     app.use(constants.ROUTE.DEFAULT, customContent);
 }
 

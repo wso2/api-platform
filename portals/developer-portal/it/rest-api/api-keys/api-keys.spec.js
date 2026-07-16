@@ -107,6 +107,7 @@ describe('API keys', () => {
 
         const res = await client.as('developer').post(`/apis/${api.id}/api-keys/associate`, { keyId, appId });
         expect(res.status).toBe(200);
+        expect(res.body.application.id).toBe(appId);
     });
 
     it('dissociates an API key from an application', async () => {
@@ -123,6 +124,33 @@ describe('API keys', () => {
     it('rejects generating a key with an invalid id format', async () => {
         const res = await client.as('publisher').post(`/apis/${api.id}/api-keys/generate`, { id: 'Invalid ID!' });
         expect(res.status).toBe(400);
+    });
+
+    // GET /api-keys — lists every key created by the authenticated caller across all
+    // APIs in the org (powers the developer portal's global "API Keys" page). Each item
+    // carries the owning API's name/version/type so the page renders without a second call.
+    describe('GET /api-keys (all keys for the caller)', () => {
+        it('lists the caller\'s keys across APIs with owning-API metadata', async () => {
+            const id = uniqueHandle('key').toLowerCase();
+            await client.as('publisher').post(`/apis/${api.id}/api-keys/generate`, { id });
+
+            const res = await client.as('publisher').get('/api-keys');
+            expect(res.status).toBe(200);
+
+            const key = res.body.list.find((k) => k.id === id);
+            expect(key).toBeDefined();
+            expect(key.apiName).toBe(api.name);
+            expect(key.apiVersion).toBe(api.version);
+            expect(key.apiType).toBe(api.type);
+            // The internal uuid is never exposed, and secret material is never listed.
+            expect(key.keyId).toBeUndefined();
+            expect(key.key).toBeUndefined();
+        });
+
+        it('rejects an invalid status filter', async () => {
+            const res = await client.as('publisher').get('/api-keys?status=BOGUS');
+            expect(res.status).toBe(400);
+        });
     });
 
 });
