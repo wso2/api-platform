@@ -30,6 +30,8 @@ apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProxy
 metadata:
   name: openai-multi
+  annotations:
+    "gateway.api-platform.wso2.com/project-id": "default"
 spec:
   displayName: OpenAI Multi-Provider Proxy
   version: v1.0

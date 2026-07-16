@@ -24,6 +24,8 @@ apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: sample-echo-v1
+  annotations:
+    "gateway.api-platform.wso2.com/project-id": "default"
 spec:
   displayName: Sample Echo
   version: v1

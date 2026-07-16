@@ -21,7 +21,7 @@ kind: Mcp
 metadata:
   name: everything-mcp-v1.0
   annotations:
-    "gateway.api-platform.wso2.com/project-id": "Default"
+    "gateway.api-platform.wso2.com/project-id": "default"
 spec:
   displayName: Everything
   version: v1.0

@@ -32,6 +32,8 @@ apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProxy
 metadata:
   name: openai-to-anthropic
+  annotations:
+    "gateway.api-platform.wso2.com/project-id": "default"
 spec:
   displayName: OpenAI to Anthropic Proxy
   version: v1.0
