@@ -947,7 +947,6 @@ function validateScripts(strContent) {
             "<script src='/technical-scripts/mcp-landing.js' defer></script>",
             "<script src='/technical-scripts/api-subscription-plans.js' defer></script>",
             "<script src='/technical-scripts/mcp-subscription-plans.js' defer></script>",
-            "<script src='/technical-scripts/onboarding-overlay.js' defer></script>",
             "<script src='/technical-scripts/dev-reload.js' defer></script>",
             '<script src="https://cdn.jsdelivr.net/npm/@jentic/arazzo-ui@1.0.0-alpha.30/dist/arazzo-ui.js" integrity="sha256-OYzURPQLK+lup5rGo+IQmVbjWOjVgjURBWDDtMHIOaw=" crossorigin="anonymous"></script>',
             '<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" integrity="sha256-Rdw90D3AegZwWiwpibjH9wkBPwS9U4bjJ51ORH8H69c=" crossorigin="anonymous"></script>',

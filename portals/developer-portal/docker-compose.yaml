@@ -3,170 +3,62 @@
 #
 # WSO2 LLC. licenses this file to you under the Apache License,
 # Version 2.0 (the "License"); you may not use this file except
-# in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
+# in compliance with the License. You may obtain a copy of the
+# License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
-
-# Developer Portal — Docker Compose (development / build-from-source variant)
-#
-# NOTE: distribution/docker-compose.yaml ships the standalone variant (pre-built image) — keep
-#       devportal service config in sync there too. Documented differences that should
-#       diverge: uses `build: .` here vs pre-built GHCR image in distribution.
-#
-# Quick start:
-#   1. Copy configs/config-platform-api.toml.example to configs/config-platform-api.toml
-#      and adjust users/org as needed.
-#   2. Build the Platform API image from source (../../platform-api):
-#        cd ../../platform-api && make build
-#      Required — the published 0.10.0 image on ghcr.io predates the /auth/login
-#      endpoint that the username/password login form here uses.
-#   3. docker compose --env-file keys.env up
-#   4. Open https://localhost:3000/default/views/default  (accept the self-signed cert warning)
-#      Login with a user defined in configs/config-platform-api.toml (default: admin / admin)
-#
-# Secrets (both are 32-byte keys — 64 hex chars / base64; generate with openssl rand -hex 32):
-#   APIP_CP_AUTH_JWT_SECRET_KEY  — signs login JWTs; the devportal verifies with the same value.
-#   APIP_CP_ENCRYPTION_KEY       — encrypts secrets/subscription tokens at rest.
-#   Both are REQUIRED. Put them in `keys.env` file and start
-#   with `docker compose --env-file keys.env up`; the Platform API reads them from
-#   config-platform-api.toml via {{ env "..." }} tokens and fails to start if either is missing.
-#
-# TLS:
-#   A self-signed certificate is generated automatically on first start and stored
-#   in the certs_data volume. Your browser will show a security warning — click
-#   "Proceed" (or "Advanced → Proceed") to continue.
-#   To use your own certificate, replace the certs_data volume with a bind-mount:
-#     - ./my-certs:/app/certs:ro
-#   and ensure it contains server.crt and server.key.
-#
-# Database:
-#   SQLite is used by default — no external database required.
-#   To switch to PostgreSQL, run with the postgres override file:
-#     docker compose -f docker-compose.yaml -f docker-compose.postgres.yaml up
-#
-# Configuration:
-#   Edit configs/config.toml to customise devportal settings.
-#   Edit configs/config-platform-api.toml to customise Platform API settings (users, org, etc.).
-#   Every devportal config value can be overridden with an APIP_DP_* env var.
-#   Create a .env file at the project root for persistent overrides.
-#
-# Demo mode (on by default):
-#   demo=false docker compose up
-#   Disables the "Seed sample APIs" button in Settings and the onboarding prompt.
+# Developer Portal + Platform API - standalone release compose file. See README.md.
 
 services:
-  # ── Platform API (Go HTTPS backend — handles local auth) ────────────────────
-  # One-shot init container: generates the TLS pair the platform-api HTTPS
-  # listener requires (the server no longer generates a self-signed fallback).
-  platform-api-certgen:
-    image: alpine/openssl
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        [ -f /certs/cert.pem ] && [ -f /certs/key.pem ] && exit 0
-        openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
-          -keyout /certs/key.pem -out /certs/cert.pem \
-          -subj "/O=WSO2 API Platform/CN=platform-api" \
-          -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
-    volumes:
-      - platform-api-certs:/certs
-
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.11.0
+    image: ghcr.io/wso2/api-platform/platform-api:0.12.0
     container_name: platform-api
     restart: unless-stopped
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
-    environment:
-      - APIP_CP_ENCRYPTION_KEY=${APIP_CP_ENCRYPTION_KEY:-}
-      - APIP_CP_AUTH_JWT_SECRET_KEY=${APIP_CP_AUTH_JWT_SECRET_KEY:-}
+    env_file:
+      - path: api-platform.env
+        required: true
+        format: raw
     volumes:
       - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
-      - platform-api-certs:/app/data/certs
+      - ./resources/certificates:/etc/platform-api/tls:ro
     ports:
       - "9243:9243"
-    depends_on:
-      platform-api-certgen:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
       interval: 30s
       timeout: 5s
       start_period: 20s
       retries: 3
+    networks:
+      - devportal-network
 
   devportal:
-    build: .
     image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-alpha2-SNAPSHOT
+    container_name: devportal
+    restart: unless-stopped
     depends_on:
       platform-api:
         condition: service_healthy
+    env_file:
+      - path: api-platform.env
+        required: true
+        format: raw
+    volumes:
+      - ./configs/config.toml:/app/configs/config.toml:ro
+      - sqlite_data:/app/data
+      - ./resources/certificates:/etc/devportal/tls:ro
     ports:
       - "3000:3000"
-    volumes:
-      # Mount config from the configs/ directory.
-      - ./configs/config.toml:/app/configs/config.toml:ro
-      # Persist the SQLite database across container restarts.
-      - sqlite_data:/app/data
-      # Persist the auto-generated TLS certificate across container restarts.
-      # To use your own cert, replace with: - ./my-certs:/app/certs:ro
-      - certs_data:/app/certs
-    environment:
-      # ── Database: SQLite (default) ───────────────────────────────────────────
-      APIP_DP_DATABASE_FILE: /app/data/devportal.db
-
-      # ── Database: PostgreSQL (optional) ─────────────────────────────────────
-      # APIP_DP_DATABASE_TYPE: postgres
-      # APIP_DP_DATABASE_HOST: postgres
-      # APIP_DP_DATABASE_PORT: 5432
-      # APIP_DP_DATABASE_USERNAME: devportal
-      # APIP_DP_DATABASE_PASSWORD: devportal
-      # APIP_DP_DATABASE_NAME: devportal
-
-      # HTTPS — a self-signed cert is generated automatically on first start.
-      # To switch back to plain HTTP, set APIP_DP_TLS_ENABLED=false and APIP_DP_SERVER_BASEURL=http://localhost:3000.
-      APIP_DP_TLS_ENABLED: "true"
-      APIP_DP_SERVER_BASEURL: "https://localhost:3000"
-      APIP_DP_TLS_CERTFILE: "/app/certs/server.crt"
-      APIP_DP_TLS_KEYFILE: "/app/certs/server.key"
-      APIP_DP_TLS_CAFILE: "/app/certs/server.crt"
-
-      # Demo mode — on by default. When enabled, the Settings > Manage APIs page
-      # shows a "Seed sample APIs" button and admins get a one-time onboarding
-      # prompt to deploy sample APIs/MCPs. Disable with:
-      #   demo=false docker compose up
-      APIP_DP_DEMO_ENABLED: "${demo:-true}"
-
-      # Log to console only (no rotating log files)
-      APIP_DP_LOGGING_CONSOLEONLY: "true"
-
-      # Platform API — used for local auth credential validation.
-      # Set APIP_DP_PLATFORMAPI_JWTSECRET to the same value as the Platform API's APIP_CP_AUTH_JWT_SECRET_KEY
-      # so the devportal can verify Platform API JWTs locally (no per-request login call).
-      APIP_DP_PLATFORMAPI_BASEURL: "https://platform-api:9243"
-      APIP_DP_PLATFORMAPI_JWTSECRET: ${APIP_CP_AUTH_JWT_SECRET_KEY:-}
-      APIP_DP_PLATFORMAPI_INSECURE: "true"   # Platform API uses a self-signed cert in this dev setup
-
-      # AES-256-GCM key for encrypting subscription tokens and webhook secrets at rest.
-      # Generate once with: openssl rand -hex 32
-      # Store in .env as: APIP_DP_SECURITY_ENCRYPTIONKEY=<64-char hex>
-      # Must remain stable across restarts — changing it makes existing encrypted data unreadable.
-      APIP_DP_SECURITY_ENCRYPTIONKEY: ${APIP_DP_SECURITY_ENCRYPTIONKEY:-}
-    env_file:
-      - path: .env
-        required: false   # Optional — create a .env file to add your own overrides
+    networks:
+      - devportal-network
 
 volumes:
   sqlite_data:
-  certs_data:
+    driver: local
   platform-api-data:
-  platform-api-certs:
+    driver: local
+
+networks:
+  devportal-network:
+    driver: bridge

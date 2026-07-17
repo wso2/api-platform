@@ -693,38 +693,6 @@
   document.getElementById('cfg-add-api-btn').addEventListener('click', function() { showWizard(null); });
   document.getElementById('cfg-add-mcp-btn').addEventListener('click', function() { showWizard(null, 'mcp'); });
 
-  /* ── Seed sample APIs (demo mode only) ── */
-  (function() {
-    var btn = document.getElementById('cfg-seed-samples-btn');
-    if (!btn) return;
-    var originalHtml = btn.innerHTML;
-    btn.addEventListener('click', async function() {
-      btn.disabled = true;
-      btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Importing…';
-      try {
-        var res = await fetch(BASE_URL + '/apis/seed-samples', {
-          method: 'POST',
-          headers: { 'X-CSRF-Token': window.devportalApi.csrfToken() },
-        });
-        var data = await res.json().catch(function() { return {}; });
-        if (res.ok) {
-          var detail = [];
-          if (data.deployed) detail.push(data.deployed + ' deployed');
-          if (data.skipped)  detail.push(data.skipped + ' already existed');
-          if (data.failed)   detail.push(data.failed + ' failed');
-          await showAlert('Sample APIs imported' + (detail.length ? ' — ' + detail.join(', ') + '.' : '. Nothing new to import.'), 'success');
-          window.location.reload();
-        } else {
-          await showAlert('Failed: ' + (data.error || res.statusText), 'error');
-        }
-      } catch (e) {
-        await showAlert('Error: ' + e.message, 'error');
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
-      }
-    });
-  }());
   document.getElementById('cfg-wizard-back-link').addEventListener('click', function(e) { e.preventDefault(); hideWizard(); });
   document.getElementById('cfg-wizard-cancel').addEventListener('click', function() { hideWizard(); });
   document.getElementById('cfg-wizard-back-step').addEventListener('click', function() { if(currentStep>0) updateWizardStep(currentStep-1); });

@@ -75,6 +75,10 @@ services:
       APIP_DP_DATABASE_TYPE: sqlite
       APIP_DP_DATABASE_FILE: /tmp/devportal-it.db
       APIP_DP_SERVER_BASEURL: "http://devportal:3000"
+      # devportal fails closed at startup without these — fixed test-only values,
+      # not meant to be reused outside this CI fixture.
+      APIP_DP_SECURITY_ENCRYPTIONKEY: "7f40672c96fd437dc33550755e218d586014232ceb5b01c9405aab575bcb1f4a"
+      APIP_DP_SECURITY_SESSIONSECRET: "527948cfb2478dbd4dfcd9d466df65d8c70511236fe63dba0da0f5385676f593"
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
       interval: 10s
@@ -120,7 +124,7 @@ services:
       DEVPORTAL_BASE_URL: "http://devportal:3000"
       # Real session login (config-platform-api-it.toml) — password == username
       # for all three, matching the admin/admin convention documented in
-      # configs/config-platform-api.toml.example.
+      # configs/config-platform-api-template.toml.
       DEVPORTAL_ORG_HANDLE: "default"
       DEVPORTAL_ADMIN_USERNAME: "admin"
       DEVPORTAL_ADMIN_PASSWORD: "admin"

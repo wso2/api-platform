@@ -10,7 +10,7 @@
 # --------------------------------------------------------------------
 #
 # Platform API file-based auth config for the developer-portal backend IT
-# suite. Modeled on ../../configs/config-platform-api.toml.example, with three
+# suite. Modeled on ../../configs/config-platform-api-template.toml, with three
 # accounts (admin / publisher / developer, password == username) instead of
 # just admin, so tests exercise real role-scoped authorization rather than the
 # devportal-it-test-key API key bypass.

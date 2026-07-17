@@ -24,7 +24,10 @@
  * camelCase — configs/config.toml uses snake_case and is converted to camelCase
  * on load (see configLoader.js) before being merged over this struct.
  *
- * Effective config precedence: DEFAULTS  →  configs/config.toml  →  APIP_DP_* env vars.
+ * Effective config precedence: DEFAULTS  →  configs/config.toml (with any
+ * {{ env }} / {{ file }} references resolved — see configLoader.js). There is
+ * no separate, automatic APIP_DP_* env-var override layer; an env var only
+ * takes effect where config.toml explicitly references it.
  */
 const DEFAULTS = {
     server: {
@@ -56,6 +59,7 @@ const DEFAULTS = {
     },
     security: {
         encryptionKey: '',
+        sessionSecret: '',
         roleValidation: false,   // was: advanced.disabledRoleValidation, inverted
         serviceApiKey: {
             enabled: true,
@@ -126,9 +130,6 @@ const DEFAULTS = {
         // config. Kept as a struct default (not documented in config-template.toml) only
         // because src/utils/util.js and viewConfigureController.js read it defensively.
         apiWorkflows: true,
-    },
-    demo: {
-        enabled: false,
     },
     designMode: {
         enabled: false,

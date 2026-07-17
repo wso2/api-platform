@@ -104,10 +104,10 @@ For local development and first-time setup, the portal ships with a built-in use
 
 ### Configuration
 
-Users and their scopes are defined in `configs/config-platform-api.toml`. Copy the example file to get started:
+Users and their scopes are defined in `configs/config-platform-api.toml`. Copy the template file to get started:
 
 ```bash
-cp configs/config-platform-api.toml.example configs/config-platform-api.toml
+cp configs/config-platform-api-template.toml configs/config-platform-api.toml
 ```
 
 Add or modify users in the `[[auth.file_based.users]]` sections:
@@ -140,7 +140,7 @@ Every devportal REST API operation requires a specific `dp:*` scope. Users witho
 | API publisher | `dp:api_manage dp:api_content_manage dp:org_read dp:label_read` |
 | Developer / subscriber | `dp:api_read dp:app_read dp:app_write dp:subscription_read dp:subscription_write` |
 
-See `configs/config-platform-api.toml.example` for the complete scope list used by the default admin user.
+See `configs/config-platform-api-template.toml` for the complete scope list used by the default admin user.
 
 ### Session persistence and scripted access
 

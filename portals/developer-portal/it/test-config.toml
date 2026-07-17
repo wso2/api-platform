@@ -12,6 +12,11 @@ enabled = false
 [logging]
 console_only = true
 
+[security]
+# Required — devportal fails closed at startup without these.
+encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTIONKEY" }}'
+session_secret = '{{ env "APIP_DP_SECURITY_SESSIONSECRET" }}'
+
 [security.service_api_key]
 enabled = true
 value = "devportal-it-test-key"
