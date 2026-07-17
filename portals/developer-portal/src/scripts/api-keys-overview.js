@@ -155,12 +155,12 @@
         if (_apps) return _apps;
         try {
             var resp = await fetch(devportalApi.root('/applications'), { headers: mutationHeaders() });
-            if (!resp.ok) { _apps = []; return _apps; }
+            if (!resp.ok) return [];
             var data = await resp.json();
             // The associate endpoint expects the app handle, returned as `id` here.
             _apps = ((data && data.list) || []).map(function (a) { return { appId: a.id, displayName: a.displayName }; });
         } catch (e) {
-            _apps = [];
+            return [];
         }
         return _apps;
     }
