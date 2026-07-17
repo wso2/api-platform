@@ -132,6 +132,7 @@ All configurable values are documented in `values.yaml`. Component blocks are fu
 - `gateway.controller.tls.*` – TLS certificate configuration for HTTPS listener using cert-manager or existing secrets.
 - `gateway.controller.upstreamCerts.*` – Custom CA certificates for upstream backend TLS verification.
 - `gateway.config.policy_engine.*` – policy engine configuration including xDS client settings and admin API.
+- `gateway.config.api_key` / `gateway.config.subscriptions` – API-key policy tuning (length/algorithm/issuer) and opt-in application-subscription validation.
 
 Refer to the inline comments inside `values.yaml` for a complete matrix of options and the expected data types for each block.
 
