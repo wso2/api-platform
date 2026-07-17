@@ -19,7 +19,6 @@
 package gateway
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -70,14 +69,6 @@ func BuildGatewayImages(config DockerBuildConfig) error {
 		}
 	}
 
-	if err := ensureBuildLockInControllerContext(config.TempDir); err != nil {
-		return err
-	}
-
-	if err := ensurePythonExecutorInRuntimeContext(config.TempDir); err != nil {
-		return err
-	}
-
 	fmt.Println("  ✓ Gateway-builder completed")
 
 	// Step 2: Build the two images
@@ -100,50 +91,6 @@ func BuildGatewayImages(config DockerBuildConfig) error {
 				return err
 			}
 		}
-	}
-
-	return nil
-}
-
-func ensureBuildLockInControllerContext(tempDir string) error {
-	buildManifestSrc := filepath.Join(tempDir, "build-manifest.yaml")
-	if _, err := os.Stat(buildManifestSrc); err != nil {
-		return fmt.Errorf("build-manifest.yaml not found in gateway-builder output: %w", err)
-	}
-
-	buildManifestDst := filepath.Join(tempDir, "output", "gateway-controller", "build-manifest.yaml")
-	if _, err := os.Stat(buildManifestDst); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("failed to access gateway-controller build-manifest.yaml: %w", err)
-	}
-
-	if err := utils.CopyFile(buildManifestSrc, buildManifestDst); err != nil {
-		return fmt.Errorf("failed to copy build-manifest.yaml into gateway-controller build context: %w", err)
-	}
-
-	return nil
-}
-
-// ensurePythonExecutorInRuntimeContext stages the python-executor directory
-// produced by gateway-builder into the gateway-runtime Docker build context
-// so the Dockerfile's `COPY python-executor/ ...` can resolve it.
-func ensurePythonExecutorInRuntimeContext(tempDir string) error {
-	pythonExecutorSrc := filepath.Join(tempDir, "output", "python-executor")
-	if _, err := os.Stat(pythonExecutorSrc); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return fmt.Errorf("failed to access python-executor output: %w", err)
-	}
-
-	pythonExecutorDst := filepath.Join(tempDir, "output", "gateway-runtime", "python-executor")
-	if err := os.RemoveAll(pythonExecutorDst); err != nil {
-		return fmt.Errorf("failed to clear existing python-executor in gateway-runtime build context: %w", err)
-	}
-
-	if err := utils.CopyDir(pythonExecutorSrc, pythonExecutorDst); err != nil {
-		return fmt.Errorf("failed to copy python-executor into gateway-runtime build context: %w", err)
 	}
 
 	return nil
