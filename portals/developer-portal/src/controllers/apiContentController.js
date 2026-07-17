@@ -35,7 +35,6 @@ const apiMetadataService = require('../services/apiMetadataService');
 const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils/apiDefinitionUtil');
 const sampleApiLoader = require('../utils/sampleApiLoader');
 const adminService = require('../services/adminService');
-const { seedSampleAPIs, seedSampleMCPs, markSamplesSeeded } = require('../services/sampleSeederService');
 const apiWorkflowService = require('../services/apiWorkflowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('js-yaml');
@@ -129,7 +128,6 @@ const loadAPIs = async (req, res, next) => {
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
                 isReadOnlyMode: config.server.readOnlyMode,
-                demoEnabled: config.demo?.enabled === true,
                 applications: []
             };
 
@@ -1501,31 +1499,6 @@ const loadDocumentMd = async (req, res) => {
     }
 };
 
-const seedSamples = async (req, res) => {
-    const { orgName } = req.params;
-    // Demo mode is the gate, deliberately in place of an admin check — it's meant to let
-    // anyone (including anonymous visitors) populate a public demo instance with samples.
-    // Outside demo mode this is unreachable regardless of login/role.
-    if (!config.demo?.enabled) {
-        return util.sendError(res, 403, 'Demo mode disabled');
-    }
-    try {
-        const orgDetails = await orgDao.get(orgName);
-        const apiResults = await seedSampleAPIs(orgDetails.uuid);
-        const mcpResults = await seedSampleMCPs(orgDetails.uuid);
-        const results  = [...apiResults, ...mcpResults];
-        const deployed = results.filter(r => r.status === 'ok').length;
-        const skipped  = results.filter(r => r.status === 'exists').length;
-        const failed   = results.filter(r => r.status === 'failed').length;
-        markSamplesSeeded();
-        logger.info('Sample seed complete', { orgName, deployed, skipped, failed });
-        res.json({ results, deployed, skipped, failed });
-    } catch (err) {
-        logger.error('Sample seed error', { orgName, error: err.message });
-        util.sendError(res, 500, 'Failed to seed samples');
-    }
-};
-
 module.exports = {
     loadAPIs,
     loadAPIContent,
@@ -1538,5 +1511,4 @@ module.exports = {
     loadAPIContentMd,
     loadDocumentMd,
     loadSpecificationRaw: loadAPIDefinitionRaw,
-    seedSamples,
 };

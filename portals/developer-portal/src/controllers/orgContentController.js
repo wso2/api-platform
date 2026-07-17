@@ -25,7 +25,6 @@ const { renderTemplate, renderTemplateFromAPI } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
-const { areSamplesSeeded } = require('../services/sampleSeederService');
 
 
 const loadOrganizationContent = async (req, res, next) => {
@@ -81,9 +80,6 @@ const loadOrgContentFromAPI = async (req, res, next) => {
             devportalMode: devportalMode,
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
             profile: req.isAuthenticated() ? profile : null,
-            // In demo mode, show to everyone (including anonymous visitors) — it's a public
-            // demo sandbox, not an admin-only workflow. Outside demo mode this is always false.
-            showOnboarding: config.demo?.enabled === true && !areSamplesSeeded(),
         };
         html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/home', req.params.viewName);
     } catch (error) {

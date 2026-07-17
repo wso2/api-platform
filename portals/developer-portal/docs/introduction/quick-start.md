@@ -34,7 +34,7 @@ cp configs/config-platform-api-template.toml configs/config-platform-api.toml
 docker compose up
 ```
 
-This starts the Developer Portal in demo mode (SQLite by default). On first boot the database schema and a default organization (`default`) with a `default` view are created automatically.
+This starts the Developer Portal (SQLite by default). On first boot the database schema and a default organization (`default`) with a `default` view are created automatically.
 
 ### 4. Open the portal
 
@@ -46,7 +46,7 @@ https://localhost:3000/default/views/default
 
 Sign in with `admin` / `admin` (the credentials defined in `configs/config-platform-api.toml`).
 
-You should see the default API catalog page. Since demo mode is on, you'll get a one-time onboarding prompt offering to deploy a set of sample APIs/MCPs — this is optional and can be skipped. You can also trigger it later from **Settings → Manage APIs → Seed sample APIs**.
+You should see the default API catalog page, empty until you publish an API (next step) or run `./scripts/seed-samples.sh` to deploy a set of ready-made sample APIs/MCPs.
 
 ### 5. Publish your first API
 

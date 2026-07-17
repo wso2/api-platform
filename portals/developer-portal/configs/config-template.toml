@@ -162,15 +162,6 @@ default_name = "default"                 # "" disables auto-seeding
 auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimited/AsyncUnlimited
 
 # =============================================================================
-# DEMO MODE CONFIGURATION
-# =============================================================================
-# Enables the "Seed sample APIs" action and onboarding overlay. Do not enable
-# in production deployments.
-
-[demo]
-enabled = false
-
-# =============================================================================
 # DESIGN MODE CONFIGURATION
 # =============================================================================
 # Local, file-based preview mode — APIs/layouts load from disk instead of the

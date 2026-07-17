@@ -22,18 +22,18 @@ For end-user documentation, see [docs/](docs/).
 
 ## Quick Start (Docker Compose)
 
-The fastest way to get the portal running — no local Node install required. Requires `openssl` and Docker (used by `./setup.sh` to bcrypt-hash the admin password).
+The fastest way to get the portal running — no local Node install required. Requires `openssl` and Docker (used by `./scripts/setup.sh` to bcrypt-hash the admin password).
 
 ### Run
 
 ```bash
-./setup.sh
+./scripts/setup.sh
 docker compose up
 ```
 
-`./setup.sh` is a one-time step: it generates devportal's and the Platform API's encryption/JWT secrets, a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored) and `configs/config-platform-api.toml` (also git-ignored — copy `configs/config-platform-api-template.toml` instead for a static, no-dependencies starting point). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build devportal from source instead of using the published image, run `docker compose up --build`.
+`./scripts/setup.sh` is a one-time step: it generates devportal's and the Platform API's encryption/JWT secrets, a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored) and `configs/config-platform-api.toml` (also git-ignored — copy `configs/config-platform-api-template.toml` instead for a static, no-dependencies starting point). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build devportal from source instead of using the published image, run `docker compose up --build`.
 
-Then open **https://localhost:3000/default/views/default** and log in with the admin credentials `./setup.sh` printed.
+Then open **https://localhost:3000/default/views/default** and log in with the admin credentials `./scripts/setup.sh` printed.
 
 > **Browser warning:** the TLS certificate is self-signed. Click **Advanced → Proceed** (Chrome) or **Accept the Risk** (Firefox) to continue.
 
@@ -211,23 +211,13 @@ Open **http://localhost:3000/default/views/default**
 
 ## Seed Sample APIs (optional)
 
-Seeds a set of sample APIs into the default organisation. Works with both the Docker Compose and `npm start` workflows.
+Deploys the sample APIs and MCP servers under `samples/` into the default organisation, entirely through the public REST API — devportal itself has no built-in seeding logic. Works with both the Docker Compose and `npm start` workflows.
 
-Get a Bearer token first, then pass it via `DEVPORTAL_TOKEN`. The examples below use `admin`/`admin` — substitute the credentials `./setup.sh` printed (or run `ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./setup.sh` for this fixed pair):
-
-**npm run start:local (HTTP):**
 ```bash
-TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
-  -d "username=admin&password=admin" | jq -r .token)
-DEVPORTAL_URL=http://localhost:3000 DEVPORTAL_TOKEN=$TOKEN ./seeders/seed-apis.sh
+./scripts/seed-samples.sh
 ```
 
-**Docker Compose (HTTPS):**
-```bash
-TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
-  -d "username=admin&password=admin" | jq -r .token)
-DEVPORTAL_URL=https://localhost:3000 DEVPORTAL_TOKEN=$TOKEN ./seeders/seed-apis.sh
-```
+Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD` to skip the prompt, e.g. in CI). Safe to re-run — entries that already exist are skipped. Set `DEVPORTAL_URL`/`PLATFORM_API_URL` to override the defaults (`https://localhost:3000` / `https://localhost:9243`) — e.g. `DEVPORTAL_URL=http://localhost:3000` when running against `npm run start:local`.
 
 ---
 
@@ -412,7 +402,7 @@ paths:
 ```
 
 ```bash
-# Get a Bearer token (substitute the credentials ./setup.sh printed)
+# Get a Bearer token (substitute the credentials ./scripts/setup.sh printed)
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=admin&password=admin" | jq -r .token)
 
@@ -436,5 +426,5 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 | Organization | `default` |
 | Default view | `default` |
 | Portal URL | `https://localhost:3000/default/views/default` |
-| Admin credentials | printed by `./setup.sh` (local auth) |
+| Admin credentials | printed by `./scripts/setup.sh` (local auth) |
 | Sample API | `Ping API` visible in the catalog |

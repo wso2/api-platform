@@ -441,6 +441,8 @@ const getMetadataListFromDB = async (orgId, searchTerm, tags, apiName, apiVersio
             retrievedAPIs = await apiDao.search(orgId, searchTerm, viewName, t, typeFilter);
         } else if (viewName) {
             retrievedAPIs = await apiDao.list(orgId, viewName, t, typeFilter);
+        } else {
+            retrievedAPIs = await apiDao.listFromAllViews(orgId, t, typeFilter);
         }
         // Create response object
         let apiCreationResponse = [];

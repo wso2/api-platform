@@ -22,6 +22,14 @@ docker-compose*.yaml
 # ── Database init / seed scripts (volume-mounted into postgres) ───
 artifacts/
 
+# ── Sample APIs/MCPs (deployed via ./scripts/seed-samples.sh against the
+# REST API, not read from disk by the running app) ─────────────────
+samples/
+
+# ── Host-side operational scripts (setup.sh, seed-samples.sh) — run against
+# a running container from the host, never executed inside it ──────
+scripts/
+
 # ── Build tooling ─────────────────────────────────────────────────
 Makefile
 VERSION
@@ -35,7 +43,7 @@ README.md
 LICENSE
 docs/*.md
 bin/
-scripts/
+tools/
 
 # ── Git / editor metadata ─────────────────────────────────────────
 .git

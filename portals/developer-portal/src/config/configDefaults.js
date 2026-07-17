@@ -131,9 +131,6 @@ const DEFAULTS = {
         // because src/utils/util.js and viewConfigureController.js read it defensively.
         apiWorkflows: true,
     },
-    demo: {
-        enabled: false,
-    },
     designMode: {
         enabled: false,
         pathToLayout: './src/defaultContent/',

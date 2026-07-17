@@ -281,14 +281,16 @@ const list = async (orgId, viewName, t, typeFilter) => {
     return apiList;
 };
 
-const listFromAllViews = async (orgId, t) => {
+const listFromAllViews = async (orgId, t, typeFilter) => {
 
     let apiList = [];
     try {
         const publicAPIS = await APIMetadata.findAll({
             where: {
                 org_uuid: orgId,
-                status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
+                status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] },
+                ...(typeFilter?.include && { type: typeFilter.include }),
+                ...(typeFilter?.exclude && { type: { [Op.ne]: typeFilter.exclude } })
             },
             include: [{
                 model: APIContent,

@@ -65,11 +65,6 @@ console_only = '{{ env "APIP_DP_LOGGING_CONSOLEONLY" "true" }}'
 # "Development (npm start)" section.
 file = '{{ env "APIP_DP_DATABASE_FILE" "./data/devportal.db" }}'
 
-[demo]
-# Left generic (Compose still overrides via the "${demo:-true}" shell toggle —
-# see docker-compose.yaml — since that value is chosen per-invocation, not fixed).
-enabled = '{{ env "APIP_DP_DEMO_ENABLED" "false" }}'
-
 [platform_api]
 # Used for local auth credential validation when idp.client_id is empty.
 base_url   = '{{ env "APIP_DP_PLATFORMAPI_BASEURL" "https://platform-api:9243" }}'

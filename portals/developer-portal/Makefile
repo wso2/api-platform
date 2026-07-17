@@ -142,6 +142,9 @@ dist: clean-dist ## Build standalone developer portal distribution zip
 	@mkdir -p $(DIST_DIR)/configs
 	@mkdir -p $(DIST_DIR)/resources/developer-portal/db-scripts
 	@cp -R database/* $(DIST_DIR)/resources/developer-portal/db-scripts
+	@mkdir -p $(DIST_DIR)/resources/samples
+	@cp -R samples/apis $(DIST_DIR)/resources/samples/
+	@cp -R samples/mcps $(DIST_DIR)/resources/samples/
 	@cp configs/config.toml $(DIST_DIR)/configs/config.toml
 	@cp configs/config-template.toml $(DIST_DIR)/configs/config-template.toml
 	@cp configs/config-platform-api-template.toml $(DIST_DIR)/configs/config-platform-api.toml
@@ -149,8 +152,10 @@ dist: clean-dist ## Build standalone developer portal distribution zip
 	@cp docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md
 	@mkdir -p $(DIST_DIR)/scripts
-	@cp setup.sh $(DIST_DIR)/scripts/setup.sh
+	@cp scripts/setup.sh $(DIST_DIR)/scripts/setup.sh
 	@chmod +x $(DIST_DIR)/scripts/setup.sh
+	@cp scripts/seed-samples.sh $(DIST_DIR)/scripts/seed-samples.sh
+	@chmod +x $(DIST_DIR)/scripts/seed-samples.sh
 	@sed -i.bak \
 	    -e 's|image: .*/developer-portal:[^[:space:]]*|image: $(DEVPORTAL_IMAGE):$(DIST_VERSION)|g' \
 	    $(DIST_DIR)/docker-compose.yaml
@@ -174,11 +179,11 @@ clean: clean-dist ## Clean all build artifacts
 .PHONY: generate-ddl
 generate-ddl: ## Generate DDL schema files from Sequelize models for all supported dialects
 	@echo "Generating DDL files (postgres, mysql, mariadb, mssql, sqlite)..."
-	@node scripts/generate-ddl.js postgres
-	@node scripts/generate-ddl.js mysql
-	@node scripts/generate-ddl.js mariadb
-	@node scripts/generate-ddl.js mssql
-	@node scripts/generate-ddl.js sqlite
+	@node tools/generate-ddl.js postgres
+	@node tools/generate-ddl.js mysql
+	@node tools/generate-ddl.js mariadb
+	@node tools/generate-ddl.js mssql
+	@node tools/generate-ddl.js sqlite
 	@echo "Done. Files written to database/"
 
 # Docs Targets

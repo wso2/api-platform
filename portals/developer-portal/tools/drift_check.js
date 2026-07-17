@@ -23,7 +23,7 @@
  * against the spec response schemas using AJV — the same engine
  * express-openapi-validator uses internally.
  *
- *   node scripts/drift_check.js
+ *   node tools/drift_check.js
  *
  * Exit code 0 means every sample matches the spec. Exit code 1 means at least
  * one sample failed validation; the failing operationId, status, and AJV

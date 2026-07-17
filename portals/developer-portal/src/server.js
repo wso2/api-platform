@@ -76,14 +76,6 @@ function logStartupBanner() {
     // shorter and avoids baking view-naming details into the banner.
     const visitUrl = `${config.server.baseUrl}${orgSegment}`;
     printBanner(visitUrl);
-
-    if (config.demo?.enabled) {
-        logger.warn(
-            'DEMO MODE is ENABLED (APIP_DP_DEMO_ENABLED=true) — sample APIs/MCPs can be seeded ' +
-            'via Settings > Manage APIs or the onboarding overlay. Do not enable this in ' +
-            'production deployments.'
-        );
-    }
 }
 
 async function onListening() {

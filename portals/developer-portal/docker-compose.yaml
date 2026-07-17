@@ -40,10 +40,6 @@ services:
     depends_on:
       platform-api:
         condition: service_healthy
-    environment:
-      # Per-invocation toggle (demo=false docker compose up) — config.toml can't
-      # express this, since the value is chosen at compose-up time, not fixed.
-      APIP_DP_DEMO_ENABLED: "${demo:-true}"
     env_file:
       - path: api-platform.env
         required: true

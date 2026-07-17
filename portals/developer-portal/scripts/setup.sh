@@ -35,9 +35,9 @@
 # silently generating or accepting a weaker one. Re-running this script is
 # safe: it only fills in what's missing and never overwrites an existing value.
 #
-# Usage:
-#   ./setup.sh              (from the project root — local dev)
-#   ./scripts/setup.sh      (from the standalone distribution zip)
+# Usage (from the project root, or the standalone distribution zip — same
+# layout in both):
+#   ./scripts/setup.sh
 #   docker compose up
 #
 # ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the interactive
@@ -53,16 +53,17 @@ set -euo pipefail
 THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # This same script is copied verbatim into the distribution zip's scripts/
-# directory (see Makefile's dist target), so it can't assume its own directory
-# is the project root — detect which layout is in play by locating
-# docker-compose.yaml, which is always a direct sibling of the real root.
-if [ -f "$THIS_DIR/docker-compose.yaml" ]; then
-    ROOT_DIR="$THIS_DIR"
-elif [ -f "$THIS_DIR/../docker-compose.yaml" ]; then
+# directory (see Makefile's dist target) — both layouts put this script one
+# level below docker-compose.yaml, so ROOT_DIR is always the parent directory.
+# The direct-sibling check is kept as a fallback in case this file is ever
+# copied elsewhere.
+if [ -f "$THIS_DIR/../docker-compose.yaml" ]; then
     ROOT_DIR="$(cd "$THIS_DIR/.." && pwd)"
+elif [ -f "$THIS_DIR/docker-compose.yaml" ]; then
+    ROOT_DIR="$THIS_DIR"
 else
     echo "[setup] ERROR: could not find docker-compose.yaml next to this script or its parent directory." >&2
-    echo "[setup]        Run this as ./setup.sh from the project root, or ./scripts/setup.sh from the distribution zip." >&2
+    echo "[setup]        Run this as ./scripts/setup.sh from the project root or the distribution zip." >&2
     exit 1
 fi
 cd "$ROOT_DIR"
@@ -145,7 +146,7 @@ set_env_var "APIP_DP_PLATFORMAPI_JWTSECRET" "$JWT_SECRET_KEY"
 # Full-access scopes for the seeded admin user — ap:* (platform-admin) plus every
 # dp:*_manage scope so it can manage every Developer Portal resource area. A plain
 # literal in config-platform-api.toml (never templated), since it carries no secret.
-ADMIN_SCOPES="ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read dp:org_read dp:org_write dp:org_manage dp:org_delete dp:org_content_read dp:org_content_write dp:org_content_manage dp:org_content_delete dp:api_read dp:api_write dp:api_manage dp:api_delete dp:api_content_read dp:api_content_write dp:api_content_manage dp:api_content_delete dp:api_key_read dp:api_key_write dp:api_key_manage dp:api_key_revoke dp:api_flow_read dp:api_flow_write dp:api_flow_manage dp:api_flow_delete dp:api_workflow_read dp:api_workflow_create dp:api_workflow_update dp:api_workflow_delete dp:api_workflow_manage dp:app_read dp:app_write dp:app_manage dp:app_delete dp:app_key_write dp:app_key_manage dp:app_key_revoke dp:app_key_mapping_read dp:app_key_mapping_write dp:app_key_mapping_manage dp:subscription_read dp:subscription_write dp:subscription_manage dp:subscription_delete dp:sub_plan_read dp:sub_plan_write dp:sub_plan_manage dp:sub_plan_delete dp:idp_read dp:idp_write dp:idp_manage dp:idp_delete dp:view_read dp:view_write dp:view_manage dp:view_delete dp:km_read dp:km_write dp:km_manage dp:km_delete dp:label_read dp:label_write dp:label_manage dp:label_delete dp:provider_read dp:provider_write dp:provider_manage dp:provider_delete dp:event_read dp:delivery_manage dp:utility_write dp:utility_manage dp:webhook_subscriber_create dp:webhook_subscriber_read dp:webhook_subscriber_update dp:webhook_subscriber_delete dp:webhook_subscriber_manage dev"
+ADMIN_SCOPES="ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read dp:org_read dp:org_write dp:org_manage dp:org_delete dp:org_content_read dp:org_content_write dp:org_content_manage dp:org_content_delete dp:api_read dp:api_write dp:api_manage dp:api_delete dp:api_content_read dp:api_content_write dp:api_content_manage dp:api_content_delete dp:mcp_create dp:mcp_read dp:mcp_update dp:mcp_delete dp:mcp_manage dp:mcp_content_create dp:mcp_content_read dp:mcp_content_update dp:mcp_content_delete dp:mcp_content_manage dp:mcp_key_create dp:mcp_key_read dp:mcp_key_update dp:mcp_key_revoke dp:mcp_key_manage dp:api_key_read dp:api_key_write dp:api_key_manage dp:api_key_revoke dp:api_flow_read dp:api_flow_write dp:api_flow_manage dp:api_flow_delete dp:api_workflow_read dp:api_workflow_create dp:api_workflow_update dp:api_workflow_delete dp:api_workflow_manage dp:app_read dp:app_write dp:app_manage dp:app_delete dp:app_key_write dp:app_key_manage dp:app_key_revoke dp:app_key_mapping_read dp:app_key_mapping_write dp:app_key_mapping_manage dp:subscription_read dp:subscription_write dp:subscription_manage dp:subscription_delete dp:sub_plan_read dp:sub_plan_write dp:sub_plan_manage dp:sub_plan_delete dp:idp_read dp:idp_write dp:idp_manage dp:idp_delete dp:view_read dp:view_write dp:view_manage dp:view_delete dp:km_read dp:km_write dp:km_manage dp:km_delete dp:label_read dp:label_write dp:label_manage dp:label_delete dp:provider_read dp:provider_write dp:provider_manage dp:provider_delete dp:event_read dp:delivery_manage dp:utility_write dp:utility_manage dp:webhook_subscriber_create dp:webhook_subscriber_read dp:webhook_subscriber_update dp:webhook_subscriber_delete dp:webhook_subscriber_manage dev"
 
 log "Provisioning configs/config-platform-api.toml ..."
 if [ -f "$PLATFORM_API_CONFIG" ]; then
