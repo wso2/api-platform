@@ -12,7 +12,7 @@ For end-user documentation, see [docs/](docs/).
 
 ## Prerequisites
 
-- **Node.js** v23 (or v22+)
+- **Node.js** v24 (LTS)
 - **Make**
 - **Docker + Docker Compose** (for the Docker-based workflow)
 

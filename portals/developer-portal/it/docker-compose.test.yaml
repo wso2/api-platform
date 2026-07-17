@@ -98,7 +98,7 @@ services:
     command: ["cypress", "run", "--headless", "--browser", "electron"]
 
   rest-api-tests:
-    image: node:22-alpine
+    image: node:24-alpine
     depends_on:
       devportal:
         condition: service_healthy
@@ -128,7 +128,7 @@ services:
       - sqlite-data:/shared-db:ro
     networks:
       - it-devportal-network
-    # better-sqlite3 compiles from source on node:22-alpine (no prebuilt binary
+    # better-sqlite3 compiles from source on node:24-alpine (no prebuilt binary
     # for this platform) — needs python3/make/g++ for node-gyp.
     command: ["sh", "-c", "apk add --no-cache python3 make g++ >/dev/null && npm install --no-audit --no-fund && npm test"]
 
