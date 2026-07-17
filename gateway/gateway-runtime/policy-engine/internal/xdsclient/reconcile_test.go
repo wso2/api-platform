@@ -20,8 +20,11 @@ package xdsclient
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -336,4 +339,101 @@ func TestRouteSignatureView_Completeness(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotEqualf(t, baseSig, got, "mutating field %s must change the signature", name)
 	}
+}
+
+// =============================================================================
+// Failed rebuild must not be reported as REMOVED
+// =============================================================================
+
+// captureHandler collects slog records so tests can assert on decision logs.
+type captureHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+func (h *captureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *captureHandler) WithGroup(string) slog.Handler      { return h }
+
+func (h *captureHandler) attr(r slog.Record, key string) (any, bool) {
+	var val any
+	var found bool
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == key {
+			val, found = a.Value.Any(), true
+			return false
+		}
+		return true
+	})
+	return val, found
+}
+
+// A route present in the snapshot whose rebuild fails must be dropped but must
+// NOT be logged or counted as REMOVED (its build error is reported separately).
+func TestHandlePolicyChainUpdate_FailedRebuildNotReportedRemoved(t *testing.T) {
+	metrics.Init()
+	reg := &registry.PolicyRegistry{Policies: make(map[string]*registry.PolicyEntry)}
+	require.NoError(t, reg.SetConfig(map[string]interface{}{}))
+	reg.Policies["polOK:v1"] = &registry.PolicyEntry{
+		Definition: &policy.PolicyDefinition{Name: "polOK", Version: "v1"},
+		Factory: func(policy.PolicyMetadata, map[string]interface{}) (policy.Policy, error) {
+			return skipPolicy{}, nil
+		},
+	}
+	// polBad passes validation (it is registered) but its factory errors, so
+	// buildPolicyChain fails — exercising the rebuild-failure path.
+	reg.Policies["polBad:v1"] = &registry.PolicyEntry{
+		Definition: &policy.PolicyDefinition{Name: "polBad", Version: "v1"},
+		Factory: func(policy.PolicyMetadata, map[string]interface{}) (policy.Policy, error) {
+			return nil, fmt.Errorf("boom")
+		},
+	}
+
+	k := kernel.NewKernel()
+	h := NewResourceHandler(k, reg)
+	ctx := context.Background()
+
+	// Snapshot 1: rB applied successfully.
+	require.NoError(t, h.HandlePolicyChainUpdate(ctx,
+		[]*anypb.Any{mustResource(t, storedConfig("B", "apiB", "B", "v1", 1,
+			route("rB", pol("polOK", "v1", map[string]interface{}{"x": "1"}))))}, "1"))
+	require.NotNil(t, k.GetPolicyChain("rB"))
+
+	// Capture logs only for snapshot 2.
+	capH := &captureHandler{}
+	old := slog.Default()
+	slog.SetDefault(slog.New(capH))
+	defer slog.SetDefault(old)
+
+	// Snapshot 2: rB still present but now references a policy whose factory errors.
+	require.NoError(t, h.HandlePolicyChainUpdate(ctx,
+		[]*anypb.Any{mustResource(t, storedConfig("B", "apiB", "B", "v1", 2,
+			route("rB", pol("polBad", "v1", map[string]interface{}{"x": "1"}))))}, "2"))
+
+	// rB is dropped from the kernel (build failed)...
+	assert.Nil(t, k.GetPolicyChain("rB"))
+
+	// ...but must NOT be logged as REMOVED, and the summary count must be 0.
+	sawSummary := false
+	for _, r := range capH.records {
+		switch r.Message {
+		case "Policy chain reconcile decision":
+			if dec, ok := capH.attr(r, "decision"); ok && dec == "REMOVED" {
+				rk, _ := capH.attr(r, "route")
+				t.Fatalf("route %v wrongly logged as REMOVED after a failed rebuild", rk)
+			}
+		case "Policy chain update completed successfully":
+			sawSummary = true
+			removedVal, ok := capH.attr(r, "removed")
+			require.True(t, ok, "summary must include a removed count")
+			assert.EqualValues(t, 0, removedVal, "failed rebuild must not count as removed")
+		}
+	}
+	require.True(t, sawSummary, "expected a completion summary log")
 }

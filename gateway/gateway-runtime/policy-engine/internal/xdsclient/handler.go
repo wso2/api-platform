@@ -112,6 +112,13 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 	configsWithMetadata := make([]policyChainWithMetadata, 0)
 	var allSensitiveValues []string
 
+	// snapshotRouteKeys records every route key that appeared in this snapshot,
+	// including routes that fail validation or rebuild below. Removal detection
+	// keys off this set (not the successfully-built chains) so a route that is
+	// present-but-rejected is not misreported as REMOVED — its own warning/error
+	// log already explains why it was dropped.
+	snapshotRouteKeys := make(map[string]bool)
+
 	for i, resource := range resources {
 		if resource.TypeUrl != PolicyChainTypeURL {
 			slog.WarnContext(ctx, "Skipping resource with unexpected type",
@@ -165,6 +172,7 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 		// Validate each route configuration and pair with metadata
 		// Note: We log errors but continue to avoid NACK loops when policies are missing
 		for _, config := range routeConfigs {
+			snapshotRouteKeys[config.RouteKey] = true
 			if err := h.validatePolicyChainConfig(config); err != nil {
 				slog.WarnContext(ctx, "Skipping invalid route configuration",
 					"route", config.RouteKey,
@@ -239,9 +247,11 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 	}
 
 	// Report routes that dropped out of the snapshot (removed APIs/operations).
+	// A route absent from chains but still present in the snapshot failed
+	// validation/rebuild — it is logged elsewhere, not counted as REMOVED.
 	removed := 0
 	for routeKey := range h.lastApplied {
-		if _, present := chains[routeKey]; !present {
+		if !snapshotRouteKeys[routeKey] {
 			removed++
 			slog.DebugContext(ctx, "Policy chain reconcile decision",
 				"route", routeKey, "decision", "REMOVED")
