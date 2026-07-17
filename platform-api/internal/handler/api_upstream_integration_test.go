@@ -118,9 +118,9 @@ func restAPIBody(opRef string) string {
 	}`, restAPIProject, opRef)
 }
 
-// TestAPIHandler_CreateInvalidUpstreamRefReturns400 pins the handler's mapping of
-// ErrInvalidUpstreamDefinition to HTTP 400 on create: an unresolved per-operation ref must
-// surface as a validation failure, not an internal error.
+// TestAPIHandler_CreateInvalidUpstreamRefReturns400 pins the invalid-upstream mapping to
+// HTTP 400 on create: an unresolved per-operation ref must surface as a validation
+// failure, not an internal error.
 func TestAPIHandler_CreateInvalidUpstreamRefReturns400(t *testing.T) {
 	r, cleanup := setupAPIHandlerEnv(t)
 	defer cleanup()
