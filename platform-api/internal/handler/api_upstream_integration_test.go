@@ -54,7 +54,9 @@ func setupAPIHandlerEnv(t *testing.T) (http.Handler, func()) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	sqlDB.Exec("PRAGMA foreign_keys = ON")
+	if _, err := sqlDB.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		t.Fatalf("enable foreign keys: %v", err)
+	}
 	db := &database.DB{DB: sqlDB}
 
 	schema, err := os.ReadFile(filepath.Join("..", "database", "schema.sqlite.sql"))

@@ -330,8 +330,9 @@ const upstreamITOrgUUID = "org-upstream-it"
 const upstreamITProjectUUID = "proj-upstream-it"
 const upstreamITProjectHandle = "upstream-it-proj"
 
-// setupUpstreamITEnv creates a real SQLite-backed APIService (wired as server.go
-// wires it in production) plus a seeded organization and project.
+// setupUpstreamITEnv creates a real SQLite-backed APIService (real service and
+// repositories, no mocks; collaborators these tests never reach are nil) plus a
+// seeded organization and project.
 func setupUpstreamITEnv(t *testing.T) *APIService {
 	t.Helper()
 
@@ -341,7 +342,9 @@ func setupUpstreamITEnv(t *testing.T) *APIService {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	sqlDB.Exec("PRAGMA foreign_keys = ON")
+	if _, err := sqlDB.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		t.Fatalf("enable foreign keys: %v", err)
+	}
 	db := &database.DB{DB: sqlDB}
 	t.Cleanup(func() { sqlDB.Close() })
 
