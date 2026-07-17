@@ -940,6 +940,13 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	}
 	migrateLegacyProviderPoliciesInPlace(&m.Configuration)
 
+	if m.Configuration.Upstream != nil && m.Configuration.Upstream.Main != nil {
+		m.Configuration.Upstream.Main.Auth = defaultUpstreamAuthToNone(m.Configuration.Upstream.Main.Auth)
+	}
+	if m.Configuration.Upstream != nil && m.Configuration.Upstream.Sandbox != nil {
+		m.Configuration.Upstream.Sandbox.Auth = defaultUpstreamAuthToNone(m.Configuration.Upstream.Sandbox.Auth)
+	}
+
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
 			return nil, apperror.LLMProviderExists.New()
@@ -1143,6 +1150,13 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		m.Configuration = existing.Configuration
 	}
 
+	if m.Configuration.Upstream != nil && m.Configuration.Upstream.Main != nil {
+		m.Configuration.Upstream.Main.Auth = defaultUpstreamAuthToNone(m.Configuration.Upstream.Main.Auth)
+	}
+	if m.Configuration.Upstream != nil && m.Configuration.Upstream.Sandbox != nil {
+		m.Configuration.Upstream.Sandbox.Auth = defaultUpstreamAuthToNone(m.Configuration.Upstream.Sandbox.Auth)
+	}
+
 	// Gateway associations are managed only when the field is present in the request. An
 	// omitted field leaves associations untouched; an explicit (possibly empty) list
 	// replaces the full set, removing any mapping no longer listed. Deployment state is not
@@ -1166,7 +1180,10 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	// Best-effort: delete the secret the credential was rotated away from. Must
 	// run after the update above persists the new reference, so the in-use
 	// check below no longer sees this provider pointing at the old handle.
-	if s.secretService != nil {
+	//
+	// Skip when switching to a credential-less type ("none"/"other"): the credential
+	// is dropped from this artifact
+	if s.secretService != nil && !isCredentialLessUpstreamAuthType(mainUpstreamAuthType(m.Configuration.Upstream)) {
 		s.secretService.cleanupRotatedSecret(
 			orgUUID,
 			mainUpstreamAuthValue(existing.Configuration.Upstream),
@@ -1413,6 +1430,8 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		AssociatedGateways: associatedGateways,
 	}
 	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
+
+	m.Configuration.UpstreamAuth = defaultUpstreamAuthToNone(m.Configuration.UpstreamAuth)
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
@@ -1686,6 +1705,8 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		m.Configuration = existing.Configuration
 	}
 
+	m.Configuration.UpstreamAuth = defaultUpstreamAuthToNone(m.Configuration.UpstreamAuth)
+
 	// Gateway associations are managed only when the field is present in the request. An
 	// omitted field leaves associations untouched; an explicit (possibly empty) list
 	// replaces the full set, removing any mapping no longer listed. Deployment state is not
@@ -1709,7 +1730,10 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	// Best-effort: delete the secret the credential was rotated away from. Must
 	// run after the update above persists the new reference, so the in-use
 	// check below no longer sees this proxy pointing at the old handle.
-	if s.secretService != nil {
+	//
+	// Skip when switching to a credential-less type ("none"/"other"): the credential
+	// is dropped from this artifact.
+	if s.secretService != nil && !isCredentialLessUpstreamAuthType(upstreamAuthType(m.Configuration.UpstreamAuth)) {
 		s.secretService.cleanupRotatedSecret(
 			orgUUID,
 			upstreamAuthValue(existing.Configuration.UpstreamAuth),
@@ -2217,6 +2241,8 @@ func normalizeUpstreamAuthType(authType string) string {
 		return string(api.Bearer)
 	case "other":
 		return string(api.Other)
+	case "none":
+		return string(api.None)
 	default:
 		return normalized
 	}
@@ -3292,4 +3318,48 @@ func resolveTemplateOpenAPISpec(ctx context.Context, tpl *model.LLMProviderTempl
 		return tpl.OpenAPISpec
 	}
 	return ""
+}
+
+// defaultUpstreamAuthToNone applies the platform's default upstream auth type and
+// strips credentials from credential-less types.
+func defaultUpstreamAuthToNone(auth *model.UpstreamAuth) *model.UpstreamAuth {
+	if auth == nil {
+		return &model.UpstreamAuth{Type: string(api.None)}
+	}
+	if strings.TrimSpace(auth.Type) == "" {
+		auth.Type = string(api.None)
+	}
+	if isCredentialLessUpstreamAuthType(auth.Type) {
+		auth.Header = ""
+		auth.Value = ""
+	}
+	return auth
+}
+
+// isCredentialLessUpstreamAuthType reports whether an upstream auth type carries no
+// credentials ("none" or "other"), in which case header/value are irrelevant.
+func isCredentialLessUpstreamAuthType(authType string) bool {
+	switch normalizeUpstreamAuthType(authType) {
+	case string(api.None), string(api.Other):
+		return true
+	default:
+		return false
+	}
+}
+
+// mainUpstreamAuthType nil-safely reads upstream.main.auth.type from an
+// UpstreamConfig, returning "" when any part of the chain is nil.
+func mainUpstreamAuthType(cfg *model.UpstreamConfig) string {
+	if cfg == nil || cfg.Main == nil || cfg.Main.Auth == nil {
+		return ""
+	}
+	return cfg.Main.Auth.Type
+}
+
+// upstreamAuthType nil-safely reads .Type from an UpstreamAuth.
+func upstreamAuthType(auth *model.UpstreamAuth) string {
+	if auth == nil {
+		return ""
+	}
+	return auth.Type
 }

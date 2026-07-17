@@ -6718,7 +6718,7 @@ components:
         type:
           type: string
           description: Authentication type
-          enum: [ basic, bearer, api-key, other ]
+          enum: [ basic, bearer, api-key, other, none ]
           example: api-key
         header:
           type: string

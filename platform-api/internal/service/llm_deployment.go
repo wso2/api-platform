@@ -1104,12 +1104,9 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 	policies = orderLLMPolicies(policies)
 
 	upstream := dto.LLMUpstreamYAML{URL: main.URL, Ref: main.Ref}
-	// "other" means auth to the upstream is handled entirely by user-attached
-	// policies (e.g. aws-authentication) - omit the auth block from the deployment
-	// artifact so the gateway does not attach a header-setting policy of its own.
-	if main.Auth != nil && normalizeUpstreamAuthType(main.Auth.Type) != "other" {
-		upstream.Auth = mapModelAuthToAPI(main.Auth)
-	}
+	// Auth type. "none"/"other" carry only the type (no credentials);
+	// "api-key" carries the header and value. Absent auth => "none".
+	upstream.Auth = mapModelAuthToAPI(main.Auth)
 
 	providerDeployment := dto.LLMProviderDeploymentYAML{
 		ApiVersion: constants.GatewayApiVersion,
@@ -1878,12 +1875,9 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 		},
 	}
 
-	// "other" means auth to the upstream is handled entirely by user-attached
-	// policies - omit the auth block from the deployment artifact so the gateway
-	// does not attach a header-setting policy of its own.
-	if proxy.Configuration.UpstreamAuth != nil && normalizeUpstreamAuthType(proxy.Configuration.UpstreamAuth.Type) != "other" {
-		proxyDeployment.Spec.Provider.Auth = mapModelUpstreamAuthToAPI(proxy.Configuration.UpstreamAuth)
-	}
+	// Auth type. "none"/"other" carry only the type (no credentials);
+	// "api-key" carries the header and value. Absent auth => "none".
+	proxyDeployment.Spec.Provider.Auth = mapModelAuthToAPI(proxy.Configuration.UpstreamAuth)
 
 	// Carry additional providers (multi-provider proxies) into the deployment
 	// artifact so the gateway-controller can expose each as a selectable upstream.
@@ -1930,26 +1924,28 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 	return proxyDeployment, nil
 }
 
-// mapModelAuthToAPI converts model.UpstreamAuth to api.UpstreamAuth with pointer fields
+// mapModelAuthToAPI converts a stored model.UpstreamAuth into the api.UpstreamAuth
+// The gateway accepts an explicit type of "api-key", "other", or "none"
+// absent/empty auth defaults to "none", and the credential-less types ("none"/"other") carry only
+// the type - no header/value. "api-key" (and legacy basic/bearer) carry the header and value.
 func mapModelAuthToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth {
 	if auth == nil {
-		return nil
+		t := api.None
+		return &api.UpstreamAuth{Type: &t}
 	}
-	var authType *api.UpstreamAuthType
+	authType := string(api.None)
 	if normalized := normalizeUpstreamAuthType(auth.Type); normalized != "" {
-		t := api.UpstreamAuthType(normalized)
-		authType = &t
+		authType = normalized
+	}
+	t := api.UpstreamAuthType(authType)
+	if isCredentialLessUpstreamAuthType(authType) {
+		return &api.UpstreamAuth{Type: &t}
 	}
 	return &api.UpstreamAuth{
-		Type:   authType,
+		Type:   &t,
 		Header: utils.StringPtrIfNotEmpty(auth.Header),
 		Value:  utils.StringPtrIfNotEmpty(auth.Value),
 	}
-}
-
-// mapModelUpstreamAuthToAPI converts model.UpstreamAuth to api.UpstreamAuth (alias for mapModelAuthToAPI)
-func mapModelUpstreamAuthToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth {
-	return mapModelAuthToAPI(auth)
 }
 
 // orderLLMPolicies ensures llm-cost-based-ratelimit always precedes llm-cost in the policy list.

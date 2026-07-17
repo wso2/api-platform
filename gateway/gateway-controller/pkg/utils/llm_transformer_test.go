@@ -2113,6 +2113,87 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 	}
 }
 
+// TestTransformProxy_OtherAndNoneUpstreamAuth verifies that a proxy-level
+// upstream auth override of "other" or "none" transforms successfully and
+// attaches no upstream auth policy.
+func TestTransformProxy_OtherAndNoneUpstreamAuth(t *testing.T) {
+	for _, authType := range []api.LLMUpstreamAuthType{
+		api.LLMUpstreamAuthTypeOther,
+		api.LLMUpstreamAuthTypeNone,
+	} {
+		t.Run(string(authType), func(t *testing.T) {
+			store := storage.NewConfigStore()
+			db := newTestMockDB()
+			routerConfig := &config.RouterConfig{ListenerPort: 8080}
+			transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+			template := &models.StoredLLMProviderTemplate{
+				UUID: "0000-template-1-0000-000000000000",
+				Configuration: api.LLMProviderTemplate{
+					Metadata: api.Metadata{Name: "openai"},
+					Spec:     api.LLMProviderTemplateData{},
+				},
+			}
+			db.SaveLLMProviderTemplate(template)
+			require.NoError(t, store.AddTemplate(template))
+
+			upstreamURL := "https://api.openai.com"
+			provider := &api.LLMProviderConfiguration{
+				Metadata: api.Metadata{Name: "openai-provider"},
+				Spec: api.LLMProviderConfigData{
+					DisplayName:   "OpenAI Provider",
+					Version:       "v1.0",
+					Template:      "openai",
+					Upstream:      api.LLMProviderConfigData_Upstream{Url: &upstreamURL},
+					AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				},
+			}
+			providerAPI, err := transformer.Transform(provider, &api.RestAPI{})
+			require.NoError(t, err)
+
+			storedProvider := &models.StoredConfig{
+				UUID:                "0000-prov-cfg-1-0000-000000000000",
+				Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
+				Handle:              "openai-provider",
+				DisplayName:         "OpenAI Provider",
+				Version:             "v1.0",
+				Configuration:       *providerAPI,
+				SourceConfiguration: *provider,
+				DesiredState:        models.StateDeployed,
+				Origin:              models.OriginGatewayAPI,
+			}
+			db.SaveConfig(storedProvider)
+			require.NoError(t, store.Add(storedProvider))
+
+			proxy := &api.LLMProxyConfiguration{
+				Metadata: api.Metadata{Name: "openai-proxy"},
+				Spec: api.LLMProxyConfigData{
+					DisplayName: "OpenAI Proxy",
+					Version:     "v1.0",
+					Provider: api.LLMProxyProvider{
+						Id:   "openai-provider",
+						Auth: &api.LLMUpstreamAuth{Type: authType},
+					},
+				},
+			}
+
+			result, err := transformer.Transform(proxy, &api.RestAPI{})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+
+			for _, op := range result.Spec.Operations {
+				if op.Policies == nil {
+					continue
+				}
+				for _, p := range *op.Policies {
+					assert.NotEqual(t, constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME, p.Name,
+						"proxy auth type %q should not attach an upstream auth policy", authType)
+				}
+			}
+		})
+	}
+}
+
 func TestTransformProvider_UnsupportedMode(t *testing.T) {
 	store := storage.NewConfigStore()
 	db := newTestMockDB()

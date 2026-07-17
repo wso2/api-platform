@@ -4353,7 +4353,7 @@ components:
           properties:
             type:
               type: string
-              enum: [ api-key ]
+              enum: [ api-key, other, none ]
             header:
               type: string
             value:
@@ -4366,7 +4366,7 @@ components:
       properties:
         type:
           type: string
-          enum: [ api-key ]
+          enum: [ api-key, other, none ]
         header:
           type: string
         value:

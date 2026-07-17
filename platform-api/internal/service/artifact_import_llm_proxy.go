@@ -171,9 +171,7 @@ func mapLLMProxySpecToConfig(spec dto.LLMProxyDeploymentSpec) model.LLMProxyConf
 		vhost := spec.VHost
 		cfg.Vhost = &vhost
 	}
-	if spec.Provider.Auth != nil {
-		cfg.UpstreamAuth = mapUpstreamAuthAPIToModel(spec.Provider.Auth)
-	}
+	cfg.UpstreamAuth = defaultUpstreamAuthToNone(mapUpstreamAuthAPIToModel(spec.Provider.Auth))
 	// Security/rate-limiting are pushed as global (api-key-auth, api-level limits) and
 	// operation (resource-scoped limits) policies by the forward conversion; older gateways
 	// may still push legacy policies, so lift from all three.

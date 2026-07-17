@@ -116,6 +116,9 @@ export default function ProviderTemplateFormFields({
   const hasTemplateAuthType = Boolean(template?.metadata?.auth?.type);
   const hasTemplateAuthHeader = Boolean(template?.metadata?.auth?.header);
   const isOtherAuthType = formState.upstreamAuthType === 'other';
+  const isNoCredentialsAuthType =
+    formState.upstreamAuthType === 'other' ||
+    formState.upstreamAuthType === 'none';
   const trimmedVersion = formState.version.trim();
   const versionErrorMessage = !versionTouched
     ? ''
@@ -281,17 +284,17 @@ export default function ProviderTemplateFormFields({
               value={formState.upstreamAuthType}
               onChange={(e) => {
                 const nextAuthType = e.target.value;
+                const noCredentials =
+                  nextAuthType === 'other' || nextAuthType === 'none';
                 setFormState((prev) => ({
                   ...prev,
                   upstreamAuthType: nextAuthType,
-                  upstreamAuthHeader:
-                    nextAuthType === 'other' ? '' : prev.upstreamAuthHeader,
-                  upstreamAuthValue:
-                    nextAuthType === 'other' ? '' : prev.upstreamAuthValue,
+                  upstreamAuthHeader: noCredentials ? '' : prev.upstreamAuthHeader,
+                  upstreamAuthValue: noCredentials ? '' : prev.upstreamAuthValue,
                 }));
               }}
             >
-              {['api-key', 'other'].map((type) => (
+              {['api-key', 'other', 'none'].map((type) => (
                 <MenuItem key={type} value={type}>
                   {type}
                 </MenuItem>
@@ -311,8 +314,8 @@ export default function ProviderTemplateFormFields({
         </Grid>
       )}
 
-      {/* Auth Header - only show if not provided by template and auth type is not "other" */}
-      {!hasTemplateAuthHeader && !isOtherAuthType && (
+      {/* Auth Header - only show if not provided by template and auth type stores credentials */}
+      {!hasTemplateAuthHeader && !isNoCredentialsAuthType && (
         <Grid size={{ xs: 12, md: 6 }}>
           <FormControl fullWidth>
             <FormLabel>
@@ -336,8 +339,8 @@ export default function ProviderTemplateFormFields({
         </Grid>
       )}
 
-      {/* Auth Value - shown unless auth type is "other"; optional, provider can be created without it */}
-      {!isOtherAuthType && (
+      {/* Auth Value - shown only for credential-bearing auth types; optional, provider can be created without it */}
+      {!isNoCredentialsAuthType && (
         <Grid size={{ xs: 12 }}>
           <FormControl fullWidth>
             <FormLabel>

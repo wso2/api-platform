@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
+	"github.com/wso2/api-platform/platform-api/internal/vault"
 )
 
 func strPointer(s string) *string { return &s }
@@ -276,7 +277,7 @@ func TestCPProviderFromDPTemplate(t *testing.T) {
 
 	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
 		Id:            strPointer("cp-provider"),
-		DisplayName:          "CP Provider",
+		DisplayName:   "CP Provider",
 		Version:       "v1.0",
 		Template:      templateHandle, // references the DP template
 		Upstream:      api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.openai.com")}},
@@ -318,11 +319,11 @@ func TestCPProxyFromDPProvider(t *testing.T) {
 	)
 
 	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{
-		Id:        strPointer("cp-proxy"),
-		DisplayName:      "CP Proxy",
-		Version:   "v1.0",
-		ProjectId: "default", // project handle (setupImportTest inserts handle "default")
-		Provider:  api.LLMProxyProvider{Id: providerHandle}, // references the DP provider
+		Id:          strPointer("cp-proxy"),
+		DisplayName: "CP Proxy",
+		Version:     "v1.0",
+		ProjectId:   "default",                                // project handle (setupImportTest inserts handle "default")
+		Provider:    api.LLMProxyProvider{Id: providerHandle}, // references the DP provider
 	})
 	if err != nil {
 		t.Fatalf("create CP proxy from DP provider: %v", err)
@@ -332,5 +333,333 @@ func TestCPProxyFromDPProvider(t *testing.T) {
 	}
 	if created.ReadOnly == nil || *created.ReadOnly {
 		t.Errorf("CP proxy readOnly = %v, want false", created.ReadOnly)
+	}
+}
+
+// TestLLMProviderCreate_DefaultsUpstreamAuthToNone verifies the provider CREATE path
+// defaults an absent upstream auth to type "none" (matching the update path).
+func TestLLMProviderCreate_DefaultsUpstreamAuthToNone(t *testing.T) {
+	d := setupImportTest(t)
+	const templateHandle = "dp-openai-template"
+	importDPTemplate(t, d, "dpt-0000-0000-0000-0000000000c1", templateHandle)
+
+	repo := repository.NewLLMProviderRepo(d.db)
+	providerSvc := NewLLMProviderService(
+		repo, d.templateRepo, repository.NewOrganizationRepo(d.db), nil, d.deployment,
+		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &noopAuditRepo{}, &config.Server{},
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
+	)
+
+	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
+		Id: strPointer("cp-create-none-prov"), DisplayName: "P", Version: "v1.0", Template: templateHandle,
+		Upstream:      api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.openai.com")}},
+		AccessControl: api.LLMAccessControl{Mode: api.LLMAccessControlMode("deny_all")},
+	})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	stored, err := repo.GetByID(*created.Id, importTestOrgID)
+	if err != nil || stored == nil {
+		t.Fatalf("load stored provider: %v", err)
+	}
+	if stored.Configuration.Upstream == nil || stored.Configuration.Upstream.Main == nil ||
+		stored.Configuration.Upstream.Main.Auth == nil ||
+		stored.Configuration.Upstream.Main.Auth.Type != "none" {
+		t.Fatalf("expected stored upstream auth type 'none' after create, got %+v", stored.Configuration.Upstream)
+	}
+}
+
+// TestLLMProxyCreate_DefaultsUpstreamAuthToNone verifies the proxy CREATE path defaults an
+// absent upstream auth override to type "none" (matching the update path).
+func TestLLMProxyCreate_DefaultsUpstreamAuthToNone(t *testing.T) {
+	d := setupImportTest(t)
+	const templateHandle = "dp-openai-template"
+	const providerHandle = "dp-provider"
+	importDPTemplate(t, d, "dpt-0000-0000-0000-0000000000c2", templateHandle)
+	importDPProvider(t, d, "dpp-0000-0000-0000-0000000000c2", providerHandle, templateHandle)
+
+	repo := repository.NewLLMProxyRepo(d.db)
+	proxySvc := NewLLMProxyService(
+		repo, repository.NewLLMProviderRepo(d.db), repository.NewProjectRepo(d.db), d.deployment,
+		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &noopAuditRepo{}, &config.Server{},
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
+	)
+
+	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{
+		Id: strPointer("cp-create-none-proxy"), DisplayName: "X", Version: "v1.0", ProjectId: "default",
+		Provider: api.LLMProxyProvider{Id: providerHandle},
+	})
+	if err != nil {
+		t.Fatalf("create proxy: %v", err)
+	}
+
+	stored, err := repo.GetByID(*created.Id, importTestOrgID)
+	if err != nil || stored == nil {
+		t.Fatalf("load stored proxy: %v", err)
+	}
+	if stored.Configuration.UpstreamAuth == nil || stored.Configuration.UpstreamAuth.Type != "none" {
+		t.Fatalf("expected stored proxy upstream auth type 'none' after create, got %+v", stored.Configuration.UpstreamAuth)
+	}
+}
+
+// TestLLMProviderUpdate_DefaultsUpstreamAuthToNone verifies the provider UPDATE path
+// defaults an absent upstream auth to type "none": a provider created with api-key auth
+// and then updated with the auth object omitted (explicit removal) is stored as "none",
+// not left unset.
+func TestLLMProviderUpdate_DefaultsUpstreamAuthToNone(t *testing.T) {
+	d := setupImportTest(t)
+	const templateHandle = "dp-openai-template"
+	importDPTemplate(t, d, "dpt-0000-0000-0000-0000000000a1", templateHandle)
+
+	repo := repository.NewLLMProviderRepo(d.db)
+	providerSvc := NewLLMProviderService(
+		repo, d.templateRepo, repository.NewOrganizationRepo(d.db), nil, d.deployment,
+		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &noopAuditRepo{}, &config.Server{},
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
+	)
+
+	apiKey := api.UpstreamAuthType(api.ApiKey)
+	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
+		Id:          strPointer("cp-none-prov"),
+		DisplayName: "CP None Provider",
+		Version:     "v1.0",
+		Template:    templateHandle,
+		Upstream: api.Upstream{Main: api.UpstreamDefinition{
+			Url:  strPointer("https://api.openai.com"),
+			Auth: &api.UpstreamAuth{Type: &apiKey, Header: strPointer("X-API-Key"), Value: strPointer("secret")},
+		}},
+		AccessControl: api.LLMAccessControl{Mode: api.LLMAccessControlMode("deny_all")},
+	})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	// Update omitting the upstream auth object entirely (explicit removal).
+	if _, err := providerSvc.Update(importTestOrgID, *created.Id, "tester", &api.LLMProvider{
+		DisplayName:   "CP None Provider",
+		Version:       "v1.0",
+		Template:      templateHandle,
+		Upstream:      api.Upstream{Main: api.UpstreamDefinition{Url: strPointer("https://api.openai.com")}},
+		AccessControl: api.LLMAccessControl{Mode: api.LLMAccessControlMode("deny_all")},
+	}); err != nil {
+		t.Fatalf("update provider: %v", err)
+	}
+
+	stored, err := repo.GetByID(*created.Id, importTestOrgID)
+	if err != nil || stored == nil {
+		t.Fatalf("load stored provider: %v", err)
+	}
+	if stored.Configuration.Upstream == nil || stored.Configuration.Upstream.Main == nil ||
+		stored.Configuration.Upstream.Main.Auth == nil ||
+		stored.Configuration.Upstream.Main.Auth.Type != "none" {
+		t.Fatalf("expected stored upstream auth type 'none' after update, got %+v", stored.Configuration.Upstream)
+	}
+}
+
+// TestLLMProxyUpdate_DefaultsUpstreamAuthToNone verifies the proxy UPDATE path defaults an
+// absent upstream auth override to type "none": a proxy created with no override and then
+// updated with none supplied is stored as "none".
+func TestLLMProxyUpdate_DefaultsUpstreamAuthToNone(t *testing.T) {
+	d := setupImportTest(t)
+	const templateHandle = "dp-openai-template"
+	const providerHandle = "dp-provider"
+	importDPTemplate(t, d, "dpt-0000-0000-0000-0000000000a2", templateHandle)
+	importDPProvider(t, d, "dpp-0000-0000-0000-0000000000a2", providerHandle, templateHandle)
+
+	repo := repository.NewLLMProxyRepo(d.db)
+	proxySvc := NewLLMProxyService(
+		repo, repository.NewLLMProviderRepo(d.db), repository.NewProjectRepo(d.db), d.deployment,
+		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &noopAuditRepo{}, &config.Server{},
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
+	)
+
+	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{
+		Id:          strPointer("cp-none-proxy"),
+		DisplayName: "CP None Proxy",
+		Version:     "v1.0",
+		ProjectId:   "default",
+		Provider:    api.LLMProxyProvider{Id: providerHandle},
+	})
+	if err != nil {
+		t.Fatalf("create proxy: %v", err)
+	}
+
+	// Update with no provider auth override.
+	if _, err := proxySvc.Update(importTestOrgID, *created.Id, "tester", &api.LLMProxy{
+		DisplayName: "CP None Proxy",
+		Version:     "v1.0",
+		ProjectId:   "default",
+		Provider:    api.LLMProxyProvider{Id: providerHandle},
+	}); err != nil {
+		t.Fatalf("update proxy: %v", err)
+	}
+
+	stored, err := repo.GetByID(*created.Id, importTestOrgID)
+	if err != nil || stored == nil {
+		t.Fatalf("load stored proxy: %v", err)
+	}
+	if stored.Configuration.UpstreamAuth == nil || stored.Configuration.UpstreamAuth.Type != "none" {
+		t.Fatalf("expected stored proxy upstream auth type 'none' after update, got %+v", stored.Configuration.UpstreamAuth)
+	}
+}
+
+// TestLLMProviderUpdate_SwitchApiKeyToOther_ClearsStoredCredential verifies that switching an
+// existing api-key provider to "other" drops the credential (header + value) from the stored
+// artifact, so no stale credential lingers under a credential-less type.
+func TestLLMProviderUpdate_SwitchApiKeyToOther_ClearsStoredCredential(t *testing.T) {
+	d := setupImportTest(t)
+	const templateHandle = "dp-openai-template"
+	importDPTemplate(t, d, "dpt-0000-0000-0000-0000000000b1", templateHandle)
+
+	repo := repository.NewLLMProviderRepo(d.db)
+	providerSvc := NewLLMProviderService(
+		repo, d.templateRepo, repository.NewOrganizationRepo(d.db), nil, d.deployment,
+		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &noopAuditRepo{}, &config.Server{},
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
+	)
+
+	apiKey := api.UpstreamAuthType(api.ApiKey)
+	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
+		Id: strPointer("cp-switch-prov"), DisplayName: "P", Version: "v1.0", Template: templateHandle,
+		Upstream: api.Upstream{Main: api.UpstreamDefinition{
+			Url:  strPointer("https://api.openai.com"),
+			Auth: &api.UpstreamAuth{Type: &apiKey, Header: strPointer("X-API-Key"), Value: strPointer("sk-secret")},
+		}},
+		AccessControl: api.LLMAccessControl{Mode: api.LLMAccessControlMode("deny_all")},
+	})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	other := api.UpstreamAuthType(api.Other)
+	if _, err := providerSvc.Update(importTestOrgID, *created.Id, "tester", &api.LLMProvider{
+		DisplayName: "P", Version: "v1.0", Template: templateHandle,
+		Upstream: api.Upstream{Main: api.UpstreamDefinition{
+			Url:  strPointer("https://api.openai.com"),
+			Auth: &api.UpstreamAuth{Type: &other},
+		}},
+		AccessControl: api.LLMAccessControl{Mode: api.LLMAccessControlMode("deny_all")},
+	}); err != nil {
+		t.Fatalf("update provider: %v", err)
+	}
+
+	stored, err := repo.GetByID(*created.Id, importTestOrgID)
+	if err != nil || stored == nil {
+		t.Fatalf("load stored provider: %v", err)
+	}
+	auth := stored.Configuration.Upstream.Main.Auth
+	if auth == nil || auth.Type != "other" {
+		t.Fatalf("expected stored auth type 'other', got %+v", auth)
+	}
+	if auth.Header != "" || auth.Value != "" {
+		t.Fatalf("expected cleared header/value after switch to other, got header=%q value=%q", auth.Header, auth.Value)
+	}
+}
+
+// TestLLMProxyUpdate_SwitchApiKeyToOther_ClearsStoredCredential is the proxy counterpart.
+func TestLLMProxyUpdate_SwitchApiKeyToOther_ClearsStoredCredential(t *testing.T) {
+	d := setupImportTest(t)
+	const templateHandle = "dp-openai-template"
+	const providerHandle = "dp-provider"
+	importDPTemplate(t, d, "dpt-0000-0000-0000-0000000000b2", templateHandle)
+	importDPProvider(t, d, "dpp-0000-0000-0000-0000000000b2", providerHandle, templateHandle)
+
+	repo := repository.NewLLMProxyRepo(d.db)
+	proxySvc := NewLLMProxyService(
+		repo, repository.NewLLMProviderRepo(d.db), repository.NewProjectRepo(d.db), d.deployment,
+		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &noopAuditRepo{}, &config.Server{},
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
+	)
+
+	apiKey := api.UpstreamAuthType(api.ApiKey)
+	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{
+		Id: strPointer("cp-switch-proxy"), DisplayName: "X", Version: "v1.0", ProjectId: "default",
+		Provider: api.LLMProxyProvider{
+			Id:   providerHandle,
+			Auth: &api.UpstreamAuth{Type: &apiKey, Header: strPointer("X-API-Key"), Value: strPointer("sk-secret")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create proxy: %v", err)
+	}
+
+	other := api.UpstreamAuthType(api.Other)
+	if _, err := proxySvc.Update(importTestOrgID, *created.Id, "tester", &api.LLMProxy{
+		DisplayName: "X", Version: "v1.0", ProjectId: "default",
+		Provider: api.LLMProxyProvider{Id: providerHandle, Auth: &api.UpstreamAuth{Type: &other}},
+	}); err != nil {
+		t.Fatalf("update proxy: %v", err)
+	}
+
+	stored, err := repo.GetByID(*created.Id, importTestOrgID)
+	if err != nil || stored == nil {
+		t.Fatalf("load stored proxy: %v", err)
+	}
+	auth := stored.Configuration.UpstreamAuth
+	if auth == nil || auth.Type != "other" {
+		t.Fatalf("expected stored proxy auth type 'other', got %+v", auth)
+	}
+	if auth.Header != "" || auth.Value != "" {
+		t.Fatalf("expected cleared header/value after switch to other, got header=%q value=%q", auth.Header, auth.Value)
+	}
+}
+
+// TestLLMProviderUpdate_SwitchToOther_PreservesReferencedSecret verifies that switching an
+// api-key provider (whose value is a {{ secret }} reference) to "other" drops the reference
+// from the artifact but does NOT delete the underlying secret, since it may be referenced by
+// other providers/proxies.
+func TestLLMProviderUpdate_SwitchToOther_PreservesReferencedSecret(t *testing.T) {
+	d := setupImportTest(t)
+	const templateHandle = "dp-openai-template"
+	importDPTemplate(t, d, "dpt-0000-0000-0000-0000000000b3", templateHandle)
+
+	v, err := vault.NewInHouseVault([]byte("12345678901234567890123456789012"))
+	if err != nil {
+		t.Fatalf("create vault: %v", err)
+	}
+	secretSvc := NewSecretService(repository.NewSecretRepo(d.db), v,
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)))
+	if _, err := secretSvc.Create(importTestOrgID, "tester",
+		&dto.CreateSecretRequest{Handle: "shared-key", DisplayName: "Shared Key", Value: "sk-shared"}); err != nil {
+		t.Fatalf("create secret: %v", err)
+	}
+
+	repo := repository.NewLLMProviderRepo(d.db)
+	providerSvc := NewLLMProviderService(
+		repo, d.templateRepo, repository.NewOrganizationRepo(d.db), nil, d.deployment,
+		repository.NewGatewayRepo(d.db), nil, newTestLogger(), &noopAuditRepo{}, &config.Server{},
+		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
+	)
+	providerSvc.SetSecretService(secretSvc)
+
+	apiKey := api.UpstreamAuthType(api.ApiKey)
+	created, err := providerSvc.Create(importTestOrgID, "tester", &api.LLMProvider{
+		Id: strPointer("cp-secret-prov"), DisplayName: "P", Version: "v1.0", Template: templateHandle,
+		Upstream: api.Upstream{Main: api.UpstreamDefinition{
+			Url:  strPointer("https://api.openai.com"),
+			Auth: &api.UpstreamAuth{Type: &apiKey, Header: strPointer("X-API-Key"), Value: strPointer(`{{ secret "shared-key" }}`)},
+		}},
+		AccessControl: api.LLMAccessControl{Mode: api.LLMAccessControlMode("deny_all")},
+	})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	other := api.UpstreamAuthType(api.Other)
+	if _, err := providerSvc.Update(importTestOrgID, *created.Id, "tester", &api.LLMProvider{
+		DisplayName: "P", Version: "v1.0", Template: templateHandle,
+		Upstream: api.Upstream{Main: api.UpstreamDefinition{
+			Url:  strPointer("https://api.openai.com"),
+			Auth: &api.UpstreamAuth{Type: &other},
+		}},
+		AccessControl: api.LLMAccessControl{Mode: api.LLMAccessControlMode("deny_all")},
+	}); err != nil {
+		t.Fatalf("update provider: %v", err)
+	}
+
+	// The secret must still exist - the switch to "other" must not delete it.
+	if _, err := secretSvc.Get(importTestOrgID, "shared-key"); err != nil {
+		t.Fatalf("expected secret 'shared-key' to survive the switch to 'other', got: %v", err)
 	}
 }

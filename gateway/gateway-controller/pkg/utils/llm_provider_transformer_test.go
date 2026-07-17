@@ -523,6 +523,59 @@ func TestTransform_ApiKeyAuth(t *testing.T) {
 	}
 }
 
+// TestTransform_OtherAndNoneAuth verifies that "other" and "none" upstream auth
+// types transform successfully but attach no upstream auth policy - for "other"
+// authentication is handled by user-attached policies, for "none" there is none.
+func TestTransform_OtherAndNoneAuth(t *testing.T) {
+	for _, authType := range []api.LLMProviderConfigDataUpstreamAuthType{
+		api.LLMProviderConfigDataUpstreamAuthTypeOther,
+		api.LLMProviderConfigDataUpstreamAuthTypeNone,
+	} {
+		t.Run(string(authType), func(t *testing.T) {
+			transformer, _ := setupTestTransformer(t)
+
+			provider := &api.LLMProviderConfiguration{
+				ApiVersion: "gateway.api-platform.wso2.com/v1",
+				Kind:       "LlmProvider",
+				Metadata:   api.Metadata{Name: "openai-provider"},
+				Spec: api.LLMProviderConfigData{
+					DisplayName: "test",
+					Version:     "v1.0",
+					Template:    "openai",
+					Upstream: api.LLMProviderConfigData_Upstream{
+						Url: stringPtr("https://api.example.com"),
+						Auth: &struct {
+							Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+							Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+							Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+						}{
+							Type: authType,
+						},
+					},
+					AccessControl: api.LLMAccessControl{
+						Mode: api.AllowAll,
+					},
+				},
+			}
+
+			output := &api.RestAPI{}
+			result, err := transformer.Transform(provider, output)
+			require.NoError(t, err)
+
+			// No upstream auth policy should be attached to any operation.
+			for _, op := range result.Spec.Operations {
+				if op.Policies == nil {
+					continue
+				}
+				for _, pol := range *op.Policies {
+					assert.NotEqual(t, constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME, pol.Name,
+						"auth type %q should not attach an upstream auth policy", authType)
+				}
+			}
+		})
+	}
+}
+
 func TestTransform_UnsupportedAuthType(t *testing.T) {
 	transformer, _ := setupTestTransformer(t)
 

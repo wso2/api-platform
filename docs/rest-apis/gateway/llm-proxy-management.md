@@ -231,6 +231,14 @@ Status Code **200**
 |»»»»»» path|string|true|none|none|
 |»»»»»» methods|[string]|true|none|none|
 |»»»»»» params|object|true|none|JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.|
+|»»»» additionalProviders|[[LLMProxyAdditionalProvider](schemas.md#schemallmproxyadditionalprovider)]|false|none|Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies (e.g. an OpenAI translator) can route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target.|
+|»»»»» id|string|true|none|Unique id of a deployed llm provider|
+|»»»»» as|string|false|none|Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted.|
+|»»»»» auth|[LLMUpstreamAuth](schemas.md#schemallmupstreamauth)|false|none|none|
+|»»»»» transformer|[LLMProxyTransformer](schemas.md#schemallmproxytransformer)|false|none|Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.|
+|»»»»»» type|string|true|none|Translator policy name (for example openai-to-anthropic).|
+|»»»»»» version|string|true|none|Major-only translator policy version (for example v1). The Gateway Controller resolves it to the installed full version.|
+|»»»»»» params|object|false|none|Translator-specific parameters (for example model, apiVersion).|
 |»»»» policies|[[LLMPolicy](schemas.md#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
 |»»»»» name|string|true|none|none|
 |»»»»» version|string|true|none|none|
@@ -239,6 +247,9 @@ Status Code **200**
 |»»»»»» methods|[string]|true|none|none|
 |»»»»»» params|object|true|none|JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.|
 |»»»» deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.|
+|»»»» resilience|[Resilience](schemas.md#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
+|»»»»» timeout|string|false|none|Maximum time for the entire route (request to upstream response). "0s" disables the timeout.|
+|»»»»» idleTimeout|string|false|none|Per-route stream idle timeout (overrides the listener stream idle timeout for this route). "0s" disables the timeout.|
 
 *and*
 
@@ -259,6 +270,8 @@ Status Code **200**
 |apiVersion|gateway.api-platform.wso2.com/v1|
 |kind|LlmProxy|
 |type|api-key|
+|type|other|
+|type|none|
 |deploymentState|deployed|
 |deploymentState|undeployed|
 |state|deployed|
