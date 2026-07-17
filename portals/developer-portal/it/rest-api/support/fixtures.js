@@ -38,6 +38,7 @@ async function createView(overrides = {}) {
     let labels = overrides.labels;
     if (!labels) {
         const labelId = uniqueHandle('label');
+        // client.post auto-tracks the label + view for afterAll cleanup.
         await client.as('admin').post('/labels', { id: labelId, displayName: labelId });
         labels = [labelId];
     }
@@ -108,6 +109,7 @@ async function createApi(overrides = {}) {
     if (res.status !== 201) {
         throw new Error(`Failed to seed API: ${res.status} ${JSON.stringify(res.body)}`);
     }
+    // client.postMultipart auto-tracks the created API/MCP for afterAll cleanup.
     return res.body;
 }
 
@@ -125,6 +127,7 @@ async function createWebhookSubscriber(overrides = {}) {
     if (res.status !== 201) {
         throw new Error(`Failed to seed webhook subscriber: ${res.status} ${JSON.stringify(res.body)}`);
     }
+    // client.post auto-tracks the subscriber for afterAll cleanup.
     return res.body;
 }
 

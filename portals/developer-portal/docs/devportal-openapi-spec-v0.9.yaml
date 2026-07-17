@@ -692,6 +692,9 @@ paths:
       summary: List labels
       description: Returns all labels configured for the organization.
       operationId: listLabels
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/LabelsResponse"

@@ -1217,7 +1217,7 @@ const deleteAPIFile = async (req, res) => {
         } else {
             apiFileResponse = await apiFileDao.deleteAll(fileType, orgId, apiId);
         }
-        if (!apiFileResponse) {
+        if (apiFileResponse) {
             res.status(204).send();
         } else {
             util.sendError(res, 404, 'API Content not found');

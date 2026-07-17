@@ -82,7 +82,6 @@ const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
             ref_id: apiMetadata.referenceId,
             status: apiMetadata.status,
             name: apiMetadata.name,
-            handle: apiMetadata.handle ? apiMetadata.handle : `${apiMetadata.name.toLowerCase().replace(/\s+/g, '')}-v${apiMetadata.version}`,
             description: apiMetadata.description,
             version: apiMetadata.version,
             type: apiMetadata.type,

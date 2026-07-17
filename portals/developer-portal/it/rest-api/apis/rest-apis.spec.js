@@ -232,14 +232,10 @@ describe('REST APIs', () => {
         // YAML/artifact uploads. A `labels` array sent via the plain JSON metadata
         // field (what every other update test in this suite uses) was a silent no-op.
         //
-        // NOTE: every PUT body here includes `id: api.id`. Without it, apiDao.update()
-        // recomputes the handle from name+version (`handle: apiMetadata.handle ? ... :
-        // slugify(name)-v(version)`) since the JSON update path never re-derives handle
-        // from an omitted `id` the way create does — silently changing the resource's
-        // own identifier out from under a follow-up GET by the original id. That's a
-        // separate, pre-existing quirk (not something these label tests should mask by
-        // relying on it) — every other update test in this suite is unaffected only
-        // because none of them re-GET by the original id afterward.
+        // NOTE: the PUT bodies here include `id: api.id`, but it is no longer required —
+        // apiDao.update() leaves the handle untouched (it is immutable after creation),
+        // so an omitted `id` no longer drifts the resource's
+        // identifier. The field is kept only for explicitness.
         it('changes labels on update (new labels replace old ones)', async () => {
             const labelA = await createLabel();
             const labelB = await createLabel();

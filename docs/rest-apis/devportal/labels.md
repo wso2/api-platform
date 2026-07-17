@@ -139,6 +139,13 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 </aside>
 
+<h3 id="list-labels-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|limit|query|integer|false|Maximum number of records to return.|
+|offset|query|integer|false|Number of records to skip before returning results.|
+
 > Example responses
 
 > 200 Response
