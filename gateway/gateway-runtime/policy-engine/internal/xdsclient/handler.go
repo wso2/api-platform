@@ -53,6 +53,13 @@ type StoredPolicyConfig struct {
 	TransportMetadata *TransportMetadata           `json:"transport_metadata,omitempty"`
 }
 
+// appliedRoute records the signature and built chain last applied for a route,
+// so a subsequent snapshot can reuse the chain when the config is unchanged.
+type appliedRoute struct {
+	signature string
+	chain     *registry.PolicyChain
+}
+
 // ResourceHandler handles xDS resource updates
 type ResourceHandler struct {
 	kernel              *kernel.Kernel
@@ -62,6 +69,13 @@ type ResourceHandler struct {
 	lazyResourceHandler *LazyResourceHandler
 	subscriptionStore   *policyenginev1.SubscriptionStore
 	subscriptionHandler *SubscriptionStateHandler
+
+	// lastApplied maps routeKey -> the signature and chain currently applied.
+	// Used by HandlePolicyChainUpdate to reuse unchanged chains instead of
+	// re-invoking each policy's GetPolicy factory on every SotW snapshot.
+	// Safe without a lock: HandlePolicyChainUpdate runs serially on the single
+	// ADS recv goroutine.
+	lastApplied map[string]appliedRoute
 }
 
 // NewResourceHandler creates a new ResourceHandler
@@ -77,6 +91,7 @@ func NewResourceHandler(k *kernel.Kernel, reg *registry.PolicyRegistry) *Resourc
 		lazyResourceHandler: NewLazyResourceHandler(lazyResourceStore, slog.Default()),
 		subscriptionStore:   subStore,
 		subscriptionHandler: NewSubscriptionStateHandler(subStore, slog.Default()),
+		lastApplied:         make(map[string]appliedRoute),
 	}
 }
 
@@ -163,17 +178,74 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 		}
 	}
 
-	// Build all policy chains (can fail if policy not found or validation fails)
+	// Reconcile against the last-applied set: reuse the existing chain when a
+	// route's behavioral config is unchanged (skipping every GetPolicy factory
+	// call for that route), rebuild only changed/new routes, and drop routes
+	// absent from this snapshot. This keeps a redeploy of one API from
+	// re-instantiating every other API's policies (xDS is State-of-the-World, so
+	// every snapshot carries all routes).
 	chains := make(map[string]*registry.PolicyChain)
+	nextApplied := make(map[string]appliedRoute, len(configsWithMetadata))
+	var reused, rebuilt, added int
+
 	for _, cwm := range configsWithMetadata {
-		chain, err := h.buildPolicyChain(cwm.config.RouteKey, cwm.config, cwm.metadata)
+		routeKey := cwm.config.RouteKey
+
+		// Fail-safe: if the signature can't be computed, treat the route as
+		// changed and rebuild — never risk serving a stale chain.
+		sig, sigErr := routeSignature(cwm.config, cwm.metadata)
+
+		if sigErr == nil {
+			if prev, ok := h.lastApplied[routeKey]; ok && prev.signature == sig {
+				chains[routeKey] = prev.chain
+				nextApplied[routeKey] = prev
+				reused++
+				slog.DebugContext(ctx, "Policy chain reconcile decision",
+					"route", routeKey, "decision", "REUSED",
+					"policyCount", len(prev.chain.Policies), "sig", shortSig(sig))
+				continue
+			}
+		} else {
+			slog.WarnContext(ctx, "Failed to compute route signature, forcing rebuild",
+				"route", routeKey, "error", sigErr)
+		}
+
+		_, existed := h.lastApplied[routeKey]
+
+		chain, err := h.buildPolicyChain(routeKey, cwm.config, cwm.metadata)
 		if err != nil {
 			slog.ErrorContext(ctx, "Failed to build policy chain for route, skipping",
-				"route", cwm.config.RouteKey,
+				"route", routeKey,
 				"error", err)
 			continue // Skip this route but process others
 		}
-		chains[cwm.config.RouteKey] = chain
+		chains[routeKey] = chain
+		// Only remember the signature when we could compute it; a failed
+		// signature stays absent so the route rebuilds again next snapshot.
+		if sigErr == nil {
+			nextApplied[routeKey] = appliedRoute{signature: sig, chain: chain}
+		}
+
+		decision := "NEW"
+		if existed {
+			decision = "REBUILT"
+			rebuilt++
+		} else {
+			added++
+		}
+		slog.DebugContext(ctx, "Policy chain reconcile decision",
+			"route", routeKey, "decision", decision,
+			"policyCount", len(chain.Policies), "sig", shortSig(sig))
+	}
+
+	// Report routes that dropped out of the snapshot (removed APIs/operations).
+	removed := 0
+	for routeKey := range h.lastApplied {
+		if _, present := chains[routeKey]; !present {
+			removed++
+			slog.DebugContext(ctx, "Policy chain reconcile decision",
+				"route", routeKey, "decision", "REMOVED")
+		}
 	}
 
 	// Log the full set of routes being applied so we can detect missing routes
@@ -188,6 +260,10 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 	// Apply routes and sensitive values atomically so a concurrent config dump can never
 	// observe new policy chains with stale sensitive values (which would bypass redaction).
 	h.kernel.ApplyWholeRoutesAndSensitiveValues(chains, allSensitiveValues)
+
+	// Commit the reconciliation state so the next snapshot diffs against exactly
+	// what was just applied.
+	h.lastApplied = nextApplied
 
 	// Record metrics for policy chains loaded
 	metrics.PolicyChainsLoaded.WithLabelValues("ads").Set(float64(len(chains)))
@@ -208,7 +284,11 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 
 	slog.InfoContext(ctx, "Policy chain update completed successfully",
 		"version", version,
-		"total_routes", len(chains))
+		"total_routes", len(chains),
+		"reused", reused,
+		"rebuilt", rebuilt,
+		"new", added,
+		"removed", removed)
 
 	return nil
 }
@@ -384,6 +464,13 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 	hasResponseBodyPolicy := false
 
 	for _, policyConfig := range config.Policies {
+		// WARNING: routeSignature (signature.go) must capture every input this
+		// function feeds into the policy instance. New keys read from
+		// policyConfig.Parameters and new PolicyInstance fields are covered
+		// automatically (Parameters and PolicyInstance are hashed wholesale), but
+		// a NEW apiMetadata field added below is NOT — routeSignatureView projects
+		// Metadata explicitly. If you consume another apiMetadata.* field here, add
+		// it to routeSignatureView or reconciliation will reuse stale chains.
 		metadata := policy.PolicyMetadata{
 			RouteName:  routeKey,
 			APIId:      apiMetadata.APIId,
