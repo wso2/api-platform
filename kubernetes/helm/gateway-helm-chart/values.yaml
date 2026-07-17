@@ -77,6 +77,22 @@ gateway:
         # Unique identifier for the gateway instance
         gateway_id: "platform-gateway-id"
 
+      # Dedicated admin/debug HTTP server (config dump, xDS sync status). Already
+      # effectively active today even though this block was previously absent from
+      # config.toml — see defaultConfig() in pkg/config/config.go. Adding it here
+      # only makes the existing implicit default explicit and overridable.
+      admin_server:
+        enabled: true
+        port: 9092
+        allowed_ips: ["*"]
+        pprof:
+          # Go runtime profiling (net/http/pprof) served on the admin server, off by
+          # default. When enabling, also restrict allowed_ips above or reach it via
+          # `kubectl port-forward` (see gateway.controller.service.expose.admin).
+          enabled: false
+          block_profile_rate: 0
+          mutex_profile_fraction: 0
+
       # Policy xDS Server configuration
       policy_server:
         # Policy xDS gRPC port for policy distribution
@@ -95,11 +111,10 @@ gateway:
 
       # Storage configuration
       storage:
-        # Storage type: "sqlite", "postgres", "sqlserver", or "memory"
+        # Storage type: "sqlite", "postgres", "sqlserver"
         # - sqlite: Single-instance embedded database backed by a PersistentVolumeClaim
         # - postgres: External PostgreSQL database; enables multi-replica controller deployments
         # - sqlserver: External SQL Server database; enables multi-replica controller deployments
-        # - memory: No persistence; all state is lost on restart (useful for testing only)
         type: sqlite
 
         # SQLite configuration (used when type=sqlite)
@@ -176,6 +191,13 @@ gateway:
       policies:
         # Directory containing policy definitions
         definitions_path: ./default-policies
+        # Path to build-manifest.yaml for custom policy detection
+        build_manifest_path: ./build-manifest.yaml
+
+      # LLM provider template configuration
+      llm:
+        # Directory containing default LLM provider prompt templates
+        template_definitions_path: ./default-llm-provider-templates
 
       # Control plane connection configuration
       # Note: host and token are set via gateway.controller.controlPlane and rendered as env vars in the deployment.
@@ -209,6 +231,23 @@ gateway:
         apim_oauth2_username: ""
         apim_oauth2_password: ""
 
+      # EventHub: poll-based eventual-consistency layer used to sync state across
+      # multiple controller replicas (only relevant when storage.type is postgres or
+      # sqlserver and replicaCount > 1, but always configured/valid).
+      event_hub:
+        # Interval at which events are polled from the database
+        poll_interval: 3s
+        # Interval at which old events are cleaned up
+        cleanup_interval: 10m
+        # How long events are retained before being deleted
+        retention_period: 1h
+        # Connection pool settings for the EventHub database connection
+        database:
+          max_open_conns: 5
+          max_idle_conns: 2
+          conn_max_lifetime: 30m
+          conn_max_idle_time: 5m
+
       # Encryption provider configuration for secret management.
       # File paths must match the mount path set in gateway.controller.encryptionKeys.mountPath.
       encryption:
@@ -234,6 +273,17 @@ gateway:
       # Gateway host for incoming requests
       gateway_host: "*"
 
+      # Virtual-host domain configuration
+      vhosts:
+        main:
+          # Explicit domain list for the main vhost (e.g. ["api.example.com"]).
+          # Empty (default) relies on the `default` pattern below.
+          domains: []
+          default: "*"
+        sandbox:
+          domains: []
+          default: "sandbox-*"
+
       # Access logs configuration
       access_logs:
         # Enable or disable access logs
@@ -256,21 +306,25 @@ gateway:
           bytesRx: "%BYTES_RECEIVED%"
           bytesTx: "%BYTES_SENT%"
           dur: "%DURATION%"
-          uSvcT: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+          upSvcT: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
           xff: "%REQ(X-FORWARDED-FOR)%"
           ua: "%REQ(USER-AGENT)%"
           reqId: "%REQ(X-REQUEST-ID)%"
           host: "%REQ(:AUTHORITY)%"
-          uHost: "%UPSTREAM_HOST%"
-          uProto: "%UPSTREAM_PROTOCOL%"
-          uPath: "%REQ(:PATH)%"
+          upHost: "%UPSTREAM_HOST%"
+          upProto: "%UPSTREAM_PROTOCOL%"
+          upPath: "%REQ(:PATH)%"
           respCdDtl: "%RESPONSE_CODE_DETAILS%"
           connTrmDtl: "%CONNECTION_TERMINATION_DETAILS%"
+          reqTxDur: "%REQUEST_TX_DURATION%"
+          respTxDur: "%RESPONSE_TX_DURATION%"
+          reqDur: "%REQUEST_DURATION%"
+          respDur: "%RESPONSE_DURATION%"
 
         # Text format template - used when format is "text"
         # Uses Envoy command operators: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage
         text_format: |
-          [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% %CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
+          [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %REQ(:PATH)% %UPSTREAM_PROTOCOL% %RESPONSE_CODE% %RESPONSE_FLAGS% %RESPONSE_CODE_DETAILS% %CONNECTION_TERMINATION_DETAILS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% %REQUEST_TX_DURATION% %RESPONSE_TX_DURATION% %REQUEST_DURATION% %RESPONSE_DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
 
       # Listener port for incoming HTTP traffic (Envoy proxy port)
       listener_port: 8080
@@ -334,6 +388,13 @@ gateway:
 
       tracing_service_name: router
 
+      # Lua script configuration
+      lua:
+        request_transformation:
+          # Do NOT set the deprecated top-level lua_script_path alias — use this
+          # nested path only (config.go documents lua_script_path as deprecated).
+          script_path: ./lua/request_transformation.lua
+
       # Policy Engine ext_proc filter configuration
       policy_engine:
         # Connection mode: "uds" (Unix domain socket, default) or "tcp"
@@ -388,6 +449,13 @@ gateway:
           - "*"
           - "127.0.0.1"
 
+        pprof:
+          # Go runtime profiling (net/http/pprof), off by default. When enabling,
+          # also restrict allowed_ips above or reach it via port-forward.
+          enabled: false
+          block_profile_rate: 0
+          mutex_profile_fraction: 0
+
       config_mode:
         # Configuration mode: "file" or "xds"
         # - file: Load policy chains from static YAML file
@@ -429,10 +497,60 @@ gateway:
         # Log format: json, text
         format: json
 
+      # Prometheus metrics server (policy-engine side)
+      metrics:
+        # Defaults to false to match the policy-engine binary's own code default
+        # (MetricsConfig.Enabled in its defaultConfig()) — NOT config-template.toml's
+        # shipped default of true — so behavior for existing deployments is unchanged.
+        enabled: false
+        # NOTE: keep in sync with gateway.gatewayRuntime.service.ports.policyEngineMetrics
+        port: 9003
+
+      # Python policy executor bridge
+      python_executor:
+        # Timeout for a single Python policy execution
+        timeout: 30s
+        server:
+          # Connection mode: "uds" (default) or "tcp"
+          mode: uds
+          # Port (only used when mode=tcp)
+          port: 9010
+          # Host (only used when mode=tcp)
+          host: localhost
+
     # Static API artifacts bundled with the gateway (see docs/gateway/immutable-gateway.md)
     immutable_gateway:
       enabled: false
       artifacts_dir: "/etc/api-platform-gateway/immutable_gateway/artifacts"
+
+    # Application-level API-key subscription validation. Absent by default — the
+    # subscriptionValidation system policy stays uninjected. Uncomment to enable:
+    # subscriptions:
+    #   enable_validation: true
+
+    # API key configuration (used by the api-key-auth policy)
+    api_key:
+      # Number of active API keys allowed per user per API
+      api_keys_per_user_per_api: 10
+      # Hashing algorithm used to store API keys (currently only "sha256")
+      algorithm: sha256
+      # Minimum / maximum accepted length for an external API key value
+      min_key_length: 36
+      max_key_length: 128
+      # When non-empty, only API keys whose issuer claim matches (or is unset) are
+      # accepted by the api-key-auth policy. Defaults to "" (accept any issuer) to
+      # match the gateway-controller's own code default. config-template.toml ships
+      # "api-platform-devportal" instead; set this explicitly to that value if this
+      # gateway should only accept keys minted by the bundled WSO2 Developer Portal —
+      # do not adopt it as the chart default, or existing deployments minting/accepting
+      # keys with a different or absent issuer would start being rejected.
+      issuer: ""
+
+    # MCP (Model Context Protocol) proxy configuration
+    mcp:
+      # Restore legacy behaviour of appending "/mcp" to the backend upstream path.
+      # Default (false) forwards to exactly the configured upstream path.
+      append_resource_path_to_backend: false
 
   # Raw TOML string to append to the generated config.toml
   # Use this for additional configuration not covered by the structured values above
@@ -450,7 +568,7 @@ gateway:
   controller:
     image:
       repository: ghcr.io/wso2/api-platform/gateway-controller
-      tag: "1.2.0-beta-SNAPSHOT"
+      tag: "1.2.0-alpha2"
       pullPolicy: Always
     imagePullSecrets: []
     service:
@@ -581,6 +699,13 @@ gateway:
         name: ""
         key: password
     metrics:
+      # Whether the controller's own Prometheus metrics HTTP server actually starts.
+      # Defaults to false to match the gateway-controller binary's own code default
+      # (Controller.Metrics.Enabled in defaultConfig()) — NOT config-template.toml's
+      # shipped default of true — so this chart's behavior does not silently change
+      # for existing deployments upgrading past this release. Set to true to expose
+      # Prometheus metrics on `port` below.
+      enabled: false
       port: 9091
     persistence:
       enabled: true
@@ -713,7 +838,7 @@ gateway:
   gatewayRuntime:
     image:
       repository: ghcr.io/wso2/api-platform/gateway-runtime
-      tag: "1.2.0-beta-SNAPSHOT"
+      tag: "1.2.0-alpha2"
       pullPolicy: Always
     imagePullSecrets: []
     service:
