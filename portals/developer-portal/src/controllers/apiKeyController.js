@@ -229,12 +229,7 @@ async function listAllApiKeys(req, res) {
         return res.status(200).json(util.toPaginatedList(mapped, req));
     } catch (err) {
         logger.error('Failed to list all API keys', { error: err.message, orgId });
-        return res.status(errorStatus(err)).json({
-            status: 'error',
-            code: 'INTERNAL_SERVER_ERROR',
-            message: 'Failed to list API keys',
-            errors: [],
-        });
+        return util.sendError(res, errorStatus(err), 'Failed to list API keys');
     }
 }
 

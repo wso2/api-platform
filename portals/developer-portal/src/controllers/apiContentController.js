@@ -556,19 +556,6 @@ const loadDocsPage = async (req, res, next) => {
                 refId: apiMetadata[0].dataValues.ref_id,
             };
 
-            let apiDefinitionForNav = null;
-            if (apiType !== constants.API_TYPE.GRAPHQL && apiType !== constants.API_TYPE.MCP) {
-                try {
-                    apiDefinitionForNav = await getApiDefinitionFileContent(orgId, apiId);
-                } catch (definitionErr) {
-                    logger.debug('Could not load API definition for API keys nav check', {
-                        orgId,
-                        apiId,
-                        error: definitionErr.message
-                    });
-                }
-            }
-
             const templateContent = {
                 baseUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
                 baseDocUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
@@ -577,7 +564,9 @@ const loadDocsPage = async (req, res, next) => {
                 apiName: apiMetadata[0].dataValues.name || '',
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
-                showApiKeysNav: await resolveShowApiKeysNav(orgId, apiId, apiType, metaForNav, apiDefinitionForNav),
+                // resolveShowApiKeysNav returns false early for GraphQL/MCP/SOAP and lazily
+                // fetches the definition itself for the remaining types, so no preload here.
+                showApiKeysNav: await resolveShowApiKeysNav(orgId, apiId, apiType, metaForNav),
             };
             html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/docs", viewName);
         } catch (error) {

@@ -79,7 +79,9 @@ describe('api-keys webhook events', () => {
         // fields rather than the plaintext ever appearing in `data`.
         expect(received.body.encrypted_fields).toEqual([]);
         expect(received.body.data).toEqual({
-            key_id: res.body.keyId,
+            // key_id is the key's internal uuid — not exposed in the REST response, so pin it
+            // against the persisted event's aggregate_uuid (published with aggregateId: keyId).
+            key_id: event.aggregate_uuid,
             handle: keyId,
             display_name: keyId,
             expires_at: null,
@@ -90,7 +92,7 @@ describe('api-keys webhook events', () => {
 
     it('publishes and delivers apikey.regenerated', async () => {
         const keyId = uniqueHandle('key').toLowerCase();
-        const generated = await client.as('publisher').post(`/apis/${api.id}/api-keys/generate`, { id: keyId });
+        await client.as('publisher').post(`/apis/${api.id}/api-keys/generate`, { id: keyId });
 
         const since = new Date();
         const res = await client.as('publisher').post(`/apis/${api.id}/api-keys/regenerate`, { keyId });
@@ -106,7 +108,7 @@ describe('api-keys webhook events', () => {
         expect(received).toBeDefined();
         expect(received.body.encrypted_fields).toEqual([]);
         expect(received.body.data).toEqual({
-            key_id: generated.body.keyId,
+            key_id: event.aggregate_uuid, // key's internal uuid; not exposed in the REST response
             handle: keyId,
             display_name: keyId,
             expires_at: null,
@@ -117,7 +119,7 @@ describe('api-keys webhook events', () => {
 
     it('publishes and delivers apikey.revoked', async () => {
         const keyId = uniqueHandle('key').toLowerCase();
-        const generated = await client.as('publisher').post(`/apis/${api.id}/api-keys/generate`, { id: keyId });
+        await client.as('publisher').post(`/apis/${api.id}/api-keys/generate`, { id: keyId });
 
         const since = new Date();
         const res = await client.as('publisher').post(`/apis/${api.id}/api-keys/revoke`, { keyId });
@@ -132,7 +134,7 @@ describe('api-keys webhook events', () => {
         const received = sink.findDeliveryFor('apikey.revoked');
         expect(received).toBeDefined();
         expect(received.body.data).toEqual({
-            key_id: generated.body.keyId,
+            key_id: event.aggregate_uuid, // key's internal uuid; not exposed in the REST response
             handle: keyId,
             display_name: keyId,
             api: { name: api.name, version: api.version, ref_id: api.refId || '', type: api.type },
@@ -163,10 +165,12 @@ describe('api-keys webhook events', () => {
         // `application.id` here is the app's internal uuid (apiKeyService.resolveApp),
         // never exposed over REST — only handle/display_name are checkable directly.
         expect(received.body.data).toEqual({
-            key_id: expect.any(String),
+            key_id: event.aggregate_uuid, // key's internal uuid; not exposed in the REST response
             handle: keyId,
             display_name: keyId,
             api: { name: api.name, version: api.version, ref_id: api.refId || '', type: api.type },
+            // application.id is the app's internal uuid (never exposed over REST); its handle
+            // is the checkable external identifier, so pin id only by shape.
             application: { id: expect.any(String), display_name: 'Assoc App', handle: appId },
         });
     });

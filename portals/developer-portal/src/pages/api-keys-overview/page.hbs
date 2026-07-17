@@ -63,7 +63,7 @@
               data-app-id="{{this.appId}}"
               data-app-display-name="{{this.appDisplayName}}">
             <td>
-              <a class="sub-api-link" href="{{@root.baseUrl}}/{{#if (eq this.apiType 'Mcp')}}mcp{{else}}api{{/if}}/{{this.apiHandle}}">{{#if this.apiName}}{{this.apiName}}{{else}}{{this.apiHandle}}{{/if}}</a>
+              <a class="sub-api-link" href="{{@root.baseUrl}}/{{#if (eq (lowercase this.apiType) 'mcp')}}mcp{{else}}api{{/if}}/{{this.apiHandle}}">{{#if this.apiName}}{{this.apiName}}{{else}}{{this.apiHandle}}{{/if}}</a>
               {{#if this.apiVersion}}<span class="ak-app" style="margin-left:0.375rem;color:#8a98a6;">{{this.apiVersion}}</span>{{/if}}
             </td>
             <td><span class="ak-key-name">{{this.displayName}}</span></td>

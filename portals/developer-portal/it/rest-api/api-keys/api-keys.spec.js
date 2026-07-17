@@ -44,6 +44,7 @@ describe('API keys', () => {
         expect(res.body.id).toBe(id);
         expect(res.body.key).toBeDefined();
         expect(res.body.status).toBe('ACTIVE');
+        expect(res.body.keyId).toBeUndefined();
     });
 
     it('lists API keys for an API', async () => {
@@ -52,7 +53,9 @@ describe('API keys', () => {
 
         const res = await client.as('publisher').get(`/apis/${api.id}/api-keys`);
         expect(res.status).toBe(200);
-        expect(res.body.list.some((k) => k.id === id)).toBe(true);
+        const key = res.body.list.find((k) => k.id === id);
+        expect(key).toBeDefined();
+        expect(key.keyId).toBeUndefined();
     });
 
     it('regenerates an API key', async () => {
@@ -63,6 +66,7 @@ describe('API keys', () => {
         expect(res.status).toBe(200);
         expect(res.body.key).toBeDefined();
         expect(res.body.key).not.toBe(create.body.key);
+        expect(res.body.keyId).toBeUndefined();
     });
 
     it('revokes an API key', async () => {
@@ -108,6 +112,7 @@ describe('API keys', () => {
         const res = await client.as('developer').post(`/apis/${api.id}/api-keys/associate`, { keyId, appId });
         expect(res.status).toBe(200);
         expect(res.body.application.id).toBe(appId);
+        expect(res.body.keyId).toBeUndefined();
     });
 
     it('dissociates an API key from an application', async () => {
