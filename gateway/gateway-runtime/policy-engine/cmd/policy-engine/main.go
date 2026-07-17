@@ -219,7 +219,7 @@ func main() {
 	}
 
 	// Create and start ext_proc gRPC server
-	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName)
+	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName, cfg.PolicyEngine.Request.MaxDecompressedBytes, cfg.PolicyEngine.Response.MaxDecompressedBytes)
 
 	// Create listener based on mode (same pattern as gateway-controller)
 	var lis net.Listener

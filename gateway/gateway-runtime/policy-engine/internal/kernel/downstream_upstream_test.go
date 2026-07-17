@@ -37,7 +37,7 @@ import (
 func newDownstreamTestExecCtx() *PolicyExecutionContext {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 	return newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
 }
 

@@ -98,7 +98,7 @@ func TestNewExternalProcessorServer(t *testing.T) {
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	tracingConfig := config.TracingConfig{}
 
-	server := NewExternalProcessorServer(kernel, chainExecutor, tracingConfig, "test-service")
+	server := NewExternalProcessorServer(kernel, chainExecutor, tracingConfig, "test-service", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	require.NotNil(t, server)
 	assert.Equal(t, kernel, server.kernel)
@@ -111,7 +111,7 @@ func TestNewExternalProcessorServer_DefaultServiceName(t *testing.T) {
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
 	tracingConfig := config.TracingConfig{}
 
-	server := NewExternalProcessorServer(kernel, chainExecutor, tracingConfig, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, tracingConfig, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	require.NotNil(t, server)
 	// Tracer should be created with default name
@@ -125,7 +125,7 @@ func TestNewExternalProcessorServer_DefaultServiceName(t *testing.T) {
 func TestGenerateRequestID(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	id1 := server.generateRequestID()
 	id2 := server.generateRequestID()
@@ -144,7 +144,7 @@ func TestGenerateRequestID(t *testing.T) {
 func TestSkipAllProcessing(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	routeMetadata := RouteMetadata{
 		RouteName:  "test-route",
@@ -179,7 +179,7 @@ func TestSkipAllProcessing(t *testing.T) {
 func TestProcess_EmptyStream(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	stream := newMockStream([]*extprocv3.ProcessingRequest{})
 
@@ -192,7 +192,7 @@ func TestProcess_EmptyStream(t *testing.T) {
 func TestProcess_RequestHeaders_NoPolicyChain(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	req := &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_RequestHeaders{
@@ -225,7 +225,7 @@ func TestProcess_RequestHeaders_NoPolicyChain(t *testing.T) {
 func TestProcess_UnknownRequestType(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	// Create a request with nil Request field
 	req := &extprocv3.ProcessingRequest{}
@@ -247,7 +247,7 @@ func TestProcess_UnknownRequestType(t *testing.T) {
 func TestProcess_RecvError(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	stream := newMockStream([]*extprocv3.ProcessingRequest{})
 	stream.recvErr = errors.New("receive error")
@@ -260,7 +260,7 @@ func TestProcess_RecvError(t *testing.T) {
 func TestProcess_ContextCanceled(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	stream := newMockStream([]*extprocv3.ProcessingRequest{})
 	stream.recvErr = context.Canceled
@@ -274,7 +274,7 @@ func TestProcess_ContextCanceled(t *testing.T) {
 func TestProcess_SendError(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	req := &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_RequestHeaders{
@@ -297,7 +297,7 @@ func TestProcess_SendError(t *testing.T) {
 func TestHandleProcessingPhase_RequestBody_NoContext(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	req := &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_RequestBody{
@@ -329,7 +329,7 @@ func TestHandleProcessingPhase_RequestBody_NoContext(t *testing.T) {
 func TestHandleProcessingPhase_ResponseHeaders_NoContext(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	req := &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_ResponseHeaders{
@@ -364,7 +364,7 @@ func TestHandleProcessingPhase_ResponseHeaders_NoContext(t *testing.T) {
 func TestHandleProcessingPhase_ResponseBody_NoContext(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	req := &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_ResponseBody{
@@ -396,7 +396,7 @@ func TestHandleProcessingPhase_ResponseBody_NoContext(t *testing.T) {
 func TestInitializeExecutionContext_NoPolicyChain(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	req := &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_RequestHeaders{
@@ -438,7 +438,7 @@ func TestInitializeExecutionContext_WithPolicyChain(t *testing.T) {
 	})
 
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
-	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes)
 
 	req := &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_RequestHeaders{

@@ -20,6 +20,7 @@ package kernel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -134,9 +135,8 @@ type PolicyExecutionContext struct {
 	// response bodies. Nil when the response is not Content-Encoded.
 	responseStreamDecomp *streamDecompressor
 	// streamTerminated is set when a policy returns TerminateStream=true. Any
-	// subsequent upstream chunks that Envoy delivers after we have already sent
-	// EndOfStream downstream are silently suppressed — the downstream connection
-	// is already closed and forwarding more data would be undefined behaviour.
+	// subsequent upstream chunks that Envoy delivers after EndOfStream was sent
+	// downstream are silently suppressed — forwarding more data would be undefined.
 	streamTerminated bool
 
 	// Reference to server components
@@ -158,6 +158,20 @@ func newPolicyExecutionContext(
 		policyChain:       chain,
 		analyticsMetadata: make(map[string]interface{}),
 		dynamicMetadata:   make(map[string]map[string]interface{}),
+	}
+}
+
+// closeStreamDecompressors releases decoder goroutines when the ext_proc stream
+// ends before an encoded body reaches EOS (client cancellation, send/receive
+// failure, or a policy short-circuit).
+func (ec *PolicyExecutionContext) closeStreamDecompressors() {
+	if ec.requestStreamDecomp != nil {
+		ec.requestStreamDecomp.Close()
+		ec.requestStreamDecomp = nil
+	}
+	if ec.responseStreamDecomp != nil {
+		ec.responseStreamDecomp.Close()
+		ec.responseStreamDecomp = nil
 	}
 }
 
@@ -193,6 +207,88 @@ func (ec *PolicyExecutionContext) handlePolicyError(
 			},
 		},
 	}
+}
+
+// handlePayloadTooLarge builds an HTTP 413 immediate response for a buffered
+// request body that exceeded the decompression ceiling. The client payload stays
+// generic (no limit value, no internals); specifics are logged under the
+// correlation id. Streaming bodies fail the ext_proc stream closed instead,
+// because an HTTP response cannot be guaranteed after full-duplex forwarding starts.
+func (ec *PolicyExecutionContext) handlePayloadTooLarge(
+	ctx context.Context,
+	err error,
+	phase string,
+) *extprocv3.ProcessingResponse {
+	errorID := uuid.New().String()
+
+	slog.WarnContext(ctx, "Rejecting body: decompressed payload exceeds configured limit",
+		"error_id", errorID,
+		"request_id", ec.requestID,
+		"phase", phase,
+		"route_key", ec.routeKey,
+		"error", err,
+	)
+
+	errorBody := fmt.Sprintf(`{"error":"Payload Too Large","error_id":"%s"}`, errorID)
+
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: &extprocv3.ImmediateResponse{
+				Status: &typev3.HttpStatus{
+					Code: typev3.StatusCode_PayloadTooLarge,
+				},
+				Headers: buildHeaderValueOptions(map[string]string{
+					"content-type": "application/json",
+					"x-error-id":   errorID,
+				}),
+				Body: []byte(errorBody),
+			},
+		},
+	}
+}
+
+// responsePayloadTooLargeError fails the ext_proc stream closed when an upstream
+// response exceeds the decompression ceiling. A response-body ImmediateResponse
+// cannot reliably replace an upstream response because its headers may already
+// have reached the downstream codec. Returning an error lets Envoy's fail-closed
+// ext_proc configuration terminate the response instead of promising a late 413.
+func (ec *PolicyExecutionContext) responsePayloadTooLargeError(
+	ctx context.Context,
+	err error,
+	phase string,
+) error {
+	errorID := uuid.New().String()
+
+	slog.WarnContext(ctx, "Rejecting upstream response: decompressed payload exceeds configured limit",
+		"error_id", errorID,
+		"request_id", ec.requestID,
+		"phase", phase,
+		"route_key", ec.routeKey,
+		"error", err,
+	)
+
+	return fmt.Errorf("upstream response decompression limit exceeded (error_id=%s): %w", errorID, err)
+}
+
+// requestPayloadTooLargeError fails a full-duplex request closed when its
+// decompressed output exceeds the ceiling. Earlier request chunks may already be
+// upstream, so an ImmediateResponse cannot reliably promise an HTTP 413.
+func (ec *PolicyExecutionContext) requestPayloadTooLargeError(
+	ctx context.Context,
+	err error,
+	phase string,
+) error {
+	errorID := uuid.New().String()
+
+	slog.WarnContext(ctx, "Rejecting streaming request: decompressed payload exceeds configured limit",
+		"error_id", errorID,
+		"request_id", ec.requestID,
+		"phase", phase,
+		"route_key", ec.routeKey,
+		"error", err,
+	)
+
+	return fmt.Errorf("streaming request decompression limit exceeded (error_id=%s): %w", errorID, err)
 }
 
 // getModeOverride returns the ProcessingMode override for this execution context.
@@ -418,8 +514,12 @@ func (ec *PolicyExecutionContext) processRequestBody(
 		// Decompress body if Content-Encoding was set, so policies receive plain bytes.
 		bodyContent := body.Body
 		if ec.requestContentEncoding != "" {
-			decompressed, err := decompressBody(body.Body, ec.requestContentEncoding)
+			decompressed, err := decompressBody(body.Body, ec.requestContentEncoding, ec.server.maxRequestDecompressedBytes)
 			if err != nil {
+				// Over-limit bodies must be rejected, never forwarded raw.
+				if errors.Is(err, ErrDecompressedTooLarge) {
+					return ec.handlePayloadTooLarge(ctx, err, "request_body"), nil
+				}
 				slog.Warn("Failed to decompress request body, passing raw bytes to policies",
 					"request_id", ec.requestID,
 					"encoding", ec.requestContentEncoding,
@@ -477,18 +577,23 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 	// handle their own internal state across chunks.
 	if ec.requestContentEncoding != "" {
 		if ec.requestStreamDecomp == nil {
-			ec.requestStreamDecomp = newStreamDecompressor(ec.requestContentEncoding)
+			ec.requestStreamDecomp = newStreamDecompressor(ec.requestContentEncoding, ec.server.maxRequestDecompressedBytes)
 		}
 		decompressed, err := ec.requestStreamDecomp.FeedChunk(chunk.Chunk, chunk.EndOfStream)
 		if err != nil {
-			slog.Warn("[streaming] per-chunk request decompression error; disabling decompression",
+			ec.requestStreamDecomp.Close()
+			ec.requestStreamDecomp = nil
+			// Full-duplex request chunks may already be upstream, so fail closed
+			// instead of promising a late HTTP 413 that Envoy may have to reset.
+			if errors.Is(err, ErrDecompressedTooLarge) {
+				return nil, ec.requestPayloadTooLargeError(ctx, err, "request_body_streaming")
+			}
+			slog.Warn("[streaming] per-chunk request decompression error; failing stream closed",
 				"request_id", ec.requestID,
 				"encoding", ec.requestContentEncoding,
 				"error", err,
 			)
-			ec.requestStreamDecomp.Close()
-			ec.requestStreamDecomp = nil
-			ec.requestContentEncoding = ""
+			return nil, fmt.Errorf("streaming request decompression failed: %w", err)
 		} else {
 			chunk.Chunk = decompressed
 		}
@@ -707,8 +812,14 @@ func (ec *PolicyExecutionContext) processResponseBody(
 		// Decompress body if Content-Encoding was set, so policies receive plain JSON.
 		bodyContent := body.Body
 		if ec.responseContentEncoding != "" {
-			decompressed, err := decompressBody(body.Body, ec.responseContentEncoding)
+			decompressed, err := decompressBody(body.Body, ec.responseContentEncoding, ec.server.maxResponseDecompressedBytes)
 			if err != nil {
+				// Response headers may already be committed by the time Envoy sends the
+				// buffered body. Fail the ext_proc stream closed instead of returning a
+				// late ImmediateResponse whose status cannot reliably replace them.
+				if errors.Is(err, ErrDecompressedTooLarge) {
+					return nil, ec.responsePayloadTooLargeError(ctx, err, "response_body")
+				}
 				slog.Warn("Failed to decompress response body, passing raw bytes to policies",
 					"request_id", ec.requestID,
 					"encoding", ec.responseContentEncoding,
@@ -756,10 +867,10 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 	ctx context.Context,
 	body *extprocv3.HttpBody,
 ) (*extprocv3.ProcessingResponse, error) {
-	// A policy previously terminated the stream (TerminateStream=true). Envoy may
-	// still deliver buffered upstream chunks after we have already sent EndOfStream
-	// downstream — suppress them with an empty streamed response so we do not attempt
-	// to write to a closed downstream connection.
+	// A policy previously terminated the stream. Envoy may still deliver buffered
+	// upstream chunks after processing has been terminated. Keep suppressing them
+	// while mirroring the upstream EndOfStream flag; Envoy's StreamedBodyResponse
+	// contract does not permit us to invent an early EOS.
 	if ec.streamTerminated {
 		slog.Warn("[streaming] received upstream chunk after stream was already terminated; suppressing",
 			"route", ec.routeKey,
@@ -772,7 +883,9 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 					Response: &extprocv3.CommonResponse{
 						BodyMutation: &extprocv3.BodyMutation{
 							Mutation: &extprocv3.BodyMutation_StreamedResponse{
-								StreamedResponse: &extprocv3.StreamedBodyResponse{},
+								StreamedResponse: &extprocv3.StreamedBodyResponse{
+									EndOfStream: body.EndOfStream,
+								},
 							},
 						},
 					},
@@ -791,18 +904,24 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 	// handle their own internal state across chunks.
 	if ec.responseContentEncoding != "" {
 		if ec.responseStreamDecomp == nil {
-			ec.responseStreamDecomp = newStreamDecompressor(ec.responseContentEncoding)
+			ec.responseStreamDecomp = newStreamDecompressor(ec.responseContentEncoding, ec.server.maxResponseDecompressedBytes)
 		}
 		decompressed, err := ec.responseStreamDecomp.FeedChunk(chunk.Chunk, chunk.EndOfStream)
 		if err != nil {
-			slog.Warn("[streaming] per-chunk response decompression error; disabling decompression",
+			// Response headers and prior chunks may already be committed downstream.
+			// Failing the ext_proc stream makes Envoy reset the response; suppressing
+			// until upstream EOS would turn the failure into a successful truncated body.
+			slog.Warn("[streaming] per-chunk response decompression error; failing stream closed",
 				"request_id", ec.requestID,
 				"encoding", ec.responseContentEncoding,
 				"error", err,
 			)
 			ec.responseStreamDecomp.Close()
 			ec.responseStreamDecomp = nil
-			ec.responseContentEncoding = ""
+			if errors.Is(err, ErrDecompressedTooLarge) {
+				return nil, ec.responsePayloadTooLargeError(ctx, err, "response_body_streaming")
+			}
+			return nil, fmt.Errorf("streaming upstream response decompression failed: %w", err)
 		} else {
 			chunk.Chunk = decompressed
 		}

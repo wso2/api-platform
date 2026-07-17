@@ -55,10 +55,16 @@ type ExternalProcessorServer struct {
 	kernel   *Kernel
 	executor *executor.ChainExecutor
 	tracer   trace.Tracer
+
+	// Per-direction caps on decompressed bytes buffered per body (buffered mode)
+	// or per chunk (streaming), from policy_engine.request/.response config.
+	// A value <= 0 disables the cap.
+	maxRequestDecompressedBytes  int64
+	maxResponseDecompressedBytes int64
 }
 
 // NewExternalProcessorServer creates a new ExternalProcessorServer
-func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExecutor, tracingConfig config.TracingConfig, tracingServiceName string) *ExternalProcessorServer {
+func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExecutor, tracingConfig config.TracingConfig, tracingServiceName string, maxRequestDecompressedBytes int64, maxResponseDecompressedBytes int64) *ExternalProcessorServer {
 	// Initialize tracer once - will be NoOp if tracing is disabled
 	serviceName := tracingServiceName
 	if serviceName == "" {
@@ -66,9 +72,11 @@ func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExe
 	}
 
 	return &ExternalProcessorServer{
-		kernel:   kernel,
-		executor: chainExecutor,
-		tracer:   otel.Tracer(serviceName),
+		kernel:                       kernel,
+		executor:                     chainExecutor,
+		tracer:                       otel.Tracer(serviceName),
+		maxRequestDecompressedBytes:  maxRequestDecompressedBytes,
+		maxResponseDecompressedBytes: maxResponseDecompressedBytes,
 	}
 }
 
@@ -92,6 +100,11 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 	// Lives until response complete, then garbage collected when stream ends.
 	// One stream = one HTTP request, so this is allocated once per request.
 	var execCtx *PolicyExecutionContext
+	defer func() {
+		if execCtx != nil {
+			execCtx.closeStreamDecompressors()
+		}
+	}()
 
 	for {
 		// Receive request from Envoy
