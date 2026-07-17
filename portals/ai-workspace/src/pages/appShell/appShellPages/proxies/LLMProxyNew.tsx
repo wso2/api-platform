@@ -65,6 +65,7 @@ import {
   getProjectSlug,
 } from '../../../../utils/projectRouting';
 import { truncateProviderDisplayName } from '../../../../utils/providerTemplateDisplay';
+import { resolveApiKeyAuthDisplay } from '../../../../utils/apiKeyAuthDisplay';
 import type { CreateProxyRequest, LLMProvider } from '../../../../utils/types';
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { logger } from '../../../../utils/logger';
@@ -279,8 +280,10 @@ function LLMProxyNewContent({
   const selectedProviderRequiresApiKey = Boolean(
     providerDetail?.security?.enabled && providerDetail.security.apiKey?.enabled
   );
-  const selectedProviderApiKeyName =
-    providerDetail?.security?.apiKey?.key?.trim() || 'X-API-Key';
+  const selectedProviderApiKeyName = resolveApiKeyAuthDisplay(
+    providerDetail?.security,
+    providerDetail?.globalPolicies
+  ).headerName;
   const projectSlug = getProjectSlug(effectiveProject);
   const generatedProxyId = toProxyId(formState.name);
   const computedContext = projectSlug

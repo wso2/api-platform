@@ -60,6 +60,10 @@ import {
   GATEWAY_MANAGED_ARTIFACT_TOOLTIP,
 } from '../../../../utils/readOnlyArtifacts';
 import ApiTryOutCurlSnippet from '../../../../Components/common/ApiTryOutCurlSnippet';
+import {
+  formatPrefixedKey,
+  resolveApiKeyAuthDisplay,
+} from '../../../../utils/apiKeyAuthDisplay';
 
 type OpenApiSpec = Record<string, unknown>;
 
@@ -130,8 +134,14 @@ export default function LLMProxyOverviewTab() {
   // available even for gateway-created (read-only) proxies.
   const isReadOnlyProxy = false;
 
-  const apiKeyLocation = proxy?.security?.apiKey?.in ?? 'header';
-  const apiKeyName = proxy?.security?.apiKey?.key ?? 'X-API-Key';
+  const {
+    headerName: apiKeyName,
+    location: apiKeyLocation,
+    valuePrefix: apiKeyValuePrefix,
+  } = useMemo(
+    () => resolveApiKeyAuthDisplay(proxy?.security, proxy?.globalPolicies),
+    [proxy?.security, proxy?.globalPolicies]
+  );
   const providerTemplate = useMemo(() => {
     const providerId =
       typeof proxy?.provider === 'string'
@@ -194,9 +204,12 @@ export default function LLMProxyOverviewTab() {
     const resolvedApiKeyHeaderName = apiKeyName.trim() || 'X-API-Key';
 
     return {
-      [resolvedApiKeyHeaderName]: latestGeneratedKey,
+      [resolvedApiKeyHeaderName]: formatPrefixedKey(
+        apiKeyValuePrefix,
+        latestGeneratedKey
+      ),
     };
-  }, [apiKeyName, latestGeneratedKey]);
+  }, [apiKeyName, apiKeyValuePrefix, latestGeneratedKey]);
 
   const swaggerViewerKey = useMemo(
     () =>
@@ -934,6 +947,7 @@ export default function LLMProxyOverviewTab() {
                 gatewayUrl={generatedGatewayUrl}
                 apiKeyHeaderName={apiKeyName}
                 apiKeyLocation={apiKeyLocation}
+                apiKeyValuePrefix={apiKeyValuePrefix}
                 providerTemplate={providerTemplate}
               />
             </>
