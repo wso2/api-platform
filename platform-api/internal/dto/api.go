@@ -161,9 +161,7 @@ type UpstreamTarget struct {
 	Ref string `yaml:"ref,omitempty"`
 }
 
-// UpstreamDefinitionYAML represents a reusable named upstream definition in the
-// deployment YAML (the API-level upstreamDefinitions array the gateway resolves
-// refs against).
+// UpstreamDefinitionYAML represents a reusable named upstream definition in the deployment YAML
 type UpstreamDefinitionYAML struct {
 	Name      string                `yaml:"name"`
 	BasePath  string                `yaml:"basePath,omitempty"`

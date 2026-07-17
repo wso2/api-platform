@@ -746,7 +746,7 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 		return err
 	}
 
-	// Validate that every upstream ref (API-level + per-operation) resolves to a declared upstreamDefinition
+	// Validate the upstreamDefinitions pool, the API-level url-or-ref union, and that every ref resolves
 	if err := s.validateUpstreamRefs(req.UpstreamDefinitions, req.Upstream, req.Operations); err != nil {
 		return apperror.ValidationFailed.Wrap(err, err.Error())
 	}
