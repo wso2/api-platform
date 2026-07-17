@@ -2180,6 +2180,7 @@ func TestTransformProxy_OtherAndNoneUpstreamAuth(t *testing.T) {
 			result, err := transformer.Transform(proxy, &api.RestAPI{})
 			require.NoError(t, err)
 			require.NotNil(t, result)
+			require.NotEmpty(t, result.Spec.Operations)
 
 			for _, op := range result.Spec.Operations {
 				if op.Policies == nil {

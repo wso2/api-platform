@@ -1690,7 +1690,9 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	}
 	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
 
-	// Preserve stored upstream auth credential when not supplied in update payload
+	// Preserve stored upstream auth credential only when the update provides an auth
+	// object with an empty value. If the auth object is omitted, treat it as explicit
+	// removal and clear stored auth (defaulted to "none" below).
 	m.Configuration.UpstreamAuth = preserveUpstreamAuthCredential(existing.Configuration.UpstreamAuth, m.Configuration.UpstreamAuth)
 
 	// The gateway owns the runtime configuration of a DP-originated (gateway_api) proxy,
@@ -1855,7 +1857,7 @@ func preserveUpstreamAuthValue(existing, updated *model.UpstreamConfig) *model.U
 
 func preserveUpstreamAuthCredential(existing, updated *model.UpstreamAuth) *model.UpstreamAuth {
 	if updated == nil {
-		return existing
+		return nil
 	}
 	if existing == nil {
 		return updated

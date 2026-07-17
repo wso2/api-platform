@@ -474,18 +474,22 @@ func TestLLMProxyUpdate_DefaultsUpstreamAuthToNone(t *testing.T) {
 		NewIdentityService(repository.NewUserIdentityMappingRepo(d.db)),
 	)
 
+	apiKey := api.UpstreamAuthType(api.ApiKey)
 	created, err := proxySvc.Create(importTestOrgID, "tester", &api.LLMProxy{
 		Id:          strPointer("cp-none-proxy"),
 		DisplayName: "CP None Proxy",
 		Version:     "v1.0",
 		ProjectId:   "default",
-		Provider:    api.LLMProxyProvider{Id: providerHandle},
+		Provider: api.LLMProxyProvider{
+			Id:   providerHandle,
+			Auth: &api.UpstreamAuth{Type: &apiKey, Header: strPointer("X-API-Key"), Value: strPointer("sk-secret")},
+		},
 	})
 	if err != nil {
 		t.Fatalf("create proxy: %v", err)
 	}
 
-	// Update with no provider auth override.
+	// Update with the provider auth override omitted entirely.
 	if _, err := proxySvc.Update(importTestOrgID, *created.Id, "tester", &api.LLMProxy{
 		DisplayName: "CP None Proxy",
 		Version:     "v1.0",
