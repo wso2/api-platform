@@ -111,9 +111,7 @@ gateway:
 
       # Storage configuration
       storage:
-        # Storage type: "sqlite", "postgres", or "sqlserver" — the only values accepted
-        # by the controller's Validate() at startup ("memory" is NOT a valid value,
-        # despite being mentioned in older docs/comments).
+        # Storage type: "sqlite", "postgres", "sqlserver"
         # - sqlite: Single-instance embedded database backed by a PersistentVolumeClaim
         # - postgres: External PostgreSQL database; enables multi-replica controller deployments
         # - sqlserver: External SQL Server database; enables multi-replica controller deployments
