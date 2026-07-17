@@ -91,6 +91,16 @@ data:
 
     [controller.policies]
     definitions_path = {{ $gc.policies.definitions_path | quote }}
+    {{- if $gc.policies.build_manifest_path }}
+    build_manifest_path = {{ $gc.policies.build_manifest_path | quote }}
+    {{- end }}
+
+    {{- if $gc.llm }}
+    [controller.llm]
+    {{- if $gc.llm.template_definitions_path }}
+    template_definitions_path = {{ $gc.llm.template_definitions_path | quote }}
+    {{- end }}
+    {{- end }}
 
     [controller.controlplane]
     insecure_skip_verify = {{ $gc.controlplane.insecure_skip_verify }}
@@ -104,6 +114,19 @@ data:
     apim_oauth2_client_secret = {{ $gc.controlplane.apim_oauth2_client_secret | quote }}
     apim_oauth2_username = {{ $gc.controlplane.apim_oauth2_username | quote }}
     apim_oauth2_password = {{ $gc.controlplane.apim_oauth2_password | quote }}
+
+    {{- if $gc.event_hub }}
+    [controller.event_hub]
+    poll_interval = {{ $gc.event_hub.poll_interval | quote }}
+    cleanup_interval = {{ $gc.event_hub.cleanup_interval | quote }}
+    retention_period = {{ $gc.event_hub.retention_period | quote }}
+
+    [controller.event_hub.database]
+    max_open_conns = {{ $gc.event_hub.database.max_open_conns }}
+    max_idle_conns = {{ $gc.event_hub.database.max_idle_conns }}
+    conn_max_lifetime = {{ $gc.event_hub.database.conn_max_lifetime | quote }}
+    conn_max_idle_time = {{ $gc.event_hub.database.conn_max_idle_time | quote }}
+    {{- end }}
 
     {{- range $gc.encryption.providers }}
     [[controller.encryption.providers]]
@@ -164,6 +187,13 @@ data:
     route_timeout_ms = {{ $router.upstream.timeouts.route_timeout_ms }}
     route_idle_timeout_ms = {{ $router.upstream.timeouts.route_idle_timeout_ms }}
     connect_timeout_ms = {{ $router.upstream.timeouts.connect_timeout_ms }}
+
+    {{- if $router.lua }}
+    [router.lua.request_transformation]
+    {{- if $router.lua.request_transformation.script_path }}
+    script_path = {{ $router.lua.request_transformation.script_path | quote }}
+    {{- end }}
+    {{- end }}
 
     [router.http_listener]
     server_header_transformation = {{ $router.http_listener.server_header_transformation | quote }}

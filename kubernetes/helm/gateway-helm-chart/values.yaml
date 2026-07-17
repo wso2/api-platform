@@ -193,6 +193,13 @@ gateway:
       policies:
         # Directory containing policy definitions
         definitions_path: ./default-policies
+        # Path to build-manifest.yaml for custom policy detection
+        build_manifest_path: ./build-manifest.yaml
+
+      # LLM provider template configuration
+      llm:
+        # Directory containing default LLM provider prompt templates
+        template_definitions_path: ./default-llm-provider-templates
 
       # Control plane connection configuration
       # Note: host and token are set via gateway.controller.controlPlane and rendered as env vars in the deployment.
@@ -225,6 +232,23 @@ gateway:
         # OAuth2 Option 2: Resource Owner Password Credentials flow
         apim_oauth2_username: ""
         apim_oauth2_password: ""
+
+      # EventHub: poll-based eventual-consistency layer used to sync state across
+      # multiple controller replicas (only relevant when storage.type is postgres or
+      # sqlserver and replicaCount > 1, but always configured/valid).
+      event_hub:
+        # Interval at which events are polled from the database
+        poll_interval: 3s
+        # Interval at which old events are cleaned up
+        cleanup_interval: 10m
+        # How long events are retained before being deleted
+        retention_period: 1h
+        # Connection pool settings for the EventHub database connection
+        database:
+          max_open_conns: 5
+          max_idle_conns: 2
+          conn_max_lifetime: 30m
+          conn_max_idle_time: 5m
 
       # Encryption provider configuration for secret management.
       # File paths must match the mount path set in gateway.controller.encryptionKeys.mountPath.
@@ -365,6 +389,13 @@ gateway:
           idle_timeout: "1h"
 
       tracing_service_name: router
+
+      # Lua script configuration
+      lua:
+        request_transformation:
+          # Do NOT set the deprecated top-level lua_script_path alias — use this
+          # nested path only (config.go documents lua_script_path as deprecated).
+          script_path: ./lua/request_transformation.lua
 
       # Policy Engine ext_proc filter configuration
       policy_engine:
