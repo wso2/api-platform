@@ -54,12 +54,14 @@ from .types import (
     RequestContext,
     RequestHeaderContext,
     RequestStreamContext,
+    RequestUpstream,
     ResponseContext,
     ResponseHeaderContext,
     ResponseStreamContext,
+    ResponseUpstream,
     SharedContext,
     StreamBody,
-    UpstreamContext,
+    UpstreamResponse,
 )
 
 __all__ = [
@@ -87,6 +89,7 @@ __all__ = [
     "RequestHeaderPolicy",
     "RequestPolicy",
     "RequestStreamContext",
+    "RequestUpstream",
     "ResponseAction",
     "ResponseContext",
     "ResponseHeaderAction",
@@ -94,6 +97,7 @@ __all__ = [
     "ResponseHeaderPolicy",
     "ResponsePolicy",
     "ResponseStreamContext",
+    "ResponseUpstream",
     "SharedContext",
     "StreamBody",
     "StreamingRequestAction",
@@ -101,7 +105,7 @@ __all__ = [
     "StreamingResponseAction",
     "StreamingResponsePolicy",
     "TerminateResponseChunk",
-    "UpstreamContext",
     "UpstreamRequestHeaderModifications",
     "UpstreamRequestModifications",
+    "UpstreamResponse",
 ]
