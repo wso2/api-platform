@@ -6,10 +6,14 @@ name: Gateway API Conformance
 #     conformance scripts) or gateway/gateway-controller/** (the xDS / route
 #     translation conformance most directly exercises) — catches regressions before merge.
 #   - Manual runs (workflow_dispatch).
-#   - A weekly schedule (Saturday 00:00 UTC) so drift on main is caught even when no
+#   - A weekly schedule (Saturday 00:37 UTC = 06:07 Sat Asia/Colombo) so drift on main is caught even when no
 #     triggering change lands. Saturday (not Friday) so the run happens after
-#     Friday's changes have merged — otherwise a Friday-00:00 run would miss all of
+#     Friday's changes have merged — otherwise a Friday run would miss all of
 #     Friday's work until the following week.
+#     NOTE: the time is deliberately off the top of the hour. GitHub heavily
+#     oversubscribes on-the-hour cron slots (especially 00:00 UTC) and silently
+#     DROPS scheduled runs under load — an odd minute in a quiet window is far
+#     more likely to actually fire.
 # NOTE: under gateway/, only gateway-controller/** triggers this; the rest of gateway/**
 #       (e.g. gateway-runtime, policies) does not — add more paths below if you want them to.
 on:
@@ -22,9 +26,11 @@ on:
       - 'gateway/gateway-controller/**'
       - '.github/workflows/k8s-gateway-api-conformance.yml'
   schedule:
-    # Saturday at 00:00 UTC (cron day-of-week 6 = Saturday) — runs after Friday's
-    # changes have landed, so each run covers the full week including Friday.
-    - cron: '0 0 * * 6'
+    # Saturday at 00:37 UTC = 06:07 Sat Asia/Colombo (cron day-of-week 6 = Saturday) —
+    # runs after Friday's changes have landed, so each run covers the full week including
+    # Friday. Off the top of the hour on purpose: GitHub drops on-the-hour scheduled runs
+    # (00:00 UTC worst of all) under load, so the odd :37 minute reliably fires.
+    - cron: '37 0 * * 6'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
