@@ -69,6 +69,7 @@ type SnapshotManager struct {
 	nodeID           string // Node ID for Envoy (default: "router-node")
 	statusCallback   StatusUpdateCallback
 	sdsSecretManager *SDSSecretManager
+	afterGetAll      func() // nil in production; test hook for deterministic race testing
 }
 
 // NewSnapshotManager creates a new snapshot manager
@@ -113,6 +114,9 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 	}
 	// Get all configurations from in-memory store
 	configs := sm.store.GetAll()
+	if sm.afterGetAll != nil {
+		sm.afterGetAll()
+	}
 
 	// Translate configurations to Envoy resources if this is not event gw
 	//resources, err := sm.translator.TranslateConfigs(configs, correlationID)
