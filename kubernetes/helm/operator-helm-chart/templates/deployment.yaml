@@ -34,6 +34,12 @@ spec:
         - name: manager
           image: {{ include "gateway-operator.image" . | quote }}
           imagePullPolicy: "{{ .Values.image.pullPolicy }}"
+          {{- if .Values.webhook.enabled }}
+          ports:
+            - name: webhook-server
+              containerPort: {{ .Values.webhook.port }}
+              protocol: TCP
+          {{- end }}
           {{ if .Values.debug.enabled }}
           # run under delve in headless mode for remote debugging
           command:
@@ -67,6 +73,10 @@ spec:
               value: /tmp/helm/config
             - name: HELM_DATA_HOME
               value: /tmp/helm/data
+          {{- if not .Values.webhook.enabled }}
+            - name: ENABLE_WEBHOOKS
+              value: "false"
+          {{- end }}
           {{ if .Values.debug.enabled }}
           securityContext:
             capabilities:
@@ -105,6 +115,11 @@ spec:
               subPath: gateway_values.yaml
             - name: tmp-volume
               mountPath: /tmp
+          {{- if .Values.webhook.enabled }}
+            - name: webhook-certs
+              mountPath: /etc/gateway-operator/webhook-certs
+              readOnly: true
+          {{- end }}
       volumes:
         - name: config
           configMap:
@@ -114,3 +129,8 @@ spec:
             name: {{ include "gateway-operator.fullname" . }}-gateway-values
         - name: tmp-volume
           emptyDir: {}
+        {{- if .Values.webhook.enabled }}
+        - name: webhook-certs
+          secret:
+            secretName: {{ include "gateway-operator.fullname" . }}-webhook-cert
+        {{- end }}

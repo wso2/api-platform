@@ -1,0 +1,75 @@
+{{/*
+Operator CRDs + conversion-webhook serving certificate.
+
+The CRDs are served at two versions (v1 storage, v1alpha1 served). When the
+conversion webhook is enabled a self-signed CA + serving certificate are
+generated here (once, reused across upgrades via lookup), published as a TLS
+Secret mounted into the operator pod, and the CA is injected into each CRD's
+spec.conversion.webhook.clientConfig.caBundle.
+
+These CRDs live under templates/ (not the Helm crds/ dir) precisely so the
+caBundle can be templated in and updated on upgrade. NOTE: an existing install
+whose CRDs were previously installed from the chart's crds/ dir must have those
+CRDs adopted by Helm (annotate/label with Helm ownership) before upgrading, or
+reinstalled — Helm will not overwrite CRDs it does not own.
+*/}}
+{{- $fullname := include "gateway-operator.fullname" . -}}
+{{- $svcName := printf "%s-webhook-service" $fullname -}}
+{{- $ns := .Release.Namespace -}}
+{{- $secretName := printf "%s-webhook-cert" $fullname -}}
+{{- if .Values.webhook.enabled }}
+{{- $cn := printf "%s.%s.svc" $svcName $ns -}}
+{{- $altNames := list $cn (printf "%s.%s.svc.cluster.local" $svcName $ns) -}}
+{{- $days := int .Values.webhook.certValidityDays -}}
+{{- $existing := lookup "v1" "Secret" $ns $secretName -}}
+{{- $caCrt := "" -}}
+{{- $tlsCrt := "" -}}
+{{- $tlsKey := "" -}}
+{{- if and $existing $existing.data (index $existing.data "ca.crt") -}}
+{{- $caCrt = index $existing.data "ca.crt" -}}
+{{- $tlsCrt = index $existing.data "tls.crt" -}}
+{{- $tlsKey = index $existing.data "tls.key" -}}
+{{- else -}}
+{{- $ca := genCA (printf "%s-webhook-ca" $fullname) $days -}}
+{{- $cert := genSignedCert $cn nil $altNames $days $ca -}}
+{{- $caCrt = b64enc $ca.Cert -}}
+{{- $tlsCrt = b64enc $cert.Cert -}}
+{{- $tlsKey = b64enc $cert.Key -}}
+{{- end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: {{ include "gateway-operator.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+type: kubernetes.io/tls
+data:
+  tls.crt: {{ $tlsCrt }}
+  tls.key: {{ $tlsKey }}
+  ca.crt: {{ $caCrt }}
+{{- range $path, $_ := .Files.Glob "files/operator-crds/*.yaml" }}
+{{- $crd := $.Files.Get $path | fromYaml }}
+{{- $_ := set $crd.spec "conversion" (dict
+    "strategy" "Webhook"
+    "webhook" (dict
+      "conversionReviewVersions" (list "v1")
+      "clientConfig" (dict
+        "service" (dict "name" $svcName "namespace" $ns "path" "/convert" "port" (int 443))
+        "caBundle" $caCrt))) }}
+---
+{{ toYaml $crd }}
+{{- end }}
+{{- else }}
+{{/* Webhook disabled: install CRDs with conversion strategy None. Valid only
+     because the v1alpha1 and v1 schemas are identical. */}}
+{{- range $path, $_ := .Files.Glob "files/operator-crds/*.yaml" }}
+{{- $crd := $.Files.Get $path | fromYaml }}
+{{- $_ := set $crd.spec "conversion" (dict "strategy" "None") }}
+---
+{{ toYaml $crd }}
+{{- end }}
+{{- end }}

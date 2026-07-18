@@ -39,7 +39,8 @@ import (
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
 	"github.com/go-logr/zapr"
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv1alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/controller"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/pkg/logger"
@@ -55,6 +56,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(apiv1.AddToScheme(scheme))
+	utilruntime.Must(apiv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1.AddToScheme(scheme))
 	utilruntime.Must(gatewayv1beta1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
@@ -125,8 +127,12 @@ func main() {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
+	// CertDir must match the path where the Helm chart mounts the webhook
+	// serving-cert Secret (see operator-helm-chart deployment.yaml). It is kept
+	// off /tmp to avoid nesting under the /tmp emptyDir mount.
 	webhookServer := webhook.NewServer(webhook.Options{
 		TLSOpts: tlsOpts,
+		CertDir: "/etc/gateway-operator/webhook-certs",
 	})
 
 	// Parse WATCH_NAMESPACES env var
@@ -243,6 +249,31 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	// Register the CRD conversion webhook for every kind. The v1 types are the
+	// hub (storage version) and the served v1alpha1 types convert to/from them.
+	// Guarded by ENABLE_WEBHOOKS so environments without serving certs (e.g.
+	// envtest) can disable it. NewWebhookManagedBy is generic, so each kind is
+	// registered explicitly rather than in a loop.
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		registerConversionWebhook := func(kind string, err error) {
+			if err != nil {
+				setupLog.Error(err, "unable to create conversion webhook", "kind", kind)
+				os.Exit(1)
+			}
+		}
+		registerConversionWebhook("RestApi", ctrl.NewWebhookManagedBy(mgr, &apiv1.RestApi{}).Complete())
+		registerConversionWebhook("APIGateway", ctrl.NewWebhookManagedBy(mgr, &apiv1.APIGateway{}).Complete())
+		registerConversionWebhook("ApiKey", ctrl.NewWebhookManagedBy(mgr, &apiv1.ApiKey{}).Complete())
+		registerConversionWebhook("APIPolicy", ctrl.NewWebhookManagedBy(mgr, &apiv1.APIPolicy{}).Complete())
+		registerConversionWebhook("Certificate", ctrl.NewWebhookManagedBy(mgr, &apiv1.Certificate{}).Complete())
+		registerConversionWebhook("LlmProvider", ctrl.NewWebhookManagedBy(mgr, &apiv1.LlmProvider{}).Complete())
+		registerConversionWebhook("LlmProviderTemplate", ctrl.NewWebhookManagedBy(mgr, &apiv1.LlmProviderTemplate{}).Complete())
+		registerConversionWebhook("LlmProxy", ctrl.NewWebhookManagedBy(mgr, &apiv1.LlmProxy{}).Complete())
+		registerConversionWebhook("ManagedSecret", ctrl.NewWebhookManagedBy(mgr, &apiv1.ManagedSecret{}).Complete())
+		registerConversionWebhook("Mcp", ctrl.NewWebhookManagedBy(mgr, &apiv1.Mcp{}).Complete())
+		registerConversionWebhook("Subscription", ctrl.NewWebhookManagedBy(mgr, &apiv1.Subscription{}).Complete())
+		registerConversionWebhook("SubscriptionPlan", ctrl.NewWebhookManagedBy(mgr, &apiv1.SubscriptionPlan{}).Complete())
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -252,6 +283,12 @@ func main() {
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
+	}
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err := mgr.AddReadyzCheck("webhook", mgr.GetWebhookServer().StartedChecker()); err != nil {
+			setupLog.Error(err, "unable to set up webhook readiness check")
+			os.Exit(1)
+		}
 	}
 
 	setupLog.Info("starting manager")
