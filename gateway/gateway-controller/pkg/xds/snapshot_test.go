@@ -81,10 +81,8 @@ func makeRestAPI(uuid, name, ctx string) *models.StoredConfig {
 //	Step 4: A: SetSnapshot(v3, [api-one])  ✗ api-two lost
 //
 // Without mutex: A wins (higher version, stale data) → FAIL
-// With mutex:    B can't run while A holds the lock. A finishes first
-//
-//	(v1, [api-one]), then B runs (v2, [api-one, api-two]).
-//	B wins. → PASS
+// With mutex:    B can't run while A holds the lock. A finishes first,
+//                then B reads the full store and writes the final snapshot → PASS
 func TestConcurrentUpdateSnapshot(t *testing.T) {
 	t.Run("stale GetAll cannot overwrite a newer complete snapshot", func(t *testing.T) {
 		metrics.Init()
@@ -96,7 +94,7 @@ func TestConcurrentUpdateSnapshot(t *testing.T) {
 
 		sm := NewSnapshotManager(store, createTestLogger(), testRouterConfig(), nil, testConfig())
 
-		// Step 1: A calls UpdateSnapshot, blocks after GetAll([api-one])
+		// Step 1: A reads store, blocks in hook
 		aGotAll := make(chan struct{})
 		bDone := make(chan struct{})
 
@@ -109,9 +107,9 @@ func TestConcurrentUpdateSnapshot(t *testing.T) {
 			close(aGotAll)
 			select {
 			case <-bDone:
-				// B completed while A was paused — no mutex, bug is present
+				// no mutex — B finished first, A will overwrite with stale data
 			case <-time.After(200 * time.Millisecond):
-				// B couldn't run (blocked on mutex) — A continues
+				// mutex held — B is waiting for the lock, A continues
 			}
 		}
 
