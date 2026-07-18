@@ -107,9 +107,9 @@ func TestConcurrentUpdateSnapshot(t *testing.T) {
 			close(aGotAll)
 			select {
 			case <-bDone:
-				// no mutex — B finished first, A will overwrite with stale data
+				// pre-fix path: B raced past A → stale overwrite will occur
 			case <-time.After(200 * time.Millisecond):
-				// mutex held — B is waiting for the lock, A continues
+				// post-fix path: mutex held, B is queued behind A
 			}
 		}
 
