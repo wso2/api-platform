@@ -17,26 +17,32 @@ type Body struct {
 	Present bool
 }
 
-// DownstreamContext holds an immutable snapshot of data as received from the
-// downstream client, captured before any policy mutation is applied.
-//
-// Downstream is nil on older gateways that predate this field. Policies MUST
-// nil-check before use and fall back to legacy validation.
-//
+// DownstreamContext holds a snapshot of data as received from the downstream
+// client, captured before any policy mutation is applied.
 type DownstreamContext struct {
-	// Headers is the original request headers exactly as received from the
-	// downstream client, before any policy mutation.
 	Headers *Headers
 }
 
-// UpstreamContext holds an immutable snapshot of data as received from the
+// RequestUpstream identifies the route's resolved upstream target during the
+// request phase.
+type RequestUpstream struct {
+	UpstreamName string
+	URL string
+	BasePath string
+}
+
+// ResponseUpstream identifies the route's resolved upstream target during the
+// response phase and carries a snapshot of the upstream response.
+type ResponseUpstream struct {
+	UpstreamName string
+	URL string
+	BasePath string
+	Response *UpstreamResponse
+}
+
+// UpstreamResponse holds a snapshot of the response as received from the
 // upstream backend, captured before any policy mutation is applied.
-//
-// Upstream is nil on older gateways that predate this field. Policies MUST
-// nil-check before use and fall back to legacy validation.
-type UpstreamContext struct {
-	// Headers is the original response headers exactly as received from the
-	// upstream backend, before any policy mutation. Read-only.
+type UpstreamResponse struct {
 	Headers *Headers
 }
 
@@ -99,9 +105,13 @@ type RequestHeaderContext struct {
 	Scheme    string
 	Vhost     string
 
-	// Downstream holds the immutable snapshot of the original client request
-	// headers, captured before any policy mutation. Nil on older gateways.
+	// Downstream holds the snapshot of the client request headers, captured
+	// before any policy mutation.
 	Downstream *DownstreamContext
+
+	// Upstream identifies the route's resolved upstream target for this
+	// request.
+	Upstream *RequestUpstream
 }
 
 // RequestContext is passed to RequestPolicy.OnRequestBody.
@@ -120,16 +130,19 @@ type RequestContext struct {
 	Scheme    string
 	Vhost     string
 
-	// UpstreamInfo identifies the route's resolved upstream target (cluster name, URL,
-	// base path) for this request. Nil if no upstream has been resolved for the route.
-	// Authority/Scheme above reflect the inbound client-facing request and must not be
-	// used to address the actual upstream (e.g. for request signing) — use
-	// UpstreamInfo.URL instead.
+	// Deprecated: UpstreamInfo exposes the internal Envoy cluster name and its
+	// resolved-upstream shape was incorrect. Use Upstream (*RequestUpstream)
+	// instead, which exposes UpstreamName rather than the internal cluster name.
+	// Retained for backward compatibility; will be removed in a future release.
 	UpstreamInfo *policyenginev1.UpstreamInfo
 
-	// Downstream holds the immutable snapshot of the original client request
-	// headers, captured before any policy mutation. Nil on older gateways.
+	// Downstream holds the snapshot of the client request headers, captured
+	// before any policy mutation.
 	Downstream *DownstreamContext
+
+	// Upstream identifies the route's resolved upstream target for this
+	// request.
+	Upstream *RequestUpstream
 }
 
 // ─── Response-phase contexts ─────────────────────────────────────────────────
@@ -151,13 +164,14 @@ type ResponseHeaderContext struct {
 	// Current response status code
 	ResponseStatus int
 
-	// Downstream holds the immutable snapshot of the original client request
-	// headers, captured before any policy mutation. Nil on older gateways.
+	// Downstream holds the snapshot of the client request headers, captured
+	// before any policy mutation.
 	Downstream *DownstreamContext
 
-	// Upstream holds the immutable snapshot of the original upstream response
-	// headers, captured before any policy mutation. Nil on older gateways.
-	Upstream *UpstreamContext
+	// Upstream identifies the route's resolved upstream target and carries the
+	// snapshot of the upstream response headers, captured before any policy
+	// mutation.
+	Upstream *ResponseUpstream
 }
 
 // ResponseContext is passed to ResponsePolicy.OnResponseBody.
@@ -183,13 +197,14 @@ type ResponseContext struct {
 	// Current response status code
 	ResponseStatus int
 
-	// Downstream holds the immutable snapshot of the original client request
-	// headers, captured before any policy mutation. Nil on older gateways.
+	// Downstream holds the snapshot of the client request headers, captured
+	// before any policy mutation.
 	Downstream *DownstreamContext
 
-	// Upstream holds the immutable snapshot of the original upstream response
-	// headers, captured before any policy mutation. Nil on older gateways.
-	Upstream *UpstreamContext
+	// Upstream identifies the route's resolved upstream target and carries the
+	// snapshot of the upstream response headers, captured before any policy
+	// mutation.
+	Upstream *ResponseUpstream
 }
 
 // ─── Streaming contexts ──────────────────────────────────────────────────────
@@ -228,9 +243,13 @@ type RequestStreamContext struct {
 	Scheme    string
 	Vhost     string
 
-	// Downstream holds the immutable snapshot of the original client request
-	// headers, captured before any policy mutation. Nil on older gateways.
+	// Downstream holds the snapshot of the client request headers, captured
+	// before any policy mutation.
 	Downstream *DownstreamContext
+
+	// Upstream identifies the route's resolved upstream target for this
+	// request.
+	Upstream *RequestUpstream
 }
 
 // ResponseStreamContext is the per-chunk context passed to StreamingResponseBodyPolicy.
@@ -251,11 +270,12 @@ type ResponseStreamContext struct {
 	// Current response status code
 	ResponseStatus int
 
-	// Downstream holds the immutable snapshot of the original client request
-	// headers, captured before any policy mutation. Nil on older gateways.
+	// Downstream holds the snapshot of the client request headers, captured
+	// before any policy mutation.
 	Downstream *DownstreamContext
 
-	// Upstream holds the immutable snapshot of the original upstream response
-	// headers, captured before any policy mutation. Nil on older gateways.
-	Upstream *UpstreamContext
+	// Upstream identifies the route's resolved upstream target and carries the
+	// snapshot of the upstream response headers, captured before any policy
+	// mutation.
+	Upstream *ResponseUpstream
 }
