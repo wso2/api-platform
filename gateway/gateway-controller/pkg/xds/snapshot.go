@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
@@ -62,6 +63,7 @@ type StatusUpdateCallback func(configID string, success bool, correlationID stri
 
 // SnapshotManager manages xDS snapshots for Envoy
 type SnapshotManager struct {
+	mu               sync.Mutex
 	cache            cache.SnapshotCache
 	translator       *Translator
 	store            *storage.ConfigStore
@@ -101,6 +103,9 @@ func (sm *SnapshotManager) SetStatusCallback(callback StatusUpdateCallback) {
 // UpdateSnapshot generates a new xDS snapshot from all configurations and updates the cache
 // The correlationID parameter is optional and used for request tracing in logs
 func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
 	startTime := time.Now()
 	trigger := "manual"
 	if correlationID != "" {
