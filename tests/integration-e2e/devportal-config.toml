@@ -1,0 +1,53 @@
+# Developer Portal configuration for the Go integration-e2e stack.
+#
+# Mounted at /app/configs/config.toml in the devportal container. It replaces
+# the image's shipped configs/config.toml, which fails closed at startup on the
+# required security secrets and only wires the SQLite `file` key — neither of
+# which suits this postgres-backed e2e stack.
+#
+# There is NO automatic APIP_DP_* environment-variable override (see
+# src/config/configLoader.js) — an env var set in docker-compose.yaml's
+# `devportal.environment` block only takes effect where a key below explicitly
+# references it via a {{ env "..." }} token. Every APIP_DP_* var the compose
+# file relies on MUST have a matching token here, or the override is silently
+# ignored and the built-in default (src/config/configDefaults.js) is used.
+
+[server]
+base_url = '{{ env "APIP_DP_SERVER_BASEURL" "http://devportal:3000" }}'
+
+[tls]
+# Plain HTTP inside the compose network — the e2e client talks to it over http.
+enabled = false
+
+[logging]
+console_only = true
+
+[database]
+# Postgres, not the devportal's default SQLite: the org-update path needs
+# UPDATE ... RETURNING, which SQLite doesn't support. Connection comes from the
+# APIP_DP_DATABASE_* vars in the compose file.
+type     = '{{ env "APIP_DP_DATABASE_TYPE" "postgres" }}'
+host     = '{{ env "APIP_DP_DATABASE_HOST" "postgres" }}'
+port     = '{{ env "APIP_DP_DATABASE_PORT" "5432" }}'
+name     = '{{ env "APIP_DP_DATABASE_NAME" "devportal" }}'
+username = '{{ env "APIP_DP_DATABASE_USERNAME" "apip" }}'
+password = '{{ env "APIP_DP_DATABASE_PASSWORD" "apip" }}'
+
+[organization]
+# Seed the "default" org so its handle matches platform-api's org handle
+# (the webhook resolves the control-plane org by handle via org.ref_id).
+default_name = '{{ env "APIP_DP_ORGANIZATION_DEFAULTNAME" "default" }}'
+auto_create_subscription_plans = false
+
+[platform_api]
+# The devportal validates the platform-api admin JWT locally; jwt_secret MUST
+# equal the stack's APIP_CP_AUTH_JWT_SECRET_KEY so the admin token is accepted.
+base_url   = '{{ env "APIP_DP_PLATFORMAPI_BASEURL" "https://platform-api:9243" }}'
+jwt_secret = '{{ env "APIP_DP_PLATFORMAPI_JWTSECRET" }}'
+insecure   = true
+
+[security]
+# Required — devportal fails closed at startup if either doesn't resolve to a
+# 64-char hex string. Fixed test-only values set in the compose file.
+encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTIONKEY" }}'
+session_secret = '{{ env "APIP_DP_SECURITY_SESSIONSECRET" }}'
