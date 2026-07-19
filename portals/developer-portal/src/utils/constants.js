@@ -330,6 +330,7 @@ module.exports = {
         WEBHOOK_SUBSCRIBER_NOT_FOUND: "Webhook subscriber not found",
         ERR_SUB_EXIST: "ERR_SUB_EXIST",
         ERR_KEY_EXIST: "ERR_KEY_EXIST",
+        ERR_WORKFLOW_EXIST: "ERR_WORKFLOW_EXIST",
         UNAUTHORIZED_ORG: "You are not authorized to access this organization",
         UNAUTHORIZED_API: "You are not authorized to access this API",
         API_NOT_FOUND: "Requested API not found",

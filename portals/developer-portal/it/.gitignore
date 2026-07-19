@@ -1,4 +1,5 @@
 node_modules/
+.certs/
 reports/videos/
 reports/screenshots/
 reports/*.json

@@ -41,25 +41,8 @@ services:
     networks:
       - it-devportal-network
 
-  # One-shot init container: generates the TLS pair the platform-api HTTPS
-  # listener requires (the server no longer generates a self-signed fallback).
-  platform-api-certgen:
-    image: alpine/openssl
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        if [ ! -f /certs/cert.pem ] || [ ! -f /certs/key.pem ]; then
-          openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
-            -keyout /certs/key.pem -out /certs/cert.pem \
-            -subj "/O=WSO2 API Platform/CN=platform-api" \
-            -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
-        fi
-        chown 10001:10001 /certs/cert.pem /certs/key.pem
-    volumes:
-      - platform-api-certs:/certs
-
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.11.0
+    image: ghcr.io/wso2/api-platform/platform-api:0.12.0
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
       APIP_CP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -67,10 +50,10 @@ services:
     volumes:
       - ./configs/config-platform-api-it.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
-      - platform-api-certs:/app/data/certs
-    depends_on:
-      platform-api-certgen:
-        condition: service_completed_successfully
+      # TLS pair generated once, host-side, by `make ensure-certs` (mirrors
+      # ../scripts/setup.sh's approach for the production compose) — read-only,
+      # 644-mode so the container's non-root user can read a host-owned file.
+      - ./.certs:/app/data/certs:ro
     healthcheck:
       test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
       interval: 5s
@@ -168,5 +151,4 @@ networks:
     driver: bridge
 
 volumes:
-  platform-api-certs:
   platform-api-data:

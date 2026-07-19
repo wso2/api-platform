@@ -23,6 +23,7 @@ const subDao = require('../dao/subscriptionDao');
 const labelDao = require('../dao/labelDao');
 const tagDao = require('../dao/tagDao');
 const viewDao = require('../dao/viewDao');
+const apiWorkflowDao = require('../dao/apiWorkflowDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const apiFileDao = require('../dao/apiFileDao');
 const apiKeyDao = require("../dao/apiKeyDao");
@@ -1704,6 +1705,10 @@ const deleteView = async (req, res) => {
             throw new CustomError(400, constants.ERROR_CODE[400], "The default view cannot be deleted");
         }
         const viewUuid = await viewDao.getId(orgId, name);
+        const workflows = await apiWorkflowDao.list(orgId, viewUuid);
+        if (workflows.length > 0) {
+            throw new CustomError(409, constants.ERROR_MESSAGE.ERR_WORKFLOW_EXIST, "View has API workflows.");
+        }
         const viewDelete = await viewDao.delete(orgId, name);
         if (viewDelete === 0) {
             throw new Sequelize.EmptyResultError("Resource not found to delete");
