@@ -20,7 +20,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const yaml = require('js-yaml');
+const yaml = require('./yaml');
 const constants = require('./constants');
 const { config } = require('../config/configLoader');
 

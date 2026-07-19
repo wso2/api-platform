@@ -37,7 +37,7 @@ const sampleApiLoader = require('../utils/sampleApiLoader');
 const adminService = require('../services/adminService');
 const apiWorkflowService = require('../services/apiWorkflowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
-const yaml = require('js-yaml');
+const yaml = require('../utils/yaml');
 const generateArray = (length) => Array.from({ length });
 
 const loadAPIs = async (req, res, next) => {

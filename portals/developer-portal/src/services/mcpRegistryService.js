@@ -27,7 +27,7 @@ const ServerResponseDTO = require('../dto/mcpServerDto');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
-const yaml = require('js-yaml');
+const yaml = require('../utils/yaml');
 
 const MCP_STATUSES = ['active', 'deprecated', 'deleted'];
 const SERVER_NAME_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;

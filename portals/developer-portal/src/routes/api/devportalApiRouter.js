@@ -38,7 +38,7 @@
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const yaml = require('js-yaml');
+const yaml = require('../../utils/yaml');
 const express = require('express');
 const OpenApiValidator = require('express-openapi-validator');
 
@@ -230,9 +230,9 @@ function build() {
                 storage: require('multer').memoryStorage(),
                 limits: { fileSize: config.uploads?.maxBytes || 10485760 },
             },
-            // Format strictness — use 'fast' for runtime cost; 'full' is too
-            // strict for some of our existing schemas (e.g. uri formats).
-            validateFormats: 'fast',
+            // express-openapi-validator v5 (ajv 8): validateFormats is a boolean now
+            // (the ajv6 'fast'/'full' modes are gone). true enables ajv-formats.
+            validateFormats: true,
         })
     );
 

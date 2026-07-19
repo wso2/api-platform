@@ -21,19 +21,22 @@ const contentController = require('../../controllers/customContentController');
 const registerPartials = require('../../middlewares/registerPartials');
 const { ensureAuthenticated } = require('../../middlewares/ensureAuthenticated');
 
-// eslint-disable-next-line no-useless-escape
-// Exclude specific paths
+// Exclude specific paths. Express 5 / path-to-regexp v8 no longer accepts bare `*`
+// or prefix globs in string paths, so the glob entries are expressed as RegExps
+// (a RegExp path is matched directly, bypassing path-to-regexp).
 router.get([
     '/favicon.ico',
-    '/images/*',
-    '/technical-styles/*',
-    '/styles/*',
-    '/login*',
-    '/portal*'
+    /^\/images\//,
+    /^\/technical-styles\//,
+    /^\/styles\//,
+    /^\/login/,
+    /^\/portal/,
   ], (req, res) => {
     res.status(404).send('Not found');
   });
-  
-router.get('/:orgName/views/:viewName/*', registerPartials, ensureAuthenticated, contentController.loadCustomContent);
+
+// Trailing `*` -> named wildcard `*splat` (v8 requires named wildcards). The handler
+// derives the file path from req.originalUrl, so the captured param is unused.
+router.get('/:orgName/views/:viewName/*splat', registerPartials, ensureAuthenticated, contentController.loadCustomContent);
 
 module.exports = router;

@@ -26,7 +26,7 @@ const { logUserAction } = require('../middlewares/auditLogger');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
-const yaml = require('js-yaml');
+const yaml = require('../utils/yaml');
 const { CustomError } = require('../utils/errors/customErrors');
 
 const resolveViewId = async (orgId, viewName) => {

@@ -35,7 +35,7 @@ const sequelize = require('../db/sequelizeConfig');
 const { ApplicationDTO } = require('../dto/applicationDto');
 const APIDTO = require('../dto/apiDto');
 const { config } = require('../config/configLoader');
-const yaml = require('js-yaml');
+const yaml = require('../utils/yaml');
 const { Sequelize } = require("sequelize");
 const kmDao = require('../dao/keyManagerDao');
 
