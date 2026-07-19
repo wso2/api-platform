@@ -29,6 +29,7 @@ const { compose } = require('./compose');
 module.exports = {
     generateApiKey: compose(requireCsrfForMutatingApi, apiKeyController.generateApiKey),
     listApiKeys: apiKeyController.listApiKeys,
+    listAllApiKeys: apiKeyController.listAllApiKeys,
     regenerateApiKey: compose(requireCsrfForMutatingApi, apiKeyController.regenerateApiKey),
     revokeApiKey: compose(requireCsrfForMutatingApi, apiKeyController.revokeApiKey),
     associateApiKeyApplication: compose(requireCsrfForMutatingApi, apiKeyController.associateApiKeyApplication),

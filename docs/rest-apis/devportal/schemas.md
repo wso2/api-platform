@@ -1184,7 +1184,6 @@ xor
 
 ```json
 {
-  "keyId": "key-12345",
   "id": "weather_prod_key",
   "displayName": "Weather Prod Key",
   "apiId": "weather-api-v1",
@@ -1204,7 +1203,6 @@ API key metadata returned by list operations. Secret material is omitted.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|keyId|string|false|none|Developer Portal key identifier.|
 |id|string|false|none|none|
 |displayName|string|false|none|none|
 |apiId|string|false|none|Developer Portal API ID the key belongs to.|
@@ -1231,7 +1229,6 @@ API key metadata returned by list operations. Secret material is omitted.
 
 ```json
 {
-  "keyId": "key-12345",
   "id": "weather_prod_key",
   "displayName": "Weather Prod Key",
   "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
@@ -1241,13 +1238,12 @@ API key metadata returned by list operations. Secret material is omitted.
 
 ```
 
-API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these six fields.
+API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these five fields.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|keyId|string|false|none|Developer Portal key identifier.|
 |id|string|false|none|none|
 |displayName|string|false|none|none|
 |key|string|false|none|One-time plaintext API key secret.|
@@ -1270,7 +1266,6 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 ```json
 {
-  "keyId": "key-12345",
   "application": {
     "id": "my-weather-app",
     "displayName": "My Mobile App"
@@ -1283,7 +1278,6 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|keyId|string|false|none|none|
 |application|object|false|none|none|
 |» id|string|false|none|none|
 |» displayName|string|false|none|none|

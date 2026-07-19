@@ -85,7 +85,6 @@ async function resolveKeyIdOrRespond(orgId, apiId, keyHandle, res) {
 function mapKey(k, audit) {
     const app = k.dp_api_key_app_mapping?.dp_application;
     return {
-        keyId: k.uuid,
         id: k.handle,
         displayName: k.display_name,
         status: k.status,
@@ -130,7 +129,8 @@ async function generateApiKey(req, res) {
             actor: util.resolveActor(req), userToken: req.user?.accessToken,
         });
         logUserAction('API_KEY_GENERATED', req, { orgId, apiId: apiHandle, keyId: result.keyId, resourceUuid: result.keyId, resourceType: 'api_key' });
-        return res.status(201).json(result);
+        const { keyId: _uuid, ...body } = result;
+        return res.status(201).json(body);
     } catch (err) {
         logger.error('Failed to generate API key', { error: err.message, orgId, apiId: apiHandle });
         return util.sendError(res, errorStatus(err), 'Failed to generate API key');
@@ -194,6 +194,46 @@ async function listApiKeys(req, res) {
 }
 
 /**
+ * GET /api/v0.9/api-keys
+ * Lists every API key created by the authenticated user across all APIs in the org.
+ * Powers the developer portal's global "API Keys" page (client-rendered). Each item
+ * carries the owning API's name/version/type in addition to the standard metadata so
+ * the page can render and link without a second call. Secret material is never returned.
+ */
+async function listAllApiKeys(req, res) {
+    const orgId = req.orgId;
+    const { status } = req.query;
+
+    if (status && !Object.values(constants.API_KEY_STATUS).includes(status)) {
+        return res.status(400).json({
+            status: 'error', code: 'COMMON_VALIDATION_ERROR', message: 'Bad Request',
+            errors: [{ field: 'status', message: `status must be one of: ${Object.values(constants.API_KEY_STATUS).join(', ')}` }],
+        });
+    }
+
+    try {
+        const keys = await apiKeyService.list(orgId, {
+            status: status || undefined,
+            createdBy: util.resolveActor(req),
+        });
+        const auditList = await userIdpReferenceDao.buildListAuditFields(keys);
+        const mapped = keys.map((k, i) => {
+            const m = mapKey(k, auditList[i]);
+            return {
+                ...m,
+                apiName: k.dp_api_metadata?.name || '',
+                apiVersion: k.dp_api_metadata?.version || '',
+                apiType: k.dp_api_metadata?.type || '',
+            };
+        });
+        return res.status(200).json(util.toPaginatedList(mapped, req));
+    } catch (err) {
+        logger.error('Failed to list all API keys', { error: err.message, orgId });
+        return util.sendError(res, errorStatus(err), 'Failed to list API keys');
+    }
+}
+
+/**
  * POST /api/v0.9/apis/:apiId/api-keys/regenerate
  * Body: { keyId, expiresAt? } — keyId is the key's handle (the `id` returned by generate/list).
  */
@@ -215,7 +255,8 @@ async function regenerateApiKey(req, res) {
             orgId, apiId, keyId, expiresAt, actor: util.resolveActor(req), userToken: req.user?.accessToken,
         });
         logUserAction('API_KEY_REGENERATED', req, { orgId, apiId: apiHandle, keyId, resourceUuid: keyId, resourceType: 'api_key' });
-        return res.status(200).json(result);
+        const { keyId: _uuid, ...body } = result;
+        return res.status(200).json(body);
     } catch (err) {
         logger.error('Failed to regenerate API key', { error: err.message, orgId, apiId: apiHandle, keyHandle });
         return util.sendError(res, errorStatus(err), 'Failed to regenerate API key');
@@ -278,7 +319,8 @@ async function associateApiKeyApplication(req, res) {
             orgId, apiId, keyId, appId, actor: util.resolveActor(req),
         });
         logUserAction('API_KEY_APP_ASSOCIATED', req, { orgId, apiId: apiHandle, keyId, appId: appHandle, resourceUuid: keyId, resourceType: 'api_key' });
-        return res.status(200).json(result);
+        const { keyId: _uuid, ...body } = result;
+        return res.status(200).json(body);
     } catch (err) {
         logger.error('Failed to associate application with API key', { error: err.message, orgId, apiId: apiHandle, keyHandle });
         return util.sendError(res, errorStatus(err), 'Failed to associate application with API key');
@@ -340,6 +382,6 @@ async function listApplicationApiKeys(req, res) {
 }
 
 module.exports = {
-    generateApiKey, listApiKeys, regenerateApiKey, revokeApiKey,
+    generateApiKey, listApiKeys, listAllApiKeys, regenerateApiKey, revokeApiKey,
     associateApiKeyApplication, removeApiKeyApplication, listApplicationApiKeys
 };

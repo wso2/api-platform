@@ -197,6 +197,7 @@ describe('MCP servers', () => {
         expect(res.status).toBe(201);
         expect(res.body.id).toBe(keyId);
         expect(res.body.key).toBeDefined();
+        expect(res.body.keyId).toBeUndefined(); // internal uuid must not leak
     });
 
     // An MCP server's contract is its tools schema, supplied via the single `definition`

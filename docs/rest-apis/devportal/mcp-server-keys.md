@@ -50,7 +50,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "keyId": "key-12345",
   "id": "weather_prod_key",
   "displayName": "Weather Prod Key",
   "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
@@ -172,7 +171,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "keyId": "key-12345",
       "id": "weather_prod_key",
       "displayName": "Weather Prod Key",
       "apiId": "weather-api-v1",
@@ -234,7 +232,6 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[ApiKeyMetadataResponse](schemas.md#schemaapikeymetadataresponse)]|false|none|[API key metadata returned by list operations. Secret material is omitted.]|
-|»» keyId|string|false|none|Developer Portal key identifier.|
 |»» id|string|false|none|none|
 |»» displayName|string|false|none|none|
 |»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
@@ -317,7 +314,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "keyId": "key-12345",
   "id": "weather_prod_key",
   "displayName": "Weather Prod Key",
   "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
@@ -524,7 +520,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "keyId": "key-12345",
   "application": {
     "id": "my-weather-app",
     "displayName": "My Mobile App"
