@@ -4,6 +4,17 @@
 # at /app/configs/config.toml in both. Settings that are identical across both DB
 # variants live here; settings that differ (database connection, network hostnames)
 # stay as APIP_DP_* env vars in each compose file's environment: block.
+#
+# There is no automatic APIP_DP_* environment-variable override (see
+# src/config/configLoader.js / configs/config.toml) — an env var set in either
+# compose file's environment: block only takes effect where a key below
+# explicitly references it via a {{ env "..." "default" }} token. Every key
+# that either compose file overrides MUST have a matching token here, or the
+# override is silently ignored and the built-in default
+# (src/config/configDefaults.js) is used instead.
+
+[server]
+base_url = '{{ env "APIP_DP_SERVER_BASEURL" "http://devportal:3000" }}'
 
 [tls]
 # Use plain HTTP inside the test network so Cypress doesn't need to trust a cert.
@@ -11,6 +22,19 @@ enabled = false
 
 [logging]
 console_only = true
+
+[database]
+# type/file cover docker-compose.test.yaml (SQLite); host/port/username/password/name
+# cover docker-compose.test.postgres.yaml (PostgreSQL) — each compose file only sets
+# the env vars relevant to its own variant, so the other side's tokens just resolve
+# to these defaults, unused.
+type     = '{{ env "APIP_DP_DATABASE_TYPE" "sqlite" }}'
+file     = '{{ env "APIP_DP_DATABASE_FILE" "./data/devportal-it.db" }}'
+host     = '{{ env "APIP_DP_DATABASE_HOST" "localhost" }}'
+port     = '{{ env "APIP_DP_DATABASE_PORT" "5432" }}'
+username = '{{ env "APIP_DP_DATABASE_USERNAME" "postgres" }}'
+password = '{{ env "APIP_DP_DATABASE_PASSWORD" "" }}'
+name     = '{{ env "APIP_DP_DATABASE_NAME" "devportal" }}'
 
 [security]
 # Required — devportal fails closed at startup without these.

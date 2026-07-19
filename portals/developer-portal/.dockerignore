@@ -2,6 +2,13 @@
 # node_modules is installed fresh inside the container by npm ci
 node_modules
 
+# ── Local dev SQLite databases — must never be baked into the image. A stale
+# copy here is root-owned (COPY runs before the chown to appuser) and silently
+# shadows the real runtime DB at the configured database.file path, causing
+# every write (sessions, seeding, queues) to fail as "readonly database".
+*.db
+data/
+
 # ── Config / secrets (mounted at runtime via volume) ──────────────
 config.toml
 configs/

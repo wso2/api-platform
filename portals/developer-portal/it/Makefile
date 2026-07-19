@@ -16,16 +16,38 @@
 # under the License.
 # --------------------------------------------------------------------
 
-.PHONY: all test test-postgres test-rest-api test-rest-api-postgres open clean deps ensure-test-tag
+.PHONY: all test test-postgres test-rest-api test-rest-api-postgres open clean deps ensure-test-tag ensure-certs
 
 VERSION ?= $(shell cat ../VERSION 2>/dev/null | tr -d '[:space:]' || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME      := developer-portal
+CERT_DIR        := .certs
 
 # Auto-detect host CPU so Cypress runs natively (no QEMU).
 # arm64 = Apple Silicon → pull linux/arm64 Cypress image.
 # Everything else (CI, Intel) defaults to linux/amd64.
 CYPRESS_PLATFORM ?= $(shell [ "$$(uname -m)" = "arm64" ] && echo "linux/arm64" || echo "linux/amd64")
+
+# One-time, idempotent TLS cert generation for platform-api's HTTPS listener —
+# mirrors ../scripts/setup.sh's openssl step, scoped to this test fixture and run
+# automatically as a `make test`/`test-postgres`/`test-rest-api*` prerequisite
+# (unlike setup.sh, which a person runs by hand before `docker compose up`) so CI
+# and a fresh checkout need no manual pre-step. Bind-mounted read-only into
+# platform-api (docker-compose.test*.yaml) instead of the old certgen init
+# container + named volume. 644, not 600, so the container's non-root user can
+# read a file owned by the host user (same tradeoff as setup.sh's CERT_FILE_MODE).
+ensure-certs:
+	@mkdir -p $(CERT_DIR)
+	@if [ -f $(CERT_DIR)/cert.pem ] && [ -f $(CERT_DIR)/key.pem ]; then \
+		echo "Using existing $(CERT_DIR)/{cert,key}.pem"; \
+	else \
+		echo "Generating platform-api TLS certificate at $(CERT_DIR) ..."; \
+		openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+			-keyout $(CERT_DIR)/key.pem -out $(CERT_DIR)/cert.pem \
+			-subj "/O=WSO2 API Platform/CN=platform-api" \
+			-addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1" 2>/dev/null; \
+		chmod 644 $(CERT_DIR)/key.pem $(CERT_DIR)/cert.pem; \
+	fi
 
 # Tag the pre-built developer-portal image as :test so docker-compose.test.yaml can
 # reference a stable :test tag regardless of whether the local build is :VERSION.
@@ -50,7 +72,7 @@ ensure-test-tag:
 # docker inspect`: `ps -q` lists only RUNNING containers, so once the service has
 # exited it returns nothing and the code is silently lost (the target then passes
 # even when tests fail). Keep the capture in the same shell as `up`.
-test: ensure-test-tag
+test: ensure-test-tag ensure-certs
 	@CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.yaml up devportal cypress --abort-on-container-exit --exit-code-from cypress; \
 	EXIT=$$?; \
 	docker compose -f docker-compose.test.yaml down -v --remove-orphans; \
@@ -58,7 +80,7 @@ test: ensure-test-tag
 
 # Run Cypress tests headlessly against PostgreSQL.
 # Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
-test-postgres: ensure-test-tag
+test-postgres: ensure-test-tag ensure-certs
 	@CYPRESS_PLATFORM=$(CYPRESS_PLATFORM) DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.postgres.yaml up postgres devportal cypress --abort-on-container-exit --exit-code-from cypress; \
 	EXIT=$$?; \
 	docker compose -f docker-compose.test.postgres.yaml down -v --remove-orphans; \
@@ -66,14 +88,14 @@ test-postgres: ensure-test-tag
 
 # Run the REST API integration test suite (Jest + Supertest) against SQLite.
 # Requires the developer-portal image to be built first: make build (from portals/developer-portal/).
-test-rest-api: ensure-test-tag
+test-rest-api: ensure-test-tag ensure-certs
 	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.yaml up devportal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \
 	docker compose -f docker-compose.test.yaml down -v --remove-orphans; \
 	exit $$EXIT
 
 # Run the REST API integration test suite (Jest + Supertest) against PostgreSQL.
-test-rest-api-postgres: ensure-test-tag
+test-rest-api-postgres: ensure-test-tag ensure-certs
 	@DOCKER_REGISTRY=$(DOCKER_REGISTRY) docker compose -f docker-compose.test.postgres.yaml up postgres devportal rest-api-tests --abort-on-container-exit --exit-code-from rest-api-tests; \
 	EXIT=$$?; \
 	docker compose -f docker-compose.test.postgres.yaml down -v --remove-orphans; \

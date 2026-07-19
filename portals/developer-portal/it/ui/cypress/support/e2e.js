@@ -26,7 +26,12 @@ before(() => {
     const apiKey = Cypress.env('API_KEY');
     cy.request({
         method: 'GET',
-        url: '/organizations',
+        // Must include the API base path — the devportal API router (see
+        // src/routes/api/devportalApiRouter.js) only recognizes requests whose
+        // first path segment matches the OpenAPI spec's server basePath ('api').
+        // A bare '/organizations' falls through to the page-rendering route
+        // tree instead, which misinterprets "organizations" as an org handle.
+        url: '/api/v0.9/organizations',
         headers: apiKey ? { 'x-wso2-api-key': apiKey } : {},
         failOnStatusCode: false,
     }).then((resp) => {
