@@ -234,7 +234,7 @@ func devportalAPIMultipart(name, refID string, plans []string) (string, []byte, 
 	for _, p := range plans {
 		plansYAML += "\n    - " + p
 	}
-	apiYAML := fmt.Sprintf(`apiVersion: devportal.api-platform.wso2.com/v1alpha1
+	apiYAML := fmt.Sprintf(`apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: RestApi
 metadata:
   name: %s

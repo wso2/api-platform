@@ -8,7 +8,7 @@ Create an `org.yaml` file using the Organization manifest format:
 
 ```yaml
 # org.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: Organization
 
 metadata:
@@ -63,7 +63,7 @@ curl -k https://localhost:3000/api/v0.9/organizations -H "Authorization: Bearer 
 
 ```yaml
 # org-update.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: Organization
 
 metadata:

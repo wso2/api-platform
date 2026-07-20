@@ -19,7 +19,7 @@ Create an API manifest file using the appropriate `kind`. The file **must** be n
 
 ```yaml
 # api.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: RestApi   # RestApi | WS | GraphQL | SOAP | WebSubApi
 
 metadata:
@@ -62,7 +62,7 @@ For an MCP server, use `mcp.yaml` instead:
 
 ```yaml
 # mcp.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: MCP
 
 metadata:
@@ -286,7 +286,7 @@ Consumers subscribe to a plan (receiving a subscription token), generate an API 
 
 ```yaml
 # api-update.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: RestApi
 
 metadata:

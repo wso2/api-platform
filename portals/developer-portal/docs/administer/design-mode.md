@@ -186,7 +186,7 @@ samples/
 ### `api.yaml` Format (REST API)
 
 ```yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: RestApi
 
 metadata:
@@ -214,7 +214,7 @@ spec:
 ### `api.yaml` Format (MCP Server)
 
 ```yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: MCP
 
 metadata:
@@ -261,7 +261,7 @@ The portal re-reads API definitions from disk on every page request. Edit `api.y
 The Applications page is available in design mode and shows entries from `applications_path`. The format follows the same Kubernetes-style manifest used across all sample files:
 
 ```yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: ApplicationList
 items:
 
