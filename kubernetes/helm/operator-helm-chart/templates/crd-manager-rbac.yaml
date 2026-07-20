@@ -2,6 +2,12 @@
 CustomResourceDefinitions are cluster-scoped, so the apply-crds hook Job
 needs this regardless of whether .Values.watchNamespaces restricts the
 operator's own manager-role to a namespaced Role (see role.yaml/clusterrole.yaml).
+
+This must itself be a pre-install,pre-upgrade hook (weighted before the
+operator-crds ConfigMap and apply-crds Job) — normal, non-hook resources are
+only applied AFTER pre-install/pre-upgrade hooks run, so on `helm upgrade` a
+plain ClusterRoleBinding here would not exist yet when the hook Job tries to
+use it.
 */}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -11,6 +17,9 @@ metadata:
     app.kubernetes.io/name: {{ include "gateway-operator.name" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-1"
 rules:
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
@@ -24,6 +33,9 @@ metadata:
     app.kubernetes.io/name: {{ include "gateway-operator.name" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-1"
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
