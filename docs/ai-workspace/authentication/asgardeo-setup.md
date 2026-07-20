@@ -145,15 +145,16 @@ enabled = false
 Update `configs/config.toml`:
 
 ```toml
+[ai_workspace]
 domain             = "<your-domain>"
 auth_mode          = "oidc"
 controlplane_host  = "<platform-api-host>"
 default_org_region = "us"
 
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://<platform-api-host>"
 
-[oidc]
+[ai_workspace.oidc]
 authority = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
 client_id = "<ai-workspace-client-id>"
 
@@ -165,10 +166,10 @@ post_logout_redirect_url = "https://<your-domain>/login"
 # token for '{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}': the key needs one token or the other.
 client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
 
-# Mirrors [auth.idp.claim_mappings] in config-platform-api.toml — the two must agree.
-# Must stay the last table under [oidc]: plain [oidc] keys placed below this header
-# would land in [oidc.claim_mappings] instead.
-[oidc.claim_mappings]
+# Mirrors [platform_api.auth.idp.claim_mappings] in config-platform-api.toml — the two must
+# agree. Must stay the last table under [ai_workspace.oidc]: plain [ai_workspace.oidc] keys
+# placed below this header would land in [ai_workspace.oidc.claim_mappings] instead.
+[ai_workspace.oidc.claim_mappings]
 organization_claim_name = "org_id"
 org_name_claim_name     = "org_name"
 org_handle_claim_name   = "org_handle"
@@ -178,7 +179,7 @@ The redirect URLs and the client secret are BFF settings and never reach the bro
 redirect URLs are ordinary `config.toml` keys; the secret is referenced with an interpolation
 token so the raw value never lands in the file.
 
-> `[oidc] redirect_url` must exactly match the authorized redirect URL registered in section 2.
+> `[ai_workspace.oidc] redirect_url` must exactly match the authorized redirect URL registered in section 2.
 > A missing client secret fails startup — see [Configuration → Secrets](../configuration.md#secrets).
 
 ---
@@ -196,5 +197,5 @@ Asgardeo token
 
 The claim names must be consistent across all three places:
 - Asgardeo token mapper output
-- `[oidc.claim_mappings]` in `config.toml`
+- `[ai_workspace.oidc.claim_mappings]` in `config.toml`
 - `*_claim_name` in Platform API `[auth.idp.claim_mappings]`

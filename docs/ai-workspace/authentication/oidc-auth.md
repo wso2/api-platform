@@ -22,15 +22,16 @@ Tested IDPs: [Asgardeo](asgardeo-setup.md), Keycloak, Auth0, Okta.
 ### AI Workspace (`configs/config.toml`)
 
 ```toml
+[ai_workspace]
 domain            = "app.example.com"
 auth_mode         = "oidc"
 controlplane_host = "api.example.com"
 
-[platform_api]
+[ai_workspace.platform_api]
 # The upstream the BFF proxies to (an origin — the API paths are appended by the proxy).
 url = "https://api.example.com"
 
-[oidc]
+[ai_workspace.oidc]
 # IDP issuer URL — the discovery doc is fetched from {authority}/.well-known/openid-configuration
 authority = "https://idp.example.com/realms/my-realm"
 
@@ -46,11 +47,12 @@ post_logout_redirect_url = "https://<domain>/login"
 client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
 
 # JWT claim names for organization identity. This table mirrors
-# [auth.idp.claim_mappings] in the Platform API config (below) key for key — both
-# services read the same claims out of the same token, so the two must agree.
-# Must stay the last table under [oidc]: plain [oidc] keys placed below this
-# header would land in [oidc.claim_mappings] instead.
-[oidc.claim_mappings]
+# [platform_api.auth.idp.claim_mappings] in the Platform API config (below) key for
+# key — both services read the same claims out of the same token, so the two must
+# agree. Must stay the last table under [ai_workspace.oidc]: plain [ai_workspace.oidc]
+# keys placed below this header would land in [ai_workspace.oidc.claim_mappings]
+# instead.
+[ai_workspace.oidc.claim_mappings]
 organization_claim_name = "org_id"
 org_name_claim_name     = "org_name"
 org_handle_claim_name   = "org_handle"
@@ -65,7 +67,7 @@ the value in the git-ignored `api-platform.env`. The key must carry one token or
 no token to read it is ignored. Either token fails closed: a missing secret aborts startup rather
 than yielding an empty credential. See [Configuration → Secrets](../configuration.md#secrets).
 
-`[oidc] redirect_url` (the BFF callback `/api/auth/callback`) and `post_logout_redirect_url`
+`[ai_workspace.oidc] redirect_url` (the BFF callback `/api/auth/callback`) and `post_logout_redirect_url`
 must be registered as allowed redirect URIs in your IDP application. The redirect is **not** the
 SPA `/signin` route — the BFF, not the browser, completes the code exchange.
 
@@ -82,10 +84,10 @@ enabled  = true
 name     = "my-idp"
 jwks_url = "https://idp.example.com/realms/my-realm/protocol/openid-connect/certs"
 issuer   = ["https://idp.example.com/realms/my-realm"]
-audience = ["ai-workspace"]   # must match [oidc] client_id
+audience = ["ai-workspace"]   # must match [ai_workspace.oidc] client_id
 
 # Map IDP-specific claim names to Platform API's expected fields
-# These must match the [oidc.claim_mappings] values in config.toml above
+# These must match the [ai_workspace.oidc.claim_mappings] values in config.toml above
 [auth.idp.claim_mappings]
 organization_claim_name = "org_id"
 org_name_claim_name     = "org_name"
@@ -139,16 +141,16 @@ You must register the `ap:*` scopes as an API resource in your IDP and grant the
 **Users see a blank screen or redirect loop after login**
 - Verify `domain` in `config.toml` matches the actual host:port in the browser.
 - Verify the redirect URI `https://<domain>/api/auth/callback` (the BFF callback) is registered
-  in the IDP and matches `[oidc] redirect_url`.
+  in the IDP and matches `[ai_workspace.oidc] redirect_url`.
 
 **Token endpoint rejects the BFF with `unauthorized_client` / "not authorized to use the requested grant type"**
 - The app is registered as a public/SPA client. Re-register it as a **confidential** client
-  (authorization-code + refresh-token grants, PKCE) and set `[oidc] client_secret`.
+  (authorization-code + refresh-token grants, PKCE) and set `[ai_workspace.oidc] client_secret`.
 
 **Platform API returns 401**
 - Check that `jwks_url` and `issuer` in Platform API config match the IDP's discovery doc values.
-- Check that `audience` matches the `[oidc] client_id` of the confidential application.
-- Ensure `organization_claim_name` matches on both sides — `[auth.idp.claim_mappings]` in the Platform API and `[oidc.claim_mappings]` in AI Workspace.
+- Check that `audience` matches the `[ai_workspace.oidc] client_id` of the confidential application.
+- Ensure `organization_claim_name` matches on both sides — `[platform_api.auth.idp.claim_mappings]` in the Platform API and `[ai_workspace.oidc.claim_mappings]` in AI Workspace.
 
 **"Organization not found" error**
 - The `org_id` claim in the token does not match any organization in Platform API's database.

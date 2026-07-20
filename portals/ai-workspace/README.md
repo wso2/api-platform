@@ -57,10 +57,11 @@ The shipped `config.toml` writes each key as an `{{ env }}` token, so a deployme
 them from the environment without editing the file:
 
 ```toml
+[ai_workspace]
 # The token names the variable; the second argument is the value used when it is unset.
 log_level = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'
 
-[oidc]
+[ai_workspace.oidc]
 # No default — an unset APIP_AIW_OIDC_CLIENT_SECRET fails startup rather than
 # running with an empty credential. Keep the value in a git-ignored env file
 # (api-platform.env in the compose quickstart).
@@ -71,10 +72,14 @@ client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
 ```
 
 The token is what reads the environment, so setting `APIP_AIW_LOG_LEVEL` does nothing unless
-`log_level` is present in the file with its token. Keys are grouped into TOML tables
-(`[platform_api]`, `[tls]`, `[session]`, `[cookie]`, `[oidc]`), and by convention a token names the
-key's table path uppercased with underscores (`[oidc] client_id` → `APIP_AIW_OIDC_CLIENT_ID`) — but
-a token may name any variable.
+`log_level` is present in the file with its token. All AI Workspace settings live under
+`[ai_workspace]` — the same namespacing convention the Platform API uses for its own
+`[platform_api]` table, so a shared config.toml can hold both services' sections without their
+keys colliding. Keys are grouped into TOML tables under it
+(`[ai_workspace.platform_api]`, `[ai_workspace.tls]`, `[ai_workspace.session]`,
+`[ai_workspace.cookie]`, `[ai_workspace.oidc]`), and by convention a token names the key's path
+under `[ai_workspace]` uppercased with underscores (`[ai_workspace.oidc] client_id` →
+`APIP_AIW_OIDC_CLIENT_ID`) — but a token may name any variable.
 
 All available options are documented in
 [configs/config-template.toml](configs/config-template.toml).
@@ -164,7 +169,7 @@ make bff-run            # serves /api/* on https://localhost:8081, proxies to th
 The Vite dev server proxies `/api` and `/runtime-config.js` to the BFF, so the browser
 talks only to the app origin (same topology as production). Set `PLATFORM_API_URL` if the
 Platform API is not on `https://localhost:9243` — `make bff-run` forwards it to the BFF as
-`APIP_AIW_PLATFORM_API_URL`, the variable the `[platform_api] url` token names, so the two
+`APIP_AIW_PLATFORM_API_URL`, the variable the `[ai_workspace.platform_api] url` token names, so the two
 names are the same setting.
 
 Ensure all three services are running before accessing the application.
@@ -252,9 +257,10 @@ stays out of the file, referenced there by an interpolation token:
 
 ```toml
 # portals/ai-workspace/configs/config.toml
+[ai_workspace]
 auth_mode = "oidc"
 
-[oidc]
+[ai_workspace.oidc]
 authority                = "https://idp.example.com/oauth2/token"   # Asgardeo: https://api.asgardeo.io/t/acme/oauth2/token
 client_id                = "<your-client-id>"
 redirect_url             = "https://localhost:5380/api/auth/callback"
@@ -292,7 +298,7 @@ docker compose up -d
 ```
 
 In production, prefer mounting the secret as a file and referencing it with
-`[oidc] client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'` — the value then
+`[ai_workspace.oidc] client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'` — the value then
 never enters the environment at all.
 
 (Skipping this section and leaving `auth_mode = "basic"`, the default, keeps the file-based
@@ -333,11 +339,11 @@ enabled = false            # required: mutually exclusive with the IDP
 Then export the BFF settings and start it. `make bff-run` runs the BFF against
 [`configs/config.toml`](configs/config.toml) — the same file the container mounts, passed with
 `-config` — whose keys are all `{{ env }}` tokens naming the variables below, so exporting one
-sets its key (`APIP_AIW_OIDC_CLIENT_ID` → `[oidc] client_id`). A key absent from that file is not
+sets its key (`APIP_AIW_OIDC_CLIENT_ID` → `[ai_workspace.oidc] client_id`). A key absent from that file is not
 settable this way; add it there first. Point the BFF at the locally published Platform API port —
 the `platform-api` compose hostname does **not** resolve outside the compose network:
 
-> `[oidc] authority` is Asgardeo's **token base** — the BFF appends
+> `[ai_workspace.oidc] authority` is Asgardeo's **token base** — the BFF appends
 > `/.well-known/openid-configuration` itself, so do **not** include the discovery suffix.
 
 ```bash
@@ -364,12 +370,12 @@ failures, by symptom:
 |---|---|---|
 | `unauthorized_client` / *"not authorized to use the requested grant type"* | App registered as SPA, or Code/Refresh grant not enabled | Recreate as Standard-Based OIDC app; enable **Code** + **Refresh Token** (step 1) |
 | Platform API exits at startup with *"auth.idp.enabled=true and auth.jwt.enabled=true are mutually exclusive"* | Local auth left on alongside the IDP | Compose: set `APIP_CP_AUTH_JWT_ENABLED=false` + `APIP_CP_AUTH_FILE_BASED_ENABLED=false` in `api-platform.env` (step 3, Option 1). Local: set `auth.jwt.enabled=false` and `auth.file_based.enabled=false` (step 3, Option 2) |
-| `502` + `dial tcp: lookup platform-api: no such host` | BFF run locally but `[platform_api] url` points at the compose hostname | Set `APIP_AIW_PLATFORM_API_URL=https://localhost:9243` (step 3, Option 2) |
+| `502` + `dial tcp: lookup platform-api: no such host` | BFF run locally but `[ai_workspace.platform_api] url` points at the compose hostname | Set `APIP_AIW_PLATFORM_API_URL=https://localhost:9243` (step 3, Option 2) |
 | Proxied calls return `authentication_failed` | Platform API still on local JWT/file-based, validating the IDP token with the wrong validator | Switch it to the IDP — compose: set the `APIP_CP_AUTH_IDP_*` keys in `api-platform.env` (step 3, Option 1); local: enable `[auth.idp]` (step 3, Option 2) |
 | Proxied calls return `authentication_failed`, Platform API logs `token contains an invalid number of segments` | IDP is issuing **opaque** access tokens — the BFF forwards the access token and the Platform API can only validate a **JWT** via JWKS | Set **Access Token Type = JWT** on the app's Protocol tab (step 1) and re-login |
 | Login works, then proxied calls return `403` | Access token lacks `ap:*` scopes, or Platform API IDP/claim mapping wrong | Grant `ap:*` scopes to the user (step 2); check `[auth.idp]` issuer/JWKS/claim mappings |
 | User shows as a UUID and email is blank in the UI | Token carries no name/email claims — the BFF falls back to the `sub` (user UUID) | Release the `given_name` (or `name`/`preferred_username`) and `email` claims to the app and ensure the user has those attributes set; the `profile` and `email` scopes must be granted (both are in the default request) |
-| Logged out as soon as the access token expires; never silently refreshed | IDP returned no refresh token — `offline_access` scope missing from the request, or not permitted for the app | Keep `offline_access` in `[oidc] scope` (it's in the default); allow it for the app in the IDP (step 1) |
+| Logged out as soon as the access token expires; never silently refreshed | IDP returned no refresh token — `offline_access` scope missing from the request, or not permitted for the app | Keep `offline_access` in `[ai_workspace.oidc] scope` (it's in the default); allow it for the app in the IDP (step 1) |
 | Refresh fails minutes after login | **Refresh Token** grant not enabled on the app | Enable it on the Protocol tab (step 1) |
 
 ## Session lifetime & token refresh
@@ -458,7 +464,7 @@ resources/certificates/
 
 docker-compose mounts this directory read-only into both containers
 (`/etc/platform-api/tls` and `/etc/ai-workspace/tls`). The same cert also serves as the CA bundle
-the BFF trusts for the upstream platform-api hop, referenced by `[platform_api] ca_file` in
+the BFF trusts for the upstream platform-api hop, referenced by `[ai_workspace.platform_api] ca_file` in
 `configs/config.toml`.
 
 Then restart the stack: `docker compose up -d --force-recreate` (a plain `docker
@@ -479,5 +485,5 @@ credentials, and self-signed certificates); for production, provide real values:
 | **Platform API** — `APIP_CP_ENCRYPTION_KEY`, `APIP_CP_AUTH_JWT_SECRET_KEY` | Generated into `api-platform.env` | Manage as real secrets; prefer mounting files and referencing them with `{{ file "..." }}` in the config TOML |
 | **Platform API** — admin credentials | Generated into `api-platform.env` (bcrypt hash); password printed once | Use OIDC (`auth.idp`) instead of file-based auth |
 | **TLS certificates (both services)** | One self-signed pair in `resources/certificates/`, shared by both services | Certificates from your CA (same file names), or terminate TLS at an ingress and disable the listeners' TLS |
-| **Upstream trust (BFF → Platform API)** | The generated shared cert is mounted as a CA bundle (`[platform_api] ca_file`) | Point `ca_file` at your CA bundle; never use `tls_skip_verify` in production |
+| **Upstream trust (BFF → Platform API)** | The generated shared cert is mounted as a CA bundle (`[ai_workspace.platform_api] ca_file`) | Point `ca_file` at your CA bundle; never use `tls_skip_verify` in production |
 | **Auth** | File-based (basic) auth with the generated admin user | OIDC — follow [Testing with an IDP locally](#testing-with-an-idp-locally) and [production/README.md](production/README.md) |

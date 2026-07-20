@@ -13,6 +13,11 @@
 # This file is read by the AI Workspace container at startup, and is the only source of
 # configuration.
 #
+# All AI Workspace settings live under [ai_workspace] / [ai_workspace.*]. This
+# namespacing mirrors the Platform API's own [platform_api] / [platform_api.*] table
+# and lets one config.toml hold both services' sections side by side in a shared
+# deployment config without their tables colliding.
+#
 # HOW VALUES ARE RESOLVED
 # Each value is an interpolation token, resolved once at startup:
 #
@@ -24,12 +29,13 @@
 # so a key written as a plain literal (key = "value"), or left commented out below,
 # ignores the variable entirely. Uncomment the key first to make it settable that way.
 #
-# By convention the variable is the key's table path, uppercased, dots as underscores,
+# By convention the variable is the key's table path under [ai_workspace] (not
+# including the [ai_workspace] segment itself), uppercased, dots as underscores,
 # prefixed with APIP_AIW_:
 #
-#   [platform_api] url  ->  APIP_AIW_PLATFORM_API_URL
-#   [oidc] client_id    ->  APIP_AIW_OIDC_CLIENT_ID
-#   domain (no table)   ->  APIP_AIW_DOMAIN
+#   [ai_workspace] domain               ->  APIP_AIW_DOMAIN
+#   [ai_workspace.platform_api] url     ->  APIP_AIW_PLATFORM_API_URL
+#   [ai_workspace.oidc] client_id       ->  APIP_AIW_OIDC_CLIENT_ID
 #
 # To source a value from a mounted file instead of the environment — the right
 # choice for secrets — swap the token:
@@ -58,11 +64,15 @@
 #
 # QUICK START (basic-auth mode):
 #   1. Copy this file to config.toml.
-#   2. Set auth_mode = "basic" (uses the users defined in config-platform-api.toml).
+#   2. Set [ai_workspace] auth_mode = "basic" (uses the users defined in
+#      config-platform-api.toml).
 #   3. Run: docker compose up
 #
-# OIDC mode: set auth_mode = "oidc" and fill in the [oidc] table below.
+# OIDC mode: set [ai_workspace] auth_mode = "oidc" and fill in the [ai_workspace.oidc]
+# table below.
 # --------------------------------------------------------------------
+
+[ai_workspace]
 
 # ====================================================================
 # Deployment identity
@@ -72,7 +82,7 @@
 # ====================================================================
 
 # Authentication mode for the UI: "basic" (local users) or "oidc" (external IDP).
-# Choosing "oidc" enables the [oidc] table below.
+# Choosing "oidc" enables the [ai_workspace.oidc] table below.
 auth_mode = '{{ env "APIP_AIW_AUTH_MODE" "basic" }}'
 
 # Domain shown in the browser address bar (host:port, or just host for port 80/443).
@@ -100,8 +110,8 @@ debug = '{{ env "APIP_AIW_DEBUG" "false" }}'
 # Server
 #
 # Everything from here down configures the AI Workspace server itself. These values
-# stay server-side and are never sent to the browser (the [oidc] claim names being the
-# one exception — the SPA needs them to display user/org identity).
+# stay server-side and are never sent to the browser (the [ai_workspace.oidc] claim
+# names being the one exception — the SPA needs them to display user/org identity).
 #
 # All keys are optional: the value in each token's default position is the built-in
 # default.
@@ -128,7 +138,7 @@ log_format = '{{ env "APIP_AIW_LOG_FORMAT" "text" }}'   # text | json
 # ---------------------------------------------------------------------------
 # Upstream Platform API — the server-to-server hop the BFF proxies to.
 # ---------------------------------------------------------------------------
-[platform_api]
+[ai_workspace.platform_api]
 
 # Base URL used to reach the Platform API. REQUIRED. In docker compose this is the
 # compose hostname; running locally, use localhost. Its http/https scheme decides
@@ -152,7 +162,7 @@ ca_file = '{{ env "APIP_AIW_PLATFORM_API_CA_FILE" "" }}'
 # ---------------------------------------------------------------------------
 # TLS on the AI Workspace listener.
 # ---------------------------------------------------------------------------
-[tls]
+[ai_workspace.tls]
 
 # Terminate TLS on this listener. Set false only when a trusted upstream (ingress
 # controller, service-mesh sidecar) terminates TLS for you — no certificate is then
@@ -168,7 +178,7 @@ key_file  = '{{ env "APIP_AIW_TLS_KEY_FILE" "/etc/ai-workspace/tls/key.pem" }}'
 # ---------------------------------------------------------------------------
 # Server-side session lifetime.
 # ---------------------------------------------------------------------------
-[session]
+[ai_workspace.session]
 
 # Session store. Only "memory" is supported today ("redis" is future).
 store = '{{ env "APIP_AIW_SESSION_STORE" "memory" }}'
@@ -183,7 +193,7 @@ absolute_ttl = '{{ env "APIP_AIW_SESSION_ABSOLUTE_TTL" "8h" }}'
 # ---------------------------------------------------------------------------
 # Session cookie attributes.
 # ---------------------------------------------------------------------------
-[cookie]
+[ai_workspace.cookie]
 
 name = '{{ env "APIP_AIW_COOKIE_NAME" "_ai_workspace_session" }}'
 
@@ -195,12 +205,12 @@ samesite = '{{ env "APIP_AIW_COOKIE_SAMESITE" "lax" }}'
 
 
 # ---------------------------------------------------------------------------
-# OIDC — set auth_mode = "oidc" above to enable.
+# OIDC — set [ai_workspace] auth_mode = "oidc" above to enable.
 #
 # The BFF is a confidential client: it performs the whole handshake, and the client
 # credentials never reach the browser.
 # ---------------------------------------------------------------------------
-[oidc]
+[ai_workspace.oidc]
 
 # Force the OIDC client on independently of auth_mode. Setting auth_mode = "oidc"
 # already enables it, so this is rarely needed.
@@ -234,19 +244,20 @@ scope = '{{ env "APIP_AIW_OIDC_SCOPE" "" }}'
 # ---------------------------------------------------------------------------
 # JWT claim name mappings — which token claim carries each user/org field.
 #
-# This table mirrors [auth.idp.claim_mappings] in config-platform-api.toml key for key,
-# and the two must agree: both services read the same claims out of the same token.
-# The variables line up one-to-one as well:
+# This table mirrors [platform_api.auth.idp.claim_mappings] in
+# config-platform-api.toml key for key, and the two must agree: both services read
+# the same claims out of the same token. The variables line up one-to-one as well:
 #
 #   APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME     (AI Workspace)
 #   APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME  (Platform API)
 #
 # Override only if your IDP uses claim names other than the defaults shown.
 #
-# Must be the last table under [oidc]: in TOML, a sub-table header ends the parent
-# table's key section, so any plain [oidc] key placed below it would land here instead.
+# Must be the last table under [ai_workspace.oidc]: in TOML, a sub-table header ends
+# the parent table's key section, so any plain [ai_workspace.oidc] key placed below
+# it would land here instead.
 # ---------------------------------------------------------------------------
-[oidc.claim_mappings]
+[ai_workspace.oidc.claim_mappings]
 
 organization_claim_name = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME" "org_id" }}'    # claim carrying the org ID
 org_name_claim_name     = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ORG_NAME_CLAIM_NAME" "org_name" }}'      # org display name

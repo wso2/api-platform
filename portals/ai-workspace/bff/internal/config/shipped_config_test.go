@@ -30,8 +30,8 @@ var (
 )
 
 // The shipped config.toml must load with nothing set in the environment — that is the
-// quickstart: `docker compose up` with no .env beyond the two secrets. Its [oidc] keys
-// default to empty, which must leave OIDC off rather than fail startup.
+// quickstart: `docker compose up` with no .env beyond the two secrets. It ships without
+// an [ai_workspace.oidc] table at all, which must leave OIDC off rather than fail startup.
 func TestShippedConfig_QuickstartLoadsWithNoEnv(t *testing.T) {
 	cfg, err := Load(quickstartConfig)
 	if err != nil {
@@ -41,10 +41,10 @@ func TestShippedConfig_QuickstartLoadsWithNoEnv(t *testing.T) {
 	if cfg.AuthMode != "basic" {
 		t.Errorf("AuthMode = %q, want %q", cfg.AuthMode, "basic")
 	}
-	// The empty [oidc] defaults must not switch the OIDC client on, or Load would
-	// demand an authority/client_id/client_secret the quickstart has no use for.
+	// The missing [ai_workspace.oidc] table must not switch the OIDC client on, or Load
+	// would demand an authority/client_id/client_secret the quickstart has no use for.
 	if cfg.OIDC.Enabled {
-		t.Error("OIDC.Enabled = true, want false — the empty [oidc] defaults must leave basic mode intact")
+		t.Error("OIDC.Enabled = true, want false — the empty [ai_workspace.oidc] defaults must leave basic mode intact")
 	}
 	// The defaults in the file are the container's: the port it publishes and the SPA
 	// baked into the image.
@@ -101,8 +101,10 @@ func TestShippedConfig_MakeBffRunOverrides(t *testing.T) {
 	}
 }
 
-// The [oidc] tokens in the shipped config are what let `make bff-run` — and a compose
-// deployment — turn on OIDC from the environment alone, without editing the file.
+// configs/config.toml is deliberately minimal and ships without an [ai_workspace.oidc]
+// table — the quickstart only ever runs in basic-auth mode. configs/config-template.toml
+// is the file a real deployment copies from, and its [ai_workspace.oidc] tokens are what
+// let OIDC be turned on from the environment alone, without further edits to the file.
 func TestShippedConfig_OIDCFromEnvAlone(t *testing.T) {
 	t.Setenv("APIP_AIW_AUTH_MODE", "oidc")
 	t.Setenv("APIP_AIW_OIDC_AUTHORITY", "https://idp.example.com")
@@ -110,9 +112,9 @@ func TestShippedConfig_OIDCFromEnvAlone(t *testing.T) {
 	t.Setenv("APIP_AIW_OIDC_CLIENT_SECRET", "s3cr3t")
 	t.Setenv("APIP_AIW_OIDC_REDIRECT_URL", "https://localhost:5380/api/auth/callback")
 
-	cfg, err := Load(quickstartConfig)
+	cfg, err := Load(templateConfig)
 	if err != nil {
-		t.Fatalf("Load(configs/config.toml) error = %v — the [oidc] tokens must make OIDC settable from the environment", err)
+		t.Fatalf("Load(configs/config-template.toml) error = %v — the [ai_workspace.oidc] tokens must make OIDC settable from the environment", err)
 	}
 	if !cfg.OIDC.Enabled {
 		t.Fatal("OIDC.Enabled = false, want true — auth_mode = oidc must enable the client")

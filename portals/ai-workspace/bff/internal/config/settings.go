@@ -40,6 +40,15 @@ import (
 // The prefix also namespaces the runtime config the SPA reads (see runtimeKey).
 const EnvPrefix = "APIP_AIW_"
 
+// aiWorkspaceConfigKey is the top-level TOML table all AI Workspace settings live
+// under (e.g. [ai_workspace], [ai_workspace.platform_api]). It mirrors the Platform
+// API's platformAPIConfigKey: this namespacing lets an AI Workspace config file
+// coexist with sibling services' sections ([platform_api], ...) in a shared
+// deployment config, the same file convention as the Platform API's [platform_api]
+// table. Every key below this cut (log_level, platform_api.url, oidc.*, ...) is
+// resolved relative to [ai_workspace], not the file root.
+const aiWorkspaceConfigKey = "ai_workspace"
+
 // defaultFileSourceAllowlist is the AI Workspace's default set of directories a
 // {{ file "..." }} token may read from. Overridable via the shared
 // APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var (see configinterpolate.ResolveAllowlist).
@@ -48,10 +57,12 @@ var defaultFileSourceAllowlist = []string{
 	"/secrets/ai-workspace",
 }
 
-// settings is the fully-resolved configuration: the config.toml values with every
-// {{ env }} / {{ file }} token expanded, flattened to dotted paths. A key is its
-// table path joined with dots — [platform_api] url becomes "platform_api.url" — and a
-// key outside any table keeps its bare name ("domain").
+// settings is the fully-resolved configuration: the config.toml values under
+// [ai_workspace], with every {{ env }} / {{ file }} token expanded and flattened to
+// dotted paths relative to that table. A key is its path under [ai_workspace] joined
+// with dots — [ai_workspace.platform_api] url becomes "platform_api.url" — and a key
+// directly under [ai_workspace] keeps its bare name ("domain"). Sibling top-level
+// tables belonging to other services (e.g. [platform_api]) are ignored.
 type settings map[string]string
 
 // loadSettings reads config.toml and expands its interpolation tokens. config.toml is
@@ -90,8 +101,19 @@ func loadSettings(tomlPath string) (settings, error) {
 	}
 
 	s := settings{}
-	flatten(s, "", expanded)
+	flatten(s, "", cut(expanded, aiWorkspaceConfigKey))
 	return s, nil
+}
+
+// cut returns the subtree of tree rooted at key, or an empty tree when key is
+// absent (a missing [ai_workspace] table simply leaves every key on its default,
+// same as a missing config file). A key present but not a table is also treated as
+// absent — flatten only ever descends into map[string]any nodes.
+func cut(tree map[string]any, key string) map[string]any {
+	if sub, ok := tree[key].(map[string]any); ok {
+		return sub
+	}
+	return map[string]any{}
 }
 
 // parseTOML decodes the config file with the stdlib subset parser (see toml.go).

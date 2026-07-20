@@ -6,8 +6,8 @@
 # in compliance with the License. You may obtain a copy of the
 # License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
-# AI Workspace configuration (quickstart). See README.md → "Configuration".
-# See configs/config-template.toml for the full set of available settings.
+
+[ai_workspace]
 
 auth_mode = '{{ env "APIP_AIW_AUTH_MODE" "basic" }}'
 domain = '{{ env "APIP_AIW_DOMAIN" "localhost:5380" }}'
@@ -20,14 +20,14 @@ static_dir  = '{{ env "APIP_AIW_STATIC_DIR" "/app" }}'
 log_level   = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'   # debug | info | warn | error
 
 
-[platform_api]
+[ai_workspace.platform_api]
 
 url = '{{ env "APIP_AIW_PLATFORM_API_URL" "https://platform-api:9243" }}'
 ca_file = "/etc/ai-workspace/tls/cert.pem"
 tls_skip_verify = '{{ env "APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY" "false" }}'
 
 
-[tls]
+[ai_workspace.tls]
 
 enabled   = '{{ env "APIP_AIW_TLS_ENABLED" "true" }}'
 cert_file = "/etc/ai-workspace/tls/cert.pem"

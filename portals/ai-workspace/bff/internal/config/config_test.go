@@ -37,9 +37,10 @@ func writeConfig(t *testing.T, body string) string {
 // A literal config.toml value is used as written.
 func TestLoad_ConfigFileValue(t *testing.T) {
 	cfgPath := writeConfig(t, `
+[ai_workspace]
 log_level = "warn"
 
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://platform-api:9243"
 `)
 
@@ -59,10 +60,11 @@ url = "https://platform-api:9243"
 // supplies the variable's value, and its default applies when the variable is unset.
 func TestLoad_EnvTokenSuppliesValueAndDefault(t *testing.T) {
 	cfgPath := writeConfig(t, `
+[ai_workspace]
 log_level  = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'
 log_format = '{{ env "APIP_AIW_LOG_FORMAT" "text" }}'
 
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://platform-api:9243"
 `)
 	t.Setenv("APIP_AIW_LOG_LEVEL", "debug") // named by the token
@@ -85,9 +87,10 @@ url = "https://platform-api:9243"
 // pulls a value in from the environment.
 func TestLoad_EnvVarWithoutTokenIsIgnored(t *testing.T) {
 	cfgPath := writeConfig(t, `
+[ai_workspace]
 log_level = "warn"
 
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://platform-api:9243"
 `)
 	t.Setenv("APIP_AIW_LOG_LEVEL", "debug")
@@ -106,12 +109,13 @@ url = "https://platform-api:9243"
 // variable — the APIP_AIW_ prefix is a convention, not a requirement.
 func TestLoad_InterpolatesEnvToken(t *testing.T) {
 	cfgPath := writeConfig(t, `
+[ai_workspace]
 auth_mode = "oidc"
 
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://platform-api:9243"
 
-[oidc]
+[ai_workspace.oidc]
 authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = '{{ env "CUSTOM_SECRET_VAR" }}'
@@ -137,12 +141,13 @@ func TestLoad_InterpolatesFileToken(t *testing.T) {
 	t.Setenv("APIP_CONFIG_FILE_SOURCE_ALLOWLIST", secretDir)
 
 	cfgPath := writeConfig(t, `
+[ai_workspace]
 auth_mode = "oidc"
 
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://platform-api:9243"
 
-[oidc]
+[ai_workspace.oidc]
 authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = '{{ file "`+filepath.Join(secretDir, "oidc_client_secret")+`" }}'
@@ -169,10 +174,10 @@ func TestLoad_FileTokenOutsideAllowlist_Errors(t *testing.T) {
 	t.Setenv("APIP_CONFIG_FILE_SOURCE_ALLOWLIST", t.TempDir()) // a different directory
 
 	cfgPath := writeConfig(t, `
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://platform-api:9243"
 
-[oidc]
+[ai_workspace.oidc]
 client_secret = '{{ file "`+outside+`" }}'
 `)
 
@@ -185,10 +190,10 @@ client_secret = '{{ file "`+outside+`" }}'
 // yield an empty secret.
 func TestLoad_MissingEnvToken_Errors(t *testing.T) {
 	cfgPath := writeConfig(t, `
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://platform-api:9243"
 
-[oidc]
+[ai_workspace.oidc]
 client_secret = '{{ env "CUSTOM_SECRET_VAR" }}'
 `)
 	t.Setenv("CUSTOM_SECRET_VAR", "")
@@ -204,7 +209,7 @@ client_secret = '{{ env "CUSTOM_SECRET_VAR" }}'
 
 // The upstream URL is mandatory — the BFF has nothing to proxy to without it.
 func TestLoad_MissingPlatformAPIURL_Errors(t *testing.T) {
-	cfgPath := writeConfig(t, `log_level = "info"`)
+	cfgPath := writeConfig(t, "[ai_workspace]\nlog_level = \"info\"")
 
 	_, err := Load(cfgPath)
 	if err == nil {
@@ -219,13 +224,14 @@ func TestLoad_MissingPlatformAPIURL_Errors(t *testing.T) {
 // and OIDC client credentials must never appear in it.
 func TestLoad_RuntimeConfigExcludesServerSideKeys(t *testing.T) {
 	cfgPath := writeConfig(t, `
+[ai_workspace]
 auth_mode = "oidc"
 domain    = "localhost:5380"
 
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://platform-api:9243"
 
-[oidc]
+[ai_workspace.oidc]
 authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = "s3cr3t"
@@ -257,9 +263,10 @@ redirect_url  = "https://localhost:5380/api/auth/callback"
 // browser.
 func TestLoad_BrowserSafeKeyUsesSameName(t *testing.T) {
 	cfgPath := writeConfig(t, `
+[ai_workspace]
 moesif_web_url = "https://moesif.example.com"
 
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://platform-api:9243"
 `)
 
@@ -276,9 +283,10 @@ url = "https://platform-api:9243"
 // under that same name, exactly as if it had been written as a literal.
 func TestLoad_BrowserSafeKeyFromEnvToken(t *testing.T) {
 	cfgPath := writeConfig(t, `
+[ai_workspace]
 domain = '{{ env "APIP_AIW_DOMAIN" "localhost:5380" }}'
 
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://platform-api:9243"
 `)
 	t.Setenv("APIP_AIW_DOMAIN", "app.example.com")
@@ -296,13 +304,13 @@ url = "https://platform-api:9243"
 // string, but a plain literal is naturally typed. Both forms must reach the same value.
 func TestLoad_BareTOMLScalars(t *testing.T) {
 	cfgPath := writeConfig(t, `
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://platform-api:9243"
 
-[cookie]
+[ai_workspace.cookie]
 secure = false
 
-[session]
+[ai_workspace.session]
 absolute_ttl = "2h"
 `)
 
@@ -322,15 +330,16 @@ absolute_ttl = "2h"
 // distinct dotted paths, so [tls] enabled and [oidc] enabled are independent.
 func TestLoad_SameKeyInDifferentTables(t *testing.T) {
 	cfgPath := writeConfig(t, `
+[ai_workspace]
 auth_mode = "oidc"
 
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://platform-api:9243"
 
-[tls]
+[ai_workspace.tls]
 enabled = false
 
-[oidc]
+[ai_workspace.oidc]
 enabled       = true
 authority     = "https://idp.example.com"
 client_id     = "client-id"
@@ -356,10 +365,10 @@ redirect_url  = "https://localhost:5380/api/auth/callback"
 // src/config.env.ts looks up.
 func TestLoad_ClaimMappingsMirrorPlatformAPI(t *testing.T) {
 	cfgPath := writeConfig(t, `
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://platform-api:9243"
 
-[oidc.claim_mappings]
+[ai_workspace.oidc.claim_mappings]
 organization_claim_name = "org_uuid"
 username_claim_name     = "given_name"
 role_claim_name         = "roles"
@@ -390,10 +399,10 @@ role_claim_name         = "roles"
 // A malformed boolean must fail startup rather than fall back to the default.
 func TestLoad_InvalidBool_Errors(t *testing.T) {
 	cfgPath := writeConfig(t, `
-[platform_api]
+[ai_workspace.platform_api]
 url = "https://platform-api:9243"
 
-[cookie]
+[ai_workspace.cookie]
 secure = "maybe"
 `)
 
