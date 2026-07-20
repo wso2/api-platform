@@ -9,7 +9,7 @@ enabled = true
 enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]
-application_id = "<MOESIF_APPLICATION_ID>"
+application_id = '{{ env "APIP_GW_ANALYTICS_PUBLISHERS_MOESIF_APPLICATION_ID" "" }}'
 
 [traffic_logging]
 enabled = false
@@ -28,22 +28,39 @@ gateway_host = "*"
 enabled = true
 
 [controller.server]
-gateway_id = "platform-gateway-id"
+gateway_id = '{{ env "APIP_GW_CONTROLLER_SERVER_GATEWAY_ID" "platform-gateway-id" }}'
+
+[controller.storage]
+type = '{{ env "APIP_GW_CONTROLLER_STORAGE_TYPE" "sqlite" }}'
+
+[controller.storage.sqlite]
+path = '{{ env "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH" "./data/gateway.db" }}'
+
+[controller.storage.database]
+dsn = '{{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN" "" }}'
 
 [policy_engine.logging]
 level = "info"
 
 [controller.logging]
-level = "info"
+level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
+
+[controller.metrics]
+port = '{{ env "APIP_GW_CONTROLLER_METRICS_PORT" "9091" }}'
 
 [controller.controlplane]
-insecure_skip_verify = true
-gateway_name = "default"
-apim_oauth2_client_id = "your-client-id"
-apim_oauth2_client_secret = "your-client-secret"
+host = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_HOST" "" }}'
+token = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN" "" }}'
+insecure_skip_verify = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY" "true" }}'
+gateway_name = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_GATEWAY_NAME" "default" }}'
+apim_oauth2_client_id = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_ID" "" }}'
+apim_oauth2_client_secret = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_SECRET" "" }}'
 # Option 2: Resource Owner Password Credentials Flow (OAuth2)
 # apim_oauth2_username = "your-username"
 # apim_oauth2_password = "your-password"
+
+[controller.policies]
+definitions_path = '{{ env "APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH" "./default-policies" }}'
 
 [controller.auth.basic]
 enabled = true

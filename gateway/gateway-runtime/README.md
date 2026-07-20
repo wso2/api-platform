@@ -124,10 +124,14 @@ Configuration is via environment variables. The `docker-entrypoint.sh` script ap
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `ROUTER_CONCURRENCY` | `0` (auto) | Envoy worker threads (0 = one per CPU core) |
 | `GOMAXPROCS` | `2` | Max Go CPU cores for the Policy Engine |
-| `APIP_GW_POLICY_ENGINE_METRICS_ENABLED` | `true` | Enable Policy Engine metrics |
 | `PYTHON_POLICY_WORKERS` | `4` | Python Executor gRPC worker pool size |
 | `PYTHON_POLICY_MAX_CONCURRENT` | `100` | Max concurrent Python policy executions |
 | `PYTHON_POLICY_TIMEOUT` | `30` | Python policy execution timeout (seconds) |
+
+> These are read directly by the container entrypoint. Policy-engine settings (metrics, logging,
+> analytics, etc.) are **not** configured via `APIP_GW_` environment variables — that prefix override
+> was removed. Configure them in the mounted `config.toml`, where values can be wired to environment
+> variables through `{{ env "NAME" "default" }}` interpolation tokens.
 
 ### Per-Process CLI Arguments
 

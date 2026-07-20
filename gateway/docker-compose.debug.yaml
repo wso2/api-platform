@@ -29,14 +29,10 @@ services:
       - "18001:18001" # xDS gRPC (Policy Engine)
       - "9011:9091"   # Metrics
       - "2345:2345"   # dlv remote debug port
-    environment:
-      - APIP_GW_CONTROLLER_STORAGE_TYPE=sqlite
-      - APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
-      - APIP_GW_CONTROLLER_LOGGING_LEVEL=info
-      - APIP_GW_CONTROLLER_METRICS_PORT=9091
-      - APIP_GW_DEVELOPMENT_MODE=true
-      - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
-      - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-connect.bijira.dev}
+    env_file:
+      - path: api-platform.env
+        required: false
+        format: raw
     volumes:
       - controller-data:/app/data
       - ./configs/config.toml:/etc/gateway-controller/config.toml:ro
@@ -66,9 +62,12 @@ services:
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
       - "2346:2346"   # dlv remote debug port
+    env_file:
+      - path: api-platform.env
+        required: false
+        format: raw
     environment:
       - GATEWAY_CONTROLLER_HOST=gateway-controller
-      - MOESIF_KEY=${MOESIF_KEY:-}
       - LOG_LEVEL=info
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro

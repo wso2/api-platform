@@ -28,7 +28,6 @@ import (
 	"github.com/go-viper/mapstructure/v2"
 	toml "github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/providers/confmap"
-	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"github.com/wso2/api-platform/common/collector"
@@ -38,8 +37,6 @@ import (
 )
 
 const (
-	// EnvPrefix is the prefix for environment variables used to configure the gateway-controller
-	EnvPrefix = "APIP_GW_"
 	// DefaultLuaScriptPath is the default path for request transformation lua script
 	DefaultLuaScriptPath = "./lua/request_transformation.lua"
 )
@@ -690,8 +687,8 @@ type EncryptionKeyConfig struct {
 	FilePath string `koanf:"file"`    // Path to raw binary key file
 }
 
-// LoadConfig loads configuration from file, environment variables, and defaults
-// Priority: Environment variables > Config file > Defaults
+// LoadConfig loads configuration from a file layered over built-in defaults.
+// Priority: Config file > Defaults.
 func LoadConfig(configPath string) (*Config, error) {
 	cfg := defaultConfig()
 
@@ -702,64 +699,9 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load config file: %w", err)
 	}
 
-	// Load environment variables with prefix
-	if err := k.Load(env.Provider(EnvPrefix, ".", func(s string) string {
-		s = strings.TrimPrefix(s, EnvPrefix)
-		s = strings.ToLower(s)
-
-		// Custom mappings for control plane variables
-		switch s {
-		case "controlplane_host":
-			return "controller.controlplane.host"
-		case "gateway_registration_token":
-			return "controller.controlplane.token"
-		case "reconnect_initial":
-			return "controller.controlplane.reconnect_initial"
-		case "reconnect_max":
-			return "controller.controlplane.reconnect_max"
-		case "polling_interval":
-			return "controller.controlplane.polling_interval"
-		case "insecure_skip_verify":
-			return "controller.controlplane.insecure_skip_verify"
-		// APIP_GW_ + CONTROLLER_CONTROLPLANE_* (underscore-to-dot would split insecure_skip_verify)
-		case "controller_controlplane_host":
-			return "controller.controlplane.host"
-		case "controller_controlplane_token":
-			return "controller.controlplane.token"
-		case "controller_controlplane_reconnect_initial":
-			return "controller.controlplane.reconnect_initial"
-		case "controller_controlplane_reconnect_max":
-			return "controller.controlplane.reconnect_max"
-		case "controller_controlplane_polling_interval":
-			return "controller.controlplane.polling_interval"
-		case "controller_controlplane_insecure_skip_verify":
-			return "controller.controlplane.insecure_skip_verify"
-		case "controller_controlplane_deployment_sync_enabled":
-			return "controller.controlplane.deployment_sync_enabled"
-		case "controller_controlplane_sync_batch_size":
-			return "controller.controlplane.sync_batch_size"
-		case "immutable_gateway_enabled":
-			return "immutable_gateway.enabled"
-		case "controller_controlplane_gateway_name":
-			return "controller.controlplane.gateway_name"
-		default:
-			// For other env vars, use standard mapping (underscore to dot)
-			// Step 1: Convert double underscore "__" into a temporary placeholder
-			s = strings.ReplaceAll(s, "__", "%UNDERSCORE%")
-			// Step 2: Convert single "_" into "."
-			s = strings.ReplaceAll(s, "_", ".")
-			// Step 3: Convert placeholder back into literal "_"
-			s = strings.ReplaceAll(s, "%UNDERSCORE%", "_")
-			return s
-		}
-	}), nil); err != nil {
-		return nil, fmt.Errorf("failed to load environment variables: %w", err)
-	}
-
-	// Resolve ${...}-style Go template tokens ({{ env }} / {{ file }}) in string
-	// leaves of the merged config before unmarshalling. Runs after the env merge so
-	// env-provided values may themselves contain tokens; fails closed on a missing
-	// required value or a disallowed/oversize file. A token-free config is a no-op.
+	// Resolve Go template tokens ({{ env }} / {{ file }}) in string leaves of the
+	// file-loaded config before unmarshalling; fails closed on a missing required
+	// value or a disallowed/oversize file. A token-free config is a no-op.
 	k, err := interpolate(k)
 	if err != nil {
 		return nil, err
@@ -1454,7 +1396,6 @@ func (c *Config) Validate() error {
 
 	return nil
 }
-
 
 // validateControlPlaneConfig validates the control plane configuration
 func (c *Config) validateControlPlaneConfig() error {

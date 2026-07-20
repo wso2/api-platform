@@ -47,8 +47,6 @@ github.com/knadh/koanf/parsers/toml/v2 v2.2.0 h1:2nV7tHYJ5OZy2BynQ4mOJ6k5bDqbbCz
 github.com/knadh/koanf/parsers/toml/v2 v2.2.0/go.mod h1:JpjTeK1Ge1hVX0wbof5DMCuDBriR8bWgeQP98eeOZpI=
 github.com/knadh/koanf/providers/confmap v1.0.0 h1:mHKLJTE7iXEys6deO5p6olAiZdG5zwp8Aebir+/EaRE=
 github.com/knadh/koanf/providers/confmap v1.0.0/go.mod h1:txHYHiI2hAtF0/0sCmcuol4IDcuQbKTybiB1nOcUo1A=
-github.com/knadh/koanf/providers/env v1.1.0 h1:U2VXPY0f+CsNDkvdsG8GcsnK4ah85WwWyJgef9oQMSc=
-github.com/knadh/koanf/providers/env v1.1.0/go.mod h1:QhHHHZ87h9JxJAn2czdEl6pdkNnDh/JS1Vtsyt65hTY=
 github.com/knadh/koanf/providers/file v1.2.1 h1:bEWbtQwYrA+W2DtdBrQWyXqJaJSG3KrP3AESOJYp9wM=
 github.com/knadh/koanf/providers/file v1.2.1/go.mod h1:bp1PM5f83Q+TOUu10J/0ApLBd9uIzg+n9UgthfY+nRA=
 github.com/knadh/koanf/v2 v2.3.2 h1:Ee6tuzQYFwcZXQpc2MiVeC6qHMandf5SMUJJNoFp/c4=

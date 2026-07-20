@@ -29,14 +29,10 @@ services:
       - "18000:18000" # xDS gRPC
       - "18001:18001"
       - "9011:9091"   # Metrics
-    environment:
-      - APIP_GW_CONTROLLER_STORAGE_TYPE=sqlite
-      - APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
-      - APIP_GW_CONTROLLER_LOGGING_LEVEL=info
-      - APIP_GW_CONTROLLER_METRICS_PORT=9091
-      - APIP_GW_DEVELOPMENT_MODE=true
-      - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
-      - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:9243}
+    env_file:
+      - path: api-platform.env
+        required: false
+        format: raw
     volumes:
       - controller-data:/app/data
       - ./configs/config.toml:/etc/gateway-controller/config.toml:ro
@@ -62,15 +58,18 @@ services:
       - "8083:8083"
       - "9002:9002"   # Policy Engine admin
       - "9003:9003"   # Policy Engine metrics
+    env_file:
+      - path: api-platform.env
+        required: false
+        format: raw
     environment:
       - GATEWAY_CONTROLLER_HOST=gateway-controller
-      - MOESIF_KEY=${MOESIF_KEY:-}
       - LOG_LEVEL=info
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro
     networks:
       - gateway-network
-  netty: 
+  netty:
     image: renukafernando/netty-http-echo-service:0.4.6
     ports:
       - "8085:8688"

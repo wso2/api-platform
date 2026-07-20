@@ -27,10 +27,10 @@ services:
       - "9090:9090"   # REST API
       - "9094:9092"   # Admin API
       - "9011:9091"   # Metrics
-    environment:
-      - APIP_GW_DEVELOPMENT_MODE=true
-      - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
-      - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-}
+    env_file:
+      - path: api-platform.env
+        required: false
+        format: raw
     volumes:
       - controller-data:/app/data
       - ./configs/config.toml:/etc/gateway-controller/config.toml:ro
@@ -56,9 +56,12 @@ services:
       # Policy Engine
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
+    env_file:
+      - path: api-platform.env
+        required: false
+        format: raw
     environment:
       - GATEWAY_CONTROLLER_HOST=gateway-controller
-      - MOESIF_KEY=${MOESIF_KEY:-}
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro
       - ./configs/llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro

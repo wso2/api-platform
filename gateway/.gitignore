@@ -1,0 +1,2 @@
+# Gateway environment file — contains the control-plane registration token and other secrets
+api-platform.env
