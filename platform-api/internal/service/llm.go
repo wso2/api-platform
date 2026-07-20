@@ -696,14 +696,6 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version
 	if target == nil {
 		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
-	// Enable/disable is reserved for built-in ('wso2') templates only. Custom
-	// templates are managed via update/delete and cannot be toggled.
-	if target.ManagedBy != constants.PolicyManagedByWSO2 {
-		return nil, apperror.LLMProviderTemplateNotToggleable.New()
-	}
-	if err := ensureOriginMutable(target.Origin); err != nil {
-		return nil, err
-	}
 	if !enabled {
 		inUse, err := s.repo.CountProvidersUsingTemplate(groupID, orgUUID, v)
 		if err != nil {

@@ -332,7 +332,7 @@ func TestLLMTemplateHTTP_BlankGroupIDQuery(t *testing.T) {
 	}
 }
 
-// ---- PATCH enable/disable by handle (built-in only) -----------------------
+// ---- PATCH enable/disable by handle (built-in and custom) -----------------
 
 func TestLLMTemplateHTTP_ToggleByHandle(t *testing.T) {
 	r, _, cleanup := setupLLMTemplateEnv(t)
@@ -350,10 +350,16 @@ func TestLLMTemplateHTTP_ToggleByHandle(t *testing.T) {
 		t.Errorf("re-enable built-in: expected 200, got %d", w.Code)
 	}
 
-	// Custom template cannot be toggled -> 403.
+	// Custom templates are toggleable too.
 	handle, _ := createFamily(t, r, "Custom Toggle")
-	if w := doJSON(t, r, http.MethodPatch, tmplBase+"/"+handle, `{"enabled":false}`, true); w.Code != http.StatusForbidden {
-		t.Errorf("toggle custom: expected 403, got %d: %s", w.Code, w.Body.String())
+	w = doJSON(t, r, http.MethodPatch, tmplBase+"/"+handle, `{"enabled":false}`, true)
+	if w.Code != http.StatusOK {
+		t.Errorf("disable custom: expected 200, got %d: %s", w.Code, w.Body.String())
+	} else if bodyMap(t, w)["enabled"] != false {
+		t.Errorf("expected enabled=false after disabling custom template")
+	}
+	if w := doJSON(t, r, http.MethodPatch, tmplBase+"/"+handle, `{"enabled":true}`, true); w.Code != http.StatusOK {
+		t.Errorf("re-enable custom: expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
 	// Unknown handle -> 404.

@@ -841,19 +841,19 @@ export default function ProviderTemplateOverview() {
                   />
                 </Button>
               )}
-              {isReadOnly && (
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="body2" color="text.primary">
-                    {isEnabled ? 'Enabled' : 'Disabled'}
-                  </Typography>
-                  <Switch
-                    checked={isEnabled}
-                    disabled={isTogglingEnabled}
-                    onChange={(e) => void handleToggleEnabled(e.target.checked)}
-                    inputProps={{ 'aria-label': 'Enable or disable this version' }}
-                  />
-                </Stack>
-              )}
+              {/* Enable/disable applies to every template — built-in, custom, and
+                  gateway-originated — since it only affects control-plane listing. */}
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="body2" color="text.primary">
+                  {isEnabled ? 'Enabled' : 'Disabled'}
+                </Typography>
+                <Switch
+                  checked={isEnabled}
+                  disabled={isTogglingEnabled}
+                  onChange={(e) => void handleToggleEnabled(e.target.checked)}
+                  inputProps={{ 'aria-label': 'Enable or disable this version' }}
+                />
+              </Stack>
               {/* Custom templates can be deleted entirely (all versions). */}
               {canDelete && (
                 <Button
