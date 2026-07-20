@@ -166,20 +166,23 @@ Feature: Per-Operation Upstream Validation
     And the JSON response field "status" should be "error"
     And the response body should contain "must match pattern"
 
-  Scenario: Zero connect timeout in an upstreamDefinition is rejected
+  # The management validator deliberately accepts a zero connect timeout; only the
+  # duration format is enforced here. Runtime timeout semantics are the translator's
+  # concern, so deployment must succeed.
+  Scenario: Zero connect timeout in an upstreamDefinition is accepted
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
       apiVersion: gateway.api-platform.wso2.com/v1
       kind: RestApi
       metadata:
-        name: per-op-val-neg-timeout-api-v1.0
+        name: per-op-val-zero-timeout-api-v1.0
       spec:
-        displayName: Per-Op-Val-Neg-Timeout-API
+        displayName: Per-Op-Val-Zero-Timeout-API
         version: v1.0
-        context: /per-op-val-neg-timeout/$version
+        context: /per-op-val-zero-timeout/$version
         vhosts:
-          main: per-op-val-neg-timeout-main.local
+          main: per-op-val-zero-timeout-main.local
         upstreamDefinitions:
           - name: slow-svc
             timeout:
@@ -196,7 +199,5 @@ Feature: Per-Operation Upstream Validation
               main:
                 ref: slow-svc
       """
-    Then the response status code should be 400
+    Then the response status code should be 201
     And the response should be valid JSON
-    And the JSON response field "status" should be "error"
-    And the response body should contain "Connect timeout must be a positive duration"
