@@ -1,4 +1,4 @@
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: GraphQL
 
 metadata:
