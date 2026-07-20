@@ -26,16 +26,16 @@ Platform API supports `sqlite3` (default), `postgres`, and `sqlserver`.
 
 ```bash
 # SQL Server example
-export DATABASE_DRIVER=sqlserver
-export DATABASE_HOST=sqlserver.example.internal
-export DATABASE_PORT=1433
-export DATABASE_NAME=platform_api
-export DATABASE_USER=sa
-export DATABASE_PASSWORD='<strong-password>'
-export DATABASE_SSL_MODE=disable
+export APIP_CP_DATABASE_DRIVER=sqlserver
+export APIP_CP_DATABASE_HOST=sqlserver.example.internal
+export APIP_CP_DATABASE_PORT=1433
+export APIP_CP_DATABASE_NAME=platform_api
+export APIP_CP_DATABASE_USER=sa
+export APIP_CP_DATABASE_PASSWORD='<strong-password>'
+export APIP_CP_DATABASE_SSL_MODE=disable
 
 cd platform-api
-go run ./cmd/main.go
+go run ./cmd/main.go -config config/config.toml
 ```
 
 ### Step-by-Step Workflow
@@ -277,17 +277,6 @@ go run ./cmd/main.go -config config/config.toml
 
 To skip signature checks during local development, set `skip_validation = true` under `[auth.jwt]` in the config file (demo mode only) and run the same command.
 
-**Legacy variable names.** These unprefixed names are **no longer read** — environment
-variables affect configuration only through `{{ env "…" }}` tokens (see above). Use the
-current token variable name (or the config key directly) instead:
-
-| Old name | New name |
-|---|---|
-| `JWT_SECRET_KEY` | `APIP_CP_AUTH_JWT_SECRET_KEY` |
-| `JWT_ISSUER` | `APIP_CP_AUTH_JWT_ISSUER` |
-| `JWT_SKIP_VALIDATION` | `APIP_CP_AUTH_JWT_SKIP_VALIDATION` |
-| `JWT_SKIP_PATHS` | `APIP_CP_AUTH_SKIP_PATHS` |
-
 ---
 
 #### IDP Mode
@@ -411,32 +400,6 @@ override with the shared `APIP_CONFIG_FILE_SOURCE_ALLOWLIST` env var). Resolutio
 a missing/empty required env var, or a missing/disallowed/oversize file, aborts startup.
 
 ---
-
-### Other Settings
-
-| Variable | Default | Description |
-|---|---|---|
-| `LOG_LEVEL` | `DEBUG` | Log verbosity (`DEBUG`, `INFO`, `WARN`, `ERROR`) |
-| `HTTPS_ENABLED` | `true` | Enable the TLS listener. Certificates are read from `HTTPS_CERT_DIR` (cert.pem / key.pem — required) |
-| `HTTPS_PORT` | `9243` | Port for the TLS listener |
-| `HTTPS_CERT_DIR` | `./data/certs` | Directory holding `cert.pem` / `key.pem` (used only when `HTTPS_ENABLED=true`) |
-| `HTTP_ENABLED` | `false` | Enable the plain-HTTP listener. Use only behind a TLS-terminating ingress/sidecar or for internal traffic — never expose directly to untrusted networks |
-| `HTTP_PORT` | `9080` | Port for the plain-HTTP listener |
-| `TIMEOUTS_READ_HEADER` | `10s` | Max time to read request headers, on both listeners (`0` disables) |
-| `TIMEOUTS_READ` | `60s` | Max time to read the whole request, including the body (`0` disables) |
-| `TIMEOUTS_WRITE` | `120s` | Max time for handler execution plus response write (`0` disables) |
-| `TIMEOUTS_IDLE` | `120s` | Max time a keep-alive connection may sit unused (`0` disables) |
-| `DEPLOYMENTS_MAX_PER_API_GATEWAY` | `20` | Maximum deployments per API per gateway |
-| `DEPLOYMENTS_TRANSITIONAL_STATUS_ENABLED` | `false` | Show `DEPLOYING`/`UNDEPLOYING` status before gateway ack |
-| `ARTIFACT_LIMITS_MAX_LLM_PROVIDERS_PER_ORG` | _unlimited_ | Max LLM providers per organization (`0` or unset = unlimited) |
-| `ARTIFACT_LIMITS_MAX_LLM_PROXIES_PER_ORG` | _unlimited_ | Max LLM proxies per organization (`0` or unset = unlimited) |
-| `ARTIFACT_LIMITS_MAX_MCP_PROXIES_PER_ORG` | _unlimited_ | Max MCP proxies per organization (`0` or unset = unlimited) |
-| `ARTIFACT_LIMITS_MAX_WEBSUB_APIS_PER_ORG` | _unlimited_ | Max WebSub APIs per organization (`0` or unset = unlimited) |
-| `ARTIFACT_LIMITS_MAX_WEBBROKER_APIS_PER_ORG` | _unlimited_ | Max WebBroker APIs per organization (`0` or unset = unlimited) |
-| `GATEWAY_ENABLE_VERSION_VERIFICATION` | `false` | Reject gateway connections with mismatched versions |
-| `API_KEY_HASHING_ALGORITHMS` | `sha256` | Comma-separated hash algorithms for API key storage |
-
-> The legacy `PORT`, `TLS_ENABLED`, and `TLS_CERT_DIR` env vars are still honored and map onto the HTTPS listener (`HTTPS_PORT`, `HTTPS_ENABLED`, `HTTPS_CERT_DIR`).
 
 ## Documentation
 

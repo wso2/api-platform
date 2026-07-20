@@ -39,10 +39,10 @@ const (
 // interpolation. Environment variables reach config ONLY through these tokens now
 // (there is no direct env-key override), so tests must go through a config file.
 const validKeysBase = `
+[platform_api]
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
-[auth.jwt]
-enabled    = true
+[platform_api.auth.jwt]
 secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
 `
 
@@ -77,8 +77,7 @@ func TestLoadConfig_MissingEncryptionKey_Errors(t *testing.T) {
 
 	// Encryption key omitted entirely; the JWT secret resolves so the JWT check passes first.
 	_, err := loadTOML(t, `
-[auth.jwt]
-enabled    = true
+[platform_api.auth.jwt]
 secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
 `)
 	require.Error(t, err)
@@ -90,25 +89,23 @@ func TestLoadConfig_InvalidEncryptionKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", validJWTKey)
 
 	_, err := loadTOML(t, `
+[platform_api]
 encryption_key = "not-a-valid-32-byte-key"
 
-[auth.jwt]
-enabled    = true
+[platform_api.auth.jwt]
 secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
 `)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid EncryptionKey")
 }
 
-// The JWT secret is required (JWT auth is enabled) and never generated.
+// The JWT secret is required (default auth mode is "jwt") and never generated.
 func TestLoadConfig_MissingJWTSecretKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
 
 	_, err := loadTOML(t, `
+[platform_api]
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
-
-[auth.jwt]
-enabled = true
 `)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "Auth.JWT.SecretKey is required")
@@ -119,10 +116,10 @@ func TestLoadConfig_InvalidJWTSecretKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
 
 	_, err := loadTOML(t, `
+[platform_api]
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
-[auth.jwt]
-enabled    = true
+[platform_api.auth.jwt]
 secret_key = "not-a-valid-32-byte-key"
 `)
 	require.Error(t, err)
@@ -151,41 +148,76 @@ func init() {
 	}
 }
 
-// validateAuthModeExclusivity: IDP (JWKS) auth must not be enabled alongside the
-// local JWT or file-based modes — the server must fail fast so operators turn the
-// local modes off consciously and all tokens are validated against the IDP JWKS.
-func TestValidateAuthModeExclusivity(t *testing.T) {
+// validateAuthConfig: auth.mode is a single discriminator, so exactly one mode
+// is active and only that mode's section is validated. Unknown modes fail fast.
+func TestValidateAuthConfig(t *testing.T) {
 	tests := []struct {
 		name    string
 		auth    Auth
-		wantErr bool
+		wantErr string
 	}{
 		{
-			name:    "idp disabled — local modes allowed",
-			auth:    Auth{IDP: IDP{Enabled: false}, JWT: JWT{Enabled: true}, FileBased: FileBased{Enabled: true}},
-			wantErr: false,
+			name: "jwt mode with valid secret",
+			auth: Auth{Mode: AuthModeJWT, JWT: JWT{SecretKey: validJWTKey}},
 		},
 		{
-			name:    "idp only",
-			auth:    Auth{IDP: IDP{Enabled: true}, JWT: JWT{Enabled: false}, FileBased: FileBased{Enabled: false}},
-			wantErr: false,
+			name:    "jwt mode without secret",
+			auth:    Auth{Mode: AuthModeJWT},
+			wantErr: "Auth.JWT.SecretKey is required",
 		},
 		{
-			name:    "idp and jwt both enabled",
-			auth:    Auth{IDP: IDP{Enabled: true}, JWT: JWT{Enabled: true}, FileBased: FileBased{Enabled: false}},
-			wantErr: true,
+			name:    "file mode without token_ttl",
+			auth:    Auth{Mode: AuthModeFile, JWT: JWT{SecretKey: validJWTKey}},
+			wantErr: "Auth.JWT.TokenTTL must be a positive duration",
 		},
 		{
-			name:    "idp and file_based both enabled",
-			auth:    Auth{IDP: IDP{Enabled: true}, JWT: JWT{Enabled: false}, FileBased: FileBased{Enabled: true}},
-			wantErr: true,
+			name: "file mode requires org and users",
+			auth: Auth{Mode: AuthModeFile, JWT: JWT{SecretKey: validJWTKey, TokenTTL: time.Hour}},
+			// Default org fields are empty in a zero-value Auth — users check fires
+			// after the org checks.
+			wantErr: "auth.file.organization.id",
+		},
+		{
+			name: "file mode fully configured",
+			auth: Auth{
+				Mode: AuthModeFile,
+				JWT:  JWT{SecretKey: validJWTKey, TokenTTL: time.Hour},
+				File: FileBased{
+					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
+					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash"}},
+				},
+			},
+		},
+		{
+			name:    "idp mode requires jwks_url",
+			auth:    Auth{Mode: AuthModeIDP, IDP: IDP{ValidationMode: "scope"}},
+			wantErr: "auth.idp.jwks_url",
+		},
+		{
+			name: "idp mode fully configured",
+			auth: Auth{Mode: AuthModeIDP, IDP: IDP{
+				JWKSUrl:        "https://idp.example.com/jwks",
+				Issuer:         []string{"https://idp.example.com"},
+				ValidationMode: "scope",
+			}},
+		},
+		{
+			name:    "unknown mode rejected",
+			auth:    Auth{Mode: "basic"},
+			wantErr: "auth.mode must be",
+		},
+		{
+			name:    "empty mode rejected",
+			auth:    Auth{},
+			wantErr: "auth.mode must be",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateAuthModeExclusivity(&tt.auth)
-			if tt.wantErr {
-				assert.Error(t, err)
+			err := validateAuthConfig(&tt.auth)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErr)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -199,37 +231,40 @@ func TestValidateAuthModeExclusivity(t *testing.T) {
 func TestLoadConfig_HTTPSEnabled_DefaultsToTrue(t *testing.T) {
 	cfg, err := loadWithKeys(t, "")
 	require.NoError(t, err)
-	assert.True(t, cfg.HTTPS.Enabled, "https.enabled must default to true when unset")
-	assert.Equal(t, "9243", cfg.HTTPS.Port, "https.port must default to 9243")
-	assert.False(t, cfg.HTTP.Enabled, "http.enabled must default to false when unset")
+	assert.True(t, cfg.Listeners.HTTPS.Enabled, "server.https.enabled must default to true when unset")
+	assert.Equal(t, 9243, cfg.Listeners.HTTPS.Port, "server.https.port must default to 9243")
+	assert.False(t, cfg.Listeners.HTTP.Enabled, "server.http.enabled must default to false when unset")
+	assert.Equal(t, "./data/certs/cert.pem", cfg.Listeners.HTTPS.TLS.CertFile)
+	assert.Equal(t, "./data/certs/key.pem", cfg.Listeners.HTTPS.TLS.KeyFile)
 }
 
 // A {{ env }} token feeding a bool field must survive koanf's weakly-typed decode,
 // so an operator can disable the TLS listener by pointing the field at an env var.
 func TestLoadConfig_HTTPSEnabled_TokenDisables(t *testing.T) {
-	t.Setenv("APIP_CP_HTTPS_ENABLED", "false")
+	t.Setenv("APIP_CP_SERVER_HTTPS_ENABLED", "false")
 
 	cfg, err := loadWithKeys(t, `
-[https]
-enabled = '{{ env "APIP_CP_HTTPS_ENABLED" }}'
+[platform_api.server.https]
+enabled = '{{ env "APIP_CP_SERVER_HTTPS_ENABLED" }}'
 `)
 	require.NoError(t, err)
-	assert.False(t, cfg.HTTPS.Enabled, "https.enabled from a {{ env }} token must decode to false")
+	assert.False(t, cfg.Listeners.HTTPS.Enabled, "server.https.enabled from a {{ env }} token must decode to false")
 }
 
-// The plain-HTTP listener can be enabled independently on its own port via tokens.
+// The plain-HTTP listener can be enabled independently on its own port via tokens;
+// a numeric string from an env var must decode into the int port field.
 func TestLoadConfig_HTTPListener_TokenEnables(t *testing.T) {
-	t.Setenv("APIP_CP_HTTP_ENABLED", "true")
-	t.Setenv("APIP_CP_HTTP_PORT", "9080")
+	t.Setenv("APIP_CP_SERVER_HTTP_ENABLED", "true")
+	t.Setenv("APIP_CP_SERVER_HTTP_PORT", "9080")
 
 	cfg, err := loadWithKeys(t, `
-[http]
-enabled = '{{ env "APIP_CP_HTTP_ENABLED" }}'
-port    = '{{ env "APIP_CP_HTTP_PORT" }}'
+[platform_api.server.http]
+enabled = '{{ env "APIP_CP_SERVER_HTTP_ENABLED" }}'
+port    = '{{ env "APIP_CP_SERVER_HTTP_PORT" }}'
 `)
 	require.NoError(t, err)
-	assert.True(t, cfg.HTTP.Enabled, "http.enabled from a {{ env }} token must decode to true")
-	assert.Equal(t, "9080", cfg.HTTP.Port)
+	assert.True(t, cfg.Listeners.HTTP.Enabled, "server.http.enabled from a {{ env }} token must decode to true")
+	assert.Equal(t, 9080, cfg.Listeners.HTTP.Port)
 }
 
 // Listener timeouts must be finite by default, so a deployment that never sets
@@ -245,17 +280,17 @@ func TestLoadConfig_Timeouts_DefaultToFiniteValues(t *testing.T) {
 
 // Duration strings resolved from {{ env }} tokens must decode into time.Duration fields.
 func TestLoadConfig_Timeouts_TokenOverride(t *testing.T) {
-	t.Setenv("APIP_CP_TIMEOUTS_READ_HEADER", "5s")
-	t.Setenv("APIP_CP_TIMEOUTS_READ", "30s")
-	t.Setenv("APIP_CP_TIMEOUTS_WRITE", "2m")
-	t.Setenv("APIP_CP_TIMEOUTS_IDLE", "90s")
+	t.Setenv("APIP_CP_LISTENER_TIMEOUTS_READ_HEADER", "5s")
+	t.Setenv("APIP_CP_LISTENER_TIMEOUTS_READ", "30s")
+	t.Setenv("APIP_CP_LISTENER_TIMEOUTS_WRITE", "2m")
+	t.Setenv("APIP_CP_LISTENER_TIMEOUTS_IDLE", "90s")
 
 	cfg, err := loadWithKeys(t, `
-[timeouts]
-read_header = '{{ env "APIP_CP_TIMEOUTS_READ_HEADER" }}'
-read        = '{{ env "APIP_CP_TIMEOUTS_READ" }}'
-write       = '{{ env "APIP_CP_TIMEOUTS_WRITE" }}'
-idle        = '{{ env "APIP_CP_TIMEOUTS_IDLE" }}'
+[platform_api.listener_timeouts]
+read_header = '{{ env "APIP_CP_LISTENER_TIMEOUTS_READ_HEADER" }}'
+read        = '{{ env "APIP_CP_LISTENER_TIMEOUTS_READ" }}'
+write       = '{{ env "APIP_CP_LISTENER_TIMEOUTS_WRITE" }}'
+idle        = '{{ env "APIP_CP_LISTENER_TIMEOUTS_IDLE" }}'
 `)
 	require.NoError(t, err)
 	assert.Equal(t, 5*time.Second, cfg.Timeouts.ReadHeader)
@@ -268,11 +303,11 @@ idle        = '{{ env "APIP_CP_TIMEOUTS_IDLE" }}'
 // than being silently replaced by the default.
 func TestLoadConfig_Timeouts_ZeroDisablesTimeout(t *testing.T) {
 	cfg, err := loadWithKeys(t, `
-[timeouts]
+[platform_api.listener_timeouts]
 write = "0s"
 `)
 	require.NoError(t, err)
-	assert.Zero(t, cfg.Timeouts.Write, "timeouts.write = 0 must disable the write timeout")
+	assert.Zero(t, cfg.Timeouts.Write, "listener_timeouts.write = 0 must disable the write timeout")
 }
 
 // A negative duration would expire immediately and break every request; a
@@ -281,7 +316,7 @@ write = "0s"
 func TestLoadConfig_Timeouts_RejectsInvalidValues(t *testing.T) {
 	t.Run("negative", func(t *testing.T) {
 		_, err := loadWithKeys(t, `
-[timeouts]
+[platform_api.listener_timeouts]
 read = "-1s"
 `)
 		require.Error(t, err)
@@ -290,7 +325,7 @@ read = "-1s"
 
 	t.Run("read_header exceeds read", func(t *testing.T) {
 		_, err := loadWithKeys(t, `
-[timeouts]
+[platform_api.listener_timeouts]
 read_header = "30s"
 read        = "10s"
 `)

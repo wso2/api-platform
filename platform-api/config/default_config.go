@@ -31,7 +31,6 @@ func defaultConfig() *Server {
 		DBSchemaPath:               "./internal/database/schema.sql",
 		OpenAPISpecPath:            "./resources/openapi.yaml",
 		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
-		EnableScopeValidation:      true,
 		Database: Database{
 			Driver:          "sqlite3",
 			Path:            "./data/api_platform.db",
@@ -40,6 +39,10 @@ func defaultConfig() *Server {
 			ConnMaxLifetime: 300,
 		},
 		Auth: Auth{
+			// Default mode verifies locally-signed HMAC JWTs; the quickstart config
+			// selects "file" to add username/password login on top of it.
+			Mode:            AuthModeJWT,
+			ScopeValidation: true,
 			// SkipPaths bypasses JWT/IDP auth middleware. Paths below the health/metrics
 			// probes are internal gateway routes authenticated via gateway token instead.
 			SkipPaths: []string{
@@ -61,12 +64,10 @@ func defaultConfig() *Server {
 				"/api/internal/" + constants.APIVersion + "/webhook/events",
 			},
 			JWT: JWT{
-				Enabled:        true,
-				Issuer:         "platform-api",
-				SkipValidation: true,
+				Issuer:   "platform-api",
+				TokenTTL: time.Hour,
 			},
 			IDP: IDP{
-				Enabled:        false,
 				ValidationMode: "scope",
 				ClaimMappings: IDPClaimMappings{
 					OrganizationClaimName: "organization",
@@ -78,8 +79,7 @@ func defaultConfig() *Server {
 					ScopeClaimName:        "scope",
 				},
 			},
-			FileBased: FileBased{
-				Enabled: false,
+			File: FileBased{
 				Organization: FileBasedOrg{
 					ID:          "default",
 					DisplayName: "Default",
@@ -104,45 +104,29 @@ func defaultConfig() *Server {
 			MetricsLogEnabled:    true,
 			MetricsLogInterval:   10,
 		},
-		DefaultDevPortal: DefaultDevPortal{
-			Enabled:               false,
-			Name:                  "Default DevPortal",
-			Identifier:            "default",
-			APIUrl:                "http://localhost:3001",
-			Hostname:              "devportal.local",
-			APIKey:                "default-api-key",
-			HeaderKeyName:         "x-wso2-api-key",
-			Timeout:               10,
-			RoleClaimName:         "roles",
-			GroupsClaimName:       "groups",
-			OrganizationClaimName: "organizationID",
-			AdminRole:             "admin",
-			SubscriberRole:        "Internal/subscriber",
-			SuperAdminRole:        "superAdmin",
-		},
 		Deployments: Deployments{
 			MaxPerAPIGateway: 20,
 			TimeoutEnabled:   true,
 			TimeoutInterval:  20,
 			TimeoutDuration:  60,
 		},
-		// ArtifactLimits are unlimited by default: every limit is left at its
-		// zero value, which LimitReached treats as "no limit". Operators can cap
-		// a specific artifact kind per organization by setting a positive value
-		// (config file key artifact_limits.max_* or env ARTIFACT_LIMITS_MAX_*).
-		ArtifactLimits: ArtifactLimits{},
 		// By default the HTTPS listener serves on 9243 and the plain-HTTP listener
 		// is off — preserving the historical single-TLS-port behavior. Enable the
-		// HTTP listener (and/or move ports) via the [http] / [https] config or the
-		// HTTP_* / HTTPS_* env vars.
-		HTTP: HTTPListener{
-			Enabled: false,
-			Port:    "9080",
-		},
-		HTTPS: HTTPSListener{
-			Enabled: true,
-			Port:    "9243",
-			CertDir: "./data/certs",
+		// HTTP listener (and/or move ports) via the [server.http] / [server.https]
+		// config sections.
+		Listeners: ServerListeners{
+			HTTP: HTTPListener{
+				Enabled: false,
+				Port:    9080,
+			},
+			HTTPS: HTTPSListener{
+				Enabled: true,
+				Port:    9243,
+				TLS: ListenerTLS{
+					CertFile: "./data/certs/cert.pem",
+					KeyFile:  "./data/certs/key.pem",
+				},
+			},
 		},
 		// Finite by default so a slow or idle peer cannot hold a connection open
 		// indefinitely. Write is the loosest of the four because some handlers

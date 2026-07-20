@@ -892,14 +892,6 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		}
 	}
 
-	providerCount, err := s.repo.Count(orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to count providers: %w", err)
-	}
-	if err := validateLLMResourceLimit(providerCount, s.cfg.ArtifactLimits.MaxLLMProvidersPerOrg, apperror.LLMProviderLimitReached.New()); err != nil {
-		return nil, err
-	}
-
 	openapiSpec := utils.ValueOrEmpty(req.Openapi)
 	if openapiSpec == "" {
 		openapiSpec = resolveTemplateOpenAPISpec(context.Background(), tpl, openAPISpecFetchLimit(s.cfg), s.slogger)
@@ -1383,14 +1375,6 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		}
 	}
 
-	proxyCount, err := s.repo.Count(orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to count proxies: %w", err)
-	}
-	if err := validateLLMResourceLimit(proxyCount, s.cfg.ArtifactLimits.MaxLLMProxiesPerOrg, apperror.LLMProxyLimitReached.New()); err != nil {
-		return nil, err
-	}
-
 	// Resolve any associated gateways up-front so they can be persisted within the
 	// same transaction as the proxy create.
 	associatedGateways, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
@@ -1872,15 +1856,6 @@ func preserveUpstreamAuthCredential(existing, updated *model.UpstreamAuth) *mode
 		updated.Value = existing.Value
 	}
 	return updated
-}
-
-// validateLLMResourceLimit returns limitErr when the org has reached maxAllowed.
-// A maxAllowed <= 0 means unlimited (see config.LimitReached), so it never errors.
-func validateLLMResourceLimit(currentCount int, maxAllowed int, limitErr error) error {
-	if config.LimitReached(currentCount, maxAllowed) {
-		return limitErr
-	}
-	return nil
 }
 
 func mapExtractionIdentifierAPI(in *api.ExtractionIdentifier) *model.ExtractionIdentifier {

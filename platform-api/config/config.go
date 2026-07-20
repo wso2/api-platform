@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,8 +67,8 @@ type FileBasedOrg struct {
 }
 
 // FileBased holds configuration for local username/password authentication.
+// Active when Auth.Mode is AuthModeFile.
 type FileBased struct {
-	Enabled      bool           `koanf:"enabled"`
 	Organization FileBasedOrg   `koanf:"organization"`
 	Users        FileBasedUsers `koanf:"users"`
 }
@@ -84,30 +85,44 @@ type Server struct {
 
 	EncryptionKey string `koanf:"encryption_key"`
 
-	Database         Database         `koanf:"database"`
-	Auth             Auth             `koanf:"auth"`
-	WebSocket        WebSocket        `koanf:"websocket"`
-	DefaultDevPortal DefaultDevPortal `koanf:"default_devportal"`
-	Deployments      Deployments      `koanf:"deployments"`
-	ArtifactLimits   ArtifactLimits   `koanf:"artifact_limits"`
-	HTTP             HTTPListener     `koanf:"http"`
-	HTTPS            HTTPSListener    `koanf:"https"`
-	Timeouts         Timeouts         `koanf:"timeouts"`
-	CORS             CORS             `koanf:"cors"`
-	APIKey           APIKey           `koanf:"api_key"`
-	Gateway          Gateway          `koanf:"gateway"`
-	EventHub         EventHub         `koanf:"event_hub"`
-	Webhook          Webhook          `koanf:"webhook"`
-
-	EnableScopeValidation bool `koanf:"enable_scope_validation"`
+	Database    Database        `koanf:"database"`
+	Auth        Auth            `koanf:"auth"`
+	WebSocket   WebSocket       `koanf:"websocket"`
+	Deployments Deployments     `koanf:"deployments"`
+	Listeners   ServerListeners `koanf:"server"`
+	Timeouts    Timeouts        `koanf:"listener_timeouts"`
+	CORS        CORS            `koanf:"cors"`
+	APIKey      APIKey          `koanf:"api_key"`
+	Gateway     Gateway         `koanf:"gateway"`
+	EventHub    EventHub        `koanf:"event_hub"`
+	Webhook     Webhook         `koanf:"webhook"`
 }
+
+// Authentication modes selectable via auth.mode. Exactly one mode is active;
+// modeling the choice as a single discriminator (rather than per-mode enabled
+// flags) makes conflicting configurations inexpressible.
+const (
+	// AuthModeJWT verifies locally-signed HMAC JWTs (auth.jwt.secret_key). Tokens
+	// are minted externally, e.g. by the Developer Portal using the shared secret.
+	AuthModeJWT = "jwt"
+	// AuthModeFile is AuthModeJWT plus local username/password login: the login
+	// endpoint authenticates users from auth.file and issues HMAC JWTs.
+	AuthModeFile = "file"
+	// AuthModeIDP validates tokens against an external IDP's JWKS (auth.idp).
+	AuthModeIDP = "idp"
+)
 
 // Auth groups all authentication-related configuration.
 type Auth struct {
-	SkipPaths []string  `koanf:"skip_paths"`
-	IDP       IDP       `koanf:"idp"`
-	JWT       JWT       `koanf:"jwt"`
-	FileBased FileBased `koanf:"file_based"`
+	// Mode selects the active authentication mode: "jwt", "file", or "idp".
+	Mode string `koanf:"mode"`
+	// ScopeValidation enforces per-endpoint OAuth2 scopes on validated tokens.
+	// Disable only to temporarily bypass authorization during development.
+	ScopeValidation bool      `koanf:"scope_validation"`
+	SkipPaths       []string  `koanf:"skip_paths"`
+	IDP             IDP       `koanf:"idp"`
+	JWT             JWT       `koanf:"jwt"`
+	File            FileBased `koanf:"file"`
 }
 
 // IDPClaimMappings holds JWT claim name mappings for an IDP.
@@ -122,16 +137,16 @@ type IDPClaimMappings struct {
 	RolesClaimPath        string `koanf:"roles_claim_path"`
 }
 
-// IDP holds configuration for JWKS-based identity providers.
+// IDP holds configuration for JWKS-based identity providers. Active when
+// Auth.Mode is AuthModeIDP.
 type IDP struct {
-	Enabled          bool             `koanf:"enabled"`
-	Name             string           `koanf:"name"`
-	JWKSUrl          string           `koanf:"jwks_url"`
-	Issuer           []string         `koanf:"issuer"`
-	Audience         []string         `koanf:"audience"`
-	ValidationMode   string           `koanf:"validation_mode"`
-	RoleMappingsFile string           `koanf:"role_mappings_file"`
-	ClaimMappings    IDPClaimMappings `koanf:"claim_mappings"`
+	Name           string           `koanf:"name"`
+	JWKSUrl        string           `koanf:"jwks_url"`
+	Issuer         []string         `koanf:"issuer"`
+	Audience       []string         `koanf:"audience"`
+	ValidationMode string           `koanf:"validation_mode"`
+	RoleMappings   string           `koanf:"role_mappings"`
+	ClaimMappings  IDPClaimMappings `koanf:"claim_mappings"`
 }
 
 // EventHub holds EventHub-specific configuration for multi-replica HA event delivery.
@@ -169,27 +184,36 @@ type Gateway struct {
 	EnableFunctionalityTypeVerification bool `koanf:"enable_functionality_type_verification"`
 }
 
-// HTTPListener and HTTPSListener model the two independent listeners, following
-// the gateway router's http/https split (see RouterConfig.HTTPSEnabled /
-// HTTPSPort in gateway-controller). Each is enabled independently and bound to
-// its own port, so a deployment can serve plain HTTP internally, HTTPS
-// externally, or both at once (e.g. to migrate clients between the two without
-// downtime).
+// ServerListeners models the two independent listeners under the [server]
+// section. Each is enabled independently and bound to its own port, so a
+// deployment can serve plain HTTP internally, HTTPS externally, or both at
+// once (e.g. to migrate clients between the two without downtime).
+type ServerListeners struct {
+	HTTP  HTTPListener  `koanf:"http"`
+	HTTPS HTTPSListener `koanf:"https"`
+}
 
 // HTTPListener configures the plain-HTTP listener. Enable it only when a trusted
 // upstream (ingress, service-mesh sidecar) terminates TLS, or for internal
 // cluster traffic; never expose it directly to untrusted networks.
 type HTTPListener struct {
-	Enabled bool   `koanf:"enabled"`
-	Port    string `koanf:"port"`
+	Enabled bool `koanf:"enabled"`
+	Port    int  `koanf:"port"`
 }
 
-// HTTPSListener configures the TLS listener. CertDir must contain cert.pem and
-// key.pem when Enabled is true; there is no self-signed fallback.
+// HTTPSListener configures the TLS listener. TLS.CertFile and TLS.KeyFile must
+// point at a certificate pair when Enabled is true; there is no self-signed
+// fallback.
 type HTTPSListener struct {
-	Enabled bool   `koanf:"enabled"`
-	Port    string `koanf:"port"`
-	CertDir string `koanf:"cert_dir"`
+	Enabled bool        `koanf:"enabled"`
+	Port    int         `koanf:"port"`
+	TLS     ListenerTLS `koanf:"tls"`
+}
+
+// ListenerTLS holds the certificate material for the HTTPS listener.
+type ListenerTLS struct {
+	CertFile string `koanf:"cert_file"`
+	KeyFile  string `koanf:"key_file"`
 }
 
 // Timeouts bounds the lifetime of a connection on both listeners, so a slow or
@@ -224,12 +248,13 @@ type CORS struct {
 	AllowedOrigins []string `koanf:"allowed_origins"`
 }
 
-// JWT holds configuration for local HMAC JWT authentication.
+// JWT holds configuration for local HMAC JWT authentication. Active when
+// Auth.Mode is AuthModeJWT or AuthModeFile (file mode issues and verifies the
+// same locally-signed tokens). Signature validation is always on.
 type JWT struct {
-	Enabled        bool   `koanf:"enabled"`
-	SecretKey      string `koanf:"secret_key"`
-	Issuer         string `koanf:"issuer"`
-	SkipValidation bool   `koanf:"skip_validation"`
+	SecretKey string        `koanf:"secret_key"`
+	Issuer    string        `koanf:"issuer"`
+	TokenTTL  time.Duration `koanf:"token_ttl"`
 }
 
 // WebSocket holds WebSocket-specific configuration.
@@ -259,25 +284,6 @@ type Database struct {
 	ConnMaxLifetime int    `koanf:"conn_max_lifetime"`
 }
 
-// DefaultDevPortal holds default DevPortal configuration for new organizations.
-type DefaultDevPortal struct {
-	Enabled       bool   `koanf:"enabled"`
-	Name          string `koanf:"name"`
-	Identifier    string `koanf:"identifier"`
-	APIUrl        string `koanf:"api_url"`
-	Hostname      string `koanf:"hostname"`
-	APIKey        string `koanf:"api_key"`
-	HeaderKeyName string `koanf:"header_key_name"`
-	Timeout       int    `koanf:"timeout"`
-
-	RoleClaimName         string `koanf:"role_claim_name"`
-	GroupsClaimName       string `koanf:"groups_claim_name"`
-	OrganizationClaimName string `koanf:"organization_claim_name"`
-	AdminRole             string `koanf:"admin_role"`
-	SubscriberRole        string `koanf:"subscriber_role"`
-	SuperAdminRole        string `koanf:"super_admin_role"`
-}
-
 // Deployments holds deployment-specific configuration.
 type Deployments struct {
 	MaxPerAPIGateway          int  `koanf:"max_per_api_gateway"`
@@ -285,24 +291,6 @@ type Deployments struct {
 	TimeoutEnabled            bool `koanf:"timeout_enabled"`
 	TimeoutInterval           int  `koanf:"timeout_interval"`
 	TimeoutDuration           int  `koanf:"timeout_duration"`
-}
-
-// ArtifactLimits holds the maximum number of each artifact kind an organization
-// may create. Each limit is optional: a value <= 0 (the default) means unlimited,
-// so organizations may create as many artifacts of that kind as they want.
-type ArtifactLimits struct {
-	MaxLLMProvidersPerOrg  int `koanf:"max_llm_providers_per_org"`
-	MaxLLMProxiesPerOrg    int `koanf:"max_llm_proxies_per_org"`
-	MaxMCPProxiesPerOrg    int `koanf:"max_mcp_proxies_per_org"`
-	MaxWebSubAPIsPerOrg    int `koanf:"max_websub_apis_per_org"`
-	MaxWebBrokerAPIsPerOrg int `koanf:"max_webbroker_apis_per_org"`
-}
-
-// LimitReached reports whether an organization currently holding currentCount
-// artifacts of some kind has reached its configured limit. A limit <= 0 means
-// unlimited, in which case this always returns false.
-func LimitReached(currentCount, limit int) bool {
-	return limit > 0 && currentCount >= limit
 }
 
 // APIKey holds API key-specific configuration.
@@ -335,11 +323,6 @@ func GetConfig() *Server {
 	return settingInstance
 }
 
-// EnvPrefix namespaces the environment variables that override configuration keys.
-// The prefix is stripped before the remainder is mapped to a koanf key (see envToKoanfKey),
-// e.g. APIP_CP_LOG_LEVEL -> log_level, APIP_CP_DATABASE_HOST -> database.host.
-const EnvPrefix = "APIP_CP_"
-
 // defaultFileSourceAllowlist is the platform-api's default set of directories that a
 // {{ file "..." }} config-interpolation token may read from. It can be overridden via
 // the shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var (see configinterpolate.ResolveAllowlist).
@@ -347,6 +330,12 @@ var defaultFileSourceAllowlist = []string{
 	"/etc/platform-api",
 	"/secrets/platform-api",
 }
+
+// platformAPIConfigKey is the top-level TOML table that all Platform API
+// settings live under (e.g. [platform_api], [platform_api.database]). This
+// namespacing lets a Platform API config file coexist with sibling services'
+// sections in a shared deployment config.
+const platformAPIConfigKey = "platform_api"
 
 // LoadConfig loads configuration with priority: config file > defaults.
 // configPath may be empty — when omitted only env vars and defaults are used.
@@ -369,7 +358,7 @@ func LoadConfig(configPath string) (*Server, error) {
 		return nil, err
 	}
 
-	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
+	if err := k.UnmarshalWithConf(platformAPIConfigKey, cfg, koanf.UnmarshalConf{
 		DecoderConfig: &mapstructure.DecoderConfig{
 			TagName:          "koanf",
 			WeaklyTypedInput: true,
@@ -389,10 +378,10 @@ func LoadConfig(configPath string) (*Server, error) {
 	// format as the rest of the application, instead of slog's default handler.
 	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.LogLevel, Format: cfg.LogFormat}))
 
-	if err := validateTimeoutsConfig(&cfg.Timeouts); err != nil {
+	if err := validateLoggingConfig(cfg.LogLevel, cfg.LogFormat); err != nil {
 		return nil, err
 	}
-	if err := validateDefaultDevPortalConfig(&cfg.DefaultDevPortal); err != nil {
+	if err := validateTimeoutsConfig(&cfg.Timeouts); err != nil {
 		return nil, err
 	}
 	if err := validateDeploymentsConfig(&cfg.Deployments); err != nil {
@@ -401,22 +390,22 @@ func LoadConfig(configPath string) (*Server, error) {
 	if err := validateEventHubConfig(&cfg.EventHub); err != nil {
 		return nil, err
 	}
-	if err := validateIDPConfig(&cfg.Auth.IDP); err != nil {
+	if err := validateAuthConfig(&cfg.Auth); err != nil {
 		return nil, err
 	}
 	if err := validateWebhookConfig(&cfg.Webhook); err != nil {
 		return nil, err
 	}
-	if err := validateFileBasedConfig(&cfg.Auth.FileBased); err != nil {
-		return nil, err
-	}
-	if err := validateAuthModeExclusivity(&cfg.Auth); err != nil {
-		return nil, err
-	}
-	if err := validateJWTConfig(&cfg.Auth.JWT, cfg.Auth.FileBased.Enabled); err != nil {
-		return nil, err
-	}
 	if err := validateEncryptionKey(cfg.EncryptionKey); err != nil {
+		return nil, err
+	}
+	if err := validateDatabaseConfig(&cfg.Database); err != nil {
+		return nil, err
+	}
+	if err := validateListenersConfig(&cfg.Listeners); err != nil {
+		return nil, err
+	}
+	if err := validateCORSConfig(&cfg.CORS); err != nil {
 		return nil, err
 	}
 
@@ -465,8 +454,8 @@ func valid32ByteKey(keyStr string) bool {
 	return false
 }
 
-// fileBasedUsersDecodeHook handles decoding AUTH_FILE_BASED_USERS from a JSON string
-// (env var format) in addition to the native TOML array-of-tables format.
+// fileBasedUsersDecodeHook handles decoding auth.file.users from a JSON string
+// (e.g. a {{ env }} token) in addition to the native TOML array-of-tables format.
 func fileBasedUsersDecodeHook() mapstructure.DecodeHookFuncType {
 	return func(f reflect.Type, t reflect.Type, data interface{}) (interface{}, error) {
 		if t != reflect.TypeOf(FileBasedUsers{}) {
@@ -481,7 +470,7 @@ func fileBasedUsersDecodeHook() mapstructure.DecodeHookFuncType {
 		}
 		var users FileBasedUsers
 		if err := json.Unmarshal([]byte(s), &users); err != nil {
-			return nil, fmt.Errorf("failed to parse AUTH_FILE_BASED_USERS as JSON: %w", err)
+			return nil, fmt.Errorf("failed to parse auth.file.users as JSON: %w", err)
 		}
 		return users, nil
 	}
@@ -495,10 +484,10 @@ func validateTimeoutsConfig(cfg *Timeouts) error {
 		name  string
 		value time.Duration
 	}{
-		{"timeouts.read_header (TIMEOUTS_READ_HEADER)", cfg.ReadHeader},
-		{"timeouts.read (TIMEOUTS_READ)", cfg.Read},
-		{"timeouts.write (TIMEOUTS_WRITE)", cfg.Write},
-		{"timeouts.idle (TIMEOUTS_IDLE)", cfg.Idle},
+		{"listener_timeouts.read_header", cfg.ReadHeader},
+		{"listener_timeouts.read", cfg.Read},
+		{"listener_timeouts.write", cfg.Write},
+		{"listener_timeouts.idle", cfg.Idle},
 	} {
 		if f.value < 0 {
 			return fmt.Errorf("%s must not be negative (got %s); use 0 to disable the timeout", f.name, f.value)
@@ -506,70 +495,48 @@ func validateTimeoutsConfig(cfg *Timeouts) error {
 	}
 	if cfg.Read > 0 && cfg.ReadHeader > cfg.Read {
 		return fmt.Errorf(
-			"timeouts.read_header (%s) must not exceed timeouts.read (%s): the header deadline would never be reached",
+			"listener_timeouts.read_header (%s) must not exceed listener_timeouts.read (%s): the header deadline would never be reached",
 			cfg.ReadHeader, cfg.Read,
 		)
 	}
 	return nil
 }
 
-func validateDefaultDevPortalConfig(cfg *DefaultDevPortal) error {
-	if !cfg.Enabled {
-		return nil
+// validateAuthConfig validates the selected auth mode and the section that mode
+// activates. Modes are mutually exclusive by construction: auth.mode is a single
+// discriminator, so conflicting-mode configurations are inexpressible and only
+// the active mode's section is validated.
+func validateAuthConfig(auth *Auth) error {
+	switch auth.Mode {
+	case AuthModeJWT:
+		return validateJWTConfig(&auth.JWT)
+	case AuthModeFile:
+		if err := validateJWTConfig(&auth.JWT); err != nil {
+			return err
+		}
+		// TokenTTL only matters in file mode: the login endpoint mints tokens
+		// itself here, whereas in plain "jwt" mode tokens are minted externally
+		// and their expiry is whatever "exp" claim the issuer set.
+		if auth.JWT.TokenTTL <= 0 {
+			return fmt.Errorf("Auth.JWT.TokenTTL must be a positive duration when auth.mode is %q "+
+				"(set auth.jwt.token_ttl, e.g. \"8h\")", AuthModeFile)
+		}
+		return validateFileBasedConfig(&auth.File)
+	case AuthModeIDP:
+		return validateIDPConfig(&auth.IDP)
+	default:
+		return fmt.Errorf("auth.mode must be %q, %q, or %q (got %q)", AuthModeJWT, AuthModeFile, AuthModeIDP, auth.Mode)
 	}
-	if cfg.Name == "" {
-		return fmt.Errorf("default DevPortal is enabled but name is not configured")
-	}
-	if cfg.Identifier == "" {
-		return fmt.Errorf("default DevPortal is enabled but identifier is not configured")
-	}
-	if cfg.APIUrl == "" {
-		return fmt.Errorf("default DevPortal is enabled but api_url is not configured")
-	}
-	if cfg.Hostname == "" {
-		return fmt.Errorf("default DevPortal is enabled but hostname is not configured")
-	}
-	if cfg.APIKey == "" {
-		return fmt.Errorf("default DevPortal is enabled but api_key is not configured")
-	}
-	if cfg.HeaderKeyName == "" {
-		return fmt.Errorf("default DevPortal header_key_name is not configured")
-	}
-	return nil
-}
-
-// validateAuthModeExclusivity enforces that IDP (JWKS) auth is not enabled
-// alongside the local auth modes. When an IDP is configured every token must be
-// validated against its JWKS; leaving local HMAC auth on would let the server
-// silently validate (file-based) or accept (local JWT) tokens with the local
-// secret instead, shadowing the IDP. So enabling the IDP requires consciously
-// turning the local modes off.
-func validateAuthModeExclusivity(auth *Auth) error {
-	if !auth.IDP.Enabled {
-		return nil
-	}
-	if auth.JWT.Enabled {
-		return fmt.Errorf("auth.idp.enabled=true and auth.jwt.enabled=true are mutually exclusive: " +
-			"set auth.jwt.enabled=false to delegate authentication to the IDP (tokens are validated against auth.idp.jwks_url)")
-	}
-	if auth.FileBased.Enabled {
-		return fmt.Errorf("auth.idp.enabled=true and auth.file_based.enabled=true are mutually exclusive: " +
-			"set auth.file_based.enabled=false to delegate authentication to the IDP (tokens are validated against auth.idp.jwks_url)")
-	}
-	return nil
 }
 
 // validateJWTConfig verifies the local HMAC JWT secret. The same secret signs and
-// verifies the login tokens issued in file-based mode, so it is required whenever
-// either JWT auth or file-based auth is enabled. The secret is never generated: a
-// missing or malformed key fails startup.
-func validateJWTConfig(jwt *JWT, fileBasedEnabled bool) error {
-	if !jwt.Enabled && !fileBasedEnabled {
-		return nil
-	}
+// verifies the login tokens issued in file mode, so it is required in both the
+// "jwt" and "file" auth modes. The secret is never generated: a missing or
+// malformed key fails startup.
+func validateJWTConfig(jwt *JWT) error {
 	if jwt.SecretKey == "" {
-		return fmt.Errorf("Auth.JWT.SecretKey is required when JWT or file-based authentication is enabled " +
-			"(set auth.jwt.secret_key in config via {{ env }}/{{ file }})")
+		return fmt.Errorf("Auth.JWT.SecretKey is required when auth.mode is %q or %q "+
+			"(set auth.jwt.secret_key in config via {{ env }}/{{ file }})", AuthModeJWT, AuthModeFile)
 	}
 	if !valid32ByteKey(jwt.SecretKey) {
 		return fmt.Errorf("invalid Auth.JWT.SecretKey: must be 64 hex characters or base64 decoding to 32 bytes")
@@ -591,15 +558,91 @@ func validateEncryptionKey(key string) error {
 	return nil
 }
 
-func validateIDPConfig(idp *IDP) error {
-	if !idp.Enabled {
+// validateLoggingConfig rejects a log_level/log_format typo at startup instead
+// of silently falling back to logger.NewLogger's default (info/json), which
+// would leave an operator's requested verbosity or encoding silently ignored.
+func validateLoggingConfig(level, format string) error {
+	switch strings.ToUpper(level) {
+	case "DEBUG", "INFO", "WARN", "WARNING", "ERROR":
+	default:
+		return fmt.Errorf("log_level must be one of \"DEBUG\", \"INFO\", \"WARN\", or \"ERROR\" (got %q)", level)
+	}
+	switch strings.ToLower(format) {
+	case "text", "json":
+	default:
+		return fmt.Errorf("log_format must be \"text\" or \"json\" (got %q)", format)
+	}
+	return nil
+}
+
+// validateDatabaseConfig fails closed when the selected driver's required
+// connection fields are missing, rather than surfacing an opaque driver-level
+// connection error only once the server tries to open the database.
+func validateDatabaseConfig(cfg *Database) error {
+	driver := strings.ToLower(cfg.Driver)
+	switch driver {
+	case "sqlite3", "postgres", "postgresql", "pgx", "sqlserver", "mssql":
+	default:
+		return fmt.Errorf("database.driver must be one of \"sqlite3\", \"postgres\", \"postgresql\", \"pgx\", "+
+			"\"sqlserver\", or \"mssql\" (got %q)", cfg.Driver)
+	}
+	if driver == "sqlite3" {
 		return nil
 	}
+	if cfg.Host == "" {
+		return fmt.Errorf("database.host is required when database.driver is %q", cfg.Driver)
+	}
+	if cfg.Port <= 0 || cfg.Port > 65535 {
+		return fmt.Errorf("database.port must be between 1 and 65535 when database.driver is %q (got %d)", cfg.Driver, cfg.Port)
+	}
+	if cfg.Name == "" {
+		return fmt.Errorf("database.name is required when database.driver is %q", cfg.Driver)
+	}
+	if cfg.User == "" {
+		return fmt.Errorf("database.user is required when database.driver is %q", cfg.Driver)
+	}
+	switch cfg.SSLMode {
+	case "", "disable", "require", "verify-ca", "verify-full":
+	default:
+		return fmt.Errorf("database.ssl_mode must be \"disable\", \"require\", \"verify-ca\", or \"verify-full\" (got %q)", cfg.SSLMode)
+	}
+	return nil
+}
+
+// validateListenersConfig rejects an out-of-range port on either listener and
+// a port collision when both listeners are enabled, rather than failing at
+// bind time with a generic "address already in use" error.
+func validateListenersConfig(l *ServerListeners) error {
+	if l.HTTP.Enabled && (l.HTTP.Port <= 0 || l.HTTP.Port > 65535) {
+		return fmt.Errorf("server.http.port must be between 1 and 65535 (got %d)", l.HTTP.Port)
+	}
+	if l.HTTPS.Enabled && (l.HTTPS.Port <= 0 || l.HTTPS.Port > 65535) {
+		return fmt.Errorf("server.https.port must be between 1 and 65535 (got %d)", l.HTTPS.Port)
+	}
+	if l.HTTP.Enabled && l.HTTPS.Enabled && l.HTTP.Port == l.HTTPS.Port {
+		return fmt.Errorf("server.http.port and server.https.port must differ when both listeners are enabled (both are %d)", l.HTTP.Port)
+	}
+	return nil
+}
+
+// validateCORSConfig rejects a wildcard origin: CORS.AllowedOrigins is used
+// for credentialed cross-origin requests, and wildcard origins cannot be
+// combined with credentials without opening a cross-tenant exploit path.
+func validateCORSConfig(c *CORS) error {
+	for _, o := range c.AllowedOrigins {
+		if o == "*" {
+			return fmt.Errorf("cors.allowed_origins must not contain \"*\" (wildcard origins cannot be combined with credentialed requests)")
+		}
+	}
+	return nil
+}
+
+func validateIDPConfig(idp *IDP) error {
 	if idp.JWKSUrl == "" {
-		return fmt.Errorf("auth.idp.enabled=true requires auth.idp.jwks_url to be configured")
+		return fmt.Errorf("auth.mode=%q requires auth.idp.jwks_url to be configured", AuthModeIDP)
 	}
 	if len(idp.Issuer) == 0 {
-		return fmt.Errorf("auth.idp.enabled=true requires auth.idp.issuer to be configured")
+		return fmt.Errorf("auth.mode=%q requires auth.idp.issuer to be configured", AuthModeIDP)
 	}
 	switch idp.ValidationMode {
 	case "scope", "role":
@@ -613,24 +656,21 @@ func validateIDPConfig(idp *IDP) error {
 }
 
 func validateFileBasedConfig(cfg *FileBased) error {
-	if !cfg.Enabled {
-		return nil
-	}
 	if cfg.Organization.ID == "" {
-		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.id to be configured")
+		return fmt.Errorf("auth.mode=%q requires auth.file.organization.id to be configured", AuthModeFile)
 	}
 	if cfg.Organization.DisplayName == "" {
-		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.display_name to be configured")
+		return fmt.Errorf("auth.mode=%q requires auth.file.organization.display_name to be configured", AuthModeFile)
 	}
 	if len(cfg.Users) == 0 {
-		return fmt.Errorf("auth.file_based.enabled=true requires at least one user in auth.file_based.users")
+		return fmt.Errorf("auth.mode=%q requires at least one user in auth.file.users", AuthModeFile)
 	}
 	for i, u := range cfg.Users {
 		if u.Username == "" {
-			return fmt.Errorf("auth.file_based.users[%d]: username is required (set it in config via {{ env }}/{{ file }})", i)
+			return fmt.Errorf("auth.file.users[%d]: username is required (set it in config via {{ env }}/{{ file }})", i)
 		}
 		if u.PasswordHash == "" {
-			return fmt.Errorf("auth.file_based.users[%d] (%s): password_hash is required (set it in config via {{ env }}/{{ file }})", i, u.Username)
+			return fmt.Errorf("auth.file.users[%d] (%s): password_hash is required (set it in config via {{ env }}/{{ file }})", i, u.Username)
 		}
 	}
 	return nil

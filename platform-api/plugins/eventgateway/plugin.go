@@ -278,18 +278,9 @@ func (p *EventGatewayPlugin) EnrichSubscription(orgID string, sub *api.Organizat
 	if err != nil {
 		return err
 	}
-	// A limit <= 0 means unlimited: report only usage, leaving Limit/Remaining
-	// unset so consumers treat the WebSub API quota as uncapped.
-	quota := &api.OrganizationQuota{Used: count}
-	if limit := p.cfg.ArtifactLimits.MaxWebSubAPIsPerOrg; limit > 0 {
-		quota.Limit = intPtr(limit)
-		quota.Remaining = intPtr(max(limit-count, 0))
-	}
-	sub.Quotas.WebsubApis = quota
+	sub.Quotas.WebsubApis = &api.OrganizationQuota{Used: count}
 	return nil
 }
-
-func intPtr(v int) *int { return &v }
 
 // selectSchema returns the DDL appropriate for the current database driver.
 func (p *EventGatewayPlugin) selectSchema(db *database.DB) string {

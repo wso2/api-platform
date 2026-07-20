@@ -66,7 +66,7 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 		return apperror.ValidationFailed.New("username and password are required")
 	}
 
-	fileBasedAuth := &h.cfg.Auth.FileBased
+	fileBasedAuth := &h.cfg.Auth.File
 	var matched *config.FileBasedUser
 	for i := range fileBasedAuth.Users {
 		if fileBasedAuth.Users[i].Username == req.Username {
@@ -86,7 +86,7 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 		return apperror.Unauthorized.New().WithLogMessage("login failed: password mismatch")
 	}
 
-	expiry := time.Now().Add(8 * time.Hour)
+	expiry := time.Now().Add(h.cfg.Auth.JWT.TokenTTL)
 	claims := jwt.MapClaims{
 		"sub":          matched.Username,
 		"username":     matched.Username,

@@ -7,23 +7,26 @@
 # License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
 #
-# Platform API configuration — quickstart (file-based auth)
+# Platform API configuration — local development
 #
-# This file is read by the Platform API (Go binary).
+# This file is read by the Platform API (Go binary):
+#   go run ./cmd/main.go -config config/config.toml
 #
-# Default login: username = admin, password = admin
-# Change the password hash before deploying to a shared environment.
-# Generate a new hash: htpasswd -bnBC 12 "" <password> | tr -d ':\n'
+# Auth mode is "jwt" (locally-signed HMAC tokens, no local users). To use
+# username/password login instead, set [auth] mode = "file" and add
+# [auth.file.organization] / [[auth.file.users]] blocks — see
+# config-template.toml for the full reference.
 # --------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Server
+# All Platform API settings live under [platform_api] / [platform_api.*].
 # ---------------------------------------------------------------------------
-log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
-port      = "9243"
+[platform_api]
 
-# Validate OAuth2 scopes on incoming requests.
-enable_scope_validation = true
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+log_level = '{{ env "APIP_CP_LOG_LEVEL" "INFO" }}'   # DEBUG | INFO | WARN | ERROR
 
 # ---------------------------------------------------------------------------
 # Encryption
@@ -35,27 +38,21 @@ encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
-[database]
-driver = "sqlite3"          # "sqlite3" or "postgres"
-# path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
+[platform_api.database]
+driver = '{{ env "APIP_CP_DATABASE_DRIVER" "sqlite3" }}'          # "sqlite3" or "postgres"
+path   = '{{ env "APIP_CP_DATABASE_PATH" "./data/api_platform.db" }}'   # SQLite file path (ignored for postgres)
 
 # ---------------------------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------------------------
+# mode selects exactly one auth mode: "jwt" | "file" | "idp".
+# "jwt" verifies locally-signed HMAC JWTs; tokens are minted externally
+# (e.g. by the Developer Portal using the shared secret below).
+[platform_api.auth]
+mode             = '{{ env "APIP_CP_AUTH_MODE" "jwt" }}'
+scope_validation = '{{ env "APIP_CP_AUTH_SCOPE_VALIDATION" "true" }}'   # validate OAuth2 scopes on incoming requests
 
-# JWT (local HMAC) — issues signed tokens after file-based login.
-[auth.jwt]
-enabled         = true
-issuer          = "platform-api"
-secret_key      = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
-skip_validation = false
-
-# IDP (JWKS-based) — disabled in quickstart mode.
-# Enable and configure when using Asgardeo, Keycloak, Auth0, etc.
-[auth.idp]
-enabled = false
-audience = []
-
-# File-based auth — local username/password login.
-[auth.file_based]
-enabled = false
+# JWT (local HMAC) — used in the "jwt" and "file" modes.
+[platform_api.auth.jwt]
+issuer     = '{{ env "APIP_CP_AUTH_JWT_ISSUER" "platform-api" }}'
+secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'

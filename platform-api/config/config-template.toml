@@ -19,51 +19,64 @@
 # This template is maintained here, next to the Platform API source, and is
 # copied into distributions (e.g. the AI Workspace zip) at build time.
 #
-# Precedence: environment variable (APIP_CP_ prefix) > this file > built-in default.
+# Precedence per key: an explicit {{ env "..." }} / {{ file "..." }} token in this
+# file resolves its value from that source; a plain literal value in this file is
+# used as-is; a key omitted from this file entirely falls back to its built-in
+# default. Every non-secret key below is written as a {{ env "VAR" "default" }}
+# token, so it can be overridden by setting VAR without editing this file — the
+# quoted string after the var name is the fallback used when VAR is unset. The
+# env var name inside a token is a free choice; APIP_CP_ is just this template's
+# naming convention, not something the loader requires or enforces.
 #
-# QUICK START (file-based auth mode — no external IDP needed):
+# QUICK START (file auth mode — no external IDP needed):
 #   1. Copy this file to config-platform-api.toml.
 #   2. Generate two 32-byte keys: openssl rand -hex 32 (one for APIP_CP_ENCRYPTION_KEY,
 #      one for APIP_CP_AUTH_JWT_SECRET_KEY).
 #   3. Put both in `api-platform.env` file.
 #      The encryption_key / secret_key fields below read them via {{ env "..." }}
 #      tokens — never paste raw key values into this file.
-#   4. Set [auth.file_based] enabled = true and configure users.
+#   4. Set [platform_api.auth] mode = "file" and configure users.
 #   5. Run: docker compose up
 #
 # Secrets are resolved at load time from environment variables ({{ env "..." }}) or
 # mounted files ({{ file "..." }}, preferred in production). Do not hardcode secret
 # values in this file or as literals in docker-compose.yaml. A {{ env }} / {{ file }}
-# token whose source is unset fails config load — only reference sources that exist.
+# token whose source is unset — and has no fallback value — fails config load; only
+# reference sources that exist.
 #
-# OIDC mode: keep file_based disabled and set the [auth.idp] fields.
+# OIDC mode: set [platform_api.auth] mode = "idp" and configure the [platform_api.auth.idp] fields.
 # --------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
-# Server
+# All Platform API settings live under [platform_api] / [platform_api.*].
 # ---------------------------------------------------------------------------
-log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
+[platform_api]
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+log_level = '{{ env "APIP_CP_LOG_LEVEL" "INFO" }}'   # DEBUG | INFO | WARN | ERROR
 
 # Log output encoding. Use "json" when shipping logs to an aggregator.
-log_format = "text"   # text | json
-
-# Scope-based authorization for API endpoints. When true, every request must
-# carry the OAuth2 scope its endpoint declares.
-# Set to false only to temporarily bypass during development.
-enable_scope_validation = true
+log_format = '{{ env "APIP_CP_LOG_FORMAT" "text" }}'   # text | json
 
 # Paths to resources the binary loads at startup. The defaults are correct for
 # the published container image; override only for a custom layout.
-db_schema_path                = "./internal/database/schema.sql"
-openapi_spec_path             = "./resources/openapi.yaml"
-llm_template_definitions_path = "./resources/default-llm-provider-templates"
+db_schema_path                = '{{ env "APIP_CP_DB_SCHEMA_PATH" "./internal/database/schema.sql" }}'
+openapi_spec_path             = '{{ env "APIP_CP_OPENAPI_SPEC_PATH" "./resources/openapi.yaml" }}'
+llm_template_definitions_path = '{{ env "APIP_CP_LLM_TEMPLATE_DEFINITIONS_PATH" "./resources/default-llm-provider-templates" }}'
+
+# Cap on the bytes read when fetching a remote OpenAPI spec by URL. <= 0 falls
+# back to the built-in 5 MiB default.
+openapi_spec_max_fetch_bytes = '{{ env "APIP_CP_OPENAPI_SPEC_MAX_FETCH_BYTES" "5242880" }}'
 
 # ---------------------------------------------------------------------------
 # Encryption
 # ---------------------------------------------------------------------------
 # Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
 # (secrets, subscription tokens, WebSub HMAC secrets).
-# REQUIRED — the server refuses to start without it. Generate with:
+# REQUIRED — the server refuses to start without it; no fallback is given, so an
+# unset APIP_CP_ENCRYPTION_KEY fails config load. Generate with:
 #   openssl rand -hex 32
 # Resolved from the APIP_CP_ENCRYPTION_KEY env var in `api-platform.env`. Files preferred:
 #   encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
@@ -72,41 +85,56 @@ encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
-[database]
-driver = "sqlite3"   # "sqlite3" or "postgres"
+[platform_api.database]
+driver = '{{ env "APIP_CP_DATABASE_DRIVER" "sqlite3" }}'   # "sqlite3" | "postgres" | "postgresql" | "pgx" | "sqlserver" | "mssql"
 
-# SQLite — ignored when driver = "postgres". Default: ./data/api_platform.db
-path = "/app/data/api_platform.db"
+# SQLite — ignored when driver = "postgres".
+path = '{{ env "APIP_CP_DATABASE_PATH" "/app/data/api_platform.db" }}'
 
-# PostgreSQL — ignored when driver = "sqlite3"; set driver = "postgres" above to use.
-host     = "localhost"
-port     = 5432
-name     = "platform_api"
-user     = "platform_api"
+# PostgreSQL/SQL Server — ignored when driver = "sqlite3"; host, port, name, and
+# user are all required for every non-sqlite3 driver, or config load fails.
+host     = '{{ env "APIP_CP_DATABASE_HOST" "localhost" }}'
+port     = '{{ env "APIP_CP_DATABASE_PORT" "5432" }}'
+name     = '{{ env "APIP_CP_DATABASE_NAME" "platform_api" }}'
+user     = '{{ env "APIP_CP_DATABASE_USER" "platform_api" }}'
 # Resolve the password from a mounted secret file (preferred) or env var, e.g.
 #   password = '{{ file "/secrets/platform-api/postgres_password" }}'
-# The referenced file/env var must exist or config load fails.
-password = ""
-ssl_mode = "disable"   # "disable" | "require" | "verify-ca" | "verify-full"
+# The referenced file/env var must exist or config load fails; the fallback here
+# is "" so a driver that needs no password (sqlite3) is unaffected.
+password = '{{ env "APIP_CP_DATABASE_PASSWORD" "" }}'
+ssl_mode = '{{ env "APIP_CP_DATABASE_SSL_MODE" "disable" }}'   # "disable" | "require" | "verify-ca" | "verify-full"
 
 # Connection pool — tune for production workloads
-max_open_conns    = 25    # maximum open connections
-max_idle_conns    = 10    # maximum idle connections in the pool
-conn_max_lifetime = 300   # seconds before a connection is recycled
+max_open_conns    = '{{ env "APIP_CP_DATABASE_MAX_OPEN_CONNS" "25" }}'    # maximum open connections
+max_idle_conns    = '{{ env "APIP_CP_DATABASE_MAX_IDLE_CONNS" "10" }}'    # maximum idle connections in the pool
+conn_max_lifetime = '{{ env "APIP_CP_DATABASE_CONN_MAX_LIFETIME" "300" }}'   # seconds before a connection is recycled
 
 # ---------------------------------------------------------------------------
 # Authentication
 #
-# Exactly one of jwt / idp / file_based drives request authentication; enabling
-# the IDP alongside a local mode is rejected at startup.
+# auth.mode selects exactly one authentication mode:
+#   "jwt"  — verify locally-signed HMAC JWTs ([platform_api.auth.jwt]); tokens
+#            are minted externally, e.g. by the Developer Portal using the
+#            shared secret.
+#   "file" — "jwt" plus local username/password login: the login endpoint
+#            authenticates users from [platform_api.auth.file] and issues HMAC JWTs.
+#   "idp"  — validate tokens against an external IDP's JWKS ([platform_api.auth.idp]).
+# Only the selected mode's section is read; the others are ignored.
 # ---------------------------------------------------------------------------
-[auth]
+[platform_api.auth]
+mode = '{{ env "APIP_CP_AUTH_MODE" "file" }}'
+
+# Enforce per-endpoint OAuth2 scopes on validated tokens. When true, every
+# request must carry the scope its endpoint declares.
+# Set to false only to temporarily bypass authorization during development.
+scope_validation = '{{ env "APIP_CP_AUTH_SCOPE_VALIDATION" "true" }}'
 
 # Paths that bypass the auth middleware entirely. The list below is the built-in
 # default: the health/metrics probes, the file-based login endpoint, and the
 # internal gateway routes (which authenticate with a gateway token instead).
 # Setting this key REPLACES the default list — keep the entries you still need.
-# Env var is APIP_CP_AUTH_SKIP_PATHS (comma-separated).
+# This is a structured list, not a scalar, so it is edited directly rather than
+# via a single env var token.
 skip_paths = [
     "/health",
     "/metrics",
@@ -126,64 +154,61 @@ skip_paths = [
     "/api/internal/v0.9/webhook/events",
 ]
 
-# JWT (local HMAC) — the default for self-hosted deployments.
-# Disable when delegating auth entirely to an external IDP.
+# JWT (local HMAC) — used in the "jwt" and "file" modes (file mode signs and
+# verifies login tokens with the same secret). Signature validation is always on.
 # Resolved from APIP_CP_AUTH_JWT_SECRET_KEY in `api-platform.env` file;
 # secret files preferred: secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
-[auth.jwt]
-enabled    = true
-issuer     = "platform-api"
-# Signing key. REQUIRED — a 32-byte key (64 hex chars or base64); never generated.
+[platform_api.auth.jwt]
+issuer     = '{{ env "APIP_CP_AUTH_JWT_ISSUER" "platform-api" }}'
+# Signing key. REQUIRED — a 32-byte key (64 hex chars or base64); never generated,
+# and has no fallback, so an unset APIP_CP_AUTH_JWT_SECRET_KEY fails config load.
 secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
-# Skip signature verification. MUST stay false — the server refuses to start
-# when signature validation is disabled.
-skip_validation = false
+# Lifetime of tokens issued by the file-mode login endpoint (Go duration syntax).
+# Not used to validate externally-minted "jwt"-mode tokens — their expiry is
+# whatever "exp" claim the issuer set.
+token_ttl = '{{ env "APIP_CP_AUTH_JWT_TOKEN_TTL" "1h" }}'
 
-# IDP (JWKS-based) — enable instead of JWT when using Asgardeo, Keycloak, Auth0, etc.
-# jwks_url and issuer are required when enabled = true.
-[auth.idp]
-enabled  = false
-name     = "asgardeo"                                # friendly name for logging
-jwks_url = "https://accounts.example.com/oauth2/jwks"
+# IDP (JWKS-based) — used when mode = "idp" (Asgardeo, Keycloak, Auth0, etc.).
+# jwks_url and issuer are required in that mode.
+[platform_api.auth.idp]
+name     = '{{ env "APIP_CP_AUTH_IDP_NAME" "asgardeo" }}'                                # friendly name for logging
+jwks_url = '{{ env "APIP_CP_AUTH_IDP_JWKS_URL" "https://accounts.example.com/oauth2/jwks" }}'
 issuer   = ["https://accounts.example.com"]          # list of accepted issuers
 audience = []                                        # accepted "aud" values; empty = skip audience check
 
 # Authorization mode: "scope" (default) checks the scope claim;
 # "role" checks a roles claim at claim_mappings.roles_claim_path.
-validation_mode    = "scope"
-role_mappings_file = ""        # path to a YAML file mapping IDP roles to platform scopes
+validation_mode = '{{ env "APIP_CP_AUTH_IDP_VALIDATION_MODE" "scope" }}'
+role_mappings   = '{{ env "APIP_CP_AUTH_IDP_ROLE_MAPPINGS" "" }}'        # path to a YAML file mapping IDP roles to platform scopes
 
 # JWT claim name mappings — configure to match your IDP's token structure.
-[auth.idp.claim_mappings]
-organization_claim_name = "organization"   # claim carrying the org ID
-org_name_claim_name     = "org_name"       # claim carrying the org display name
-org_handle_claim_name   = "org_handle"     # claim carrying the org URL slug
-user_id_claim_name      = "sub"            # claim used as the user's unique ID
-username_claim_name     = "username"
-email_claim_name        = "email"
-scope_claim_name        = "scope"          # space-separated scope string
-roles_claim_path        = ""               # JSON path to roles array, e.g. "realm_access.roles"
+[platform_api.auth.idp.claim_mappings]
+organization_claim_name = '{{ env "APIP_CP_AUTH_IDP_CLAIM_ORGANIZATION" "organization" }}'   # claim carrying the org ID
+org_name_claim_name     = '{{ env "APIP_CP_AUTH_IDP_CLAIM_ORG_NAME" "org_name" }}'       # claim carrying the org display name
+org_handle_claim_name   = '{{ env "APIP_CP_AUTH_IDP_CLAIM_ORG_HANDLE" "org_handle" }}'     # claim carrying the org URL slug
+user_id_claim_name      = '{{ env "APIP_CP_AUTH_IDP_CLAIM_USER_ID" "sub" }}'            # claim used as the user's unique ID
+username_claim_name     = '{{ env "APIP_CP_AUTH_IDP_CLAIM_USERNAME" "username" }}'
+email_claim_name        = '{{ env "APIP_CP_AUTH_IDP_CLAIM_EMAIL" "email" }}'
+scope_claim_name        = '{{ env "APIP_CP_AUTH_IDP_CLAIM_SCOPE" "scope" }}'          # space-separated scope string
+roles_claim_path        = '{{ env "APIP_CP_AUTH_IDP_CLAIM_ROLES_PATH" "" }}'               # JSON path to roles array, e.g. "realm_access.roles"
 
-# File-based auth — local username/password login. Ideal for initial / air-gapped
-# setup; not recommended for production — prefer an IDP.
-# When enabled, IDP is NOT used for Platform API authentication.
-[auth.file_based]
-enabled = true
-
-[auth.file_based.organization]
-id           = "default"          # Required: organization handle (URL-safe slug)
-display_name = "Default"
-region       = "us"
+# File auth — local username/password login, used when mode = "file". Ideal for
+# initial / air-gapped setup; not recommended for production — prefer an IDP.
+[platform_api.auth.file.organization]
+id           = '{{ env "APIP_CP_AUTH_FILE_ORGANIZATION_ID" "default" }}'          # Required: organization handle (URL-safe slug)
+display_name = '{{ env "APIP_CP_AUTH_FILE_ORGANIZATION_DISPLAY_NAME" "Default" }}'
+region       = '{{ env "APIP_CP_AUTH_FILE_ORGANIZATION_REGION" "us" }}'
 # Platform organization UUID, emitted as the `organization` claim in issued
 # tokens. Generated at startup when unset; pin it to keep the organization
 # stable across fresh databases.
-uuid = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
+uuid = '{{ env "APIP_CP_AUTH_FILE_ORGANIZATION_UUID" "99089a17-72e0-4dd8-a2f4-c8dfbb085295" }}'
 
-# Add one [[auth.file_based.users]] block per user.
+# Add one [[platform_api.auth.file.users]] block per user.
 # Generate a bcrypt hash with: htpasswd -bnBC 12 "" <password> | tr -d ':\n'
-# The env-var equivalent (APIP_CP_AUTH_FILE_BASED_USERS) takes a JSON array instead.
-[[auth.file_based.users]]
+[[platform_api.auth.file.users]]
 # The quickstart resolves these from api-platform.env (generated by setup.sh).
+# Neither has a fallback — an unset var fails config load rather than starting
+# with a blank or guessable credential.
 username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'
 password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
 # Full scope set — trim to restrict permissions for this user.
@@ -191,38 +216,38 @@ scopes = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:mana
 
 # Additional users — uncomment the WHOLE block (including the [[...]] header)
 # and replace the placeholder hash with a real bcrypt hash before use.
-# [[auth.file_based.users]]
+# [[platform_api.auth.file.users]]
 # username      = "readonly"
 # password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
 # scopes        = "ap:organization:read ap:gateway:read ap:rest_api:read ap:llm_provider:read"
 
 # ---------------------------------------------------------------------------
-# Listeners (HTTP + HTTPS)
+# Server listeners (HTTP + HTTPS)
 # ---------------------------------------------------------------------------
-# The plain-HTTP and TLS listeners are independent — enable either or both, each
-# on its own port. Serve plain HTTP internally, HTTPS externally, or run both at
-# once (e.g. to migrate clients between them without downtime).
+# The plain-HTTP and HTTPS listeners are independent — enable either or both,
+# each on its own port. Serve plain HTTP internally, HTTPS externally, or run
+# both at once (e.g. to migrate clients between them without downtime).
 #
 # Defaults: the HTTPS listener is on at 9243; the plain-HTTP listener is off.
 # Enable the plain-HTTP listener only when a trusted upstream (ingress,
 # service-mesh sidecar) terminates TLS, or for internal traffic — never expose
 # it directly to untrusted networks.
 #
-# https.cert_dir must contain cert.pem and key.pem when https.enabled = true.
-# Certificates are always required — there is no self-signed fallback.
-# setup.sh generates a pair for the quickstart.
-#
-# Override with APIP_CP_HTTP_ENABLED / APIP_CP_HTTP_PORT and APIP_CP_HTTPS_ENABLED /
-# APIP_CP_HTTPS_PORT / APIP_CP_HTTPS_CERT_DIR. Legacy TLS_ENABLED / TLS_CERT_DIR /
-# PORT still map onto the HTTPS listener.
-[http]
-enabled = false
-port    = "9080"
+# platform_api.server.https.tls.cert_file / key_file must point at a certificate
+# pair when platform_api.server.https.enabled = true. Certificates are always
+# required — there is no self-signed fallback. setup.sh generates a pair for
+# the quickstart.
+[platform_api.server.http]
+enabled = '{{ env "APIP_CP_SERVER_HTTP_ENABLED" "false" }}'
+port    = '{{ env "APIP_CP_SERVER_HTTP_PORT" "9080" }}'
 
-[https]
-enabled  = true
-port     = "9243"
-cert_dir = "/app/data/certs"   # default: ./data/certs
+[platform_api.server.https]
+enabled = '{{ env "APIP_CP_SERVER_HTTPS_ENABLED" "true" }}'
+port    = '{{ env "APIP_CP_SERVER_HTTPS_PORT" "9243" }}'
+
+[platform_api.server.https.tls]
+cert_file = '{{ env "APIP_CP_SERVER_HTTPS_TLS_CERT_FILE" "/app/data/certs/cert.pem" }}'   # default: ./data/certs/cert.pem
+key_file  = '{{ env "APIP_CP_SERVER_HTTPS_TLS_KEY_FILE" "/app/data/certs/key.pem" }}'     # default: ./data/certs/key.pem
 
 # ---------------------------------------------------------------------------
 # Listener timeouts
@@ -238,13 +263,13 @@ cert_dir = "/app/data/certs"   # default: ./data/certs
 #
 # WebSocket routes are unaffected — the deadlines are cleared on upgrade.
 #
-# Override with APIP_CP_TIMEOUTS_READ_HEADER / APIP_CP_TIMEOUTS_READ /
-# APIP_CP_TIMEOUTS_WRITE / APIP_CP_TIMEOUTS_IDLE.
-[timeouts]
-read_header = "10s"
-read        = "60s"
-write       = "120s"
-idle        = "120s"
+# Override with APIP_CP_LISTENER_TIMEOUTS_READ_HEADER / APIP_CP_LISTENER_TIMEOUTS_READ /
+# APIP_CP_LISTENER_TIMEOUTS_WRITE / APIP_CP_LISTENER_TIMEOUTS_IDLE.
+[platform_api.listener_timeouts]
+read_header = '{{ env "APIP_CP_LISTENER_TIMEOUTS_READ_HEADER" "10s" }}'
+read        = '{{ env "APIP_CP_LISTENER_TIMEOUTS_READ" "60s" }}'
+write       = '{{ env "APIP_CP_LISTENER_TIMEOUTS_WRITE" "120s" }}'
+idle        = '{{ env "APIP_CP_LISTENER_TIMEOUTS_IDLE" "120s" }}'
 
 # ---------------------------------------------------------------------------
 # CORS
@@ -253,86 +278,76 @@ idle        = "120s"
 # Portal and AI Workspace origins. Must never contain "*"; leave empty to
 # disable cross-origin access (the default). Env var is
 # APIP_CP_CORS_ALLOWED_ORIGINS (comma-separated).
-[cors]
-allowed_origins = []   # e.g. ["https://workspace.example.com", "https://devportal.example.com"]
+[platform_api.cors]
+allowed_origins = '{{ env "APIP_CP_CORS_ALLOWED_ORIGINS" "" }}'   # e.g. "https://workspace.example.com,https://devportal.example.com"
 
 # ---------------------------------------------------------------------------
 # API Key
 # ---------------------------------------------------------------------------
-[api_key]
-# Hashing algorithms accepted for API key verification.
+[platform_api.api_key]
+# Hashing algorithms accepted for API key verification (comma-separated).
 # sha256 is the default; add "sha512" to accept both.
-hashing_algorithms = ["sha256"]
+hashing_algorithms = '{{ env "APIP_CP_API_KEY_HASHING_ALGORITHMS" "sha256" }}'
 
 # ---------------------------------------------------------------------------
 # WebSocket
 # ---------------------------------------------------------------------------
-[websocket]
-max_connections         = 1000   # global WebSocket connection limit
-connection_timeout      = 30     # seconds before an idle connection is closed
-rate_limit_per_min      = 1000   # maximum messages per minute per connection
-max_connections_per_org = 3      # maximum concurrent WebSocket connections per org
-metrics_log_enabled     = true   # emit WebSocket metrics to the log
-metrics_log_interval    = 10     # seconds between metrics log lines
+[platform_api.websocket]
+max_connections         = '{{ env "APIP_CP_WEBSOCKET_MAX_CONNECTIONS" "1000" }}'   # global WebSocket connection limit
+connection_timeout      = '{{ env "APIP_CP_WEBSOCKET_CONNECTION_TIMEOUT" "30" }}'     # seconds before an idle connection is closed
+rate_limit_per_min      = '{{ env "APIP_CP_WEBSOCKET_RATE_LIMIT_PER_MIN" "1000" }}'   # maximum messages per minute per connection
+max_connections_per_org = '{{ env "APIP_CP_WEBSOCKET_MAX_CONNECTIONS_PER_ORG" "3" }}'      # maximum concurrent WebSocket connections per org
+metrics_log_enabled     = '{{ env "APIP_CP_WEBSOCKET_METRICS_LOG_ENABLED" "true" }}'   # emit WebSocket metrics to the log
+metrics_log_interval    = '{{ env "APIP_CP_WEBSOCKET_METRICS_LOG_INTERVAL" "10" }}'    # seconds between metrics log lines
+
 
 # ---------------------------------------------------------------------------
 # Deployments
 # ---------------------------------------------------------------------------
-[deployments]
-max_per_api_gateway         = 20     # maximum API deployments per gateway
-transitional_status_enabled = false  # expose "pending" deployment states in responses
+[platform_api.deployments]
+max_per_api_gateway         = '{{ env "APIP_CP_DEPLOYMENTS_MAX_PER_API_GATEWAY" "20" }}'     # maximum API deployments per gateway
+transitional_status_enabled = '{{ env "APIP_CP_DEPLOYMENTS_TRANSITIONAL_STATUS_ENABLED" "false" }}'  # expose "pending" deployment states in responses
 
 # Deployment timeout — mark stuck deployments as failed after timeout_duration seconds.
-timeout_enabled  = true
-timeout_interval = 20   # seconds between timeout check sweeps
-timeout_duration = 60   # seconds before a stuck deployment is timed out
-
-# ---------------------------------------------------------------------------
-# Artifact limits
-# ---------------------------------------------------------------------------
-# Maximum number of each artifact kind an organization may create.
-# A value <= 0 (the default) means unlimited.
-[artifact_limits]
-max_llm_providers_per_org  = 0
-max_llm_proxies_per_org    = 0
-max_mcp_proxies_per_org    = 0
-max_websub_apis_per_org    = 0
-max_webbroker_apis_per_org = 0
+timeout_enabled  = '{{ env "APIP_CP_DEPLOYMENTS_TIMEOUT_ENABLED" "true" }}'
+timeout_interval = '{{ env "APIP_CP_DEPLOYMENTS_TIMEOUT_INTERVAL" "20" }}'   # seconds between timeout check sweeps
+timeout_duration = '{{ env "APIP_CP_DEPLOYMENTS_TIMEOUT_DURATION" "60" }}'   # seconds before a stuck deployment is timed out
 
 # ---------------------------------------------------------------------------
 # Gateway
 # ---------------------------------------------------------------------------
-[gateway]
+[platform_api.gateway]
 # Reject gateway registrations whose runtime version does not match the expected range.
-enable_version_verification = false
+enable_version_verification = '{{ env "APIP_CP_GATEWAY_ENABLE_VERSION_VERIFICATION" "false" }}'
 # Reject gateways that report an unexpected functionality type.
-enable_functionality_type_verification = false
+enable_functionality_type_verification = '{{ env "APIP_CP_GATEWAY_ENABLE_FUNCTIONALITY_TYPE_VERIFICATION" "false" }}'
 
 # ---------------------------------------------------------------------------
 # EventHub — multi-replica HA event delivery
 # ---------------------------------------------------------------------------
 # Values are durations, e.g. "3s", "10m", "1h". All must be positive.
-[event_hub]
-poll_interval    = "3s"    # how often each replica polls for new events
-cleanup_interval = "10m"   # how often delivered events are purged
-retention_period = "1h"    # how long delivered events are retained
+[platform_api.event_hub]
+poll_interval    = '{{ env "APIP_CP_EVENT_HUB_POLL_INTERVAL" "3s" }}'      # how often each replica polls for new events
+cleanup_interval = '{{ env "APIP_CP_EVENT_HUB_CLEANUP_INTERVAL" "10m" }}'   # how often delivered events are purged
+retention_period = '{{ env "APIP_CP_EVENT_HUB_RETENTION_PERIOD" "1h" }}'    # how long delivered events are retained
 
 # ---------------------------------------------------------------------------
 # Webhook — control-plane webhook receiver
 # ---------------------------------------------------------------------------
 # The Developer Portal delivers signed events (API key / subscription changes)
 # to this endpoint.
-[webhook]
-enabled = false
+[platform_api.webhook]
+enabled = '{{ env "APIP_CP_WEBHOOK_ENABLED" "false" }}'
 # HMAC-SHA256 shared secret used to verify request signatures. REQUIRED when
 # enabled. Resolve via a token, e.g. secret = '{{ env "APIP_CP_WEBHOOK_SECRET" }}'
-# — the referenced env var/file must exist or config load fails.
-secret = ""
+# — the referenced env var/file must exist or config load fails. The "" fallback
+# below is only ever read while enabled = false.
+secret = '{{ env "APIP_CP_WEBHOOK_SECRET" "" }}'
 # PEM RSA private key used to decrypt encrypted_key fields. Required only for
 # events that carry encrypted secrets (API key generate/regenerate).
-private_key_path = ""
+private_key_path = '{{ env "APIP_CP_WEBHOOK_PRIVATE_KEY_PATH" "" }}'
 # Events with a different gateway_type are accepted as a no-op.
-gateway_type        = "wso2/api-platform"
-signature_tolerance = "5m"                     # max age of a signed request (replay protection)
-max_body_size       = 1048576                  # request body cap in bytes (1 MiB)
-signature_header    = "X-Devportal-Signature"  # header carrying the "t=...,v1=..." signature
+gateway_type        = '{{ env "APIP_CP_WEBHOOK_GATEWAY_TYPE" "wso2/api-platform" }}'
+signature_tolerance = '{{ env "APIP_CP_WEBHOOK_SIGNATURE_TOLERANCE" "5m" }}'                     # max age of a signed request (replay protection)
+max_body_size       = '{{ env "APIP_CP_WEBHOOK_MAX_BODY_SIZE" "1048576" }}'                  # request body cap in bytes (1 MiB)
+signature_header    = '{{ env "APIP_CP_WEBHOOK_SIGNATURE_HEADER" "X-Devportal-Signature" }}'  # header carrying the "t=...,v1=..." signature

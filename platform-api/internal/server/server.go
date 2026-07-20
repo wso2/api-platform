@@ -28,6 +28,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -66,25 +67,20 @@ type Server struct {
 	logger         *slog.Logger
 }
 
-// validateAuthConfig enforces auth requirements at startup. All checks are
-// unconditional: there is no relaxed/demo mode.
-func validateAuthConfig(cfg *config.Server) error {
-	if !cfg.Auth.FileBased.Enabled && !cfg.Auth.IDP.Enabled && !cfg.Auth.JWT.Enabled {
-		return fmt.Errorf("no authentication mode is enabled; set auth.file_based.enabled=true, auth.jwt.enabled=true, or auth.idp.enabled=true")
-	}
-	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SkipValidation {
-		return fmt.Errorf("JWT signature validation cannot be skipped (auth.jwt.skip_validation=true / APIP_CP_AUTH_JWT_SKIP_VALIDATION=true); set it to false")
-	}
+// validateServerConfig enforces request-security requirements at startup that
+// are not covered by config-load validation. All checks are unconditional:
+// there is no relaxed/demo mode.
+func validateServerConfig(cfg *config.Server) error {
 	if slices.Contains(cfg.CORS.AllowedOrigins, "*") {
-		return fmt.Errorf("cors.allowed_origins (APIP_CP_CORS_ALLOWED_ORIGINS) must not contain \"*\"; list explicit origins, or leave it empty to disable cross-origin access")
+		return fmt.Errorf("cors.allowed_origins must not contain \"*\"; list explicit origins, or leave it empty to disable cross-origin access")
 	}
 	return nil
 }
 
 // StartPlatformAPIServer creates a new server instance with all dependencies initialized
 func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, error) {
-	if err := validateAuthConfig(cfg); err != nil {
-		slogger.Error("Invalid auth configuration for production mode", "error", err)
+	if err := validateServerConfig(cfg); err != nil {
+		slogger.Error("Invalid server configuration", "error", err)
 		return nil, err
 	}
 
@@ -133,8 +129,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	userIdentityMappingRepo := repository.NewUserIdentityMappingRepo(db)
 	userOrgMappingRepo := repository.NewUserOrganizationMappingRepo(db)
 
-	// Seed the file-based organization on startup if file-based auth mode is enabled.
-	if cfg.Auth.FileBased.Enabled {
+	// Seed the file-based organization on startup if file auth mode is selected.
+	if cfg.Auth.Mode == config.AuthModeFile {
 		if err := seedFileBasedOrg(cfg, orgRepo, slogger); err != nil {
 			return nil, fmt.Errorf("failed to seed file-based organization: %w", err)
 		}
@@ -368,7 +364,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		return nil, err
 	}
 
-	if !cfg.EnableScopeValidation {
+	if !cfg.Auth.ScopeValidation {
 		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
 	}
 
@@ -486,8 +482,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		AllowCredentials: true,
 	}))
 
-	if cfg.Auth.FileBased.Enabled {
-		slogger.Info("Auth mode: file-based (HMAC-signed JWT)")
+	if cfg.Auth.Mode == config.AuthModeFile {
+		slogger.Info("Auth mode: file (local users, HMAC-signed JWT)")
 		slogger.Warn("file-based authentication is enabled — this is not recommended for production; please configure an IDP of your choice")
 		chain = append(chain, middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
 			SecretKey:      cfg.Auth.JWT.SecretKey,
@@ -522,7 +518,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	// values are already in the context when scope checks run.
 	chain = append(chain, middleware.ScopeEnforcer(scopeRegistry, middleware.ScopeEnforcerConfig{
 		ValidationMode: cfg.Auth.IDP.ValidationMode,
-		Enabled:        cfg.EnableScopeValidation,
+		Enabled:        cfg.Auth.ScopeValidation,
 	}))
 
 	slogger.Info("WebSocket manager initialized",
@@ -548,12 +544,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 }
 
 // buildAuthenticator constructs an Authenticator from the server configuration.
-// Only called when file-based auth is disabled.
+// Only called when the auth mode is "jwt" or "idp" (file mode wires its own
+// local-JWT middleware).
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
-	if !cfg.Auth.IDP.Enabled {
-		// validateAuthConfig already rejected skip_validation=true, so signatures
-		// are always verified here.
-		slogger.Info("JWT mode: HMAC signature validation enabled")
+	if cfg.Auth.Mode != config.AuthModeIDP {
+		slogger.Info("Auth mode: jwt (HMAC signature validation enabled)")
 		return middleware.NewJWTAuthenticator(
 			middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
 				SecretKey:      cfg.Auth.JWT.SecretKey,
@@ -618,18 +613,18 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 // Returns nil when role mode is not active or no mapping file is configured,
 // which causes IDP role names to be used as-is as scope values (passthrough).
 func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, slogger *slog.Logger) (map[string][]string, error) {
-	if !cfg.Auth.IDP.Enabled || cfg.Auth.IDP.ValidationMode != "role" || cfg.Auth.IDP.RoleMappingsFile == "" {
+	if cfg.Auth.Mode != config.AuthModeIDP || cfg.Auth.IDP.ValidationMode != "role" || cfg.Auth.IDP.RoleMappings == "" {
 		return nil, nil
 	}
 
-	m, err := middleware.LoadRoleScopeMap(cfg.Auth.IDP.RoleMappingsFile)
+	m, err := middleware.LoadRoleScopeMap(cfg.Auth.IDP.RoleMappings)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load role mappings file: %w", err)
 	}
 	if err := middleware.ValidateRoleScopeMap(m, registry); err != nil {
 		return nil, fmt.Errorf("invalid roles.yaml: %w", err)
 	}
-	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.IDP.RoleMappingsFile, "roles", len(m))
+	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.IDP.RoleMappings, "roles", len(m))
 
 	return m, nil
 }
@@ -639,20 +634,22 @@ func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, sl
 // there is no self-signed fallback; use the quickstart setup script (or your
 // own tooling) to generate a pair and mount it.
 func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, error) {
-	certDir := httpsCfg.CertDir
-	certPath := filepath.Join(certDir, "cert.pem")
-	keyPath := filepath.Join(certDir, "key.pem")
+	certFile := httpsCfg.TLS.CertFile
+	keyFile := httpsCfg.TLS.KeyFile
+	if certFile == "" || keyFile == "" {
+		return nil, fmt.Errorf("HTTPS listener enabled but server.https.tls.cert_file / server.https.tls.key_file is not configured")
+	}
 
-	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"failed to load TLS certificates from %q (cert.pem / key.pem): %w. "+
-				"Mount certificates there, set APIP_CP_HTTPS_CERT_DIR to a directory containing cert.pem and key.pem, "+
-				"or set APIP_CP_HTTPS_ENABLED=false to serve plain HTTP behind a TLS-terminating proxy",
-			certDir, err,
+			"failed to load TLS certificates (cert %q / key %q): %w. "+
+				"Mount a certificate pair and point server.https.tls.cert_file / key_file at it, "+
+				"or set server.https.enabled=false to serve plain HTTP behind a TLS-terminating proxy",
+			certFile, keyFile, err,
 		)
 	}
-	s.logger.Info("Using mounted certificates", "certDir", certDir)
+	s.logger.Info("Using mounted certificates", "certFile", certFile, "keyFile", keyFile)
 
 	return &tls.Config{
 		Certificates: []tls.Certificate{cert},
@@ -667,21 +664,23 @@ func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, err
 //
 // timeouts bounds connection lifetime on both listeners so a slow or idle peer
 // cannot hold one open indefinitely (Slowloris). It is validated at config load.
-func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListener, timeouts config.Timeouts) error {
+func (s *Server) Start(listeners config.ServerListeners, timeouts config.Timeouts) error {
+	httpCfg := listeners.HTTP
+	httpsCfg := listeners.HTTPS
 	if !httpCfg.Enabled && !httpsCfg.Enabled {
 		s.logger.Error("No listeners enabled")
-		return fmt.Errorf("no listeners enabled: set http.enabled=true and/or https.enabled=true in config")
+		return fmt.Errorf("no listeners enabled: set server.http.enabled=true and/or server.https.enabled=true in config")
 	}
 
 	// Preflight: validate listener configuration and build the TLS config before
 	// starting any listener, background job, or goroutine
-	if httpCfg.Enabled && httpCfg.Port == "" {
-		return fmt.Errorf("HTTP listener enabled but http.port is empty")
+	if httpCfg.Enabled && (httpCfg.Port <= 0 || httpCfg.Port > 65535) {
+		return fmt.Errorf("HTTP listener enabled but server.http.port is invalid (got %d)", httpCfg.Port)
 	}
 	var tlsConfig *tls.Config
 	if httpsCfg.Enabled {
-		if httpsCfg.Port == "" {
-			return fmt.Errorf("HTTPS listener enabled but https.port is empty")
+		if httpsCfg.Port <= 0 || httpsCfg.Port > 65535 {
+			return fmt.Errorf("HTTPS listener enabled but server.https.port is invalid (got %d)", httpsCfg.Port)
 		}
 		var err error
 		if tlsConfig, err = s.buildTLSConfig(httpsCfg); err != nil {
@@ -709,11 +708,12 @@ func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListene
 	if httpCfg.Enabled {
 		// Plain HTTP is only safe when something upstream terminates TLS, or for
 		// internal traffic. Say so loudly.
-		s.logger.Warn("Plain-HTTP listener is enabled (http.enabled=true)" +
-				"terminate TLS at an ingress or service-mesh sidecar and never expose this listener " +
-				"directly to untrusted networks.")
+		s.logger.Warn("Plain-HTTP listener is enabled (server.http.enabled=true); " +
+			"terminate TLS at an ingress or service-mesh sidecar and never expose this listener " +
+			"directly to untrusted networks.")
+		httpPort := strconv.Itoa(httpCfg.Port)
 		httpServer := &http.Server{
-			Addr:              ":" + httpCfg.Port,
+			Addr:              ":" + httpPort,
 			Handler:           s.handler,
 			ReadHeaderTimeout: timeouts.ReadHeader,
 			ReadTimeout:       timeouts.Read,
@@ -721,7 +721,7 @@ func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListene
 			IdleTimeout:       timeouts.Idle,
 		}
 		httpServers = append(httpServers, httpServer)
-		s.logger.Info("Starting HTTP listener", "address", "http://localhost:"+httpCfg.Port)
+		s.logger.Info("Starting HTTP listener", "address", "http://localhost:"+httpPort)
 		go func() {
 			errCh <- httpServer.ListenAndServe()
 		}()
@@ -729,8 +729,9 @@ func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListene
 
 	// TLS listener.
 	if httpsCfg.Enabled {
+		httpsPort := strconv.Itoa(httpsCfg.Port)
 		httpsServer := &http.Server{
-			Addr:              ":" + httpsCfg.Port,
+			Addr:              ":" + httpsPort,
 			Handler:           s.handler,
 			TLSConfig:         tlsConfig,
 			ReadHeaderTimeout: timeouts.ReadHeader,
@@ -739,7 +740,7 @@ func (s *Server) Start(httpCfg config.HTTPListener, httpsCfg config.HTTPSListene
 			IdleTimeout:       timeouts.Idle,
 		}
 		httpServers = append(httpServers, httpsServer)
-		s.logger.Info("Starting HTTPS listener", "address", "https://localhost:"+httpsCfg.Port)
+		s.logger.Info("Starting HTTPS listener", "address", "https://localhost:"+httpsPort)
 		go func() {
 			errCh <- httpsServer.ListenAndServeTLS("", "")
 		}()
@@ -800,7 +801,7 @@ func (s *Server) GetMux() *http.ServeMux {
 // is stored back into cfg (Organization.UUID) so the login handler issues tokens
 // whose `organization` claim matches the value the organization resolver looks up.
 func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationRepository, slogger *slog.Logger) error {
-	ba := &cfg.Auth.FileBased
+	ba := &cfg.Auth.File
 
 	existing, err := orgRepo.GetOrganizationByHandle(ba.Organization.ID)
 	if err != nil {
