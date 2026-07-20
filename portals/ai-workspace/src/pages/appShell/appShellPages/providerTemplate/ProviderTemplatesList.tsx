@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Avatar,
@@ -41,8 +41,14 @@ import { useProviderTemplates } from '../../../../contexts/llmProvider/providerT
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { buildOrgPath } from '../../../../utils/projectRouting';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
-import { truncateProviderDisplayName } from '../../../../utils/providerTemplateDisplay';
+import {
+  familyHandle,
+  truncateProviderDisplayName,
+} from '../../../../utils/providerTemplateDisplay';
 import type { ProviderTemplate } from '../../../../utils/types';
+import * as providerTemplateApis from '../../../../apis/providerTemplateApis';
+import { PLATFORM_API_BASE_URL } from '../../../../config.env';
+import { logger } from '../../../../utils/logger';
 import AnthropicLogo from '../../../../assets/brands/Anthropic.jpg';
 import AWSBedrockLogo from '../../../../assets/brands/AWSBedrock.webp';
 import AzureLogo from '../../../../assets/brands/Azure.png';
@@ -94,13 +100,82 @@ export default function ProviderTemplatesList({
     useProviderTemplates();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [allVersions, setAllVersions] = useState<ProviderTemplate[] | null>(
+    null
+  );
+
+  // The shared context fetches latest-only (one is_latest row per family).
+  // This listing must consider every version's enabled flag, so fetch all
+  // versions here. Re-fetched whenever the context refreshes (create/delete/
+  // toggle) so the cards stay in sync.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await providerTemplateApis.getProviderTemplates(
+          PLATFORM_API_BASE_URL,
+          false
+        );
+        if (!cancelled) setAllVersions(response.list ?? []);
+      } catch (fetchError) {
+        logger.error('Failed to fetch all template versions:', fetchError);
+        if (!cancelled) setAllVersions(null); // fall back to latest-only list
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [templatesResponse]);
+
+  // One card per family: the highest ENABLED version; when every version in
+  // the family is disabled, the highest version overall (rendered with the
+  // existing dimmed "Disabled" styling). Grouping is per (ownership, family)
+  // because creating a version from a built-in clones into the same groupId
+  // with managedBy 'organization' — a family-only key would make the built-in
+  // card vanish from the Built-in section.
+  const familyCards = useMemo(() => {
+    const source = allVersions ?? templatesResponse.list;
+    const parseVersion = (value?: string): [number, number] => {
+      const match = /^v(\d+)\.(\d+)$/.exec((value ?? '').trim());
+      return match ? [Number(match[1]), Number(match[2])] : [-1, -1];
+    };
+    const isHigher = (a: ProviderTemplate, b: ProviderTemplate): boolean => {
+      const [aMajor, aMinor] = parseVersion(a.version);
+      const [bMajor, bMinor] = parseVersion(b.version);
+      return aMajor > bMajor || (aMajor === bMajor && aMinor > bMinor);
+    };
+    const enabledPick = new Map<string, ProviderTemplate>();
+    const anyPick = new Map<string, ProviderTemplate>();
+    for (const template of source) {
+      const ownership =
+        (template.managedBy ?? template.provider) === 'wso2'
+          ? 'wso2'
+          : 'custom';
+      const key = `${ownership}:${
+        template.groupId ?? familyHandle((template.id ?? '').toLowerCase())
+      }`;
+      const currentAny = anyPick.get(key);
+      if (!currentAny || isHigher(template, currentAny)) {
+        anyPick.set(key, template);
+      }
+      if (template.enabled !== false) {
+        const currentEnabled = enabledPick.get(key);
+        if (!currentEnabled || isHigher(template, currentEnabled)) {
+          enabledPick.set(key, template);
+        }
+      }
+    }
+    return Array.from(anyPick.entries()).map(
+      ([key, fallback]) => enabledPick.get(key) ?? fallback
+    );
+  }, [allVersions, templatesResponse.list]);
 
   const templates = useMemo(
     () =>
-      templatesResponse.list.filter(
+      familyCards.filter(
         (template) => (template.managedBy ?? template.provider) !== 'wso2'
       ),
-    [templatesResponse.list]
+    [familyCards]
   );
 
   const templatesBase = buildOrgPath(
@@ -132,10 +207,10 @@ export default function ProviderTemplatesList({
 
   const builtInTemplates = useMemo(
     () =>
-      templatesResponse.list.filter(
+      familyCards.filter(
         (template) => (template.managedBy ?? template.provider) === 'wso2'
       ),
-    [templatesResponse.list]
+    [familyCards]
   );
   const filteredBuiltIn = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
