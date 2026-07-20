@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the
+# License at http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+# Gateway quickstart setup. See README.md -> "Run".
+#
+# The server never auto-generates keys or certificates and has no demo/development
+# mode: this script provisions everything the gateway needs, and the server fails
+# closed with a descriptive error if a required key or certificate is missing.
+#
+# Provisions:
+#   - resources/listener-certs/default-listener.{crt,key}  : router HTTPS listener cert
+#   - api-platform.env                                     : required runtime defaults for the
+#       gateway-runtime (GATEWAY_CONTROLLER_HOST, LOG_LEVEL). The control-plane connection is
+#       optional (standalone otherwise) and is NOT prompted for — add it to api-platform.env by hand.
+#   - (optional, --with-encryption) an AES-256 at-rest encryption key file
+set -euo pipefail
+cd "$(dirname "$0")"
+# Distribution layout: scripts/setup.sh, one level below docker-compose.yaml.
+[[ -f docker-compose.yaml ]] || cd ..
+
+ENV_FILE="api-platform.env"
+
+# Router downstream (HTTPS ingress) listener cert/key. Referenced by
+# [router.downstream_tls] in config.toml as ./listener-certs/default-listener.{crt,key}
+# and mounted into the gateway-controller. The repo checkout keeps these under
+# gateway-controller/listener-certs; the distribution zip stages them under resources/.
+if [[ -d gateway-controller/listener-certs ]]; then
+  CERTS_DIR="gateway-controller/listener-certs"
+else
+  CERTS_DIR="resources/listener-certs"
+fi
+
+# Optional AES-256 at-rest encryption key (only when --with-encryption is passed).
+ENC_KEY_FILE="gateway-controller/secrets/aesgcm/key-v1.bin"
+
+FORCE=false
+CERTS_ONLY=false
+WITH_ENCRYPTION=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=true ;;
+    --certs-only) CERTS_ONLY=true ;;
+    --with-encryption) WITH_ENCRYPTION=true ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: ./scripts/setup.sh [--force] [--certs-only] [--with-encryption]
+
+  --force             regenerate certs/keys (rotates them) and rewrite api-platform.env
+  --certs-only        generate only the listener TLS certificate
+  --with-encryption   also generate an AES-256 at-rest encryption key file and print
+                      the [controller.encryption] config snippet to enable it
+
+The control-plane connection is optional and is NOT configured here: to connect to a control
+plane, add APIP_GW_CONTROLLER_CONTROLPLANE_HOST and APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN to
+api-platform.env by hand (both default to empty = standalone mode).
+EOF
+      exit 0
+      ;;
+    *) echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
+  esac
+done
+
+command -v openssl >/dev/null 2>&1 || { echo "error: openssl is required" >&2; exit 1; }
+
+log() { echo "[setup] $*"; }
+
+gen_cert() {
+  if [[ "$FORCE" == false && -f "$CERTS_DIR/default-listener.crt" && -f "$CERTS_DIR/default-listener.key" ]]; then
+    log "  - $CERTS_DIR/default-listener.crt already exists — keeping it"
+    return
+  fi
+  mkdir -p "$CERTS_DIR"
+  openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+    -keyout "$CERTS_DIR/default-listener.key" -out "$CERTS_DIR/default-listener.crt" \
+    -subj "/O=WSO2 API Platform/CN=localhost" \
+    -addext "subjectAltName=DNS:localhost,DNS:*.localhost,DNS:host.docker.internal,IP:127.0.0.1" >/dev/null 2>&1
+  chmod 644 "$CERTS_DIR/default-listener.key" "$CERTS_DIR/default-listener.crt"
+  log "  - self-signed listener certificate generated at $CERTS_DIR/default-listener.crt"
+}
+
+gen_encryption_key() {
+  if [[ "$FORCE" == false && -f "$ENC_KEY_FILE" ]]; then
+    log "  - $ENC_KEY_FILE already exists — keeping it"
+    return
+  fi
+  mkdir -p "$(dirname "$ENC_KEY_FILE")"
+  ( umask 177; openssl rand 32 > "$ENC_KEY_FILE" )
+  log "  - AES-256 encryption key generated at $ENC_KEY_FILE"
+  cat <<EOF
+
+  Enable at-rest encryption by adding this to configs/config.toml:
+
+    [[controller.encryption.providers]]
+    type = "aesgcm"
+
+    [[controller.encryption.providers.keys]]
+    version   = "v1"
+    file_path = "./secrets/aesgcm/key-v1.bin"
+
+EOF
+}
+
+log "Provisioning listener TLS certificate ..."
+gen_cert
+
+if [[ "$WITH_ENCRYPTION" == true ]]; then
+  log "Provisioning AES-256 encryption key ..."
+  gen_encryption_key
+fi
+
+if [[ "$CERTS_ONLY" == true ]]; then
+  exit 0
+fi
+
+if [[ "$FORCE" == false && -f "$ENV_FILE" ]]; then
+  log "$ENV_FILE already exists — keeping it (rerun with --force to rewrite it)"
+  echo
+  log "Setup complete."
+  echo
+  echo "  Next step:"
+  echo "    docker compose up"
+  exit 0
+fi
+
+log "Writing $ENV_FILE ..."
+umask 177
+cat > "$ENV_FILE" <<EOF
+# Generated by scripts/setup.sh on $(date -u +"%Y-%m-%dT%H:%M:%SZ").
+# Loaded into the gateway containers via docker-compose env_file (format: raw).
+#
+# Required runtime settings — read directly by the gateway-runtime entrypoint / policy-engine:
+GATEWAY_CONTROLLER_HOST=gateway-controller
+LOG_LEVEL=info
+EOF
+umask 022
+log "  - $ENV_FILE written"
+
+echo
+log "Setup complete."
+echo
+echo "  Next step:"
+echo "    docker compose up"

@@ -117,6 +117,14 @@ cd "$REPO_ROOT/gateway" && docker compose down
 
 ## Step 2: Prepare the environment
 
+> **One-time provisioning (before the first `docker compose up`).** Run `./scripts/setup.sh` once
+> from `<REPO_ROOT>/gateway` — it generates `api-platform.env` (required runtime defaults) and the
+> router's HTTPS listener certificate. The gateway never auto-generates keys/certs and has no demo
+> mode. A plain repo checkout already ships the committed `gateway-controller/listener-certs`, and
+> the compose `env_file:` is `required: false`, so a bare `docker compose up` still works for
+> debugging — but `setup.sh` is the canonical provisioning step (and required once you enable at-rest
+> encryption, `--with-encryption`). Full reference: [Gateway Quick Start](../../../docs/gateway/quick-start-guide.md).
+
 > **Compose target — pick one before editing anything.** Step 2 (and Step 8
 > cleanup) operates on **one** compose file. Subsequent substeps reference
 > "the compose file" generically:
@@ -263,7 +271,6 @@ APIP_GW_CONTROLLER_POLICIES_DEFINITIONS__PATH="$REPO_ROOT/gateway/gateway-builde
 APIP_GW_ROUTER_POLICY__ENGINE_MODE=tcp \
 APIP_GW_ROUTER_POLICY__ENGINE_HOST=host.docker.internal \
 APIP_GW_ANALYTICS_GRPC__EVENT__SERVER_MODE=tcp \
-APIP_GW_DEVELOPMENT_MODE=true \
 APIP_GW_IMMUTABLE__GATEWAY_ENABLED=false \
 APIP_GW_IMMUTABLE__GATEWAY_ARTIFACTS__DIR="$REPO_ROOT/gateway/examples" \
 dlv debug ./cmd/controller \

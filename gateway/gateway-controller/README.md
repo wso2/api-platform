@@ -165,8 +165,8 @@ level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
 ```
 
 Deliver the values with docker-compose `env_file: ./api-platform.env` (recommended); a
-`docker compose --env-file api-platform.env up` at the CLI also works. Copy
-`api-platform.env.example` → `api-platform.env` and edit it:
+`docker compose --env-file api-platform.env up` at the CLI also works. Generate `api-platform.env`
+with `./scripts/setup.sh` (or create it by hand) and edit it:
 
 ```bash
 # api-platform.env

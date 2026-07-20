@@ -35,10 +35,19 @@ make build-gateway-builder
 
 ### Run
 
+Run the one-time setup (generates `api-platform.env` and the router listener TLS certificate), then start the stack:
+
 ```bash
+./scripts/setup.sh
 docker compose up -d
 curl http://localhost:9092/api/admin/v0.9/health
 ```
+
+`setup.sh` is idempotent (rerun with `--force` to rotate certs and rewrite `api-platform.env`).
+
+For the full setup reference — flags (`--force`, `--certs-only`, `--with-encryption`), control-plane
+connection, at-rest encryption, and how configuration is delivered — see
+[docs/gateway/quick-start-guide.md](../docs/gateway/quick-start-guide.md).
 
 ### Test
 
@@ -76,7 +85,7 @@ with no token always takes its literal TOML value or the built-in default. Secre
 from a mounted file with `{{ file "PATH" }}`.
 
 The sample composes deliver these values from `api-platform.env` via docker-compose `env_file:`
-(copy `api-platform.env.example` → `api-platform.env`). The shipped
+(generate it with `./scripts/setup.sh`). The shipped
 `configs/config.toml` already carries `{{ env "APIP_GW_..." }}` tokens for the common settings —
 `APIP_GW_` is a naming convention on the token argument, not a prefix that auto-maps to config keys:
 
