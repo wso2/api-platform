@@ -53,9 +53,23 @@ https://localhost:3000/default/views/default
 
 Sign in with the admin username and password you set when running `./scripts/setup.sh`.
 
-You should see the default API catalog page, empty until you publish an API (next step) or run `./scripts/seed-samples.sh` to deploy a set of ready-made sample APIs/MCPs.
+You should see the default API catalog page. It stays empty until you add APIs — either seed the bundled samples (next step) or publish your own (the step after).
 
-### 5. Publish your first API
+### 5. Seed sample APIs (optional)
+
+The fastest way to see a populated catalog is to deploy the bundled sample APIs and MCP servers:
+
+```bash
+./scripts/seed-samples.sh
+```
+
+This deploys everything under `samples/` into the `default` organization through the public REST API (the portal has no built-in seeding logic). It prompts for the admin username and password you set in step 2 — or set `ADMIN_USERNAME` / `ADMIN_PASSWORD` to skip the prompt. Safe to re-run: samples that already exist (matched by name and version) are skipped.
+
+> Requires `curl`, `jq`, and `zip` on your `PATH`. The portal must be running (step 3). Set `DEVPORTAL_URL` / `PLATFORM_API_URL` to override the defaults (`https://localhost:3000` / `https://localhost:9243`).
+
+Refresh the catalog page and the sample APIs appear. To publish an API of your own instead, continue below.
+
+### 6. Publish your first API
 
 Create an API manifest file and an OpenAPI definition, then upload them:
 
