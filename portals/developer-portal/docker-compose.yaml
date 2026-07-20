@@ -34,7 +34,7 @@ services:
       - devportal-network
 
   devportal:
-    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-alpha2-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-alpha2
     container_name: devportal
     restart: unless-stopped
     depends_on:
