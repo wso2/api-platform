@@ -99,7 +99,6 @@ resources/mock
 
 .env
 api-platform.env
-configs/config-platform-api.toml
 
 # ./setup.sh output: bind-mounted TLS cert
 resources/certificates/

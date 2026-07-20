@@ -102,11 +102,12 @@ type Server struct {
 // modeling the choice as a single discriminator (rather than per-mode enabled
 // flags) makes conflicting configurations inexpressible.
 const (
-	// AuthModeJWT verifies locally-signed HMAC JWTs (auth.jwt.secret_key). Tokens
-	// are minted externally, e.g. by the Developer Portal using the shared secret.
-	AuthModeJWT = "jwt"
-	// AuthModeFile is AuthModeJWT plus local username/password login: the login
-	// endpoint authenticates users from auth.file and issues HMAC JWTs.
+	// AuthModeExternalToken verifies locally-signed HMAC JWTs (auth.jwt.secret_key)
+	// that are minted externally, e.g. by the Developer Portal using the shared secret.
+	AuthModeExternalToken = "external_token"
+	// AuthModeFile is AuthModeExternalToken plus local username/password login: the
+	// login endpoint authenticates users from auth.file and issues HMAC JWTs signed
+	// with auth.jwt.secret_key.
 	AuthModeFile = "file"
 	// AuthModeIDP validates tokens against an external IDP's JWKS (auth.idp).
 	AuthModeIDP = "idp"
@@ -114,15 +115,18 @@ const (
 
 // Auth groups all authentication-related configuration.
 type Auth struct {
-	// Mode selects the active authentication mode: "jwt", "file", or "idp".
+	// Mode selects the active authentication mode: "external_token", "file", or "idp".
 	Mode string `koanf:"mode"`
 	// ScopeValidation enforces per-endpoint OAuth2 scopes on validated tokens.
 	// Disable only to temporarily bypass authorization during development.
-	ScopeValidation bool      `koanf:"scope_validation"`
-	SkipPaths       []string  `koanf:"skip_paths"`
-	IDP             IDP       `koanf:"idp"`
-	JWT             JWT       `koanf:"jwt"`
-	File            FileBased `koanf:"file"`
+	ScopeValidation bool     `koanf:"scope_validation"`
+	SkipPaths       []string `koanf:"skip_paths"`
+	IDP             IDP      `koanf:"idp"`
+	// JWT is shared by two modes — "external_token" mode only verifies
+	// externally-minted tokens with it, "file" mode both signs and verifies
+	// with it.
+	JWT  JWT       `koanf:"jwt"`
+	File FileBased `koanf:"file"`
 }
 
 // IDPClaimMappings holds JWT claim name mappings for an IDP.
@@ -249,8 +253,9 @@ type CORS struct {
 }
 
 // JWT holds configuration for local HMAC JWT authentication. Active when
-// Auth.Mode is AuthModeJWT or AuthModeFile (file mode issues and verifies the
-// same locally-signed tokens). Signature validation is always on.
+// Auth.Mode is AuthModeExternalToken (verify-only, externally-minted tokens)
+// or AuthModeFile (file mode also issues these tokens). Signature validation
+// is always on.
 type JWT struct {
 	SecretKey string        `koanf:"secret_key"`
 	Issuer    string        `koanf:"issuer"`
@@ -508,15 +513,15 @@ func validateTimeoutsConfig(cfg *Timeouts) error {
 // the active mode's section is validated.
 func validateAuthConfig(auth *Auth) error {
 	switch auth.Mode {
-	case AuthModeJWT:
+	case AuthModeExternalToken:
 		return validateJWTConfig(&auth.JWT)
 	case AuthModeFile:
 		if err := validateJWTConfig(&auth.JWT); err != nil {
 			return err
 		}
 		// TokenTTL only matters in file mode: the login endpoint mints tokens
-		// itself here, whereas in plain "jwt" mode tokens are minted externally
-		// and their expiry is whatever "exp" claim the issuer set.
+		// itself here, whereas in plain "external_token" mode tokens are minted
+		// externally and their expiry is whatever "exp" claim the issuer set.
 		if auth.JWT.TokenTTL <= 0 {
 			return fmt.Errorf("Auth.JWT.TokenTTL must be a positive duration when auth.mode is %q "+
 				"(set auth.jwt.token_ttl, e.g. \"8h\")", AuthModeFile)
@@ -525,18 +530,18 @@ func validateAuthConfig(auth *Auth) error {
 	case AuthModeIDP:
 		return validateIDPConfig(&auth.IDP)
 	default:
-		return fmt.Errorf("auth.mode must be %q, %q, or %q (got %q)", AuthModeJWT, AuthModeFile, AuthModeIDP, auth.Mode)
+		return fmt.Errorf("auth.mode must be %q, %q, or %q (got %q)", AuthModeExternalToken, AuthModeFile, AuthModeIDP, auth.Mode)
 	}
 }
 
 // validateJWTConfig verifies the local HMAC JWT secret. The same secret signs and
 // verifies the login tokens issued in file mode, so it is required in both the
-// "jwt" and "file" auth modes. The secret is never generated: a missing or
-// malformed key fails startup.
+// "external_token" and "file" auth modes. The secret is never generated: a
+// missing or malformed key fails startup.
 func validateJWTConfig(jwt *JWT) error {
 	if jwt.SecretKey == "" {
 		return fmt.Errorf("Auth.JWT.SecretKey is required when auth.mode is %q or %q "+
-			"(set auth.jwt.secret_key in config via {{ env }}/{{ file }})", AuthModeJWT, AuthModeFile)
+			"(set auth.jwt.secret_key in config via {{ env }}/{{ file }})", AuthModeExternalToken, AuthModeFile)
 	}
 	if !valid32ByteKey(jwt.SecretKey) {
 		return fmt.Errorf("invalid Auth.JWT.SecretKey: must be 64 hex characters or base64 decoding to 32 bytes")

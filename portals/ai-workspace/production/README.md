@@ -83,35 +83,31 @@ In each sub-organization:
 
 ## 2. Platform API Configuration
 
-The Platform API reads its configuration from `config-platform-api.toml` (mounted at
-`/etc/platform-api/config.toml` in the container). Open `configs/config-platform-api.toml`
-and update the `[auth.idp]` section for production:
+The Platform API reads its configuration from `../../platform-api/config/config.toml`
+(mounted at `/etc/platform-api/config.toml` in the container — every portal's
+docker-compose.yaml mounts this one file directly, no per-portal copy). Open it
+and update the `[platform_api.auth]` section for production:
 
 > **Note:** Asgardeo uses `org_id` as the JWT claim for the organization UUID. The Platform
 > API defaults to `organization`, so the claim name overrides below are required.
 
 ```toml
-# Disable local JWT auth when delegating entirely to an external IDP.
-[auth.jwt]
-enabled = false
+# Select "idp" mode to delegate entirely to an external IDP.
+[platform_api.auth]
+mode = "idp"
 
-# Enable JWKS-based IDP authentication.
-[auth.idp]
-enabled  = true
+# JWKS-based IDP authentication.
+[platform_api.auth.idp]
 name     = "asgardeo"
 jwks_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks"
 issuer   = ["https://api.asgardeo.io/t/<your-tenant>/oauth2/token"]
 audience = ["<ai-workspace-client-id>"]   # Client ID from Asgardeo Protocol tab
 
 # Asgardeo-specific claim name overrides.
-[auth.idp.claim_mappings]
+[platform_api.auth.idp.claim_mappings]
 organization_claim_name = "org_id"
 org_name_claim_name     = "org_name"
 org_handle_claim_name   = "org_handle"
-
-# Disable file-based auth in production.
-[auth.file_based]
-enabled = false
 ```
 
 Optional overrides (defaults shown):

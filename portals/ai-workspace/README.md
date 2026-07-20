@@ -87,8 +87,9 @@ All available options are documented in
 portals/ai-workspace/
 ├── configs/
 │   ├── config-template.toml             # AI Workspace config reference
-│   ├── config.toml                      # Active config (gitignored in prod)
-│   └── config-platform-api.toml         # Active Platform API config
+│   └── config.toml                      # Active config (gitignored in prod)
+│       # docker-compose.yaml mounts ../../platform-api/config/config.toml
+│       # directly for the Platform API sidecar — no per-portal copy here.
 ├── production/
 │   └── README.md                        # Production setup guide (Asgardeo)
 ├── bff/                                # Go BFF — serves SPA, proxy, auth

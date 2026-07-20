@@ -99,7 +99,7 @@ secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
 	assert.Contains(t, err.Error(), "invalid EncryptionKey")
 }
 
-// The JWT secret is required (default auth mode is "jwt") and never generated.
+// The JWT secret is required (default auth mode is "external_token") and never generated.
 func TestLoadConfig_MissingJWTSecretKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
 
@@ -157,12 +157,12 @@ func TestValidateAuthConfig(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "jwt mode with valid secret",
-			auth: Auth{Mode: AuthModeJWT, JWT: JWT{SecretKey: validJWTKey}},
+			name: "external_token mode with valid secret",
+			auth: Auth{Mode: AuthModeExternalToken, JWT: JWT{SecretKey: validJWTKey}},
 		},
 		{
-			name:    "jwt mode without secret",
-			auth:    Auth{Mode: AuthModeJWT},
+			name:    "external_token mode without secret",
+			auth:    Auth{Mode: AuthModeExternalToken},
 			wantErr: "Auth.JWT.SecretKey is required",
 		},
 		{

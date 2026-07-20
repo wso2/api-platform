@@ -41,7 +41,7 @@ func defaultConfig() *Server {
 		Auth: Auth{
 			// Default mode verifies locally-signed HMAC JWTs; the quickstart config
 			// selects "file" to add username/password login on top of it.
-			Mode:            AuthModeJWT,
+			Mode:            AuthModeExternalToken,
 			ScopeValidation: true,
 			// SkipPaths bypasses JWT/IDP auth middleware. Paths below the health/metrics
 			// probes are internal gateway routes authenticated via gateway token instead.

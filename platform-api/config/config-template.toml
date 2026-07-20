@@ -113,12 +113,15 @@ conn_max_lifetime = '{{ env "APIP_CP_DATABASE_CONN_MAX_LIFETIME" "300" }}'   # s
 # Authentication
 #
 # auth.mode selects exactly one authentication mode:
-#   "jwt"  — verify locally-signed HMAC JWTs ([platform_api.auth.jwt]); tokens
-#            are minted externally, e.g. by the Developer Portal using the
-#            shared secret.
-#   "file" — "jwt" plus local username/password login: the login endpoint
-#            authenticates users from [platform_api.auth.file] and issues HMAC JWTs.
-#   "idp"  — validate tokens against an external IDP's JWKS ([platform_api.auth.idp]).
+#   "external_token" — verify locally-signed HMAC JWTs ([platform_api.auth.jwt]);
+#                       tokens are minted externally, e.g. by the Developer
+#                       Portal using the shared secret.
+#   "file"            — "external_token" plus local username/password login: the
+#                       login endpoint authenticates users from
+#                       [platform_api.auth.file] and issues HMAC JWTs signed
+#                       with the same [platform_api.auth.jwt] secret.
+#   "idp"             — validate tokens against an external IDP's JWKS
+#                       ([platform_api.auth.idp]).
 # Only the selected mode's section is read; the others are ignored.
 # ---------------------------------------------------------------------------
 [platform_api.auth]
@@ -154,18 +157,20 @@ skip_paths = [
     "/api/internal/v0.9/webhook/events",
 ]
 
-# JWT (local HMAC) — used in the "jwt" and "file" modes (file mode signs and
-# verifies login tokens with the same secret). Signature validation is always on.
-# Resolved from APIP_CP_AUTH_JWT_SECRET_KEY in `api-platform.env` file;
-# secret files preferred: secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
+# JWT (local HMAC) — used in the "external_token" and "file" modes:
+# "external_token" mode only verifies externally-minted tokens with this key;
+# "file" mode also signs the tokens its login endpoint issues with it.
+# Signature validation is always on. Resolved from APIP_CP_AUTH_JWT_SECRET_KEY
+# in `api-platform.env` file; secret files preferred:
+#   secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
 [platform_api.auth.jwt]
 issuer     = '{{ env "APIP_CP_AUTH_JWT_ISSUER" "platform-api" }}'
 # Signing key. REQUIRED — a 32-byte key (64 hex chars or base64); never generated,
 # and has no fallback, so an unset APIP_CP_AUTH_JWT_SECRET_KEY fails config load.
 secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
 # Lifetime of tokens issued by the file-mode login endpoint (Go duration syntax).
-# Not used to validate externally-minted "jwt"-mode tokens — their expiry is
-# whatever "exp" claim the issuer set.
+# Not used to validate externally-minted "external_token"-mode tokens — their
+# expiry is whatever "exp" claim the issuer set.
 token_ttl = '{{ env "APIP_CP_AUTH_JWT_TOKEN_TTL" "1h" }}'
 
 # IDP (JWKS-based) — used when mode = "idp" (Asgardeo, Keycloak, Auth0, etc.).

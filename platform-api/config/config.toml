@@ -12,10 +12,14 @@
 # This file is read by the Platform API (Go binary):
 #   go run ./cmd/main.go -config config/config.toml
 #
-# Auth mode is "jwt" (locally-signed HMAC tokens, no local users). To use
-# username/password login instead, set [auth] mode = "file" and add
-# [auth.file.organization] / [[auth.file.users]] blocks — see
-# config-template.toml for the full reference.
+# Auth mode is "file" (username/password login, backed by the organization/
+# user block below) — the same mode the AI Workspace and Developer Portal
+# quickstarts use, so this config works out of the box with either without
+# any env vars set. Set APIP_CP_ADMIN_USERNAME / APIP_CP_ADMIN_PASSWORD_HASH
+# to pick your own login credentials (generate a hash with:
+# htpasswd -bnBC 12 "" <password> | tr -d ':\n'), or set [platform_api.auth]
+# mode = "external_token" for locally-signed HMAC tokens with no local users
+# — see config-template.toml for the full reference.
 # --------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
@@ -45,14 +49,36 @@ path   = '{{ env "APIP_CP_DATABASE_PATH" "./data/api_platform.db" }}'   # SQLite
 # ---------------------------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------------------------
-# mode selects exactly one auth mode: "jwt" | "file" | "idp".
-# "jwt" verifies locally-signed HMAC JWTs; tokens are minted externally
-# (e.g. by the Developer Portal using the shared secret below).
+# mode selects exactly one auth mode: "external_token" | "file" | "idp".
+# "file" adds username/password login (below) on top of locally-signed HMAC
+# JWTs — the mode used by the AI Workspace and Developer Portal quickstarts.
 [platform_api.auth]
-mode             = '{{ env "APIP_CP_AUTH_MODE" "jwt" }}'
+mode             = '{{ env "APIP_CP_AUTH_MODE" "file" }}'
 scope_validation = '{{ env "APIP_CP_AUTH_SCOPE_VALIDATION" "true" }}'   # validate OAuth2 scopes on incoming requests
 
-# JWT (local HMAC) — used in the "jwt" and "file" modes.
+# JWT (local HMAC) — used in the "external_token" and "file" modes:
+# "external_token" mode only verifies externally-minted tokens with this key;
+# "file" mode also signs the tokens it issues with it.
 [platform_api.auth.jwt]
 issuer     = '{{ env "APIP_CP_AUTH_JWT_ISSUER" "platform-api" }}'
 secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+
+# File auth — local username/password login, used in "file" mode. Falls back
+# to the same admin/admin-hash pair as the built-in default (defaultConfig()
+# in config/default_config.go) so this file boots standalone; override via
+# env vars for a real deployment.
+#
+# This is the one Platform API config shared by every quickstart (the AI
+# Workspace and Developer Portal docker-compose.yaml files both mount this
+# file directly — neither keeps its own copy) so the admin user's scopes
+# cover both the ap:* namespace (AI Workspace / platform-admin operations)
+# and the dp:* namespace (Developer Portal operations).
+[platform_api.auth.file.organization]
+id           = '{{ env "APIP_CP_AUTH_FILE_ORGANIZATION_ID" "default" }}'
+display_name = '{{ env "APIP_CP_AUTH_FILE_ORGANIZATION_DISPLAY_NAME" "Default" }}'
+region       = '{{ env "APIP_CP_AUTH_FILE_ORGANIZATION_REGION" "us" }}'
+
+[[platform_api.auth.file.users]]
+username      = '{{ env "APIP_CP_ADMIN_USERNAME" "admin" }}'
+password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ." }}'
+scopes        = '{{ env "APIP_CP_ADMIN_SCOPES" "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read ap:secret:manage dp:org_read dp:org_create dp:org_update dp:org_manage dp:org_delete dp:org_content_read dp:org_content_write dp:org_content_manage dp:org_content_delete dp:api_read dp:api_create dp:api_update dp:api_manage dp:api_delete dp:api_content_read dp:api_content_write dp:api_content_manage dp:api_content_delete dp:mcp_read dp:mcp_create dp:mcp_update dp:mcp_manage dp:mcp_delete dp:mcp_content_read dp:mcp_content_create dp:mcp_content_update dp:mcp_content_manage dp:mcp_content_delete dp:api_key_create dp:api_key_read dp:api_key_update dp:api_key_manage dp:api_key_revoke dp:mcp_key_create dp:mcp_key_read dp:mcp_key_update dp:mcp_key_manage dp:mcp_key_revoke dp:api_workflow_create dp:api_workflow_read dp:api_workflow_update dp:api_workflow_delete dp:api_workflow_manage dp:app_create dp:app_read dp:app_update dp:app_manage dp:app_delete dp:app_key_create dp:app_key_manage dp:app_key_revoke dp:app_key_mapping_read dp:app_key_mapping_write dp:app_key_mapping_manage dp:subscription_create dp:subscription_read dp:subscription_update dp:subscription_manage dp:subscription_delete dp:sub_plan_create dp:sub_plan_read dp:sub_plan_update dp:sub_plan_manage dp:sub_plan_delete dp:km_create dp:km_read dp:km_update dp:km_manage dp:km_delete dp:view_create dp:view_read dp:view_update dp:view_manage dp:view_delete dp:label_create dp:label_read dp:label_update dp:label_manage dp:label_delete dp:webhook_subscriber_create dp:webhook_subscriber_read dp:webhook_subscriber_update dp:webhook_subscriber_delete dp:webhook_subscriber_manage dp:event_read dp:delivery_manage" }}'

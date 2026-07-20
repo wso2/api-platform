@@ -544,8 +544,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 }
 
 // buildAuthenticator constructs an Authenticator from the server configuration.
-// Only called when the auth mode is "jwt" or "idp" (file mode wires its own
-// local-JWT middleware).
+// Only called when the auth mode is "external_token" or "idp" (file mode wires
+// its own local-JWT middleware).
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
 	if cfg.Auth.Mode != config.AuthModeIDP {
 		slogger.Info("Auth mode: jwt (HMAC signature validation enabled)")

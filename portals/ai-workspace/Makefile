@@ -215,9 +215,17 @@ ifeq ($(PLATFORM_API_FROM_TAG),true)
 	echo "✓ Fetched $$(echo "$$files" | wc -l | tr -d ' ') db-script(s) from $$tag"
 	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/config/config-template.toml" \
 		> $(DIST_DIR)/configs/config-platform-api-template.toml
+	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/config/config.toml" \
+		> $(DIST_DIR)/configs/config-platform-api.toml
 else
 	@cp ../../platform-api/internal/database/schema.*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
 	@cp ../../platform-api/config/config-template.toml $(DIST_DIR)/configs/config-platform-api-template.toml
+	# The source docker-compose.yaml mounts ../../platform-api/config/config.toml
+	# directly (the monorepo's single source-of-truth Platform API config, no
+	# per-portal copy) — the standalone zip has no platform-api/ sibling, so bake
+	# a real copy into its own configs/ dir; the sed below repoints the compose
+	# file at it.
+	@cp ../../platform-api/config/config.toml $(DIST_DIR)/configs/config-platform-api.toml
 endif
 	@printf '%s\n' \
 		'# Generated secrets — never commit these.' \
@@ -226,7 +234,8 @@ endif
 		> $(DIST_DIR)/.gitignore
 	@cp setup.sh $(DIST_DIR)/scripts/setup.sh
 	@chmod +x $(DIST_DIR)/scripts/setup.sh
-	@cp docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
+	@sed 's#\.\./\.\./platform-api/config/config\.toml#./configs/config-platform-api.toml#' \
+		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md
 	@sed -i.bak -E \
 	    -e 's|^([[:space:]]*image:[[:space:]]*.*/ai-workspace):[^[:space:]]*|\1:$(DIST_VERSION)|' \
