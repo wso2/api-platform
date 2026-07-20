@@ -1,78 +1,21 @@
-# --------------------------------------------------------------------
-# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
-#
-# WSO2 LLC. licenses this file to you under the Apache License,
-# Version 2.0 (the "License"); you may not use this file except
-# in compliance with the License. You may obtain a copy of the
-# License at http://www.apache.org/licenses/LICENSE-2.0
-# --------------------------------------------------------------------
-#
-# Platform API configuration — local development
-#
-# This file is read by the Platform API (Go binary):
-#   go run ./cmd/main.go -config config/config.toml
-#
-# Auth mode is "file" (username/password login, backed by the organization/
-# user block below) — the same mode the AI Workspace and Developer Portal
-# quickstarts use, so this config works out of the box with either without
-# any env vars set. Set APIP_CP_ADMIN_USERNAME / APIP_CP_ADMIN_PASSWORD_HASH
-# to pick your own login credentials (generate a hash with:
-# htpasswd -bnBC 12 "" <password> | tr -d ':\n'), or set [platform_api.auth]
-# mode = "external_token" for locally-signed HMAC tokens with no local users
-# — see config-template.toml for the full reference.
-# --------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# All Platform API settings live under [platform_api] / [platform_api.*].
-# ---------------------------------------------------------------------------
 [platform_api]
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
-log_level = '{{ env "APIP_CP_LOG_LEVEL" "INFO" }}'   # DEBUG | INFO | WARN | ERROR
+log_level = '{{ env "APIP_CP_LOG_LEVEL" "INFO" }}'
 
-# ---------------------------------------------------------------------------
-# Encryption
-# ---------------------------------------------------------------------------
-# Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
-# (secrets, subscription tokens, WebSub HMAC secrets)
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
-# ---------------------------------------------------------------------------
-# Database
-# ---------------------------------------------------------------------------
 [platform_api.database]
-driver = '{{ env "APIP_CP_DATABASE_DRIVER" "sqlite3" }}'          # "sqlite3" or "postgres"
-path   = '{{ env "APIP_CP_DATABASE_PATH" "./data/api_platform.db" }}'   # SQLite file path (ignored for postgres)
+driver = '{{ env "APIP_CP_DATABASE_DRIVER" "sqlite3" }}'
+path   = '{{ env "APIP_CP_DATABASE_PATH" "./data/api_platform.db" }}'
 
-# ---------------------------------------------------------------------------
-# Authentication
-# ---------------------------------------------------------------------------
-# mode selects exactly one auth mode: "external_token" | "file" | "idp".
-# "file" adds username/password login (below) on top of locally-signed HMAC
-# JWTs — the mode used by the AI Workspace and Developer Portal quickstarts.
 [platform_api.auth]
 mode             = '{{ env "APIP_CP_AUTH_MODE" "file" }}'
-scope_validation = '{{ env "APIP_CP_AUTH_SCOPE_VALIDATION" "true" }}'   # validate OAuth2 scopes on incoming requests
+scope_validation = '{{ env "APIP_CP_AUTH_SCOPE_VALIDATION" "true" }}'
 
-# JWT (local HMAC) — used in the "external_token" and "file" modes:
-# "external_token" mode only verifies externally-minted tokens with this key;
-# "file" mode also signs the tokens it issues with it.
 [platform_api.auth.jwt]
 issuer     = '{{ env "APIP_CP_AUTH_JWT_ISSUER" "platform-api" }}'
 secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
 
-# File auth — local username/password login, used in "file" mode. Falls back
-# to the same admin/admin-hash pair as the built-in default (defaultConfig()
-# in config/default_config.go) so this file boots standalone; override via
-# env vars for a real deployment.
-#
-# This is the one Platform API config shared by every quickstart (the AI
-# Workspace and Developer Portal docker-compose.yaml files both mount this
-# file directly — neither keeps its own copy) so the admin user's scopes
-# cover both the ap:* namespace (AI Workspace / platform-admin operations)
-# and the dp:* namespace (Developer Portal operations).
 [platform_api.auth.file.organization]
 id           = '{{ env "APIP_CP_AUTH_FILE_ORGANIZATION_ID" "default" }}'
 display_name = '{{ env "APIP_CP_AUTH_FILE_ORGANIZATION_DISPLAY_NAME" "Default" }}'
