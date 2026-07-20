@@ -22,11 +22,11 @@ func TestMapModelAuthToAPI_NormalizesApiKeyType(t *testing.T) {
 
 func float32Ptr(f float32) *float32 { return &f }
 
-// TestGenerateLLMProviderDeploymentYAML_OtherAuthOmitsUpstreamAuth verifies that when the
-// upstream auth type is "other", the deployment artifact sent to the gateway omits the auth
-// block entirely - the gateway must never see a credential-less "other" auth type; it must
-// see no auth block at all, exactly as if auth were never configured.
-func TestGenerateLLMProviderDeploymentYAML_OtherAuthOmitsUpstreamAuth(t *testing.T) {
+// TestGenerateLLMProviderDeploymentYAML_OtherAuthEmitsTypeOnly verifies that when the
+// upstream auth type is "other", the deployment artifact emits an explicit auth block that
+// carries only the type - no header/value. Authentication is handled by user-attached
+// policies, so the gateway attaches no header-setting policy of its own.
+func TestGenerateLLMProviderDeploymentYAML_OtherAuthEmitsTypeOnly(t *testing.T) {
 	provider := &model.LLMProvider{
 		ID:      "test-provider",
 		Name:    "Test Provider",
@@ -47,46 +47,79 @@ func TestGenerateLLMProviderDeploymentYAML_OtherAuthOmitsUpstreamAuth(t *testing
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if yamlArtifact.Spec.Upstream.Auth != nil {
-		t.Fatalf("expected upstream auth to be omitted for auth type 'other', got %+v", yamlArtifact.Spec.Upstream.Auth)
+	auth := yamlArtifact.Spec.Upstream.Auth
+	if auth == nil || auth.Type == nil || *auth.Type != "other" {
+		t.Fatalf("expected upstream auth type 'other', got %+v", auth)
 	}
-
-	out, err := yaml.Marshal(yamlArtifact)
-	if err != nil {
-		t.Fatalf("unexpected marshal error: %v", err)
-	}
-	if strings.Contains(string(out), "auth:") {
-		t.Fatalf("expected marshaled YAML to omit the auth block entirely, got:\n%s", out)
+	if auth.Header != nil || auth.Value != nil {
+		t.Fatalf("expected no header/value for 'other', got header=%v value=%v", auth.Header, auth.Value)
 	}
 }
 
-// TestGenerateLLMProxyDeploymentYAML_OtherAuthOmitsProviderAuth is the LLM Proxy counterpart
-// of TestGenerateLLMProviderDeploymentYAML_OtherAuthOmitsUpstreamAuth.
-func TestGenerateLLMProxyDeploymentYAML_OtherAuthOmitsProviderAuth(t *testing.T) {
-	proxy := &model.LLMProxy{
-		ID:      "test-proxy",
-		Name:    "Test Proxy",
+// TestGenerateLLMProviderDeploymentYAML_NoAuthDefaultsToNone verifies that a provider with no
+// configured upstream auth deploys with an explicit auth type of "none".
+func TestGenerateLLMProviderDeploymentYAML_NoAuthDefaultsToNone(t *testing.T) {
+	provider := &model.LLMProvider{
+		ID:      "test-provider",
+		Name:    "Test Provider",
 		Version: "v1.0",
-		Configuration: model.LLMProxyConfig{
-			Provider:     "test-provider",
-			UpstreamAuth: &model.UpstreamAuth{Type: "other"},
+		Configuration: model.LLMProviderConfig{
+			Context: strPtr("/test"),
+			Upstream: &model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{URL: "https://api.anthropic.com"},
+			},
+			AccessControl: &model.LLMAccessControl{Mode: "allow_all"},
 		},
 	}
 
-	yamlArtifact, err := generateLLMProxyDeploymentYAML(proxy)
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(provider, "anthropic")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if yamlArtifact.Spec.Provider.Auth != nil {
-		t.Fatalf("expected provider auth to be omitted for auth type 'other', got %+v", yamlArtifact.Spec.Provider.Auth)
+	auth := yamlArtifact.Spec.Upstream.Auth
+	if auth == nil || auth.Type == nil || *auth.Type != "none" {
+		t.Fatalf("expected upstream auth type 'none' when no auth configured, got %+v", auth)
 	}
+	if auth.Header != nil || auth.Value != nil {
+		t.Fatalf("expected no header/value for 'none', got header=%v value=%v", auth.Header, auth.Value)
+	}
+}
 
-	out, err := yaml.Marshal(yamlArtifact)
-	if err != nil {
-		t.Fatalf("unexpected marshal error: %v", err)
+// TestGenerateLLMProxyDeploymentYAML_OtherAndNoneEmitTypeOnly is the LLM Proxy counterpart:
+// "other" and absent auth (=> "none") both emit an explicit, credential-less type.
+func TestGenerateLLMProxyDeploymentYAML_OtherAndNoneEmitTypeOnly(t *testing.T) {
+	cases := []struct {
+		name     string
+		auth     *model.UpstreamAuth
+		wantType string
+	}{
+		{name: "other", auth: &model.UpstreamAuth{Type: "other"}, wantType: "other"},
+		{name: "absent defaults to none", auth: nil, wantType: "none"},
 	}
-	if strings.Contains(string(out), "auth:") {
-		t.Fatalf("expected marshaled YAML to omit the auth block entirely, got:\n%s", out)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			proxy := &model.LLMProxy{
+				ID:      "test-proxy",
+				Name:    "Test Proxy",
+				Version: "v1.0",
+				Configuration: model.LLMProxyConfig{
+					Provider:     "test-provider",
+					UpstreamAuth: tc.auth,
+				},
+			}
+
+			yamlArtifact, err := generateLLMProxyDeploymentYAML(proxy)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			auth := yamlArtifact.Spec.Provider.Auth
+			if auth == nil || auth.Type == nil || string(*auth.Type) != tc.wantType {
+				t.Fatalf("expected provider auth type %q, got %+v", tc.wantType, auth)
+			}
+			if auth.Header != nil || auth.Value != nil {
+				t.Fatalf("expected no header/value for %q, got header=%v value=%v", tc.wantType, auth.Header, auth.Value)
+			}
+		})
 	}
 }
 

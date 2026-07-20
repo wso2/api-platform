@@ -483,15 +483,18 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
 				Field:   fmt.Sprintf("%s.auth.type", fieldPrefix),
 				Message: "Auth type is required",
 			})
-		} else if auth.Type != "api-key" {
+		} else if auth.Type != api.LLMProviderConfigDataUpstreamAuthTypeApiKey &&
+			auth.Type != api.LLMProviderConfigDataUpstreamAuthTypeOther &&
+			auth.Type != api.LLMProviderConfigDataUpstreamAuthTypeNone {
 			errors = append(errors, ValidationError{
 				Field:   fmt.Sprintf("%s.auth.type", fieldPrefix),
-				Message: "Auth type must be 'api-key'",
+				Message: "Auth type must be one of 'api-key', 'other', 'none'",
 			})
 		}
 
-		// If type is api-key, header and value should also be present
-		if auth.Type == "api-key" {
+		// Header and value are only meaningful for api-key; for 'other'/'none'
+		// authentication is handled by user-attached policies (or not at all).
+		if auth.Type == api.LLMProviderConfigDataUpstreamAuthTypeApiKey {
 			if auth.Header == nil || *auth.Header == "" {
 				errors = append(errors, ValidationError{
 					Field:   fmt.Sprintf("%s.auth.header", fieldPrefix),
@@ -702,12 +705,16 @@ func (v *LLMValidator) validateLLMUpstreamAuth(fieldPrefix string, auth *api.LLM
 			Field:   fieldPrefix + ".type",
 			Message: "Auth type is required",
 		})
-	} else if auth.Type != api.LLMUpstreamAuthTypeApiKey {
+	} else if auth.Type != api.LLMUpstreamAuthTypeApiKey &&
+		auth.Type != api.LLMUpstreamAuthTypeOther &&
+		auth.Type != api.LLMUpstreamAuthTypeNone {
 		errors = append(errors, ValidationError{
 			Field:   fieldPrefix + ".type",
-			Message: "Auth type must be 'api-key'",
+			Message: "Auth type must be one of 'api-key', 'other', 'none'",
 		})
 	}
+	// Header and value are only meaningful for api-key; for 'other'/'none'
+	// authentication is handled by user-attached policies (or not at all).
 	if auth.Type == api.LLMUpstreamAuthTypeApiKey {
 		if auth.Header == nil || *auth.Header == "" {
 			errors = append(errors, ValidationError{

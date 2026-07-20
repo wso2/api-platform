@@ -175,6 +175,6 @@ func mapLLMProviderSpecToConfig(spec dto.LLMProviderDeploymentSpec) model.LLMPro
 // single endpoint to the main endpoint. Returns nil when no upstream is present.
 func mapLLMUpstreamYAMLToModel(in dto.LLMUpstreamYAML) *model.UpstreamConfig {
 	endpoint := &model.UpstreamEndpoint{URL: in.URL, Ref: in.Ref}
-	endpoint.Auth = mapUpstreamAuthAPIToModel(in.Auth)
+	endpoint.Auth = defaultUpstreamAuthToNone(mapUpstreamAuthAPIToModel(in.Auth))
 	return &model.UpstreamConfig{Main: endpoint}
 }
