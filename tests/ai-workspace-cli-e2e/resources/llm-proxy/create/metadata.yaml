@@ -1,0 +1,7 @@
+apiVersion: ai-workspace.api-platform.wso2.com/v1alpha
+kind: LlmProxy
+metadata:
+  name: claude-proxy
+spec:
+  displayName: claude Proxy
+  version: v1.0
