@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
@@ -62,6 +63,7 @@ type StatusUpdateCallback func(configID string, success bool, correlationID stri
 
 // SnapshotManager manages xDS snapshots for Envoy
 type SnapshotManager struct {
+	mu               sync.Mutex
 	cache            cache.SnapshotCache
 	translator       *Translator
 	store            *storage.ConfigStore
@@ -69,6 +71,7 @@ type SnapshotManager struct {
 	nodeID           string // Node ID for Envoy (default: "router-node")
 	statusCallback   StatusUpdateCallback
 	sdsSecretManager *SDSSecretManager
+	afterGetAll      func() // nil in production; test hook for deterministic race testing
 }
 
 // NewSnapshotManager creates a new snapshot manager
@@ -100,6 +103,9 @@ func (sm *SnapshotManager) SetStatusCallback(callback StatusUpdateCallback) {
 // UpdateSnapshot generates a new xDS snapshot from all configurations and updates the cache
 // The correlationID parameter is optional and used for request tracing in logs
 func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
 	startTime := time.Now()
 	trigger := "manual"
 	if correlationID != "" {
@@ -113,10 +119,10 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 	}
 	// Get all configurations from in-memory store
 	configs := sm.store.GetAll()
+	if sm.afterGetAll != nil {
+		sm.afterGetAll()
+	}
 
-	// Translate configurations to Envoy resources if this is not event gw
-	//resources, err := sm.translator.TranslateConfigs(configs, correlationID)
-	// If event gw,
 	resources, err := sm.translator.TranslateConfigs(configs, correlationID)
 	if err != nil {
 		log.Error("Failed to translate configurations", slog.Any("error", err))
