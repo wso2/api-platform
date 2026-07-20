@@ -646,6 +646,16 @@ func (m *mockStorageForDeletion) GetPendingCPSyncArtifacts() ([]*models.StoredCo
 	return pending, nil
 }
 
+func (m *mockStorageForDeletion) GetGatewayOriginArtifactsForSync() ([]*models.StoredConfig, error) {
+	var all []*models.StoredConfig
+	for _, config := range m.configs {
+		if config.Origin == models.OriginGatewayAPI {
+			all = append(all, config)
+		}
+	}
+	return all, nil
+}
+
 // Helper to create test API config for deletion tests
 func createTestAPIConfigForDeletion(apiID string) *models.StoredConfig {
 	// Create a complete API configuration so deletion flow can properly process it

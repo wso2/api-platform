@@ -181,3 +181,32 @@ func TestSaveLLMProviderTemplate_DuplicateHandleConflicts(t *testing.T) {
 	_, err = store.GetConfig(dup.UUID)
 	assert.Assert(t, errors.Is(err, ErrNotFound))
 }
+
+// TestGetGatewayOriginArtifactsForSync_IncludesSuccess verifies the full-reconcile query returns
+// ALL gateway-origin artifacts regardless of cp_sync_status — including already-"success" ones —
+// whereas GetPendingCPSyncArtifacts excludes them. This is what lets a reconnect re-sync artifacts
+// to a new/purged control plane (#2659).
+func TestGetGatewayOriginArtifactsForSync_IncludesSuccess(t *testing.T) {
+	store := setupTestStorage(t)
+
+	// A synced (success) template and a not-yet-synced (pending) one.
+	synced := createTestLLMProviderTemplate()
+	pendingTmpl := createTestLLMProviderTemplate()
+	assert.NilError(t, store.SaveLLMProviderTemplate(synced))
+	assert.NilError(t, store.SaveLLMProviderTemplate(pendingTmpl))
+
+	// Mark the first as successfully synced.
+	assert.NilError(t, store.UpdateCPSyncStatus(synced.UUID, "cp-uuid-1", models.CPSyncStatusSuccess, ""))
+
+	// GetPendingCPSyncArtifacts excludes the success one.
+	pending, err := store.GetPendingCPSyncArtifacts()
+	assert.NilError(t, err)
+	assert.Assert(t, !pendingContains(pending, synced.UUID), "success artifact must NOT be pending")
+	assert.Assert(t, pendingContains(pending, pendingTmpl.UUID), "pending artifact must be pending")
+
+	// The full-reconcile query includes BOTH.
+	all, err := store.GetGatewayOriginArtifactsForSync()
+	assert.NilError(t, err)
+	assert.Assert(t, pendingContains(all, synced.UUID), "full reconcile must include the success artifact")
+	assert.Assert(t, pendingContains(all, pendingTmpl.UUID), "full reconcile must include the pending artifact")
+}

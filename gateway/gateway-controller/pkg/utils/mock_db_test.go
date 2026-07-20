@@ -281,6 +281,16 @@ func (m *testMockDB) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error)
 	return pending, nil
 }
 
+func (m *testMockDB) GetGatewayOriginArtifactsForSync() ([]*models.StoredConfig, error) {
+	var all []*models.StoredConfig
+	for _, config := range m.configs {
+		if config.Origin == models.OriginGatewayAPI {
+			all = append(all, config)
+		}
+	}
+	return all, nil
+}
+
 func (m *testMockDB) SaveWebhookSecret(secret *models.WebhookSecret) error { return nil }
 func (m *testMockDB) GetWebhookSecretsByArtifact(artifactUUID string) ([]*models.WebhookSecret, error) {
 	return nil, nil

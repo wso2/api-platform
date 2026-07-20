@@ -1191,6 +1191,27 @@ func (s *sqlStore) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error) {
 	return scanArtifactMetadataRows(rows)
 }
 
+// GetGatewayOriginArtifactsForSync returns artifacts-table metadata for all gateway-originated
+// artifacts regardless of cp_sync_status.
+func (s *sqlStore) GetGatewayOriginArtifactsForSync() ([]*models.StoredConfig, error) {
+	query := `
+		SELECT uuid, kind, handle, display_name, version, data_version, desired_state,
+			deployment_id, origin, created_at, updated_at, deployed_at,
+			cp_sync_status, cp_sync_info, cp_artifact_id
+		FROM artifacts
+		WHERE gateway_id = ? AND origin = ?
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.query(query, s.gatewayId, string(models.OriginGatewayAPI))
+	if err != nil {
+		return nil, fmt.Errorf("failed to query gateway-origin artifacts for sync: %w", err)
+	}
+	defer rows.Close()
+
+	return scanArtifactMetadataRows(rows)
+}
+
 // scanArtifactMetadataRows scans rows from a query selecting the artifacts-table metadata
 // columns (no resource-table JOIN, so Configuration is left nil): uuid, kind, handle,
 // display_name, version, desired_state, deployment_id, origin, created_at, updated_at,

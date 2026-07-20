@@ -199,9 +199,11 @@ func TestPushGatewayArtifacts(t *testing.T) {
 
 	client.apiUtilsService.SetBaseURL(server.URL)
 
-	// Seed a pending gateway-originated artifact (should be pushed), a CP-originated artifact
-	// (skipped: not gateway-originated), and an already-synced gateway artifact (skipped: only
-	// cp_sync_status pending/failed is retried).
+	// Seed a pending gateway-originated artifact (pushed), a CP-originated artifact
+	// (skipped: not gateway-originated), and an already-synced gateway artifact. The full
+	// reconcile re-pushes ALL gateway-origin artifacts regardless of cp_sync_status so a
+	// new/purged control plane (or a re-registered gateway) receives them (#2659); the CP
+	// dedupes replay re-pushes idempotently.
 	if err := client.db.SaveConfig(&models.StoredConfig{
 		UUID:         "gw-artifact-1",
 		Kind:         models.KindRestApi,
@@ -244,7 +246,7 @@ func TestPushGatewayArtifacts(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed cp config: %v", err)
 	}
-	// Already-synced gateway artifact: must NOT be re-pushed on reconnect.
+	// Already-synced gateway artifact: with full reconcile it IS re-pushed on (re)connect.
 	if err := client.db.SaveConfig(&models.StoredConfig{
 		UUID:         "gw-artifact-synced",
 		Kind:         models.KindRestApi,
@@ -280,11 +282,19 @@ func TestPushGatewayArtifacts(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	if len(pushedID) != 1 {
-		t.Fatalf("pushed %d artifacts, want 1 (only the gateway-originated one): %v", len(pushedID), pushedID)
+	// Both gateway-origin artifacts are pushed (pending + already-synced); the CP-origin one is skipped.
+	if len(pushedID) != 2 {
+		t.Fatalf("pushed %d artifacts, want 2 (both gateway-originated): %v", len(pushedID), pushedID)
 	}
-	if pushedID[0] != "gw-artifact-1" {
-		t.Errorf("pushed artifact ID = %q, want gw-artifact-1", pushedID[0])
+	got := map[string]bool{}
+	for _, id := range pushedID {
+		got[id] = true
+	}
+	if !got["gw-artifact-1"] || !got["gw-artifact-synced"] {
+		t.Errorf("pushed IDs = %v, want both gw-artifact-1 and gw-artifact-synced", pushedID)
+	}
+	if got["cp-artifact-1"] {
+		t.Errorf("CP-origin artifact was pushed but should be skipped: %v", pushedID)
 	}
 }
 

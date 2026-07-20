@@ -297,6 +297,17 @@ You can create artifacts on a gateway while it is disconnected, and they reconci
 
 ---
 
+## Connecting to a new AI Workspace
+
+Whenever a gateway (re)connects, it re-offers **all** of its gateway-created artifacts to the AI Workspace — not only the ones that have never synced. This means a gateway will populate a **new or reset AI Workspace** automatically:
+
+- Point the gateway at a **different AI Workspace**, or re-register it, and all its artifacts sync to the new one.
+- If the AI Workspace database is **purged or restored from an empty state**, the gateway repopulates it on the next connection.
+
+Re-offering already-synced artifacts is safe: the AI Workspace recognizes an unchanged re-push and does **not** create duplicate deployments or overwrite edits you made to runtime-neutral details. A genuinely newer change from the gateway still wins, exactly as during normal syncing.
+
+---
+
 ## Immutable gateways
 
 Some gateways run in **immutable** mode, where artifacts are loaded from on-disk configuration at startup rather than created through the management API (see [Immutable Gateway](../gateway/immutable-gateway.md)).

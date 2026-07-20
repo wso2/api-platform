@@ -266,6 +266,9 @@ func (m *minimalStorage) GetPendingBottomUpAPIs() ([]*models.StoredConfig, error
 func (m *minimalStorage) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error) {
 	return nil, nil
 }
+func (m *minimalStorage) GetGatewayOriginArtifactsForSync() ([]*models.StoredConfig, error) {
+	return nil, nil
+}
 func (m *minimalStorage) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
 	return nil
 }
