@@ -30,18 +30,6 @@ image:
   tag: "0.8.0"
   pullPolicy: Always  # Uses locally loaded image from nerdctl load
 
-# CRD conversion webhook. The operator CRDs are served at v1 (storage) and
-# v1alpha1 (served). When enabled, the chart generates a self-signed serving
-# certificate (reused across upgrades) and the CRDs use conversion strategy
-# Webhook. When disabled, the CRDs use strategy None (valid because the two
-# schemas are identical) and the operator runs with ENABLE_WEBHOOKS=false.
-webhook:
-  enabled: true
-  # Container port the webhook server listens on (controller-runtime default).
-  port: 9443
-  # Validity of the generated self-signed CA and serving certificate, in days.
-  certValidityDays: 3650
-
 serviceAccount:
   create: true
   name: controller-manager

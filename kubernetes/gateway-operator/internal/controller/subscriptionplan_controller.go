@@ -18,6 +18,9 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net/http"
 	"time"
 
 	"go.uber.org/zap"
@@ -97,15 +100,6 @@ func (a *subscriptionPlanAdapter) Deploy(ctx context.Context, _ client.Client, g
 	cr := obj.(*apiv1.SubscriptionPlan)
 
 	if cr.Status.Id == "" {
-		// Recover when the plan exists in the gateway but status.id was never
-		// persisted (optimistic-lock / ordering races). Listing by planName
-		// avoids skipping forever in the "already Programmed" reconcile path.
-		if recoverID, err := gatewayclient.FindSubscriptionPlanIDByPlanName(ctx, gatewayEndpoint, cr.Spec.PlanName, authFn); err != nil {
-			return DeployResult{}, err
-		} else if recoverID != "" {
-			return DeployResult{Id: recoverID}, nil
-		}
-
 		payload := gatewayclient.SubscriptionPlanCreatePayload{
 			PlanName:           cr.Spec.PlanName,
 			BillingPlan:        cr.Spec.BillingPlan,
@@ -120,6 +114,24 @@ func (a *subscriptionPlanAdapter) Deploy(ctx context.Context, _ client.Client, g
 		}
 		resp, err := gatewayclient.CreateSubscriptionPlan(ctx, gatewayEndpoint, payload, authFn)
 		if err != nil {
+			var nr *gatewayclient.NonRetryableError
+			if errors.As(err, &nr) && nr.StatusCode == http.StatusConflict {
+				// The gateway itself detected a planName collision. Recover the
+				// existing plan's id only now, after the server has confirmed a
+				// real conflict — not proactively by name, since planName is not
+				// guaranteed unique across namespaces/tenants sharing a gateway.
+				recoveredID, recErr := gatewayclient.FindSubscriptionPlanIDByPlanName(ctx, gatewayEndpoint, cr.Spec.PlanName, authFn)
+				if recErr != nil {
+					return DeployResult{}, recErr
+				}
+				if recoveredID != "" {
+					return DeployResult{Id: recoveredID}, nil
+				}
+				return DeployResult{}, &gatewayclient.RetryableError{
+					StatusCode: http.StatusConflict,
+					Err:        fmt.Errorf("subscription plan create conflicted but existing id is not yet discoverable; retrying: %w", err),
+				}
+			}
 			return DeployResult{}, err
 		}
 		return DeployResult{Id: resp.Id}, nil
