@@ -224,3 +224,106 @@ func TestUpstreamDefinitions_RoundTripThroughModel(t *testing.T) {
 		t.Errorf("round-trip per-op ref mismatch: %+v", backOps)
 	}
 }
+
+// TestBuildAPIDeploymentYAML_EmitsAPILevelUpstreamRefs verifies API-level main and sandbox
+// refs are emitted as upstream.main.ref / upstream.sandbox.ref in the deployment YAML.
+func TestBuildAPIDeploymentYAML_EmitsAPILevelUpstreamRefs(t *testing.T) {
+	util := &APIUtil{}
+	ctx := "/test"
+	apiModel := &model.API{
+		Name:    "Ref API",
+		Handle:  "ref-api",
+		Version: "v1.0",
+		Kind:    constants.RestApi,
+		Configuration: model.RestAPIConfig{
+			Context: &ctx,
+			Upstream: model.UpstreamConfig{
+				Main:    &model.UpstreamEndpoint{Ref: "production-pool"},
+				Sandbox: &model.UpstreamEndpoint{Ref: "sandbox-pool"},
+			},
+			UpstreamDefinitions: []model.ReusableUpstream{
+				{Name: "production-pool", Upstreams: []model.UpstreamTarget{{URL: "http://prod:9090"}}},
+				{Name: "sandbox-pool", Upstreams: []model.UpstreamTarget{{URL: "http://sb:9090"}}},
+			},
+			Operations: []model.Operation{
+				{Request: &model.OperationRequest{Method: "GET", Path: "/x"}},
+			},
+		},
+	}
+
+	d, err := util.BuildAPIDeploymentYAML(apiModel)
+	if err != nil {
+		t.Fatalf("BuildAPIDeploymentYAML() error = %v", err)
+	}
+	if d.Spec.Upstream == nil || d.Spec.Upstream.Main == nil || d.Spec.Upstream.Main.Ref != "production-pool" {
+		t.Errorf("main ref mismatch: %+v", d.Spec.Upstream)
+	}
+	if d.Spec.Upstream.Main.URL != "" {
+		t.Errorf("main url must be empty when ref is set, got %q", d.Spec.Upstream.Main.URL)
+	}
+	if d.Spec.Upstream.Sandbox == nil || d.Spec.Upstream.Sandbox.Ref != "sandbox-pool" {
+		t.Errorf("sandbox ref mismatch: %+v", d.Spec.Upstream.Sandbox)
+	}
+
+	out, err := yaml.Marshal(d)
+	if err != nil {
+		t.Fatalf("yaml.Marshal error = %v", err)
+	}
+	if !strings.Contains(string(out), "ref: production-pool") || !strings.Contains(string(out), "ref: sandbox-pool") {
+		t.Errorf("emitted YAML missing API-level refs:\n%s", out)
+	}
+}
+
+// TestBuildAPIDeploymentYAML_EmitsWeightedTargetsIncludingZero verifies a multi-target pool
+// keeps every target with its weight, and that an explicit zero weight is preserved rather
+// than dropped by omitempty.
+func TestBuildAPIDeploymentYAML_EmitsWeightedTargetsIncludingZero(t *testing.T) {
+	util := &APIUtil{}
+	ctx := "/test"
+	w80, w20, w0 := 80, 20, 0
+	apiModel := &model.API{
+		Name:    "Weighted API",
+		Handle:  "weighted-api",
+		Version: "v1.0",
+		Kind:    constants.RestApi,
+		Configuration: model.RestAPIConfig{
+			Context:  &ctx,
+			Upstream: model.UpstreamConfig{Main: &model.UpstreamEndpoint{URL: "http://main:8080"}},
+			UpstreamDefinitions: []model.ReusableUpstream{
+				{
+					Name: "weighted-pool",
+					Upstreams: []model.UpstreamTarget{
+						{URL: "http://backend-a:8080", Weight: &w80},
+						{URL: "http://backend-b:8080", Weight: &w20},
+						{URL: "http://backend-c:8080", Weight: &w0},
+					},
+				},
+			},
+			Operations: []model.Operation{
+				{Request: &model.OperationRequest{Method: "GET", Path: "/x"}},
+			},
+		},
+	}
+
+	d, err := util.BuildAPIDeploymentYAML(apiModel)
+	if err != nil {
+		t.Fatalf("BuildAPIDeploymentYAML() error = %v", err)
+	}
+	got := d.Spec.UpstreamDefinitions[0].Upstreams
+	if len(got) != 3 {
+		t.Fatalf("want 3 targets, got %+v", got)
+	}
+	for i, want := range []int{80, 20, 0} {
+		if got[i].Weight == nil || *got[i].Weight != want {
+			t.Errorf("target %d weight = %v, want %d", i, got[i].Weight, want)
+		}
+	}
+
+	out, err := yaml.Marshal(d)
+	if err != nil {
+		t.Fatalf("yaml.Marshal error = %v", err)
+	}
+	if !strings.Contains(string(out), "weight: 0") {
+		t.Errorf("explicit zero weight must survive into the YAML:\n%s", out)
+	}
+}
