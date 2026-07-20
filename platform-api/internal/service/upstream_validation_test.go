@@ -508,3 +508,81 @@ func TestAPIService_UpdateRejectsPoolRemovalWithDanglingRef(t *testing.T) {
 		t.Errorf("want ValidationFailed, got %v", err)
 	}
 }
+
+// TestAPIService_UpdateReplacesPoolAndRefsTogether proves a coordinated update that swaps
+// the pool and repoints the operation refs in the same request succeeds and persists.
+func TestAPIService_UpdateReplacesPoolAndRefsTogether(t *testing.T) {
+	svc := setupUpstreamITEnv(t)
+
+	if _, err := svc.CreateAPI(perOpCreateRequest(), upstreamITOrgUUID, "tester"); err != nil {
+		t.Fatalf("CreateAPI: %v", err)
+	}
+
+	newPool := []api.ReusableUpstream{perOpReusableUpstream("new-backend", "/renewed", "http://new-backend:9191")}
+	newOps := []api.Operation{
+		{Request: api.OperationRequest{
+			Method: api.OperationRequestMethodGET, Path: "/whoami",
+			Upstream: &api.OperationUpstream{Main: newAPIOperationUpstreamTarget("new-backend")},
+		}},
+		{Request: api.OperationRequest{Method: api.OperationRequestMethodGET, Path: "/ping"}},
+	}
+	updated, err := svc.UpdateAPIByHandle("perop-svc-it-api",
+		&api.RESTAPI{UpstreamDefinitions: &newPool, Operations: &newOps}, upstreamITOrgUUID, "tester")
+	if err != nil {
+		t.Fatalf("UpdateAPIByHandle: %v", err)
+	}
+
+	assertNewPool := func(where string, a *api.RESTAPI) {
+		t.Helper()
+		if a.UpstreamDefinitions == nil || len(*a.UpstreamDefinitions) != 1 ||
+			(*a.UpstreamDefinitions)[0].Name != "new-backend" {
+			t.Fatalf("%s: want pool [new-backend], got %+v", where, a.UpstreamDefinitions)
+		}
+		def := (*a.UpstreamDefinitions)[0]
+		if len(def.Upstreams) != 1 || def.Upstreams[0].Url != "http://new-backend:9191" {
+			t.Errorf("%s: pool backends mismatch: %+v", where, def.Upstreams)
+		}
+		if a.Operations == nil || len(*a.Operations) != 2 {
+			t.Fatalf("%s: want 2 operations, got %+v", where, a.Operations)
+		}
+		for i := range *a.Operations {
+			op := (*a.Operations)[i]
+			if op.Request.Path == "/whoami" {
+				if op.Request.Upstream == nil || op.Request.Upstream.Main == nil ||
+					op.Request.Upstream.Main.Ref != "new-backend" {
+					t.Errorf("%s: /whoami must ref new-backend: %+v", where, op.Request.Upstream)
+				}
+			}
+		}
+	}
+	assertNewPool("update response", updated)
+
+	read, err := svc.GetAPIByHandle("perop-svc-it-api", upstreamITOrgUUID)
+	if err != nil {
+		t.Fatalf("GetAPIByHandle: %v", err)
+	}
+	assertNewPool("read after update", read)
+}
+
+// TestAPIService_FailedUpdateLeavesStoredStateUnchanged ensures a rejected update (a pool
+// replacement that would dangle a stored per-operation ref) does not modify the stored
+// configuration.
+func TestAPIService_FailedUpdateLeavesStoredStateUnchanged(t *testing.T) {
+	svc := setupUpstreamITEnv(t)
+
+	if _, err := svc.CreateAPI(perOpCreateRequest(), upstreamITOrgUUID, "tester"); err != nil {
+		t.Fatalf("CreateAPI: %v", err)
+	}
+
+	newPool := []api.ReusableUpstream{perOpReusableUpstream("other-backend", "/other", "http://other:9090")}
+	if _, err := svc.UpdateAPIByHandle("perop-svc-it-api",
+		&api.RESTAPI{UpstreamDefinitions: &newPool}, upstreamITOrgUUID, "tester"); err == nil {
+		t.Fatal("expected error for pool removal with dangling per-op ref")
+	}
+
+	read, err := svc.GetAPIByHandle("perop-svc-it-api", upstreamITOrgUUID)
+	if err != nil {
+		t.Fatalf("GetAPIByHandle: %v", err)
+	}
+	assertPoolAndPerOp(t, "after failed update", read)
+}
