@@ -34,13 +34,14 @@ services:
       - "9011:9091"   # Metrics
     env_file:
       - path: api-platform.env
-        required: false
+        required: true
         format: raw
     volumes:
       - controller-data:/app/data
       - ./configs/config.toml:/etc/gateway-controller/config.toml:ro
       - ./gateway-controller/certificates:/app/certificates  # Read-write for dynamic certificate management
       - ./gateway-controller/listener-certs:/app/listener-certs:ro  # Read-only for HTTPS listener certificates
+      - ./gateway-controller/aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro  # AES-256 at-rest encryption key
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -63,10 +64,8 @@ services:
       - "9003:9003"   # Metrics
     env_file:
       - path: api-platform.env
-        required: false
+        required: true
         format: raw
-    environment:
-      - GATEWAY_CONTROLLER_HOST=gateway-controller
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro
       - ./configs/llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro

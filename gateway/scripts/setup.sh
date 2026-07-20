@@ -14,11 +14,10 @@
 # closed with a descriptive error if a required key or certificate is missing.
 #
 # Provisions:
-#   - resources/listener-certs/default-listener.{crt,key}  : router HTTPS listener cert
-#   - api-platform.env                                     : required runtime defaults for the
-#       gateway-runtime (GATEWAY_CONTROLLER_HOST, LOG_LEVEL). The control-plane connection is
-#       optional (standalone otherwise) and is NOT prompted for — add it to api-platform.env by hand.
-#   - (optional, --with-encryption) an AES-256 at-rest encryption key file
+#   - listener-certs/default-listener.{crt,key}   : router HTTPS listener certificate
+#   - aesgcm-keys/default-aesgcm256-v1.bin         : AES-256 at-rest encryption key. The gateway's
+#       docker compose bind-mounts this host file into the controller.
+#   - api-platform.env                            : required runtime defaults for the gateway-runtime
 set -euo pipefail
 cd "$(dirname "$0")"
 # Distribution layout: scripts/setup.sh, one level below docker-compose.yaml.
@@ -36,26 +35,26 @@ else
   CERTS_DIR="resources/listener-certs"
 fi
 
-# Optional AES-256 at-rest encryption key (only when --with-encryption is passed).
-ENC_KEY_FILE="gateway-controller/secrets/aesgcm/key-v1.bin"
+# AES-256 at-rest encryption key.
+if [[ -d gateway-controller ]]; then
+  ENC_KEY_FILE="gateway-controller/aesgcm-keys/default-aesgcm256-v1.bin"
+else
+  ENC_KEY_FILE="resources/aesgcm-keys/default-aesgcm256-v1.bin"
+fi
 
 FORCE=false
 CERTS_ONLY=false
-WITH_ENCRYPTION=false
 
 for arg in "$@"; do
   case "$arg" in
     --force) FORCE=true ;;
     --certs-only) CERTS_ONLY=true ;;
-    --with-encryption) WITH_ENCRYPTION=true ;;
     -h|--help)
       cat <<'EOF'
-Usage: ./scripts/setup.sh [--force] [--certs-only] [--with-encryption]
+Usage: ./scripts/setup.sh [--force] [--certs-only]
 
-  --force             regenerate certs/keys (rotates them) and rewrite api-platform.env
-  --certs-only        generate only the listener TLS certificate
-  --with-encryption   also generate an AES-256 at-rest encryption key file and print
-                      the [controller.encryption] config snippet to enable it
+  --force        regenerate the certificate and encryption key (rotates them) and rewrite api-platform.env
+  --certs-only   generate only the listener TLS certificate (skip the encryption key and api-platform.env)
 
 The control-plane connection is optional and is NOT configured here: to connect to a control
 plane, add APIP_GW_CONTROLLER_CONTROLPLANE_HOST and APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN to
@@ -93,31 +92,17 @@ gen_encryption_key() {
   mkdir -p "$(dirname "$ENC_KEY_FILE")"
   ( umask 177; openssl rand 32 > "$ENC_KEY_FILE" )
   log "  - AES-256 encryption key generated at $ENC_KEY_FILE"
-  cat <<EOF
-
-  Enable at-rest encryption by adding this to configs/config.toml:
-
-    [[controller.encryption.providers]]
-    type = "aesgcm"
-
-    [[controller.encryption.providers.keys]]
-    version   = "v1"
-    file_path = "./secrets/aesgcm/key-v1.bin"
-
-EOF
 }
 
 log "Provisioning listener TLS certificate ..."
 gen_cert
 
-if [[ "$WITH_ENCRYPTION" == true ]]; then
-  log "Provisioning AES-256 encryption key ..."
-  gen_encryption_key
-fi
-
 if [[ "$CERTS_ONLY" == true ]]; then
   exit 0
 fi
+
+log "Provisioning AES-256 encryption key ..."
+gen_encryption_key
 
 if [[ "$FORCE" == false && -f "$ENV_FILE" ]]; then
   log "$ENV_FILE already exists — keeping it (rerun with --force to rewrite it)"

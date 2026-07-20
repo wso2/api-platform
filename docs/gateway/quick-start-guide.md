@@ -102,15 +102,15 @@ It provisions, idempotently (existing files are kept unless `--force`):
 | Artifact | Purpose |
 |---|---|
 | `listener-certs/default-listener.crt` / `.key` | Self-signed certificate for the router's HTTPS ingress listener (`:8443`). |
+| `aesgcm-keys/default-aesgcm256-v1.bin` | AES-256 key for at-rest encryption of stored secrets (bind-mounted into the controller). |
 | `api-platform.env` | Required runtime settings, loaded into both containers via docker-compose `env_file:` — `GATEWAY_CONTROLLER_HOST` and `LOG_LEVEL`. |
 
 **Options:**
 
 | Flag | Effect |
 |---|---|
-| `--force` | Regenerate the certificate and rewrite `api-platform.env` (rotates them). |
-| `--certs-only` | Generate only the listener TLS certificate. |
-| `--with-encryption` | Also generate an AES-256 at-rest encryption key and print the `[controller.encryption]` config snippet to enable it. |
+| `--force` | Regenerate the certificate and encryption key, and rewrite `api-platform.env` (rotates them). |
+| `--certs-only` | Generate only the listener TLS certificate (skip the encryption key and `api-platform.env`). |
 | `--help` | Print usage. |
 
 Then start the stack:
@@ -123,8 +123,9 @@ docker compose up -d
 
 `config.toml` pulls values in only through explicit `{{ env "NAME" "default" }}` interpolation tokens, resolved at startup.
 `setup.sh` writes those values into `api-platform.env`, which docker-compose loads into the containers
-via `env_file:` (`format: raw`, `required: false`). To change a setting, edit `config.toml` directly
-or set the variable its token reads in `api-platform.env`.
+via `env_file:` (`format: raw`, `required: true` — so `docker compose up` fails fast if
+`api-platform.env` is missing; run `./scripts/setup.sh` first). To change a setting, edit
+`config.toml` directly or set the variable its token reads in `api-platform.env`.
 
 #### Connecting to a WSO2 API Platform control plane (optional)
 
@@ -139,17 +140,12 @@ APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=<registration-token-from-the-control-plane
 
 The registration token is issued by the control plane; `setup.sh` never generates it.
 
-#### At-rest encryption (optional)
+#### At-rest encryption
 
-At-rest encryption of stored secrets is off by default. To enable it, generate a key and wire it up:
-
-```bash
-./scripts/setup.sh --with-encryption
-```
-
-This writes an AES-256 key file and prints the `[controller.encryption]` block to add to
-`config.toml`. Once encryption is configured, the key file is **required** at startup — the server
-exits with a descriptive error if it is missing.
+At-rest encryption of stored secrets is **enabled by default**. `setup.sh` generates the AES-256 key
+(`aesgcm-keys/default-aesgcm256-v1.bin`) and the compose bind-mounts it into the controller. The key
+is **required** at startup — the server never generates one and exits with a descriptive error if it
+is missing. Rotate it with `./scripts/setup.sh --force`.
 
 #### Moesif analytics (optional)
 
