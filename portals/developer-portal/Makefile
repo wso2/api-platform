@@ -147,7 +147,6 @@ dist: clean-dist ## Build standalone developer portal distribution zip
 	@cp -R samples/mcps $(DIST_DIR)/resources/samples/
 	@cp configs/config.toml $(DIST_DIR)/configs/config.toml
 	@cp configs/config-template.toml $(DIST_DIR)/configs/config-template.toml
-	@cp configs/config-platform-api-template.toml $(DIST_DIR)/configs/config-platform-api.toml
 	@cp configs/config-platform-api-template.toml $(DIST_DIR)/configs/config-platform-api-template.toml
 	@cp docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md
