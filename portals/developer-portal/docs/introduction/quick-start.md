@@ -5,7 +5,8 @@ Get the Developer Portal running locally in a few minutes using Docker Compose.
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/) installed
-- Port 3000 available
+- `openssl` on your `PATH` (used by the setup script to generate certs and secrets)
+- Ports 3000 (Developer Portal) and 9243 (Platform API) available
 
 ## Steps
 
@@ -16,17 +17,23 @@ git clone https://github.com/wso2/api-platform.git
 cd api-platform/portals/developer-portal/
 ```
 
-### 2. Create configuration files
-
-Copy both sample configuration files:
+### 2. Run the setup script
 
 ```bash
-mkdir -p configs
-cp configs/config.toml.example configs/config.toml
-cp configs/config-platform-api-template.toml configs/config-platform-api.toml
+./scripts/setup.sh
 ```
 
-`config.toml` controls the Developer Portal itself. `config-platform-api.toml` configures the Platform API sidecar that validates login credentials and issues signed tokens. The default credentials in the example file are `admin` / `admin`.
+This one-time script provisions everything the containers need to start:
+
+- a self-signed TLS certificate under `resources/certificates/`
+- the Developer Portal's encryption/session secrets and the shared JWT signing key, written to `api-platform.env`
+- `configs/config-platform-api.toml` — the config for the Platform API sidecar that validates login credentials and issues signed tokens
+
+It also prompts you for an **admin username and password**. Press Enter at the password prompt to have a strong one generated for you — it is printed once at the end, so copy it before continuing. The credentials are stored bcrypt-hashed in `api-platform.env`.
+
+`config.toml`, which controls the Developer Portal itself, is already present in `configs/` — no copying needed.
+
+> The script is idempotent: re-running it only fills in what's missing and never overwrites an existing value. To rotate a secret, remove it from `api-platform.env` (or delete `resources/certificates/` for the TLS cert) and re-run.
 
 ### 3. Start the portal
 
@@ -44,7 +51,7 @@ Navigate to:
 https://localhost:3000/default/views/default
 ```
 
-Sign in with `admin` / `admin` (the credentials defined in `configs/config-platform-api.toml`).
+Sign in with the admin username and password you set when running `./scripts/setup.sh`.
 
 You should see the default API catalog page, empty until you publish an API (next step) or run `./scripts/seed-samples.sh` to deploy a set of ready-made sample APIs/MCPs.
 
@@ -174,15 +181,15 @@ Scripts and CLI tools authenticate with a Bearer token obtained directly from th
 
 ```bash
 # Get a token from the Platform API (runs alongside the devportal).
-# Login uses the file-based credentials from the Platform API config.
+# Use the admin credentials you set when running ./scripts/setup.sh.
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
-  -d "username=admin&password=admin" | jq -r .token)
+  -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
 # Publish the API (the token's org_handle claim scopes this to the "default" org)
 curl -sk -X POST "https://localhost:3000/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
-  -F "api=@api.yaml;type=application/yaml" \
-  -F "apiDefinition=@openapi.yaml;type=application/yaml"
+  -F "metadata=@api.yaml;type=application/yaml" \
+  -F "definition=@openapi.yaml;type=application/yaml"
 ```
 
 Refresh the portal — the Ping API now appears in the catalog. Click it to view the documentation and try-out console.
@@ -194,7 +201,7 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 | Organization | `default` |
 | Default view | `default` |
 | Portal URL | `https://localhost:3000/default/views/default` |
-| Admin credentials | `admin` / `admin` (Platform API — see `configs/config-platform-api.toml`) |
+| Admin credentials | Set when you ran `./scripts/setup.sh` (stored bcrypt-hashed in `api-platform.env`) |
 | Sample API | `Ping API` visible in the catalog |
 
 ## Next steps

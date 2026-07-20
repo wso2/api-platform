@@ -404,7 +404,7 @@ paths:
 ```bash
 # Get a Bearer token (substitute the credentials ./scripts/setup.sh printed)
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
-  -d "username=admin&password=admin" | jq -r .token)
+  -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
 # Get the default org UUID
 ORG_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \

@@ -104,7 +104,7 @@ For local development and first-time setup, the portal ships with a built-in use
 
 ### Configuration
 
-Users and their scopes are defined in `configs/config-platform-api.toml`. Copy the template file to get started:
+Users and their scopes are defined in `configs/config-platform-api.toml`. Running `./scripts/setup.sh` (see the [Quick Start](../introduction/quick-start.md)) generates this file with a single admin user. To edit it by hand — or to create a static, no-dependencies starting point without the setup script — copy the template instead:
 
 ```bash
 cp configs/config-platform-api-template.toml configs/config-platform-api.toml
@@ -155,7 +155,7 @@ For scripts and CLI tools, get a Bearer token directly from the Platform API and
 
 ```bash
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
-  -d "username=admin&password=admin" | jq -r .token)
+  -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
 curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:3000/api/v0.9/organizations
 ```
