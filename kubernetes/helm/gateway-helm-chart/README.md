@@ -7,6 +7,7 @@ This chart packages the API Platform Gateway deployment (controller and gateway 
 - Kubernetes 1.24+
 - Helm 3.12+
 - cert-manager (for TLS certificate management)
+- `openssl` (to generate the required AES-256 at-rest encryption key)
 
 ## Installing cert-manager
 
@@ -29,6 +30,18 @@ kubectl get pods -n cert-manager
 
 ## Installing the Chart
 
+### Step 1: Create the encryption key Secret
+
+Generate a 32-byte AES-256 key and store it in a Secret **in the namespace you install into**:
+
+```bash
+openssl rand 32 > default-aesgcm256-v1.bin
+kubectl create secret generic gateway-encryption-keys \
+  --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin
+# add -n <namespace> to both this command and `helm install` for a non-default namespace
+```
+
+### Step 2: Install the chart
 For developers using SNAPSHOT images:
 ```bash
 helm install ap-gateway . -f values-local.yaml
@@ -36,12 +49,16 @@ helm install ap-gateway . -f values-local.yaml
 
 Install with default values:
 ```bash
-helm install ap-gateway .
+helm install ap-gateway . \
+  --set gateway.controller.encryptionKeys.enabled=true \
+  --set gateway.controller.encryptionKeys.secretName=gateway-encryption-keys
 ```
 
 Install with custom control plane configuration:
 ```bash
 helm install ap-gateway . \
+  --set gateway.controller.encryptionKeys.enabled=true \
+  --set gateway.controller.encryptionKeys.secretName=gateway-encryption-keys \
   --set gateway.controller.controlPlane.host="host.docker.internal:8443" \
   --set gateway.controller.controlPlane.token.value="your-token-here"
 ```
@@ -49,12 +66,17 @@ helm install ap-gateway . \
 Install in a specific namespace:
 ```bash
 kubectl create namespace api-gateway
-helm install ap-gateway . \
-  --namespace api-gateway \
+openssl rand 32 > default-aesgcm256-v1.bin
+kubectl create secret generic gateway-encryption-keys -n api-gateway \
+  --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin
+helm install ap-gateway . --namespace api-gateway \
+  --set gateway.controller.encryptionKeys.enabled=true \
+  --set gateway.controller.encryptionKeys.secretName=gateway-encryption-keys \
   --set gateway.controller.controlPlane.host="platform.example.com"
 ```
 
 Install with custom values file:
+The file must set `gateway.controller.encryptionKeys.enabled=true` and `secretName`:
 ```bash
 helm install ap-gateway . -f custom-values.yaml
 ```
@@ -101,6 +123,21 @@ kubectl logs -l app.kubernetes.io/component=controller
 # Gateway Runtime logs (Router + Policy Engine)
 kubectl logs -l app.kubernetes.io/component=gateway-runtime
 ```
+
+### Troubleshooting
+
+- **`helm install` fails with `gateway.controller.encryptionKeys must be enabled ...`** — the
+  chart is fail-closed on at-rest encryption. Complete
+  [Step 1](#step-1-create-the-encryption-key-secret) (create the key Secret) and pass the
+  `encryptionKeys` flags in [Step 2](#step-2-install-the-chart).
+- **Controller pod is `CrashLoopBackOff` / never becomes Ready** — usually a missing or
+  wrong-namespace encryption key Secret. Confirm it exists in the release namespace with the
+  correct key entry name:
+  ```bash
+  kubectl get secret gateway-encryption-keys -n <namespace> -o jsonpath='{.data.default-aesgcm256-v1\.bin}' | head -c 20
+  ```
+  An empty result means the entry is misnamed (it must be `default-aesgcm256-v1.bin`). Check the
+  controller logs for the encryption-key error.
 
 ## Chart layout
 
@@ -168,23 +205,17 @@ will not start without its AES-256 key, and the chart **refuses to render** unle
 `gateway.controller.encryptionKeys.enabled=true` with a `secretName`. There is no
 development/demo bypass, and nothing is auto-generated — you provision the key.
 
-Create the key secret (32 random bytes stored under `default-aesgcm256-v1.bin`) in the release
-namespace, then enable it:
+Create the Secret and enable it as shown in
+[Step 1](#step-1-create-the-encryption-key-secret) and
+[Step 2](#step-2-install-the-chart) of *Installing the Chart*.
 
-```bash
-openssl rand 32 > default-aesgcm256-v1.bin
-kubectl create secret generic gateway-encryption-keys \
-  --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin
-
-helm install ap-gateway . \
-  --set gateway.controller.encryptionKeys.enabled=true \
-  --set gateway.controller.encryptionKeys.secretName=gateway-encryption-keys
-```
-
-The key filename must match `gateway.config.controller.encryption.providers[].keys[].file`
-(default `/app/data/aesgcm-keys/default-aesgcm256-v1.bin`; the mount directory is
-`gateway.controller.encryptionKeys.mountPath`). Rotating the key makes previously-encrypted data
-unreadable.
+Details:
+- The Secret must live in the **same namespace** as the release.
+- The Secret's key entry must be named `default-aesgcm256-v1.bin` — it must match the filename in
+  `gateway.config.controller.encryption.providers[].keys[].file` (default
+  `/app/data/aesgcm-keys/default-aesgcm256-v1.bin`; the mount directory is
+  `gateway.controller.encryptionKeys.mountPath`).
+- Rotating the key makes previously-encrypted data unreadable.
 
 ## TLS Certificate Configuration
 
