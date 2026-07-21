@@ -62,17 +62,15 @@ console_only = false
 # Supported types: sqlite (default), postgres.
 
 [developer_portal.database]
-type = "sqlite"
-file = "./devportal.db"       # SQLite only
+driver = "sqlite"             # sqlite | postgres
+path = "./devportal.db"       # SQLite only
 host = "localhost"            # PostgreSQL only
 port = 5432                   # PostgreSQL only
 name = "devportal"            # PostgreSQL only
-username = "postgres"         # PostgreSQL only
+user = "postgres"             # PostgreSQL only
 password = ""                 # PostgreSQL only
-
-[developer_portal.database.ssl]
-enabled = false
-ca_file = "./resources/security/ca.pem"
+ssl_mode = "disable"          # PostgreSQL only: disable | verify-full
+ssl_root_cert = "./resources/security/ca.pem"   # CA cert — used by verify-full
 
 # =============================================================================
 # SECURITY CONFIGURATION

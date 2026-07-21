@@ -88,7 +88,7 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 | Setting | Description | Default |
 |---------|-------------|---------|
 | `[server.https].enabled` | Terminate TLS in the portal itself (vs. behind a proxy) | `true` |
-| `[database].type` | `sqlite` (default) or `postgres` | `sqlite` |
+| `[developer_portal.database].driver` | `sqlite` (default) or `postgres` | `sqlite` |
 | `[idp].client_id` | Set to delegate login to an external OIDC provider — leave empty for local auth via `[developer_portal.platform_api]` | _(empty)_ |
 | `[developer_portal.platform_api].url` | Address of the Platform API local-auth sidecar | `https://platform-api:9243` |
 | `[organization].default_name` | Organization bootstrapped automatically on first start | `default` |
@@ -139,7 +139,7 @@ docker compose up -d
 
 ## Database
 
-The Developer Portal uses **SQLite** by default (data persisted in a Docker volume) — tables are created automatically on first start. To switch to PostgreSQL, update `configs/config.toml`'s `[database]` block with `type = "postgres"` and your connection details.
+The Developer Portal uses **SQLite** by default (data persisted in a Docker volume) — tables are created automatically on first start. To switch to PostgreSQL, update `configs/config.toml`'s `[developer_portal.database]` block with `driver = "postgres"` and your connection details.
 
 `resources/developer-portal/db-scripts/` contains a reference copy of the Developer Portal's PostgreSQL schema and query files (also bundled inside the image) — provided for inspection; no manual SQL execution is required.
 

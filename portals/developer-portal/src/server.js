@@ -92,7 +92,7 @@ let server;
 async function startServer() {
     logger.info('Developer Portal starting...');
     // Sync database schema for SQLite in production mode
-    if (config.database.type === 'sqlite' && !config.designMode?.enabled) {
+    if (config.database.driver === 'sqlite' && !config.designMode?.enabled) {
         await sequelize.sync();
         logger.info('Database: SQLite schema synced ✓');
     }

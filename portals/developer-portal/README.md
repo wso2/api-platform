@@ -164,7 +164,7 @@ For local exploration you can skip IdP setup by using the Platform API sidecar i
 
 #### SQLite (default — no setup required)
 
-The portal uses SQLite out of the box. The database file is created automatically at the path configured by `database.file` (default: `./devportal.db`). No installation or schema migration step is needed.
+The portal uses SQLite out of the box. The database file is created automatically at the path configured by `database.path` (default: `./devportal.db`). No installation or schema migration step is needed.
 
 #### PostgreSQL (optional)
 
@@ -179,15 +179,15 @@ docker run --name devportal-postgres \
   -d postgres:16
 ```
 
-Then update the `[database]` block in `configs/config.toml`:
+Then update the `[developer_portal.database]` block in `configs/config.toml`:
 
 ```toml
-[database]
-type = "postgres"
+[developer_portal.database]
+driver = "postgres"
 host = "localhost"
 port = 5432
 name = "devportal"
-username = "postgres"
+user = "postgres"
 password = "postgres"
 ```
 
@@ -269,7 +269,7 @@ Every config key can be overridden with an `APIP_DP_*` environment variable. You
 | `APIP_DP_IDP_CLIENTID` | `config.idp.clientId` |
 | `APIP_DP_IDP_ISSUER` | `config.idp.issuer` |
 | `APIP_DP_SERVER_PORT` | `config.server.port` |
-| `APIP_DP_DATABASE_SSL_ENABLED` | `config.database.ssl.enabled` |
+| `APIP_DP_DATABASE_SSL_MODE` | `config.database.sslMode` |
 
 `.env` example:
 ```dotenv

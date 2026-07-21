@@ -62,13 +62,21 @@ format       = '{{ env "APIP_DP_LOGGING_FORMAT" "text" }}'  # text | json
 console_only = '{{ env "APIP_DP_LOGGING_CONSOLE_ONLY" "true" }}'
 
 [developer_portal.database]
-# Relative — resolves to /app/data/devportal.db under Compose (cwd /app),
-# matching the sqlite_data volume mount at /app/data; Docker creates that
-# directory itself as the volume's mount point, so no extra step is needed
-# there. `npm start` (cwd = repo root) resolves this to ./data/devportal.db
-# instead — that directory does NOT get created automatically; see README's
+driver = '{{ env "APIP_DP_DATABASE_DRIVER" "sqlite" }}'   # sqlite | postgres
+# SQLite path. Relative — resolves to /app/data/devportal.db under Compose (cwd
+# /app), matching the sqlite_data volume mount at /app/data; Docker creates that
+# directory itself as the volume's mount point, so no extra step is needed there.
+# `npm start` (cwd = repo root) resolves this to ./data/devportal.db instead —
+# that directory does NOT get created automatically; see README's
 # "Development (npm start)" section.
-file = '{{ env "APIP_DP_DATABASE_FILE" "./data/devportal.db" }}'
+path = '{{ env "APIP_DP_DATABASE_PATH" "./data/devportal.db" }}'
+# PostgreSQL connection — used when driver = "postgres" (e.g. the
+# docker-compose.postgres.yaml override sets these).
+host     = '{{ env "APIP_DP_DATABASE_HOST" "localhost" }}'
+port     = '{{ env "APIP_DP_DATABASE_PORT" "5432" }}'
+name     = '{{ env "APIP_DP_DATABASE_NAME" "devportal" }}'
+user     = '{{ env "APIP_DP_DATABASE_USER" "postgres" }}'
+password = '{{ env "APIP_DP_DATABASE_PASSWORD" "" }}'
 
 [developer_portal.platform_api]
 # The upstream Platform API. Used for local auth credential validation when

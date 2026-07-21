@@ -21,15 +21,15 @@ enabled = false
 console_only = true
 
 [developer_portal.database]
-# type/file cover docker-compose.test.yaml (SQLite); host/port/username/password/name
+# driver/path cover docker-compose.test.yaml (SQLite); host/port/user/password/name
 # cover docker-compose.test.postgres.yaml (PostgreSQL) — each compose file only sets
 # the env vars relevant to its own variant, so the other side's tokens just resolve
 # to these defaults, unused.
-type     = '{{ env "APIP_DP_DATABASE_TYPE" "sqlite" }}'
-file     = '{{ env "APIP_DP_DATABASE_FILE" "./data/devportal-it.db" }}'
+driver   = '{{ env "APIP_DP_DATABASE_DRIVER" "sqlite" }}'
+path     = '{{ env "APIP_DP_DATABASE_PATH" "./data/devportal-it.db" }}'
 host     = '{{ env "APIP_DP_DATABASE_HOST" "localhost" }}'
 port     = '{{ env "APIP_DP_DATABASE_PORT" "5432" }}'
-username = '{{ env "APIP_DP_DATABASE_USERNAME" "postgres" }}'
+user     = '{{ env "APIP_DP_DATABASE_USER" "postgres" }}'
 password = '{{ env "APIP_DP_DATABASE_PASSWORD" "" }}'
 name     = '{{ env "APIP_DP_DATABASE_NAME" "devportal" }}'
 

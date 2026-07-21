@@ -62,8 +62,8 @@ services:
     environment:
       # SQLite — no external database required. Shared, DB-agnostic settings
       # (tls/logging/api-key/org/platform-api) live in ./test-config.toml.
-      APIP_DP_DATABASE_TYPE: sqlite
-      APIP_DP_DATABASE_FILE: /tmp/devportal-it.db
+      APIP_DP_DATABASE_DRIVER: sqlite
+      APIP_DP_DATABASE_PATH: /tmp/devportal-it.db
       # devportal fails closed at startup without these — fixed test-only values,
       # not meant to be reused outside this CI fixture.
       APIP_DP_SECURITY_ENCRYPTION_KEY: "7f40672c96fd437dc33550755e218d586014232ceb5b01c9405aab575bcb1f4a"

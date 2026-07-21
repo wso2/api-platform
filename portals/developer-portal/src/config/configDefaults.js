@@ -47,18 +47,20 @@ const DEFAULTS = {
         format: 'text',  // text | json
         consoleOnly: true,
     },
+    // Key names mirror platform-api's [platform_api.database]. driver keeps
+    // Sequelize's dialect values (sqlite | postgres), not Go's "sqlite3".
     database: {
-        type: 'sqlite',
-        file: './devportal.db',
-        host: 'localhost',
-        port: 5432,
-        name: 'devportal',
-        username: 'postgres',
-        password: '',
-        ssl: {
-            enabled: false,
-            caFile: './resources/security/ca.pem',
-        },
+        driver: 'sqlite',        // sqlite | postgres
+        path: './devportal.db',  // SQLite only
+        host: 'localhost',       // PostgreSQL only
+        port: 5432,              // PostgreSQL only
+        name: 'devportal',       // PostgreSQL only
+        user: 'postgres',        // PostgreSQL only
+        password: '',            // PostgreSQL only
+        // PostgreSQL TLS — the subset of platform-api's ssl_mode that devportal
+        // supports: disable | verify-full.
+        sslMode: 'disable',
+        sslRootCert: './resources/security/ca.pem',  // CA cert — used by verify-full
     },
     security: {
         encryptionKey: '',
