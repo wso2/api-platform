@@ -16,7 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const { renderTemplate, renderTemplateFromAPI, renderGivenTemplate, loadLayoutFromAPI, loadMarkdown, isAiDisabledForPortal } = require('../utils/util');
+const { renderTemplate, renderTemplateFromAPI, isAiDisabledForPortal } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
@@ -26,7 +26,6 @@ const exphbs = require('express-handlebars');
 const util = require('../utils/util');
 const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
-const appDao = require('../dao/applicationDao');
 const apiDao = require('../dao/apiDao');
 const apiFileDao = require('../dao/apiFileDao');
 const viewDao = require('../dao/viewDao');
@@ -34,7 +33,6 @@ const subDao = require('../dao/subscriptionDao');
 const apiMetadataService = require('../services/apiMetadataService');
 const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils/apiDefinitionUtil');
 const sampleApiLoader = require('../utils/sampleApiLoader');
-const adminService = require('../services/adminService');
 const apiWorkflowService = require('../services/apiWorkflowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
 const yaml = require('../utils/yaml');

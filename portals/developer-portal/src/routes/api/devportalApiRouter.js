@@ -43,7 +43,6 @@ const express = require('express');
 const OpenApiValidator = require('express-openapi-validator');
 
 const { config } = require('../../config/configLoader');
-const constants = require('../../utils/constants');
 const logger = require('../../config/logger');
 const { authResolver, OAuth2Security, apiKeyAuth } = require('../../middlewares/authMiddleware');
 

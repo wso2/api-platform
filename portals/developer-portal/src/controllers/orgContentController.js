@@ -20,7 +20,6 @@ const path = require('path');
 const fs = require('fs');
 const Handlebars = require('handlebars');
 const logger = require('../config/logger');
-const { logUserAction } = require('../middlewares/auditLogger');
 const { renderTemplate, renderTemplateFromAPI } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');

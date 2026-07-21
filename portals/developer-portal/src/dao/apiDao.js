@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { APIMetadata, APILabels, APITags } = require('../models/apiMetadata');
+const { APIMetadata, APITags } = require('../models/apiMetadata');
 const SubscriptionPlan = require('../models/subscriptionPlan');
 const SubscriptionPlanLimit = require('../models/subscriptionPlanLimit');
 const APIContent = require('../models/apiContent');

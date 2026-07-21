@@ -16,12 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const axios = require('axios');
-const https = require('https');
-const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const util = require('../utils/util');
-const orgDao = require('../dao/organizationDao');
 const appDao = require('../dao/applicationDao');
 const apiKeyService = require('../services/apiKeyService');
 const { publish } = require('../services/webhooks/eventPublisher');
