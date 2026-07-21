@@ -24,6 +24,17 @@ spec:
   managedBy: wso2
   version: v1.0
   metadata:
+    # AWS Bedrock now supports Bearer-token auth (Amazon Bedrock API keys) in
+    # addition to the legacy SigV4 flow. The gateway injects this as
+    # `Authorization: Bearer <key>`; the portal prepends the `Bearer ` prefix so
+    # the operator only pastes the raw key. endpointUrl is deliberately omitted
+    # because the Bedrock runtime host is region-specific
+    # (https://bedrock-runtime.<region>.amazonaws.com) and must be supplied per
+    # provider.
+    auth:
+      type: apiKey
+      header: Authorization
+      valuePrefix: "Bearer "
     logoUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/aws.bedrock/icon.png
     openapiSpecUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/aws.bedrock/openapi.yaml
   promptTokens:

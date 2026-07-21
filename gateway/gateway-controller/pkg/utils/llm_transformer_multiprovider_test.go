@@ -119,6 +119,10 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsCondition
 	require.NotNil(t, result.Spec.UpstreamDefinitions)
 	require.Len(t, *result.Spec.UpstreamDefinitions, 1)
 	assert.Equal(t, "anthropic-provider", (*result.Spec.UpstreamDefinitions)[0].Name)
+	require.NotNil(t, (*result.Spec.UpstreamDefinitions)[0].BasePath)
+	assert.Equal(t, "/anthropic-provider", *(*result.Spec.UpstreamDefinitions)[0].BasePath)
+	require.Len(t, (*result.Spec.UpstreamDefinitions)[0].Upstreams, 1)
+	assert.Equal(t, "http://127.0.0.1:8080", (*result.Spec.UpstreamDefinitions)[0].Upstreams[0].Url)
 
 	var chatOp *api.Operation
 	for i := range result.Spec.Operations {
