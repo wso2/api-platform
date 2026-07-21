@@ -31,11 +31,11 @@ In bottom-up deployment, **REST APIs deployed directly to the gateway are automa
 - Gateway then syncs the API to on-prem APIM (if connected)
 
 **Characteristics:**
-- **Origin:** `gateway_api`
+- **Deployment source:** API created directly through the gateway REST API
 - **Data flow:** Gateway → On-Prem APIM
 - **Use case:** On-prem APIM integration
 - **Sync:** Automatic and tracked (pending/success/failed)
-- **Status tracking:** Yes, visible via `cpSyncStatus` field
+- **Status tracking:** Gateway deployment state is visible via `status.state`; APIM sync state is tracked internally
 - **Continues working:** API remains available on gateway even if APIM is unavailable
 
 
@@ -181,10 +181,10 @@ Bottom-up APIs are REST APIs deployed via the gateway controller that are **auto
 │   REST API Deployed via POST /rest-apis         │
 └────────────────────┬────────────────────────────┘
                      │
-                     ▼ (Origin = "gateway_api")
+                     ▼ (Created via gateway REST API)
           ┌─────────────────────┐
           │ Store in Database   │
-          │ CPSyncStatus:       │
+          │ APIM sync state:    │
           │ pending             │
           └─────────┬───────────┘
                     │
@@ -369,39 +369,87 @@ curl -X POST http://localhost:9090/rest-apis \
 **Response:**
 ```json
 {
-  "uuid": "api-uuid-12345",
-  "displayName": "PetStore API",
-  "version": "v1.0",
-  "context": "/petstore",
-  "origin": "gateway_api",
-  "desiredState": "deployed",
-  "createdAt": "2026-04-26T10:30:00Z"
+  "apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
+  "kind": "RestApi",
+  "metadata": {
+    "name": "PetStoreAPI"
+  },
+  "spec": {
+    "displayName": "PetStore API",
+    "version": "v1.0",
+    "context": "/petstore",
+    "upstream": {
+      "main": {
+        "url": "https://petstore.example.com"
+      }
+    },
+    "policies": [
+      {
+        "name": "api-key-auth",
+        "version": "v1",
+        "params": {
+          "key": "X-API-Key",
+          "in": "header"
+        }
+      }
+    ],
+    "operations": [
+      {
+        "method": "GET",
+        "path": "/pet/{petId}"
+      },
+      {
+        "method": "POST",
+        "path": "/pet"
+      },
+      {
+        "method": "PUT",
+        "path": "/pet"
+      },
+      {
+        "method": "DELETE",
+        "path": "/pet/{petId}"
+      },
+      {
+        "method": "GET",
+        "path": "/store/inventory"
+      },
+      {
+        "method": "POST",
+        "path": "/store/order"
+      },
+      {
+        "method": "GET",
+        "path": "/"
+      }
+    ]
+  },
+  "status": {
+    "id": "PetStoreAPI",
+    "state": "deployed",
+    "createdAt": "2026-04-26T10:30:00Z",
+    "updatedAt": "2026-04-26T10:30:00Z",
+    "deployedAt": "2026-04-26T10:30:00Z"
+  }
 }
 ```
 
-**Step 3: Monitor Sync Status**
+**Step 3: Check Gateway Deployment State**
 
 ```bash
-# Check if API synced to on-prem APIM
+# Check if API is deployed on the gateway
 curl -X GET http://localhost:9090/rest-apis/PetStoreAPI \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" | jq '{origin, cpSyncStatus}'
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" | jq '{state: .status.state}'
 ```
 
-**Response (before sync):**
+**Response:**
 ```json
 {
-  "origin": "gateway_api",
-  "cpSyncStatus": "pending"
+  "state": "deployed"
 }
 ```
 
-**Response (after sync):**
-```json
-{
-  "origin": "gateway_api",
-  "cpSyncStatus": "success"
-}
-```
+The bottom-up APIM sync status is tracked internally by the gateway controller. To verify APIM sync, check the gateway-controller logs or confirm that the API is available in on-prem APIM.
 
 **Step 4: Test API on Gateway**
 
@@ -495,7 +543,7 @@ curl -X PUT http://localhost:9090/rest-apis/PetStoreAPI \
 **What Happens:**
 
 1. API updated on gateway immediately
-2. `cpSyncStatus` reset to `pending`
+2. Internal APIM sync tracking is reset to `pending`
 3. Automatically re-synced to on-prem APIM
 4. Both gateway and APIM have the updated version
 
@@ -503,7 +551,32 @@ curl -X PUT http://localhost:9090/rest-apis/PetStoreAPI \
 
 ```bash
 curl -X GET http://localhost:9090/rest-apis/PetStoreAPI \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" | jq '{cpSyncStatus, policies}'
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" | jq '{state: .status.state, policies: .spec.policies}'
+```
+
+**Response:**
+```json
+{
+  "state": "deployed",
+  "policies": [
+    {
+      "name": "rate-limit",
+      "version": "v1",
+      "params": {
+        "limit": 1000,
+        "window": 3600
+      }
+    },
+    {
+      "name": "api-key-auth",
+      "version": "v1",
+      "params": {
+        "key": "X-API-Key",
+        "in": "header"
+      }
+    }
+  ]
+}
 ```
 
 ---
@@ -512,7 +585,7 @@ curl -X GET http://localhost:9090/rest-apis/PetStoreAPI \
 
 ### Undeploy from Gateway and APIM
 
-To undeploy an API, set `desiredState: undeployed` and update:
+To undeploy an API, set `deploymentState: undeployed` and update:
 
 ```json
 {
@@ -525,7 +598,7 @@ To undeploy an API, set `desiredState: undeployed` and update:
     "displayName": "PetStore API",
     "version": "v1.0",
     "context": "/petstore",
-    "desiredState": "undeployed",
+    "deploymentState": "undeployed",
     "upstream": {
       "main": {
         "url": "https://petstore.example.com"
@@ -554,25 +627,24 @@ curl -X PUT http://localhost:9090/rest-apis/PetStoreAPI \
 
 1. Gateway stops routing to this API
 2. If on-prem APIM is connected: API is undeployed from APIM
-3. Sync status becomes `success` (undeploy complete)
+3. Internal APIM sync tracking is updated after undeploy sync completes
 
 **Verify Undeploy:**
 
 ```bash
 # Check API state
 curl -X GET http://localhost:9090/rest-apis/PetStoreAPI \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" | jq '{desiredState, cpSyncStatus}'
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" | jq '{state: .status.state}'
 ```
 
 **Response:**
 ```json
 {
-  "desiredState": "undeployed",
-  "cpSyncStatus": "success"
+  "state": "undeployed"
 }
 ```
 
-**Note:** The API record is still in the database for historical tracking. To remove it entirely, contact support or use the DELETE endpoint (if available).
+**Note:** The API record is still in the database for historical tracking. To verify APIM undeploy sync, check the gateway-controller logs or confirm the API state in on-prem APIM.
 
 ---
 
@@ -626,6 +698,8 @@ curl -X DELETE http://localhost:9090/rest-apis/PetStoreAPI/api-keys/key-uuid-123
 
 ### Understand Sync States
 
+Bottom-up APIM sync state is tracked internally by the gateway controller. The public `GET /rest-apis/{id}` response exposes gateway deployment state through `status.state`, not the internal APIM sync state.
+
 | Status | Meaning | Action |
 |--------|---------|--------|
 | `pending` | Waiting to sync to APIM | Wait for automatic sync |
@@ -637,7 +711,7 @@ curl -X DELETE http://localhost:9090/rest-apis/PetStoreAPI/api-keys/key-uuid-123
 If sync fails, the gateway automatically retries up to 3 times. To manually trigger a retry:
 
 1. Update the API with the same definition
-2. Gateway will set status to `pending` and retry sync
+2. Gateway will set internal APIM sync tracking to `pending` and retry sync
 
 ```bash
 curl -X PUT http://localhost:9090/rest-apis/PetStoreAPI \
@@ -652,7 +726,7 @@ curl -X PUT http://localhost:9090/rest-apis/PetStoreAPI \
 
 ### Issue: API Not Syncing to APIM
 
-**Symptom:** `cpSyncStatus` remains `pending` or shows `failed`
+**Symptom:** The API is deployed on the gateway, but it does not appear in on-prem APIM. Gateway-controller logs show APIM sync as pending or failed.
 
 **Possible Causes & Solutions:**
 
