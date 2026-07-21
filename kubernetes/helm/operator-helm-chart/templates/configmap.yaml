@@ -18,10 +18,21 @@ data:
       helm_values_file_path: {{ .Values.gateway.helm.valuesFilePath | quote }}
       insecure_registry: {{ .Values.gateway.helm.insecureRegistry | default false }}
       plain_http: {{ .Values.gateway.helm.plainHTTP | default false }}
+{{- with .Values.gateway.helm.registryCredentialsSecret }}
+{{- if .name }}
+      registry_credentials_secret:
+        name: {{ .name | quote }}
+        namespace: {{ .namespace | default $.Release.Namespace | quote }}
+        username_key: {{ .usernameKey | default "username" | quote }}
+        password_key: {{ .passwordKey | default "password" | quote }}
+{{- end }}
+{{- end }}
     reconciliation:
-      enabled: {{ .Values.reconciliation.enabled | default true }}
-      interval: {{ .Values.reconciliation.interval | default 300 }}
+      sync_period: {{ .Values.reconciliation.syncPeriod | default "10m" | quote }}
       max_concurrent_reconciles: {{ .Values.reconciliation.maxConcurrentReconciles | default 1 }}
+      max_retry_attempts: {{ .Values.reconciliation.maxRetryAttempts | default 10 }}
+      initial_backoff: {{ .Values.reconciliation.initialBackoff | default "1s" | quote }}
+      max_backoff_duration: {{ .Values.reconciliation.maxBackoffDuration | default "60s" | quote }}
     logging:
       level: {{ .Values.logging.level | quote }}
       format: {{ .Values.logging.format | quote }}
