@@ -21,6 +21,7 @@ const apiDao = require('../dao/apiDao');
 const viewDao = require('../dao/viewDao');
 const apiWorkflowService = require('../services/apiWorkflowService');
 const logger = require('../config/logger');
+const util = require('../utils/util');
 const { loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, rewriteViewStyles, isAiDisabledForPortal } = require('../utils/util');
 const constants = require('../utils/constants');
 const { config } = require('../config/configLoader');

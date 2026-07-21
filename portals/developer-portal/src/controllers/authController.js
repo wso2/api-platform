@@ -26,7 +26,7 @@ const constants = require('../utils/constants');
 const util = require('../utils/util');
 const orgDao = require('../dao/organizationDao');
 const { validationResult } = require('express-validator');
-const { extractPlatformJwtClaims } = require('../utils/platformJwt');
+const { decodePlatformJwtClaims } = require('../utils/platformJwt');
 
 
 
@@ -269,7 +269,7 @@ const handleLocalLogin = async (req, res) => {
     }
 
     // Decode JWT claims (token is already verified by the platform API)
-    const claims = await extractPlatformJwtClaims(platformToken, null);
+    const claims = decodePlatformJwtClaims(platformToken);
     if (!claims) {
         logger.error('Failed to decode platform API token');
         return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);

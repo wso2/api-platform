@@ -17,34 +17,47 @@
  */
 const { jwtVerify, decodeJwt } = require('jose');
 
+function toClaims(payload) {
+    return {
+        ...payload,
+        scopes: String(payload.scope || '').split(' ').filter(Boolean),
+    };
+}
+
 /**
- * Decode and optionally verify a Platform API JWT.
+ * Verify a Platform API JWT with the shared HS256 secret.
  *
- * When jwtSecret is provided the token is verified with HS256 (prevents
- * tampered tokens from being accepted). Without a secret the payload is
- * base64-decoded without signature verification — suitable for tokens that
- * were just received directly from the Platform API over a trusted HTTPS
- * connection.
+ * The Platform API signs its tokens with this shared symmetric secret, so the
+ * algorithm is pinned to HS256 (never `none` or any other algorithm). Returns
+ * the payload spread together with a parsed `scopes` array, or null if
+ * verification fails.
  *
- * Returns the full JWT payload spread together with a parsed `scopes` array,
- * or null if decoding / verification fails.
+ * Use this to authenticate a request-supplied token.
  */
-async function extractPlatformJwtClaims(token, jwtSecret) {
+async function verifyPlatformJwtClaims(token, secret) {
     try {
-        let payload;
-        if (jwtSecret) {
-            const key = new TextEncoder().encode(jwtSecret);
-            ({ payload } = await jwtVerify(token, key, { algorithms: ['HS256'] }));
-        } else {
-            payload = decodeJwt(token);
-        }
-        return {
-            ...payload,
-            scopes: String(payload.scope || '').split(' ').filter(Boolean),
-        };
+        const key = new TextEncoder().encode(secret);
+        const { payload } = await jwtVerify(token, key, { algorithms: ['HS256'] });
+        return toClaims(payload);
     } catch (_) {
         return null;
     }
 }
 
-module.exports = { extractPlatformJwtClaims };
+/**
+ * Decode a Platform API JWT WITHOUT verifying its signature.
+ *
+ * Returns the payload spread together with a parsed `scopes` array, or null on
+ * malformed input. Use only for a token whose authenticity is already
+ * established — e.g. one just received directly from the Platform API over a
+ * trusted HTTPS connection — never to authenticate a request-supplied token.
+ */
+function decodePlatformJwtClaims(token) {
+    try {
+        return toClaims(decodeJwt(token));
+    } catch (_) {
+        return null;
+    }
+}
+
+module.exports = { verifyPlatformJwtClaims, decodePlatformJwtClaims };

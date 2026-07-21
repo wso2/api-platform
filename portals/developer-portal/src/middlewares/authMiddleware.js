@@ -39,7 +39,7 @@ const { jwtVerify, createRemoteJWKSet } = require('jose');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
-const { extractPlatformJwtClaims } = require('../utils/platformJwt');
+const { verifyPlatformJwtClaims, decodePlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
 const orgDao = require('../dao/organizationDao');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
@@ -160,11 +160,13 @@ async function verifyJwksWithRefresh(token, jwksURL, req) {
 async function verifyBearerToken(token, req) {
     const idp = resolveOrgIdp();
     if (!idp || !idp.clientId) {
-        // Local auth mode: verify Platform API JWT with shared secret when configured.
+        // Local auth mode: verify the Platform API JWT with the shared secret.
+        // Fail closed if no secret is configured — never accept an unverified token.
         const jwtSecret = config.platformApi?.jwtSecret;
-        const claims = await extractPlatformJwtClaims(token, jwtSecret || null);
-        if (jwtSecret && !claims) return { valid: false, scopes: '' };
-        return { valid: true, scopes: claims?.scopes?.join(' ') ?? '' };
+        if (!jwtSecret) return { valid: false, scopes: '' };
+        const claims = await verifyPlatformJwtClaims(token, jwtSecret);
+        if (!claims) return { valid: false, scopes: '' };
+        return { valid: true, scopes: claims.scopes?.join(' ') ?? '' };
     }
     if (idp.certificate) {
         return verifyWithCertificate(token, idp.certificate);
@@ -233,7 +235,7 @@ async function authResolver(req, res, next) {
         if (req.isAuthenticated && req.isAuthenticated() &&
             req.user?.isLocalAuth && !config.idp?.clientId) {
             const platformToken = req.user[constants.ACCESS_TOKEN];
-            const claims = platformToken ? await extractPlatformJwtClaims(platformToken, null) : null;
+            const claims = platformToken ? decodePlatformJwtClaims(platformToken) : null;
             const orgHandle = req.user[constants.ROLES.ORGANIZATION_CLAIM];
             const orgErr = await resolveOrgFromClaim(req, orgHandle);
             if (orgErr) return next(orgErr);

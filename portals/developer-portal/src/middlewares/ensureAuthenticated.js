@@ -25,7 +25,7 @@ const util = require('../utils/util');
 const { CustomError } = require('../utils/errors/customErrors');
 const { safeDecodeJwt } = require('../utils/jwtDecode');
 const logger = require('../config/logger');
-const { extractPlatformJwtClaims } = require('../utils/platformJwt');
+const { decodePlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate } = require('../utils/tokenUtil');
 const { resolveUserUuid } = require('./authMiddleware');
 
@@ -56,7 +56,7 @@ function enforceSecurity(scope) {
             if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.idp?.clientId) {
                 const platformToken = req.user[constants.ACCESS_TOKEN];
                 if (!platformToken) return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
-                const tokenScopes = (await extractPlatformJwtClaims(platformToken, null))?.scopes ?? [];
+                const tokenScopes = decodePlatformJwtClaims(platformToken)?.scopes ?? [];
                 if (!scope || tokenScopes.includes(scope)) return next();
                 return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
             }
