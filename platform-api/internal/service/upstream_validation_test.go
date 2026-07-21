@@ -120,6 +120,16 @@ func TestValidateUpstreamRefs(t *testing.T) {
 			t.Fatalf("expected upstream.main missing target error, got %v", err)
 		}
 	})
+	t.Run("sandbox-only (empty main, valid sandbox) rejected", func(t *testing.T) {
+		// A valid sandbox does not excuse an empty main: the gateway validates main
+		// unconditionally, so the platform rejects sandbox-only at create rather than at deploy.
+		sandboxURL := "http://sandbox:8080"
+		up := api.Upstream{Sandbox: &api.UpstreamDefinition{Url: &sandboxURL}}
+		err := s.validateUpstreamRefs(defs, up, nil)
+		if err == nil || !strings.Contains(err.Error(), "upstream.main") {
+			t.Fatalf("expected upstream.main missing target error for sandbox-only, got %v", err)
+		}
+	})
 	t.Run("API-level ref name contract enforced", func(t *testing.T) {
 		ref := "bad ref!"
 		up := api.Upstream{Main: api.UpstreamDefinition{Ref: &ref}}
