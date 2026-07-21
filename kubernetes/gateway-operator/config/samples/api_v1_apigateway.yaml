@@ -1,7 +1,7 @@
 ---
 # Example 1: Cluster-scoped APIGateway
 # This apigateway accepts APIs from ANY namespace
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: APIGateway
 metadata:
   name: cluster-gateway
@@ -349,7 +349,7 @@ data:
       controller:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-controller
-          tag: "1.0.0"
+          tag: "1.2.0-alpha2"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -484,7 +484,7 @@ data:
       gatewayRuntime:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-runtime
-          tag: "1.0.0"
+          tag: "1.2.0-alpha2"
           pullPolicy: Always
         imagePullSecrets: []
         service:

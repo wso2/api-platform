@@ -16,7 +16,7 @@ spec:
     singular: llmprovider
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - name: v1
     schema:
       openAPIV3Schema:
         description: LlmProvider is the Schema for the llmproviders API.
@@ -406,5 +406,397 @@ spec:
         type: object
     served: true
     storage: true
+    subresources:
+      status: {}
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: LlmProvider is the Schema for the llmproviders API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: LLMProviderConfigData mirrors the management-API LLMProviderConfigData.
+            properties:
+              accessControl:
+                description: AccessControl configures path-level access control.
+                properties:
+                  exceptions:
+                    description: Exceptions are paths that override the default mode.
+                    items:
+                      description: RouteException defines a path/method exception
+                        used by LLM access control.
+                      properties:
+                        methods:
+                          description: Methods is the list of HTTP methods covered
+                            by this exception.
+                          items:
+                            description: HTTPMethod names an allowed HTTP verb for
+                              LLM access-control and policy paths.
+                            enum:
+                            - GET
+                            - POST
+                            - PUT
+                            - PATCH
+                            - DELETE
+                            - HEAD
+                            - OPTIONS
+                            - '*'
+                            type: string
+                          type: array
+                        path:
+                          description: Path is the exception path pattern.
+                          type: string
+                      required:
+                      - methods
+                      - path
+                      type: object
+                    type: array
+                  mode:
+                    description: Mode selects the default access policy.
+                    enum:
+                    - allow_all
+                    - deny_all
+                    type: string
+                required:
+                - mode
+                type: object
+              context:
+                description: Context is the base path for all routes (must start with
+                  /).
+                pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$
+                type: string
+              deploymentState:
+                description: DeploymentState toggles whether the provider is router-attached.
+                enum:
+                - deployed
+                - undeployed
+                type: string
+              displayName:
+                description: DisplayName is a human-readable LLM provider name.
+                type: string
+              policies:
+                description: Policies is the list of policies applied to this LLM
+                  provider.
+                items:
+                  description: LLMPolicy describes a single LLM-level policy attachment.
+                  properties:
+                    name:
+                      description: Name is the name of the policy.
+                      type: string
+                    paths:
+                      description: Paths lists path/method/params triples for this
+                        policy.
+                      items:
+                        description: |-
+                          LLMPolicyPath defines a path/methods combination together with policy
+                          parameters; mirrors the management-API LLMPolicyPath.
+                        properties:
+                          methods:
+                            description: Methods is the list of HTTP methods.
+                            items:
+                              description: HTTPMethod names an allowed HTTP verb for
+                                LLM access-control and policy paths.
+                              enum:
+                              - GET
+                              - POST
+                              - PUT
+                              - PATCH
+                              - DELETE
+                              - HEAD
+                              - OPTIONS
+                              - '*'
+                              type: string
+                            type: array
+                          params:
+                            description: Params is a free-form parameter object specific
+                              to the policy.
+                            x-kubernetes-preserve-unknown-fields: true
+                          path:
+                            description: Path is the route path pattern.
+                            type: string
+                        required:
+                        - methods
+                        - path
+                        type: object
+                      type: array
+                    version:
+                      description: Version is the policy version (e.g. v1).
+                      pattern: ^v\d+$
+                      type: string
+                  required:
+                  - name
+                  - paths
+                  - version
+                  type: object
+                type: array
+              resilience:
+                description: |-
+                  Resilience configures API-level backend/route timeouts applied to all routes
+                  generated for this LLM provider. Supported at the API level only.
+                properties:
+                  idleTimeout:
+                    description: IdleTimeout Per-route stream idle timeout. "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                  timeout:
+                    description: Timeout Maximum time for the entire route (request
+                      to upstream response). "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                type: object
+              template:
+                description: Template is the LlmProviderTemplate name to apply.
+                type: string
+              upstream:
+                description: Upstream configures the LLM upstream.
+                properties:
+                  auth:
+                    description: Auth configures upstream credentials.
+                    properties:
+                      header:
+                        description: |-
+                          Header is the HTTP header to set on outbound requests when the auth
+                          type uses headers (e.g. api-key).
+                        type: string
+                      type:
+                        description: Type identifies the auth scheme. Only api-key
+                          is currently supported.
+                        enum:
+                        - api-key
+                        type: string
+                      value:
+                        description: |-
+                          Value sources the credential. Exactly one of value or valueFrom must
+                          be set.
+                        properties:
+                          value:
+                            description: |-
+                              Value is the inline plaintext value. Avoid for production use; prefer
+                              ValueFrom so the secret is stored in a Kubernetes Secret.
+                            type: string
+                          valueFrom:
+                            description: |-
+                              ValueFrom selects a key from a Kubernetes Secret in the same namespace
+                              as the owning CR.
+                            properties:
+                              key:
+                                description: The key of the secret to select from.  Must
+                                  be a valid secret key.
+                                type: string
+                              name:
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                              optional:
+                                description: Specify whether the Secret or its key
+                                  must be defined
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                            x-kubernetes-map-type: atomic
+                        type: object
+                        x-kubernetes-validations:
+                        - message: exactly one of value or valueFrom must be set
+                          rule: has(self.value) != has(self.valueFrom)
+                    required:
+                    - type
+                    - value
+                    type: object
+                  hostRewrite:
+                    description: HostRewrite controls how the Host header is handled
+                      when routing.
+                    enum:
+                    - auto
+                    - manual
+                    type: string
+                  ref:
+                    description: Ref selects a predefined upstream definition by name.
+                    type: string
+                  url:
+                    description: Url is the direct backend URL.
+                    type: string
+                type: object
+              upstreamDefinitions:
+                description: |-
+                  UpstreamDefinitions is the list of reusable upstream definitions (with optional
+                  connect timeout) that upstream.ref can reference.
+                items:
+                  description: |-
+                    UpstreamDefinition is a reusable upstream configuration with an optional connect timeout and
+                    one or more weighted load-balancing targets. Referenced from an upstream via its `ref` field
+                    and by the dynamic-endpoint policy. Shared by RestApi, LLM Provider, and MCP; mirrors the
+                    management-API UpstreamDefinition schema.
+                  properties:
+                    basePath:
+                      description: |-
+                        BasePath Base path prefix prepended to all requests routed through this upstream (e.g. /api/v2).
+                        Must start with "/" and must not end with "/". Omit for root ("/").
+                      pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$
+                      type: string
+                    name:
+                      description: |-
+                        Name Unique identifier for this upstream definition (referenced by upstream.ref or the
+                        dynamic-endpoint policy).
+                      maxLength: 100
+                      minLength: 1
+                      pattern: ^[a-zA-Z0-9\-_]+$
+                      type: string
+                    timeout:
+                      description: Timeout Optional timeout configuration for this
+                        upstream (connect timeout).
+                      properties:
+                        connect:
+                          description: Connect Connection-establishment timeout duration
+                            (e.g. "5s", "500ms"). "0s" disables.
+                          pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                          type: string
+                      type: object
+                    upstreams:
+                      description: Upstreams List of backend targets with optional
+                        weights for load balancing.
+                      items:
+                        description: WeightedUpstream is a single backend target within
+                          an UpstreamDefinition.
+                        properties:
+                          url:
+                            description: Url Backend URL (host and port; no path)
+                            type: string
+                          weight:
+                            description: |-
+                              Weight Relative weight for load balancing across multiple upstream targets. Reserved for
+                              future multi-target load balancing; not applied yet (only the first target is currently used).
+                            maximum: 100
+                            minimum: 0
+                            type: integer
+                        required:
+                        - url
+                        type: object
+                      minItems: 1
+                      type: array
+                  required:
+                  - name
+                  - upstreams
+                  type: object
+                type: array
+              version:
+                description: Version is the semantic version of the LLM provider.
+                pattern: ^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$
+                type: string
+              vhost:
+                description: Vhost is the virtual host for routing.
+                type: string
+            required:
+            - accessControl
+            - displayName
+            - template
+            - upstream
+            - version
+            type: object
+          status:
+            description: |-
+              ResourceStatus carries the controller-managed lifecycle fields shared by
+              the new management-API CRDs.
+
+              For UUID-keyed kinds (Subscription, SubscriptionPlan, Certificate) the
+              gateway-controller assigns Id on first deploy; controllers persist it and
+              use it to address the resource for subsequent update/delete calls.
+            properties:
+              conditions:
+                description: |-
+                  Conditions represent the latest available observations of the
+                  resource's state. The standard types are Accepted and Programmed.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              id:
+                description: |-
+                  Id is the gateway-issued identifier for UUID-keyed resources. When
+                  set the controller addresses the resource via PUT/DELETE /<plural>/{id}.
+                type: string
+              lastUpdateTime:
+                description: LastUpdateTime is the last time the status was updated.
+                format: date-time
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: false
     subresources:
       status: {}

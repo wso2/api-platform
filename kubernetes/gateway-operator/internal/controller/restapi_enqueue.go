@@ -20,7 +20,7 @@ import (
 	"context"
 	"encoding/json"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"

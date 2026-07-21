@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 )
 
 // ErrNotConfigured indicates that neither value nor valueFrom is set.

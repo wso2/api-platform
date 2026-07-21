@@ -23,7 +23,7 @@ Operator Details:
 {{- end }}
 
 Custom Resource Definitions:
-  - From chart crds/: APIGateway, RestApi (gateway.api-platform.wso2.com/v1alpha1)
+  - Installed from the chart crds/ directory (fresh install only): APIGateway, RestApi and related management CRDs (group gateway.api-platform.wso2.com, served v1alpha1 + v1)
 {{- if .Values.gatewayApi.installStandardCRDs }}
   - Gateway API standard v1.3.0 (GatewayClass, Gateway, HTTPRoute, GRPCRoute, ReferenceGrant) — included because gatewayApi.installStandardCRDs is true
 {{- else }}
@@ -34,11 +34,8 @@ Gateway Configuration:
   - Control Plane: {{ .Values.gateway.controlPlaneHost }}
   - Gateway Chart: {{ .Values.gateway.helm.chartName }}
   - Chart Version: {{ .Values.gateway.helm.chartVersion }}
-{{- if .Values.reconciliation.enabled }}
-  - Reconciliation Enabled: Yes (Interval: {{ .Values.reconciliation.interval }}s)
-{{- else }}
-  - Reconciliation Enabled: No
-{{- end }}
+  - Reconciliation Sync Period: {{ .Values.reconciliation.syncPeriod }}
+  - Max Concurrent Reconciles: {{ .Values.reconciliation.maxConcurrentReconciles }}
 
 Next Steps:
 
@@ -49,31 +46,43 @@ Next Steps:
 2. Check operator logs:
    $ kubectl logs -f deployment/{{ include "gateway-operator.fullname" . }} -n {{ .Release.Namespace }}
 
-3. Create a GatewayConfiguration to deploy a gateway instance:
+3. Create an APIGateway to deploy a gateway instance:
    $ kubectl apply -f - <<EOF
-   apiVersion: api.api-platform.wso2.com/v1alpha1
-   kind: GatewayConfiguration
+   apiVersion: gateway.api-platform.wso2.com/v1
+   kind: APIGateway
    metadata:
      name: my-gateway
      namespace: default
    spec:
-     # Your gateway configuration here
+     apiSelector:
+       scope: Cluster
+     storage:
+       type: sqlite
+     # configRef: { name: my-gateway-values }  # ConfigMap with gateway Helm values
    EOF
 
-4. Create an APIConfiguration to deploy APIs:
+4. Create a RestApi to deploy an API:
    $ kubectl apply -f - <<EOF
-   apiVersion: api.api-platform.wso2.com/v1alpha1
-   kind: APIConfiguration
+   apiVersion: gateway.api-platform.wso2.com/v1
+   kind: RestApi
    metadata:
      name: my-api
      namespace: default
    spec:
-     # Your API configuration here
+     displayName: my-api
+     version: v1.0
+     context: /my-api
+     upstream:
+       main:
+         url: https://httpbin.org/anything
+     operations:
+       - method: GET
+         path: /
    EOF
 
 5. Monitor the resources:
-   $ kubectl get gatewayconfiguration -A
-   $ kubectl get apiconfiguration -A
+   $ kubectl get apigateways -A
+   $ kubectl get restapis -A
 
 For more information:
   - Chart Documentation: See README.md in the chart repository

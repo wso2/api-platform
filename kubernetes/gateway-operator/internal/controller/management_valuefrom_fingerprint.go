@@ -23,7 +23,7 @@ import (
 	"sort"
 	"strings"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

@@ -26,7 +26,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 )

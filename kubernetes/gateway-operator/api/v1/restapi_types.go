@@ -1,0 +1,402 @@
+/*
+Copyright 2025.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package v1
+
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+)
+
+// RestApiStatus defines the observed state of RestApi
+type RestApiStatus struct {
+	// Conditions represent the latest available observations of the API's state
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// LastUpdateTime is the last time the status was updated
+	// +optional
+	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+//+kubebuilder:storageversion
+//+kubebuilder:subresource:status
+
+// RestApi is the Schema for the restapis API
+type RestApi struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   APIConfigData `json:"spec,omitempty"`
+	Status RestApiStatus `json:"status,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+
+// RestApiList contains a list of RestApi
+type RestApiList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []RestApi `json:"items"`
+}
+
+// APIConfigData defines model for APIConfigData.
+type APIConfigData struct {
+	// Context Base path for all API routes (must start with /, no trailing slash; "/" denotes the root context)
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^/([a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/])?$`
+	Context string `json:"context"`
+
+	// DisplayName Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9\s\-_.]+$`
+	DisplayName string `json:"displayName" yaml:"displayName"`
+
+	// Operations List of HTTP operations/routes
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	Operations []Operation `json:"operations"`
+
+	// Policies List of API-level policies applied to all operations unless overridden
+	// +optional
+	Policies []Policy `json:"policies,omitempty"`
+
+	// Resilience API-level backend/route timeout configuration applied to all operations
+	// unless overridden at the operation level
+	// +optional
+	Resilience *Resilience `json:"resilience,omitempty"`
+
+	// UpstreamDefinitions is the list of reusable upstream definitions (with optional connect
+	// timeout and weighted load-balancing targets) that upstream.ref and the dynamic-endpoint
+	// policy can reference.
+	// +optional
+	UpstreamDefinitions []UpstreamDefinition `json:"upstreamDefinitions,omitempty"`
+
+	// Upstream API-level upstream configuration
+	// +kubebuilder:validation:Required
+	Upstream UpstreamConfig `json:"upstream"`
+
+	// Version Semantic version of the API
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`
+	Version string `json:"version"`
+
+	// Vhosts Custom virtual hosts/domains for the API
+	// +optional
+	Vhosts *VhostConfig `json:"vhosts,omitempty"`
+}
+
+// UpstreamConfig defines the upstream backend configuration for the API
+type UpstreamConfig struct {
+	// Main Upstream backend configuration for production traffic
+	// +kubebuilder:validation:Required
+	Main Upstream `json:"main"`
+
+	// Sandbox Upstream backend configuration for sandbox/testing traffic
+	// +optional
+	Sandbox *Upstream `json:"sandbox,omitempty"`
+}
+
+// VhostConfig defines custom virtual hosts/domains for the API
+type VhostConfig struct {
+	// Main Custom virtual host(s)/domain(s) for production traffic. One or more hostnames separated
+	// by ";" — each serves the main upstream (e.g. when an HTTPRoute attaches to multiple listeners
+	// with distinct hostnames). The first entry is the primary vhost.
+	// +kubebuilder:validation:Required
+	Main string `json:"main"`
+
+	// Sandbox Custom virtual host/domain for sandbox traffic
+	// +optional
+	Sandbox *string `json:"sandbox,omitempty"`
+}
+
+// Operation defines model for Operation.
+// An operation is matched either by the simple top-level method+path fields or by the richer
+// Match block (method + path + headers). When Match is set it is authoritative and the
+// top-level Method/Path are ignored. Exactly one form must be provided.
+// +kubebuilder:validation:XValidation:rule="(has(self.method) && has(self.path)) || has(self.match)",message="operation must set both method and path, or set match"
+type Operation struct {
+	// Method HTTP method (simple form; ignored when Match is set).
+	// +optional
+	// +kubebuilder:validation:Enum=GET;POST;PUT;PATCH;DELETE;HEAD;OPTIONS
+	Method OperationMethod `json:"method,omitempty"`
+
+	// Path Route path with optional {param} placeholders (simple form; ignored when Match is set).
+	// +optional
+	// +kubebuilder:validation:Pattern=`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/{}\[\]]*$`
+	Path string `json:"path,omitempty"`
+
+	// Match Request matching criteria for the operation. Extensible with query params, cookies, etc.
+	// +optional
+	Match *OperationMatch `json:"match,omitempty"`
+
+	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
+	// +optional
+	Policies []Policy `json:"policies,omitempty"`
+
+	// Resilience Operation-level backend/route timeout configuration (overrides API-level)
+	// +optional
+	Resilience *Resilience `json:"resilience,omitempty"`
+}
+
+// OperationMatch is the request matching criteria for an operation.
+type OperationMatch struct {
+	// Method HTTP method
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=GET;POST;PUT;PATCH;DELETE;HEAD;OPTIONS
+	Method OperationMethod `json:"method"`
+
+	// Path Path match criteria
+	// +kubebuilder:validation:Required
+	Path OperationPathMatch `json:"path"`
+
+	// Headers ANDed header matchers applied before routing to this operation.
+	// +optional
+	Headers []OperationHeaderMatch `json:"headers,omitempty"`
+}
+
+// OperationPathMatch controls path matching for an operation.
+type OperationPathMatch struct {
+	// Value Route path with optional {param} placeholders
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/{}\[\]]*$`
+	Value string `json:"value"`
+
+	// Type How the path is matched (Exact or PathPrefix). Defaults to Exact when omitted.
+	// +optional
+	// +kubebuilder:validation:Enum=Exact;PathPrefix
+	Type OperationPathMatchType `json:"type,omitempty"`
+}
+
+// OperationPathMatchType controls path matching semantics.
+type OperationPathMatchType string
+
+const (
+	OperationPathMatchExact      OperationPathMatchType = "Exact"
+	OperationPathMatchPathPrefix OperationPathMatchType = "PathPrefix"
+)
+
+// OperationHeaderMatch mirrors Gateway API HTTPHeaderMatch for Envoy route selection.
+type OperationHeaderMatch struct {
+	// Name Header name (case-insensitive)
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Value Header value to match
+	// +kubebuilder:validation:Required
+	Value string `json:"value"`
+
+	// Type Match type (Exact or RegularExpression)
+	// +optional
+	// +kubebuilder:validation:Enum=Exact;RegularExpression
+	Type string `json:"type,omitempty"`
+}
+
+// Resilience defines backend/route timeout configuration (maps to Envoy RouteAction
+// timeouts). Settable at the API level (applies to all routes) and/or the operation level
+// (overrides the API level). "0s" disables a timeout; unset falls back to the gateway's
+// global route timeout defaults.
+type Resilience struct {
+	// Timeout Maximum time for the entire route (request to upstream response). "0s" disables.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^\d+(\.\d+)?(ms|s|m|h)$`
+	Timeout *string `json:"timeout,omitempty"`
+
+	// IdleTimeout Per-route stream idle timeout. "0s" disables.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^\d+(\.\d+)?(ms|s|m|h)$`
+	IdleTimeout *string `json:"idleTimeout,omitempty"`
+}
+
+// OperationMethod HTTP method
+type OperationMethod string
+
+const (
+	// OperationMethodGET represents HTTP GET method
+	OperationMethodGET OperationMethod = "GET"
+	// OperationMethodPOST represents HTTP POST method
+	OperationMethodPOST OperationMethod = "POST"
+	// OperationMethodPUT represents HTTP PUT method
+	OperationMethodPUT OperationMethod = "PUT"
+	// OperationMethodPATCH represents HTTP PATCH method
+	OperationMethodPATCH OperationMethod = "PATCH"
+	// OperationMethodDELETE represents HTTP DELETE method
+	OperationMethodDELETE OperationMethod = "DELETE"
+	// OperationMethodHEAD represents HTTP HEAD method
+	OperationMethodHEAD OperationMethod = "HEAD"
+	// OperationMethodOPTIONS represents HTTP OPTIONS method
+	OperationMethodOPTIONS OperationMethod = "OPTIONS"
+)
+
+// Policy defines a policy attachment as embedded in RestApi or APIConfigData.
+type Policy struct {
+	// ExecutionCondition Expression controlling conditional execution of the policy
+	// +optional
+	ExecutionCondition *string `json:"executionCondition,omitempty"`
+
+	// Name Name of the policy
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Params Arbitrary parameters for the policy (free-form key/value structure)
+	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
+	Params *runtime.RawExtension `json:"params,omitempty"`
+
+	// Version Semantic version of the policy (for example, v1)
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^v\d+$`
+	Version string `json:"version"`
+}
+
+// Upstream defines model for Upstream. Exactly one of url or ref must be set: a direct backend URL,
+// or a reference to a predefined upstreamDefinition (which can carry a per-upstream connect timeout).
+// +kubebuilder:validation:XValidation:rule="has(self.url) != has(self.ref)",message="exactly one of url or ref must be set"
+type Upstream struct {
+	// Url Direct backend service URL (may include path prefix like /api/v2)
+	// +optional
+	// +kubebuilder:validation:Pattern=`^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$`
+	Url *string `json:"url,omitempty"`
+
+	// Ref Name of a predefined upstreamDefinition to route through.
+	// +optional
+	Ref *string `json:"ref,omitempty"`
+
+	// HostRewrite controls how the Host header is handled when routing to the upstream.
+	// "auto" lets Envoy rewrite the Host header to the upstream cluster host; "manual"
+	// disables automatic rewriting so the incoming Host header is preserved. When unset,
+	// the gateway-controller defaults to "auto".
+	// +optional
+	// +kubebuilder:validation:Enum=auto;manual
+	HostRewrite *UpstreamHostRewrite `json:"hostRewrite,omitempty"`
+}
+
+// UpstreamHostRewrite controls Host header handling toward the upstream.
+type UpstreamHostRewrite string
+
+const (
+	// UpstreamHostRewriteAuto lets Envoy rewrite the Host header to the upstream cluster host.
+	UpstreamHostRewriteAuto UpstreamHostRewrite = "auto"
+	// UpstreamHostRewriteManual disables automatic rewriting; the incoming Host header is preserved.
+	UpstreamHostRewriteManual UpstreamHostRewrite = "manual"
+)
+
+// UpstreamDefinition is a reusable upstream configuration with an optional connect timeout and
+// one or more weighted load-balancing targets. Referenced from an upstream via its `ref` field
+// and by the dynamic-endpoint policy. Shared by RestApi, LLM Provider, and MCP; mirrors the
+// management-API UpstreamDefinition schema.
+type UpstreamDefinition struct {
+	// Name Unique identifier for this upstream definition (referenced by upstream.ref or the
+	// dynamic-endpoint policy).
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9\-_]+$`
+	Name string `json:"name"`
+
+	// BasePath Base path prefix prepended to all requests routed through this upstream (e.g. /api/v2).
+	// Must start with "/" and must not end with "/". Omit for root ("/").
+	// +optional
+	// +kubebuilder:validation:Pattern=`^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$`
+	BasePath *string `json:"basePath,omitempty"`
+
+	// Timeout Optional timeout configuration for this upstream (connect timeout).
+	// +optional
+	Timeout *UpstreamTimeout `json:"timeout,omitempty"`
+
+	// Upstreams List of backend targets with optional weights for load balancing.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	Upstreams []WeightedUpstream `json:"upstreams"`
+}
+
+// UpstreamTimeout carries the per-upstream timeout configuration. Only the connect timeout is
+// supported at the upstream-definition level.
+type UpstreamTimeout struct {
+	// Connect Connection-establishment timeout duration (e.g. "5s", "500ms"). "0s" disables.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^\d+(\.\d+)?(ms|s|m|h)$`
+	Connect *string `json:"connect,omitempty"`
+}
+
+// WeightedUpstream is a single backend target within an UpstreamDefinition.
+type WeightedUpstream struct {
+	// Url Backend URL (host and port; no path)
+	// +kubebuilder:validation:Required
+	Url string `json:"url"`
+
+	// Weight Relative weight for load balancing across multiple upstream targets. Reserved for
+	// future multi-target load balancing; not applied yet (only the first target is currently used).
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=100
+	Weight *int `json:"weight,omitempty"`
+}
+
+// Condition Types for RestApi
+const (
+	// APIConditionAccepted indicates the CR passed validation and is accepted for processing
+	APIConditionAccepted = "Accepted"
+	// APIConditionProgrammed indicates the API is successfully deployed/programmed to the gateway
+	APIConditionProgrammed = "Programmed"
+	// APIConditionReady is the canonical Ready condition type for RestApi (retained for compatibility)
+	APIConditionReady = "Ready"
+)
+
+// Accepted Condition Reasons
+const (
+	// APIAcceptedReasonAccepted indicates the CR passed validation
+	APIAcceptedReasonAccepted = "Accepted"
+	// APIAcceptedReasonInvalidConfiguration indicates the CR failed validation
+	APIAcceptedReasonInvalidConfiguration = "InvalidConfiguration"
+	// APIAcceptedReasonPending indicates validation is pending
+	APIAcceptedReasonPending = "Pending"
+)
+
+// Programmed Condition Reasons
+const (
+	// APIProgrammedReasonProgrammed indicates successful deployment to gateway
+	APIProgrammedReasonProgrammed = "Programmed"
+	// APIProgrammedReasonPending indicates deployment is pending
+	APIProgrammedReasonPending = "Pending"
+	// APIProgrammedReasonInvalid indicates configuration is invalid for gateway
+	APIProgrammedReasonInvalid = "Invalid"
+	// APIProgrammedReasonGatewayNotReady indicates gateway is unavailable
+	APIProgrammedReasonGatewayNotReady = "GatewayNotReady"
+	// APIProgrammedReasonDeploymentFailed indicates deployment failed (non-retryable)
+	APIProgrammedReasonDeploymentFailed = "DeploymentFailed"
+	// APIProgrammedReasonRetrying indicates deployment failed and is being retried
+	APIProgrammedReasonRetrying = "Retrying"
+)
+
+// APIPhase represents the lifecycle phase of an RestApi
+// +kubebuilder:validation:Enum=Pending;Deployed;Failed
+type APIPhase string
+
+const (
+	// APIPhasePending indicates the controller is waiting to deploy the API
+	APIPhasePending APIPhase = "Pending"
+	// APIPhaseDeployed indicates the API has been deployed to all target gateways
+	APIPhaseDeployed APIPhase = "Deployed"
+	// APIPhaseFailed indicates the controller failed to deploy the API
+	APIPhaseFailed APIPhase = "Failed"
+)
+
+func init() {
+	SchemeBuilder.Register(&RestApi{}, &RestApiList{})
+}
