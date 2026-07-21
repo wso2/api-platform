@@ -50,7 +50,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(fmt.Sprintf("integration harness: create temp config: %v", err))
 	}
-	if _, err := fmt.Fprintf(f, "[platform_api.security]\nencryption_key = %q\n\n[platform_api.auth]\nmode = \"external_token\"\n\n[platform_api.auth.jwt]\nsecret_key = %q\n", testKey, testKey); err != nil {
+	if _, err := fmt.Fprintf(f, "[platform_api.security]\nencryption_key = %q\n\n[platform_api.auth]\nmode = \"idp\"\n\n[platform_api.auth.idp]\njwks_url = \"https://example.invalid/jwks\"\nissuer = \"https://example.invalid\"\n", testKey); err != nil {
 		panic(fmt.Sprintf("integration harness: write temp config: %v", err))
 	}
 	_ = f.Close()
