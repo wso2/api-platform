@@ -3,4 +3,4 @@ name: gateway-operator
 description: Helm chart to install the Gateway Operator
 type: application
 version: 0.10.0
-appVersion: "0.8.0"
+appVersion: "0.10.0"
