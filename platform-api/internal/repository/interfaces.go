@@ -146,6 +146,7 @@ type DeploymentRepository interface {
 	GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
 	HasActiveDeployment(artifactUUID, orgUUID string) (bool, error)
 	GetLatestDeploymentTime(artifactUUID, orgUUID string) (*time.Time, error)
+	GetLatestDeploymentRevision(artifactUUID, gatewayUUID, orgUUID string) (string, error)
 
 	// Gateway deployment methods
 	GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)

@@ -90,6 +90,10 @@ type GatewayArtifactImporter interface {
 	Import(ctx *ImportContext) (*ImportResult, error)
 }
 
+// deploymentRevisionProperty is the key under which the gateway sends a stable per-deployment
+// revision string (its deployment time in RFC3339Nano) in the import request Properties bag.
+const deploymentRevisionProperty = "deploymentRevision"
+
 // ArtifactImportService resolves the correct importer for a pushed artifact and
 // runs the shared pre/post processing (gateway auth, project resolution,
 // deployment/status persistence).
@@ -357,6 +361,17 @@ func (s *ArtifactImportService) resolveAndImport(
 // writeDeployment records the immutable deployment artifact, upserts the current
 // deployment_status row, and ensures the artifact<->gateway association exists.
 func (s *ArtifactImportService) writeDeployment(ictx *ImportContext, artifactUUID string) error {
+	revision := utils.StringProperty(ictx.Properties, deploymentRevisionProperty)
+	if revision != "" {
+		latestRevision, err := s.deploymentRepo.GetLatestDeploymentRevision(artifactUUID, ictx.GatewayID, ictx.OrgID)
+		if err != nil {
+			return fmt.Errorf("failed to look up latest deployment revision: %w", err)
+		}
+		if latestRevision == revision {
+			return s.ensureGatewayAssociation(artifactUUID, ictx.GatewayID, ictx.OrgID)
+		}
+	}
+
 	content, err := yaml.Marshal(ictx.Configuration)
 	if err != nil {
 		return fmt.Errorf("failed to serialize deployment content: %w", err)
@@ -384,32 +399,33 @@ func (s *ArtifactImportService) writeDeployment(ictx *ImportContext, artifactUUI
 		Content:        content,
 		Status:         &status,
 		CreatedAt:      createdAt,
+		Metadata:       utils.RevisionMetadata(revision),
 	}
 	if err := s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit); err != nil {
 		return fmt.Errorf("failed to create deployment record: %w", err)
 	}
 
-	// Ensure the gateway association exists so the artifact is listed against the
-	// gateway in the control plane. association_mappings is generic across kinds.
-	assocs, err := s.apiRepo.GetAPIAssociations(artifactUUID, constants.AssociationTypeGateway, ictx.OrgID)
+	return s.ensureGatewayAssociation(artifactUUID, ictx.GatewayID, ictx.OrgID)
+}
+
+// ensureGatewayAssociation ensures the artifact<->gateway association exists so the artifact is
+// listed against the gateway in the control plane. association_mappings is generic across kinds.
+func (s *ArtifactImportService) ensureGatewayAssociation(artifactUUID, gatewayID, orgID string) error {
+	assocs, err := s.apiRepo.GetAPIAssociations(artifactUUID, constants.AssociationTypeGateway, orgID)
 	if err != nil {
 		return fmt.Errorf("failed to check artifact-gateway associations: %w", err)
 	}
-	associated := false
 	for _, a := range assocs {
-		if a.GatewayID == ictx.GatewayID {
-			associated = true
-			break
+		if a.GatewayID == gatewayID {
+			return nil
 		}
 	}
-	if !associated {
-		if err := s.apiRepo.CreateAPIAssociation(&model.APIAssociation{
-			ArtifactID:     artifactUUID,
-			OrganizationID: ictx.OrgID,
-			GatewayID:      ictx.GatewayID,
-		}); err != nil {
-			return fmt.Errorf("failed to create artifact-gateway association: %w", err)
-		}
+	if err := s.apiRepo.CreateAPIAssociation(&model.APIAssociation{
+		ArtifactID:     artifactUUID,
+		OrganizationID: orgID,
+		GatewayID:      gatewayID,
+	}); err != nil {
+		return fmt.Errorf("failed to create artifact-gateway association: %w", err)
 	}
 	return nil
 }

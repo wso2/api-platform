@@ -858,3 +858,143 @@ func TestArtifactImport_GatewayNotFound(t *testing.T) {
 		t.Fatalf("Import() error = %v, want ErrGatewayNotFound", err)
 	}
 }
+
+// withDeployedAtRev sets DeployedAt and the matching deploymentRevision property, mirroring how
+// the gateway builds an import request (revision derived from the deployment time). Distinct
+// deployment times therefore carry distinct revisions; a re-push of the same deployment carries
+// the same revision and is deduped by the control plane.
+func withDeployedAtRev(req dto.ImportGatewayArtifactRequest, t time.Time) dto.ImportGatewayArtifactRequest {
+	req.DeployedAt = &t
+	req.Properties = map[string]interface{}{deploymentRevisionProperty: t.UTC().Format(time.RFC3339Nano)}
+	return req
+}
+
+// countDeployments returns the number of deployment rows for an artifact on a given gateway.
+func countDeployments(t *testing.T, d *importTestDeps, artifactUUID, gatewayID string) int {
+	t.Helper()
+	var n int
+	if err := d.db.QueryRow(
+		`SELECT COUNT(*) FROM deployments WHERE artifact_uuid = ? AND gateway_uuid = ?`,
+		artifactUUID, gatewayID,
+	).Scan(&n); err != nil {
+		t.Fatalf("count deployments: %v", err)
+	}
+	return n
+}
+
+// A replay re-push (reconnect / full reconcile) carries the same deploymentRevision as the current
+// deployment. It must not create a duplicate deployment row, but must keep the artifact and its
+// gateway association intact.
+func TestArtifactImport_ReplayDoesNotDuplicateDeployment(t *testing.T) {
+	d := setupImportTest(t)
+
+	const id = "22222222-2222-2222-2222-222222222222"
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		withDeployedAtRev(restImportRequest(id, "replay-api", "Replay API"), baseDeployedAt))
+	if err != nil {
+		t.Fatalf("initial import: %v", err)
+	}
+	cpID := resp.ID
+	if got := countDeployments(t, d, cpID, importTestGatewayID); got != 1 {
+		t.Fatalf("after initial import: deployments = %d, want 1", got)
+	}
+
+	// Re-push the same artifact twice (same revision) — simulates reconnect/full reconcile.
+	for i := 0; i < 2; i++ {
+		if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+			withDeployedAtRev(restImportRequest(id, "replay-api", "Replay API"), baseDeployedAt)); err != nil {
+			t.Fatalf("replay import %d: %v", i, err)
+		}
+	}
+	if got := countDeployments(t, d, cpID, importTestGatewayID); got != 1 {
+		t.Errorf("after replay re-pushes: deployments = %d, want 1 (no duplicates)", got)
+	}
+	// The association must still be present exactly once.
+	assocs, err := d.apiRepo.GetAPIAssociations(cpID, constants.AssociationTypeGateway, importTestOrgID)
+	if err != nil {
+		t.Fatalf("get associations: %v", err)
+	}
+	count := 0
+	for _, a := range assocs {
+		if a.GatewayID == importTestGatewayID {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("gateway associations = %d, want 1", count)
+	}
+}
+
+// Two genuinely distinct deployments (e.g. a create then an update, even when they reach the CP
+// out of order) carry distinct revisions and must both be recorded, while last-in-wins keeps the
+// newest working copy. This models the create/PUT reordering: the newer PUT lands first.
+func TestArtifactImport_DistinctRevisionsRecordSeparateDeployments(t *testing.T) {
+	d := setupImportTest(t)
+
+	const id = "33333333-3333-3333-3333-333333333333"
+	// PUT (newer) arrives first: creates the artifact with the newer working copy.
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		withDeployedAtRev(restImportRequest(id, "ro-api", "PUT Name"), newerDeployedAt))
+	if err != nil {
+		t.Fatalf("put import: %v", err)
+	}
+	cpID := resp.ID
+
+	// CREATE (older) arrives second: stale for the working copy (SkipWorkingCopy) but a genuinely
+	// distinct deployment — it must add a second deployment row.
+	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		withDeployedAtRev(restImportRequest(id, "ro-api", "CREATE Name"), baseDeployedAt)); err != nil {
+		t.Fatalf("create import: %v", err)
+	}
+
+	if got := countDeployments(t, d, cpID, importTestGatewayID); got != 2 {
+		t.Errorf("distinct deployments = %d, want 2", got)
+	}
+	// Last-in-wins: the newer PUT metadata must survive the later, older CREATE push.
+	art, _ := d.artifactRepo.GetByUUID(cpID, importTestOrgID)
+	if art == nil || art.Name != "PUT Name" {
+		t.Errorf("working copy = %v, want newer 'PUT Name' to win", art)
+	}
+	// The latest deployment watermark is the newer time.
+	latest, err := d.deployment.GetLatestDeploymentTime(cpID, importTestOrgID)
+	if err != nil || latest == nil || !latest.Equal(newerDeployedAt) {
+		t.Errorf("latest deployment time = %v, want %v", latest, newerDeployedAt)
+	}
+}
+
+// The revision match is scoped per gateway: a second gateway re-pushing the same artifact with the
+// same revision must still record its own deployment (a new gateway registration must be synced).
+func TestArtifactImport_DifferentGatewaySameRevisionRecordsOwnDeployment(t *testing.T) {
+	d := setupImportTest(t)
+
+	const gw2 = "gw-import-002"
+	if _, err := d.db.Exec(`INSERT INTO gateways (uuid, organization_uuid, handle, display_name, description, properties, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+		gw2, importTestOrgID, "gw2", "Gateway 2", "", "{}"); err != nil {
+		t.Fatalf("seed gateway2: %v", err)
+	}
+	// The second gateway must authenticate; the import resolves the gateway by the ID passed in,
+	// so seeding the row is sufficient for the service to accept it.
+
+	const id = "44444444-4444-4444-4444-444444444444"
+	req := withDeployedAtRev(restImportRequest(id, "mg-api", "Multi GW API"), baseDeployedAt)
+
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	if err != nil {
+		t.Fatalf("gw1 import: %v", err)
+	}
+	cpID := resp.ID
+
+	// Same artifact (same handle → same CP UUID) and same revision, but pushed by a different
+	// gateway: must create a deployment for gw2 rather than being deduped as a replay.
+	if _, err := d.svc.Import(importTestOrgID, gw2, req); err != nil {
+		t.Fatalf("gw2 import: %v", err)
+	}
+
+	if got := countDeployments(t, d, cpID, importTestGatewayID); got != 1 {
+		t.Errorf("gw1 deployments = %d, want 1", got)
+	}
+	if got := countDeployments(t, d, cpID, gw2); got != 1 {
+		t.Errorf("gw2 deployments = %d, want 1", got)
+	}
+}
