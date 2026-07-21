@@ -3453,9 +3453,9 @@ paths:
           required: true
           schema:
             type: string
-            pattern: '^[a-z0-9-]+$'
             minLength: 3
-            maxLength: 63
+            maxLength: 40
+            readOnly: true
           description: Handle (URL-friendly slug) of the gateway whose manifest contains the policy
           example: "prod-gateway-01"
         - name: policyName
