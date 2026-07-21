@@ -19,6 +19,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/rsa"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -64,7 +65,10 @@ type CustomClaims struct {
 
 // AuthConfig holds the configuration for the local JWT (non-IDP) authentication path.
 type AuthConfig struct {
-	SecretKey      string
+	// PublicKey is the RSA public key used to verify token signatures (RS256).
+	// Only asymmetric verification is supported; symmetric (HMAC) and unsigned
+	// ("none") tokens are rejected.
+	PublicKey      *rsa.PublicKey
 	TokenIssuer    string
 	SkipPaths      []string
 	SkipValidation bool
@@ -167,11 +171,14 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 		}
 	} else {
 		token, err := jwt.ParseWithClaims(tokenString, mapClaims, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			// Strictly enforce asymmetric RSA signatures. Rejecting non-RSA
+			// methods here blocks the "none" algorithm and the HMAC-with-public-key
+			// forgery where an attacker signs with the public key as an HMAC secret.
+			if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+				return nil, fmt.Errorf("unexpected or forbidden signing method: %v", token.Header["alg"])
 			}
-			return []byte(config.SecretKey), nil
-		})
+			return config.PublicKey, nil
+		}, jwt.WithValidMethods([]string{"RS256", "RS384", "RS512"}))
 		if err != nil {
 			return nil, fmt.Errorf("invalid token: %w", err)
 		}

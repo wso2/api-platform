@@ -41,8 +41,8 @@ func defaultConfig() *Server {
 			ConnMaxLifetime: 300,
 		},
 		Auth: Auth{
-			// Default mode verifies locally-signed HMAC JWTs; the quickstart config
-			// selects "file" to add username/password login on top of it.
+			// Default mode verifies locally-issued, asymmetrically-signed (RS256) JWTs;
+			// the quickstart config selects "file" to add username/password login on top.
 			Mode:            AuthModeExternalToken,
 			ScopeValidation: true,
 			// SkipPaths bypasses JWT/IDP auth middleware. Paths below the health/metrics

@@ -475,7 +475,8 @@ credentials, and self-signed certificates); for production, provide real values:
 
 | Requirement | Quickstart (`setup.sh`) | Production |
 |---|---|---|
-| **Platform API** — `APIP_CP_ENCRYPTION_KEY`, `APIP_CP_AUTH_JWT_SECRET_KEY` | Generated into `api-platform.env` | Manage as real secrets; prefer mounting files and referencing them with `{{ file "..." }}` in the config TOML |
+| **Platform API** — `APIP_CP_ENCRYPTION_KEY` | Generated into `api-platform.env` | Manage as real secrets; prefer mounting files and referencing them with `{{ file "..." }}` in the config TOML |
+| **Platform API** — RS256 JWT signing keypair | Generated as PEM files in `resources/keys/` (`jwt_private.pem` / `jwt_public.pem`), read by `config.toml` via `{{ file }}` | Mount your own RSA keypair at the same paths; rotate as real signing keys |
 | **Platform API** — admin credentials | Generated into `api-platform.env` (bcrypt hash); password printed once | Use OIDC (`auth.idp`) instead of file-based auth |
 | **TLS certificates (both services)** | One self-signed pair in `resources/certificates/`, shared by both services | Certificates from your CA (same file names), or terminate TLS at an ingress and disable the listeners' TLS |
 | **Upstream trust (BFF → Platform API)** | The generated shared cert is mounted as a CA bundle (`[ai_workspace.control_plane] ca_file`) | Point `ca_file` at your CA bundle; never use `tls_skip_verify` in production |

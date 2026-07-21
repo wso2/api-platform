@@ -46,6 +46,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/webhook"
 	"github.com/wso2/api-platform/platform-api/internal/websocket"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/common/eventhub"
 	commonmodels "github.com/wso2/api-platform/common/models"
@@ -482,10 +483,14 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}))
 
 	if cfg.Auth.Mode == config.AuthModeFile {
-		slogger.Info("Auth mode: file (local users, HMAC-signed JWT)")
+		slogger.Info("Auth mode: file (local users, RS256-signed JWT)")
 		slogger.Warn("file-based authentication is enabled — this is not recommended for production; please configure an IDP of your choice")
+		publicKey, err := jwt.ParseRSAPublicKeyFromPEM([]byte(cfg.Auth.JWT.PublicKey))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse auth.jwt.public_key: %w", err)
+		}
 		chain = append(chain, middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
-			SecretKey:      cfg.Auth.JWT.SecretKey,
+			PublicKey:      publicKey,
 			TokenIssuer:    cfg.Auth.JWT.Issuer,
 			SkipPaths:      cfg.Auth.SkipPaths,
 			SkipValidation: false,
@@ -564,10 +569,14 @@ func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]strin
 // its own local-JWT middleware).
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
 	if cfg.Auth.Mode != config.AuthModeIDP {
-		slogger.Info("Auth mode: jwt (HMAC signature validation enabled)")
+		slogger.Info("Auth mode: jwt (asymmetric RS256 signature validation enabled)")
+		publicKey, err := jwt.ParseRSAPublicKeyFromPEM([]byte(cfg.Auth.JWT.PublicKey))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse auth.jwt.public_key: %w", err)
+		}
 		return middleware.NewJWTAuthenticator(
 			middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
-				SecretKey:      cfg.Auth.JWT.SecretKey,
+				PublicKey:      publicKey,
 				TokenIssuer:    cfg.Auth.JWT.Issuer,
 				SkipPaths:      cfg.Auth.SkipPaths,
 				SkipValidation: false,

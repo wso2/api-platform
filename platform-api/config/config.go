@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
+	"github.com/golang-jwt/jwt/v5"
 	toml "github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/file"
@@ -102,12 +103,15 @@ type Server struct {
 // modeling the choice as a single discriminator (rather than per-mode enabled
 // flags) makes conflicting configurations inexpressible.
 const (
-	// AuthModeExternalToken verifies locally-signed HMAC JWTs (auth.jwt.secret_key)
-	// that are minted externally, e.g. by the Developer Portal using the shared secret.
+	// AuthModeExternalToken verifies locally-issued, asymmetrically-signed JWTs
+	// (RS256) minted externally, e.g. by the Developer Portal. Verification uses
+	// the RSA public key in auth.jwt.public_key; symmetric (HMAC) and unsigned
+	// ("none") tokens are rejected.
 	AuthModeExternalToken = "external_token"
 	// AuthModeFile is AuthModeExternalToken plus local username/password login: the
-	// login endpoint authenticates users from auth.file and issues HMAC JWTs signed
-	// with auth.jwt.secret_key.
+	// login endpoint authenticates users from auth.file and issues RS256 JWTs signed
+	// with the RSA private key in auth.jwt.private_key, verified with the matching
+	// auth.jwt.public_key.
 	AuthModeFile = "file"
 	// AuthModeIDP validates tokens against an external IDP's JWKS (auth.idp).
 	AuthModeIDP = "idp"
@@ -123,8 +127,8 @@ type Auth struct {
 	SkipPaths       []string `koanf:"skip_paths"`
 	IDP             IDP      `koanf:"idp"`
 	// JWT is shared by two modes — "external_token" mode only verifies
-	// externally-minted tokens with it, "file" mode both signs and verifies
-	// with it.
+	// externally-minted tokens with the public key, "file" mode both signs (with
+	// the private key) and verifies (with the public key) using the RSA key pair.
 	JWT  JWT       `koanf:"jwt"`
 	File FileBased `koanf:"file"`
 	// ClaimMappings names the JWT claims that carry each identity field. It is
@@ -256,14 +260,24 @@ type CORS struct {
 	AllowedOrigins []string `koanf:"allowed_origins"`
 }
 
-// JWT holds configuration for local HMAC JWT authentication. Active when
-// Auth.Mode is AuthModeExternalToken (verify-only, externally-minted tokens)
-// or AuthModeFile (file mode also issues these tokens). Signature validation
-// is always on.
+// JWT holds configuration for local asymmetric (RS256) JWT authentication.
+// Active when Auth.Mode is AuthModeExternalToken (verify-only, externally-minted
+// tokens) or AuthModeFile (file mode also issues these tokens). Signature
+// validation is always on and strictly asymmetric — symmetric (HMAC) and
+// unsigned ("none") algorithms are rejected.
+//
+// TODO(pqc): migrate — RS256 is quantum-vulnerable. Move to an ML-DSA (FIPS 204)
+// signature once a Go JWT library exposes it. See post-quantum-cryptography.md.
 type JWT struct {
-	SecretKey string        `koanf:"secret_key"`
-	Issuer    string        `koanf:"issuer"`
-	TokenTTL  time.Duration `koanf:"token_ttl"`
+	// PublicKey is the PEM-encoded RSA public key used to verify token
+	// signatures. Required in both "external_token" and "file" modes.
+	PublicKey string `koanf:"public_key"`
+	// PrivateKey is the PEM-encoded RSA private key used to sign tokens. Required
+	// only in "file" mode, whose login endpoint mints tokens; unused (and not
+	// required) in verify-only "external_token" mode.
+	PrivateKey string        `koanf:"private_key"`
+	Issuer     string        `koanf:"issuer"`
+	TokenTTL   time.Duration `koanf:"token_ttl"`
 }
 
 // WebSocket holds WebSocket-specific configuration.
@@ -532,9 +546,11 @@ func validateTimeoutsConfig(cfg *Timeouts) error {
 func validateAuthConfig(auth *Auth) error {
 	switch auth.Mode {
 	case AuthModeExternalToken:
-		return validateJWTConfig(&auth.JWT)
+		// Verify-only: a public key is sufficient (tokens are minted elsewhere).
+		return validateJWTConfig(&auth.JWT, false)
 	case AuthModeFile:
-		if err := validateJWTConfig(&auth.JWT); err != nil {
+		// File mode also mints tokens, so it additionally needs a signing key.
+		if err := validateJWTConfig(&auth.JWT, true); err != nil {
 			return err
 		}
 		// TokenTTL only matters in file mode: the login endpoint mints tokens
@@ -552,17 +568,40 @@ func validateAuthConfig(auth *Auth) error {
 	}
 }
 
-// validateJWTConfig verifies the local HMAC JWT secret. The same secret signs and
-// verifies the login tokens issued in file mode, so it is required in both the
-// "external_token" and "file" auth modes. The secret is never generated: a
-// missing or malformed key fails startup.
-func validateJWTConfig(jwt *JWT) error {
-	if jwt.SecretKey == "" {
-		return fmt.Errorf("Auth.JWT.SecretKey is required when auth.mode is %q or %q "+
-			"(set auth.jwt.secret_key in config via {{ env }}/{{ file }})", AuthModeExternalToken, AuthModeFile)
+// validateJWTConfig verifies the local asymmetric JWT key material. The RSA
+// public key verifies token signatures and is required in both the
+// "external_token" and "file" auth modes. When requireSigningKey is true (file
+// mode, which mints tokens at its login endpoint) the RSA private key is also
+// required and must form a matching pair with the public key. Keys are never
+// generated: missing or malformed material fails startup. Only asymmetric RSA
+// keys are accepted, so symmetric (HMAC) verification is structurally
+// impossible.
+func validateJWTConfig(jwtCfg *JWT, requireSigningKey bool) error {
+	if jwtCfg.PublicKey == "" {
+		return fmt.Errorf("Auth.JWT.PublicKey is required when auth.mode is %q or %q "+
+			"(set auth.jwt.public_key to a PEM-encoded RSA public key via {{ env }}/{{ file }})",
+			AuthModeExternalToken, AuthModeFile)
 	}
-	if !valid32ByteKey(jwt.SecretKey) {
-		return fmt.Errorf("invalid Auth.JWT.SecretKey: must be 64 hex characters or base64 decoding to 32 bytes")
+	pub, err := jwt.ParseRSAPublicKeyFromPEM([]byte(jwtCfg.PublicKey))
+	if err != nil {
+		return fmt.Errorf("invalid Auth.JWT.PublicKey: must be a PEM-encoded RSA public key: %w", err)
+	}
+
+	if !requireSigningKey {
+		return nil
+	}
+
+	if jwtCfg.PrivateKey == "" {
+		return fmt.Errorf("Auth.JWT.PrivateKey is required when auth.mode is %q "+
+			"(set auth.jwt.private_key to a PEM-encoded RSA private key via {{ env }}/{{ file }})",
+			AuthModeFile)
+	}
+	priv, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(jwtCfg.PrivateKey))
+	if err != nil {
+		return fmt.Errorf("invalid Auth.JWT.PrivateKey: must be a PEM-encoded RSA private key: %w", err)
+	}
+	if !priv.PublicKey.Equal(pub) {
+		return fmt.Errorf("Auth.JWT.PrivateKey and Auth.JWT.PublicKey must be a matching RSA key pair")
 	}
 	return nil
 }

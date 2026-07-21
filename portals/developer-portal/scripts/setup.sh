@@ -24,9 +24,10 @@
 #   - a self-signed TLS certificate for devportal
 #   - devportal's own encryption/session keys      (APIP_DP_SECURITY_*)
 #   - the Platform API's at-rest encryption key     (APIP_CP_ENCRYPTION_KEY)
-#   - a shared JWT signing key for the Platform API (APIP_CP_AUTH_JWT_SECRET_KEY,
-#     written a second time as APIP_DP_PLATFORMAPI_JWTSECRET since devportal's
-#     config.toml references it under its own name)
+#   - an RS256 JWT signing keypair for the Platform API, written as PEM files
+#     under resources/keys (jwt_private.pem / jwt_public.pem) and read by
+#     config.toml via {{ file }} — tokens are signed asymmetrically, so there is
+#     no shared HMAC secret to copy between services
 #   - an admin username/password (prompted interactively — see below), bcrypt-hashed
 #     into APIP_CP_ADMIN_USERNAME / APIP_CP_ADMIN_PASSWORD_HASH
 #
@@ -70,6 +71,9 @@ cd "$ROOT_DIR"
 
 ENV_FILE="$ROOT_DIR/api-platform.env"
 DEVPORTAL_CERT_DIR="$ROOT_DIR/resources/certificates"
+# RS256 JWT keypair (PEM). Mounted into the platform-api container at
+# /etc/platform-api/keys and read by config.toml via {{ file }}.
+JWT_KEY_DIR="$ROOT_DIR/resources/keys"
 
 # Bind-mounted into a container running as a non-root UID: 644 (not 600) so the
 # container user can read a file owned by the host user. Local single-user
@@ -127,20 +131,28 @@ set_env_var "APIP_DP_SECURITY_SESSIONSECRET" "$(openssl rand -hex 32)"
 log "Generating Platform API encryption key into api-platform.env ..."
 set_env_var "APIP_CP_ENCRYPTION_KEY" "$(openssl rand -hex 32)"
 
-log "Generating shared Platform API JWT signing key into api-platform.env ..."
-# Written under both names it needs to reach: APIP_CP_AUTH_JWT_SECRET_KEY for the
-# platform-api container's own config-platform-api.toml reference,
-# APIP_DP_PLATFORMAPI_JWTSECRET for the devportal container's config.toml
-# reference — same value, two names, since each config.toml reads a variable
-# only under its own exact name.
-if grep -q "^APIP_CP_AUTH_JWT_SECRET_KEY=" "$ENV_FILE" 2>/dev/null; then
-    log "  - APIP_CP_AUTH_JWT_SECRET_KEY already set in api-platform.env, leaving as-is"
+log "Provisioning Platform API JWT signing keypair (RS256) ..."
+# Tokens are signed asymmetrically now (RS256), not with a shared HMAC secret.
+# The Platform API mints login tokens with the RSA private key and verifies every
+# token with the matching public key. A PEM key is multi-line and does not survive
+# an env file (one KEY=VALUE per line), so — like the TLS cert above — the keypair
+# is written to files and read by config.toml via {{ file }}:
+#   config.toml -> public_key/private_key = '{{ file "/etc/platform-api/keys/jwt_*.pem" }}'
+# resources/keys is mounted into the platform-api container at /etc/platform-api/keys
+# (see docker-compose.yaml), which is on the Platform API's {{ file }} allowlist.
+if [ -f "$JWT_KEY_DIR/jwt_private.pem" ] && [ -f "$JWT_KEY_DIR/jwt_public.pem" ]; then
+    log "  - $JWT_KEY_DIR already has a JWT keypair, leaving as-is"
 else
-    printf 'APIP_CP_AUTH_JWT_SECRET_KEY=%s\n' "$(openssl rand -hex 32)" >> "$ENV_FILE"
-    log "  - APIP_CP_AUTH_JWT_SECRET_KEY generated"
+    mkdir -p "$JWT_KEY_DIR"
+    # PKCS#8 private key + matching SPKI public key — the PEM encodings
+    # golang-jwt's ParseRSAPrivateKeyFromPEM / ParseRSAPublicKeyFromPEM accept.
+    openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+        -out "$JWT_KEY_DIR/jwt_private.pem" 2>/dev/null
+    openssl rsa -in "$JWT_KEY_DIR/jwt_private.pem" -pubout \
+        -out "$JWT_KEY_DIR/jwt_public.pem" 2>/dev/null
+    chmod "$CERT_FILE_MODE" "$JWT_KEY_DIR/jwt_private.pem" "$JWT_KEY_DIR/jwt_public.pem"
+    log "  - RS256 JWT keypair generated at $JWT_KEY_DIR"
 fi
-JWT_SECRET_KEY="$(get_env_var APIP_CP_AUTH_JWT_SECRET_KEY)"
-set_env_var "APIP_DP_PLATFORMAPI_JWTSECRET" "$JWT_SECRET_KEY"
 
 log "Provisioning Platform API admin credentials ..."
 CREDENTIALS_PROVISIONED=false

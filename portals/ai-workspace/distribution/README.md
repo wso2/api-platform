@@ -40,7 +40,8 @@ docker compose up -d
 
 | Output | Contents |
 |---|---|
-| `api-platform.env` (git-ignored) | `APIP_CP_ENCRYPTION_KEY` (at-rest encryption), `APIP_CP_AUTH_JWT_SECRET_KEY` (signs login JWTs), `APIP_CP_ADMIN_USERNAME`, `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt) |
+| `api-platform.env` (git-ignored) | `APIP_CP_ENCRYPTION_KEY` (at-rest encryption), `APIP_CP_ADMIN_USERNAME`, `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt) |
+| `resources/keys/jwt_private.pem` + `jwt_public.pem` (git-ignored) | RS256 keypair signing/verifying login JWTs; read by `config.toml` via `{{ file }}` |
 | `resources/certificates/cert.pem` + `key.pem` | Self-signed TLS pair shared by both services (SAN: `localhost`, `platform-api`, `ai-workspace`) |
 
 The admin password is generated and printed once by `setup.sh` — it is not stored anywhere; only its bcrypt hash lands in `api-platform.env`. Re-running `setup.sh` keeps existing files; pass `--force` to rotate keys and credentials, or `--certs-only` to (re)generate just the TLS pair. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables skip the interactive prompts (used by CI to pin known test credentials).
@@ -95,7 +96,7 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 | `[security].encryption_key` | Single 32-byte key (64 hex chars or base64) used for all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets). Generate with `openssl rand -hex 32` |
 | `[database].driver` | `sqlite3` or `postgres` |
 | `[auth].mode` | `file` (quickstart default), `external_token`, or `idp` — selects exactly one auth mode |
-| `[auth.jwt].secret_key` | 32-byte HMAC key signing login JWTs |
+| `[auth.jwt].public_key` / `private_key` | RS256 (asymmetric) PEM keys; `public_key` verifies every token, `private_key` signs login JWTs in `file` mode. Read via `{{ file }}` — HMAC and unsigned tokens are rejected |
 | `[auth.idp]` | JWKS-based IDP auth — active when `mode = "idp"`; configure for Asgardeo, Keycloak, Auth0, etc. |
 | `[auth.file.users]` | Local user credentials, active when `mode = "file"` (change the password hash before sharing) |
 | `[server.https]` | Listener on `:9243`; `cert_file`/`key_file` point at `cert.pem`/`key.pem` |

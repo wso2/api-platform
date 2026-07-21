@@ -243,9 +243,11 @@ The portal config (or `APIP_DP_PLATFORMAPI_*` env vars) must point to the Platfo
 ```toml
 [platform_api]
 base_url = "https://localhost:9243"      # env: APIP_DP_PLATFORMAPI_BASEURL
-jwt_secret = ""                           # same as the Platform API's APIP_CP_AUTH_JWT_SECRET_KEY — env: APIP_DP_PLATFORMAPI_JWTSECRET
+jwt_private_key = ""                       # PEM RSA private key that signs portal-minted tokens; must match the Platform API's auth.jwt.public_key — env: APIP_DP_PLATFORMAPI_JWTPRIVATEKEY
 insecure = true                           # Platform API uses a self-signed cert
 ```
+
+Tokens are signed asymmetrically (RS256): the portal signs with the RSA private key above and the Platform API verifies against its `auth.jwt.public_key`. There is no shared HMAC secret — the two sides never exchange signing material.
 
 For production, configure an OIDC identity provider per organization instead of local auth.
 

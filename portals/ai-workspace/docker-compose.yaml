@@ -11,7 +11,7 @@
 services:
 
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.11.0
+    image: ghcr.io/wso2/api-platform/platform-api:0.13.0-SNAPSHOT
     container_name: platform-api
     restart: unless-stopped
     # Mounts the single source-of-truth config shipped with the Platform API
@@ -26,10 +26,8 @@ services:
     volumes:
       - ../../platform-api/config/config.toml:/etc/platform-api/config.toml:ro
       - platform-api-data:/app/data
-      # Certs land under /app/data/certs to match the binary's compiled
-      # default cert_file/key_file paths (./data/certs/{cert,key}.pem,
-      # resolved against WORKDIR /app) — no cert path override needed.
       - ./resources/certificates:/app/data/certs:ro
+      - ./resources/keys:/etc/platform-api/keys:ro
     ports:
       - "9243:9243"
     healthcheck:
@@ -40,7 +38,7 @@ services:
       retries: 3
 
   ai-workspace:
-    image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-alpha2-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-beta-SNAPSHOT
     container_name: ai-workspace
     restart: unless-stopped
     depends_on:

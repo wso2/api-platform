@@ -119,12 +119,14 @@ conn_max_lifetime = '{{ env "APIP_CP_DATABASE_CONN_MAX_LIFETIME" "300" }}'   # s
 # Authentication
 #
 # auth.mode selects exactly one mode:
-#   "external_token" — verify locally-signed HMAC JWTs, minted externally
-#                       (e.g. by the Developer Portal) with the shared secret.
+#   "external_token" — verify locally-issued, asymmetrically-signed (RS256) JWTs,
+#                       minted externally (e.g. by the Developer Portal) and
+#                       signed with the matching RSA private key; verified here
+#                       against auth.jwt.public_key.
 #   "file"            — external_token + local username/password login: the
 #                       login endpoint authenticates from
-#                       [platform_api.auth.file] and issues HMAC JWTs
-#                       signed with the same secret.
+#                       [platform_api.auth.file] and issues RS256 JWTs signed
+#                       with auth.jwt.private_key.
 #   "idp"             — validate tokens against an external IDP's JWKS
 #                       ([platform_api.auth.idp]).
 # Only the selected mode's section is read; the others are ignored.
@@ -221,16 +223,22 @@ scopes = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:mana
 # password_hash = "$2a$12$<bcrypt-hash-of-your-password>"
 # scopes        = "ap:organization:read ap:gateway:read ap:rest_api:read ap:llm_provider:read"
 
-# JWT (local HMAC) — used by "external_token" and "file" modes:
-# "external_token" only verifies externally-minted tokens with this key;
-# "file" also signs the tokens its login endpoint issues. Resolved from
-# APIP_CP_AUTH_JWT_SECRET_KEY; prefer a secret file in production:
-#   secret_key = '{{ file "/secrets/platform-api/jwt_secret" }}'
+# JWT (local RS256) — used by "external_token" and "file" modes. Tokens are
+# signed asymmetrically: "external_token" only verifies externally-minted tokens
+# with the public key; "file" also signs the tokens its login endpoint issues
+# with the private key. Symmetric (HMAC) and unsigned ("none") tokens are
+# rejected. PEM keys are multi-line, so read them from files via {{ file }}
+# rather than an env var (scripts/setup.sh generates the pair):
+#   public_key  = '{{ file "/secrets/platform-api/jwt_public.pem" }}'
+#   private_key = '{{ file "/secrets/platform-api/jwt_private.pem" }}'
 [platform_api.auth.jwt]
-issuer     = '{{ env "APIP_CP_AUTH_JWT_ISSUER" "platform-api" }}'
-# REQUIRED — a 32-byte key (64 hex chars or base64); never generated, no
-# fallback, so an unset APIP_CP_AUTH_JWT_SECRET_KEY fails config load.
-secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+issuer      = '{{ env "APIP_CP_AUTH_JWT_ISSUER" "platform-api" }}'
+# public_key is REQUIRED in every mode (verifies token signatures); private_key
+# is REQUIRED only in "file" mode (signs login tokens) and must be the matching
+# half of the pair. Neither is generated — a missing/malformed key fails config
+# load. Both must be PEM-encoded RSA keys.
+public_key  = '{{ file "/etc/platform-api/keys/jwt_public.pem" }}'
+private_key = '{{ file "/etc/platform-api/keys/jwt_private.pem" }}'
 # Lifetime of tokens issued by the file-mode login endpoint (Go duration
 # syntax). Not used for "external_token" tokens — their expiry is whatever
 # "exp" claim the issuer set.

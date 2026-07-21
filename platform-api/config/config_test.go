@@ -19,6 +19,10 @@
 package config
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,22 +32,53 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Valid 32-byte keys encoded as 64 hex chars.
-const (
-	validInlineKey = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-	validJWTKey    = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+// validInlineKey is a valid 32-byte AES key encoded as 64 hex chars, used for the
+// at-rest encryption key (still a symmetric key — unrelated to JWT signing).
+const validInlineKey = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+// RSA key-pair PEM fixtures for the asymmetric JWT config, generated once in init().
+// validJWTPublicKey/validJWTPrivateKey form a matching pair; otherJWTPublicKey is
+// from a different pair, used to exercise the matching-pair validation.
+var (
+	validJWTPublicKey  string
+	validJWTPrivateKey string
+	otherJWTPublicKey  string
 )
 
+// genRSAKeyPEMs generates a fresh RSA key pair and returns its public key (PKIX PEM)
+// and private key (PKCS1 PEM).
+func genRSAKeyPEMs() (pubPEM, privPEM string) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		panic(err)
+	}
+	privPEM = string(pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	}))
+	pubDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		panic(err)
+	}
+	pubPEM = string(pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: pubDER,
+	}))
+	return pubPEM, privPEM
+}
+
 // validKeysBase is a minimal config whose required secrets resolve from the
-// APIP_CP_ENCRYPTION_KEY / APIP_CP_AUTH_JWT_SECRET_KEY env vars via {{ env }}
+// APIP_CP_ENCRYPTION_KEY / APIP_CP_AUTH_JWT_PUBLIC_KEY env vars via {{ env }}
 // interpolation. Environment variables reach config ONLY through these tokens now
 // (there is no direct env-key override), so tests must go through a config file.
+// The default auth mode is "external_token", which needs only the verification
+// public key.
 const validKeysBase = `
 [platform_api.security]
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
 [platform_api.auth.jwt]
-secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+public_key = '{{ env "APIP_CP_AUTH_JWT_PUBLIC_KEY" }}'
 `
 
 // loadTOML writes toml to a temp config file and loads it through LoadConfig.
@@ -60,7 +95,7 @@ func loadTOML(t *testing.T, toml string) (*Server, error) {
 func loadWithKeys(t *testing.T, extra string) (*Server, error) {
 	t.Helper()
 	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
-	t.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", validJWTKey)
+	t.Setenv("APIP_CP_AUTH_JWT_PUBLIC_KEY", validJWTPublicKey)
 	return loadTOML(t, validKeysBase+extra)
 }
 
@@ -73,12 +108,12 @@ func TestLoadConfig_ValidKeys_Succeeds(t *testing.T) {
 
 // The encryption key is required and never generated — a config that omits it fails startup.
 func TestLoadConfig_MissingEncryptionKey_Errors(t *testing.T) {
-	t.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", validJWTKey)
+	t.Setenv("APIP_CP_AUTH_JWT_PUBLIC_KEY", validJWTPublicKey)
 
-	// Encryption key omitted entirely; the JWT secret resolves so the JWT check passes first.
+	// Encryption key omitted entirely; the JWT public key resolves so the JWT check passes first.
 	_, err := loadTOML(t, `
 [platform_api.auth.jwt]
-secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+public_key = '{{ env "APIP_CP_AUTH_JWT_PUBLIC_KEY" }}'
 `)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "EncryptionKey is required")
@@ -86,21 +121,21 @@ secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
 
 // A provided encryption key must be an AES-256-sized key (64 hex / base64→32 bytes).
 func TestLoadConfig_InvalidEncryptionKey_Errors(t *testing.T) {
-	t.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", validJWTKey)
+	t.Setenv("APIP_CP_AUTH_JWT_PUBLIC_KEY", validJWTPublicKey)
 
 	_, err := loadTOML(t, `
 [platform_api.security]
 encryption_key = "not-a-valid-32-byte-key"
 
 [platform_api.auth.jwt]
-secret_key = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
+public_key = '{{ env "APIP_CP_AUTH_JWT_PUBLIC_KEY" }}'
 `)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid EncryptionKey")
 }
 
-// The JWT secret is required (default auth mode is "external_token") and never generated.
-func TestLoadConfig_MissingJWTSecretKey_Errors(t *testing.T) {
+// The JWT public key is required (default auth mode is "external_token") and never generated.
+func TestLoadConfig_MissingJWTPublicKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
 
 	_, err := loadTOML(t, `
@@ -108,11 +143,11 @@ func TestLoadConfig_MissingJWTSecretKey_Errors(t *testing.T) {
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 `)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "Auth.JWT.SecretKey is required")
+	assert.Contains(t, err.Error(), "Auth.JWT.PublicKey is required")
 }
 
-// A provided JWT secret must be an AES-256-sized key (64 hex / base64→32 bytes).
-func TestLoadConfig_InvalidJWTSecretKey_Errors(t *testing.T) {
+// A provided JWT public key must be a PEM-encoded RSA public key.
+func TestLoadConfig_InvalidJWTPublicKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
 
 	_, err := loadTOML(t, `
@@ -120,10 +155,10 @@ func TestLoadConfig_InvalidJWTSecretKey_Errors(t *testing.T) {
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
 [platform_api.auth.jwt]
-secret_key = "not-a-valid-32-byte-key"
+public_key = "not-a-valid-rsa-public-key"
 `)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid Auth.JWT.SecretKey")
+	assert.Contains(t, err.Error(), "invalid Auth.JWT.PublicKey")
 }
 
 // --- valid32ByteKey unit coverage ---
@@ -140,9 +175,14 @@ func TestValid32ByteKey(t *testing.T) {
 // Clear env vars that LoadConfig reads so each test starts from a known baseline and host
 // environment values don't leak into assertions.
 func init() {
+	// Generate the RSA key-pair fixtures used across the asymmetric JWT tests.
+	validJWTPublicKey, validJWTPrivateKey = genRSAKeyPEMs()
+	otherJWTPublicKey, _ = genRSAKeyPEMs()
+
 	for _, v := range []string{
 		"APIP_CP_ENCRYPTION_KEY",
-		"APIP_CP_AUTH_JWT_SECRET_KEY",
+		"APIP_CP_AUTH_JWT_PUBLIC_KEY",
+		"APIP_CP_AUTH_JWT_PRIVATE_KEY",
 	} {
 		os.Unsetenv(v)
 	}
@@ -157,22 +197,36 @@ func TestValidateAuthConfig(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "external_token mode with valid secret",
-			auth: Auth{Mode: AuthModeExternalToken, JWT: JWT{SecretKey: validJWTKey}},
+			name: "external_token mode with valid public key",
+			auth: Auth{Mode: AuthModeExternalToken, JWT: JWT{PublicKey: validJWTPublicKey}},
 		},
 		{
-			name:    "external_token mode without secret",
+			name:    "external_token mode without public key",
 			auth:    Auth{Mode: AuthModeExternalToken},
-			wantErr: "Auth.JWT.SecretKey is required",
+			wantErr: "Auth.JWT.PublicKey is required",
+		},
+		{
+			name:    "file mode without private key",
+			auth:    Auth{Mode: AuthModeFile, JWT: JWT{PublicKey: validJWTPublicKey, TokenTTL: time.Hour}},
+			wantErr: "Auth.JWT.PrivateKey is required",
+		},
+		{
+			name: "file mode with mismatched key pair",
+			auth: Auth{Mode: AuthModeFile, JWT: JWT{
+				PublicKey:  otherJWTPublicKey,
+				PrivateKey: validJWTPrivateKey,
+				TokenTTL:   time.Hour,
+			}},
+			wantErr: "matching RSA key pair",
 		},
 		{
 			name:    "file mode without token_ttl",
-			auth:    Auth{Mode: AuthModeFile, JWT: JWT{SecretKey: validJWTKey}},
+			auth:    Auth{Mode: AuthModeFile, JWT: JWT{PublicKey: validJWTPublicKey, PrivateKey: validJWTPrivateKey}},
 			wantErr: "Auth.JWT.TokenTTL must be a positive duration",
 		},
 		{
 			name: "file mode requires org and users",
-			auth: Auth{Mode: AuthModeFile, JWT: JWT{SecretKey: validJWTKey, TokenTTL: time.Hour}},
+			auth: Auth{Mode: AuthModeFile, JWT: JWT{PublicKey: validJWTPublicKey, PrivateKey: validJWTPrivateKey, TokenTTL: time.Hour}},
 			// Default org fields are empty in a zero-value Auth — users check fires
 			// after the org checks.
 			wantErr: "auth.file.organization.id",
@@ -181,7 +235,7 @@ func TestValidateAuthConfig(t *testing.T) {
 			name: "file mode fully configured",
 			auth: Auth{
 				Mode: AuthModeFile,
-				JWT:  JWT{SecretKey: validJWTKey, TokenTTL: time.Hour},
+				JWT:  JWT{PublicKey: validJWTPublicKey, PrivateKey: validJWTPrivateKey, TokenTTL: time.Hour},
 				File: FileBased{
 					Organization: FileBasedOrg{ID: "default", DisplayName: "Default"},
 					Users:        FileBasedUsers{{Username: "admin", PasswordHash: "$2a$12$hash"}},

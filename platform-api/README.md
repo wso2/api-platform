@@ -275,7 +275,7 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 | `[platform_api.security.api_key]` | `hashing_algorithms` accepted for API key verification |
 | `[platform_api.database]` | `driver` (`sqlite3` / `postgres` / `sqlserver`), connection fields, pool sizing |
 | `[platform_api.auth]` | `mode` — one of `external_token`, `file`, or `idp`; `scope_validation`; `skip_paths` |
-| `[platform_api.auth.jwt]` | HMAC login token settings: `issuer`, `secret_key` (**required**), `token_ttl` |
+| `[platform_api.auth.jwt]` | Asymmetric (RS256) token settings: `issuer`, `public_key` (**required** — PEM RSA public key, verifies tokens), `private_key` (**required in `file` mode** — PEM RSA private key, signs login tokens), `token_ttl` |
 | `[platform_api.auth.idp]` / `[platform_api.auth.claim_mappings]` | JWKS endpoint, issuer/audience, validation mode, and JWT claim-name mappings for `idp` mode |
 | `[platform_api.auth.file.organization]` / `[[platform_api.auth.file.users]]` | Local org + username/password/scope entries for `file` mode |
 | `[platform_api.server.http]` / `[platform_api.server.https]` | Listener enablement, ports, and (HTTPS) `cert_file` / `key_file` paths (certificates are always required for HTTPS — no self-signed fallback) |
@@ -291,8 +291,8 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 
 `platform_api.auth.mode` selects exactly one mode; only that mode's section is read:
 
-- **`external_token`** — verify locally-signed HMAC JWTs (`[platform_api.auth.jwt]`); tokens are minted externally (e.g. by the Developer Portal) using the shared `secret_key`.
-- **`file`** — `external_token` plus local username/password login: the login endpoint authenticates against `[platform_api.auth.file]` and issues HMAC JWTs signed with the same `[platform_api.auth.jwt]` secret. Used by the AI Workspace and Developer Portal quickstarts.
+- **`external_token`** — verify locally-issued, asymmetrically-signed (RS256) JWTs (`[platform_api.auth.jwt]`); tokens are minted externally (e.g. by the Developer Portal) and signed with the matching RSA private key, verified here against `public_key`. Symmetric (HMAC) and unsigned (`none`) tokens are rejected.
+- **`file`** — `external_token` plus local username/password login: the login endpoint authenticates against `[platform_api.auth.file]` and issues RS256 JWTs signed with `[platform_api.auth.jwt].private_key`, verified with the matching `public_key`. Used by the AI Workspace and Developer Portal quickstarts.
 - **`idp`** — validate tokens against an external IDP's JWKS endpoint (Thunder, Asgardeo, Keycloak, Azure AD, Okta, etc.) via `[platform_api.auth.idp]`; `jwks_url` and `issuer` are required.
 
 `platform_api.auth.skip_paths` is a structured list (not a scalar), so it's edited directly in
