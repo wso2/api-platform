@@ -27,7 +27,7 @@ import (
 func defaultConfig() *Server {
 	return &Server{
 		Logging: Logging{
-			LogLevel:  "INFO",
+			LogLevel:  "info",
 			LogFormat: "text",
 		},
 		DBSchemaPath:               "./internal/database/schema.sql",
@@ -114,12 +114,10 @@ func defaultConfig() *Server {
 				Port:    9080,
 			},
 			HTTPS: HTTPSListener{
-				Enabled: true,
-				Port:    9243,
-				TLS: ListenerTLS{
-					CertFile: "./data/certs/cert.pem",
-					KeyFile:  "./data/certs/key.pem",
-				},
+				Enabled:  true,
+				Port:     9243,
+				CertFile: "./data/certs/cert.pem",
+				KeyFile:  "./data/certs/key.pem",
 			},
 			// Finite by default so a slow or idle peer cannot hold a connection open
 			// indefinitely. Write is the loosest of the four because some handlers

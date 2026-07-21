@@ -75,8 +75,8 @@ type FileBased struct {
 
 // Logging holds logging configuration.
 type Logging struct {
-	LogLevel  string `koanf:"log_level"`
-	LogFormat string `koanf:"log_format"`
+	LogLevel  string `koanf:"level"`
+	LogFormat string `koanf:"format"`
 }
 
 // Server holds the configuration parameters for the application.
@@ -215,17 +215,11 @@ type HTTPListener struct {
 	Port    int  `koanf:"port"`
 }
 
-// HTTPSListener configures the TLS listener. TLS.CertFile and TLS.KeyFile must
-// point at a certificate pair when Enabled is true; there is no self-signed
-// fallback.
+// HTTPSListener configures the TLS listener. CertFile and KeyFile must point at a
+// certificate pair when Enabled is true; there is no self-signed fallback.
 type HTTPSListener struct {
-	Enabled bool        `koanf:"enabled"`
-	Port    int         `koanf:"port"`
-	TLS     ListenerTLS `koanf:"tls"`
-}
-
-// ListenerTLS holds the certificate material for the HTTPS listener.
-type ListenerTLS struct {
+	Enabled  bool   `koanf:"enabled"`
+	Port     int    `koanf:"port"`
 	CertFile string `koanf:"cert_file"`
 	KeyFile  string `koanf:"key_file"`
 }
@@ -290,7 +284,7 @@ type Database struct {
 	Host     string `koanf:"host"`
 	Port     int    `koanf:"port"`
 	Name     string `koanf:"name"`
-	Username string `koanf:"username"`
+	User     string `koanf:"user"`
 	Password string `koanf:"password"`
 	SSLMode  string `koanf:"ssl_mode"`
 	// SSLRootCert is the CA certificate file path used to verify the server's
@@ -587,19 +581,20 @@ func validateEncryptionKey(key string) error {
 	return nil
 }
 
-// validateLoggingConfig rejects a log_level/log_format typo at startup instead
-// of silently falling back to logger.NewLogger's default (info/json), which
-// would leave an operator's requested verbosity or encoding silently ignored.
+// validateLoggingConfig rejects a logging.level/logging.format typo at startup
+// instead of silently falling back to logger.NewLogger's default (info/json),
+// which would leave an operator's requested verbosity or encoding silently
+// ignored. The level is matched case-insensitively (canonical form is lowercase).
 func validateLoggingConfig(level, format string) error {
-	switch strings.ToUpper(level) {
-	case "DEBUG", "INFO", "WARN", "WARNING", "ERROR":
+	switch strings.ToLower(level) {
+	case "debug", "info", "warn", "warning", "error":
 	default:
-		return fmt.Errorf("logging.log_level must be one of \"DEBUG\", \"INFO\", \"WARN\", or \"ERROR\" (got %q)", level)
+		return fmt.Errorf("logging.level must be one of \"debug\", \"info\", \"warn\", or \"error\" (got %q)", level)
 	}
 	switch strings.ToLower(format) {
 	case "text", "json":
 	default:
-		return fmt.Errorf("logging.log_format must be \"text\" or \"json\" (got %q)", format)
+		return fmt.Errorf("logging.format must be \"text\" or \"json\" (got %q)", format)
 	}
 	return nil
 }
@@ -627,8 +622,8 @@ func validateDatabaseConfig(cfg *Database) error {
 	if cfg.Name == "" {
 		return fmt.Errorf("database.name is required when database.driver is %q", cfg.Driver)
 	}
-	if cfg.Username == "" {
-		return fmt.Errorf("database.username is required when database.driver is %q", cfg.Driver)
+	if cfg.User == "" {
+		return fmt.Errorf("database.user is required when database.driver is %q", cfg.Driver)
 	}
 	switch cfg.SSLMode {
 	case "", "disable", "require", "verify-ca", "verify-full":

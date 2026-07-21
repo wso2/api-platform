@@ -38,7 +38,7 @@ func writeConfig(t *testing.T, body string) string {
 func TestLoad_ConfigFileValue(t *testing.T) {
 	cfgPath := writeConfig(t, `
 [ai_workspace.logging]
-log_level = "warn"
+level = "warn"
 
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
@@ -61,14 +61,14 @@ url = "https://platform-api:9243"
 func TestLoad_EnvTokenSuppliesValueAndDefault(t *testing.T) {
 	cfgPath := writeConfig(t, `
 [ai_workspace.logging]
-log_level  = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'
-log_format = '{{ env "APIP_AIW_LOG_FORMAT" "text" }}'
+level  = '{{ env "APIP_AIW_LOGGING_LEVEL" "info" }}'
+format = '{{ env "APIP_AIW_LOGGING_FORMAT" "text" }}'
 
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
 `)
-	t.Setenv("APIP_AIW_LOG_LEVEL", "debug") // named by the token
-	// APIP_AIW_LOG_FORMAT is left unset, so the token's default stands.
+	t.Setenv("APIP_AIW_LOGGING_LEVEL", "debug") // named by the token
+	// APIP_AIW_LOGGING_FORMAT is left unset, so the token's default stands.
 
 	cfg, err := Load(cfgPath)
 	if err != nil {
@@ -88,12 +88,12 @@ url = "https://platform-api:9243"
 func TestLoad_EnvVarWithoutTokenIsIgnored(t *testing.T) {
 	cfgPath := writeConfig(t, `
 [ai_workspace.logging]
-log_level = "warn"
+level = "warn"
 
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
 `)
-	t.Setenv("APIP_AIW_LOG_LEVEL", "debug")
+	t.Setenv("APIP_AIW_LOGGING_LEVEL", "debug")
 
 	cfg, err := Load(cfgPath)
 	if err != nil {
@@ -209,7 +209,7 @@ client_secret = '{{ env "CUSTOM_SECRET_VAR" }}'
 
 // The upstream URL is mandatory — the BFF has nothing to proxy to without it.
 func TestLoad_MissingControlPlaneURL_Errors(t *testing.T) {
-	cfgPath := writeConfig(t, "[ai_workspace]\nlog_level = \"info\"")
+	cfgPath := writeConfig(t, "[ai_workspace]\ndomain = \"localhost:5380\"")
 
 	_, err := Load(cfgPath)
 	if err == nil {
@@ -309,7 +309,7 @@ func TestLoad_BareTOMLScalars(t *testing.T) {
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
-[ai_workspace.tls]
+[ai_workspace.server.https]
 enabled = false
 
 [ai_workspace.session]
@@ -329,7 +329,7 @@ absolute_ttl = "2h"
 }
 
 // A key in a table must not collide with the same key in another table — they are
-// distinct dotted paths, so [tls] enabled and [auth.oidc] enabled are independent.
+// distinct dotted paths, so [server.https] enabled and [auth.oidc] enabled are independent.
 func TestLoad_SameKeyInDifferentTables(t *testing.T) {
 	cfgPath := writeConfig(t, `
 [ai_workspace.auth]
@@ -338,7 +338,7 @@ mode = "oidc"
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
-[ai_workspace.tls]
+[ai_workspace.server.https]
 enabled = false
 
 [ai_workspace.auth.oidc]
@@ -354,7 +354,7 @@ redirect_url  = "https://localhost:5380/api/auth/callback"
 		t.Fatalf("Load() error = %v", err)
 	}
 	if cfg.TLS.TerminateTLS {
-		t.Error("TLS.TerminateTLS = true, want false — [tls] enabled must not read [auth.oidc] enabled")
+		t.Error("TLS.TerminateTLS = true, want false — [server.https] enabled must not read [auth.oidc] enabled")
 	}
 	if !cfg.OIDC.Enabled {
 		t.Error("OIDC.Enabled = false, want true")
@@ -406,7 +406,7 @@ func TestLoad_InvalidBool_Errors(t *testing.T) {
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
-[ai_workspace.tls]
+[ai_workspace.server.https]
 enabled = "maybe"
 `)
 

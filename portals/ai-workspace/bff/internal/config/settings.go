@@ -45,7 +45,7 @@ const EnvPrefix = "APIP_AIW_"
 // API's platformAPIConfigKey: this namespacing lets an AI Workspace config file
 // coexist with sibling services' sections ([platform_api], ...) in a shared
 // deployment config, the same file convention as the Platform API's [platform_api]
-// table. Every key below this cut (log_level, control_plane.url, auth.oidc.*, ...) is
+// table. Every key below this cut (logging.level, control_plane.url, auth.oidc.*, ...) is
 // resolved relative to [ai_workspace], not the file root.
 const aiWorkspaceConfigKey = "ai_workspace"
 
@@ -69,7 +69,7 @@ type settings map[string]string
 // the only source of configuration: there is no implicit environment overlay, so a
 // value comes from the environment exactly when the key's token asks for it, e.g.
 //
-//	log_level = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'
+//	level = '{{ env "APIP_AIW_LOGGING_LEVEL" "info" }}'
 //
 // One mechanism therefore covers both ordinary settings and secrets, and every source
 // a value can come from is visible in the file itself rather than implied by a naming
@@ -176,6 +176,24 @@ func (s settings) getbool(key string, def bool) (bool, error) {
 		return false, fmt.Errorf("invalid boolean for %s=%q: %w", key, v, err)
 	}
 	return b, nil
+}
+
+// getint parses key as an integer within [min, max]. A missing or empty value
+// returns def; a malformed or out-of-range value fails startup rather than being
+// silently replaced by the default.
+func (s settings) getint(key string, def, min, max int) (int, error) {
+	v, ok := s[key]
+	if !ok || v == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil {
+		return 0, fmt.Errorf("invalid integer for %s=%q: %w", key, v, err)
+	}
+	if n < min || n > max {
+		return 0, fmt.Errorf("invalid integer for %s=%q: must be between %d and %d", key, v, min, max)
+	}
+	return n, nil
 }
 
 // getdur parses key as a Go duration. A malformed, zero, or negative value fails

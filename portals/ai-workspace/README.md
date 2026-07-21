@@ -59,7 +59,7 @@ them from the environment without editing the file:
 ```toml
 [ai_workspace.logging]
 # The token names the variable; the second argument is the value used when it is unset.
-log_level = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'
+level = '{{ env "APIP_AIW_LOGGING_LEVEL" "info" }}'
 
 [ai_workspace.auth.oidc]
 # No default — an unset APIP_AIW_AUTH_OIDC_CLIENT_SECRET fails startup rather than
@@ -71,12 +71,12 @@ client_secret = '{{ env "APIP_AIW_AUTH_OIDC_CLIENT_SECRET" }}'
 client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
 ```
 
-The token is what reads the environment, so setting `APIP_AIW_LOG_LEVEL` does nothing unless
-`log_level` is present in the file with its token. All AI Workspace settings live under
+The token is what reads the environment, so setting `APIP_AIW_LOGGING_LEVEL` does nothing unless
+`level` is present in the file with its token. All AI Workspace settings live under
 `[ai_workspace]` — the same namespacing convention the Platform API uses for its own
 `[platform_api]` table, so a shared config.toml can hold both services' sections without their
 keys colliding. Keys are grouped into TOML tables under it
-(`[ai_workspace.logging]`, `[ai_workspace.control_plane]`, `[ai_workspace.tls]`, `[ai_workspace.session]`,
+(`[ai_workspace.logging]`, `[ai_workspace.control_plane]`, `[ai_workspace.server.https]`, `[ai_workspace.session]`,
 `[ai_workspace.auth]`, `[ai_workspace.auth.oidc]`), and by convention a token names the key's path
 under `[ai_workspace]` uppercased with underscores (`[ai_workspace.auth.oidc] client_id` →
 `APIP_AIW_AUTH_OIDC_CLIENT_ID`) — but a token may name any variable.

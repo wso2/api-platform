@@ -26,9 +26,9 @@
 # ignores the variable entirely. By convention the variable name is the key's table
 # path under [ai_workspace], uppercased with underscores, prefixed APIP_AIW_:
 #
-#   [ai_workspace] domain              ->  APIP_AIW_DOMAIN
-#   [ai_workspace.server] port         ->  APIP_AIW_SERVER_PORT
-#   [ai_workspace.auth.oidc] client_id ->  APIP_AIW_AUTH_OIDC_CLIENT_ID
+#   [ai_workspace] domain                    ->  APIP_AIW_DOMAIN
+#   [ai_workspace.server.https] port         ->  APIP_AIW_SERVER_HTTPS_PORT
+#   [ai_workspace.auth.oidc] client_id       ->  APIP_AIW_AUTH_OIDC_CLIENT_ID
 #
 # For secrets, source from a mounted file instead of the environment:
 #
@@ -83,22 +83,37 @@ default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
 # ---------------------------------------------------------------------------
 [ai_workspace.server]
 
-# Port the server listens on. The listener always binds all interfaces (there is no
-# host to configure), and the container publishes this port.
-port = '{{ env "APIP_AIW_SERVER_PORT" "5380" }}'
-
 # Directory holding the built SPA (index.html + assets).
 static_dir = '{{ env "APIP_AIW_SERVER_STATIC_DIR" "/app" }}'
 
+# The single listener follows the platform-wide [server.https] shape. The listener
+# always binds all interfaces (there is no host to configure), and the container
+# publishes this port.
+[ai_workspace.server.https]
+
+# Terminate TLS on this listener. Set false only when a trusted upstream (ingress,
+# service-mesh sidecar) terminates TLS for you — the listener then serves plain HTTP
+# on the same port and no certificate is read or required.
+enabled = '{{ env "APIP_AIW_SERVER_HTTPS_ENABLED" "true" }}'
+
+# Port the server listens on.
+port = '{{ env "APIP_AIW_SERVER_HTTPS_PORT" "5380" }}'
+
+# Paths to a mounted TLS certificate and key. REQUIRED when enabled = true; setup.sh
+# generates a pair for the quickstart.
+cert_file = '{{ env "APIP_AIW_SERVER_HTTPS_CERT_FILE" "/etc/ai-workspace/tls/cert.pem" }}'
+key_file  = '{{ env "APIP_AIW_SERVER_HTTPS_KEY_FILE" "/etc/ai-workspace/tls/key.pem" }}'
+
 
 # ---------------------------------------------------------------------------
-# Logging. log_level/log_format are this process's own logs; browser_debug is
+# Logging. level/format are this process's own logs; browser_debug is
 # browser-safe — served to the SPA to control verbose console logging there.
+# Level is matched case-insensitively; lowercase is canonical.
 # ---------------------------------------------------------------------------
 [ai_workspace.logging]
 
-log_level     = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'      # debug | info | warn | error
-log_format    = '{{ env "APIP_AIW_LOG_FORMAT" "text" }}'     # text | json
+level         = '{{ env "APIP_AIW_LOGGING_LEVEL" "info" }}'    # debug | info | warn | error
+format        = '{{ env "APIP_AIW_LOGGING_FORMAT" "text" }}'   # text | json
 browser_debug = '{{ env "APIP_AIW_LOGGING_BROWSER_DEBUG" "false" }}'
 
 
@@ -145,20 +160,6 @@ controlplane_host = '{{ env "APIP_AIW_GATEWAY_CONTROLPLANE_HOST" "localhost:9243
 # helm --version flag), channel ("STS" | "LTS"). The first entry is the default.
 platform_gateway_versions = '{{ env "APIP_AIW_GATEWAY_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]" }}'
 
-
-# ---------------------------------------------------------------------------
-# TLS on the AI Workspace listener.
-# ---------------------------------------------------------------------------
-[ai_workspace.tls]
-
-# Terminate TLS on this listener. Set false only when a trusted upstream (ingress,
-# service-mesh sidecar) terminates TLS for you — no certificate is read or required.
-enabled = '{{ env "APIP_AIW_TLS_ENABLED" "true" }}'
-
-# Paths to a mounted TLS certificate and key. REQUIRED when enabled = true; setup.sh
-# generates a pair for the quickstart.
-cert_file = '{{ env "APIP_AIW_TLS_CERT_FILE" "/etc/ai-workspace/tls/cert.pem" }}'
-key_file  = '{{ env "APIP_AIW_TLS_KEY_FILE" "/etc/ai-workspace/tls/key.pem" }}'
 
 
 # ---------------------------------------------------------------------------

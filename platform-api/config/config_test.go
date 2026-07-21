@@ -234,8 +234,8 @@ func TestLoadConfig_HTTPSEnabled_DefaultsToTrue(t *testing.T) {
 	assert.True(t, cfg.Listeners.HTTPS.Enabled, "server.https.enabled must default to true when unset")
 	assert.Equal(t, 9243, cfg.Listeners.HTTPS.Port, "server.https.port must default to 9243")
 	assert.False(t, cfg.Listeners.HTTP.Enabled, "server.http.enabled must default to false when unset")
-	assert.Equal(t, "./data/certs/cert.pem", cfg.Listeners.HTTPS.TLS.CertFile)
-	assert.Equal(t, "./data/certs/key.pem", cfg.Listeners.HTTPS.TLS.KeyFile)
+	assert.Equal(t, "./data/certs/cert.pem", cfg.Listeners.HTTPS.CertFile)
+	assert.Equal(t, "./data/certs/key.pem", cfg.Listeners.HTTPS.KeyFile)
 }
 
 // A {{ env }} token feeding a bool field must survive koanf's weakly-typed decode,

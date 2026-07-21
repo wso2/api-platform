@@ -270,7 +270,7 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 | Section | Purpose |
 |---|---|
 | `[platform_api]` | resource paths |
-| `[platform_api.logging]` | `log_level`, `log_format` |
+| `[platform_api.logging]` | `level`, `format` |
 | `[platform_api.security]` | `encryption_key` (**required** — at-rest AES-256 key, 32 bytes as hex or base64, never auto-generated) |
 | `[platform_api.security.api_key]` | `hashing_algorithms` accepted for API key verification |
 | `[platform_api.database]` | `driver` (`sqlite3` / `postgres` / `sqlserver`), connection fields, pool sizing |
@@ -278,7 +278,7 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 | `[platform_api.auth.jwt]` | HMAC login token settings: `issuer`, `secret_key` (**required**), `token_ttl` |
 | `[platform_api.auth.idp]` / `[platform_api.auth.claim_mappings]` | JWKS endpoint, issuer/audience, validation mode, and JWT claim-name mappings for `idp` mode |
 | `[platform_api.auth.file.organization]` / `[[platform_api.auth.file.users]]` | Local org + username/password/scope entries for `file` mode |
-| `[platform_api.server.http]` / `[platform_api.server.https]` / `[platform_api.server.https.tls]` | Listener enablement, ports, and TLS cert/key paths (certificates are always required for HTTPS — no self-signed fallback) |
+| `[platform_api.server.http]` / `[platform_api.server.https]` | Listener enablement, ports, and (HTTPS) `cert_file` / `key_file` paths (certificates are always required for HTTPS — no self-signed fallback) |
 | `[platform_api.server.timeouts]` | Read/write/idle timeouts |
 | `[platform_api.server.cors]` | `allowed_origins` for credentialed cross-origin requests |
 | `[platform_api.server.websocket]` | Gateway WebSocket connection limits and rate limiting |

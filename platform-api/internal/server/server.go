@@ -641,17 +641,17 @@ func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, sl
 // there is no self-signed fallback; use the quickstart setup script (or your
 // own tooling) to generate a pair and mount it.
 func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, error) {
-	certFile := httpsCfg.TLS.CertFile
-	keyFile := httpsCfg.TLS.KeyFile
+	certFile := httpsCfg.CertFile
+	keyFile := httpsCfg.KeyFile
 	if certFile == "" || keyFile == "" {
-		return nil, fmt.Errorf("HTTPS listener enabled but server.https.tls.cert_file / server.https.tls.key_file is not configured")
+		return nil, fmt.Errorf("HTTPS listener enabled but server.https.cert_file / server.https.key_file is not configured")
 	}
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to load TLS certificates (cert %q / key %q): %w. "+
-				"Mount a certificate pair and point server.https.tls.cert_file / key_file at it, "+
+				"Mount a certificate pair and point server.https.cert_file / key_file at it, "+
 				"or set server.https.enabled=false to serve plain HTTP behind a TLS-terminating proxy",
 			certFile, keyFile, err,
 		)

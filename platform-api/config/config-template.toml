@@ -55,10 +55,11 @@ llm_template_definitions_path = '{{ env "APIP_CP_LLM_TEMPLATE_DEFINITIONS_PATH" 
 openapi_spec_max_fetch_bytes = '{{ env "APIP_CP_OPENAPI_SPEC_MAX_FETCH_BYTES" "5242880" }}'
 
 [platform_api.logging]
-log_level = '{{ env "APIP_CP_LOG_LEVEL" "INFO" }}'   # DEBUG | INFO | WARN | ERROR
+# Level is matched case-insensitively; lowercase is canonical.
+level = '{{ env "APIP_CP_LOGGING_LEVEL" "info" }}'   # debug | info | warn | error
 
 # Log encoding. Use "json" when shipping logs to an aggregator.
-log_format = '{{ env "APIP_CP_LOG_FORMAT" "text" }}'   # text | json
+format = '{{ env "APIP_CP_LOGGING_FORMAT" "text" }}'   # text | json
 
 # ---------------------------------------------------------------------------
 # Security
@@ -91,7 +92,7 @@ path = '{{ env "APIP_CP_DATABASE_PATH" "/app/data/api_platform.db" }}'
 host     = '{{ env "APIP_CP_DATABASE_HOST" "localhost" }}'
 port     = '{{ env "APIP_CP_DATABASE_PORT" "5432" }}'
 name     = '{{ env "APIP_CP_DATABASE_NAME" "platform_api" }}'
-username = '{{ env "APIP_CP_DATABASE_USER" "platform_api" }}'
+user     = '{{ env "APIP_CP_DATABASE_USER" "platform_api" }}'
 # Prefer a mounted secret file in production, e.g.
 #   password = '{{ file "/secrets/platform-api/postgres_password" }}'
 # The referenced file/env var must exist or config load fails; the ""
@@ -247,7 +248,7 @@ token_ttl = '{{ env "APIP_CP_AUTH_JWT_TOKEN_TTL" "1h" }}'
 # service-mesh sidecar) terminates TLS, or for internal traffic — never
 # expose it directly to untrusted networks.
 #
-# tls.cert_file / key_file must point at a certificate pair when
+# cert_file / key_file must point at a certificate pair when
 # server.https.enabled = true. Certificates are always required — there is
 # no self-signed fallback. setup.sh generates a pair for the quickstart.
 [platform_api.server.http]
@@ -255,12 +256,10 @@ enabled = '{{ env "APIP_CP_SERVER_HTTP_ENABLED" "false" }}'
 port    = '{{ env "APIP_CP_SERVER_HTTP_PORT" "9080" }}'
 
 [platform_api.server.https]
-enabled = '{{ env "APIP_CP_SERVER_HTTPS_ENABLED" "true" }}'
-port    = '{{ env "APIP_CP_SERVER_HTTPS_PORT" "9243" }}'
-
-[platform_api.server.https.tls]
-cert_file = '{{ env "APIP_CP_SERVER_HTTPS_TLS_CERT_FILE" "/app/data/certs/cert.pem" }}'   # default: ./data/certs/cert.pem
-key_file  = '{{ env "APIP_CP_SERVER_HTTPS_TLS_KEY_FILE" "/app/data/certs/key.pem" }}'     # default: ./data/certs/key.pem
+enabled   = '{{ env "APIP_CP_SERVER_HTTPS_ENABLED" "true" }}'
+port      = '{{ env "APIP_CP_SERVER_HTTPS_PORT" "9243" }}'
+cert_file = '{{ env "APIP_CP_SERVER_HTTPS_CERT_FILE" "/app/data/certs/cert.pem" }}'   # default: ./data/certs/cert.pem
+key_file  = '{{ env "APIP_CP_SERVER_HTTPS_KEY_FILE" "/app/data/certs/key.pem" }}'     # default: ./data/certs/key.pem
 
 # ---------------------------------------------------------------------------
 # Listener timeouts

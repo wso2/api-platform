@@ -43,11 +43,9 @@ func testServer() *Server {
 func TestBuildTLSConfig_MissingCert_Errors(t *testing.T) {
 	missingDir := filepath.Join(t.TempDir(), "does-not-exist")
 	_, err := testServer().buildTLSConfig(config.HTTPSListener{
-		Enabled: true,
-		TLS: config.ListenerTLS{
-			CertFile: filepath.Join(missingDir, "cert.pem"),
-			KeyFile:  filepath.Join(missingDir, "key.pem"),
-		},
+		Enabled:  true,
+		CertFile: filepath.Join(missingDir, "cert.pem"),
+		KeyFile:  filepath.Join(missingDir, "key.pem"),
 	})
 	if err == nil {
 		t.Fatal("expected an error when the HTTPS listener has no certificates")
@@ -68,12 +66,10 @@ func TestBuildTLSConfig_MountedCert_Loads(t *testing.T) {
 	writeTestCertPair(t, certDir)
 
 	tlsConfig, err := testServer().buildTLSConfig(config.HTTPSListener{
-		Enabled: true,
-		Port:    9243,
-		TLS: config.ListenerTLS{
-			CertFile: filepath.Join(certDir, "cert.pem"),
-			KeyFile:  filepath.Join(certDir, "key.pem"),
-		},
+		Enabled:  true,
+		Port:     9243,
+		CertFile: filepath.Join(certDir, "cert.pem"),
+		KeyFile:  filepath.Join(certDir, "key.pem"),
 	})
 	if err != nil {
 		t.Fatalf("expected mounted certificates to load, got %v", err)

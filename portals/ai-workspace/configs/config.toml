@@ -15,13 +15,19 @@ default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
 
 [ai_workspace.server]
 
-port       = '{{ env "APIP_AIW_SERVER_PORT" "5380" }}'
 static_dir = '{{ env "APIP_AIW_SERVER_STATIC_DIR" "/app" }}'
+
+[ai_workspace.server.https]
+
+enabled   = '{{ env "APIP_AIW_SERVER_HTTPS_ENABLED" "true" }}'
+port      = '{{ env "APIP_AIW_SERVER_HTTPS_PORT" "5380" }}'
+cert_file = "/etc/ai-workspace/tls/cert.pem"
+key_file  = "/etc/ai-workspace/tls/key.pem"
 
 
 [ai_workspace.logging]
 
-log_level = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'   # debug | info | warn | error
+level = '{{ env "APIP_AIW_LOGGING_LEVEL" "info" }}'   # debug | info | warn | error
 
 
 [ai_workspace.control_plane]
@@ -35,13 +41,6 @@ ca_file = "/etc/ai-workspace/tls/cert.pem"
 
 controlplane_host = '{{ env "APIP_AIW_GATEWAY_CONTROLPLANE_HOST" "host.docker.internal:9243" }}'
 platform_gateway_versions = '{{ env "APIP_AIW_GATEWAY_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]" }}'
-
-
-[ai_workspace.tls]
-
-enabled   = '{{ env "APIP_AIW_TLS_ENABLED" "true" }}'
-cert_file = "/etc/ai-workspace/tls/cert.pem"
-key_file  = "/etc/ai-workspace/tls/key.pem"
 
 
 [ai_workspace.auth]

@@ -109,7 +109,7 @@ func NewConnection(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
 		// Build PostgreSQL DSN from config
 		dsn := fmt.Sprintf(
 			"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-			cfg.Host, cfg.Port, cfg.Username, cfg.Password, cfg.Name, cfg.SSLMode,
+			cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Name, cfg.SSLMode,
 		)
 		// sslrootcert verifies the server certificate (verify-ca/verify-full);
 		// sslcert/sslkey present a client certificate for mutual TLS.
@@ -611,8 +611,8 @@ func buildSQLServerDSN(cfg *config.Database) string {
 		Host:     fmt.Sprintf("%s:%d", host, cfg.Port),
 		RawQuery: q.Encode(),
 	}
-	if cfg.Username != "" {
-		u.User = url.UserPassword(cfg.Username, cfg.Password)
+	if cfg.User != "" {
+		u.User = url.UserPassword(cfg.User, cfg.Password)
 	}
 
 	return u.String()

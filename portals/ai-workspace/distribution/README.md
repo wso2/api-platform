@@ -69,7 +69,7 @@ Open the AI Workspace in a browser at `https://localhost:5380` and log in with t
 
 Edit `configs/config.toml` for AI Workspace settings and `configs/config-platform-api.toml` for Platform API settings. Both are read directly by the running containers — no rebuild required, just restart the affected service.
 
-Each config TOML writes its values as `'{{ env "..." }}'` tokens, so a key can be set from the environment without editing the file — the token names the variable, by convention the key uppercased and prefixed with `APIP_AIW_` (AI Workspace) or `APIP_CP_` (Platform API), e.g. `APIP_AIW_LOG_LEVEL`, `APIP_CP_DATABASE_HOST`. A key with no token is not settable from the environment: uncomment or add it in the TOML first. To source a value from a mounted file instead — the right choice for secrets — swap the token for `'{{ file "/secrets/..." }}'`. Never write a secret as a raw literal in either file.
+Each config TOML writes its values as `'{{ env "..." }}'` tokens, so a key can be set from the environment without editing the file — the token names the variable, by convention the key uppercased and prefixed with `APIP_AIW_` (AI Workspace) or `APIP_CP_` (Platform API), e.g. `APIP_AIW_LOGGING_LEVEL`, `APIP_CP_DATABASE_HOST`. A key with no token is not settable from the environment: uncomment or add it in the TOML first. To source a value from a mounted file instead — the right choice for secrets — swap the token for `'{{ file "/secrets/..." }}'`. Never write a secret as a raw literal in either file.
 
 Environment overrides go in `api-platform.env` (git-ignored; loaded into both containers via `env_file`, format `raw`, since the bcrypt password hash contains `$`, which must not be treated as a compose interpolation variable). This is also where OIDC mode's `APIP_AIW_AUTH_OIDC_CLIENT_SECRET` belongs — it's the only file compose passes into the containers, so a separate `.env` alongside it would never reach the app.
 
@@ -84,21 +84,21 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 | `[ai_workspace.control_plane].tls_skip_verify` | Skip upstream cert verification — local dev only |
 | `[ai_workspace.gateway].controlplane_host` | Address gateways use to reach the Platform API |
 | `[ai_workspace.gateway].platform_gateway_versions` | Gateway versions shown in the create-gateway selector |
-| `[ai_workspace.tls].cert_file` / `key_file` | Listener certificate pair — required when `[ai_workspace.tls].enabled` is `true`. Fixed to the mounted path, same as `ca_file` above |
+| `[ai_workspace.server.https].cert_file` / `key_file` | Listener certificate pair — required when `[ai_workspace.server.https].enabled` is `true`. Fixed to the mounted path, same as `ca_file` above |
 | `[ai_workspace.auth.oidc].*` | Used only when `[ai_workspace.auth] mode = "oidc"` — see [OIDC](#oidc-production) below |
 
 ### Platform API (`configs/config-platform-api.toml`)
 
 | Setting | Description |
 |---------|-------------|
-| `[logging].log_level` | Log level (`DEBUG`, `INFO`, `WARN`, `ERROR`) |
+| `[logging].level` | Log level (`debug`, `info`, `warn`, `error`; matched case-insensitively) |
 | `[security].encryption_key` | Single 32-byte key (64 hex chars or base64) used for all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets). Generate with `openssl rand -hex 32` |
 | `[database].driver` | `sqlite3` or `postgres` |
 | `[auth].mode` | `file` (quickstart default), `external_token`, or `idp` — selects exactly one auth mode |
 | `[auth.jwt].secret_key` | 32-byte HMAC key signing login JWTs |
 | `[auth.idp]` | JWKS-based IDP auth — active when `mode = "idp"`; configure for Asgardeo, Keycloak, Auth0, etc. |
 | `[auth.file.users]` | Local user credentials, active when `mode = "file"` (change the password hash before sharing) |
-| `[server.https]` | Listener on `:9243`; `[server.https.tls] cert_file`/`key_file` point at `cert.pem`/`key.pem` |
+| `[server.https]` | Listener on `:9243`; `cert_file`/`key_file` point at `cert.pem`/`key.pem` |
 
 Each key's default value is written inline in `configs/config-template.toml` and
 `configs/config-platform-api-template.toml` — those files are a fully-commented reference of

@@ -2,7 +2,7 @@
 
 AI Workspace is configured through a `config.toml` file mounted into the container at `/etc/ai-workspace/config.toml`.
 
-All AI Workspace settings live under a single top-level `[ai_workspace]` table — the same namespacing convention the Platform API uses for its own `[platform_api]` table — so one `config.toml` can hold both services' sections side by side without their keys colliding. Keys are grouped into TOML tables (`[ai_workspace.logging]`, `[ai_workspace.control_plane]`, `[ai_workspace.tls]`, `[ai_workspace.session]`, `[ai_workspace.auth]`, `[ai_workspace.auth.oidc]`); deployment-identity keys such as `domain` sit directly under `[ai_workspace]`. The session cookie's name, `Secure`, and `SameSite` attributes are not configurable — they are internal details of the BFF's session mechanism.
+All AI Workspace settings live under a single top-level `[ai_workspace]` table — the same namespacing convention the Platform API uses for its own `[platform_api]` table — so one `config.toml` can hold both services' sections side by side without their keys colliding. Keys are grouped into TOML tables (`[ai_workspace.logging]`, `[ai_workspace.control_plane]`, `[ai_workspace.server.https]`, `[ai_workspace.session]`, `[ai_workspace.auth]`, `[ai_workspace.auth.oidc]`); deployment-identity keys such as `domain` sit directly under `[ai_workspace]`. The session cookie's name, `Secure`, and `SameSite` attributes are not configurable — they are internal details of the BFF's session mechanism.
 
 The file is the **only** source of configuration. Each value in it is written as an interpolation token that is resolved once at startup, so where the value comes from is visible in place:
 
@@ -14,7 +14,7 @@ client_id = '{{ env "APIP_AIW_AUTH_OIDC_CLIENT_ID" "default" }}'
 
 A key written this way can be set from the environment without editing the file. That token is the *only* thing that lets an environment variable reach a config key — there is no implicit override, so a key written as a plain literal (`key = "value"`), or absent from the file, ignores the variable entirely. Add the key with a token to make it settable that way.
 
-By convention the variable a token names is the key's path **under `[ai_workspace]`** (the `ai_workspace` segment itself is not part of the name) — table and key, uppercased, dots as underscores — prefixed with **`APIP_AIW_`**: `[ai_workspace.auth.oidc] client_id` → `APIP_AIW_AUTH_OIDC_CLIENT_ID`, `[ai_workspace.control_plane] url` → `APIP_AIW_CONTROL_PLANE_URL`, and `[ai_workspace.logging] log_level` → `APIP_AIW_LOG_LEVEL`. (The same prefix convention gives the Platform API `APIP_CP_` and the Developer Portal `APIP_DP_`.) It is only a convention: a token may name any variable, which is what lets a key read an existing secret under its own name.
+By convention the variable a token names is the key's path **under `[ai_workspace]`** (the `ai_workspace` segment itself is not part of the name) — table and key, uppercased, dots as underscores — prefixed with **`APIP_AIW_`**: `[ai_workspace.auth.oidc] client_id` → `APIP_AIW_AUTH_OIDC_CLIENT_ID`, `[ai_workspace.control_plane] url` → `APIP_AIW_CONTROL_PLANE_URL`, and `[ai_workspace.logging] level` → `APIP_AIW_LOGGING_LEVEL`. (The same prefix convention gives the Platform API `APIP_CP_` and the Developer Portal `APIP_DP_`.) It is only a convention: a token may name any variable, which is what lets a key read an existing secret under its own name.
 
 The file's own location is not a config key — it cannot be, since it is needed before the file is read. The server reads its mount, `/etc/ai-workspace/config.toml`, unless `-config` names another path (`bff -config ../configs/config.toml`, which is what `make bff-run` does). One variable is likewise read directly by the server rather than through a token: `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`, which bounds where `{{ file }}` tokens may read from (see below).
 
@@ -58,8 +58,8 @@ map of what each table is for.
 
 | Key | Description |
 |-----|-------------|
-| `log_level` | `debug` \| `info` \| `warn` \| `error`. |
-| `log_format` | `text` \| `json`. |
+| `level` | `debug` \| `info` \| `warn` \| `error` (matched case-insensitively). |
+| `format` | `text` \| `json`. |
 
 ### `[ai_workspace.auth]` — login mode
 
@@ -114,7 +114,7 @@ A sibling of `[ai_workspace.auth.oidc]`, not nested inside it: this table applie
 URLs in your IDP application. The sign-in redirect is the **BFF callback** `/api/auth/callback`
 (the BFF, not the browser, completes the code exchange) — not a `/signin` route.
 
-The remaining tables (`[ai_workspace.tls]`, `[ai_workspace.session]`) and the `[ai_workspace]` listener keys are documented inline in
+The remaining tables (`[ai_workspace.server.https]`, `[ai_workspace.session]`) and the `[ai_workspace]` listener keys are documented inline in
 [`configs/config-template.toml`](../../portals/ai-workspace/configs/config-template.toml).
 
 ## Minimal Quick-Start Config (basic auth)

@@ -79,9 +79,9 @@ func TestShippedConfig_MakeBffRunOverrides(t *testing.T) {
 	// Exactly the variables the bff-run target sets.
 	t.Setenv("APIP_AIW_CONTROL_PLANE_URL", "https://localhost:9243")
 	t.Setenv("APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY", "true")
-	t.Setenv("APIP_AIW_SERVER_PORT", "8081")
+	t.Setenv("APIP_AIW_SERVER_HTTPS_PORT", "8081")
 	t.Setenv("APIP_AIW_SERVER_STATIC_DIR", "../dist")
-	t.Setenv("APIP_AIW_LOG_LEVEL", "debug")
+	t.Setenv("APIP_AIW_LOGGING_LEVEL", "debug")
 
 	cfg, err := Load(quickstartConfig)
 	if err != nil {

@@ -34,7 +34,7 @@ import (
 
 // Config is the fully-resolved BFF configuration.
 type Config struct {
-	// Listener. Addr is derived from [server] port as ":" + port (e.g. ":5380") —
+	// Listener. Addr is derived from [server.https] port as ":" + port (e.g. ":5380") —
 	// there is no host to configure, since the listener always binds all interfaces.
 	Addr      string
 	StaticDir string // directory containing the built SPA (index.html + assets)
@@ -97,7 +97,7 @@ type ControlPlaneConfig struct {
 type TLSConfig struct {
 	// TerminateTLS makes the BFF serve HTTPS on its own listener: it presents the
 	// certificate and decrypts inbound TLS itself. Defaults to true (config key
-	// [tls] enabled). Set to false only when a trusted upstream (ingress,
+	// [server.https] enabled). Set to false only when a trusted upstream (ingress,
 	// service-mesh sidecar) terminates TLS and forwards plain HTTP to the BFF; no
 	// certificate is then read, generated, or required.
 	TerminateTLS bool
@@ -234,7 +234,7 @@ func Load(path string) (*Config, error) {
 
 	// Parse typed values up front so a malformed one fails startup instead of
 	// being silently replaced with the default.
-	tlsEnabled, err := s.getbool("tls.enabled", true)
+	tlsEnabled, err := s.getbool("server.https.enabled", true)
 	if err != nil {
 		return nil, err
 	}
@@ -256,25 +256,24 @@ func Load(path string) (*Config, error) {
 	}
 	// A bare port number is easier to get right than a full "host:port" address (there
 	// is never a host to fill in — the listener always binds all interfaces), and it
-	// matches the Platform API's [server.http]/[server.https] port convention. Validate
-	// it up front so a typo'd value fails startup instead of a confusing net.Listen error.
-	port := s.get("server.port", "5380")
-	portNum, err := strconv.Atoi(port)
-	if err != nil || portNum < 1 || portNum > 65535 {
-		return nil, fmt.Errorf("[server] port must be a number between 1 and 65535, got %q", port)
+	// matches the Platform API's [server.https] port convention. Parsed as an int so a
+	// typo'd value fails startup instead of a confusing net.Listen error.
+	portNum, err := s.getint("server.https.port", 5380, 1, 65535)
+	if err != nil {
+		return nil, err
 	}
 
 	cfg := &Config{
-		Addr:      ":" + port,
+		Addr:      ":" + strconv.Itoa(portNum),
 		StaticDir: s.get("server.static_dir", "/app"),
-		LogLevel:  strings.ToLower(s.get("logging.log_level", "info")),
-		LogFormat: strings.ToLower(s.get("logging.log_format", "text")),
+		LogLevel:  strings.ToLower(s.get("logging.level", "info")),
+		LogFormat: strings.ToLower(s.get("logging.format", "text")),
 		TLS: TLSConfig{
 			TerminateTLS: tlsEnabled,
 			// Convention matches the container's mount path. A certificate pair is
 			// required there whenever TerminateTLS is on.
-			CertFile: s.get("tls.cert_file", "/etc/ai-workspace/tls/cert.pem"),
-			KeyFile:  s.get("tls.key_file", "/etc/ai-workspace/tls/key.pem"),
+			CertFile: s.get("server.https.cert_file", "/etc/ai-workspace/tls/cert.pem"),
+			KeyFile:  s.get("server.https.key_file", "/etc/ai-workspace/tls/key.pem"),
 		},
 		ControlPlane: ControlPlaneConfig{
 			URL:            strings.TrimRight(s.get("control_plane.url", ""), "/"),
