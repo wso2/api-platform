@@ -313,7 +313,7 @@ export default function CreateProviderTemplate() {
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplate.copySubtitle"
               defaultMessage={
-                'Creating a new custom template from "{source}". Everything is pre-filled — adjust anything you need. A new version can be created later from your copy.'
+                'Creating a new custom template from "{source}".'
               }
               values={{ source: copyFrom.displayName }}
             />
