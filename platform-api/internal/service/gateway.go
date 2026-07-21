@@ -754,7 +754,9 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId, updatedBy string, req *
 	return s.gatewayModelToAPI(gateway)
 }
 
-// DeleteGateway deletes a gateway and all associated tokens (CASCADE)
+// DeleteGateway deletes a gateway along with all its deployment information (deployments,
+// deployment statuses, gateway-scoped secret refs, artifact-gateway mappings) and tokens,
+// so no artifact is left appearing deployed on the removed gateway.
 func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error {
 	// Verify gateway exists and belongs to organization (gatewayID is now the handle)
 	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayID, orgID)
@@ -765,7 +767,8 @@ func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error
 		return apperror.GatewayNotFound.New()
 	}
 
-	// Delete gateway by UUID (FK CASCADE will automatically remove tokens and deployments; association_mappings cleanup is handled by the repository)
+	// Delete gateway by UUID; the repository explicitly removes deployment-related rows and
+	// association mappings, and FK CASCADE removes gateway_tokens/gateway_endpoints.
 	err = s.gatewayRepo.Delete(gateway.ID, orgID)
 	if err != nil {
 		return err
