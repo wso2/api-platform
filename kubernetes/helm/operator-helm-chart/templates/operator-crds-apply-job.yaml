@@ -23,7 +23,7 @@ spec:
     metadata:
       name: "{{ include "gateway-operator.fullname" . }}-apply-crds"
     spec:
-      serviceAccountName: {{ .Values.serviceAccount.name }}
+      serviceAccountName: {{ include "gateway-operator.fullname" . }}-crd-manager
       restartPolicy: Never
       containers:
         - name: apply-crds

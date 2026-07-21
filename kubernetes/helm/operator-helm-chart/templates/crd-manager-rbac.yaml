@@ -1,14 +1,43 @@
 {{/*
-CustomResourceDefinitions are cluster-scoped, so the apply-crds hook Job
-needs this regardless of whether .Values.watchNamespaces restricts the
-operator's own manager-role to a namespaced Role (see role.yaml/clusterrole.yaml).
+Bootstrap identity + RBAC for the CRD-lifecycle hook Jobs (operator-crds-apply-job
+and cleanupo-finalizer-job).
 
-This must itself be a pre-install,pre-upgrade hook (weighted before the
-operator-crds ConfigMap and apply-crds Job) — normal, non-hook resources are
-only applied AFTER pre-install/pre-upgrade hooks run, so on `helm upgrade` a
-plain ClusterRoleBinding here would not exist yet when the hook Job tries to
-use it.
+These Jobs run as Helm hooks, i.e. BEFORE the main release phase, so they cannot use
+the operator's runtime ServiceAccount (serviceaccount.yaml): Helm only creates that SA
+in the main phase, so on a fresh install it does not yet exist when the hook pods are
+admitted, and the pod is rejected with "serviceaccount not found". Reusing it also can't
+be fixed by hook-ifying it — that SA is a release-tracked resource, so converting it to a
+hook would make Helm prune it on the first upgrade from any existing install.
+
+This dedicated ServiceAccount and its cluster-scoped RBAC are therefore themselves
+pre-install,pre-upgrade hooks, weighted ahead of the resources that consume them:
+  -2  this ServiceAccount
+  -1  the ClusterRole + ClusterRoleBinding below
+   0  the operator-crds ConfigMap (operator-crds.yaml)
+   1  the apply-crds Job (operator-crds-apply-job.yaml)
+The before-hook-creation delete policy makes them idempotent across repeat upgrades
+(a plain hook Create would otherwise fail with AlreadyExists on the second upgrade).
+They persist between install and uninstall, so the pre-delete cleanupo-finalizer-job
+can still use this identity at teardown.
+
+CustomResourceDefinitions are cluster-scoped, so this RBAC is required regardless of
+whether .Values.watchNamespaces restricts the operator's own manager-role to a
+namespaced Role (see role.yaml/clusterrole.yaml).
 */}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-crd-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "gateway-operator.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-2"
+    "helm.sh/hook-delete-policy": before-hook-creation
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -20,10 +49,20 @@ metadata:
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-delete-policy": before-hook-creation
 rules:
+  # apply-crds Job: manage the operator's CustomResourceDefinitions.
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
+  # cleanupo-finalizer-job (pre-delete): enumerate namespaces and strip finalizers
+  # from leftover APIGateway/RestApi CRs so the resources can be garbage-collected.
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+  - apiGroups: ["gateway.api-platform.wso2.com"]
+    resources: ["apigateways", "restapis"]
+    verbs: ["get", "list", "patch", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -36,11 +75,12 @@ metadata:
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-delete-policy": before-hook-creation
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: {{ include "gateway-operator.fullname" . }}-crd-manager-role
 subjects:
   - kind: ServiceAccount
-    name: {{ .Values.serviceAccount.name }}
+    name: {{ include "gateway-operator.fullname" . }}-crd-manager
     namespace: {{ .Release.Namespace }}
