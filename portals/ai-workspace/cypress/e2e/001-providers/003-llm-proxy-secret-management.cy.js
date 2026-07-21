@@ -66,7 +66,7 @@ function loginAndFetchAuthContext(setAuthToken, setOrganizationId) {
     .then((r) => {
       setAuthToken(r.body.accessToken);
       return cy.request({
-        url: '/api/proxy/api/v0.9/organizations',
+        url: '/proxy/api/v0.9/organizations',
         headers: { Authorization: `Bearer ${r.body.accessToken}` },
       });
     })
@@ -144,7 +144,7 @@ describe('AI Workspace — LLM proxy secret management (create flow)', () => {
     if (authToken && organizationId && createdProxyId) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/llm-proxies/${encodeURIComponent(createdProxyId)}?organizationId=${encodeURIComponent(organizationId)}`,
+        url: `/proxy/api/v0.9/llm-proxies/${encodeURIComponent(createdProxyId)}?organizationId=${encodeURIComponent(organizationId)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });
@@ -152,14 +152,14 @@ describe('AI Workspace — LLM proxy secret management (create flow)', () => {
     if (authToken && organizationId && createdProviderId) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/llm-providers/${encodeURIComponent(createdProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
+        url: `/proxy/api/v0.9/llm-providers/${encodeURIComponent(createdProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });
     }
     if (authToken) {
       cy.request({
-        url: '/api/proxy/api/v0.9/projects',
+        url: '/proxy/api/v0.9/projects',
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       }).then((r) => {
@@ -167,7 +167,7 @@ describe('AI Workspace — LLM proxy secret management (create flow)', () => {
         if (proj?.id) {
           cy.request({
             method: 'DELETE',
-            url: `/api/proxy/api/v0.9/projects/${encodeURIComponent(proj.id)}`,
+            url: `/proxy/api/v0.9/projects/${encodeURIComponent(proj.id)}`,
             headers: { Authorization: `Bearer ${authToken}` },
             failOnStatusCode: false,
           });
@@ -220,7 +220,7 @@ describe('AI Workspace — LLM proxy secret management (create flow)', () => {
     const existingHandle = `${toSlug(proxyName)}-provider-api-key`;
     cy.request({
       method: 'POST',
-      url: '/api/proxy/api/v0.9/secrets',
+      url: '/proxy/api/v0.9/secrets',
       headers: { Authorization: `Bearer ${authToken}` },
       form: true,
       body: {
@@ -345,7 +345,7 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
     if (authToken && organizationId && proxyId) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/llm-proxies/${encodeURIComponent(proxyId)}?organizationId=${encodeURIComponent(organizationId)}`,
+        url: `/proxy/api/v0.9/llm-proxies/${encodeURIComponent(proxyId)}?organizationId=${encodeURIComponent(organizationId)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });
@@ -354,14 +354,14 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
     if (authToken && organizationId && createdProviderId) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/llm-providers/${encodeURIComponent(createdProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
+        url: `/proxy/api/v0.9/llm-providers/${encodeURIComponent(createdProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });
     }
     if (authToken) {
       cy.request({
-        url: '/api/proxy/api/v0.9/projects',
+        url: '/proxy/api/v0.9/projects',
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       }).then((r) => {
@@ -369,7 +369,7 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
         if (proj?.id) {
           cy.request({
             method: 'DELETE',
-            url: `/api/proxy/api/v0.9/projects/${encodeURIComponent(proj.id)}`,
+            url: `/proxy/api/v0.9/projects/${encodeURIComponent(proj.id)}`,
             headers: { Authorization: `Bearer ${authToken}` },
             failOnStatusCode: false,
           });
@@ -421,7 +421,7 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
     cy.wrap(null).then(() => {
       expect(initialSecretHandle, 'captured the initial secret handle in beforeEach').to.not.equal('');
       cy.request({
-        url: `/api/proxy/api/v0.9/secrets/${encodeURIComponent(initialSecretHandle)}?organizationId=${encodeURIComponent(organizationId)}`,
+        url: `/proxy/api/v0.9/secrets/${encodeURIComponent(initialSecretHandle)}?organizationId=${encodeURIComponent(organizationId)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       }).then((r) => {
@@ -439,7 +439,7 @@ describe('AI Workspace — LLM proxy secret management (update flow)', () => {
 
     cy.request({
       method: 'POST',
-      url: '/api/proxy/api/v0.9/secrets',
+      url: '/proxy/api/v0.9/secrets',
       headers: { Authorization: `Bearer ${authToken}` },
       form: true,
       body: {

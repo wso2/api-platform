@@ -25,7 +25,7 @@ import (
 )
 
 func csrfTestServer() *Server {
-	return &Server{cfg: &config.Config{CSRFHeader: "X-Requested-By"}}
+	return &Server{cfg: &config.Config{}}
 }
 
 func TestRequireCSRF(t *testing.T) {
@@ -49,7 +49,7 @@ func TestRequireCSRF(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(tc.method, "/api/proxy/x", nil)
+			req := httptest.NewRequest(tc.method, "/proxy/x", nil)
 			if tc.header {
 				req.Header.Set("X-Requested-By", "ai-workspace")
 			}

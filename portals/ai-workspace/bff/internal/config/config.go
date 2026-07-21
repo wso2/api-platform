@@ -27,14 +27,16 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
 
 // Config is the fully-resolved BFF configuration.
 type Config struct {
-	// Listener
-	Addr      string // host:port to listen on, e.g. ":5380"
+	// Listener. Addr is derived from [server] port as ":" + port (e.g. ":5380") —
+	// there is no host to configure, since the listener always binds all interfaces.
+	Addr      string
 	StaticDir string // directory containing the built SPA (index.html + assets)
 
 	// Logging
@@ -54,12 +56,15 @@ type Config struct {
 	Session SessionConfig
 	Cookie  CookieConfig
 
-	// CSRF
-	CSRFHeader string // custom header required on state-mutating requests
-
 	// Auth
 	AuthMode string // "basic" | "oidc" — informs the SPA which login UX to show
 	OIDC     OIDCConfig
+
+	// Claims maps which token claim names carry each user/org field. Shared by both
+	// auth modes: OIDC tokens from the configured IDP, and the HMAC JWTs the Platform
+	// API's file-based login endpoint signs. Override per IDP when the defaults don't
+	// match (e.g. the display name lands on "sub").
+	Claims ClaimMappingConfig
 
 	// Runtime config surfaced to the SPA (window.__RUNTIME_CONFIG__)
 	RuntimeConfig map[string]string
@@ -81,8 +86,10 @@ type ControlPlaneConfig struct {
 	// TLSSkipVerify disables upstream certificate verification entirely.
 	// Last-resort escape hatch for dev/demo only; prefer CAFile.
 	TLSSkipVerify bool
-	// LoginPath is the file-based login path on the Platform API.
-	LoginPath string
+	// PortalBasePath is the Platform API's portal route prefix (e.g.
+	// /api/portal/v0.9), used to build paths for BFF-initiated calls to the
+	// Platform API — file-based login today, others (e.g. /auth/me) later.
+	PortalBasePath string
 }
 
 // TLSConfig controls whether the BFF listener serves HTTPS directly or sits
@@ -105,12 +112,27 @@ type SessionConfig struct {
 	AbsoluteTTL time.Duration // hard cap regardless of activity / token exp
 }
 
-// CookieConfig controls the session cookie attributes.
+// CookieConfig controls the session cookie attributes. Not user-configurable: these
+// are implementation details of the BFF's session mechanism, not a deployment concern.
+// The BFF always terminates TLS (or sits behind a proxy that does), so Secure is
+// unconditionally true; there is no supported plain-HTTP deployment that would need it
+// false.
 type CookieConfig struct {
 	Name     string
 	Secure   bool
 	SameSite string // "lax" | "strict" | "none"
 }
+
+// cookieName is the session cookie's name.
+const cookieName = "_ai_workspace_session"
+
+// CSRFHeaderName is the header the SPA must set on every state-mutating request, and
+// the BFF checks for on the way in (see server/middleware.go requireCSRF). It is a
+// fixed contract between the BFF and the SPA it ships, not a deployment concern — an
+// operator changing it on one side without the other would silently break CSRF
+// protection, so it is a constant rather than a config key. The SPA's copy lives in
+// src/config.env.ts CSRF_HEADER and must be kept in sync with this value.
+const CSRFHeaderName = "X-Requested-By"
 
 // OIDCConfig holds the confidential-client settings. The client secret lives
 // only here on the BFF and is never emitted to the browser.
@@ -122,19 +144,16 @@ type OIDCConfig struct {
 	RedirectURL           string // must equal the IDP-registered redirect, points at /api/auth/callback
 	PostLogoutRedirectURL string
 	Scopes                string // space-separated
-
-	// Claims maps which token claim names carry each user/org field. Override per
-	// IDP when the defaults don't match (e.g. the display name lands on "sub").
-	Claims ClaimMappingConfig
 }
 
 // ClaimMappingConfig configures which claim names the BFF reads for each
-// user/org field from the OIDC tokens. Empty fields fall back to built-in
-// defaults in the session package.
+// user/org field. Empty fields fall back to built-in defaults in the session
+// package. Shared by OIDC and file-based (basic) tokens — both are read through
+// the same mapping so a custom claim name only needs to be set once.
 type ClaimMappingConfig struct {
 	Username  string
 	Email     string
-	Role      string
+	Roles     string
 	Scope     string
 	OrgID     string
 	OrgName   string
@@ -144,7 +163,7 @@ type ClaimMappingConfig struct {
 // defaultOIDCScopes is the full set of scopes the BFF requests in OIDC mode so a
 // logged-in user's access token carries every ap:* permission the Platform API
 // authorizes against. The IDP must still have these scopes registered and granted
-// to the user, otherwise it drops the ungranted ones. Override with the [oidc] scope
+// to the user, otherwise it drops the ungranted ones. Override with the [auth.oidc] scope
 // config key to request a narrower set.
 //
 // offline_access is required: without it most IDPs (Asgardeo, WSO2 IS, Okta,
@@ -206,11 +225,11 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	authMode := strings.ToLower(s.get("auth_mode", "basic"))
+	authMode := strings.ToLower(s.get("auth.mode", "basic"))
 	// A typo'd mode must not silently degrade to basic auth: any value other than
 	// "oidc" would leave OIDC.Enabled false and hand the SPA an unknown login UX.
 	if authMode != "basic" && authMode != "oidc" {
-		return nil, fmt.Errorf("invalid auth_mode %q: must be \"basic\" or \"oidc\"", authMode)
+		return nil, fmt.Errorf("invalid [auth] mode %q: must be \"basic\" or \"oidc\"", authMode)
 	}
 
 	// Parse typed values up front so a malformed one fails startup instead of
@@ -231,20 +250,25 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	cookieSecure, err := s.getbool("cookie.secure", true)
+	oidcEnabled, err := s.getbool("auth.oidc.enabled", false)
 	if err != nil {
 		return nil, err
 	}
-	oidcEnabled, err := s.getbool("oidc.enabled", false)
-	if err != nil {
-		return nil, err
+	// A bare port number is easier to get right than a full "host:port" address (there
+	// is never a host to fill in — the listener always binds all interfaces), and it
+	// matches the Platform API's [server.http]/[server.https] port convention. Validate
+	// it up front so a typo'd value fails startup instead of a confusing net.Listen error.
+	port := s.get("server.port", "5380")
+	portNum, err := strconv.Atoi(port)
+	if err != nil || portNum < 1 || portNum > 65535 {
+		return nil, fmt.Errorf("[server] port must be a number between 1 and 65535, got %q", port)
 	}
 
 	cfg := &Config{
-		Addr:      s.get("listen_addr", ":5380"),
-		StaticDir: s.get("static_dir", "/app"),
-		LogLevel:  strings.ToLower(s.get("log_level", "info")),
-		LogFormat: strings.ToLower(s.get("log_format", "text")),
+		Addr:      ":" + port,
+		StaticDir: s.get("server.static_dir", "/app"),
+		LogLevel:  strings.ToLower(s.get("logging.log_level", "info")),
+		LogFormat: strings.ToLower(s.get("logging.log_format", "text")),
 		TLS: TLSConfig{
 			TerminateTLS: tlsEnabled,
 			// Convention matches the container's mount path. A certificate pair is
@@ -253,54 +277,60 @@ func Load(path string) (*Config, error) {
 			KeyFile:  s.get("tls.key_file", "/etc/ai-workspace/tls/key.pem"),
 		},
 		ControlPlane: ControlPlaneConfig{
-			URL:           strings.TrimRight(s.get("control_plane.url", ""), "/"),
-			CAFile:        s.get("control_plane.ca_file", ""),
-			TLSSkipVerify: controlPlaneTLSSkipVerify,
-			LoginPath:     s.get("control_plane.login_path", "/api/portal/v0.9/auth/login"),
+			URL:            strings.TrimRight(s.get("control_plane.url", ""), "/"),
+			CAFile:         s.get("control_plane.ca_file", ""),
+			TLSSkipVerify:  controlPlaneTLSSkipVerify,
+			PortalBasePath: strings.TrimRight(s.get("control_plane.portal_base_path", "/api/portal/v0.9"), "/"),
 		},
-		ProxyPrefix: strings.TrimRight(s.get("proxy_prefix", "/api/proxy"), "/"),
+		ProxyPrefix: strings.TrimRight(s.get("control_plane.proxy_prefix", "/proxy"), "/"),
 		Session: SessionConfig{
 			Store:       s.get("session.store", "memory"),
 			IdleTimeout: idleTimeout,
 			AbsoluteTTL: absoluteTTL,
 		},
 		Cookie: CookieConfig{
-			Name:     s.get("cookie.name", "_ai_workspace_session"),
-			Secure:   cookieSecure,
-			SameSite: strings.ToLower(s.get("cookie.samesite", "lax")),
+			Name:     cookieName,
+			Secure:   true,
+			SameSite: "lax",
 		},
-		CSRFHeader: s.get("csrf_header", "X-Requested-By"),
-		AuthMode:   authMode,
+		AuthMode: authMode,
 		OIDC: OIDCConfig{
 			Enabled:  authMode == "oidc" || oidcEnabled,
-			Issuer:   strings.TrimRight(s.get("oidc.authority", ""), "/"),
-			ClientID: s.get("oidc.client_id", ""),
+			Issuer:   strings.TrimRight(s.get("auth.oidc.authority", ""), "/"),
+			ClientID: s.get("auth.oidc.client_id", ""),
 			// Never write the secret as a literal. Point the key at an environment
-			// variable with '{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}', or — preferably —
-			// at a mounted file with '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'.
-			ClientSecret: s.get("oidc.client_secret", ""),
-			RedirectURL:  s.get("oidc.redirect_url", ""),
+			// variable with '{{ env "APIP_AIW_AUTH_OIDC_CLIENT_SECRET" }}', or —
+			// preferably — at a mounted file with
+			// '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'.
+			ClientSecret: s.get("auth.oidc.client_secret", ""),
+			RedirectURL:  s.get("auth.oidc.redirect_url", ""),
 			// Empty by default: LogoutURL() forwards this as post_logout_redirect_uri,
 			// which IDPs require to be an absolute, pre-registered URL. A relative
 			// default would produce an invalid logout request, so leave it unset
 			// unless an absolute URL is explicitly configured.
-			PostLogoutRedirectURL: s.get("oidc.post_logout_redirect_url", ""),
-			Scopes:                s.get("oidc.scope", defaultOIDCScopes),
-			// [oidc.claim_mappings] deliberately mirrors the Platform API's
-			// [auth.idp.claim_mappings], key for key: both describe the same IDP token,
-			// and they must agree, so they are named the same on both sides.
-			//
-			// The same keys drive the BFF's session mapping and the SPA's runtime
-			// config, so one config entry keeps both layers in sync.
-			Claims: ClaimMappingConfig{
-				Username:  s.get("oidc.claim_mappings.username", "username"),
-				Email:     s.get("oidc.claim_mappings.email", "email"),
-				Role:      s.get("oidc.claim_mappings.role", "platform_role"),
-				Scope:     s.get("oidc.claim_mappings.scope", "scope"),
-				OrgID:     s.get("oidc.claim_mappings.organization", "org_id"),
-				OrgName:   s.get("oidc.claim_mappings.org_name", "org_name"),
-				OrgHandle: s.get("oidc.claim_mappings.org_handle", "org_handle"),
-			},
+			PostLogoutRedirectURL: s.get("auth.oidc.post_logout_redirect_url", ""),
+			Scopes:                s.get("auth.oidc.scope", defaultOIDCScopes),
+		},
+		// [auth.claim_mappings] deliberately mirrors the Platform API's
+		// [auth.claim_mappings], key for key: both describe the same claim names, and
+		// they must agree. It is a sibling of [auth.oidc], not nested inside it,
+		// because it applies to BOTH auth modes — OIDC tokens from the configured IDP,
+		// and the HMAC JWTs the Platform API's file-based login endpoint signs with
+		// these same mapped claim names (see platform-api's auth_login.go). Defaults
+		// below match the Platform API's own claim_mappings defaults so the two agree
+		// out of the box; override on both sides together when an IDP uses different
+		// claim names (e.g. Asgardeo's "org_id").
+		//
+		// The same keys drive the BFF's session mapping and the SPA's runtime config,
+		// so one config entry keeps both layers in sync.
+		Claims: ClaimMappingConfig{
+			Username:  s.get("auth.claim_mappings.username", "username"),
+			Email:     s.get("auth.claim_mappings.email", "email"),
+			Roles:     s.get("auth.claim_mappings.roles", "roles"),
+			Scope:     s.get("auth.claim_mappings.scope", "scope"),
+			OrgID:     s.get("auth.claim_mappings.organization", "organization"),
+			OrgName:   s.get("auth.claim_mappings.org_name", "org_name"),
+			OrgHandle: s.get("auth.claim_mappings.org_handle", "org_handle"),
 		},
 	}
 
@@ -330,7 +360,7 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.OIDC.Enabled {
 		if cfg.OIDC.Issuer == "" || cfg.OIDC.ClientID == "" || cfg.OIDC.ClientSecret == "" || cfg.OIDC.RedirectURL == "" {
-			return nil, fmt.Errorf("OIDC mode requires [oidc] authority, client_id, client_secret and redirect_url")
+			return nil, fmt.Errorf("OIDC mode requires [auth.oidc] authority, client_id, client_secret and redirect_url")
 		}
 	}
 	// Empty is fine (the key is optional), but a relative value would be forwarded as an
@@ -338,7 +368,7 @@ func Load(path string) (*Config, error) {
 	if cfg.OIDC.PostLogoutRedirectURL != "" {
 		u, err := url.Parse(cfg.OIDC.PostLogoutRedirectURL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return nil, fmt.Errorf("[oidc] post_logout_redirect_url must be an absolute http:// or https:// URL, got %q",
+			return nil, fmt.Errorf("[auth.oidc] post_logout_redirect_url must be an absolute http:// or https:// URL, got %q",
 				cfg.OIDC.PostLogoutRedirectURL)
 		}
 	}
@@ -347,7 +377,7 @@ func Load(path string) (*Config, error) {
 	// recommended for production; point operators at OIDC.
 	if !cfg.OIDC.Enabled {
 		slog.Warn("basic (file-based) auth is enabled — this is not recommended for production; " +
-			"configure OIDC (set auth_mode = \"oidc\" and [oidc] authority, client_id, client_secret, redirect_url)")
+			"configure OIDC (set [auth] mode = \"oidc\" and [auth.oidc] authority, client_id, client_secret, redirect_url)")
 	}
 
 	cfg.RuntimeConfig = buildRuntimeConfig(cfg, s)

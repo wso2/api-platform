@@ -178,7 +178,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 // Reverse proxy
 // ---------------------------------------------------------------------------
 
-// handleProxy (/api/proxy/*) — take the JWT straight from the cookie and forward
+// handleProxy (/proxy/*) — take the JWT straight from the cookie and forward
 // it upstream. No server-side lookup is involved unless the token is an OIDC
 // access token that is near expiry and must be refreshed.
 func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
@@ -255,7 +255,7 @@ func (s *Server) userFromToken(ctx context.Context, jwt string) session.User {
 		}
 		return s.oidc.UserFromAccessToken(jwt)
 	}
-	return session.UserFromClaims(session.DecodeJWTClaims(jwt), nil, session.DefaultClaimMapping())
+	return session.UserFromClaims(session.DecodeJWTClaims(jwt), nil, s.claims)
 }
 
 // putRefreshState stores the OIDC refresh/id tokens keyed by the access JWT so

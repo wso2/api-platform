@@ -1,6 +1,6 @@
 # Authentication
 
-AI Workspace supports two authentication modes, configured via the `auth_mode` key in `config.toml`.
+AI Workspace supports two authentication modes, configured via the `mode` key in `[ai_workspace.auth]` in `config.toml`.
 
 ## Modes
 

@@ -33,21 +33,21 @@ import (
 type ClaimMapping struct {
 	Username  string
 	Email     string
-	Role      string
+	Roles     string
 	Scope     string
 	OrgID     string
 	OrgName   string
 	OrgHandle string
 }
 
-// DefaultClaimMapping returns the mapping used for file-based tokens (and as the
-// fallback for OIDC). For OIDC, callers may override the org/user keys to match
-// the IDP.
+// DefaultClaimMapping returns the built-in fallback mapping, used whenever a
+// config.ClaimMappingConfig field is left unset — for both file-based and OIDC
+// tokens. Callers may override individual keys to match a specific IDP.
 func DefaultClaimMapping() ClaimMapping {
 	return ClaimMapping{
 		Username:  "username",
 		Email:     "email",
-		Role:      "platform_role",
+		Roles:     "roles",
 		Scope:     "scope",
 		OrgID:     "organization",
 		OrgName:   "org_name",
@@ -119,7 +119,7 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 	u := User{
 		Name:   first(get(m.Username), get(m.Email), get("sub")),
 		Email:  get(m.Email),
-		Role:   strClaim(claims, m.Role),
+		Role:   strClaim(claims, m.Roles),
 		Scopes: scopes(claims, m.Scope),
 	}
 

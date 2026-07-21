@@ -18,15 +18,15 @@ The AI Workspace is a React/Vite SPA served by a **Go BFF (Backend-for-Frontend)
 ## Technology stack
 
 - **React** + **TypeScript** + **Vite**
-- **Go BFF** — serves the SPA, reverse-proxies `/api/proxy/*` to the Platform API (injecting the session bearer token), and handles login/logout/session + the OIDC code flow
+- **Go BFF** — serves the SPA, reverse-proxies `/proxy/*` to the Platform API (injecting the session bearer token), and handles login/logout/session + the OIDC code flow
 - **Docker Compose** — orchestrates AI Workspace + Platform API
 
 ---
 
 ## Auth modes
 
-Controlled by `auth_mode` in `configs/config.toml` (whose shipped token also reads
-`APIP_AIW_AUTH_MODE` from the environment):
+Controlled by `mode` in `[ai_workspace.auth]` in `configs/config.toml` (whose shipped token also
+reads `APIP_AIW_AUTH_MODE` from the environment):
 
 | Mode | When to use |
 |---|---|
@@ -57,15 +57,15 @@ The shipped `config.toml` writes each key as an `{{ env }}` token, so a deployme
 them from the environment without editing the file:
 
 ```toml
-[ai_workspace]
+[ai_workspace.logging]
 # The token names the variable; the second argument is the value used when it is unset.
 log_level = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'
 
-[ai_workspace.oidc]
-# No default — an unset APIP_AIW_OIDC_CLIENT_SECRET fails startup rather than
+[ai_workspace.auth.oidc]
+# No default — an unset APIP_AIW_AUTH_OIDC_CLIENT_SECRET fails startup rather than
 # running with an empty credential. Keep the value in a git-ignored env file
 # (api-platform.env in the compose quickstart).
-client_secret = '{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'
+client_secret = '{{ env "APIP_AIW_AUTH_OIDC_CLIENT_SECRET" }}'
 
 # Preferred in production — the secret never enters the environment at all.
 client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
@@ -76,10 +76,10 @@ The token is what reads the environment, so setting `APIP_AIW_LOG_LEVEL` does no
 `[ai_workspace]` — the same namespacing convention the Platform API uses for its own
 `[platform_api]` table, so a shared config.toml can hold both services' sections without their
 keys colliding. Keys are grouped into TOML tables under it
-(`[ai_workspace.control_plane]`, `[ai_workspace.tls]`, `[ai_workspace.session]`,
-`[ai_workspace.cookie]`, `[ai_workspace.oidc]`), and by convention a token names the key's path
-under `[ai_workspace]` uppercased with underscores (`[ai_workspace.oidc] client_id` →
-`APIP_AIW_OIDC_CLIENT_ID`) — but a token may name any variable.
+(`[ai_workspace.logging]`, `[ai_workspace.control_plane]`, `[ai_workspace.tls]`, `[ai_workspace.session]`,
+`[ai_workspace.auth]`, `[ai_workspace.auth.oidc]`), and by convention a token names the key's path
+under `[ai_workspace]` uppercased with underscores (`[ai_workspace.auth.oidc] client_id` →
+`APIP_AIW_AUTH_OIDC_CLIENT_ID`) — but a token may name any variable.
 
 All available options are documented in
 [configs/config-template.toml](configs/config-template.toml).
@@ -146,13 +146,13 @@ npm run dev
 ```
 This starts the AI Workspace frontend in development mode.
 
-Update platform-api/config/config.toml and set the following configuration:
+`platform-api/config/config.toml` already defaults to `[auth] mode = "file"`, so users configured
+under `[auth.file]` can log in without any changes. To confirm or set it explicitly:
 
 ```bash
-[auth.file_based]
-enabled = true
+[auth]
+mode = "file"
 ```
-This enables file-based authentication, allowing users configured in the file-based authentication settings to log in.
 
 Terminal 2:
 ```bash
@@ -187,7 +187,7 @@ you supply your IDP's issuer, JWKS URL and confidential-client credentials.
 By default the stack runs in `basic` (file-based) auth mode. In OIDC mode the **BFF is a
 confidential client**: it runs the authorization-code + PKCE flow back-channel, holds the
 client secret and tokens in a server-side session, and injects the access token on every
-`/api/proxy/*` call. The browser never sees a token or the secret.
+`/proxy/*` call. The browser never sees a token or the secret.
 
 The flow touches **two** components and both must agree on the IDP:
 
@@ -257,10 +257,10 @@ stays out of the file, referenced there by an interpolation token:
 
 ```toml
 # portals/ai-workspace/configs/config.toml
-[ai_workspace]
-auth_mode = "oidc"
+[ai_workspace.auth]
+mode = "oidc"
 
-[ai_workspace.oidc]
+[ai_workspace.auth.oidc]
 authority                = "https://idp.example.com/oauth2/token"   # Asgardeo: https://api.asgardeo.io/t/acme/oauth2/token
 client_id                = "<your-client-id>"
 redirect_url             = "https://localhost:5380/api/auth/callback"
@@ -268,7 +268,7 @@ post_logout_redirect_url = "https://localhost:5380/login"
 
 # The secret's *value* stays out of the file — this token pulls it in from the
 # environment at startup. Without the key here, the variable is never read.
-client_secret = '{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'
+client_secret = '{{ env "APIP_AIW_AUTH_OIDC_CLIENT_SECRET" }}'
 ```
 
 The secret's value is **not** written into the config file. Put it — along with the Platform API's
@@ -277,18 +277,16 @@ IDP settings — in `api-platform.env` next to `docker-compose.yaml` (git-ignore
 
 ```bash
 # portals/ai-workspace/api-platform.env — append below the setup.sh-generated keys
-APIP_AIW_OIDC_CLIENT_SECRET=<your-client-secret>   # read by the token above
-APIP_CP_AUTH_IDP_ENABLED=true
-APIP_CP_AUTH_JWT_ENABLED=false          # required: mutually exclusive with the IDP
-APIP_CP_AUTH_FILE_BASED_ENABLED=false   # required: mutually exclusive with the IDP
+APIP_AIW_AUTH_OIDC_CLIENT_SECRET=<your-client-secret>   # read by the token above
+APIP_CP_AUTH_MODE=idp
 APIP_CP_AUTH_IDP_JWKS_URL=https://idp.example.com/oauth2/jwks
 APIP_CP_AUTH_IDP_ISSUER=https://idp.example.com/oauth2/token
 APIP_CP_AUTH_IDP_AUDIENCE=<your-client-id>   # optional; omit to skip the aud check
 # Set only if your IDP names the org claims differently (defaults:
 # organization / org_name / org_handle):
-# APIP_CP_AUTH_IDP_CLAIM_ORGANIZATION=org_id
-# APIP_CP_AUTH_IDP_CLAIM_ORG_NAME=org_name
-# APIP_CP_AUTH_IDP_CLAIM_ORG_HANDLE=org_handle
+# APIP_CP_AUTH_CLAIM_ORGANIZATION=org_id
+# APIP_CP_AUTH_CLAIM_ORG_NAME=org_name
+# APIP_CP_AUTH_CLAIM_ORG_HANDLE=org_handle
 ```
 
 Then start the stack:
@@ -298,15 +296,14 @@ docker compose up -d
 ```
 
 In production, prefer mounting the secret as a file and referencing it with
-`[ai_workspace.oidc] client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'` — the value then
+`[ai_workspace.auth.oidc] client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'` — the value then
 never enters the environment at all.
 
-(Skipping this section and leaving `auth_mode = "basic"`, the default, keeps the file-based
+(Skipping this section and leaving `[ai_workspace.auth] mode = "basic"`, the default, keeps the file-based
 quickstart instead — the admin user generated by `setup.sh` — with no IDP involved.)
 
-> The Platform API auth modes are mutually exclusive: enabling the IDP while local JWT
-> or file-based auth is also on is rejected at startup — keep the
-> `APIP_CP_AUTH_JWT_ENABLED=false` and `APIP_CP_AUTH_FILE_BASED_ENABLED=false` lines in `api-platform.env`.
+> `platform_api.auth.mode` selects exactly one Platform API auth mode — set it to `idp` so the
+> Platform API validates tokens against Asgardeo's JWKS instead of local JWT or file-based auth.
 
 #### Option 2 (local `make bff-run`)
 
@@ -314,36 +311,32 @@ Running the BFF and Platform API directly (no compose) means no pre-wiring, so c
 sides by hand.
 
 Edit `platform-api/config/config.toml` so the Platform API validates the Asgardeo token —
-remember the three auth modes are mutually exclusive, so turn the local ones off:
+`auth.mode` selects exactly one mode, so set it to `idp`:
 
 ```toml
-[auth.jwt]
-enabled = false            # required: mutually exclusive with the IDP
+[auth]
+mode = "idp"
 
 [auth.idp]
-enabled  = true
 jwks_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks"
 issuer   = ["https://api.asgardeo.io/t/<your-tenant>/oauth2/token"]
 audience = ["<your-client-id>"]   # match Asgardeo's aud, or [] to skip the check
 
 # Asgardeo emits org_id (not the default "organization") — these overrides are required.
-[auth.idp.claim_mappings]
+[auth.claim_mappings]
 organization = "org_id"
 org_name     = "org_name"
 org_handle   = "org_handle"
-
-[auth.file_based]
-enabled = false            # required: mutually exclusive with the IDP
 ```
 
 Then export the BFF settings and start it. `make bff-run` runs the BFF against
 [`configs/config.toml`](configs/config.toml) — the same file the container mounts, passed with
 `-config` — whose keys are all `{{ env }}` tokens naming the variables below, so exporting one
-sets its key (`APIP_AIW_OIDC_CLIENT_ID` → `[ai_workspace.oidc] client_id`). A key absent from that file is not
+sets its key (`APIP_AIW_AUTH_OIDC_CLIENT_ID` → `[ai_workspace.auth.oidc] client_id`). A key absent from that file is not
 settable this way; add it there first. Point the BFF at the locally published Platform API port —
 the `platform-api` compose hostname does **not** resolve outside the compose network:
 
-> `[ai_workspace.oidc] authority` is Asgardeo's **token base** — the BFF appends
+> `[ai_workspace.auth.oidc] authority` is Asgardeo's **token base** — the BFF appends
 > `/.well-known/openid-configuration` itself, so do **not** include the discovery suffix.
 
 ```bash
@@ -351,13 +344,13 @@ cd portals/ai-workspace
 export APIP_AIW_CONTROL_PLANE_URL=https://localhost:9243   # NOT https://platform-api:9243 when run locally
 export APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY=true
 export APIP_AIW_AUTH_MODE=oidc
-export APIP_AIW_OIDC_AUTHORITY=https://api.asgardeo.io/t/<your-tenant>/oauth2/token
-export APIP_AIW_OIDC_CLIENT_ID=<your-client-id>
-export APIP_AIW_OIDC_CLIENT_SECRET=<your-client-secret>
-export APIP_AIW_OIDC_REDIRECT_URL=https://localhost:5380/api/auth/callback
-export APIP_AIW_OIDC_POST_LOGOUT_REDIRECT_URL=https://localhost:5380/login
+export APIP_AIW_AUTH_OIDC_AUTHORITY=https://api.asgardeo.io/t/<your-tenant>/oauth2/token
+export APIP_AIW_AUTH_OIDC_CLIENT_ID=<your-client-id>
+export APIP_AIW_AUTH_OIDC_CLIENT_SECRET=<your-client-secret>
+export APIP_AIW_AUTH_OIDC_REDIRECT_URL=https://localhost:5380/api/auth/callback
+export APIP_AIW_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL=https://localhost:5380/login
 # Keep `offline_access` — without it the IDP issues no refresh token and the BFF cannot silently renew the session.
-export APIP_AIW_OIDC_SCOPE="openid profile email offline_access ap:organization:manage ap:gateway:manage ap:rest_api:manage ..."
+export APIP_AIW_AUTH_OIDC_SCOPE="openid profile email offline_access ap:organization:manage ap:gateway:manage ap:rest_api:manage ..."
 make bff-run
 ```
 
@@ -369,13 +362,13 @@ failures, by symptom:
 | Symptom | Cause | Fix |
 |---|---|---|
 | `unauthorized_client` / *"not authorized to use the requested grant type"* | App registered as SPA, or Code/Refresh grant not enabled | Recreate as Standard-Based OIDC app; enable **Code** + **Refresh Token** (step 1) |
-| Platform API exits at startup with *"auth.idp.enabled=true and auth.jwt.enabled=true are mutually exclusive"* | Local auth left on alongside the IDP | Compose: set `APIP_CP_AUTH_JWT_ENABLED=false` + `APIP_CP_AUTH_FILE_BASED_ENABLED=false` in `api-platform.env` (step 3, Option 1). Local: set `auth.jwt.enabled=false` and `auth.file_based.enabled=false` (step 3, Option 2) |
+| Platform API exits at startup with *`auth.mode must be "external_token", "file", or "idp"`* | `auth.mode` is unset or misspelled | Compose: set `APIP_CP_AUTH_MODE=idp` in `api-platform.env` (step 3, Option 1). Local: set `[auth] mode = "idp"` in `config.toml` (step 3, Option 2) |
 | `502` + `dial tcp: lookup platform-api: no such host` | BFF run locally but `[ai_workspace.control_plane] url` points at the compose hostname | Set `APIP_AIW_CONTROL_PLANE_URL=https://localhost:9243` (step 3, Option 2) |
 | Proxied calls return `authentication_failed` | Platform API still on local JWT/file-based, validating the IDP token with the wrong validator | Switch it to the IDP — compose: set the `APIP_CP_AUTH_IDP_*` keys in `api-platform.env` (step 3, Option 1); local: enable `[auth.idp]` (step 3, Option 2) |
 | Proxied calls return `authentication_failed`, Platform API logs `token contains an invalid number of segments` | IDP is issuing **opaque** access tokens — the BFF forwards the access token and the Platform API can only validate a **JWT** via JWKS | Set **Access Token Type = JWT** on the app's Protocol tab (step 1) and re-login |
 | Login works, then proxied calls return `403` | Access token lacks `ap:*` scopes, or Platform API IDP/claim mapping wrong | Grant `ap:*` scopes to the user (step 2); check `[auth.idp]` issuer/JWKS/claim mappings |
 | User shows as a UUID and email is blank in the UI | Token carries no name/email claims — the BFF falls back to the `sub` (user UUID) | Release the `given_name` (or `name`/`preferred_username`) and `email` claims to the app and ensure the user has those attributes set; the `profile` and `email` scopes must be granted (both are in the default request) |
-| Logged out as soon as the access token expires; never silently refreshed | IDP returned no refresh token — `offline_access` scope missing from the request, or not permitted for the app | Keep `offline_access` in `[ai_workspace.oidc] scope` (it's in the default); allow it for the app in the IDP (step 1) |
+| Logged out as soon as the access token expires; never silently refreshed | IDP returned no refresh token — `offline_access` scope missing from the request, or not permitted for the app | Keep `offline_access` in `[ai_workspace.auth.oidc] scope` (it's in the default); allow it for the app in the IDP (step 1) |
 | Refresh fails minutes after login | **Refresh Token** grant not enabled on the app | Enable it on the Protocol tab (step 1) |
 
 ## Session lifetime & token refresh

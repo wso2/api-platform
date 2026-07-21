@@ -42,7 +42,7 @@ driver   = "sqlserver"
 host     = "sqlserver.example.internal"
 port     = "1433"
 name     = "platform_api"
-user     = "sa"
+username = "sa"
 password = '{{ env "DB_PASSWORD" }}'   # or '{{ file "/secrets/platform-api/db_password" }}'
 ssl_mode = "disable"
 ```
@@ -269,16 +269,19 @@ All settings live under `[platform_api]` / `[platform_api.*]`. The main sections
 
 | Section | Purpose |
 |---|---|
-| `[platform_api]` | `log_level`, `log_format`, resource paths, `encryption_key` (**required** — at-rest AES-256 key, 32 bytes as hex or base64, never auto-generated) |
+| `[platform_api]` | resource paths |
+| `[platform_api.logging]` | `log_level`, `log_format` |
+| `[platform_api.security]` | `encryption_key` (**required** — at-rest AES-256 key, 32 bytes as hex or base64, never auto-generated) |
+| `[platform_api.security.api_key]` | `hashing_algorithms` accepted for API key verification |
 | `[platform_api.database]` | `driver` (`sqlite3` / `postgres` / `sqlserver`), connection fields, pool sizing |
 | `[platform_api.auth]` | `mode` — one of `external_token`, `file`, or `idp`; `scope_validation`; `skip_paths` |
 | `[platform_api.auth.jwt]` | HMAC login token settings: `issuer`, `secret_key` (**required**), `token_ttl` |
-| `[platform_api.auth.idp]` / `[platform_api.auth.idp.claim_mappings]` | JWKS endpoint, issuer/audience, validation mode, and JWT claim-name mappings for `idp` mode |
+| `[platform_api.auth.idp]` / `[platform_api.auth.claim_mappings]` | JWKS endpoint, issuer/audience, validation mode, and JWT claim-name mappings for `idp` mode |
 | `[platform_api.auth.file.organization]` / `[[platform_api.auth.file.users]]` | Local org + username/password/scope entries for `file` mode |
 | `[platform_api.server.http]` / `[platform_api.server.https]` / `[platform_api.server.https.tls]` | Listener enablement, ports, and TLS cert/key paths (certificates are always required for HTTPS — no self-signed fallback) |
-| `[platform_api.listener_timeouts]` | Read/write/idle timeouts |
-| `[platform_api.cors]` | `allowed_origins` for credentialed cross-origin requests |
-| `[platform_api.websocket]` | Gateway WebSocket connection limits and rate limiting |
+| `[platform_api.server.timeouts]` | Read/write/idle timeouts |
+| `[platform_api.server.cors]` | `allowed_origins` for credentialed cross-origin requests |
+| `[platform_api.server.websocket]` | Gateway WebSocket connection limits and rate limiting |
 | `[platform_api.deployments]` | Deployment caps and stuck-deployment timeout handling |
 | `[platform_api.gateway]` | Gateway registration verification toggles |
 | `[platform_api.event_hub]` | Multi-replica event delivery polling/retention |
@@ -307,18 +310,22 @@ Per-route scope checks are enforced when `platform_api.auth.scope_validation = t
 | `operator` | CI/CD service account | Deploy and undeploy operations only; cannot create resources or manage credentials |
 | `viewer` | Auditor | Read-only access to all resources |
 
-In **`external_token`/`file` mode**, scopes are read directly from the `scope` claim in the token.
-In **`idp` mode**, scopes or roles are read from the claim(s) named in `[platform_api.auth.idp.claim_mappings]`,
-per `validation_mode` (`scope` reads the scope claim directly; `role` expands IDP roles from
-`roles` via `role_mappings`).
+All three modes read identity fields — including scope — through the same
+`[platform_api.auth.claim_mappings]` table (`scope` defaults to the `scope` claim); `file` mode's
+login endpoint also signs the tokens it issues using these same claim names, so issuance and
+validation never drift apart. In **`idp` mode**, `validation_mode` additionally controls whether
+authorization uses the scope claim directly or expands IDP roles from `claim_mappings.roles` via
+`role_mappings`.
 
 ### Providing secrets via the config file
 
 Never write raw secret values into the config file, and never hardcode them as literals in a
-compose file. Reference each secret (`encryption_key`, `auth.jwt.secret_key`, `database.password`,
-`webhook.secret`, …) with an interpolation token, preferring a mounted file over an env var:
+compose file. Reference each secret (`security.encryption_key`, `auth.jwt.secret_key`,
+`database.password`, `webhook.secret`, …) with an interpolation token, preferring a mounted file
+over an env var:
 
 ```toml
+[platform_api.security]
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'            # from an env var
 # preferred — from a mounted secret file:
 # encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'

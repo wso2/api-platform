@@ -86,17 +86,25 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 		return apperror.Unauthorized.New().WithLogMessage("login failed: password mismatch")
 	}
 
+	// Claim names come from auth.claim_mappings — the same mapping IDP mode
+	// reads incoming claims by — so a token this endpoint signs is readable by
+	// validateLocalJWT (and by any other consumer configured against the same
+	// mapping) without the two ever drifting apart. Mapped names are used as
+	// flat claim keys here; a dot-separated nested path (meant for reading
+	// externally-issued tokens) is not meaningful to sign against and is used
+	// as a literal flat key if configured that way.
+	cm := h.cfg.Auth.ClaimMappings
 	expiry := time.Now().Add(h.cfg.Auth.JWT.TokenTTL)
 	claims := jwt.MapClaims{
-		"sub":          matched.Username,
-		"username":     matched.Username,
-		"scope":        matched.Scopes,
-		"organization": fileBasedAuth.Organization.UUID,
-		"org_name":     fileBasedAuth.Organization.DisplayName,
-		"org_handle":   fileBasedAuth.Organization.ID,
-		"iss":          h.cfg.Auth.JWT.Issuer,
-		"exp":          expiry.Unix(),
-		"iat":          time.Now().Unix(),
+		"sub":                                     matched.Username,
+		claimKey(cm.Username, "username"):         matched.Username,
+		claimKey(cm.Scope, "scope"):               matched.Scopes,
+		claimKey(cm.Organization, "organization"): fileBasedAuth.Organization.UUID,
+		claimKey(cm.OrgName, "org_name"):          fileBasedAuth.Organization.DisplayName,
+		claimKey(cm.OrgHandle, "org_handle"):      fileBasedAuth.Organization.ID,
+		"iss":                                     h.cfg.Auth.JWT.Issuer,
+		"exp":                                     expiry.Unix(),
+		"iat":                                     time.Now().Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -110,4 +118,13 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 		ExpiresAt: expiry.Unix(),
 	})
 	return nil
+}
+
+// claimKey returns name, falling back to def when the operator has left the
+// corresponding auth.claim_mappings field unset.
+func claimKey(name, def string) string {
+	if name == "" {
+		return def
+	}
+	return name
 }

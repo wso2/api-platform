@@ -30,7 +30,7 @@ IMAGE_NAME := $(DOCKER_REGISTRY)/ai-workspace
 # BFF (Backend-for-Frontend) — Go server that serves the SPA, proxies all
 # browser→backend traffic, and owns authentication.
 BFF_DIR        := bff
-BFF_DEV_ADDR   ?= :8081
+BFF_DEV_PORT   ?= 8081
 CONTROL_PLANE_URL ?= https://localhost:9243
 
 help: ## Show this help message
@@ -62,8 +62,8 @@ bff-run: ## Run the BFF locally (proxies to CONTROL_PLANE_URL; pair with `make r
 		APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY=true \
 		APIP_AIW_TLS_CERT_FILE=../resources/certificates/cert.pem \
 		APIP_AIW_TLS_KEY_FILE=../resources/certificates/key.pem \
-		APIP_AIW_LISTEN_ADDR=$(BFF_DEV_ADDR) \
-		APIP_AIW_STATIC_DIR=../dist \
+		APIP_AIW_SERVER_PORT=$(BFF_DEV_PORT) \
+		APIP_AIW_SERVER_STATIC_DIR=../dist \
 		APIP_AIW_LOG_LEVEL=debug \
 		go run . -config ../configs/config.toml
 

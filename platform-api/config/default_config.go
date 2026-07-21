@@ -26,8 +26,10 @@ import (
 // defaultConfig returns a Server with all default values.
 func defaultConfig() *Server {
 	return &Server{
-		LogLevel:                   "INFO",
-		LogFormat:                  "text",
+		Logging: Logging{
+			LogLevel:  "INFO",
+			LogFormat: "text",
+		},
 		DBSchemaPath:               "./internal/database/schema.sql",
 		OpenAPISpecPath:            "./resources/openapi.yaml",
 		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
@@ -69,15 +71,15 @@ func defaultConfig() *Server {
 			},
 			IDP: IDP{
 				ValidationMode: "scope",
-				ClaimMappings: IDPClaimMappings{
-					Organization: "organization",
-					OrgName:      "org_name",
-					OrgHandle:    "org_handle",
-					UserID:       "sub",
-					Username:     "username",
-					Email:        "email",
-					Scope:        "scope",
-				},
+			},
+			ClaimMappings: ClaimMappings{
+				Organization: "organization",
+				OrgName:      "org_name",
+				OrgHandle:    "org_handle",
+				UserID:       "sub",
+				Username:     "username",
+				Email:        "email",
+				Scope:        "scope",
 			},
 			File: FileBased{
 				Organization: FileBasedOrg{
@@ -95,14 +97,6 @@ func defaultConfig() *Server {
 					},
 				},
 			},
-		},
-		WebSocket: WebSocket{
-			MaxConnections:       1000,
-			ConnectionTimeout:    30,
-			RateLimitPerMin:      1000,
-			MaxConnectionsPerOrg: 3,
-			MetricsLogEnabled:    true,
-			MetricsLogInterval:   10,
 		},
 		Deployments: Deployments{
 			MaxPerAPIGateway: 20,
@@ -127,18 +121,27 @@ func defaultConfig() *Server {
 					KeyFile:  "./data/certs/key.pem",
 				},
 			},
+			// Finite by default so a slow or idle peer cannot hold a connection open
+			// indefinitely. Write is the loosest of the four because some handlers
+			// proxy slow upstreams (LLM completions, deployments).
+			Timeouts: Timeouts{
+				ReadHeader: 10 * time.Second,
+				Read:       60 * time.Second,
+				Write:      120 * time.Second,
+				Idle:       120 * time.Second,
+			},
+			WebSocket: WebSocket{
+				MaxConnections:     1000,
+				ConnectionTimeout:  30,
+				RateLimitPerMin:    1000,
+				MetricsLogEnabled:  true,
+				MetricsLogInterval: 10,
+			},
 		},
-		// Finite by default so a slow or idle peer cannot hold a connection open
-		// indefinitely. Write is the loosest of the four because some handlers
-		// proxy slow upstreams (LLM completions, deployments).
-		Timeouts: Timeouts{
-			ReadHeader: 10 * time.Second,
-			Read:       60 * time.Second,
-			Write:      120 * time.Second,
-			Idle:       120 * time.Second,
-		},
-		APIKey: APIKey{
-			HashingAlgorithms: []string{"sha256"},
+		Security: Security{
+			APIKey: APIKey{
+				HashingAlgorithms: []string{"sha256"},
+			},
 		},
 		EventHub: EventHub{
 			PollInterval:    3 * time.Second,
@@ -147,7 +150,6 @@ func defaultConfig() *Server {
 		},
 		Webhook: Webhook{
 			Enabled:            false,
-			GatewayType:        "wso2/api-platform",
 			SignatureTolerance: 5 * time.Minute,
 			MaxBodySize:        1 << 20, // 1 MiB
 			SignatureHeader:    "X-Devportal-Signature",

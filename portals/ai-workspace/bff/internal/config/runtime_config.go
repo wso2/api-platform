@@ -23,26 +23,27 @@ import "strings"
 // reach the browser, so a new server-side key (a secret, an upstream URL, a cookie
 // setting) cannot leak into the page merely by being added to config.toml.
 //
-// [oidc] client_secret / client_id / authority are deliberately absent — the BFF
+// [auth.oidc] client_secret / client_id / authority are deliberately absent — the BFF
 // performs the whole OIDC handshake, so the SPA needs no client identity.
 var browserSafeKeys = []string{
-	// Identity of the deployment. auth_mode is not listed: buildRuntimeConfig
+	// Identity of the deployment. auth.mode is not listed: buildRuntimeConfig
 	// always emits it from the parsed cfg.AuthMode instead.
 	"domain",
 	"default_org_region",
 	"gateway.controlplane_host",
 	"gateway.platform_gateway_versions",
-	"csrf_header",
-	"debug",
+	"logging.browser_debug",
 
 	// Claim names the SPA displays user/org identity from. The keys mirror the
-	// Platform API's [auth.idp.claim_mappings] exactly — same claim, same name.
-	"oidc.scope",
-	"oidc.claim_mappings.username",
-	"oidc.claim_mappings.email",
-	"oidc.claim_mappings.organization",
-	"oidc.claim_mappings.org_name",
-	"oidc.claim_mappings.org_handle",
+	// Platform API's [auth.claim_mappings] exactly — same claim, same name. Shared
+	// by both auth modes, so it lives under [auth.claim_mappings], not nested in
+	// [auth.oidc].
+	"auth.oidc.scope",
+	"auth.claim_mappings.username",
+	"auth.claim_mappings.email",
+	"auth.claim_mappings.organization",
+	"auth.claim_mappings.org_name",
+	"auth.claim_mappings.org_handle",
 
 	// External links and SPA-only endpoints
 	"dev_portal_base_url",
@@ -53,8 +54,8 @@ var browserSafeKeys = []string{
 }
 
 // runtimeKey converts a config key into the name the SPA reads: APIP_AIW_ + the key's
-// dotted path uppercased, with dots as underscores ("oidc.scope" ->
-// APIP_AIW_OIDC_SCOPE). It is the same spelling the key's {{ env }} token
+// dotted path uppercased, with dots as underscores ("auth.oidc.scope" ->
+// APIP_AIW_AUTH_OIDC_SCOPE). It is the same spelling the key's {{ env }} token
 // conventionally names, so a value has one name across config.toml, the environment,
 // Vite's import.meta.env, and window.__RUNTIME_CONFIG__.
 func runtimeKey(configKey string) string {

@@ -46,7 +46,7 @@ type FileBasedUser struct {
 }
 
 // FileBasedUsers is a slice of FileBasedUser that can be decoded from a JSON string (env var)
-// or from a TOML array of tables ([[auth.file_based.users]]).
+// or from a TOML array of tables ([[auth.file.users]]).
 type FileBasedUsers []FileBasedUser
 
 // FileBasedOrg holds the single organization used in file-based auth mode.
@@ -73,26 +73,26 @@ type FileBased struct {
 	Users        FileBasedUsers `koanf:"users"`
 }
 
-// Server holds the configuration parameters for the application.
-type Server struct {
+// Logging holds logging configuration.
+type Logging struct {
 	LogLevel  string `koanf:"log_level"`
 	LogFormat string `koanf:"log_format"`
+}
+
+// Server holds the configuration parameters for the application.
+type Server struct {
+	Logging Logging `koanf:"logging"`
 
 	DBSchemaPath               string `koanf:"db_schema_path"`
 	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
 	LLMTemplateDefinitionsPath string `koanf:"llm_template_definitions_path"`
 	OpenAPISpecMaxFetchBytes   int64  `koanf:"openapi_spec_max_fetch_bytes"`
 
-	EncryptionKey string `koanf:"encryption_key"`
-
 	Database    Database        `koanf:"database"`
 	Auth        Auth            `koanf:"auth"`
-	WebSocket   WebSocket       `koanf:"websocket"`
 	Deployments Deployments     `koanf:"deployments"`
 	Listeners   ServerListeners `koanf:"server"`
-	Timeouts    Timeouts        `koanf:"listener_timeouts"`
-	CORS        CORS            `koanf:"cors"`
-	APIKey      APIKey          `koanf:"api_key"`
+	Security    Security        `koanf:"security"`
 	Gateway     Gateway         `koanf:"gateway"`
 	EventHub    EventHub        `koanf:"event_hub"`
 	Webhook     Webhook         `koanf:"webhook"`
@@ -127,13 +127,19 @@ type Auth struct {
 	// with it.
 	JWT  JWT       `koanf:"jwt"`
 	File FileBased `koanf:"file"`
+	// ClaimMappings names the JWT claims that carry each identity field. It is
+	// shared by all three auth modes: "idp" reads incoming claims by these
+	// names, "file" mode's login endpoint signs tokens using these names, and
+	// "external_token" mode reads externally-minted tokens by these names too
+	// — one mapping, so issuance and validation can never drift apart. Every
+	// field accepts either a flat top-level claim name ("org_id") or a
+	// dot-separated path into a nested claim ("realm_access.org_id") — see
+	// resolveClaimPath in internal/middleware/auth.go.
+	ClaimMappings ClaimMappings `koanf:"claim_mappings"`
 }
 
-// IDPClaimMappings holds JWT claim name mappings for an IDP. Every field
-// accepts either a flat top-level claim name ("org_id") or a dot-separated
-// path into a nested claim ("realm_access.org_id") — see resolveClaimPath in
-// internal/middleware/auth.go.
-type IDPClaimMappings struct {
+// ClaimMappings holds JWT claim name mappings, shared across all auth modes.
+type ClaimMappings struct {
 	Organization string `koanf:"organization"`
 	OrgName      string `koanf:"org_name"`
 	OrgHandle    string `koanf:"org_handle"`
@@ -147,13 +153,12 @@ type IDPClaimMappings struct {
 // IDP holds configuration for JWKS-based identity providers. Active when
 // Auth.Mode is AuthModeIDP.
 type IDP struct {
-	Name           string           `koanf:"name"`
-	JWKSUrl        string           `koanf:"jwks_url"`
-	Issuer         []string         `koanf:"issuer"`
-	Audience       []string         `koanf:"audience"`
-	ValidationMode string           `koanf:"validation_mode"`
-	RoleMappings   string           `koanf:"role_mappings"`
-	ClaimMappings  IDPClaimMappings `koanf:"claim_mappings"`
+	Name           string   `koanf:"name"`
+	JWKSUrl        string   `koanf:"jwks_url"`
+	Issuer         []string `koanf:"issuer"`
+	Audience       []string `koanf:"audience"`
+	ValidationMode string   `koanf:"validation_mode"`
+	RoleMappings   string   `koanf:"role_mappings"`
 }
 
 // EventHub holds EventHub-specific configuration for multi-replica HA event delivery.
@@ -174,9 +179,6 @@ type Webhook struct {
 	// PrivateKeyPath points to the PEM RSA private key used to decrypt encrypted_key fields.
 	// Optional: required only for events that carry encrypted secrets (API key generate/regenerate).
 	PrivateKeyPath string `koanf:"private_key_path"`
-	// GatewayType filters events meant for this platform type. Events with a different
-	// gateway_type are accepted as a no-op.
-	GatewayType string `koanf:"gateway_type"`
 	// SignatureTolerance bounds how old a signed request may be (replay protection).
 	SignatureTolerance time.Duration `koanf:"signature_tolerance"`
 	// MaxBodySize caps the request body size in bytes.
@@ -191,13 +193,18 @@ type Gateway struct {
 	EnableFunctionalityTypeVerification bool `koanf:"enable_functionality_type_verification"`
 }
 
-// ServerListeners models the two independent listeners under the [server]
-// section. Each is enabled independently and bound to its own port, so a
+// ServerListeners models the [server] section: the two independent HTTP
+// listeners (each enabled independently and bound to its own port, so a
 // deployment can serve plain HTTP internally, HTTPS externally, or both at
-// once (e.g. to migrate clients between the two without downtime).
+// once to migrate clients between them without downtime), plus the
+// cross-cutting settings — timeouts, CORS, WebSocket — that apply to
+// whichever listener(s) are serving requests.
 type ServerListeners struct {
-	HTTP  HTTPListener  `koanf:"http"`
-	HTTPS HTTPSListener `koanf:"https"`
+	HTTP      HTTPListener  `koanf:"http"`
+	HTTPS     HTTPSListener `koanf:"https"`
+	Timeouts  Timeouts      `koanf:"timeouts"`
+	CORS      CORS          `koanf:"cors"`
+	WebSocket WebSocket     `koanf:"websocket"`
 }
 
 // HTTPListener configures the plain-HTTP listener. Enable it only when a trusted
@@ -267,12 +274,11 @@ type JWT struct {
 
 // WebSocket holds WebSocket-specific configuration.
 type WebSocket struct {
-	MaxConnections       int  `koanf:"max_connections"`
-	ConnectionTimeout    int  `koanf:"connection_timeout"`
-	RateLimitPerMin      int  `koanf:"rate_limit_per_min"`
-	MaxConnectionsPerOrg int  `koanf:"max_connections_per_org"`
-	MetricsLogEnabled    bool `koanf:"metrics_log_enabled"`
-	MetricsLogInterval   int  `koanf:"metrics_log_interval"`
+	MaxConnections     int  `koanf:"max_connections"`
+	ConnectionTimeout  int  `koanf:"connection_timeout"`
+	RateLimitPerMin    int  `koanf:"rate_limit_per_min"`
+	MetricsLogEnabled  bool `koanf:"metrics_log_enabled"`
+	MetricsLogInterval int  `koanf:"metrics_log_interval"`
 }
 
 // Database holds database-specific configuration.
@@ -280,13 +286,20 @@ type Database struct {
 	// Driver supports: sqlite3, postgres/postgresql/pgx, sqlserver/mssql.
 	Driver string `koanf:"driver"`
 	// Path is the file path for SQLite databases.
-	Path            string `koanf:"path"`
-	Host            string `koanf:"host"`
-	Port            int    `koanf:"port"`
-	Name            string `koanf:"name"`
-	User            string `koanf:"user"`
-	Password        string `koanf:"password"`
-	SSLMode         string `koanf:"ssl_mode"`
+	Path     string `koanf:"path"`
+	Host     string `koanf:"host"`
+	Port     int    `koanf:"port"`
+	Name     string `koanf:"name"`
+	Username string `koanf:"username"`
+	Password string `koanf:"password"`
+	SSLMode  string `koanf:"ssl_mode"`
+	// SSLRootCert is the CA certificate file path used to verify the server's
+	// certificate. Required when SSLMode is "verify-ca" or "verify-full".
+	SSLRootCert string `koanf:"ssl_root_cert"`
+	// SSLCert and SSLKey are the client certificate/key pair used for mutual
+	// TLS. Optional; both must be set together or not at all.
+	SSLCert         string `koanf:"ssl_cert"`
+	SSLKey          string `koanf:"ssl_key"`
 	MaxOpenConns    int    `koanf:"max_open_conns"`
 	MaxIdleConns    int    `koanf:"max_idle_conns"`
 	ConnMaxLifetime int    `koanf:"conn_max_lifetime"`
@@ -304,6 +317,14 @@ type Deployments struct {
 // APIKey holds API key-specific configuration.
 type APIKey struct {
 	HashingAlgorithms []string `koanf:"hashing_algorithms"`
+}
+
+// Security holds cryptographic/secret-handling configuration.
+type Security struct {
+	// EncryptionKey is the single 32-byte key used for ALL at-rest encryption
+	// (secrets, subscription tokens, WebSub HMAC secrets).
+	EncryptionKey string `koanf:"encryption_key"`
+	APIKey        APIKey `koanf:"api_key"`
 }
 
 // package-level singleton.
@@ -384,12 +405,12 @@ func LoadConfig(configPath string) (*Server, error) {
 	// Install the configured logger as the slog default so the warnings/info logs
 	// emitted below (and any package-level slog.* call in this file) use the same
 	// format as the rest of the application, instead of slog's default handler.
-	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.LogLevel, Format: cfg.LogFormat}))
+	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.Logging.LogLevel, Format: cfg.Logging.LogFormat}))
 
-	if err := validateLoggingConfig(cfg.LogLevel, cfg.LogFormat); err != nil {
+	if err := validateLoggingConfig(cfg.Logging.LogLevel, cfg.Logging.LogFormat); err != nil {
 		return nil, err
 	}
-	if err := validateTimeoutsConfig(&cfg.Timeouts); err != nil {
+	if err := validateTimeoutsConfig(&cfg.Listeners.Timeouts); err != nil {
 		return nil, err
 	}
 	if err := validateDeploymentsConfig(&cfg.Deployments); err != nil {
@@ -404,7 +425,7 @@ func LoadConfig(configPath string) (*Server, error) {
 	if err := validateWebhookConfig(&cfg.Webhook); err != nil {
 		return nil, err
 	}
-	if err := validateEncryptionKey(cfg.EncryptionKey); err != nil {
+	if err := validateEncryptionKey(cfg.Security.EncryptionKey); err != nil {
 		return nil, err
 	}
 	if err := validateDatabaseConfig(&cfg.Database); err != nil {
@@ -413,7 +434,7 @@ func LoadConfig(configPath string) (*Server, error) {
 	if err := validateListenersConfig(&cfg.Listeners); err != nil {
 		return nil, err
 	}
-	if err := validateCORSConfig(&cfg.CORS); err != nil {
+	if err := validateCORSConfig(&cfg.Listeners.CORS); err != nil {
 		return nil, err
 	}
 
@@ -492,10 +513,10 @@ func validateTimeoutsConfig(cfg *Timeouts) error {
 		name  string
 		value time.Duration
 	}{
-		{"listener_timeouts.read_header", cfg.ReadHeader},
-		{"listener_timeouts.read", cfg.Read},
-		{"listener_timeouts.write", cfg.Write},
-		{"listener_timeouts.idle", cfg.Idle},
+		{"server.timeouts.read_header", cfg.ReadHeader},
+		{"server.timeouts.read", cfg.Read},
+		{"server.timeouts.write", cfg.Write},
+		{"server.timeouts.idle", cfg.Idle},
 	} {
 		if f.value < 0 {
 			return fmt.Errorf("%s must not be negative (got %s); use 0 to disable the timeout", f.name, f.value)
@@ -503,7 +524,7 @@ func validateTimeoutsConfig(cfg *Timeouts) error {
 	}
 	if cfg.Read > 0 && cfg.ReadHeader > cfg.Read {
 		return fmt.Errorf(
-			"listener_timeouts.read_header (%s) must not exceed listener_timeouts.read (%s): the header deadline would never be reached",
+			"server.timeouts.read_header (%s) must not exceed server.timeouts.read (%s): the header deadline would never be reached",
 			cfg.ReadHeader, cfg.Read,
 		)
 	}
@@ -531,7 +552,7 @@ func validateAuthConfig(auth *Auth) error {
 		}
 		return validateFileBasedConfig(&auth.File)
 	case AuthModeIDP:
-		return validateIDPConfig(&auth.IDP)
+		return validateIDPConfig(&auth.IDP, &auth.ClaimMappings)
 	default:
 		return fmt.Errorf("auth.mode must be %q, %q, or %q (got %q)", AuthModeExternalToken, AuthModeFile, AuthModeIDP, auth.Mode)
 	}
@@ -573,12 +594,12 @@ func validateLoggingConfig(level, format string) error {
 	switch strings.ToUpper(level) {
 	case "DEBUG", "INFO", "WARN", "WARNING", "ERROR":
 	default:
-		return fmt.Errorf("log_level must be one of \"DEBUG\", \"INFO\", \"WARN\", or \"ERROR\" (got %q)", level)
+		return fmt.Errorf("logging.log_level must be one of \"DEBUG\", \"INFO\", \"WARN\", or \"ERROR\" (got %q)", level)
 	}
 	switch strings.ToLower(format) {
 	case "text", "json":
 	default:
-		return fmt.Errorf("log_format must be \"text\" or \"json\" (got %q)", format)
+		return fmt.Errorf("logging.log_format must be \"text\" or \"json\" (got %q)", format)
 	}
 	return nil
 }
@@ -606,13 +627,19 @@ func validateDatabaseConfig(cfg *Database) error {
 	if cfg.Name == "" {
 		return fmt.Errorf("database.name is required when database.driver is %q", cfg.Driver)
 	}
-	if cfg.User == "" {
-		return fmt.Errorf("database.user is required when database.driver is %q", cfg.Driver)
+	if cfg.Username == "" {
+		return fmt.Errorf("database.username is required when database.driver is %q", cfg.Driver)
 	}
 	switch cfg.SSLMode {
 	case "", "disable", "require", "verify-ca", "verify-full":
 	default:
 		return fmt.Errorf("database.ssl_mode must be \"disable\", \"require\", \"verify-ca\", or \"verify-full\" (got %q)", cfg.SSLMode)
+	}
+	if (cfg.SSLMode == "verify-ca" || cfg.SSLMode == "verify-full") && cfg.SSLRootCert == "" {
+		return fmt.Errorf("database.ssl_root_cert is required when database.ssl_mode is %q", cfg.SSLMode)
+	}
+	if (cfg.SSLCert == "") != (cfg.SSLKey == "") {
+		return fmt.Errorf("database.ssl_cert and database.ssl_key must both be set together, or both left empty")
 	}
 	return nil
 }
@@ -645,7 +672,7 @@ func validateCORSConfig(c *CORS) error {
 	return nil
 }
 
-func validateIDPConfig(idp *IDP) error {
+func validateIDPConfig(idp *IDP, claimMappings *ClaimMappings) error {
 	if idp.JWKSUrl == "" {
 		return fmt.Errorf("auth.mode=%q requires auth.idp.jwks_url to be configured", AuthModeIDP)
 	}
@@ -657,8 +684,8 @@ func validateIDPConfig(idp *IDP) error {
 	default:
 		return fmt.Errorf("auth.idp.validation_mode must be \"scope\" or \"role\" (got %q)", idp.ValidationMode)
 	}
-	if idp.ValidationMode == "role" && idp.ClaimMappings.Roles == "" {
-		return fmt.Errorf("auth.idp.validation_mode=role requires auth.idp.claim_mappings.roles to be configured")
+	if idp.ValidationMode == "role" && claimMappings.Roles == "" {
+		return fmt.Errorf("auth.idp.validation_mode=role requires auth.claim_mappings.roles to be configured")
 	}
 	return nil
 }
@@ -701,9 +728,6 @@ func validateWebhookConfig(w *Webhook) error {
 	}
 	if w.SignatureHeader == "" {
 		w.SignatureHeader = "X-Devportal-Signature"
-	}
-	if w.GatewayType == "" {
-		w.GatewayType = "wso2/api-platform"
 	}
 	return nil
 }

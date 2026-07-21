@@ -37,8 +37,8 @@ func main() {
 
 	// Initialize logger
 	logConfig := logger.Config{
-		Level:  cfg.LogLevel,
-		Format: cfg.LogFormat,
+		Level:  cfg.Logging.LogLevel,
+		Format: cfg.Logging.LogFormat,
 	}
 	slogger := logger.NewLogger(logConfig)
 
@@ -52,7 +52,7 @@ func main() {
 	slogger.Info("Starting server",
 		"http_enabled", cfg.Listeners.HTTP.Enabled, "http_port", cfg.Listeners.HTTP.Port,
 		"https_enabled", cfg.Listeners.HTTPS.Enabled, "https_port", cfg.Listeners.HTTPS.Port)
-	if err := srv.Start(cfg.Listeners, cfg.Timeouts); err != nil {
+	if err := srv.Start(cfg.Listeners, cfg.Listeners.Timeouts); err != nil {
 		slogger.Error("Failed to start server", "error", err)
 		os.Exit(1)
 	}

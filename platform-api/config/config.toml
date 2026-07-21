@@ -1,7 +1,9 @@
 [platform_api]
 
+[platform_api.logging]
 log_level = '{{ env "APIP_CP_LOG_LEVEL" "INFO" }}'
 
+[platform_api.security]
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
 [platform_api.database]

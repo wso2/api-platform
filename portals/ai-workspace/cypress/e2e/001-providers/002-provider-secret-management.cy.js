@@ -88,7 +88,7 @@ describe('AI Workspace — LLM provider secret management (create flow)', () => 
     cy.login();
     cy.request({
       method: 'POST',
-      url: '/api/proxy/api/portal/v0.9/auth/login',
+      url: '/proxy/api/portal/v0.9/auth/login',
       form: true,
       body: {
         username: Cypress.env('ADMIN_USER'),
@@ -100,7 +100,7 @@ describe('AI Workspace — LLM provider secret management (create flow)', () => 
         authToken = response.body?.token ?? '';
         expect(authToken).to.not.equal('');
         return cy.request({
-          url: '/api/proxy/api/v0.9/organizations',
+          url: '/proxy/api/v0.9/organizations',
           headers: { Authorization: `Bearer ${authToken}` },
         });
       })
@@ -115,7 +115,7 @@ describe('AI Workspace — LLM provider secret management (create flow)', () => 
     if (!authToken || !organizationId || !createdProviderId) return;
     cy.request({
       method: 'DELETE',
-      url: `/api/proxy/api/v0.9/llm-providers/${encodeURIComponent(createdProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
+      url: `/proxy/api/v0.9/llm-providers/${encodeURIComponent(createdProviderId)}?organizationId=${encodeURIComponent(organizationId)}`,
       headers: { Authorization: `Bearer ${authToken}` },
       failOnStatusCode: false,
     });
@@ -174,7 +174,7 @@ describe('AI Workspace — LLM provider secret management (create flow)', () => 
     // Pre-create the secret via API so there's a real secret backing the placeholder.
     cy.request({
       method: 'POST',
-      url: '/api/proxy/api/v0.9/secrets',
+      url: '/proxy/api/v0.9/secrets',
       headers: { Authorization: `Bearer ${authToken}` },
       form: true,
       body: {
@@ -266,7 +266,7 @@ describe('AI Workspace — LLM provider secret management (create flow)', () => 
 
     cy.request({
       method: 'POST',
-      url: '/api/proxy/api/v0.9/secrets',
+      url: '/proxy/api/v0.9/secrets',
       headers: { Authorization: `Bearer ${authToken}` },
       form: true,
       body: {
@@ -284,7 +284,7 @@ describe('AI Workspace — LLM provider secret management (create flow)', () => 
     // accumulates many secrets across the suite and the list defaults to
     // limit=25, which can miss the one just created).
     cy.request({
-      url: `/api/proxy/api/v0.9/secrets/${encodeURIComponent(handle)}?organizationId=${encodeURIComponent(organizationId)}`,
+      url: `/proxy/api/v0.9/secrets/${encodeURIComponent(handle)}?organizationId=${encodeURIComponent(organizationId)}`,
       headers: { Authorization: `Bearer ${authToken}` },
     }).then((r) => {
       expect(r.status).to.eq(200);
@@ -297,7 +297,7 @@ describe('AI Workspace — LLM provider secret management (create flow)', () => 
 
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/secrets/${encodeURIComponent(handle)}?organizationId=${encodeURIComponent(organizationId)}`,
+        url: `/proxy/api/v0.9/secrets/${encodeURIComponent(handle)}?organizationId=${encodeURIComponent(organizationId)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });
@@ -327,7 +327,7 @@ describe('AI Workspace — LLM provider secret management (update flow)', () => 
 
     cy.request({
       method: 'POST',
-      url: '/api/proxy/api/portal/v0.9/auth/login',
+      url: '/proxy/api/portal/v0.9/auth/login',
       form: true,
       body: {
         username: Cypress.env('ADMIN_USER'),
@@ -337,7 +337,7 @@ describe('AI Workspace — LLM provider secret management (update flow)', () => 
 
     cy.then(() =>
       cy.request({
-        url: '/api/proxy/api/v0.9/organizations',
+        url: '/proxy/api/v0.9/organizations',
         headers: { Authorization: `Bearer ${authToken}` },
       })
     ).then((r) => { organizationId = r.body?.list?.[0]?.id ?? ''; });
@@ -380,7 +380,7 @@ describe('AI Workspace — LLM provider secret management (update flow)', () => 
     if (authToken && organizationId && providerId) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}?organizationId=${encodeURIComponent(organizationId)}`,
+        url: `/proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}?organizationId=${encodeURIComponent(organizationId)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });
@@ -451,7 +451,7 @@ describe('AI Workspace — LLM provider secret management (update flow)', () => 
     // cy.request() bypasses cy.intercept(), so this won't affect secretCallCount below.
     cy.request({
       method: 'POST',
-      url: '/api/proxy/api/v0.9/secrets',
+      url: '/proxy/api/v0.9/secrets',
       headers: { Authorization: `Bearer ${authToken}` },
       form: true,
       body: {

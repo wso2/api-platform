@@ -102,9 +102,8 @@ func buildTestServer(t *testing.T, platformURL, jwt string) (*Server, *httptest.
 
 	cfg := &config.Config{
 		ControlPlane: config.ControlPlaneConfig{URL: platformURL},
-		ProxyPrefix: "/api/proxy",
-		Cookie:      config.CookieConfig{Name: "_ai_workspace_session"},
-		CSRFHeader:  "X-Requested-By",
+		ProxyPrefix:  "/proxy",
+		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
 	}
 
 	s := &Server{
@@ -272,8 +271,8 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 	platform, _ := fakeControlPlane(t, nil)
 	cfg := &config.Config{
 		ControlPlane: config.ControlPlaneConfig{URL: platform.URL},
-		ProxyPrefix: "/api/proxy",
-		Cookie:      config.CookieConfig{Name: "_ai_workspace_session"},
+		ProxyPrefix:  "/proxy",
+		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
 	}
 	transport, err := proxy.NewTransport(proxy.TLSClientOptions{SkipVerify: true})
 	if err != nil {

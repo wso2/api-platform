@@ -71,7 +71,7 @@ type Server struct {
 // are not covered by config-load validation. All checks are unconditional:
 // there is no relaxed/demo mode.
 func validateServerConfig(cfg *config.Server) error {
-	if slices.Contains(cfg.CORS.AllowedOrigins, "*") {
+	if slices.Contains(cfg.Listeners.CORS.AllowedOrigins, "*") {
 		return fmt.Errorf("cors.allowed_origins must not contain \"*\"; list explicit origins, or leave it empty to disable cross-origin access")
 	}
 	return nil
@@ -187,14 +187,13 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 
 	// Initialize WebSocket manager first (needed for GatewayEventsService)
 	wsConfig := websocket.ManagerConfig{
-		MaxConnections:       cfg.WebSocket.MaxConnections,
-		HeartbeatInterval:    20 * time.Second,
-		HeartbeatTimeout:     time.Duration(cfg.WebSocket.ConnectionTimeout) * time.Second,
-		MaxConnectionsPerOrg: cfg.WebSocket.MaxConnectionsPerOrg,
-		MetricsLogEnabled:    cfg.WebSocket.MetricsLogEnabled,
-		MetricsLogInterval:   time.Duration(cfg.WebSocket.MetricsLogInterval) * time.Second,
+		MaxConnections:     cfg.Listeners.WebSocket.MaxConnections,
+		HeartbeatInterval:  20 * time.Second,
+		HeartbeatTimeout:   time.Duration(cfg.Listeners.WebSocket.ConnectionTimeout) * time.Second,
+		MetricsLogEnabled:  cfg.Listeners.WebSocket.MetricsLogEnabled,
+		MetricsLogInterval: time.Duration(cfg.Listeners.WebSocket.MetricsLogInterval) * time.Second,
 	}
-	wsManager := websocket.NewManager(wsConfig, gatewayRepo, slogger)
+	wsManager := websocket.NewManager(wsConfig, slogger)
 
 	// Initialize EventHub for multi-replica HA event delivery.
 	// Events published here are polled by all platform-api instances; each instance
@@ -240,7 +239,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, subscriptionPlanRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
-	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.APIKey.HashingAlgorithms, slogger)
+	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.Security.APIKey.HashingAlgorithms, slogger)
 	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
 	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
@@ -249,7 +248,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 
 	// The single configured encryption key (APIP_CP_ENCRYPTION_KEY) is used for all encrypted DB
 	// columns (secrets, subscription tokens, WebSub HMAC secrets)
-	dbEncryptionKey := cfg.EncryptionKey
+	dbEncryptionKey := cfg.Security.EncryptionKey
 	llmProviderDeploymentService := service.NewLLMProviderDeploymentService(
 		llmProviderRepo,
 		llmTemplateRepo,
@@ -301,7 +300,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	)
 
 	// Initialize secret vault and service using the single configured encryption key.
-	secretKey, keyErr := utils.DeriveEncryptionKey(cfg.EncryptionKey)
+	secretKey, keyErr := utils.DeriveEncryptionKey(cfg.Security.EncryptionKey)
 	if keyErr != nil {
 		return nil, fmt.Errorf("invalid encryption key: %w", keyErr)
 	}
@@ -319,7 +318,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, identityService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)
 	appHandler := handler.NewApplicationHandler(appService, identityService, slogger)
-	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.WebSocket.RateLimitPerMin, slogger)
+	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.Listeners.WebSocket.RateLimitPerMin, slogger)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, artifactImportService, secretService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, identityService, slogger)
 	deploymentHandler := handler.NewDeploymentHandler(deploymentService, identityService, slogger)
@@ -458,7 +457,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 			slogger,
 		)
 		webhookReceiver.RegisterRoutes(mux)
-		slogger.Info("Webhook receiver enabled", "path", webhook.RoutePath, "gatewayType", cfg.Webhook.GatewayType)
+		slogger.Info("Webhook receiver enabled", "path", webhook.RoutePath)
 	}
 
 	slogger.Info("Registered API routes successfully")
@@ -469,7 +468,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 
 	// Cross-origin access is disabled by default (empty AllowedOrigins fails closed in the
 	// CORS middleware); operators must opt in explicitly via CORS.AllowedOrigins in config.
-	corsOrigins := cfg.CORS.AllowedOrigins
+	corsOrigins := cfg.Listeners.CORS.AllowedOrigins
 	if len(corsOrigins) == 0 {
 		slogger.Warn("cors.allowed_origins not set in config — cross-origin requests are disabled")
 	} else if slices.Contains(corsOrigins, "*") {
@@ -490,6 +489,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 			TokenIssuer:    cfg.Auth.JWT.Issuer,
 			SkipPaths:      cfg.Auth.SkipPaths,
 			SkipValidation: false,
+			ClaimMappings:  buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap),
 		}))
 	} else {
 		authenticator, err := buildAuthenticator(cfg, slogger, roleScopeMap)
@@ -522,10 +522,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}))
 
 	slogger.Info("WebSocket manager initialized",
-		slog.Int("maxConnections", cfg.WebSocket.MaxConnections),
-		slog.Int("heartbeatTimeout", cfg.WebSocket.ConnectionTimeout),
-		slog.Int("rateLimitPerMin", cfg.WebSocket.RateLimitPerMin),
-		slog.Int("maxConnectionsPerOrg", cfg.WebSocket.MaxConnectionsPerOrg),
+		slog.Int("maxConnections", cfg.Listeners.WebSocket.MaxConnections),
+		slog.Int("heartbeatTimeout", cfg.Listeners.WebSocket.ConnectionTimeout),
+		slog.Int("rateLimitPerMin", cfg.Listeners.WebSocket.RateLimitPerMin),
 	)
 
 	return &Server{
@@ -543,6 +542,23 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}, nil
 }
 
+// buildClaimMappings adapts the config-level claim name mapping (shared by all
+// three auth modes) into the middleware package's ClaimMappings, attaching the
+// resolved IDP-role-to-scope table alongside it.
+func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]string) middleware.ClaimMappings {
+	return middleware.ClaimMappings{
+		OrganizationClaim: cm.Organization,
+		OrgNameClaim:      cm.OrgName,
+		OrgHandleClaim:    cm.OrgHandle,
+		UserIDClaim:       cm.UserID,
+		UsernameClaim:     cm.Username,
+		EmailClaim:        cm.Email,
+		ScopeClaim:        cm.Scope,
+		RolesClaimPath:    cm.Roles,
+		RoleScopeMap:      roleScopeMap,
+	}
+}
+
 // buildAuthenticator constructs an Authenticator from the server configuration.
 // Only called when the auth mode is "external_token" or "idp" (file mode wires
 // its own local-JWT middleware).
@@ -555,6 +571,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 				TokenIssuer:    cfg.Auth.JWT.Issuer,
 				SkipPaths:      cfg.Auth.SkipPaths,
 				SkipValidation: false,
+				ClaimMappings:  buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap),
 			}),
 		), nil
 	}
@@ -568,7 +585,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 		Enabled:    true,
 		IssuerURL:  issuerURL,
 		JWKSUrl:    cfg.Auth.IDP.JWKSUrl,
-		ScopeClaim: cfg.Auth.IDP.ClaimMappings.Scope,
+		ScopeClaim: cfg.Auth.ClaimMappings.Scope,
 	}
 	// Enforce audience validation only when at least one audience is configured.
 	if len(cfg.Auth.IDP.Audience) > 0 {
@@ -582,17 +599,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize IDP auth middleware: %w", err)
 	}
-	claimsMiddleware := middleware.PlatformClaimsMiddleware(middleware.PlatformClaimNames{
-		OrganizationClaim: cfg.Auth.IDP.ClaimMappings.Organization,
-		OrgNameClaim:      cfg.Auth.IDP.ClaimMappings.OrgName,
-		OrgHandleClaim:    cfg.Auth.IDP.ClaimMappings.OrgHandle,
-		UserIDClaim:       cfg.Auth.IDP.ClaimMappings.UserID,
-		UsernameClaim:     cfg.Auth.IDP.ClaimMappings.Username,
-		EmailClaim:        cfg.Auth.IDP.ClaimMappings.Email,
-		ScopeClaim:        cfg.Auth.IDP.ClaimMappings.Scope,
-		RolesClaimPath:    cfg.Auth.IDP.ClaimMappings.Roles,
-		RoleScopeMap:      roleScopeMap,
-	})
+	claimsMiddleware := middleware.PlatformClaimsMiddleware(buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap))
 
 	idpLabel := cfg.Auth.IDP.Name
 	if idpLabel == "" {

@@ -64,15 +64,19 @@ type CustomClaims struct {
 
 // AuthConfig holds the configuration for the local JWT (non-IDP) authentication path.
 type AuthConfig struct {
-	SecretKey             string
-	TokenIssuer           string
-	SkipPaths             []string
-	SkipValidation        bool
-	OrganizationClaimName string
+	SecretKey      string
+	TokenIssuer    string
+	SkipPaths      []string
+	SkipValidation bool
+	// ClaimMappings is the same claim-name mapping used by IDP mode
+	// (PlatformClaimsMiddleware) and by the file-mode login endpoint when it
+	// signs tokens — one mapping shared by issuance and validation.
+	ClaimMappings ClaimMappings
 }
 
-// PlatformClaimNames holds the JWT claim names used to extract platform-specific values.
-type PlatformClaimNames struct {
+// ClaimMappings holds the JWT claim names used to extract identity values,
+// shared by the local-JWT (external_token/file) and IDP auth paths.
+type ClaimMappings struct {
 	OrganizationClaim string
 	OrgNameClaim      string
 	OrgHandleClaim    string
@@ -184,7 +188,7 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 		}
 	}
 
-	orgClaimName := config.OrganizationClaimName
+	orgClaimName := config.ClaimMappings.OrganizationClaim
 	if orgClaimName == "" {
 		orgClaimName = "organization"
 	}
@@ -192,17 +196,19 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 	if org == "" {
 		return nil, fmt.Errorf("token missing required '%s' claim", orgClaimName)
 	}
+	orgName := getStringClaim(mapClaims, config.ClaimMappings.OrgNameClaim)
+	orgHandle := getStringClaim(mapClaims, config.ClaimMappings.OrgHandleClaim)
 
 	sub, _ := mapClaims["sub"].(string)
-	username := getStringClaim(mapClaims, "username")
+	username := getStringClaim(mapClaims, config.ClaimMappings.UsernameClaim)
 	if username == "" {
 		username = sub
 	}
 	claimsObj := &CustomClaims{
 		Organization: org,
 		Username:     username,
-		Email:        getStringClaim(mapClaims, "email"),
-		Scope:        getStringClaim(mapClaims, "scope"),
+		Email:        getStringClaim(mapClaims, config.ClaimMappings.EmailClaim),
+		Scope:        getStringClaim(mapClaims, config.ClaimMappings.ScopeClaim),
 		Audience:     audienceToString(mapClaims),
 		JTI:          getStringClaim(mapClaims, "jti"),
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -210,23 +216,27 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 		},
 	}
 
+	platformRoles := resolvePlatformRoles(mapClaims, config.ClaimMappings.RolesClaimPath, config.ClaimMappings.RoleScopeMap)
+
 	ctx := r.Context()
-	ctx = context.WithValue(ctx, keyUserID, resolveUserID(mapClaims, ""))
+	ctx = context.WithValue(ctx, keyUserID, resolveUserID(mapClaims, config.ClaimMappings.UserIDClaim))
 	ctx = context.WithValue(ctx, keyUsername, claimsObj.Username)
 	ctx = context.WithValue(ctx, keyEmail, claimsObj.Email)
 	ctx = context.WithValue(ctx, keyFirstName, getStringClaim(mapClaims, "firstName"))
 	ctx = context.WithValue(ctx, keyLastName, getStringClaim(mapClaims, "lastName"))
 	ctx = context.WithValue(ctx, keyOrganization, org)
+	ctx = context.WithValue(ctx, keyOrgName, orgName)
+	ctx = context.WithValue(ctx, keyOrgHandle, orgHandle)
 	ctx = context.WithValue(ctx, keyScope, claimsObj.Scope)
 	ctx = context.WithValue(ctx, keyAudience, claimsObj.Audience)
 	ctx = context.WithValue(ctx, keyClaims, claimsObj)
-	ctx = context.WithValue(ctx, keyPlatformRoles, []string{})
+	ctx = context.WithValue(ctx, keyPlatformRoles, platformRoles)
 	return r.WithContext(ctx), nil
 }
 
 // PlatformClaimsMiddleware extracts platform-specific values from the AuthContext set by
 // common/authenticators.AuthMiddleware (IDP mode) and populates per-key context entries.
-func PlatformClaimsMiddleware(claimNames PlatformClaimNames) func(http.Handler) http.Handler {
+func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authCtx, ok := authenticators.GetAuthContext(r)

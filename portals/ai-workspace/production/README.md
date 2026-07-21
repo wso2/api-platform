@@ -104,7 +104,7 @@ issuer   = ["https://api.asgardeo.io/t/<your-tenant>/oauth2/token"]
 audience = ["<ai-workspace-client-id>"]   # Client ID from Asgardeo Protocol tab
 
 # Asgardeo-specific claim name overrides.
-[platform_api.auth.idp.claim_mappings]
+[platform_api.auth.claim_mappings]
 organization = "org_id"
 org_name     = "org_name"
 org_handle   = "org_handle"
@@ -116,7 +116,7 @@ Optional overrides (defaults shown):
 [auth.idp]
 validation_mode = "scope"   # or "role" for role-based auth
 
-[auth.idp.claim_mappings]
+[auth.claim_mappings]
 user_id  = "sub"
 username = "username"
 email    = "email"
@@ -138,9 +138,6 @@ Open `configs/config.toml` and fill in the values for your deployment:
 # Host shown in the browser address bar.
 domain = "<your-domain>"                                           # e.g. app.example.com
 
-# Set to "oidc" for production (Asgardeo or any OIDC-compliant IDP).
-auth_mode = "oidc"
-
 # Default region assigned to new organizations on first login.
 default_org_region = "us"
 
@@ -157,7 +154,11 @@ controlplane_host = "<platform-api-host>"
 # Each entry: version (helm chart minor), latestVersion (image/chart tag), channel ("STS" | "LTS").
 platform_gateway_versions = '[{"version":"1.2","latestVersion":"v1.2.0-alpha2","channel":"STS"}]'
 
-[ai_workspace.oidc]
+[ai_workspace.auth]
+# Set to "oidc" for production (Asgardeo or any OIDC-compliant IDP).
+mode = "oidc"
+
+[ai_workspace.auth.oidc]
 # Issuer URL — the BFF auto-discovers OIDC endpoints from
 # {authority}/.well-known/openid-configuration.
 authority = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
@@ -165,9 +166,10 @@ authority = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
 # Client ID of the AI Workspace confidential application (from the IDP Protocol tab).
 client_id = "<ai-workspace-client-id>"
 
-# JWT claim name mappings — this table mirrors [platform_api.auth.idp.claim_mappings] in
-# the Platform API config (section 2) key for key, and the two must agree.
-[ai_workspace.oidc.claim_mappings]
+# JWT claim name mappings — this table mirrors [platform_api.auth.claim_mappings] in
+# the Platform API config (section 2) key for key, and the two must agree. A sibling
+# of [ai_workspace.auth.oidc], not nested in it: applies to both auth modes.
+[ai_workspace.auth.claim_mappings]
 organization = "org_id"
 org_name     = "org_name"
 org_handle   = "org_handle"
@@ -178,7 +180,7 @@ file** — it is referenced with an interpolation token resolved at startup. In 
 as a secret file (a Docker/Kubernetes secret) so the value never enters the environment at all:
 
 ```toml
-[ai_workspace.oidc]
+[ai_workspace.auth.oidc]
 # BFF callback registered in the IDP (section 1.2) — NOT the SPA /signin route.
 redirect_url             = "https://<your-domain>/api/auth/callback"
 post_logout_redirect_url = "https://<your-domain>/login"
@@ -197,9 +199,9 @@ Mount the secret at that path, e.g. in `docker-compose.yaml`:
 Resolution fails closed: a missing or unreadable secret file aborts startup rather than yielding an
 empty credential. `{{ file }}` paths must live under `/etc/ai-workspace` or `/secrets/ai-workspace`
 (override with `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`). For a simpler local setup, swap the token for
-`'{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'` and keep the value in the git-ignored `api-platform.env`.
+`'{{ env "APIP_AIW_AUTH_OIDC_CLIENT_SECRET" }}'` and keep the value in the git-ignored `api-platform.env`.
 
-> `[ai_workspace.oidc] redirect_url` must exactly match the authorized redirect URL registered in the IDP
+> `[ai_workspace.auth.oidc] redirect_url` must exactly match the authorized redirect URL registered in the IDP
 > application (section 1.2). The BFF, not the browser, completes the code exchange.
 
 ### Setting config.toml keys from the environment
@@ -209,13 +211,13 @@ layer. A key takes its value from the environment when it is written as an `{{ e
 names the variable explicitly:
 
 ```toml
-[ai_workspace.oidc]
-client_id = '{{ env "APIP_AIW_OIDC_CLIENT_ID" "" }}'
+[ai_workspace.auth.oidc]
+client_id = '{{ env "APIP_AIW_AUTH_OIDC_CLIENT_ID" "" }}'
 #                  ^ variable read at startup  ^ used when it is unset
 ```
 
-Setting `APIP_AIW_OIDC_CLIENT_ID` in a `docker run -e` or a Kubernetes `env:` block then sets
-`[ai_workspace.oidc] client_id`, with no edit to the file. Setting it while the key is absent from the file, or
+Setting `APIP_AIW_AUTH_OIDC_CLIENT_ID` in a `docker run -e` or a Kubernetes `env:` block then sets
+`[ai_workspace.auth.oidc] client_id`, with no edit to the file. Setting it while the key is absent from the file, or
 written as a plain literal, does nothing.
 
 The shipped `config.toml` already writes its keys this way, naming each variable by the same

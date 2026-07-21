@@ -9,20 +9,26 @@
 
 [ai_workspace]
 
-auth_mode = '{{ env "APIP_AIW_AUTH_MODE" "basic" }}'
 domain = '{{ env "APIP_AIW_DOMAIN" "localhost:5380" }}'
 default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
 
-listen_addr = '{{ env "APIP_AIW_LISTEN_ADDR" ":5380" }}'
-static_dir  = '{{ env "APIP_AIW_STATIC_DIR" "/app" }}'
-log_level   = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'   # debug | info | warn | error
+
+[ai_workspace.server]
+
+port       = '{{ env "APIP_AIW_SERVER_PORT" "5380" }}'
+static_dir = '{{ env "APIP_AIW_SERVER_STATIC_DIR" "/app" }}'
+
+
+[ai_workspace.logging]
+
+log_level = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'   # debug | info | warn | error
 
 
 [ai_workspace.control_plane]
 
 url = '{{ env "APIP_AIW_CONTROL_PLANE_URL" "https://platform-api:9243" }}'
-ca_file = "/etc/ai-workspace/tls/cert.pem"
 tls_skip_verify = '{{ env "APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY" "false" }}'
+ca_file = "/etc/ai-workspace/tls/cert.pem"
 
 
 [ai_workspace.gateway]
@@ -36,3 +42,8 @@ platform_gateway_versions = '{{ env "APIP_AIW_GATEWAY_PLATFORM_GATEWAY_VERSIONS"
 enabled   = '{{ env "APIP_AIW_TLS_ENABLED" "true" }}'
 cert_file = "/etc/ai-workspace/tls/cert.pem"
 key_file  = "/etc/ai-workspace/tls/key.pem"
+
+
+[ai_workspace.auth]
+
+mode = '{{ env "APIP_AIW_AUTH_MODE" "basic" }}'

@@ -39,7 +39,7 @@ const (
 // interpolation. Environment variables reach config ONLY through these tokens now
 // (there is no direct env-key override), so tests must go through a config file.
 const validKeysBase = `
-[platform_api]
+[platform_api.security]
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
 [platform_api.auth.jwt]
@@ -68,7 +68,7 @@ func loadWithKeys(t *testing.T, extra string) (*Server, error) {
 func TestLoadConfig_ValidKeys_Succeeds(t *testing.T) {
 	cfg, err := loadWithKeys(t, "")
 	require.NoError(t, err)
-	assert.Equal(t, validInlineKey, cfg.EncryptionKey)
+	assert.Equal(t, validInlineKey, cfg.Security.EncryptionKey)
 }
 
 // The encryption key is required and never generated — a config that omits it fails startup.
@@ -89,7 +89,7 @@ func TestLoadConfig_InvalidEncryptionKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", validJWTKey)
 
 	_, err := loadTOML(t, `
-[platform_api]
+[platform_api.security]
 encryption_key = "not-a-valid-32-byte-key"
 
 [platform_api.auth.jwt]
@@ -104,7 +104,7 @@ func TestLoadConfig_MissingJWTSecretKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
 
 	_, err := loadTOML(t, `
-[platform_api]
+[platform_api.security]
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 `)
 	require.Error(t, err)
@@ -116,7 +116,7 @@ func TestLoadConfig_InvalidJWTSecretKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_ENCRYPTION_KEY", validInlineKey)
 
 	_, err := loadTOML(t, `
-[platform_api]
+[platform_api.security]
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
 [platform_api.auth.jwt]
@@ -272,42 +272,42 @@ port    = '{{ env "APIP_CP_SERVER_HTTP_PORT" }}'
 func TestLoadConfig_Timeouts_DefaultToFiniteValues(t *testing.T) {
 	cfg, err := loadWithKeys(t, "")
 	require.NoError(t, err)
-	assert.Equal(t, 10*time.Second, cfg.Timeouts.ReadHeader)
-	assert.Equal(t, 60*time.Second, cfg.Timeouts.Read)
-	assert.Equal(t, 120*time.Second, cfg.Timeouts.Write)
-	assert.Equal(t, 120*time.Second, cfg.Timeouts.Idle)
+	assert.Equal(t, 10*time.Second, cfg.Listeners.Timeouts.ReadHeader)
+	assert.Equal(t, 60*time.Second, cfg.Listeners.Timeouts.Read)
+	assert.Equal(t, 120*time.Second, cfg.Listeners.Timeouts.Write)
+	assert.Equal(t, 120*time.Second, cfg.Listeners.Timeouts.Idle)
 }
 
 // Duration strings resolved from {{ env }} tokens must decode into time.Duration fields.
 func TestLoadConfig_Timeouts_TokenOverride(t *testing.T) {
-	t.Setenv("APIP_CP_LISTENER_TIMEOUTS_READ_HEADER", "5s")
-	t.Setenv("APIP_CP_LISTENER_TIMEOUTS_READ", "30s")
-	t.Setenv("APIP_CP_LISTENER_TIMEOUTS_WRITE", "2m")
-	t.Setenv("APIP_CP_LISTENER_TIMEOUTS_IDLE", "90s")
+	t.Setenv("APIP_CP_SERVER_TIMEOUTS_READ_HEADER", "5s")
+	t.Setenv("APIP_CP_SERVER_TIMEOUTS_READ", "30s")
+	t.Setenv("APIP_CP_SERVER_TIMEOUTS_WRITE", "2m")
+	t.Setenv("APIP_CP_SERVER_TIMEOUTS_IDLE", "90s")
 
 	cfg, err := loadWithKeys(t, `
-[platform_api.listener_timeouts]
-read_header = '{{ env "APIP_CP_LISTENER_TIMEOUTS_READ_HEADER" }}'
-read        = '{{ env "APIP_CP_LISTENER_TIMEOUTS_READ" }}'
-write       = '{{ env "APIP_CP_LISTENER_TIMEOUTS_WRITE" }}'
-idle        = '{{ env "APIP_CP_LISTENER_TIMEOUTS_IDLE" }}'
+[platform_api.server.timeouts]
+read_header = '{{ env "APIP_CP_SERVER_TIMEOUTS_READ_HEADER" }}'
+read        = '{{ env "APIP_CP_SERVER_TIMEOUTS_READ" }}'
+write       = '{{ env "APIP_CP_SERVER_TIMEOUTS_WRITE" }}'
+idle        = '{{ env "APIP_CP_SERVER_TIMEOUTS_IDLE" }}'
 `)
 	require.NoError(t, err)
-	assert.Equal(t, 5*time.Second, cfg.Timeouts.ReadHeader)
-	assert.Equal(t, 30*time.Second, cfg.Timeouts.Read)
-	assert.Equal(t, 2*time.Minute, cfg.Timeouts.Write)
-	assert.Equal(t, 90*time.Second, cfg.Timeouts.Idle)
+	assert.Equal(t, 5*time.Second, cfg.Listeners.Timeouts.ReadHeader)
+	assert.Equal(t, 30*time.Second, cfg.Listeners.Timeouts.Read)
+	assert.Equal(t, 2*time.Minute, cfg.Listeners.Timeouts.Write)
+	assert.Equal(t, 90*time.Second, cfg.Listeners.Timeouts.Idle)
 }
 
 // 0 is the net/http "no timeout" sentinel and must be accepted as-is, rather
 // than being silently replaced by the default.
 func TestLoadConfig_Timeouts_ZeroDisablesTimeout(t *testing.T) {
 	cfg, err := loadWithKeys(t, `
-[platform_api.listener_timeouts]
+[platform_api.server.timeouts]
 write = "0s"
 `)
 	require.NoError(t, err)
-	assert.Zero(t, cfg.Timeouts.Write, "listener_timeouts.write = 0 must disable the write timeout")
+	assert.Zero(t, cfg.Listeners.Timeouts.Write, "server.timeouts.write = 0 must disable the write timeout")
 }
 
 // A negative duration would expire immediately and break every request; a
@@ -316,7 +316,7 @@ write = "0s"
 func TestLoadConfig_Timeouts_RejectsInvalidValues(t *testing.T) {
 	t.Run("negative", func(t *testing.T) {
 		_, err := loadWithKeys(t, `
-[platform_api.listener_timeouts]
+[platform_api.server.timeouts]
 read = "-1s"
 `)
 		require.Error(t, err)
@@ -325,7 +325,7 @@ read = "-1s"
 
 	t.Run("read_header exceeds read", func(t *testing.T) {
 		_, err := loadWithKeys(t, `
-[platform_api.listener_timeouts]
+[platform_api.server.timeouts]
 read_header = "30s"
 read        = "10s"
 `)

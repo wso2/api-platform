@@ -33,9 +33,9 @@ import (
 // It is a naming convention, not a binding: the environment reaches the config only
 // through the {{ env "NAME" }} tokens written in config.toml, which name the variable
 // explicitly. By convention a key's variable is its dotted path uppercased, with dots
-// as underscores, prefixed — so [oidc] client_id ships as
-// '{{ env "APIP_AIW_OIDC_CLIENT_ID" }}'. A token may name any variable, and a key with
-// no token cannot be set from the environment at all.
+// as underscores, prefixed — so [auth.oidc] client_id ships as
+// '{{ env "APIP_AIW_AUTH_OIDC_CLIENT_ID" }}'. A token may name any variable, and a key
+// with no token cannot be set from the environment at all.
 //
 // The prefix also namespaces the runtime config the SPA reads (see runtimeKey).
 const EnvPrefix = "APIP_AIW_"
@@ -45,7 +45,7 @@ const EnvPrefix = "APIP_AIW_"
 // API's platformAPIConfigKey: this namespacing lets an AI Workspace config file
 // coexist with sibling services' sections ([platform_api], ...) in a shared
 // deployment config, the same file convention as the Platform API's [platform_api]
-// table. Every key below this cut (log_level, control_plane.url, oidc.*, ...) is
+// table. Every key below this cut (log_level, control_plane.url, auth.oidc.*, ...) is
 // resolved relative to [ai_workspace], not the file root.
 const aiWorkspaceConfigKey = "ai_workspace"
 
@@ -135,8 +135,8 @@ func parseTOML(path string) (map[string]any, error) {
 	return raw, nil
 }
 
-// flatten collapses the decoded tree into dotted keys ([oidc] client_id ->
-// "oidc.client_id"), stringifying scalars so a value may be written either quoted or
+// flatten collapses the decoded tree into dotted keys ([auth.oidc] client_id ->
+// "auth.oidc.client_id"), stringifying scalars so a value may be written either quoted or
 // bare — tls.enabled = true and tls.enabled = "true" both reach getbool as "true".
 // Arrays have no config key and are rejected by the parser before reaching here.
 func flatten(dst settings, prefix string, tree map[string]any) {
