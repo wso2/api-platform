@@ -78,24 +78,24 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// Shared by both auth modes: OIDC tokens from the configured IDP, and the HMAC
 	// JWTs the Platform API's file-based login endpoint signs with the same mapped
 	// claim names. Building it once keeps the two readers from drifting apart.
-	claims := buildClaimMapping(cfg.Claims)
+	claims := buildClaimMapping(cfg.Auth.ClaimMappings)
 
 	s := &Server{
 		cfg:          cfg,
 		claims:       claims,
 		fileBased:    auth.NewFileBased(upstream, cfg.ControlPlane.URL, cfg.ControlPlane.PortalBasePath, cfg.Session.AbsoluteTTL, claims),
-		proxy:        proxy.ReverseProxy(target, cfg.ProxyPrefix, transport),
+		proxy:        proxy.ReverseProxy(target, cfg.ControlPlane.ProxyPrefix, transport),
 		refreshLocks: make(map[string]*refreshLock),
 	}
 
-	if cfg.OIDC.Enabled {
+	if cfg.Auth.OIDC.Enabled {
 		// The session store exists only to hold OIDC refresh/id tokens for renewal.
 		// File-based sessions are fully self-contained in the cookie JWT.
 		s.store = session.NewMemoryStore()
 		o, err := auth.NewOIDC(
 			ctx, upstream,
-			cfg.OIDC.Issuer, cfg.OIDC.ClientID, cfg.OIDC.ClientSecret,
-			cfg.OIDC.RedirectURL, cfg.OIDC.PostLogoutRedirectURL, cfg.OIDC.Scopes,
+			cfg.Auth.OIDC.Issuer, cfg.Auth.OIDC.ClientID, cfg.Auth.OIDC.ClientSecret,
+			cfg.Auth.OIDC.RedirectURL, cfg.Auth.OIDC.PostLogoutRedirectURL, cfg.Auth.OIDC.Scopes,
 			claims, cfg.Session.AbsoluteTTL,
 		)
 		if err != nil {

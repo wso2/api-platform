@@ -27,8 +27,8 @@ import (
 func defaultConfig() *Server {
 	return &Server{
 		Logging: Logging{
-			LogLevel:  "info",
-			LogFormat: "text",
+			Level:  "info",
+			Format: "text",
 		},
 		DBSchemaPath:               "./internal/database/schema.sql",
 		OpenAPISpecPath:            "./resources/openapi.yaml",

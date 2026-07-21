@@ -38,21 +38,21 @@ func TestShippedConfig_QuickstartLoadsWithNoEnv(t *testing.T) {
 		t.Fatalf("Load(configs/config.toml) error = %v — the shipped quickstart config must load with an empty environment", err)
 	}
 
-	if cfg.AuthMode != "basic" {
-		t.Errorf("AuthMode = %q, want %q", cfg.AuthMode, "basic")
+	if cfg.Auth.Mode != "basic" {
+		t.Errorf("AuthMode = %q, want %q", cfg.Auth.Mode, "basic")
 	}
 	// The missing [ai_workspace.auth.oidc] table must not switch the OIDC client on, or
 	// Load would demand an authority/client_id/client_secret the quickstart has no use for.
-	if cfg.OIDC.Enabled {
+	if cfg.Auth.OIDC.Enabled {
 		t.Error("OIDC.Enabled = true, want false — the empty [ai_workspace.auth.oidc] defaults must leave basic mode intact")
 	}
 	// The defaults in the file are the container's: the port it publishes and the SPA
 	// baked into the image.
-	if cfg.Addr != ":5380" {
-		t.Errorf("Addr = %q, want the container default %q", cfg.Addr, ":5380")
+	if cfg.Addr() != ":5380" {
+		t.Errorf("Addr = %q, want the container default %q", cfg.Addr(), ":5380")
 	}
-	if cfg.StaticDir != "/app" {
-		t.Errorf("StaticDir = %q, want the container default %q", cfg.StaticDir, "/app")
+	if cfg.Server.StaticDir != "/app" {
+		t.Errorf("StaticDir = %q, want the container default %q", cfg.Server.StaticDir, "/app")
 	}
 	if cfg.ControlPlane.URL != "https://platform-api:9243" {
 		t.Errorf("ControlPlane.URL = %q, want the compose hostname", cfg.ControlPlane.URL)
@@ -89,10 +89,10 @@ func TestShippedConfig_MakeBffRunOverrides(t *testing.T) {
 	}
 
 	for _, tc := range []struct{ name, got, want string }{
-		{"Addr", cfg.Addr, ":8081"},
-		{"StaticDir", cfg.StaticDir, "../dist"},
+		{"Addr", cfg.Addr(), ":8081"},
+		{"StaticDir", cfg.Server.StaticDir, "../dist"},
 		{"ControlPlane.URL", cfg.ControlPlane.URL, "https://localhost:9243"},
-		{"LogLevel", cfg.LogLevel, "debug"},
+		{"LogLevel", cfg.Logging.Level, "debug"},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s = %q, want %q — `make bff-run` sets this variable, so configs/config.toml must carry the matching {{ env }} token",
@@ -117,11 +117,11 @@ func TestShippedConfig_OIDCFromEnvAlone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load(configs/config-template.toml) error = %v — the [ai_workspace.auth.oidc] tokens must make OIDC settable from the environment", err)
 	}
-	if !cfg.OIDC.Enabled {
+	if !cfg.Auth.OIDC.Enabled {
 		t.Fatal("OIDC.Enabled = false, want true — [auth] mode = oidc must enable the client")
 	}
-	if cfg.OIDC.ClientSecret != "s3cr3t" {
-		t.Errorf("OIDC.ClientSecret = %q, want the value from APIP_AIW_AUTH_OIDC_CLIENT_SECRET", cfg.OIDC.ClientSecret)
+	if cfg.Auth.OIDC.ClientSecret != "s3cr3t" {
+		t.Errorf("OIDC.ClientSecret = %q, want the value from APIP_AIW_AUTH_OIDC_CLIENT_SECRET", cfg.Auth.OIDC.ClientSecret)
 	}
 	// Whatever the mode, the client credentials stay server-side.
 	for _, key := range []string{"APIP_AIW_AUTH_OIDC_CLIENT_SECRET", "APIP_AIW_AUTH_OIDC_CLIENT_ID", "APIP_AIW_AUTH_OIDC_AUTHORITY"} {
@@ -141,8 +141,8 @@ func TestShippedConfig_TemplateLoads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load(configs/config-template.toml) error = %v — the template must remain a loadable config", err)
 	}
-	if cfg.AuthMode != "basic" {
-		t.Errorf("AuthMode = %q, want %q", cfg.AuthMode, "basic")
+	if cfg.Auth.Mode != "basic" {
+		t.Errorf("AuthMode = %q, want %q", cfg.Auth.Mode, "basic")
 	}
 	// Unlike the quickstart file, the template defaults to verifying the upstream
 	// certificate — it is the starting point for a real deployment.

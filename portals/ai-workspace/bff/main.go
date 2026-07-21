@@ -99,7 +99,7 @@ func main() {
 		slog.Error("configuration error", "err", err)
 		os.Exit(1)
 	}
-	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.LogLevel, Format: cfg.LogFormat}))
+	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.Logging.Level, Format: cfg.Logging.Format}))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -112,7 +112,7 @@ func main() {
 	defer srv.Close()
 
 	httpServer := &http.Server{
-		Addr:              cfg.Addr,
+		Addr:              cfg.Addr(),
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
@@ -120,7 +120,7 @@ func main() {
 		IdleTimeout:       120 * time.Second,
 	}
 
-	tlsConfig, err := buildTLS(cfg.TLS)
+	tlsConfig, err := buildTLS(cfg.Server.HTTPS)
 	if err != nil {
 		slog.Error("failed to set up TLS", "err", err)
 		os.Exit(1)
@@ -128,13 +128,13 @@ func main() {
 	httpServer.TLSConfig = tlsConfig
 
 	go func() {
-		url := portalURL(cfg.Addr, tlsConfig != nil)
+		url := portalURL(cfg.Addr(), tlsConfig != nil)
 		slog.Info("AI Workspace BFF started",
-			"addr", cfg.Addr,
+			"addr", cfg.Addr(),
 			"url", url,
-			"auth_mode", cfg.AuthMode,
+			"auth_mode", cfg.Auth.Mode,
 			"control_plane", cfg.ControlPlane.URL,
-			"oidc_enabled", cfg.OIDC.Enabled,
+			"oidc_enabled", cfg.Auth.OIDC.Enabled,
 		)
 		printStartedMarker(url)
 		var serveErr error
@@ -165,10 +165,10 @@ func main() {
 // disabled no certificate is read or required. Otherwise a mounted cert/key pair
 // is required — there is no self-signed fallback; use the quickstart setup
 // script (or your own tooling) to generate a pair and mount it.
-func buildTLS(c config.TLSConfig) (*tls.Config, error) {
-	if !c.TerminateTLS {
+func buildTLS(c config.HTTPSConfig) (*tls.Config, error) {
+	if !c.Enabled {
 		// Plain HTTP is only safe when something upstream terminates TLS.
-		slog.Warn("TLS: disabled ([tls] enabled = false) — serving plain HTTP. " +
+		slog.Warn("TLS: disabled ([server.https] enabled = false) — serving plain HTTP. " +
 			"Terminate TLS at an ingress or service-mesh sidecar and " +
 			"never expose this listener directly to untrusted networks.")
 		return nil, nil
@@ -180,8 +180,8 @@ func buildTLS(c config.TLSConfig) (*tls.Config, error) {
 	}
 	if !fileExists(c.CertFile) {
 		return nil, fmt.Errorf("TLS is enabled but no certificate is mounted: "+
-			"set [tls] cert_file (%q) and key_file (%q) to existing files, "+
-			"or set [tls] enabled = false to serve plain HTTP behind a TLS-terminating proxy", c.CertFile, c.KeyFile)
+			"set [server.https] cert_file (%q) and key_file (%q) to existing files, "+
+			"or set [server.https] enabled = false to serve plain HTTP behind a TLS-terminating proxy", c.CertFile, c.KeyFile)
 	}
 	cert, err := tlsutil.CertFromFiles(c.CertFile, c.KeyFile)
 	if err != nil {

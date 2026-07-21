@@ -75,8 +75,8 @@ type FileBased struct {
 
 // Logging holds logging configuration.
 type Logging struct {
-	LogLevel  string `koanf:"level"`
-	LogFormat string `koanf:"format"`
+	Level  string `koanf:"level"`
+	Format string `koanf:"format"`
 }
 
 // Server holds the configuration parameters for the application.
@@ -399,9 +399,9 @@ func LoadConfig(configPath string) (*Server, error) {
 	// Install the configured logger as the slog default so the warnings/info logs
 	// emitted below (and any package-level slog.* call in this file) use the same
 	// format as the rest of the application, instead of slog's default handler.
-	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.Logging.LogLevel, Format: cfg.Logging.LogFormat}))
+	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.Logging.Level, Format: cfg.Logging.Format}))
 
-	if err := validateLoggingConfig(cfg.Logging.LogLevel, cfg.Logging.LogFormat); err != nil {
+	if err := validateLoggingConfig(cfg.Logging.Level, cfg.Logging.Format); err != nil {
 		return nil, err
 	}
 	if err := validateTimeoutsConfig(&cfg.Listeners.Timeouts); err != nil {

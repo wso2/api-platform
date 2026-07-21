@@ -51,8 +51,8 @@ url = "https://platform-api:9243"
 	if cfg.ControlPlane.URL != "https://platform-api:9243" {
 		t.Errorf("ControlPlane.URL = %q, want the config.toml value", cfg.ControlPlane.URL)
 	}
-	if cfg.LogLevel != "warn" {
-		t.Errorf("LogLevel = %q, want %q", cfg.LogLevel, "warn")
+	if cfg.Logging.Level != "warn" {
+		t.Errorf("LogLevel = %q, want %q", cfg.Logging.Level, "warn")
 	}
 }
 
@@ -74,11 +74,11 @@ url = "https://platform-api:9243"
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.LogLevel != "debug" {
-		t.Errorf("LogLevel = %q, want %q (the token's variable is set)", cfg.LogLevel, "debug")
+	if cfg.Logging.Level != "debug" {
+		t.Errorf("LogLevel = %q, want %q (the token's variable is set)", cfg.Logging.Level, "debug")
 	}
-	if cfg.LogFormat != "text" {
-		t.Errorf("LogFormat = %q, want the token default %q", cfg.LogFormat, "text")
+	if cfg.Logging.Format != "text" {
+		t.Errorf("LogFormat = %q, want the token default %q", cfg.Logging.Format, "text")
 	}
 }
 
@@ -99,9 +99,9 @@ url = "https://platform-api:9243"
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.LogLevel != "warn" {
+	if cfg.Logging.Level != "warn" {
 		t.Errorf("LogLevel = %q, want the config.toml literal %q — an env var must not override a key with no token",
-			cfg.LogLevel, "warn")
+			cfg.Logging.Level, "warn")
 	}
 }
 
@@ -127,8 +127,8 @@ redirect_url  = "https://localhost:5380/api/auth/callback"
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.OIDC.ClientSecret != "s3cr3t" {
-		t.Errorf("OIDC.ClientSecret = %q, want the value resolved from the env token", cfg.OIDC.ClientSecret)
+	if cfg.Auth.OIDC.ClientSecret != "s3cr3t" {
+		t.Errorf("OIDC.ClientSecret = %q, want the value resolved from the env token", cfg.Auth.OIDC.ClientSecret)
 	}
 }
 
@@ -159,8 +159,8 @@ redirect_url  = "https://localhost:5380/api/auth/callback"
 		t.Fatalf("Load() error = %v", err)
 	}
 	// The trailing newline every secret file ends with must be trimmed.
-	if cfg.OIDC.ClientSecret != "from-file" {
-		t.Errorf("OIDC.ClientSecret = %q, want %q", cfg.OIDC.ClientSecret, "from-file")
+	if cfg.Auth.OIDC.ClientSecret != "from-file" {
+		t.Errorf("OIDC.ClientSecret = %q, want %q", cfg.Auth.OIDC.ClientSecret, "from-file")
 	}
 }
 
@@ -320,8 +320,8 @@ absolute_ttl = "2h"
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.TLS.TerminateTLS {
-		t.Error("TLS.TerminateTLS = true, want false from the bare TOML boolean")
+	if cfg.Server.HTTPS.Enabled {
+		t.Error("Server.HTTPS.Enabled = true, want false from the bare TOML boolean")
 	}
 	if cfg.Session.AbsoluteTTL != 2*time.Hour {
 		t.Errorf("Session.AbsoluteTTL = %s, want 2h", cfg.Session.AbsoluteTTL)
@@ -353,10 +353,10 @@ redirect_url  = "https://localhost:5380/api/auth/callback"
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.TLS.TerminateTLS {
-		t.Error("TLS.TerminateTLS = true, want false — [server.https] enabled must not read [auth.oidc] enabled")
+	if cfg.Server.HTTPS.Enabled {
+		t.Error("Server.HTTPS.Enabled = true, want false — [server.https] enabled must not read [auth.oidc] enabled")
 	}
-	if !cfg.OIDC.Enabled {
+	if !cfg.Auth.OIDC.Enabled {
 		t.Error("OIDC.Enabled = false, want true")
 	}
 }
@@ -382,11 +382,11 @@ roles        = "roles"
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Claims.OrgID != "org_uuid" {
-		t.Errorf("Claims.OrgID = %q, want %q from organization", cfg.Claims.OrgID, "org_uuid")
+	if cfg.Auth.ClaimMappings.OrgID != "org_uuid" {
+		t.Errorf("Claims.OrgID = %q, want %q from organization", cfg.Auth.ClaimMappings.OrgID, "org_uuid")
 	}
-	if cfg.Claims.Roles != "roles" {
-		t.Errorf("Claims.Roles = %q, want %q from roles", cfg.Claims.Roles, "roles")
+	if cfg.Auth.ClaimMappings.Roles != "roles" {
+		t.Errorf("Claims.Roles = %q, want %q from roles", cfg.Auth.ClaimMappings.Roles, "roles")
 	}
 	if got := cfg.RuntimeConfig["APIP_AIW_AUTH_CLAIM_MAPPINGS_ORGANIZATION"]; got != "org_uuid" {
 		t.Errorf("runtime APIP_AIW_AUTH_CLAIM_MAPPINGS_ORGANIZATION = %q, want %q", got, "org_uuid")

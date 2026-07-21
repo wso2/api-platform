@@ -20,10 +20,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strconv"
-	"strings"
-	"time"
 
+	tomlparser "github.com/knadh/koanf/parsers/toml/v2"
+	"github.com/knadh/koanf/providers/confmap"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
 	"github.com/wso2/api-platform/common/configinterpolate"
 )
 
@@ -44,9 +45,8 @@ const EnvPrefix = "APIP_AIW_"
 // under (e.g. [ai_workspace], [ai_workspace.control_plane]). It mirrors the Platform
 // API's platformAPIConfigKey: this namespacing lets an AI Workspace config file
 // coexist with sibling services' sections ([platform_api], ...) in a shared
-// deployment config, the same file convention as the Platform API's [platform_api]
-// table. Every key below this cut (logging.level, control_plane.url, auth.oidc.*, ...) is
-// resolved relative to [ai_workspace], not the file root.
+// deployment config. loadConfigKoanf cuts to this table, so every key is resolved
+// relative to [ai_workspace] and sibling tables are ignored.
 const aiWorkspaceConfigKey = "ai_workspace"
 
 // defaultFileSourceAllowlist is the AI Workspace's default set of directories a
@@ -57,36 +57,34 @@ var defaultFileSourceAllowlist = []string{
 	"/secrets/ai-workspace",
 }
 
-// settings is the fully-resolved configuration: the config.toml values under
-// [ai_workspace], with every {{ env }} / {{ file }} token expanded and flattened to
-// dotted paths relative to that table. A key is its path under [ai_workspace] joined
-// with dots — [ai_workspace.control_plane] url becomes "control_plane.url" — and a key
-// directly under [ai_workspace] keeps its bare name ("domain"). Sibling top-level
-// tables belonging to other services (e.g. [platform_api]) are ignored.
-type settings map[string]string
-
-// loadSettings reads config.toml and expands its interpolation tokens. config.toml is
-// the only source of configuration: there is no implicit environment overlay, so a
-// value comes from the environment exactly when the key's token asks for it, e.g.
+// loadConfigKoanf reads config.toml, expands its {{ env }} / {{ file }} interpolation
+// tokens, and returns a koanf instance rooted at the [ai_workspace] subtree — the same
+// koanf-based loading stack the Gateway and Platform API use.
 //
-//	level = '{{ env "APIP_AIW_LOGGING_LEVEL" "info" }}'
-//
-// One mechanism therefore covers both ordinary settings and secrets, and every source
-// a value can come from is visible in the file itself rather than implied by a naming
-// rule. Interpolation fails closed: an unset {{ env }} variable with no default, or an
+// config.toml is the only source of configuration: there is no implicit environment
+// overlay, so a value comes from the environment exactly when the key's token asks for
+// it. Interpolation fails closed — an unset {{ env }} variable with no default, or an
 // unreadable/disallowed {{ file }} path, aborts startup rather than silently yielding
 // an empty credential.
 //
-// A missing config.toml is not an error — the built-in defaults still apply — but the
-// required keys (control_plane.url) then have no value, so Load fails on them.
-func loadSettings(tomlPath string) (settings, error) {
-	raw, err := parseTOML(tomlPath)
-	if err != nil {
-		return nil, err
+// A missing config.toml is not an error: the returned instance is empty, so every key
+// falls back to defaultConfig() and Load fails only on the required ones.
+func loadConfigKoanf(tomlPath string) (*koanf.Koanf, error) {
+	k := koanf.New(".")
+
+	// Stat first so a missing file stays a no-op (defaults apply) rather than a koanf
+	// load error; anything else (e.g. a permission problem) is surfaced.
+	if _, statErr := os.Stat(tomlPath); statErr == nil {
+		if err := k.Load(file.Provider(tomlPath), tomlparser.Parser()); err != nil {
+			return nil, fmt.Errorf("failed to parse config file %q: %w", tomlPath, err)
+		}
+	} else if !os.IsNotExist(statErr) {
+		return nil, fmt.Errorf("failed to read config file %q: %w", tomlPath, statErr)
 	}
 
-	// Expand walks the whole tree, so a token works at any depth.
-	expanded, stats, err := configinterpolate.Expand(raw, configinterpolate.Options{
+	// Expand tokens across the whole tree, so a token works at any depth. Shared with
+	// the Platform API via configinterpolate, operating on koanf's raw nested map.
+	expanded, stats, err := configinterpolate.Expand(k.Raw(), configinterpolate.Options{
 		FileAllowlist: configinterpolate.ResolveAllowlist(defaultFileSourceAllowlist),
 	})
 	if err != nil {
@@ -100,116 +98,11 @@ func loadSettings(tomlPath string) (settings, error) {
 			slog.Int("fields", stats.Fields))
 	}
 
-	s := settings{}
-	flatten(s, "", cut(expanded, aiWorkspaceConfigKey))
-	return s, nil
-}
-
-// cut returns the subtree of tree rooted at key, or an empty tree when key is
-// absent (a missing [ai_workspace] table simply leaves every key on its default,
-// same as a missing config file). A key present but not a table is also treated as
-// absent — flatten only ever descends into map[string]any nodes.
-func cut(tree map[string]any, key string) map[string]any {
-	if sub, ok := tree[key].(map[string]any); ok {
-		return sub
+	// Reload the expanded map into a fresh instance so no un-interpolated leaf survives,
+	// then cut to the [ai_workspace] subtree.
+	out := koanf.New(".")
+	if err := out.Load(confmap.Provider(expanded, "."), nil); err != nil {
+		return nil, fmt.Errorf("failed to reload interpolated config: %w", err)
 	}
-	return map[string]any{}
-}
-
-// parseTOML decodes the config file with the stdlib subset parser (see toml.go).
-// A missing file yields an empty tree rather than an error, leaving every key on
-// its default — Load then fails on the required ones.
-func parseTOML(path string) (map[string]any, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]any{}, nil
-		}
-		return nil, fmt.Errorf("failed to read config file %q: %w", path, err)
-	}
-
-	raw, err := parseTOMLSubset(data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse config file %q: %w", path, err)
-	}
-	return raw, nil
-}
-
-// flatten collapses the decoded tree into dotted keys ([auth.oidc] client_id ->
-// "auth.oidc.client_id"), stringifying scalars so a value may be written either quoted or
-// bare — tls.enabled = true and tls.enabled = "true" both reach getbool as "true".
-// Arrays have no config key and are rejected by the parser before reaching here.
-func flatten(dst settings, prefix string, tree map[string]any) {
-	for k, v := range tree {
-		key := strings.ToLower(k)
-		if prefix != "" {
-			key = prefix + "." + key
-		}
-		switch val := v.(type) {
-		case map[string]any:
-			flatten(dst, key, val)
-		case string:
-			dst[key] = val
-		case bool, int64, float64:
-			dst[key] = fmt.Sprint(val)
-		}
-	}
-}
-
-// get returns the value for key, or def when it is unset or empty.
-func (s settings) get(key, def string) string {
-	if v, ok := s[key]; ok && v != "" {
-		return v
-	}
-	return def
-}
-
-// getbool parses key as a boolean. A malformed value fails startup rather than
-// being silently replaced by the default.
-func (s settings) getbool(key string, def bool) (bool, error) {
-	v, ok := s[key]
-	if !ok || v == "" {
-		return def, nil
-	}
-	b, err := strconv.ParseBool(strings.TrimSpace(v))
-	if err != nil {
-		return false, fmt.Errorf("invalid boolean for %s=%q: %w", key, v, err)
-	}
-	return b, nil
-}
-
-// getint parses key as an integer within [min, max]. A missing or empty value
-// returns def; a malformed or out-of-range value fails startup rather than being
-// silently replaced by the default.
-func (s settings) getint(key string, def, min, max int) (int, error) {
-	v, ok := s[key]
-	if !ok || v == "" {
-		return def, nil
-	}
-	n, err := strconv.Atoi(strings.TrimSpace(v))
-	if err != nil {
-		return 0, fmt.Errorf("invalid integer for %s=%q: %w", key, v, err)
-	}
-	if n < min || n > max {
-		return 0, fmt.Errorf("invalid integer for %s=%q: must be between %d and %d", key, v, min, max)
-	}
-	return n, nil
-}
-
-// getdur parses key as a Go duration. A malformed, zero, or negative value fails
-// startup — every duration setting is a lifetime or timeout, where <= 0 is never
-// meaningful.
-func (s settings) getdur(key string, def time.Duration) (time.Duration, error) {
-	v, ok := s[key]
-	if !ok || v == "" {
-		return def, nil
-	}
-	d, err := time.ParseDuration(strings.TrimSpace(v))
-	if err != nil {
-		return 0, fmt.Errorf("invalid duration for %s=%q: %w", key, v, err)
-	}
-	if d <= 0 {
-		return 0, fmt.Errorf("invalid duration for %s=%q: must be positive", key, v)
-	}
-	return d, nil
+	return out.Cut(aiWorkspaceConfigKey), nil
 }

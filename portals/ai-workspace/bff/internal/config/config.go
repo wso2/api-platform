@@ -16,11 +16,12 @@
 
 // Package config loads BFF configuration from config.toml, resolving its
 // {{ env }} / {{ file }} interpolation tokens through the shared configinterpolate
-// library. The file is the only source: a key takes its value from the environment or
-// a mounted secret file exactly when its token says so. Browser-safe keys are surfaced
-// to the SPA as APIP_AIW_* runtime config. The BFF never validates tokens, so there are
-// no signing keys here — only the IDP client credentials needed to perform the OAuth2
-// code exchange.
+// library and unmarshalling the result into a nested struct via koanf — the same
+// loading stack the Gateway and Platform API use. The file is the only source: a key
+// takes its value from the environment or a mounted secret file exactly when its token
+// says so. Browser-safe keys are surfaced to the SPA as APIP_AIW_* runtime config. The
+// BFF never validates tokens, so there are no signing keys here — only the IDP client
+// credentials needed to perform the OAuth2 code exchange.
 package config
 
 import (
@@ -30,86 +31,127 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/knadh/koanf/v2"
 )
 
-// Config is the fully-resolved BFF configuration.
+// Config is the fully-resolved BFF configuration. Its shape mirrors the
+// [ai_workspace.*] tables in config.toml, so koanf unmarshals straight into it — the
+// same pattern the Platform API uses. Keys the BFF does not consume (browser-only
+// values the SPA reads) are deliberately not modeled here; they flow to RuntimeConfig
+// straight from the parsed config, gated by browserSafeKeys (see runtime_config.go).
 type Config struct {
-	// Listener. Addr is derived from [server.https] port as ":" + port (e.g. ":5380") —
-	// there is no host to configure, since the listener always binds all interfaces.
-	Addr      string
-	StaticDir string // directory containing the built SPA (index.html + assets)
+	Server       ServerConfig       `koanf:"server"`
+	Logging      LoggingConfig      `koanf:"logging"`
+	ControlPlane ControlPlaneConfig `koanf:"control_plane"`
+	Session      SessionConfig      `koanf:"session"`
+	Auth         AuthConfig         `koanf:"auth"`
 
-	// Logging
-	LogLevel  string // "debug" | "info" | "warn" | "error" (default "info")
-	LogFormat string // "text" | "json" (default "text")
-
-	// TLS for the BFF listener
-	TLS TLSConfig
-
-	// Upstream Platform API (control plane)
-	ControlPlane ControlPlaneConfig
-
-	// Same-origin reverse-proxy prefix the SPA calls (stripped before forwarding)
-	ProxyPrefix string
-
-	// Session / cookie
-	Session SessionConfig
-	Cookie  CookieConfig
-
-	// Auth
-	AuthMode string // "basic" | "oidc" — informs the SPA which login UX to show
-	OIDC     OIDCConfig
-
-	// Claims maps which token claim names carry each user/org field. Shared by both
-	// auth modes: OIDC tokens from the configured IDP, and the HMAC JWTs the Platform
-	// API's file-based login endpoint signs. Override per IDP when the defaults don't
-	// match (e.g. the display name lands on "sub").
-	Claims ClaimMappingConfig
-
-	// Runtime config surfaced to the SPA (window.__RUNTIME_CONFIG__)
-	RuntimeConfig map[string]string
+	// Cookie attributes are fixed implementation details of the session mechanism, not
+	// deployment config; Load sets them. RuntimeConfig is assembled after load.
+	Cookie        CookieConfig      `koanf:"-"`
+	RuntimeConfig map[string]string `koanf:"-"`
 }
 
-// ControlPlaneConfig groups everything about the upstream Platform API (control
-// plane) hop: where it is, and how its TLS certificate is trusted.
+// ServerConfig is [ai_workspace.server].
+type ServerConfig struct {
+	StaticDir string      `koanf:"static_dir"` // directory containing the built SPA (index.html + assets)
+	HTTPS     HTTPSConfig `koanf:"https"`
+}
+
+// HTTPSConfig is [ai_workspace.server.https] — the single listener, following the
+// platform-wide [server.https] shape. Enabled makes the BFF terminate TLS itself,
+// presenting the certificate and decrypting inbound TLS; set it false only when a
+// trusted upstream (ingress, service-mesh sidecar) terminates TLS and forwards plain
+// HTTP, in which case the listener serves plain HTTP on the same port and no
+// certificate is read or required. CertFile/KeyFile are required when Enabled — there
+// is no self-signed fallback.
+type HTTPSConfig struct {
+	Enabled  bool   `koanf:"enabled"`
+	Port     int    `koanf:"port"`
+	CertFile string `koanf:"cert_file"`
+	KeyFile  string `koanf:"key_file"`
+}
+
+// Addr is the listener address, ":" + port (e.g. ":5380"). The listener always binds
+// all interfaces, so there is no host to configure.
+func (c *Config) Addr() string {
+	return ":" + strconv.Itoa(c.Server.HTTPS.Port)
+}
+
+// LoggingConfig is [ai_workspace.logging]. Level/Format are this process's own logs;
+// browser_debug is browser-only and not modeled here — it reaches the SPA through
+// RuntimeConfig. Level and Format are matched case-insensitively (lowercased in Load).
+type LoggingConfig struct {
+	Level  string `koanf:"level"`  // debug | info | warn | error (default "info")
+	Format string `koanf:"format"` // text | json (default "text")
+}
+
+// ControlPlaneConfig is [ai_workspace.control_plane]: everything about the upstream
+// Platform API hop — where it is, how its TLS certificate is trusted, and the
+// same-origin prefix the SPA calls.
 type ControlPlaneConfig struct {
 	// URL is the base URL, e.g. https://platform-api:9243. Its http/https scheme is
 	// the single source of truth for whether the outbound hop uses TLS — there is
 	// deliberately no separate boolean, since that could contradict the URL.
-	URL string
-	// CAFile is a PEM bundle to trust for the upstream's TLS certificate. It is
-	// appended to the system roots rather than replacing them, so public CAs keep
-	// working; leaving it empty simply uses the OS trust store on its own. Set it to
-	// accept a private/self-signed Platform API cert with verification still on.
-	// Ignored when TLSSkipVerify is true.
-	CAFile string
-	// TLSSkipVerify disables upstream certificate verification entirely.
-	// Last-resort escape hatch for dev/demo only; prefer CAFile.
-	TLSSkipVerify bool
-	// PortalBasePath is the Platform API's portal route prefix (e.g.
-	// /api/portal/v0.9), used to build paths for BFF-initiated calls to the
-	// Platform API — file-based login today, others (e.g. /auth/me) later.
-	PortalBasePath string
+	URL string `koanf:"url"`
+	// CAFile is a PEM bundle to trust for the upstream's TLS certificate, appended to
+	// the system roots rather than replacing them. Ignored when TLSSkipVerify is true.
+	CAFile string `koanf:"ca_file"`
+	// TLSSkipVerify disables upstream certificate verification entirely. Last-resort
+	// escape hatch for dev/demo only; prefer CAFile.
+	TLSSkipVerify bool `koanf:"tls_skip_verify"`
+	// PortalBasePath is the Platform API's portal route prefix (e.g. /api/portal/v0.9),
+	// used to build paths for BFF-initiated calls (file-based login today).
+	PortalBasePath string `koanf:"portal_base_path"`
+	// ProxyPrefix is the same-origin reverse-proxy prefix the SPA calls; it is stripped
+	// before forwarding upstream, so the browser only ever talks to the app origin.
+	ProxyPrefix string `koanf:"proxy_prefix"`
 }
 
-// TLSConfig controls whether the BFF listener serves HTTPS directly or sits
-// behind a component that terminates TLS on its behalf.
-type TLSConfig struct {
-	// TerminateTLS makes the BFF serve HTTPS on its own listener: it presents the
-	// certificate and decrypts inbound TLS itself. Defaults to true (config key
-	// [server.https] enabled). Set to false only when a trusted upstream (ingress,
-	// service-mesh sidecar) terminates TLS and forwards plain HTTP to the BFF; no
-	// certificate is then read, generated, or required.
-	TerminateTLS bool
-	CertFile     string
-	KeyFile      string
-}
-
-// SessionConfig controls server-side session lifetime.
+// SessionConfig is [ai_workspace.session]: server-side session lifetime.
 type SessionConfig struct {
-	Store       string        // "memory" (default) | "redis" (future)
-	IdleTimeout time.Duration // sliding idle window
-	AbsoluteTTL time.Duration // hard cap regardless of activity / token exp
+	Store       string        `koanf:"store"`        // "memory" (default) | "redis" (future)
+	IdleTimeout time.Duration `koanf:"idle_timeout"` // sliding idle window
+	AbsoluteTTL time.Duration `koanf:"absolute_ttl"` // hard cap regardless of activity / token exp
+}
+
+// AuthConfig is [ai_workspace.auth]: the login mode and the claim/OIDC settings.
+type AuthConfig struct {
+	Mode          string             `koanf:"mode"` // "basic" | "oidc" — informs the SPA which login UX to show
+	OIDC          OIDCConfig         `koanf:"oidc"`
+	ClaimMappings ClaimMappingConfig `koanf:"claim_mappings"`
+}
+
+// OIDCConfig is [ai_workspace.auth.oidc]: the confidential-client settings. The client
+// secret lives only here on the BFF and is never emitted to the browser. Enabled is
+// both a config key and derived — Load ORs it with (auth.mode == "oidc").
+type OIDCConfig struct {
+	Enabled               bool   `koanf:"enabled"`
+	Issuer                string `koanf:"authority"` // discovery base; {issuer}/.well-known/openid-configuration
+	ClientID              string `koanf:"client_id"`
+	ClientSecret          string `koanf:"client_secret"`
+	RedirectURL           string `koanf:"redirect_url"` // must equal the IDP-registered redirect, points at /api/auth/callback
+	PostLogoutRedirectURL string `koanf:"post_logout_redirect_url"`
+	Scopes                string `koanf:"scope"` // space-separated
+}
+
+// ClaimMappingConfig is [ai_workspace.auth.claim_mappings]: which claim names the BFF
+// reads for each user/org field. It mirrors the Platform API's [auth.claim_mappings]
+// key for key, and the two must agree. It is a sibling of [auth.oidc], not nested
+// inside it, because it applies to BOTH auth modes — OIDC tokens from the configured
+// IDP, and the HMAC JWTs the Platform API's file-based login endpoint signs with these
+// same mapped claim names. The same keys drive the BFF's session mapping and the SPA's
+// runtime config, so one config entry keeps both layers in sync.
+type ClaimMappingConfig struct {
+	Username  string `koanf:"username"`
+	Email     string `koanf:"email"`
+	Roles     string `koanf:"roles"`
+	Scope     string `koanf:"scope"`
+	OrgID     string `koanf:"organization"`
+	OrgName   string `koanf:"org_name"`
+	OrgHandle string `koanf:"org_handle"`
 }
 
 // CookieConfig controls the session cookie attributes. Not user-configurable: these
@@ -133,32 +175,6 @@ const cookieName = "_ai_workspace_session"
 // protection, so it is a constant rather than a config key. The SPA's copy lives in
 // src/config.env.ts CSRF_HEADER and must be kept in sync with this value.
 const CSRFHeaderName = "X-Requested-By"
-
-// OIDCConfig holds the confidential-client settings. The client secret lives
-// only here on the BFF and is never emitted to the browser.
-type OIDCConfig struct {
-	Enabled               bool
-	Issuer                string // discovery base; {issuer}/.well-known/openid-configuration
-	ClientID              string
-	ClientSecret          string
-	RedirectURL           string // must equal the IDP-registered redirect, points at /api/auth/callback
-	PostLogoutRedirectURL string
-	Scopes                string // space-separated
-}
-
-// ClaimMappingConfig configures which claim names the BFF reads for each
-// user/org field. Empty fields fall back to built-in defaults in the session
-// package. Shared by OIDC and file-based (basic) tokens — both are read through
-// the same mapping so a custom claim name only needs to be set once.
-type ClaimMappingConfig struct {
-	Username  string
-	Email     string
-	Roles     string
-	Scope     string
-	OrgID     string
-	OrgName   string
-	OrgHandle string
-}
 
 // defaultOIDCScopes is the full set of scopes the BFF requests in OIDC mode so a
 // logged-in user's access token carries every ap:* permission the Platform API
@@ -212,173 +228,131 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 const DefaultConfigFile = "/etc/ai-workspace/config.toml"
 
 // Load resolves configuration from the config.toml at path, or from the mounted
-// DefaultConfigFile when path is empty. The file's {{ env }} / {{ file }} tokens are
-// expanded first, so any key — the OIDC client secret in particular — can be pulled
-// from an environment variable or a mounted secret file instead of being written in
-// the clear. A key not present in the file falls back to the default below.
+// DefaultConfigFile when path is empty. It loads defaults, overlays the file (with its
+// {{ env }} / {{ file }} tokens expanded), normalizes derived fields, then validates —
+// so any key, the OIDC client secret in particular, can be pulled from an environment
+// variable or a mounted secret file instead of being written in the clear, and a key
+// not present in the file falls back to its default.
 func Load(path string) (*Config, error) {
 	if path == "" {
 		path = DefaultConfigFile
 	}
-	s, err := loadSettings(path)
+	k, err := loadConfigKoanf(path)
 	if err != nil {
 		return nil, err
 	}
 
-	authMode := strings.ToLower(s.get("auth.mode", "basic"))
+	// Defaults first, then overlay the file. WeaklyTypedInput lets a {{ env }} token's
+	// string value decode into the typed field (e.g. "5380" -> int, "true" -> bool);
+	// a value that cannot be coerced (e.g. enabled = "maybe") fails startup here rather
+	// than being silently dropped.
+	cfg := defaultConfig()
+	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
+		DecoderConfig: &mapstructure.DecoderConfig{
+			TagName:          "koanf",
+			WeaklyTypedInput: true,
+			Result:           cfg,
+			DecodeHook:       mapstructure.StringToTimeDurationHookFunc(),
+		},
+	}); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	cfg.normalize()
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+
+	cfg.RuntimeConfig = buildRuntimeConfig(cfg, k)
+	return cfg, nil
+}
+
+// normalize resolves the derived fields that are not a straight copy of a config key:
+// case-folding (level/format/mode), trimming trailing slashes off URLs/prefixes, the
+// oidc-mode-implies-enabled rule, and the fixed cookie attributes.
+func (c *Config) normalize() {
+	c.Logging.Level = strings.ToLower(c.Logging.Level)
+	c.Logging.Format = strings.ToLower(c.Logging.Format)
+	c.Auth.Mode = strings.ToLower(c.Auth.Mode)
+
+	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
+	c.ControlPlane.PortalBasePath = strings.TrimRight(c.ControlPlane.PortalBasePath, "/")
+	c.ControlPlane.ProxyPrefix = strings.TrimRight(c.ControlPlane.ProxyPrefix, "/")
+	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
+
+	// oidc mode implies the client is enabled even if the explicit flag is unset, so a
+	// typo'd mode cannot silently degrade to basic auth.
+	c.Auth.OIDC.Enabled = c.Auth.OIDC.Enabled || c.Auth.Mode == "oidc"
+
+	c.Cookie = CookieConfig{Name: cookieName, Secure: true, SameSite: "lax"}
+}
+
+// validate fails startup on any value that would otherwise surface as a confusing
+// runtime error (a bad port, an empty upstream URL, an incomplete OIDC set) and warns
+// on security-relevant downgrades.
+func (c *Config) validate() error {
 	// A typo'd mode must not silently degrade to basic auth: any value other than
 	// "oidc" would leave OIDC.Enabled false and hand the SPA an unknown login UX.
-	if authMode != "basic" && authMode != "oidc" {
-		return nil, fmt.Errorf("invalid [auth] mode %q: must be \"basic\" or \"oidc\"", authMode)
+	if c.Auth.Mode != "basic" && c.Auth.Mode != "oidc" {
+		return fmt.Errorf("invalid [auth] mode %q: must be \"basic\" or \"oidc\"", c.Auth.Mode)
+	}
+	if c.Server.HTTPS.Port < 1 || c.Server.HTTPS.Port > 65535 {
+		return fmt.Errorf("[server.https] port must be between 1 and 65535, got %d", c.Server.HTTPS.Port)
+	}
+	// Every session duration is a lifetime, where <= 0 is never meaningful.
+	if c.Session.IdleTimeout <= 0 {
+		return fmt.Errorf("[session] idle_timeout must be positive, got %s", c.Session.IdleTimeout)
+	}
+	if c.Session.AbsoluteTTL <= 0 {
+		return fmt.Errorf("[session] absolute_ttl must be positive, got %s", c.Session.AbsoluteTTL)
 	}
 
-	// Parse typed values up front so a malformed one fails startup instead of
-	// being silently replaced with the default.
-	tlsEnabled, err := s.getbool("server.https.enabled", true)
-	if err != nil {
-		return nil, err
-	}
-	controlPlaneTLSSkipVerify, err := s.getbool("control_plane.tls_skip_verify", false)
-	if err != nil {
-		return nil, err
-	}
-	idleTimeout, err := s.getdur("session.idle_timeout", 30*time.Minute)
-	if err != nil {
-		return nil, err
-	}
-	absoluteTTL, err := s.getdur("session.absolute_ttl", 8*time.Hour)
-	if err != nil {
-		return nil, err
-	}
-	oidcEnabled, err := s.getbool("auth.oidc.enabled", false)
-	if err != nil {
-		return nil, err
-	}
-	// A bare port number is easier to get right than a full "host:port" address (there
-	// is never a host to fill in — the listener always binds all interfaces), and it
-	// matches the Platform API's [server.https] port convention. Parsed as an int so a
-	// typo'd value fails startup instead of a confusing net.Listen error.
-	portNum, err := s.getint("server.https.port", 5380, 1, 65535)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg := &Config{
-		Addr:      ":" + strconv.Itoa(portNum),
-		StaticDir: s.get("server.static_dir", "/app"),
-		LogLevel:  strings.ToLower(s.get("logging.level", "info")),
-		LogFormat: strings.ToLower(s.get("logging.format", "text")),
-		TLS: TLSConfig{
-			TerminateTLS: tlsEnabled,
-			// Convention matches the container's mount path. A certificate pair is
-			// required there whenever TerminateTLS is on.
-			CertFile: s.get("server.https.cert_file", "/etc/ai-workspace/tls/cert.pem"),
-			KeyFile:  s.get("server.https.key_file", "/etc/ai-workspace/tls/key.pem"),
-		},
-		ControlPlane: ControlPlaneConfig{
-			URL:            strings.TrimRight(s.get("control_plane.url", ""), "/"),
-			CAFile:         s.get("control_plane.ca_file", ""),
-			TLSSkipVerify:  controlPlaneTLSSkipVerify,
-			PortalBasePath: strings.TrimRight(s.get("control_plane.portal_base_path", "/api/portal/v0.9"), "/"),
-		},
-		ProxyPrefix: strings.TrimRight(s.get("control_plane.proxy_prefix", "/proxy"), "/"),
-		Session: SessionConfig{
-			Store:       s.get("session.store", "memory"),
-			IdleTimeout: idleTimeout,
-			AbsoluteTTL: absoluteTTL,
-		},
-		Cookie: CookieConfig{
-			Name:     cookieName,
-			Secure:   true,
-			SameSite: "lax",
-		},
-		AuthMode: authMode,
-		OIDC: OIDCConfig{
-			Enabled:  authMode == "oidc" || oidcEnabled,
-			Issuer:   strings.TrimRight(s.get("auth.oidc.authority", ""), "/"),
-			ClientID: s.get("auth.oidc.client_id", ""),
-			// Never write the secret as a literal. Point the key at an environment
-			// variable with '{{ env "APIP_AIW_AUTH_OIDC_CLIENT_SECRET" }}', or —
-			// preferably — at a mounted file with
-			// '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'.
-			ClientSecret: s.get("auth.oidc.client_secret", ""),
-			RedirectURL:  s.get("auth.oidc.redirect_url", ""),
-			// Empty by default: LogoutURL() forwards this as post_logout_redirect_uri,
-			// which IDPs require to be an absolute, pre-registered URL. A relative
-			// default would produce an invalid logout request, so leave it unset
-			// unless an absolute URL is explicitly configured.
-			PostLogoutRedirectURL: s.get("auth.oidc.post_logout_redirect_url", ""),
-			Scopes:                s.get("auth.oidc.scope", defaultOIDCScopes),
-		},
-		// [auth.claim_mappings] deliberately mirrors the Platform API's
-		// [auth.claim_mappings], key for key: both describe the same claim names, and
-		// they must agree. It is a sibling of [auth.oidc], not nested inside it,
-		// because it applies to BOTH auth modes — OIDC tokens from the configured IDP,
-		// and the HMAC JWTs the Platform API's file-based login endpoint signs with
-		// these same mapped claim names (see platform-api's auth_login.go). Defaults
-		// below match the Platform API's own claim_mappings defaults so the two agree
-		// out of the box; override on both sides together when an IDP uses different
-		// claim names (e.g. Asgardeo's "org_id").
-		//
-		// The same keys drive the BFF's session mapping and the SPA's runtime config,
-		// so one config entry keeps both layers in sync.
-		Claims: ClaimMappingConfig{
-			Username:  s.get("auth.claim_mappings.username", "username"),
-			Email:     s.get("auth.claim_mappings.email", "email"),
-			Roles:     s.get("auth.claim_mappings.roles", "roles"),
-			Scope:     s.get("auth.claim_mappings.scope", "scope"),
-			OrgID:     s.get("auth.claim_mappings.organization", "organization"),
-			OrgName:   s.get("auth.claim_mappings.org_name", "org_name"),
-			OrgHandle: s.get("auth.claim_mappings.org_handle", "org_handle"),
-		},
-	}
-
-	if cfg.ControlPlane.URL == "" {
-		return nil, fmt.Errorf("[control_plane] url is required: set it in config.toml, " +
+	if c.ControlPlane.URL == "" {
+		return fmt.Errorf("[control_plane] url is required: set it in config.toml, " +
 			"either as a literal or via an {{ env }} / {{ file }} token")
 	}
 	// The scheme is the single source of truth for the outbound TLS decision, so a
-	// missing/typo'd scheme must fail at startup rather than surface as an opaque
-	// dial error on the first proxied request.
-	u, err := url.Parse(cfg.ControlPlane.URL)
+	// missing/typo'd scheme must fail at startup rather than surface as an opaque dial
+	// error on the first proxied request.
+	u, err := url.Parse(c.ControlPlane.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, fmt.Errorf("[control_plane] url must be an absolute http:// or https:// URL, got %q", cfg.ControlPlane.URL)
+		return fmt.Errorf("[control_plane] url must be an absolute http:// or https:// URL, got %q", c.ControlPlane.URL)
 	}
 	// Trust knobs only apply to an https upstream; flag them on a plain-http URL so a
 	// mistaken belief that TLS is in effect is caught early.
 	if u.Scheme == "http" {
-		if cfg.ControlPlane.CAFile != "" || cfg.ControlPlane.TLSSkipVerify {
-			return nil, fmt.Errorf("[control_plane] ca_file / tls_skip_verify are set but [control_plane] url is http:// (no TLS on the upstream hop)")
+		if c.ControlPlane.CAFile != "" || c.ControlPlane.TLSSkipVerify {
+			return fmt.Errorf("[control_plane] ca_file / tls_skip_verify are set but [control_plane] url is http:// (no TLS on the upstream hop)")
 		}
 	}
-	// Skipping verification is a security downgrade; say so loudly and point at
-	// the supported alternative.
-	if u.Scheme == "https" && cfg.ControlPlane.TLSSkipVerify {
+	// Skipping verification is a security downgrade; say so loudly and point at the
+	// supported alternative.
+	if u.Scheme == "https" && c.ControlPlane.TLSSkipVerify {
 		slog.Warn("[control_plane] tls_skip_verify = true — upstream certificate verification is DISABLED. " +
 			"Trust the upstream certificate with [control_plane] ca_file instead.")
 	}
-	if cfg.OIDC.Enabled {
-		if cfg.OIDC.Issuer == "" || cfg.OIDC.ClientID == "" || cfg.OIDC.ClientSecret == "" || cfg.OIDC.RedirectURL == "" {
-			return nil, fmt.Errorf("OIDC mode requires [auth.oidc] authority, client_id, client_secret and redirect_url")
+
+	if c.Auth.OIDC.Enabled {
+		if c.Auth.OIDC.Issuer == "" || c.Auth.OIDC.ClientID == "" || c.Auth.OIDC.ClientSecret == "" || c.Auth.OIDC.RedirectURL == "" {
+			return fmt.Errorf("OIDC mode requires [auth.oidc] authority, client_id, client_secret and redirect_url")
 		}
 	}
 	// Empty is fine (the key is optional), but a relative value would be forwarded as an
 	// invalid post_logout_redirect_uri and only fail at logout time — catch it here.
-	if cfg.OIDC.PostLogoutRedirectURL != "" {
-		u, err := url.Parse(cfg.OIDC.PostLogoutRedirectURL)
+	if c.Auth.OIDC.PostLogoutRedirectURL != "" {
+		u, err := url.Parse(c.Auth.OIDC.PostLogoutRedirectURL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return nil, fmt.Errorf("[auth.oidc] post_logout_redirect_url must be an absolute http:// or https:// URL, got %q",
-				cfg.OIDC.PostLogoutRedirectURL)
+			return fmt.Errorf("[auth.oidc] post_logout_redirect_url must be an absolute http:// or https:// URL, got %q",
+				c.Auth.OIDC.PostLogoutRedirectURL)
 		}
 	}
 
 	// Basic (file-based) auth is supported for quickstart deployments but is not
 	// recommended for production; point operators at OIDC.
-	if !cfg.OIDC.Enabled {
+	if !c.Auth.OIDC.Enabled {
 		slog.Warn("basic (file-based) auth is enabled — this is not recommended for production; " +
 			"configure OIDC (set [auth] mode = \"oidc\" and [auth.oidc] authority, client_id, client_secret, redirect_url)")
 	}
 
-	cfg.RuntimeConfig = buildRuntimeConfig(cfg, s)
-	return cfg, nil
+	return nil
 }
