@@ -109,10 +109,12 @@ const DEFAULTS = {
             email: 'LOCAL',
         },
     },
+    // Upstream Platform API. Used for local auth credential validation and
+    // Platform API JWT verification when idp.clientId is empty.
     platformApi: {
-        baseUrl: '',
+        url: '',
         jwtSecret: '',
-        insecure: false,
+        tlsSkipVerify: false,
     },
     // Deployer-supplied ADDITIONS to the fixed system page-access lists — merged on top
     // of constants.js's ROUTE.SYSTEM_AUTHENTICATED_PAGES/SYSTEM_AUTHORIZED_PAGES by

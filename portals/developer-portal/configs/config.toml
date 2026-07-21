@@ -44,19 +44,19 @@
 # Plain `npm start` inherits this file's Compose-oriented defaults as-is and
 # will fail trying to read a TLS cert path that only exists in the containers.
 
-[server]
+[developer_portal.server]
 base_url = '{{ env "APIP_DP_SERVER_BASEURL" "https://localhost:3000" }}'
 
-[tls]
+[developer_portal.tls]
 enabled   = '{{ env "APIP_DP_TLS_ENABLED" "true" }}'
 cert_file = '{{ env "APIP_DP_TLS_CERTFILE" "/etc/devportal/tls/cert.pem" }}'
 key_file  = '{{ env "APIP_DP_TLS_KEYFILE" "/etc/devportal/tls/key.pem" }}'
 ca_file   = '{{ env "APIP_DP_TLS_CAFILE" "/etc/devportal/tls/cert.pem" }}'
 
-[logging]
+[developer_portal.logging]
 console_only = '{{ env "APIP_DP_LOGGING_CONSOLEONLY" "true" }}'
 
-[database]
+[developer_portal.database]
 # Relative — resolves to /app/data/devportal.db under Compose (cwd /app),
 # matching the sqlite_data volume mount at /app/data; Docker creates that
 # directory itself as the volume's mount point, so no extra step is needed
@@ -65,14 +65,15 @@ console_only = '{{ env "APIP_DP_LOGGING_CONSOLEONLY" "true" }}'
 # "Development (npm start)" section.
 file = '{{ env "APIP_DP_DATABASE_FILE" "./data/devportal.db" }}'
 
-[platform_api]
-# Used for local auth credential validation when idp.client_id is empty.
-base_url   = '{{ env "APIP_DP_PLATFORMAPI_BASEURL" "https://platform-api:9243" }}'
-jwt_secret = '{{ env "APIP_DP_PLATFORMAPI_JWTSECRET" "" }}'
-insecure   = '{{ env "APIP_DP_PLATFORMAPI_INSECURE" "true" }}'
+[developer_portal.platform_api]
+# The upstream Platform API. Used for local auth credential validation when
+# idp.client_id is empty.
+url             = '{{ env "APIP_DP_PLATFORMAPI_URL" "https://platform-api:9243" }}'
+jwt_secret      = '{{ env "APIP_DP_PLATFORMAPI_JWT_SECRET" "" }}'
+tls_skip_verify = '{{ env "APIP_DP_PLATFORMAPI_TLS_SKIP_VERIFY" "true" }}'
 
-[security]
+[developer_portal.security]
 # Required — devportal fails closed at startup if either doesn't resolve to a
 # 64-char hex string. Generate with: openssl rand -hex 32
-encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTIONKEY" }}'
-session_secret = '{{ env "APIP_DP_SECURITY_SESSIONSECRET" }}'
+encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTION_KEY" }}'
+session_secret = '{{ env "APIP_DP_SECURITY_SESSION_SECRET" }}'

@@ -43,7 +43,7 @@ docker compose up -d
 
 | Output | Contents |
 |---|---|
-| `api-platform.env` (git-ignored) | `APIP_DP_SECURITY_ENCRYPTIONKEY` / `APIP_DP_SECURITY_SESSIONSECRET` (Developer Portal), `APIP_CP_ENCRYPTION_KEY` (Platform API at-rest encryption), `APIP_CP_AUTH_JWT_SECRET_KEY` + `APIP_DP_PLATFORMAPI_JWTSECRET` (same JWT signing key, one name per service), `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt) |
+| `api-platform.env` (git-ignored) | `APIP_DP_SECURITY_ENCRYPTION_KEY` / `APIP_DP_SECURITY_SESSION_SECRET` (Developer Portal), `APIP_CP_ENCRYPTION_KEY` (Platform API at-rest encryption), `APIP_CP_AUTH_JWT_SECRET_KEY` + `APIP_DP_PLATFORMAPI_JWT_SECRET` (same JWT signing key, one name per service), `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt) |
 | `resources/certificates/cert.pem` + `key.pem` | Self-signed TLS pair shared by both services |
 
 The admin password is generated and printed once by `setup.sh` — it is not stored anywhere; only its bcrypt hash lands in `api-platform.env`. Re-running `setup.sh` is safe: it only fills in what's missing and never overwrites an existing value — to rotate a value, delete it from `api-platform.env` (or delete `resources/certificates` for the TLS cert) and re-run. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables skip the interactive prompts (used by CI to pin known test credentials).
@@ -90,8 +90,8 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 | `[server].base_url` | Public URL shown in links and callbacks | `https://localhost:3000` |
 | `[tls].enabled` | Terminate TLS in the portal itself (vs. behind a proxy) | `true` |
 | `[database].type` | `sqlite` (default) or `postgres` | `sqlite` |
-| `[idp].client_id` | Set to delegate login to an external OIDC provider — leave empty for local auth via `[platform_api]` | _(empty)_ |
-| `[platform_api].base_url` | Address of the Platform API local-auth sidecar | `https://platform-api:9243` |
+| `[idp].client_id` | Set to delegate login to an external OIDC provider — leave empty for local auth via `[developer_portal.platform_api]` | _(empty)_ |
+| `[developer_portal.platform_api].url` | Address of the Platform API local-auth sidecar | `https://platform-api:9243` |
 | `[organization].default_name` | Organization bootstrapped automatically on first start | `default` |
 
 ### Platform API (`configs/config-platform-api.toml`)

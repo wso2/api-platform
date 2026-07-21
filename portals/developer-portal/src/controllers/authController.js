@@ -240,9 +240,9 @@ const handleLocalLogin = async (req, res) => {
         return res.redirect(`${baseUrl}/login?error=Username+and+password+are+required`);
     }
 
-    const platformApiUrl = config.platformApi?.baseUrl;
+    const platformApiUrl = config.platformApi?.url;
     if (!platformApiUrl) {
-        logger.error('Local auth attempted but platformApi.baseUrl is not configured');
+        logger.error('Local auth attempted but platformApi.url is not configured');
         return res.redirect(`${baseUrl}/login?error=Authentication+service+not+configured`);
     }
 
@@ -253,7 +253,7 @@ const handleLocalLogin = async (req, res) => {
             new URLSearchParams({ username, password }).toString(),
             {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                httpsAgent: new https.Agent({ rejectUnauthorized: !config.platformApi?.insecure }),
+                httpsAgent: new https.Agent({ rejectUnauthorized: !config.platformApi?.tlsSkipVerify }),
                 timeout: 10000,
             }
         );

@@ -125,8 +125,8 @@ else
 fi
 
 log "Generating devportal secrets into api-platform.env ..."
-set_env_var "APIP_DP_SECURITY_ENCRYPTIONKEY" "$(openssl rand -hex 32)"
-set_env_var "APIP_DP_SECURITY_SESSIONSECRET" "$(openssl rand -hex 32)"
+set_env_var "APIP_DP_SECURITY_ENCRYPTION_KEY" "$(openssl rand -hex 32)"
+set_env_var "APIP_DP_SECURITY_SESSION_SECRET" "$(openssl rand -hex 32)"
 
 log "Generating Platform API encryption key into api-platform.env ..."
 set_env_var "APIP_CP_ENCRYPTION_KEY" "$(openssl rand -hex 32)"

@@ -35,7 +35,7 @@
 # SERVER CONFIGURATION
 # =============================================================================
 
-[server]
+[developer_portal.server]
 base_url = "http://localhost:3000"
 port = 3000
 read_only_mode = false
@@ -45,7 +45,7 @@ read_only_mode = false
 # =============================================================================
 # Only relevant when the portal terminates TLS itself (not behind a proxy/LB).
 
-[tls]
+[developer_portal.tls]
 enabled = false
 cert_file = "./resources/security/client-truststore.pem"
 key_file = "./resources/security/private-key.pem"
@@ -55,7 +55,7 @@ ca_file = "./resources/security/client-truststore.pem"
 # LOGGING CONFIGURATION
 # =============================================================================
 
-[logging]
+[developer_portal.logging]
 console_only = false
 
 # =============================================================================
@@ -63,7 +63,7 @@ console_only = false
 # =============================================================================
 # Supported types: sqlite (default), postgres.
 
-[database]
+[developer_portal.database]
 type = "sqlite"
 file = "./devportal.db"       # SQLite only
 host = "localhost"            # PostgreSQL only
@@ -72,7 +72,7 @@ name = "devportal"            # PostgreSQL only
 username = "postgres"         # PostgreSQL only
 password = ""                 # PostgreSQL only
 
-[database.ssl]
+[developer_portal.database.ssl]
 enabled = false
 ca_file = "./resources/security/ca.pem"
 
@@ -80,13 +80,13 @@ ca_file = "./resources/security/ca.pem"
 # SECURITY CONFIGURATION
 # =============================================================================
 
-[security]
+[developer_portal.security]
 encryption_key = ""     # 64-char hex — AES-256-GCM key for encrypting secrets at rest
 session_secret = ""     # 64-char hex — express-session signing secret
 role_validation = false # Enforce per-operation role validation
 
 # Static shared-secret header for calling the devportal's own REST API.
-[security.service_api_key]
+[developer_portal.security.service_api_key]
 enabled = true
 header_name = "x-wso2-api-key"
 value = ""
@@ -96,7 +96,7 @@ value = ""
 # =============================================================================
 # Leave client_id empty to use local auth (platform_api below) instead of OIDC.
 
-[idp]
+[developer_portal.idp]
 name = "IS"
 issuer = "https://localhost:9443/oauth2/token"
 authorization_url = "https://localhost:9443/oauth2/authorize"
@@ -118,12 +118,12 @@ org_callback = false   # Redirect to the org's own landing page after login
 
 # Claim name mappings — adjust to match what your IDP puts in the JWT.
 # Dot-notation supported for nested claims (e.g. "realm_access.roles").
-[idp.claims]
+[developer_portal.idp.claims]
 role = "roles"
 org_id = "org_name"
 groups = "groups"
 
-[idp.roles]
+[developer_portal.idp.roles]
 admin = "admin"
 subscriber = "Internal/subscriber"
 super_admin = "superAdmin"
@@ -131,13 +131,13 @@ super_admin = "superAdmin"
 # =============================================================================
 # PLATFORM API CONFIGURATION (local auth sidecar)
 # =============================================================================
-# Used only when idp.client_id is empty. Leave base_url empty
-# to disable local auth entirely.
+# The upstream Platform API. Used only when idp.client_id is empty. Leave
+# url empty to disable local auth entirely.
 
-[platform_api]
-base_url = ""
+[developer_portal.platform_api]
+url = ""
 jwt_secret = ""
-insecure = false
+tls_skip_verify = false
 
 # =============================================================================
 # PAGE ACCESS RULES
@@ -148,7 +148,7 @@ insecure = false
 # design-mode page or a custom static route. Patterns are glob-matched (minimatch)
 # against the request URL and merged with (never replace) the built-in list.
 #
-# [page_access_rules]
+# [developer_portal.page_access_rules]
 # authenticated = ["**/my-custom-page"]
 # authorized = ["**/my-custom-page"]
 
@@ -157,7 +157,7 @@ insecure = false
 # =============================================================================
 # Bootstraps a default organization on startup (idempotent).
 
-[organization]
+[developer_portal.organization]
 default_name = "default"                 # "" disables auto-seeding
 auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimited/AsyncUnlimited
 
@@ -168,7 +168,7 @@ auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimi
 # database. For content authoring and theming workflows only; do not enable
 # in a production environment. Disabled (commented) by default.
 
-# [design_mode]
+# [developer_portal.design_mode]
 # enabled = false
 # path_to_layout = "./resources/default-layout/"
 # api_samples_path = "./samples/apis/"
@@ -183,7 +183,7 @@ auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimi
 # the Webhook Subscribers API, not this file. Each delivery is attempted
 # exactly once; there is no retry/backoff.
 
-[webhooks.delivery]
+[developer_portal.webhooks.delivery]
 poll_interval_ms = 2000
 batch_size = 50
 signature_tolerance_sec = 300

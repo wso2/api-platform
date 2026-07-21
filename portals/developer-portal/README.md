@@ -238,13 +238,13 @@ password_hash = "$2y$10$..."   # bcrypt hash — generate with: htpasswd -bnBC 1
 scopes        = "dp:org_manage dp:api_manage ..."
 ```
 
-The portal config (or `APIP_DP_PLATFORMAPI_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `base_url` to `https://localhost:9243` (the sidecar's port published to the host) and `insecure = true` (self-signed cert), so no manual edit is needed for that flow:
+The portal config (or `APIP_DP_PLATFORMAPI_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `url` to `https://localhost:9243` (the sidecar's port published to the host) and `tls_skip_verify = true` (self-signed cert), so no manual edit is needed for that flow:
 
 ```toml
-[platform_api]
-base_url = "https://localhost:9243"      # env: APIP_DP_PLATFORMAPI_BASEURL
+[developer_portal.platform_api]
+url = "https://localhost:9243"            # env: APIP_DP_PLATFORMAPI_URL
 jwt_private_key = ""                       # PEM RSA private key that signs portal-minted tokens; must match the Platform API's auth.jwt.public_key — env: APIP_DP_PLATFORMAPI_JWTPRIVATEKEY
-insecure = true                           # Platform API uses a self-signed cert
+tls_skip_verify = true                    # Platform API uses a self-signed cert
 ```
 
 Tokens are signed asymmetrically (RS256): the portal signs with the RSA private key above and the Platform API verifies against its `auth.jwt.public_key`. There is no shared HMAC secret — the two sides never exchange signing material.

@@ -56,13 +56,20 @@ function snakeToCamelDeep(value) {
  * Load configs/config.toml (snake_case), converted to camelCase.
  * Returns an empty object if the file does not exist, so DEFAULTS alone can
  * drive the app.
+ *
+ * Every key lives under the single [developer_portal] table (mirrors the
+ * Platform API's [platform_api] and the AI Workspace's [ai_workspace] tables),
+ * so one shared config.toml could hold all three services' sections side by
+ * side without their tables colliding. That wrapper is unwrapped here so the
+ * in-code config tree stays flat (config.server, config.security, …); anything
+ * outside the [developer_portal] table is ignored.
  */
 function loadTomlConfig() {
     const tomlPath = path.join(process.cwd(), 'configs', 'config.toml');
 
     if (fs.existsSync(tomlPath)) {
         const raw = fs.readFileSync(tomlPath, 'utf8');
-        return snakeToCamelDeep(toml.parse(raw));
+        return snakeToCamelDeep(toml.parse(raw)).developerPortal || {};
     }
     return {};
 }
