@@ -48,6 +48,9 @@ type mockLLMProviderTemplateCRUDRepo struct {
 	getGroupIDResult string
 	getGroupIDErr    error
 
+	managedByForGroupIDResult string
+	managedByForGroupIDErr    error
+
 	renameFamilyCalled bool
 	renameFamilyBase   string
 	renameFamilyOrg    string
@@ -103,6 +106,10 @@ func (m *mockLLMProviderTemplateCRUDRepo) Update(t *model.LLMProviderTemplate) e
 
 func (m *mockLLMProviderTemplateCRUDRepo) GetGroupID(handle, orgUUID string) (string, error) {
 	return m.getGroupIDResult, m.getGroupIDErr
+}
+
+func (m *mockLLMProviderTemplateCRUDRepo) ManagedByForGroupID(groupID, orgUUID string) (string, error) {
+	return m.managedByForGroupIDResult, m.managedByForGroupIDErr
 }
 
 func (m *mockLLMProviderTemplateCRUDRepo) RenameFamily(baseHandle, orgUUID, name string) error {
@@ -190,6 +197,29 @@ func TestLLMProviderTemplateServiceCreate_Success(t *testing.T) {
 	}
 	if repo.created.ManagedBy != "organization" {
 		t.Fatalf("expected default managedBy 'organization', got: %q", repo.created.ManagedBy)
+	}
+}
+
+func TestLLMProviderTemplateServiceCreate_RewritesReservedWSO2Prefix(t *testing.T) {
+	cases := map[string]string{
+		"wso2 openai":   "xwso2-openai", // slugifies to "wso2-openai"
+		"WSO2 Template": "xwso2-template",
+		"wso2":          "xwso2",
+	}
+	for displayName, wantGroupID := range cases {
+		repo := &mockLLMProviderTemplateCRUDRepo{}
+		svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
+
+		resp, err := svc.Create("org-1", "alice", validTemplateRequest(displayName))
+		if err != nil {
+			t.Fatalf("[%s] expected no error, got: %v", displayName, err)
+		}
+		if repo.created == nil || repo.created.GroupID != wantGroupID {
+			t.Fatalf("[%s] expected reserved prefix rewrite to group_id %q, got: %#v", displayName, wantGroupID, repo.created)
+		}
+		if resp == nil || resp.Id == nil || !strings.HasPrefix(*resp.Id, wantGroupID) {
+			t.Fatalf("[%s] expected handle derived from %q, got: %#v", displayName, wantGroupID, resp)
+		}
 	}
 }
 
@@ -373,7 +403,7 @@ func TestLLMProviderTemplateServiceUpdate_PropagatesNameToFamily(t *testing.T) {
 // ---- CreateVersion ----
 
 func TestLLMProviderTemplateServiceCreateVersion_Success(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 1}
+	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 1, managedByForGroupIDResult: constants.TemplateManagedByOrganization}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
 	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: stringPtr("Mistral"), Version: "v2.0"}
@@ -392,24 +422,17 @@ func TestLLMProviderTemplateServiceCreateVersion_Success(t *testing.T) {
 	}
 }
 
-func TestLLMProviderTemplateServiceCreateVersion_ForkFromBuiltinSetsOrganizationManagedBy(t *testing.T) {
-	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 1}
+func TestLLMProviderTemplateServiceCreateVersion_RejectsNewVersionOnBuiltinFamily(t *testing.T) {
+	repo := &mockLLMProviderTemplateCRUDRepo{countVersionsResult: 1, managedByForGroupIDResult: constants.PolicyManagedByWSO2}
 	svc := NewLLMProviderTemplateService(repo, &noopAuditRepo{}, newTestIdentityService())
 
-	wso2 := "wso2"
-	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: stringPtr("Mistral"), Version: "v2.0", ManagedBy: &wso2}
-	resp, err := svc.CreateVersion("org-1", "mistralai", "test-user", req)
-	if err != nil {
-		t.Fatalf("expected no error when forking a built-in, got: %v", err)
+	req := &api.CreateLLMProviderTemplateVersionRequest{DisplayName: stringPtr("Mistral"), Version: "v2.0"}
+	_, err := svc.CreateVersion("org-1", "wso2-mistralai", "test-user", req)
+	if !apperror.LLMProviderTemplateBuiltInImmutable.Is(err) {
+		t.Fatalf("expected LLMProviderTemplateBuiltInImmutable when adding a version to a built-in family, got: %v", err)
 	}
-	if resp == nil {
-		t.Fatal("expected a response, got nil")
-	}
-	if repo.createdVersion == nil {
-		t.Fatal("expected CreateNewVersion to be called")
-	}
-	if repo.createdVersion.ManagedBy != constants.TemplateManagedByOrganization {
-		t.Fatalf("expected forked version to have managedBy='organization', got: %q", repo.createdVersion.ManagedBy)
+	if repo.createdVersion != nil {
+		t.Fatalf("expected no version to be created for a built-in family, got: %#v", repo.createdVersion)
 	}
 }
 

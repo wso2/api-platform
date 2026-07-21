@@ -22,7 +22,7 @@ metadata:
   name: openai
 spec:
   displayName: OpenAI
-  groupId: openai
+  groupId: wso2-openai
   managedBy: wso2
   version: v1.0
   promptTokens:

@@ -239,6 +239,7 @@ type LLMProviderTemplateRepository interface {
 	Exists(templateID, orgUUID string) (bool, error)
 	GetGroupID(handle, orgUUID string) (string, error)
 	ManagedByForHandle(handle, orgUUID string) (string, error)
+	ManagedByForGroupID(groupID, orgUUID string) (string, error)
 	CountProvidersUsingTemplate(templateID, orgUUID, version string) (int, error)
 }
 

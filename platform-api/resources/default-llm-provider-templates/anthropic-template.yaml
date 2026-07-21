@@ -19,7 +19,7 @@
 metadata:
   name: anthropic
 spec:
-  groupId: anthropic
+  groupId: wso2-anthropic
   displayName: Anthropic
   managedBy: wso2
   version: v1.0

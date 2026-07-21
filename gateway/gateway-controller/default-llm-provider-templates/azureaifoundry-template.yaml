@@ -22,7 +22,7 @@ metadata:
   name: azureai-foundry
 spec:
   displayName: Azure AI Foundry
-  groupId: azureai-foundry
+  groupId: wso2-azureai-foundry
   managedBy: wso2
   version: v1.0
   promptTokens:
