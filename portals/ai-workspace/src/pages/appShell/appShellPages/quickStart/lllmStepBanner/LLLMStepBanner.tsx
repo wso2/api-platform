@@ -89,7 +89,7 @@ export default function LLLMStepBanner({
     (selectedProvider?.policies?.filter(
       (p) => !(p.name === 'llm-cost' && p.version === 'v1')
     ).length ?? 0) > 0;
-  const resolvedProviderName = providerName?.trim() || 'LLM Provider';
+  const resolvedProviderName = providerName?.trim() || 'AI Provider';
 
   useEffect(() => {
     if (!selectedProviderId || !organizationId) {
@@ -159,7 +159,7 @@ export default function LLLMStepBanner({
       },
       {
         id: 'consume',
-        title: 'Consume LLM Provider',
+        title: 'Consume AI Provider',
         icon: Package,
         completed: stepCompletion.hasConsumptions,
       },
@@ -306,7 +306,7 @@ export default function LLLMStepBanner({
               const isTooltipStep = tooltipStepId === step.id;
               const hoverTooltip =
                 step.id === 'consume' && !stepCompletion.hasDeployments
-                  ? 'Deploy to a gateway first before consuming the LLM provider'
+                  ? 'Deploy to a gateway first before consuming the AI provider'
                   : '';
               const tooltipTitle = isTooltipStep && tooltipMessage ? tooltipMessage : hoverTooltip;
               const tooltipOpen = isTooltipStep && !!tooltipMessage ? true : undefined;

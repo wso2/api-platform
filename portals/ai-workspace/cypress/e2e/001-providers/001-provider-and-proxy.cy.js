@@ -160,7 +160,7 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
     );
     cy.contains(providerName, { timeout: 30000 }).should('be.visible');
 
-    cy.contains('button', 'Create App LLM Proxy', { timeout: 30000 })
+    cy.contains('button', 'Create App AI Proxy', { timeout: 30000 })
       .should('be.visible')
       .click();
 
@@ -173,7 +173,7 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
       .should('not.be.disabled')
       .click();
 
-    cy.contains('Create App LLM Proxy', { timeout: 30000 }).should(
+    cy.contains('Create App AI Proxy', { timeout: 30000 }).should(
       'be.visible'
     );
     cy.get('input[placeholder="WSO2 OpenAI Provider Proxy"]', {
@@ -196,7 +196,7 @@ describe('AI Workspace - OpenAI provider and proxy lifecycle', () => {
     cy.get('button[aria-label="Delete proxy"]', { timeout: 30000 })
       .should('be.visible')
       .click();
-    cy.contains('Delete App LLM Proxy', { timeout: 30000 }).should('be.visible');
+    cy.contains('Delete App AI Proxy', { timeout: 30000 }).should('be.visible');
     cy.get('[role="dialog"]').within(() => {
       cy.contains('button', 'Delete').click();
     });

@@ -151,10 +151,10 @@ export default function ServiceProviders() {
 
   // Access the list from the API response
   const providers = providersResponse.list;
-  const emptyMessage = 'No Available LLM Providers';
+  const emptyMessage = 'No Available AI Providers';
   const isProviderQuotaReached = false;
   const providerQuotaTooltip =
-    'You cannot create more providers because your organization has reached the maximum limit of 5 LLM providers.';
+    'You cannot create more providers because your organization has reached the maximum limit of 5 AI providers.';
 
   const filteredProviders = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -190,7 +190,7 @@ export default function ServiceProviders() {
   ) => {
     if (!currentOrganization?.uuid) {
       showSnackbar(
-        'Unable to verify App LLM Proxy usage because organization details are unavailable.',
+        'Unable to verify App AI Proxy usage because organization details are unavailable.',
         'error'
       );
       return;
@@ -218,7 +218,7 @@ export default function ServiceProviders() {
       setDeleteConfirmationInput('');
     } catch {
       showSnackbar(
-        'Failed to verify App LLM Proxy usage for this provider. Deletion has been blocked. Please try again.',
+        'Failed to verify App AI Proxy usage for this provider. Deletion has been blocked. Please try again.',
         'error'
       );
     } finally {
@@ -287,7 +287,7 @@ export default function ServiceProviders() {
                 <FormattedMessage
                   id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ProvidersList.project.level.disabled.subtitle"
                   defaultMessage={
-                    'Switch to organization level to view and manage LLM providers.'
+                    'Switch to organization level to view and manage AI providers.'
                   }
                 />
               </Typography>
@@ -325,14 +325,14 @@ export default function ServiceProviders() {
           <PageTitle.Header>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ProvidersList.llm.service.providers"
-              defaultMessage={'LLM Providers'}
+              defaultMessage={'AI Providers'}
             />
           </PageTitle.Header>
           <PageTitle.SubHeader>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ProvidersList.manage.and.monitor.your.connected.llm.service.providers"
               defaultMessage={
-                'Manage and monitor your connected LLM Providers.'
+                'Manage and monitor your connected AI Providers.'
               }
             />
           </PageTitle.SubHeader>
@@ -435,7 +435,7 @@ export default function ServiceProviders() {
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               <FormattedMessage
                 id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProvidersSummaryCard.create.your.first.llm.provider"
-                defaultMessage={'Create your first LLM Provider'}
+                defaultMessage={'Create your first AI Provider'}
               />
             </Typography>
 
@@ -447,7 +447,7 @@ export default function ServiceProviders() {
               <FormattedMessage
                 id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProvidersSummaryCard.connect.and.manage.providers.description"
                 defaultMessage={
-                  'Set up an LLM provider to start connecting models and powering AI applications in your workspace.'
+                  'Set up an AI provider to start connecting models and powering AI applications in your workspace.'
                 }
               />
             </Typography>
@@ -780,7 +780,7 @@ export default function ServiceProviders() {
         }}
       >
         <DialogTitle>
-          Are you sure you want to remove the LLM Provider{' '}
+          Are you sure you want to remove the AI Provider{' '}
           <strong>'{deleteTarget?.name ?? ''}'</strong>?
         </DialogTitle>
         <DialogContent>

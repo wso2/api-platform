@@ -92,11 +92,11 @@ export default function ServiceProvidersSummaryCard({
   onCreateProvider,
   onProviderClick,
   maxItems = 5,
-  title = 'LLM Providers',
+  title = 'AI Providers',
   isLoading = false,
   error,
   onRetry,
-  emptyMessage = 'No Available LLM Providers',
+  emptyMessage = 'No Available AI Providers',
   showSeeMore = true,
 }: ServiceProvidersSummaryCardProps) {
   const { hasPermission } = useAppAuth();
@@ -255,7 +255,7 @@ export default function ServiceProvidersSummaryCard({
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               <FormattedMessage
                 id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProvidersSummaryCard.create.your.first.llm.provider"
-                defaultMessage={'Create your first LLM Provider'}
+                defaultMessage={'Create your first AI Provider'}
               />
             </Typography>
 
@@ -267,7 +267,7 @@ export default function ServiceProvidersSummaryCard({
               <FormattedMessage
                 id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProvidersSummaryCard.connect.and.manage.providers.description"
                 defaultMessage={
-                  'Set up an LLM provider to start connecting models and powering AI applications in your workspace.'
+                  'Set up an AI provider to start connecting models and powering AI applications in your workspace.'
                 }
               />
             </Typography>

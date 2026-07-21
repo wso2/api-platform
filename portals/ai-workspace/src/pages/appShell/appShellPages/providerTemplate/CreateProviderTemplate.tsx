@@ -270,7 +270,7 @@ export default function CreateProviderTemplate() {
           <PageTitle.Header>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplate.title"
-              defaultMessage={'Add LLM Provider Template'}
+              defaultMessage={'Add AI Provider Template'}
             />
           </PageTitle.Header>
         </PageTitle>

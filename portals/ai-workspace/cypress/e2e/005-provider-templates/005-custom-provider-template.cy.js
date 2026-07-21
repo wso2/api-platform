@@ -79,7 +79,7 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
   it('creates a custom template, versions it, uses it for a provider, and blocks deletion while in use', () => {
     // --- Create the custom template (v1.0) ---------------------------------
     cy.contains('Settings', { timeout: 30000 }).should('be.visible').click();
-    cy.contains('LLM Provider Templates', { timeout: 30000 }).should('be.visible');
+    cy.contains('AI Provider Templates', { timeout: 30000 }).should('be.visible');
 
     cy.get('[data-cyid="add-provider-template-button"]', { timeout: 30000 })
       .scrollIntoView()
@@ -96,7 +96,7 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
       .should('not.be.disabled')
       .click();
 
-    cy.contains('LLM Provider Templates', { timeout: 30000 }).should('be.visible');
+    cy.contains('AI Provider Templates', { timeout: 30000 }).should('be.visible');
     cy.get(`[data-cyid="provider-template-card-${templateV1Id}"]`, {
       timeout: 30000,
     })
@@ -219,7 +219,7 @@ describe('AI Workspace - Custom LLM provider template lifecycle', () => {
     });
 
     // That was the only remaining version, so the whole template is gone.
-    cy.contains('LLM Provider Templates', { timeout: 30000 }).should('be.visible');
+    cy.contains('AI Provider Templates', { timeout: 30000 }).should('be.visible');
     cy.contains(templateName).should('not.exist');
   });
 });

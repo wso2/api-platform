@@ -106,11 +106,11 @@ function createProviderViaUI(providerName) {
 }
 
 function navigateToCreateProxy(projectName) {
-  cy.contains('button', 'Create App LLM Proxy', { timeout: 30000 }).should('be.visible').click();
+  cy.contains('button', 'Create App AI Proxy', { timeout: 30000 }).should('be.visible').click();
   cy.contains('label', 'Projects', { timeout: 30000 }).parent().find('[role="combobox"]').click();
   cy.contains('[role="option"]', projectName, { timeout: 15000 }).click();
   cy.contains('button', 'Continue').should('not.be.disabled').click();
-  cy.contains('Create App LLM Proxy', { timeout: 30000 }).should('be.visible');
+  cy.contains('Create App AI Proxy', { timeout: 30000 }).should('be.visible');
 }
 
 // ---------------------------------------------------------------------------

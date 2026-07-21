@@ -203,7 +203,7 @@ export default function QuickStartIntroPopup({
               color: '#6a6a6c',
             }}
           >
-            Step-by-step guided flows for LLM Providers, MCP Proxies, and more —
+            Step-by-step guided flows for AI Providers, MCP Proxies, and more —
             set up your AI Gateway in minutes.
           </Typography>
 

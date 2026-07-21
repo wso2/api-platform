@@ -815,7 +815,7 @@ export default function AssociationsTab() {
     try {
       await loadOrganizationProviders();
     } catch {
-      setProviderDrawerLoadError('Failed to load LLM providers.');
+      setProviderDrawerLoadError('Failed to load AI providers.');
     } finally {
       setIsProviderDrawerLoading(false);
     }
@@ -919,13 +919,13 @@ export default function AssociationsTab() {
       const keyCount = linkedProviderKeyPayload.length;
       showSnackbar(
         providerCount > 0 && keyCount > 0
-          ? `${providerCount} LLM provider${
+          ? `${providerCount} AI provider${
               providerCount > 1 ? 's' : ''
             } associated and ${keyCount} API key${
               keyCount > 1 ? 's' : ''
             } added successfully.`
           : providerCount > 0
-          ? `${providerCount} LLM provider${
+          ? `${providerCount} AI provider${
               providerCount > 1 ? 's' : ''
             } associated successfully.`
           : `${keyCount} API key${keyCount > 1 ? 's' : ''} added successfully.`,
@@ -964,7 +964,7 @@ export default function AssociationsTab() {
     try {
       await loadOrganizationProxies();
     } catch {
-      setProxyDrawerLoadError('Failed to load LLM proxies.');
+      setProxyDrawerLoadError('Failed to load AI proxies.');
     } finally {
       setIsProxyDrawerLoading(false);
     }
@@ -1068,13 +1068,13 @@ export default function AssociationsTab() {
       const keyCount = linkedProxyKeyPayload.length;
       showSnackbar(
         proxyCount > 0 && keyCount > 0
-          ? `${proxyCount} LLM proxy${
+          ? `${proxyCount} AI proxy${
               proxyCount > 1 ? 's' : ''
             } associated and ${keyCount} API key${
               keyCount > 1 ? 's' : ''
             } added successfully.`
           : proxyCount > 0
-          ? `${proxyCount} LLM proxy${
+          ? `${proxyCount} AI proxy${
               proxyCount > 1 ? 's' : ''
             } associated successfully.`
           : `${keyCount} API key${keyCount > 1 ? 's' : ''} added successfully.`,
@@ -1120,7 +1120,7 @@ export default function AssociationsTab() {
       });
 
       const label =
-        deleteTarget.kind === 'LlmProvider' ? 'LLM provider' : 'LLM proxy';
+        deleteTarget.kind === 'LlmProvider' ? 'AI provider' : 'AI proxy';
       setDeleteTarget(null);
       showSnackbar(`${label} association removed successfully.`, 'success');
     } catch (error) {
@@ -1311,7 +1311,7 @@ export default function AssociationsTab() {
     selectedCount: selectedProxyIds.size,
     pendingKeyCount: linkedProxyKeyPayload.length,
     entityLabel: 'Proxy',
-    defaultLabel: 'Add LLM Proxy',
+    defaultLabel: 'Add AI Proxy',
   });
 
   const managedIsProvider = manageKeysDrawerTarget?.kind === 'LlmProvider';
@@ -1417,7 +1417,7 @@ export default function AssociationsTab() {
 
       <AssociationSelectionDrawer
         open={providerDrawerOpen}
-        title="Add LLM Providers"
+        title="Add AI Providers"
         description="Select providers and their API keys to associate with this application."
         searchPlaceholder="Search providers..."
         searchValue={providerDrawerSearch}
@@ -1427,7 +1427,7 @@ export default function AssociationsTab() {
         isLoading={isProviderDrawerLoading}
         loadError={providerDrawerLoadError}
         items={filteredOrgProviders}
-        emptyStateText="No LLM providers found in this organization."
+        emptyStateText="No AI providers found in this organization."
         emptySearchText="No providers match your search."
         linkedIds={linkedProviderIds}
         selectedIds={selectedProviderIds}
@@ -1486,7 +1486,7 @@ export default function AssociationsTab() {
 
       <AssociationSelectionDrawer
         open={proxyDrawerOpen}
-        title="Add LLM Proxies"
+        title="Add AI Proxies"
         description="Select proxies and their API keys to associate with this application."
         searchPlaceholder="Search proxies..."
         searchValue={proxyDrawerSearch}
@@ -1496,7 +1496,7 @@ export default function AssociationsTab() {
         isLoading={isProxyDrawerLoading}
         loadError={proxyDrawerLoadError}
         items={filteredOrgProxies}
-        emptyStateText="No LLM proxies found in this organization."
+        emptyStateText="No AI proxies found in this organization."
         emptySearchText="No proxies match your search."
         linkedIds={linkedProxyIds}
         selectedIds={selectedProxyIds}
@@ -1766,7 +1766,7 @@ export default function AssociationsTab() {
       >
         <DialogTitle>
           Remove{' '}
-          {deleteTarget?.kind === 'LlmProvider' ? 'LLM Provider' : 'LLM Proxy'}{' '}
+          {deleteTarget?.kind === 'LlmProvider' ? 'AI Provider' : 'AI Proxy'}{' '}
           association
         </DialogTitle>
         <DialogContent>

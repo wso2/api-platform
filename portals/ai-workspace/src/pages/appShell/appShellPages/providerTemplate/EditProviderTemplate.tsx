@@ -114,7 +114,7 @@ function EditProviderTemplateForm({ template }: { template: ProviderTemplate }) 
           <PageTitle.Header>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.EditProviderTemplate.title"
-              defaultMessage={'Edit LLM Provider Template'}
+              defaultMessage={'Edit AI Provider Template'}
             />
           </PageTitle.Header>
         </PageTitle>

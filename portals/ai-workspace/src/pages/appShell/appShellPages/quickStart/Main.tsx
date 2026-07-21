@@ -243,7 +243,7 @@ export default function QuickStart(): JSX.Element {
     gatewayCounts.ai + gatewayCounts.api >= MAX_GATEWAYS_PER_ORG;
   const nextButtonTooltip =
     selectedOptionId === 'provider-proxy' && isProviderQuotaReached
-      ? 'You cannot continue because your organization has reached the maximum limit of 5 LLM providers.'
+      ? 'You cannot continue because your organization has reached the maximum limit of 5 AI providers.'
       : selectedOptionId === 'manage-gateways' && isGatewayQuotaReached
       ? getGatewayQuotaTooltip(gatewayCounts)
       : '';

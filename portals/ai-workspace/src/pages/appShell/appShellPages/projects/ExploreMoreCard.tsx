@@ -51,40 +51,40 @@ export default function ExploreMoreCard() {
       ],
     },
     {
-      title: 'LLM Provider Integration',
+      title: 'AI Provider Integration',
       subtitle:
         'Connect, configure, and maintain model providers for your workspace.',
       icon: Server,
       links: [
         {
-          label: 'LLM Providers Overview',
+          label: 'AI Providers Overview',
           href: 'https://wso2.com/bijira/docs/ai-workspace/llm-providers/overview/',
         },
         {
-          label: 'Configure a New LLM Provider',
+          label: 'Configure a New AI Provider',
           href: 'https://wso2.com/bijira/docs/ai-workspace/llm-providers/configure-provider/',
         },
         {
-          label: 'Manage Existing LLM Providers',
+          label: 'Manage Existing AI Providers',
           href: 'https://wso2.com/bijira/docs/ai-workspace/llm-providers/manage-provider/',
         },
       ],
     },
     {
-      title: 'App LLM Proxy Management',
-      subtitle: 'Create and operate App LLM Proxies for secure and governed access.',
+      title: 'App AI Proxy Management',
+      subtitle: 'Create and operate App AI Proxies for secure and governed access.',
       icon: Network,
       links: [
         {
-          label: 'App LLM Proxies Overview',
+          label: 'App AI Proxies Overview',
           href: 'https://wso2.com/bijira/docs/ai-workspace/llm-proxies/overview/',
         },
         {
-          label: 'Create a New App LLM Proxy',
+          label: 'Create a New App AI Proxy',
           href: 'https://wso2.com/api-platform/docs/ai-workspace/llm-proxies/configure-proxy/',
         },
         {
-          label: 'Manage Existing App LLM Proxies',
+          label: 'Manage Existing App AI Proxies',
           href: 'https://wso2.com/bijira/docs/ai-workspace/llm-proxies/manage-proxy/',
         },
       ],

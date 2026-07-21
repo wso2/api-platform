@@ -259,7 +259,7 @@ export default function LLMProxyDeploymentsCard() {
               <FormattedMessage
                 id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDeploymentsCard.start.using.this.llm.proxy"
                 defaultMessage={
-                  'Start using this App LLM Proxy'
+                  'Start using this App AI Proxy'
                 }
               />
             </Typography>
@@ -347,7 +347,7 @@ export default function LLMProxyDeploymentsCard() {
             <Typography variant="h6" sx={{ mb: 1.5, fontWeight: 600 }}>
               <FormattedMessage
                 id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDeploymentsCard.api.keys"
-                defaultMessage={'App LLM Proxy Keys'}
+                defaultMessage={'App AI Proxy Keys'}
               />
             </Typography>
             <Stack spacing={2}>
@@ -368,7 +368,7 @@ export default function LLMProxyDeploymentsCard() {
                     <FormattedMessage
                       id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDeploymentsCard.generate.an.api.key"
                       defaultMessage={
-                        'Generate an App LLM Proxy key to authenticate requests to deployed gateways'
+                        'Generate an App AI Proxy key to authenticate requests to deployed gateways'
                       }
                     />
                   </Typography>

@@ -322,7 +322,7 @@ export default function OrgRegisterPage() {
 
           <Stack spacing={2} sx={{ position: 'relative' }}>
             {[
-              'Connect and manage multiple LLM providers',
+              'Connect and manage multiple AI providers',
               'Deploy AI gateways with policy controls',
               'Build, test, and iterate AI proxies',
               'Monitor usage with built-in analytics',

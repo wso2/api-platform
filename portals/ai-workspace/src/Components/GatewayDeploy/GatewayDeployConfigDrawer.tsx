@@ -99,7 +99,7 @@ export default function GatewayDeployConfigDrawer({
           value={host}
           onChange={(e) => setHost(e.target.value)}
           fullWidth
-          helperText="Gateway URL of the LLM Provider (optional)"
+          helperText="Gateway URL of the AI Provider (optional)"
         />
 
         <Box sx={{ mt: 'auto', display: 'flex', gap: 2, pt: 2 }}>

@@ -43,7 +43,7 @@ export function getManageGatewaysOption(getNextPath: () => string): QuickStartOp
       {
         title: 'Prepare for deployments',
         description:
-          'Make the gateway available for App LLM Proxies, providers, and MCP proxy deployments.',
+          'Make the gateway available for App AI Proxies, providers, and MCP proxy deployments.',
       },
     ],
     accentColor: '#C96B00',

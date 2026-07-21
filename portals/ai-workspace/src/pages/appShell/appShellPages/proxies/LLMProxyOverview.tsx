@@ -185,7 +185,7 @@ function ProxyOverviewContent() {
   useEffect(() => {
     const state = location.state as LLMProxyOverviewLocationState;
     if (state?.proxyAdded) {
-      showSnackbar('Successfully created App LLM Proxy.', 'success');
+      showSnackbar('Successfully created App AI Proxy.', 'success');
       navigate(location.pathname, { replace: true, state: null });
     }
   }, [location.pathname, location.state, navigate, showSnackbar]);
@@ -261,7 +261,7 @@ function ProxyOverviewContent() {
       });
     } catch (err) {
       showSnackbar(
-        getErrorDescription(err, 'Failed to delete App LLM Proxy.'),
+        getErrorDescription(err, 'Failed to delete App AI Proxy.'),
         'error'
       );
     } finally {
@@ -569,7 +569,7 @@ function ProxyOverviewContent() {
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
       >
-        <DialogTitle>Delete App LLM Proxy</DialogTitle>
+        <DialogTitle>Delete App AI Proxy</DialogTitle>
         <DialogContent>
           <DialogContentText>
             Are you sure you want to delete <strong>{proxy.displayName}</strong>? This

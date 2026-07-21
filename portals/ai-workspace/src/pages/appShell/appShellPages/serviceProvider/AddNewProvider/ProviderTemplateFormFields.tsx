@@ -263,7 +263,7 @@ export default function ProviderTemplateFormFields({
               }
               placeholder="https://api.openai.com/v1"
               error={Boolean(fieldErrors.upstreamUrl)}
-              helperText={fieldErrors.upstreamUrl || 'The base URL of the upstream LLM provider'}
+              helperText={fieldErrors.upstreamUrl || 'The base URL of the upstream AI provider'}
               data-cyid="provider-upstream-url-input"
             />
           </FormControl>

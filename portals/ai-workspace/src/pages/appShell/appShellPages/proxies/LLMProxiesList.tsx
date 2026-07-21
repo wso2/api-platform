@@ -98,7 +98,7 @@ export default function LLMProxiesList() {
   } = useProxies();
   const { providersResponse } = useLLMProviders();
   const proxies = proxiesResponse.list;
-  const emptyMessage = 'No Available App LLM Proxies';
+  const emptyMessage = 'No Available App AI Proxies';
   const {
     currentProject,
     currentOrganization,
@@ -124,7 +124,7 @@ export default function LLMProxiesList() {
   useEffect(() => {
     const state = location.state as LLMProxyListLocationState;
     if (state?.proxyDeleted) {
-      showSnackbar('Successfully deleted App LLM Proxy.', 'success');
+      showSnackbar('Successfully deleted App AI Proxy.', 'success');
       navigate(location.pathname, { replace: true, state: null });
     }
   }, [location.pathname, location.state, navigate, showSnackbar]);
@@ -190,11 +190,11 @@ export default function LLMProxiesList() {
     if (!deleteTarget) return;
     try {
       await deleteProxy(deleteTarget.id);
-      showSnackbar('Successfully deleted App LLM Proxy.', 'success');
+      showSnackbar('Successfully deleted App AI Proxy.', 'success');
       setDeleteTarget(null);
     } catch (error) {
       showSnackbar(
-        getErrorDescription(error, 'Failed to delete App LLM Proxy.'),
+        getErrorDescription(error, 'Failed to delete App AI Proxy.'),
         'error'
       );
       setDeleteTarget(null);
@@ -211,7 +211,7 @@ export default function LLMProxiesList() {
 
   const isProxyQuotaReached = false;
   const proxyQuotaTooltip =
-    'You cannot create more App LLM Proxies because your organization has reached the maximum limit of 5 proxies.';
+    'You cannot create more App AI Proxies because your organization has reached the maximum limit of 5 proxies.';
   const createProxyButtonSx = {
     opacity: isProxyQuotaReached ? 0.55 : 1,
     '&.Mui-disabled': {
@@ -236,9 +236,9 @@ export default function LLMProxiesList() {
               }}
             >
               <PageTitle sx={{ minWidth: 0, flex: 1 }}>
-                <PageTitle.Header>App LLM Proxies</PageTitle.Header>
+                <PageTitle.Header>App AI Proxies</PageTitle.Header>
                 <PageTitle.SubHeader>
-                  Manage and monitor your App LLM Proxy deployments.
+                  Manage and monitor your App AI Proxy deployments.
                 </PageTitle.SubHeader>
               </PageTitle>
 
@@ -258,7 +258,7 @@ export default function LLMProxiesList() {
                         disabled={isProxyQuotaReached}
                         sx={createProxyButtonSx}
                       >
-                        Create App LLM Proxy
+                        Create App AI Proxy
                       </Button>
                     </Box>
                   </Tooltip>
@@ -277,7 +277,7 @@ export default function LLMProxiesList() {
                     <FormattedMessage
                       id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxiesList.llm.proxies.are.created.and.managed.at.the.project.level"
                       defaultMessage={
-                        'App LLM Proxies are created and managed at the project level.'
+                        'App AI Proxies are created and managed at the project level.'
                       }
                     />
                   </Typography>
@@ -378,7 +378,7 @@ export default function LLMProxiesList() {
                 <Typography variant="h6" sx={{ fontWeight: 700 }}>
                   <FormattedMessage
                     id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxiesList.create.your.first.llm.proxy"
-                    defaultMessage={'Create your first App LLM Proxy'}
+                    defaultMessage={'Create your first App AI Proxy'}
                   />
                 </Typography>
                 <Typography
@@ -389,7 +389,7 @@ export default function LLMProxiesList() {
                   <FormattedMessage
                     id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxiesList.setup.an.llm.proxy.description"
                     defaultMessage={
-                      'Set up an App LLM Proxy to route model traffic and manage AI access across your applications.'
+                      'Set up an App AI Proxy to route model traffic and manage AI access across your applications.'
                     }
                   />
                 </Typography>
@@ -403,7 +403,7 @@ export default function LLMProxiesList() {
                       disabled={isProxyQuotaReached}
                       sx={createProxyButtonSx}
                     >
-                      Create App LLM Proxy
+                      Create App AI Proxy
                     </Button>
                   </Box>
                 </Tooltip>
@@ -415,7 +415,7 @@ export default function LLMProxiesList() {
             <Grid size={{ xs: 12 }}>
               <TextField
                 fullWidth
-                placeholder="Search App LLM Proxies..."
+                placeholder="Search App AI Proxies..."
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 slotProps={{
@@ -451,7 +451,7 @@ export default function LLMProxiesList() {
                             <Typography variant="body2" color="text.secondary">
                               <FormattedMessage
                                 id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxiesList.no.llm.proxies.found"
-                                defaultMessage={'No App LLM Proxies found.'}
+                                defaultMessage={'No App AI Proxies found.'}
                               />
                             </Typography>
                           </TableCell>
@@ -547,7 +547,7 @@ export default function LLMProxiesList() {
         open={Boolean(deleteTarget)}
         onClose={() => setDeleteTarget(null)}
       >
-        <DialogTitle>Delete App LLM Proxy</DialogTitle>
+        <DialogTitle>Delete App AI Proxy</DialogTitle>
         <DialogContent>
           <DialogContentText>
             Are you sure you want to delete {deleteTarget?.name}?

@@ -187,7 +187,7 @@ export default function AIGatewayStepBanner({
                 <Box component="span" sx={{ fontWeight: 600 }}>
                   Next:{' '}
                 </Box>
-                Create LLM Provider and deploy on your new gateway.
+                Create AI Provider and deploy on your new gateway.
               </Typography>
             </>
           ) : (

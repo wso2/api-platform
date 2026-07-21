@@ -90,8 +90,8 @@ function resolveMappedKeyId(key: MappedAPIKey): string {
 
 function formatAssociatedEntityKind(kind?: string): string {
   if (!kind) return '—';
-  if (kind === 'LlmProvider') return 'LLM Provider';
-  if (kind === 'LlmProxy') return 'App LLM Proxy';
+  if (kind === 'LlmProvider') return 'AI Provider';
+  if (kind === 'LlmProxy') return 'App AI Proxy';
   return kind;
 }
 

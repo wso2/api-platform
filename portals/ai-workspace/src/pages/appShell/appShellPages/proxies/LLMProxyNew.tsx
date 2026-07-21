@@ -562,7 +562,7 @@ function LLMProxyNewContent({
           <PageTitle.Header>
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.create.llm.proxy"
-              defaultMessage="Create App LLM Proxy"
+              defaultMessage="Create App AI Proxy"
             />
           </PageTitle.Header>
         </PageTitle>
@@ -673,7 +673,7 @@ function LLMProxyNewContent({
                   <FormLabel sx={{ mb: 0.5 }}>
                     <FormattedMessage
                       id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.llm.service.provider"
-                      defaultMessage="LLM Provider"
+                      defaultMessage="AI Provider"
                     />
                   </FormLabel>
                   <Select
@@ -805,7 +805,7 @@ function LLMProxyNewContent({
                             <Typography variant="body2" color="text.secondary">
                               <FormattedMessage
                                 id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyNew.generate.provider.api.key.description"
-                                defaultMessage="Generate an API key for the selected LLM provider."
+                                defaultMessage="Generate an API key for the selected AI provider."
                               />
                             </Typography>
                           )}
