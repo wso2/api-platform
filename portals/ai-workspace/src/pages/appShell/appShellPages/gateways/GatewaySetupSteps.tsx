@@ -127,6 +127,7 @@ function CommandField({
           endAdornment: (
             <IconButton
               size="small"
+              aria-label={`Copy ${copyLabel}`}
               onClick={() => onCopy(clipboardText, copyLabel)}
             >
               <Copy />
@@ -247,7 +248,6 @@ ENVFILE`;
           copyLabel="Setup command"
           onCopy={onCopy}
           colorScheme={colorScheme}
-          minRows={2}
         />
       </Box>
 

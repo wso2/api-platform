@@ -89,6 +89,7 @@ openssl rand 32 > default-aesgcm256-v1.bin
 kubectl create secret generic gateway-encryption-keys \
   --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin \
   -n gateway-api-demo
+rm -f default-aesgcm256-v1.bin   # don't leave the plaintext key on disk
 ```
 
 ## Apply (order matters)

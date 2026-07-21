@@ -38,6 +38,7 @@ Generate a 32-byte AES-256 key and store it in a Secret **in the namespace you i
 openssl rand 32 > default-aesgcm256-v1.bin
 kubectl create secret generic gateway-encryption-keys \
   --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin
+rm default-aesgcm256-v1.bin   # don't leave the plaintext key on disk
 # add -n <namespace> to both this command and `helm install` for a non-default namespace
 ```
 
@@ -69,6 +70,7 @@ kubectl create namespace api-gateway
 openssl rand 32 > default-aesgcm256-v1.bin
 kubectl create secret generic gateway-encryption-keys -n api-gateway \
   --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin
+rm default-aesgcm256-v1.bin   # don't leave the plaintext key on disk
 helm install ap-gateway . --namespace api-gateway \
   --set gateway.controller.encryptionKeys.enabled=true \
   --set gateway.controller.encryptionKeys.secretName=gateway-encryption-keys \
@@ -131,13 +133,13 @@ kubectl logs -l app.kubernetes.io/component=gateway-runtime
   [Step 1](#step-1-create-the-encryption-key-secret) (create the key Secret) and pass the
   `encryptionKeys` flags in [Step 2](#step-2-install-the-chart).
 - **Controller pod is `CrashLoopBackOff` / never becomes Ready** — usually a missing or
-  wrong-namespace encryption key Secret. Confirm it exists in the release namespace with the
-  correct key entry name:
+  wrong-namespace encryption key Secret. Confirm it exists in the release namespace and that
+  `default-aesgcm256-v1.bin` appears under `Data` with `32 bytes`:
   ```bash
-  kubectl get secret gateway-encryption-keys -n <namespace> -o jsonpath='{.data.default-aesgcm256-v1\.bin}' | head -c 20
+  kubectl describe secret gateway-encryption-keys -n <namespace>
   ```
-  An empty result means the entry is misnamed (it must be `default-aesgcm256-v1.bin`). Check the
-  controller logs for the encryption-key error.
+  If that entry is missing or misnamed (it must be `default-aesgcm256-v1.bin`), recreate the
+  Secret. Also check the controller logs for the encryption-key error.
 
 ## Chart layout
 

@@ -86,7 +86,7 @@ To connect this gateway to a WSO2 API Platform control plane, set these variable
 
 ```bash
 # api-platform.env
-APIP_GW_CONTROLLER_CONTROLPLANE_HOST=https://your-platform-host:9243
+APIP_GW_CONTROLLER_CONTROLPLANE_HOST=your-platform-host:9243
 APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=<token-from-platform>
 ```
 
