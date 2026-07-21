@@ -18,7 +18,7 @@
 
 const passport = require('passport');
 const OAuth2Strategy = require('passport-oauth2');
-const jwt = require('jsonwebtoken');
+const { safeDecodeJwt } = require('../utils/jwtDecode');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
@@ -63,8 +63,8 @@ function configurePassport(SERVER_ID) {
                 return done(new Error('Access token missing'));
             }
             let isAdmin = false, isSuperAdmin = false;
-            const decodedJWT = jwt.decode(params.id_token) || {};
-            const decodedAccessToken = jwt.decode(accessToken);
+            const decodedJWT = safeDecodeJwt(params.id_token) || {};
+            const decodedAccessToken = safeDecodeJwt(accessToken);
             const firstName = decodedJWT['given_name'] || decodedJWT['nickname'];
             const lastName = decodedJWT['family_name'];
             const organizationId = getNestedClaim(decodedJWT, config.idp.claims.orgId) ?? '';

@@ -33,7 +33,7 @@
  *
  */
 
-const jwt = require('jsonwebtoken');
+const { safeDecodeJwt } = require('../utils/jwtDecode');
 const { jwtVerify, createRemoteJWKSet } = require('jose');
 
 const { config } = require('../config/configLoader');
@@ -162,7 +162,7 @@ async function verifyBearerToken(token, req) {
     if (!idp || !idp.clientId) {
         // Local auth mode: verify Platform API JWT with shared secret when configured.
         const jwtSecret = config.platformApi?.jwtSecret;
-        const claims = extractPlatformJwtClaims(token, jwtSecret || null);
+        const claims = await extractPlatformJwtClaims(token, jwtSecret || null);
         if (jwtSecret && !claims) return { valid: false, scopes: '' };
         return { valid: true, scopes: claims?.scopes?.join(' ') ?? '' };
     }
@@ -233,7 +233,7 @@ async function authResolver(req, res, next) {
         if (req.isAuthenticated && req.isAuthenticated() &&
             req.user?.isLocalAuth && !config.idp?.clientId) {
             const platformToken = req.user[constants.ACCESS_TOKEN];
-            const claims = platformToken ? extractPlatformJwtClaims(platformToken, null) : null;
+            const claims = platformToken ? await extractPlatformJwtClaims(platformToken, null) : null;
             const orgHandle = req.user[constants.ROLES.ORGANIZATION_CLAIM];
             const orgErr = await resolveOrgFromClaim(req, orgHandle);
             if (orgErr) return next(orgErr);
@@ -286,7 +286,7 @@ async function authResolver(req, res, next) {
                 err.status = 401;
                 return next(err);
             }
-            const decoded = jwt.decode(req.user?.[constants.ACCESS_TOKEN] || token) || {};
+            const decoded = safeDecodeJwt(req.user?.[constants.ACCESS_TOKEN] || token) || {};
             // Resolve org UUID from the token's org claim (IDP_REF_ID).
             // Only in IDP mode — local-auth and platform-JWT tokens carry no org claim.
             const orgIDClaim = config.idp?.claims?.orgId;

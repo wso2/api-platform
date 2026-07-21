@@ -23,7 +23,7 @@ const { validationResult } = require('express-validator');
 const { jwtVerify, createRemoteJWKSet } = require('jose');
 const util = require('../utils/util');
 const { CustomError } = require('../utils/errors/customErrors');
-const jwt = require('jsonwebtoken');
+const { safeDecodeJwt } = require('../utils/jwtDecode');
 const logger = require('../config/logger');
 const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate } = require('../utils/tokenUtil');
@@ -56,7 +56,7 @@ function enforceSecurity(scope) {
             if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.idp?.clientId) {
                 const platformToken = req.user[constants.ACCESS_TOKEN];
                 if (!platformToken) return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
-                const tokenScopes = extractPlatformJwtClaims(platformToken, null)?.scopes ?? [];
+                const tokenScopes = (await extractPlatformJwtClaims(platformToken, null))?.scopes ?? [];
                 if (!scope || tokenScopes.includes(scope)) return next();
                 return util.handleError(res, new CustomError(403, constants.ERROR_CODE[403], constants.ERROR_MESSAGE.FORBIDDEN));
             }
@@ -70,7 +70,7 @@ function enforceSecurity(scope) {
                         return next(err);
                     }
                 }
-                const decodedAccessToken = jwt.decode(token);
+                const decodedAccessToken = safeDecodeJwt(token);
                 req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
                 return validateAuthentication(scope)(req, res, next);
             } else if (config.security.serviceApiKey.enabled) {
@@ -185,7 +185,7 @@ const ensureAuthenticated = async (req, res, next) => {
         } else {
             const earlyToken = accessTokenPresent(req);
             if (earlyToken) {
-                const earlyDecoded = jwt.decode(earlyToken);
+                const earlyDecoded = safeDecodeJwt(earlyToken);
                 req[constants.USER_ID] = await resolveUserUuid(req, earlyDecoded?.[constants.USER_ID]);
             }
         }
@@ -244,7 +244,7 @@ const ensureAuthenticated = async (req, res, next) => {
             }
             const token = accessTokenPresent(req);
             if (token) {
-                const decodedAccessToken = jwt.decode(token);
+                const decodedAccessToken = safeDecodeJwt(token);
                 req.orgId = req.orgId || orgDetails?.uuid;
                 req[constants.USER_ID] = await resolveUserUuid(req, decodedAccessToken?.[constants.USER_ID]);
             }

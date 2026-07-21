@@ -30,7 +30,6 @@
   "dependencies": {
     "axios": "1.18.1",
     "better-sqlite3": "12.11.1",
-    "bootstrap-icons": "1.13.1",
     "connect-pg-simple": "10.0.0",
     "connect-session-sequelize": "8.0.6",
     "dotenv": "17.4.2",
@@ -43,7 +42,6 @@
     "handlebars": "4.7.9",
     "jose": "6.2.3",
     "js-yaml": "5.2.1",
-    "jsonwebtoken": "9.0.3",
     "marked": "18.0.6",
     "minimatch": "10.2.5",
     "multer": "2.2.0",

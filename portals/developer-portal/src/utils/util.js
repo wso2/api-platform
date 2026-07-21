@@ -35,7 +35,6 @@ const { Sequelize } = require('sequelize');
 const apiDao = require('../dao/apiDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const subscriptionPlanDTO = require('../dto/subscriptionPlanDto');
-const jwt = require('jsonwebtoken');
 const filePrefix = '/src/defaultContent/';
 
 // Function to load and convert markdown file to HTML

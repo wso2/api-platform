@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const jwt = require('jsonwebtoken');
+const { jwtVerify, decodeJwt } = require('jose');
 
 /**
  * Decode and optionally verify a Platform API JWT.
@@ -29,11 +29,15 @@ const jwt = require('jsonwebtoken');
  * Returns the full JWT payload spread together with a parsed `scopes` array,
  * or null if decoding / verification fails.
  */
-function extractPlatformJwtClaims(token, jwtSecret) {
+async function extractPlatformJwtClaims(token, jwtSecret) {
     try {
-        const payload = jwtSecret
-            ? jwt.verify(token, jwtSecret, { algorithms: ['HS256'] })
-            : JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+        let payload;
+        if (jwtSecret) {
+            const key = new TextEncoder().encode(jwtSecret);
+            ({ payload } = await jwtVerify(token, key, { algorithms: ['HS256'] }));
+        } else {
+            payload = decodeJwt(token);
+        }
         return {
             ...payload,
             scopes: String(payload.scope || '').split(' ').filter(Boolean),
