@@ -23,7 +23,7 @@ Operator Details:
 {{- end }}
 
 Custom Resource Definitions:
-  - Applied by the apply-crds hook Job: APIGateway, RestApi and related management CRDs (group gateway.api-platform.wso2.com, served v1alpha1 + v1)
+  - Installed from the chart crds/ directory (fresh install only): APIGateway, RestApi and related management CRDs (group gateway.api-platform.wso2.com, served v1alpha1 + v1)
 {{- if .Values.gatewayApi.installStandardCRDs }}
   - Gateway API standard v1.3.0 (GatewayClass, Gateway, HTTPRoute, GRPCRoute, ReferenceGrant) — included because gatewayApi.installStandardCRDs is true
 {{- else }}

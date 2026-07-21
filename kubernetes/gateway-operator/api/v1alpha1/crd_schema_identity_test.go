@@ -33,9 +33,10 @@ import (
 // TestCRDVersionSchemasIdentical enforces the invariant that every served
 // version of each CRD shares an identical OpenAPI schema.
 //
-// The operator ships its CRDs with spec.conversion.strategy = None (injected in
-// kubernetes/helm/operator-helm-chart/templates/operator-crds.yaml). "None"
-// performs NO field transformation between versions — the API server only
+// The operator ships its CRDs (kubernetes/helm/operator-helm-chart/crds/) serving
+// v1 (storage) and v1alpha1 (served) with conversion strategy None — a multi-version
+// CRD with no explicit spec.conversion block defaults to None at the API server.
+// "None" performs NO field transformation between versions — the API server only
 // relabels apiVersion on read/write. That is safe ONLY while the v1 (storage)
 // and v1alpha1 (served) schemas are equivalent; any divergence would silently
 // drop or corrupt fields at the storage boundary, with no conversion webhook to

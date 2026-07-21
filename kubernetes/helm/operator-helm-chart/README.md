@@ -115,7 +115,11 @@ Component container image tags come from the gateway chart; do not hardcode them
 
 ## Custom Resource Definitions (CRDs)
 
-The chart delivers all operator CRDs (group `gateway.api-platform.wso2.com`, versions `v1alpha1` and `v1`). They are **not** installed via Helm's `crds/` directory — that directory is install-only and never upgraded. Instead they are staged in a ConfigMap (`operator-crds.yaml`) and applied by a `pre-install,pre-upgrade` hook Job (`operator-crds-apply-job.yaml`) using `kubectl apply --server-side`, so they are updated on every install *and* upgrade.
+The chart ships all operator CRDs (group `gateway.api-platform.wso2.com`, served at `v1alpha1` and `v1`, with `v1` as the storage version) in the Helm-native `crds/` directory. Helm installs everything under `crds/` automatically on `helm install`.
+
+> **Important — CRDs are install-only.** Helm applies `crds/` only when a CRD does not already exist, and **never updates or deletes** CRDs on `helm upgrade`, `helm uninstall`, or a re-`helm install` on a cluster where they already exist. This operator **requires the `v1` version to be served**, so:
+> - **Fresh clusters** (no pre-existing `gateway.api-platform.wso2.com` CRDs) get the correct v1+v1alpha1 CRDs and work out of the box.
+> - **Clusters that already have older (v1alpha1-only) CRDs** will NOT be upgraded by Helm. To move them to v1, delete the old CRDs first (`kubectl get crd -o name | grep gateway.api-platform.wso2.com | xargs kubectl delete`) then reinstall, or apply the updated CRDs manually with `kubectl apply -f crds/`.
 
 The two most commonly used kinds:
 
@@ -364,7 +368,7 @@ helm upgrade apip-operator ./operator-helm-chart \
   --reuse-values
 ```
 
-The `pre-install,pre-upgrade` apply-crds hook Job re-applies the CRDs on every upgrade, so existing installs receive CRD schema changes automatically.
+> **Note:** CRDs in `crds/` are **not** re-applied on `helm upgrade` (a Helm limitation). If a chart upgrade includes CRD schema changes, apply the updated CRDs manually with `kubectl apply -f crds/`. Because the operator requires the `v1` version to be served, do this **before** rolling out an operator image that expects it.
 
 ### Upgrade with New Values
 
@@ -382,7 +386,7 @@ helm upgrade apip-operator ./operator-helm-chart \
 helm uninstall apip-operator --namespace gateway-operator-system
 ```
 
-**Note:** This does not delete the CRDs (they are applied out-of-band by the hook Job, not tracked by the Helm release). To delete them manually:
+**Note:** This does not delete the CRDs (Helm never removes CRDs installed from `crds/`). To delete them manually:
 
 ```bash
 kubectl get crd -o name | grep gateway.api-platform.wso2.com | xargs -r kubectl delete
@@ -408,16 +412,11 @@ kubectl describe apigateway <name>
 
 ### CRDs Not Installing
 
-CRDs are applied by the `apply-crds` hook Job, not from a `crds/` directory. Verify:
+CRDs are installed from the chart's `crds/` directory on `helm install`. Verify:
 ```bash
-# Are the CRDs present?
 kubectl get crd | grep gateway.api-platform.wso2.com
-
-# Did the apply-crds hook Job run? (it self-deletes on success)
-helm get hooks apip-operator -n gateway-operator-system
-kubectl get events -n gateway-operator-system --sort-by='.lastTimestamp' | grep apply-crds
 ```
-A common failure is missing RBAC/ServiceAccount ordering — the bootstrap ServiceAccount and ClusterRole are themselves pre-install hooks weighted ahead of the Job (see `crd-manager-rbac.yaml`).
+If they are missing on a fresh install, ensure you did not pass `--skip-crds`. If they are present but **stale** (e.g. only `v1alpha1`), Helm will not update them on upgrade or reinstall — delete and reinstall, or run `kubectl apply -f crds/` (the operator requires the `v1` version to be served).
 
 ### Leader Election Issues
 
@@ -437,8 +436,7 @@ The operator follows the Kubernetes operator pattern:
 
 ## Components
 
-- **Bootstrap ServiceAccount + ClusterRole/Binding** (`crd-manager-rbac.yaml`): hook-scoped identity used by the CRD-lifecycle Jobs
-- **operator-crds ConfigMap + apply-crds Job**: deliver and apply the CRDs on install/upgrade
+- **`crds/` directory**: operator CRDs, installed by Helm on fresh install
 - **ClusterRole/ClusterRoleBinding & Role/RoleBinding**: operator runtime RBAC
 - **Leader Election Role/RoleBinding**: manages leader election for HA
 - **ServiceAccount**: runtime identity for the operator

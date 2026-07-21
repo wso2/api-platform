@@ -11,7 +11,7 @@ spec:
     metadata:
       name: "{{ .Release.Name }}-cleanup-finalizers"
     spec:
-      serviceAccountName: {{ include "gateway-operator.fullname" . }}-crd-manager
+      serviceAccountName: {{ .Values.serviceAccount.name }}
       restartPolicy: Never
       containers:
         - name: cleanup
