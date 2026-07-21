@@ -50,9 +50,12 @@ import (
 //   - Delivery is fire-once on a ~2s poll, and the plaintext key/token the portal
 //     returns to the user are exactly what the gateway validates.
 //
-// The devportal accepts the platform-api admin JWT directly (it verifies it with
-// the shared APIP_DP_PLATFORMAPI_JWTSECRET and takes the org from the token's
-// org_handle claim), so suite.token is reused for every call here.
+// The devportal accepts the platform-api admin JWT directly (platform-api signs
+// it with RS256, so with no shared HMAC secret configured the devportal decodes
+// the payload without verifying the signature, trusting the direct HTTPS
+// connection instead — see APIP_DP_PLATFORMAPI_INSECURE in docker-compose.yaml —
+// and takes the org from the token's org_handle claim), so suite.token is reused
+// for every call here.
 
 // webhookReceiverURL is the platform-api webhook receiver at its container-internal
 // host (the devportal reaches platform-api by service name on the compose network,

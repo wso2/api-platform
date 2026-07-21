@@ -24,10 +24,14 @@
 #
 # QUICK START (file auth mode — no external IDP needed):
 #   1. Copy this file to config-platform-api.toml.
-#   2. Generate two 32-byte keys: openssl rand -hex 32
-#      (one for APIP_CP_ENCRYPTION_KEY, one for APIP_CP_AUTH_JWT_SECRET_KEY).
-#   3. Put both in `api-platform.env`. The fields below read them via
-#      {{ env "..." }} tokens — never paste raw key values into this file.
+#   2. Generate APIP_CP_ENCRYPTION_KEY: openssl rand -hex 32, put it in
+#      `api-platform.env`. The field below reads it via a {{ env "..." }} token
+#      — never paste raw key values into this file.
+#   3. Generate an RS256 JWT keypair (PEM files, not an env var — see
+#      auth.jwt.public_key / private_key below):
+#        openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+#          -out jwt_private.pem
+#        openssl rsa -in jwt_private.pem -pubout -out jwt_public.pem
 #   4. Set [platform_api.auth] mode = "file" and configure users.
 #   5. Run: docker compose up
 #

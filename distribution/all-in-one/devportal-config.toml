@@ -1,0 +1,48 @@
+# Developer Portal configuration for the all-in-one (build-from-source) compose
+# stack. Mounted at /app/configs/config.toml — replaces the image's shipped
+# configs/config.toml, which fails closed at startup on the required security
+# secrets and only wires the SQLite `file` key (this stack shares one Postgres
+# server with platform-api).
+#
+# There is NO automatic APIP_DP_* environment-variable override (see
+# src/config/configLoader.js) — an env var set in docker-compose.yaml's
+# `devportal.environment` block only takes effect where a key below explicitly
+# references it via a {{ env "..." }} token.
+
+[server]
+base_url = '{{ env "APIP_DP_SERVER_BASEURL" "http://localhost:3001" }}'
+port     = 3000
+
+[tls]
+# Plain HTTP — nothing in this stack talks to devportal over TLS.
+enabled = false
+
+[logging]
+console_only = true
+
+[database]
+type     = '{{ env "APIP_DP_DATABASE_TYPE" "postgres" }}'
+host     = '{{ env "APIP_DP_DATABASE_HOST" "postgres" }}'
+port     = '{{ env "APIP_DP_DATABASE_PORT" "5432" }}'
+name     = '{{ env "APIP_DP_DATABASE_NAME" "devportal" }}'
+username = '{{ env "APIP_DP_DATABASE_USERNAME" "postgres" }}'
+password = '{{ env "APIP_DP_DATABASE_PASSWORD" "postgres" }}'
+
+[organization]
+default_name = '{{ env "APIP_DP_ORGANIZATION_DEFAULTNAME" "default" }}'
+
+[platform_api]
+# platform-api signs admin JWTs with RS256 — there is no shared HMAC secret to
+# set here. jwt_secret left empty makes the devportal decode the token payload
+# without verifying its signature, trusting the direct HTTPS connection
+# (insecure=true) instead — see extractPlatformJwtClaims in
+# src/utils/platformJwt.js. platform-api's cert is self-signed (platform-api-certgen).
+base_url = '{{ env "APIP_DP_PLATFORMAPI_BASEURL" "https://platform-api:9243" }}'
+insecure = true
+
+[security]
+# Required — devportal fails closed at startup if either doesn't resolve to a
+# 64-char hex string. Set APIP_DP_SECURITY_ENCRYPTIONKEY / APIP_DP_SECURITY_SESSIONSECRET
+# in the environment before `docker compose up` (e.g. `openssl rand -hex 32` each).
+encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTIONKEY" }}'
+session_secret = '{{ env "APIP_DP_SECURITY_SESSIONSECRET" }}'
