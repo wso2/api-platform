@@ -128,13 +128,63 @@ All configurable values are documented in `values.yaml`. Component blocks are fu
 - `gateway.<component>.service.expose.*` – per-port toggles for publishing admin/debug ports on the Service. **All default to `false`** so admin surfaces stay pod-internal (reach them with `kubectl port-forward`). Available toggles: `controller.service.expose.admin` (controller admin, 9092), `gatewayRuntime.service.expose.routerAdmin` (Router/Envoy admin, 9901 — includes mutating endpoints, leave off unless trusted), `gatewayRuntime.service.expose.policyEngineAdmin` (policy-engine admin, 9002). Probes are unaffected; they target container ports directly. Note: the controller admin port is no longer exposed by default — set `expose.admin=true` to restore prior behavior. The runtime port key was renamed `envoyAdmin` → `routerAdmin`.
 - `gateway.controller.persistence` / `gateway.configMap` – PVC sizing/claims (plus PVC `labels`/`annotations`, e.g. `helm.sh/resource-policy: keep`) and component configuration payloads.
 - `commonLabels` / `commonAnnotations` – applied to every resource the chart renders; per-resource labels/annotations win on key conflicts.
-- `gateway.controller.controlPlane` and `gateway.controller.logging` – control-plane connectivity plus controller logging level.
+- `gateway.controller.controlPlane` – control-plane connectivity. The host is non-secret and rendered directly into `config.toml`; the token is injected from a Secret. The controller log level is `gateway.config.controller.logging.level`.
 - `gateway.controller.tls.*` – TLS certificate configuration for HTTPS listener using cert-manager or existing secrets.
 - `gateway.controller.upstreamCerts.*` – Custom CA certificates for upstream backend TLS verification.
 - `gateway.config.policy_engine.*` – policy engine configuration including xDS client settings and admin API.
 - `gateway.config.api_key` / `gateway.config.subscriptions` – API-key policy tuning (length/algorithm/issuer) and opt-in application-subscription validation.
 
 Refer to the inline comments inside `values.yaml` for a complete matrix of options and the expected data types for each block.
+
+### How configuration is delivered
+
+The chart renders a full `config.toml` into a ConfigMap and mounts it into both the controller
+and the policy engine. Non-secret settings are written directly from `gateway.config.*`. There
+is **no `APIP_GW_*` environment-variable override** — environment variables reach the config only
+through explicit `{{ env "NAME" "default" }}` interpolation tokens that the gateway resolves at
+container startup. The chart uses this only for the runtime secrets that must not appear in the
+ConfigMap:
+
+- **Control-plane token** — set `gateway.controller.controlPlane.token.{value,secretName,key}`.
+  It is injected into the container as `APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN` and read back by an
+  interpolation token in `config.toml`. The control-plane host is non-secret and rendered directly
+  from `gateway.controller.controlPlane.host`.
+- **Database password** — create the Secret and point a `passwordSecretRef` at it:
+  ```bash
+  kubectl create secret generic gateway-db --from-literal=password='<db-password>'
+  # then: gateway.controller.postgres.passwordSecretRef.name=gateway-db   (postgres)
+  #   or: gateway.controller.sqlserver.passwordSecretRef.name=gateway-db  (sqlserver)
+  ```
+  It is injected as `APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD` /
+  `APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD` and read back by an interpolation token in
+  `config.toml`.
+
+A plain `APIP_GW_*` env var with no matching token in `config.toml` is ignored.
+
+## At-rest Encryption (Required)
+
+At-rest encryption of stored secrets is **mandatory and fail-closed**: the gateway-controller
+will not start without its AES-256 key, and the chart **refuses to render** unless
+`gateway.controller.encryptionKeys.enabled=true` with a `secretName`. There is no
+development/demo bypass, and nothing is auto-generated — you provision the key.
+
+Create the key secret (32 random bytes stored under `default-aesgcm256-v1.bin`) in the release
+namespace, then enable it:
+
+```bash
+openssl rand 32 > default-aesgcm256-v1.bin
+kubectl create secret generic gateway-encryption-keys \
+  --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin
+
+helm install ap-gateway . \
+  --set gateway.controller.encryptionKeys.enabled=true \
+  --set gateway.controller.encryptionKeys.secretName=gateway-encryption-keys
+```
+
+The key filename must match `gateway.config.controller.encryption.providers[].keys[].file`
+(default `/app/data/aesgcm-keys/default-aesgcm256-v1.bin`; the mount directory is
+`gateway.controller.encryptionKeys.mountPath`). Rotating the key makes previously-encrypted data
+unreadable.
 
 ## TLS Certificate Configuration
 

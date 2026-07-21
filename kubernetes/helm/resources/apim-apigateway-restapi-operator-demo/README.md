@@ -22,6 +22,30 @@ If you also run the Gateway API demo, give that **`Gateway`** a different API se
 
 - Gateway Operator installed (with `APIGateway` / `RestApi` CRDs).
 - Operator `config.yaml` points to a valid gateway Helm chart and has a mounted default `gateway_values.yaml`.
+- **At-rest AES-256 encryption key Secret** pre-created in the Gateway's namespace (`apigateway-demo-apim`). Encryption is mandatory and fail-closed — nothing auto-generates the key, and the gateway chart will not render without it. Create it before applying the `APIGateway` (see [Create the encryption key Secret](#create-the-encryption-key-secret)).
+
+## Create the encryption key Secret
+
+At-rest AES-256 encryption is **mandatory and fail-closed**: the gateway chart will not render unless `gateway.controller.encryptionKeys.enabled=true` points at a pre-created Kubernetes Secret, and nothing auto-generates the key. The operator deploys the gateway pods into the Gateway's **own namespace**, so the Secret must live in **`apigateway-demo-apim`**.
+
+`01-gateway-values-configmap.yaml` already sets:
+
+```yaml
+gateway:
+  controller:
+    encryptionKeys:
+      enabled: true
+      secretName: gateway-encryption-keys
+```
+
+Create the matching Secret (once, before applying the `APIGateway`):
+
+```bash
+openssl rand 32 > default-aesgcm256-v1.bin
+kubectl create secret generic gateway-encryption-keys \
+  --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin \
+  -n apigateway-demo-apim
+```
 
 ## Apply (order matters)
 
@@ -29,6 +53,8 @@ If you also run the Gateway API demo, give that **`Gateway`** a different API se
 cd kubernetes/helm/resources/apim-apigateway-restapi-operator-demo
 
 kubectl apply -f 00-namespace.yaml
+# Pre-create the AES-256 encryption key Secret in apigateway-demo-apim
+# (see "Create the encryption key Secret" above) before applying the APIGateway.
 kubectl apply -f 01-gateway-values-configmap.yaml
 kubectl apply -f 02-apigateway.yaml
 kubectl apply -f 03-backend.yaml

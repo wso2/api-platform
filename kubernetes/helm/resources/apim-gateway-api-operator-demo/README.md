@@ -17,6 +17,7 @@ It complements the **`APIGateway` + `RestApi`** CRD flow documented elsewhere.
 - Operator **`gateway_api.gateway_class_names`** includes **`wso2-api-platform-apim`** (used by this demo’s GatewayClass/Gateway).
 - APIM control plane reachable from the cluster with a valid registration token.
 - Operator **`config.yaml`** points to a valid gateway chart and a default `gateway_values.yaml`; this demo provides only per-Gateway overrides via ConfigMap.
+- **At-rest AES-256 encryption key Secret** pre-created in the Gateway's namespace (`gateway-api-demo-apim`). Encryption is mandatory and fail-closed — nothing auto-generates the key, and the gateway chart will not render without it. Create it before applying the Gateway (see [Create the encryption key Secret](#create-the-encryption-key-secret)).
 
 ## What gets created
 
@@ -24,7 +25,7 @@ It complements the **`APIGateway` + `RestApi`** CRD flow documented elsewhere.
 |------|----------|------|
 | 1 | `Namespace` | Isolates demo resources (`gateway-api-demo-apim`). |
 | 2 | `GatewayClass` | Defines class `wso2-api-platform-apim` referenced by the `Gateway`. |
-| 3 | `ConfigMap` | Per-Gateway Helm values override (`values.yaml`) for APIM host/port/token and development mode. |
+| 3 | `ConfigMap` | Per-Gateway Helm values override (`values.yaml`) for APIM host/port/token and at-rest encryption keys. |
 | 4 | `Gateway` | Triggers operator Helm install `{metadata.name}-gateway` and references ConfigMap via `gateway.api-platform.wso2.com/helm-values-configmap`. |
 | 5 | `Deployment` + `Service` | Demo backend (`hello-backend-apim`) used as upstream. |
 | 6 | `HTTPRoute` | Mapped to `APIConfigData` and synced to gateway-controller `/api/management/v0.9/rest-apis`. |
@@ -43,15 +44,40 @@ Full manifests: [`gateway-api-httproute-policies-demo`](../gateway-api-httproute
 
 Malformed policy configuration can surface as **`ResolvedRefs=False`** / **`Invalid`** on the HTTPRoute. Ensure policy **names/versions** exist in your gateway deployment.
 
+## Create the encryption key Secret
+
+At-rest AES-256 encryption is **mandatory and fail-closed**: the gateway chart will not render unless `gateway.controller.encryptionKeys.enabled=true` points at a pre-created Kubernetes Secret, and nothing auto-generates the key. The operator deploys the gateway pods into the Gateway's **own namespace**, so the Secret must live in **`gateway-api-demo-apim`**.
+
+`01-gateway-values-configmap.yaml` already sets:
+
+```yaml
+gateway:
+  controller:
+    encryptionKeys:
+      enabled: true
+      secretName: gateway-encryption-keys
+```
+
+Create the matching Secret (once, before applying the Gateway):
+
+```bash
+openssl rand 32 > default-aesgcm256-v1.bin
+kubectl create secret generic gateway-encryption-keys \
+  --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin \
+  -n gateway-api-demo-apim
+```
+
 ## Apply (order matters)
 
-Use namespace **`gateway-api-demo-apim`** (or change `namespace` consistently in every file).
+Use namespace **`gateway-api-demo-apim`** (or change `namespace` consistently in every file, including the encryption key Secret above and the `secretName` in `01-gateway-values-configmap.yaml`).
 
 ```bash
 cd kubernetes/helm/resources/apim-gateway-api-operator-demo
 
 kubectl apply -f 00-namespace.yaml
 kubectl apply -f 01-gatewayclass.yaml
+# Pre-create the AES-256 encryption key Secret in gateway-api-demo-apim
+# (see "Create the encryption key Secret" above) before applying the Gateway.
 kubectl apply -f 01-gateway-values-configmap.yaml
 kubectl apply -f 02-gateway.yaml
 kubectl apply -f 03-backend.yaml
@@ -116,9 +142,9 @@ See [GATEWAY_API_IMPLEMENTATION_NOTES](../../../gateway-operator/docs/GATEWAY_AP
 |--------|--------|
 | `Gateway` never Programmed | `kubectl describe gateway platform-gw-apim -n gateway-api-demo-apim`; operator logs; Helm chart/image pull; `GatewayClass` must match operator `managedGatewayClassNames`. |
 | Controller logs `control_plane_token_configured:false` | Ensure ConfigMap uses key `values.yaml` and path `gateway.controller.controlPlane.token.value` (camelCase `controlPlane`). Re-apply `01-gateway-values-configmap.yaml` and `02-gateway.yaml`. |
-| Controller logs `Control plane token not configured, skipping connection` | Verify merged Helm values and deployment env var `APIP_GW_GATEWAY_REGISTRATION_TOKEN` in `platform-gw-apim-gateway-controller`. |
+| Controller logs `Control plane token not configured, skipping connection` | Verify merged Helm values (`gateway.controller.controlPlane.token.{value,secretName,key}`), which the chart injects into the controller as env var `APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN` in `platform-gw-apim-gateway-controller`. |
 | APIM still unreachable | Verify the `gateway.controller.controlPlane.host` value (include the port, e.g. `apim:9444`) and network reachability from cluster/pods. |
-| Helm fails with `gateway.controller.encryptionKeys must be enabled when gateway.developmentMode is false` | Keep `gateway.developmentMode: true` for demo, or configure `gateway.controller.encryptionKeys` for production-like setups. |
+| Chart fails to render with `gateway.controller.encryptionKeys must be enabled: at-rest encryption is mandatory ...` | At-rest encryption is mandatory and fail-closed — there is no dev-mode bypass. Pre-create the AES-256 key Secret in `gateway-api-demo-apim` (see [Create the encryption key Secret](#create-the-encryption-key-secret)) and set `gateway.controller.encryptionKeys.enabled=true` with a matching `secretName`. |
 | `HTTPRoute` stuck, parent not accepted | Parent `Gateway` must be same namespace or `parentRefs` namespace set; registry only after Gateway sync succeeds. |
 | `RestApi` deploys to Kubernetes `Gateway` release instead of `APIGateway` | Ensure this `Gateway` has `gateway.api-platform.wso2.com/api-selector` annotation and `RestApi` labels use a different `gateway.api-platform.wso2.com/restapi-target` value in mixed demos. |
 | Wrong API paths | Set annotation `gateway.api-platform.wso2.com/context` on `HTTPRoute`; paths must satisfy `APIConfigData` validation rules. |
@@ -128,7 +154,7 @@ See [GATEWAY_API_IMPLEMENTATION_NOTES](../../../gateway-operator/docs/GATEWAY_AP
 
 - `00-namespace.yaml` — namespace `gateway-api-demo-apim`
 - `01-gatewayclass.yaml` — class `wso2-api-platform-apim`
-- `01-gateway-values-configmap.yaml` — per-Gateway Helm values (`developmentMode`, `gateway.controller.controlPlane.*`, and `gateway.config.controller.controlplane.insecure_skip_verify`)
+- `01-gateway-values-configmap.yaml` — per-Gateway Helm values (`gateway.controller.encryptionKeys.*`, `gateway.controller.controlPlane.*`, and `gateway.config.controller.controlplane.insecure_skip_verify`)
 - `02-gateway.yaml` — `Gateway` `platform-gw-apim` + annotation to use `custom-gateway-values-apim`
 - `03-backend.yaml` — `ghcr.io/wso2/api-platform/sample-service:latest` Deployment + ClusterIP Service `hello-backend-apim` (port `9080`)
 - `04-httproute.yaml` — `HTTPRoute` `hello-api-apim` (`PathPrefix /hello`) with API metadata annotations (`api-version`, `context`, `display-name`)

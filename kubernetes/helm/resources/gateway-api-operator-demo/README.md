@@ -16,7 +16,7 @@ It complements the **`APIGateway` + `RestApi`** CRD flow documented elsewhere.
 - **Gateway API CRDs** present in the cluster (from a cloud add-on, Traefik CRD release, `installStandardCRDs: true` on a truly empty cluster, or `kubectl apply` of upstream manifests). You do **not** need duplicate CRDs owned by this chart if another release already installed them.
 - **`GatewayClass` name** must match one of the operator’s **`gateway_api.gateway_class_names`** values. By default the Helm chart sets **`wso2-api-platform`** in the operator `ConfigMap` (see `values.yaml` → `gatewayApi.managedGatewayClassNames`).
 - Operator **`config.yaml`** must point at a valid **gateway Helm chart** (`gateway.helm.chartName` / `chartVersion`) and a mounted **`helm_values_file_path`** (the chart mounts `gateway_values.yaml` at `/config/gateway_values.yaml` by default).
-- For gateway chart `1.0.0`, this demo sets `gateway.developmentMode: true` in the per-Gateway values override to avoid mandatory `gateway.controller.encryptionKeys` setup during local testing.
+- At-rest AES-256 encryption is **mandatory and fail-closed** for gateway chart `1.0.0`: the chart will not render unless `gateway.controller.encryptionKeys.enabled=true` points at a pre-created Kubernetes Secret, and nothing auto-generates the key. Pre-create the key Secret in this demo's Gateway namespace (`gateway-api-demo`) before applying the Gateway (see [Create the encryption key Secret](#create-the-encryption-key-secret)).
 - The operator **deep-merges** this ConfigMap into the operator’s default `gateway_values.yaml`, so you only need overrides here (most defaults come from the operator chart / baked `gateway_values.yaml`).
 - For demo stability, this uses a per-Gateway values override at **`gateway.config.controller.auth`** so management REST auth is deterministic.
 - **HTTPS:** `02a-gateway-values-configmap.yaml` turns on **`gateway.controller.tls`** with **cert-manager**. The controller mounts the issued **listener** TLS secret and the xDS translator can build the HTTPS Envoy listener. The **gateway-runtime** **Service** exposes **8443** (HTTPS) and **8080** (HTTP). The Kubernetes **Gateway** here still uses an **HTTP :80** listener for the Gateway API contract in this demo; data-plane TLS is on Envoy.
@@ -68,13 +68,38 @@ Full manifests: [`gateway-api-httproute-policies-demo`](../gateway-api-httproute
 
 Malformed policy configuration can surface as **`ResolvedRefs=False`** / **`Invalid`** on the HTTPRoute. Ensure policy **names/versions** exist in your gateway deployment.
 
+## Create the encryption key Secret
+
+At-rest AES-256 encryption is **mandatory and fail-closed**: the gateway chart will not render unless `gateway.controller.encryptionKeys.enabled=true` points at a pre-created Kubernetes Secret, and nothing auto-generates the key. The operator deploys the gateway pods into the Gateway's **own namespace**, so the Secret must live in **`gateway-api-demo`**.
+
+Enable encryption in the per-Gateway values override and point it at the Secret:
+
+```yaml
+gateway:
+  controller:
+    encryptionKeys:
+      enabled: true
+      secretName: gateway-encryption-keys
+```
+
+Create the matching Secret (once, before applying the Gateway):
+
+```bash
+openssl rand 32 > default-aesgcm256-v1.bin
+kubectl create secret generic gateway-encryption-keys \
+  --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin \
+  -n gateway-api-demo
+```
+
 ## Apply (order matters)
 
-Use namespace **`gateway-api-demo`** (or change `namespace` consistently in every file, including `02a` `dnsNames` if you rename the namespace).
+Use namespace **`gateway-api-demo`** (or change `namespace` consistently in every file, including the encryption key Secret above and the listener `dnsNames` if you rename the namespace).
 
 ```bash
 cd kubernetes/helm/resources/gateway-api-operator-demo
 # 0. Install cert-manager (see above) if not already present.
+# 0b. Pre-create the AES-256 encryption key Secret in gateway-api-demo
+#     (see "Create the encryption key Secret" above) before applying the Gateway.
 
 kubectl apply -f 00-namespace.yaml
 kubectl apply -f 01-gatewayclass.yaml
@@ -168,7 +193,7 @@ See [GATEWAY_API_IMPLEMENTATION_NOTES](../../../gateway-operator/docs/GATEWAY_AP
 | Certificate stays `Issuing` | `kubectl describe certificate -n gateway-api-demo platform-gw-gateway-controller-tls`; check Issuer events; cert-manager webhook must be healthy. |
 | Controller log: failed to read certificate file / initial xDS snapshot failed | Listener secret must exist and `gateway.controller.tls.enabled` must be **true** so `/app/listener-certs` is mounted (this demo keeps cert-manager enabled). |
 | `GET /api/admin/v0.9/health` **401** from gateway-controller, probes failing | Probes must use **`port: admin`** (admin server **9092**), not **`rest`** (**9090**). REST port runs Gin + basic auth; standalone gateway chart defaults already use `admin`. Upgrade **operator-helm-chart** so the `…-gateway-values` ConfigMap matches (or override `gateway.controller.deployment.{livenessProbe,readinessProbe}` accordingly). |
-| Helm fails with `gateway.controller.encryptionKeys must be enabled when gateway.developmentMode is false` | For demo runs, keep `gateway.developmentMode: true` in `02a-gateway-values-configmap.yaml`; for production-like setups, configure `gateway.controller.encryptionKeys` secret instead. |
+| Chart fails to render with `gateway.controller.encryptionKeys must be enabled: at-rest encryption is mandatory ...` | At-rest encryption is mandatory and fail-closed — there is no dev-mode bypass. Pre-create the AES-256 key Secret in `gateway-api-demo` (see [Create the encryption key Secret](#create-the-encryption-key-secret)) and set `gateway.controller.encryptionKeys.enabled=true` with a matching `secretName` in the per-Gateway values override. |
 | `HTTPRoute` fails with `403 {"error":"forbidden"}` from gateway-controller | Ensure per-Gateway values override uses `gateway.config.controller.auth` for gateway chart `1.0.0`. Re-apply `02a-gateway-values-configmap.yaml` and reconcile `Gateway`. |
 | `HTTPRoute` stuck, parent not accepted | Parent `Gateway` must be same namespace or `parentRefs` namespace set; registry only after Gateway sync succeeds. |
 | `RestApi` deploys to the Kubernetes `Gateway` release instead of `APIGateway` | Ensure this demo `Gateway` has annotation `gateway.api-platform.wso2.com/api-selector` set (from `02-gateway.yaml`) and **`RestApi`** labels use a different **`gateway.api-platform.wso2.com/restapi-target`** value than this Gateway’s selector. Re-apply `02-gateway.yaml` and wait for reconcile. |
@@ -182,7 +207,7 @@ See [GATEWAY_API_IMPLEMENTATION_NOTES](../../../gateway-operator/docs/GATEWAY_AP
 
 - `00-namespace.yaml` — `gateway-api-demo`
 - `01-gatewayclass.yaml` — class `wso2-api-platform`
-- `02a-gateway-values-configmap.yaml` — per-Gateway Helm values (`auth`, `developmentMode`, **cert-manager** listener TLS + SANs for in-cluster HTTPS)
+- `02a-gateway-values-configmap.yaml` — per-Gateway Helm values (`auth`, `gateway.controller.encryptionKeys.*`, **cert-manager** listener TLS + SANs for in-cluster HTTPS)
 - `02-gateway.yaml` — listener + `allowedRoutes` + annotation to use `platform-gw-values`
 - `03-backend.yaml` — `ghcr.io/wso2/api-platform/sample-service` Deployment + ClusterIP Service (port **9080**, same image as integration tests)
 - `04-httproute.yaml` — `PathPrefix /hello`, GET → backend Service; annotations set `api-version`, **`context`** (omit or leave blank to use API context **`/`**), `display-name`, and optional `project-id` for the generated API payload
