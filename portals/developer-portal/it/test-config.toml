@@ -13,7 +13,7 @@
 # override is silently ignored and the built-in default
 # (src/config/configDefaults.js) is used instead.
 
-[developer_portal.tls]
+[developer_portal.server.https]
 # Use plain HTTP inside the test network so Cypress doesn't need to trust a cert.
 enabled = false
 

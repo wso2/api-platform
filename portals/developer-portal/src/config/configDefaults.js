@@ -32,12 +32,15 @@
 const DEFAULTS = {
     server: {
         port: 3000,
-    },
-    tls: {
-        enabled: false,   // was: advanced.http, inverted (http:true by default → tls disabled)
-        certFile: './resources/security/client-truststore.pem',
-        keyFile: './resources/security/private-key.pem',
-        caFile: './resources/security/client-truststore.pem',
+        // Single listener on server.port; https.enabled toggles whether it
+        // terminates TLS. enabled=false serves plain HTTP on that port — for when
+        // a trusted upstream terminates TLS. cert_file/key_file are required only
+        // when enabled=true (no self-signed fallback).
+        https: {
+            enabled: false,
+            certFile: './resources/security/client-truststore.pem',
+            keyFile: './resources/security/private-key.pem',
+        },
     },
     logging: {
         consoleOnly: true,

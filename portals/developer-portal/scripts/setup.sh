@@ -109,7 +109,7 @@ mkdir -p "$DEVPORTAL_CERT_DIR"
 # Shared by both containers (mounted read-only into each at its own /etc/<service>/tls
 # path) — platform-api's HTTPSListener hardcodes the filenames cert.pem/key.pem within
 # its cert_dir, so this pair must use those exact names regardless of what devportal's
-# own (fully configurable) APIP_DP_TLS_CERTFILE/KEYFILE point at.
+# own (fully configurable) APIP_DP_SERVER_HTTPS_CERT_FILE/KEY_FILE point at.
 if [ -f "$DEVPORTAL_CERT_DIR/cert.pem" ] && [ -f "$DEVPORTAL_CERT_DIR/key.pem" ]; then
     log "  - $DEVPORTAL_CERT_DIR already has a certificate, leaving as-is"
 else

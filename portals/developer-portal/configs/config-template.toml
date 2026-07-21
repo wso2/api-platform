@@ -34,20 +34,18 @@
 # =============================================================================
 # SERVER CONFIGURATION
 # =============================================================================
+# Single listener on server.port. https.enabled toggles whether it terminates
+# TLS itself; set enabled=false only when a trusted upstream (proxy/LB/ingress)
+# terminates TLS — the listener then serves plain HTTP on that port.
+# cert_file/key_file are required only when enabled=true (no self-signed fallback).
 
 [developer_portal.server]
 port = 3000
 
-# =============================================================================
-# TLS CONFIGURATION
-# =============================================================================
-# Only relevant when the portal terminates TLS itself (not behind a proxy/LB).
-
-[developer_portal.tls]
+[developer_portal.server.https]
 enabled = false
 cert_file = "./resources/security/client-truststore.pem"
 key_file = "./resources/security/private-key.pem"
-ca_file = "./resources/security/client-truststore.pem"
 
 # =============================================================================
 # LOGGING CONFIGURATION

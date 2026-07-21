@@ -64,7 +64,7 @@ app.use(session({
     resave: false,
     saveUninitialized: true,
     cookie: {
-        secure: config.tls.enabled && !config.designMode?.enabled,
+        secure: config.server.https.enabled && !config.designMode?.enabled,
         maxAge: 60 * 60 * 1000,
     },
 }));

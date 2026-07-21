@@ -31,7 +31,7 @@
 # This file's own fallbacks (the third arg to {{ env "NAME" "default" }} below)
 # are intentionally wired for the Docker Compose topology (docker-compose.yaml),
 # NOT for src/config/configDefaults.js's generic, dependency-free defaults —
-# e.g. tls.enabled defaults to true here (a real cert is bind-mounted at
+# e.g. server.https.enabled defaults to true here (a real cert is bind-mounted at
 # /etc/devportal/tls) vs. false in configDefaults.js (no cert available for a
 # bare `npm start`). configDefaults.js's DEFAULTS only take effect for keys this
 # file doesn't list at all (idp, organization, uploads, etc.), or if this file
@@ -39,16 +39,22 @@
 # see configDefaults.js's own comment for why its values stay generic.
 #
 # Running locally without Docker? Use `npm run start:local` instead of
-# `npm start` (package.json) — it overrides tls.enabled and platform_api.* to
+# `npm start` (package.json) — it overrides server.https.enabled and platform_api.* to
 # values that make sense outside Compose, all in one place.
 # Plain `npm start` inherits this file's Compose-oriented defaults as-is and
 # will fail trying to read a TLS cert path that only exists in the containers.
 
-[developer_portal.tls]
-enabled   = '{{ env "APIP_DP_TLS_ENABLED" "true" }}'
-cert_file = '{{ env "APIP_DP_TLS_CERTFILE" "/etc/devportal/tls/cert.pem" }}'
-key_file  = '{{ env "APIP_DP_TLS_KEYFILE" "/etc/devportal/tls/key.pem" }}'
-ca_file   = '{{ env "APIP_DP_TLS_CAFILE" "/etc/devportal/tls/cert.pem" }}'
+[developer_portal.server]
+port = '{{ env "APIP_DP_SERVER_PORT" "3000" }}'
+
+# Single listener on server.port; enabled toggles whether it terminates TLS. Set
+# enabled=false only when a trusted upstream (proxy/LB/ingress) terminates TLS —
+# the listener then serves plain HTTP on that port. cert_file/key_file must point
+# at a real pair when enabled=true (no self-signed fallback).
+[developer_portal.server.https]
+enabled   = '{{ env "APIP_DP_SERVER_HTTPS_ENABLED" "true" }}'
+cert_file = '{{ env "APIP_DP_SERVER_HTTPS_CERT_FILE" "/etc/devportal/tls/cert.pem" }}'
+key_file  = '{{ env "APIP_DP_SERVER_HTTPS_KEY_FILE" "/etc/devportal/tls/key.pem" }}'
 
 [developer_portal.logging]
 console_only = '{{ env "APIP_DP_LOGGING_CONSOLEONLY" "true" }}'

@@ -74,7 +74,7 @@ function logStartupBanner() {
     const orgSegment = config.designMode?.enabled ? '' : `/${config.organization.defaultName || '<organization>'}`;
     // The bare org URL redirects server-side to /views/default (orgContentRoute.js) —
     // shorter and avoids baking view-naming details into the banner.
-    const scheme = config.tls.enabled && !config.designMode?.enabled ? 'https' : 'http';
+    const scheme = config.server.https.enabled && !config.designMode?.enabled ? 'https' : 'http';
     const visitUrl = `${scheme}://localhost:${PORT}${orgSegment}`;
     printBanner(visitUrl);
 }
@@ -97,23 +97,19 @@ async function startServer() {
         logger.info('Database: SQLite schema synced ✓');
     }
 
-    if (!config.tls.enabled || config.designMode?.enabled) {
+    if (!config.server.https.enabled || config.designMode?.enabled) {
         server = http.createServer(app).listen(PORT, '0.0.0.0', onListening);
     } else {
     try {
-        const certPath = path.resolve(config.tls.certFile);
-        const keyPath = path.resolve(config.tls.keyFile);
+        const certPath = path.resolve(config.server.https.certFile);
+        const keyPath = path.resolve(config.server.https.keyFile);
 
         const serverCert = fs.readFileSync(certPath);
         const serverKey = fs.readFileSync(keyPath);
-        const caCert = fs.readFileSync(path.resolve(config.tls.caFile));
 
         server = https.createServer({
             key: serverKey,
             cert: serverCert,
-            ca: caCert,
-            requestCert: true,
-            rejectUnauthorized: false,
         }, app).listen(PORT, onListening);
 
     } catch (err) {
