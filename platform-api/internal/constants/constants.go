@@ -169,6 +169,12 @@ const (
 
 const TemplateManagedByOrganization = "organization"
 
+// ReservedTemplateGroupIDPrefix is the group_id namespace reserved for WSO2-shipped
+// built-in templates. Custom templates created via the REST API must not use it; a
+// generated group_id that falls in this namespace is rewritten with the "x" prefix
+// (e.g. "wso2-openai" -> "xwso2-openai").
+const ReservedTemplateGroupIDPrefix = "wso2-"
+
 // ValidPolicyManagedBy holds accepted values for the managed_by field on gateway custom policies
 var ValidPolicyManagedBy = map[string]bool{
 	PolicyManagedByOrganization: true,

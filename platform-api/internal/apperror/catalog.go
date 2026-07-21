@@ -102,6 +102,7 @@ var (
 	LLMProviderTemplateDisabled          = def(CodeLLMProviderTemplateDisabled, http.StatusBadRequest, "The referenced LLM provider template is disabled.")
 	LLMProviderTemplateReadOnly          = def(CodeLLMProviderTemplateReadOnly, http.StatusForbidden, "Built-in templates are read-only and cannot be modified.")
 	LLMProviderTemplateNotToggleable     = def(CodeLLMProviderTemplateNotToggleable, http.StatusForbidden, "Only built-in templates can be enabled or disabled.")
+	LLMProviderTemplateBuiltInImmutable  = def(CodeLLMProviderTemplateBuiltInImmutable, http.StatusForbidden, "Built-in templates cannot have new versions. Create a copy to make a custom template.")
 )
 
 // Gateway entries.

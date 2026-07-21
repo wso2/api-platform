@@ -45,7 +45,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Check, ChevronDown, ChevronLeft, Clock, Download, Edit, GitBranch, Lock, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { Check, ChevronDown, ChevronLeft, Clock, Copy, Download, Edit, GitBranch, Lock, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { formatRelativeTime } from '../../../../contexts/llmProvider';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
@@ -780,15 +780,31 @@ export default function ProviderTemplateOverview() {
                             );
                           })}
                           <Divider />
-                          <MenuItem
-                            component={RouterLink}
-                            to="new-version"
-                            onClick={() => setVersionMenuAnchor(null)}
-                            sx={{ color: 'primary.main', gap: 1 }}
-                          >
-                            <GitBranch size={16} />
-                            Create new version
-                          </MenuItem>
+                          {isBuiltIn ? (
+                            <MenuItem
+                              onClick={() => {
+                                setVersionMenuAnchor(null);
+                                navigate(`${listPath}/new`, {
+                                  state: { copyFrom: template },
+                                });
+                              }}
+                              sx={{ color: 'primary.main', gap: 1 }}
+                              data-cyid="provider-template-create-copy-menuitem"
+                            >
+                              <Copy size={16} />
+                              Create a copy
+                            </MenuItem>
+                          ) : (
+                            <MenuItem
+                              component={RouterLink}
+                              to="new-version"
+                              onClick={() => setVersionMenuAnchor(null)}
+                              sx={{ color: 'primary.main', gap: 1 }}
+                            >
+                              <GitBranch size={16} />
+                              Create new version
+                            </MenuItem>
+                          )}
                         </>
                       );
                     })()}
