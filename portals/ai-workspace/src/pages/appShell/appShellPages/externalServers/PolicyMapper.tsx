@@ -39,9 +39,12 @@ import {
   getGuardrails,
   getPolicyDefinition as fetchPolicyDefinitionYaml,
 } from '../../../../apis/policyHubApis';
+import { getGatewayCustomPolicies } from '../../../../apis/gatewayPolicyApis';
+import type { GatewayCustomPolicy } from '../../../../apis/gatewayPolicyApis';
 import type { PolicyHubPolicy } from '../../../../utils/types';
 import PolicyParameterEditor from '../../PolicyParameterEditor/PolicyParameterEditor';
 import type {
+  ParameterSchema,
   PolicyDefinition as PolicyDefinitionSchema,
   ParameterValues,
 } from '../../PolicyParameterEditor/types';
@@ -77,7 +80,79 @@ type Props = {
   readOnly?: boolean;
 };
 
-function DragHandle(): JSX.Element {
+/** A drawer list entry — either a Policy Hub guardrail or a synced gateway
+ * custom policy, rendered and clicked through the same UI. */
+type DrawerGuardrailItem = PolicyHubPolicy & {
+  isCustomPolicy?: boolean;
+  customPolicyUuid?: string;
+  customPolicyDefinition?: Record<string, unknown>;
+};
+
+/** Custom policy versions come back as full semver with a "v" prefix (e.g.
+ * "v1.0.0"), unlike Policy Hub guardrails which are already display-formatted
+ * (e.g. "1.0"). Reformat to major.minor so both render the same way. */
+const formatPolicyVersion = (version?: string): string => {
+  if (!version) return '0';
+  const [major = '0', minor = '0'] = version.replace(/^v/i, '').split('.');
+  return `${major}.${minor}`;
+};
+
+const toDrawerItem = (policy: GatewayCustomPolicy): DrawerGuardrailItem => ({
+  name: policy.name,
+  version: formatPolicyVersion(policy.version),
+  displayName: policy.displayName || policy.name,
+  description: policy.description,
+  provider: policy.provider,
+  isCustomPolicy: true,
+  customPolicyUuid: policy.uuid,
+  customPolicyDefinition: policy.policyDefinition,
+});
+
+/** Custom policies already carry their full definition inline (no policy-hub
+ * YAML fetch needed) — just reshape it into a PolicyDefinitionSchema. */
+const buildPolicyDefinitionFromCustomPolicy = (item: {
+  name: string;
+  version: string;
+  description?: string;
+  policyDefinition?: Record<string, unknown>;
+}): PolicyDefinitionSchema => {
+  const def = (item.policyDefinition ?? {}) as {
+    description?: string;
+    parameters?: ParameterSchema;
+    systemParameters?: ParameterSchema;
+  };
+  return {
+    name: item.name,
+    version: item.version,
+    description: item.description || def.description || '',
+    parameters: def.parameters ?? { type: 'object', properties: {} },
+    systemParameters: def.systemParameters,
+  };
+};
+
+/** Fetches MCP Policy Hub guardrails and synced gateway custom policies in
+ * parallel, merging and sorting them alphabetically. Either source failing
+ * independently still yields the other's results. */
+const fetchAllPolicies = async (): Promise<DrawerGuardrailItem[]> => {
+  const [hubResult, customResult] = await Promise.allSettled([
+    getGuardrails('MCP'),
+    getGatewayCustomPolicies(),
+  ]);
+  const hubItems: DrawerGuardrailItem[] =
+    hubResult.status === 'fulfilled' ? hubResult.value.data ?? [] : [];
+  if (customResult.status === 'rejected') {
+    logger.error('Failed to load custom policies:', customResult.reason);
+  }
+  const customItems: DrawerGuardrailItem[] =
+    customResult.status === 'fulfilled'
+      ? (customResult.value.list ?? []).map(toDrawerItem)
+      : [];
+  return [...hubItems, ...customItems].sort((a, b) =>
+    (a.displayName || a.name).localeCompare(b.displayName || b.name)
+  );
+};
+
+function DragHandle(): React.JSX.Element {
   return (
     <Box
       sx={{
@@ -113,7 +188,7 @@ export default function PolicyMapper({
   onReorderPolicies,
   validationResult,
   readOnly = false,
-}: Props): JSX.Element {
+}: Props): React.JSX.Element {
   const intl = useIntl();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [draggedInstanceId, setDraggedInstanceId] = useState<string | null>(
@@ -124,7 +199,7 @@ export default function PolicyMapper({
   );
 
   // Drawer state
-  const [fetchedPolicies, setFetchedPolicies] = useState<PolicyHubPolicy[]>([]);
+  const [fetchedPolicies, setFetchedPolicies] = useState<DrawerGuardrailItem[]>([]);
   const [isFetchingPolicies, setIsFetchingPolicies] = useState(false);
   const [fetchPoliciesError, setFetchPoliciesError] = useState<string | null>(
     null
@@ -162,8 +237,7 @@ export default function PolicyMapper({
     setIsFetchingPolicies(true);
     setFetchPoliciesError(null);
     try {
-      const response = await getGuardrails('MCP');
-      setFetchedPolicies(response.data ?? []);
+      setFetchedPolicies(await fetchAllPolicies());
     } catch {
       setFetchPoliciesError('Failed to fetch policies.');
     } finally {
@@ -178,8 +252,7 @@ export default function PolicyMapper({
     setFetchPoliciesError(null);
 
     try {
-      const response = await getGuardrails('MCP');
-      const policies = response.data ?? [];
+      const policies = await fetchAllPolicies();
       setFetchedPolicies(policies);
 
       const matchedPolicy = policies.find((p) => p.name === item.policyName);
@@ -193,6 +266,23 @@ export default function PolicyMapper({
       setIsDetailView(true);
       setPolicyDefinition(null);
       setDefinitionError(null);
+
+      if (matchedPolicy.isCustomPolicy) {
+        setIsFetchingPolicies(false);
+        if (!matchedPolicy.customPolicyDefinition) {
+          setDefinitionError('No definition available for this custom policy.');
+          return;
+        }
+        setPolicyDefinition(
+          buildPolicyDefinitionFromCustomPolicy({
+            name: matchedPolicy.name,
+            version: matchedPolicy.version,
+            description: matchedPolicy.description,
+            policyDefinition: matchedPolicy.customPolicyDefinition,
+          })
+        );
+        return;
+      }
 
       if (!matchedPolicy.version) {
         setDefinitionError('No version available for this policy.');
@@ -216,13 +306,29 @@ export default function PolicyMapper({
     }
   };
 
-  const handlePolicyClick = async (policy: PolicyHubPolicy) => {
+  const handlePolicyClick = async (policy: DrawerGuardrailItem) => {
     if (readOnly) return;
     setSelectedDrawerPolicy(policy.name);
     setIsDetailView(true);
     setPolicyDefinition(null);
     setPolicySettings({});
     setDefinitionError(null);
+
+    if (policy.isCustomPolicy) {
+      if (!policy.customPolicyDefinition) {
+        setDefinitionError('No definition available for this custom policy.');
+        return;
+      }
+      setPolicyDefinition(
+        buildPolicyDefinitionFromCustomPolicy({
+          name: policy.name,
+          version: policy.version,
+          description: policy.description,
+          policyDefinition: policy.customPolicyDefinition,
+        })
+      );
+      return;
+    }
 
     if (!policy.version) {
       setDefinitionError('No version available for this policy.');
@@ -263,7 +369,9 @@ export default function PolicyMapper({
         policyId: policy.name,
         policyName: policy.name,
         displayName: policy.displayName || policy.name,
-        version: policy.version ? `v${policy.version.split('.')[0]}` : 'v0',
+        version: policy.version
+          ? `v${policy.version.replace(/^v/i, '').split('.')[0]}`
+          : 'v0',
         params,
       });
     }
@@ -632,12 +740,22 @@ export default function PolicyMapper({
                                     >
                                       {policy.displayName || policy.name}
                                     </Typography>
-                                    <Chip
-                                      label={policy.version || 'v0'}
-                                      size="small"
-                                      variant="outlined"
-                                      color="default"
-                                    />
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                      {policy.provider && (
+                                        <Chip
+                                          label={policy.provider}
+                                          size="small"
+                                          variant="outlined"
+                                          color="default"
+                                        />
+                                      )}
+                                      <Chip
+                                        label={policy.version || 'v0'}
+                                        size="small"
+                                        variant="outlined"
+                                        color="default"
+                                      />
+                                    </Box>
                                   </Box>
                                 </ListItemButton>
                               </Box>
