@@ -36,8 +36,8 @@ spec:
               set -e
               echo "Applying gateway-operator CRDs..."
               for f in /crds/*.yaml; do
-                echo "  kubectl apply -f $f"
-                kubectl apply -f "$f"
+                echo "  kubectl apply --server-side -f $f"
+                kubectl apply --server-side --force-conflicts -f "$f"
               done
               echo "CRDs applied."
           volumeMounts:
