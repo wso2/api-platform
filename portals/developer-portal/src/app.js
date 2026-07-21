@@ -80,7 +80,7 @@ app.get('/robots.txt', (req, res) => {
 });
 
 app.get('/llms.txt', (req, res) => {
-    const baseUrl = config.server.baseUrl;
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.type('text/plain').send(
         `# API Developer Portal — AI Agent Entry Point\n\n` +
         `This portal provides APIs, MCP servers, and API workflows organized by organization and view.\n` +

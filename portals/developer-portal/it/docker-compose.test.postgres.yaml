@@ -87,7 +87,6 @@ services:
       APIP_DP_DATABASE_USERNAME: devportal
       APIP_DP_DATABASE_PASSWORD: devportal
       APIP_DP_DATABASE_NAME: devportal
-      APIP_DP_SERVER_BASEURL: "http://devportal:3000"
       # devportal fails closed at startup without these — fixed test-only values,
       # not meant to be reused outside this CI fixture.
       APIP_DP_SECURITY_ENCRYPTION_KEY: "7f40672c96fd437dc33550755e218d586014232ceb5b01c9405aab575bcb1f4a"

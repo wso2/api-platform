@@ -13,9 +13,6 @@
 # override is silently ignored and the built-in default
 # (src/config/configDefaults.js) is used instead.
 
-[developer_portal.server]
-base_url = '{{ env "APIP_DP_SERVER_BASEURL" "http://devportal:3000" }}'
-
 [developer_portal.tls]
 # Use plain HTTP inside the test network so Cypress doesn't need to trust a cert.
 enabled = false

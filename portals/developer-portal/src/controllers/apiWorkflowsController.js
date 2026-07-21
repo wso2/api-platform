@@ -24,7 +24,6 @@ const logger = require('../config/logger');
 const util = require('../utils/util');
 const { loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, rewriteViewStyles, isAiDisabledForPortal } = require('../utils/util');
 const constants = require('../utils/constants');
-const { config } = require('../config/configLoader');
 const fs = require('fs');
 const path = require('path');
 const Handlebars = require('handlebars');
@@ -427,7 +426,7 @@ const getAllPublishedFlowsMD = async (req, res) => {
 const generatePrompt = async (req, res) => {
     const { displayName, description, apis, orgName, viewName, handle } = req.body;
     try {
-        const baseUrl = config.server.baseUrl || `${req.protocol}://${req.get('host')}`;
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
         const prompt = apiWorkflowService.generateAgentPrompt(displayName, description, apis || [], orgName || '', viewName || 'default', baseUrl, handle || '');
         res.status(200).json({ agentPrompt: prompt });
     } catch (error) {

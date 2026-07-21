@@ -15,7 +15,7 @@
 # style template syntax as the value. Use single-quoted TOML literal strings
 # (as below) so the inner double quotes need no backslash-escaping:
 #
-#   base_url = '{{ env "APIP_DP_SERVER_BASEURL" }}'
+#   url = '{{ env "APIP_DP_PLATFORMAPI_URL" }}'
 #   encryption_key = '{{ file "/secrets/devportal/encryption-key" }}'
 #
 #   {{ env "NAME" }}            -> NAME's value. FAILS CLOSED (aborts startup)
@@ -36,7 +36,6 @@
 # =============================================================================
 
 [developer_portal.server]
-base_url = "http://localhost:3000"
 port = 3000
 read_only_mode = false
 

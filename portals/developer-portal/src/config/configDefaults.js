@@ -31,7 +31,6 @@
  */
 const DEFAULTS = {
     server: {
-        baseUrl: 'http://localhost:3000',
         port: 3000,
         readOnlyMode: false,
     },

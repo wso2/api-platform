@@ -13,7 +13,7 @@
 # using Handlebars-style template syntax as the value. Use single-quoted TOML
 # literal strings (as below) so the inner double quotes need no escaping:
 #
-#   base_url       = '{{ env "APIP_DP_SERVER_BASEURL" }}'
+#   url            = '{{ env "APIP_DP_PLATFORMAPI_URL" }}'
 #   encryption_key = '{{ file "/secrets/devportal/encryption-key" }}'
 #
 #   {{ env "NAME" }}            -> NAME's value. FAILS CLOSED (aborts startup) if
@@ -39,13 +39,10 @@
 # see configDefaults.js's own comment for why its values stay generic.
 #
 # Running locally without Docker? Use `npm run start:local` instead of
-# `npm start` (package.json) — it overrides tls.enabled, server.base_url, and
-# platform_api.* to values that make sense outside Compose, all in one place.
+# `npm start` (package.json) — it overrides tls.enabled and platform_api.* to
+# values that make sense outside Compose, all in one place.
 # Plain `npm start` inherits this file's Compose-oriented defaults as-is and
 # will fail trying to read a TLS cert path that only exists in the containers.
-
-[developer_portal.server]
-base_url = '{{ env "APIP_DP_SERVER_BASEURL" "https://localhost:3000" }}'
 
 [developer_portal.tls]
 enabled   = '{{ env "APIP_DP_TLS_ENABLED" "true" }}'

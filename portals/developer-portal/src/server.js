@@ -74,7 +74,8 @@ function logStartupBanner() {
     const orgSegment = config.designMode?.enabled ? '' : `/${config.organization.defaultName || '<organization>'}`;
     // The bare org URL redirects server-side to /views/default (orgContentRoute.js) —
     // shorter and avoids baking view-naming details into the banner.
-    const visitUrl = `${config.server.baseUrl}${orgSegment}`;
+    const scheme = config.tls.enabled && !config.designMode?.enabled ? 'https' : 'http';
+    const visitUrl = `${scheme}://localhost:${PORT}${orgSegment}`;
     printBanner(visitUrl);
 }
 

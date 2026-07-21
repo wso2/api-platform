@@ -188,7 +188,7 @@ const loadApplications = async (req, res, next) => {
     if (config.designMode?.enabled) {
         const templateContent = {
             applicationsMetadata: sampleApiLoader.loadApplications(),
-            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.VIEWS_PATH + viewName,
             devMode: true,
         };
         const html = renderTemplate('../pages/applications/page.hbs', config.designMode.pathToLayout + 'layout/main.hbs', templateContent, true);

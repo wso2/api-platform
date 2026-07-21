@@ -87,7 +87,6 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `[server].base_url` | Public URL shown in links and callbacks | `https://localhost:3000` |
 | `[tls].enabled` | Terminate TLS in the portal itself (vs. behind a proxy) | `true` |
 | `[database].type` | `sqlite` (default) or `postgres` | `sqlite` |
 | `[idp].client_id` | Set to delegate login to an external OIDC provider — leave empty for local auth via `[developer_portal.platform_api]` | _(empty)_ |

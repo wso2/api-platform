@@ -23,7 +23,6 @@ const sequelize = require('../db/sequelizeConfig');
 const { UniqueConstraintError } = require('sequelize');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
-const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const util = require('../utils/util');
 const yaml = require('../utils/yaml');
@@ -379,7 +378,7 @@ const getAllAPIWorkflows = async (req, res) => {
 const generatePrompt = async (req, res) => {
     const { displayName, description, apis, orgHandle, viewName, id } = req.body;
     try {
-        const baseUrl = config.server.baseUrl || `${req.protocol}://${req.get('host')}`;
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
         const prompt = generateAgentPrompt(displayName, description, apis || [], orgHandle || '', viewName || 'default', baseUrl, id || '');
         res.status(200).json({ agentPrompt: prompt });
     } catch (error) {

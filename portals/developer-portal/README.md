@@ -141,7 +141,7 @@ Use this for active development, custom IdP configuration, or when you prefer to
 
 ### 2. Use `npm run start:local`, not `npm start`
 
-`configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `platform_api.base_url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off, `http://localhost:3000`, and `platform_api.base_url` pointed at `localhost` (see [Local auth](#local-auth) if you're running the Platform API sidecar).
+`configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `platform_api.url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off and `platform_api.url` pointed at `localhost` (see [Local auth](#local-auth) if you're running the Platform API sidecar).
 
 ### 3. Configure the Identity Provider (optional)
 
@@ -268,7 +268,6 @@ Every config key can be overridden with an `APIP_DP_*` environment variable. You
 | `APIP_DP_TLS_ENABLED` | `config.tls.enabled` |
 | `APIP_DP_IDP_CLIENTID` | `config.idp.clientId` |
 | `APIP_DP_IDP_ISSUER` | `config.idp.issuer` |
-| `APIP_DP_SERVER_BASEURL` | `config.server.baseUrl` |
 | `APIP_DP_SERVER_PORT` | `config.server.port` |
 | `APIP_DP_DATABASE_SSL_ENABLED` | `config.database.ssl.enabled` |
 
