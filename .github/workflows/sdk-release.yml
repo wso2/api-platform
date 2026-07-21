@@ -1,11 +1,9 @@
 name: SDK Release
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'sdk/**'
+  # Auto-release on merge to main is disabled — releasing the SDK is manual-only
+  # to prevent an unintended version bump/tag on every merge that touches sdk/**.
+  # Trigger a release via Actions → "Run workflow" with an explicit version.
   workflow_dispatch:
     inputs:
       version:
@@ -27,12 +25,18 @@ jobs:
 
       - name: Determine version
         id: version
+        env:
+          # Pass the untrusted input via env — never interpolate it into the shell script body.
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # Manual trigger - use provided version
-            VERSION="${{ inputs.version }}"
-            # Remove leading 'v' if present
-            VERSION="${VERSION#v}"
+            # Manual trigger - use provided version (read from env, remove leading 'v' if present)
+            VERSION="${INPUT_VERSION#v}"
+            # Validate strict semantic version (MAJOR.MINOR.PATCH) before it reaches any tag/push command
+            if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "Error: provided version is not a valid semantic version (expected MAJOR.MINOR.PATCH, e.g. 0.3.10)"
+              exit 1
+            fi
             echo "Using manually provided version: ${VERSION}"
           else
             # Push trigger (PR merge) - auto-increment patch version
