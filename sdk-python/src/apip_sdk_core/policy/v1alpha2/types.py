@@ -130,9 +130,9 @@ class StreamBody:
 
 
 @dataclass(slots=True)
-class DownstreamContext:
-    """Snapshot of the client request headers, captured before any policy
-    mutation.
+class DownstreamRequest:
+    """Snapshot of the request as received from the downstream client, captured
+    before any policy mutation.
 
     ``headers`` is ``Headers | None`` (defaulting to ``None``) to mirror the Go
     SDK's nilable ``Headers *Headers``: the kernel leaves it ``None`` when no
@@ -144,15 +144,28 @@ class DownstreamContext:
 
 
 @dataclass(slots=True)
-class RequestUpstream:
+class DownstreamContext:
+    """Downstream client, carrying a snapshot of the client request.
+
+    Access the snapshot via ``downstream.request.headers``, mirroring the
+    upstream side's ``upstream.response.headers``. ``request`` is
+    ``DownstreamRequest | None`` (defaulting to ``None``), left ``None`` by the
+    kernel when no snapshot is available.
+    """
+
+    request: DownstreamRequest | None = None
+
+
+@dataclass(slots=True)
+class UpstreamRequestContext:
     """Route's resolved upstream target during the request phase.
 
-    ``upstream_name`` replaces the internal Envoy cluster name. Use ``url`` to
+    ``name`` replaces the internal Envoy cluster name. Use ``url`` to
     address the actual upstream (e.g. for request signing); the client-facing
     authority/scheme on the context must not be used for that.
     """
 
-    upstream_name: str = ""
+    name: str = ""
     url: str = ""
     base_path: str = ""
 
@@ -170,12 +183,12 @@ class UpstreamResponse:
 
 
 @dataclass(slots=True)
-class ResponseUpstream:
+class UpstreamResponseContext:
     """Route's resolved upstream target during the response phase, carrying a
     snapshot of the upstream response.
     """
 
-    upstream_name: str = ""
+    name: str = ""
     url: str = ""
     base_path: str = ""
     response: UpstreamResponse | None = None
@@ -191,7 +204,7 @@ class RequestHeaderContext:
     scheme: str = ""
     vhost: str = ""
     downstream: DownstreamContext | None = None
-    upstream: RequestUpstream | None = None
+    upstream: UpstreamRequestContext | None = None
 
 
 @dataclass(slots=True)
@@ -205,7 +218,7 @@ class RequestContext:
     scheme: str = ""
     vhost: str = ""
     downstream: DownstreamContext | None = None
-    upstream: RequestUpstream | None = None
+    upstream: UpstreamRequestContext | None = None
 
 
 @dataclass(slots=True)
@@ -218,7 +231,7 @@ class ResponseHeaderContext:
     response_headers: Headers = field(default_factory=Headers)
     response_status: int = 200
     downstream: DownstreamContext | None = None
-    upstream: ResponseUpstream | None = None
+    upstream: UpstreamResponseContext | None = None
 
 
 @dataclass(slots=True)
@@ -232,7 +245,7 @@ class ResponseContext:
     response_body: Body | None = None
     response_status: int = 200
     downstream: DownstreamContext | None = None
-    upstream: ResponseUpstream | None = None
+    upstream: UpstreamResponseContext | None = None
 
 
 @dataclass(slots=True)
@@ -245,7 +258,7 @@ class RequestStreamContext:
     scheme: str = ""
     vhost: str = ""
     downstream: DownstreamContext | None = None
-    upstream: RequestUpstream | None = None
+    upstream: UpstreamRequestContext | None = None
 
 
 @dataclass(slots=True)
@@ -258,7 +271,7 @@ class ResponseStreamContext:
     response_headers: Headers = field(default_factory=Headers)
     response_status: int = 200
     downstream: DownstreamContext | None = None
-    upstream: ResponseUpstream | None = None
+    upstream: UpstreamResponseContext | None = None
 
 
 @dataclass(slots=True)
