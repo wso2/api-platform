@@ -18,7 +18,7 @@
 #     router in front of it. With no "selected_provider" in the request
 #     metadata the translator runs unconditionally.
 #
-#   * Multi-provider mode    — put openai-header-router first. It writes
+#   * Multi-provider mode    — put llm-header-router first. It writes
 #     the chosen provider into metadata["selected_provider"]. Each
 #     translator then runs only when that selection equals its own
 #     "providerId". The "providerId" doubles as the upstream cluster
@@ -108,7 +108,7 @@ spec:
           params:
             key: X-API-Key
             in: header
-    - name: openai-header-router
+    - name: llm-header-router
       version: v1
       paths:
         - path: /chat/completions
