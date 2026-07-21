@@ -264,7 +264,7 @@ export default function CustomPoliciesList({
         </Typography>
       </Box>
 
-      {pageItems.length !== 0 && (
+      {policies.length !== 0 && (
         <Box sx={{ mb: 2 }}>
           <TextField
             fullWidth
