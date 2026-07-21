@@ -39,7 +39,7 @@ client_secret = '{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'
 greeting      = "line1\nline2 \"quoted\" é"
 
 [oidc.claim_mappings]
-organization_claim_name = "org_id"
+organization = "org_id"
 `, "\n", "\r\n")
 
 	got, err := parseTOMLSubset([]byte(doc))
@@ -58,7 +58,7 @@ organization_claim_name = "org_id"
 			"client_secret": `{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}`,
 			"greeting":      "line1\nline2 \"quoted\" é",
 			"claim_mappings": map[string]any{
-				"organization_claim_name": "org_id",
+				"organization": "org_id",
 			},
 		},
 	}

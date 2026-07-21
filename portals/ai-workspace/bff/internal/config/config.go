@@ -44,8 +44,8 @@ type Config struct {
 	// TLS for the BFF listener
 	TLS TLSConfig
 
-	// Upstream Platform API
-	PlatformAPI PlatformAPIConfig
+	// Upstream Platform API (control plane)
+	ControlPlane ControlPlaneConfig
 
 	// Same-origin reverse-proxy prefix the SPA calls (stripped before forwarding)
 	ProxyPrefix string
@@ -65,9 +65,9 @@ type Config struct {
 	RuntimeConfig map[string]string
 }
 
-// PlatformAPIConfig groups everything about the upstream Platform API hop: where
-// it is, and how its TLS certificate is trusted.
-type PlatformAPIConfig struct {
+// ControlPlaneConfig groups everything about the upstream Platform API (control
+// plane) hop: where it is, and how its TLS certificate is trusted.
+type ControlPlaneConfig struct {
 	// URL is the base URL, e.g. https://platform-api:9243. Its http/https scheme is
 	// the single source of truth for whether the outbound hop uses TLS — there is
 	// deliberately no separate boolean, since that could contradict the URL.
@@ -219,7 +219,7 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	platformTLSSkipVerify, err := s.getbool("platform_api.tls_skip_verify", false)
+	controlPlaneTLSSkipVerify, err := s.getbool("control_plane.tls_skip_verify", false)
 	if err != nil {
 		return nil, err
 	}
@@ -252,11 +252,11 @@ func Load(path string) (*Config, error) {
 			CertFile: s.get("tls.cert_file", "/etc/ai-workspace/tls/cert.pem"),
 			KeyFile:  s.get("tls.key_file", "/etc/ai-workspace/tls/key.pem"),
 		},
-		PlatformAPI: PlatformAPIConfig{
-			URL:           strings.TrimRight(s.get("platform_api.url", ""), "/"),
-			CAFile:        s.get("platform_api.ca_file", ""),
-			TLSSkipVerify: platformTLSSkipVerify,
-			LoginPath:     s.get("platform_api.login_path", "/api/portal/v0.9/auth/login"),
+		ControlPlane: ControlPlaneConfig{
+			URL:           strings.TrimRight(s.get("control_plane.url", ""), "/"),
+			CAFile:        s.get("control_plane.ca_file", ""),
+			TLSSkipVerify: controlPlaneTLSSkipVerify,
+			LoginPath:     s.get("control_plane.login_path", "/api/portal/v0.9/auth/login"),
 		},
 		ProxyPrefix: strings.TrimRight(s.get("proxy_prefix", "/api/proxy"), "/"),
 		Session: SessionConfig{
@@ -293,40 +293,40 @@ func Load(path string) (*Config, error) {
 			// The same keys drive the BFF's session mapping and the SPA's runtime
 			// config, so one config entry keeps both layers in sync.
 			Claims: ClaimMappingConfig{
-				Username:  s.get("oidc.claim_mappings.username_claim_name", "username"),
-				Email:     s.get("oidc.claim_mappings.email_claim_name", "email"),
-				Role:      s.get("oidc.claim_mappings.role_claim_name", "platform_role"),
-				Scope:     s.get("oidc.claim_mappings.scope_claim_name", "scope"),
-				OrgID:     s.get("oidc.claim_mappings.organization_claim_name", "org_id"),
-				OrgName:   s.get("oidc.claim_mappings.org_name_claim_name", "org_name"),
-				OrgHandle: s.get("oidc.claim_mappings.org_handle_claim_name", "org_handle"),
+				Username:  s.get("oidc.claim_mappings.username", "username"),
+				Email:     s.get("oidc.claim_mappings.email", "email"),
+				Role:      s.get("oidc.claim_mappings.role", "platform_role"),
+				Scope:     s.get("oidc.claim_mappings.scope", "scope"),
+				OrgID:     s.get("oidc.claim_mappings.organization", "org_id"),
+				OrgName:   s.get("oidc.claim_mappings.org_name", "org_name"),
+				OrgHandle: s.get("oidc.claim_mappings.org_handle", "org_handle"),
 			},
 		},
 	}
 
-	if cfg.PlatformAPI.URL == "" {
-		return nil, fmt.Errorf("[platform_api] url is required: set it in config.toml, " +
+	if cfg.ControlPlane.URL == "" {
+		return nil, fmt.Errorf("[control_plane] url is required: set it in config.toml, " +
 			"either as a literal or via an {{ env }} / {{ file }} token")
 	}
 	// The scheme is the single source of truth for the outbound TLS decision, so a
 	// missing/typo'd scheme must fail at startup rather than surface as an opaque
 	// dial error on the first proxied request.
-	u, err := url.Parse(cfg.PlatformAPI.URL)
+	u, err := url.Parse(cfg.ControlPlane.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, fmt.Errorf("[platform_api] url must be an absolute http:// or https:// URL, got %q", cfg.PlatformAPI.URL)
+		return nil, fmt.Errorf("[control_plane] url must be an absolute http:// or https:// URL, got %q", cfg.ControlPlane.URL)
 	}
 	// Trust knobs only apply to an https upstream; flag them on a plain-http URL so a
 	// mistaken belief that TLS is in effect is caught early.
 	if u.Scheme == "http" {
-		if cfg.PlatformAPI.CAFile != "" || cfg.PlatformAPI.TLSSkipVerify {
-			return nil, fmt.Errorf("[platform_api] ca_file / tls_skip_verify are set but [platform_api] url is http:// (no TLS on the upstream hop)")
+		if cfg.ControlPlane.CAFile != "" || cfg.ControlPlane.TLSSkipVerify {
+			return nil, fmt.Errorf("[control_plane] ca_file / tls_skip_verify are set but [control_plane] url is http:// (no TLS on the upstream hop)")
 		}
 	}
 	// Skipping verification is a security downgrade; say so loudly and point at
 	// the supported alternative.
-	if u.Scheme == "https" && cfg.PlatformAPI.TLSSkipVerify {
-		slog.Warn("[platform_api] tls_skip_verify = true — upstream certificate verification is DISABLED. " +
-			"Trust the upstream certificate with [platform_api] ca_file instead.")
+	if u.Scheme == "https" && cfg.ControlPlane.TLSSkipVerify {
+		slog.Warn("[control_plane] tls_skip_verify = true — upstream certificate verification is DISABLED. " +
+			"Trust the upstream certificate with [control_plane] ca_file instead.")
 	}
 	if cfg.OIDC.Enabled {
 		if cfg.OIDC.Issuer == "" || cfg.OIDC.ClientID == "" || cfg.OIDC.ClientSecret == "" || cfg.OIDC.RedirectURL == "" {

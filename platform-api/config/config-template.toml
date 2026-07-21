@@ -182,20 +182,23 @@ issuer   = ["https://accounts.example.com"]          # list of accepted issuers
 audience = []                                        # accepted "aud" values; empty = skip audience check
 
 # Authorization mode: "scope" (default) checks the scope claim;
-# "role" checks a roles claim at claim_mappings.roles_claim_path.
+# "role" checks the roles claim configured below at claim_mappings.roles.
 validation_mode = '{{ env "APIP_CP_AUTH_IDP_VALIDATION_MODE" "scope" }}'
 role_mappings   = '{{ env "APIP_CP_AUTH_IDP_ROLE_MAPPINGS" "" }}'        # path to a YAML file mapping IDP roles to platform scopes
 
-# JWT claim name mappings — configure to match your IDP's token structure.
+# JWT claim name mappings — configure to match your IDP's token structure. Each
+# value is either a flat top-level claim name ("org_id") or a dot-separated
+# path into a nested claim ("realm_access.org_id") — useful for IDPs like
+# Keycloak that nest fields such as roles under realm_access.roles.
 [platform_api.auth.idp.claim_mappings]
-organization_claim_name = '{{ env "APIP_CP_AUTH_IDP_CLAIM_ORGANIZATION" "organization" }}'   # claim carrying the org ID
-org_name_claim_name     = '{{ env "APIP_CP_AUTH_IDP_CLAIM_ORG_NAME" "org_name" }}'       # claim carrying the org display name
-org_handle_claim_name   = '{{ env "APIP_CP_AUTH_IDP_CLAIM_ORG_HANDLE" "org_handle" }}'     # claim carrying the org URL slug
-user_id_claim_name      = '{{ env "APIP_CP_AUTH_IDP_CLAIM_USER_ID" "sub" }}'            # claim used as the user's unique ID
-username_claim_name     = '{{ env "APIP_CP_AUTH_IDP_CLAIM_USERNAME" "username" }}'
-email_claim_name        = '{{ env "APIP_CP_AUTH_IDP_CLAIM_EMAIL" "email" }}'
-scope_claim_name        = '{{ env "APIP_CP_AUTH_IDP_CLAIM_SCOPE" "scope" }}'          # space-separated scope string
-roles_claim_path        = '{{ env "APIP_CP_AUTH_IDP_CLAIM_ROLES_PATH" "" }}'               # JSON path to roles array, e.g. "realm_access.roles"
+organization = '{{ env "APIP_CP_AUTH_IDP_CLAIM_ORGANIZATION" "organization" }}'   # claim carrying the org ID
+org_name     = '{{ env "APIP_CP_AUTH_IDP_CLAIM_ORG_NAME" "org_name" }}'       # claim carrying the org display name
+org_handle   = '{{ env "APIP_CP_AUTH_IDP_CLAIM_ORG_HANDLE" "org_handle" }}'     # claim carrying the org URL slug
+user_id      = '{{ env "APIP_CP_AUTH_IDP_CLAIM_USER_ID" "sub" }}'            # claim used as the user's unique ID
+username     = '{{ env "APIP_CP_AUTH_IDP_CLAIM_USERNAME" "username" }}'
+email        = '{{ env "APIP_CP_AUTH_IDP_CLAIM_EMAIL" "email" }}'
+scope        = '{{ env "APIP_CP_AUTH_IDP_CLAIM_SCOPE" "scope" }}'          # space-separated scope string
+roles        = '{{ env "APIP_CP_AUTH_IDP_CLAIM_ROLES" "" }}'                 # e.g. "realm_access.roles" (Keycloak) or "roles" (Asgardeo)
 
 # File auth — local username/password login, used when mode = "file". Ideal for
 # initial / air-gapped setup; not recommended for production — prefer an IDP.

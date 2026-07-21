@@ -41,11 +41,11 @@ import (
 const EnvPrefix = "APIP_AIW_"
 
 // aiWorkspaceConfigKey is the top-level TOML table all AI Workspace settings live
-// under (e.g. [ai_workspace], [ai_workspace.platform_api]). It mirrors the Platform
+// under (e.g. [ai_workspace], [ai_workspace.control_plane]). It mirrors the Platform
 // API's platformAPIConfigKey: this namespacing lets an AI Workspace config file
 // coexist with sibling services' sections ([platform_api], ...) in a shared
 // deployment config, the same file convention as the Platform API's [platform_api]
-// table. Every key below this cut (log_level, platform_api.url, oidc.*, ...) is
+// table. Every key below this cut (log_level, control_plane.url, oidc.*, ...) is
 // resolved relative to [ai_workspace], not the file root.
 const aiWorkspaceConfigKey = "ai_workspace"
 
@@ -60,7 +60,7 @@ var defaultFileSourceAllowlist = []string{
 // settings is the fully-resolved configuration: the config.toml values under
 // [ai_workspace], with every {{ env }} / {{ file }} token expanded and flattened to
 // dotted paths relative to that table. A key is its path under [ai_workspace] joined
-// with dots — [ai_workspace.platform_api] url becomes "platform_api.url" — and a key
+// with dots — [ai_workspace.control_plane] url becomes "control_plane.url" — and a key
 // directly under [ai_workspace] keeps its bare name ("domain"). Sibling top-level
 // tables belonging to other services (e.g. [platform_api]) are ignored.
 type settings map[string]string
@@ -78,7 +78,7 @@ type settings map[string]string
 // an empty credential.
 //
 // A missing config.toml is not an error — the built-in defaults still apply — but the
-// required keys (platform_api_url) then have no value, so Load fails on them.
+// required keys (control_plane.url) then have no value, so Load fails on them.
 func loadSettings(tomlPath string) (settings, error) {
 	raw, err := parseTOML(tomlPath)
 	if err != nil {

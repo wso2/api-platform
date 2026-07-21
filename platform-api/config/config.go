@@ -129,16 +129,19 @@ type Auth struct {
 	File FileBased `koanf:"file"`
 }
 
-// IDPClaimMappings holds JWT claim name mappings for an IDP.
+// IDPClaimMappings holds JWT claim name mappings for an IDP. Every field
+// accepts either a flat top-level claim name ("org_id") or a dot-separated
+// path into a nested claim ("realm_access.org_id") — see resolveClaimPath in
+// internal/middleware/auth.go.
 type IDPClaimMappings struct {
-	OrganizationClaimName string `koanf:"organization_claim_name"`
-	OrgNameClaimName      string `koanf:"org_name_claim_name"`
-	OrgHandleClaimName    string `koanf:"org_handle_claim_name"`
-	UserIDClaimName       string `koanf:"user_id_claim_name"`
-	UsernameClaimName     string `koanf:"username_claim_name"`
-	EmailClaimName        string `koanf:"email_claim_name"`
-	ScopeClaimName        string `koanf:"scope_claim_name"`
-	RolesClaimPath        string `koanf:"roles_claim_path"`
+	Organization string `koanf:"organization"`
+	OrgName      string `koanf:"org_name"`
+	OrgHandle    string `koanf:"org_handle"`
+	UserID       string `koanf:"user_id"`
+	Username     string `koanf:"username"`
+	Email        string `koanf:"email"`
+	Scope        string `koanf:"scope"`
+	Roles        string `koanf:"roles"`
 }
 
 // IDP holds configuration for JWKS-based identity providers. Active when
@@ -654,8 +657,8 @@ func validateIDPConfig(idp *IDP) error {
 	default:
 		return fmt.Errorf("auth.idp.validation_mode must be \"scope\" or \"role\" (got %q)", idp.ValidationMode)
 	}
-	if idp.ValidationMode == "role" && idp.ClaimMappings.RolesClaimPath == "" {
-		return fmt.Errorf("auth.idp.validation_mode=role requires auth.idp.claim_mappings.roles_claim_path to be configured")
+	if idp.ValidationMode == "role" && idp.ClaimMappings.Roles == "" {
+		return fmt.Errorf("auth.idp.validation_mode=role requires auth.idp.claim_mappings.roles to be configured")
 	}
 	return nil
 }

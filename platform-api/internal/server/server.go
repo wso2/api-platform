@@ -568,7 +568,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 		Enabled:    true,
 		IssuerURL:  issuerURL,
 		JWKSUrl:    cfg.Auth.IDP.JWKSUrl,
-		ScopeClaim: cfg.Auth.IDP.ClaimMappings.ScopeClaimName,
+		ScopeClaim: cfg.Auth.IDP.ClaimMappings.Scope,
 	}
 	// Enforce audience validation only when at least one audience is configured.
 	if len(cfg.Auth.IDP.Audience) > 0 {
@@ -583,14 +583,14 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 		return nil, fmt.Errorf("failed to initialize IDP auth middleware: %w", err)
 	}
 	claimsMiddleware := middleware.PlatformClaimsMiddleware(middleware.PlatformClaimNames{
-		OrganizationClaim: cfg.Auth.IDP.ClaimMappings.OrganizationClaimName,
-		OrgNameClaim:      cfg.Auth.IDP.ClaimMappings.OrgNameClaimName,
-		OrgHandleClaim:    cfg.Auth.IDP.ClaimMappings.OrgHandleClaimName,
-		UserIDClaim:       cfg.Auth.IDP.ClaimMappings.UserIDClaimName,
-		UsernameClaim:     cfg.Auth.IDP.ClaimMappings.UsernameClaimName,
-		EmailClaim:        cfg.Auth.IDP.ClaimMappings.EmailClaimName,
-		ScopeClaim:        cfg.Auth.IDP.ClaimMappings.ScopeClaimName,
-		RolesClaimPath:    cfg.Auth.IDP.ClaimMappings.RolesClaimPath,
+		OrganizationClaim: cfg.Auth.IDP.ClaimMappings.Organization,
+		OrgNameClaim:      cfg.Auth.IDP.ClaimMappings.OrgName,
+		OrgHandleClaim:    cfg.Auth.IDP.ClaimMappings.OrgHandle,
+		UserIDClaim:       cfg.Auth.IDP.ClaimMappings.UserID,
+		UsernameClaim:     cfg.Auth.IDP.ClaimMappings.Username,
+		EmailClaim:        cfg.Auth.IDP.ClaimMappings.Email,
+		ScopeClaim:        cfg.Auth.IDP.ClaimMappings.Scope,
+		RolesClaimPath:    cfg.Auth.IDP.ClaimMappings.Roles,
 		RoleScopeMap:      roleScopeMap,
 	})
 

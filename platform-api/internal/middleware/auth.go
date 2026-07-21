@@ -325,23 +325,34 @@ func resolvePlatformRoles(claims jwt.MapClaims, claimPath string, roleScopeMap m
 }
 
 func extractClaimByPath(claims jwt.MapClaims, path string) []string {
-	return extractByPath(map[string]interface{}(claims), path)
+	val, ok := resolveClaimPath(map[string]interface{}(claims), path)
+	if !ok {
+		return nil
+	}
+	return toStringSlice(val)
 }
 
-func extractByPath(obj map[string]interface{}, path string) []string {
+// resolveClaimPath walks a dot-separated path into nested claim objects and
+// returns the raw value found there. A path with no "." is a single flat
+// claim lookup, so every claim_mappings field — not just roles — can point at
+// either a top-level claim ("org_id") or a nested one ("realm_access.org_id").
+func resolveClaimPath(obj map[string]interface{}, path string) (interface{}, bool) {
+	if path == "" {
+		return nil, false
+	}
 	parts := strings.SplitN(path, ".", 2)
 	val, ok := obj[parts[0]]
 	if !ok {
-		return nil
+		return nil, false
 	}
 	if len(parts) == 1 {
-		return toStringSlice(val)
+		return val, true
 	}
 	nested, ok := val.(map[string]interface{})
 	if !ok {
-		return nil
+		return nil, false
 	}
-	return extractByPath(nested, parts[1])
+	return resolveClaimPath(nested, parts[1])
 }
 
 func toStringSlice(val interface{}) []string {
@@ -360,12 +371,19 @@ func toStringSlice(val interface{}) []string {
 	return nil
 }
 
+// getStringClaim resolves name as a claim path (see resolveClaimPath) and
+// returns the value as a string. name may be a flat claim ("email") or a
+// dot-separated path into a nested claim ("realm_access.email").
 func getStringClaim(claims jwt.MapClaims, name string) string {
 	if name == "" {
 		return ""
 	}
-	v, _ := claims[name].(string)
-	return v
+	val, ok := resolveClaimPath(map[string]interface{}(claims), name)
+	if !ok {
+		return ""
+	}
+	s, _ := val.(string)
+	return s
 }
 
 // resolveUserID returns the stable user identifier used for audit fields

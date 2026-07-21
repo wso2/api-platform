@@ -1,14 +1,14 @@
 # Role-to-scope mapping for IDP role mode (auth.idp.validation_mode: role).
 #
 # Each entry maps an IDP role name (as it appears in the token claim configured
-# by auth.idp.roles_claim_path) to the list of platform scopes that role grants.
+# by auth.idp.roles) to the list of platform scopes that role grants.
 # When a token carries multiple roles, the effective scopes are the union of all
 # role entries — most-permissive wins.
 #
 # Supported IDPs:
-#   Asgardeo  — set roles_claim_path: roles
-#   Keycloak  — set roles_claim_path: realm_access.roles  (or resource_access.<client>.roles)
-#   Microsoft Entra ID — set roles_claim_path: roles
+#   Asgardeo  — set roles: roles
+#   Keycloak  — set roles: realm_access.roles  (or resource_access.<client>.roles)
+#   Microsoft Entra ID — set roles: roles
 #
 # Scope convention:
 #   ap:<resource>:manage  — full access to all actions on that resource (covers read/create/update/delete)

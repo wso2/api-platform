@@ -54,19 +54,19 @@ func TestShippedConfig_QuickstartLoadsWithNoEnv(t *testing.T) {
 	if cfg.StaticDir != "/app" {
 		t.Errorf("StaticDir = %q, want the container default %q", cfg.StaticDir, "/app")
 	}
-	if cfg.PlatformAPI.URL != "https://platform-api:9243" {
-		t.Errorf("PlatformAPI.URL = %q, want the compose hostname", cfg.PlatformAPI.URL)
+	if cfg.ControlPlane.URL != "https://platform-api:9243" {
+		t.Errorf("ControlPlane.URL = %q, want the compose hostname", cfg.ControlPlane.URL)
 	}
 	// The quickstart trusts the setup.sh-generated platform-api certificate via
 	// ca_file (mounted by docker-compose); verification stays on by default.
-	if cfg.PlatformAPI.TLSSkipVerify {
-		t.Error("PlatformAPI.TLSSkipVerify = true, want false — the quickstart trusts the upstream via ca_file, not by skipping verification")
+	if cfg.ControlPlane.TLSSkipVerify {
+		t.Error("ControlPlane.TLSSkipVerify = true, want false — the quickstart trusts the upstream via ca_file, not by skipping verification")
 	}
-	// docker-compose no longer injects APIP_AIW_PLATFORM_API_CA_FILE — the default
+	// docker-compose no longer injects APIP_AIW_CONTROL_PLANE_CA_FILE — the default
 	// must be the path the compose file mounts the certificate at. The shared
 	// self-signed cert.pem is its own CA.
-	if cfg.PlatformAPI.CAFile != "/etc/ai-workspace/tls/cert.pem" {
-		t.Errorf("PlatformAPI.CAFile = %q, want the docker-compose mount path %q", cfg.PlatformAPI.CAFile, "/etc/ai-workspace/tls/cert.pem")
+	if cfg.ControlPlane.CAFile != "/etc/ai-workspace/tls/cert.pem" {
+		t.Errorf("ControlPlane.CAFile = %q, want the docker-compose mount path %q", cfg.ControlPlane.CAFile, "/etc/ai-workspace/tls/cert.pem")
 	}
 }
 
@@ -77,8 +77,8 @@ func TestShippedConfig_QuickstartLoadsWithNoEnv(t *testing.T) {
 // /app. This test pins the Makefile's contract with the file.
 func TestShippedConfig_MakeBffRunOverrides(t *testing.T) {
 	// Exactly the variables the bff-run target sets.
-	t.Setenv("APIP_AIW_PLATFORM_API_URL", "https://localhost:9243")
-	t.Setenv("APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY", "true")
+	t.Setenv("APIP_AIW_CONTROL_PLANE_URL", "https://localhost:9243")
+	t.Setenv("APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY", "true")
 	t.Setenv("APIP_AIW_LISTEN_ADDR", ":8081")
 	t.Setenv("APIP_AIW_STATIC_DIR", "../dist")
 	t.Setenv("APIP_AIW_LOG_LEVEL", "debug")
@@ -91,7 +91,7 @@ func TestShippedConfig_MakeBffRunOverrides(t *testing.T) {
 	for _, tc := range []struct{ name, got, want string }{
 		{"Addr", cfg.Addr, ":8081"},
 		{"StaticDir", cfg.StaticDir, "../dist"},
-		{"PlatformAPI.URL", cfg.PlatformAPI.URL, "https://localhost:9243"},
+		{"ControlPlane.URL", cfg.ControlPlane.URL, "https://localhost:9243"},
 		{"LogLevel", cfg.LogLevel, "debug"},
 	} {
 		if tc.got != tc.want {
@@ -145,8 +145,8 @@ func TestShippedConfig_TemplateLoads(t *testing.T) {
 	}
 	// Unlike the quickstart file, the template defaults to verifying the upstream
 	// certificate — it is the starting point for a real deployment.
-	if cfg.PlatformAPI.TLSSkipVerify {
-		t.Error("PlatformAPI.TLSSkipVerify = true, want false — the template must default to a verified upstream")
+	if cfg.ControlPlane.TLSSkipVerify {
+		t.Error("ControlPlane.TLSSkipVerify = true, want false — the template must default to a verified upstream")
 	}
 }
 

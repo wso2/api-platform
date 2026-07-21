@@ -23,13 +23,15 @@ Tested IDPs: [Asgardeo](asgardeo-setup.md), Keycloak, Auth0, Okta.
 
 ```toml
 [ai_workspace]
-domain            = "app.example.com"
-auth_mode         = "oidc"
-controlplane_host = "api.example.com"
+domain    = "app.example.com"
+auth_mode = "oidc"
 
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 # The upstream the BFF proxies to (an origin — the API paths are appended by the proxy).
 url = "https://api.example.com"
+
+[ai_workspace.gateway]
+controlplane_host = "api.example.com"
 
 [ai_workspace.oidc]
 # IDP issuer URL — the discovery doc is fetched from {authority}/.well-known/openid-configuration
@@ -53,9 +55,9 @@ client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
 # keys placed below this header would land in [ai_workspace.oidc.claim_mappings]
 # instead.
 [ai_workspace.oidc.claim_mappings]
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
 ```
 
 The redirect URLs and the client secret are BFF settings — they are **never sent to the browser**.
@@ -89,9 +91,9 @@ audience = ["ai-workspace"]   # must match [ai_workspace.oidc] client_id
 # Map IDP-specific claim names to Platform API's expected fields
 # These must match the [ai_workspace.oidc.claim_mappings] values in config.toml above
 [auth.idp.claim_mappings]
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
 
 # Disable file-based auth
 [auth.file_based]
@@ -102,10 +104,10 @@ Optional claim overrides (defaults shown):
 
 ```toml
 [auth.idp.claim_mappings]
-user_id_claim_name  = "sub"
-username_claim_name = "username"
-email_claim_name    = "email"
-scope_claim_name    = "scope"
+user_id  = "sub"
+username = "username"
+email    = "email"
+scope    = "scope"
 ```
 
 Validation mode (default `scope`):
@@ -150,7 +152,7 @@ You must register the `ap:*` scopes as an API resource in your IDP and grant the
 **Platform API returns 401**
 - Check that `jwks_url` and `issuer` in Platform API config match the IDP's discovery doc values.
 - Check that `audience` matches the `[ai_workspace.oidc] client_id` of the confidential application.
-- Ensure `organization_claim_name` matches on both sides — `[platform_api.auth.idp.claim_mappings]` in the Platform API and `[ai_workspace.oidc.claim_mappings]` in AI Workspace.
+- Ensure `organization` matches on both sides — `[platform_api.auth.idp.claim_mappings]` in the Platform API and `[ai_workspace.oidc.claim_mappings]` in AI Workspace.
 
 **"Organization not found" error**
 - The `org_id` claim in the token does not match any organization in Platform API's database.

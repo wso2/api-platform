@@ -70,13 +70,13 @@ func defaultConfig() *Server {
 			IDP: IDP{
 				ValidationMode: "scope",
 				ClaimMappings: IDPClaimMappings{
-					OrganizationClaimName: "organization",
-					OrgNameClaimName:      "org_name",
-					OrgHandleClaimName:    "org_handle",
-					UserIDClaimName:       "sub",
-					UsernameClaimName:     "username",
-					EmailClaimName:        "email",
-					ScopeClaimName:        "scope",
+					Organization: "organization",
+					OrgName:      "org_name",
+					OrgHandle:    "org_handle",
+					UserID:       "sub",
+					Username:     "username",
+					Email:        "email",
+					Scope:        "scope",
 				},
 			},
 			File: FileBased{

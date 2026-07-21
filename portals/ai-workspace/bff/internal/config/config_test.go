@@ -40,7 +40,7 @@ func TestLoad_ConfigFileValue(t *testing.T) {
 [ai_workspace]
 log_level = "warn"
 
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://platform-api:9243"
 `)
 
@@ -48,8 +48,8 @@ url = "https://platform-api:9243"
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.PlatformAPI.URL != "https://platform-api:9243" {
-		t.Errorf("PlatformAPI.URL = %q, want the config.toml value", cfg.PlatformAPI.URL)
+	if cfg.ControlPlane.URL != "https://platform-api:9243" {
+		t.Errorf("ControlPlane.URL = %q, want the config.toml value", cfg.ControlPlane.URL)
 	}
 	if cfg.LogLevel != "warn" {
 		t.Errorf("LogLevel = %q, want %q", cfg.LogLevel, "warn")
@@ -64,7 +64,7 @@ func TestLoad_EnvTokenSuppliesValueAndDefault(t *testing.T) {
 log_level  = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'
 log_format = '{{ env "APIP_AIW_LOG_FORMAT" "text" }}'
 
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://platform-api:9243"
 `)
 	t.Setenv("APIP_AIW_LOG_LEVEL", "debug") // named by the token
@@ -90,7 +90,7 @@ func TestLoad_EnvVarWithoutTokenIsIgnored(t *testing.T) {
 [ai_workspace]
 log_level = "warn"
 
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://platform-api:9243"
 `)
 	t.Setenv("APIP_AIW_LOG_LEVEL", "debug")
@@ -112,7 +112,7 @@ func TestLoad_InterpolatesEnvToken(t *testing.T) {
 [ai_workspace]
 auth_mode = "oidc"
 
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
 [ai_workspace.oidc]
@@ -144,7 +144,7 @@ func TestLoad_InterpolatesFileToken(t *testing.T) {
 [ai_workspace]
 auth_mode = "oidc"
 
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
 [ai_workspace.oidc]
@@ -174,7 +174,7 @@ func TestLoad_FileTokenOutsideAllowlist_Errors(t *testing.T) {
 	t.Setenv("APIP_CONFIG_FILE_SOURCE_ALLOWLIST", t.TempDir()) // a different directory
 
 	cfgPath := writeConfig(t, `
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
 [ai_workspace.oidc]
@@ -190,7 +190,7 @@ client_secret = '{{ file "`+outside+`" }}'
 // yield an empty secret.
 func TestLoad_MissingEnvToken_Errors(t *testing.T) {
 	cfgPath := writeConfig(t, `
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
 [ai_workspace.oidc]
@@ -208,15 +208,15 @@ client_secret = '{{ env "CUSTOM_SECRET_VAR" }}'
 }
 
 // The upstream URL is mandatory — the BFF has nothing to proxy to without it.
-func TestLoad_MissingPlatformAPIURL_Errors(t *testing.T) {
+func TestLoad_MissingControlPlaneURL_Errors(t *testing.T) {
 	cfgPath := writeConfig(t, "[ai_workspace]\nlog_level = \"info\"")
 
 	_, err := Load(cfgPath)
 	if err == nil {
-		t.Fatal("Load() succeeded, want an error when [platform_api] url is unset")
+		t.Fatal("Load() succeeded, want an error when [control_plane] url is unset")
 	}
-	if !strings.Contains(err.Error(), "[platform_api] url") {
-		t.Errorf("error = %v, want it to name [platform_api] url", err)
+	if !strings.Contains(err.Error(), "[control_plane] url") {
+		t.Errorf("error = %v, want it to name [control_plane] url", err)
 	}
 }
 
@@ -228,7 +228,7 @@ func TestLoad_RuntimeConfigExcludesServerSideKeys(t *testing.T) {
 auth_mode = "oidc"
 domain    = "localhost:5380"
 
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
 [ai_workspace.oidc]
@@ -266,7 +266,7 @@ func TestLoad_BrowserSafeKeyUsesSameName(t *testing.T) {
 [ai_workspace]
 moesif_web_url = "https://moesif.example.com"
 
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://platform-api:9243"
 `)
 
@@ -286,7 +286,7 @@ func TestLoad_BrowserSafeKeyFromEnvToken(t *testing.T) {
 [ai_workspace]
 domain = '{{ env "APIP_AIW_DOMAIN" "localhost:5380" }}'
 
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://platform-api:9243"
 `)
 	t.Setenv("APIP_AIW_DOMAIN", "app.example.com")
@@ -304,7 +304,7 @@ url = "https://platform-api:9243"
 // string, but a plain literal is naturally typed. Both forms must reach the same value.
 func TestLoad_BareTOMLScalars(t *testing.T) {
 	cfgPath := writeConfig(t, `
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
 [ai_workspace.cookie]
@@ -333,7 +333,7 @@ func TestLoad_SameKeyInDifferentTables(t *testing.T) {
 [ai_workspace]
 auth_mode = "oidc"
 
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
 [ai_workspace.tls]
@@ -363,15 +363,15 @@ redirect_url  = "https://localhost:5380/api/auth/callback"
 // key. The BFF reads those keys for its own session mapping, and the browser-safe ones
 // reach the SPA under the matching APIP_AIW_OIDC_CLAIM_MAPPINGS_* names that
 // src/config.env.ts looks up.
-func TestLoad_ClaimMappingsMirrorPlatformAPI(t *testing.T) {
+func TestLoad_ClaimMappingsMirrorControlPlane(t *testing.T) {
 	cfgPath := writeConfig(t, `
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
 [ai_workspace.oidc.claim_mappings]
-organization_claim_name = "org_uuid"
-username_claim_name     = "given_name"
-role_claim_name         = "roles"
+organization = "org_uuid"
+username     = "given_name"
+role         = "roles"
 `)
 
 	cfg, err := Load(cfgPath)
@@ -379,27 +379,27 @@ role_claim_name         = "roles"
 		t.Fatalf("Load() error = %v", err)
 	}
 	if cfg.OIDC.Claims.OrgID != "org_uuid" {
-		t.Errorf("Claims.OrgID = %q, want %q from organization_claim_name", cfg.OIDC.Claims.OrgID, "org_uuid")
+		t.Errorf("Claims.OrgID = %q, want %q from organization", cfg.OIDC.Claims.OrgID, "org_uuid")
 	}
 	if cfg.OIDC.Claims.Role != "roles" {
-		t.Errorf("Claims.Role = %q, want %q from role_claim_name", cfg.OIDC.Claims.Role, "roles")
+		t.Errorf("Claims.Role = %q, want %q from role", cfg.OIDC.Claims.Role, "roles")
 	}
-	if got := cfg.RuntimeConfig["APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME"]; got != "org_uuid" {
-		t.Errorf("runtime APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME = %q, want %q", got, "org_uuid")
+	if got := cfg.RuntimeConfig["APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION"]; got != "org_uuid" {
+		t.Errorf("runtime APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION = %q, want %q", got, "org_uuid")
 	}
-	if got := cfg.RuntimeConfig["APIP_AIW_OIDC_CLAIM_MAPPINGS_USERNAME_CLAIM_NAME"]; got != "given_name" {
-		t.Errorf("runtime APIP_AIW_OIDC_CLAIM_MAPPINGS_USERNAME_CLAIM_NAME = %q, want %q", got, "given_name")
+	if got := cfg.RuntimeConfig["APIP_AIW_OIDC_CLAIM_MAPPINGS_USERNAME"]; got != "given_name" {
+		t.Errorf("runtime APIP_AIW_OIDC_CLAIM_MAPPINGS_USERNAME = %q, want %q", got, "given_name")
 	}
-	// role_claim_name drives the BFF's session mapping only — it must not be published.
-	if _, ok := cfg.RuntimeConfig["APIP_AIW_OIDC_CLAIM_MAPPINGS_ROLE_CLAIM_NAME"]; ok {
-		t.Error("role_claim_name must not reach the browser — it is not in the browser-safe allowlist")
+	// role drives the BFF's session mapping only — it must not be published.
+	if _, ok := cfg.RuntimeConfig["APIP_AIW_OIDC_CLAIM_MAPPINGS_ROLE"]; ok {
+		t.Error("role must not reach the browser — it is not in the browser-safe allowlist")
 	}
 }
 
 // A malformed boolean must fail startup rather than fall back to the default.
 func TestLoad_InvalidBool_Errors(t *testing.T) {
 	cfgPath := writeConfig(t, `
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
 [ai_workspace.cookie]

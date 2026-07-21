@@ -310,7 +310,7 @@ Per-route scope checks are enforced when `platform_api.auth.scope_validation = t
 In **`external_token`/`file` mode**, scopes are read directly from the `scope` claim in the token.
 In **`idp` mode**, scopes or roles are read from the claim(s) named in `[platform_api.auth.idp.claim_mappings]`,
 per `validation_mode` (`scope` reads the scope claim directly; `role` expands IDP roles from
-`roles_claim_path` via `role_mappings`).
+`roles` via `role_mappings`).
 
 ### Providing secrets via the config file
 

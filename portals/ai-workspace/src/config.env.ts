@@ -46,9 +46,9 @@ export const OIDC_CLIENT_ID  = getEnvOrDefault('APIP_AIW_OIDC_CLIENT_ID', '');
 // JWT claim name mappings — configure to match your IDP's token structure. The names
 // mirror the Platform API's [auth.idp.claim_mappings] key for key, and must agree with
 // them: both sides read the same claims out of the same token.
-export const OIDC_ORG_ID_CLAIM     = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME', 'org_id');
-export const OIDC_ORG_NAME_CLAIM   = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_ORG_NAME_CLAIM_NAME',     'org_name');
-export const OIDC_ORG_HANDLE_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_ORG_HANDLE_CLAIM_NAME',   'org_handle');
+export const OIDC_ORG_ID_CLAIM     = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION', 'org_id');
+export const OIDC_ORG_NAME_CLAIM   = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_ORG_NAME',     'org_name');
+export const OIDC_ORG_HANDLE_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_ORG_HANDLE',   'org_handle');
 
 // Default region used when auto-registering an organization on first login.
 export const DEFAULT_ORG_REGION = getEnvOrDefault('APIP_AIW_DEFAULT_ORG_REGION', 'us');
@@ -139,7 +139,7 @@ export interface GatewayVersionEntry {
 }
 
 export const PLATFORM_GATEWAY_VERSIONS = getEnvOrDefault<GatewayVersionEntry[]>(
-  'APIP_AIW_PLATFORM_GATEWAY_VERSIONS',
+  'APIP_AIW_GATEWAY_PLATFORM_GATEWAY_VERSIONS',
   [
     { version: '1.2', latestVersion: 'v1.2.0-alpha2', channel: 'STS' }
   ]
@@ -172,7 +172,7 @@ export const BFF_COMPOSITE_BASE_URL = '/api/bff';
 // Control-plane host shown in gateway setup instructions (host:port).
 // Distinct from PLATFORM_API_BASE_URL which may be a relative nginx proxy path.
 export const CONTROLPLANE_HOST = getEnvOrDefault(
-  'APIP_AIW_CONTROLPLANE_HOST',
+  'APIP_AIW_GATEWAY_CONTROLPLANE_HOST',
   'host.docker.internal:9243'
 );
 
@@ -191,8 +191,8 @@ export const CSRF_VALUE = 'ai-workspace';
 // The defaults mirror the BFF's [oidc.claim_mappings] defaults, so both sides read the
 // same claim when the key is left unset.
 // Common alternatives: 'name', 'given_name', 'preferred_username' (Keycloak), 'upn' (Azure AD)
-export const OIDC_USERNAME_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_USERNAME_CLAIM_NAME', 'username');
-export const OIDC_EMAIL_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_EMAIL_CLAIM_NAME', 'email');
+export const OIDC_USERNAME_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_USERNAME', 'username');
+export const OIDC_EMAIL_CLAIM = getEnvOrDefault('APIP_AIW_OIDC_CLAIM_MAPPINGS_EMAIL', 'email');
 
 // Auth mode: 'basic' (default) posts credentials to /api/portal/v0.9/auth/login; 'oidc' uses react-oidc-context.
 export const AUTH_MODE = getEnvOrDefault('APIP_AIW_AUTH_MODE', 'basic') as 'oidc' | 'basic';

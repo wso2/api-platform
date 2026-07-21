@@ -79,11 +79,11 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 |---------|-------------|
 | `domain` | Host and port shown in the browser address bar |
 | `auth_mode` | `basic` (file-based quickstart) or `oidc` (external IDP) |
-| `controlplane_host` | Address gateways use to reach the Platform API |
-| `platform_gateway_versions` | Gateway versions shown in the create-gateway selector |
-| `[ai_workspace.platform_api].url` | Base URL of the upstream Platform API hop |
-| `[ai_workspace.platform_api].ca_file` | PEM bundle trusted for the upstream's TLS cert (appended to system roots). Fixed to the mounted path — not env-overridable; edit the TOML if you change the volume mount in `docker-compose.yaml` |
-| `[ai_workspace.platform_api].tls_skip_verify` | Skip upstream cert verification — local dev only |
+| `[ai_workspace.control_plane].url` | Base URL of the upstream Platform API hop |
+| `[ai_workspace.control_plane].ca_file` | PEM bundle trusted for the upstream's TLS cert (appended to system roots). Fixed to the mounted path — not env-overridable; edit the TOML if you change the volume mount in `docker-compose.yaml` |
+| `[ai_workspace.control_plane].tls_skip_verify` | Skip upstream cert verification — local dev only |
+| `[ai_workspace.gateway].controlplane_host` | Address gateways use to reach the Platform API |
+| `[ai_workspace.gateway].platform_gateway_versions` | Gateway versions shown in the create-gateway selector |
 | `[ai_workspace.tls].cert_file` / `key_file` | Listener certificate pair — required when `[ai_workspace.tls].enabled` is `true`. Fixed to the mounted path, same as `ca_file` above |
 | `[ai_workspace.oidc].*` | Used only when `auth_mode = "oidc"` — see [OIDC](#oidc-production) below |
 

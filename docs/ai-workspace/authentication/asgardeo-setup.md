@@ -128,9 +128,9 @@ issuer   = ["https://api.asgardeo.io/t/<your-tenant>/oauth2/token"]
 audience = ["<ai-workspace-client-id>"]
 
 [auth.idp.claim_mappings]
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
 
 [auth.file_based]
 enabled = false
@@ -148,11 +148,13 @@ Update `configs/config.toml`:
 [ai_workspace]
 domain             = "<your-domain>"
 auth_mode          = "oidc"
-controlplane_host  = "<platform-api-host>"
 default_org_region = "us"
 
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://<platform-api-host>"
+
+[ai_workspace.gateway]
+controlplane_host = "<platform-api-host>"
 
 [ai_workspace.oidc]
 authority = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
@@ -170,9 +172,9 @@ client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
 # agree. Must stay the last table under [ai_workspace.oidc]: plain [ai_workspace.oidc] keys
 # placed below this header would land in [ai_workspace.oidc.claim_mappings] instead.
 [ai_workspace.oidc.claim_mappings]
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
 ```
 
 The redirect URLs and the client secret are BFF settings and never reach the browser. The
@@ -189,13 +191,13 @@ token so the raw value never lands in the file.
 ```
 Asgardeo token
   ├── sub          → user identity
-  ├── org_id       → organization UUID  (→ organization_claim_name in Platform API)
-  ├── org_name     → org display name   (→ org_name_claim_name in Platform API)
-  ├── org_handle   → org slug           (→ org_handle_claim_name in Platform API)
+  ├── org_id       → organization UUID  (→ organization in Platform API)
+  ├── org_name     → org display name   (→ org_name in Platform API)
+  ├── org_handle   → org slug           (→ org_handle in Platform API)
   └── scope        → space-separated ap:* scopes validated by Platform API
 ```
 
 The claim names must be consistent across all three places:
 - Asgardeo token mapper output
 - `[ai_workspace.oidc.claim_mappings]` in `config.toml`
-- `*_claim_name` in Platform API `[auth.idp.claim_mappings]`
+- The matching keys in Platform API `[auth.idp.claim_mappings]`

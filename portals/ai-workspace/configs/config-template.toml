@@ -34,7 +34,7 @@
 # prefixed with APIP_AIW_:
 #
 #   [ai_workspace] domain               ->  APIP_AIW_DOMAIN
-#   [ai_workspace.platform_api] url     ->  APIP_AIW_PLATFORM_API_URL
+#   [ai_workspace.control_plane] url     ->  APIP_AIW_CONTROL_PLANE_URL
 #   [ai_workspace.oidc] client_id       ->  APIP_AIW_OIDC_CLIENT_ID
 #
 # To source a value from a mounted file instead of the environment — the right
@@ -88,19 +88,8 @@ auth_mode = '{{ env "APIP_AIW_AUTH_MODE" "basic" }}'
 # Domain shown in the browser address bar (host:port, or just host for port 80/443).
 domain = '{{ env "APIP_AIW_DOMAIN" "localhost:5380" }}'
 
-# Control-plane host — the host:port that deployed gateways use to reach the Platform
-# API. Shown in gateway setup instructions (keys.env, helm values). Must be the
-# externally reachable address, not a relative/proxy path.
-controlplane_host = '{{ env "APIP_AIW_CONTROLPLANE_HOST" "localhost:9243" }}'
-
 # Default region assigned to new organizations on first login.
 default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
-
-# Gateway versions offered in the create-gateway version selector (JSON array string).
-# Each entry: version (helm chart minor), latestVersion (image/chart tag shown to the
-# user and used in the helm --version flag), channel ("STS" | "LTS"). The first entry
-# is the default selection.
-platform_gateway_versions = '{{ env "APIP_AIW_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]" }}'
 
 # Verbose logging in the browser console.
 debug = '{{ env "APIP_AIW_DEBUG" "false" }}'
@@ -136,27 +125,47 @@ log_format = '{{ env "APIP_AIW_LOG_FORMAT" "text" }}'   # text | json
 
 
 # ---------------------------------------------------------------------------
-# Upstream Platform API — the server-to-server hop the BFF proxies to.
+# Upstream Platform API (control plane) — the server-to-server hop the BFF proxies to.
 # ---------------------------------------------------------------------------
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 
 # Base URL used to reach the Platform API. REQUIRED. In docker compose this is the
 # compose hostname; running locally, use localhost. Its http/https scheme decides
 # whether the upstream hop uses TLS.
-url = '{{ env "APIP_AIW_PLATFORM_API_URL" "https://platform-api:9243" }}'
+url = '{{ env "APIP_AIW_CONTROL_PLANE_URL" "https://platform-api:9243" }}'
 
 # File-based login path on the Platform API (basic-auth mode).
-login_path = '{{ env "APIP_AIW_PLATFORM_API_LOGIN_PATH" "/api/portal/v0.9/auth/login" }}'
+login_path = '{{ env "APIP_AIW_CONTROL_PLANE_LOGIN_PATH" "/api/portal/v0.9/auth/login" }}'
 
 # --- Trust for the upstream's TLS certificate ---
 
 # Accept the Platform API's self-signed certificate without verification (local
 # development only) — prefer trusting the certificate with ca_file instead.
-tls_skip_verify = '{{ env "APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY" "false" }}'
+tls_skip_verify = '{{ env "APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY" "false" }}'
 
 # PEM bundle to trust for the upstream's TLS certificate. Appended to the system
 # roots, so public CAs keep working.
-ca_file = '{{ env "APIP_AIW_PLATFORM_API_CA_FILE" "" }}'
+ca_file = '{{ env "APIP_AIW_CONTROL_PLANE_CA_FILE" "" }}'
+
+
+# ---------------------------------------------------------------------------
+# Gateway deployment info — browser-safe values the SPA shows in gateway setup
+# instructions. Distinct from [ai_workspace.control_plane] above: that table is the
+# BFF's own server-to-server hop, while this one is what an externally deployed
+# gateway needs to reach the Platform API itself.
+# ---------------------------------------------------------------------------
+[ai_workspace.gateway]
+
+# Control-plane host — the host:port that deployed gateways use to reach the Platform
+# API. Shown in gateway setup instructions (keys.env, helm values). Must be the
+# externally reachable address, not a relative/proxy path.
+controlplane_host = '{{ env "APIP_AIW_GATEWAY_CONTROLPLANE_HOST" "localhost:9243" }}'
+
+# Gateway versions offered in the create-gateway version selector (JSON array string).
+# Each entry: version (helm chart minor), latestVersion (image/chart tag shown to the
+# user and used in the helm --version flag), channel ("STS" | "LTS"). The first entry
+# is the default selection.
+platform_gateway_versions = '{{ env "APIP_AIW_GATEWAY_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]" }}'
 
 
 # ---------------------------------------------------------------------------
@@ -246,10 +255,10 @@ scope = '{{ env "APIP_AIW_OIDC_SCOPE" "" }}'
 #
 # This table mirrors [platform_api.auth.idp.claim_mappings] in
 # config-platform-api.toml key for key, and the two must agree: both services read
-# the same claims out of the same token. The variables line up one-to-one as well:
+# the same claims out of the same token. The variables it maps to:
 #
-#   APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME     (AI Workspace)
-#   APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME  (Platform API)
+#   APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION  (AI Workspace)
+#   APIP_CP_AUTH_IDP_CLAIM_ORGANIZATION        (Platform API)
 #
 # Override only if your IDP uses claim names other than the defaults shown.
 #
@@ -259,13 +268,13 @@ scope = '{{ env "APIP_AIW_OIDC_SCOPE" "" }}'
 # ---------------------------------------------------------------------------
 [ai_workspace.oidc.claim_mappings]
 
-organization_claim_name = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME" "org_id" }}'    # claim carrying the org ID
-org_name_claim_name     = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ORG_NAME_CLAIM_NAME" "org_name" }}'      # org display name
-org_handle_claim_name   = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ORG_HANDLE_CLAIM_NAME" "org_handle" }}'  # org URL slug
-username_claim_name     = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_USERNAME_CLAIM_NAME" "username" }}'
-email_claim_name        = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_EMAIL_CLAIM_NAME" "email" }}'
-scope_claim_name        = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_SCOPE_CLAIM_NAME" "scope" }}'            # space-separated scope string
-role_claim_name         = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ROLE_CLAIM_NAME" "platform_role" }}'
+organization = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION" "org_id" }}'    # claim carrying the org ID
+org_name     = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ORG_NAME" "org_name" }}'      # org display name
+org_handle   = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ORG_HANDLE" "org_handle" }}'  # org URL slug
+username     = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_USERNAME" "username" }}'
+email        = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_EMAIL" "email" }}'
+scope        = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_SCOPE" "scope" }}'            # space-separated scope string
+role         = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ROLE" "platform_role" }}'
 
 
 # ====================================================================

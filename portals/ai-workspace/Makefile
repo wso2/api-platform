@@ -31,7 +31,7 @@ IMAGE_NAME := $(DOCKER_REGISTRY)/ai-workspace
 # browser→backend traffic, and owns authentication.
 BFF_DIR        := bff
 BFF_DEV_ADDR   ?= :8081
-PLATFORM_API_URL ?= https://localhost:9243
+CONTROL_PLANE_URL ?= https://localhost:9243
 
 help: ## Show this help message
 	@echo 'AI Workspace Build System (Version: $(VERSION))'
@@ -55,11 +55,11 @@ bff-build: ## Build the BFF binary
 # thing that lets an environment variable reach a key, so a key absent from the file
 # cannot be set here. To test against an IDP, add APIP_AIW_AUTH_MODE=oidc and the
 # APIP_AIW_OIDC_* variables the [oidc] tokens name — see README.md.
-bff-run: ## Run the BFF locally (proxies to PLATFORM_API_URL; pair with `make run`)
+bff-run: ## Run the BFF locally (proxies to CONTROL_PLANE_URL; pair with `make run`)
 	./setup.sh --certs-only
 	cd $(BFF_DIR) && \
-		APIP_AIW_PLATFORM_API_URL=$(PLATFORM_API_URL) \
-		APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY=true \
+		APIP_AIW_CONTROL_PLANE_URL=$(CONTROL_PLANE_URL) \
+		APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY=true \
 		APIP_AIW_TLS_CERT_FILE=../resources/certificates/cert.pem \
 		APIP_AIW_TLS_KEY_FILE=../resources/certificates/key.pem \
 		APIP_AIW_LISTEN_ADDR=$(BFF_DEV_ADDR) \

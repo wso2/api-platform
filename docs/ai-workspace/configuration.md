@@ -2,7 +2,7 @@
 
 AI Workspace is configured through a `config.toml` file mounted into the container at `/etc/ai-workspace/config.toml`.
 
-All AI Workspace settings live under a single top-level `[ai_workspace]` table — the same namespacing convention the Platform API uses for its own `[platform_api]` table — so one `config.toml` can hold both services' sections side by side without their keys colliding. Keys are grouped into TOML tables (`[ai_workspace.platform_api]`, `[ai_workspace.tls]`, `[ai_workspace.session]`, `[ai_workspace.cookie]`, `[ai_workspace.oidc]`); deployment-identity keys such as `domain` and `auth_mode` sit directly under `[ai_workspace]`.
+All AI Workspace settings live under a single top-level `[ai_workspace]` table — the same namespacing convention the Platform API uses for its own `[platform_api]` table — so one `config.toml` can hold both services' sections side by side without their keys colliding. Keys are grouped into TOML tables (`[ai_workspace.control_plane]`, `[ai_workspace.tls]`, `[ai_workspace.session]`, `[ai_workspace.cookie]`, `[ai_workspace.oidc]`); deployment-identity keys such as `domain` and `auth_mode` sit directly under `[ai_workspace]`.
 
 The file is the **only** source of configuration. Each value in it is written as an interpolation token that is resolved once at startup, so where the value comes from is visible in place:
 
@@ -14,7 +14,7 @@ client_id = '{{ env "APIP_AIW_OIDC_CLIENT_ID" "default" }}'
 
 A key written this way can be set from the environment without editing the file. That token is the *only* thing that lets an environment variable reach a config key — there is no implicit override, so a key written as a plain literal (`key = "value"`), or absent from the file, ignores the variable entirely. Add the key with a token to make it settable that way.
 
-By convention the variable a token names is the key's path **under `[ai_workspace]`** (the `ai_workspace` segment itself is not part of the name) — table and key, uppercased, dots as underscores — prefixed with **`APIP_AIW_`**: `[ai_workspace.oidc] client_id` → `APIP_AIW_OIDC_CLIENT_ID`, `[ai_workspace.platform_api] url` → `APIP_AIW_PLATFORM_API_URL`, and `[ai_workspace] log_level` → `APIP_AIW_LOG_LEVEL`. (The same prefix convention gives the Platform API `APIP_CP_` and the Developer Portal `APIP_DP_`.) It is only a convention: a token may name any variable, which is what lets a key read an existing secret under its own name.
+By convention the variable a token names is the key's path **under `[ai_workspace]`** (the `ai_workspace` segment itself is not part of the name) — table and key, uppercased, dots as underscores — prefixed with **`APIP_AIW_`**: `[ai_workspace.oidc] client_id` → `APIP_AIW_OIDC_CLIENT_ID`, `[ai_workspace.control_plane] url` → `APIP_AIW_CONTROL_PLANE_URL`, and `[ai_workspace] log_level` → `APIP_AIW_LOG_LEVEL`. (The same prefix convention gives the Platform API `APIP_CP_` and the Developer Portal `APIP_DP_`.) It is only a convention: a token may name any variable, which is what lets a key read an existing secret under its own name.
 
 The file's own location is not a config key — it cannot be, since it is needed before the file is read. The server reads its mount, `/etc/ai-workspace/config.toml`, unless `-config` names another path (`bff -config ../configs/config.toml`, which is what `make bff-run` does). One variable is likewise read directly by the server rather than through a token: `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`, which bounds where `{{ file }}` tokens may read from (see below).
 
@@ -53,17 +53,27 @@ map of what each table is for.
 |-----|-------------|
 | `domain` | Host (and optional port) shown in the browser address bar. |
 | `auth_mode` | Authentication mode. `"basic"` for file-based local auth; `"oidc"` for external IDP. |
-| `controlplane_host` | Externally reachable `host:port` that deployed gateways use to reach the Platform API. Shown in gateway setup instructions. Must be an absolute address, not a relative path. |
 | `default_org_region` | Default region label assigned to new organizations on first login. |
 | `log_level` | `debug` \| `info` \| `warn` \| `error`. |
 
-### `[ai_workspace.platform_api]` — the upstream hop
+### `[ai_workspace.control_plane]` — the upstream hop
 
 | Key | Description |
 |-----|-------------|
 | `url` | **Required.** Absolute URL the BFF uses to reach the Platform API server-to-server (e.g. `https://platform-api:9243`) — an origin, not a base path; the API paths are appended by the proxy. Its scheme decides whether the upstream hop uses TLS. |
 | `tls_skip_verify` | Skip upstream certificate verification entirely (local development only) — prefer `ca_file`. |
 | `ca_file` | PEM bundle trusted for the upstream certificate, appended to the system roots. Prefer this over `tls_skip_verify`. |
+
+### `[ai_workspace.gateway]` — gateway deployment info shown to the browser
+
+Distinct from `[ai_workspace.control_plane]` above: that table is the BFF's own
+server-to-server hop, while this one is what an externally deployed gateway needs to
+reach the Platform API itself.
+
+| Key | Description |
+|-----|-------------|
+| `controlplane_host` | Externally reachable `host:port` that deployed gateways use to reach the Platform API. Shown in gateway setup instructions. Must be an absolute address, not a relative path. |
+| `platform_gateway_versions` | Gateway versions offered in the create-gateway version selector (JSON array string). |
 
 ### `[ai_workspace.oidc]` (only required when `auth_mode = "oidc"`)
 
@@ -81,13 +91,13 @@ This table mirrors the Platform API's `[platform_api.auth.idp.claim_mappings]` k
 
 | Key | Description |
 |-----|-------------|
-| `organization_claim_name` | Claim carrying the organization UUID. |
-| `org_name_claim_name` | Claim carrying the human-readable organization name. |
-| `org_handle_claim_name` | Claim carrying the organization handle (slug). |
-| `username_claim_name` | Claim carrying the display name. |
-| `email_claim_name` | Claim carrying the email address. |
-| `scope_claim_name` | Claim carrying the space-separated scope string. |
-| `role_claim_name` | Claim carrying the platform role. Server-side only — not published to the browser. |
+| `organization` | Claim carrying the organization UUID. |
+| `org_name` | Claim carrying the human-readable organization name. |
+| `org_handle` | Claim carrying the organization handle (slug). |
+| `username` | Claim carrying the display name. |
+| `email` | Claim carrying the email address. |
+| `scope` | Claim carrying the space-separated scope string. |
+| `role` | Claim carrying the platform role. Server-side only — not published to the browser. |
 
 `[ai_workspace.oidc.claim_mappings]` must be the **last** table under `[ai_workspace.oidc]`: in TOML a sub-table header ends the parent table's key section, so a plain `[ai_workspace.oidc]` key written below it would land in the sub-table instead.
 
@@ -102,12 +112,14 @@ The remaining tables (`[ai_workspace.tls]`, `[ai_workspace.session]`, `[ai_works
 
 ```toml
 [ai_workspace]
-domain            = "localhost:8080"
-auth_mode         = "basic"
-controlplane_host = "localhost:9243"
+domain    = "localhost:8080"
+auth_mode = "basic"
 
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://localhost:9243"
+
+[ai_workspace.gateway]
+controlplane_host = "localhost:9243"
 ```
 
 ## Minimal Production Config (OIDC)
@@ -116,11 +128,13 @@ url = "https://localhost:9243"
 [ai_workspace]
 domain             = "app.example.com"
 auth_mode          = "oidc"
-controlplane_host  = "api.example.com"
 default_org_region = "us"
 
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 url = "https://api.example.com"
+
+[ai_workspace.gateway]
+controlplane_host = "api.example.com"
 
 [ai_workspace.oidc]
 authority     = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
@@ -130,9 +144,9 @@ redirect_url  = "https://app.example.com/api/auth/callback"
 
 # Mirrors [platform_api.auth.idp.claim_mappings] in the Platform API config — the two must agree.
 [ai_workspace.oidc.claim_mappings]
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
 ```
 
 ## Platform API Configuration
@@ -151,9 +165,9 @@ issuer   = ["https://api.asgardeo.io/t/<your-tenant>/oauth2/token"]
 audience = ["<ai-workspace-client-id>"]
 
 [auth.idp.claim_mappings]
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
 
 [auth.file_based]
 enabled = false   # Disable file-based auth in production

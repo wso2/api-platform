@@ -105,9 +105,9 @@ audience = ["<ai-workspace-client-id>"]   # Client ID from Asgardeo Protocol tab
 
 # Asgardeo-specific claim name overrides.
 [platform_api.auth.idp.claim_mappings]
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
 ```
 
 Optional overrides (defaults shown):
@@ -117,10 +117,10 @@ Optional overrides (defaults shown):
 validation_mode = "scope"   # or "role" for role-based auth
 
 [auth.idp.claim_mappings]
-user_id_claim_name  = "sub"
-username_claim_name = "username"
-email_claim_name    = "email"
-scope_claim_name    = "scope"
+user_id  = "sub"
+username = "username"
+email    = "email"
+scope    = "scope"
 ```
 
 ---
@@ -141,20 +141,21 @@ domain = "<your-domain>"                                           # e.g. app.ex
 # Set to "oidc" for production (Asgardeo or any OIDC-compliant IDP).
 auth_mode = "oidc"
 
-# Externally reachable host:port that deployed gateways use to reach the Platform API.
-controlplane_host = "<platform-api-host>"
-
 # Default region assigned to new organizations on first login.
 default_org_region = "us"
+
+[ai_workspace.control_plane]
+# The upstream the BFF proxies to, server-to-server. An origin, not a base path — the
+# browser never uses it: the SPA calls the same-origin proxy prefix and the BFF forwards.
+url = "https://<platform-api-host>"
+
+[ai_workspace.gateway]
+# Externally reachable host:port that deployed gateways use to reach the Platform API.
+controlplane_host = "<platform-api-host>"
 
 # Available gateway versions shown in the create-gateway version selector (JSON array string).
 # Each entry: version (helm chart minor), latestVersion (image/chart tag), channel ("STS" | "LTS").
 platform_gateway_versions = '[{"version":"1.2","latestVersion":"v1.2.0-alpha2","channel":"STS"}]'
-
-[ai_workspace.platform_api]
-# The upstream the BFF proxies to, server-to-server. An origin, not a base path — the
-# browser never uses it: the SPA calls the same-origin proxy prefix and the BFF forwards.
-url = "https://<platform-api-host>"
 
 [ai_workspace.oidc]
 # Issuer URL — the BFF auto-discovers OIDC endpoints from
@@ -167,9 +168,9 @@ client_id = "<ai-workspace-client-id>"
 # JWT claim name mappings — this table mirrors [platform_api.auth.idp.claim_mappings] in
 # the Platform API config (section 2) key for key, and the two must agree.
 [ai_workspace.oidc.claim_mappings]
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
 ```
 
 The redirect URLs are ordinary `config.toml` keys. The **client secret is never written into the

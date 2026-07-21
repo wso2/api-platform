@@ -11,20 +11,24 @@
 
 auth_mode = '{{ env "APIP_AIW_AUTH_MODE" "basic" }}'
 domain = '{{ env "APIP_AIW_DOMAIN" "localhost:5380" }}'
-controlplane_host = '{{ env "APIP_AIW_CONTROLPLANE_HOST" "host.docker.internal:9243" }}'
 default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
-platform_gateway_versions = '{{ env "APIP_AIW_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]" }}'
 
 listen_addr = '{{ env "APIP_AIW_LISTEN_ADDR" ":5380" }}'
 static_dir  = '{{ env "APIP_AIW_STATIC_DIR" "/app" }}'
 log_level   = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'   # debug | info | warn | error
 
 
-[ai_workspace.platform_api]
+[ai_workspace.control_plane]
 
-url = '{{ env "APIP_AIW_PLATFORM_API_URL" "https://platform-api:9243" }}'
+url = '{{ env "APIP_AIW_CONTROL_PLANE_URL" "https://platform-api:9243" }}'
 ca_file = "/etc/ai-workspace/tls/cert.pem"
-tls_skip_verify = '{{ env "APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY" "false" }}'
+tls_skip_verify = '{{ env "APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY" "false" }}'
+
+
+[ai_workspace.gateway]
+
+controlplane_host = '{{ env "APIP_AIW_GATEWAY_CONTROLPLANE_HOST" "host.docker.internal:9243" }}'
+platform_gateway_versions = '{{ env "APIP_AIW_GATEWAY_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]" }}'
 
 
 [ai_workspace.tls]

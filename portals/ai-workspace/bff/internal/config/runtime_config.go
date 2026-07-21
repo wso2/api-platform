@@ -30,19 +30,19 @@ var browserSafeKeys = []string{
 	// always emits it from the parsed cfg.AuthMode instead.
 	"domain",
 	"default_org_region",
-	"controlplane_host",
-	"platform_gateway_versions",
+	"gateway.controlplane_host",
+	"gateway.platform_gateway_versions",
 	"csrf_header",
 	"debug",
 
 	// Claim names the SPA displays user/org identity from. The keys mirror the
 	// Platform API's [auth.idp.claim_mappings] exactly — same claim, same name.
 	"oidc.scope",
-	"oidc.claim_mappings.username_claim_name",
-	"oidc.claim_mappings.email_claim_name",
-	"oidc.claim_mappings.organization_claim_name",
-	"oidc.claim_mappings.org_name_claim_name",
-	"oidc.claim_mappings.org_handle_claim_name",
+	"oidc.claim_mappings.username",
+	"oidc.claim_mappings.email",
+	"oidc.claim_mappings.organization",
+	"oidc.claim_mappings.org_name",
+	"oidc.claim_mappings.org_handle",
 
 	// External links and SPA-only endpoints
 	"dev_portal_base_url",
