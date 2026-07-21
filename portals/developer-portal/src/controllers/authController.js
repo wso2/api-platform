@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 const passport = require('passport');
 const axios = require('axios');
 const https = require('https');
@@ -168,7 +168,7 @@ const handleLogOut = async (req, res) => {
         });
     } else if (req.user && req.user.accessToken) {
         const referer = req.get('referer');
-        const regex = /(.+\/views\/[^\/]+)\/?/;
+        const regex = /(.+\/views\/[^/]+)\/?/;
         const match = referer ? referer.match(regex) : null;
         const logoutURL = match ? match[1] : null;
         req.logout((err) => {
@@ -276,7 +276,6 @@ const handleLocalLogin = async (req, res) => {
     }
 
     const adminRole = config.idp?.roles?.admin || 'admin';
-    const superAdminRole = config.idp?.roles?.superAdmin || 'superAdmin';
     const subscriberRole = config.idp?.roles?.subscriber || 'Internal/subscriber';
     // Users with any _manage scope are treated as admins in the devportal
     const isAdmin = claims.scopes.some(s => s.endsWith('_manage'));

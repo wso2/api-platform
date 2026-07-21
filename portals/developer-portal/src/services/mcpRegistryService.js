@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 const { Sequelize, Op } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { APIMetadata } = require('../models/apiMetadata');

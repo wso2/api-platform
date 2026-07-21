@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 const { CustomError } = require('../utils/errors/customErrors');
 const orgDao = require('../dao/organizationDao');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');

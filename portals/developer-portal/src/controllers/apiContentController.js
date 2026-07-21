@@ -140,10 +140,6 @@ const loadAPIs = async (req, res, next) => {
                 error: error.message, 
                 stack: error.stack
             });
-            const templateContent = {
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                devportalMode: devportalMode,
-            }
             if (Number(error?.statusCode) === 401) {
                 logger.warn("User is not authorized to access the API or user session expired, hence redirecting to login page", {
                     orgName: orgName,
@@ -504,7 +500,7 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
 
 const loadDocsPage = async (req, res, next) => {
 
-    const { orgName, apiHandle, viewName, docType } = req.params;
+    const { orgName, apiHandle, viewName } = req.params;
     let html = "";
     if (config.designMode?.enabled) {
         const layoutPath = config.designMode.pathToLayout;
@@ -644,7 +640,6 @@ const loadDocument = async (req, res, next) => {
         baseDocUrl = '/' + orgName + '/views/' + viewName + "/mcp/" + apiHandle
     }
     try {
-        const hbs = exphbs.create({});
         let templateContent = {
             "isAPIDefinition": false,
             "isWebSocketTryout": false,
@@ -750,7 +745,6 @@ const loadDocument = async (req, res, next) => {
             let docNames = await apiMetadataService.getAPIDocTypes(orgId, apiId);
             const apiMetadata = await apiDao.get(orgId, apiId);
             let apiType = apiMetadata[0].dataValues.type;
-            const referenceId = apiMetadata[0].dataValues.ref_id;
             // All MCPs (registry and CP) need a Specification entry in the sidebar
             if (apiType === constants.API_TYPE.MCP && !docNames.some(d => d.type === constants.DOC_TYPES.DOCS.API_DEFINITION)) {
                 docNames = [{ type: constants.DOC_TYPES.DOCS.API_DEFINITION }, ...docNames];
@@ -1474,9 +1468,6 @@ const loadAPIDefinitionRaw = async (req, res) => {
         let spec = typeof raw === 'string' ? parseApiDefinitionContent(raw) : raw;
 
         const endpoints = definitionResponse.metaData?.endPoints;
-        const isAsyncAPI = apiType === constants.API_TYPE.WS || apiType === constants.API_TYPE.WEBSUB;
-        const isRestAPI = apiType !== constants.API_TYPE.GRAPHQL && apiType !== constants.API_TYPE.MCP && !isAsyncAPI;
-
         const prodUrl = endpoints?.productionURL || '';
         const sandboxUrl = endpoints?.sandboxURL || '';
         if (apiType === constants.API_TYPE.WS || apiType === constants.API_TYPE.WEBSUB) {

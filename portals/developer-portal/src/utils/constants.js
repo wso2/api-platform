@@ -281,7 +281,6 @@ module.exports = {
         ORG_CONTENT_UPDATE_ERROR: "Error while updating organization content",
         ORG_CONTENT_DELETE_ERROR: "Error while deleting organization content",
         ORG_CONTENT_CREATE_ERROR: "Error while creating organization content",
-        API_NOT_FOUND: "Failed to load API",
         API_CREATE_ERROR: "Error while creating API",
         API_UPDATE_ERROR: "Error while updating API",
         API_DELETE_ERROR: "Error while deleting API",

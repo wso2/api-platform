@@ -190,7 +190,6 @@ function loadOne(apiHandle, samplesDir = './samples/apis/') {
     const apiDir = getApiDir(apiHandle, samplesDir);
     if (!apiDir) throw new Error(`Sample API not found: ${apiHandle}`);
     // Re-parse using the found directory's entry name relative to samplesDir
-    const dir = resolveDir(samplesDir);
     const entryName = path.basename(apiDir);
     const api = parseApiYaml(entryName, samplesDir);
     if (!api) throw new Error(`Sample API not found: ${apiHandle}`);

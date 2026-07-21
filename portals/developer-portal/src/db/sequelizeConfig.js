@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 const { Sequelize } = require('sequelize');
 const path = require('path');
 const fs = require('fs');

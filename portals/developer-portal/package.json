@@ -6,7 +6,9 @@
   "scripts": {
     "start": "npm rebuild better-sqlite3 --ignore-scripts=false && NODE_ENV=development nodemon src/server.js",
     "start:local": "APIP_DP_TLS_ENABLED=false APIP_DP_SERVER_BASEURL=http://localhost:3000 APIP_DP_PLATFORMAPI_BASEURL=https://localhost:9243 APIP_DP_PLATFORMAPI_INSECURE=true APIP_DP_DATABASE_FILE=./devportal.db npm run start",
-    "debug": "nodemon --inspect src/server.js"
+    "debug": "nodemon --inspect src/server.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "repository": {
     "type": "git",

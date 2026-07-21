@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 
 (function () {
   var editPlanId = null;
@@ -164,7 +164,7 @@
       return;
     }
     if (e.target.closest('.cfg-plan-delete-btn')) {
-      var btn = e.target.closest('.cfg-plan-delete-btn');
+      btn = e.target.closest('.cfg-plan-delete-btn');
       pendingDelPlanId = btn.dataset.id;
       document.getElementById('cfg-del-plan-name-txt').textContent = btn.dataset.display || btn.dataset.name;
       document.getElementById('cfg-delete-plan-modal').style.display = 'flex';

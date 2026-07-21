@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 const { renderTemplate, renderGivenTemplate, loadLayoutFromAPI, resolveActor } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
@@ -198,7 +198,7 @@ const loadApplications = async (req, res, next) => {
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
     const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
-    let html, metaData, templateContent;
+    let html, templateContent;
     try {
         const orgName = req.params.orgName;
         const orgId = await orgIDValue(orgName);
