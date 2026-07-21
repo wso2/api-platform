@@ -16,8 +16,7 @@
   "keywords": [
     "WSO2",
     "API Platform",
-    "Developer Portal",
-    "Node.js"
+    "Developer Portal"
   ],
   "author": "WSO2 LLC",
   "license": "Apache-2.0",
@@ -55,7 +54,6 @@
     "sequelize": "6.37.8",
     "smol-toml": "1.7.0",
     "unzipper": "0.12.5",
-    "uuid": "14.0.1",
     "winston": "3.19.0",
     "winston-daily-rotate-file": "5.0.0"
   },
