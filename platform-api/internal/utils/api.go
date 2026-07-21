@@ -87,7 +87,7 @@ func (u *APIUtil) RESTAPIToModel(restAPI *api.RESTAPI, orgID string) *model.API 
 			Context:             &restAPI.Context,
 			Transport:           stringSliceValue(restAPI.Transport),
 			Upstream:            *u.UpstreamConfigAPIToModel(&restAPI.Upstream),
-			UpstreamDefinitions: u.UpstreamDefinitionsAPIToModel(restAPI.UpstreamDefinitions),
+			UpstreamDefinitions: u.ReusableUpstreamsAPIToModel(restAPI.UpstreamDefinitions),
 			Policies:            u.PoliciesAPIToModel(restAPI.Policies),
 			Operations:          u.OperationsAPIToModel(restAPI.Operations),
 			SubscriptionPlans:   stringSliceValue(restAPI.SubscriptionPlans),
@@ -138,7 +138,7 @@ func (u *APIUtil) ModelToRESTAPI(modelAPI *model.API, projectHandle string) (*ap
 		UpdatedAt:           TimePtrIfNotZero(modelAPI.UpdatedAt),
 		UpdatedBy:           StringPtrIfNotEmpty(modelAPI.UpdatedBy),
 		Upstream:            u.UpstreamConfigModelToAPI(&modelAPI.Configuration.Upstream),
-		UpstreamDefinitions: u.UpstreamDefinitionsModelToAPI(modelAPI.Configuration.UpstreamDefinitions),
+		UpstreamDefinitions: u.ReusableUpstreamsModelToAPI(modelAPI.Configuration.UpstreamDefinitions),
 		Version:             modelAPI.Version,
 	}, nil
 }
@@ -321,7 +321,7 @@ func (u *APIUtil) upstreamAuthToModel(auth *api.UpstreamAuth) *model.UpstreamAut
 	return modelAuth
 }
 
-func (u *APIUtil) UpstreamDefinitionsAPIToModel(definitions *[]api.ReusableUpstream) []model.ReusableUpstream {
+func (u *APIUtil) ReusableUpstreamsAPIToModel(definitions *[]api.ReusableUpstream) []model.ReusableUpstream {
 	if definitions == nil {
 		return nil
 	}
@@ -508,7 +508,7 @@ func (u *APIUtil) upstreamAuthToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth 
 	return apiAuth
 }
 
-func (u *APIUtil) UpstreamDefinitionsModelToAPI(models []model.ReusableUpstream) *[]api.ReusableUpstream {
+func (u *APIUtil) ReusableUpstreamsModelToAPI(models []model.ReusableUpstream) *[]api.ReusableUpstream {
 	if len(models) == 0 {
 		return nil
 	}
