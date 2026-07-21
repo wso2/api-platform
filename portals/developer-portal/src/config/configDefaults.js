@@ -32,7 +32,6 @@
 const DEFAULTS = {
     server: {
         port: 3000,
-        readOnlyMode: false,
     },
     tls: {
         enabled: false,   // was: advanced.http, inverted (http:true by default → tls disabled)

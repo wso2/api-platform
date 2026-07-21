@@ -12,7 +12,7 @@
     </div>
     {{#if applicationsMetadata.length}}
     <button class="apps-create-btn" id="apps-create-btn" type="button"
-      {{#if @root.isReadOnlyMode}}disabled title="Read-only mode"{{/if}}>
+      >
       <i class="bi bi-plus"></i> Create application
     </button>
     {{/if}}
@@ -25,7 +25,7 @@
     <h2 class="dp-empty-title">No applications yet</h2>
     <p class="dp-empty-desc">Create an application to generate API keys and subscribe to APIs. You can manage all your credentials in one place.</p>
     <button class="dp-btn dp-btn--primary dp-btn--lg" id="apps-create-btn-empty" type="button"
-      {{#if @root.isReadOnlyMode}}disabled title="Read-only mode"{{/if}}>
+      >
       <i class="bi bi-plus"></i> Create application
     </button>
   </div>
@@ -48,13 +48,11 @@
       <p class="app-card-desc">{{description}}</p>
 
       <div class="app-card-footer">
-        {{#unless @root.isReadOnlyMode}}
         <button type="button" class="app-delete-btn" id="trash-btn-{{id}}"
           title="Delete application"
           onclick="event.stopPropagation(); appShowDeleteModal('{{id}}', '{{displayName}}')">
           <i class="bi bi-trash"></i>
         </button>
-        {{/unless}}
       </div>
 
     </div>

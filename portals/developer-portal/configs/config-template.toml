@@ -37,7 +37,6 @@
 
 [developer_portal.server]
 port = 3000
-read_only_mode = false
 
 # =============================================================================
 # TLS CONFIGURATION

@@ -125,7 +125,6 @@ const loadAPIs = async (req, res, next) => {
                 orgId: orgId,
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
-                isReadOnlyMode: config.server.readOnlyMode,
                 applications: []
             };
 
@@ -417,7 +416,6 @@ const loadAPIContent = async (req, res, next) => {
                 scopes: [],
                 devportalMode: devportalMode,
                 profile: req.isAuthenticated() ? profile : null,
-                isReadOnlyMode: config.server.readOnlyMode,
             };
             templateContent.showApiKeysNav = await resolveShowApiKeysNav(orgId, apiId, metaData.type, metaData, apiDefinitionForNav);
             templateContent.showSubscriptionsNav = (metaData?.subscriptionPlans || []).length > 0;

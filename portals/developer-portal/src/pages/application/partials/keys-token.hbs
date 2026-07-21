@@ -45,9 +45,8 @@
                                         Cancel
                                     </button>
                                     <button
-                                        class="common-btn-primary btn-sm me-1 {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                                        class="common-btn-primary btn-sm me-1"
                                         id="regenerateButton_{{../id}}_{{keyType}}"
-                                        style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{/if}}"
                                         onclick="openGenerateTokenModal('applicationKeyGenerateForm-{{../id}}-{{keyType}}', '{{@root.applicationMetadata.id}}', '{{keys.keyMappingId}}', '{{../id}}', '{{@root.applicationMetadata.displayName}}', '{{json @root.subscriptionScopes}}', '{{keyType}}')">
                                         <span class="button-normal-state">
                                             <i class="bi bi-arrow-clockwise"></i> Regenerate
