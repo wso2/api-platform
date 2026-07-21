@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 
 (function () {
   var _cfg = document.getElementById('cfg-page-config') || { dataset: {} };
@@ -167,7 +167,7 @@
       return;
     }
     if (e.target.closest('.cfg-webhook-delete-btn')) {
-      var btn = e.target.closest('.cfg-webhook-delete-btn');
+      btn = e.target.closest('.cfg-webhook-delete-btn');
       pendingDelWebhookId = btn.dataset.id;
       document.getElementById('cfg-del-webhook-name-txt').textContent = btn.dataset.name;
       document.getElementById('cfg-delete-webhook-modal').style.display = 'flex';

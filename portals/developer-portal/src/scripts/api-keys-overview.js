@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 
 // Global "API Keys" page. The list is rendered server-side; this script handles inline
 // per-key management using the SAME modals as the per-API API Keys page

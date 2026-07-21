@@ -19,7 +19,6 @@ const APIContent = require('../models/apiContent');
 const { APIMetadata } = require('../models/apiMetadata');
 const { Sequelize, Op } = require('sequelize');
 const constants = require('../utils/constants');
-const logger = require('../config/logger');
 
 const store = async (apiFile, fileName, apiId, type, createdBy, t, key) => {
 

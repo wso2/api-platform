@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { Application, ApplicationKeyMapping, SubscriptionMapping } = require('../models/application');
+const { Application, ApplicationKeyMapping } = require('../models/application');
 const { Sequelize } = require('sequelize');
 const logger = require('../config/logger');
 

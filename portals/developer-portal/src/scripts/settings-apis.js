@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 
 (function () {
   var _cfg = document.getElementById('cfg-page-config') || { dataset: {} };
@@ -588,7 +588,7 @@
 
     /* edit */
     if (e.target.closest('.cfg-edit-trigger')) {
-      var btn = e.target.closest('.cfg-edit-trigger');
+      btn = e.target.closest('.cfg-edit-trigger');
       document.querySelectorAll('.cfg-dropdown').forEach(function(d){ d.style.display='none'; });
       var api = apiDataFromRow(btn.dataset.id);
       if (api) showWizard(api);
@@ -597,7 +597,7 @@
 
     /* publish */
     if (e.target.closest('.cfg-publish-trigger')) {
-      var btn = e.target.closest('.cfg-publish-trigger');
+      btn = e.target.closest('.cfg-publish-trigger');
       document.querySelectorAll('.cfg-dropdown').forEach(function(d){ d.style.display='none'; });
       setApiStatus(btn.dataset.id, btn.dataset.name, 'PUBLISHED');
       return;
@@ -605,7 +605,7 @@
 
     /* deprecate */
     if (e.target.closest('.cfg-unpublish-trigger')) {
-      var btn = e.target.closest('.cfg-unpublish-trigger');
+      btn = e.target.closest('.cfg-unpublish-trigger');
       document.querySelectorAll('.cfg-dropdown').forEach(function(d){ d.style.display='none'; });
       pendingDeprecateId   = btn.dataset.id;
       pendingDeprecateName = btn.dataset.name;
@@ -616,7 +616,7 @@
 
     /* delete */
     if (e.target.closest('.cfg-delete-trigger')) {
-      var btn = e.target.closest('.cfg-delete-trigger');
+      btn = e.target.closest('.cfg-delete-trigger');
       e.stopPropagation();
       document.querySelectorAll('.cfg-dropdown').forEach(function(d){ d.style.display='none'; });
       pendingDelId = btn.dataset.id;

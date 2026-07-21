@@ -16,7 +16,7 @@
  * under the License.
  */
 const crypto = require('crypto');
-const { SubscriptionMapping, Application } = require('../models/application');
+const { SubscriptionMapping } = require('../models/application');
 const { APIMetadata } = require('../models/apiMetadata');
 const SubscriptionPlan = require('../models/subscriptionPlan');
 const { createCryptoUtil } = require('../utils/cryptoUtil');

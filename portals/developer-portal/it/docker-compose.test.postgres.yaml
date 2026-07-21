@@ -113,7 +113,7 @@ services:
     command: ["cypress", "run", "--headless", "--browser", "electron"]
 
   rest-api-tests:
-    image: node:22-alpine
+    image: node:24-alpine
     depends_on:
       devportal:
         condition: service_healthy

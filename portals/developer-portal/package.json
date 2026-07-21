@@ -1,112 +1,69 @@
 {
   "name": "devportal-webapp",
   "version": "1.0.0-beta-SNAPSHOT",
-  "description": "devportal-webapp",
-  "main": "index.js",
+  "description": "WSO2 API Platform Developer Portal",
+  "main": "src/server.js",
   "scripts": {
-    "design-mode": "npm run build-css --watch & nodemon src/dev-server.js",
     "start": "npm rebuild better-sqlite3 --ignore-scripts=false && NODE_ENV=development nodemon src/server.js",
     "start:local": "APIP_DP_TLS_ENABLED=false APIP_DP_SERVER_BASEURL=http://localhost:3000 APIP_DP_PLATFORMAPI_BASEURL=https://localhost:9243 APIP_DP_PLATFORMAPI_INSECURE=true APIP_DP_DATABASE_FILE=./devportal.db npm run start",
     "debug": "nodemon --inspect src/server.js",
-    "multi-tenant": "npm run build-css --watch & nodemon src/multi-tenant.js",
-    "build-css": "node watcher.js",
-    "build": "pkg ."
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wso2/api-developer-portal-core.git"
+    "url": "git+https://github.com/wso2/api-platform.git",
+    "directory": "portals/developer-portal"
   },
   "keywords": [
-    "Devportal",
-    "Node.js"
+    "WSO2",
+    "API Platform",
+    "Developer Portal"
   ],
-  "author": "Divya Premanantha",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/api-developer-portal-core/issues"
+  "author": "WSO2 LLC",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": "24.x"
   },
-  "homepage": "https://github.com/api-developer-portal-core#readme",
+  "bugs": {
+    "url": "https://github.com/wso2/api-platform/issues"
+  },
+  "homepage": "https://github.com/wso2/api-platform/tree/main/portals/developer-portal#readme",
   "dependencies": {
-    "async-lock": "1.4.1",
     "axios": "1.18.1",
-    "basic-ftp": "6.0.1",
-    "better-sqlite3": "^12.10.0",
-    "bootstrap-icons": "1.11.3",
-    "chalk": "4.1.2",
-    "chokidar": "3.6.0",
+    "better-sqlite3": "12.11.1",
     "connect-pg-simple": "10.0.0",
-    "connect-session-sequelize": "^7.1.1",
-    "crypto": "1.0.1",
+    "connect-session-sequelize": "8.0.6",
     "dotenv": "17.4.2",
-    "express": "4.22.2",
-    "express-handlebars": "7.1.3",
-    "express-openapi-validator": "4.13.9",
+    "express": "5.2.1",
+    "express-handlebars": "9.0.1",
+    "express-openapi-validator": "5.6.2",
     "express-session": "1.19.0",
     "express-validator": "7.3.2",
-    "fs-extra": "11.2.0",
-    "graphiql": "3.7.1",
-    "graphql": "16.9.0",
+    "graphql": "17.0.2",
     "handlebars": "4.7.9",
-    "hbs": "4.2.1",
-    "https": "1.0.0",
-    "install": "0.13.0",
-    "jose": "5.9.6",
-    "js-yaml": "4.3.0",
-    "jsonwebtoken": "9.0.2",
-    "marked": "13.0.3",
+    "jose": "6.2.3",
+    "js-yaml": "5.2.1",
+    "marked": "18.0.6",
     "minimatch": "10.2.5",
-    "multer": "1.4.5-lts.1",
-    "node-fetch": "^2.7.0",
-    "nodemon": "3.1.4",
-    "npm": "11.18.0",
+    "multer": "2.2.0",
     "passport": "0.7.0",
-    "passport-custom": "1.1.1",
-    "passport-local": "1.0.0",
     "passport-oauth2": "1.8.0",
-    "passport-openidconnect": "0.1.2",
-    "path": "0.12.7",
-    "pg": "8.14.0",
+    "pg": "8.22.0",
     "pg-hstore": "2.3.4",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
     "sequelize": "6.37.8",
-    "smol-toml": "^1.7.0",
-    "unzipper": "0.12.3",
-    "uuid": "11.1.1",
-    "winston": "3.17.0",
+    "smol-toml": "1.7.0",
+    "unzipper": "0.12.5",
+    "winston": "3.19.0",
     "winston-daily-rotate-file": "5.0.0"
   },
   "overrides": {
     "handlebars": "4.7.9"
   },
-  "applicationInsights": {
-    "excludeModules": [
-      "basic-ftp"
-    ]
-  },
-  "bin": {
-    "app": "src/server.js"
-  },
-  "pkg": {
-    "scripts": [
-      "**/*.js"
-    ],
-    "assets": [
-      "src/pages/**/*",
-      "src/styles/**/*",
-      "node_modules/axios/**/*"
-    ],
-    "targets": [
-      "node18-macos-x64",
-      "node18-linux-x64",
-      "node18-win-x64"
-    ],
-    "outputPath": "dist"
-  },
   "devDependencies": {
-    "@eslint/js": "9.15.0",
-    "eslint": "9.15.0",
-    "globals": "15.12.0",
-    "pkg": "5.8.1"
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "globals": "15.15.0",
+    "nodemon": "3.1.14"
   }
 }

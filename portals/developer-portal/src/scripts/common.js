@@ -125,7 +125,7 @@ document.addEventListener("DOMContentLoaded", function () {
             apisLink?.classList.add('has-active-submenu');
 
             // Extract API ID from URL path and update submenu links
-            const apiIdMatch = currentPath.match(/\/api\/([^\/]+)/);
+            const apiIdMatch = currentPath.match(/\/api\/([^/]+)/);
             if (apiIdMatch && apiIdMatch[1]) {
                 const apiId = apiIdMatch[1];
 
@@ -160,7 +160,7 @@ document.addEventListener("DOMContentLoaded", function () {
             mcpLink?.classList.add('has-active-submenu');
 
             // Extract API ID from URL path and update submenu links
-            const apiIdMatch = currentPath.match(/\/mcp\/([^\/]+)/);
+            const apiIdMatch = currentPath.match(/\/mcp\/([^/]+)/);
             if (apiIdMatch && apiIdMatch[1]) {
                 const apiId = apiIdMatch[1];
 

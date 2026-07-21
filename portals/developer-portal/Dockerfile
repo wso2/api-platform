@@ -17,12 +17,12 @@
 # --------------------------------------------------------------------
 
 # Developer Portal Dockerfile
-# Uses node:23-slim (Debian/glibc) so better-sqlite3 can compile its native binding.
+# Uses node:24-slim (Debian/glibc, current LTS) so better-sqlite3 can compile its native binding.
 # Build tools (python3, make, g++) are installed only in the builder stage and are not
 # carried into the runtime image.
 
 # Build stage — installs production dependencies (including native build of better-sqlite3)
-FROM node:23-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 # Install native build tools required by better-sqlite3's node-gyp compilation.
 # python3 is needed by node-gyp; make and g++ compile the C++ binding.
@@ -31,7 +31,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 # Runtime stage
-FROM node:23-slim
+FROM node:24-slim
 
 # Install runtime utilities needed by the entrypoint (openssl for cert generation)
 RUN apt-get update && apt-get install -y --no-install-recommends openssl curl && rm -rf /var/lib/apt/lists/*

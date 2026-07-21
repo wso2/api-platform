@@ -26,16 +26,11 @@ const orgDao = require('../dao/organizationDao');
 const constants = require('../utils/constants');
 const unzipper = require('unzipper');
 const zlib = require('zlib');
-const axios = require('axios');
-const qs = require('qs');
-const https = require('https');
 const { config } = require('../config/configLoader');
 const { body, param, query } = require('express-validator');
 const { Sequelize } = require('sequelize');
-const apiDao = require('../dao/apiDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const subscriptionPlanDTO = require('../dto/subscriptionPlanDto');
-const jwt = require('jsonwebtoken');
 const filePrefix = '/src/defaultContent/';
 
 // Function to load and convert markdown file to HTML

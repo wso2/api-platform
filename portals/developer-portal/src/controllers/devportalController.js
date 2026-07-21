@@ -1,4 +1,4 @@
-/* eslint-disable no-undef */
+ 
 /*
  * Copyright (c) 2024, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
@@ -16,12 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const axios = require('axios');
-const https = require('https');
-const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const util = require('../utils/util');
-const orgDao = require('../dao/organizationDao');
 const appDao = require('../dao/applicationDao');
 const apiKeyService = require('../services/apiKeyService');
 const { publish } = require('../services/webhooks/eventPublisher');
@@ -30,7 +26,7 @@ const constants = require('../utils/constants');
 const { ApplicationDTO } = require('../dto/applicationDto');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const { Sequelize } = require("sequelize");
-const yaml = require('js-yaml');
+const yaml = require('../utils/yaml');
 const kmDao = require('../dao/keyManagerDao');
 const { generateToken } = require('../services/oauthTokenService');
 const { CustomError } = require('../utils/errors/customErrors');
