@@ -43,6 +43,8 @@ const DEFAULTS = {
         },
     },
     logging: {
+        level: 'info',   // debug | info | warn | error
+        format: 'text',  // text | json
         consoleOnly: true,
     },
     database: {

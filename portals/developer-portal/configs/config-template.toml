@@ -52,6 +52,8 @@ key_file = "./resources/security/private-key.pem"
 # =============================================================================
 
 [developer_portal.logging]
+level = "info"          # debug | info | warn | error
+format = "text"         # text | json
 console_only = false
 
 # =============================================================================

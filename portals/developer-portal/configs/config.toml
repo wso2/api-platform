@@ -57,7 +57,9 @@ cert_file = '{{ env "APIP_DP_SERVER_HTTPS_CERT_FILE" "/etc/devportal/tls/cert.pe
 key_file  = '{{ env "APIP_DP_SERVER_HTTPS_KEY_FILE" "/etc/devportal/tls/key.pem" }}'
 
 [developer_portal.logging]
-console_only = '{{ env "APIP_DP_LOGGING_CONSOLEONLY" "true" }}'
+level        = '{{ env "APIP_DP_LOGGING_LEVEL" "info" }}'   # debug | info | warn | error
+format       = '{{ env "APIP_DP_LOGGING_FORMAT" "text" }}'  # text | json
+console_only = '{{ env "APIP_DP_LOGGING_CONSOLE_ONLY" "true" }}'
 
 [developer_portal.database]
 # Relative — resolves to /app/data/devportal.db under Compose (cwd /app),
