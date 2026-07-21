@@ -1,6 +1,6 @@
 {
   "name": "devportal-webapp",
-  "version": "1.0.0-alpha2-SNAPSHOT",
+  "version": "1.0.0-beta-SNAPSHOT",
   "description": "devportal-webapp",
   "main": "index.js",
   "scripts": {
