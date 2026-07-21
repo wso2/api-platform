@@ -48,7 +48,7 @@ Next Steps:
 
 3. Create an APIGateway to deploy a gateway instance:
    $ kubectl apply -f - <<EOF
-   apiVersion: gateway.api-platform.wso2.com/v1alpha1
+   apiVersion: gateway.api-platform.wso2.com/v1
    kind: APIGateway
    metadata:
      name: my-gateway
@@ -63,7 +63,7 @@ Next Steps:
 
 4. Create a RestApi to deploy an API:
    $ kubectl apply -f - <<EOF
-   apiVersion: gateway.api-platform.wso2.com/v1alpha1
+   apiVersion: gateway.api-platform.wso2.com/v1
    kind: RestApi
    metadata:
      name: my-api

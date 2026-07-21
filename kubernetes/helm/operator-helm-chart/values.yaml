@@ -27,7 +27,7 @@ image:
   # repository: ghcr.io/wso2/api-platform/gateway-operator
   # For local registry: host.docker.internal:5000/gateway-operator
   repository: ghcr.io/wso2/api-platform/gateway-operator
-  tag: "0.8.0"
+  tag: "0.10.0"
   pullPolicy: Always  # Uses locally loaded image from nerdctl load
 
 serviceAccount:

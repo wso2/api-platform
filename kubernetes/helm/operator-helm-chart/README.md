@@ -32,7 +32,7 @@ helm install apip-operator ./operator-helm-chart --namespace gateway-operator-sy
 ```bash
 helm install apip-operator ./operator-helm-chart \
   --namespace gateway-operator-system --create-namespace \
-  --set image.tag=0.8.0 \
+  --set image.tag=0.10.0 \
   --set gateway.controlPlaneHost=http://my-control-plane:3001
 ```
 
@@ -52,7 +52,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 | `replicaCount` | Number of operator replicas | `1` |
 | `watchNamespaces` | Namespaces to watch (cluster-wide if empty) | `[]` |
 | `image.repository` | Operator image repository | `ghcr.io/wso2/api-platform/gateway-operator` |
-| `image.tag` | Operator image tag | `0.8.0` |
+| `image.tag` | Operator image tag | `0.10.0` |
 | `image.pullPolicy` | Image pull policy | `Always` |
 | `serviceAccount.create` | Create service account | `true` |
 | `serviceAccount.name` | Service account name | `controller-manager` |
@@ -128,7 +128,7 @@ The two most commonly used kinds:
 Defines a gateway instance. `spec.apiSelector` is required; the gateway topology (replicas, service types, images, TLS, …) is supplied through a referenced ConfigMap via `spec.configRef`.
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: APIGateway
 metadata:
   name: my-gateway
@@ -149,7 +149,7 @@ spec:
 Defines an API deployed onto matching gateways.
 
 ```yaml
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: my-api
@@ -195,7 +195,7 @@ To control gateway topology (separate controller / data-plane replica counts, a 
 
 ```bash
 kubectl apply -f - <<EOF
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: APIGateway
 metadata:
   name: production-gateway
@@ -233,7 +233,7 @@ EOF
 
 ```bash
 kubectl apply -f - <<EOF
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: petstore-api
@@ -276,7 +276,7 @@ Debug mode runs the operator under the Delve debugger for remote debugging:
 debug:
   enabled: true
   port: 2345
-  debugImage: "ghcr.io/wso2/api-platform/gateway-operator:0.8.0-debug"
+  debugImage: "ghcr.io/wso2/api-platform/gateway-operator:0.10.0-debug"
 ```
 
 Connect your debugger to the debug port:
@@ -375,7 +375,7 @@ helm upgrade apip-operator ./operator-helm-chart \
 ```bash
 helm upgrade apip-operator ./operator-helm-chart \
   --namespace gateway-operator-system \
-  --set image.tag=0.9.0
+  --set image.tag=0.11.0
 ```
 
 ## Uninstallation
