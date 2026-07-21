@@ -779,31 +779,19 @@ export default function ProviderTemplateOverview() {
                               </MenuItem>
                             );
                           })}
-                          <Divider />
-                          {isBuiltIn ? (
-                            <MenuItem
-                              onClick={() => {
-                                setVersionMenuAnchor(null);
-                                navigate(`${listPath}/new`, {
-                                  state: { copyFrom: template },
-                                });
-                              }}
-                              sx={{ color: 'primary.main', gap: 1 }}
-                              data-cyid="provider-template-create-copy-menuitem"
-                            >
-                              <Copy size={16} />
-                              Create a copy
-                            </MenuItem>
-                          ) : (
-                            <MenuItem
-                              component={RouterLink}
-                              to="new-version"
-                              onClick={() => setVersionMenuAnchor(null)}
-                              sx={{ color: 'primary.main', gap: 1 }}
-                            >
-                              <GitBranch size={16} />
-                              Create new version
-                            </MenuItem>
+                          {!isBuiltIn && (
+                            <>
+                              <Divider />
+                              <MenuItem
+                                component={RouterLink}
+                                to="new-version"
+                                onClick={() => setVersionMenuAnchor(null)}
+                                sx={{ color: 'primary.main', gap: 1 }}
+                              >
+                                <GitBranch size={16} />
+                                Create new version
+                              </MenuItem>
+                            </>
                           )}
                         </>
                       );
@@ -842,6 +830,18 @@ export default function ProviderTemplateOverview() {
             </Box>
 
             <Stack direction="column" spacing={1.5} alignItems="flex-end">
+              {isBuiltIn && (
+                <Button
+                  variant="outlined"
+                  startIcon={<Copy size={16} />}
+                  onClick={() =>
+                    navigate(`${listPath}/new`, { state: { copyFrom: template } })
+                  }
+                  data-cyid="provider-template-create-copy-button"
+                >
+                  Create a copy
+                </Button>
+              )}
               {!isBuiltIn && (
                 <Button
                   variant="contained"
