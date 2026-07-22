@@ -387,6 +387,32 @@ func TestStreamDecompressor_HighRatioChunk_NoStall(t *testing.T) {
 	}
 }
 
+// TestStreamDecompressor_OutputCap_FailsTerminally verifies the decompression-bomb
+// guard: a tiny compressed input that expands past maxStreamAccumulatorSize must fail
+// terminally rather than growing the output buffer without bound.
+func TestStreamDecompressor_OutputCap_FailsTerminally(t *testing.T) {
+	// Compresses to a few KB but decompresses to just over the 10 MB cap.
+	original := bytes.Repeat([]byte("A"), maxStreamAccumulatorSize+1<<20)
+	compressed := gzipCompress(original)
+
+	sd := newStreamDecompressor("gzip")
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := sd.FeedChunk(compressed, true)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.Error(t, err, "expected a terminal error when decompressed output exceeds the cap")
+		assert.Contains(t, err.Error(), "maximum allowed size")
+	case <-time.After(15 * time.Second):
+		sd.Close()
+		t.Fatal("streamDecompressor hung instead of failing terminally on an oversized decode burst")
+	}
+}
+
 // =============================================================================
 // streamCompressor Tests
 // =============================================================================

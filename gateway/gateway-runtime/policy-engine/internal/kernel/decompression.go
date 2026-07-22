@@ -56,10 +56,12 @@ func decompressBody(body []byte, encoding string) ([]byte, error) {
 // The synchronization is a single sync.Cond guarding shared state. Two invariants make
 // it deadlock-free and race-free, unlike the previous io.Pipe + bounded-channel design:
 //
-//  1. The decoder goroutine NEVER blocks on output — decompressed bytes go into an
-//     unbounded bytes.Buffer that FeedChunk drains on every call. (The old design used
-//     a bounded channel; when it filled, the goroutine blocked mid-decode, stopped
-//     consuming input, and the whole stream wedged. That was the mid-stream stall.)
+//  1. The decoder goroutine NEVER blocks on output — decompressed bytes go into a
+//     bytes.Buffer that FeedChunk drains on every call. (The old design used a bounded
+//     channel; when it filled, the goroutine blocked mid-decode, stopped consuming
+//     input, and the whole stream wedged. That was the mid-stream stall.) A single
+//     decode burst is capped at maxStreamAccumulatorSize so a decompression bomb fails
+//     terminally instead of exhausting memory.
 //  2. FeedChunk returns exactly when the decoder has consumed all input fed so far and
 //     is blocked waiting for more (feederBlocked), or has finished/errored (done). At
 //     that point every byte decodable from the fed input is already in the output
@@ -138,6 +140,16 @@ func (sd *streamDecompressor) decodeLoop(encoding string) {
 		n, err := r.Read(buf)
 		if n > 0 {
 			sd.mu.Lock()
+			// Bound the decompressed output: a small compressed chunk can expand to an
+			// arbitrarily large decode burst (decompression bomb). Since FeedChunk drains
+			// sd.out on each call, this caps a single burst — matching the force-flush
+			// guard the uncompressed streaming path applies at maxStreamAccumulatorSize.
+			// On overflow we stop before copying the offending block and fail terminally.
+			if sd.out.Len()+n > maxStreamAccumulatorSize {
+				sd.mu.Unlock()
+				sd.finish(fmt.Errorf("decompressed stream exceeds maximum allowed size (%d bytes)", maxStreamAccumulatorSize))
+				return
+			}
 			sd.out.Write(buf[:n]) // bytes.Buffer copies, so reusing buf is safe
 			sd.mu.Unlock()
 		}
