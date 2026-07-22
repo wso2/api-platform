@@ -20,18 +20,14 @@
 // `go` toolchain.
 package goenv
 
-import (
-	"os"
-	"strings"
-)
+import "strings"
 
 // gotoolchainKey is the environment variable Go consults to decide whether it
 // may switch to a different toolchain than the one it was invoked as.
 const gotoolchainKey = "GOTOOLCHAIN"
 
-// Env returns a copy of the current process environment with GOTOOLCHAIN set to
-// "auto" so the `go` command may download and switch to the toolchain a module
-// requires.
+// WithToolchain returns env with GOTOOLCHAIN set to "auto" so the `go` command
+// may download and switch to the toolchain a module requires.
 //
 // The official golang base images pin GOTOOLCHAIN=local. With that setting, a
 // `go` command refuses to build or download a module whose go.mod declares a
@@ -43,8 +39,11 @@ const gotoolchainKey = "GOTOOLCHAIN"
 //
 // An explicit operator override (any GOTOOLCHAIN value other than the empty
 // string or "local", e.g. a pinned "go1.26.6") is respected and left untouched.
-func Env() []string {
-	env := os.Environ()
+//
+// Callers should pass exec.Cmd.Environ() (after setting Cmd.Dir) rather than
+// os.Environ(), so the PWD entry os/exec derives from Cmd.Dir is preserved —
+// setting Cmd.Env at all suppresses that automatic PWD update.
+func WithToolchain(env []string) []string {
 	for i, e := range env {
 		v, ok := strings.CutPrefix(e, gotoolchainKey+"=")
 		if !ok {

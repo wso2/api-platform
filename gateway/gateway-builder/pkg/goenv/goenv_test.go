@@ -19,7 +19,6 @@
 package goenv
 
 import (
-	"os"
 	"strings"
 	"testing"
 )
@@ -35,30 +34,22 @@ func gotoolchainValues(env []string) []string {
 	return vals
 }
 
-func TestEnv(t *testing.T) {
+func TestWithToolchain(t *testing.T) {
 	tests := []struct {
-		name  string
-		set   bool
-		value string
-		want  string
+		name string
+		in   []string
+		want string
 	}{
-		{name: "unset defaults to auto", set: false, want: "auto"},
-		{name: "local is overridden to auto", set: true, value: "local", want: "auto"},
-		{name: "empty is overridden to auto", set: true, value: "", want: "auto"},
-		{name: "explicit auto is kept", set: true, value: "auto", want: "auto"},
-		{name: "pinned version is respected", set: true, value: "go1.26.6", want: "go1.26.6"},
-		{name: "path+auto is respected", set: true, value: "go1.26.6+auto", want: "go1.26.6+auto"},
+		{name: "unset defaults to auto", in: []string{"HOME=/root"}, want: "auto"},
+		{name: "local is overridden to auto", in: []string{"GOTOOLCHAIN=local"}, want: "auto"},
+		{name: "empty is overridden to auto", in: []string{"GOTOOLCHAIN="}, want: "auto"},
+		{name: "explicit auto is kept", in: []string{"GOTOOLCHAIN=auto"}, want: "auto"},
+		{name: "pinned version is respected", in: []string{"GOTOOLCHAIN=go1.26.6"}, want: "go1.26.6"},
+		{name: "path+auto is respected", in: []string{"GOTOOLCHAIN=go1.26.6+auto"}, want: "go1.26.6+auto"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// t.Setenv registers cleanup that restores the original value, so
-			// mutating the var (including unsetting it) below is safe.
-			t.Setenv(gotoolchainKey, tt.value)
-			if !tt.set {
-				os.Unsetenv(gotoolchainKey)
-			}
-
-			got := gotoolchainValues(Env())
+			got := gotoolchainValues(WithToolchain(tt.in))
 			if len(got) != 1 {
 				t.Fatalf("expected exactly one GOTOOLCHAIN entry, got %v", got)
 			}
@@ -66,5 +57,23 @@ func TestEnv(t *testing.T) {
 				t.Errorf("GOTOOLCHAIN = %q, want %q", got[0], tt.want)
 			}
 		})
+	}
+}
+
+// TestWithToolchainPreservesOtherVars ensures the helper only touches
+// GOTOOLCHAIN and leaves the rest of the environment (e.g. the PWD entry
+// os/exec derives from Cmd.Dir) intact.
+func TestWithToolchainPreservesOtherVars(t *testing.T) {
+	in := []string{"PWD=/some/dir", "GOTOOLCHAIN=local", "HOME=/root"}
+	got := WithToolchain(in)
+
+	found := map[string]bool{}
+	for _, e := range got {
+		found[e] = true
+	}
+	for _, want := range []string{"PWD=/some/dir", "HOME=/root"} {
+		if !found[want] {
+			t.Errorf("expected %q to be preserved, got %v", want, got)
+		}
 	}
 }

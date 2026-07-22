@@ -619,7 +619,7 @@ func resolveModuleInfo(gomodule string) (*moduleInfo, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "go", "mod", "download", "-json", gomodule)
-	cmd.Env = goenv.Env()
+	cmd.Env = goenv.WithToolchain(cmd.Environ())
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
