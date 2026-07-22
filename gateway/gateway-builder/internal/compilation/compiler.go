@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/errors"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/goenv"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
@@ -72,6 +73,7 @@ func runGoModDownload(srcDir string) error {
 
 	cmd := exec.Command("go", "mod", "download")
 	cmd.Dir = srcDir
+	cmd.Env = goenv.Env()
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -92,6 +94,7 @@ func runGoModTidy(srcDir string) error {
 
 	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Dir = srcDir
+	cmd.Env = goenv.Env()
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -165,7 +168,7 @@ func runGoBuild(srcDir string, options *types.CompilationOptions) error {
 	cmd.Dir = srcDir
 
 	// Set environment for static binary
-	cmd.Env = os.Environ()
+	cmd.Env = goenv.Env()
 	if options.CGOEnabled {
 		cmd.Env = append(cmd.Env, "CGO_ENABLED=1")
 	} else {

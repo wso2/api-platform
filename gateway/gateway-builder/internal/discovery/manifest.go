@@ -31,6 +31,7 @@ import (
 
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/errors"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/fsutil"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/goenv"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 	"golang.org/x/mod/modfile"
 	"gopkg.in/yaml.v3"
@@ -618,6 +619,7 @@ func resolveModuleInfo(gomodule string) (*moduleInfo, error) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "go", "mod", "download", "-json", gomodule)
+	cmd.Env = goenv.Env()
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
