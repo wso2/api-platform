@@ -1,0 +1,31 @@
+post:
+  summary: Bedrock Converse
+  operationId: bedrockConverse
+  parameters:
+    - name: modelId
+      in: path
+      required: true
+      schema:
+        type: string
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+  responses:
+    "200":
+      description: Successful Bedrock Converse response
+      content:
+        application/json:
+          example:
+            output:
+              message:
+                role: assistant
+                content:
+                  - text: "Hello from Bedrock"
+            stopReason: end_turn
+            usage:
+              inputTokens: 10
+              outputTokens: 3
+              totalTokens: 13
