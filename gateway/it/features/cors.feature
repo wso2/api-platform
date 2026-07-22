@@ -46,7 +46,7 @@ Feature: CORS Policy
             params:
               allowedOrigins:
                 - "http://example.com"
-                - '^https://[^.]+\.example\.com$'
+                - "https://*.example.com"
                 - "http://localhost:5000"
               allowedMethods:
                 - "GET"
@@ -142,7 +142,7 @@ Feature: CORS Policy
             params:
               allowedOrigins:
                 - "http://example.com"
-                - '^https://[^.]+\.example\.com$'
+                - "https://*.example.com"
               allowedMethods:
                 - "GET"
                 - "POST"
