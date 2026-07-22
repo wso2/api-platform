@@ -22,7 +22,7 @@ metadata:
   name: anthropic
 spec:
   displayName: Anthropic
-  groupId: anthropic
+  groupId: wso2-anthropic
   managedBy: wso2
   version: v1.0
   promptTokens:

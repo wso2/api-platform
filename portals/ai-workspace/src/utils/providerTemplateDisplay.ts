@@ -67,6 +67,30 @@ export function getProviderTemplateDisplayName(template?: string | null): string
   return PROVIDER_TEMPLATE_NAME_MAP[normalizedTemplate] ?? template ?? '';
 }
 
+/**
+ * Resolve a provider's template handle to a human-friendly display name.
+ */
+export function resolveTemplateDisplayName(
+  handle: string | null | undefined,
+  templates: Array<{ id?: string; groupId?: string; displayName?: string }>
+): string {
+  const h = (handle ?? '').trim();
+  if (!h) return '';
+
+  const exact = templates.find((t) => t.id === h);
+  if (exact?.displayName) return exact.displayName;
+
+  const fam = familyHandle(h).toLowerCase();
+  const familyMatch = templates.find(
+    (t) =>
+      familyHandle(t.id).toLowerCase() === fam ||
+      (t.groupId ?? '').toLowerCase() === fam
+  );
+  if (familyMatch?.displayName) return familyMatch.displayName;
+
+  return getProviderTemplateDisplayName(h);
+}
+
 export function truncateProviderDisplayName(
   name?: string | null,
   maxLength = 30

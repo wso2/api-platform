@@ -388,6 +388,320 @@ const method = normalizeMethod(userInput.method);  // Normalized; safe for all d
 
 ---
 
+## JS-AUTH-007: Deny-by-Default Authorization on Admin/Internal Routes
+
+### Severity
+
+Critical
+
+### Description
+
+Every admin-only or internal-only Express route must perform an explicit role/scope check inside its handler (or a middleware wrapping that specific router), independent of router-group placement (JS-AUTH-004) or JWT signature validity (JS-AUTH-002). Router scoping and valid-token checks establish *authentication*; they do not by themselves establish that this specific caller is *authorized* for this specific privileged operation.
+
+### Rationale
+
+The JavaScript counterpart of `authentication_authorization.md` GO-AUTH-007 — same exploit class, same fix, different syntax. This failure mode appears repeatedly at critical severity across API management platforms: JWT algorithm-confusion bypasses, self-registered users obtaining elevated tokens via shared Key Managers, unauthenticated access to System REST APIs, and registration endpoints issuing tokens without access control. In each case, a valid, correctly-signed token was treated as sufficient to reach a privileged operation, when it should only have been treated as sufficient to identify the caller.
+
+### Non-Compliant Code
+
+```js
+// BAD: Router scoping (JS-AUTH-004) authenticates the caller, but the handler
+// never checks that this specific authenticated user holds the admin role
+// required for this specific operation.
+const adminRouter = express.Router();
+adminRouter.use(authMiddleware); // Only proves the token is valid — not that the role fits
+adminRouter.post('/tenants/:id/suspend', async (req, res, next) => {
+  await Tenant.update({ suspended: true }, { where: { id: req.params.id } });
+  res.status(204).send();
+});
+app.use('/admin', adminRouter);
+```
+
+### Compliant Code
+
+```js
+// GOOD: Explicit, per-route scope check inside the handler (or a small
+// middleware factory) — deny-by-default, independent of router placement.
+function requireScope(scope) {
+  return (req, res, next) => {
+    if (!req.user?.scopes?.includes(scope)) {
+      // Generic 403 — do not reveal which scope was expected.
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    next();
+  };
+}
+
+const adminRouter = express.Router();
+adminRouter.use(authMiddleware);
+adminRouter.post(
+  '/tenants/:id/suspend',
+  requireScope('admin:tenant:suspend'), // Explicit scope required for THIS operation
+  async (req, res, next) => {
+    try {
+      await Tenant.update({ suspended: true }, { where: { id: req.params.id } });
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+app.use('/admin', adminRouter);
+```
+
+> **Verification Checklist before outputting code:**
+> * Does an admin/internal route rely solely on `authMiddleware`/router scoping (JS-AUTH-004) with no additional scope/role check for the specific operation? (If yes, add `requireScope`-style enforcement in the handler chain.)
+> * Does a self-registration, Dynamic Client Registration, or other "low trust" flow ever mint a token whose scopes reach an admin route? (If yes, cap the issuable scopes for that flow independently of downstream route checks.)
+
+---
+
+## JS-AUTH-008: Parameterized Sequelize Queries for Administrative Data Access
+
+### Severity
+
+Critical
+
+### Description
+
+Every Sequelize query built from request input must use parameter binding — `where` clause objects, `sequelize.escape`, or bound `replacements`/`bind` in `sequelize.query` — never raw template-literal interpolation of a request value into a `sequelize.query` string.
+
+### Rationale
+
+The JavaScript counterpart of GO-AUTH-008. Authenticated SQL injection in Admin REST APIs is an exploitable bug class: an administrator manipulating database queries can exfiltrate data or disrupt availability. Sequelize's query builder (`where: {...}`) already parameterizes automatically; the risk is entirely concentrated in `sequelize.query(rawSQL)` calls where a developer reaches for raw SQL (commonly for a dynamic sort/filter feature) and interpolates a value directly into the string.
+
+### Non-Compliant Code
+
+```js
+// BAD: Request value interpolated directly into a raw SQL string.
+async function searchTenantsHandler(req, res, next) {
+  const { name } = req.query;
+  const [tenants] = await sequelize.query(
+    `SELECT id, name, status FROM tenants WHERE name LIKE '%${name}%'`
+  ); // name = "%' OR '1'='1" defeats the filter entirely
+  res.json(tenants);
+}
+
+// BAD: Dynamic sort column interpolated directly — still injectable even
+// though it "looks like" metadata rather than a value.
+async function listApisHandler(req, res, next) {
+  const sortCol = req.query.sort;
+  const [apis] = await sequelize.query(`SELECT * FROM apis ORDER BY ${sortCol}`);
+  res.json(apis);
+}
+```
+
+### Compliant Code
+
+```js
+// GOOD: Sequelize's query-builder `where` clause parameterizes automatically.
+async function searchTenantsHandler(req, res, next) {
+  try {
+    const { name } = req.query;
+    const tenants = await Tenant.findAll({
+      where: { name: { [Op.like]: `%${name}%` } }, // Bound, not interpolated
+      attributes: ['id', 'name', 'status'],
+    });
+    res.json(tenants);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GOOD: If raw SQL is genuinely required, use bound `replacements` — never
+// template-literal interpolation of the value itself.
+async function searchTenantsRawHandler(req, res, next) {
+  try {
+    const [tenants] = await sequelize.query(
+      'SELECT id, name, status FROM tenants WHERE name LIKE :name',
+      { replacements: { name: `%${req.query.name}%` }, type: QueryTypes.SELECT }
+    );
+    res.json(tenants);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// GOOD: Dynamic sort column resolved against an explicit allowlist — binding
+// cannot parameterize an identifier, so this is the only safe pattern for it.
+const ALLOWED_SORT_COLUMNS = new Set(['name', 'createdAt', 'status']);
+
+async function listApisHandler(req, res, next) {
+  try {
+    const sortCol = ALLOWED_SORT_COLUMNS.has(req.query.sort) ? req.query.sort : 'createdAt';
+    const apis = await Api.findAll({ order: [[sortCol, 'ASC']] }); // sortCol is now a known-safe constant
+    res.json(apis);
+  } catch (err) {
+    next(err);
+  }
+}
+```
+
+> **Verification Checklist before outputting code:**
+> * Does any `sequelize.query()` call build its SQL string with a template literal or `+` concatenation of a request-derived value? (If yes, switch to the `where`-clause builder or bound `replacements`.)
+> * Does a dynamic sort column, table name, or field list come from request input? (Binding cannot parameterize identifiers — resolve against `ALLOWED_SORT_COLUMNS`-style allowlist instead.)
+> * Is this query reachable from an admin/internal route? (Authenticated-admin-only reachability is not a reason to relax this directive — JS-AUTH-007 governs *who* can reach the handler; this directive governs how the handler builds its query regardless of who called it.)
+
+---
+
+## JS-AUTH-009: Token and Session Invalidation on Security-State Change
+
+### Severity
+
+High
+
+### Description
+
+Whenever a security-relevant state change occurs — logout, account lock, password reset, role change, or user/tenant deletion — all of that identity's active sessions and previously issued tokens must be actively revoked (destroy the Sequelize-backed session via `connect-session-sequelize`, and revoke/blacklist any outstanding JWTs), not merely left to expire naturally.
+
+### Rationale
+
+The JavaScript counterpart of GO-AUTH-009. Failure to revoke tokens on security-state changes is a recurring vulnerability pattern: session tokens not revoked when a session ends, tokens issued before a lock remaining valid after it, role removal not invalidating previously issued tokens, and tokens for users not revoked on password reset or disablement. In each case the authentication check was correct at issuance time; nothing revoked the token when the state that justified it later changed.
+
+### Non-Compliant Code
+
+```js
+// BAD: Locks the account but leaves the session store and any issued JWTs
+// untouched — both remain valid until natural expiry.
+async function lockAccountHandler(req, res, next) {
+  try {
+    await User.update({ status: 'locked' }, { where: { id: req.params.userId } });
+    res.status(204).send();
+    // Missing: destroy active sessions / revoke issued tokens for this user
+  } catch (err) {
+    next(err);
+  }
+}
+```
+
+### Compliant Code
+
+```js
+// GOOD: Revocation is part of the same operation, not a separate manual step.
+// Sessions are stored via connect-session-sequelize — destroy them for this user;
+// JWTs are checked against a revocation store (e.g. a `tokenVersion` column bumped
+// on every security-state change, checked during verification).
+async function lockAccountHandler(req, res, next) {
+  try {
+    const user = await User.findByPk(req.params.userId);
+    if (!user) return res.status(404).json({ error: 'not_found' });
+
+    await sequelize.transaction(async (t) => {
+      // sequelize.literal issues a single atomic `tokenVersion = tokenVersion + 1`
+      // UPDATE at the DB level — reading user.tokenVersion into JS and writing
+      // back `+ 1` would race under concurrent requests and could reuse a version.
+      await user.update(
+        { status: 'locked', tokenVersion: sequelize.literal('tokenVersion + 1') },
+        { transaction: t }
+      );
+      await Session.destroy({ where: { userId: user.id }, transaction: t }); // connect-session-sequelize table
+    });
+
+    res.status(204).send();
+  } catch (err) {
+    logger.error('Failed to lock account and revoke sessions', { userId: req.params.userId, reason: err.message });
+    next(err);
+  }
+}
+
+// middleware/auth.js — GOOD: JWT verification checks the token's embedded
+// tokenVersion against the current value, so a token minted before a lock/role
+// change/password reset stops working immediately, not at its own expiry.
+async function authMiddleware(req, res, next) {
+  try {
+    const token = (req.headers['authorization'] || '').replace(/^Bearer\s+/, '');
+    const { payload } = await jwtVerify(token, JWKS, { algorithms: ['RS256'] });
+    const user = await User.findByPk(payload.sub);
+    if (!user || user.status === 'locked' || user.tokenVersion !== payload.tokenVersion) {
+      return res.status(401).json({ error: 'unauthorized', message: 'Invalid or expired credentials.' });
+    }
+    req.user = { id: user.id, organizationId: user.organizationId, scopes: payload.scopes ?? [] };
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'unauthorized', message: 'Invalid or expired credentials.' });
+  }
+}
+```
+
+> **Verification Checklist before outputting code:**
+> * Does a handler change account status, role, or delete a user/tenant without also destroying that user's sessions and invalidating outstanding tokens (e.g. bumping `tokenVersion`)? (If yes, add revocation as part of the same transaction.)
+> * Does `authMiddleware` validate a JWT's signature/expiry only, with no live check against the current account/token state? (If so, add a `tokenVersion`-style check so revocation actually takes effect before natural expiry.)
+> * On a revocation/session-destroy failure, does the handler still respond with success? (It must not — treat revocation failure as an overall operation failure.)
+
+---
+
+## JS-AUTH-010: Redirect and Callback URL Allowlisting (Open Redirect Prevention)
+
+### Severity
+
+Medium
+
+### Description
+
+Any `res.redirect()` call whose target is derived from request input — a post-login `returnTo` query parameter, an OIDC `redirect_uri`, a logout redirect — must be validated against an explicit allowlist of registered destinations before use. Never rely on a substring/prefix check against the request value.
+
+### Rationale
+
+The JavaScript counterpart of GO-AUTH-010. Open redirect via weak callback URL validation, unvalidated redirect construction, and open redirects in logout flows are consistently used as phishing primitives precisely because the redirect originates from a trusted, recognizable domain.
+
+### Non-Compliant Code
+
+```js
+// BAD: Same-host substring check — bypassable via
+// "https://portal.example.com.attacker.com" or "https://portal.example.com@attacker.com".
+app.get('/auth/callback', (req, res) => {
+  const returnTo = req.query.returnTo || '/';
+  if (returnTo.includes('portal.example.com')) {
+    return res.redirect(returnTo);
+  }
+  res.redirect('/');
+});
+```
+
+### Compliant Code
+
+```js
+// GOOD: Parsed-URL host comparison against an explicit allowlist — the same
+// pattern OIDC redirect_uri validation already requires, applied uniformly.
+const ALLOWED_REDIRECT_HOSTS = new Set(['portal.example.com', 'console.example.com']);
+
+function safeRedirectTarget(raw) {
+  if (typeof raw !== 'string' || raw.length === 0) return '/'; // Guards arrays/objects from parsed query strings (e.g. ?returnTo[]=x)
+  let parsed;
+  try {
+    parsed = new URL(raw, 'https://portal.example.com'); // Base resolves relative paths safely
+  } catch {
+    return '/';
+  }
+  // Reject scheme-relative URLs ("//attacker.com") implicitly — URL parsing
+  // normalizes them, and the host check below still applies.
+  const isRelative = raw.startsWith('/') && !raw.startsWith('//');
+  if (isRelative) return parsed.pathname + parsed.search;
+  // Reject any userinfo component outright — "https://attacker.com@portal.example.com"
+  // parses with a legitimate, allowlisted host but still carries a userinfo
+  // segment that other URL parsers/clients along the redirect path may not
+  // interpret identically. There is no legitimate reason for a redirect
+  // target to carry credentials.
+  if (parsed.username || parsed.password) {
+    return '/';
+  }
+  if (parsed.protocol !== 'https:' || !ALLOWED_REDIRECT_HOSTS.has(parsed.host)) {
+    return '/'; // Fall back to a safe default — never echo the rejected value back
+  }
+  return parsed.toString();
+}
+
+app.get('/auth/callback', (req, res) => {
+  res.redirect(safeRedirectTarget(req.query.returnTo));
+});
+```
+
+> **Verification Checklist before outputting code:**
+> * Is a redirect target validated with `.includes()`/`.startsWith()` rather than parsing the URL and comparing `host` against an explicit allowlist? (Substring checks are bypassable — replace with `new URL()` + exact host match.)
+> * Does the validated target allow a scheme-relative URL (`//attacker.com`) or userinfo trick (`https://trusted.com@attacker.com`) to pass? (Both must be rejected by the host-comparison logic, not assumed away.)
+> * On rejection, does the handler redirect to a safe default rather than reflecting the rejected value back into an error page? (Reflecting it back risks reintroducing the XSS surface covered in `js-output-encoding-xss.md`.)
+
+---
+
 > **Verification Checklist before outputting code:**
 > * Does every authentication error branch have a `return` before `next()` or `res.status()`? (If no, add `return`).
 > * Does JWT verification include an explicit `algorithms` array containing only asymmetric algorithms? (If no, add the allowlist).
@@ -395,3 +709,4 @@ const method = normalizeMethod(userInput.method);  // Normalized; safe for all d
 > * Is route protection applied via Express router group scoping rather than raw `req.url` string matching? (If not, restructure to router groups).
 > * Does every Sequelize query for tenant-scoped data use `organizationId` from `req.user`, not from `req.query`/`req.body`/`req.params`? (If not, source it from `req.user`).
 > * Is every HTTP method string from user input normalized with `.toUpperCase()` before comparison, map/Set lookup, or policy registration? (If no, add normalization at the ingestion point.)
+> * Does an admin/internal route check a specific scope/role beyond token validity (JS-AUTH-007)? Does every `sequelize.query()` call use bound `replacements` rather than string interpolation (JS-AUTH-008)? Does a lock/role-change/deletion handler revoke sessions and bump `tokenVersion` (JS-AUTH-009)? Is every `res.redirect()` target validated against a host allowlist (JS-AUTH-010)?

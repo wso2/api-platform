@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 const passport = require('passport');
 const axios = require('axios');
 const https = require('https');
@@ -26,7 +26,7 @@ const constants = require('../utils/constants');
 const util = require('../utils/util');
 const orgDao = require('../dao/organizationDao');
 const { validationResult } = require('express-validator');
-const { extractPlatformJwtClaims } = require('../utils/platformJwt');
+const { decodePlatformJwtClaims } = require('../utils/platformJwt');
 
 
 
@@ -168,7 +168,7 @@ const handleLogOut = async (req, res) => {
         });
     } else if (req.user && req.user.accessToken) {
         const referer = req.get('referer');
-        const regex = /(.+\/views\/[^\/]+)\/?/;
+        const regex = /(.+\/views\/[^/]+)\/?/;
         const match = referer ? referer.match(regex) : null;
         const logoutURL = match ? match[1] : null;
         req.logout((err) => {
@@ -269,14 +269,13 @@ const handleLocalLogin = async (req, res) => {
     }
 
     // Decode JWT claims (token is already verified by the platform API)
-    const claims = extractPlatformJwtClaims(platformToken, null);
+    const claims = decodePlatformJwtClaims(platformToken);
     if (!claims) {
         logger.error('Failed to decode platform API token');
         return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
     }
 
     const adminRole = config.idp?.roles?.admin || 'admin';
-    const superAdminRole = config.idp?.roles?.superAdmin || 'superAdmin';
     const subscriberRole = config.idp?.roles?.subscriber || 'Internal/subscriber';
     // Users with any _manage scope are treated as admins in the devportal
     const isAdmin = claims.scopes.some(s => s.endsWith('_manage'));

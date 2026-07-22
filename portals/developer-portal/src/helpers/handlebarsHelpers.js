@@ -17,7 +17,6 @@
  */
 
 const Handlebars = require('handlebars');
-const constants = require('../utils/constants');
 
 const helpers = {
     // Array helpers

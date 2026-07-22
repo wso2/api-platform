@@ -1,0 +1,127 @@
+prompts:
+  - description: A prompt without arguments
+    name: simple_prompt
+  - arguments:
+      - description: Temperature setting
+        name: temperature
+        required: true
+      - description: Output style
+        name: style
+        required: false
+    description: A prompt with arguments
+    name: complex_prompt
+  - arguments:
+      - description: Resource ID to include (1-100)
+        name: resourceId
+        required: true
+    description: A prompt that includes an embedded resource reference
+    name: resource_prompt
+resources:
+  - mimeType: text/plain
+    name: Resource 1
+    text: "Resource 1: This is a plaintext resource"
+    uri: test://static/resource/1
+  - blob: UmVzb3VyY2UgMjogVGhpcyBpcyBhIGJhc2U2NCBibG9i
+    mimeType: application/octet-stream
+    name: Resource 2
+    uri: test://static/resource/2
+  - mimeType: text/plain
+    name: Resource 3
+    text: "Resource 3: This is a plaintext resource"
+    uri: test://static/resource/3
+  - blob: UmVzb3VyY2UgNDogVGhpcyBpcyBhIGJhc2U2NCBibG9i
+    mimeType: application/octet-stream
+    name: Resource 4
+    uri: test://static/resource/4
+  - mimeType: text/plain
+    name: Resource 5
+    text: "Resource 5: This is a plaintext resource"
+    uri: test://static/resource/5
+  - blob: UmVzb3VyY2UgNjogVGhpcyBpcyBhIGJhc2U2NCBibG9i
+    mimeType: application/octet-stream
+    name: Resource 6
+    uri: test://static/resource/6
+  - mimeType: text/plain
+    name: Resource 7
+    text: "Resource 7: This is a plaintext resource"
+    uri: test://static/resource/7
+  - blob: UmVzb3VyY2UgODogVGhpcyBpcyBhIGJhc2U2NCBibG9i
+    mimeType: application/octet-stream
+    name: Resource 8
+    uri: test://static/resource/8
+  - mimeType: text/plain
+    name: Resource 9
+    text: "Resource 9: This is a plaintext resource"
+    uri: test://static/resource/9
+  - blob: UmVzb3VyY2UgMTA6IFRoaXMgaXMgYSBiYXNlNjQgYmxvYg==
+    mimeType: application/octet-stream
+    name: Resource 10
+    uri: test://static/resource/10
+serverInfo:
+  name: bijira-mcp-everything
+  version: 1.0.0
+tools:
+  - description: Echoes back the input
+    inputSchema:
+      $schema: http://json-schema.org/draft-07/schema#
+      additionalProperties: false
+      properties:
+        message:
+          description: Message to echo
+          type: string
+      required:
+        - message
+      type: object
+    name: echo
+  - description: Adds two numbers
+    inputSchema:
+      $schema: http://json-schema.org/draft-07/schema#
+      additionalProperties: false
+      properties:
+        a:
+          description: First number
+          type: number
+        b:
+          description: Second number
+          type: number
+      required:
+        - a
+        - b
+      type: object
+    name: add
+  - description: View the pizza menu. This tool provides a list of available pizzas.
+    inputSchema:
+      $schema: http://json-schema.org/draft-07/schema#
+      additionalProperties: false
+      properties: {}
+      type: object
+    name: viewPizzaMenu
+  - description: Order a pizza from the menu. This tool allows you to place an order for a pizza.
+    inputSchema:
+      $schema: http://json-schema.org/draft-07/schema#
+      additionalProperties: false
+      properties:
+        creditCardNumber:
+          description: Credit card number for payment
+          type: string
+        customerName:
+          description: Name of the customer
+          type: string
+        deliveryAddress:
+          description: Delivery address for the order
+          type: string
+        pizzaType:
+          description: Type of pizza to order
+          type: string
+        quantity:
+          description: Number of pizzas to order
+          minimum: 1
+          type: integer
+      required:
+        - pizzaType
+        - quantity
+        - customerName
+        - deliveryAddress
+        - creditCardNumber
+      type: object
+    name: orderPizza

@@ -19,8 +19,6 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../../controllers/authController');
 const registerPartials = require('../../middlewares/registerPartials');
-const { validateAuthentication } = require('../../middlewares/ensureAuthenticated');
-const constants = require('../../utils/constants');
 
 // router.get('/portal/login', registerPartials, authController.login);
 // router.get('/portal/callback', authController.handleCallback);

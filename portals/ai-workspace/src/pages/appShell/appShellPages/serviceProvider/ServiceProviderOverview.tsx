@@ -88,9 +88,10 @@ import {
 } from '../../../../utils/projectRouting';
 import { API_BASE_URLS, PLATFORM_API_BASE_URL } from '../../../../config.env';
 import {
-  getProviderTemplateDisplayName,
+  resolveTemplateDisplayName,
   truncateProviderDisplayName,
 } from '../../../../utils/providerTemplateDisplay';
+import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
@@ -234,6 +235,7 @@ const stripReadOnlyProviderFields = (
 
 function ServiceProviderOverviewContent() {
   const { refreshProviders } = useLLMProviders();
+  const { templatesResponse } = useProviderTemplates();
   const { refetch: refetchSelectedEntity } = useAIEntity();
   const {
     provider,
@@ -859,7 +861,10 @@ function ServiceProviderOverviewContent() {
   const providerDisplayName = truncateProviderDisplayName(provider.displayName);
   const logoUrl = PROVIDER_LOGO_MAP[providerKey];
   const hasLogo = Boolean(logoUrl);
-  const templateDisplayName = getProviderTemplateDisplayName(provider.template);
+  const templateDisplayName = resolveTemplateDisplayName(
+    provider.template,
+    templatesResponse.list
+  );
   const templateKey = (provider.template ?? '').toLowerCase();
   const templateLogo = TEMPLATE_LOGO_MAP[templateKey];
   const hasTemplateLogo = Boolean(templateLogo);

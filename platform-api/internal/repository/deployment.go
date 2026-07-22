@@ -768,6 +768,37 @@ func (r *DeploymentRepo) GetLatestDeploymentTime(artifactUUID, orgUUID string) (
 	return &latest, nil
 }
 
+// GetLatestDeploymentRevision returns the gatewayRevision stored in the metadata of the most
+// recent deployment for the given (artifact, gateway, org), or "" when there is no deployment or
+// it carries no revision.
+func (r *DeploymentRepo) GetLatestDeploymentRevision(artifactUUID, gatewayUUID, orgUUID string) (string, error) {
+	query := `
+		SELECT metadata FROM deployments
+		WHERE artifact_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?
+		ORDER BY created_at DESC
+		` + r.db.FetchFirstClause(1)
+	var metadataBytes []byte
+	if err := r.db.QueryRow(r.db.Rebind(query), artifactUUID, gatewayUUID, orgUUID).Scan(&metadataBytes); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil
+		}
+		return "", err
+	}
+	if len(metadataBytes) == 0 {
+		return "", nil
+	}
+	var meta map[string]any
+	if err := json.Unmarshal(metadataBytes, &meta); err != nil {
+		// Unparseable metadata is treated as "no revision" rather than a hard error: the caller
+		// falls back to inserting a fresh deployment, which is safe (never drops a real deploy).
+		return "", nil
+	}
+	if rev, ok := meta["gatewayRevision"].(string); ok {
+		return rev, nil
+	}
+	return "", nil
+}
+
 // GetDeployedGatewayIDs returns the gateway IDs that have an active deployment status
 // (DEPLOYED or UNDEPLOYED) for the given artifact. Since the deployment_status table
 // only holds rows for those two states, a plain SELECT is sufficient.

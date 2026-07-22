@@ -66,6 +66,7 @@ const (
 	CodeLLMProviderTemplateDisabled          = "LLM_PROVIDER_TEMPLATE_DISABLED"
 	CodeLLMProviderTemplateReadOnly          = "LLM_PROVIDER_TEMPLATE_READ_ONLY"
 	CodeLLMProviderTemplateNotToggleable     = "LLM_PROVIDER_TEMPLATE_NOT_TOGGLEABLE"
+	CodeLLMProviderTemplateBuiltInImmutable  = "LLM_PROVIDER_TEMPLATE_BUILT_IN_IMMUTABLE"
 )
 
 // Gateway domain codes, matching the examples documented in resources/openapi.yaml.

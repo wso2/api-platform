@@ -26,7 +26,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 
 	"github.com/stretchr/testify/require"
 )

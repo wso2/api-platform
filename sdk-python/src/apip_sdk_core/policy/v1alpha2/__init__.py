@@ -44,6 +44,8 @@ from .types import (
     AuthContext,
     Body,
     BodyProcessingMode,
+    DownstreamContext,
+    DownstreamRequest,
     ExecutionContext,
     ExecutionPhase,
     HeaderProcessingMode,
@@ -58,12 +60,17 @@ from .types import (
     ResponseStreamContext,
     SharedContext,
     StreamBody,
+    UpstreamRequestContext,
+    UpstreamResponse,
+    UpstreamResponseContext,
 )
 
 __all__ = [
     "AuthContext",
     "Body",
     "BodyProcessingMode",
+    "DownstreamContext",
+    "DownstreamRequest",
     "DownstreamResponseHeaderModifications",
     "DownstreamResponseModifications",
     "DropHeaderAction",
@@ -98,6 +105,9 @@ __all__ = [
     "StreamingResponseAction",
     "StreamingResponsePolicy",
     "TerminateResponseChunk",
+    "UpstreamRequestContext",
     "UpstreamRequestHeaderModifications",
     "UpstreamRequestModifications",
+    "UpstreamResponse",
+    "UpstreamResponseContext",
 ]

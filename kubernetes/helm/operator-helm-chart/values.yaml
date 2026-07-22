@@ -27,7 +27,7 @@ image:
   # repository: ghcr.io/wso2/api-platform/gateway-operator
   # For local registry: host.docker.internal:5000/gateway-operator
   repository: ghcr.io/wso2/api-platform/gateway-operator
-  tag: "0.8.0"
+  tag: "0.10.0"
   pullPolicy: Always  # Uses locally loaded image from nerdctl load
 
 serviceAccount:
@@ -76,6 +76,17 @@ gateway:
     insecureRegistry: false
     # Use plain HTTP instead of HTTPS for OCI registries (for local/test registries)
     plainHTTP: false
+    # Credentials for pulling the gateway Helm chart from a private OCI registry.
+    # Rendered into operator config as gateway.registry_credentials_secret ONLY when
+    # name is set; leave name empty for anonymous pulls.
+    registryCredentialsSecret:
+      name: ""
+      # Namespace of the credentials Secret. Defaults to the operator's release
+      # namespace when left empty.
+      namespace: ""
+      # Keys within the Secret holding the registry username and password.
+      usernameKey: username
+      passwordKey: password
   # Gateway chart values that will be used when deploying gateways
   # Users can override these values during helm install/upgrade
   values:
@@ -637,10 +648,17 @@ gateway:
           affinity: {}
 
 reconciliation:
-  enabled: true
-  interval: 300
+  # Minimum frequency at which watched resources are re-reconciled (Go duration).
+  # Passed through as reconciliation.sync_period.
+  syncPeriod: 10m
   # Passed through to operator config.yaml as reconciliation.max_concurrent_reconciles (must be >= 1).
   maxConcurrentReconciles: 1
+  # Max retry attempts for gateway operations → reconciliation.max_retry_attempts (must be >= 1).
+  maxRetryAttempts: 10
+  # Initial retry backoff (Go duration) → reconciliation.initial_backoff.
+  initialBackoff: 1s
+  # Maximum exponential backoff (Go duration) → reconciliation.max_backoff_duration.
+  maxBackoffDuration: 60s
 logging:
   level: "info"
   format: "json"

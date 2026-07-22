@@ -1055,7 +1055,7 @@ paths:
           - `query=groupId:<id>&version:<ver>` -> retrieve a specific template version
 
         All filters are provided via the URL-encoded `query` parameter (e.g.
-        `?query=groupId%3Aopenai%26version%3Av2.0`).
+        `?query=groupId%3Awso2-openai%26version%3Av2.0`).
 
         Returns a single `LLMProviderTemplate` only when both `groupId` and `version` are specified; 
         otherwise returns an `LLMProviderTemplateListResponse`.
@@ -1076,10 +1076,10 @@ paths:
             versions; adding `&version:<ver>` returns the single full template
             for that version. Terms are `&`-separated `key:value` pairs and the
             whole value is percent-encoded (e.g.
-            groupId%3Aopenai%26version%3Av2.0).
+            groupId%3Awso2-openai%26version%3Av2.0).
           schema:
             type: string
-          example: groupId:openai&version:v2.0
+          example: groupId:wso2-openai&version:v2.0
         - $ref: '#/components/parameters/limit-Q'
         - $ref: '#/components/parameters/offset-Q'
       responses:
@@ -1119,6 +1119,11 @@ paths:
         is rejected. `toTemplateId`, when supplied, must equal the handle
         derived from the family and `toVersion`. Organization is identified via
         the JWT token.
+
+        Built-in (WSO2-managed) template families are immutable: adding a version
+        to one is rejected with `403`. To base a custom template on a built-in,
+        create a new template (`POST /llm-provider-templates`) instead — it gets
+        its own `group_id` and starts at v1.0.
       operationId: copyLLMProviderTemplateVersion
       security:
         - OAuth2Security:

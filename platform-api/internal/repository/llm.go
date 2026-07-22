@@ -258,6 +258,22 @@ func (r *LLMProviderTemplateRepo) ManagedByForHandle(handle, orgUUID string) (st
 	return managedBy, nil
 }
 
+// ManagedByForGroupID returns the managed_by value for a template family (group_id).
+// Returns an empty string when the family does not exist.
+func (r *LLMProviderTemplateRepo) ManagedByForGroupID(groupID, orgUUID string) (string, error) {
+	var managedBy string
+	err := r.db.QueryRow(r.db.Rebind(`
+		SELECT managed_by FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ?
+		ORDER BY (SELECT NULL) `+r.db.FetchFirstClause(1)), groupID, orgUUID).Scan(&managedBy)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return managedBy, nil
+}
+
 func (r *LLMProviderTemplateRepo) GetByID(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
 		SELECT uuid, organization_uuid, handle, group_id, display_name, managed_by, description, created_by, updated_by,

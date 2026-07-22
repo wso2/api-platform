@@ -19,7 +19,6 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../db/sequelizeConfig');
 const { Organization } = require('./organization');
 const { APIMetadata } = require('./apiMetadata');
-const constants = require('../utils/constants');
 const SubscriptionPlan = require('./subscriptionPlan');
 const APISubscriptionPlan = require('./apiSubscriptionPlan');
 const { KeyManager } = require('./keyManager');

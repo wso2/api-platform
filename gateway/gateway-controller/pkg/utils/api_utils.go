@@ -966,7 +966,11 @@ type ImportArtifactRequest struct {
 	CreatedAt     time.Time              `json:"createdAt"`
 	UpdatedAt     time.Time              `json:"updatedAt"`
 	DeployedAt    *time.Time             `json:"deployedAt,omitempty"`
+	Properties    map[string]interface{} `json:"properties,omitempty"`
 }
+
+// deploymentRevisionProperty is the Properties key carrying the per-deployment revision.
+const deploymentRevisionProperty = "deploymentRevision"
 
 // ImportArtifactsResponse is the control plane's reply to the bulk DP->CP push: per-artifact
 // results keyed by the artifact's data-plane UUID (dpid), plus aggregate counts.
@@ -1217,6 +1221,12 @@ func (s *APIUtilsService) buildImportArtifactRequest(artifact *models.StoredConf
 		utc := artifact.UpdatedAt.UTC()
 		deployedAt = &utc
 	}
+	var properties map[string]interface{}
+	if deployedAt != nil {
+		properties = map[string]interface{}{
+			deploymentRevisionProperty: deployedAt.Format(time.RFC3339Nano),
+		}
+	}
 	return ImportArtifactRequest{
 		DPID:          artifact.UUID,
 		Configuration: configuration,
@@ -1224,6 +1234,7 @@ func (s *APIUtilsService) buildImportArtifactRequest(artifact *models.StoredConf
 		CreatedAt:     artifact.CreatedAt.UTC(),
 		UpdatedAt:     artifact.UpdatedAt.UTC(),
 		DeployedAt:    deployedAt,
+		Properties:    properties,
 	}, nil
 }
 

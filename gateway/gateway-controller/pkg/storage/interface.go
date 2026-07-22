@@ -156,6 +156,10 @@ type Storage interface {
 	// is incomplete (cp_sync_status IN ('pending', 'failed')).
 	GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error)
 
+	// GetGatewayOriginArtifactsForSync returns artifact metadata (Configuration nil) for every
+	// gateway-originated artifact across all artifacts-table kinds, regardless of cp_sync_status.
+	GetGatewayOriginArtifactsForSync() ([]*models.StoredConfig, error)
+
 	// ========================================
 	// LLM Provider Template Methods
 	// ========================================

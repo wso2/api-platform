@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const yaml = require('js-yaml');
+const yaml = require('../utils/yaml');
 const { Sequelize } = require('sequelize');
 const kmDao = require('../dao/keyManagerDao');
 const { KeyManagerDTO, KeyManagerPublicDTO } = require('../dto/keyManagerDto');

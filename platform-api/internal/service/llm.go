@@ -215,6 +215,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	if err != nil || baseHandle == "" {
 		return nil, apperror.ValidationFailed.New("The displayName must contain at least one alphanumeric character.")
 	}
+	baseHandle = applyReservedGroupIDGuard(baseHandle)
 	version := "v1.0"
 	if v := req.Version; v != "" {
 		normalized, ok := normalizeTemplateVersion(v)
@@ -471,6 +472,16 @@ func makeTemplateHandle(baseHandle, version string) string {
 	return baseHandle + "-" + strings.ReplaceAll(strings.ToLower(strings.TrimSpace(version)), ".", "-")
 }
 
+// applyReservedGroupIDGuard rewrites a generated custom-template group_id that falls in
+// the reserved WSO2 namespace ("wso2" exactly, or a "wso2-" prefix) to the "xwso2-"
+// namespace, so custom templates can never collide with WSO2 built-ins.
+func applyReservedGroupIDGuard(baseHandle string) string {
+	if baseHandle == constants.PolicyManagedByWSO2 || strings.HasPrefix(baseHandle, constants.ReservedTemplateGroupIDPrefix) {
+		return "x" + baseHandle
+	}
+	return baseHandle
+}
+
 func templateVersionCreatable(v string) bool {
 	major, _, ok := strings.Cut(strings.TrimPrefix(v, "v"), ".")
 	if !ok {
@@ -504,6 +515,18 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 	if count == 0 {
 		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
+
+	// Built-in (WSO2-managed) families are immutable via the REST API: new versions are
+	// only ever added by WSO2 through the seed data. Users must instead copy a built-in,
+	// which creates a new custom family through Create.
+	familyManagedBy, err := s.repo.ManagedByForGroupID(groupID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve template family owner: %w", err)
+	}
+	if familyManagedBy == constants.PolicyManagedByWSO2 {
+		return nil, apperror.LLMProviderTemplateBuiltInImmutable.New()
+	}
+
 	baseHandle := groupID
 
 	m := &model.LLMProviderTemplate{

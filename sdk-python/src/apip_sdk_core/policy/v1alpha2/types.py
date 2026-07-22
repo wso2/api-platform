@@ -130,6 +130,71 @@ class StreamBody:
 
 
 @dataclass(slots=True)
+class DownstreamRequest:
+    """Snapshot of the request as received from the downstream client, captured
+    before any policy mutation.
+
+    ``headers`` is ``Headers | None`` (defaulting to ``None``) to mirror the Go
+    SDK's nilable ``Headers *Headers``: the kernel leaves it ``None`` when no
+    snapshot is available, rather than substituting an empty ``Headers()`` that
+    a policy could not distinguish from "the client sent no headers".
+    """
+
+    headers: Headers | None = None
+
+
+@dataclass(slots=True)
+class DownstreamContext:
+    """Downstream client, carrying a snapshot of the client request.
+
+    Access the snapshot via ``downstream.request.headers``, mirroring the
+    upstream side's ``upstream.response.headers``. ``request`` is
+    ``DownstreamRequest | None`` (defaulting to ``None``), left ``None`` by the
+    kernel when no snapshot is available.
+    """
+
+    request: DownstreamRequest | None = None
+
+
+@dataclass(slots=True)
+class UpstreamRequestContext:
+    """Route's resolved upstream target during the request phase.
+
+    ``name`` replaces the internal Envoy cluster name. Use ``url`` to
+    address the actual upstream (e.g. for request signing); the client-facing
+    authority/scheme on the context must not be used for that.
+    """
+
+    name: str = ""
+    url: str = ""
+    base_path: str = ""
+
+
+@dataclass(slots=True)
+class UpstreamResponse:
+    """Snapshot of the response as received from the upstream backend, captured
+    before any policy mutation.
+
+    ``headers`` is ``Headers | None`` (defaulting to ``None``), mirroring the Go
+    SDK's nilable ``Headers *Headers``.
+    """
+
+    headers: Headers | None = None
+
+
+@dataclass(slots=True)
+class UpstreamResponseContext:
+    """Route's resolved upstream target during the response phase, carrying a
+    snapshot of the upstream response.
+    """
+
+    name: str = ""
+    url: str = ""
+    base_path: str = ""
+    response: UpstreamResponse | None = None
+
+
+@dataclass(slots=True)
 class RequestHeaderContext:
     shared: SharedContext
     headers: Headers = field(default_factory=Headers)
@@ -138,6 +203,8 @@ class RequestHeaderContext:
     authority: str = ""
     scheme: str = ""
     vhost: str = ""
+    downstream: DownstreamContext | None = None
+    upstream: UpstreamRequestContext | None = None
 
 
 @dataclass(slots=True)
@@ -150,6 +217,8 @@ class RequestContext:
     authority: str = ""
     scheme: str = ""
     vhost: str = ""
+    downstream: DownstreamContext | None = None
+    upstream: UpstreamRequestContext | None = None
 
 
 @dataclass(slots=True)
@@ -161,6 +230,8 @@ class ResponseHeaderContext:
     request_method: str = ""
     response_headers: Headers = field(default_factory=Headers)
     response_status: int = 200
+    downstream: DownstreamContext | None = None
+    upstream: UpstreamResponseContext | None = None
 
 
 @dataclass(slots=True)
@@ -173,6 +244,8 @@ class ResponseContext:
     response_headers: Headers = field(default_factory=Headers)
     response_body: Body | None = None
     response_status: int = 200
+    downstream: DownstreamContext | None = None
+    upstream: UpstreamResponseContext | None = None
 
 
 @dataclass(slots=True)
@@ -184,6 +257,8 @@ class RequestStreamContext:
     authority: str = ""
     scheme: str = ""
     vhost: str = ""
+    downstream: DownstreamContext | None = None
+    upstream: UpstreamRequestContext | None = None
 
 
 @dataclass(slots=True)
@@ -195,6 +270,8 @@ class ResponseStreamContext:
     request_method: str = ""
     response_headers: Headers = field(default_factory=Headers)
     response_status: int = 200
+    downstream: DownstreamContext | None = None
+    upstream: UpstreamResponseContext | None = None
 
 
 @dataclass(slots=True)

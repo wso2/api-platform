@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 const { renderTemplateWithView, resolveActor } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');

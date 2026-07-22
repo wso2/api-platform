@@ -1,0 +1,86 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProxy
+metadata:
+    name: claude-proxy
+spec:
+    displayName: wso2 claude proxy
+    version: v1.0
+    context: /default/claude-proxy
+    provider:
+        id: claude-provider
+        auth:
+            header: X-API-Key
+            type: api-key
+    globalPolicies:
+        - name: api-key-auth
+          params:
+            in: header
+            key: X-API-Key
+          version: ""
+        - name: aws-bedrock-guardrail
+          params:
+            request:
+                enabled: true
+                jsonPath: $.messages[-1].content
+                passthroughOnError: false
+                redactPII: false
+                showAssessment: false
+            response:
+                enabled: false
+                jsonPath: $.choices[0].message.content
+                passthroughOnError: false
+                showAssessment: false
+          version: v1
+    operationPolicies:
+        - name: basic-auth
+          paths:
+            - methods:
+                - POST
+              params:
+                allowUnauthenticated: false
+                password: admin
+                realm: Restricted
+                username: admin
+              path: /v1/messages
+          version: v1
+        - name: cors
+          paths:
+            - methods:
+                - POST
+              params:
+                allowCredentials: false
+                allowedHeaders: []
+                allowedMethods:
+                    - GET
+                    - POST
+                    - PUT
+                    - DELETE
+                    - OPTIONS
+                allowedOrigins:
+                    - '*'
+                exposedHeaders: []
+                forwardPreflight: false
+                maxAge: 3600
+              path: /v1/messages
+          version: v1
+        - name: content-length-guardrail
+          paths:
+            - methods:
+                - POST
+              params:
+                request:
+                    enabled: true
+                    invert: false
+                    jsonPath: $.messages[-1].content
+                    max: 0
+                    min: 0
+                    showAssessment: false
+                response:
+                    enabled: false
+                    invert: false
+                    jsonPath: $.choices[0].message.content
+                    max: 0
+                    min: 0
+                    showAssessment: false
+              path: /v1/messages
+          version: v1

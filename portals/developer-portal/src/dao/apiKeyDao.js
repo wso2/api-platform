@@ -15,7 +15,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { Op } = require('sequelize');
 const APIKey = require('../models/apiKey');
 const APIKeyAppMapping = require('../models/apiKeyAppMapping');
 const { APIMetadata } = require('../models/apiMetadata');

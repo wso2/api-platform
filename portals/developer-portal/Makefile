@@ -100,7 +100,7 @@ version-set: ## Set developer portal version and update artifacts
 		exit 1; \
 	fi
 	@echo "$(VERSION)" > VERSION
-	@sed -i.bak 's/"version": ".*"/"version": "$(VERSION)"/' package.json && rm -f package.json.bak
+	@npm version $(VERSION) --no-git-tag-version --allow-same-version >/dev/null
 	@(cd ../.. && bash scripts/update-docker-compose.sh developer-portal $(VERSION))
 	@echo "✓ Set developer portal version to $(VERSION)"
 

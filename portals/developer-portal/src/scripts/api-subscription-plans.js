@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 
     (function () {
       var _plansRoot = document.getElementById('subscriptionPlans');
@@ -246,7 +246,7 @@
         if (!_sub) return;
         var orgId = window.__subscriptionOrgId;
         try {
-          var resp = await fetch(devportalApi.root('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
+          resp = await fetch(devportalApi.root('/subscriptions/' + encodeURIComponent(_sub.subscriptionId)), {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() },
           });
