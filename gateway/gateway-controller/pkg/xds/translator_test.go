@@ -2499,3 +2499,41 @@ func TestBuildMatchHeaders_HeaderMatchersRendered(t *testing.T) {
 	require.True(t, ok, "RegularExpression header match must stay a safe_regex, got %T", flavor.GetHeaderMatchSpecifier())
 	assert.Equal(t, "red|blue", rx.SafeRegexMatch.GetRegex())
 }
+
+// TestTranslator_TranslateRuntimeConfig_AppliesConnectTimeout is the translator half of the
+// connect-timeout regression guard: translateRuntimeConfig must apply an UpstreamCluster's
+// ConnectTimeout to the emitted Envoy cluster, and fall back to the router's global default
+// (5s here) when it is nil — rather than dropping the per-upstream value.
+func TestTranslator_TranslateRuntimeConfig_AppliesConnectTimeout(t *testing.T) {
+	translator := createTestTranslator()
+	d := 8 * time.Second
+	rdc := &models.RuntimeDeployConfig{
+		Metadata: models.Metadata{UUID: "u", Kind: "RestApi"},
+		Routes:   map[string]*models.Route{},
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"with_timeout": {
+				BasePath:       "/",
+				Endpoints:      []models.Endpoint{{Host: "backend", Port: 8080}},
+				TLS:            &models.UpstreamTLS{},
+				ConnectTimeout: &d,
+			},
+			"without_timeout": {
+				BasePath:  "/",
+				Endpoints: []models.Endpoint{{Host: "backend2", Port: 8080}},
+				TLS:       &models.UpstreamTLS{},
+			},
+		},
+	}
+
+	_, clusters, err := translator.translateRuntimeConfig(rdc)
+	require.NoError(t, err)
+
+	got := map[string]time.Duration{}
+	for _, c := range clusters {
+		got[c.GetName()] = c.GetConnectTimeout().AsDuration()
+	}
+	assert.Equal(t, 8*time.Second, got["with_timeout"],
+		"an explicit per-upstream connect timeout must be applied to the Envoy cluster")
+	assert.Equal(t, 5*time.Second, got["without_timeout"],
+		"a nil connect timeout must fall back to the router global default (5s), not be dropped to zero")
+}

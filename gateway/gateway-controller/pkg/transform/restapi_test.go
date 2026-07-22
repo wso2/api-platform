@@ -761,7 +761,7 @@ func TestRestAPITransformer_SimpleAndMatchSamePathCoexist(t *testing.T) {
 		Version:     "1.0.0",
 		Operations: []api.Operation{
 			{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/via-match")}, // simple, header-less
-			{Match: mkMatch("GET", "/via-match", hdrMatch("x-variant", "alpha"))},        // match, header-conditioned
+			{Match: mkMatch("GET", "/via-match", hdrMatch("x-variant", "alpha"))},      // match, header-conditioned
 		},
 		Upstream: struct {
 			Main    api.Upstream  `json:"main" yaml:"main"`
@@ -851,5 +851,63 @@ func TestRestAPITransformer_OperationFormCombinations(t *testing.T) {
 		base := "GET|/test/c|main.local"
 		require.Contains(t, rdc.Routes, base)
 		require.Empty(t, rdc.Routes[base].MatchHeaders)
+	})
+}
+
+// TestRestAPITransformer_ConnectTimeoutFromDefinition is the transformer half of the
+// connect-timeout regression guard: an upstreamDefinition's timeout.connect must be carried
+// onto the RuntimeDeployConfig clusters (both the definition cluster and an API-level cluster
+// that references it) so the RDC->Envoy translation can apply it instead of dropping it.
+// A definition without a timeout leaves ConnectTimeout nil (the global default applies later).
+func TestRestAPITransformer_ConnectTimeoutFromDefinition(t *testing.T) {
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, map[string]models.PolicyDefinition{})
+
+	build := func(connect *string) (*models.RuntimeDeployConfig, error) {
+		def := api.UpstreamDefinition{
+			Name: "timed-svc",
+			Upstreams: []struct {
+				Url    string `json:"url" yaml:"url"`
+				Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+			}{{Url: "http://backend:8080"}},
+		}
+		if connect != nil {
+			def.Timeout = &api.UpstreamTimeout{Connect: connect}
+		}
+		apiData := api.APIConfigData{
+			DisplayName:         "Timeout API",
+			Context:             "/test",
+			Version:             "1.0.0",
+			UpstreamDefinitions: &[]api.UpstreamDefinition{def},
+			Upstream: struct {
+				Main    api.Upstream  `json:"main" yaml:"main"`
+				Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+			}{Main: api.Upstream{Ref: ptrStr("timed-svc")}},
+			Operations: []api.Operation{{Method: api.Ptr(api.OperationMethod("GET")), Path: ptrStr("/hello")}},
+		}
+		return transformer.Transform(&models.StoredConfig{
+			UUID: "timeout-api", Kind: string(api.RestAPIKindRestApi),
+			Configuration: api.RestAPI{Kind: api.RestAPIKindRestApi, Metadata: api.Metadata{Name: "timeout-api"}, Spec: apiData},
+		})
+	}
+
+	t.Run("definition timeout maps onto every referencing cluster", func(t *testing.T) {
+		rdc, err := build(ptrStr("8s"))
+		require.NoError(t, err)
+		// Both the API-level ref cluster and the definition cluster reference timed-svc.
+		require.GreaterOrEqual(t, len(rdc.UpstreamClusters), 2,
+			"expected the API-level ref cluster and the definition cluster")
+		for name, uc := range rdc.UpstreamClusters {
+			require.NotNil(t, uc.ConnectTimeout, "cluster %q must carry the definition connect timeout", name)
+			assert.Equal(t, 8*time.Second, *uc.ConnectTimeout, "cluster %q connect timeout", name)
+		}
+	})
+
+	t.Run("no definition timeout leaves ConnectTimeout nil", func(t *testing.T) {
+		rdc, err := build(nil)
+		require.NoError(t, err)
+		require.NotEmpty(t, rdc.UpstreamClusters)
+		for name, uc := range rdc.UpstreamClusters {
+			assert.Nil(t, uc.ConnectTimeout, "cluster %q must have no connect timeout so the global default applies", name)
+		}
 	})
 }

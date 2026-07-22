@@ -101,8 +101,8 @@ type Translator struct {
 // Route and Idle come from the resilience block.
 type resolvedTimeout struct {
 	Connect *time.Duration
-	Route *time.Duration
-	Idle  *time.Duration
+	Route   *time.Duration
+	Idle    *time.Duration
 }
 
 // NewTranslator creates a new translator
@@ -240,7 +240,10 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 		if len(uc.Endpoints) == 0 {
 			continue
 		}
-		var connectTimeout *time.Duration
+		// Per-upstream connect timeout resolved by the transformer from
+		// upstreamDefinitions.timeout.connect; nil falls back to the router default
+		// inside createCluster/createWeightedCluster.
+		connectTimeout := uc.ConnectTimeout
 		if len(uc.Endpoints) == 1 {
 			ep := uc.Endpoints[0]
 			parsedURL := &url.URL{

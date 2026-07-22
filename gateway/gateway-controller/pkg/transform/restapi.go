@@ -247,6 +247,10 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			if def.BasePath != nil && *def.BasePath != "" {
 				basePath = *def.BasePath
 			}
+			defConnectTimeout, err := definitionConnectTimeout(&def)
+			if err != nil {
+				return nil, fmt.Errorf("upstream definition '%s': %w", def.Name, err)
+			}
 			endpoints := make([]models.Endpoint, 0, len(def.Upstreams))
 			tlsExists := false
 			plaintextExists := false
@@ -278,10 +282,11 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 					"all endpoints in a definition must use the same scheme", def.Name)
 			}
 			rdc.UpstreamClusters[defClusterKey] = &models.UpstreamCluster{
-				Name:      def.Name,
-				BasePath:  basePath,
-				Endpoints: endpoints,
-				TLS:       &models.UpstreamTLS{Enabled: tlsExists},
+				Name:           def.Name,
+				BasePath:       basePath,
+				Endpoints:      endpoints,
+				TLS:            &models.UpstreamTLS{Enabled: tlsExists},
+				ConnectTimeout: defConnectTimeout,
 			}
 		}
 	}
@@ -496,6 +501,18 @@ func (t *RestAPITransformer) addUpstreamCluster(
 		basePath = "/"
 	}
 
+	// The connect timeout can only come from a referenced upstreamDefinition
+	// (direct-URL upstreams have no timeout field). Resolve it here so the RDC->Envoy
+	// translation applies it to this cluster instead of falling back to the global default.
+	var connectTimeout *time.Duration
+	if up != nil && up.Ref != nil && strings.TrimSpace(*up.Ref) != "" {
+		ct, terr := definitionConnectTimeout(lookupUpstreamDefinition(*up.Ref, upstreamDefinitions))
+		if terr != nil {
+			return nil, fmt.Errorf("%s upstream: %w", upstreamName, terr)
+		}
+		connectTimeout = ct
+	}
+
 	clusterKey := fmt.Sprintf("upstream_%s_%s_%d", upstreamName, parsedURL.Hostname(), port)
 
 	rdc.UpstreamClusters[clusterKey] = &models.UpstreamCluster{
@@ -504,7 +521,8 @@ func (t *RestAPITransformer) addUpstreamCluster(
 			Host: parsedURL.Hostname(),
 			Port: port,
 		}},
-		TLS: &models.UpstreamTLS{Enabled: parsedURL.Scheme == "https"},
+		TLS:            &models.UpstreamTLS{Enabled: parsedURL.Scheme == "https"},
+		ConnectTimeout: connectTimeout,
 	}
 
 	return &upstreamClusterResult{
@@ -521,6 +539,43 @@ func sanitizeEnvoyClusterName(host, scheme string) string {
 	name := strings.ReplaceAll(host, ".", "_")
 	name = strings.ReplaceAll(name, ":", "_")
 	return "cluster_" + scheme + "_" + name
+}
+
+// lookupUpstreamDefinition returns the upstream definition named ref (after trimming
+// whitespace), or nil if defs is nil or no definition matches.
+func lookupUpstreamDefinition(ref string, defs *[]api.UpstreamDefinition) *api.UpstreamDefinition {
+	if defs == nil {
+		return nil
+	}
+	name := strings.TrimSpace(ref)
+	for i := range *defs {
+		if strings.TrimSpace((*defs)[i].Name) == name {
+			return &(*defs)[i]
+		}
+	}
+	return nil
+}
+
+// definitionConnectTimeout parses an upstream definition's timeout.connect into a
+// *time.Duration. A nil definition, absent timeout, or empty string yields (nil, nil)
+// meaning "use the router's global default". A malformed or non-positive value is an
+// error so a bad config fails fast instead of silently falling back to the default.
+func definitionConnectTimeout(def *api.UpstreamDefinition) (*time.Duration, error) {
+	if def == nil || def.Timeout == nil || def.Timeout.Connect == nil {
+		return nil, nil
+	}
+	s := strings.TrimSpace(*def.Timeout.Connect)
+	if s == "" {
+		return nil, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return nil, fmt.Errorf("invalid connect timeout %q: %w", s, err)
+	}
+	if d <= 0 {
+		return nil, fmt.Errorf("connect timeout must be positive, got %v", d)
+	}
+	return &d, nil
 }
 
 // resolveUpstreamURL resolves the URL from an upstream (direct URL or ref). For a ref it
