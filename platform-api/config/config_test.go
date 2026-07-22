@@ -118,6 +118,26 @@ func TestLoadConfig_ValidKeys_Succeeds(t *testing.T) {
 	assert.Equal(t, validInlineKey, cfg.Security.EncryptionKey)
 }
 
+// A merged multi-component config file also carries a foreign [developer_portal]
+// section with its own interpolation tokens — here deliberately poisonous ones: an
+// {{ env }} with no default that is left unset, and a {{ file }} path outside
+// platform-api's allowlist. LoadConfig must interpolate and consume ONLY the
+// [platform_api] subtree, leaving the foreign section (and its tokens) untouched.
+// Guards the k.Cut(platformAPIConfigKey) scoping in LoadConfig: without it, the
+// whole-tree interpolation would fail closed on these tokens.
+func TestLoadConfig_IgnoresForeignComponentSection(t *testing.T) {
+	// APIP_DP_SECURITY_ENCRYPTION_KEY is intentionally never set, and /etc/devportal
+	// is not on platform-api's {{ file }} allowlist.
+	cfg, err := loadWithKeys(t, `
+[developer_portal.security]
+encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTION_KEY" }}'
+[developer_portal.auth.local]
+jwt_public_key = '{{ file "/etc/devportal/keys/jwt_public.pem" }}'
+`)
+	require.NoError(t, err)
+	assert.Equal(t, validInlineKey, cfg.Security.EncryptionKey)
+}
+
 // The encryption key is required and never generated — a config that omits it fails startup.
 func TestLoadConfig_MissingEncryptionKey_Errors(t *testing.T) {
 	t.Setenv("APIP_CP_AUTH_JWT_PUBLIC_KEY_FILE", validJWTPublicKeyFile)

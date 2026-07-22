@@ -183,8 +183,8 @@ else
     # `format: raw`, which passes file content through byte-for-byte with no
     # ${VAR} interpolation, so a literal bcrypt hash ("$2y$12$...") survives
     # into the container as-is. Escaping "$" as "$$" here would corrupt it.
-    # Read by config-platform-api.toml's [[platform_api.auth.file.users]] entry —
-    # scopes lives there as a plain literal, not in this env file.
+    # Read by the config's [[platform_api.auth.file.users]] entry — scopes lives
+    # there as a plain literal, not in this env file.
     set_env_var "APIP_CP_ADMIN_USERNAME" "$ADMIN_USERNAME"
     set_env_var "APIP_CP_ADMIN_PASSWORD_HASH" "$ADMIN_HASH"
 

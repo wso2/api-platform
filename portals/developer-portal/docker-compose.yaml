@@ -13,10 +13,11 @@ services:
     image: ghcr.io/wso2/api-platform/platform-api:0.13.0-SNAPSHOT
     container_name: platform-api
     restart: unless-stopped
-    # Mounts the single source-of-truth config shipped with the Platform API
-    # itself (../../platform-api/config/config.toml) rather than keeping a
-    # separate copy under this portal's configs/ — every portal's compose
-    # file mounts the same file.
+    # platform-api reads its config from /etc/platform-api/config.toml. In the
+    # monorepo that is bind-mounted from the Platform API's own source config
+    # (below); `make dist` instead points this at the unified configs/config.toml
+    # that carries both the [developer_portal] and [platform_api] sections, and
+    # each service reads only its own section.
     command: ["-config", "/etc/platform-api/config.toml"]
     env_file:
       - path: api-platform.env

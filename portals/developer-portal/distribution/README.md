@@ -12,10 +12,8 @@ wso2apip-developer-portal-<version>/
 │   ├── setup.sh                                 # One-time TLS + secrets provisioning
 │   └── seed-samples.sh                          # Optional: deploy the bundled sample APIs/MCPs
 ├── configs/
-│   ├── config.toml                              # Developer Portal active configuration
-│   ├── config-template.toml                     # Developer Portal full configuration reference
-│   ├── config-platform-api.toml                 # Platform API active configuration
-│   └── config-platform-api-template.toml        # Platform API full configuration reference
+│   ├── config.toml                              # Unified active config — [developer_portal] + [platform_api] sections
+│   └── config-template.toml                     # Unified full configuration reference (both components)
 └── resources/
     ├── developer-portal/
     │   └── db-scripts/                          # Developer Portal PostgreSQL schema (reference copy)
@@ -78,35 +76,35 @@ Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD
 
 ## Configuration
 
-Edit `configs/config.toml` for Developer Portal settings and `configs/config-platform-api.toml` for Platform API settings. Both are read directly by the running containers — no rebuild required, just restart the affected service.
+All settings live in the single `configs/config.toml`. It carries two sections — `[developer_portal.*]` and `[platform_api.*]` — and the **same file is mounted into both containers**; each service reads only its own section and ignores the other's. Edit it in place — no rebuild required, just restart the affected service.
 
-Each config TOML writes secrets as `'{{ env "..." }}'` tokens, so a key can be set from the environment without editing the file — the token names the variable, by convention the key uppercased and prefixed with `APIP_DP_` (Developer Portal) or `APIP_CP_` (Platform API), e.g. `APIP_DP_SERVER_HTTPS_ENABLED`, `APIP_CP_DATABASE_HOST`. A key with no token is not settable from the environment: uncomment or add it in the TOML first. To source a value from a mounted file instead — the right choice for secrets — swap the token for `'{{ file "/secrets/..." }}'`. Never write a secret as a raw literal in either file.
+Each section writes secrets as `'{{ env "..." }}'` tokens, so a key can be set from the environment without editing the file — the token names the variable, by convention the key uppercased and prefixed with `APIP_DP_` (Developer Portal) or `APIP_CP_` (Platform API), e.g. `APIP_DP_SERVER_HTTPS_ENABLED`, `APIP_CP_DATABASE_HOST`. A key with no token is not settable from the environment: uncomment or add it in the TOML first. To source a value from a mounted file instead — the right choice for secrets — swap the token for `'{{ file "/secrets/..." }}'`. Never write a secret as a raw literal.
 
 Environment overrides go in `api-platform.env` (git-ignored; loaded into both containers via `env_file`, format `raw`, since the bcrypt password hash contains `$`, which must not be treated as a compose interpolation variable).
 
-### Developer Portal (`configs/config.toml`)
+### Developer Portal (`[developer_portal.*]`)
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `[server.https].enabled` | Terminate TLS in the portal itself (vs. behind a proxy) | `true` |
+| `[developer_portal.server.https].enabled` | Terminate TLS in the portal itself (vs. behind a proxy) | `true` |
 | `[developer_portal.database].driver` | `sqlite` (default) or `postgres` | `sqlite` |
 | `[developer_portal.auth].mode` | `local` (Platform API sidecar) or `idp` (external OIDC IDP via `[developer_portal.auth.idp]`) | `local` |
 | `[developer_portal.auth.local].platform_api_url` | Address of the Platform API local-auth sidecar | `https://platform-api:9243` |
-| `[organization].default_name` | Organization bootstrapped automatically on first start | `default` |
+| `[developer_portal.auth.local].public_key_path` | Path to the Platform API RS256 public key PEM used to verify login tokens | `/etc/devportal/keys/jwt_public.pem` |
+| `[developer_portal.organization].default_name` | Organization bootstrapped automatically on first start | `default` |
 
-### Platform API (`configs/config-platform-api.toml`)
+### Platform API (`[platform_api.*]`)
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `log_level` | Log level (`DEBUG`, `INFO`, `WARN`, `ERROR`) | `INFO` |
-| `encryption_key` | Single 32-byte key (64 hex chars or base64) used for all at-rest encryption. Generate with `openssl rand -hex 32` | _(from `setup.sh`)_ |
-| `[database].driver` | `sqlite3` or `postgres` | `sqlite3` |
-| `[auth.jwt].secret_key` | 32-byte HMAC key signing login JWTs | _(from `setup.sh`)_ |
-| `[auth.idp]` | JWKS-based IDP auth — disabled in quickstart mode | disabled |
-| `[[auth.file_based.users]]` | Local user credentials — `username`/`password_hash` resolved from `setup.sh`'s env vars, `scopes` is a plain literal | admin, generated by `setup.sh` |
-| `[https].cert_dir` | Listener certificate directory | `/etc/platform-api/tls` |
+| `[platform_api.logging].level` | Log level (`DEBUG`, `INFO`, `WARN`, `ERROR`) | `INFO` |
+| `[platform_api.security].encryption_key` | Single 32-byte key (64 hex chars or base64) used for all at-rest encryption. Generate with `openssl rand -hex 32` | _(from `setup.sh`)_ |
+| `[platform_api.database].driver` | `sqlite3` or `postgres` | `sqlite3` |
+| `[platform_api.auth.jwt].public_key` / `.private_key` | RS256 keypair — platform-api signs login JWTs with the private key; the portal verifies with the public one | _(from `setup.sh`)_ |
+| `[platform_api.auth.idp]` | JWKS-based IDP auth — disabled in quickstart mode | disabled |
+| `[[platform_api.auth.file.users]]` | Local user credentials — `username`/`password_hash` resolved from `setup.sh`'s env vars, `scopes` is a plain literal | admin, generated by `setup.sh` |
 
-See `configs/config-template.toml` and `configs/config-platform-api-template.toml` for a fully-commented reference of every available setting.
+See `configs/config-template.toml` for a fully-commented reference of every available setting across both components.
 
 ## Authentication Modes
 
