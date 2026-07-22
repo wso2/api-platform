@@ -66,8 +66,20 @@ fi
 DEVPORTAL_URL="${DEVPORTAL_URL:-https://localhost:3000}"
 PLATFORM_API_URL="${PLATFORM_API_URL:-https://localhost:9243}"
 
-log() { echo "[seed-samples] $*"; }
-fail() { echo "[seed-samples] ERROR: $*" >&2; exit 1; }
+# Colors/symbols only when writing to an interactive terminal (respects the
+# NO_COLOR convention: https://no-color.org/) — a piped/CI log gets plain
+# ASCII instead of ANSI escapes and unicode glyphs.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+    C_GREEN=$'\033[32m'; C_RED=$'\033[31m'; C_YELLOW=$'\033[33m'
+    C_DIM=$'\033[2m'; C_BOLD=$'\033[1m'; C_RESET=$'\033[0m'
+    SYM_OK="✓"; SYM_FAIL="✗"; SYM_SKIP="•"
+else
+    C_GREEN=""; C_RED=""; C_YELLOW=""; C_DIM=""; C_BOLD=""; C_RESET=""
+    SYM_OK="OK"; SYM_FAIL="FAIL"; SYM_SKIP="-"
+fi
+
+log() { echo "${C_DIM}[seed-samples]${C_RESET} $*"; }
+fail() { echo "${C_RED}[seed-samples] ERROR:${C_RESET} $*" >&2; exit 1; }
 
 command -v curl >/dev/null 2>&1 || fail "curl is required but not found on PATH."
 command -v jq   >/dev/null 2>&1 || fail "jq is required but not found on PATH."
@@ -90,9 +102,16 @@ TOKEN=$(curl -sk -X POST "$PLATFORM_API_URL/api/portal/v0.9/auth/login" \
 [ -n "$TOKEN" ] || fail "failed to obtain a token — check the credentials and that Platform API is reachable at $PLATFORM_API_URL."
 AUTH_HEADER="Authorization: Bearer $TOKEN"
 
+SECONDS=0
+API_CREATED=0; API_SKIPPED=0; API_FAILED=0
+MCP_CREATED=0; MCP_SKIPPED=0; MCP_FAILED=0
+
 # Uploads sample_dir/docs/ as the content ZIP for an already-created API/MCP server.
+# Result is left in DOCS_RESULT (a ready-to-print fragment) rather than printed
+# directly, so seed_entry can fold it into that sample's single summary line.
 seed_docs() {
     local sample_dir="$1" resource_path="$2"
+    DOCS_RESULT=""
     [ -d "$sample_dir/docs" ] || return 0
 
     local tmp_zip
@@ -113,27 +132,52 @@ seed_docs() {
     rm -f "$tmp_zip"
 
     if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
-        log "  docs OK ($http_code)"
+        DOCS_RESULT="${C_GREEN}docs ${SYM_OK}${C_RESET}"
     else
-        log "  docs FAILED ($http_code)"
+        DOCS_RESULT="${C_RED}docs ${SYM_FAIL} (${http_code})${C_RESET}"
+    fi
+}
+
+# Bumps the API_* or MCP_* counter matching $1 (an endpoint value) by one,
+# for the field named by $2 (CREATED/SKIPPED/FAILED). Avoids bash namerefs
+# (`local -n`, needs bash 4.3+) so this still runs under macOS's stock
+# bash 3.2 — this script has no other bash-version dependency, so it
+# shouldn't gain one just for tallying counters.
+bump_counter() {
+    local endpoint="$1" field="$2"
+    if [ "$endpoint" = "mcp-servers" ]; then
+        case "$field" in
+            CREATED) MCP_CREATED=$((MCP_CREATED + 1)) ;;
+            SKIPPED) MCP_SKIPPED=$((MCP_SKIPPED + 1)) ;;
+            FAILED)  MCP_FAILED=$((MCP_FAILED + 1)) ;;
+        esac
+    else
+        case "$field" in
+            CREATED) API_CREATED=$((API_CREATED + 1)) ;;
+            SKIPPED) API_SKIPPED=$((API_SKIPPED + 1)) ;;
+            FAILED)  API_FAILED=$((API_FAILED + 1)) ;;
+        esac
     fi
 }
 
 # Creates one API or MCP server entry from a sample directory (api.yaml + optional
-# definition.* + optional docs/), via the given collection endpoint.
+# definition.* + optional docs/), via the given collection endpoint. Prints exactly
+# one summary line per sample and tallies the outcome into the *_CREATED/SKIPPED/
+# FAILED counters (bucketed by $endpoint) for the closing summary.
 seed_entry() {
     local sample_dir="$1" endpoint="$2"
     local name; name="$(basename "$sample_dir")"
     local api_yaml="$sample_dir/api.yaml"
+
     if [ ! -f "$api_yaml" ]; then
-        log "skipping $name: no api.yaml"
+        printf "  ${C_YELLOW}%s${C_RESET} %-28s ${C_DIM}(no api.yaml, skipped)${C_RESET}\n" "$SYM_SKIP" "$name"
+        bump_counter "$endpoint" SKIPPED
         return
     fi
 
     local definition
     definition=$(compgen -G "$sample_dir/definition.*" 2>/dev/null | head -1 || true)
 
-    log "Seeding: $name"
     local curl_args=(-sk -X POST "$DEVPORTAL_URL/api/v0.9/$endpoint" \
         -H "$AUTH_HEADER" \
         -F "metadata=@$api_yaml;type=application/yaml")
@@ -148,27 +192,52 @@ seed_entry() {
 
     if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
         id=$(echo "$body" | jq -r '.id // empty')
-        log "  OK ($http_code) — id: $id"
+        DOCS_RESULT=""
         [ -n "$id" ] && seed_docs "$sample_dir" "/api/v0.9/$endpoint/$id"
+        if [ -n "$DOCS_RESULT" ]; then
+            printf "  ${C_GREEN}%s${C_RESET} %-28s ${C_DIM}(id: %s, %s${C_DIM})${C_RESET}\n" "$SYM_OK" "$name" "$id" "$DOCS_RESULT"
+        else
+            printf "  ${C_GREEN}%s${C_RESET} %-28s ${C_DIM}(id: %s)${C_RESET}\n" "$SYM_OK" "$name" "$id"
+        fi
+        bump_counter "$endpoint" CREATED
     elif [ "$http_code" -eq 409 ]; then
-        log "  already exists, skipping"
+        printf "  ${C_YELLOW}%s${C_RESET} %-28s ${C_DIM}(already exists)${C_RESET}\n" "$SYM_SKIP" "$name"
+        bump_counter "$endpoint" SKIPPED
     else
-        log "  FAILED ($http_code): $body"
+        local short_err
+        short_err=$(echo "$body" | jq -r '.error // .message // empty' 2>/dev/null)
+        [ -n "$short_err" ] || short_err="$body"
+        printf "  ${C_RED}%s${C_RESET} %-28s ${C_RED}(%s: %s)${C_RESET}\n" "$SYM_FAIL" "$name" "$http_code" "$short_err"
+        bump_counter "$endpoint" FAILED
     fi
 }
 
 if [ -d "$SAMPLES_DIR/apis" ]; then
-    log "Seeding sample APIs from $SAMPLES_DIR/apis ..."
+    echo
+    echo "${C_BOLD}Seeding APIs${C_RESET}"
     for dir in "$SAMPLES_DIR"/apis/*/; do
         [ -d "$dir" ] && seed_entry "${dir%/}" "apis"
     done
 fi
 
 if [ -d "$SAMPLES_DIR/mcps" ]; then
-    log "Seeding sample MCP servers from $SAMPLES_DIR/mcps ..."
+    echo
+    echo "${C_BOLD}Seeding MCP servers${C_RESET}"
     for dir in "$SAMPLES_DIR"/mcps/*/; do
         [ -d "$dir" ] && seed_entry "${dir%/}" "mcp-servers"
     done
 fi
 
-log "Done."
+TOTAL_CREATED=$((API_CREATED + MCP_CREATED))
+TOTAL_SKIPPED=$((API_SKIPPED + MCP_SKIPPED))
+TOTAL_FAILED=$((API_FAILED + MCP_FAILED))
+
+echo
+if [ "$TOTAL_FAILED" -gt 0 ]; then
+    STATUS_COLOR="$C_RED"
+else
+    STATUS_COLOR="$C_GREEN"
+fi
+API_WORD="APIs"; [ "$API_CREATED" -eq 1 ] && API_WORD="API"
+MCP_WORD="MCP servers"; [ "$MCP_CREATED" -eq 1 ] && MCP_WORD="MCP server"
+echo "${STATUS_COLOR}Done${C_RESET} — ${C_BOLD}${TOTAL_CREATED} seeded${C_RESET} (${API_CREATED} ${API_WORD}, ${MCP_CREATED} ${MCP_WORD}), ${TOTAL_SKIPPED} skipped, ${TOTAL_FAILED} failed in ${SECONDS}s"
