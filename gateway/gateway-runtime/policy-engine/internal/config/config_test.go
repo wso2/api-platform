@@ -1444,6 +1444,40 @@ format = "json"
 	assert.True(t, cfg.PolicyEngine.Admin.Enabled)
 }
 
+// TestLoad_TokenResolvesFromEnv verifies the {{ env }} interpolation path: a config
+// value written as a token is resolved from the environment at load time.
+func TestLoad_TokenResolvesFromEnv(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+	configContent := `
+[policy_engine.logging]
+level = '{{ env "APIP_GW_POLICY_ENGINE_LOGGING_LEVEL" "info" }}'
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	t.Setenv("APIP_GW_POLICY_ENGINE_LOGGING_LEVEL", "debug")
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, "debug", cfg.PolicyEngine.Logging.Level)
+}
+
+// TestLoad_EnvDoesNotOverrideWithoutToken verifies the removed koanf APIP_GW_ prefix
+// override no longer applies: an APIP_GW_* variable has no effect on a token-free key.
+func TestLoad_EnvDoesNotOverrideWithoutToken(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+	configContent := `
+[policy_engine.logging]
+level = "info"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	t.Setenv("APIP_GW_POLICY_ENGINE_LOGGING_LEVEL", "debug")
+	cfg, err := Load(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, "info", cfg.PolicyEngine.Logging.Level, "APIP_GW_ env must not override a token-free key")
+}
+
 // TestLoad_EmptyPath tests loading with empty path (defaults only)
 func TestLoad_EmptyPath(t *testing.T) {
 	cfg, err := Load("")

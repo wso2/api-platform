@@ -156,14 +156,18 @@ Update `.vscode/launch.json` in the **Gateway Controller** configuration with yo
 {
     "name": "Gateway Controller",
     "env": {
-        "APIP_GW_CONTROLPLANE_HOST": "<your-control-plane-host>",
-        "APIP_GW_GATEWAY_REGISTRATION_TOKEN": "<your-registration-token>",
+        "APIP_GW_CONTROLLER_CONTROLPLANE_HOST": "<your-control-plane-host>",
+        "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN": "<your-registration-token>",
         // ... other env vars
     }
 }
 ```
 
-> **Note:** Leave these empty (`""`) if you want to run in standalone mode without control plane connection.
+> **Note:** Environment variables no longer override config keys by prefix. These values take
+> effect because the config.toml the controller loads references them with `{{ env }}` tokens
+> (`configs/config.toml` already has `host = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_HOST" "" }}'`
+> and the matching token for the registration token). Leave them empty (`""`) to run in standalone
+> mode without a control plane connection.
 
 ### Step 2: Update Docker Compose Configuration
 
@@ -357,7 +361,7 @@ services:
 
 Run the **Gateway Controller** debug configuration from VS Code.
 
-> **Note:** Leave `APIP_GW_CONTROLPLANE_HOST` and `APIP_GW_GATEWAY_REGISTRATION_TOKEN` empty (`""`) in `.vscode/launch.json` if you want to run in standalone mode without control plane connection.
+> **Note:** Leave `APIP_GW_CONTROLLER_CONTROLPLANE_HOST` and `APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN` empty (`""`) in `.vscode/launch.json` if you want to run in standalone mode without control plane connection.
 
 ### Step 6: Start the Python Executor
 

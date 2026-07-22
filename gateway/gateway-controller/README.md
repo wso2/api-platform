@@ -77,12 +77,12 @@ docker run -p 9090:9090 -p 18000:18000 \
 
 ## Configuration
 
-The Gateway-Controller supports configuration via:
-1. **Configuration file** (YAML)
-2. **Environment variables** (prefix: `APIP_GW_`)
-3. **Command-line flags**
+The Gateway-Controller is configured from a TOML config file (`--config <path>`, default
+`/etc/gateway-controller/config.toml`) layered over built-in defaults.
 
-Priority: Environment variables > Config file > Defaults
+Priority: **Config file > Defaults.** Environment variables do **not** override config keys
+directly. An environment value reaches a setting only through an explicit `{{ env "NAME" }}`
+interpolation token in the config file (see [Environment values via interpolation](#environment-values-via-interpolation)).
 
 ### Configuration File
 
@@ -134,52 +134,51 @@ logging:
 ./bin/controller --config /path/to/config.yaml
 ```
 
-### Environment Variables
+### Environment values via interpolation
 
-Override any configuration value using the `APIP_GW_` prefix:
+There is **no `APIP_GW_` prefix auto-override.** An environment variable affects configuration only
+when the config file references it with a `{{ env "NAME" "default" }}` token, resolved at startup via
+`os.LookupEnv`. A missing or empty variable falls back to the token's default; a bare token with no
+default fails startup. Secrets can instead be read from a mounted file with `{{ file "PATH" }}`
+(restricted to an allowlist of directories, overridable with `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`).
 
-```bash
-# Override server API port
-export APIP_GW_CONTROLLER_SERVER_API__PORT=9091
+`APIP_GW_...` is just a naming convention for the token argument (mirrors platform-api's `APIP_CP_`).
+The shipped `configs/config.toml` and `configs/config-template.toml` already carry tokens for the
+common settings:
 
-# Set storage type to memory
-export APIP_GW_CONTROLLER_STORAGE_TYPE=memory
+```toml
+[controller.storage]
+type = '{{ env "APIP_GW_CONTROLLER_STORAGE_TYPE" "sqlite" }}'
 
-# Override SQLite database path
-export APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH=/custom/path/gateway.db
+[controller.storage.sqlite]
+path = '{{ env "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH" "./data/gateway.db" }}'
 
-# Configure PostgreSQL storage
-export APIP_GW_CONTROLLER_STORAGE_TYPE=postgres
-export APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST=postgres.example.internal
-export APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT=5432
-export APIP_GW_CONTROLLER_STORAGE_POSTGRES_DATABASE=gateway
-export APIP_GW_CONTROLLER_STORAGE_POSTGRES_USER=gateway
-export APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD=secret
-export APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE=require
-export APIP_GW_CONTROLLER_STORAGE_POSTGRES_MAX__OPEN__CONNS=25
+[controller.storage.database]
+dsn = '{{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN" "" }}'   # SQL Server (type = "sqlserver")
 
-# Configure SQL Server storage
-export APIP_GW_CONTROLLER_STORAGE_TYPE=sqlserver
-export APIP_GW_CONTROLLER_STORAGE_DATABASE_DRIVER=sqlserver
-export APIP_GW_CONTROLLER_STORAGE_DATABASE_HOST=sqlserver.example.internal
-export APIP_GW_CONTROLLER_STORAGE_DATABASE_PORT=1433
-export APIP_GW_CONTROLLER_STORAGE_DATABASE_DATABASE=gateway
-export APIP_GW_CONTROLLER_STORAGE_DATABASE_USER=gateway
-export APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD=secret
-export APIP_GW_CONTROLLER_STORAGE_DATABASE_OPTIONS_ENCRYPT=disable
-export APIP_GW_CONTROLLER_STORAGE_DATABASE_OPTIONS_TRUST__SERVER__CERTIFICATE=true
-export APIP_GW_CONTROLLER_STORAGE_DATABASE_MAX__OPEN__CONNS=25
+[controller.controlplane]
+host  = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_HOST" "" }}'
+token = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN" "" }}'
 
-# Disable access logs
-export APIP_GW_CONTROLLER_ROUTER_ACCESS__LOGS_ENABLED=false
-
-# Set debug logging
-export APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
-
-./bin/controller
+[controller.logging]
+level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
 ```
 
-Environment variable naming: `APIP_GW_<SECTION>_<KEY>` (uppercase, underscore-separated, double underscores preserve literal underscores in field names)
+Deliver the values with docker-compose `env_file: ./api-platform.env` (recommended); a
+`docker compose --env-file api-platform.env up` at the CLI also works. Generate `api-platform.env`
+with `./scripts/setup.sh` (or create it by hand) and edit it:
+
+```bash
+# api-platform.env
+APIP_GW_CONTROLLER_STORAGE_TYPE=sqlserver
+APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN=sqlserver://sa:secret@sqlserver:1433?database=gateway&encrypt=disable
+APIP_GW_CONTROLLER_CONTROLPLANE_HOST=connect.example.com:9243
+APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=<registration-token>
+APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
+```
+
+To configure a key that has no token in the shipped config, add the `{{ env }}` token to your
+config file for that key, or set the value in the file directly.
 
 ### Configuration Modes
 
@@ -680,13 +679,14 @@ The Gateway-Controller uses structured logging (Zap) with configurable levels.
 
 ### Debug Mode
 
-```bash
-# Using environment variable
-APIP_GW_CONTROLLER_LOGGING_LEVEL=debug ./bin/controller
+Set `controller.logging.level = "debug"` in your config file directly, or — because the shipped
+`config.toml` reads the level from an interpolation token — export the variable that token
+references (setting the env var alone does nothing unless the config has the matching token):
 
-# Or using config file
+```bash
+# config.toml contains:  level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
 export APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
-./bin/controller
+./bin/controller --config configs/config.toml
 ```
 
 Debug logs include:

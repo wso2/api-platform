@@ -11,11 +11,10 @@ data:
   # Gateway control plane configuration
   GATEWAY_CONTROLPLANE_HOST: "host.docker.internal:8443"
   GATEWAY_CONTROLPLANE_TOKEN: ""
-  
-  # Storage configuration
-  APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE: "sqlite"
-  APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH: "./data/gateway.db"
-  
+
+  # Gateway-internal config (storage, etc.) is set via the gateway Helm values, not operator
+  # env — see docs/CONFIGURATION.md.
+
   # Default images
   GATEWAY_DEFAULT_IMAGE: "wso2/gateway-controller:latest"
   GATEWAY_ROUTER_IMAGE: "envoyproxy/envoy:v1.28-latest"

@@ -21,6 +21,11 @@ If you also run the Gateway API demo, give that **`Gateway`** a different API se
 
 - Gateway Operator installed (with `APIGateway` / `RestApi` CRDs).
 - Operator `config.yaml` points to a valid gateway Helm chart and has a mounted default `gateway_values.yaml`.
+- An AES-256 at-rest encryption key Secret in the gateway namespace. At-rest encryption is
+  mandatory — the gateway-controller fails to start without its key and the chart refuses to
+  render without it (there is no development/demo bypass). `01-gateway-values-configmap.yaml`
+  enables `gateway.controller.encryptionKeys` pointing at the `gateway-encryption-keys` Secret,
+  so create it before deploying the gateway (see the step below).
 
 ## Apply (order matters)
 
@@ -28,6 +33,13 @@ If you also run the Gateway API demo, give that **`Gateway`** a different API se
 cd kubernetes/helm/resources/apigateway-restapi-operator-demo
 
 kubectl apply -f 00-namespace.yaml
+
+# Provision the mandatory at-rest encryption key Secret in the gateway namespace.
+openssl rand 32 > default-aesgcm256-v1.bin
+kubectl create secret generic gateway-encryption-keys \
+  --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin -n apigateway-demo
+rm -f default-aesgcm256-v1.bin
+
 kubectl apply -f 01-gateway-values-configmap.yaml
 kubectl apply -f 02-apigateway.yaml
 kubectl apply -f 03-backend.yaml

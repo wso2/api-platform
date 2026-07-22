@@ -426,36 +426,52 @@ func TestConfig_Validate_SQLServerConfig_GlobalDatabase(t *testing.T) {
 	}
 }
 
-func TestLoadConfig_SQLServerDatabaseFromEnv(t *testing.T) {
+// TestLoadConfig_TokenResolvesFromEnv verifies the {{ env }} interpolation path that
+// replaced the removed koanf APIP_GW_ prefix override: a config whose values are
+// tokens is resolved from the environment at load time.
+func TestLoadConfig_TokenResolvesFromEnv(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.toml")
-	require.NoError(t, os.WriteFile(configPath, []byte(""), 0o644))
+	contents := `
+[controller.storage]
+type = '{{ env "APIP_GW_CONTROLLER_STORAGE_TYPE" "sqlite" }}'
 
+[controller.storage.database]
+dsn = '{{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN" "" }}'
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(contents), 0o644))
+
+	const dsn = "sqlserver://sa:secret@sqlserver.local:1433?database=gateway&encrypt=disable"
 	t.Setenv("APIP_GW_CONTROLLER_STORAGE_TYPE", "sqlserver")
-	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_DRIVER", "mssql")
-	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_HOST", "sqlserver.local")
-	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_PORT", "1433")
-	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_DATABASE", "gateway")
-	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_USER", "sa")
-	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD", "secret")
-	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_OPTIONS_ENCRYPT", "disable")
-	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_OPTIONS_TRUST__SERVER__CERTIFICATE", "true")
-	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_MAX__OPEN__CONNS", "30")
+	t.Setenv("APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN", dsn)
 
 	cfg, err := LoadConfig(configPath)
 	require.NoError(t, err)
 	require.NotNil(t, cfg.Controller.Storage.Database)
-
 	assert.Equal(t, "sqlserver", cfg.Controller.Storage.Type)
-	assert.Equal(t, "mssql", cfg.Controller.Storage.Database.Driver)
-	assert.Equal(t, "sqlserver.local", cfg.Controller.Storage.Database.Host)
-	assert.Equal(t, 1433, cfg.Controller.Storage.Database.Port)
-	assert.Equal(t, "gateway", cfg.Controller.Storage.Database.Database)
-	assert.Equal(t, "sa", cfg.Controller.Storage.Database.User)
-	assert.Equal(t, "secret", cfg.Controller.Storage.Database.Password)
-	assert.Equal(t, 30, cfg.Controller.Storage.Database.MaxOpenConns)
-	assert.Equal(t, "disable", cfg.Controller.Storage.SQLServerEncrypt())
-	assert.True(t, cfg.Controller.Storage.SQLServerTrustServerCertificate())
+	assert.Equal(t, dsn, cfg.Controller.Storage.Database.DSN)
+}
+
+// TestLoadConfig_EnvDoesNotOverrideWithoutToken verifies the koanf APIP_GW_ prefix
+// override is gone: an APIP_GW_* variable has no effect on a config key that is not
+// wired to it through an explicit {{ env }} token. Defaults / file values win.
+func TestLoadConfig_EnvDoesNotOverrideWithoutToken(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.toml")
+	contents := `
+[controller.logging]
+level = "info"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(contents), 0o644))
+
+	// Both of these used to override config keys via the removed env provider.
+	t.Setenv("APIP_GW_CONTROLLER_LOGGING_LEVEL", "debug")
+	t.Setenv("APIP_GW_CONTROLLER_STORAGE_TYPE", "postgres")
+
+	cfg, err := LoadConfig(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, "info", cfg.Controller.Logging.Level, "APIP_GW_ env must not override a token-free key")
+	assert.Equal(t, "sqlite", cfg.Controller.Storage.Type, "storage type must keep its default, not the env value")
 }
 
 func TestConfig_Validate_AccessLogFormat(t *testing.T) {

@@ -1,8 +1,8 @@
 {{- $controller := .Values.gateway.controller -}}
 {{- $deployment := $controller.deployment -}}
-{{- if and (not .Values.gateway.developmentMode) $deployment.enabled }}
+{{- if $deployment.enabled }}
 {{- if not $controller.encryptionKeys.enabled }}
-{{- fail "gateway.controller.encryptionKeys must be enabled when gateway.developmentMode is false. Either set gateway.developmentMode=true or configure gateway.controller.encryptionKeys with a Kubernetes secret containing the AES-GCM key." }}
+{{- fail "gateway.controller.encryptionKeys must be enabled: at-rest encryption is mandatory. Provision the AES-256 key secret and set gateway.controller.encryptionKeys.enabled=true with a secretName." }}
 {{- end }}
 {{- end }}
 {{- if $deployment.enabled }}
@@ -94,9 +94,7 @@ spec:
             - "-config"
             - "/etc/gateway-controller/config.toml"
           env:
-            - name: APIP_GW_CONTROLPLANE_HOST
-              value: {{ $controller.controlPlane.host | quote }}
-            - name: APIP_GW_GATEWAY_REGISTRATION_TOKEN
+            - name: APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN
               {{- if $controller.controlPlane.token.secretName }}
               valueFrom:
                 secretKeyRef:
@@ -105,18 +103,8 @@ spec:
               {{- else }}
               value: {{ $controller.controlPlane.token.value | quote }}
               {{- end }}
-            - name: APIP_GW_CONTROLLER_LOGGING_LEVEL
-              value: {{ $controller.logging.level | quote }}
-            - name: APIP_GW_CONTROLLER_STORAGE_TYPE
-              value: {{ $controller.storage.type | quote }}
-            - name: APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH
-              value: {{ $controller.storage.sqlitePath | quote }}
             - name: GATEWAY_CONTROLLER_HOST
               value: {{ default (printf "%s-controller" (include "gateway-operator.fullname" .)) $deployment.env.gatewayControllerHost | quote }}
-            - name: APIP_GW_CONTROLLER_METRICS_PORT
-              value: {{ printf "%d" (int $controller.metrics.port) | quote }}
-            - name: APIP_GW_DEVELOPMENT_MODE
-              value: {{ .Values.gateway.developmentMode | toString | quote }}
             {{- if and (eq .Values.gateway.config.controller.storage.type "postgres") $controller.postgres.passwordSecretRef.name }}
             - name: APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD
               valueFrom:

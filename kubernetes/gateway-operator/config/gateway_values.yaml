@@ -239,15 +239,12 @@ gateway:
       # Existing ConfigMap containing custom CA certificates
       # ConfigMap should contain one or more keys with PEM-encoded certificates
       configMapName: ""
+    # AES-256 at-rest encryption key (MANDATORY). Enable and point at a pre-created key secret
+    # in the Gateway's namespace.
     encryptionKeys:
       enabled: false
       secretName: ""
       mountPath: /app/data/aesgcm-keys
-    logging:
-      level: info
-    storage:
-      type: sqlite
-      sqlitePath: ./data/gateway.db
     metrics:
       port: 9091
     persistence:
