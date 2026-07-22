@@ -24,9 +24,10 @@
 #   - a self-signed TLS certificate for devportal
 #   - devportal's own encryption/session keys      (APIP_DP_SECURITY_*)
 #   - the Platform API's at-rest encryption key     (APIP_CP_ENCRYPTION_KEY)
-#   - a shared JWT signing key for the Platform API (APIP_CP_AUTH_JWT_SECRET_KEY,
-#     written a second time as APIP_DP_PLATFORMAPI_JWTSECRET since devportal's
-#     config.toml references it under its own name)
+#   - an RS256 JWT signing keypair for the Platform API, written as PEM files
+#     under resources/keys (jwt_private.pem / jwt_public.pem) and read by
+#     config.toml via {{ file }} — tokens are signed asymmetrically, so there is
+#     no shared HMAC secret to copy between services
 #   - an admin username/password (prompted interactively — see below), bcrypt-hashed
 #     into APIP_CP_ADMIN_USERNAME / APIP_CP_ADMIN_PASSWORD_HASH
 #
@@ -70,7 +71,9 @@ cd "$ROOT_DIR"
 
 ENV_FILE="$ROOT_DIR/api-platform.env"
 DEVPORTAL_CERT_DIR="$ROOT_DIR/resources/certificates"
-PLATFORM_API_CONFIG="$ROOT_DIR/configs/config-platform-api.toml"
+# RS256 JWT keypair (PEM). Mounted into the platform-api container at
+# /etc/platform-api/keys and read by config.toml via {{ file }}.
+JWT_KEY_DIR="$ROOT_DIR/resources/keys"
 
 # Bind-mounted into a container running as a non-root UID: 644 (not 600) so the
 # container user can read a file owned by the host user. Local single-user
@@ -128,84 +131,27 @@ set_env_var "APIP_DP_SECURITY_SESSIONSECRET" "$(openssl rand -hex 32)"
 log "Generating Platform API encryption key into api-platform.env ..."
 set_env_var "APIP_CP_ENCRYPTION_KEY" "$(openssl rand -hex 32)"
 
-log "Generating shared Platform API JWT signing key into api-platform.env ..."
-# Written under both names it needs to reach: APIP_CP_AUTH_JWT_SECRET_KEY for the
-# platform-api container's own config-platform-api.toml reference,
-# APIP_DP_PLATFORMAPI_JWTSECRET for the devportal container's config.toml
-# reference — same value, two names, since each config.toml reads a variable
-# only under its own exact name.
-if grep -q "^APIP_CP_AUTH_JWT_SECRET_KEY=" "$ENV_FILE" 2>/dev/null; then
-    log "  - APIP_CP_AUTH_JWT_SECRET_KEY already set in api-platform.env, leaving as-is"
+log "Provisioning Platform API JWT signing keypair (RS256) ..."
+# Tokens are signed asymmetrically now (RS256), not with a shared HMAC secret.
+# The Platform API mints login tokens with the RSA private key and verifies every
+# token with the matching public key. A PEM key is multi-line and does not survive
+# an env file (one KEY=VALUE per line), so — like the TLS cert above — the keypair
+# is written to files and read by config.toml via {{ file }}:
+#   config.toml -> public_key/private_key = '{{ file "/etc/platform-api/keys/jwt_*.pem" }}'
+# resources/keys is mounted into the platform-api container at /etc/platform-api/keys
+# (see docker-compose.yaml), which is on the Platform API's {{ file }} allowlist.
+if [ -f "$JWT_KEY_DIR/jwt_private.pem" ] && [ -f "$JWT_KEY_DIR/jwt_public.pem" ]; then
+    log "  - $JWT_KEY_DIR already has a JWT keypair, leaving as-is"
 else
-    printf 'APIP_CP_AUTH_JWT_SECRET_KEY=%s\n' "$(openssl rand -hex 32)" >> "$ENV_FILE"
-    log "  - APIP_CP_AUTH_JWT_SECRET_KEY generated"
-fi
-JWT_SECRET_KEY="$(get_env_var APIP_CP_AUTH_JWT_SECRET_KEY)"
-set_env_var "APIP_DP_PLATFORMAPI_JWTSECRET" "$JWT_SECRET_KEY"
-
-# Full-access scopes for the seeded admin user — ap:* (platform-admin) plus every
-# dp:*_manage scope so it can manage every Developer Portal resource area. A plain
-# literal in config-platform-api.toml (never templated), since it carries no secret.
-ADMIN_SCOPES="ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read dp:org_read dp:org_write dp:org_manage dp:org_delete dp:org_content_read dp:org_content_write dp:org_content_manage dp:org_content_delete dp:api_read dp:api_write dp:api_manage dp:api_delete dp:api_content_read dp:api_content_write dp:api_content_manage dp:api_content_delete dp:mcp_create dp:mcp_read dp:mcp_update dp:mcp_delete dp:mcp_manage dp:mcp_content_create dp:mcp_content_read dp:mcp_content_update dp:mcp_content_delete dp:mcp_content_manage dp:mcp_key_create dp:mcp_key_read dp:mcp_key_update dp:mcp_key_revoke dp:mcp_key_manage dp:api_key_read dp:api_key_write dp:api_key_manage dp:api_key_revoke dp:api_flow_read dp:api_flow_write dp:api_flow_manage dp:api_flow_delete dp:api_workflow_read dp:api_workflow_create dp:api_workflow_update dp:api_workflow_delete dp:api_workflow_manage dp:app_read dp:app_write dp:app_manage dp:app_delete dp:app_key_write dp:app_key_manage dp:app_key_revoke dp:app_key_mapping_read dp:app_key_mapping_write dp:app_key_mapping_manage dp:subscription_read dp:subscription_write dp:subscription_manage dp:subscription_delete dp:sub_plan_read dp:sub_plan_write dp:sub_plan_manage dp:sub_plan_delete dp:idp_read dp:idp_write dp:idp_manage dp:idp_delete dp:view_read dp:view_write dp:view_manage dp:view_delete dp:km_read dp:km_write dp:km_manage dp:km_delete dp:label_read dp:label_write dp:label_manage dp:label_delete dp:provider_read dp:provider_write dp:provider_manage dp:provider_delete dp:event_read dp:delivery_manage dp:utility_write dp:utility_manage dp:webhook_subscriber_create dp:webhook_subscriber_read dp:webhook_subscriber_update dp:webhook_subscriber_delete dp:webhook_subscriber_manage dev"
-
-log "Provisioning configs/config-platform-api.toml ..."
-if [ -f "$PLATFORM_API_CONFIG" ]; then
-    log "  - $PLATFORM_API_CONFIG already exists, leaving as-is"
-else
-    mkdir -p "$ROOT_DIR/configs"
-    # Wired to api-platform.env via {{ env "..." }} tokens (never hardcode a
-    # secret here) — this is the file docker-compose.yaml bind-mounts into the
-    # platform-api container. It's gitignored: for a static, no-dependencies
-    # starting point instead (e.g. running platform-api directly, without
-    # ./setup.sh), copy configs/config-platform-api-template.toml instead.
-    # Unquoted heredoc: $ADMIN_SCOPES is interpolated by bash below, while every
-    # {{ env "..." }} token is left untouched for platform-api's own config
-    # loader to resolve at container startup (no literal "$" appears in this
-    # file otherwise, so nothing else gets touched by the expansion).
-    cat > "$PLATFORM_API_CONFIG" <<EOF
-# Platform API configuration for the Developer Portal.
-# Generated by ./setup.sh — every secret below is a {{ env "..." }} token
-# resolved from api-platform.env. Not tracked in git (see .gitignore).
-
-log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
-
-encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
-
-[https]
-enabled  = true
-port     = "9243"
-cert_dir = "/etc/platform-api/tls"
-
-[database]
-driver = "sqlite3"
-path   = "/app/data/platform-api-devportal.db"
-
-[auth.jwt]
-enabled         = true
-issuer          = "platform-api"
-secret_key      = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
-skip_validation = false
-
-[auth.idp]
-enabled = false
-
-[auth.file_based]
-enabled = true
-
-[auth.file_based.organization]
-id           = "default"
-display_name = "Default"
-region       = "us"
-
-[[auth.file_based.users]]
-username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'
-password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
-scopes        = "$ADMIN_SCOPES"
-
-[default_devportal]
-enabled = false
-EOF
-    log "  - $PLATFORM_API_CONFIG generated"
+    mkdir -p "$JWT_KEY_DIR"
+    # PKCS#8 private key + matching SPKI public key — the PEM encodings
+    # golang-jwt's ParseRSAPrivateKeyFromPEM / ParseRSAPublicKeyFromPEM accept.
+    openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+        -out "$JWT_KEY_DIR/jwt_private.pem" 2>/dev/null
+    openssl rsa -in "$JWT_KEY_DIR/jwt_private.pem" -pubout \
+        -out "$JWT_KEY_DIR/jwt_public.pem" 2>/dev/null
+    chmod "$CERT_FILE_MODE" "$JWT_KEY_DIR/jwt_private.pem" "$JWT_KEY_DIR/jwt_public.pem"
+    log "  - RS256 JWT keypair generated at $JWT_KEY_DIR"
 fi
 
 log "Provisioning Platform API admin credentials ..."
@@ -237,7 +183,7 @@ else
     # `format: raw`, which passes file content through byte-for-byte with no
     # ${VAR} interpolation, so a literal bcrypt hash ("$2y$12$...") survives
     # into the container as-is. Escaping "$" as "$$" here would corrupt it.
-    # Read by config-platform-api.toml's [[auth.file_based.users]] entry —
+    # Read by config-platform-api.toml's [[platform_api.auth.file.users]] entry —
     # scopes lives there as a plain literal, not in this env file.
     set_env_var "APIP_CP_ADMIN_USERNAME" "$ADMIN_USERNAME"
     set_env_var "APIP_CP_ADMIN_PASSWORD_HASH" "$ADMIN_HASH"

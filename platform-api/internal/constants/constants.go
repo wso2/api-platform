@@ -137,11 +137,6 @@ const (
 	DeploymentLimitBuffer = 100
 )
 
-// Per-organization artifact creation limits are no longer hardcoded here. They are
-// configured via config.ArtifactLimits (config file keys artifact_limits.max_* or
-// env vars ARTIFACT_LIMITS_MAX_*) and default to unlimited. Enforcement uses
-// config.LimitReached, which treats a limit <= 0 as "no limit".
-
 // Gateway artifact apiVersion (the `apiVersion:` field on deployment artifacts).
 // GatewayApiVersionV1Alpha1 is the legacy value for gateways < 1.2.0 — use it only
 // in down-convert paths (gatewaytranslator) that must produce artifacts
@@ -162,8 +157,8 @@ const (
 
 // Custom Policy ManagedBy constants
 const (
-	PolicyManagedByOrganization = "organization"
-	PolicyManagedByWSO2         = "wso2"
+	PolicyManagedByOrganization   = "organization"
+	PolicyManagedByWSO2           = "wso2"
 	PolicyManagedByLegacyCustomer = "customer"
 )
 

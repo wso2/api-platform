@@ -89,7 +89,6 @@ func (s *WebSubAPIService) toWebSubAPI(m *model.WebSubAPI) (*api.WebSubAPI, erro
 	return resp, nil
 }
 
-
 // Create creates a new WebSub API
 func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI) (*api.WebSubAPI, error) {
 	if req == nil {
@@ -125,15 +124,6 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 	}
 	if exists {
 		return nil, apperror.WebSubAPIExists.New()
-	}
-
-	// Enforce the per-organization WebSub API limit (unlimited when not configured).
-	count, err := s.repo.Count(orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to count existing WebSub APIs: %w", err)
-	}
-	if config.LimitReached(count, s.cfg.ArtifactLimits.MaxWebSubAPIsPerOrg) {
-		return nil, apperror.WebSubAPILimitReached.New()
 	}
 
 	transport := []string{"http", "https"}

@@ -19,6 +19,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/rsa"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -64,15 +65,22 @@ type CustomClaims struct {
 
 // AuthConfig holds the configuration for the local JWT (non-IDP) authentication path.
 type AuthConfig struct {
-	SecretKey             string
-	TokenIssuer           string
-	SkipPaths             []string
-	SkipValidation        bool
-	OrganizationClaimName string
+	// PublicKey is the RSA public key used to verify token signatures (RS256).
+	// Only asymmetric verification is supported; symmetric (HMAC) and unsigned
+	// ("none") tokens are rejected.
+	PublicKey      *rsa.PublicKey
+	TokenIssuer    string
+	SkipPaths      []string
+	SkipValidation bool
+	// ClaimMappings is the same claim-name mapping used by IDP mode
+	// (PlatformClaimsMiddleware) and by the file-mode login endpoint when it
+	// signs tokens — one mapping shared by issuance and validation.
+	ClaimMappings ClaimMappings
 }
 
-// PlatformClaimNames holds the JWT claim names used to extract platform-specific values.
-type PlatformClaimNames struct {
+// ClaimMappings holds the JWT claim names used to extract identity values,
+// shared by the local-JWT (external_token/file) and IDP auth paths.
+type ClaimMappings struct {
 	OrganizationClaim string
 	OrgNameClaim      string
 	OrgHandleClaim    string
@@ -163,11 +171,14 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 		}
 	} else {
 		token, err := jwt.ParseWithClaims(tokenString, mapClaims, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			// Strictly enforce asymmetric RSA signatures. Rejecting non-RSA
+			// methods here blocks the "none" algorithm and the HMAC-with-public-key
+			// forgery where an attacker signs with the public key as an HMAC secret.
+			if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+				return nil, fmt.Errorf("unexpected or forbidden signing method: %v", token.Header["alg"])
 			}
-			return []byte(config.SecretKey), nil
-		})
+			return config.PublicKey, nil
+		}, jwt.WithValidMethods([]string{"RS256", "RS384", "RS512"}))
 		if err != nil {
 			return nil, fmt.Errorf("invalid token: %w", err)
 		}
@@ -184,7 +195,7 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 		}
 	}
 
-	orgClaimName := config.OrganizationClaimName
+	orgClaimName := config.ClaimMappings.OrganizationClaim
 	if orgClaimName == "" {
 		orgClaimName = "organization"
 	}
@@ -192,17 +203,19 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 	if org == "" {
 		return nil, fmt.Errorf("token missing required '%s' claim", orgClaimName)
 	}
+	orgName := getStringClaim(mapClaims, config.ClaimMappings.OrgNameClaim)
+	orgHandle := getStringClaim(mapClaims, config.ClaimMappings.OrgHandleClaim)
 
 	sub, _ := mapClaims["sub"].(string)
-	username := getStringClaim(mapClaims, "username")
+	username := getStringClaim(mapClaims, config.ClaimMappings.UsernameClaim)
 	if username == "" {
 		username = sub
 	}
 	claimsObj := &CustomClaims{
 		Organization: org,
 		Username:     username,
-		Email:        getStringClaim(mapClaims, "email"),
-		Scope:        getStringClaim(mapClaims, "scope"),
+		Email:        getStringClaim(mapClaims, config.ClaimMappings.EmailClaim),
+		Scope:        getStringClaim(mapClaims, config.ClaimMappings.ScopeClaim),
 		Audience:     audienceToString(mapClaims),
 		JTI:          getStringClaim(mapClaims, "jti"),
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -210,23 +223,27 @@ func validateLocalJWT(r *http.Request, tokenString string, config AuthConfig) (*
 		},
 	}
 
+	platformRoles := resolvePlatformRoles(mapClaims, config.ClaimMappings.RolesClaimPath, config.ClaimMappings.RoleScopeMap)
+
 	ctx := r.Context()
-	ctx = context.WithValue(ctx, keyUserID, resolveUserID(mapClaims, ""))
+	ctx = context.WithValue(ctx, keyUserID, resolveUserID(mapClaims, config.ClaimMappings.UserIDClaim))
 	ctx = context.WithValue(ctx, keyUsername, claimsObj.Username)
 	ctx = context.WithValue(ctx, keyEmail, claimsObj.Email)
 	ctx = context.WithValue(ctx, keyFirstName, getStringClaim(mapClaims, "firstName"))
 	ctx = context.WithValue(ctx, keyLastName, getStringClaim(mapClaims, "lastName"))
 	ctx = context.WithValue(ctx, keyOrganization, org)
+	ctx = context.WithValue(ctx, keyOrgName, orgName)
+	ctx = context.WithValue(ctx, keyOrgHandle, orgHandle)
 	ctx = context.WithValue(ctx, keyScope, claimsObj.Scope)
 	ctx = context.WithValue(ctx, keyAudience, claimsObj.Audience)
 	ctx = context.WithValue(ctx, keyClaims, claimsObj)
-	ctx = context.WithValue(ctx, keyPlatformRoles, []string{})
+	ctx = context.WithValue(ctx, keyPlatformRoles, platformRoles)
 	return r.WithContext(ctx), nil
 }
 
 // PlatformClaimsMiddleware extracts platform-specific values from the AuthContext set by
 // common/authenticators.AuthMiddleware (IDP mode) and populates per-key context entries.
-func PlatformClaimsMiddleware(claimNames PlatformClaimNames) func(http.Handler) http.Handler {
+func PlatformClaimsMiddleware(claimNames ClaimMappings) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authCtx, ok := authenticators.GetAuthContext(r)
@@ -325,23 +342,34 @@ func resolvePlatformRoles(claims jwt.MapClaims, claimPath string, roleScopeMap m
 }
 
 func extractClaimByPath(claims jwt.MapClaims, path string) []string {
-	return extractByPath(map[string]interface{}(claims), path)
+	val, ok := resolveClaimPath(map[string]interface{}(claims), path)
+	if !ok {
+		return nil
+	}
+	return toStringSlice(val)
 }
 
-func extractByPath(obj map[string]interface{}, path string) []string {
+// resolveClaimPath walks a dot-separated path into nested claim objects and
+// returns the raw value found there. A path with no "." is a single flat
+// claim lookup, so every claim_mappings field — not just roles — can point at
+// either a top-level claim ("org_id") or a nested one ("realm_access.org_id").
+func resolveClaimPath(obj map[string]interface{}, path string) (interface{}, bool) {
+	if path == "" {
+		return nil, false
+	}
 	parts := strings.SplitN(path, ".", 2)
 	val, ok := obj[parts[0]]
 	if !ok {
-		return nil
+		return nil, false
 	}
 	if len(parts) == 1 {
-		return toStringSlice(val)
+		return val, true
 	}
 	nested, ok := val.(map[string]interface{})
 	if !ok {
-		return nil
+		return nil, false
 	}
-	return extractByPath(nested, parts[1])
+	return resolveClaimPath(nested, parts[1])
 }
 
 func toStringSlice(val interface{}) []string {
@@ -360,12 +388,19 @@ func toStringSlice(val interface{}) []string {
 	return nil
 }
 
+// getStringClaim resolves name as a claim path (see resolveClaimPath) and
+// returns the value as a string. name may be a flat claim ("email") or a
+// dot-separated path into a nested claim ("realm_access.email").
 func getStringClaim(claims jwt.MapClaims, name string) string {
 	if name == "" {
 		return ""
 	}
-	v, _ := claims[name].(string)
-	return v
+	val, ok := resolveClaimPath(map[string]interface{}(claims), name)
+	if !ok {
+		return ""
+	}
+	s, _ := val.(string)
+	return s
 }
 
 // resolveUserID returns the stable user identifier used for audit fields

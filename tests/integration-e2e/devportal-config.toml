@@ -40,10 +40,13 @@ default_name = '{{ env "APIP_DP_ORGANIZATION_DEFAULTNAME" "default" }}'
 auto_create_subscription_plans = false
 
 [platform_api]
-# The devportal validates the platform-api admin JWT locally; jwt_secret MUST
-# equal the stack's APIP_CP_AUTH_JWT_SECRET_KEY so the admin token is accepted.
+# platform-api signs admin JWTs with RS256 now — there is no shared HMAC secret
+# to set here. jwt_secret left empty (APIP_DP_PLATFORMAPI_JWTSECRET is unset in
+# docker-compose.yaml) makes the devportal decode the token payload without
+# verifying its signature, trusting the direct HTTPS connection (insecure=true)
+# instead — see extractPlatformJwtClaims in src/utils/platformJwt.js.
 base_url   = '{{ env "APIP_DP_PLATFORMAPI_BASEURL" "https://platform-api:9243" }}'
-jwt_secret = '{{ env "APIP_DP_PLATFORMAPI_JWTSECRET" }}'
+jwt_secret = '{{ env "APIP_DP_PLATFORMAPI_JWTSECRET" "" }}'
 insecure   = true
 
 [security]

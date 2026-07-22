@@ -52,11 +52,11 @@ func hashSubscriptionToken(token string) string {
 // The single configured EncryptionKey is used for all at-rest encryption.
 func getSubscriptionTokenEncryptionKey() ([]byte, error) {
 	cfg := config.GetConfig()
-	if cfg.EncryptionKey == "" {
+	if cfg.Security.EncryptionKey == "" {
 		return nil, fmt.Errorf("subscription token encryption requires EncryptionKey. Set encryption_key" +
 			" in config via {{ env }}/{{ file }}")
 	}
-	return utils.DeriveEncryptionKey(cfg.EncryptionKey)
+	return utils.DeriveEncryptionKey(cfg.Security.EncryptionKey)
 }
 
 // SubscriptionRepo implements SubscriptionRepository
@@ -241,10 +241,10 @@ func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscr
 // re-introduced for a migration if ever needed).
 func decryptionKeyCandidates() [][]byte {
 	cfg := config.GetConfig()
-	if cfg.EncryptionKey == "" {
+	if cfg.Security.EncryptionKey == "" {
 		return nil
 	}
-	if k, err := utils.DeriveEncryptionKey(cfg.EncryptionKey); err == nil {
+	if k, err := utils.DeriveEncryptionKey(cfg.Security.EncryptionKey); err == nil {
 		return [][]byte{k}
 	}
 	return nil

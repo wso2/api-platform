@@ -97,10 +97,12 @@ resources/mock
 
 .env
 api-platform.env
-configs/config-platform-api.toml
 
 # ./setup.sh output: bind-mounted TLS cert
 resources/certificates/
+
+# ./setup.sh output: bind-mounted RS256 JWT signing keypair
+resources/keys/
 
 # Test reports
 it/reports/*

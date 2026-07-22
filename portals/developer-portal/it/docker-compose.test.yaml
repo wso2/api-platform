@@ -26,18 +26,25 @@
 
 services:
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.12.0
+    # Overridable so CI can point this at a freshly built image (make -C platform-api
+    # build) instead of the last release — this fixture's config-platform-api-it.toml
+    # tracks platform-api's current config schema, which a pinned old release may not
+    # understand.
+    image: ${PLATFORM_API_IMAGE:-ghcr.io/wso2/api-platform/platform-api:0.12.0}
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
       APIP_CP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-      APIP_CP_AUTH_JWT_SECRET_KEY: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
     volumes:
       - ./configs/config-platform-api-it.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
-      # TLS pair generated once, host-side, by `make ensure-certs` (mirrors
-      # ../scripts/setup.sh's approach for the production compose) — read-only,
-      # 644-mode so the container's non-root user can read a host-owned file.
+      # TLS pair + RS256 JWT keypair generated once, host-side, by `make
+      # ensure-certs` (mirrors ../scripts/setup.sh's approach for the production
+      # compose) — read-only, 644-mode so the container's non-root user can read
+      # a host-owned file. Same host dir, two mount points: TLS cert/key.pem
+      # under /app/data/certs, jwt_{public,private}.pem under
+      # /etc/platform-api/keys (the Platform API's {{ file }} allowlist).
       - ./.certs:/app/data/certs:ro
+      - ./.certs:/etc/platform-api/keys:ro
     healthcheck:
       test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
       interval: 5s

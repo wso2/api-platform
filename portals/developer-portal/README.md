@@ -31,7 +31,7 @@ The fastest way to get the portal running — no local Node install required. Re
 docker compose up
 ```
 
-`./scripts/setup.sh` is a one-time step: it generates devportal's and the Platform API's encryption/JWT secrets, a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored) and `configs/config-platform-api.toml` (also git-ignored — copy `configs/config-platform-api-template.toml` instead for a static, no-dependencies starting point). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build devportal from source instead of using the published image, run `docker compose up --build`.
+`./scripts/setup.sh` is a one-time step: it generates devportal's and the Platform API's encryption/JWT secrets, a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build devportal from source instead of using the published image, run `docker compose up --build`.
 
 Then open **https://localhost:3000/default/views/default** and log in with the admin credentials `./scripts/setup.sh` printed.
 
@@ -229,10 +229,10 @@ The full annotated list of settings is in [`configs/config-template.toml`](confi
 
 ### Local auth
 
-For quick exploration without an IdP, the portal delegates credential validation to a Platform API sidecar. Users, bcrypt-hashed passwords, and `dp:*` scopes are defined in `configs/config-platform-api.toml` (copy from `configs/config-platform-api-template.toml`):
+For quick exploration without an IdP, the portal delegates credential validation to a Platform API sidecar. `docker-compose.yaml` mounts the Platform API's own [`../../platform-api/config/config.toml`](../../platform-api/config/config.toml) directly — there is no per-portal copy. Users, bcrypt-hashed passwords, and `dp:*` scopes are defined there, under `[[platform_api.auth.file.users]]`:
 
 ```toml
-[[auth.file_based.users]]
+[[platform_api.auth.file.users]]
 username      = "admin"
 password_hash = "$2y$10$..."   # bcrypt hash — generate with: htpasswd -bnBC 12 "" <pw> | tr -d ':\n'
 scopes        = "dp:org_manage dp:api_manage ..."
@@ -243,9 +243,11 @@ The portal config (or `APIP_DP_PLATFORMAPI_*` env vars) must point to the Platfo
 ```toml
 [platform_api]
 base_url = "https://localhost:9243"      # env: APIP_DP_PLATFORMAPI_BASEURL
-jwt_secret = ""                           # same as the Platform API's APIP_CP_AUTH_JWT_SECRET_KEY — env: APIP_DP_PLATFORMAPI_JWTSECRET
+jwt_private_key = ""                       # PEM RSA private key that signs portal-minted tokens; must match the Platform API's auth.jwt.public_key — env: APIP_DP_PLATFORMAPI_JWTPRIVATEKEY
 insecure = true                           # Platform API uses a self-signed cert
 ```
+
+Tokens are signed asymmetrically (RS256): the portal signs with the RSA private key above and the Platform API verifies against its `auth.jwt.public_key`. There is no shared HMAC secret — the two sides never exchange signing material.
 
 For production, configure an OIDC identity provider per organization instead of local auth.
 

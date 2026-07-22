@@ -63,6 +63,29 @@ services:
       - platform-api-certs:/certs
     networks: [e2e]
 
+  # One-shot init container: generates the RS256 keypair platform-api's
+  # auth.jwt config requires (platform-api-config.toml reads it via {{ file }}).
+  # Tokens are signed asymmetrically — there is no shared HMAC secret anymore.
+  platform-api-jwtkeygen:
+    image: alpine/openssl
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        [ -f /keys/jwt_private.pem ] && [ -f /keys/jwt_public.pem ] && exit 0
+        openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+          -out /keys/jwt_private.pem 2>/dev/null
+        openssl rsa -in /keys/jwt_private.pem -pubout \
+          -out /keys/jwt_public.pem 2>/dev/null
+        # jwtkeygen runs as root; platform-api runs as uid 10001, so the private
+        # key must be owned by that uid, not made world-readable.
+        chown 10001 /keys/jwt_private.pem
+        chmod 0600 /keys/jwt_private.pem
+        chmod 0644 /keys/jwt_public.pem
+    volumes:
+      - platform-api-jwt-keys:/keys
+    networks: [e2e]
+
   platform-api:
     image: ${PLATFORM_API_IMAGE:-platform-api:it-e2e}
     command: ["-config", "/etc/platform-api/config.toml"]
@@ -82,7 +105,6 @@ services:
       - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
       - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
       - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_REGION=us
-      - APIP_CP_AUTH_JWT_SECRET_KEY=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
       # The @devportal stack injects the admin user (with dp:* scopes) here so the
       # issued JWT is authorized on the developer portal. Empty (the default) means
       # platform-api uses its built-in admin (ap:* scopes only).
@@ -104,12 +126,15 @@ services:
       # fallback for manual `docker compose up` after a suite run has generated it.
       - ${PA_WEBHOOK_KEY:-./.webhook-key.it.pem}:/etc/platform-api/devportal-webhook.pem:ro
       - platform-api-certs:/app/data/certs
+      - platform-api-jwt-keys:/etc/platform-api/keys:ro
     ports:
       - "${PA_HOST_PORT:-9243}:9243"
     depends_on:
       postgres:
         condition: service_healthy
       platform-api-certgen:
+        condition: service_completed_successfully
+      platform-api-jwtkeygen:
         condition: service_completed_successfully
     networks: [e2e]
 
@@ -259,10 +284,14 @@ services:
       - APIP_DP_DEMO_ENABLED=false
       - APIP_DP_ORGANIZATION_AUTOCREATESUBSCRIPTIONPLANS=false
       - APIP_DP_LOGGING_CONSOLEONLY=true
-      # Validate platform-api-issued JWTs locally: this MUST equal the stack's
-      # APIP_CP_AUTH_JWT_SECRET_KEY so the admin token is accepted by the devportal.
+      # platform-api now signs admin tokens with RS256 (asymmetric), so there is
+      # no shared HMAC secret to hand the devportal for local verification.
+      # APIP_DP_PLATFORMAPI_JWTSECRET is left unset: the devportal decodes the
+      # token payload without verifying its signature, trusting the direct
+      # HTTPS connection to platform-api instead (see extractPlatformJwtClaims
+      # in src/utils/platformJwt.js) — the same trust boundary
+      # APIP_DP_PLATFORMAPI_INSECURE already relies on for this test stack.
       - APIP_DP_PLATFORMAPI_BASEURL=https://platform-api:9243
-      - APIP_DP_PLATFORMAPI_JWTSECRET=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
       - APIP_DP_PLATFORMAPI_INSECURE=true
       # The webhook delivery worker POSTs over raw https with the default agent,
       # and platform-api serves a self-signed cert here. APIP_DP_PLATFORMAPI_INSECURE
@@ -286,3 +315,4 @@ networks:
 
 volumes:
   platform-api-certs:
+  platform-api-jwt-keys:

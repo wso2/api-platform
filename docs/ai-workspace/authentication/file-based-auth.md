@@ -4,31 +4,32 @@ File-based auth (also called `basic` mode) stores a user list in the Platform AP
 
 ## How It Works
 
-When `auth_mode = "basic"`, the AI Workspace login page renders a username/password form. Credentials are sent to the Platform API, which validates them against a hashed user list in `config-platform-api.toml`. On success, the Platform API issues a signed JWT that the UI stores and sends with subsequent API requests.
+When `[ai_workspace.auth] mode = "basic"`, the AI Workspace login page renders a username/password form. Credentials are sent to the Platform API, which validates them against a hashed user list in `config-platform-api.toml`. On success, the Platform API issues a signed JWT that the UI stores and sends with subsequent API requests.
 
 ## Configuration
 
 ### 1. Set auth mode in `configs/config.toml`
 
 ```toml
-auth_mode = "basic"
+[ai_workspace.auth]
+mode = "basic"
 ```
 
 ### 2. Define users in `configs/config-platform-api.toml`
 
 ```toml
-[auth.file_based]
-enabled = true
+[auth]
+mode = "file"
 
-[[auth.file_based.users]]
-username     = "admin"
+[[auth.file.users]]
+username      = "admin"
 password_hash = "$2a$10$..."   # bcrypt hash of the password
-role         = "admin"
+scopes        = "ap:organization:manage ap:gateway:manage ..."   # space-separated ap:* scopes
 
-[[auth.file_based.users]]
-username     = "viewer"
+[[auth.file.users]]
+username      = "viewer"
 password_hash = "$2a$10$..."
-role         = "viewer"
+scopes        = "ap:organization:read ap:gateway:read"
 ```
 
 ### 3. Generate password hashes
@@ -59,13 +60,14 @@ The Quick Start bundle ships with a default `admin` / `admin` credential — **c
 In file-based mode, all users belong to a single organization defined in `config-platform-api.toml`:
 
 ```toml
-[auth.file_based.organization]
-id     = ""     # Leave empty to auto-generate a UUID on first start
-name   = "My Organization"
-handle = "my-org"
+[auth.file.organization]
+id           = "default"          # organization handle (URL-safe slug)
+display_name = "My Organization"
+region       = "us"
+uuid         = ""     # Leave empty to auto-generate a UUID on first start
 ```
 
-If `id` is left empty, the Platform API generates a stable UUID on first startup and writes it back to the config. This UUID persists across restarts as long as the config file is preserved.
+If `uuid` is left empty, the Platform API generates a stable UUID on first startup. Pin it to keep the organization stable across fresh databases.
 
 ## Limitations
 

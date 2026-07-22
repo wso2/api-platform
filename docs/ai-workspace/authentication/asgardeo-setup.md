@@ -117,23 +117,19 @@ In each sub-organization that should have access:
 Update `configs/config-platform-api.toml`:
 
 ```toml
-[auth.jwt]
-enabled = false
+[auth]
+mode = "idp"
 
 [auth.idp]
-enabled  = true
 name     = "asgardeo"
 jwks_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks"
 issuer   = ["https://api.asgardeo.io/t/<your-tenant>/oauth2/token"]
 audience = ["<ai-workspace-client-id>"]
 
-[auth.idp.claim_mappings]
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
-
-[auth.file_based]
-enabled = false
+[auth.claim_mappings]
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
 ```
 
 > Asgardeo uses `org_id` as the claim for the organization UUID. The Platform API defaults to `organization`, so the claim name override above is required.
@@ -145,15 +141,20 @@ enabled = false
 Update `configs/config.toml`:
 
 ```toml
+[ai_workspace]
 domain             = "<your-domain>"
-auth_mode          = "oidc"
-controlplane_host  = "<platform-api-host>"
 default_org_region = "us"
 
-[platform_api]
+[ai_workspace.control_plane]
 url = "https://<platform-api-host>"
 
-[oidc]
+[ai_workspace.gateway]
+controlplane_host = "<platform-api-host>"
+
+[ai_workspace.auth]
+mode = "oidc"
+
+[ai_workspace.auth.oidc]
 authority = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
 client_id = "<ai-workspace-client-id>"
 
@@ -162,23 +163,23 @@ redirect_url             = "https://<your-domain>/api/auth/callback"   # the BFF
 post_logout_redirect_url = "https://<your-domain>/login"
 
 # Preferred — a mounted secret file. To read it from the git-ignored api-platform.env instead, swap the
-# token for '{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}': the key needs one token or the other.
+# token for '{{ env "APIP_AIW_AUTH_OIDC_CLIENT_SECRET" }}': the key needs one token or the other.
 client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
 
-# Mirrors [auth.idp.claim_mappings] in config-platform-api.toml — the two must agree.
-# Must stay the last table under [oidc]: plain [oidc] keys placed below this header
-# would land in [oidc.claim_mappings] instead.
-[oidc.claim_mappings]
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
+# Mirrors [platform_api.auth.claim_mappings] in config-platform-api.toml — the two must
+# agree. A sibling of [ai_workspace.auth.oidc], not nested in it: this table applies to
+# both auth modes, since basic-mode tokens are signed using these same mapped claim names.
+[ai_workspace.auth.claim_mappings]
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
 ```
 
 The redirect URLs and the client secret are BFF settings and never reach the browser. The
 redirect URLs are ordinary `config.toml` keys; the secret is referenced with an interpolation
 token so the raw value never lands in the file.
 
-> `[oidc] redirect_url` must exactly match the authorized redirect URL registered in section 2.
+> `[ai_workspace.auth.oidc] redirect_url` must exactly match the authorized redirect URL registered in section 2.
 > A missing client secret fails startup — see [Configuration → Secrets](../configuration.md#secrets).
 
 ---
@@ -188,13 +189,13 @@ token so the raw value never lands in the file.
 ```
 Asgardeo token
   ├── sub          → user identity
-  ├── org_id       → organization UUID  (→ organization_claim_name in Platform API)
-  ├── org_name     → org display name   (→ org_name_claim_name in Platform API)
-  ├── org_handle   → org slug           (→ org_handle_claim_name in Platform API)
+  ├── org_id       → organization UUID  (→ organization in Platform API)
+  ├── org_name     → org display name   (→ org_name in Platform API)
+  ├── org_handle   → org slug           (→ org_handle in Platform API)
   └── scope        → space-separated ap:* scopes validated by Platform API
 ```
 
 The claim names must be consistent across all three places:
 - Asgardeo token mapper output
-- `[oidc.claim_mappings]` in `config.toml`
-- `*_claim_name` in Platform API `[auth.idp.claim_mappings]`
+- `[ai_workspace.auth.claim_mappings]` in `config.toml`
+- The matching keys in Platform API `[auth.claim_mappings]`

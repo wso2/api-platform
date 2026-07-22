@@ -43,10 +43,10 @@ func (s *Server) routes() http.Handler {
 
 	// Same-origin reverse proxy to the Platform API. The proxy's Rewrite hook
 	// strips the prefix before forwarding, so we register the subtree directly.
-	mux.HandleFunc(s.cfg.ProxyPrefix+"/", s.handleProxy)
+	mux.HandleFunc(s.cfg.ControlPlane.ProxyPrefix+"/", s.handleProxy)
 
 	// SPA static files + client-side routing fallback (must be last).
-	mux.Handle("/", spaHandler(s.cfg.StaticDir))
+	mux.Handle("/", spaHandler(s.cfg.Server.StaticDir))
 
 	return chain(mux,
 		recoverPanic,

@@ -77,7 +77,7 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
     cy
       .request({
         method: 'GET',
-        url: `/api/proxy/api/v0.9/llm-providers?organizationId=${encodeURIComponent(orgId)}&limit=${PAGE_SIZE}&offset=${offset}`,
+        url: `/proxy/api/v0.9/llm-providers?organizationId=${encodeURIComponent(orgId)}&limit=${PAGE_SIZE}&offset=${offset}`,
         headers: headersFor(token),
         failOnStatusCode: false,
       })
@@ -103,7 +103,7 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
     cy
       .request({
         method: 'GET',
-        url: `/api/proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}/llm-proxies?organizationId=${encodeURIComponent(orgId)}`,
+        url: `/proxy/api/v0.9/llm-providers/${encodeURIComponent(providerId)}/llm-proxies?organizationId=${encodeURIComponent(orgId)}`,
         headers: headersFor(token),
         failOnStatusCode: false,
       })
@@ -115,7 +115,7 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
           cy
             .request({
               method: 'DELETE',
-              url: `/api/proxy/api/v0.9/llm-proxies/${encodeURIComponent(proxy.id)}?organizationId=${encodeURIComponent(orgId)}`,
+              url: `/proxy/api/v0.9/llm-proxies/${encodeURIComponent(proxy.id)}?organizationId=${encodeURIComponent(orgId)}`,
               headers: headersFor(token),
               failOnStatusCode: false,
             })
@@ -133,7 +133,7 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
           cy
             .request({
               method: 'DELETE',
-              url: `/api/proxy/api/v0.9/llm-providers/${encodeURIComponent(provider.id)}?organizationId=${encodeURIComponent(orgId)}`,
+              url: `/proxy/api/v0.9/llm-providers/${encodeURIComponent(provider.id)}?organizationId=${encodeURIComponent(orgId)}`,
               headers: headersFor(token),
               failOnStatusCode: false,
             })
@@ -153,7 +153,7 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
   return cy
     .request({
       method: 'POST',
-      url: '/api/proxy/api/portal/v0.9/auth/login',
+      url: '/proxy/api/portal/v0.9/auth/login',
       form: true,
       body: {
         username: Cypress.env('ADMIN_USER'),
@@ -167,7 +167,7 @@ Cypress.Commands.add('sweepE2EProviders', (authToken, organizationId) => {
       if (!token) return;
       return cy
         .request({
-          url: '/api/proxy/api/v0.9/organizations',
+          url: '/proxy/api/v0.9/organizations',
           headers: { Authorization: `Bearer ${token}` },
           failOnStatusCode: false,
         })

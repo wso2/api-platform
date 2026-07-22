@@ -83,35 +83,31 @@ In each sub-organization:
 
 ## 2. Platform API Configuration
 
-The Platform API reads its configuration from `config-platform-api.toml` (mounted at
-`/etc/platform-api/config.toml` in the container). Open `configs/config-platform-api.toml`
-and update the `[auth.idp]` section for production:
+The Platform API reads its configuration from `../../platform-api/config/config.toml`
+(mounted at `/etc/platform-api/config.toml` in the container — every portal's
+docker-compose.yaml mounts this one file directly, no per-portal copy). Open it
+and update the `[platform_api.auth]` section for production:
 
 > **Note:** Asgardeo uses `org_id` as the JWT claim for the organization UUID. The Platform
 > API defaults to `organization`, so the claim name overrides below are required.
 
 ```toml
-# Disable local JWT auth when delegating entirely to an external IDP.
-[auth.jwt]
-enabled = false
+# Select "idp" mode to delegate entirely to an external IDP.
+[platform_api.auth]
+mode = "idp"
 
-# Enable JWKS-based IDP authentication.
-[auth.idp]
-enabled  = true
+# JWKS-based IDP authentication.
+[platform_api.auth.idp]
 name     = "asgardeo"
 jwks_url = "https://api.asgardeo.io/t/<your-tenant>/oauth2/jwks"
 issuer   = ["https://api.asgardeo.io/t/<your-tenant>/oauth2/token"]
 audience = ["<ai-workspace-client-id>"]   # Client ID from Asgardeo Protocol tab
 
 # Asgardeo-specific claim name overrides.
-[auth.idp.claim_mappings]
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
-
-# Disable file-based auth in production.
-[auth.file_based]
-enabled = false
+[platform_api.auth.claim_mappings]
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
 ```
 
 Optional overrides (defaults shown):
@@ -120,11 +116,11 @@ Optional overrides (defaults shown):
 [auth.idp]
 validation_mode = "scope"   # or "role" for role-based auth
 
-[auth.idp.claim_mappings]
-user_id_claim_name  = "sub"
-username_claim_name = "username"
-email_claim_name    = "email"
-scope_claim_name    = "scope"
+[auth.claim_mappings]
+user_id  = "sub"
+username = "username"
+email    = "email"
+scope    = "scope"
 ```
 
 ---
@@ -138,28 +134,31 @@ tables; a value comes from the environment only through an `{{ env }}` token (se
 Open `configs/config.toml` and fill in the values for your deployment:
 
 ```toml
+[ai_workspace]
 # Host shown in the browser address bar.
 domain = "<your-domain>"                                           # e.g. app.example.com
 
-# Set to "oidc" for production (Asgardeo or any OIDC-compliant IDP).
-auth_mode = "oidc"
-
-# Externally reachable host:port that deployed gateways use to reach the Platform API.
-controlplane_host = "<platform-api-host>"
-
 # Default region assigned to new organizations on first login.
 default_org_region = "us"
+
+[ai_workspace.control_plane]
+# The upstream the BFF proxies to, server-to-server. An origin, not a base path — the
+# browser never uses it: the SPA calls the same-origin proxy prefix and the BFF forwards.
+url = "https://<platform-api-host>"
+
+[ai_workspace.gateway]
+# Externally reachable host:port that deployed gateways use to reach the Platform API.
+controlplane_host = "<platform-api-host>"
 
 # Available gateway versions shown in the create-gateway version selector (JSON array string).
 # Each entry: version (helm chart minor), latestVersion (image/chart tag), channel ("STS" | "LTS").
 platform_gateway_versions = '[{"version":"1.2","latestVersion":"v1.2.0-alpha2","channel":"STS"}]'
 
-[platform_api]
-# The upstream the BFF proxies to, server-to-server. An origin, not a base path — the
-# browser never uses it: the SPA calls the same-origin proxy prefix and the BFF forwards.
-url = "https://<platform-api-host>"
+[ai_workspace.auth]
+# Set to "oidc" for production (Asgardeo or any OIDC-compliant IDP).
+mode = "oidc"
 
-[oidc]
+[ai_workspace.auth.oidc]
 # Issuer URL — the BFF auto-discovers OIDC endpoints from
 # {authority}/.well-known/openid-configuration.
 authority = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
@@ -167,12 +166,13 @@ authority = "https://api.asgardeo.io/t/<your-tenant>/oauth2/token"
 # Client ID of the AI Workspace confidential application (from the IDP Protocol tab).
 client_id = "<ai-workspace-client-id>"
 
-# JWT claim name mappings — this table mirrors [auth.idp.claim_mappings] in the Platform
-# API config (section 2) key for key, and the two must agree.
-[oidc.claim_mappings]
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
+# JWT claim name mappings — this table mirrors [platform_api.auth.claim_mappings] in
+# the Platform API config (section 2) key for key, and the two must agree. A sibling
+# of [ai_workspace.auth.oidc], not nested in it: applies to both auth modes.
+[ai_workspace.auth.claim_mappings]
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
 ```
 
 The redirect URLs are ordinary `config.toml` keys. The **client secret is never written into the
@@ -180,7 +180,7 @@ file** — it is referenced with an interpolation token resolved at startup. In 
 as a secret file (a Docker/Kubernetes secret) so the value never enters the environment at all:
 
 ```toml
-[oidc]
+[ai_workspace.auth.oidc]
 # BFF callback registered in the IDP (section 1.2) — NOT the SPA /signin route.
 redirect_url             = "https://<your-domain>/api/auth/callback"
 post_logout_redirect_url = "https://<your-domain>/login"
@@ -199,9 +199,9 @@ Mount the secret at that path, e.g. in `docker-compose.yaml`:
 Resolution fails closed: a missing or unreadable secret file aborts startup rather than yielding an
 empty credential. `{{ file }}` paths must live under `/etc/ai-workspace` or `/secrets/ai-workspace`
 (override with `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`). For a simpler local setup, swap the token for
-`'{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'` and keep the value in the git-ignored `api-platform.env`.
+`'{{ env "APIP_AIW_AUTH_OIDC_CLIENT_SECRET" }}'` and keep the value in the git-ignored `api-platform.env`.
 
-> `[oidc] redirect_url` must exactly match the authorized redirect URL registered in the IDP
+> `[ai_workspace.auth.oidc] redirect_url` must exactly match the authorized redirect URL registered in the IDP
 > application (section 1.2). The BFF, not the browser, completes the code exchange.
 
 ### Setting config.toml keys from the environment
@@ -211,31 +211,20 @@ layer. A key takes its value from the environment when it is written as an `{{ e
 names the variable explicitly:
 
 ```toml
-[oidc]
-client_id = '{{ env "APIP_AIW_OIDC_CLIENT_ID" "" }}'
+[ai_workspace.auth.oidc]
+client_id = '{{ env "APIP_AIW_AUTH_OIDC_CLIENT_ID" "" }}'
 #                  ^ variable read at startup  ^ used when it is unset
 ```
 
-Setting `APIP_AIW_OIDC_CLIENT_ID` in a `docker run -e` or a Kubernetes `env:` block then sets
-`[oidc] client_id`, with no edit to the file. Setting it while the key is absent from the file, or
+Setting `APIP_AIW_AUTH_OIDC_CLIENT_ID` in a `docker run -e` or a Kubernetes `env:` block then sets
+`[ai_workspace.auth.oidc] client_id`, with no edit to the file. Setting it while the key is absent from the file, or
 written as a plain literal, does nothing.
 
 The shipped `config.toml` already writes its keys this way, naming each variable by the same
-convention: the key's table path uppercased, dots as underscores, prefixed with **`APIP_AIW_`** (the
-Platform API uses `APIP_CP_`, the Developer Portal `APIP_DP_`).
-
-| config.toml key                      | Variable named by its shipped token      |
-|--------------------------------------|------------------------------------------|
-| `domain`                             | `APIP_AIW_DOMAIN`                        |
-| `auth_mode`                          | `APIP_AIW_AUTH_MODE`                     |
-| `controlplane_host`                  | `APIP_AIW_CONTROLPLANE_HOST`             |
-| `log_level`                          | `APIP_AIW_LOG_LEVEL`                     |
-| `[platform_api] url`                 | `APIP_AIW_PLATFORM_API_URL`              |
-| `[oidc] authority`                   | `APIP_AIW_OIDC_AUTHORITY`                |
-| `[oidc] client_id`                   | `APIP_AIW_OIDC_CLIENT_ID`                |
-| `[oidc] client_secret`               | `APIP_AIW_OIDC_CLIENT_SECRET`            |
-| `[oidc] redirect_url`                | `APIP_AIW_OIDC_REDIRECT_URL`             |
-| `[oidc.claim_mappings] organization_claim_name` | `APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME` |
+convention: the key's path under `[ai_workspace]` uppercased, dots as underscores, prefixed with
+**`APIP_AIW_`** (the Platform API uses `APIP_CP_`, the Developer Portal `APIP_DP_`). Every key's
+exact token — and the default it falls back to when the variable is unset — is written inline in
+`configs/config-template.toml`; that file is the source of truth, so it is not restated here.
 
 A token may name any variable, not only the conventional one — that is what lets a key read a
 secret that already exists under its own name. For credentials, prefer a mounted secret file
@@ -249,8 +238,9 @@ There is no demo mode: startup checks are always on for **both** the `platform-a
 `ai-workspace` services and fail fast when a requirement is missing. For production, replace
 the quickstart's `setup.sh` outputs with real values: use OIDC (sections 1–3) instead of the
 generated file-based admin user, mount TLS certificates from your CA instead of the generated
-self-signed pairs, and manage `APIP_CP_ENCRYPTION_KEY` / `APIP_CP_AUTH_JWT_SECRET_KEY` as
-stable, real secrets (prefer `{{ file }}` tokens over environment variables).
+self-signed pairs, and manage `APIP_CP_ENCRYPTION_KEY` and the RS256 JWT signing keypair
+(`resources/keys/jwt_private.pem` / `jwt_public.pem`, read via `{{ file }}`) as stable, real
+secrets (prefer `{{ file }}` tokens over environment variables).
 
 See [Production hardening](../README.md#production-hardening) in the main README for the
 full checklist of what each service requires.

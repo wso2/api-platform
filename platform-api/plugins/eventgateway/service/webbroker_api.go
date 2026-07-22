@@ -126,15 +126,6 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 		return nil, apperror.WebBrokerAPIExists.New()
 	}
 
-	// Enforce the per-organization WebBroker API limit (unlimited when not configured).
-	count, err := s.repo.Count(orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to count existing WebBroker APIs: %w", err)
-	}
-	if config.LimitReached(count, s.cfg.ArtifactLimits.MaxWebBrokerAPIsPerOrg) {
-		return nil, apperror.WebBrokerAPILimitReached.New()
-	}
-
 	transport := []string{"http", "https"}
 	if req.Transport != nil && len(*req.Transport) > 0 {
 		transport = make([]string, 0, len(*req.Transport))

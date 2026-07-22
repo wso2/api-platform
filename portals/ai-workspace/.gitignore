@@ -6,3 +6,4 @@ target
 .vscode
 api-platform.env
 resources/certificates/
+resources/keys/

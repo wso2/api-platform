@@ -66,7 +66,6 @@ type Envelope struct {
 	// OrgID is the legacy flat org identifier, superseded by Org.RefID. DecodeEnvelope copies
 	// Org.RefID into it when present, so downstream handlers can keep reading env.OrgID.
 	OrgID         string `json:"org_id"`
-	GatewayType   string `json:"gateway_type"`
 	AggregateType string `json:"aggregate_type"`
 	AggregateID   string `json:"aggregate_id"`
 	SchemaVersion string `json:"schema_version"`

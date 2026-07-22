@@ -22,15 +22,20 @@ Tested IDPs: [Asgardeo](asgardeo-setup.md), Keycloak, Auth0, Okta.
 ### AI Workspace (`configs/config.toml`)
 
 ```toml
-domain            = "app.example.com"
-auth_mode         = "oidc"
-controlplane_host = "api.example.com"
+[ai_workspace]
+domain = "app.example.com"
 
-[platform_api]
+[ai_workspace.control_plane]
 # The upstream the BFF proxies to (an origin — the API paths are appended by the proxy).
 url = "https://api.example.com"
 
-[oidc]
+[ai_workspace.gateway]
+controlplane_host = "api.example.com"
+
+[ai_workspace.auth]
+mode = "oidc"
+
+[ai_workspace.auth.oidc]
 # IDP issuer URL — the discovery doc is fetched from {authority}/.well-known/openid-configuration
 authority = "https://idp.example.com/realms/my-realm"
 
@@ -46,64 +51,59 @@ post_logout_redirect_url = "https://<domain>/login"
 client_secret = '{{ file "/secrets/ai-workspace/oidc_client_secret" }}'
 
 # JWT claim names for organization identity. This table mirrors
-# [auth.idp.claim_mappings] in the Platform API config (below) key for key — both
-# services read the same claims out of the same token, so the two must agree.
-# Must stay the last table under [oidc]: plain [oidc] keys placed below this
-# header would land in [oidc.claim_mappings] instead.
-[oidc.claim_mappings]
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
+# [platform_api.auth.claim_mappings] in the Platform API config (below) key for
+# key — both services read the same claims out of the same token, so the two must
+# agree. A sibling of [ai_workspace.auth.oidc], not nested in it: this table applies
+# to both auth modes, since basic-mode tokens are signed using these same mapped
+# claim names.
+[ai_workspace.auth.claim_mappings]
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
 ```
 
 The redirect URLs and the client secret are BFF settings — they are **never sent to the browser**.
 The redirect URLs are ordinary `config.toml` keys; the secret is *referenced* by the config rather
 than written into it, so the raw value never lands in a committed file.
 
-For a simpler local setup, swap the `{{ file }}` token for `'{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'` and keep
+For a simpler local setup, swap the `{{ file }}` token for `'{{ env "APIP_AIW_AUTH_OIDC_CLIENT_SECRET" }}'` and keep
 the value in the git-ignored `api-platform.env`. The key must carry one token or the other — a variable set with
 no token to read it is ignored. Either token fails closed: a missing secret aborts startup rather
 than yielding an empty credential. See [Configuration → Secrets](../configuration.md#secrets).
 
-`[oidc] redirect_url` (the BFF callback `/api/auth/callback`) and `post_logout_redirect_url`
+`[ai_workspace.auth.oidc] redirect_url` (the BFF callback `/api/auth/callback`) and `post_logout_redirect_url`
 must be registered as allowed redirect URIs in your IDP application. The redirect is **not** the
 SPA `/signin` route — the BFF, not the browser, completes the code exchange.
 
 ### Platform API (`configs/config-platform-api.toml`)
 
 ```toml
-# Disable local JWT signing — tokens come from the IDP
-[auth.jwt]
-enabled = false
+# Validate tokens against the IDP's JWKS instead of signing locally
+[auth]
+mode = "idp"
 
-# Enable JWKS-based validation of IDP tokens
 [auth.idp]
-enabled  = true
 name     = "my-idp"
 jwks_url = "https://idp.example.com/realms/my-realm/protocol/openid-connect/certs"
 issuer   = ["https://idp.example.com/realms/my-realm"]
-audience = ["ai-workspace"]   # must match [oidc] client_id
+audience = ["ai-workspace"]   # must match [ai_workspace.auth.oidc] client_id
 
 # Map IDP-specific claim names to Platform API's expected fields
-# These must match the [oidc.claim_mappings] values in config.toml above
-[auth.idp.claim_mappings]
-organization_claim_name = "org_id"
-org_name_claim_name     = "org_name"
-org_handle_claim_name   = "org_handle"
-
-# Disable file-based auth
-[auth.file_based]
-enabled = false
+# These must match the [ai_workspace.auth.claim_mappings] values in config.toml above
+[auth.claim_mappings]
+organization = "org_id"
+org_name     = "org_name"
+org_handle   = "org_handle"
 ```
 
 Optional claim overrides (defaults shown):
 
 ```toml
-[auth.idp.claim_mappings]
-user_id_claim_name  = "sub"
-username_claim_name = "username"
-email_claim_name    = "email"
-scope_claim_name    = "scope"
+[auth.claim_mappings]
+user_id  = "sub"
+username = "username"
+email    = "email"
+scope    = "scope"
 ```
 
 Validation mode (default `scope`):
@@ -139,16 +139,16 @@ You must register the `ap:*` scopes as an API resource in your IDP and grant the
 **Users see a blank screen or redirect loop after login**
 - Verify `domain` in `config.toml` matches the actual host:port in the browser.
 - Verify the redirect URI `https://<domain>/api/auth/callback` (the BFF callback) is registered
-  in the IDP and matches `[oidc] redirect_url`.
+  in the IDP and matches `[ai_workspace.auth.oidc] redirect_url`.
 
 **Token endpoint rejects the BFF with `unauthorized_client` / "not authorized to use the requested grant type"**
 - The app is registered as a public/SPA client. Re-register it as a **confidential** client
-  (authorization-code + refresh-token grants, PKCE) and set `[oidc] client_secret`.
+  (authorization-code + refresh-token grants, PKCE) and set `[ai_workspace.auth.oidc] client_secret`.
 
 **Platform API returns 401**
 - Check that `jwks_url` and `issuer` in Platform API config match the IDP's discovery doc values.
-- Check that `audience` matches the `[oidc] client_id` of the confidential application.
-- Ensure `organization_claim_name` matches on both sides — `[auth.idp.claim_mappings]` in the Platform API and `[oidc.claim_mappings]` in AI Workspace.
+- Check that `audience` matches the `[ai_workspace.auth.oidc] client_id` of the confidential application.
+- Ensure `organization` matches on both sides — `[platform_api.auth.claim_mappings]` in the Platform API and `[ai_workspace.auth.claim_mappings]` in AI Workspace.
 
 **"Organization not found" error**
 - The `org_id` claim in the token does not match any organization in Platform API's database.
