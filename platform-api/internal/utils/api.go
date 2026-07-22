@@ -535,17 +535,17 @@ func (u *APIUtil) operationUpstreamModelToAPI(modelUpstream *model.OperationUpst
 	}
 	upstream := &api.OperationUpstream{}
 	if modelUpstream.Main != nil {
-		upstream.Main = newAPIOperationUpstreamTarget(modelUpstream.Main.Ref)
+		upstream.Main = newAPIOperationUpstreamRef(modelUpstream.Main.Ref)
 	}
 	if modelUpstream.Sandbox != nil {
-		upstream.Sandbox = newAPIOperationUpstreamTarget(modelUpstream.Sandbox.Ref)
+		upstream.Sandbox = newAPIOperationUpstreamRef(modelUpstream.Sandbox.Ref)
 	}
 	return upstream
 }
 
-// newAPIOperationUpstreamTarget constructs the anonymous ref-only target type
+// newAPIOperationUpstreamRef constructs the anonymous ref-only type
 // generated for OperationUpstream.main and OperationUpstream.sandbox.
-func newAPIOperationUpstreamTarget(ref string) *struct {
+func newAPIOperationUpstreamRef(ref string) *struct {
 	Ref api.UpstreamReference `json:"ref" yaml:"ref"`
 } {
 	return &struct {
@@ -611,9 +611,9 @@ func (u *APIUtil) BuildAPIDeploymentYAML(apiModel *model.API) (*dto.APIDeploymen
 
 	// Convert reusable upstream definitions (the named pool that API-level and
 	// operation-level upstream refs resolve against on the gateway).
-	var upstreamDefsYAML []dto.UpstreamDefinitionYAML
+	var upstreamDefsYAML []dto.ReusableUpstreamYAML
 	for _, def := range apiModel.Configuration.UpstreamDefinitions {
-		defYAML := dto.UpstreamDefinitionYAML{
+		defYAML := dto.ReusableUpstreamYAML{
 			Name:     def.Name,
 			BasePath: def.BasePath,
 		}
