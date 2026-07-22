@@ -21,7 +21,7 @@ const fs = require('fs');
 const marked = require('marked');
 const Handlebars = require('handlebars');
 const logger = require('../config/logger');
-const { CustomError } = require('../utils/errors/customErrors');
+const { CustomError, NotFoundError, ValidationError } = require('../utils/errors/customErrors');
 const orgDao = require('../dao/organizationDao');
 const constants = require('../utils/constants');
 const unzipper = require('unzipper');
@@ -31,7 +31,7 @@ const qs = require('qs');
 const https = require('https');
 const { config } = require('../config/configLoader');
 const { body, param, query } = require('express-validator');
-const { Sequelize } = require('sequelize');
+const db = require('../db/driver');
 const apiDao = require('../dao/apiDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const subscriptionPlanDTO = require('../dto/subscriptionPlanDto');
@@ -300,22 +300,25 @@ function getErrors(errors) {
 }
 
 function handleError(res, error) {
-    if (error instanceof Sequelize.UniqueConstraintError) {
-        const msg = error.errors ? error.errors[0].message : error.message.replaceAll('"', '');
+    if (db.isDuplicateKeyError(error)) {
+        // Raw driver messages (pg/sqlite/mssql) can echo internal constraint/table
+        // names — unlike Sequelize's own UniqueConstraintError#errors[], there's no
+        // structured field-level message to surface, so keep the response generic
+        // per this repo's error-handling rules (never leak raw DB error text).
         return res.status(409).json({
             status: 'error',
             code: 'CONFLICT',
             message: 'Conflict',
-            errors: [{ message: msg }],
+            errors: [{ message: 'A record with these values already exists.' }],
         });
-    } else if (error instanceof Sequelize.ValidationError) {
+    } else if (error instanceof ValidationError) {
         return res.status(400).json({
             status: 'error',
             code: 'COMMON_VALIDATION_ERROR',
             message: 'Bad Request',
             errors: [{ message: error.message }],
         });
-    } else if (error instanceof Sequelize.EmptyResultError) {
+    } else if (error instanceof NotFoundError) {
         return res.status(404).json({
             status: 'error',
             code: 'RESOURCE_NOT_FOUND',
@@ -1136,7 +1139,7 @@ function resolveApiType(apiType) {
 
     const keyword = apiType.replace(/\s+/g, '').toUpperCase();
     if (!Object.prototype.hasOwnProperty.call(constants.API_TYPE, keyword)) {
-        throw new Sequelize.ValidationError(
+        throw new ValidationError(
             "Invalid api type. Supported values: REST, WS, GRAPHQL, SOAP, WEBSUB, MCP"
         );
     }

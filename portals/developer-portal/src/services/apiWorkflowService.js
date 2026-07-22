@@ -19,8 +19,7 @@ const apiWorkflowDao = require('../dao/apiWorkflowDao');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const viewDao = require('../dao/viewDao');
 const orgDao = require('../dao/organizationDao');
-const sequelize = require('../db/sequelizeConfig');
-const { UniqueConstraintError } = require('sequelize');
+const db = require('../db/driver');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const { config } = require('../config/configLoader');
@@ -204,27 +203,28 @@ const createAPIWorkflow = async (req, res) => {
     if (resolvedContentType !== 'MD' && resolvedContent === null) {
         return util.sendError(res, 400, 'Invalid API workflow definition: content could not be parsed as valid JSON or YAML.');
     }
-    let t;
+    let viewId;
     try {
         const orgDetails = await orgDao.getByUuid(orgId);
-        t = await sequelize.transaction();
-        const viewId = await resolveViewId(orgId, viewHandle);
-        const resolvedPrompt = agentPrompt && agentPrompt.trim()
-            ? agentPrompt.trim()
-            : generateAgentPrompt(displayName, description, [], orgDetails.idp_ref_id || '', viewHandle, '', resolvedHandle);
 
-        const apiWorkflow = await apiWorkflowDao.create(orgId, viewId, {
-            displayName,
-            handle: resolvedHandle,
-            description,
-            agentPrompt: resolvedPrompt,
-            status: status || constants.API_WORKFLOW_STATUS.PUBLISHED,
-            agentVisibility: agentVisibility || constants.AGENT_VISIBILITY.VISIBLE,
-            apiWorkflowDefinition: resolvedContent,
-            contentType: resolvedContentType
-        }, userId, t);
+        const apiWorkflow = await db.withTransaction(async (t) => {
+            viewId = await resolveViewId(orgId, viewHandle);
+            const resolvedPrompt = agentPrompt && agentPrompt.trim()
+                ? agentPrompt.trim()
+                : generateAgentPrompt(displayName, description, [], orgDetails.idp_ref_id || '', viewHandle, '', resolvedHandle);
 
-        await t.commit();
+            return apiWorkflowDao.create(orgId, viewId, {
+                displayName,
+                handle: resolvedHandle,
+                description,
+                agentPrompt: resolvedPrompt,
+                status: status || constants.API_WORKFLOW_STATUS.PUBLISHED,
+                agentVisibility: agentVisibility || constants.AGENT_VISIBILITY.VISIBLE,
+                apiWorkflowDefinition: resolvedContent,
+                contentType: resolvedContentType
+            }, userId, t);
+        });
+
         logger.info('API Workflow created', { apiWorkflowId: apiWorkflow.uuid, orgId, viewId });
         logUserAction('API_WORKFLOW_CREATED', req, { orgId, apiWorkflowId: apiWorkflow.uuid, resourceUuid: apiWorkflow.uuid, resourceType: 'api_workflow' });
         res.status(201).json({
@@ -233,8 +233,7 @@ const createAPIWorkflow = async (req, res) => {
             status: apiWorkflow.status
         });
     } catch (error) {
-        if (t) await t.rollback();
-        if (error instanceof UniqueConstraintError) {
+        if (db.isDuplicateKeyError(error)) {
             return util.sendError(res, 409, 'An API workflow with this handle already exists. Please use a different handle.');
         }
         if (error instanceof CustomError) {
@@ -269,37 +268,36 @@ const updateAPIWorkflow = async (req, res) => {
     if (resolvedContentType !== 'MD' && apiWorkflowDefinition !== undefined && resolvedContent === null) {
         return util.sendError(res, 400, 'Invalid API workflow definition: content could not be parsed as valid JSON or YAML.');
     }
-    const t = await sequelize.transaction();
     try {
         const viewId = await resolveViewId(orgId, viewHandle);
         const existing = await apiWorkflowDao.getByHandle(orgId, viewId, apiWorkflowHandle);
         if (!existing) {
-            await t.rollback();
-            return util.sendError(res, 404, constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND);
-        }
-        const [count] = await apiWorkflowDao.update(orgId, viewId, existing.uuid, {
-            displayName,
-            handle: id,
-            description,
-            agentPrompt,
-            status,
-            agentVisibility,
-            apiWorkflowDefinition: resolvedContent,
-            contentType: resolvedContentType
-        }, userId, t);
-
-        if (count === 0) {
-            await t.rollback();
             return util.sendError(res, 404, constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND);
         }
 
-        await t.commit();
+        const notFound = await db.withTransaction(async (t) => {
+            const [count] = await apiWorkflowDao.update(orgId, viewId, existing.uuid, {
+                displayName,
+                handle: id,
+                description,
+                agentPrompt,
+                status,
+                agentVisibility,
+                apiWorkflowDefinition: resolvedContent,
+                contentType: resolvedContentType
+            }, userId, t);
+            return count === 0;
+        });
+
+        if (notFound) {
+            return util.sendError(res, 404, constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND);
+        }
+
         logger.info('API Workflow updated', { apiWorkflowId: existing.uuid, orgId, viewId });
         logUserAction('API_WORKFLOW_UPDATED', req, { orgId, apiWorkflowId: existing.uuid, resourceUuid: existing.uuid, resourceType: 'api_workflow' });
         res.status(200).json({ message: 'API Workflow updated successfully' });
     } catch (error) {
-        await t.rollback();
-        if (error instanceof UniqueConstraintError) {
+        if (db.isDuplicateKeyError(error)) {
             return util.sendError(res, 409, 'An API workflow with this handle already exists. Please use a different handle.');
         }
         if (error instanceof CustomError) {
@@ -313,25 +311,26 @@ const updateAPIWorkflow = async (req, res) => {
 const deleteAPIWorkflow = async (req, res) => {
     const orgId = req.orgId;
     const { apiWorkflowId: apiWorkflowHandle, viewId: viewHandle } = req.params;
-    const t = await sequelize.transaction();
     try {
         const viewId = await resolveViewId(orgId, viewHandle);
         const existing = await apiWorkflowDao.getByHandle(orgId, viewId, apiWorkflowHandle);
         if (!existing) {
-            await t.rollback();
             return util.sendError(res, 404, constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND);
         }
-        const count = await apiWorkflowDao.delete(orgId, viewId, existing.uuid, t);
-        if (count === 0) {
-            await t.rollback();
+
+        const notFound = await db.withTransaction(async (t) => {
+            const count = await apiWorkflowDao.delete(orgId, viewId, existing.uuid, t);
+            return count === 0;
+        });
+
+        if (notFound) {
             return util.sendError(res, 404, constants.ERROR_MESSAGE.API_WORKFLOW_NOT_FOUND);
         }
-        await t.commit();
+
         logger.info('API Workflow deleted', { apiWorkflowId: existing.uuid, orgId, viewId });
         logUserAction('API_WORKFLOW_DELETED', req, { orgId, apiWorkflowId: existing.uuid, resourceUuid: existing.uuid, resourceType: 'api_workflow' });
         res.status(200).json({ message: 'API Workflow deleted successfully' });
     } catch (error) {
-        await t.rollback();
         if (error instanceof CustomError) {
             return util.sendError(res, error.statusCode, error.message);
         }

@@ -113,9 +113,8 @@ See [it/README.md](it/README.md) for the full list of test commands and suite de
 
 ### Database
 
-| Target | Description |
-|--------|-------------|
-| `make generate-ddl` | Generate DDL schema files from Sequelize models for all supported dialects |
+Schema is maintained per dialect in `database/schema.{sqlite,postgres,sqlserver}.sql` — see
+[src/db/driver.js](src/db/driver.js) for the query layer that targets these files.
 
 ### Docs
 

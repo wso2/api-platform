@@ -64,13 +64,13 @@ console_only = false
 # Supported types: sqlite (default), postgres.
 
 [database]
-type = "sqlite"
+type = "sqlite"                # sqlite | postgres | mssql
 file = "./devportal.db"       # SQLite only
-host = "localhost"            # PostgreSQL only
-port = 5432                   # PostgreSQL only
-name = "devportal"            # PostgreSQL only
-username = "postgres"         # PostgreSQL only
-password = ""                 # PostgreSQL only
+host = "localhost"            # PostgreSQL / MSSQL only
+port = 5432                   # PostgreSQL / MSSQL only (MSSQL default: 1433)
+name = "devportal"            # PostgreSQL / MSSQL only
+username = "postgres"         # PostgreSQL / MSSQL only
+password = ""                 # PostgreSQL / MSSQL only
 
 [database.ssl]
 enabled = false

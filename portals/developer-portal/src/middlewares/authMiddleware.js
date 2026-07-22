@@ -43,6 +43,7 @@ const { extractPlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
 const orgDao = require('../dao/organizationDao');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
+const { NotFoundError } = require('../utils/errors/customErrors');
 const userOrganizationMappingDao = require('../dao/userOrganizationMappingDao');
 
 // In-process cache so an already-known (sub, org) pair doesn't re-hit the DB on
@@ -185,7 +186,7 @@ async function resolveOrgFromClaim(req, orgClaim) {
         req.orgId = await orgDao.getId(orgClaim);
         return null;
     } catch (e) {
-        if (e.name === 'SequelizeEmptyResultError') {
+        if (e instanceof NotFoundError) {
             const err = new Error('Organization not found');
             err.status = 404;
             return err;
@@ -209,7 +210,7 @@ async function resolveOrgFromHeader(req) {
         req.orgId = await orgDao.getId(orgHeader);
         return null;
     } catch (e) {
-        if (e.name === 'SequelizeEmptyResultError') {
+        if (e instanceof NotFoundError) {
             const err = new Error('Organization not found');
             err.status = 404;
             return err;

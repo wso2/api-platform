@@ -67,10 +67,10 @@ class APIInfo {
             this.apiImageMetadata = getAPIImages(images);
         }
         if (apiInfo.dp_tags) {
-            this.tags = apiInfo.dp_tags.map(tag => tag.dataValues ? tag.dataValues.name : tag);
+            this.tags = apiInfo.dp_tags.map(tag => tag.name);
         }
         if (apiInfo.dp_labels) {
-            this.labels = apiInfo.dp_labels.map(label => label.dataValues ? label.dataValues.handle : label);
+            this.labels = apiInfo.dp_labels.map(label => label.handle);
         }
     }
 }

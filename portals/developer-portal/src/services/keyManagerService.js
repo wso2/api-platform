@@ -16,7 +16,8 @@
  * under the License.
  */
 const yaml = require('js-yaml');
-const { Sequelize } = require('sequelize');
+const db = require('../db/driver');
+const { NotFoundError } = require('../utils/errors/customErrors');
 const kmDao = require('../dao/keyManagerDao');
 const { KeyManagerDTO, KeyManagerPublicDTO } = require('../dto/keyManagerDto');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
@@ -155,7 +156,7 @@ const createKeyManager = async (req, res) => {
         const dto = new KeyManagerDTO(record, audit);
         return res.status(201).json(dto);
     } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
+        if (db.isDuplicateKeyError(error)) {
             return util.sendError(res, 409, `A key manager with that id already exists in this organization.`);
         }
         if (error.name === 'YAMLException' || error.name === 'ValidationError') {
@@ -193,10 +194,10 @@ const updateKeyManager = async (req, res) => {
         const dto = new KeyManagerDTO(updatedRows[0], audit);
         return res.status(200).json(dto);
     } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
+        if (error instanceof NotFoundError) {
             return util.sendError(res, 404, constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND);
         }
-        if (error instanceof Sequelize.UniqueConstraintError) {
+        if (db.isDuplicateKeyError(error)) {
             return util.sendError(res, 409, `A key manager with that id already exists in this organization.`);
         }
         if (error.name === 'YAMLException' || error.name === 'ValidationError') {
@@ -238,7 +239,7 @@ const getKeyManager = async (req, res) => {
         const dto = new KeyManagerDTO(record, audit);
         return res.status(200).json(dto);
     } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
+        if (error instanceof NotFoundError) {
             return util.sendError(res, 404, constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND);
         }
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_RETRIEVE_ERROR, { error });
@@ -258,7 +259,7 @@ const deleteKeyManager = async (req, res) => {
         logUserAction('KEY_MANAGER_DELETED', req, { orgId, kmId, resourceUuid: kmId, resourceType: 'key_manager' });
         return res.status(204).send();
     } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
+        if (error instanceof NotFoundError) {
             return util.sendError(res, 404, constants.ERROR_MESSAGE.KEY_MANAGER_NOT_FOUND);
         }
         logger.error(constants.ERROR_MESSAGE.KEY_MANAGER_DELETE_ERROR, { error });

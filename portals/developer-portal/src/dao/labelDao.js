@@ -15,221 +15,211 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const Labels = require('../models/label');
-const { APILabels } = require('../models/apiMetadata');
-const ViewLabels = require('../models/viewLabel');
-const { Sequelize, Op } = require('sequelize');
+'use strict';
+
+const crypto = require('crypto');
+const db = require('../db/driver');
+const { findOrCreateSafe } = require('./findOrCreateHelper');
 const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
 
+const LABELS_TABLE = 'dp_labels';
+const API_LABELS_TABLE = 'dp_api_label_mappings';
+const VIEW_LABELS_TABLE = 'dp_view_label_mappings';
+
+// Built once at module load — buildUpsert only depends on the (fixed) dialect
+// and column list, not on any per-call data.
+const UPSERT_API_LABEL_SQL = db.buildUpsert(
+    API_LABELS_TABLE,
+    ['uuid', 'label_uuid', 'api_uuid', 'created_by'],
+    ['label_uuid', 'api_uuid'],
+    [] // ignoreDuplicates semantics — leave the existing mapping row untouched on conflict
+);
+
 const create = async (orgId, label, createdBy, t) => {
-    try {
-        return await Labels.create({
-            handle: label.handle,
-            display_name: label.displayName,
-            org_uuid: orgId,
-            created_by: createdBy,
-            updated_by: createdBy
-        }, { transaction: t, returning: true });
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+    const exec = t || db;
+    const uuid = crypto.randomUUID();
+    await exec.execute(
+        `INSERT INTO ${LABELS_TABLE} (uuid, handle, display_name, org_uuid, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [uuid, label.handle, label.displayName, orgId, createdBy, createdBy]
+    );
+    return {
+        uuid,
+        handle: label.handle,
+        display_name: label.displayName,
+        org_uuid: orgId,
+        created_by: createdBy,
+        updated_by: createdBy,
+    };
+};
 
 const findById = async (orgId, labelId, t) => {
-    const record = await Labels.findOne({
-        where: { uuid: labelId, org_uuid: orgId },
-        transaction: t
-    });
+    const exec = t || db;
+    const record = await exec.queryOne(
+        `SELECT * FROM ${LABELS_TABLE} WHERE uuid = ? AND org_uuid = ?`,
+        [labelId, orgId]
+    );
     if (!record) {
         throw new CustomError(404, constants.ERROR_CODE[404], 'Label not found');
     }
     return record;
-}
+};
 
 const getIdByHandle = async (orgId, handle) => {
-    const label = await Labels.findOne({ where: { org_uuid: orgId, handle }, attributes: ['uuid'] });
+    const label = await db.queryOne(
+        `SELECT uuid FROM ${LABELS_TABLE} WHERE org_uuid = ? AND handle = ?`,
+        [orgId, handle]
+    );
     return label ? label.uuid : null;
-}
+};
 
 const updateById = async (orgId, labelId, label, updatedBy, t) => {
+    const exec = t || db;
     const record = await findById(orgId, labelId, t);
-    return record.update(
-        { display_name: label.displayName, updated_by: updatedBy, updated_at: new Date() },
-        { transaction: t }
+    const updatedAt = new Date();
+    await exec.execute(
+        `UPDATE ${LABELS_TABLE} SET display_name = ?, updated_by = ?, updated_at = ? WHERE uuid = ? AND org_uuid = ?`,
+        [label.displayName, updatedBy, updatedAt, labelId, orgId]
     );
-}
+    return { ...record, display_name: label.displayName, updated_by: updatedBy, updated_at: updatedAt };
+};
 
 const deleteById = async (orgId, labelId) => {
-    try {
-        const count = await Labels.destroy({ where: { uuid: labelId, org_uuid: orgId } });
-        if (count === 0) {
-            throw new CustomError(404, constants.ERROR_CODE[404], 'Label not found');
-        }
-        return count;
-    } catch (error) {
-        if (error instanceof CustomError) throw error;
-        throw new Sequelize.DatabaseError(error);
+    const { rowCount } = await db.execute(
+        `DELETE FROM ${LABELS_TABLE} WHERE uuid = ? AND org_uuid = ?`,
+        [labelId, orgId]
+    );
+    if (rowCount === 0) {
+        throw new CustomError(404, constants.ERROR_CODE[404], 'Label not found');
     }
-}
+    return rowCount;
+};
 
 const createMany = async (orgId, labels, createdBy, t) => {
+    const exec = t || db;
+    const created = [];
+    for (const label of labels) {
+        const uuid = crypto.randomUUID();
+        await exec.execute(
+            `INSERT INTO ${LABELS_TABLE} (uuid, handle, display_name, org_uuid, created_by, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [uuid, label.handle, label.displayName, orgId, createdBy, createdBy]
+        );
+        created.push({
+            uuid,
+            handle: label.handle,
+            display_name: label.displayName,
+            org_uuid: orgId,
+            created_by: createdBy,
+            updated_by: createdBy,
+        });
+    }
+    return created;
+};
 
-    const labelList = [];
-    try {
-        labels.forEach(label => {
-            labelList.push({
+const createApiMapping = async (orgId, apiId, labels, createdBy, t) => {
+    const exec = t || db;
+    const idList = await getId(orgId, labels, t);
+    for (const labelId of idList) {
+        await exec.execute(UPSERT_API_LABEL_SQL, [crypto.randomUUID(), labelId, apiId, createdBy]);
+    }
+    return idList;
+};
+
+/**
+ * Update-or-create a label by handle. Mirrors the previous Sequelize
+ * findOrCreate-then-conditionally-update flow: insert first, and if another
+ * request already created the same (handle, org_uuid) row (unique-constraint
+ * race), fall back to updating the existing row instead of failing.
+ */
+const update = async (orgId, label, updatedBy, t) => {
+    const exec = t || db;
+    const existing = await exec.queryOne(
+        `SELECT * FROM ${LABELS_TABLE} WHERE handle = ? AND org_uuid = ?`,
+        [label.handle, orgId]
+    );
+
+    let row = existing;
+    if (!row) {
+        const uuid = crypto.randomUUID();
+        try {
+            await exec.execute(
+                `INSERT INTO ${LABELS_TABLE} (uuid, handle, display_name, org_uuid, created_by, updated_by)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+                [uuid, label.handle, label.displayName, orgId, updatedBy, updatedBy]
+            );
+            return {
+                uuid,
                 handle: label.handle,
                 display_name: label.displayName,
                 org_uuid: orgId,
-                created_by: createdBy,
-                updated_by: createdBy
-            });
-        })
-        const labelResponse = await Labels.bulkCreate(labelList, { transaction: t });
-        return labelResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-const createApiMapping = async (orgId, apiId, labels, createdBy, t) => {
-
-    const labelList = [];
-    const IDList = await getId(orgId, labels, t);
-    try {
-        IDList.forEach(label => {
-            labelList.push({
-                label_uuid: label,
-                api_uuid: apiId,
-                created_by: createdBy,
-            });
-        });
-        const labelResponse = await APILabels.bulkCreate(labelList, { transaction: t, ignoreDuplicates: true });
-        return labelResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-
-}
-
-const update = async (orgId, label, updatedBy, t) => {
-
-    try {
-        let [record, created] = await Labels.findOrCreate({
-            where: {
-                handle: label.handle,
-                org_uuid: orgId
-            },
-            defaults: {
-                handle: label.handle,
-                display_name: label.displayName,
                 created_by: updatedBy,
-                updated_by: updatedBy
-            },
-            transaction: t,
-            returning: true
-        });
-        if (!created) {
-            record = await record.update({ display_name: label.displayName, updated_by: updatedBy, updated_at: new Date() }, { transaction: t }); // Update if found
+                updated_by: updatedBy,
+            };
+        } catch (error) {
+            if (!db.isDuplicateKeyError(error)) throw error;
+            // Lost a race to create this label — fall through to the update path below.
+            row = await exec.queryOne(
+                `SELECT * FROM ${LABELS_TABLE} WHERE handle = ? AND org_uuid = ?`,
+                [label.handle, orgId]
+            );
         }
-        return record;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
     }
-}
+
+    const updatedAt = new Date();
+    await exec.execute(
+        `UPDATE ${LABELS_TABLE} SET display_name = ?, updated_by = ?, updated_at = ? WHERE uuid = ?`,
+        [label.displayName, updatedBy, updatedAt, row.uuid]
+    );
+    return { ...row, display_name: label.displayName, updated_by: updatedBy, updated_at: updatedAt };
+};
 
 const getId = async (orgId, labels, t) => {
-
-    let IDList = [];
-    try {
-        for (const label of labels) {
-            IDList.push(await getIdList(orgId, label, t));
-        };
-        return IDList;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError || error instanceof CustomError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    const idList = [];
+    for (const label of labels) {
+        idList.push(await getIdList(orgId, label, t));
     }
-}
+    return idList;
+};
 
 const getIdList = async (orgId, label, t) => {
-
-    const labelResponse = await Labels.findOne({
-        where: {
-            handle: label,
-            org_uuid: orgId
-        },
-        transaction: t
-    });
+    const exec = t || db;
+    const labelResponse = await exec.queryOne(
+        `SELECT uuid FROM ${LABELS_TABLE} WHERE handle = ? AND org_uuid = ?`,
+        [label, orgId]
+    );
     if (!labelResponse) {
-        throw new CustomError(404, constants.ERROR_CODE[404], "Label not found")
+        throw new CustomError(404, constants.ERROR_CODE[404], 'Label not found');
     }
-    return labelResponse.dataValues.uuid;
-}
+    return labelResponse.uuid;
+};
 
 const list = async (orgId) => {
-
-    try {
-        const labelResponse = await Labels.findAll({
-            where: {
-                org_uuid: orgId
-            }
-        });
-        return labelResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+    return db.query(`SELECT * FROM ${LABELS_TABLE} WHERE org_uuid = ?`, [orgId]);
+};
 
 const deleteApiMapping = async (orgId, apiId, labels, t) => {
-
-    const IDList = await getId(orgId, labels, t);
-    try {
-        return await APILabels.destroy({
-            where: {
-                label_uuid: { [Op.in]: IDList },
-                api_uuid: apiId,
-            },
-            transaction: t
-        });
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+    const exec = t || db;
+    const idList = await getId(orgId, labels, t);
+    if (idList.length === 0) return 0;
+    const placeholders = idList.map(() => '?').join(', ');
+    const { rowCount } = await exec.execute(
+        `DELETE FROM ${API_LABELS_TABLE} WHERE label_uuid IN (${placeholders}) AND api_uuid = ?`,
+        [...idList, apiId]
+    );
+    return rowCount;
+};
 
 const addToView = async (orgId, labelId, viewId, createdBy, t) => {
-    try {
-        const [record] = await ViewLabels.findOrCreate({
-            where: { label_uuid: labelId, view_uuid: viewId },
-            defaults: { created_by: createdBy },
-            transaction: t,
-        });
-        return record;
-    } catch (error) {
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+    const exec = t || db;
+    return findOrCreateSafe(
+        VIEW_LABELS_TABLE,
+        { label_uuid: labelId, view_uuid: viewId },
+        { uuid: crypto.randomUUID(), label_uuid: labelId, view_uuid: viewId, created_by: createdBy },
+        exec
+    );
+};
 
 module.exports = {
     create,

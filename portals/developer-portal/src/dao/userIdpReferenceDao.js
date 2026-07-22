@@ -15,9 +15,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const UserIdpReference = require('../models/userIdpReference');
+'use strict';
+
+const crypto = require('crypto');
+const db = require('../db/driver');
 const { findOrCreateSafe } = require('./findOrCreateHelper');
 
+const TABLE = 'dp_user_idp_references';
 const DELETED_USER = 'deleted_user';
 
 /**
@@ -26,7 +30,11 @@ const DELETED_USER = 'deleted_user';
  * requests for the same idp id.
  */
 const resolveUuid = async (idpId) => {
-    const reference = await findOrCreateSafe(UserIdpReference, { idp_id: idpId }, { idp_id: idpId });
+    const reference = await findOrCreateSafe(
+        TABLE,
+        { idp_id: idpId },
+        { uuid: crypto.randomUUID(), idp_id: idpId }
+    );
     return reference.uuid;
 };
 
@@ -36,7 +44,7 @@ const resolveUuid = async (idpId) => {
  */
 const resolveDisplay = async (uuid) => {
     if (!uuid) return DELETED_USER;
-    const reference = await UserIdpReference.findByPk(uuid);
+    const reference = await db.queryOne(`SELECT * FROM ${TABLE} WHERE uuid = ?`, [uuid]);
     return reference ? reference.idp_id : DELETED_USER;
 };
 
@@ -49,7 +57,8 @@ const resolveMany = async (uuids) => {
     const result = new Map(distinctUuids.map((uuid) => [uuid, DELETED_USER]));
     if (distinctUuids.length === 0) return result;
 
-    const references = await UserIdpReference.findAll({ where: { uuid: distinctUuids } });
+    const placeholders = distinctUuids.map(() => '?').join(', ');
+    const references = await db.query(`SELECT * FROM ${TABLE} WHERE uuid IN (${placeholders})`, distinctUuids);
     for (const reference of references) {
         result.set(reference.uuid, reference.idp_id);
     }

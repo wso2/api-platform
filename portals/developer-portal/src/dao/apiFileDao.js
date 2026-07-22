@@ -15,395 +15,231 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const APIContent = require('../models/apiContent');
-const { APIMetadata } = require('../models/apiMetadata');
-const { Sequelize, Op } = require('sequelize');
+'use strict';
+
+const crypto = require('crypto');
+const db = require('../db/driver');
+const { groupBy, toBlobBuffer } = require('../db/rows');
 const constants = require('../utils/constants');
-const logger = require('../config/logger');
+
+const CONTENT_TABLE = 'dp_api_contents';
+const API_METADATA_TABLE = 'dp_api_metadata';
+
+// Every content row is tenant-scoped through the API it belongs to — this
+// correlated EXISTS clause (not a JOIN alias, which sqlite's UPDATE grammar
+// doesn't support portably) is appended to UPDATE/DELETE statements that need
+// to verify org ownership. Requires org_uuid as the LAST bind param.
+const TENANT_SCOPE_EXISTS =
+    `EXISTS (SELECT 1 FROM ${API_METADATA_TABLE} m WHERE m.uuid = ${CONTENT_TABLE}.api_uuid AND m.org_uuid = ?)`;
 
 const store = async (apiFile, fileName, apiId, type, createdBy, t, key) => {
-
-    try {
-        const apiFileResponse = await APIContent.create({
-            file_content: apiFile,
-            file_name: fileName,
-            api_uuid: apiId,
-            type: type,
-            lookup_key: key ?? null,
-            created_by: createdBy,
-            updated_by: createdBy
-        }, { transaction: t }
-        );
-        return apiFileResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+    const exec = t || db;
+    const uuid = crypto.randomUUID();
+    const content = toBlobBuffer(apiFile);
+    await exec.execute(
+        `INSERT INTO ${CONTENT_TABLE} (uuid, file_content, file_name, api_uuid, type, lookup_key, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [uuid, content, fileName, apiId, type, key ?? null, createdBy, createdBy]
+    );
+    return {
+        uuid, file_content: content, file_name: fileName, api_uuid: apiId, type,
+        lookup_key: key ?? null, created_by: createdBy, updated_by: createdBy,
+    };
+};
 
 const storeMany = async (files, apiId, createdBy, t) => {
-
-    let apiContent = []
-    try {
-        files.forEach(file => {
-            apiContent.push({
-                file_content: file.content,
-                file_name: file.fileName,
-                type: file.type,
-                api_uuid: apiId,
-                lookup_key: file.key ?? null,
-                created_by: createdBy,
-                updated_by: createdBy
-            })
+    const exec = t || db;
+    const created = [];
+    for (const file of files) {
+        const uuid = crypto.randomUUID();
+        const content = toBlobBuffer(file.content);
+        await exec.execute(
+            `INSERT INTO ${CONTENT_TABLE} (uuid, file_content, file_name, type, api_uuid, lookup_key, created_by, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [uuid, content, file.fileName, file.type, apiId, file.key ?? null, createdBy, createdBy]
+        );
+        created.push({
+            uuid, file_content: content, file_name: file.fileName, type: file.type,
+            api_uuid: apiId, lookup_key: file.key ?? null, created_by: createdBy, updated_by: createdBy,
         });
-        const apiContentResponse = await APIContent.bulkCreate(apiContent, { transaction: t });
-        return apiContentResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
     }
-}
-
-const upsertMany = async (files, apiId, orgId, updatedBy, t) => {
-
-    let filesToCreate = []
-    try {
-        for (const file of files) {
-            // A keyed file (e.g. a named image slot) is identified by its lookup_key, since its
-            // file_name can change between uploads. Unkeyed files (docs, specs) are
-            // identified by file_name as before.
-            const apiFileResponse = file.key
-                ? await getByKey(file.key, apiId, t)
-                : await get(file.fileName, file.type, orgId, apiId, t);
-            if (apiFileResponse == null || apiFileResponse == undefined) {
-                filesToCreate.push({
-                    file_content: file.content,
-                    file_name: file.fileName,
-                    api_uuid: apiId,
-                    type: file.type,
-                    lookup_key: file.key ?? null,
-                    created_by: updatedBy,
-                    updated_by: updatedBy
-                })
-            } else {
-                const updateResponse = await APIContent.update(
-                    {
-                        file_content: file.content,
-                        file_name: file.fileName,
-                        lookup_key: file.key ?? apiFileResponse.lookup_key,
-                        updated_by: updatedBy,
-                        updated_at: new Date()
-                    },
-                    {
-                        where: {
-                            api_uuid: apiId,
-                            file_name: apiFileResponse.file_name,
-                            type: apiFileResponse.type,
-                        },
-                        include: [
-                            {
-                                model: APIMetadata,
-                                where: {
-                                    org_uuid: orgId
-                                }
-                            }
-                        ],
-                        transaction: t
-                    }
-                );
-                if (!updateResponse) {
-                    throw new Sequelize.DatabaseError('Error while updating API files');
-                }
-            }
-        };
-        if (filesToCreate.length > 0) {
-            await APIContent.bulkCreate(filesToCreate, { transaction: t });
-        }
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+    return created;
+};
 
 const get = async (fileName, type, orgId, apiId, t) => {
-
-    try {
-        const apiFileResponse = await APIContent.findOne({
-            where: {
-                file_name: fileName,
-                api_uuid: apiId,
-                type: type
-            },
-            include: [
-                {
-                    model: APIMetadata,
-                    where: {
-                        org_uuid: orgId
-                    }
-                }
-            ],
-            transaction: t
-        });
-        return apiFileResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+    const exec = t || db;
+    return exec.queryOne(
+        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         WHERE c.file_name = ? AND c.api_uuid = ? AND c.type = ? AND m.org_uuid = ?`,
+        [fileName, apiId, type, orgId]
+    );
+};
 
 const getByType = async (type, orgId, apiId, t) => {
-    try {
-        const apiFileResponse = await APIContent.findOne({
-            where: {
-                api_uuid: apiId,
-                type: type
-            },
-            include: [
-                {
-                    model: APIMetadata,
-                    where: {
-                        org_uuid: orgId
-                    }
-                }
-            ],
-            transaction: t
-        });
-        return apiFileResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+    const exec = t || db;
+    return exec.queryOne(
+        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         WHERE c.api_uuid = ? AND c.type = ? AND m.org_uuid = ?`,
+        [apiId, type, orgId]
+    );
+};
 
 /**
  * Find a single content row by its lookup_key (e.g. a named image slot like 'api-icon').
  */
 const getByKey = async (key, apiId, t) => {
-    try {
-        return await APIContent.findOne({
-            where: {
-                api_uuid: apiId,
-                type: constants.DOC_TYPES.IMAGES,
-                lookup_key: key
-            },
-            transaction: t
-        });
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+    const exec = t || db;
+    return exec.queryOne(
+        `SELECT * FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND type = ? AND lookup_key = ?`,
+        [apiId, constants.DOC_TYPES.IMAGES, key]
+    );
+};
 
 /**
  * Delete a single content row by its lookup_key (e.g. a named image slot like 'api-icon').
  */
 const deleteByKey = async (key, apiId, t) => {
-    try {
-        return await APIContent.destroy({
-            where: {
-                api_uuid: apiId,
-                type: constants.DOC_TYPES.IMAGES,
-                lookup_key: key
-            },
-            transaction: t
-        });
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
+    const exec = t || db;
+    const { rowCount } = await exec.execute(
+        `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND type = ? AND lookup_key = ?`,
+        [apiId, constants.DOC_TYPES.IMAGES, key]
+    );
+    return rowCount;
+};
+
+const upsertMany = async (files, apiId, orgId, updatedBy, t) => {
+    const exec = t || db;
+    const filesToCreate = [];
+
+    for (const file of files) {
+        // A keyed file (e.g. a named image slot) is identified by its lookup_key, since its
+        // file_name can change between uploads. Unkeyed files (docs, specs) are
+        // identified by file_name as before.
+        const existing = file.key
+            ? await getByKey(file.key, apiId, t)
+            : await get(file.fileName, file.type, orgId, apiId, t);
+
+        if (existing == null) {
+            filesToCreate.push({
+                file_content: toBlobBuffer(file.content), file_name: file.fileName, api_uuid: apiId, type: file.type,
+                lookup_key: file.key ?? null, created_by: updatedBy, updated_by: updatedBy,
+            });
+        } else {
+            const updatedAt = new Date();
+            const { rowCount } = await exec.execute(
+                `UPDATE ${CONTENT_TABLE}
+                 SET file_content = ?, file_name = ?, lookup_key = ?, updated_by = ?, updated_at = ?
+                 WHERE api_uuid = ? AND file_name = ? AND type = ? AND ${TENANT_SCOPE_EXISTS}`,
+                [
+                    toBlobBuffer(file.content), file.fileName, file.key ?? existing.lookup_key, updatedBy, updatedAt,
+                    apiId, existing.file_name, existing.type, orgId,
+                ]
+            );
+            if (!rowCount) {
+                throw new Error('Error while updating API files');
+            }
         }
-        throw new Sequelize.DatabaseError(error);
     }
-}
+
+    for (const file of filesToCreate) {
+        const uuid = crypto.randomUUID();
+        await exec.execute(
+            `INSERT INTO ${CONTENT_TABLE} (uuid, file_content, file_name, api_uuid, type, lookup_key, created_by, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [uuid, file.file_content, file.file_name, file.api_uuid, file.type, file.lookup_key, file.created_by, file.updated_by]
+        );
+    }
+};
 
 const upsert = async (apiFile, fileName, apiId, orgId, type, updatedBy, t, key) => {
-    try {
-        const apiFileResponse = await getByType(type, orgId, apiId, t);
-        let fileUpdateResponse;
-        if (apiFileResponse == null || apiFileResponse == undefined) {
-            fileUpdateResponse = await APIContent.create({
-                file_content: apiFile,
-                file_name: fileName,
-                api_uuid: apiId,
-                type: type,
-                lookup_key: key ?? null,
-                created_by: updatedBy,
-                updated_by: updatedBy
-            }, { transaction: t });
-        } else {
-            fileUpdateResponse = await APIContent.update({
-                file_content: apiFile,
-                file_name: fileName,
-                lookup_key: key ?? apiFileResponse.lookup_key,
-                updated_by: updatedBy,
-                updated_at: new Date()
-            },
-                {
-                    where: {
-                        api_uuid: apiId,
-                        type: type
-                    },
-                    include: [
-                        {
-                            model: APIMetadata,
-                            where: {
-                                org_uuid: orgId
-                            }
-                        }
-                    ],
-                    transaction: t
-                }
-            );
-        }
-        return fileUpdateResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    const exec = t || db;
+    const existing = await getByType(type, orgId, apiId, t);
+    const content = toBlobBuffer(apiFile);
+
+    if (existing == null) {
+        const uuid = crypto.randomUUID();
+        await exec.execute(
+            `INSERT INTO ${CONTENT_TABLE} (uuid, file_content, file_name, api_uuid, type, lookup_key, created_by, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [uuid, content, fileName, apiId, type, key ?? null, updatedBy, updatedBy]
+        );
+        return {
+            uuid, file_content: content, file_name: fileName, api_uuid: apiId, type,
+            lookup_key: key ?? null, created_by: updatedBy, updated_by: updatedBy,
+        };
     }
-}
+
+    const updatedAt = new Date();
+    const { rowCount } = await exec.execute(
+        `UPDATE ${CONTENT_TABLE}
+         SET file_content = ?, file_name = ?, lookup_key = ?, updated_by = ?, updated_at = ?
+         WHERE api_uuid = ? AND type = ? AND ${TENANT_SCOPE_EXISTS}`,
+        [content, fileName, key ?? existing.lookup_key, updatedBy, updatedAt, apiId, type, orgId]
+    );
+    return rowCount;
+};
 
 const update = async (apiFile, fileName, apiId, orgId, type, updatedBy, t, key) => {
+    const exec = t || db;
+    const existing = await get(fileName, type, orgId, apiId, t);
+    const content = toBlobBuffer(apiFile);
 
-    try {
-        const apiFileResponse = await get(fileName, type, orgId, apiId, t);
-        let fileUpdateResponse;
-        if (apiFileResponse == null || apiFileResponse == undefined) {
-            fileUpdateResponse = await APIContent.create({
-                file_content: apiFile,
-                file_name: fileName,
-                api_uuid: apiId,
-                type: type,
-                lookup_key: key ?? null,
-                created_by: updatedBy,
-                updated_by: updatedBy
-            }, { transaction: t });
-        } else {
-            fileUpdateResponse = await APIContent.update({
-                file_content: apiFile,
-                file_name: fileName,
-                lookup_key: key ?? apiFileResponse.lookup_key,
-                updated_by: updatedBy,
-                updated_at: new Date()
-            },
-                {
-                    where: {
-                        api_uuid: apiId,
-                        file_name: fileName,
-                        type: type
-                    },
-                    include: [
-                        {
-                            model: APIMetadata,
-                            where: {
-                                org_uuid: orgId
-                            }
-                        }
-                    ],
-                    transaction: t
-                }
-            );
-        }
-        return fileUpdateResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    if (existing == null) {
+        const uuid = crypto.randomUUID();
+        await exec.execute(
+            `INSERT INTO ${CONTENT_TABLE} (uuid, file_content, file_name, api_uuid, type, lookup_key, created_by, updated_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [uuid, content, fileName, apiId, type, key ?? null, updatedBy, updatedBy]
+        );
+        return {
+            uuid, file_content: content, file_name: fileName, api_uuid: apiId, type,
+            lookup_key: key ?? null, created_by: updatedBy, updated_by: updatedBy,
+        };
     }
-}
+
+    const updatedAt = new Date();
+    const { rowCount } = await exec.execute(
+        `UPDATE ${CONTENT_TABLE}
+         SET file_content = ?, file_name = ?, lookup_key = ?, updated_by = ?, updated_at = ?
+         WHERE api_uuid = ? AND file_name = ? AND type = ? AND ${TENANT_SCOPE_EXISTS}`,
+        [content, fileName, key ?? existing.lookup_key, updatedBy, updatedAt, apiId, fileName, type, orgId]
+    );
+    return rowCount;
+};
 
 const deleteFile = async (fileName, type, orgId, apiId, t) => {
-
-    try {
-        const contentsToDelete = await APIContent.findAll({
-            where: {
-                file_name: fileName,
-                api_uuid: apiId,
-                type: { [Op.like]: `%${type}%` }
-            },
-            include: [
-                {
-                    model: APIMetadata,
-                    where: {
-                        org_uuid: orgId
-                    }
-                }
-            ],
-            transaction: t
-        });
-        let apiFileResponse;
-        for (const content of contentsToDelete) {
-            apiFileResponse = await APIContent.destroy({
-                where: {
-                    api_uuid: content.dataValues.api_uuid,
-                    file_name: content.dataValues.file_name,
-                    type: content.dataValues.type
-                },
-                transaction: t
-            });
-        }
-        return apiFileResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    const exec = t || db;
+    const contentsToDelete = await exec.query(
+        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         WHERE c.file_name = ? AND c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ?`,
+        [fileName, apiId, `%${type}%`, orgId]
+    );
+    let rowCount;
+    for (const content of contentsToDelete) {
+        ({ rowCount } = await exec.execute(
+            `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND file_name = ? AND type = ?`,
+            [content.api_uuid, content.file_name, content.type]
+        ));
     }
-}
+    return rowCount;
+};
 
 const deleteAll = async (type, orgId, apiId, t) => {
-
-    try {
-        const contentsToDelete = await APIContent.findAll({
-            where: {
-                api_uuid: apiId,
-                type: {
-                    [Op.like]: `%${type}%`
-                }
-            },
-            include: [
-                {
-                    model: APIMetadata,
-                    where: {
-                        org_uuid: orgId
-                    }
-                }
-            ],
-            transaction: t
-        });
-        let apiFileResponse;
-        for (const content of contentsToDelete) {
-            apiFileResponse = await APIContent.destroy({
-                where: {
-                    api_uuid: content.dataValues.api_uuid,
-                    file_name: content.dataValues.file_name,
-                    type: content.dataValues.type
-                },
-                transaction: t
-            });
-        }
-        return apiFileResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    const exec = t || db;
+    const contentsToDelete = await exec.query(
+        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         WHERE c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ?`,
+        [apiId, `%${type}%`, orgId]
+    );
+    let rowCount;
+    for (const content of contentsToDelete) {
+        ({ rowCount } = await exec.execute(
+            `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND file_name = ? AND type = ?`,
+            [content.api_uuid, content.file_name, content.type]
+        ));
     }
-
-}
+    return rowCount;
+};
 
 /**
  * Delete every content row of an exact type for an API (e.g. clear all images
@@ -411,289 +247,175 @@ const deleteAll = async (type, orgId, apiId, t) => {
  * api_uuid, and participates in the caller's transaction.
  */
 const deleteAllByType = async (type, apiId, t) => {
-    try {
-        return await APIContent.destroy({
-            where: {
-                api_uuid: apiId,
-                type: type
-            },
-            transaction: t
-        });
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+    const exec = t || db;
+    const { rowCount } = await exec.execute(
+        `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND type = ?`,
+        [apiId, type]
+    );
+    return rowCount;
+};
 
 const getDoc = async (type, orgId, apiId, t) => {
-
-    try {
-        const apiFileResponse = await APIContent.findOne({
-            where: {
-                api_uuid: apiId,
-                type: type
-            },
-            include: [
-                {
-                    model: APIMetadata,
-                    where: {
-                        org_uuid: orgId
-                    }
-                }
-            ],
-            transaction: t
-        });
-        return apiFileResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+    const exec = t || db;
+    return exec.queryOne(
+        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         WHERE c.api_uuid = ? AND c.type = ? AND m.org_uuid = ?`,
+        [apiId, type, orgId]
+    );
+};
 
 const getDocByName = async (type, name, orgId, apiId, t) => {
+    const exec = t || db;
+    return exec.queryOne(
+        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         WHERE c.api_uuid = ? AND c.type = ? AND c.file_name = ? AND m.org_uuid = ?`,
+        [apiId, type, name, orgId]
+    );
+};
 
-    try {
-        const apiFileResponse = await APIContent.findOne({
-            where: {
-                api_uuid: apiId,
-                type: type,
-                file_name: name
-            },
-            include: [
-                {
-                    model: APIMetadata,
-                    where: {
-                        org_uuid: orgId
-                    }
-                }
-            ], transaction: t
-        });
-        return apiFileResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
+/**
+ * Per-type file name lists, one row per `type` with a `file_names` array —
+ * `file_name` is text, so aggregating it as a delimited string (then splitting)
+ * is safe on every dialect. postgres uses ARRAY_AGG directly; sqlite/mssql
+ * concat with a separator unlikely to appear in a file name and split it back.
+ */
 const getDocTypes = async (orgId, apiId) => {
-    const isPostgres = APIContent.sequelize.getDialect() === 'postgres';
-    const fileNamesExpr = isPostgres
-        ? [Sequelize.fn("ARRAY_AGG", Sequelize.col("dp_api_content.file_name")), "file_names"]
-        : [Sequelize.fn("GROUP_CONCAT", Sequelize.col("dp_api_content.file_name"), "|||"), "file_names"];
+    const dialect = db.getDialect();
+    const whereSql = 'c.api_uuid = ? AND (c.type LIKE ? OR c.type LIKE ?) AND m.org_uuid = ?';
+    const params = [apiId, 'DOC_%', constants.DOC_TYPES.API_DEFINITION, orgId];
 
-    try {
-        const rows = await APIContent.findAll({
-            attributes: ["type", fileNamesExpr],
-            where: {
-                api_uuid: apiId,
-                type: {
-                    [Op.or]: [
-                        { [Op.like]: "DOC_%" },
-                        { [Op.like]: constants.DOC_TYPES.API_DEFINITION }
-                    ]
-                },
-            },
-            group: ["dp_api_content.type"],
-            include: [
-                {
-                    model: APIMetadata,
-                    required: true,
-                    attributes: [],
-                    where: {
-                        org_uuid: orgId
-                    }
-                }
-            ]
-        });
-
-        if (!isPostgres) {
-            for (const row of rows) {
-                const raw = row.dataValues.file_names;
-                row.dataValues.file_names = raw ? raw.split("|||") : [];
-            }
-        }
-
-        return rows;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    if (dialect === 'postgres') {
+        return db.query(
+            `SELECT c.type AS type, ARRAY_AGG(c.file_name) AS file_names
+             FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+             WHERE ${whereSql} GROUP BY c.type`,
+            params
+        );
     }
-}
 
+    const aggFn = dialect === 'mssql' ? 'STRING_AGG' : 'GROUP_CONCAT';
+    const rows = await db.query(
+        `SELECT c.type AS type, ${aggFn}(c.file_name, '|||') AS file_names
+         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         WHERE ${whereSql} GROUP BY c.type`,
+        params
+    );
+    for (const row of rows) {
+        row.file_names = row.file_names ? row.file_names.split('|||') : [];
+    }
+    return rows;
+};
+
+/**
+ * Per-type { file_names, api_files } groups. file_content is BLOB/BYTEA — never
+ * delimiter-concatenate binary data, so the sqlite/mssql path fetches flat rows
+ * and groups them in app code instead of using GROUP_CONCAT/STRING_AGG. postgres
+ * can aggregate both columns directly since ARRAY_AGG produces a real array,
+ * not a concatenated string.
+ */
 const getDocs = async (orgId, apiId) => {
-    const isPostgres = APIContent.sequelize.getDialect() === 'postgres';
-    const include = [{
-        model: APIMetadata,
-        required: true,
-        attributes: [],
-        where: { org_uuid: orgId }
-    }];
-    const where = {
-        api_uuid: apiId,
-        [Op.or]: [
-            { type: { [Op.like]: "DOC_%" } },
-            { file_name: { [Op.like]: "LINK_%" } }
-        ]
-    };
+    const dialect = db.getDialect();
+    const whereSql = 'c.api_uuid = ? AND (c.type LIKE ? OR c.file_name LIKE ?) AND m.org_uuid = ?';
+    const params = [apiId, 'DOC_%', 'LINK_%', orgId];
 
-    try {
-        if (isPostgres) {
-            return await APIContent.findAll({
-                attributes: [
-                    "type",
-                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("dp_api_content.file_name")), "file_names"],
-                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("dp_api_content.file_content")), "api_files"]
-                ],
-                where,
-                group: ["dp_api_content.type"],
-                include
-            });
-        }
-
-        const rows = await APIContent.findAll({ attributes: ["type", "file_name", "file_content"], where, include });
-        const typeMap = new Map();
-        for (const row of rows) {
-            const { type, file_name, file_content } = row.dataValues;
-            if (!typeMap.has(type)) typeMap.set(type, { type, file_names: [], api_files: [] });
-            typeMap.get(type).file_names.push(file_name);
-            typeMap.get(type).api_files.push(file_content);
-        }
-        return Array.from(typeMap.values()).map(g => ({ dataValues: g }));
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    if (dialect === 'postgres') {
+        return db.query(
+            `SELECT c.type AS type,
+                    ARRAY_AGG(c.file_name) AS file_names,
+                    ARRAY_AGG(c.file_content) AS api_files
+             FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+             WHERE ${whereSql} GROUP BY c.type`,
+            params
+        );
     }
-}
 
+    const rows = await db.query(
+        `SELECT c.type AS type, c.file_name AS file_name, c.file_content AS file_content
+         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         WHERE ${whereSql}`,
+        params
+    );
+    const grouped = groupBy(rows, 'type');
+    return Array.from(grouped.entries()).map(([type, groupRows]) => ({
+        type,
+        file_names: groupRows.map((r) => r.file_name),
+        api_files: groupRows.map((r) => r.file_content),
+    }));
+};
+
+/** Same shape as getDocs, scoped to file_name LIKE 'LINK_%' only. */
 const getDocLinks = async (orgId, apiId) => {
-    const isPostgres = APIContent.sequelize.getDialect() === 'postgres';
-    const include = [{
-        model: APIMetadata,
-        required: true,
-        attributes: [],
-        where: { org_uuid: orgId }
-    }];
-    const where = {
-        api_uuid: apiId,
-        file_name: { [Op.like]: "LINK_%" }
-    };
+    const dialect = db.getDialect();
+    const whereSql = "c.api_uuid = ? AND c.file_name LIKE ? AND m.org_uuid = ?";
+    const params = [apiId, 'LINK_%', orgId];
 
-    try {
-        if (isPostgres) {
-            return await APIContent.findAll({
-                attributes: [
-                    "type",
-                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("dp_api_content.file_name")), "file_names"],
-                    [Sequelize.fn("ARRAY_AGG", Sequelize.col("dp_api_content.file_content")), "api_files"]
-                ],
-                where,
-                group: ["dp_api_content.type"],
-                include
-            });
-        }
-
-        const rows = await APIContent.findAll({ attributes: ["type", "file_name", "file_content"], where, include });
-        const typeMap = new Map();
-        for (const row of rows) {
-            const { type, file_name, file_content } = row.dataValues;
-            if (!typeMap.has(type)) typeMap.set(type, { type, file_names: [], api_files: [] });
-            typeMap.get(type).file_names.push(file_name);
-            typeMap.get(type).api_files.push(file_content);
-        }
-        return Array.from(typeMap.values()).map(g => ({ dataValues: g }));
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    if (dialect === 'postgres') {
+        return db.query(
+            `SELECT c.type AS type,
+                    ARRAY_AGG(c.file_name) AS file_names,
+                    ARRAY_AGG(c.file_content) AS api_files
+             FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+             WHERE ${whereSql} GROUP BY c.type`,
+            params
+        );
     }
-}
+
+    const rows = await db.query(
+        `SELECT c.type AS type, c.file_name AS file_name, c.file_content AS file_content
+         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         WHERE ${whereSql}`,
+        params
+    );
+    const grouped = groupBy(rows, 'type');
+    return Array.from(grouped.entries()).map(([type, groupRows]) => ({
+        type,
+        file_names: groupRows.map((r) => r.file_name),
+        api_files: groupRows.map((r) => r.file_content),
+    }));
+};
 
 const listDocNames = async (orgId, apiId) => {
-    try {
-        const rows = await APIContent.findAll({
-            attributes: ['file_name'],
-            where: {
-                api_uuid: apiId,
-                type: { [Op.like]: `${constants.DOC_TYPES.DOC_ID}%` },
-            },
-            include: [{
-                model: APIMetadata,
-                required: true,
-                attributes: [],
-                where: { org_uuid: orgId }
-            }]
-        });
-        return rows.map(r => r.dataValues.file_name);
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) throw error;
-        throw new Sequelize.DatabaseError(error);
-    }
+    const rows = await db.query(
+        `SELECT c.file_name AS file_name
+         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         WHERE c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ?`,
+        [apiId, `${constants.DOC_TYPES.DOC_ID}%`, orgId]
+    );
+    return rows.map((r) => r.file_name);
 };
 
 const listDocNamesForApis = async (orgId, apiIds) => {
-    try {
-        const rows = await APIContent.findAll({
-            attributes: ['file_name', 'api_uuid'],
-            where: {
-                api_uuid: { [Op.in]: apiIds },
-                type: { [Op.like]: `${constants.DOC_TYPES.DOC_ID}%` },
-            },
-            include: [{
-                model: APIMetadata,
-                required: true,
-                attributes: [],
-                where: { org_uuid: orgId }
-            }]
-        });
-        const docNamesByApiId = {};
-        for (const apiId of apiIds) docNamesByApiId[apiId] = [];
-        for (const row of rows) {
-            docNamesByApiId[row.dataValues.api_uuid].push(row.dataValues.file_name);
-        }
-        return docNamesByApiId;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) throw error;
-        throw new Sequelize.DatabaseError(error);
+    const docNamesByApiId = {};
+    for (const apiId of apiIds) docNamesByApiId[apiId] = [];
+    if (apiIds.length === 0) return docNamesByApiId;
+
+    const placeholders = apiIds.map(() => '?').join(', ');
+    const rows = await db.query(
+        `SELECT c.file_name AS file_name, c.api_uuid AS api_uuid
+         FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         WHERE c.api_uuid IN (${placeholders}) AND c.type LIKE ? AND m.org_uuid = ?`,
+        [...apiIds, `${constants.DOC_TYPES.DOC_ID}%`, orgId]
+    );
+    for (const row of rows) {
+        docNamesByApiId[row.api_uuid].push(row.file_name);
     }
+    return docNamesByApiId;
 };
 
 const deleteByFileName = async (fileName, orgId, apiId, t) => {
-    try {
-        // Scope to document rows only (type LIKE 'DOC_%'), matching listDocNames. Without this,
-        // a non-doc row (image, spec) that happens to share the file_name would also be deleted.
-        const contentsToDelete = await APIContent.findAll({
-            where: {
-                file_name: fileName,
-                api_uuid: apiId,
-                type: { [Op.like]: `${constants.DOC_TYPES.DOC_ID}%` },
-            },
-            include: [{ model: APIMetadata, required: true, attributes: [], where: { org_uuid: orgId } }],
-            transaction: t
-        });
-        for (const content of contentsToDelete) {
-            await APIContent.destroy({
-                where: {
-                    api_uuid: apiId,
-                    file_name: content.dataValues.file_name,
-                    type: content.dataValues.type,
-                },
-                transaction: t
-            });
-        }
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) throw error;
-        throw new Sequelize.DatabaseError(error);
+    const exec = t || db;
+    // Scope to document rows only (type LIKE 'DOC_%'), matching listDocNames. Without this,
+    // a non-doc row (image, spec) that happens to share the file_name would also be deleted.
+    const contentsToDelete = await exec.query(
+        `SELECT c.* FROM ${CONTENT_TABLE} c JOIN ${API_METADATA_TABLE} m ON c.api_uuid = m.uuid
+         WHERE c.file_name = ? AND c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ?`,
+        [fileName, apiId, `${constants.DOC_TYPES.DOC_ID}%`, orgId]
+    );
+    for (const content of contentsToDelete) {
+        await exec.execute(
+            `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND file_name = ? AND type = ?`,
+            [apiId, content.file_name, content.type]
+        );
     }
 };
 

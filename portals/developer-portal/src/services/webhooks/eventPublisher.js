@@ -41,7 +41,7 @@ const VALID_EVENT_TYPES = new Set([
 ]);
 
 /**
- * Publish a domain event inside an existing Sequelize transaction.
+ * Publish a domain event inside an existing db.withTransaction() transaction handle.
  *
  * Pass `opts.secretFields` ({ [fieldName]: plaintextValue }) whenever the event carries
  * sensitive values. Each field is encrypted per-subscriber (RSA+AES-256-GCM) and stored
@@ -52,7 +52,7 @@ const VALID_EVENT_TYPES = new Set([
  * @param {string} eventType
  * @param {object} payload          — event data (no secret values here)
  * @param {object} opts
- * @param {import('sequelize').Transaction} opts.transaction — required; caller owns the TX
+ * @param {object} opts.transaction — required; the `t` handle from db.withTransaction(), caller owns the TX
  * @param {string} opts.orgId
  * @param {string} [opts.aggregateType]
  * @param {string} opts.aggregateId  — PK of the primary entity (keyId, subId, etc.)
@@ -64,7 +64,7 @@ async function publish(eventType, payload, opts) {
         throw new Error(`Unknown event type: ${eventType}`);
     }
     const { transaction, orgId, aggregateType, aggregateId, secretFields } = opts;
-    if (!transaction) throw new Error('publish() requires a Sequelize transaction');
+    if (!transaction) throw new Error('publish() requires a transaction');
     if (!orgId) throw new Error('publish() requires orgId');
     if (!aggregateId) throw new Error('publish() requires aggregateId');
 

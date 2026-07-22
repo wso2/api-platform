@@ -14,7 +14,7 @@
 -- specific language governing permissions and limitations
 -- under the License.
 
--- Schema for the PostgreSQL dialect -- kept in sync manually
+-- Schema for the SQLite dialect -- kept in sync manually
 -- with the other schema.*.sql files. See src/db/driver.js for the query
 -- layer that targets this schema.
 
@@ -28,11 +28,11 @@ CREATE TABLE IF NOT EXISTS dp_organizations (
     handle VARCHAR(255) NOT NULL UNIQUE,
     idp_ref_id VARCHAR(255) NOT NULL,
     cp_ref_id VARCHAR(255),
-    configuration JSONB NOT NULL,
+    configuration TEXT NOT NULL,
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Views table (organization-scoped grouping of APIs for gateway/portal visibility)
@@ -42,9 +42,9 @@ CREATE TABLE IF NOT EXISTS dp_views (
     handle VARCHAR(255) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_view_handle_org_uuid ON dp_views(handle, org_uuid);
@@ -54,15 +54,15 @@ CREATE INDEX IF NOT EXISTS idx_view_org_uuid ON dp_views(org_uuid);
 CREATE TABLE IF NOT EXISTS dp_organization_assets (
     uuid VARCHAR(40) PRIMARY KEY,
     file_name VARCHAR(255) NOT NULL,
-    file_content BYTEA NOT NULL,
+    file_content BLOB NOT NULL,
     file_type VARCHAR(20) NOT NULL,
     file_path VARCHAR(255) NOT NULL,
     org_uuid VARCHAR(40) NOT NULL,
     view_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION,
     -- CASCADE: an org asset is meaningless once its view is gone.
     FOREIGN KEY (view_uuid) REFERENCES dp_views(uuid) ON DELETE CASCADE
@@ -79,9 +79,9 @@ CREATE TABLE IF NOT EXISTS dp_labels (
     handle VARCHAR(255) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_label_handle_org_uuid ON dp_labels(handle, org_uuid);
@@ -93,9 +93,9 @@ CREATE TABLE IF NOT EXISTS dp_tags (
     org_uuid VARCHAR(40) NOT NULL,
     name VARCHAR(255) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tag_name_org_uuid ON dp_tags(name, org_uuid);
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS dp_view_label_mappings (
     view_uuid VARCHAR(40) NOT NULL,
     label_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (view_uuid) REFERENCES dp_views(uuid) ON DELETE CASCADE,
     FOREIGN KEY (label_uuid) REFERENCES dp_labels(uuid) ON DELETE CASCADE
 );
@@ -130,14 +130,14 @@ CREATE TABLE IF NOT EXISTS dp_api_metadata (
     business_owner_email VARCHAR(255),
     sandbox_url VARCHAR(255),
     production_url VARCHAR(255),
-    metadata_search JSONB,
+    metadata_search TEXT,
     handle VARCHAR(255) NOT NULL,
     -- Nullable: SET NULL keeps the API record if its owning org reference is cleared.
     org_uuid VARCHAR(40),
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE SET NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_api_metadata_name_version_org ON dp_api_metadata(name, version, org_uuid);
@@ -149,14 +149,14 @@ CREATE INDEX IF NOT EXISTS idx_api_metadata_status ON dp_api_metadata(status);
 CREATE TABLE IF NOT EXISTS dp_api_contents (
     uuid VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
-    file_content BYTEA NOT NULL,
+    file_content BLOB NOT NULL,
     type VARCHAR(64) NOT NULL,
     file_name VARCHAR(255) NOT NULL,
     lookup_key VARCHAR(255),
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE CASCADE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_api_content_api_type_file_name ON dp_api_contents(api_uuid, type, file_name);
@@ -168,7 +168,7 @@ CREATE TABLE IF NOT EXISTS dp_api_label_mappings (
     api_uuid VARCHAR(40) NOT NULL,
     label_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE CASCADE,
     FOREIGN KEY (label_uuid) REFERENCES dp_labels(uuid) ON DELETE CASCADE
 );
@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS dp_api_tag_mappings (
     api_uuid VARCHAR(40) NOT NULL,
     tag_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE CASCADE,
     FOREIGN KEY (tag_uuid) REFERENCES dp_tags(uuid) ON DELETE CASCADE
 );
@@ -199,9 +199,9 @@ CREATE TABLE IF NOT EXISTS dp_subscription_plans (
     -- Nullable: SET NULL keeps the plan record if its owning org reference is cleared.
     org_uuid VARCHAR(40),
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE SET NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_plan_org_handle ON dp_subscription_plans(org_uuid, handle);
@@ -217,9 +217,8 @@ CREATE TABLE IF NOT EXISTS dp_subscription_plan_limits (
     FOREIGN KEY (plan_uuid) REFERENCES dp_subscription_plans(uuid) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_dp_subscription_plan_limits_plan ON dp_subscription_plan_limits(plan_uuid);
--- Split into two filtered unique indexes because time_unit is nullable: a plain composite
--- unique index would let Postgres treat every NULL time_unit row as distinct (never colliding),
--- silently allowing duplicate NULL-time_unit limits. These two indexes make both branches explicit.
+-- Split into two filtered unique indexes because time_unit is nullable (see the
+-- postgres schema for the full rationale); SQLite supports partial indexes since 3.8.0.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_dp_subscription_plan_limits
     ON dp_subscription_plan_limits(plan_uuid, limit_type, time_amount, time_unit) WHERE time_unit IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_dp_subscription_plan_limits_null_unit
@@ -231,7 +230,7 @@ CREATE TABLE IF NOT EXISTS dp_api_subscription_plan_mappings (
     api_uuid VARCHAR(40) NOT NULL,
     plan_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE CASCADE,
     FOREIGN KEY (plan_uuid) REFERENCES dp_subscription_plans(uuid) ON DELETE CASCADE
 );
@@ -245,12 +244,12 @@ CREATE TABLE IF NOT EXISTS dp_key_managers (
     org_uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
-    enabled SMALLINT NOT NULL DEFAULT 1,
+    enabled INTEGER NOT NULL DEFAULT 1,
     token_endpoint VARCHAR(255) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_key_manager_org_handle ON dp_key_managers(org_uuid, handle);
@@ -263,9 +262,9 @@ CREATE TABLE IF NOT EXISTS dp_applications (
     display_name VARCHAR(255) NOT NULL,
     handle VARCHAR(255) NOT NULL,
     description VARCHAR(1023),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
 );
 CREATE INDEX IF NOT EXISTS idx_application_org_created_by ON dp_applications(org_uuid, created_by);
@@ -279,9 +278,9 @@ CREATE TABLE IF NOT EXISTS dp_app_key_mappings (
     as_client_id VARCHAR(255),
     type VARCHAR(20) NOT NULL DEFAULT 'PRODUCTION',
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (app_uuid) REFERENCES dp_applications(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (km_uuid) REFERENCES dp_key_managers(uuid) ON DELETE NO ACTION
 );
@@ -298,9 +297,9 @@ CREATE TABLE IF NOT EXISTS dp_subscriptions (
     org_uuid VARCHAR(40) NOT NULL,
     token VARCHAR(512),
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (plan_uuid) REFERENCES dp_subscription_plans(uuid) ON DELETE SET NULL,
     FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION,
@@ -324,13 +323,13 @@ CREATE TABLE IF NOT EXISTS dp_api_keys (
     handle VARCHAR(128) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
-    expires_at TIMESTAMPTZ,
+    expires_at DATETIME,
     created_by VARCHAR(255) NOT NULL,
     updated_by VARCHAR(255) NOT NULL,
-    revoked_at TIMESTAMPTZ,
+    revoked_at DATETIME,
     revoked_by VARCHAR(200),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (api_uuid) REFERENCES dp_api_metadata(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (subscription_uuid) REFERENCES dp_subscriptions(uuid) ON DELETE SET NULL,
     FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION,
@@ -349,7 +348,7 @@ CREATE TABLE IF NOT EXISTS dp_api_key_app_mappings (
     key_uuid VARCHAR(40) PRIMARY KEY,
     app_uuid VARCHAR(40) NOT NULL,
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (key_uuid) REFERENCES dp_api_keys(uuid) ON DELETE CASCADE,
     FOREIGN KEY (app_uuid) REFERENCES dp_applications(uuid) ON DELETE CASCADE
 );
@@ -363,15 +362,15 @@ CREATE TABLE IF NOT EXISTS dp_api_workflows (
     display_name VARCHAR(255) NOT NULL,
     description VARCHAR(1023) NOT NULL,
     handle VARCHAR(255) NOT NULL,
-    agent_prompt BYTEA NOT NULL,
+    agent_prompt BLOB NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'PUBLISHED',
-    file_content BYTEA,
+    file_content BLOB,
     content_type VARCHAR(255),
     agent_visibility VARCHAR(255) NOT NULL DEFAULT 'VISIBLE',
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION,
     FOREIGN KEY (view_uuid) REFERENCES dp_views(uuid) ON DELETE NO ACTION
 );
@@ -388,7 +387,7 @@ CREATE TABLE IF NOT EXISTS dp_audit (
     resource_type VARCHAR(50),
     org_uuid VARCHAR(40) NOT NULL,
     performed_by VARCHAR(255),
-    performed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    performed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_audit_org_uuid ON dp_audit(org_uuid);
@@ -400,8 +399,8 @@ CREATE TABLE IF NOT EXISTS dp_events (
     org_uuid VARCHAR(40) NOT NULL,
     aggregate_type VARCHAR(64) NOT NULL,
     aggregate_uuid VARCHAR(40) NOT NULL,
-    payload JSONB NOT NULL DEFAULT '{}',
-    occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    payload TEXT NOT NULL DEFAULT '{}',
+    occurred_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
     FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
 );
@@ -415,22 +414,22 @@ CREATE TABLE IF NOT EXISTS dp_event_deliveries (
     event_uuid VARCHAR(40) NOT NULL,
     subscriber_id VARCHAR(128) NOT NULL,
     target_url VARCHAR(1023) NOT NULL,
-    encrypted_fields JSON DEFAULT NULL,
+    encrypted_fields TEXT DEFAULT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
     last_http_status INTEGER,
     last_error VARCHAR(255),
-    last_attempt_at TIMESTAMPTZ,
-    delivered_at TIMESTAMPTZ,
+    last_attempt_at DATETIME,
+    delivered_at DATETIME,
     FOREIGN KEY (event_uuid) REFERENCES dp_events(uuid) ON DELETE NO ACTION
 );
 CREATE INDEX IF NOT EXISTS idx_event_delivery_event_uuid ON dp_event_deliveries(event_uuid);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_event_delivery_event_subscriber ON dp_event_deliveries(event_uuid, subscriber_id);
 
--- Sessions table, used by connect-pg-simple for server-side Express session storage.
+-- Sessions table, used by connect-session-sequelize for server-side Express session storage.
 CREATE TABLE IF NOT EXISTS sessions (
     sid VARCHAR(255) PRIMARY KEY,
-    sess JSON NOT NULL,
-    expire TIMESTAMPTZ NOT NULL
+    sess TEXT NOT NULL,
+    expire DATETIME NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_session_expire ON sessions(expire);
 
@@ -440,7 +439,7 @@ CREATE INDEX IF NOT EXISTS idx_session_expire ON sessions(expire);
 CREATE TABLE IF NOT EXISTS dp_user_idp_references (
     uuid VARCHAR(40) PRIMARY KEY,
     idp_id VARCHAR(255) NOT NULL UNIQUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- User-Organization mappings (live membership record -- both sides cascade on delete,
@@ -461,15 +460,15 @@ CREATE TABLE IF NOT EXISTS dp_webhook_subscribers (
     handle VARCHAR(255) NOT NULL,
     display_name VARCHAR(255) NOT NULL,
     target_url VARCHAR(1023) NOT NULL,
-    secret_enc BYTEA,
-    public_key BYTEA,
-    event_patterns JSONB DEFAULT '[]',
-    enabled SMALLINT NOT NULL DEFAULT 1,
+    secret_enc BLOB,
+    public_key BLOB,
+    event_patterns TEXT DEFAULT '[]',
+    enabled INTEGER NOT NULL DEFAULT 1,
     timeout_ms INTEGER NOT NULL DEFAULT 5000,
     created_by VARCHAR(255) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(255) NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (org_uuid) REFERENCES dp_organizations(uuid) ON DELETE NO ACTION
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_webhook_subscriber_org_handle ON dp_webhook_subscribers(org_uuid, handle);
