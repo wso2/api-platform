@@ -36,39 +36,46 @@ func NewTestSharedContext() *policy.SharedContext {
 
 // NewTestRequestContext creates a RequestContext with default test values.
 func NewTestRequestContext() *policy.RequestContext {
+	headers := policy.NewHeaders(map[string][]string{"content-type": {"application/json"}})
 	return &policy.RequestContext{
 		SharedContext: NewTestSharedContext(),
-		Headers:       policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
+		Headers:       headers,
 		Path:          "/api/v1/users/123",
 		Method:        "GET",
 		Authority:     "api.example.com",
 		Scheme:        "https",
+		Downstream:    &policy.DownstreamContext{Request: &policy.DownstreamRequest{Headers: policy.NewHeaders(headers.GetAll())}},
 	}
 }
 
 // NewTestRequestContextWithHeaders creates a RequestContext with custom headers.
 func NewTestRequestContextWithHeaders(headers map[string][]string) *policy.RequestContext {
+	wrapped := policy.NewHeaders(headers)
 	return &policy.RequestContext{
 		SharedContext: NewTestSharedContext(),
-		Headers:       policy.NewHeaders(headers),
+		Headers:       wrapped,
 		Path:          "/test/path",
 		Method:        "GET",
 		Authority:     "test.example.com",
 		Scheme:        "https",
+		Downstream:    &policy.DownstreamContext{Request: &policy.DownstreamRequest{Headers: policy.NewHeaders(wrapped.GetAll())}},
 	}
 }
 
 // NewTestResponseContext creates a ResponseContext with default test values.
 func NewTestResponseContext() *policy.ResponseContext {
 	reqCtx := NewTestRequestContext()
+	responseHeaders := policy.NewHeaders(map[string][]string{"content-type": {"application/json"}})
 	return &policy.ResponseContext{
 		SharedContext:   reqCtx.SharedContext,
 		RequestHeaders:  reqCtx.Headers,
 		RequestBody:     reqCtx.Body,
 		RequestPath:     reqCtx.Path,
 		RequestMethod:   reqCtx.Method,
-		ResponseHeaders: policy.NewHeaders(map[string][]string{"content-type": {"application/json"}}),
+		ResponseHeaders: responseHeaders,
 		ResponseStatus:  200,
+		Downstream:      &policy.DownstreamContext{Request: &policy.DownstreamRequest{Headers: policy.NewHeaders(reqCtx.Headers.GetAll())}},
+		Upstream:        &policy.UpstreamResponseContext{Response: &policy.UpstreamResponse{Headers: policy.NewHeaders(responseHeaders.GetAll())}},
 	}
 }
 

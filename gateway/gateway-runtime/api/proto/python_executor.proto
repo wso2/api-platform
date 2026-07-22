@@ -192,6 +192,44 @@ message StreamBody {
   uint64 index = 3;
 }
 
+// DownstreamRequest carries a snapshot of the request as received from the
+// downstream client, captured before any policy mutation.
+message DownstreamRequest {
+  Headers headers = 1;
+}
+
+// DownstreamContext identifies the downstream client and carries a snapshot of
+// the client request. Absent on older gateways — new policies must treat an
+// unset field as "not available" and fall back to legacy validation against
+// the mutable headers.
+message DownstreamContext {
+  DownstreamRequest request = 1;
+}
+
+// UpstreamRequestContext identifies the route's resolved upstream target during
+// the request phase. Absent on older gateways.
+message UpstreamRequestContext {
+  string name = 1;
+  string url = 2;
+  string base_path = 3;
+}
+
+// UpstreamResponse carries a snapshot of the upstream response headers,
+// captured before any policy mutation.
+message UpstreamResponse {
+  Headers headers = 1;
+}
+
+// UpstreamResponseContext identifies the route's resolved upstream target during
+// the response phase and carries a snapshot of the upstream response. Absent on
+// older gateways — see DownstreamContext for the backward-compat contract.
+message UpstreamResponseContext {
+  string name = 1;
+  string url = 2;
+  string base_path = 3;
+  UpstreamResponse response = 4;
+}
+
 message AuthContext {
   bool authenticated = 1;
   bool authorized = 2;
@@ -213,6 +251,8 @@ message RequestHeaderContext {
   string authority = 4;
   string scheme = 5;
   string vhost = 6;
+  DownstreamContext downstream = 7;
+  UpstreamRequestContext upstream = 8;
 }
 
 message RequestContext {
@@ -223,6 +263,8 @@ message RequestContext {
   string authority = 5;
   string scheme = 6;
   string vhost = 7;
+  DownstreamContext downstream = 8;
+  UpstreamRequestContext upstream = 9;
 }
 
 message ResponseHeaderContext {
@@ -232,6 +274,8 @@ message ResponseHeaderContext {
   string request_method = 4;
   Headers response_headers = 5;
   int32 response_status = 6;
+  DownstreamContext downstream = 7;
+  UpstreamResponseContext upstream = 8;
 }
 
 message ResponseContext {
@@ -242,6 +286,8 @@ message ResponseContext {
   Headers response_headers = 5;
   Body response_body = 6;
   int32 response_status = 7;
+  DownstreamContext downstream = 8;
+  UpstreamResponseContext upstream = 9;
 }
 
 message RequestStreamContext {
@@ -251,6 +297,8 @@ message RequestStreamContext {
   string authority = 4;
   string scheme = 5;
   string vhost = 6;
+  DownstreamContext downstream = 7;
+  UpstreamRequestContext upstream = 8;
 }
 
 message ResponseStreamContext {
@@ -260,6 +308,8 @@ message ResponseStreamContext {
   string request_method = 4;
   Headers response_headers = 5;
   int32 response_status = 6;
+  DownstreamContext downstream = 7;
+  UpstreamResponseContext upstream = 8;
 }
 
 message RequestHeadersPayload {

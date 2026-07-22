@@ -1,4 +1,4 @@
 # Python Executor base requirements
 grpcio>=1.59.0
 protobuf>=4.24.0
-apip-sdk-core~=0.1.0
+apip-sdk-core~=0.2.0
