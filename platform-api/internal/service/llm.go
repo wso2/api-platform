@@ -969,7 +969,11 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		m.Configuration.Upstream.Sandbox.Auth = defaultUpstreamAuthToNone(m.Configuration.Upstream.Sandbox.Auth)
 	}
 
-	if err := s.repo.Create(m); err != nil {
+	policyUUIDs, err := s.resolveCustomPolicyUUIDs(orgUUID, &m.Configuration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve custom policy usages: %w", err)
+	}
+	if err := s.repo.CreateWithCustomPolicyUsages(m, policyUUIDs); err != nil {
 		if isSQLiteUniqueConstraint(err) {
 			return nil, apperror.LLMProviderExists.New()
 		}
@@ -983,8 +987,6 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if created == nil {
 		return nil, apperror.LLMProviderNotFound.New()
 	}
-	s.refreshCustomPolicyUsages(created.UUID, orgUUID, &created.Configuration)
-
 	_ = s.auditRepo.Record("CREATE", created.UUID, "llm_provider", orgUUID, createdBy)
 
 	return s.toProviderAPI(created, tpl.ID)
@@ -1193,7 +1195,11 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		m.ReplaceAssociatedGateways = true
 	}
 
-	if err := s.repo.Update(m); err != nil {
+	policyUUIDs, err := s.resolveCustomPolicyUUIDs(orgUUID, &m.Configuration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve custom policy usages: %w", err)
+	}
+	if err := s.repo.UpdateWithCustomPolicyUsages(m, policyUUIDs); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, apperror.LLMProviderNotFound.New()
 		}
@@ -1223,8 +1229,6 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	if updated == nil {
 		return nil, apperror.LLMProviderNotFound.New()
 	}
-	s.refreshCustomPolicyUsages(updated.UUID, orgUUID, &updated.Configuration)
-
 	_ = s.auditRepo.Record("UPDATE", updated.UUID, "llm_provider", orgUUID, updatedBy)
 
 	return s.toProviderAPI(updated, tpl.ID)
@@ -1290,13 +1294,12 @@ func (s *LLMProviderService) Delete(orgUUID, handle, deletedBy string) error {
 	return nil
 }
 
-// refreshCustomPolicyUsages keeps the custom-policy usage registry in sync with
-// all policy locations supported by an LLM provider. Provider deletion needs no
-// explicit cleanup because usage rows reference the shared artifact registry
-// with ON DELETE CASCADE.
-func (s *LLMProviderService) refreshCustomPolicyUsages(providerUUID, orgUUID string, config *model.LLMProviderConfig) {
+// resolveCustomPolicyUUIDs resolves all custom policies referenced by an LLM
+// provider before persistence. Any lookup failure aborts the provider write, so
+// existing deletion guards remain intact.
+func (s *LLMProviderService) resolveCustomPolicyUUIDs(orgUUID string, config *model.LLMProviderConfig) ([]string, error) {
 	if s.customPolicyRepo == nil || config == nil {
-		return
+		return nil, nil
 	}
 
 	type policyRef struct{ name, version string }
@@ -1315,8 +1318,7 @@ func (s *LLMProviderService) refreshCustomPolicyUsages(providerUUID, orgUUID str
 	for ref := range refs {
 		policies, err := s.customPolicyRepo.GetCustomPoliciesByName(orgUUID, strings.ToLower(ref.name))
 		if err != nil {
-			s.slogger.Warn("Failed to lookup custom policy during LLM provider usage refresh", "name", ref.name, "version", ref.version, "providerUUID", providerUUID, "error", err)
-			continue
+			return nil, fmt.Errorf("lookup custom policy %q version %q: %w", ref.name, ref.version, err)
 		}
 		refMajor := strings.TrimPrefix(ref.version, "v")
 		if parsed, err := parseVersion(ref.version); err == nil {
@@ -1325,8 +1327,7 @@ func (s *LLMProviderService) refreshCustomPolicyUsages(providerUUID, orgUUID str
 		for _, policy := range policies {
 			parsed, err := parseVersion(policy.Version)
 			if err != nil {
-				s.slogger.Warn("Failed to parse stored custom policy version during LLM provider usage refresh", "name", policy.Name, "version", policy.Version, "error", err)
-				continue
+				return nil, fmt.Errorf("parse stored custom policy %q version %q: %w", policy.Name, policy.Version, err)
 			}
 			if strconv.Itoa(parsed.Major) == refMajor {
 				newSet[policy.UUID] = true
@@ -1334,30 +1335,11 @@ func (s *LLMProviderService) refreshCustomPolicyUsages(providerUUID, orgUUID str
 			}
 		}
 	}
-
-	currentUUIDs, err := s.customPolicyRepo.GetCustomPolicyUsagesByAPIUUID(providerUUID)
-	if err != nil {
-		s.slogger.Warn("Failed to fetch custom policy usages for LLM provider", "providerUUID", providerUUID, "error", err)
-		return
-	}
-	currentSet := make(map[string]bool, len(currentUUIDs))
-	for _, uuid := range currentUUIDs {
-		currentSet[uuid] = true
-	}
+	policyUUIDs := make([]string, 0, len(newSet))
 	for uuid := range newSet {
-		if !currentSet[uuid] {
-			if err := s.customPolicyRepo.InsertCustomPolicyUsage(uuid, providerUUID); err != nil {
-				s.slogger.Warn("Failed to insert custom policy usage for LLM provider", "policyUUID", uuid, "providerUUID", providerUUID, "error", err)
-			}
-		}
+		policyUUIDs = append(policyUUIDs, uuid)
 	}
-	for uuid := range currentSet {
-		if !newSet[uuid] {
-			if err := s.customPolicyRepo.DeleteCustomPolicyUsage(uuid, providerUUID); err != nil {
-				s.slogger.Warn("Failed to delete custom policy usage for LLM provider", "policyUUID", uuid, "providerUUID", providerUUID, "error", err)
-			}
-		}
-	}
+	return policyUUIDs, nil
 }
 
 // validateAdditionalProviders eagerly validates a proxy's additional providers

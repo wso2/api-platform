@@ -17,6 +17,7 @@
 package service
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"reflect"
@@ -29,38 +30,24 @@ import (
 
 type llmCustomPolicyRepo struct {
 	repository.CustomPolicyRepository
-	policies map[string][]*model.CustomPolicy
-	current  []string
-	inserted []string
-	deleted  []string
+	policies  map[string][]*model.CustomPolicy
+	lookupErr error
 }
 
 func (r *llmCustomPolicyRepo) GetCustomPoliciesByName(_ string, name string) ([]*model.CustomPolicy, error) {
+	if r.lookupErr != nil {
+		return nil, r.lookupErr
+	}
 	return r.policies[name], nil
 }
 
-func (r *llmCustomPolicyRepo) GetCustomPolicyUsagesByAPIUUID(_ string) ([]string, error) {
-	return r.current, nil
-}
-
-func (r *llmCustomPolicyRepo) InsertCustomPolicyUsage(policyUUID, _ string) error {
-	r.inserted = append(r.inserted, policyUUID)
-	return nil
-}
-
-func (r *llmCustomPolicyRepo) DeleteCustomPolicyUsage(policyUUID, _ string) error {
-	r.deleted = append(r.deleted, policyUUID)
-	return nil
-}
-
-func TestLLMProviderRefreshCustomPolicyUsages(t *testing.T) {
+func TestLLMProviderResolveCustomPolicyUUIDs(t *testing.T) {
 	repo := &llmCustomPolicyRepo{
 		policies: map[string][]*model.CustomPolicy{
 			"global-custom":    {{UUID: "global-v1", Version: "v1.2.0"}},
 			"operation-custom": {{UUID: "operation-v2", Version: "v2.0.1"}},
 			"llm-custom":       {{UUID: "llm-v3", Version: "v3.4.5"}},
 		},
-		current: []string{"global-v1", "removed-policy"},
 	}
 	service := &LLMProviderService{
 		customPolicyRepo: repo,
@@ -72,14 +59,33 @@ func TestLLMProviderRefreshCustomPolicyUsages(t *testing.T) {
 		Policies:          []model.LLMPolicy{{Name: "LLM-Custom", Version: "v3"}},
 	}
 
-	service.refreshCustomPolicyUsages("provider-uuid", "org-uuid", config)
-
-	sort.Strings(repo.inserted)
-	wantInserted := []string{"llm-v3", "operation-v2"}
-	if !reflect.DeepEqual(repo.inserted, wantInserted) {
-		t.Fatalf("inserted usages = %v, want %v", repo.inserted, wantInserted)
+	got, err := service.resolveCustomPolicyUUIDs("org-uuid", config)
+	if err != nil {
+		t.Fatalf("resolveCustomPolicyUUIDs() error = %v", err)
 	}
-	if !reflect.DeepEqual(repo.deleted, []string{"removed-policy"}) {
-		t.Fatalf("deleted usages = %v, want [removed-policy]", repo.deleted)
+
+	sort.Strings(got)
+	want := []string{"global-v1", "llm-v3", "operation-v2"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("resolved policy UUIDs = %v, want %v", got, want)
+	}
+}
+
+func TestLLMProviderResolveCustomPolicyUUIDsLookupFailure(t *testing.T) {
+	repo := &llmCustomPolicyRepo{lookupErr: errors.New("database unavailable")}
+	service := &LLMProviderService{
+		customPolicyRepo: repo,
+		slogger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	config := &model.LLMProviderConfig{
+		GlobalPolicies: []model.GlobalPolicy{{Name: "Global-Custom", Version: "v1"}},
+	}
+
+	got, err := service.resolveCustomPolicyUUIDs("org-uuid", config)
+	if err == nil {
+		t.Fatal("resolveCustomPolicyUUIDs() expected lookup error")
+	}
+	if got != nil {
+		t.Fatalf("resolved policy UUIDs = %v, want nil on lookup failure", got)
 	}
 }
