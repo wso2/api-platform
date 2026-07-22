@@ -152,7 +152,7 @@ controlplane_host = "<platform-api-host>"
 
 # Available gateway versions shown in the create-gateway version selector (JSON array string).
 # Each entry: version (helm chart minor), latestVersion (image/chart tag), channel ("STS" | "LTS").
-platform_gateway_versions = '[{"version":"1.2","latestVersion":"v1.2.0-alpha2","channel":"STS"}]'
+platform_gateway_versions = '[{"version":"1.2","latestVersion":"v1.2.0-beta","channel":"STS"}]'
 
 [ai_workspace.auth]
 # Set to "oidc" for production (Asgardeo or any OIDC-compliant IDP).

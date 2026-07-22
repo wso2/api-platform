@@ -22,13 +22,13 @@ Replace `${version}` with the API Platform Gateway release version you want to r
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway/v1.2.0-alpha2/wso2apip-api-gateway-1.2.0-alpha2.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway/v1.2.0-beta/wso2apip-api-gateway-1.2.0-beta.zip
 
 # Unzip the downloaded distribution.
-unzip wso2apip-api-gateway-1.2.0-alpha2.zip
+unzip wso2apip-api-gateway-1.2.0-beta.zip
 
 
-cd wso2apip-api-gateway-v1.2.0-alpha2/
+cd wso2apip-api-gateway-v1.2.0-beta/
 
 # One-time setup: provision the HTTPS listener certificate and api-platform.env.
 ./scripts/setup.sh

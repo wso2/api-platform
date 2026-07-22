@@ -23,14 +23,14 @@ Replace `${version}` with the API Platform AI Gateway release version you want t
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/ai-gateway/v1.2.0-alpha2/wso2apip-ai-gateway-1.2.0-alpha2.zip
+wget https://github.com/wso2/api-platform/releases/download/ai-gateway/v1.2.0-beta/wso2apip-ai-gateway-1.2.0-beta.zip
 
 # Unzip the downloaded distribution.
-unzip wso2apip-ai-gateway-1.2.0-alpha2.zip
+unzip wso2apip-ai-gateway-1.2.0-beta.zip
 
 
 # Start the complete stack
-cd wso2apip-ai-gateway-v1.2.0-alpha2/
+cd wso2apip-ai-gateway-v1.2.0-beta/
 docker compose -p ai-gateway up -d
 
 # Verify gateway controller admin endpoint is running
