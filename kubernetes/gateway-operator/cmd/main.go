@@ -38,7 +38,7 @@ import (
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
-	"github.com/go-logr/zapr"
+	"github.com/go-logr/logr"
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	apiv1alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
@@ -108,8 +108,11 @@ func main() {
 	}
 	defer zapLog.Sync()
 
-	// Set controller-runtime logger using zapr adapter
-	ctrl.SetLogger(zapr.NewLogger(zapLog))
+	// Set controller-runtime logger using a slog-backed handler
+	ctrl.SetLogger(logr.FromSlogHandler(logger.NewSlogHandler(logger.Config{
+		Level:  cfg.Logging.Level,
+		Format: cfg.Logging.Format,
+	})))
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will

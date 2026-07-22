@@ -19,6 +19,7 @@
 package logger
 
 import (
+	"log/slog"
 	"os"
 	"strings"
 
@@ -84,6 +85,30 @@ func NewDevelopmentLogger() (*zap.Logger, error) {
 	}
 
 	return logger, nil
+}
+
+// NewSlogHandler builds a slog.Handler honoring the configured level and
+// format, using slog's default output shape.
+func NewSlogHandler(cfg Config) slog.Handler {
+	opts := &slog.HandlerOptions{Level: parseSlogLevel(cfg.Level)}
+	if cfg.Format == "text" {
+		return slog.NewTextHandler(os.Stderr, opts)
+	}
+	return slog.NewJSONHandler(os.Stderr, opts)
+}
+
+// parseSlogLevel converts a log level string to slog.Level
+func parseSlogLevel(level string) slog.Level {
+	switch strings.ToLower(level) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 // parseLogLevel converts a log level string to zapcore.Level
