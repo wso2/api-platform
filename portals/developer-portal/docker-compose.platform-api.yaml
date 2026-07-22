@@ -28,7 +28,7 @@
 
 services:
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.12.0
+    image: ghcr.io/wso2/api-platform/platform-api:0.13.0-SNAPSHOT
     container_name: platform-api
     restart: unless-stopped
     # Mounts the single source-of-truth config shipped with the Platform API
