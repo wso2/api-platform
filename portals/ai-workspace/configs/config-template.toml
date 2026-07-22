@@ -156,7 +156,7 @@ controlplane_host = "localhost:9243"
 # Gateway versions offered in the create-gateway version selector (JSON array string).
 # Each entry: version (helm chart minor), latestVersion (image/chart tag, used in the
 # helm --version flag), channel ("STS" | "LTS"). The first entry is the default.
-platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]"
+platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-beta\",\"channel\":\"STS\"}]"
 
 
 
