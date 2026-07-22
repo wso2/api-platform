@@ -1943,3 +1943,90 @@ Feature: LLM Cost-Based Rate Limiting
     Then the response status code should be 200
     When I delete the LLM provider template "cbl-no-model-template"
     Then the response status code should be 200
+
+  @bedrock
+  Scenario: Bedrock Converse model is extracted from URL and cost is calculated
+    # apac.amazon.nova-micro-v1:0:
+    # input  = 10 × 3.7e-8  = 0.000000370
+    # output = 3  × 1.48e-7 = 0.000000444
+    # one request = 0.000000814
+    # budget = exactly two requests = 0.000001628
+    When I create this LLM provider template:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProviderTemplate
+      metadata:
+        name: cbl-bedrock-template
+      spec:
+        displayName: CBL Bedrock Template
+      """
+    Then the response status code should be 201
+
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: cbl-bedrock-provider
+      spec:
+        displayName: CBL Bedrock Provider
+        version: v1.0
+        context: /cbl-bedrock
+        template: cbl-bedrock-template
+        upstream:
+          url: http://mock-openapi:4010
+          auth:
+            type: api-key
+            header: Authorization
+            value: test-key
+        accessControl:
+          mode: allow_all
+        policies:
+          - name: llm-cost-based-ratelimit
+            version: v1
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+                params:
+                  budgetLimits:
+                    - amount: 0.000001628
+                      duration: "1h"
+          - name: llm-cost
+            version: v1
+            paths:
+              - path: /*
+                methods:
+                  - '*'
+      """
+    Then the response status code should be 201
+    And I wait for 2 seconds
+    And I wait for policy snapshot sync
+
+    Given I set header "Content-Type" to "application/json"
+
+    When I send a POST request to "http://localhost:8080/cbl-bedrock/model/apac.amazon.nova-micro-v1:0/converse" with body:
+      """
+      {"messages":[{"role":"user","content":[{"text":"Hello"}]}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-ratelimit-cost-limit-dollars" should exist
+    And the response header "x-ratelimit-cost-remaining-dollars" should exist
+
+    When I send a POST request to "http://localhost:8080/cbl-bedrock/model/apac.amazon.nova-micro-v1:0/converse" with body:
+      """
+      {"messages":[{"role":"user","content":[{"text":"Hello"}]}]}
+      """
+    Then the response status code should be 200
+
+    When I send a POST request to "http://localhost:8080/cbl-bedrock/model/apac.amazon.nova-micro-v1:0/converse" with body:
+      """
+      {"messages":[{"role":"user","content":[{"text":"Hello"}]}]}
+      """
+    Then the response status code should be 429
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the LLM provider "cbl-bedrock-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider template "cbl-bedrock-template"
+    Then the response status code should be 200
