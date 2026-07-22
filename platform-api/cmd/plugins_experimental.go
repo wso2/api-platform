@@ -29,6 +29,9 @@ import (
 	eventgateway "github.com/wso2/api-platform/platform-api/plugins/eventgateway"
 )
 
-func init() {
-	plugin.Register(eventgateway.New())
+// builtinPlugins returns the in-tree (internal-tier) plugins compiled into this
+// build. The experimental build includes eventgateway. No global registry — the
+// entry point passes these explicitly to the server.
+func builtinPlugins() []plugin.Plugin {
+	return []plugin.Plugin{eventgateway.New()}
 }

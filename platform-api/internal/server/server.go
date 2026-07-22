@@ -52,6 +52,7 @@ import (
 	internalvault "github.com/wso2/api-platform/platform-api/internal/vault"
 	"github.com/wso2/api-platform/platform-api/internal/webhook"
 	"github.com/wso2/api-platform/platform-api/internal/websocket"
+	"github.com/wso2/api-platform/platform-api/pdk"
 
 	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/common/eventhub"
@@ -72,6 +73,7 @@ type Server struct {
 	dispatcher     *service.EventDispatcher
 	eventHub       eventhub.EventHub
 	logger         *slog.Logger
+	plugins        []plugin.Plugin // internal plugins + wrapped external plugins
 }
 
 // validateAuthConfig enforces production auth requirements when demo mode is off.
@@ -94,8 +96,19 @@ func validateAuthConfig(cfg *config.Server) error {
 	return nil
 }
 
-// StartPlatformAPIServer creates a new server instance with all dependencies initialized
-func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, error) {
+// StartPlatformAPIServer creates a new server instance with all dependencies
+// initialized. It accepts extensions in two tiers:
+//
+//   - internalPlugins — in-tree modules (e.g. eventgateway) that receive the full
+//     plugin.Deps (raw repos, services, DB, event hub). Supplied by cmd/main.go
+//     via builtinPlugins().
+//   - externalPlugins — external/wrapper modules that receive only the
+//     capabilities in pdk.Deps. Supplied by the platform façade from WithPlugin.
+//
+// Both tiers run through one startup loop and are shut down the same way; they
+// differ only in the Deps each receives.
+func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
+	internalPlugins []plugin.Plugin, externalPlugins []pdk.Plugin) (*Server, error) {
 	if err := validateAuthConfig(cfg); err != nil {
 		slogger.Error("Invalid auth configuration for production mode", "error", err)
 		return nil, err
@@ -438,7 +451,35 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		IdentityService:       identityService,
 		DBEncryptionKey:       dbEncryptionKey,
 	}
-	for _, p := range plugin.All() {
+
+	// pdkDeps is the external tier's view: platform capabilities as public
+	// interfaces only, never raw repositories. Assigning the concrete services
+	// here works because they satisfy the pdk interfaces by shape (checked by the
+	// var _ pdk.X = (*Service)(nil) lines in internal/service).
+	pdkDeps := &pdk.Deps{
+		Gateways: gatewayService,
+		Config:   cfg,
+		Logger:   slogger,
+	}
+
+	// Combine both tiers into one list: internal plugins as-is, external plugins
+	// wrapped so they present the internal plugin.Plugin shape. The loop below is
+	// tier-agnostic; only the Deps each receives differs (see externalPlugin).
+	plugins := make([]plugin.Plugin, 0, len(internalPlugins)+len(externalPlugins))
+	plugins = append(plugins, internalPlugins...)
+	for _, ep := range externalPlugins {
+		if ep == nil {
+			continue
+		}
+		plugins = append(plugins, &externalPlugin{p: ep, pdkDeps: pdkDeps})
+	}
+
+	// Plugin-contributed middleware, collected in the loop below and spliced into
+	// the chain when it is built: preChain outermost (before CORS/auth), postChain
+	// innermost (after scope enforcement, before the mux).
+	var preChain, postChain []pdk.Middleware
+
+	for _, p := range plugins {
 		if err := p.Init(pluginDeps); err != nil {
 			return nil, fmt.Errorf("plugin %q failed to initialize: %w", p.Name(), err)
 		}
@@ -453,6 +494,27 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		}
 		p.RegisterRoutes(mux)
 		slogger.Info("Plugin initialized", "name", p.Name())
+		// Declared public paths are appended before the auth middleware is built
+		// below, so the skip-path list is complete when the chain is assembled.
+		if sp, ok := p.(plugin.AuthSkipPathProvider); ok {
+			cfg.Auth.SkipPaths = append(cfg.Auth.SkipPaths, sp.AuthSkipPaths()...)
+		}
+		// Collect plugin middleware into the two allowed positions. Same
+		// mirror-and-forward setup as AuthSkipPathProvider, so both tiers are
+		// handled here.
+		if mp, ok := p.(plugin.MiddlewareProvider); ok {
+			for _, m := range mp.Middleware() {
+				if m.Wrap == nil {
+					continue
+				}
+				switch m.Position {
+				case pdk.BeforePlatformChain:
+					preChain = append(preChain, m.Wrap)
+				case pdk.AfterPlatformChain:
+					postChain = append(postChain, m.Wrap)
+				}
+			}
+		}
 		// Wire plugin-owned repos/services into core services.
 		if ep, ok := p.(plugin.EventArtifactPlugin); ok {
 			internalGatewayService.SetEventArtifactRepos(ep.GetWebSubAPIRepo(), ep.GetWebBrokerAPIRepo())
@@ -488,8 +550,16 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	slogger.Info("Registered API routes successfully")
 
 	// Build the middleware chain that wraps the mux.
-	// Order: CORS → auth → scope enforcer → mux
+	// Order: [plugin preChain] → CORS → auth → org resolver → scope enforcer →
+	//        [plugin postChain] → mux
 	var chain []func(http.Handler) http.Handler
+
+	// Plugin "before" middleware — outermost, before CORS/auth. No authenticated
+	// identity is in the context here. pdk.Middleware shares
+	// its underlying type with the chain element type, so each is assignable.
+	for _, mw := range preChain {
+		chain = append(chain, mw)
+	}
 
 	// validateAuthConfig already rejected a missing/wildcard allowlist outside demo mode.
 	// Cross-origin access is disabled by default (empty AllowedOrigins fails closed in the
@@ -548,6 +618,13 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		Enabled:        cfg.EnableScopeValidation,
 	}))
 
+	// Plugin "after" middleware — innermost, after auth + scope enforcement, just
+	// before the mux. The authenticated org/identity are in the context here and
+	// must be read from it, never from request input (GO-AUTH-005).
+	for _, mw := range postChain {
+		chain = append(chain, mw)
+	}
+
 	slogger.Info("WebSocket manager initialized",
 		slog.Int("maxConnections", cfg.WebSocket.MaxConnections),
 		slog.Int("heartbeatTimeout", cfg.WebSocket.ConnectionTimeout),
@@ -567,6 +644,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		dispatcher:     dispatcher,
 		eventHub:       eventHub,
 		logger:         slogger,
+		plugins:        plugins,
 	}, nil
 }
 
@@ -833,7 +911,7 @@ func (s *Server) Start(port string, certDir string) error {
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			s.logger.Error("HTTP server shutdown error", "error", err)
 		}
-		for _, p := range plugin.All() {
+		for _, p := range s.plugins {
 			if err := p.Shutdown(shutdownCtx); err != nil {
 				s.logger.Error("Plugin shutdown error", "plugin", p.Name(), "error", err)
 			}
@@ -857,7 +935,6 @@ func (s *Server) Start(port string, certDir string) error {
 		return nil
 	}
 }
-
 
 // GetMux returns the raw ServeMux for testing purposes.
 func (s *Server) GetMux() *http.ServeMux {

@@ -43,7 +43,10 @@ func main() {
 	slogger := logger.NewLogger(logConfig)
 
 	slogger.Info("Initializing Platform API server...")
-	srv, err := server.StartPlatformAPIServer(cfg, slogger)
+	// Built-in (internal-tier) plugins are supplied here; the OSS entry point runs
+	// no external-tier (pdk) plugins — those come from wrapper modules via the
+	// platform façade.
+	srv, err := server.StartPlatformAPIServer(cfg, slogger, builtinPlugins(), nil)
 	if err != nil {
 		slogger.Error("Failed to create server", "error", err)
 		os.Exit(1)

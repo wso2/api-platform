@@ -36,6 +36,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/pdk"
 
 	"github.com/wso2/api-platform/common/eventhub"
 )
@@ -94,6 +95,25 @@ type Deps struct {
 
 	// DBEncryptionKey is the derived hex key used for encrypted DB columns.
 	DBEncryptionKey string
+}
+
+// AuthSkipPathProvider is an optional interface a Plugin may implement to declare
+// public (unauthenticated) path prefixes. The server appends the returned paths
+// to cfg.Auth.SkipPaths before the auth middleware is built. Keep prefixes narrow
+// and specific — this is an auth-bypass surface (GO-AUTH-004).
+//
+// This is the internal-tier counterpart to pdk.AuthSkipPathProvider; the server
+// wraps external plugins so both tiers are handled by the same hook.
+type AuthSkipPathProvider interface {
+	AuthSkipPaths() []string
+}
+
+// MiddlewareProvider is an optional interface a Plugin may implement to contribute
+// middleware to the server's request chain. It mirrors pdk.MiddlewareProvider and
+// reuses the pdk positioned-middleware type, so internal and external plugins share
+// one wiring path in the server (the externalPlugin wrapper forwards the pdk one).
+type MiddlewareProvider interface {
+	Middleware() []pdk.PositionedMiddleware
 }
 
 // HmacSecretServicer is the minimal interface for WebSub API HMAC secret
