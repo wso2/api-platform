@@ -137,16 +137,16 @@ type Vhosts struct {
 
 // APIYAMLData represents a basic spec section of the API deployment YAML
 type APIYAMLData struct {
-	DisplayName         string                   `yaml:"displayName"`
-	Version             string                   `yaml:"version"`
-	Context             string                   `yaml:"context"`
-	SubscriptionPlans   []string                 `yaml:"subscriptionPlans,omitempty"`
-	Vhosts              *Vhosts                  `yaml:"vhosts,omitempty"`
-	Upstream            *UpstreamYAML            `yaml:"upstream,omitempty"`
-	UpstreamDefinitions []UpstreamDefinitionYAML `yaml:"upstreamDefinitions,omitempty"`
-	Policies            []Policy                 `yaml:"policies,omitempty"`
-	Operations          []api.OperationRequest   `yaml:"operations,omitempty"`
-	Channels            []api.ChannelRequest     `yaml:"channels,omitempty"`
+	DisplayName         string                 `yaml:"displayName"`
+	Version             string                 `yaml:"version"`
+	Context             string                 `yaml:"context"`
+	SubscriptionPlans   []string               `yaml:"subscriptionPlans,omitempty"`
+	Vhosts              *Vhosts                `yaml:"vhosts,omitempty"`
+	Upstream            *UpstreamYAML          `yaml:"upstream,omitempty"`
+	UpstreamDefinitions []ReusableUpstreamYAML `yaml:"upstreamDefinitions,omitempty"`
+	Policies            []Policy               `yaml:"policies,omitempty"`
+	Operations          []api.OperationRequest `yaml:"operations,omitempty"`
+	Channels            []api.ChannelRequest   `yaml:"channels,omitempty"`
 }
 
 // UpstreamYAML represents the upstream configuration for API deployment YAML
@@ -161,21 +161,21 @@ type UpstreamTarget struct {
 	Ref string `yaml:"ref,omitempty"`
 }
 
-// UpstreamDefinitionYAML represents a reusable named upstream definition in the deployment YAML
-type UpstreamDefinitionYAML struct {
+// ReusableUpstreamYAML represents a named entry in the deployment YAML's upstreamDefinitions pool.
+type ReusableUpstreamYAML struct {
 	Name      string                `yaml:"name"`
 	BasePath  string                `yaml:"basePath,omitempty"`
 	Timeout   *UpstreamTimeoutYAML  `yaml:"timeout,omitempty"`
 	Upstreams []UpstreamBackendYAML `yaml:"upstreams"`
 }
 
-// UpstreamBackendYAML represents a single backend target within an upstream definition.
+// UpstreamBackendYAML represents a weighted backend target within a reusable upstream.
 type UpstreamBackendYAML struct {
 	URL    string `yaml:"url"`
 	Weight *int   `yaml:"weight,omitempty"`
 }
 
-// UpstreamTimeoutYAML represents the timeout configuration for an upstream definition.
+// UpstreamTimeoutYAML represents the timeout configuration for a reusable upstream.
 type UpstreamTimeoutYAML struct {
 	Connect string `yaml:"connect,omitempty"`
 }

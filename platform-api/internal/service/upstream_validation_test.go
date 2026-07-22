@@ -40,9 +40,9 @@ func validUpstream() api.Upstream {
 	return api.Upstream{Main: api.UpstreamDefinition{Url: &u}}
 }
 
-// newAPIOperationUpstreamTarget constructs the anonymous ref-only target type
+// newAPIOperationUpstreamRef constructs the anonymous ref-only type
 // generated for OperationUpstream.main and OperationUpstream.sandbox.
-func newAPIOperationUpstreamTarget(ref string) *struct {
+func newAPIOperationUpstreamRef(ref string) *struct {
 	Ref api.UpstreamReference `json:"ref" yaml:"ref"`
 } {
 	return &struct {
@@ -71,7 +71,7 @@ func TestValidateUpstreamRefs(t *testing.T) {
 			{Request: api.OperationRequest{
 				Method:   api.OperationRequestMethodGET,
 				Path:     "/x",
-				Upstream: &api.OperationUpstream{Main: newAPIOperationUpstreamTarget(ref)},
+				Upstream: &api.OperationUpstream{Main: newAPIOperationUpstreamRef(ref)},
 			}},
 		}
 	}
@@ -86,7 +86,7 @@ func TestValidateUpstreamRefs(t *testing.T) {
 			{Request: api.OperationRequest{
 				Method:   api.OperationRequestMethodGET,
 				Path:     "/x",
-				Upstream: &api.OperationUpstream{Sandbox: newAPIOperationUpstreamTarget("foo")},
+				Upstream: &api.OperationUpstream{Sandbox: newAPIOperationUpstreamRef("foo")},
 			}},
 		}
 		if err := s.validateUpstreamRefs(defs, validUp, ops); err != nil {
@@ -264,13 +264,13 @@ func TestValidateUpstreamRefs(t *testing.T) {
 	t.Run("per-op empty ref rejected", func(t *testing.T) {
 		defs := []api.ReusableUpstream{mkDef("svc", "http://b:8080")}
 		ops := []api.Operation{{Request: api.OperationRequest{Method: api.OperationRequestMethodGET, Path: "/x",
-			Upstream: &api.OperationUpstream{Main: newAPIOperationUpstreamTarget("")}}}}
+			Upstream: &api.OperationUpstream{Main: newAPIOperationUpstreamRef("")}}}}
 		wantErr(t, defs, &ops, "empty per-op ref")
 	})
 	t.Run("per-op ref name contract enforced", func(t *testing.T) {
 		defs := []api.ReusableUpstream{mkDef("svc", "http://b:8080")}
 		ops := []api.Operation{{Request: api.OperationRequest{Method: api.OperationRequestMethodGET, Path: "/x",
-			Upstream: &api.OperationUpstream{Main: newAPIOperationUpstreamTarget("bad ref!")}}}}
+			Upstream: &api.OperationUpstream{Main: newAPIOperationUpstreamRef("bad ref!")}}}}
 		err := s.validateUpstreamRefs(&defs, validUp, &ops)
 		if err == nil || !strings.Contains(err.Error(), "operations[0].upstream.main.ref") {
 			t.Fatalf("expected indexed per-op ref error, got %v", err)
@@ -405,7 +405,7 @@ func perOpCreateRequest() *api.CreateRESTAPIRequest {
 	ops := []api.Operation{
 		{Request: api.OperationRequest{
 			Method: api.OperationRequestMethodGET, Path: "/whoami",
-			Upstream: &api.OperationUpstream{Main: newAPIOperationUpstreamTarget("alt-backend")},
+			Upstream: &api.OperationUpstream{Main: newAPIOperationUpstreamRef("alt-backend")},
 		}},
 		{Request: api.OperationRequest{Method: api.OperationRequestMethodGET, Path: "/ping"}},
 	}
@@ -532,7 +532,7 @@ func TestAPIService_UpdateReplacesPoolAndRefsTogether(t *testing.T) {
 	newOps := []api.Operation{
 		{Request: api.OperationRequest{
 			Method: api.OperationRequestMethodGET, Path: "/whoami",
-			Upstream: &api.OperationUpstream{Main: newAPIOperationUpstreamTarget("new-backend")},
+			Upstream: &api.OperationUpstream{Main: newAPIOperationUpstreamRef("new-backend")},
 		}},
 		{Request: api.OperationRequest{Method: api.OperationRequestMethodGET, Path: "/ping"}},
 	}
