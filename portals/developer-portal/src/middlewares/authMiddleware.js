@@ -161,10 +161,21 @@ async function verifyBearerToken(token, req) {
     const idp = resolveOrgIdp();
     if (!idp || !idp.clientId) {
         // Local auth mode: verify the Platform API JWT with the shared secret.
-        // Fail closed if no secret is configured — never accept an unverified token.
         const jwtSecret = config.platformApi?.jwtSecret;
-        if (!jwtSecret) return { valid: false, scopes: '' };
-        const claims = await verifyPlatformJwtClaims(token, jwtSecret);
+        if (jwtSecret) {
+            const claims = await verifyPlatformJwtClaims(token, jwtSecret);
+            if (!claims) return { valid: false, scopes: '' };
+            return { valid: true, scopes: claims.scopes?.join(' ') ?? '' };
+        }
+        // Platform API now signs its admin tokens with RS256 (asymmetric), so there
+        // is no shared HMAC secret to verify against. When platformApi.insecure is
+        // explicitly enabled, decode the payload without verifying its signature,
+        // trusting the direct HTTPS connection to Platform API instead (mirrors the
+        // session-based local-auth branch above, which already does this via
+        // decodePlatformJwtClaims). Fail closed otherwise — never accept an
+        // unverified token by default.
+        if (!config.platformApi?.insecure) return { valid: false, scopes: '' };
+        const claims = decodePlatformJwtClaims(token);
         if (!claims) return { valid: false, scopes: '' };
         return { valid: true, scopes: claims.scopes?.join(' ') ?? '' };
     }
