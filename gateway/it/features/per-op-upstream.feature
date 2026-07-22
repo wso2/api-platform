@@ -1393,3 +1393,166 @@ Feature: Per-Operation Upstream
     Given I authenticate using basic auth as "admin"
     When I delete the API "api-level-url-stable-scheme-api-v1.0"
     Then the response should be successful
+
+  # ===== match-form operations (Gateway-API-style method + path.value + headers) =====
+  Scenario: Per-operation main ref on a match-form operation routes to the ref'd backend
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: per-op-match-basic-api-v1.0
+      spec:
+        displayName: Per-Op-Match-Basic-API
+        version: v1.0
+        context: /per-op-match-basic/$version
+        vhosts:
+          main: per-op-match-basic-main.local
+        upstreamDefinitions:
+          - name: match-main-svc
+            upstreams:
+              - url: http://sample-backend:9080
+            basePath: /match-main
+        upstream:
+          main:
+            url: http://sample-backend:9080/api-main
+        operations:
+          - match:
+              method: GET
+              path:
+                value: /users
+            upstream:
+              main:
+                ref: match-main-svc
+          - match:
+              method: GET
+              path:
+                value: /orders
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/per-op-match-basic/v1.0/users" to be ready with host "per-op-match-basic-main.local"
+
+    When I clear all headers
+    And I set request host to "per-op-match-basic-main.local"
+    And I send a GET request to "http://localhost:8080/per-op-match-basic/v1.0/users"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/match-main/users"
+
+    When I clear all headers
+    And I set request host to "per-op-match-basic-main.local"
+    And I send a GET request to "http://localhost:8080/per-op-match-basic/v1.0/orders"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/api-main/orders"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "per-op-match-basic-api-v1.0"
+    Then the response should be successful
+
+  Scenario: Header matcher on a match-form operation selects the per-operation ref
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: per-op-match-hdr-api-v1.0
+      spec:
+        displayName: Per-Op-Match-Hdr-API
+        version: v1.0
+        context: /per-op-match-hdr/$version
+        vhosts:
+          main: per-op-match-hdr-main.local
+        upstreamDefinitions:
+          - name: match-canary-svc
+            upstreams:
+              - url: http://sample-backend:9080
+            basePath: /canary
+        upstream:
+          main:
+            url: http://sample-backend:9080/api-main
+        operations:
+          - match:
+              method: GET
+              path:
+                value: /items
+              headers:
+                - name: x-variant
+                  value: canary
+            upstream:
+              main:
+                ref: match-canary-svc
+          - match:
+              method: GET
+              path:
+                value: /items
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/per-op-match-hdr/v1.0/items" to be ready with host "per-op-match-hdr-main.local"
+
+    When I clear all headers
+    And I set request host to "per-op-match-hdr-main.local"
+    And I set header "x-variant" to "canary"
+    And I send a GET request to "http://localhost:8080/per-op-match-hdr/v1.0/items"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/canary/items"
+
+    When I clear all headers
+    And I set request host to "per-op-match-hdr-main.local"
+    And I send a GET request to "http://localhost:8080/per-op-match-hdr/v1.0/items"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/api-main/items"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "per-op-match-hdr-api-v1.0"
+    Then the response should be successful
+
+  Scenario: Per-operation sandbox ref on a match-form operation routes sandbox traffic
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: per-op-match-sb-api-v1.0
+      spec:
+        displayName: Per-Op-Match-SB-API
+        version: v1.0
+        context: /per-op-match-sb/$version
+        vhosts:
+          main: per-op-match-sb-main.local
+          sandbox: per-op-match-sb-sandbox.local
+        upstreamDefinitions:
+          - name: match-sandbox-svc
+            upstreams:
+              - url: http://sample-backend:9080
+            basePath: /match-sandbox
+        upstream:
+          main:
+            url: http://sample-backend:9080/api-main
+        operations:
+          - match:
+              method: GET
+              path:
+                value: /users
+            upstream:
+              sandbox:
+                ref: match-sandbox-svc
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/per-op-match-sb/v1.0/users" to be ready with host "per-op-match-sb-sandbox.local"
+
+    When I clear all headers
+    And I set request host to "per-op-match-sb-sandbox.local"
+    And I send a GET request to "http://localhost:8080/per-op-match-sb/v1.0/users"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "path" should be "/match-sandbox/users"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "per-op-match-sb-api-v1.0"
+    Then the response should be successful
