@@ -161,10 +161,10 @@ async function verifyBearerToken(token, req) {
     const idp = resolveOrgIdp();
     if (config.auth.mode !== 'idp') {
         // Local auth mode: verify the Platform API JWT against its RS256 public key.
-        // Fail closed if no key is configured — never accept an unverified token.
-        const jwtPublicKey = config.auth.local?.jwtPublicKey;
-        if (!jwtPublicKey) return { valid: false, scopes: '' };
-        const claims = await verifyPlatformJwtClaims(token, jwtPublicKey);
+        // Fail closed if no key path is configured — never accept an unverified token.
+        const publicKeyPath = config.auth.local?.publicKeyPath;
+        if (!publicKeyPath) return { valid: false, scopes: '' };
+        const claims = await verifyPlatformJwtClaims(token, publicKeyPath);
         if (!claims) return { valid: false, scopes: '' };
         return { valid: true, scopes: claims.scopes?.join(' ') ?? '' };
     }

@@ -144,7 +144,7 @@ See `configs/config-platform-api-template.toml` for the complete scope list used
 
 ### Session persistence and scripted access
 
-`auth.jwt.private_key`/`public_key` are **mandatory**: the Platform API requires the RS256 keypair at startup and never generates one — it fails to start if either is missing. `scripts/setup.sh` provisions the pair into `resources/keys/`. The Platform API signs with the private key; the devportal is given only the public half (`auth.local.jwt_public_key`) so it can verify Platform API-issued JWTs locally without a network round-trip (and so sessions survive restarts):
+`auth.jwt.private_key`/`public_key` are **mandatory**: the Platform API requires the RS256 keypair at startup and never generates one — it fails to start if either is missing. `scripts/setup.sh` provisions the pair into `resources/keys/`. The Platform API signs with the private key; the devportal is pointed at only the public half via `auth.local.public_key_path` so it can verify Platform API-issued JWTs locally without a network round-trip (and so sessions survive restarts):
 
 ```bash
 # Generated once by scripts/setup.sh — PEM files, not env vars (a multi-line PEM
@@ -162,7 +162,7 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:3000/api/v0.9/organizations
 ```
 
-The token is verified locally by the Developer Portal against the Platform API's RS256 public key (`auth.local.jwt_public_key`), with no extra call to the Platform API per request.
+The token is verified locally by the Developer Portal against the Platform API's RS256 public key (`auth.local.public_key_path`), with no extra call to the Platform API per request.
 
 > **Note:** Local auth is for development only. For production, set `auth.mode = "idp"` and configure the OIDC identity provider under `[developer_portal.auth.idp]`.
 

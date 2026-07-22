@@ -88,11 +88,10 @@ session_secret = '{{ env "APIP_DP_SECURITY_SESSION_SECRET" }}'
 # The upstream Platform API. Used for local auth credential validation when
 # auth.mode = "local".
 platform_api_url = '{{ env "APIP_DP_AUTH_LOCAL_PLATFORM_API_URL" "https://platform-api:9243" }}'
-# The Platform API's RS256 public key — the matching half of its
-# [platform_api.auth.jwt].private_key. A PEM is multi-line and cannot survive an
-# env file, so the *path* is the env-overridable part and the PEM itself is read
-# from disk: scripts/setup.sh generates the keypair and docker-compose.yaml mounts
-# it at /etc/devportal/keys (on the {{ file }} allowlist). `npm run start:local`
-# overrides the path to the host-side copy in resources/keys.
-jwt_public_key   = '{{ file (env "APIP_DP_AUTH_LOCAL_JWT_PUBLIC_KEY_FILE" "/etc/devportal/keys/jwt_public.pem") }}'
+# Filesystem path to the Platform API's RS256 public key PEM — the matching half
+# of its [platform_api.auth.jwt].private_key. scripts/setup.sh generates the
+# keypair and docker-compose.yaml mounts it at /etc/devportal/keys; the devportal
+# reads this file to verify Platform API-issued tokens. `npm run start:local`
+# points it at the host-side copy in resources/keys.
+public_key_path  = '{{ env "APIP_DP_AUTH_LOCAL_PUBLIC_KEY_PATH" "/etc/devportal/keys/jwt_public.pem" }}'
 tls_skip_verify  = '{{ env "APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'

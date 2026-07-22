@@ -15,6 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const fs = require('fs').promises;
 const { jwtVerify, decodeJwt, importSPKI } = require('jose');
 const constants = require('./constants');
 
@@ -25,6 +26,21 @@ function toClaims(payload) {
     };
 }
 
+// Imported public keys cached by path — verification is on the hot path (every
+// bearer request), so the PEM file is read and parsed once, not per request. Only
+// successful imports are cached; a read/parse failure is left uncached so a later
+// request retries (e.g. once the key file is provisioned).
+const publicKeyCache = new Map();
+
+async function importPublicKeyFromPath(publicKeyPath) {
+    const cached = publicKeyCache.get(publicKeyPath);
+    if (cached) return cached;
+    const pem = await fs.readFile(publicKeyPath, 'utf8');
+    const key = await importSPKI(pem, constants.JWT_ASYMMETRIC_ALGORITHMS[0]);
+    publicKeyCache.set(publicKeyPath, key);
+    return key;
+}
+
 /**
  * Verify a Platform API JWT against the Platform API's RSA public key.
  *
@@ -32,15 +48,16 @@ function toClaims(payload) {
  * ([platform_api.auth.jwt].private_key) and rejects symmetric ("HS*") and
  * unsigned ("none") tokens outright, so verification here is pinned to the same
  * asymmetric allowlist — the public key must never be accepted as an HMAC
- * secret. `publicKeyPem` is the SPKI PEM matching that keypair
- * ([platform_api.auth.jwt].public_key). Returns the payload spread together
- * with a parsed `scopes` array, or null if verification fails.
+ * secret. `publicKeyPath` is the filesystem path to the SPKI PEM matching that
+ * keypair ([platform_api.auth.jwt].public_key); the file is read once and cached.
+ * Returns the payload spread together with a parsed `scopes` array, or null if
+ * the key cannot be read or verification fails.
  *
  * Use this to authenticate a request-supplied token.
  */
-async function verifyPlatformJwtClaims(token, publicKeyPem) {
+async function verifyPlatformJwtClaims(token, publicKeyPath) {
     try {
-        const key = await importSPKI(publicKeyPem, constants.JWT_ASYMMETRIC_ALGORITHMS[0]);
+        const key = await importPublicKeyFromPath(publicKeyPath);
         const { payload } = await jwtVerify(token, key, {
             algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS,
         });

@@ -51,6 +51,6 @@ auto_create_subscription_plans = true
 # both DB variants; tls_skip_verify accepts its self-signed cert inside the test network.
 platform_api_url = "https://platform-api:9243"
 tls_skip_verify = true
-# Public half of the RS256 keypair `make ensure-certs` generates — the same file
-# platform-api reads as its auth.jwt.private_key's counterpart.
-jwt_public_key = '{{ file "/etc/devportal/keys/jwt_public.pem" }}'
+# Path to the public half of the RS256 keypair `make ensure-certs` generates —
+# the same file platform-api reads as its auth.jwt.private_key's counterpart.
+public_key_path = "/etc/devportal/keys/jwt_public.pem"

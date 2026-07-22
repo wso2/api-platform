@@ -141,7 +141,7 @@ Use this for active development, custom IdP configuration, or when you prefer to
 
 ### 2. Use `npm run start:local`, not `npm start`
 
-`configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `auth.local.platform_api_url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off, `auth.local.platform_api_url` pointed at `localhost`, and `auth.local.jwt_public_key` read from the host-side `resources/keys/` that `scripts/setup.sh` writes rather than the container mount path (see [Local auth](#local-auth) if you're running the Platform API sidecar).
+`configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `auth.local.platform_api_url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off, `auth.local.platform_api_url` pointed at `localhost`, and `auth.local.public_key_path` pointed at the host-side `resources/keys/` that `scripts/setup.sh` writes rather than the container mount path (see [Local auth](#local-auth) if you're running the Platform API sidecar).
 
 ### 3. Configure the Identity Provider (optional)
 
@@ -246,7 +246,7 @@ The portal config (or `APIP_DP_AUTH_LOCAL_*` env vars) must point to the Platfor
 ```toml
 [developer_portal.auth.local]
 platform_api_url = "https://localhost:9243"  # env: APIP_DP_AUTH_LOCAL_PLATFORM_API_URL
-jwt_public_key = '{{ file "/etc/devportal/keys/jwt_public.pem" }}'  # PEM (SPKI) — the Platform API's auth.jwt.public_key
+public_key_path = "/etc/devportal/keys/jwt_public.pem"  # path to the Platform API's auth.jwt.public_key PEM — env: APIP_DP_AUTH_LOCAL_PUBLIC_KEY_PATH
 tls_skip_verify = true                    # Platform API uses a self-signed cert
 ```
 

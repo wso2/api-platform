@@ -65,7 +65,7 @@ When `auth.mode` is `"local"`, the portal uses a built-in login form and authent
 
 Requirements:
 - `auth.local.platform_api_url` must be set (e.g. `https://platform-api:9243`)
-- `auth.local.jwt_public_key` must hold the Platform API's RS256 public key (PEM/SPKI) — the counterpart to its `auth.jwt.private_key`. Bearer-token requests fail closed without it.
+- `auth.local.public_key_path` must point to the Platform API's RS256 public key PEM (SPKI) — the counterpart to its `auth.jwt.private_key`. Bearer-token requests fail closed without it.
 - Users and passwords are managed in the Platform API's config
 
 This mode is intended for development and local testing only.

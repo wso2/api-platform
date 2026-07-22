@@ -98,11 +98,18 @@ value = ""
 mode = "local"          # local | idp
 role_validation = false # Enforce per-operation role validation
 
+# JWT claim name mappings — which token claim carries each field.
+# Dot-notation supported for nested claims (e.g. "realm_access.roles").
+[developer_portal.auth.claim_mappings]
+organization = "org_name"   # claim carrying the org ID
+roles = "roles"             # claim carrying the user's roles
+groups = "groups"
+
 # Local auth backend (the Platform API control plane) — used when auth.mode =
 # "local". Leave platform_api_url empty to disable local auth entirely.
 [developer_portal.auth.local]
 platform_api_url = ""
-jwt_public_key = ""     # PEM (SPKI) — the Platform API's RS256 JWT public key
+public_key_path = ""    # path to the Platform API's RS256 public key PEM
 tls_skip_verify = false
 
 # Identity provider (OAuth2 / OIDC) — used when auth.mode = "idp".
@@ -125,14 +132,6 @@ jwks_url = "https://localhost:9443/oauth2/jwks"
 token_refresh_timeout_ms = 10000
 silent_sso = true      # Enable silent SSO
 org_callback = false   # Redirect to the org's own landing page after login
-
-# JWT claim name mappings — which token claim carries each field. Consulted only
-# in idp mode; local mode reads scopes straight from the Platform API token.
-# Dot-notation supported for nested claims (e.g. "realm_access.roles").
-[developer_portal.auth.idp.claim_mappings]
-organization = "org_name"   # claim carrying the org ID
-roles = "roles"             # claim carrying the user's roles
-groups = "groups"
 
 # Maps IDP role names to devportal's internal roles.
 [developer_portal.auth.idp.roles]

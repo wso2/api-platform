@@ -38,11 +38,11 @@ mode = "local"
 
 [developer_portal.auth.local]
 # platform-api signs its tokens with RS256; the devportal verifies them against
-# the public half of that keypair, bind-mounted read-only at /etc/devportal/keys
-# (on the {{ file }} allowlist). Only jwt_public.pem is exposed here — the
-# private key stays with platform-api.
+# the public half of that keypair, bind-mounted read-only at /etc/devportal/keys.
+# Only jwt_public.pem is exposed here (the private key stays with platform-api);
+# the devportal reads it from that path.
 platform_api_url = '{{ env "APIP_DP_AUTH_LOCAL_PLATFORM_API_URL" "https://platform-api:9243" }}'
-jwt_public_key   = '{{ file (env "APIP_DP_AUTH_LOCAL_JWT_PUBLIC_KEY_FILE" "/etc/devportal/keys/jwt_public.pem") }}'
+public_key_path  = '{{ env "APIP_DP_AUTH_LOCAL_PUBLIC_KEY_PATH" "/etc/devportal/keys/jwt_public.pem" }}'
 # platform-api's cert is self-signed (platform-api-certgen).
 tls_skip_verify  = '{{ env "APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'
 

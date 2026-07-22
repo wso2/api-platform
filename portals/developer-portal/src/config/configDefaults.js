@@ -77,11 +77,21 @@ const DEFAULTS = {
         mode: 'local',   // local | idp
         // Enforce per-operation role validation.
         roleValidation: false,   // was: advanced.disabledRoleValidation, inverted
+        // JWT claim name mappings — which token claim carries each field.
+        // Dot-notation supported for nested claims (e.g. "realm_access.roles").
+        claimMappings: {
+            organization: 'org_name',   // claim carrying the org ID
+            roles: 'roles',             // claim carrying the user's roles
+            groups: 'groups',
+        },
         // Local auth backend (the Platform API control plane) — used when
         // mode = "local". Validates username/password and verifies its JWTs.
         local: {
             platformApiUrl: '',
-            jwtPublicKey: '',
+            // Filesystem path to the Platform API's RS256 public key PEM
+            // ([platform_api.auth.jwt].public_key) — the devportal reads this file
+            // to verify Platform API-issued tokens.
+            publicKeyPath: '',
             tlsSkipVerify: false,
         },
         // OIDC identity provider — used when mode = "idp".
@@ -104,15 +114,6 @@ const DEFAULTS = {
             tokenRefreshTimeoutMs: 10000,
             silentSso: true,     // was: advanced.disableSilentSSO, inverted
             orgCallback: false,  // was: advanced.disableOrgCallback, inverted
-            // JWT claim name mappings — which token claim carries each field.
-            // Dot-notation supported for nested claims. Consulted only in idp mode
-            // (passportConfig.js's OIDC verify callback); local mode reads scopes
-            // straight from the Platform API token's `scope` claim.
-            claimMappings: {
-                organization: 'org_name',   // claim carrying the org ID
-                roles: 'roles',             // claim carrying the user's roles
-                groups: 'groups',
-            },
             roles: {
                 admin: 'admin',
                 subscriber: 'Internal/subscriber',
