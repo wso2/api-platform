@@ -78,6 +78,12 @@ name     = '{{ env "APIP_DP_DATABASE_NAME" "devportal" }}'
 user     = '{{ env "APIP_DP_DATABASE_USER" "postgres" }}'
 password = '{{ env "APIP_DP_DATABASE_PASSWORD" "" }}'
 
+[developer_portal.security]
+# Required — devportal fails closed at startup if either doesn't resolve to a
+# 64-char hex string. Generate with: openssl rand -hex 32
+encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTION_KEY" }}'
+session_secret = '{{ env "APIP_DP_SECURITY_SESSION_SECRET" }}'
+
 [developer_portal.auth.local]
 # The upstream Platform API. Used for local auth credential validation when
 # auth.mode = "local".
@@ -90,9 +96,3 @@ platform_api_url = '{{ env "APIP_DP_AUTH_LOCAL_PLATFORM_API_URL" "https://platfo
 # overrides the path to the host-side copy in resources/keys.
 jwt_public_key   = '{{ file (env "APIP_DP_AUTH_LOCAL_JWT_PUBLIC_KEY_FILE" "/etc/devportal/keys/jwt_public.pem") }}'
 tls_skip_verify  = '{{ env "APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'
-
-[developer_portal.security]
-# Required — devportal fails closed at startup if either doesn't resolve to a
-# 64-char hex string. Generate with: openssl rand -hex 32
-encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTION_KEY" }}'
-session_secret = '{{ env "APIP_DP_SECURITY_SESSION_SECRET" }}'

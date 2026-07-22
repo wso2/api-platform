@@ -67,12 +67,12 @@ function configurePassport(SERVER_ID) {
             const decodedAccessToken = safeDecodeJwt(accessToken);
             const firstName = decodedJWT['given_name'] || decodedJWT['nickname'];
             const lastName = decodedJWT['family_name'];
-            const organizationId = getNestedClaim(decodedJWT, config.auth.claimMappings.organization) ?? '';
-            const rawRoles = getNestedClaim(decodedJWT, config.auth.claimMappings.roles) ?? '';
+            const organizationId = getNestedClaim(decodedJWT, config.auth.idp.claimMappings.organization) ?? '';
+            const rawRoles = getNestedClaim(decodedJWT, config.auth.idp.claimMappings.roles) ?? '';
             const roles = Array.isArray(rawRoles)
                 ? rawRoles
                 : String(rawRoles).split(/[\s,]+/).filter(Boolean);
-            const rawGroups = getNestedClaim(decodedJWT, config.auth.claimMappings.groups) ?? '';
+            const rawGroups = getNestedClaim(decodedJWT, config.auth.idp.claimMappings.groups) ?? '';
             const groups = Array.isArray(rawGroups)
                 ? rawGroups
                 : String(rawGroups).split(/[\s,]+/).filter(Boolean);

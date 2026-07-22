@@ -69,19 +69,20 @@ const DEFAULTS = {
             value: '',
         },
     },
-    // Authentication: a mode gate, a shared claim_mappings table, and the idp table.
+    // Authentication: a mode gate plus the two backends it selects between —
+    // local (default) and idp.
     auth: {
         // "local" — username/password validated against the Platform API control
         // plane (auth.local below). "idp" — external OIDC IDP (auth.idp below).
         mode: 'local',   // local | idp
         // Enforce per-operation role validation.
         roleValidation: false,   // was: advanced.disabledRoleValidation, inverted
-        // JWT claim name mappings — which token claim carries each field.
-        // Dot-notation supported for nested claims.
-        claimMappings: {
-            organization: 'org_name',   // claim carrying the org ID
-            roles: 'roles',             // claim carrying the user's roles
-            groups: 'groups',
+        // Local auth backend (the Platform API control plane) — used when
+        // mode = "local". Validates username/password and verifies its JWTs.
+        local: {
+            platformApiUrl: '',
+            jwtPublicKey: '',
+            tlsSkipVerify: false,
         },
         // OIDC identity provider — used when mode = "idp".
         idp: {
@@ -103,6 +104,15 @@ const DEFAULTS = {
             tokenRefreshTimeoutMs: 10000,
             silentSso: true,     // was: advanced.disableSilentSSO, inverted
             orgCallback: false,  // was: advanced.disableOrgCallback, inverted
+            // JWT claim name mappings — which token claim carries each field.
+            // Dot-notation supported for nested claims. Consulted only in idp mode
+            // (passportConfig.js's OIDC verify callback); local mode reads scopes
+            // straight from the Platform API token's `scope` claim.
+            claimMappings: {
+                organization: 'org_name',   // claim carrying the org ID
+                roles: 'roles',             // claim carrying the user's roles
+                groups: 'groups',
+            },
             roles: {
                 admin: 'admin',
                 subscriber: 'Internal/subscriber',
@@ -119,13 +129,6 @@ const DEFAULTS = {
                 enterprise: 'EnterpriseIDP',
                 email: 'LOCAL',
             },
-        },
-        // Local auth backend (the Platform API control plane) — used when
-        // mode = "local". Validates username/password and verifies its JWTs.
-        local: {
-            platformApiUrl: '',
-            jwtPublicKey: '',
-            tlsSkipVerify: false,
         },
     },
     // Deployer-supplied ADDITIONS to the fixed system page-access lists — merged on top
