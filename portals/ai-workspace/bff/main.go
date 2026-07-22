@@ -91,6 +91,12 @@ func main() {
 	// The container reads its mounted config.toml, so -config is only needed to run
 	// the BFF outside one (see `make bff-run`).
 	configFile := flag.String("config", config.DefaultConfigFile, "path to config.toml")
+	// The shipped config.toml has no {{ env }} token for static_dir — the container
+	// always serves the SPA baked in at /app, so there's nothing for an operator to
+	// override. `make bff-run` is the one caller that needs a different directory
+	// (the locally-built ../dist), so it's a dev-only CLI flag rather than a config
+	// key, keeping the shipped config free of a token no deployment ever sets.
+	staticDir := flag.String("static-dir", "", "override the directory serving the built SPA (local dev only, e.g. `make bff-run`)")
 	flag.Parse()
 
 	cfg, err := config.Load(*configFile)
@@ -98,6 +104,9 @@ func main() {
 		slog.SetDefault(logger.NewLogger(logger.Config{Level: "info", Format: "text"}))
 		slog.Error("configuration error", "err", err)
 		os.Exit(1)
+	}
+	if *staticDir != "" {
+		cfg.Server.StaticDir = *staticDir
 	}
 	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.Logging.Level, Format: cfg.Logging.Format}))
 

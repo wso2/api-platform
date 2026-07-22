@@ -13,10 +13,6 @@ domain = '{{ env "APIP_AIW_DOMAIN" "localhost:5380" }}'
 default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
 
 
-[ai_workspace.server]
-
-static_dir = '{{ env "APIP_AIW_SERVER_STATIC_DIR" "/app" }}'
-
 [ai_workspace.server.https]
 
 enabled   = '{{ env "APIP_AIW_SERVER_HTTPS_ENABLED" "true" }}'

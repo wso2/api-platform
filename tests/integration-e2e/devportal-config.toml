@@ -46,7 +46,7 @@ auto_create_subscription_plans = false
 # verifying its signature, trusting the direct HTTPS connection (insecure=true)
 # instead — see extractPlatformJwtClaims in src/utils/platformJwt.js.
 base_url   = '{{ env "APIP_DP_PLATFORMAPI_BASEURL" "https://platform-api:9243" }}'
-jwt_secret = '{{ env "APIP_DP_PLATFORMAPI_JWTSECRET" }}'
+jwt_secret = '{{ env "APIP_DP_PLATFORMAPI_JWTSECRET" "" }}'
 insecure   = true
 
 [security]

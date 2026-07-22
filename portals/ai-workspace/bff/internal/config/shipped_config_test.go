@@ -73,14 +73,16 @@ func TestShippedConfig_QuickstartLoadsWithNoEnv(t *testing.T) {
 // `make bff-run` loads this same file and points the container-shaped defaults at the
 // developer's machine, purely through the {{ env }} tokens in it. A token is the only
 // way an environment variable reaches a key, so dropping one of these keys from
-// config.toml would silently strip the override and leave the BFF on :5380 serving
-// /app. This test pins the Makefile's contract with the file.
+// config.toml would silently strip the override and leave the BFF on :5380. This test
+// pins the Makefile's contract with the file. static_dir is NOT among these: the
+// shipped config has no token for it (the container always serves /app), so
+// `make bff-run` retargets it with the -static-dir CLI flag in main.go instead —
+// outside config.Load, and so outside this test.
 func TestShippedConfig_MakeBffRunOverrides(t *testing.T) {
 	// Exactly the variables the bff-run target sets.
 	t.Setenv("APIP_AIW_CONTROL_PLANE_URL", "https://localhost:9243")
 	t.Setenv("APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY", "true")
 	t.Setenv("APIP_AIW_SERVER_HTTPS_PORT", "8081")
-	t.Setenv("APIP_AIW_SERVER_STATIC_DIR", "../dist")
 	t.Setenv("APIP_AIW_LOGGING_LEVEL", "debug")
 
 	cfg, err := Load(quickstartConfig)
@@ -90,7 +92,6 @@ func TestShippedConfig_MakeBffRunOverrides(t *testing.T) {
 
 	for _, tc := range []struct{ name, got, want string }{
 		{"Addr", cfg.Addr(), ":8081"},
-		{"StaticDir", cfg.Server.StaticDir, "../dist"},
 		{"ControlPlane.URL", cfg.ControlPlane.URL, "https://localhost:9243"},
 		{"LogLevel", cfg.Logging.Level, "debug"},
 	} {

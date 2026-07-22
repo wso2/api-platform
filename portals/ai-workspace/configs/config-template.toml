@@ -81,10 +81,11 @@ default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
 # All keys are optional: the value in each token's default position is the built-in
 # default.
 # ---------------------------------------------------------------------------
-[ai_workspace.server]
 
-# Directory holding the built SPA (index.html + assets).
-static_dir = '{{ env "APIP_AIW_SERVER_STATIC_DIR" "/app" }}'
+# Note: the directory serving the built SPA (index.html + assets) is not
+# configurable here — the container always serves the copy baked in at /app.
+# Local dev (`make bff-run`) points the BFF at a different build via the
+# -static-dir CLI flag instead, since no deployment ever needs to override it.
 
 # The single listener follows the platform-wide [server.https] shape. The listener
 # always binds all interfaces (there is no host to configure), and the container

@@ -63,9 +63,8 @@ bff-run: ## Run the BFF locally (proxies to CONTROL_PLANE_URL; pair with `make r
 		APIP_AIW_SERVER_HTTPS_CERT_FILE=../resources/certificates/cert.pem \
 		APIP_AIW_SERVER_HTTPS_KEY_FILE=../resources/certificates/key.pem \
 		APIP_AIW_SERVER_HTTPS_PORT=$(BFF_DEV_PORT) \
-		APIP_AIW_SERVER_STATIC_DIR=../dist \
 		APIP_AIW_LOGGING_LEVEL=debug \
-		go run . -config ../configs/config.toml
+		go run . -config ../configs/config.toml -static-dir ../dist
 
 bff-test: ## Run BFF unit tests
 	cd $(BFF_DIR) && GOWORK=off go test ./...
