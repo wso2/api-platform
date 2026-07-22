@@ -107,12 +107,13 @@ func (h *AuthLoginHandler) Login(w http.ResponseWriter, r *http.Request) error {
 		"iat":                                     time.Now().Unix(),
 	}
 
-	// Sign asymmetrically with RS256 using the configured RSA private key.
-	// Config validation (validateJWTConfig) guarantees the key parses and matches
-	// the verification public key, so a parse error here is an internal fault.
-	privateKey, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(h.cfg.Auth.JWT.PrivateKey))
+	// Sign asymmetrically with RS256 using the configured RSA private key,
+	// read fresh from its mounted file. Config validation (validateJWTConfig)
+	// guarantees the key file is readable and matches the verification public
+	// key, so a load error here is an internal fault.
+	privateKey, err := h.cfg.Auth.JWT.LoadPrivateKey()
 	if err != nil {
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to parse JWT signing key")
+		return apperror.Internal.Wrap(err).WithLogMessage("failed to load JWT signing key")
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	signed, err := token.SignedString(privateKey)

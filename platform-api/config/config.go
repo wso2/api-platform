@@ -18,11 +18,13 @@
 package config
 
 import (
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -105,13 +107,13 @@ type Server struct {
 const (
 	// AuthModeExternalToken verifies locally-issued, asymmetrically-signed JWTs
 	// (RS256) minted externally, e.g. by the Developer Portal. Verification uses
-	// the RSA public key in auth.jwt.public_key; symmetric (HMAC) and unsigned
+	// the RSA public key in auth.jwt.public_key_file; symmetric (HMAC) and unsigned
 	// ("none") tokens are rejected.
 	AuthModeExternalToken = "external_token"
 	// AuthModeFile is AuthModeExternalToken plus local username/password login: the
 	// login endpoint authenticates users from auth.file and issues RS256 JWTs signed
-	// with the RSA private key in auth.jwt.private_key, verified with the matching
-	// auth.jwt.public_key.
+	// with the RSA private key in auth.jwt.private_key_file, verified with the matching
+	// auth.jwt.public_key_file.
 	AuthModeFile = "file"
 	// AuthModeIDP validates tokens against an external IDP's JWKS (auth.idp).
 	AuthModeIDP = "idp"
@@ -269,15 +271,49 @@ type CORS struct {
 // TODO(pqc): migrate — RS256 is quantum-vulnerable. Move to an ML-DSA (FIPS 204)
 // signature once a Go JWT library exposes it. See post-quantum-cryptography.md.
 type JWT struct {
-	// PublicKey is the PEM-encoded RSA public key used to verify token
-	// signatures. Required in both "external_token" and "file" modes.
-	PublicKey string `koanf:"public_key"`
-	// PrivateKey is the PEM-encoded RSA private key used to sign tokens. Required
-	// only in "file" mode, whose login endpoint mints tokens; unused (and not
-	// required) in verify-only "external_token" mode.
-	PrivateKey string        `koanf:"private_key"`
-	Issuer     string        `koanf:"issuer"`
-	TokenTTL   time.Duration `koanf:"token_ttl"`
+	// PublicKeyFile is the path to a mounted PEM-encoded RSA public key file,
+	// used to verify token signatures. Required in both "external_token" and
+	// "file" modes. The key is read from disk at the point of use rather than
+	// being interpolated into config at load time, so the PEM content is never
+	// held in the config struct.
+	PublicKeyFile string `koanf:"public_key_file"`
+	// PrivateKeyFile is the path to a mounted PEM-encoded RSA private key file,
+	// used to sign tokens. Required only in "file" mode, whose login endpoint
+	// mints tokens; unused (and not required) in verify-only "external_token"
+	// mode. Read from disk at the point of use, never cached as content.
+	PrivateKeyFile string        `koanf:"private_key_file"`
+	Issuer         string        `koanf:"issuer"`
+	TokenTTL       time.Duration `koanf:"token_ttl"`
+}
+
+// LoadPublicKey reads and parses the PEM-encoded RSA public key from
+// PublicKeyFile. The file is read fresh on every call rather than cached,
+// so PublicKeyFile is a mounted-file path, never inlined PEM content.
+func (j *JWT) LoadPublicKey() (*rsa.PublicKey, error) {
+	raw, err := os.ReadFile(j.PublicKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read auth.jwt.public_key_file %q: %w", j.PublicKeyFile, err)
+	}
+	pub, err := jwt.ParseRSAPublicKeyFromPEM(raw)
+	if err != nil {
+		return nil, fmt.Errorf("auth.jwt.public_key_file %q must be a PEM-encoded RSA public key: %w", j.PublicKeyFile, err)
+	}
+	return pub, nil
+}
+
+// LoadPrivateKey reads and parses the PEM-encoded RSA private key from
+// PrivateKeyFile. The file is read fresh on every call rather than cached,
+// so PrivateKeyFile is a mounted-file path, never inlined PEM content.
+func (j *JWT) LoadPrivateKey() (*rsa.PrivateKey, error) {
+	raw, err := os.ReadFile(j.PrivateKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read auth.jwt.private_key_file %q: %w", j.PrivateKeyFile, err)
+	}
+	priv, err := jwt.ParseRSAPrivateKeyFromPEM(raw)
+	if err != nil {
+		return nil, fmt.Errorf("auth.jwt.private_key_file %q must be a PEM-encoded RSA private key: %w", j.PrivateKeyFile, err)
+	}
+	return priv, nil
 }
 
 // WebSocket holds WebSocket-specific configuration.
@@ -568,40 +604,41 @@ func validateAuthConfig(auth *Auth) error {
 	}
 }
 
-// validateJWTConfig verifies the local asymmetric JWT key material. The RSA
-// public key verifies token signatures and is required in both the
-// "external_token" and "file" auth modes. When requireSigningKey is true (file
-// mode, which mints tokens at its login endpoint) the RSA private key is also
-// required and must form a matching pair with the public key. Keys are never
-// generated: missing or malformed material fails startup. Only asymmetric RSA
-// keys are accepted, so symmetric (HMAC) verification is structurally
-// impossible.
+// validateJWTConfig verifies the local asymmetric JWT key material is present
+// and readable. The RSA public key verifies token signatures and is required
+// in both the "external_token" and "file" auth modes. When requireSigningKey
+// is true (file mode, which mints tokens at its login endpoint) the RSA
+// private key is also required and must form a matching pair with the public
+// key. Keys are mounted files, read fresh here rather than cached: a missing
+// path, an unreadable file, or malformed material all fail startup. Only
+// asymmetric RSA keys are accepted, so symmetric (HMAC) verification is
+// structurally impossible.
 func validateJWTConfig(jwtCfg *JWT, requireSigningKey bool) error {
-	if jwtCfg.PublicKey == "" {
-		return fmt.Errorf("Auth.JWT.PublicKey is required when auth.mode is %q or %q "+
-			"(set auth.jwt.public_key to a PEM-encoded RSA public key via {{ env }}/{{ file }})",
+	if jwtCfg.PublicKeyFile == "" {
+		return fmt.Errorf("Auth.JWT.PublicKeyFile is required when auth.mode is %q or %q "+
+			"(set auth.jwt.public_key_file to the path of a mounted PEM-encoded RSA public key)",
 			AuthModeExternalToken, AuthModeFile)
 	}
-	pub, err := jwt.ParseRSAPublicKeyFromPEM([]byte(jwtCfg.PublicKey))
+	pub, err := jwtCfg.LoadPublicKey()
 	if err != nil {
-		return fmt.Errorf("invalid Auth.JWT.PublicKey: must be a PEM-encoded RSA public key: %w", err)
+		return fmt.Errorf("invalid Auth.JWT.PublicKeyFile: %w", err)
 	}
 
 	if !requireSigningKey {
 		return nil
 	}
 
-	if jwtCfg.PrivateKey == "" {
-		return fmt.Errorf("Auth.JWT.PrivateKey is required when auth.mode is %q "+
-			"(set auth.jwt.private_key to a PEM-encoded RSA private key via {{ env }}/{{ file }})",
+	if jwtCfg.PrivateKeyFile == "" {
+		return fmt.Errorf("Auth.JWT.PrivateKeyFile is required when auth.mode is %q "+
+			"(set auth.jwt.private_key_file to the path of a mounted PEM-encoded RSA private key)",
 			AuthModeFile)
 	}
-	priv, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(jwtCfg.PrivateKey))
+	priv, err := jwtCfg.LoadPrivateKey()
 	if err != nil {
-		return fmt.Errorf("invalid Auth.JWT.PrivateKey: must be a PEM-encoded RSA private key: %w", err)
+		return fmt.Errorf("invalid Auth.JWT.PrivateKeyFile: %w", err)
 	}
 	if !priv.PublicKey.Equal(pub) {
-		return fmt.Errorf("Auth.JWT.PrivateKey and Auth.JWT.PublicKey must be a matching RSA key pair")
+		return fmt.Errorf("Auth.JWT.PrivateKeyFile and Auth.JWT.PublicKeyFile must be a matching RSA key pair")
 	}
 	return nil
 }

@@ -54,20 +54,20 @@ type Config struct {
 	RuntimeConfig map[string]string `koanf:"-"`
 }
 
-// ServerConfig is [ai_workspace.server].
+// ServerConfig is [ai_workspace.server] — the single listener, following the
+// platform-wide [server.https] shape. Domain is the one browser-safe key here (served
+// to the SPA as APIP_AIW_SERVER_DOMAIN); everything else stays server-side.
 type ServerConfig struct {
-	StaticDir string      `koanf:"static_dir"` // directory containing the built SPA (index.html + assets)
-	HTTPS     HTTPSConfig `koanf:"https"`
-}
-
-// HTTPSConfig is [ai_workspace.server.https] — the single listener, following the
-// platform-wide [server.https] shape. Enabled makes the BFF terminate TLS itself,
-// presenting the certificate and decrypting inbound TLS; set it false only when a
-// trusted upstream (ingress, service-mesh sidecar) terminates TLS and forwards plain
-// HTTP, in which case the listener serves plain HTTP on the same port and no
-// certificate is read or required. CertFile/KeyFile are required when Enabled — there
-// is no self-signed fallback.
-type HTTPSConfig struct {
+	StaticDir string `koanf:"static_dir"` // directory containing the built SPA (index.html + assets)
+	// Domain is shown in the browser address bar (host:port, or just host for port
+	// 80/443). Browser-safe — see browserSafeKeys in runtime_config.go.
+	Domain string `koanf:"domain"`
+	// Enabled makes the BFF terminate TLS itself, presenting the certificate and
+	// decrypting inbound TLS; set it false only when a trusted upstream (ingress,
+	// service-mesh sidecar) terminates TLS and forwards plain HTTP, in which case the
+	// listener serves plain HTTP on the same port and no certificate is read or
+	// required. CertFile/KeyFile are required when Enabled — there is no self-signed
+	// fallback.
 	Enabled  bool   `koanf:"enabled"`
 	Port     int    `koanf:"port"`
 	CertFile string `koanf:"cert_file"`
@@ -77,7 +77,7 @@ type HTTPSConfig struct {
 // Addr is the listener address, ":" + port (e.g. ":5380"). The listener always binds
 // all interfaces, so there is no host to configure.
 func (c *Config) Addr() string {
-	return ":" + strconv.Itoa(c.Server.HTTPS.Port)
+	return ":" + strconv.Itoa(c.Server.Port)
 }
 
 // LoggingConfig is [ai_workspace.logging]. Level/Format are this process's own logs;
@@ -296,8 +296,8 @@ func (c *Config) validate() error {
 	if c.Auth.Mode != "basic" && c.Auth.Mode != "oidc" {
 		return fmt.Errorf("invalid [auth] mode %q: must be \"basic\" or \"oidc\"", c.Auth.Mode)
 	}
-	if c.Server.HTTPS.Port < 1 || c.Server.HTTPS.Port > 65535 {
-		return fmt.Errorf("[server.https] port must be between 1 and 65535, got %d", c.Server.HTTPS.Port)
+	if c.Server.Port < 1 || c.Server.Port > 65535 {
+		return fmt.Errorf("[server] port must be between 1 and 65535, got %d", c.Server.Port)
 	}
 	// Every session duration is a lifetime, where <= 0 is never meaningful.
 	if c.Session.IdleTimeout <= 0 {

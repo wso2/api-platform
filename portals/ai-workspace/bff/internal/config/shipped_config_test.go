@@ -17,7 +17,9 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -105,24 +107,38 @@ func TestShippedConfig_MakeBffRunOverrides(t *testing.T) {
 // configs/config.toml is deliberately minimal and ships without an
 // [ai_workspace.auth.oidc] table — the quickstart only ever runs in basic-auth mode.
 // configs/config-template.toml is the file a real deployment copies from, and its
-// [ai_workspace.auth.oidc] tokens are what let OIDC be turned on from the environment
-// alone, without further edits to the file.
-func TestShippedConfig_OIDCFromEnvAlone(t *testing.T) {
-	t.Setenv("APIP_AIW_AUTH_MODE", "oidc")
-	t.Setenv("APIP_AIW_AUTH_OIDC_AUTHORITY", "https://idp.example.com")
-	t.Setenv("APIP_AIW_AUTH_OIDC_CLIENT_ID", "client-id")
-	t.Setenv("APIP_AIW_AUTH_OIDC_CLIENT_SECRET", "s3cr3t")
-	t.Setenv("APIP_AIW_AUTH_OIDC_REDIRECT_URL", "https://localhost:5380/api/auth/callback")
-
-	cfg, err := Load(templateConfig)
+// [ai_workspace.auth.oidc] holds plain-literal placeholder values (mode = "basic",
+// an empty client_secret) rather than {{ env }} tokens, so OIDC is not settable from
+// the environment alone — a real deployment copies the template to config.toml and
+// edits [ai_workspace.auth] mode plus [ai_workspace.auth.oidc] directly. This
+// exercises that edited shape still loads correctly and keeps OIDC credentials off
+// the browser-safe runtime config.
+func TestShippedConfig_TemplateEditedForOIDC(t *testing.T) {
+	templateBytes, err := os.ReadFile(templateConfig)
 	if err != nil {
-		t.Fatalf("Load(configs/config-template.toml) error = %v — the [ai_workspace.auth.oidc] tokens must make OIDC settable from the environment", err)
+		t.Fatalf("read %s: %v", templateConfig, err)
+	}
+	edited := strings.NewReplacer(
+		`mode = "basic"`, `mode = "oidc"`,
+		`authority = "https://accounts.example.com"`, `authority = "https://idp.example.com"`,
+		`client_id = "your-client-id"`, `client_id = "client-id"`,
+		`client_secret = ""`, `client_secret = "s3cr3t"`,
+	).Replace(string(templateBytes))
+
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
+		t.Fatalf("write edited template: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load(edited template) error = %v", err)
 	}
 	if !cfg.Auth.OIDC.Enabled {
-		t.Fatal("OIDC.Enabled = false, want true — [auth] mode = oidc must enable the client")
+		t.Fatal("OIDC.Enabled = false, want true — mode = oidc must enable the client")
 	}
 	if cfg.Auth.OIDC.ClientSecret != "s3cr3t" {
-		t.Errorf("OIDC.ClientSecret = %q, want the value from APIP_AIW_AUTH_OIDC_CLIENT_SECRET", cfg.Auth.OIDC.ClientSecret)
+		t.Errorf("OIDC.ClientSecret = %q, want %q", cfg.Auth.OIDC.ClientSecret, "s3cr3t")
 	}
 	// Whatever the mode, the client credentials stay server-side.
 	for _, key := range []string{"APIP_AIW_AUTH_OIDC_CLIENT_SECRET", "APIP_AIW_AUTH_OIDC_CLIENT_ID", "APIP_AIW_AUTH_OIDC_AUTHORITY"} {
@@ -132,12 +148,9 @@ func TestShippedConfig_OIDCFromEnvAlone(t *testing.T) {
 	}
 }
 
-// config-template.toml is copied to config.toml by users, so it must stay loadable.
-// Its client_secret token deliberately has no default — an unset variable fails startup
-// rather than running OIDC with an empty credential — so the variable is set here.
+// config-template.toml is copied to config.toml by users, so it must stay loadable
+// as shipped — OIDC off, basic auth, an unset (empty) client_secret.
 func TestShippedConfig_TemplateLoads(t *testing.T) {
-	t.Setenv("APIP_AIW_AUTH_OIDC_CLIENT_SECRET", "s3cr3t")
-
 	cfg, err := Load(templateConfig)
 	if err != nil {
 		t.Fatalf("Load(configs/config-template.toml) error = %v — the template must remain a loadable config", err)
@@ -149,15 +162,5 @@ func TestShippedConfig_TemplateLoads(t *testing.T) {
 	// certificate — it is the starting point for a real deployment.
 	if cfg.ControlPlane.TLSSkipVerify {
 		t.Error("ControlPlane.TLSSkipVerify = true, want false — the template must default to a verified upstream")
-	}
-}
-
-// The template's client_secret has no default on purpose: leaving the variable unset
-// must abort startup, not resolve to an empty credential.
-func TestShippedConfig_TemplateFailsClosedOnMissingSecret(t *testing.T) {
-	t.Setenv("APIP_AIW_AUTH_OIDC_CLIENT_SECRET", "")
-
-	if _, err := Load(templateConfig); err == nil {
-		t.Fatal("Load(configs/config-template.toml) succeeded with APIP_AIW_AUTH_OIDC_CLIENT_SECRET unset, want an error — the token has no default and must fail closed")
 	}
 }

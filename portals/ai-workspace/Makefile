@@ -197,7 +197,6 @@ endif
 dist: clean-dist ## Build standalone AI Workspace + Platform API distribution zip
 	@echo "Building distribution $(DIST_NAME)..."
 	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/scripts $(DIST_DIR)/resources/certificates $(DIST_DIR)/resources/platform-api/db-scripts
-	@cp -R configs/. $(DIST_DIR)/configs/
 	@cp ../../platform-api/resources/roles.yaml $(DIST_DIR)/resources/roles.yaml
 ifeq ($(PLATFORM_API_FROM_TAG),true)
 	@echo "Fetching platform-api db-scripts from tag $(PLATFORM_API_TAG)..."
@@ -213,19 +212,24 @@ ifeq ($(PLATFORM_API_FROM_TAG),true)
 	for f in $$files; do git -C ../.. show "$$tag:$$f" > "$$dest/$$(basename $$f)"; done; \
 	echo "✓ Fetched $$(echo "$$files" | wc -l | tr -d ' ') db-script(s) from $$tag"
 	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/config/config-template.toml" \
-		> $(DIST_DIR)/configs/config-platform-api-template.toml
+		> $(DIST_DIR)/.platform-api-config-template.toml
 	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/config/config.toml" \
-		> $(DIST_DIR)/configs/config-platform-api.toml
+		> $(DIST_DIR)/.platform-api-config.toml
 else
 	@cp ../../platform-api/internal/database/schema.*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
-	@cp ../../platform-api/config/config-template.toml $(DIST_DIR)/configs/config-platform-api-template.toml
-	# The source docker-compose.yaml mounts ../../platform-api/config/config.toml
-	# directly (the monorepo's single source-of-truth Platform API config, no
-	# per-portal copy) — the standalone zip has no platform-api/ sibling, so bake
-	# a real copy into its own configs/ dir; the sed below repoints the compose
-	# file at it.
-	@cp ../../platform-api/config/config.toml $(DIST_DIR)/configs/config-platform-api.toml
+	@cp ../../platform-api/config/config-template.toml $(DIST_DIR)/.platform-api-config-template.toml
+	@cp ../../platform-api/config/config.toml $(DIST_DIR)/.platform-api-config.toml
 endif
+	# Platform API's [platform_api.*] tables and AI Workspace's [ai_workspace.*] tables
+	# are deliberately namespaced so they can coexist in one file without collision (see
+	# configs/config-template.toml) — combine them into the single configs/config.toml
+	# that the sed below mounts into BOTH containers, so there is one file to edit for
+	# the whole standalone deployment instead of two kept in sync by hand.
+	@{ cat $(DIST_DIR)/.platform-api-config.toml; echo; echo; cat configs/config.toml; } \
+		> $(DIST_DIR)/configs/config.toml
+	@{ cat $(DIST_DIR)/.platform-api-config-template.toml; echo; echo; cat configs/config-template.toml; } \
+		> $(DIST_DIR)/configs/config-template.toml
+	@rm -f $(DIST_DIR)/.platform-api-config.toml $(DIST_DIR)/.platform-api-config-template.toml
 	@printf '%s\n' \
 		'# Generated secrets — never commit these.' \
 		'*.env' \
@@ -233,7 +237,7 @@ endif
 		> $(DIST_DIR)/.gitignore
 	@cp setup.sh $(DIST_DIR)/scripts/setup.sh
 	@chmod +x $(DIST_DIR)/scripts/setup.sh
-	@sed 's#\.\./\.\./platform-api/config/config\.toml#./configs/config-platform-api.toml#' \
+	@sed 's#\.\./\.\./platform-api/config/config\.toml#./configs/config.toml#' \
 		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md
 	@sed -i.bak -E \

@@ -129,7 +129,7 @@ func main() {
 		IdleTimeout:       120 * time.Second,
 	}
 
-	tlsConfig, err := buildTLS(cfg.Server.HTTPS)
+	tlsConfig, err := buildTLS(cfg.Server)
 	if err != nil {
 		slog.Error("failed to set up TLS", "err", err)
 		os.Exit(1)
@@ -174,10 +174,10 @@ func main() {
 // disabled no certificate is read or required. Otherwise a mounted cert/key pair
 // is required — there is no self-signed fallback; use the quickstart setup
 // script (or your own tooling) to generate a pair and mount it.
-func buildTLS(c config.HTTPSConfig) (*tls.Config, error) {
+func buildTLS(c config.ServerConfig) (*tls.Config, error) {
 	if !c.Enabled {
 		// Plain HTTP is only safe when something upstream terminates TLS.
-		slog.Warn("TLS: disabled ([server.https] enabled = false) — serving plain HTTP. " +
+		slog.Warn("TLS: disabled ([server] enabled = false) — serving plain HTTP. " +
 			"Terminate TLS at an ingress or service-mesh sidecar and " +
 			"never expose this listener directly to untrusted networks.")
 		return nil, nil
@@ -189,8 +189,8 @@ func buildTLS(c config.HTTPSConfig) (*tls.Config, error) {
 	}
 	if !fileExists(c.CertFile) {
 		return nil, fmt.Errorf("TLS is enabled but no certificate is mounted: "+
-			"set [server.https] cert_file (%q) and key_file (%q) to existing files, "+
-			"or set [server.https] enabled = false to serve plain HTTP behind a TLS-terminating proxy", c.CertFile, c.KeyFile)
+			"set [server] cert_file (%q) and key_file (%q) to existing files, "+
+			"or set [server] enabled = false to serve plain HTTP behind a TLS-terminating proxy", c.CertFile, c.KeyFile)
 	}
 	cert, err := tlsutil.CertFromFiles(c.CertFile, c.KeyFile)
 	if err != nil {

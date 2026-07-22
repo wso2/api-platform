@@ -37,7 +37,7 @@ import { getEnvOrDefault } from './utils/getEnvOrDefault';
 export const DEBUG = getEnvOrDefault('APIP_AIW_LOGGING_BROWSER_DEBUG', false);
 
 // Domain and environment settings
-export const DOMAIN = getEnvOrDefault('APIP_AIW_DOMAIN', 'localhost:5380');
+export const DOMAIN = getEnvOrDefault('APIP_AIW_SERVER_DOMAIN', 'localhost:5380');
 
 
 // Default region used when auto-registering an organization on first login.

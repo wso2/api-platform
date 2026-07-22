@@ -1,22 +1,12 @@
-# --------------------------------------------------------------------
-# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
-#
-# WSO2 LLC. licenses this file to you under the Apache License,
-# Version 2.0 (the "License"); you may not use this file except
-# in compliance with the License. You may obtain a copy of the
-# License at http://www.apache.org/licenses/LICENSE-2.0
-# --------------------------------------------------------------------
-
 [ai_workspace]
 
-domain = '{{ env "APIP_AIW_DOMAIN" "localhost:5380" }}'
-default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
+default_org_region = "us"
 
 
-[ai_workspace.server.https]
+[ai_workspace.server]
 
-enabled   = '{{ env "APIP_AIW_SERVER_HTTPS_ENABLED" "true" }}'
-port      = '{{ env "APIP_AIW_SERVER_HTTPS_PORT" "5380" }}'
+domain    = '{{ env "APIP_AIW_SERVER_DOMAIN" "localhost:5380" }}'
+port      = 5380
 cert_file = "/etc/ai-workspace/tls/cert.pem"
 key_file  = "/etc/ai-workspace/tls/key.pem"
 
@@ -36,7 +26,7 @@ ca_file = "/etc/ai-workspace/tls/cert.pem"
 [ai_workspace.gateway]
 
 controlplane_host = '{{ env "APIP_AIW_GATEWAY_CONTROLPLANE_HOST" "host.docker.internal:9243" }}'
-platform_gateway_versions = '{{ env "APIP_AIW_GATEWAY_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]" }}'
+platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]"
 
 
 [ai_workspace.auth]

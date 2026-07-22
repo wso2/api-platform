@@ -49,7 +49,7 @@
 # QUICK START (basic-auth mode):
 #   1. Copy this file to config.toml.
 #   2. Set [ai_workspace.auth] mode = "basic" (uses the users defined in
-#      config-platform-api.toml).
+#      [platform_api.auth.file.users] in the same config.toml).
 #   3. Run: docker compose up
 #
 # OIDC mode: set [ai_workspace.auth] mode = "oidc" and fill in [ai_workspace.auth.oidc].
@@ -64,19 +64,17 @@
 # window.__RUNTIME_CONFIG__. Never put a credential among them.
 # ====================================================================
 
-# Domain shown in the browser address bar (host:port, or just host for port 80/443).
-domain = '{{ env "APIP_AIW_DOMAIN" "localhost:5380" }}'
-
 # Default region assigned to new organizations on first login.
-default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
+default_org_region = "us"
 
 
 # ---------------------------------------------------------------------------
 # Server
 #
 # Everything in this table configures the AI Workspace server itself. These values
-# stay server-side and are never sent to the browser (the [ai_workspace.auth.oidc]
-# claim names being the one exception — the SPA needs them to display user/org identity).
+# stay server-side and are never sent to the browser, with two exceptions: domain
+# (the SPA needs it to display the deployment's own address) and the
+# [ai_workspace.auth.oidc] claim names (the SPA needs them to display user/org identity).
 #
 # All keys are optional: the value in each token's default position is the built-in
 # default.
@@ -90,20 +88,19 @@ default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
 # The single listener follows the platform-wide [server.https] shape. The listener
 # always binds all interfaces (there is no host to configure), and the container
 # publishes this port.
-[ai_workspace.server.https]
+[ai_workspace.server]
 
-# Terminate TLS on this listener. Set false only when a trusted upstream (ingress,
-# service-mesh sidecar) terminates TLS for you — the listener then serves plain HTTP
-# on the same port and no certificate is read or required.
-enabled = '{{ env "APIP_AIW_SERVER_HTTPS_ENABLED" "true" }}'
+# Domain shown in the browser address bar (host:port, or just host for port 80/443).
+# Browser-safe — served to the SPA as APIP_AIW_SERVER_DOMAIN.
+domain = "localhost:5380"
 
 # Port the server listens on.
-port = '{{ env "APIP_AIW_SERVER_HTTPS_PORT" "5380" }}'
+port = 5380
 
 # Paths to a mounted TLS certificate and key. REQUIRED when enabled = true; setup.sh
 # generates a pair for the quickstart.
-cert_file = '{{ env "APIP_AIW_SERVER_HTTPS_CERT_FILE" "/etc/ai-workspace/tls/cert.pem" }}'
-key_file  = '{{ env "APIP_AIW_SERVER_HTTPS_KEY_FILE" "/etc/ai-workspace/tls/key.pem" }}'
+cert_file = "/etc/ai-workspace/tls/cert.pem"
+key_file  = "/etc/ai-workspace/tls/key.pem"
 
 
 # ---------------------------------------------------------------------------
@@ -113,9 +110,9 @@ key_file  = '{{ env "APIP_AIW_SERVER_HTTPS_KEY_FILE" "/etc/ai-workspace/tls/key.
 # ---------------------------------------------------------------------------
 [ai_workspace.logging]
 
-level         = '{{ env "APIP_AIW_LOGGING_LEVEL" "info" }}'    # debug | info | warn | error
-format        = '{{ env "APIP_AIW_LOGGING_FORMAT" "text" }}'   # text | json
-browser_debug = '{{ env "APIP_AIW_LOGGING_BROWSER_DEBUG" "false" }}'
+level         = "info"    # debug | info | warn | error
+format        = "text"    # text | json
+browser_debug = "false"
 
 
 # ---------------------------------------------------------------------------
@@ -125,24 +122,24 @@ browser_debug = '{{ env "APIP_AIW_LOGGING_BROWSER_DEBUG" "false" }}'
 
 # Base URL to reach the Platform API. REQUIRED. Use the compose hostname in docker
 # compose, or localhost when running locally. The scheme decides if the hop uses TLS.
-url = '{{ env "APIP_AIW_CONTROL_PLANE_URL" "https://platform-api:9243" }}'
+url = "https://platform-api:9243"
 
 # Same-origin prefix the SPA calls; stripped before forwarding upstream, so the
 # browser only ever talks to the app origin and never sees the platform-api cert.
-proxy_prefix = '{{ env "APIP_AIW_CONTROL_PLANE_PROXY_PREFIX" "/proxy" }}'
+proxy_prefix = "/proxy"
 
 # Platform API's portal route prefix. BFF-initiated calls (e.g. file-based login) are
 # built as this base path plus the route's own suffix, e.g. base + "/auth/login".
-portal_base_path = '{{ env "APIP_AIW_CONTROL_PLANE_PORTAL_BASE_PATH" "/api/portal/v0.9" }}'
+portal_base_path = "/api/portal/v0.9"
 
 # --- Trust for the upstream's TLS certificate ---
 
 # Accept the Platform API's self-signed certificate without verification (local dev
 # only) — prefer ca_file instead.
-tls_skip_verify = '{{ env "APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY" "false" }}'
+tls_skip_verify = "false"
 
 # PEM bundle to trust for the upstream's TLS certificate, appended to system roots.
-ca_file = '{{ env "APIP_AIW_CONTROL_PLANE_CA_FILE" "" }}'
+ca_file = ""
 
 
 # ---------------------------------------------------------------------------
@@ -154,12 +151,12 @@ ca_file = '{{ env "APIP_AIW_CONTROL_PLANE_CA_FILE" "" }}'
 
 # host:port that deployed gateways use to reach the Platform API, shown in setup
 # instructions (keys.env, helm values). Must be externally reachable, not a proxy path.
-controlplane_host = '{{ env "APIP_AIW_GATEWAY_CONTROLPLANE_HOST" "localhost:9243" }}'
+controlplane_host = "localhost:9243"
 
 # Gateway versions offered in the create-gateway version selector (JSON array string).
 # Each entry: version (helm chart minor), latestVersion (image/chart tag, used in the
 # helm --version flag), channel ("STS" | "LTS"). The first entry is the default.
-platform_gateway_versions = '{{ env "APIP_AIW_GATEWAY_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]" }}'
+platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]"
 
 
 
@@ -169,13 +166,13 @@ platform_gateway_versions = '{{ env "APIP_AIW_GATEWAY_PLATFORM_GATEWAY_VERSIONS"
 [ai_workspace.session]
 
 # Session store. Only "memory" is supported today ("redis" is future).
-store = '{{ env "APIP_AIW_SESSION_STORE" "memory" }}'
+store = "memory"
 
 # Sliding idle window (Go duration, e.g. "30m"). Reserved — not enforced yet.
-idle_timeout = '{{ env "APIP_AIW_SESSION_IDLE_TIMEOUT" "30m" }}'
+idle_timeout = "30m"
 
 # Hard cap on session lifetime regardless of activity/refresh (Go duration).
-absolute_ttl = '{{ env "APIP_AIW_SESSION_ABSOLUTE_TTL" "8h" }}'
+absolute_ttl = "8h"
 
 
 # ---------------------------------------------------------------------------
@@ -185,25 +182,25 @@ absolute_ttl = '{{ env "APIP_AIW_SESSION_ABSOLUTE_TTL" "8h" }}'
 
 # Authentication mode for the UI: "basic" (local users) or "oidc" (external IDP).
 # Choosing "oidc" enables the [ai_workspace.auth.oidc] table below.
-mode = '{{ env "APIP_AIW_AUTH_MODE" "basic" }}'
+mode = "basic"
 
 
 # ---------------------------------------------------------------------------
 # JWT claim name mappings — which token claim carries each user/org field. Applies to
 # BOTH auth modes (a sibling of [ai_workspace.auth.oidc], not nested in it): in basic
 # mode the Platform API signs JWTs using these same claim names, so the two services
-# must agree. Mirrors [platform_api.auth.claim_mappings] in config-platform-api.toml
+# must agree. Mirrors [platform_api.auth.claim_mappings] in the same config.toml
 # key for key — override only if your IDP uses different claim names.
 # ---------------------------------------------------------------------------
 [ai_workspace.auth.claim_mappings]
 
-organization = '{{ env "APIP_AIW_AUTH_CLAIM_MAPPINGS_ORGANIZATION" "organization" }}'  # claim carrying the org ID
-org_name     = '{{ env "APIP_AIW_AUTH_CLAIM_MAPPINGS_ORG_NAME" "org_name" }}'          # org display name
-org_handle   = '{{ env "APIP_AIW_AUTH_CLAIM_MAPPINGS_ORG_HANDLE" "org_handle" }}'      # org URL slug
-username     = '{{ env "APIP_AIW_AUTH_CLAIM_MAPPINGS_USERNAME" "username" }}'
-email        = '{{ env "APIP_AIW_AUTH_CLAIM_MAPPINGS_EMAIL" "email" }}'
-scope        = '{{ env "APIP_AIW_AUTH_CLAIM_MAPPINGS_SCOPE" "scope" }}'                # space-separated scope string
-roles        = '{{ env "APIP_AIW_AUTH_CLAIM_MAPPINGS_ROLES" "roles" }}'
+organization = "organization" # claim carrying the org ID
+org_name     = "org_name"          # org display name
+org_handle   = "org_handle"      # org URL slug
+username     = "username"
+email        = "email"
+scope        = "scope"                # space-separated scope string
+roles        = "roles"
 
 
 # ---------------------------------------------------------------------------
@@ -216,28 +213,29 @@ roles        = '{{ env "APIP_AIW_AUTH_CLAIM_MAPPINGS_ROLES" "roles" }}'
 
 # Force the OIDC client on independently of mode. Rarely needed — mode = "oidc"
 # above already enables it.
-enabled = '{{ env "APIP_AIW_AUTH_OIDC_ENABLED" "false" }}'
+enabled = "false"
 
 # Issuer URL — endpoints are auto-discovered from /.well-known/openid-configuration.
-authority = '{{ env "APIP_AIW_AUTH_OIDC_AUTHORITY" "https://accounts.example.com" }}'
+authority = "https://accounts.example.com"
 
 # Client ID registered in your IDP.
-client_id = '{{ env "APIP_AIW_AUTH_OIDC_CLIENT_ID" "your-client-id" }}'
+client_id = "your-client-id"
 
 # Confidential-client secret. REQUIRED in OIDC mode with no default — an unset
 # variable fails startup. Prefer the {{ file }} form in production.
-client_secret = '{{ env "APIP_AIW_AUTH_OIDC_CLIENT_SECRET" }}'
+client_secret = ""
 
 # Server-side callback the IDP redirects to after login (not an SPA route). Must
 # match the redirect URI registered on the IDP application.
-redirect_url = '{{ env "APIP_AIW_AUTH_OIDC_REDIRECT_URL" "https://localhost:5380/api/auth/callback" }}'
+redirect_url = "https://localhost:5380/api/auth/callback"
 
 # Absolute URL the IDP redirects to after logout (must be pre-registered there).
-post_logout_redirect_url = '{{ env "APIP_AIW_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL" "https://localhost:5380/login" }}'
+post_logout_redirect_url = "https://localhost:5380/login"
 
-# Scopes requested at login (space-separated). Leave unset to request the built-in
-# full ap:* set (recommended); if overriding, keep offline_access or refresh breaks.
-scope = '{{ env "APIP_AIW_AUTH_OIDC_SCOPE" "" }}'
+# Scopes requested at login (space-separated). Defaults to the full ap:* set the
+# Platform API authorizes against (recommended) — trim only what you need to
+# restrict, and always keep offline_access or token refresh breaks.
+scope = "openid profile email offline_access ap:organization:read ap:organization:manage ap:organization:subscription:read ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage ap:application:association:read ap:application:association:create ap:application:association:delete ap:application:association:manage ap:application:association:api_key:read ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage ap:gateway:artifact:read ap:gateway:manifest:read ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import ap:rest_api:gateway:read ap:rest_api:gateway:create ap:rest_api:gateway:manage ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:deployment:undeploy ap:rest_api:deployment:restore ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage ap:rest_api:publication:read ap:rest_api:publication:create ap:rest_api:publication:delete ap:devportal:read ap:devportal:create ap:devportal:update ap:devportal:delete ap:devportal:manage ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage ap:llm_template:read ap:llm_template:create ap:llm_template:update ap:llm_template:delete ap:llm_template:manage ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_provider:deployment:undeploy ap:llm_provider:deployment:restore ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage ap:llm_proxy:api_key:read ap:llm_proxy:api_key:create ap:llm_proxy:api_key:delete ap:llm_proxy:api_key:manage ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore ap:websub_api:read ap:websub_api:create ap:websub_api:update ap:websub_api:delete ap:websub_api:manage ap:websub_api:api_key:read ap:websub_api:api_key:create ap:websub_api:api_key:delete ap:websub_api:api_key:manage ap:websub_api:api_key:update ap:websub_api:deployment:read ap:websub_api:deployment:create ap:websub_api:deployment:delete ap:websub_api:deployment:manage ap:websub_api:deployment:undeploy ap:websub_api:deployment:restore ap:websub_api:publication:read ap:websub_api:publication:create ap:websub_api:publication:delete ap:webbroker_api:read ap:webbroker_api:create ap:webbroker_api:update ap:webbroker_api:delete ap:webbroker_api:manage ap:webbroker_api:api_key:read ap:webbroker_api:api_key:create ap:webbroker_api:api_key:delete ap:webbroker_api:api_key:manage ap:webbroker_api:api_key:update ap:webbroker_api:deployment:read ap:webbroker_api:deployment:create ap:webbroker_api:deployment:delete ap:webbroker_api:deployment:manage ap:webbroker_api:deployment:undeploy ap:webbroker_api:deployment:restore ap:webbroker_api:publication:read ap:webbroker_api:publication:create ap:webbroker_api:publication:delete ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage ap:git:read"
 
 
 # ====================================================================

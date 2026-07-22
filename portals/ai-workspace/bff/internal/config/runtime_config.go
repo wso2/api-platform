@@ -33,7 +33,7 @@ import (
 var browserSafeKeys = []string{
 	// Identity of the deployment. auth.mode is not listed: buildRuntimeConfig
 	// always emits it from the parsed cfg.Auth.Mode instead.
-	"domain",
+	"server.domain",
 	"default_org_region",
 	"gateway.controlplane_host",
 	"gateway.platform_gateway_versions",

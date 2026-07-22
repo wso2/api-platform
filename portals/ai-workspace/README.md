@@ -11,7 +11,7 @@ The AI Workspace is a React/Vite SPA served by a **Go BFF (Backend-for-Frontend)
 | Get running locally in 5 minutes | [QUICKSTART.md](QUICKSTART.md) |
 | Production setup (Asgardeo IDP) | [production/README.md](production/README.md) |
 | Full runtime configuration reference | [configs/config-template.toml](configs/config-template.toml) |
-| Platform API configuration reference | [../../platform-api/config/config-template.toml](../../platform-api/config/config-template.toml) (copied into the distribution zip as `configs/config-platform-api-template.toml`) |
+| Platform API configuration reference | [../../platform-api/config/config-template.toml](../../platform-api/config/config-template.toml) (merged into `configs/config-template.toml` / `configs/config.toml` in the distribution zip — see `make dist`) |
 
 ---
 

@@ -66,7 +66,7 @@ const readyLogPlugin: PluginOption = {
 // only these — a blanket 'APIP_AIW_' prefix would also inline secrets that share the
 // namespace (e.g. APIP_AIW_AUTH_OIDC_CLIENT_SECRET) into the bundle if set at build time.
 const browserSafeEnvVars = [
-  'APIP_AIW_DOMAIN',
+  'APIP_AIW_SERVER_DOMAIN',
   'APIP_AIW_AUTH_MODE',
   'APIP_AIW_DEFAULT_ORG_REGION',
   'APIP_AIW_GATEWAY_CONTROLPLANE_HOST',
