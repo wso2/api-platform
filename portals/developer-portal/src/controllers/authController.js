@@ -35,8 +35,8 @@ const login = async (req, res, next) => {
     const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName;
     if (!req.isAuthenticated()) {
         const fidp = req.query.fidp;
-        const fidpMap = config.idp?.fidp || {};
-        if (config.idp?.clientId) {
+        const fidpMap = config.auth.idp?.fidp || {};
+        if (config.auth.mode === 'idp') {
             // IDP mode: redirect directly to the IDP, no intermediate login page
             const orgDetails = await orgDao.get(orgName);
             const orgIdentifier = orgDetails?.idp_ref_id;
@@ -69,7 +69,7 @@ const login = async (req, res, next) => {
 };
 
 const handleCallback = async (req, res, next) => {
-    if (!config.idp?.clientId) return next();
+    if (config.auth.mode !== 'idp') return next();
     const rules = util.validateRequestParameters();
     for (const validation of rules) {
         await validation.run(req);
@@ -97,7 +97,7 @@ const handleCallback = async (req, res, next) => {
                 }
                 res.set('Cache-Control', 'no-store');
                 let returnTo = req.user.returnTo;
-                if (config.idp?.orgCallback && returnTo == null) {
+                if (config.auth.idp?.orgCallback && returnTo == null) {
                     returnTo = `/${req.params.orgName}`;
                 }
                 returnTo = returnTo || `/${req.params.orgName}`;
@@ -122,7 +122,7 @@ const handleSignUp = async (req, res) => {
     if (!errors.isEmpty()) {
         return res.status(400).json(util.getErrors(errors));
     }
-    const authJsonContent = config.idp;
+    const authJsonContent = config.auth.idp;
     if (authJsonContent?.signUpUrl) {
         res.redirect(authJsonContent.signUpUrl);
     } else {
@@ -141,7 +141,7 @@ const handleLogOut = async (req, res) => {
     if (!errors.isEmpty()) {
         return res.status(400).json(util.getErrors(errors));
     }
-    const authJsonContent = config.idp;
+    const authJsonContent = config.auth.idp;
     let idToken = ''
     if (req.user != null) {
         idToken = req.user.idToken;
@@ -210,7 +210,7 @@ const handleLogOutLanding = async (req, res) => {
 
 const handleSilentSSO = async (req, res, next) => {
     // Skip if no IDP configured or silent SSO is disabled
-    if (!config.idp?.clientId || !config.idp?.silentSso) return next();
+    if (config.auth.mode !== 'idp' || !config.auth.idp?.silentSso) return next();
 
     if (req.isAuthenticated() || req.session.silentAuthRedirected) {
         return next();
@@ -233,16 +233,16 @@ const handleLocalLogin = async (req, res) => {
     const viewName = req.params.viewName;
     const baseUrl = `/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}`;
 
-    if (config.idp?.clientId) {
+    if (config.auth.mode === 'idp') {
         return res.status(404).send('Not found');
     }
     if (!username || !password) {
         return res.redirect(`${baseUrl}/login?error=Username+and+password+are+required`);
     }
 
-    const platformApiUrl = config.platformApi?.url;
+    const platformApiUrl = config.auth.local?.platformApiUrl;
     if (!platformApiUrl) {
-        logger.error('Local auth attempted but platformApi.url is not configured');
+        logger.error('Local auth attempted but auth.local.platform_api_url is not configured');
         return res.redirect(`${baseUrl}/login?error=Authentication+service+not+configured`);
     }
 
@@ -253,7 +253,7 @@ const handleLocalLogin = async (req, res) => {
             new URLSearchParams({ username, password }).toString(),
             {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                httpsAgent: new https.Agent({ rejectUnauthorized: !config.platformApi?.tlsSkipVerify }),
+                httpsAgent: new https.Agent({ rejectUnauthorized: !config.auth.local?.tlsSkipVerify }),
                 timeout: 10000,
             }
         );
@@ -275,8 +275,8 @@ const handleLocalLogin = async (req, res) => {
         return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
     }
 
-    const adminRole = config.idp?.roles?.admin || 'admin';
-    const subscriberRole = config.idp?.roles?.subscriber || 'Internal/subscriber';
+    const adminRole = config.auth.idp?.roles?.admin || 'admin';
+    const subscriberRole = config.auth.idp?.roles?.subscriber || 'Internal/subscriber';
     // Users with any _manage scope are treated as admins in the devportal
     const isAdmin = claims.scopes.some(s => s.endsWith('_manage'));
     const roles = isAdmin ? [adminRole] : [subscriberRole];

@@ -22,8 +22,7 @@ const fs = require('fs');
 const path = require('path');
 const { config } = require('../config/configLoader');
 
-// The subset of platform-api's ssl_mode values that devportal supports —
-// mirrors devportal's original enable/disable, resolved to full verification.
+// The ssl_mode values devportal supports.
 const SUPPORTED_SSL_MODES = ['disable', 'verify-full'];
 
 /**

@@ -46,8 +46,11 @@ value = "devportal-it-test-key"
 default_name = "default"
 auto_create_subscription_plans = true
 
-[developer_portal.platform_api]
+[developer_portal.auth.local]
 # File-based (local) auth against the Platform API sidecar. Host is identical in
 # both DB variants; tls_skip_verify accepts its self-signed cert inside the test network.
-url = "https://platform-api:9243"
+platform_api_url = "https://platform-api:9243"
 tls_skip_verify = true
+# Public half of the RS256 keypair `make ensure-certs` generates — the same file
+# platform-api reads as its auth.jwt.private_key's counterpart.
+jwt_public_key = '{{ file "/etc/devportal/keys/jwt_public.pem" }}'

@@ -41,31 +41,41 @@ services:
       dockerfile: Dockerfile
     container_name: devportal
     environment:
-      - APIP_DP_SERVER_BASEURL=http://localhost:3001
-      - APIP_DP_DATABASE_TYPE=postgres
+      - APIP_DP_SERVER_HTTPS_ENABLED=false
+      - APIP_DP_DATABASE_DRIVER=postgres
       - APIP_DP_DATABASE_HOST=postgres
       - APIP_DP_DATABASE_PORT=5432
       - APIP_DP_DATABASE_NAME=devportal
-      - APIP_DP_DATABASE_USERNAME=postgres
+      - APIP_DP_DATABASE_USER=postgres
       - APIP_DP_DATABASE_PASSWORD=postgres
-      - APIP_DP_PLATFORMAPI_BASEURL=https://platform-api:9243
+      # platform-api signs its tokens with RS256; the devportal verifies them
+      # against jwt_public.pem from the shared keypair volume mounted below
+      # (auth.local.jwt_public_key in devportal-config.toml). There is no shared
+      # HMAC secret. tls_skip_verify covers platform-api's self-signed cert.
+      - APIP_DP_AUTH_LOCAL_PLATFORM_API_URL=https://platform-api:9243
+      - APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY=true
       # Required — devportal fails closed at startup if either doesn't resolve
       # to a 64-char hex string. Set both before `docker compose up`, e.g.:
-      #   export APIP_DP_SECURITY_ENCRYPTIONKEY=$(openssl rand -hex 32)
-      #   export APIP_DP_SECURITY_SESSIONSECRET=$(openssl rand -hex 32)
-      - APIP_DP_SECURITY_ENCRYPTIONKEY=${APIP_DP_SECURITY_ENCRYPTIONKEY:-}
-      - APIP_DP_SECURITY_SESSIONSECRET=${APIP_DP_SECURITY_SESSIONSECRET:-}
+      #   export APIP_DP_SECURITY_ENCRYPTION_KEY=$(openssl rand -hex 32)
+      #   export APIP_DP_SECURITY_SESSION_SECRET=$(openssl rand -hex 32)
+      - APIP_DP_SECURITY_ENCRYPTION_KEY=${APIP_DP_SECURITY_ENCRYPTION_KEY:-}
+      - APIP_DP_SECURITY_SESSION_SECRET=${APIP_DP_SECURITY_SESSION_SECRET:-}
     ports:
       - "3001:3000"
     volumes:
       # Replaces the image's shipped configs/config.toml (SQLite-only, fails
       # closed on security secrets) — see devportal-config.toml for why.
       - ./devportal-config.toml:/app/configs/config.toml:ro
+      # Same RS256 keypair volume platform-api signs with — the devportal reads
+      # only jwt_public.pem (0644) from it to verify those tokens.
+      - platform-api-jwt-keys:/etc/devportal/keys:ro
     depends_on:
       postgres:
         condition: service_healthy
       platform-api:
         condition: service_healthy
+      platform-api-jwtkeygen:
+        condition: service_completed_successfully
 
   # One-shot init container: generates the TLS pair the platform-api HTTPS
   # listener requires (the server no longer generates a self-signed fallback).

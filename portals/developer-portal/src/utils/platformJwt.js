@@ -15,7 +15,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { jwtVerify, decodeJwt } = require('jose');
+const { jwtVerify, decodeJwt, importSPKI } = require('jose');
+const constants = require('./constants');
 
 function toClaims(payload) {
     return {
@@ -25,19 +26,24 @@ function toClaims(payload) {
 }
 
 /**
- * Verify a Platform API JWT with the shared HS256 secret.
+ * Verify a Platform API JWT against the Platform API's RSA public key.
  *
- * The Platform API signs its tokens with this shared symmetric secret, so the
- * algorithm is pinned to HS256 (never `none` or any other algorithm). Returns
- * the payload spread together with a parsed `scopes` array, or null if
- * verification fails.
+ * The Platform API mints its tokens with the private half of an RS256 keypair
+ * ([platform_api.auth.jwt].private_key) and rejects symmetric ("HS*") and
+ * unsigned ("none") tokens outright, so verification here is pinned to the same
+ * asymmetric allowlist — the public key must never be accepted as an HMAC
+ * secret. `publicKeyPem` is the SPKI PEM matching that keypair
+ * ([platform_api.auth.jwt].public_key). Returns the payload spread together
+ * with a parsed `scopes` array, or null if verification fails.
  *
  * Use this to authenticate a request-supplied token.
  */
-async function verifyPlatformJwtClaims(token, secret) {
+async function verifyPlatformJwtClaims(token, publicKeyPem) {
     try {
-        const key = new TextEncoder().encode(secret);
-        const { payload } = await jwtVerify(token, key, { algorithms: ['HS256'] });
+        const key = await importSPKI(publicKeyPem, constants.JWT_ASYMMETRIC_ALGORITHMS[0]);
+        const { payload } = await jwtVerify(token, key, {
+            algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS,
+        });
         return toClaims(payload);
     } catch (_) {
         return null;

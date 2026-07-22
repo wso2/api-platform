@@ -43,8 +43,9 @@ docker compose up -d
 
 | Output | Contents |
 |---|---|
-| `api-platform.env` (git-ignored) | `APIP_DP_SECURITY_ENCRYPTION_KEY` / `APIP_DP_SECURITY_SESSION_SECRET` (Developer Portal), `APIP_CP_ENCRYPTION_KEY` (Platform API at-rest encryption), `APIP_CP_AUTH_JWT_SECRET_KEY` + `APIP_DP_PLATFORMAPI_JWT_SECRET` (same JWT signing key, one name per service), `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt) |
+| `api-platform.env` (git-ignored) | `APIP_DP_SECURITY_ENCRYPTION_KEY` / `APIP_DP_SECURITY_SESSION_SECRET` (Developer Portal), `APIP_CP_ENCRYPTION_KEY` (Platform API at-rest encryption), `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt). No JWT signing key — the RS256 keypair is written to `resources/keys/` as PEM files, since a multi-line PEM cannot live in an env file. |
 | `resources/certificates/cert.pem` + `key.pem` | Self-signed TLS pair shared by both services |
+| `resources/keys/jwt_private.pem` + `jwt_public.pem` | RS256 JWT keypair — the Platform API signs with the private key, the Developer Portal verifies with the public one |
 
 The admin password is generated and printed once by `setup.sh` — it is not stored anywhere; only its bcrypt hash lands in `api-platform.env`. Re-running `setup.sh` is safe: it only fills in what's missing and never overwrites an existing value — to rotate a value, delete it from `api-platform.env` (or delete `resources/certificates` for the TLS cert) and re-run. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables skip the interactive prompts (used by CI to pin known test credentials).
 
@@ -89,8 +90,8 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 |---------|-------------|---------|
 | `[server.https].enabled` | Terminate TLS in the portal itself (vs. behind a proxy) | `true` |
 | `[developer_portal.database].driver` | `sqlite` (default) or `postgres` | `sqlite` |
-| `[idp].client_id` | Set to delegate login to an external OIDC provider — leave empty for local auth via `[developer_portal.platform_api]` | _(empty)_ |
-| `[developer_portal.platform_api].url` | Address of the Platform API local-auth sidecar | `https://platform-api:9243` |
+| `[developer_portal.auth].mode` | `local` (Platform API sidecar) or `idp` (external OIDC IDP via `[developer_portal.auth.idp]`) | `local` |
+| `[developer_portal.auth.local].platform_api_url` | Address of the Platform API local-auth sidecar | `https://platform-api:9243` |
 | `[organization].default_name` | Organization bootstrapped automatically on first start | `default` |
 
 ### Platform API (`configs/config-platform-api.toml`)
@@ -124,8 +125,8 @@ Put the hash in `api-platform.env` as `APIP_CP_ADMIN_PASSWORD_HASH` (and the use
 To delegate login to an external OIDC-compliant provider instead of file-based auth:
 
 1. Register an OIDC application in your IDP with redirect URL `https://<your-domain>/<org>/callback`, and enable the **Authorization Code** grant.
-2. In `configs/config.toml`, fill in the `[idp]` block — `client_id`, `client_secret`, `issuer`, `authorization_url`, `token_url`, `jwks_url`, `callback_url`, etc. Setting `client_id` is what switches the portal from local auth to OIDC.
-3. Adjust `[idp.claims]` and `[idp.roles]` to match what your IDP puts in the issued token.
+2. In `configs/config.toml`, set `[developer_portal.auth]` `mode = "idp"` and fill in the `[developer_portal.auth.idp]` block — `client_id`, `client_secret`, `issuer`, `authorization_url`, `token_url`, `jwks_url`, `callback_url`, etc.
+3. Adjust `[developer_portal.auth.claim_mappings]` and `[developer_portal.auth.idp.roles]` to match what your IDP puts in the issued token.
 
 See `configs/config-template.toml` for the full, per-field reference.
 

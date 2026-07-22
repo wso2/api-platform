@@ -258,53 +258,53 @@ services:
         condition: service_healthy
       platform-api:
         condition: service_started
+      platform-api-jwtkeygen:
+        condition: service_completed_successfully
     volumes:
       # The devportal has no automatic APIP_DP_* env override (see
       # src/config/configLoader.js) — an APIP_DP_* var only applies where this
       # config.toml references it via {{ env "..." }}. It replaces the image's
       # shipped configs/config.toml, which fails closed on the security secrets
-      # and wires only the SQLite file key (ignoring APIP_DP_DATABASE_TYPE etc.).
+      # and wires only the SQLite path key (ignoring APIP_DP_DATABASE_DRIVER etc.).
       - ./devportal-config.toml:/app/configs/config.toml:ro
+      # Same RS256 keypair volume platform-api signs with — the devportal reads
+      # only jwt_public.pem (0644) from it to verify those tokens. The private
+      # key stays 0600/uid-10001 and is not readable by this container's user.
+      - platform-api-jwt-keys:/etc/devportal/keys:ro
     environment:
       # Its own database on the shared postgres server (created by init-db.sql).
       # Postgres, not the devportal's default SQLite: the org-update path needs
       # UPDATE ... RETURNING, which SQLite doesn't support. Schema auto-migrates.
-      - APIP_DP_DATABASE_TYPE=postgres
+      - APIP_DP_DATABASE_DRIVER=postgres
       - APIP_DP_DATABASE_HOST=postgres
       - APIP_DP_DATABASE_PORT=5432
       - APIP_DP_DATABASE_NAME=devportal
-      - APIP_DP_DATABASE_USERNAME=apip
+      - APIP_DP_DATABASE_USER=apip
       - APIP_DP_DATABASE_PASSWORD=apip
-      # Plain HTTP to avoid the self-signed cert dance in tests (tls disabled).
-      - APIP_DP_TLS_ENABLED=false
-      - APIP_DP_SERVER_BASEURL=http://devportal:3000
+      # Plain HTTP to avoid the self-signed cert dance in tests (TLS disabled).
+      - APIP_DP_SERVER_HTTPS_ENABLED=false
       # Seed the "default" org so its handle matches platform-api's org handle
       # (the webhook resolves the control-plane org by handle via org.ref_id).
-      - APIP_DP_ORGANIZATION_DEFAULTNAME=default
-      - APIP_DP_DEMO_ENABLED=false
-      - APIP_DP_ORGANIZATION_AUTOCREATESUBSCRIPTIONPLANS=false
-      - APIP_DP_LOGGING_CONSOLEONLY=true
-      # platform-api now signs admin tokens with RS256 (asymmetric), so there is
-      # no shared HMAC secret to hand the devportal for local verification.
-      # APIP_DP_PLATFORMAPI_JWTSECRET is left unset: the devportal decodes the
-      # token payload without verifying its signature, trusting the direct
-      # HTTPS connection to platform-api instead (see extractPlatformJwtClaims
-      # in src/utils/platformJwt.js) — the same trust boundary
-      # APIP_DP_PLATFORMAPI_INSECURE already relies on for this test stack.
-      - APIP_DP_PLATFORMAPI_BASEURL=https://platform-api:9243
-      - APIP_DP_PLATFORMAPI_INSECURE=true
+      - APIP_DP_ORGANIZATION_DEFAULT_NAME=default
+      - APIP_DP_LOGGING_CONSOLE_ONLY=true
+      # platform-api signs its tokens with RS256; the devportal verifies them
+      # against jwt_public.pem from the shared keypair volume mounted above
+      # (auth.local.jwt_public_key in devportal-config.toml). There is no shared
+      # HMAC secret. tls_skip_verify covers platform-api's self-signed cert.
+      - APIP_DP_AUTH_LOCAL_PLATFORM_API_URL=https://platform-api:9243
+      - APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY=true
       # The webhook delivery worker POSTs over raw https with the default agent,
-      # and platform-api serves a self-signed cert here. APIP_DP_PLATFORMAPI_INSECURE
+      # and platform-api serves a self-signed cert here. auth.local.tls_skip_verify
       # only covers the auth client, so disable TLS verification globally for this
       # throwaway test container to let signed webhook deliveries through.
       - NODE_TLS_REJECT_UNAUTHORIZED=0
       # Stable AES-256-GCM key (64 hex) for encrypting the webhook subscriber
       # secret at rest; must not change across restarts or the stored secret
       # becomes undecryptable and outbound requests go unsigned.
-      - APIP_DP_SECURITY_ENCRYPTIONKEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - APIP_DP_SECURITY_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       # express-session signing secret (64 hex). Required — the devportal fails
       # closed at startup if it doesn't resolve. Fixed test-only value.
-      - APIP_DP_SECURITY_SESSIONSECRET=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+      - APIP_DP_SECURITY_SESSION_SECRET=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
     ports:
       - "${DP_HOST_PORT:-3000}:3000"
     networks: [e2e]

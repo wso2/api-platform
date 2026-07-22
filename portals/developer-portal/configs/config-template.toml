@@ -15,7 +15,7 @@
 # style template syntax as the value. Use single-quoted TOML literal strings
 # (as below) so the inner double quotes need no backslash-escaping:
 #
-#   url = '{{ env "APIP_DP_PLATFORMAPI_URL" }}'
+#   platform_api_url = '{{ env "APIP_DP_AUTH_LOCAL_PLATFORM_API_URL" }}'
 #   encryption_key = '{{ file "/secrets/devportal/encryption-key" }}'
 #
 #   {{ env "NAME" }}            -> NAME's value. FAILS CLOSED (aborts startup)
@@ -79,7 +79,6 @@ ssl_root_cert = "./resources/security/ca.pem"   # CA cert — used by verify-ful
 [developer_portal.security]
 encryption_key = ""     # 64-char hex — AES-256-GCM key for encrypting secrets at rest
 session_secret = ""     # 64-char hex — express-session signing secret
-role_validation = false # Enforce per-operation role validation
 
 # Static shared-secret header for calling the devportal's own REST API.
 [developer_portal.security.service_api_key]
@@ -88,11 +87,25 @@ header_name = "x-wso2-api-key"
 value = ""
 
 # =============================================================================
-# IDENTITY PROVIDER CONFIGURATION (OAuth2 / OIDC)
+# AUTHENTICATION
 # =============================================================================
-# Leave client_id empty to use local auth (platform_api below) instead of OIDC.
+# A mode gate, a shared claim_mappings table, and the idp table.
 
-[developer_portal.idp]
+[developer_portal.auth]
+# "local" — username/password validated against the Platform API control plane
+# ([developer_portal.auth.local] below). "idp" — external OIDC IDP (auth.idp below).
+mode = "local"          # local | idp
+role_validation = false # Enforce per-operation role validation
+
+# JWT claim name mappings — which token claim carries each field.
+# Dot-notation supported for nested claims (e.g. "realm_access.roles").
+[developer_portal.auth.claim_mappings]
+organization = "org_name"   # claim carrying the org ID
+roles = "roles"             # claim carrying the user's roles
+groups = "groups"
+
+# Identity provider (OAuth2 / OIDC) — used when auth.mode = "idp".
+[developer_portal.auth.idp]
 name = "IS"
 issuer = "https://localhost:9443/oauth2/token"
 authorization_url = "https://localhost:9443/oauth2/authorize"
@@ -112,27 +125,21 @@ token_refresh_timeout_ms = 10000
 silent_sso = true      # Enable silent SSO
 org_callback = false   # Redirect to the org's own landing page after login
 
-# Claim name mappings — adjust to match what your IDP puts in the JWT.
-# Dot-notation supported for nested claims (e.g. "realm_access.roles").
-[developer_portal.idp.claims]
-role = "roles"
-org_id = "org_name"
-groups = "groups"
-
-[developer_portal.idp.roles]
+# Maps IDP role names to devportal's internal roles.
+[developer_portal.auth.idp.roles]
 admin = "admin"
 subscriber = "Internal/subscriber"
 super_admin = "superAdmin"
 
 # =============================================================================
-# PLATFORM API CONFIGURATION (local auth sidecar)
+# LOCAL AUTH BACKEND (Platform API control plane)
 # =============================================================================
-# The upstream Platform API. Used only when idp.client_id is empty. Leave
-# url empty to disable local auth entirely.
+# The upstream Platform API. Used only when auth.mode = "local". Leave
+# platform_api_url empty to disable local auth entirely.
 
-[developer_portal.platform_api]
-url = ""
-jwt_secret = ""
+[developer_portal.auth.local]
+platform_api_url = ""
+jwt_public_key = ""     # PEM (SPKI) — the Platform API's RS256 JWT public key
 tls_skip_verify = false
 
 # =============================================================================

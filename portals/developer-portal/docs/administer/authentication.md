@@ -1,21 +1,21 @@
 # Authentication
 
-The Developer Portal supports two authentication modes, controlled by whether `idp.clientId` is set in `config.toml`.
+The Developer Portal supports two authentication modes, controlled by `auth.mode` in `config.toml`.
 
 ## Modes
 
 | Mode | When to use | Configured by |
 |------|-------------|---------------|
-| **Local (Platform API JWT)** | Development — no external IDP required | Leave `idp.clientId` empty |
-| **OIDC (External IDP)** | Production — delegates identity to Asgardeo, Keycloak, or any OIDC-compliant IDP | Set `idp.clientId` |
+| **Local (Platform API JWT)** | Development — no external IDP required | `auth.mode = "local"` |
+| **OIDC (External IDP)** | Production — delegates identity to Asgardeo, Keycloak, or any OIDC-compliant IDP | `auth.mode = "idp"` |
 
 ---
 
 ## Login Flow
 
-**IDP mode** (`clientId` is set): clicking Login on any portal page redirects the user directly to the IDP's authorization endpoint — no intermediate login page is shown. After the user authenticates at the IDP, they are returned to the page they originally requested.
+**IDP mode** (`auth.mode = "idp"`): clicking Login on any portal page redirects the user directly to the IDP's authorization endpoint — no intermediate login page is shown. After the user authenticates at the IDP, they are returned to the page they originally requested.
 
-**Local auth mode** (`clientId` is empty): clicking Login shows a username/password form. Credentials are validated against the Platform API.
+**Local auth mode** (`auth.mode = "local"`): clicking Login shows a username/password form. Credentials are validated against the Platform API.
 
 ---
 
@@ -61,10 +61,11 @@ These tell the portal how to read user identity and roles from the IDP token.
 
 ## Local Auth Mode
 
-When `idp.clientId` is empty, the portal uses a built-in login form and authenticates against the Platform API.
+When `auth.mode` is `"local"`, the portal uses a built-in login form and authenticates against the Platform API.
 
 Requirements:
-- `platformApi.baseUrl` must be set (e.g. `https://platform-api:9243`)
+- `auth.local.platform_api_url` must be set (e.g. `https://platform-api:9243`)
+- `auth.local.jwt_public_key` must hold the Platform API's RS256 public key (PEM/SPKI) — the counterpart to its `auth.jwt.private_key`. Bearer-token requests fail closed without it.
 - Users and passwords are managed in the Platform API's config
 
 This mode is intended for development and local testing only.

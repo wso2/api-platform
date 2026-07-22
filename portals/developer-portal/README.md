@@ -141,14 +141,17 @@ Use this for active development, custom IdP configuration, or when you prefer to
 
 ### 2. Use `npm run start:local`, not `npm start`
 
-`configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `platform_api.url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off and `platform_api.url` pointed at `localhost` (see [Local auth](#local-auth) if you're running the Platform API sidecar).
+`configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `auth.local.platform_api_url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off, `auth.local.platform_api_url` pointed at `localhost`, and `auth.local.jwt_public_key` read from the host-side `resources/keys/` that `scripts/setup.sh` writes rather than the container mount path (see [Local auth](#local-auth) if you're running the Platform API sidecar).
 
 ### 3. Configure the Identity Provider (optional)
 
-The portal's login flow requires a valid OAuth2/OIDC provider. Update the `[idp]` block in `configs/config.toml`:
+The portal's login flow requires a valid OAuth2/OIDC provider. Set `[developer_portal.auth]` `mode = "idp"` and fill in the `[developer_portal.auth.idp]` block in `configs/config.toml`:
 
 ```toml
-[idp]
+[developer_portal.auth]
+mode = "idp"
+
+[developer_portal.auth.idp]
 issuer = "https://<your-idp>/oauth2/token"
 authorization_url = "https://<your-idp>/oauth2/authorize"
 token_url = "https://<your-idp>/oauth2/token"
@@ -195,7 +198,7 @@ In production, set the password via the `APIP_DP_DATABASE_PASSWORD` environment 
 
 ### 5. Seed default organization
 
-The default organization is seeded automatically on startup when `organization.default_name` is set in config (or via `APIP_DP_ORGANIZATION_DEFAULTNAME` env var).
+The default organization is seeded automatically on startup when `organization.default_name` is set in config (or via `APIP_DP_ORGANIZATION_DEFAULT_NAME` env var).
 No manual step is required.
 
 ### 6. Install and run
@@ -238,16 +241,16 @@ password_hash = "$2y$10$..."   # bcrypt hash — generate with: htpasswd -bnBC 1
 scopes        = "dp:org_manage dp:api_manage ..."
 ```
 
-The portal config (or `APIP_DP_PLATFORMAPI_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `url` to `https://localhost:9243` (the sidecar's port published to the host) and `tls_skip_verify = true` (self-signed cert), so no manual edit is needed for that flow:
+The portal config (or `APIP_DP_AUTH_LOCAL_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `platform_api_url` to `https://localhost:9243` (the sidecar's port published to the host) and `tls_skip_verify = true` (self-signed cert), so no manual edit is needed for that flow:
 
 ```toml
-[developer_portal.platform_api]
-url = "https://localhost:9243"            # env: APIP_DP_PLATFORMAPI_URL
-jwt_private_key = ""                       # PEM RSA private key that signs portal-minted tokens; must match the Platform API's auth.jwt.public_key — env: APIP_DP_PLATFORMAPI_JWTPRIVATEKEY
+[developer_portal.auth.local]
+platform_api_url = "https://localhost:9243"  # env: APIP_DP_AUTH_LOCAL_PLATFORM_API_URL
+jwt_public_key = '{{ file "/etc/devportal/keys/jwt_public.pem" }}'  # PEM (SPKI) — the Platform API's auth.jwt.public_key
 tls_skip_verify = true                    # Platform API uses a self-signed cert
 ```
 
-Tokens are signed asymmetrically (RS256): the portal signs with the RSA private key above and the Platform API verifies against its `auth.jwt.public_key`. There is no shared HMAC secret — the two sides never exchange signing material.
+Tokens are signed asymmetrically (RS256): the Platform API mints them with its `auth.jwt.private_key` and the portal verifies them against the matching public key above. There is no shared HMAC secret, and the private key never leaves the Platform API — `scripts/setup.sh` generates the keypair into `resources/keys/`, and `docker-compose.yaml` mounts only `jwt_public.pem`'s directory into the portal (at `/etc/devportal/keys`).
 
 For production, configure an OIDC identity provider per organization instead of local auth.
 

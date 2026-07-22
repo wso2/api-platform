@@ -13,7 +13,7 @@
 # using Handlebars-style template syntax as the value. Use single-quoted TOML
 # literal strings (as below) so the inner double quotes need no escaping:
 #
-#   url            = '{{ env "APIP_DP_PLATFORMAPI_URL" }}'
+#   platform_api_url = '{{ env "APIP_DP_AUTH_LOCAL_PLATFORM_API_URL" }}'
 #   encryption_key = '{{ file "/secrets/devportal/encryption-key" }}'
 #
 #   {{ env "NAME" }}            -> NAME's value. FAILS CLOSED (aborts startup) if
@@ -39,7 +39,7 @@
 # see configDefaults.js's own comment for why its values stay generic.
 #
 # Running locally without Docker? Use `npm run start:local` instead of
-# `npm start` (package.json) — it overrides server.https.enabled and platform_api.* to
+# `npm start` (package.json) — it overrides server.https.enabled and auth.local.* to
 # values that make sense outside Compose, all in one place.
 # Plain `npm start` inherits this file's Compose-oriented defaults as-is and
 # will fail trying to read a TLS cert path that only exists in the containers.
@@ -78,12 +78,18 @@ name     = '{{ env "APIP_DP_DATABASE_NAME" "devportal" }}'
 user     = '{{ env "APIP_DP_DATABASE_USER" "postgres" }}'
 password = '{{ env "APIP_DP_DATABASE_PASSWORD" "" }}'
 
-[developer_portal.platform_api]
+[developer_portal.auth.local]
 # The upstream Platform API. Used for local auth credential validation when
-# idp.client_id is empty.
-url             = '{{ env "APIP_DP_PLATFORMAPI_URL" "https://platform-api:9243" }}'
-jwt_secret      = '{{ env "APIP_DP_PLATFORMAPI_JWT_SECRET" "" }}'
-tls_skip_verify = '{{ env "APIP_DP_PLATFORMAPI_TLS_SKIP_VERIFY" "true" }}'
+# auth.mode = "local".
+platform_api_url = '{{ env "APIP_DP_AUTH_LOCAL_PLATFORM_API_URL" "https://platform-api:9243" }}'
+# The Platform API's RS256 public key — the matching half of its
+# [platform_api.auth.jwt].private_key. A PEM is multi-line and cannot survive an
+# env file, so the *path* is the env-overridable part and the PEM itself is read
+# from disk: scripts/setup.sh generates the keypair and docker-compose.yaml mounts
+# it at /etc/devportal/keys (on the {{ file }} allowlist). `npm run start:local`
+# overrides the path to the host-side copy in resources/keys.
+jwt_public_key   = '{{ file (env "APIP_DP_AUTH_LOCAL_JWT_PUBLIC_KEY_FILE" "/etc/devportal/keys/jwt_public.pem") }}'
+tls_skip_verify  = '{{ env "APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'
 
 [developer_portal.security]
 # Required — devportal fails closed at startup if either doesn't resolve to a

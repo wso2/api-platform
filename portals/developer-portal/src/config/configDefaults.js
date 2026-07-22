@@ -47,8 +47,7 @@ const DEFAULTS = {
         format: 'text',  // text | json
         consoleOnly: true,
     },
-    // Key names mirror platform-api's [platform_api.database]. driver keeps
-    // Sequelize's dialect values (sqlite | postgres), not Go's "sqlite3".
+    // driver uses Sequelize's dialect values (sqlite | postgres).
     database: {
         driver: 'sqlite',        // sqlite | postgres
         path: './devportal.db',  // SQLite only
@@ -57,69 +56,77 @@ const DEFAULTS = {
         name: 'devportal',       // PostgreSQL only
         user: 'postgres',        // PostgreSQL only
         password: '',            // PostgreSQL only
-        // PostgreSQL TLS — the subset of platform-api's ssl_mode that devportal
-        // supports: disable | verify-full.
+        // PostgreSQL TLS: disable | verify-full.
         sslMode: 'disable',
         sslRootCert: './resources/security/ca.pem',  // CA cert — used by verify-full
     },
     security: {
         encryptionKey: '',
         sessionSecret: '',
-        roleValidation: false,   // was: advanced.disabledRoleValidation, inverted
         serviceApiKey: {
             enabled: true,
             headerName: 'x-wso2-api-key',
             value: '',
         },
     },
-    idp: {
-        name: 'IS',
-        issuer: 'https://localhost:9443/oauth2/token',
-        authorizationUrl: 'https://localhost:9443/oauth2/authorize',
-        tokenUrl: 'https://localhost:9443/oauth2/token',
-        userInfoUrl: 'https://localhost:9443/oauth2/userinfo',
-        clientId: '',
-        clientSecret: '',
-        audience: '',
-        callbackUrl: 'http://localhost:3000/default/callback',
-        scope: 'openid profile email',
-        signUpUrl: '',
-        logoutUrl: 'https://localhost:9443/oidc/logout',
-        logoutRedirectUri: 'http://localhost:3000/default',
-        certificate: '',
-        jwksUrl: 'https://localhost:9443/oauth2/jwks',
-        tokenRefreshTimeoutMs: 10000,
-        silentSso: true,     // was: advanced.disableSilentSSO, inverted
-        orgCallback: false,  // was: advanced.disableOrgCallback, inverted
-        claims: {
-            role: 'roles',
-            orgId: 'org_name',
+    // Authentication: a mode gate, a shared claim_mappings table, and the idp table.
+    auth: {
+        // "local" — username/password validated against the Platform API control
+        // plane (auth.local below). "idp" — external OIDC IDP (auth.idp below).
+        mode: 'local',   // local | idp
+        // Enforce per-operation role validation.
+        roleValidation: false,   // was: advanced.disabledRoleValidation, inverted
+        // JWT claim name mappings — which token claim carries each field.
+        // Dot-notation supported for nested claims.
+        claimMappings: {
+            organization: 'org_name',   // claim carrying the org ID
+            roles: 'roles',             // claim carrying the user's roles
             groups: 'groups',
         },
-        roles: {
-            admin: 'admin',
-            subscriber: 'Internal/subscriber',
-            superAdmin: 'superAdmin',
+        // OIDC identity provider — used when mode = "idp".
+        idp: {
+            name: 'IS',
+            issuer: 'https://localhost:9443/oauth2/token',
+            authorizationUrl: 'https://localhost:9443/oauth2/authorize',
+            tokenUrl: 'https://localhost:9443/oauth2/token',
+            userInfoUrl: 'https://localhost:9443/oauth2/userinfo',
+            clientId: '',
+            clientSecret: '',
+            audience: '',
+            callbackUrl: 'http://localhost:3000/default/callback',
+            scope: 'openid profile email',
+            signUpUrl: '',
+            logoutUrl: 'https://localhost:9443/oidc/logout',
+            logoutRedirectUri: 'http://localhost:3000/default',
+            certificate: '',
+            jwksUrl: 'https://localhost:9443/oauth2/jwks',
+            tokenRefreshTimeoutMs: 10000,
+            silentSso: true,     // was: advanced.disableSilentSSO, inverted
+            orgCallback: false,  // was: advanced.disableOrgCallback, inverted
+            roles: {
+                admin: 'admin',
+                subscriber: 'Internal/subscriber',
+                superAdmin: 'superAdmin',
+            },
+            // Maps ?fidp=<key> query param to IDP identifier for federated login hints
+            // (authController.js#login -> passportConfig.js's authorizationParams). Only
+            // takes effect in OIDC mode. Kept out of config-template.toml since it's not
+            // part of the default experience.
+            fidp: {
+                google: 'google',
+                github: 'github',
+                microsoft: 'microsoft',
+                enterprise: 'EnterpriseIDP',
+                email: 'LOCAL',
+            },
         },
-        // Maps ?fidp=<key> query param to IDP identifier for federated login hints
-        // (authController.js#login -> passportConfig.js's authorizationParams). Only
-        // takes effect in OIDC mode (idp.clientId set) — the default local-auth login
-        // screen never renders the social/enterprise buttons that trigger this. Kept
-        // out of config-template.toml since it's not part of the default experience.
-        fidp: {
-            google: 'google',
-            github: 'github',
-            microsoft: 'microsoft',
-            enterprise: 'EnterpriseIDP',
-            email: 'LOCAL',
+        // Local auth backend (the Platform API control plane) — used when
+        // mode = "local". Validates username/password and verifies its JWTs.
+        local: {
+            platformApiUrl: '',
+            jwtPublicKey: '',
+            tlsSkipVerify: false,
         },
-    },
-    // Upstream Platform API. Used for local auth credential validation and
-    // Platform API JWT verification when idp.clientId is empty.
-    platformApi: {
-        url: '',
-        jwtSecret: '',
-        tlsSkipVerify: false,
     },
     // Deployer-supplied ADDITIONS to the fixed system page-access lists — merged on top
     // of constants.js's ROUTE.SYSTEM_AUTHENTICATED_PAGES/SYSTEM_AUTHORIZED_PAGES by
