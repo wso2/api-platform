@@ -208,39 +208,49 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
 ### On-demand secret fetch scenarios
 
 The gateway-controller resolves `{{ secret "handle" }}` placeholders embedded in an
-artifact's rendered YAML on deploy — a secret created *after* the controller has
-already started is still picked up, because deploying (re-)triggers a full sync that
-fetches all referenced secrets before rendering. Each scenario below creates a secret,
-creates an artifact whose configuration embeds a placeholder for it, deploys, then
-polls the gateway-controller's management API (`GET /api/management/v1/<resource>`)
+artifact's rendered YAML at deploy time. When platform-api broadcasts a
+`<kind>.deployed` WebSocket event to the already-connected controller, its handler
+(e.g. `handleLLMProxyDeployedEvent`, `handleMCPProxyDeploymentEvent`,
+`handleAPIDeployedEvent`) fetches the artifact definition, calls
+`syncSecretRefsFromYAML` to resolve any secret reference on demand, then creates the
+configuration — **no controller restart required**; every scenario below verifies this
+live path directly (none of them restart the controller). Each scenario creates a
+secret, creates an artifact whose configuration embeds a placeholder for it, deploys,
+then polls the gateway-controller's management API (`GET /api/management/v1/<resource>`)
 until the artifact appears — confirming the secret was resolved successfully (a failed
 resolution keeps the artifact from ever rendering, so it never shows up).
 
 7. **LLM provider** (`@llm_provider`, `features/llm_provider.feature`) — an LLM
-   provider's `upstream.main.auth.value` embeds the placeholder directly.
+   provider's `upstream.main.auth.value` embeds the placeholder directly. Deployment
+   does not restart the controller — the assertion polls until the live
+   `llmprovider.deployed` event has been processed.
 8. **LLM proxy** (`@llm_proxy`, `features/llm_proxy.feature`) — an LLM proxy fronts an
    already-deployed LLM provider (referenced by id, a platform-api-enforced foreign
    key); the placeholder sits in the proxy's own `provider.auth` override, not a full
-   upstream block.
+   upstream block. Deployment does **not** restart the controller — the assertion
+   polls until the live `llmproxy.deployed` event has been processed.
 9. **MCP proxy** (`@mcp_proxy`, `features/mcp_proxy.feature`) — an MCP proxy's
    `upstream.main.auth.value` uses the same shared `UpstreamAuth` schema as an LLM
-   provider's. Note: `mcpSpecVersion` (e.g. `"2025-06-18"`) must be set explicitly on
-   create — omitting it defaults to an empty string, which the gateway-controller's
-   spec-version validator rejects at deploy time with an unrelated-looking
-   "Unsupported MCP spec version" error.
+   provider's; deployment does not restart the controller. Note: `mcpSpecVersion`
+   (e.g. `"2025-06-18"`) must be set explicitly on create — omitting it defaults to an
+   empty string, which the gateway-controller's spec-version validator rejects at
+   deploy time with an unrelated-looking "Unsupported MCP spec version" error.
 10. **REST API upstream credential** (`@rest_api_secret`,
     `features/rest_api_secret.feature`) — a plain REST API's `upstream.main.auth.value`
-    embeds the placeholder; deployment reuses the shared `deploy()` helper from
-    `steps_test.go`.
+    embeds the placeholder. Deployment attaches the gateway and creates the deployment
+    via `deployRestAPIWithoutRestart` (`secret_helpers_test.go`) — unlike
+    `api-deployment.feature`'s shared `deploy()` helper, which restarts the controller
+    so its startup sync picks up the deployment.
 11. **Policy configuration** (`@policy_secret`, `features/policy_secret.feature`) —
     the placeholder is nested inside an operation's `set-headers` policy params
     (`operations[].request.policies[].params.request.headers[].value`) rather than an
     upstream auth block, proving secret resolution is generic over an artifact's
     entire rendered configuration (`syncSecretRefsFromYAML` regexes the whole YAML;
     the template renderer walks every string recursively), not special-cased to
-    upstream auth. Policy `version` fields must be major-only (e.g. `"v1"`) — the
-    gateway-controller resolves that against the single matching registered version in
-    `gateway/build-manifest.yaml` and rejects a full semver string like `"v1.1.0"`.
+    upstream auth. Also deploys without restarting the controller. Policy `version`
+    fields must be major-only (e.g. `"v1"`) — the gateway-controller resolves that
+    against the single matching registered version in `gateway/build-manifest.yaml`
+    and rejects a full semver string like `"v1.1.0"`.
 
 ## Status — passing on all three databases
 

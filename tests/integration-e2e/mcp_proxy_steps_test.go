@@ -25,9 +25,10 @@ package e2e
 //  1. Create a secret (POST /secrets, multipart/form-data).
 //  2. Create an MCP proxy whose upstream.main.auth.value is a
 //     {{ secret "handle" }} placeholder (POST /mcp-proxies).
-//  3. Deploy the proxy (POST /mcp-proxies/{id}/deployments), then restart the
-//     gateway-controller so its startup sync fetches all secrets first and
-//     renders every deployed artifact.
+//  3. Deploy the proxy (POST /mcp-proxies/{id}/deployments). The platform-api
+//     broadcasts an mcpproxy.deployed WebSocket event to the already-connected
+//     controller, which resolves the {{ secret "..." }} reference on demand —
+//     no restart required.
 //  4. Poll the gateway management API until the proxy appears, confirming the
 //     controller resolved the secret reference at deploy time.
 
@@ -82,8 +83,11 @@ func (w *world) anMCPProxyReferencingSecret() error {
 	return nil
 }
 
-// deployMCPProxyToGateway deploys the MCP proxy to gateway 1 and then restarts
-// the gateway-controller so its startup sync resolves the secret reference.
+// deployMCPProxyToGateway deploys the MCP proxy to gateway 1. The platform-api
+// broadcasts an mcpproxy.deployed WebSocket event to the already-connected
+// controller, whose handleMCPProxyDeploymentEvent resolves the secret
+// reference on demand and creates the proxy configuration — no restart
+// required.
 func (w *world) deployMCPProxyToGateway() error {
 	if w.mcpProxyID == "" {
 		return fmt.Errorf("no MCP proxy id — run 'an MCP proxy that references the secret' first")
@@ -96,10 +100,6 @@ func (w *world) deployMCPProxyToGateway() error {
 	}
 	if st >= 300 || jsonField(body, "deploymentId") == "" {
 		return fmt.Errorf("deploy MCP proxy failed (%d): %s", st, body)
-	}
-
-	if err := compose(nil, "restart", "gateway-controller"); err != nil {
-		return fmt.Errorf("restart gateway-controller: %w", err)
 	}
 	return nil
 }

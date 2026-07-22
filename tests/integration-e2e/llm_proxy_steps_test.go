@@ -27,9 +27,10 @@ package e2e
 //  2. Create a secret (POST /secrets, multipart/form-data).
 //  3. Create an LLM proxy referencing the provider by id, with its auth
 //     override set to a {{ secret "handle" }} placeholder (POST /llm-proxies).
-//  4. Deploy the proxy (POST /llm-proxies/{id}/deployments), then restart the
-//     gateway-controller so its startup sync fetches all secrets first and
-//     renders every deployed artifact — provider and proxy alike.
+//  4. Deploy the proxy (POST /llm-proxies/{id}/deployments). The platform-api
+//     broadcasts an llmproxy.deployed WebSocket event to the already-connected
+//     controller, which resolves the {{ secret "..." }} reference on demand —
+//     no restart required.
 //  5. Poll the gateway management API until the proxy appears, confirming the
 //     controller resolved the secret reference at deploy time.
 
@@ -125,10 +126,11 @@ func (w *world) anLLMProxyReferencingProviderAndSecret() error {
 	return nil
 }
 
-// deployLLMProxyToGateway deploys the LLM proxy to gateway 1 and then restarts
-// the gateway-controller so it runs its one-time startup sync: it fetches all
-// secrets first (syncSecretsBulk), then renders every deployed artifact —
-// including both the base provider and the proxy referencing it.
+// deployLLMProxyToGateway deploys the LLM proxy to gateway 1. The platform-api
+// broadcasts an llmproxy.deployed WebSocket event to the already-connected
+// controller, whose handleLLMProxyDeployedEvent fetches the proxy definition,
+// calls syncSecretRefsFromYAML to resolve the {{ secret "..." }} reference on
+// demand, then creates the proxy configuration — no restart required.
 func (w *world) deployLLMProxyToGateway() error {
 	if w.llmProxyID == "" {
 		return fmt.Errorf("no LLM proxy id — run 'an LLM proxy that references the provider and the secret' first")
@@ -141,10 +143,6 @@ func (w *world) deployLLMProxyToGateway() error {
 	}
 	if st >= 300 || jsonField(body, "deploymentId") == "" {
 		return fmt.Errorf("deploy LLM proxy failed (%d): %s", st, body)
-	}
-
-	if err := compose(nil, "restart", "gateway-controller"); err != nil {
-		return fmt.Errorf("restart gateway-controller: %w", err)
 	}
 	return nil
 }

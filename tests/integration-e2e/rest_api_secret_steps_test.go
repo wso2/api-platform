@@ -26,10 +26,12 @@ package e2e
 //  1. Create a secret (POST /secrets, multipart/form-data).
 //  2. Create a REST API whose upstream.main.auth.value is a
 //     {{ secret "handle" }} placeholder (POST /rest-apis).
-//  3. Deploy the API — reusing the shared deploy() helper from steps_test.go,
-//     which attaches the gateway, creates the deployment, and restarts the
-//     gateway-controller so its startup sync fetches all secrets first and
-//     renders every deployed artifact.
+//  3. Deploy the API — attach the gateway and create the deployment WITHOUT
+//     restarting the controller (deployRestAPIWithoutRestart in
+//     secret_helpers_test.go, unlike the plain api-deployment.feature scenario's
+//     shared deploy() helper). The platform-api broadcasts an api.deployed
+//     WebSocket event to the already-connected controller, which resolves the
+//     {{ secret "..." }} reference on demand — no restart required.
 //  4. Poll the gateway management API until the API appears, confirming the
 //     controller resolved the secret reference at deploy time.
 
@@ -85,10 +87,11 @@ func (w *world) aRestAPIReferencingSecret() error {
 	return nil
 }
 
-// deploySecretBackedRestAPI deploys the REST API to gateway 1, reusing the
-// shared deploy() helper (attach gateway, create deployment, restart controller).
+// deploySecretBackedRestAPI deploys the REST API to gateway 1 without
+// restarting the controller, so the assertion exercises the on-demand
+// api.deployed event path rather than the startup bulk-sync path.
 func (w *world) deploySecretBackedRestAPI() error {
-	id, err := deploy(w.restAPISecretApiID, suite.gw1ID, "gateway-controller")
+	id, err := deployRestAPIWithoutRestart(w.restAPISecretApiID, suite.gw1ID)
 	if err != nil {
 		return err
 	}

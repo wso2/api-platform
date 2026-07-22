@@ -30,7 +30,11 @@ package e2e
 //  2. Create a REST API with one operation carrying a "set-headers" policy
 //     whose request.headers[0].value is a {{ secret "handle" }} placeholder
 //     (POST /rest-apis).
-//  3. Deploy the API — reusing the shared deploy() helper from steps_test.go.
+//  3. Deploy the API — attach the gateway and create the deployment WITHOUT
+//     restarting the controller (deployRestAPIWithoutRestart in
+//     secret_helpers_test.go). The platform-api broadcasts an api.deployed
+//     WebSocket event to the already-connected controller, which resolves the
+//     placeholder on demand — no restart required.
 //  4. Poll the gateway management API until the API appears, confirming the
 //     controller resolved the secret reference inside the policy's params.
 
@@ -103,10 +107,11 @@ func (w *world) aRestAPIWithPolicyReferencingSecret() error {
 	return nil
 }
 
-// deployPolicySecretRestAPI deploys the REST API to gateway 1, reusing the
-// shared deploy() helper (attach gateway, create deployment, restart controller).
+// deployPolicySecretRestAPI deploys the REST API to gateway 1 without
+// restarting the controller, so the assertion exercises the on-demand
+// api.deployed event path rather than the startup bulk-sync path.
 func (w *world) deployPolicySecretRestAPI() error {
-	id, err := deploy(w.policySecretApiID, suite.gw1ID, "gateway-controller")
+	id, err := deployRestAPIWithoutRestart(w.policySecretApiID, suite.gw1ID)
 	if err != nil {
 		return err
 	}

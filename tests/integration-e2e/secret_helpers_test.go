@@ -53,7 +53,7 @@ func createSecret(displayName, value string) (string, error) {
 	}
 	mw.Close()
 
-	req, err := http.NewRequest(http.MethodPost, platformAPI+"/api/v0.9/secrets", buf)
+	req, err := http.NewRequest(http.MethodPost, platformAPI+platformAPIBase+"/secrets", buf)
 	if err != nil {
 		return "", err
 	}
@@ -70,6 +70,32 @@ func createSecret(displayName, value string) (string, error) {
 		return "", fmt.Errorf("create secret failed (%d): %s", resp.StatusCode, body)
 	}
 	return handle, nil
+}
+
+// deployRestAPIWithoutRestart attaches the gateway to a REST API and creates a
+// deployment, WITHOUT restarting the controller — unlike the shared deploy()
+// helper in steps_test.go. platform-api broadcasts an api.deployed WebSocket
+// event to the already-connected controller, whose handleAPIDeployedEvent
+// resolves any {{ secret "..." }} reference in the rendered YAML on demand
+// before creating the API configuration, so a restart is not needed to
+// exercise (or verify) that on-demand path. Returns the deployment id.
+func deployRestAPIWithoutRestart(apiID, gatewayID string) (string, error) {
+	if st, body, err := apiCall(http.MethodPost, "/rest-apis/"+apiID+"/gateways", suite.token,
+		[]map[string]string{{"gatewayId": gatewayID}}); err != nil {
+		return "", err
+	} else if st >= 300 {
+		return "", fmt.Errorf("attach gateway failed (%d): %s", st, body)
+	}
+	st, body, err := apiCall(http.MethodPost, "/rest-apis/"+apiID+"/deployments", suite.token,
+		map[string]any{"base": "current", "gatewayId": gatewayID, "name": "dep-" + randHex()})
+	if err != nil {
+		return "", err
+	}
+	id := jsonField(body, "deploymentId")
+	if st >= 300 || id == "" {
+		return "", fmt.Errorf("deploy failed (%d): %s", st, body)
+	}
+	return id, nil
 }
 
 // waitGatewayResource polls GET <gwMgmtAPI>/api/management/v1/<resourcePath> on the
