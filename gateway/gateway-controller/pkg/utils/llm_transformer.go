@@ -766,14 +766,19 @@ func applyResilienceToTrafficRoutes(ops []api.Operation, resilience *api.Resilie
 	}
 }
 
-// GetUpstreamAuthApikeyPolicyParams renders the policy params with given header and value
+// GetUpstreamAuthApikeyPolicyParams builds the set-headers policy params for the given
+// header and value.
 func GetUpstreamAuthApikeyPolicyParams(header, value string) (map[string]interface{}, error) {
-	rendered := fmt.Sprintf(constants.UPSTREAM_AUTH_APIKEY_POLICY_PARAMS, header, value)
-	var m map[string]interface{}
-	if err := yaml.Unmarshal([]byte(rendered), &m); err != nil {
-		return nil, err
-	}
-	return m, nil
+	return map[string]interface{}{
+		"request": map[string]interface{}{
+			"headers": []interface{}{
+				map[string]interface{}{
+					"name":  header,
+					"value": value,
+				},
+			},
+		},
+	}, nil
 }
 
 // apiKeyAuthValuePrefix returns the valuePrefix configured on a provider's downstream
@@ -876,15 +881,13 @@ func selectedProviderExecutionCondition(providerName string, includeDefault bool
 	return fmt.Sprintf("'selected_provider' in request.Metadata && %s", selectedExpr)
 }
 
-// GetHostAdditionPolicyParams renders the policy params with given host value (host-rewrite)
+// GetHostAdditionPolicyParams builds the host-rewrite policy params. Constructed
+// structurally (not via YAML interpolation) so a host value containing a quote or newline
+// cannot break or inject the params.
 func GetHostAdditionPolicyParams(value string) (map[string]interface{}, error) {
-	rendered := fmt.Sprintf(constants.PROXY_HOST__HEADER_POLICY_PARAMS, value)
-	var m map[string]interface{}
-	// For host-rewrite, params are simple mapping, so unmarshal into map
-	if err := yaml.Unmarshal([]byte(rendered), &m); err != nil {
-		return nil, err
-	}
-	return m, nil
+	return map[string]interface{}{
+		"host": value,
+	}, nil
 }
 
 // buildTemplateParams extracts template parameters from the LLM provider template for the given resource path
