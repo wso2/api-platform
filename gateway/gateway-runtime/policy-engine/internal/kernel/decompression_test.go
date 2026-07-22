@@ -282,6 +282,111 @@ func TestStreamDecompressor_RoundTrip(t *testing.T) {
 	assert.Equal(t, original, final)
 }
 
+// TestStreamDecompressor_ManyChunks_NoStall is the regression test for the
+// mid-stream stall that broke large Claude Code tasks. The previous io.Pipe +
+// bounded-channel (cap 64) design deadlocked once the decoder produced more
+// undrained output blocks than the channel could hold while a chunk was still
+// being consumed: the decoder goroutine blocked on the full channel, stopped
+// reading the pipe, so the pipe Write never returned, so FeedChunk never drained
+// the channel. It surfaced only on long/large responses (many chunks) — short
+// ones never filled the channel, which is why the two-chunk tests missed it.
+//
+// This feeds a long stream as many separate sync-flushed chunks and asserts every
+// byte comes back, within a deadline so a regression fails as a timeout, not a hang.
+func TestStreamDecompressor_ManyChunks_NoStall(t *testing.T) {
+	// Build a gzip stream flushed after each of many logical chunks, mirroring how
+	// an upstream (Anthropic) emits a continuous gzip stream with per-event flushes.
+	const numChunks = 500
+	var raw bytes.Buffer
+	var compressed bytes.Buffer
+	zw := gzip.NewWriter(&compressed)
+	flushOffsets := make([]int, 0, numChunks)
+	for i := 0; i < numChunks; i++ {
+		// ~250 bytes per SSE event, including ~200 bytes of filler text.
+		filler := string(bytes.Repeat([]byte("x"), 200))
+		line := []byte(`data: {"type":"content_block_delta","index":0,` +
+			`"delta":{"type":"text_delta","text":"token-` + filler + `"}}` + "\n\n")
+		raw.Write(line)
+		_, err := zw.Write(line)
+		require.NoError(t, err)
+		require.NoError(t, zw.Flush()) // sync-flush → a decodable boundary, like SSE
+		flushOffsets = append(flushOffsets, compressed.Len())
+	}
+	require.NoError(t, zw.Close())
+
+	sd := newStreamDecompressor("gzip")
+	compBytes := compressed.Bytes()
+	// Close() appended the gzip trailer after the last recorded flush offset — extend
+	// the final segment to the true end so the EOS chunk carries the trailer.
+	flushOffsets[len(flushOffsets)-1] = len(compBytes)
+
+	// Feed the compressed stream in slices aligned to the flush boundaries, each as a
+	// separate FeedChunk call — the shape that accumulated backlog in the old design.
+	done := make(chan []byte, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		var out []byte
+		prev := 0
+		for i, off := range flushOffsets {
+			eos := i == len(flushOffsets)-1
+			part, err := sd.FeedChunk(compBytes[prev:off], eos)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			out = append(out, part...)
+			prev = off
+		}
+		done <- out
+	}()
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("FeedChunk returned error: %v", err)
+	case out := <-done:
+		assert.Equal(t, raw.Bytes(), out, "every decompressed byte must be returned across all chunks")
+	case <-time.After(15 * time.Second):
+		sd.Close()
+		t.Fatal("streamDecompressor stalled on a long many-chunk stream (regression: mid-stream deadlock)")
+	}
+}
+
+// TestStreamDecompressor_HighRatioChunk_NoStall feeds a single chunk that
+// decompresses to far more than the old 64-block channel could buffer, exercising
+// the second face of the same bug: one FeedChunk whose decoded output alone would
+// have overrun the bounded channel mid-consume. With the unbounded output buffer
+// this must complete promptly and return all bytes.
+func TestStreamDecompressor_HighRatioChunk_NoStall(t *testing.T) {
+	// 8 MiB of highly compressible data → tiny compressed input, ~256 blocks of
+	// 32 KiB out — well past the old cap of 64.
+	original := bytes.Repeat([]byte("A"), 8<<20)
+	compressed := gzipCompress(original)
+
+	sd := newStreamDecompressor("gzip")
+
+	done := make(chan []byte, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		out, err := sd.FeedChunk(compressed, true)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		done <- out
+	}()
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("FeedChunk returned error: %v", err)
+	case out := <-done:
+		assert.Equal(t, len(original), len(out))
+		assert.True(t, bytes.Equal(original, out))
+	case <-time.After(15 * time.Second):
+		sd.Close()
+		t.Fatal("streamDecompressor stalled on a high-ratio single chunk (regression: bounded-channel overrun)")
+	}
+}
+
 // =============================================================================
 // streamCompressor Tests
 // =============================================================================
