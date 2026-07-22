@@ -84,10 +84,12 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
 - `E2E_DB` = `postgres` (default) | `sqlite` | `sqlserver`.
 - `E2E_KEEP=1` leaves the stack up after the run for inspection.
 - `E2E_TAGS=@smoke` runs a tag subset (other tags: `@secured`, `@multigateway`,
-  `@devportal`, and `@lifecycle` for the credential-lifecycle scenario — run it alone
-  with `E2E_TAGS="@devportal && @lifecycle"`). The `@multigateway` and `@devportal`
-  scenarios run only on the postgres stack (the only one wired with a second gateway
-  and the developer portal) and are otherwise skipped automatically.
+  `@devportal`, `@lifecycle` for the credential-lifecycle scenario — run it alone
+  with `E2E_TAGS="@devportal && @lifecycle"` —, and the on-demand secret fetch
+  scenarios `@llm_provider`, `@llm_proxy`, `@mcp_proxy`, `@rest_api_secret` and
+  `@policy_secret`). The `@multigateway` and `@devportal` scenarios run only on the
+  postgres stack (the only one wired with a second gateway and the developer
+  portal) and are otherwise skipped automatically.
 - `PA_HOST_PORT` / `GW_HTTP_PORT` / `GW2_HTTP_PORT` / `DP_HOST_PORT` override the
   published host ports to avoid clashing with other local stacks (defaults 9243 /
   18080 / 18081 / 3000).
@@ -202,6 +204,43 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
    the later plan (with its subscription) silently fails to sync. With that, the full
    six-scenario run passes in one process (~3 min); it is still resource-intensive on
    constrained hosts, where running per-tag (`E2E_TAGS=@devportal`, etc.) is lighter.
+
+### On-demand secret fetch scenarios
+
+The gateway-controller resolves `{{ secret "handle" }}` placeholders embedded in an
+artifact's rendered YAML on deploy — a secret created *after* the controller has
+already started is still picked up, because deploying (re-)triggers a full sync that
+fetches all referenced secrets before rendering. Each scenario below creates a secret,
+creates an artifact whose configuration embeds a placeholder for it, deploys, then
+polls the gateway-controller's management API (`GET /api/management/v1/<resource>`)
+until the artifact appears — confirming the secret was resolved successfully (a failed
+resolution keeps the artifact from ever rendering, so it never shows up).
+
+7. **LLM provider** (`@llm_provider`, `features/llm_provider.feature`) — an LLM
+   provider's `upstream.main.auth.value` embeds the placeholder directly.
+8. **LLM proxy** (`@llm_proxy`, `features/llm_proxy.feature`) — an LLM proxy fronts an
+   already-deployed LLM provider (referenced by id, a platform-api-enforced foreign
+   key); the placeholder sits in the proxy's own `provider.auth` override, not a full
+   upstream block.
+9. **MCP proxy** (`@mcp_proxy`, `features/mcp_proxy.feature`) — an MCP proxy's
+   `upstream.main.auth.value` uses the same shared `UpstreamAuth` schema as an LLM
+   provider's. Note: `mcpSpecVersion` (e.g. `"2025-06-18"`) must be set explicitly on
+   create — omitting it defaults to an empty string, which the gateway-controller's
+   spec-version validator rejects at deploy time with an unrelated-looking
+   "Unsupported MCP spec version" error.
+10. **REST API upstream credential** (`@rest_api_secret`,
+    `features/rest_api_secret.feature`) — a plain REST API's `upstream.main.auth.value`
+    embeds the placeholder; deployment reuses the shared `deploy()` helper from
+    `steps_test.go`.
+11. **Policy configuration** (`@policy_secret`, `features/policy_secret.feature`) —
+    the placeholder is nested inside an operation's `set-headers` policy params
+    (`operations[].request.policies[].params.request.headers[].value`) rather than an
+    upstream auth block, proving secret resolution is generic over an artifact's
+    entire rendered configuration (`syncSecretRefsFromYAML` regexes the whole YAML;
+    the template renderer walks every string recursively), not special-cased to
+    upstream auth. Policy `version` fields must be major-only (e.g. `"v1"`) — the
+    gateway-controller resolves that against the single matching registered version in
+    `gateway/build-manifest.yaml` and rejects a full semver string like `"v1.1.0"`.
 
 ## Status — passing on all three databases
 
