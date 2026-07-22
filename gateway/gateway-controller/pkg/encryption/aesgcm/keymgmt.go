@@ -19,12 +19,9 @@
 package aesgcm
 
 import (
-	"crypto/rand"
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 )
@@ -59,9 +56,6 @@ func NewKeyManager(keyConfigs []KeyConfig, logger *slog.Logger) (*KeyManager, er
 		logger: logger,
 	}
 
-	// Read development mode flag once
-	devMode := strings.EqualFold(os.Getenv("APIP_GW_DEVELOPMENT_MODE"), "true")
-
 	// Load all keys
 	for i, config := range keyConfigs {
 		// Avoid duplicate key override
@@ -69,20 +63,12 @@ func NewKeyManager(keyConfigs []KeyConfig, logger *slog.Logger) (*KeyManager, er
 			return nil, fmt.Errorf("duplicate key version: %s", config.Version)
 		}
 
-		// Auto-generate the key file on first run only in development mode.
+		// A missing key file is a fatal startup error — provision it out of band (e.g. via ./scripts/setup.sh).
 		if _, err := os.Stat(config.FilePath); os.IsNotExist(err) {
-			if !devMode {
-				return nil, fmt.Errorf(
-					"encryption key file not found for version %s at %s — "+
-						"provision a key file or run in development mode to auto-generate one",
-					config.Version, config.FilePath,
-				)
-			}
-			if err := generateKeyFile(config.FilePath, logger); err != nil {
-				return nil, fmt.Errorf("failed to auto-generate key file for version %s: %w", config.Version, err)
-			}
-			logger.Warn("Running in development mode — auto-generating AES-256 encryption key",
-				slog.String("key_version", config.Version),
+			return nil, fmt.Errorf(
+				"encryption key file not found for version %s at %s — provision a key "+
+					"or run ./scripts/setup.sh to auto-generate one",
+				config.Version, config.FilePath,
 			)
 		}
 
@@ -111,27 +97,6 @@ func NewKeyManager(keyConfigs []KeyConfig, logger *slog.Logger) (*KeyManager, er
 	)
 
 	return km, nil
-}
-
-// generateKeyFile creates parent directories and writes 32 cryptographically
-// random bytes to filePath with permissions 0600.
-func generateKeyFile(filePath string, logger *slog.Logger) error {
-	dir := filepath.Dir(filePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("failed to create key directory %s: %w", dir, err)
-	}
-
-	key := make([]byte, AESKeySize)
-	if _, err := rand.Read(key); err != nil {
-		return fmt.Errorf("failed to generate random key: %w", err)
-	}
-
-	if err := os.WriteFile(filePath, key, 0600); err != nil {
-		return fmt.Errorf("failed to write key file %s: %w", filePath, err)
-	}
-
-	logger.Debug("Generated encryption key file", slog.String("file_path", filePath))
-	return nil
 }
 
 // loadKey reads a key from a file and validates its size

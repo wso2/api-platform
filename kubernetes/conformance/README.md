@@ -72,7 +72,11 @@ Colima host-reachability setup details.
 
 Installs cert-manager, the gateway operator using the locally built images (the
 operator installs the bundled standard-channel Gateway API CRDs v1.5.1), and the
-`wso2-api-platform` GatewayClass.
+`wso2-api-platform` GatewayClass. It also provisions a throwaway AES-256 at-rest
+encryption key Secret in the `gateway-conformance-infra` namespace and enables
+`gateway.controller.encryptionKeys`, because at-rest encryption is mandatory — the
+gateway-controller fails to start without its key and the chart refuses to render
+without it. Override the secret name or target namespace with `ENC_KEY_SECRET` / `GATEWAY_NS`.
 
 ### 5. Run the conformance suite
 

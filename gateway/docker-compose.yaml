@@ -19,8 +19,7 @@
 # NOTE: gateway-controller and gateway-runtime are duplicated in docker-compose.debug.yaml — keep in sync.
 # NOTE: distribution/docker-compose.yaml ships the standalone variant (assembled by `make dist`) — keep
 #       gateway-controller/gateway-runtime services in sync there too. Documented differences that should
-#       diverge: cert mount paths under ./resources/, no sample-backend service, empty default for
-#       APIP_GW_CONTROLPLANE_HOST.
+#       diverge: cert mount paths under ./resources/, no sample-backend service
 
 services:
   gateway-controller:
@@ -33,15 +32,16 @@ services:
       - "9090:9090"   # REST API
       - "9094:9092"   # Admin API
       - "9011:9091"   # Metrics
-    environment:
-      - APIP_GW_DEVELOPMENT_MODE=true
-      - APIP_GW_GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
-      - APIP_GW_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:9243}
+    env_file:
+      - path: api-platform.env
+        required: true
+        format: raw
     volumes:
       - controller-data:/app/data
       - ./configs/config.toml:/etc/gateway-controller/config.toml:ro
       - ./gateway-controller/certificates:/app/certificates  # Read-write for dynamic certificate management
       - ./gateway-controller/listener-certs:/app/listener-certs:ro  # Read-only for HTTPS listener certificates
+      - ./gateway-controller/aesgcm-keys/default-aesgcm256-v1.bin:/app/data/aesgcm-keys/default-aesgcm256-v1.bin:ro  # AES-256 at-rest encryption key
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -62,9 +62,10 @@ services:
       # Policy Engine
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
-    environment:
-      - GATEWAY_CONTROLLER_HOST=gateway-controller
-      - MOESIF_KEY=${MOESIF_KEY:-}
+    env_file:
+      - path: api-platform.env
+        required: true
+        format: raw
     volumes:
       - ./configs/config.toml:/etc/policy-engine/config.toml:ro
       - ./configs/llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro

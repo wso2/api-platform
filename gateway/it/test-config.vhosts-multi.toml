@@ -45,6 +45,12 @@ vector_db_provider_ttl = 3600  # 1 hour in seconds
 # GATEWAY CONTROLLER CONFIGURATION
 # =============================================================================
 
+[controller.storage]
+type = '{{ env "APIP_GW_CONTROLLER_STORAGE_TYPE" "sqlite" }}'
+
+[controller.storage.sqlite]
+path = '{{ env "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH" "./data/gateway.db" }}'
+
 [controller.event_hub]
 # Faster poll interval for test responsiveness (default: 3s)
 poll_interval = "200ms"
@@ -59,7 +65,7 @@ password_hashed = false
 roles = ["admin"]
 
 [controller.logging]
-level = "debug"
+level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "debug" }}'
 
 [controller.metrics]
 enabled = true

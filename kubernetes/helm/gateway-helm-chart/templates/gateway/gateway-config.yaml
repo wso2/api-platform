@@ -56,6 +56,7 @@ data:
     port = {{ $pg.port | int }}
     database = {{ required "gateway.config.controller.storage.postgres.database is required when storage.type is \"postgres\" and dsn is unset" $pg.database | quote }}
     user = {{ required "gateway.config.controller.storage.postgres.user is required when storage.type is \"postgres\" and dsn is unset" $pg.user | quote }}
+    password = {{ `'{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD" "" }}'` }}
     sslmode = {{ $pg.sslmode | default "require" | quote }}
     connect_timeout = {{ $pg.connect_timeout | default "5s" | quote }}
     max_open_conns = {{ $pg.max_open_conns | default 25 | int }}
@@ -77,6 +78,7 @@ data:
     port = {{ coalesce $db.port $ss.port 1433 | int }}
     database = {{ required "gateway.config.controller.storage.database.database (or storage.sqlserver.database) is required when storage.type is \"sqlserver\" and dsn is unset" (coalesce $db.database $ss.database) | quote }}
     user = {{ required "gateway.config.controller.storage.database.user (or storage.sqlserver.user) is required when storage.type is \"sqlserver\" and dsn is unset" (coalesce $db.user $ss.user) | quote }}
+    password = {{ `'{{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD" "" }}'` }}
     connect_timeout = {{ coalesce $db.connect_timeout $ss.connect_timeout "5s" | quote }}
     max_open_conns = {{ coalesce $db.max_open_conns $ss.max_open_conns 25 | int }}
     max_idle_conns = {{ coalesce $db.max_idle_conns $ss.max_idle_conns 5 | int }}
@@ -103,6 +105,8 @@ data:
     {{- end }}
 
     [controller.controlplane]
+    host = {{ .Values.gateway.controller.controlPlane.host | default "" | quote }}
+    token = {{ `'{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN" "" }}'` }}
     insecure_skip_verify = {{ $gc.controlplane.insecure_skip_verify }}
     reconnect_initial = {{ $gc.controlplane.reconnect_initial | quote }}
     reconnect_max = {{ $gc.controlplane.reconnect_max | quote }}

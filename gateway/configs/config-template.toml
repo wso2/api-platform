@@ -11,7 +11,7 @@ xds_port = 18000
 shutdown_timeout = "15s"
 # Unique identifier for the gateway instance (used in persistent storage)
 # It is recommended to use a uuid_v7 for this to improve db efficiency.
-gateway_id = "platform-gateway-id"
+gateway_id = '{{ env "APIP_GW_CONTROLLER_SERVER_GATEWAY_ID" "platform-gateway-id" }}'
 
 [controller.admin_server]
 # Dedicated admin/debug HTTP server for config dump and xDS sync endpoints
@@ -41,10 +41,12 @@ cert_file = "./certs/server.crt"
 key_file = "./certs/server.key"
 
 [controller.controlplane]
-# Control plane websocket endpoint
-host = ""
-# Control plane authentication token
-token = ""
+# Control plane websocket endpoint. Environment values reach these keys ONLY through the
+# {{ env }} tokens below (there is no APIP_GW_ prefix override); each token has a default,
+# so an unset variable keeps the built-in value.
+host = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_HOST" "" }}'
+# Control plane authentication (registration) token
+token = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN" "" }}'
 # Initial reconnect delay
 reconnect_initial = "1s"
 # Maximum reconnect delay
@@ -52,24 +54,32 @@ reconnect_max = "5m"
 # Polling interval for periodic sync
 polling_interval = "15m"
 # Skip TLS certificate verification for control plane connections
-insecure_skip_verify = false
+insecure_skip_verify = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY" "false" }}'
+# Enable two-way artifact/deployment sync with the control plane (default: true)
+deployment_sync_enabled = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_DEPLOYMENT_SYNC_ENABLED" "true" }}'
+# APIM OAuth2 Client ID
+apim_oauth2_client_id = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_ID" "" }}'
+# APIM OAuth2 Client secret
+apim_oauth2_client_secret = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_SECRET" "" }}'
+# Gateway name
+gateway_name = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_GATEWAY_NAME" "default" }}'
 
 [controller.storage]
-# Storage type: "sqlite", "postgres", or "memory"
-type = "sqlite"
+# Storage type: "sqlite", "postgres", "sqlserver", or "memory"
+type = '{{ env "APIP_GW_CONTROLLER_STORAGE_TYPE" "sqlite" }}'
 
 [controller.storage.sqlite]
-path = "./data/gateway.db"
+path = '{{ env "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH" "./data/gateway.db" }}'
 
 [controller.storage.postgres]
 # Optional DSN. If set, host/port/database/user/password are ignored.
 # dsn = "postgres://user:password@localhost:5432/gateway?sslmode=require"
-host = "localhost"
-port = 5432
-database = "gateway"
-user = "gateway"
-password = ""
-sslmode = "require" # disable, require, verify-ca, verify-full
+host = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST" "localhost" }}'
+port = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT" "5432" }}'
+database = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_DATABASE" "gateway" }}'
+user = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_USER" "gateway" }}'
+password = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD" "" }}'
+sslmode = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE" "require" }}' # disable, require, verify-ca, verify-full
 connect_timeout = "5s"
 max_open_conns = 25
 max_idle_conns = 5
@@ -82,8 +92,9 @@ application_name = "gateway-controller"
 # For sqlite and postgres, legacy [controller.storage.sqlite]/[controller.storage.postgres]
 # sections are still supported for backward compatibility.
 driver = "sqlserver"
-# Optional DSN. If set, host/port/database/user/password are ignored.
-# dsn = "sqlserver://user:password@localhost:1433?database=gateway&encrypt=true"
+# Optional DSN. If set, host/port/database/user/password are ignored. The sample composes
+# supply this from api-platform.env for type = "sqlserver".
+dsn = '{{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN" "" }}'
 host = "localhost"
 port = 1433
 database = "gateway"
@@ -101,8 +112,9 @@ encrypt = "true" # disable, false, true, strict
 trust_server_certificate = "false"
 
 [controller.policies]
-# Directory containing policy definitions
-definitions_path = "./default-policies"
+# Directory containing policy definitions. The immutable-gateway builder image sets
+# APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH=/app/policies, which this token reads.
+definitions_path = '{{ env "APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH" "./default-policies" }}'
 
 [controller.auth.basic]
 enabled = true
@@ -124,12 +136,12 @@ algorithm = "sha256"
 issuer = "api-platform-devportal"
 
 [controller.logging]
-level = "info"
+level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
 format = "text"
 
 [controller.metrics]
 enabled = true
-port = 9091
+port = '{{ env "APIP_GW_CONTROLLER_METRICS_PORT" "9091" }}'
 
 [controller.event_hub]
 # Interval at which events are polled from the database
@@ -388,7 +400,7 @@ send_response_body = false
 enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]
-application_id = "<MOESIF_APPLICATION_ID>"
+application_id = '{{ env "APIP_GW_ANALYTICS_PUBLISHERS_MOESIF_APPLICATION_ID" "" }}'
 moesif_base_url = "https://api.moesif.net"
 publish_interval = 5
 event_queue_size = 10000

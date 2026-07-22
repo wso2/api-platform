@@ -8,6 +8,10 @@ data:
   # These are *overrides* deep-merged into the operator's default gateway_values.yaml.
   values.yaml: |
     gateway:
+      controller:
+        encryptionKeys:
+          enabled: true
+          secretName: gateway-encryption-keys
       gatewayRuntime:
         service:
           type: LoadBalancer
