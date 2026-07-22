@@ -1394,7 +1394,7 @@ Feature: Per-Operation Upstream
     When I delete the API "api-level-url-stable-scheme-api-v1.0"
     Then the response should be successful
 
-  # ===== match-form operations (Gateway-API-style method + path.value + headers) =====
+  # ===== per-operation upstream on match-form operations (Gateway-API-style method + path.value + headers) =====
   Scenario: Per-operation main ref on a match-form operation routes to the ref'd backend
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
