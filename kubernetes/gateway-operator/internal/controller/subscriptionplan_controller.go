@@ -20,7 +20,7 @@ import (
 	"context"
 	"time"
 
-	"go.uber.org/zap"
+	"log/slog"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,7 +42,7 @@ type SubscriptionPlanReconciler struct {
 }
 
 // NewSubscriptionPlanReconciler constructs a fully wired reconciler.
-func NewSubscriptionPlanReconciler(c client.Client, cfg *config.OperatorConfig, logger *zap.Logger, tracker *ResourceTracker) *SubscriptionPlanReconciler {
+func NewSubscriptionPlanReconciler(c client.Client, cfg *config.OperatorConfig, logger *slog.Logger, tracker *ResourceTracker) *SubscriptionPlanReconciler {
 	r := &SubscriptionPlanReconciler{}
 	r.Client = c
 	r.Config = cfg

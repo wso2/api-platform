@@ -23,7 +23,7 @@ import (
 	"sort"
 	"strings"
 
-	"go.uber.org/zap"
+	"log/slog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -39,7 +39,7 @@ func BuildAPIConfigFromHTTPRoute(
 	parentTargets []gatewayParentTarget,
 	backendResolution *HTTPRouteBackendResolution,
 	clusterDomain string,
-	log *zap.Logger,
+	log *slog.Logger,
 ) (*apiv1.APIConfigData, error) {
 	if len(route.Spec.Rules) == 0 {
 		return nil, newInvalidHTTPRouteConfigError("HTTPRoute has no rules")
