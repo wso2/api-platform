@@ -98,6 +98,7 @@ export default function LLMProxyProviderTab() {
           enabled: Boolean(providerApiKey.enabled),
           key: providerApiKey.key ?? '',
           in: providerApiKey.in ?? 'header',
+          valuePrefix: providerApiKey.valuePrefix,
         }
       : undefined;
     return {

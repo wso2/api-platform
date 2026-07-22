@@ -137,7 +137,7 @@ const (
 	WEBSUB_HUB_DYNAMIC_HTTP_PORT   = 8082
 	WEBSUB_HUB_DYNAMIC_HTTPS_PORT  = 8445
 
-	// LLM Transformer constants
+	API_KEY_AUTH_POLICY_NAME           = "api-key-auth"
 	UPSTREAM_AUTH_APIKEY_POLICY_NAME   = "set-headers"
 	UPSTREAM_AUTH_APIKEY_POLICY_PARAMS = "request:\n" +
 		"  headers:\n" +
