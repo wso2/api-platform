@@ -20,6 +20,7 @@ package repository
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -239,15 +240,26 @@ func replaceCustomPolicyUsagesTx(tx *sql.Tx, db *database.DB, artifactUUID strin
 	if _, err := tx.Exec(db.Rebind(`DELETE FROM gateway_custom_policy_usages WHERE artifact_uuid = ?`), artifactUUID); err != nil {
 		return err
 	}
+
 	seen := make(map[string]struct{}, len(policyUUIDs))
+	valuePlaceholders := make([]string, 0, len(policyUUIDs))
+	args := make([]any, 0, len(policyUUIDs)*2)
 	for _, policyUUID := range policyUUIDs {
 		if _, exists := seen[policyUUID]; exists {
 			continue
 		}
 		seen[policyUUID] = struct{}{}
-		if _, err := tx.Exec(db.Rebind(`INSERT INTO gateway_custom_policy_usages (policy_uuid, artifact_uuid) VALUES (?, ?)`), policyUUID, artifactUUID); err != nil {
-			return err
-		}
+		valuePlaceholders = append(valuePlaceholders, "(?, ?)")
+		args = append(args, policyUUID, artifactUUID)
+	}
+	if len(valuePlaceholders) == 0 {
+		return nil
+	}
+
+	query := `INSERT INTO gateway_custom_policy_usages (policy_uuid, artifact_uuid) VALUES ` +
+		strings.Join(valuePlaceholders, ", ")
+	if _, err := tx.Exec(db.Rebind(query), args...); err != nil {
+		return err
 	}
 	return nil
 }

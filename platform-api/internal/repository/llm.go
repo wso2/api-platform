@@ -880,16 +880,16 @@ func NewLLMProviderRepo(db *database.DB) LLMProviderRepository {
 }
 
 func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
-	return r.create(p, nil, false)
+	return r.create(p, nil)
 }
 
 // CreateWithCustomPolicyUsages creates an LLM provider and its custom-policy
 // deletion guards in one transaction.
 func (r *LLMProviderRepo) CreateWithCustomPolicyUsages(p *model.LLMProvider, policyUUIDs []string) error {
-	return r.create(p, policyUUIDs, true)
+	return r.create(p, policyUUIDs)
 }
 
-func (r *LLMProviderRepo) create(p *model.LLMProvider, policyUUIDs []string, reconcilePolicyUsages bool) error {
+func (r *LLMProviderRepo) create(p *model.LLMProvider, policyUUIDs []string) error {
 	uuidStr, err := utils.GenerateUUID()
 	if err != nil {
 		return fmt.Errorf("failed to generate LLM provider ID: %w", err)
@@ -957,10 +957,8 @@ func (r *LLMProviderRepo) create(p *model.LLMProvider, policyUUIDs []string, rec
 	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.CreatedBy, p.AssociatedGateways, now); err != nil {
 		return err
 	}
-	if reconcilePolicyUsages {
-		if err := replaceCustomPolicyUsagesTx(tx, r.db, p.UUID, policyUUIDs); err != nil {
-			return fmt.Errorf("failed to persist custom policy usages: %w", err)
-		}
+	if err := replaceCustomPolicyUsagesTx(tx, r.db, p.UUID, policyUUIDs); err != nil {
+		return fmt.Errorf("failed to persist custom policy usages: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -1084,16 +1082,16 @@ func (r *LLMProviderRepo) Count(orgUUID string) (int, error) {
 }
 
 func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
-	return r.update(p, nil, false)
+	return r.update(p, nil)
 }
 
 // UpdateWithCustomPolicyUsages updates an LLM provider and replaces its
 // custom-policy deletion guards in one transaction.
 func (r *LLMProviderRepo) UpdateWithCustomPolicyUsages(p *model.LLMProvider, policyUUIDs []string) error {
-	return r.update(p, policyUUIDs, true)
+	return r.update(p, policyUUIDs)
 }
 
-func (r *LLMProviderRepo) update(p *model.LLMProvider, policyUUIDs []string, reconcilePolicyUsages bool) error {
+func (r *LLMProviderRepo) update(p *model.LLMProvider, policyUUIDs []string) error {
 	now := time.Now().UTC()
 	p.UpdatedAt = now
 
@@ -1166,10 +1164,8 @@ func (r *LLMProviderRepo) update(p *model.LLMProvider, policyUUIDs []string, rec
 			return err
 		}
 	}
-	if reconcilePolicyUsages {
-		if err := replaceCustomPolicyUsagesTx(tx, r.db, providerUUID, policyUUIDs); err != nil {
-			return fmt.Errorf("failed to persist custom policy usages: %w", err)
-		}
+	if err := replaceCustomPolicyUsagesTx(tx, r.db, providerUUID, policyUUIDs); err != nil {
+		return fmt.Errorf("failed to persist custom policy usages: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {

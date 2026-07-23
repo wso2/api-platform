@@ -27,7 +27,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func TestLLMProviderRepoUpdateWithCustomPolicyUsagesRollsBackOnInsertFailure(t *testing.T) {
+func TestLLMProviderRepoCustomPolicyUsageReconciliation(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	t.Cleanup(cleanup)
 
@@ -60,6 +60,15 @@ func TestLLMProviderRepoUpdateWithCustomPolicyUsagesRollsBackOnInsertFailure(t *
 	if err := customPolicyRepo.InsertCustomPolicy(policy); err != nil {
 		t.Fatalf("create custom policy: %v", err)
 	}
+	secondPolicy := &model.CustomPolicy{
+		UUID:             "policy-second",
+		OrganizationUUID: orgUUID,
+		Name:             "second-custom-policy",
+		Version:          "v1.0.0",
+	}
+	if err := customPolicyRepo.InsertCustomPolicy(secondPolicy); err != nil {
+		t.Fatalf("create second custom policy: %v", err)
+	}
 
 	providerRepo := NewLLMProviderRepo(db)
 	provider := &model.LLMProvider{
@@ -69,7 +78,7 @@ func TestLLMProviderRepoUpdateWithCustomPolicyUsagesRollsBackOnInsertFailure(t *
 		Version:          "v1.0",
 		TemplateUUID:     template.UUID,
 	}
-	if err := providerRepo.CreateWithCustomPolicyUsages(provider, []string{policy.UUID}); err != nil {
+	if err := providerRepo.CreateWithCustomPolicyUsages(provider, []string{policy.UUID, policy.UUID, secondPolicy.UUID}); err != nil {
 		t.Fatalf("create provider: %v", err)
 	}
 
@@ -90,8 +99,21 @@ func TestLLMProviderRepoUpdateWithCustomPolicyUsagesRollsBackOnInsertFailure(t *
 	if err != nil {
 		t.Fatalf("get usages after failed update: %v", err)
 	}
-	if len(usages) != 1 || usages[0] != policy.UUID {
-		t.Fatalf("policy usages = %v, want [%s]", usages, policy.UUID)
+	if len(usages) != 2 {
+		t.Fatalf("policy usages = %v, want two deduplicated usages", usages)
+	}
+
+	// The plain update path must also reconcile usages. With no policy UUIDs,
+	// it removes any usages previously stored for the provider.
+	if err := providerRepo.Update(provider); err != nil {
+		t.Fatalf("plain provider update: %v", err)
+	}
+	usages, err = customPolicyRepo.GetCustomPolicyUsagesByAPIUUID(provider.UUID)
+	if err != nil {
+		t.Fatalf("get usages after plain update: %v", err)
+	}
+	if len(usages) != 0 {
+		t.Fatalf("policy usages after plain update = %v, want none", usages)
 	}
 }
 
