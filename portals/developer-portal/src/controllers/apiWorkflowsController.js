@@ -20,6 +20,7 @@ const orgDao = require('../dao/organizationDao');
 const apiDao = require('../dao/apiDao');
 const viewDao = require('../dao/viewDao');
 const apiWorkflowService = require('../services/apiWorkflowService');
+const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const util = require('../utils/util');
 const { loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, rewriteViewStyles, isAiDisabledForPortal } = require('../utils/util');
@@ -426,7 +427,7 @@ const getAllPublishedFlowsMD = async (req, res) => {
 const generatePrompt = async (req, res) => {
     const { displayName, description, apis, orgName, viewName, handle } = req.body;
     try {
-        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const baseUrl = config.server?.baseUrl || `${req.protocol}://${req.get('host')}`;
         const prompt = apiWorkflowService.generateAgentPrompt(displayName, description, apis || [], orgName || '', viewName || 'default', baseUrl, handle || '');
         res.status(200).json({ agentPrompt: prompt });
     } catch (error) {

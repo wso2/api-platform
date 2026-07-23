@@ -32,6 +32,11 @@
 const DEFAULTS = {
     server: {
         port: 3000,
+        // Canonical public origin (scheme://host[:port]) of this portal. Used
+        // ONLY to build the absolute URLs embedded in a generated agent prompt,
+        // so those URLs don't depend on the request's (forgeable) Host header.
+        // Empty = fall back to the request origin.
+        baseUrl: 'https://localhost:3000',
         // Single listener on server.port; https.enabled toggles whether it
         // terminates TLS. enabled=false serves plain HTTP on that port — for when
         // a trusted upstream terminates TLS. cert_file/key_file are required only

@@ -40,6 +40,7 @@
 # cert_file/key_file are required only when enabled=true (no self-signed fallback).
 
 [developer_portal.server]
+base_url = '{{ env "APIP_DP_SERVER_BASE_URL" "https://localhost:3000" }}'
 port = 3000
 
 [developer_portal.server.https]
