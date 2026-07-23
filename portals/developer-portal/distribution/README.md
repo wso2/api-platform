@@ -73,6 +73,23 @@ Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD
 |------|---------|-------------|
 | `3000` | Developer Portal | HTTPS — browser entry point |
 | `9243` | Platform API | HTTPS — local-auth backend |
+| `5380` | AI Workspace | HTTPS — only when the `ai-workspace` profile is enabled (see below) |
+
+## AI Workspace (optional)
+
+This package runs the Developer Portal and the Platform API by default. **AI Workspace** ships in the same `docker-compose.yaml` as an optional component behind the `ai-workspace` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/), sharing the one Platform API — so you can add it without standing up a second Platform API.
+
+AI Workspace mounts the **same** `configs/config.toml` the other services do and reads only its own `[ai_workspace]` section (it ignores `[developer_portal]`/`[platform_api]`). It is **off by default**: a plain `docker compose up -d` never starts it. Enabling it takes one one-time step, because that shipped `config.toml` does **not** carry an `[ai_workspace]` section:
+
+1. **Add the `[ai_workspace]` section to `configs/config.toml`.** Copy the `[ai_workspace.*]` tables from the bottom of the shipped `configs/config-template.toml` (the "AI Workspace (optional)" section) and append them to this stack's `configs/config.toml`. The defaults already point at the shared `https://platform-api:9243`.
+
+Then start the stack with the profile enabled:
+
+```bash
+docker compose --profile ai-workspace up -d
+```
+
+AI Workspace comes up at `https://localhost:5380`, backed by the same Platform API. Omit `--profile ai-workspace` on any later `docker compose` command to leave it stopped.
 
 ## Configuration
 
