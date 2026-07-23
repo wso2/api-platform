@@ -30,7 +30,6 @@ import (
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/gatewayclient"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/selector"
-	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -38,6 +37,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"log/slog"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -125,11 +125,11 @@ type RestApiReconciler struct {
 	valueFromRefIndexMu sync.RWMutex
 	valueFromRefIndex   map[string]map[types.NamespacedName]struct{}
 	restAPIValueFromRef map[types.NamespacedName]map[string]struct{}
-	Logger              *zap.Logger
+	Logger              *slog.Logger
 }
 
 // NewRestApiReconciler creates a new RestApiReconciler
-func NewRestApiReconciler(client client.Client, scheme *runtime.Scheme, cfg *config.OperatorConfig, logger *zap.Logger) *RestApiReconciler {
+func NewRestApiReconciler(client client.Client, scheme *runtime.Scheme, cfg *config.OperatorConfig, logger *slog.Logger) *RestApiReconciler {
 	return &RestApiReconciler{
 		Client:              client,
 		Scheme:              scheme,
@@ -149,7 +149,7 @@ func NewRestApiReconciler(client client.Client, scheme *runtime.Scheme, cfg *con
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *RestApiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("namespace", req.Namespace), zap.String("name", req.Name))
+	log := r.Logger.With(slog.String("controller", "RestApi"), slog.String("namespace", req.Namespace), slog.String("name", req.Name))
 
 	// Fetch the RestApi CR
 	apiConfig := &apiv1.RestApi{}
@@ -160,15 +160,15 @@ func (r *RestApiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			r.removeRestAPIFromValueFromIndex(req.NamespacedName)
 			return ctrl.Result{}, nil
 		}
-		log.Error("unable to fetch RestApi", zap.Error(err))
+		log.Error("unable to fetch RestApi", slog.Any("error", err))
 		return ctrl.Result{}, err
 	}
 	r.upsertRestAPIValueFromIndex(apiConfig)
 
 	log.Info("Reconciling RestApi",
-		zap.String("name", apiConfig.Name),
-		zap.String("namespace", apiConfig.Namespace),
-		zap.Int64("generation", apiConfig.Generation))
+		slog.String("name", apiConfig.Name),
+		slog.String("namespace", apiConfig.Namespace),
+		slog.Int64("generation", apiConfig.Generation))
 
 	// Handle deletion
 	if !apiConfig.DeletionTimestamp.IsZero() {
@@ -179,7 +179,7 @@ func (r *RestApiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if !controllerutil.ContainsFinalizer(apiConfig, apiFinalizerName) {
 		controllerutil.AddFinalizer(apiConfig, apiFinalizerName)
 		if err := r.Update(ctx, apiConfig); err != nil {
-			log.Error("failed to add finalizer", zap.Error(err))
+			log.Error("failed to add finalizer", slog.Any("error", err))
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
@@ -212,7 +212,7 @@ func (r *RestApiReconciler) decideAndProcess(
 	trackingEntry *APITrackingEntry,
 	hasTrackingEntry bool,
 ) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
+	log := r.Logger.With(slog.String("controller", "RestApi"), slog.String("name", apiConfig.Name))
 
 	// Case 1: CR generation == status observed generation
 	if crGeneration == statusObservedGen {
@@ -228,8 +228,8 @@ func (r *RestApiReconciler) decideAndProcess(
 		}
 		if fp != restApiPolicyValueFromAnnotation(apiConfig) {
 			log.Info("RestApi policy valueFrom backing fingerprint changed; redeploying",
-				zap.String("name", apiConfig.Name),
-				zap.Int64("generation", crGeneration))
+				slog.String("name", apiConfig.Name),
+				slog.Int64("generation", crGeneration))
 			rc := 0
 			if trackingEntry != nil {
 				rc = trackingEntry.RetryCount
@@ -249,8 +249,8 @@ func (r *RestApiReconciler) decideAndProcess(
 				Status:     TrackingStatusDeployed,
 			})
 			log.Debug("API already deployed, skipping",
-				zap.String("name", apiConfig.Name),
-				zap.Int64("generation", crGeneration))
+				slog.String("name", apiConfig.Name),
+				slog.Int64("generation", crGeneration))
 			return ctrl.Result{}, nil
 		}
 	}
@@ -265,24 +265,24 @@ func (r *RestApiReconciler) decideAndProcess(
 				if trackingEntry.Status == TrackingStatusProcessing {
 					// FALSE POSITIVE - already processing this generation (avoid concurrent processing)
 					log.Debug("Already processing this generation, skipping false positive event",
-						zap.String("name", apiConfig.Name),
-						zap.Int64("generation", crGeneration),
-						zap.String("status", string(trackingEntry.Status)))
+						slog.String("name", apiConfig.Name),
+						slog.Int64("generation", crGeneration),
+						slog.String("status", string(trackingEntry.Status)))
 					return ctrl.Result{}, nil
 				}
 				// If Retrying, let it proceed to retry the API deployment
 				if trackingEntry.Status == TrackingStatusRetrying {
 					log.Info("Retrying API deployment",
-						zap.String("name", apiConfig.Name),
-						zap.Int64("generation", crGeneration),
-						zap.Int("retryCount", trackingEntry.RetryCount))
+						slog.String("name", apiConfig.Name),
+						slog.Int64("generation", crGeneration),
+						slog.Int("retryCount", trackingEntry.RetryCount))
 					return r.processDeployment(ctx, apiConfig, trackingKey, crGeneration)
 				}
 				// If Deployed but status not updated yet, wait for status propagation
 				if trackingEntry.Status == TrackingStatusDeployed {
 					log.Debug("Deployment completed but status not yet propagated, skipping",
-						zap.String("name", apiConfig.Name),
-						zap.Int64("generation", crGeneration))
+						slog.String("name", apiConfig.Name),
+						slog.Int64("generation", crGeneration))
 					return ctrl.Result{}, nil
 				}
 			}
@@ -290,23 +290,23 @@ func (r *RestApiReconciler) decideAndProcess(
 			if trackingEntry.Generation < crGeneration {
 				// UPDATE - new generation to process
 				log.Info("Processing API update",
-					zap.String("name", apiConfig.Name),
-					zap.Int64("oldGeneration", trackingEntry.Generation),
-					zap.Int64("newGeneration", crGeneration))
+					slog.String("name", apiConfig.Name),
+					slog.Int64("oldGeneration", trackingEntry.Generation),
+					slog.Int64("newGeneration", crGeneration))
 				return r.processDeployment(ctx, apiConfig, trackingKey, crGeneration)
 			}
 		} else {
 			// No tracking entry
-			log.Info("Processing API", zap.String("name", apiConfig.Name), zap.Int64("generation", crGeneration))
+			log.Info("Processing API", slog.String("name", apiConfig.Name), slog.Int64("generation", crGeneration))
 			return r.processDeployment(ctx, apiConfig, trackingKey, crGeneration)
 		}
 	}
 
 	// Default: nothing to do
 	log.Debug("No action needed",
-		zap.String("name", apiConfig.Name),
-		zap.Int64("crGeneration", crGeneration),
-		zap.Int64("statusObservedGen", statusObservedGen))
+		slog.String("name", apiConfig.Name),
+		slog.Int64("crGeneration", crGeneration),
+		slog.Int64("statusObservedGen", statusObservedGen))
 	return ctrl.Result{}, nil
 }
 
@@ -336,8 +336,8 @@ func (r *RestApiReconciler) processDeployment(
 			wait := time.Until(existingEntry.NextRetryTime)
 			if wait > 0 {
 				r.Logger.Info("Waiting for backoff",
-					zap.String("api", apiConfig.Name),
-					zap.Duration("wait", wait))
+					slog.String("api", apiConfig.Name),
+					slog.Duration("wait", wait))
 				return ctrl.Result{RequeueAfter: wait}, nil
 			}
 		}
@@ -403,7 +403,7 @@ func (r *RestApiReconciler) setInitialConditions(ctx context.Context, apiConfig 
 
 // executeDeployment performs the actual HTTP request to the gateway
 func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *apiv1.RestApi, gateway *registry.GatewayInfo) (string, error) {
-	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
+	log := r.Logger.With(slog.String("controller", "RestApi"), slog.String("name", apiConfig.Name))
 
 	spec := apiConfig.Spec.DeepCopy()
 	fp, err := resolveAPIConfigPolicyParamsValueFrom(ctx, r.Client, apiConfig.Namespace, spec, log)
@@ -435,7 +435,7 @@ func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *ap
 		return "", err
 	}
 
-	log.Info("Deploying API to gateway", zap.String("api", apiConfig.Name), zap.Bool("exists", exists))
+	log.Info("Deploying API to gateway", slog.String("api", apiConfig.Name), slog.Bool("exists", exists))
 	if err := gatewayclient.DeployRestAPI(ctx, ep, handle, apiYAML, exists, auth); err != nil {
 		return "", err
 	}
@@ -450,8 +450,8 @@ func (r *RestApiReconciler) handleDeploymentSuccess(
 	entry *APITrackingEntry,
 	gatewayKey string,
 ) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
-	log.Info("Deployment succeeded", zap.String("api", apiConfig.Name), zap.String("gateway", gatewayKey))
+	log := r.Logger.With(slog.String("controller", "RestApi"), slog.String("name", apiConfig.Name))
+	log.Info("Deployment succeeded", slog.String("api", apiConfig.Name), slog.String("gateway", gatewayKey))
 
 	// Update tracker to Deployed
 	entry.Status = TrackingStatusDeployed
@@ -474,7 +474,7 @@ func (r *RestApiReconciler) handleDeploymentSuccess(
 		types.NamespacedName{Namespace: apiConfig.Namespace, Name: apiConfig.Name},
 		entry.Fingerprint,
 	); err != nil {
-		log.Error("patch policy valueFrom fingerprint annotation failed", zap.Error(err))
+		log.Error("patch policy valueFrom fingerprint annotation failed", slog.Any("error", err))
 		return ctrl.Result{}, err
 	}
 
@@ -513,7 +513,7 @@ func (r *RestApiReconciler) handleRetryableError(
 	entry *APITrackingEntry,
 	err *gatewayclient.RetryableError,
 ) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
+	log := r.Logger.With(slog.String("controller", "RestApi"), slog.String("name", apiConfig.Name))
 
 	entry.RetryCount++
 	entry.LastRetryTime = time.Now()
@@ -526,10 +526,10 @@ func (r *RestApiReconciler) handleRetryableError(
 
 	if entry.RetryCount >= maxRetries {
 		log.Error("Max retries exceeded",
-			zap.Error(err.Err),
-			zap.String("api", apiConfig.Name),
-			zap.Int("retryCount", entry.RetryCount),
-			zap.Int("maxRetries", maxRetries))
+			slog.Any("error", err.Err),
+			slog.String("api", apiConfig.Name),
+			slog.Int("retryCount", entry.RetryCount),
+			slog.Int("maxRetries", maxRetries))
 
 		// Mark as deployed (failed) - keeps tracking but won't retry
 		entry.Status = TrackingStatusDeployed
@@ -557,11 +557,11 @@ func (r *RestApiReconciler) handleRetryableError(
 	r.apiTracker.Set(trackingKey, entry)
 
 	log.Info("Deployment failed, scheduling retry",
-		zap.String("api", apiConfig.Name),
-		zap.Int("retryCount", entry.RetryCount),
-		zap.Int("maxRetries", maxRetries),
-		zap.Duration("nextRetryIn", backoff),
-		zap.String("error", err.Error()))
+		slog.String("api", apiConfig.Name),
+		slog.Int("retryCount", entry.RetryCount),
+		slog.Int("maxRetries", maxRetries),
+		slog.Duration("nextRetryIn", backoff),
+		slog.String("error", err.Error()))
 
 	if updateErr := r.updateProgrammedCondition(ctx, apiConfig, metav1.Condition{
 		Type:               apiv1.APIConditionProgrammed,
@@ -585,11 +585,11 @@ func (r *RestApiReconciler) handleNonRetryableError(
 	entry *APITrackingEntry,
 	err *gatewayclient.NonRetryableError,
 ) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
+	log := r.Logger.With(slog.String("controller", "RestApi"), slog.String("name", apiConfig.Name))
 	log.Error("Non-retryable deployment error",
-		zap.Error(err.Err),
-		zap.String("api", apiConfig.Name),
-		zap.Int("statusCode", err.StatusCode))
+		slog.Any("error", err.Err),
+		slog.String("api", apiConfig.Name),
+		slog.Int("statusCode", err.StatusCode))
 
 	// Mark as deployed (failed)
 	entry.Status = TrackingStatusDeployed
@@ -618,8 +618,8 @@ func (r *RestApiReconciler) handleNonRetryableError(
 
 // handleNoGateway handles the case when no gateway is available
 func (r *RestApiReconciler) handleNoGateway(ctx context.Context, apiConfig *apiv1.RestApi) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
-	log.Info("No matching gateway available", zap.String("api", apiConfig.Name))
+	log := r.Logger.With(slog.String("controller", "RestApi"), slog.String("name", apiConfig.Name))
+	log.Info("No matching gateway available", slog.String("api", apiConfig.Name))
 
 	if err := r.updateProgrammedCondition(ctx, apiConfig, metav1.Condition{
 		Type:               apiv1.APIConditionProgrammed,
@@ -702,7 +702,7 @@ func (r *RestApiReconciler) updateProgrammedCondition(ctx context.Context, apiCo
 
 // reconcileAPIDeletion handles CR deletion
 func (r *RestApiReconciler) reconcileAPIDeletion(ctx context.Context, apiConfig *apiv1.RestApi) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
+	log := r.Logger.With(slog.String("controller", "RestApi"), slog.String("name", apiConfig.Name))
 
 	if !controllerutil.ContainsFinalizer(apiConfig, apiFinalizerName) {
 		return ctrl.Result{}, nil
@@ -710,7 +710,7 @@ func (r *RestApiReconciler) reconcileAPIDeletion(ctx context.Context, apiConfig 
 
 	// Clean up from gateway
 	if err := r.cleanupAPIDeployments(ctx, apiConfig); err != nil {
-		log.Error("failed to clean up API deployments", zap.Error(err))
+		log.Error("failed to clean up API deployments", slog.Any("error", err))
 		return ctrl.Result{}, err
 	}
 
@@ -722,7 +722,7 @@ func (r *RestApiReconciler) reconcileAPIDeletion(ctx context.Context, apiConfig 
 	// Remove finalizer
 	controllerutil.RemoveFinalizer(apiConfig, apiFinalizerName)
 	if err := r.Update(ctx, apiConfig); err != nil {
-		log.Error("failed to remove finalizer", zap.Error(err))
+		log.Error("failed to remove finalizer", slog.Any("error", err))
 		return ctrl.Result{}, err
 	}
 
@@ -731,7 +731,7 @@ func (r *RestApiReconciler) reconcileAPIDeletion(ctx context.Context, apiConfig 
 
 // cleanupAPIDeployments removes the API from all gateways
 func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig *apiv1.RestApi) error {
-	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
+	log := r.Logger.With(slog.String("controller", "RestApi"), slog.String("name", apiConfig.Name))
 
 	handle := apiConfig.Name
 	if handle == "" {
@@ -744,9 +744,9 @@ func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig
 	for _, gateway := range matched {
 		if err := r.deleteAPIFromGateway(ctx, handle, gateway); err != nil {
 			log.Error("failed to delete API from gateway",
-				zap.Error(err),
-				zap.String("api", handle),
-				zap.String("gateway", gateway.Name))
+				slog.Any("error", err),
+				slog.String("api", handle),
+				slog.String("gateway", gateway.Name))
 			// Continue with other gateways even if one fails
 		}
 	}
@@ -756,7 +756,7 @@ func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig
 
 // deleteAPIFromGateway removes an API from a specific gateway
 func (r *RestApiReconciler) deleteAPIFromGateway(ctx context.Context, handle string, gateway *registry.GatewayInfo) error {
-	log := r.Logger.With(zap.String("controller", "RestApi"))
+	log := r.Logger.With(slog.String("controller", "RestApi"))
 
 	auth := func(c context.Context, req *http.Request) error {
 		if err := r.addAuthToRequest(c, req, gateway); err != nil {
@@ -766,12 +766,12 @@ func (r *RestApiReconciler) deleteAPIFromGateway(ctx context.Context, handle str
 	}
 
 	if err := gatewayclient.DeleteRestAPI(ctx, gateway.GetGatewayServiceEndpoint(), handle, auth); err != nil {
-		log.Error("failed to delete API from gateway", zap.Error(err), zap.String("gateway", gateway.Name))
+		log.Error("failed to delete API from gateway", slog.Any("error", err), slog.String("gateway", gateway.Name))
 		return err
 	}
 	log.Info("API deleted from gateway",
-		zap.String("api", handle),
-		zap.String("gateway", gateway.Name))
+		slog.String("api", handle),
+		slog.String("gateway", gateway.Name))
 	return nil
 }
 
@@ -794,7 +794,7 @@ func payloadMetadataForRestAPI(apiConfig *apiv1.RestApi) gatewayclient.RestAPIPa
 
 // addAuthToRequest adds authentication headers to an HTTP request based on gateway auth config
 func (r *RestApiReconciler) addAuthToRequest(ctx context.Context, req *http.Request, gatewayInfo *registry.GatewayInfo) error {
-	log := r.Logger.With(zap.String("controller", "RestApi"))
+	log := r.Logger.With(slog.String("controller", "RestApi"))
 
 	authConfig, err := auth.GetAuthSettingsForRegistryGateway(ctx, r.Client, gatewayInfo)
 	if err != nil {
@@ -809,13 +809,13 @@ func (r *RestApiReconciler) addAuthToRequest(ctx context.Context, req *http.Requ
 		if !ok {
 			// Auth config exists but no valid basic auth, use default
 			log.Debug("No valid basic auth in config, using default credentials",
-				zap.String("gateway", gatewayInfo.Name))
+				slog.String("gateway", gatewayInfo.Name))
 			username, password = auth.GetDefaultBasicAuthCredentials()
 		}
 	} else {
 		// No auth config, use default
 		log.Debug("No auth config found, using default credentials",
-			zap.String("gateway", gatewayInfo.Name))
+			slog.String("gateway", gatewayInfo.Name))
 		username, password = auth.GetDefaultBasicAuthCredentials()
 	}
 

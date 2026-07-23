@@ -26,12 +26,12 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"log/slog"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -55,7 +55,7 @@ type HTTPRouteReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Config *config.OperatorConfig
-	Logger *zap.Logger
+	Logger *slog.Logger
 }
 
 type gatewayParentTarget struct {
@@ -64,7 +64,7 @@ type gatewayParentTarget struct {
 }
 
 // NewHTTPRouteReconciler creates a reconciler for HTTPRoute.
-func NewHTTPRouteReconciler(cl client.Client, scheme *runtime.Scheme, cfg *config.OperatorConfig, logger *zap.Logger) *HTTPRouteReconciler {
+func NewHTTPRouteReconciler(cl client.Client, scheme *runtime.Scheme, cfg *config.OperatorConfig, logger *slog.Logger) *HTTPRouteReconciler {
 	return &HTTPRouteReconciler{
 		Client: cl,
 		Scheme: scheme,
@@ -90,19 +90,19 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if apierrors.IsNotFound(err) {
 			if r.Logger != nil {
 				r.Logger.Debug("HTTPRoute not found; likely deleted",
-					zap.String("controller", "HTTPRoute"),
-					zap.String("namespace", req.Namespace),
-					zap.String("name", req.Name))
+					slog.String("controller", "HTTPRoute"),
+					slog.String("namespace", req.Namespace),
+					slog.String("name", req.Name))
 			}
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
-	log := r.Logger.With(zap.String("controller", "HTTPRoute"), zap.String("namespace", req.Namespace), zap.String("name", req.Name))
+	log := r.Logger.With(slog.String("controller", "HTTPRoute"), slog.String("namespace", req.Namespace), slog.String("name", req.Name))
 	log.Info("reconcile HTTPRoute",
-		zap.Int64("generation", route.Generation),
-		zap.String("resourceVersion", route.ResourceVersion))
+		slog.Int64("generation", route.Generation),
+		slog.String("resourceVersion", route.ResourceVersion))
 
 	if !route.DeletionTimestamp.IsZero() {
 		return r.reconcileDeletion(ctx, route, log)
@@ -118,7 +118,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 	if err := validateParentGatewayTargets(parentTargets); err != nil {
 		msg := err.Error()
-		log.Info("invalid HTTPRoute parentRefs", zap.Int("gatewayParents", len(parentTargets)), zap.String("reason", msg))
+		log.Info("invalid HTTPRoute parentRefs", slog.Int("gatewayParents", len(parentTargets)), slog.String("reason", msg))
 		for _, target := range parentTargets {
 			_ = r.patchHTTPRouteParentCondition(ctx, route, target.ref, metav1.Condition{
 				Type:               string(gatewayv1.RouteConditionResolvedRefs),
@@ -140,8 +140,8 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err := r.Get(ctx, parentKey, parentGW); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("parent Gateway not found; requeue",
-				zap.String("parentNamespace", parentKey.Namespace),
-				zap.String("parentName", parentKey.Name))
+				slog.String("parentNamespace", parentKey.Namespace),
+				slog.String("parentName", parentKey.Name))
 			return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 		}
 		return ctrl.Result{}, err
@@ -152,9 +152,9 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 		log.Debug("skip HTTPRoute: Gateway uses unmanaged class",
-			zap.String("parentNamespace", parentKey.Namespace),
-			zap.String("parentName", parentKey.Name),
-			zap.String("gatewayClass", string(parentGW.Spec.GatewayClassName)))
+			slog.String("parentNamespace", parentKey.Namespace),
+			slog.String("parentName", parentKey.Name),
+			slog.String("gatewayClass", string(parentGW.Spec.GatewayClassName)))
 		return ctrl.Result{}, nil
 	}
 
@@ -171,7 +171,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err != nil {
 		// Transient backend lookup failure (e.g. API read error). Report a retry reason and
 		// requeue instead of latching a permanent ResolvedRefs result on the route.
-		log.Error("resolve backend refs", zap.Error(err))
+		log.Error("resolve backend refs", slog.Any("error", err))
 		r.patchResolvedRefsForParents(ctx, route, parentTargets, &HTTPRouteBackendResolution{
 			AllResolved:         false,
 			FirstFailureReason:  gatewayv1.RouteConditionReason("Retrying"),
@@ -196,9 +196,9 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			})
 		} else {
 			log.Info("HTTPRoute does not attach to parent Gateway listener",
-				zap.String("parentSection", normalizeParentRefSectionName(target.ref)),
-				zap.String("reason", string(attachReason)),
-				zap.String("message", attachMessage))
+				slog.String("parentSection", normalizeParentRefSectionName(target.ref)),
+				slog.String("reason", string(attachReason)),
+				slog.String("message", attachMessage))
 			_ = r.patchHTTPRouteParentCondition(ctx, route, target.ref, metav1.Condition{
 				Type:               string(gatewayv1.RouteConditionAccepted),
 				Status:             metav1.ConditionFalse,
@@ -225,7 +225,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	spec, err := BuildAPIConfigFromHTTPRoute(ctx, r.Client, parentGW, route, parentTargets, backendResolution, r.Config.GatewayAPI.ClusterDomain, log)
 	if err != nil {
-		log.Error("build API config", zap.Error(err))
+		log.Error("build API config", slog.Any("error", err))
 		requeueAfter := time.Duration(0)
 		reason := string(gatewayv1.RouteReasonResolvedRefs)
 		if IsHTTPRouteBackendRefError(err) {
@@ -276,19 +276,19 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	configHash := hashRestAPIPayload(apiYAML)
 	if exists && route.Annotations[AnnHTTPRouteLastDeployedConfigHash] == configHash {
 		log.Debug("HTTPRoute config unchanged; skipping redeploy",
-			zap.String("handle", handle),
-			zap.String("configHash", configHash))
+			slog.String("handle", handle),
+			slog.String("configHash", configHash))
 	} else {
 		if err := gatewayclient.DeployRestAPI(ctx, ep, handle, apiYAML, exists, auth); err != nil {
 			return r.handleRESTError(ctx, route, parentTargets, log, err)
 		}
 		log.Info("HTTPRoute deployed to gateway",
-			zap.String("parentGateway", parentKey.Name),
-			zap.String("handle", handle),
-			zap.String("gatewayEndpoint", ep),
-			zap.Bool("updated", exists),
-			zap.Int("operations", len(spec.Operations)),
-			zap.Int("apiLevelPolicies", len(spec.Policies)))
+			slog.String("parentGateway", parentKey.Name),
+			slog.String("handle", handle),
+			slog.String("gatewayEndpoint", ep),
+			slog.Bool("updated", exists),
+			slog.Int("operations", len(spec.Operations)),
+			slog.Int("apiLevelPolicies", len(spec.Policies)))
 		if err := r.persistLastDeployedConfigHash(ctx, route, configHash); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -360,8 +360,8 @@ func (r *HTTPRouteReconciler) patchResolvedRefsForParents(
 	}
 }
 
-func (r *HTTPRouteReconciler) handleRESTError(ctx context.Context, route *gatewayv1.HTTPRoute, parentTargets []gatewayParentTarget, log *zap.Logger, err error) (ctrl.Result, error) {
-	log.Error("gateway REST", zap.Error(err))
+func (r *HTTPRouteReconciler) handleRESTError(ctx context.Context, route *gatewayv1.HTTPRoute, parentTargets []gatewayParentTarget, log *slog.Logger, err error) (ctrl.Result, error) {
+	log.Error("gateway REST", slog.Any("error", err))
 	now := metav1.Now()
 	gen := route.Generation
 	var msg string
@@ -397,7 +397,7 @@ func (r *HTTPRouteReconciler) handleRESTError(ctx context.Context, route *gatewa
 	return ctrl.Result{RequeueAfter: requeue}, nil
 }
 
-func (r *HTTPRouteReconciler) reconcileDeletion(ctx context.Context, route *gatewayv1.HTTPRoute, log *zap.Logger) (ctrl.Result, error) {
+func (r *HTTPRouteReconciler) reconcileDeletion(ctx context.Context, route *gatewayv1.HTTPRoute, log *slog.Logger) (ctrl.Result, error) {
 	if !controllerutil.ContainsFinalizer(route, httprouteFinalizer) {
 		return ctrl.Result{}, nil
 	}
@@ -405,7 +405,7 @@ func (r *HTTPRouteReconciler) reconcileDeletion(ctx context.Context, route *gate
 	parentKey := deletionParentGatewayKey(route)
 	if parentKey.Name == "" {
 		log.Info("no Gateway parent for HTTPRoute deletion cleanup; removing finalizer",
-			zap.String("reason", "missing last-deployed parent annotation and spec Gateway parentRefs"))
+			slog.String("reason", "missing last-deployed parent annotation and spec Gateway parentRefs"))
 		return r.removeHTTPRouteFinalizer(ctx, route)
 	}
 
@@ -416,20 +416,20 @@ func (r *HTTPRouteReconciler) reconcileDeletion(ctx context.Context, route *gate
 		if err := r.Get(ctx, parentKey, parentGW); err != nil {
 			if apierrors.IsNotFound(err) {
 				log.Info("parent Gateway no longer exists during HTTPRoute delete; removing finalizer without REST cleanup",
-					zap.String("parentNamespace", parentKey.Namespace),
-					zap.String("parentName", parentKey.Name))
+					slog.String("parentNamespace", parentKey.Namespace),
+					slog.String("parentName", parentKey.Name))
 				return r.removeHTTPRouteFinalizer(ctx, route)
 			}
 			return ctrl.Result{}, err
 		}
 		log.Info("parent Gateway exists but not registered during delete; retrying before finalizer removal",
-			zap.String("parentNamespace", parentKey.Namespace),
-			zap.String("parentName", parentKey.Name))
+			slog.String("parentNamespace", parentKey.Namespace),
+			slog.String("parentName", parentKey.Name))
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 	auth := httprouteAuthFunc(r.Client, log, gwInfo)
 	if err := gatewayclient.DeleteRestAPI(ctx, gwInfo.GetGatewayServiceEndpoint(), handle, auth); err != nil {
-		log.Error("delete REST API from gateway", zap.Error(err))
+		log.Error("delete REST API from gateway", slog.Any("error", err))
 		return ctrl.Result{}, err
 	}
 
@@ -517,7 +517,7 @@ func (r *HTTPRouteReconciler) persistLastDeployedParentGateway(ctx context.Conte
 	return r.Patch(ctx, latest, client.MergeFrom(base))
 }
 
-func (r *HTTPRouteReconciler) cleanupPreviousGatewayDeployment(ctx context.Context, route *gatewayv1.HTTPRoute, currentParent *client.ObjectKey, log *zap.Logger) error {
+func (r *HTTPRouteReconciler) cleanupPreviousGatewayDeployment(ctx context.Context, route *gatewayv1.HTTPRoute, currentParent *client.ObjectKey, log *slog.Logger) error {
 	lastParent, ok := lastDeployedParentGatewayKeyFromAnnotation(route)
 	if !ok {
 		return nil
@@ -531,15 +531,15 @@ func (r *HTTPRouteReconciler) cleanupPreviousGatewayDeployment(ctx context.Conte
 		if err := r.Get(ctx, lastParent, parentGW); err != nil {
 			if apierrors.IsNotFound(err) {
 				log.Info("previous parent Gateway no longer exists; clearing stale last-deployed annotation",
-					zap.String("previousParentNamespace", lastParent.Namespace),
-					zap.String("previousParentName", lastParent.Name))
+					slog.String("previousParentNamespace", lastParent.Namespace),
+					slog.String("previousParentName", lastParent.Name))
 				return r.clearLastDeployedParentGateway(ctx, route)
 			}
 			return err
 		}
 		log.Info("previous parent Gateway exists but not registered yet; retrying stale HTTPRoute cleanup",
-			zap.String("previousParentNamespace", lastParent.Namespace),
-			zap.String("previousParentName", lastParent.Name))
+			slog.String("previousParentNamespace", lastParent.Namespace),
+			slog.String("previousParentName", lastParent.Name))
 		return fmt.Errorf("previous parent Gateway %s/%s not registered", lastParent.Namespace, lastParent.Name)
 	}
 
@@ -547,16 +547,16 @@ func (r *HTTPRouteReconciler) cleanupPreviousGatewayDeployment(ctx context.Conte
 	auth := httprouteAuthFunc(r.Client, log, gwInfo)
 	if err := gatewayclient.DeleteRestAPI(ctx, gwInfo.GetGatewayServiceEndpoint(), handle, auth); err != nil {
 		log.Error("failed to clean up stale HTTPRoute deployment on previous parent Gateway",
-			zap.Error(err),
-			zap.String("previousParentNamespace", lastParent.Namespace),
-			zap.String("previousParentName", lastParent.Name),
-			zap.String("handle", handle))
+			slog.Any("error", err),
+			slog.String("previousParentNamespace", lastParent.Namespace),
+			slog.String("previousParentName", lastParent.Name),
+			slog.String("handle", handle))
 		return err
 	}
 	log.Info("cleaned up stale HTTPRoute deployment on previous parent Gateway",
-		zap.String("previousParentNamespace", lastParent.Namespace),
-		zap.String("previousParentName", lastParent.Name),
-		zap.String("handle", handle))
+		slog.String("previousParentNamespace", lastParent.Namespace),
+		slog.String("previousParentName", lastParent.Name),
+		slog.String("handle", handle))
 
 	if currentParent == nil {
 		if err := r.clearLastDeployedParentGateway(ctx, route); err != nil {
@@ -617,12 +617,12 @@ func parentGatewayRef(route *gatewayv1.HTTPRoute) (client.ObjectKey, gatewayv1.P
 	return targets[0].key, targets[0].ref, true
 }
 
-func httprouteAuthFunc(c client.Client, log *zap.Logger, info *registry.GatewayInfo) gatewayclient.AuthHeaderFunc {
+func httprouteAuthFunc(c client.Client, log *slog.Logger, info *registry.GatewayInfo) gatewayclient.AuthHeaderFunc {
 	return func(ctx context.Context, req *http.Request) error {
 		authConfig, err := auth.GetAuthSettingsForRegistryGateway(ctx, c, info)
 		if err != nil {
 			if log != nil {
-				log.Warn("auth config lookup failed", zap.Error(err))
+				log.Warn("auth config lookup failed", slog.Any("error", err))
 			}
 			return err
 		}

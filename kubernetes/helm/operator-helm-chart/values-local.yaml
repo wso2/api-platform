@@ -1,5 +1,5 @@
 image:
-  tag: "0.8.0-SNAPSHOT"
+  tag: "0.10.0-SNAPSHOT"
   pullPolicy: IfNotPresent
 
 gatewayApi:

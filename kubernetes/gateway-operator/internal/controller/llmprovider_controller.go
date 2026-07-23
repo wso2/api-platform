@@ -21,9 +21,9 @@ import (
 	"fmt"
 	"strings"
 
-	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"log/slog"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -45,7 +45,7 @@ type LlmProviderReconciler struct {
 }
 
 // NewLlmProviderReconciler constructs a fully wired LlmProvider reconciler.
-func NewLlmProviderReconciler(c client.Client, cfg *config.OperatorConfig, logger *zap.Logger, tracker *ResourceTracker) *LlmProviderReconciler {
+func NewLlmProviderReconciler(c client.Client, cfg *config.OperatorConfig, logger *slog.Logger, tracker *ResourceTracker) *LlmProviderReconciler {
 	r := &LlmProviderReconciler{}
 	r.Client = c
 	r.Config = cfg

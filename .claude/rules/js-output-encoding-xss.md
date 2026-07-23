@@ -40,14 +40,11 @@ The consistent root cause is untrusted input reaching an HTML or SVG context wit
 ### ❌ Anti-Pattern (What to Reject)
 
 ```js
-// BAD: Reflects a query parameter into an error page with no encoding — classic
-// reflected XSS in an authentication/search-style endpoint.
+// BAD: Reflects a query parameter into an HTML response with no encoding —
+// reflected XSS via raw string interpolation.
 app.get('/auth/login', (req, res) => {
   const returnTo = req.query.returnTo || '';
-  res.send(`<html><body>
-    <p>You will be redirected to: ${returnTo}</p>
-    <form>...</form>
-  </body></html>`); // returnTo is interpolated raw into the HTML body
+  res.send(`<html><body><p>You will be redirected to: ${returnTo}</p></body></html>`);
 });
 
 // BAD: Renders user-authored Markdown/HTML for API documentation with no sanitization.
@@ -56,15 +53,10 @@ app.get('/apis/:id/docs', async (req, res) => {
   res.render('docs', { htmlContent: doc.renderedHtml }); // Passed to <%- htmlContent %> in the view
 });
 
-// BAD: Accepts and serves an uploaded SVG as-is from the same origin as the
-// authenticated session — stored XSS via SVG upload.
-app.post('/apis/:id/icon', upload.single('icon'), async (req, res) => {
-  await ApiIcon.create({ apiId: req.params.id, data: req.file.buffer, mimeType: req.file.mimetype });
-  res.status(201).send();
-});
+// BAD: Serves a stored SVG upload inline, unsanitized — stored XSS via SVG upload.
 app.get('/apis/:id/icon', async (req, res) => {
   const icon = await ApiIcon.findOne({ where: { apiId: req.params.id } });
-  res.set('Content-Type', icon.mimeType).send(icon.data); // Renders inline — SVG script executes
+  res.set('Content-Type', icon.mimeType).send(icon.data); // Renders inline, unsanitized
 });
 ```
 
