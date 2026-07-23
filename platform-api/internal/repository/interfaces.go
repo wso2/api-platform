@@ -146,6 +146,7 @@ type DeploymentRepository interface {
 	GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
 	HasActiveDeployment(artifactUUID, orgUUID string) (bool, error)
 	GetLatestDeploymentTime(artifactUUID, orgUUID string) (*time.Time, error)
+	GetLatestDeploymentRevision(artifactUUID, gatewayUUID, orgUUID string) (string, error)
 
 	// Gateway deployment methods
 	GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)
@@ -238,6 +239,7 @@ type LLMProviderTemplateRepository interface {
 	Exists(templateID, orgUUID string) (bool, error)
 	GetGroupID(handle, orgUUID string) (string, error)
 	ManagedByForHandle(handle, orgUUID string) (string, error)
+	ManagedByForGroupID(groupID, orgUUID string) (string, error)
 	CountProvidersUsingTemplate(templateID, orgUUID, version string) (int, error)
 }
 

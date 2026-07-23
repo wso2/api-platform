@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 
 (function () {
   var editKmId = null;
@@ -113,7 +113,7 @@
       return;
     }
     if (e.target.closest('.cfg-km-delete-btn')) {
-      var btn = e.target.closest('.cfg-km-delete-btn');
+      btn = e.target.closest('.cfg-km-delete-btn');
       pendingDelKmId = btn.dataset.id;
       document.getElementById('cfg-del-km-name-txt').textContent = btn.dataset.name;
       document.getElementById('cfg-delete-km-modal').style.display = 'flex';

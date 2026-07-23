@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 const path = require('path');
 const fs = require('fs');
 const exphbs = require('express-handlebars');
@@ -57,11 +57,7 @@ const registerPartials = async (req, res, next) => {
     if (req.session.returnTo) {
       matchURL = req.session.returnTo;
     }
-    let devportalMode = constants.DEVPORTAL_MODE.DEFAULT;
-
     try {
-      const orgDetails = await orgDao.get(req.params.orgName);
-      devportalMode = orgDetails.configuration?.devportalMode || devportalMode;
       
       // Org-scoped settings page (/:orgName/settings) has no view segment, but still
       // renders the default-content chrome (sidebar/header/footer) and its own partials.
@@ -117,11 +113,6 @@ const registerPartials = async (req, res, next) => {
 
 const registerInternalPartials = async (req) => {
 
-  let isAdmin, isSuperAdmin = false;
-  if (req.user) {
-    isAdmin = req.user["isAdmin"];
-    isSuperAdmin = req.user["isSuperAdmin"];
-  }
   const partialsDir = path.join(path.join(require.main.filename, '..', '/pages/partials'));
   const getDirectories = source =>
     fs.readdirSync(source, { withFileTypes: true })

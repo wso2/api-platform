@@ -81,6 +81,13 @@ import {
   clearRegistrationToken,
   setRegistrationToken,
 } from "./registrationTokenStore";
+import {
+  GatewaySetupStepsV1_2Plus,
+  GatewaySetupStepsPreV1_2,
+  isGatewayV12OrAbove,
+  getGatewayEnvFileName,
+  buildGatewayEnvFileContent,
+} from "./GatewaySetupSteps";
 import { formatRelativeTime } from "../../../../contexts/llmProvider";
 import {
   getActiveColorScheme,
@@ -239,42 +246,11 @@ export default function ViewGateway() {
     : gatewayVersion;
   const gatewayZipName = `wso2apip-ai-gateway-${gatewayVersionHelm}`;
   const gatewayFolderName = `wso2apip-ai-gateway-${gatewayVersionHelm}`;
-  const gatewayEnvFile = `${gatewayFolderName}/configs/keys.env`;
-
-  const getSetupGatewayDisplayCommand = () =>
-    `curl -sLO https://github.com/wso2/api-platform/releases/download/ai-gateway/${gatewayVersion}/${gatewayZipName}.zip && \\
-unzip ${gatewayZipName}.zip`;
-
-  const getSetupGatewayCopyCommand = () => getSetupGatewayDisplayCommand();
-
-  const getConfigureGatewayDisplayCommand = (moesifKey: string | null) => {
-    const controlPlaneHost = CONTROLPLANE_HOST;
-    const moesifLine = moesifKey ? `MOESIF_KEY=<your-moesif-key>\n` : "";
-    return `cat > ${gatewayEnvFile} << 'ENVFILE'
-${moesifLine}GATEWAY_CONTROLPLANE_HOST=${controlPlaneHost}
-GATEWAY_REGISTRATION_TOKEN=<your-gateway-token>
-ENVFILE`;
-  };
-
-  const getConfigureGatewayCopyCommand = (
-    token: string | null,
-    moesifKey: string | null,
-  ) => {
-    const controlPlaneHost = CONTROLPLANE_HOST;
-    const tokenValue = token || "<your-gateway-token>";
-    const moesifLine = moesifKey ? `MOESIF_KEY=${moesifKey}\n` : "";
-    return `cat > ${gatewayEnvFile} << 'ENVFILE'
-${moesifLine}GATEWAY_CONTROLPLANE_HOST=${controlPlaneHost}
-GATEWAY_REGISTRATION_TOKEN=${tokenValue}
-ENVFILE`;
-  };
-
-  const getStep3NavigateCommand = () => `cd ${gatewayFolderName}`;
-
-  const getStartGatewayDisplayCommand = () =>
-    `docker compose --env-file configs/keys.env up`;
-
-  const getStartGatewayCopyCommand = () => getStartGatewayDisplayCommand();
+  const gatewayIsV12OrAbove = isGatewayV12OrAbove(gatewayVersionHelm);
+  const GatewaySetupSteps = gatewayIsV12OrAbove
+    ? GatewaySetupStepsV1_2Plus
+    : GatewaySetupStepsPreV1_2;
+  const gatewayEnvFileName = getGatewayEnvFileName(gatewayIsV12OrAbove);
 
   const getK8sCustomHelmDisplayCommand = (moesifKey: string | null) => {
     const controlPlaneHost = CONTROLPLANE_HOST;
@@ -438,20 +414,23 @@ ENVFILE`;
   };
 
   const handleDownloadKeysEnvFile = () => {
-    const envContent = `GATEWAY_CONTROLPLANE_HOST=${CONTROLPLANE_HOST}
-GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
+    const envContent = buildGatewayEnvFileContent(
+      gatewayIsV12OrAbove,
+      CONTROLPLANE_HOST,
+      registrationToken || "",
+    );
     const blob = new Blob([`${envContent}\n`], {
       type: "text/plain;charset=utf-8",
     });
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;
-    link.download = "keys.env";
+    link.download = gatewayEnvFileName;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(objectUrl);
-    showSnackbar("keys.env file downloaded", "success");
+    showSnackbar(`${gatewayEnvFileName} file downloaded`, "success");
   };
 
   const handleBack = () => {
@@ -880,203 +859,18 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
                 </Stack>
               </Box>
 
-              {/* Step 1: Download the Gateway */}
-              <Box>
-                <Typography variant="h6" sx={{ mb: 1 }} color="warning.main">
-                  Step 1: Download the Gateway
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mb: 2 }}
-                >
-                  Run this command in your terminal to download the gateway:
-                </Typography>
-                <TextField
-                  fullWidth
-                  multiline
-                  minRows={2}
-                  value={getSetupGatewayDisplayCommand()}
-                  slotProps={{
-                    input: {
-                      readOnly: true,
-                      endAdornment: (
-                        <IconButton
-                          size="small"
-                          onClick={() =>
-                            handleCopy(
-                              getSetupGatewayCopyCommand(),
-                              "Download command",
-                            )
-                          }
-                        >
-                          <Copy />
-                        </IconButton>
-                      ),
-                    },
-                  }}
-                  sx={getCommandTextFieldSx(activeColorScheme)}
-                />
-              </Box>
-
-              {/* Step 2: Configure the Gateway */}
-              <Box>
-                <Typography variant="h6" sx={{ mb: 1 }} color="warning.main">
-                  Step 2: Configure the Gateway
-                </Typography>
-                {registrationToken ? (
-                  <>
-                    {hasJustRegeneratedToken && (
-                      <Alert severity="success" sx={{ mb: 2 }}>
-                        Successfully generated new configurations. Use the
-                        updated command below to reconfigure your gateway.
-                      </Alert>
-                    )}
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ mb: 2 }}
-                    >
-                      Run this command to create {gatewayEnvFile} with the
-                      required environment variables:
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      multiline
-                      minRows={4}
-                      sx={getCommandTextFieldSx(activeColorScheme)}
-                      value={getConfigureGatewayDisplayCommand(null)}
-                      onCopy={(e) => {
-                        e.preventDefault();
-                        e.clipboardData.setData(
-                          "text/plain",
-                          getConfigureGatewayCopyCommand(
-                            registrationToken,
-                            null,
-                          ),
-                        );
-                      }}
-                      slotProps={{
-                        input: {
-                          readOnly: true,
-                          endAdornment: (
-                            <IconButton
-                              size="small"
-                              onClick={() =>
-                                handleCopy(
-                                  getConfigureGatewayCopyCommand(
-                                    registrationToken,
-                                    null,
-                                  ),
-                                  "Configure command",
-                                )
-                              }
-                            >
-                              <Copy />
-                            </IconButton>
-                          ),
-                        },
-                      }}
-                    />
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                      To gain gateway analytics, you can integrate with Moesif
-                      by adding your Moesif application token with the key{" "}
-                      <code>MOESIF_KEY</code> to your{" "}
-                      <code>configs/keys.env</code>.
-                    </Alert>
-                  </>
-                ) : (
-                  <>
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ mb: 2 }}
-                    >
-                      Your existing local gateway can still use the previously
-                      generated token. If you want to generate a new token and
-                      new configuration command, click Reconfigure. This will
-                      revoke the previous token.
-                    </Typography>
-                    <Button
-                      variant="outlined"
-                      color="primary"
-                      onClick={handleRegenerateToken}
-                      disabled={isRegeneratingToken}
-                    >
-                      Reconfigure
-                    </Button>
-                  </>
-                )}
-              </Box>
-
-              {/* Step 3: Start the Gateway */}
-              <Box>
-                <Typography variant="h6" sx={{ mb: 1 }} color="warning.main">
-                  Step 3: Start the Gateway
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mb: 1.5 }}
-                >
-                  1. Navigate to the gateway folder.
-                </Typography>
-                <TextField
-                  fullWidth
-                  value={getStep3NavigateCommand()}
-                  sx={getCommandTextFieldSx(activeColorScheme)}
-                  slotProps={{
-                    input: {
-                      readOnly: true,
-                      endAdornment: (
-                        <IconButton
-                          size="small"
-                          onClick={() =>
-                            handleCopy(
-                              getStep3NavigateCommand(),
-                              "Navigate command",
-                            )
-                          }
-                        >
-                          <Copy />
-                        </IconButton>
-                      ),
-                    },
-                  }}
-                />
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ my: 2 }}
-                >
-                  2. Run this command to start the gateway using the
-                  configs/keys.env file created in Step 2:
-                </Typography>
-                <TextField
-                  fullWidth
-                  value={getStartGatewayDisplayCommand()}
-                  sx={getCommandTextFieldSx(activeColorScheme)}
-                  slotProps={{
-                    input: {
-                      readOnly: true,
-                      endAdornment: (
-                        <IconButton
-                          size="small"
-                          onClick={() =>
-                            handleCopy(
-                              getStartGatewayCopyCommand(),
-                              "Start command",
-                            )
-                          }
-                        >
-                          <Copy />
-                        </IconButton>
-                      ),
-                    },
-                  }}
-                />
-                {renderGatewayConnectionStatus()}
-              </Box>
+              <GatewaySetupSteps
+                gatewayVersion={gatewayVersion}
+                gatewayZipName={gatewayZipName}
+                gatewayFolderName={gatewayFolderName}
+                registrationToken={registrationToken}
+                hasJustRegeneratedToken={hasJustRegeneratedToken}
+                isRegeneratingToken={isRegeneratingToken}
+                onRegenerateToken={handleRegenerateToken}
+                onCopy={handleCopy}
+                colorScheme={activeColorScheme}
+                renderConnectionStatus={renderGatewayConnectionStatus}
+              />
             </Stack>
           </TabPanel>
 
@@ -1175,203 +969,18 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
                 />
               </Box>
 
-              {/* Step 1: Download the Gateway */}
-              <Box>
-                <Typography variant="h6" sx={{ mb: 1 }} color="warning.main">
-                  Step 1: Download the Gateway
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mb: 2 }}
-                >
-                  Run this command in your terminal to download the gateway:
-                </Typography>
-                <TextField
-                  fullWidth
-                  multiline
-                  minRows={2}
-                  value={getSetupGatewayDisplayCommand()}
-                  slotProps={{
-                    input: {
-                      readOnly: true,
-                      endAdornment: (
-                        <IconButton
-                          size="small"
-                          onClick={() =>
-                            handleCopy(
-                              getSetupGatewayCopyCommand(),
-                              "Download command",
-                            )
-                          }
-                        >
-                          <Copy />
-                        </IconButton>
-                      ),
-                    },
-                  }}
-                  sx={getCommandTextFieldSx(activeColorScheme)}
-                />
-              </Box>
-
-              {/* Step 2: Configure the Gateway */}
-              <Box>
-                <Typography variant="h6" sx={{ mb: 1 }} color="warning.main">
-                  Step 2: Configure the Gateway
-                </Typography>
-                {registrationToken ? (
-                  <>
-                    {hasJustRegeneratedToken && (
-                      <Alert severity="success" sx={{ mb: 2 }}>
-                        Successfully generated new configurations. Use the
-                        updated command below to reconfigure your gateway.
-                      </Alert>
-                    )}
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ mb: 2 }}
-                    >
-                      Run this command to create {gatewayEnvFile} with the
-                      required environment variables:
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      multiline
-                      minRows={4}
-                      sx={getCommandTextFieldSx(activeColorScheme)}
-                      value={getConfigureGatewayDisplayCommand(null)}
-                      onCopy={(e) => {
-                        e.preventDefault();
-                        e.clipboardData.setData(
-                          "text/plain",
-                          getConfigureGatewayCopyCommand(
-                            registrationToken,
-                            null,
-                          ),
-                        );
-                      }}
-                      slotProps={{
-                        input: {
-                          readOnly: true,
-                          endAdornment: (
-                            <IconButton
-                              size="small"
-                              onClick={() =>
-                                handleCopy(
-                                  getConfigureGatewayCopyCommand(
-                                    registrationToken,
-                                    null,
-                                  ),
-                                  "Configure command",
-                                )
-                              }
-                            >
-                              <Copy />
-                            </IconButton>
-                          ),
-                        },
-                      }}
-                    />
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                      To gain gateway analytics, you can integrate with Moesif
-                      by adding your Moesif application token with the key{" "}
-                      <code>MOESIF_KEY</code> to your{" "}
-                      <code>configs/keys.env</code>.
-                    </Alert>
-                  </>
-                ) : (
-                  <>
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ mb: 2 }}
-                    >
-                      Your existing local gateway can still use the previously
-                      generated token. If you want to generate a new token and
-                      new configuration command, click Reconfigure. This will
-                      revoke the previous token.
-                    </Typography>
-                    <Button
-                      variant="outlined"
-                      color="primary"
-                      onClick={handleRegenerateToken}
-                      disabled={isRegeneratingToken}
-                    >
-                      Reconfigure
-                    </Button>
-                  </>
-                )}
-              </Box>
-
-              {/* Step 3: Start the Gateway */}
-              <Box>
-                <Typography variant="h6" sx={{ mb: 1 }} color="warning.main">
-                  Step 3: Start the Gateway
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mb: 1.5 }}
-                >
-                  1. Navigate to the gateway folder.
-                </Typography>
-                <TextField
-                  fullWidth
-                  sx={getCommandTextFieldSx(activeColorScheme)}
-                  value={getStep3NavigateCommand()}
-                  slotProps={{
-                    input: {
-                      readOnly: true,
-                      endAdornment: (
-                        <IconButton
-                          size="small"
-                          onClick={() =>
-                            handleCopy(
-                              getStep3NavigateCommand(),
-                              "Navigate command",
-                            )
-                          }
-                        >
-                          <Copy />
-                        </IconButton>
-                      ),
-                    },
-                  }}
-                />
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ my: 2 }}
-                >
-                  2. Run this command to start the gateway using the
-                  configs/keys.env file created in Step 2:
-                </Typography>
-                <TextField
-                  fullWidth
-                  value={getStartGatewayDisplayCommand()}
-                  sx={getCommandTextFieldSx(activeColorScheme)}
-                  slotProps={{
-                    input: {
-                      readOnly: true,
-                      endAdornment: (
-                        <IconButton
-                          size="small"
-                          onClick={() =>
-                            handleCopy(
-                              getStartGatewayCopyCommand(),
-                              "Start command",
-                            )
-                          }
-                        >
-                          <Copy />
-                        </IconButton>
-                      ),
-                    },
-                  }}
-                />
-                {renderGatewayConnectionStatus()}
-              </Box>
+              <GatewaySetupSteps
+                gatewayVersion={gatewayVersion}
+                gatewayZipName={gatewayZipName}
+                gatewayFolderName={gatewayFolderName}
+                registrationToken={registrationToken}
+                hasJustRegeneratedToken={hasJustRegeneratedToken}
+                isRegeneratingToken={isRegeneratingToken}
+                onRegenerateToken={handleRegenerateToken}
+                onCopy={handleCopy}
+                colorScheme={activeColorScheme}
+                renderConnectionStatus={renderGatewayConnectionStatus}
+              />
             </Stack>
           </TabPanel>
 
@@ -1401,203 +1010,18 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
                 </Stack>
               </Box>
 
-              {/* Step 1: Download the Gateway */}
-              <Box>
-                <Typography variant="h6" sx={{ mb: 1 }} color="warning.main">
-                  Step 1: Download the Gateway
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mb: 2 }}
-                >
-                  Run this command in your terminal to download the gateway:
-                </Typography>
-                <TextField
-                  fullWidth
-                  multiline
-                  minRows={2}
-                  value={getSetupGatewayDisplayCommand()}
-                  slotProps={{
-                    input: {
-                      readOnly: true,
-                      endAdornment: (
-                        <IconButton
-                          size="small"
-                          onClick={() =>
-                            handleCopy(
-                              getSetupGatewayCopyCommand(),
-                              "Download command",
-                            )
-                          }
-                        >
-                          <Copy />
-                        </IconButton>
-                      ),
-                    },
-                  }}
-                  sx={getCommandTextFieldSx(activeColorScheme)}
-                />
-              </Box>
-
-              {/* Step 2: Configure the Gateway */}
-              <Box>
-                <Typography variant="h6" sx={{ mb: 1 }} color="warning.main">
-                  Step 2: Configure the Gateway
-                </Typography>
-                {registrationToken ? (
-                  <>
-                    {hasJustRegeneratedToken && (
-                      <Alert severity="success" sx={{ mb: 2 }}>
-                        Successfully generated new configurations. Use the
-                        updated command below to reconfigure your gateway.
-                      </Alert>
-                    )}
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ mb: 2 }}
-                    >
-                      Run this command to create {gatewayEnvFile} with the
-                      required environment variables:
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      multiline
-                      minRows={4}
-                      sx={getCommandTextFieldSx(activeColorScheme)}
-                      value={getConfigureGatewayDisplayCommand(null)}
-                      onCopy={(e) => {
-                        e.preventDefault();
-                        e.clipboardData.setData(
-                          "text/plain",
-                          getConfigureGatewayCopyCommand(
-                            registrationToken,
-                            null,
-                          ),
-                        );
-                      }}
-                      slotProps={{
-                        input: {
-                          readOnly: true,
-                          endAdornment: (
-                            <IconButton
-                              size="small"
-                              onClick={() =>
-                                handleCopy(
-                                  getConfigureGatewayCopyCommand(
-                                    registrationToken,
-                                    null,
-                                  ),
-                                  "Configure command",
-                                )
-                              }
-                            >
-                              <Copy />
-                            </IconButton>
-                          ),
-                        },
-                      }}
-                    />
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                      To gain gateway analytics, you can integrate with Moesif
-                      by adding your Moesif application token with the key{" "}
-                      <code>MOESIF_KEY</code> to your{" "}
-                      <code>configs/keys.env</code>.
-                    </Alert>
-                  </>
-                ) : (
-                  <>
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ mb: 2 }}
-                    >
-                      Your existing local gateway can still use the previously
-                      generated token. If you want to generate a new token and
-                      new configuration command, click Reconfigure. This will
-                      revoke the previous token.
-                    </Typography>
-                    <Button
-                      variant="outlined"
-                      color="primary"
-                      onClick={handleRegenerateToken}
-                      disabled={isRegeneratingToken}
-                    >
-                      Reconfigure
-                    </Button>
-                  </>
-                )}
-              </Box>
-
-              {/* Step 3: Start the Gateway */}
-              <Box>
-                <Typography variant="h6" sx={{ mb: 1 }} color="warning.main">
-                  Step 3: Start the Gateway
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mb: 1.5 }}
-                >
-                  1. Navigate to the gateway folder.
-                </Typography>
-                <TextField
-                  fullWidth
-                  value={getStep3NavigateCommand()}
-                  sx={getCommandTextFieldSx(activeColorScheme)}
-                  slotProps={{
-                    input: {
-                      readOnly: true,
-                      endAdornment: (
-                        <IconButton
-                          size="small"
-                          onClick={() =>
-                            handleCopy(
-                              getStep3NavigateCommand(),
-                              "Navigate command",
-                            )
-                          }
-                        >
-                          <Copy />
-                        </IconButton>
-                      ),
-                    },
-                  }}
-                />
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ my: 2 }}
-                >
-                  2. Run this command to start the gateway using the
-                  configs/keys.env file created in Step 2:
-                </Typography>
-                <TextField
-                  fullWidth
-                  value={getStartGatewayDisplayCommand()}
-                  sx={getCommandTextFieldSx(activeColorScheme)}
-                  slotProps={{
-                    input: {
-                      readOnly: true,
-                      endAdornment: (
-                        <IconButton
-                          size="small"
-                          onClick={() =>
-                            handleCopy(
-                              getStartGatewayCopyCommand(),
-                              "Start command",
-                            )
-                          }
-                        >
-                          <Copy />
-                        </IconButton>
-                      ),
-                    },
-                  }}
-                />
-                {renderGatewayConnectionStatus()}
-              </Box>
+              <GatewaySetupSteps
+                gatewayVersion={gatewayVersion}
+                gatewayZipName={gatewayZipName}
+                gatewayFolderName={gatewayFolderName}
+                registrationToken={registrationToken}
+                hasJustRegeneratedToken={hasJustRegeneratedToken}
+                isRegeneratingToken={isRegeneratingToken}
+                onRegenerateToken={handleRegenerateToken}
+                onCopy={handleCopy}
+                colorScheme={activeColorScheme}
+                renderConnectionStatus={renderGatewayConnectionStatus}
+              />
             </Stack>
           </TabPanel>
 
@@ -1776,7 +1200,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
           ) : (
             <Stack spacing={2}>
               <Tooltip
-                title="You must configure the Gateway before downloading the keys.env file."
+                title={`You must configure the Gateway before downloading the ${gatewayEnvFileName} file.`}
                 disableHoverListener={Boolean(registrationToken)}
               >
                 <span
@@ -1789,7 +1213,7 @@ GATEWAY_REGISTRATION_TOKEN=${registrationToken || ""}`;
                     onClick={handleDownloadKeysEnvFile}
                     disabled={!registrationToken}
                   >
-                    Download keys.env file
+                    Download {gatewayEnvFileName} file
                   </Button>
                 </span>
               </Tooltip>

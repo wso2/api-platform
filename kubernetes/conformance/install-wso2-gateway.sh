@@ -22,6 +22,9 @@
 #   OPERATOR_CHART   path/ref to the operator Helm chart
 #   OPERATOR_NS      namespace for the operator (default: gateway-system)
 #   PURGE_CRDS       cleanup only: also delete the Gateway API CRDs (default: unset)
+#   ENC_KEY_SECRET   name of the AES-256 at-rest encryption key secret (default: gateway-encryption-keys)
+#   GATEWAY_NS       namespace the operator deploys the gateway into, where the key secret is
+#                    created (default: gateway-conformance-infra — the suite's infra namespace)
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
@@ -39,6 +42,14 @@ CONFORMANCE_NAMESPACES=(
   gateway-conformance-web-backend
 )
 
+# At-rest encryption is MANDATORY: the gateway-controller
+# fails to start without its AES-256 key, and the gateway Helm chart fails to render unless
+# encryptionKeys is enabled. The operator deploys the gateway into the Gateway's own namespace
+# (gateway-conformance-infra for the suite), so we provision a throwaway key secret there and
+# enable encryptionKeys in the operator's gateway values (see the helm install below).
+ENC_KEY_SECRET="${ENC_KEY_SECRET:-gateway-encryption-keys}"
+GATEWAY_NS="${GATEWAY_NS:-gateway-conformance-infra}"
+
 # Gateway-API finalizers the operator adds; a lingering one blocks namespace deletion.
 FINALIZER_KINDS=(httproutes.gateway.networking.k8s.io gateways.gateway.networking.k8s.io)
 
@@ -54,6 +65,28 @@ strip_finalizers() {
       kubectl patch "${kind}" "${name}" -n "${ns}" --type=merge \
         -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
     done
+}
+
+# provision_encryption_key: create the AES-256 at-rest encryption key secret in GATEWAY_NS
+# (the namespace the operator deploys the gateway into). The secret holds a raw 32-byte key
+# under default-aesgcm256-v1.bin, matching gateway.controller.encryption.providers[].keys[].file.
+# We pre-create the namespace so the secret exists before the suite reconciles its Gateway; the
+# conformance suite applies (does not recreate) this namespace, so the secret survives the run.
+# The key is throwaway (conformance is ephemeral) — kept if already present to avoid churn.
+provision_encryption_key() {
+  echo ">> Provisioning AES-256 encryption key secret '${ENC_KEY_SECRET}' in ${GATEWAY_NS}"
+  kubectl create namespace "${GATEWAY_NS}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  if kubectl get secret "${ENC_KEY_SECRET}" -n "${GATEWAY_NS}" >/dev/null 2>&1; then
+    echo "   secret already exists — keeping it"
+    return
+  fi
+  local keyfile
+  keyfile="$(mktemp)"
+  openssl rand 32 > "${keyfile}"   # 32 bytes = AES-256; the controller reads the raw key file
+  kubectl create secret generic "${ENC_KEY_SECRET}" \
+    --namespace "${GATEWAY_NS}" \
+    --from-file=default-aesgcm256-v1.bin="${keyfile}"
+  rm -f "${keyfile}"
 }
 
 cleanup() {
@@ -137,6 +170,9 @@ if [ -z "${GW_VERSION}" ] || [ -z "${OPERATOR_VERSION}" ]; then
   exit 1
 fi
 
+# Provision the mandatory at-rest encryption key before the gateway is reconciled.
+provision_encryption_key
+
 echo ">> Installing the gateway operator from ${OPERATOR_CHART}"
 echo "   gateway-controller -> ${GW_VERSION}"
 echo "   gateway-runtime -> ${GW_VERSION}"
@@ -152,9 +188,10 @@ helm upgrade --install gateway-operator "${OPERATOR_CHART}" \
   --set gateway.values.gateway.gatewayRuntime.image.repository="${REGISTRY}/gateway-runtime" \
   --set gateway.values.gateway.gatewayRuntime.image.tag="${GW_VERSION}" \
   --set gateway.values.gateway.gatewayRuntime.image.pullPolicy=IfNotPresent \
-  --set gateway.values.gateway.config.controller.storage.type=memory \
-  --set gateway.values.gateway.controller.storage.type=sqlite \
+  --set gateway.values.gateway.config.controller.storage.type=sqlite \
   --set gateway.values.gateway.controller.persistence.enabled=false \
+  --set gateway.values.gateway.controller.encryptionKeys.enabled=true \
+  --set gateway.values.gateway.controller.encryptionKeys.secretName="${ENC_KEY_SECRET}" \
   --set gateway.values.gateway.gatewayRuntime.deployment.securityContext.runAsUser=0 \
   --set reconciliation.maxConcurrentReconciles=15 \
   --set reconciliation.interval=150 \

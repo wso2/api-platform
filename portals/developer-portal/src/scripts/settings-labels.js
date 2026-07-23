@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 
 (function () {
   var _cfg = document.getElementById('cfg-page-config') || { dataset: {} };
@@ -101,7 +101,7 @@
       return;
     }
     if (e.target.closest('.cfg-label-delete-btn')) {
-      var btn = e.target.closest('.cfg-label-delete-btn');
+      btn = e.target.closest('.cfg-label-delete-btn');
       pendingDelName = btn.dataset.name;
       document.getElementById('cfg-del-label-name-txt').textContent = btn.dataset.display || btn.dataset.name;
       document.getElementById('cfg-delete-label-modal').style.display = 'flex';

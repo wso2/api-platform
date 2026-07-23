@@ -27,7 +27,7 @@ image:
   # repository: ghcr.io/wso2/api-platform/gateway-operator
   # For local registry: host.docker.internal:5000/gateway-operator
   repository: ghcr.io/wso2/api-platform/gateway-operator
-  tag: "0.8.0"
+  tag: "0.10.0"
   pullPolicy: Always  # Uses locally loaded image from nerdctl load
 
 serviceAccount:
@@ -76,6 +76,17 @@ gateway:
     insecureRegistry: false
     # Use plain HTTP instead of HTTPS for OCI registries (for local/test registries)
     plainHTTP: false
+    # Credentials for pulling the gateway Helm chart from a private OCI registry.
+    # Rendered into operator config as gateway.registry_credentials_secret ONLY when
+    # name is set; leave name empty for anonymous pulls.
+    registryCredentialsSecret:
+      name: ""
+      # Namespace of the credentials Secret. Defaults to the operator's release
+      # namespace when left empty.
+      namespace: ""
+      # Keys within the Secret holding the registry username and password.
+      usernameKey: username
+      passwordKey: password
   # Gateway chart values that will be used when deploying gateways
   # Users can override these values during helm install/upgrade
   values:
@@ -103,9 +114,9 @@ gateway:
     # used: operator pod loads this file first, then deep-merges overlay YAML. Keep platform fixes
     # (probes, auth paths, images) here; the released gateway chart stays default upstream.
     gateway:
-      # For default operator-managed installs, keep development mode on to avoid
-      # requiring encryption key secret bootstrap during quick-start/demo flows.
-      developmentMode: true
+      # At-rest encryption is mandatory (no dev/demo bypass): enable
+      # gateway.controller.encryptionKeys with a pre-created key secret — see the operator
+      # docs/CONFIGURATION.md ("At-rest Encryption Key").
       # Shared configuration for gateway-controller and policy-engine
       # This config is mounted to both components as /configs/config.yaml
       config:
@@ -169,8 +180,8 @@ gateway:
             # Directory containing policy definitions
             definitions_path: ./default-policies
 
-          # Control plane connection configuration
-          # Note: host and token are set via gateway.controller.controlPlane and rendered as env vars in the deployment.
+          # Control plane connection configuration.
+          # Host/token are configured under gateway.controller.controlPlane (see the gateway chart README).
           controlplane:
             # Skip TLS certificate verification for the control plane connection (insecure, dev/test only)
             insecure_skip_verify: false
@@ -503,11 +514,12 @@ gateway:
           # Existing ConfigMap containing custom CA certificates
           # ConfigMap should contain one or more keys with PEM-encoded certificates
           configMapName: ""
-        logging:
-          level: info
-        storage:
-          type: sqlite
-          sqlitePath: ./data/gateway.db
+        # AES-256 at-rest encryption key (MANDATORY). Enable and point at a pre-created key
+        # secret in the Gateway's namespace — see the operator docs/CONFIGURATION.md.
+        encryptionKeys:
+          enabled: false
+          secretName: ""
+          mountPath: /app/data/aesgcm-keys
         metrics:
           port: 9091
         persistence:
@@ -637,10 +649,17 @@ gateway:
           affinity: {}
 
 reconciliation:
-  enabled: true
-  interval: 300
+  # Minimum frequency at which watched resources are re-reconciled (Go duration).
+  # Passed through as reconciliation.sync_period.
+  syncPeriod: 10m
   # Passed through to operator config.yaml as reconciliation.max_concurrent_reconciles (must be >= 1).
   maxConcurrentReconciles: 1
+  # Max retry attempts for gateway operations → reconciliation.max_retry_attempts (must be >= 1).
+  maxRetryAttempts: 10
+  # Initial retry backoff (Go duration) → reconciliation.initial_backoff.
+  initialBackoff: 1s
+  # Maximum exponential backoff (Go duration) → reconciliation.max_backoff_duration.
+  maxBackoffDuration: 60s
 logging:
   level: "info"
   format: "json"

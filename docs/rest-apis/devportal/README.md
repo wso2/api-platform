@@ -106,6 +106,7 @@ Base URLs:
 
 ### [API Keys](api-keys.md)
 
+- [List all API keys for the current user](api-keys.md#list-all-api-keys-for-the-current-user)
 - [Generate an API key](api-keys.md#generate-an-api-key)
 - [List API keys](api-keys.md#list-api-keys)
 - [Regenerate an API key](api-keys.md#regenerate-an-api-key)

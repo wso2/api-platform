@@ -26,6 +26,8 @@ import proto.python_executor_pb2 as proto
 from apip_sdk_core import (
     AuthContext,
     Body,
+    DownstreamContext,
+    DownstreamRequest,
     DownstreamResponseHeaderModifications,
     DownstreamResponseModifications,
     DropHeaderAction,
@@ -51,8 +53,11 @@ from apip_sdk_core import (
     StreamingRequestAction,
     StreamingResponseAction,
     TerminateResponseChunk,
+    UpstreamRequestContext,
     UpstreamRequestHeaderModifications,
     UpstreamRequestModifications,
+    UpstreamResponse,
+    UpstreamResponseContext,
 )
 
 
@@ -154,6 +159,8 @@ class Translator:
             authority=proto_ctx.authority,
             scheme=proto_ctx.scheme,
             vhost=proto_ctx.vhost,
+            downstream=Translator._to_python_downstream(proto_ctx),
+            upstream=Translator._to_python_request_upstream(proto_ctx),
         )
 
     @staticmethod
@@ -171,6 +178,8 @@ class Translator:
             authority=proto_ctx.authority,
             scheme=proto_ctx.scheme,
             vhost=proto_ctx.vhost,
+            downstream=Translator._to_python_downstream(proto_ctx),
+            upstream=Translator._to_python_request_upstream(proto_ctx),
         )
 
     @staticmethod
@@ -191,6 +200,8 @@ class Translator:
             request_method=proto_ctx.request_method,
             response_headers=Translator._to_python_headers(proto_ctx.response_headers),
             response_status=proto_ctx.response_status,
+            downstream=Translator._to_python_downstream(proto_ctx),
+            upstream=Translator._to_python_upstream(proto_ctx),
         )
 
     @staticmethod
@@ -217,6 +228,8 @@ class Translator:
             response_headers=Translator._to_python_headers(proto_ctx.response_headers),
             response_body=response_body,
             response_status=proto_ctx.response_status,
+            downstream=Translator._to_python_downstream(proto_ctx),
+            upstream=Translator._to_python_upstream(proto_ctx),
         )
 
     @staticmethod
@@ -232,6 +245,8 @@ class Translator:
             authority=proto_ctx.authority,
             scheme=proto_ctx.scheme,
             vhost=proto_ctx.vhost,
+            downstream=Translator._to_python_downstream(proto_ctx),
+            upstream=Translator._to_python_request_upstream(proto_ctx),
         )
 
     @staticmethod
@@ -252,6 +267,8 @@ class Translator:
             request_method=proto_ctx.request_method,
             response_headers=Translator._to_python_headers(proto_ctx.response_headers),
             response_status=proto_ctx.response_status,
+            downstream=Translator._to_python_downstream(proto_ctx),
+            upstream=Translator._to_python_upstream(proto_ctx),
         )
 
     @staticmethod
@@ -391,6 +408,53 @@ class Translator:
         for name, header_values in proto_headers.values.items():
             values[name] = list(header_values.values)
         return Headers(values)
+
+    @staticmethod
+    def _to_python_downstream(proto_ctx, field_name: str = "downstream") -> DownstreamContext | None:
+        """Convert the optional downstream snapshot. Returns None when the field
+        is unset (older gateways) so policies can detect absence and fall back."""
+        if not proto_ctx.HasField(field_name):
+            return None
+        return DownstreamContext(
+            request=DownstreamRequest(
+                headers=Translator._to_python_headers(getattr(proto_ctx, field_name).request.headers),
+            ),
+        )
+
+    @staticmethod
+    def _to_python_request_upstream(
+        proto_ctx, field_name: str = "upstream"
+    ) -> UpstreamRequestContext | None:
+        """Convert the optional request-phase resolved upstream target. Returns
+        None when the field is unset (older gateways); see _to_python_downstream."""
+        if not proto_ctx.HasField(field_name):
+            return None
+        up = getattr(proto_ctx, field_name)
+        return UpstreamRequestContext(
+            name=up.name,
+            url=up.url,
+            base_path=up.base_path,
+        )
+
+    @staticmethod
+    def _to_python_upstream(proto_ctx, field_name: str = "upstream") -> UpstreamResponseContext | None:
+        """Convert the optional response-phase resolved upstream target and its
+        response header snapshot. Returns None when the field is unset (older
+        gateways); see _to_python_downstream."""
+        if not proto_ctx.HasField(field_name):
+            return None
+        up = getattr(proto_ctx, field_name)
+        response = None
+        if up.HasField("response"):
+            response = UpstreamResponse(
+                headers=Translator._to_python_headers(up.response.headers),
+            )
+        return UpstreamResponseContext(
+            name=up.name,
+            url=up.url,
+            base_path=up.base_path,
+            response=response,
+        )
 
     @staticmethod
     def _to_python_body(proto_body: proto.Body) -> Body:

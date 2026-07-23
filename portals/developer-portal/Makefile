@@ -97,7 +97,7 @@ version-set: ## Set developer portal version and update artifacts
 		exit 1; \
 	fi
 	@echo "$(VERSION)" > VERSION
-	@sed -i.bak 's/"version": ".*"/"version": "$(VERSION)"/' package.json && rm -f package.json.bak
+	@npm version $(VERSION) --no-git-tag-version --allow-same-version >/dev/null
 	@(cd ../.. && bash scripts/update-docker-compose.sh developer-portal $(VERSION))
 	@echo "✓ Set developer portal version to $(VERSION)"
 
@@ -144,7 +144,6 @@ dist: clean-dist ## Build standalone developer portal distribution zip
 	@cp -R samples/mcps $(DIST_DIR)/resources/samples/
 	@cp configs/config.toml $(DIST_DIR)/configs/config.toml
 	@cp configs/config-template.toml $(DIST_DIR)/configs/config-template.toml
-	@cp configs/config-platform-api-template.toml $(DIST_DIR)/configs/config-platform-api.toml
 	@cp configs/config-platform-api-template.toml $(DIST_DIR)/configs/config-platform-api-template.toml
 	@cp docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md

@@ -30,6 +30,10 @@ Feature: Timeouts
 
   # Tests cluster connect_timeout: upstream does not accept TCP connection in time.
   # Uses unreachable IP (192.0.2.1 per RFC 5737) so connect attempt hangs until connect_timeout.
+  # The definition timeout (8s) is chosen deliberately above the global default (5s) plus the
+  # 1s assertion tolerance: the "at least 8 seconds" check (effective >=7s) can only pass if the
+  # per-upstream 8s timeout actually reaches Envoy. If the connect timeout were dropped and the
+  # cluster fell back to the 5s default, the request would 503 at ~5s and this assertion would fail.
   Scenario: RestApi backend timeout using upstreamDefinitions
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
@@ -45,7 +49,7 @@ Feature: Timeouts
         upstreamDefinitions:
           - name: my-timeout-upstream
             timeout:
-              connect: 6000ms
+              connect: 8000ms
             upstreams:
               - url: http://192.0.2.1:8080
         upstream:
@@ -62,7 +66,7 @@ Feature: Timeouts
     And I record the current time as "request_start"
     When I send a GET request to "http://localhost:8080/timeout-api/v1.0/"
     Then the response status code should be 503
-    And the request should have taken at least "6" seconds since "request_start"
+    And the request should have taken at least "8" seconds since "request_start"
     Given I authenticate using basic auth as "admin"
     When I delete the API "timeout-api-v1.0"
     Then the response should be successful
@@ -142,8 +146,9 @@ Feature: Timeouts
 
   # LLM Provider connect_timeout via upstreamDefinitions ref: the provider's upstream references a
   # definition whose only target is unreachable (192.0.2.1). The connect attempt hangs until the
-  # per-upstream connect timeout (6s), then the gateway returns 503. Proves the ref -> upstreamDefinition
-  # connect timeout works for LLM providers exactly as it does for RestApi.
+  # per-upstream connect timeout (8s), then the gateway returns 503. Proves the ref -> upstreamDefinition
+  # connect timeout works for LLM providers exactly as it does for RestApi. The 8s value (above the 5s
+  # global default + 1s tolerance) makes "at least 8 seconds" pass only when the timeout truly applies.
   Scenario: LLM provider backend connect timeout using upstreamDefinitions ref
     Given I authenticate using basic auth as "admin"
     When I create this LLM provider:
@@ -160,7 +165,7 @@ Feature: Timeouts
         upstreamDefinitions:
           - name: llm-unreachable-upstream
             timeout:
-              connect: 6000ms
+              connect: 8000ms
             upstreams:
               - url: http://192.0.2.1:8080
         upstream:
@@ -173,13 +178,15 @@ Feature: Timeouts
     And I record the current time as "request_start"
     When I send a GET request to "http://localhost:8080/llm-connect-timeout/get"
     Then the response status code should be 503
-    And the request should have taken at least "6" seconds since "request_start"
+    And the request should have taken at least "8" seconds since "request_start"
     Given I authenticate using basic auth as "admin"
     When I delete the LLM provider "llm-connect-timeout-provider"
     Then the response should be successful
 
   # MCP connect_timeout via upstreamDefinitions ref: the MCP backend reference is unreachable, so the
-  # synthesized /mcp route's connect attempt hangs until the per-upstream connect timeout (6s) -> 503.
+  # synthesized /mcp route's connect attempt hangs until the per-upstream connect timeout (8s) -> 503.
+  # The 8s value (above the 5s global default + 1s tolerance) makes "at least 8 seconds" pass only
+  # when the per-upstream timeout truly reaches Envoy, not when it silently falls back to the default.
   Scenario: MCP backend connect timeout using upstreamDefinitions ref
     Given I authenticate using basic auth as "admin"
     When I deploy this MCP configuration:
@@ -196,7 +203,7 @@ Feature: Timeouts
         upstreamDefinitions:
           - name: mcp-unreachable-upstream
             timeout:
-              connect: 6000ms
+              connect: 8000ms
             upstreams:
               - url: http://192.0.2.1:3001
         upstream:
@@ -210,7 +217,7 @@ Feature: Timeouts
     And I record the current time as "request_start"
     When I send a GET request to "http://localhost:8080/mcp-connect-timeout/mcp"
     Then the response status code should be 503
-    And the request should have taken at least "6" seconds since "request_start"
+    And the request should have taken at least "8" seconds since "request_start"
     Given I authenticate using basic auth as "admin"
     When I delete the MCP proxy "mcp-connect-timeout"
     Then the response should be successful

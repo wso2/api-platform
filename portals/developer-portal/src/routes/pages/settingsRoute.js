@@ -6,7 +6,6 @@ const registerPartials = require('../../middlewares/registerPartials');
 const { ensureAuthenticated } = require('../../middlewares/ensureAuthenticated');
 const authController = require('../../controllers/authController');
 const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection');
-const constants = require('../../utils/constants');
 
 const noFavicon = (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') return res.status(404).send('Not Found');

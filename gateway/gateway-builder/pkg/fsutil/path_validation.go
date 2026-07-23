@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 // ValidatePathExists checks if a file or directory exists and is accessible.
@@ -50,6 +51,27 @@ func ValidatePathExists(path string, pathType string) error {
 	}
 
 	return fmt.Errorf("failed to access %s: %s: %w", pathType, path, err)
+}
+
+// CopyDir recursively copies src into dst, preserving file modes.
+func CopyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, info.Mode())
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		return CopyFile(path, target)
+	})
 }
 
 // CopyFile copies a file from src to dst

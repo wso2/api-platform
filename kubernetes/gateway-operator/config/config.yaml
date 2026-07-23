@@ -28,9 +28,32 @@ gateway:
   
   # Use plain HTTP instead of HTTPS for OCI registries
   # Useful for local/test registries without TLS support
-  # IMPORTANT: Should be false in production environments  
+  # IMPORTANT: Should be false in production environments
   plain_http: false
-    
+
+  # Credentials for pulling the gateway Helm chart from a private OCI registry.
+  # Omit entirely for anonymous pulls.
+  # registry_credentials_secret:
+  #   name: "registry-creds"
+  #   namespace: "gateway-system"
+  #   username_key: "username"
+  #   password_key: "password"
+
+# Kubernetes Gateway API (gateway.networking.k8s.io) configuration
+gateway_api:
+  # gatewayClassName values this operator manages; only matching Gateway/HTTPRoute
+  # resources are reconciled. Override with GATEWAY_API_GATEWAY_CLASS_NAMES (comma-separated).
+  gateway_class_names:
+    - wso2-api-platform
+
+  # Cluster DNS suffix for in-cluster Service URLs (<svc>.<ns>.svc.<cluster_domain>:<port>).
+  # Override with CLUSTER_DOMAIN.
+  cluster_domain: "cluster.local"
+
+  # Published verbatim as the Gateway status address for NodePort-backed gateways in local
+  # environments (e.g. set to "127.0.0.1" for kind / Rancher Desktop). Leave empty on real
+  # clusters. Override with GATEWAY_API_NODEPORT_ADDRESS_OVERRIDE.
+  # nodeport_address_override: "127.0.0.1"
 
 # Reconciliation behavior configuration
 reconciliation:
@@ -52,9 +75,5 @@ logging:
   # Log level (debug, info, warn, error)
   # Can be overridden with LOG_LEVEL environment variable
   level: "info"
-  # Enable development mode (boolean). Replaces the previous `format` field.
-  # Deprecated: Use format instead
-  development: true
   # Log format: "json" or "text"
-  # Default is "text" in development, "json" in production
   format: "text"

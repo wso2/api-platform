@@ -1,0 +1,16 @@
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: Mcp
+metadata:
+    name: mcp-proxy
+    labels:
+        projectId: 019f2324-be88-7ecf-b15d-214ae1e3283d
+spec:
+    displayName: mcp-proxy
+    version: v1.0
+    context: /default/mcp-proxy
+    vhost: null
+    upstream:
+        url: https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-prod.e1-us-east-azure.choreoapis.dev/godzilla/mcp-everything-server/v1.0
+        auth: null
+    specVersion: "2025-06-18"
+    policies:

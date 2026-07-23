@@ -76,6 +76,8 @@ func TestNormalizeUpstreamAuthType(t *testing.T) {
 		{name: "basic", input: "basic", expected: "basic"},
 		{name: "bearer", input: "bearer", expected: "bearer"},
 		{name: "other", input: "other", expected: "other"},
+		{name: "none", input: "none", expected: "none"},
+		{name: "none upper", input: "NONE", expected: "none"},
 		{name: "unknown preserved", input: "custom", expected: "custom"},
 		{name: "empty", input: "", expected: ""},
 	}
@@ -87,6 +89,48 @@ func TestNormalizeUpstreamAuthType(t *testing.T) {
 				t.Fatalf("expected %q, got %q", tc.expected, actual)
 			}
 		})
+	}
+}
+
+// TestMapLLMUpstreamYAMLToModel_DefaultsToNone verifies the DP->CP import default:
+// a gateway-pushed provider whose upstream.auth block is absent (or empty-typed)
+// is stored with auth type "none", while an explicit "other" type is preserved.
+func TestMapLLMUpstreamYAMLToModel_DefaultsToNone(t *testing.T) {
+	// No auth block => "none".
+	got := mapLLMUpstreamYAMLToModel(dto.LLMUpstreamYAML{URL: "https://api.openai.com/v1"})
+	if got == nil || got.Main == nil || got.Main.Auth == nil || got.Main.Auth.Type != "none" {
+		t.Fatalf("expected auth type 'none' for absent auth, got %+v", got)
+	}
+
+	// Explicit "other" is preserved.
+	otherType := api.Other
+	got = mapLLMUpstreamYAMLToModel(dto.LLMUpstreamYAML{
+		URL:  "https://api.openai.com/v1",
+		Auth: &api.UpstreamAuth{Type: &otherType},
+	})
+	if got == nil || got.Main == nil || got.Main.Auth == nil || got.Main.Auth.Type != "other" {
+		t.Fatalf("expected auth type 'other' preserved, got %+v", got)
+	}
+}
+
+// TestMapUpstreamConfigToDTO_ReturnsAuthAsIs verifies the read (GET) path returns the stored
+// upstream config as-is: no auth block is synthesised when none is stored, and a stored type
+// is returned unchanged.
+func TestMapUpstreamConfigToDTO_ReturnsAuthAsIs(t *testing.T) {
+	// No stored auth -> no auth block in the response (not defaulted to "none").
+	out := mapUpstreamConfigToDTO(&model.UpstreamConfig{
+		Main: &model.UpstreamEndpoint{URL: "https://api.openai.com/v1"},
+	})
+	if out.Main.Auth != nil {
+		t.Fatalf("expected no auth block for stored nil auth, got %+v", out.Main.Auth)
+	}
+
+	// A stored explicit type is returned unchanged.
+	out = mapUpstreamConfigToDTO(&model.UpstreamConfig{
+		Main: &model.UpstreamEndpoint{URL: "https://api.openai.com/v1", Auth: &model.UpstreamAuth{Type: "none"}},
+	})
+	if out.Main.Auth == nil || out.Main.Auth.Type == nil || string(*out.Main.Auth.Type) != "none" {
+		t.Fatalf("expected stored auth type 'none' returned as-is, got %+v", out.Main.Auth)
 	}
 }
 

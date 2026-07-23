@@ -1079,6 +1079,31 @@ paths:
       security:
         - OAuth2Security:
             - dp:subscription_manage
+  /api-keys:
+    get:
+      tags:
+        - API Keys
+      operationId: listAllApiKeys
+      summary: List all API keys for the current user
+      description: >-
+        Lists every API key created by the authenticated user across all APIs in the
+        organization. Powers the Developer Portal's global "API Keys" page. Each item
+        additionally carries the owning API's name, version, and type. Secret material
+        is never returned.
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/ApiKeyListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:api_key_read
+            - dp:api_key_manage
   /apis/{apiId}/api-keys/generate:
     parameters:
       - $ref: "#/components/parameters/apiId"
@@ -1109,7 +1134,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiKeyResponse"
               example:
-                keyId: key-12345
                 id: weather_prod_key
                 displayName: Weather Prod Key
                 key: ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ
@@ -3894,7 +3918,6 @@ components:
           schema:
             $ref: "#/components/schemas/ApiKeyResponse"
           example:
-            keyId: key-12345
             id: weather_prod_key
             displayName: Weather Prod Key
             key: ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ
@@ -4970,10 +4993,6 @@ components:
       type: object
       description: API key metadata returned by list operations. Secret material is omitted.
       properties:
-        keyId:
-          type: string
-          description: Developer Portal key identifier.
-          example: key-12345
         id:
           type: string
           example: weather_prod_key
@@ -5017,12 +5036,8 @@ components:
       type: object
       description: >-
         API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include
-        apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these six fields.
+        apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these five fields.
       properties:
-        keyId:
-          type: string
-          description: Developer Portal key identifier.
-          example: key-12345
         id:
           type: string
           example: weather_prod_key
@@ -5048,9 +5063,6 @@ components:
     ApiKeyApplicationResponse:
       type: object
       properties:
-        keyId:
-          type: string
-          example: key-12345
         application:
           type: object
           properties:

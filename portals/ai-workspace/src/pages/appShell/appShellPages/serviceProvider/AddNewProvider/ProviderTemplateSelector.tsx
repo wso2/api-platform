@@ -109,7 +109,11 @@ export default function ProviderTemplateSelector({
     const existing = familyMap.get(key);
     if (!existing || t.isLatest) familyMap.set(key, t);
   }
-  const deduplicatedTemplates = Array.from(familyMap.values());
+  const deduplicatedTemplates = Array.from(familyMap.values()).sort((a, b) =>
+    (a.displayName ?? '').localeCompare(b.displayName ?? '', undefined, {
+      sensitivity: 'base',
+    })
+  );
 
   const hasMore = deduplicatedTemplates.length > COLLAPSED_COUNT;
   const hiddenCount = deduplicatedTemplates.length - COLLAPSED_COUNT;

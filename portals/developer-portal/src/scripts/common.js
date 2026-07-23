@@ -93,31 +93,47 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const basePath = extractBasePath();
 
+        // Resolve the path segment that follows the view-scoped base path so nav
+        // matching is exact. e.g. "/org/views/default/api-keys" -> firstSegment "api-keys".
+        // Settings is org-scoped (/:org/settings) and does not sit under basePath, so it
+        // is handled via a suffix check below.
+        let rest = currentPath;
+        if (basePath && currentPath.indexOf(basePath) === 0) {
+            rest = currentPath.slice(basePath.length);
+        }
+        const firstSegment = rest.replace(/^\/+/, '').split('/')[0];
+
         // Remove active class from all links
         navLinks.forEach(link => link.classList.remove('active'));
 
-        // Set the active class based on path
-        if (currentPath.endsWith('/') || currentPath === '') {
+        // Match on the first path segment. Order the singular API/MCP detail routes
+        // (submenu-bearing) before the plural listing routes, and guard optional
+        // submenu elements — they are absent in single-mode portals
+        // (APIS_ONLY / MCP_SERVERS_ONLY).
+        if (firstSegment === '') {
             document.getElementById('home')?.classList.add('active');
-            apiSubmenu.classList.remove('show');
+            apiSubmenu?.classList.remove('show');
             apisLink?.classList.remove('has-active-submenu');
-        } else if (currentPath.includes('/apis')) {
-            apisLink?.classList.add('active');
-            apiSubmenu.classList.remove('show');
-            apisLink?.classList.remove('has-active-submenu');
-        } else if (currentPath.includes('/api/')) {
-            apiSubmenu.classList.add('show');
+        } else if (firstSegment === 'api-workflows') {
+            document.getElementById('api-workflows')?.classList.add('active');
+        } else if (firstSegment === 'api-keys') {
+            // Global API Keys page (distinct from the per-API /api/:id/api-keys submenu item)
+            document.getElementById('api-keys')?.classList.add('active');
+        } else if (firstSegment === 'api') {
+            apiSubmenu?.classList.add('show');
             apisLink?.classList.add('active');
             apisLink?.classList.add('has-active-submenu');
 
             // Extract API ID from URL path and update submenu links
-            const apiIdMatch = currentPath.match(/\/api\/([^\/]+)/);
+            const apiIdMatch = currentPath.match(/\/api\/([^/]+)/);
             if (apiIdMatch && apiIdMatch[1]) {
                 const apiId = apiIdMatch[1];
 
                 // Update the submenu links with the correct API ID and base path
-                document.getElementById('api-overview').href = `${basePath}/api/${apiId}`;
-                document.getElementById('api-docs').href = `${basePath}/api/${apiId}/docs/specification`;
+                const overviewLink = document.getElementById('api-overview');
+                if (overviewLink) overviewLink.href = `${basePath}/api/${apiId}`;
+                const docsLink = document.getElementById('api-docs');
+                if (docsLink) docsLink.href = `${basePath}/api/${apiId}/docs/specification`;
                 const apiKeysLink = document.getElementById('api-keys-nav');
                 if (apiKeysLink) {
                     apiKeysLink.href = `${basePath}/api/${apiId}/api-keys`;
@@ -132,25 +148,27 @@ document.addEventListener("DOMContentLoaded", function () {
                     document.getElementById('api-overview')?.classList.add('active');
                 }
             }
-        } else if (currentPath.includes('/applications/') || currentPath.includes('/applications')) {
+        } else if (firstSegment === 'apis') {
+            apisLink?.classList.add('active');
+            apiSubmenu?.classList.remove('show');
+            apisLink?.classList.remove('has-active-submenu');
+        } else if (firstSegment === 'applications') {
             applicationsLink?.classList.add('active');
-        } else if (currentPath.includes('/mcps')) {
-            document.getElementById('mcps')?.classList.add('active');
-            mcpSubmenu.classList.remove('show');
-            mcpLink?.classList.remove('has-active-submenu');
-        } else if (currentPath.includes('/mcp/')) {
-            mcpSubmenu.classList.add('show');
+        } else if (firstSegment === 'mcp') {
+            mcpSubmenu?.classList.add('show');
             mcpLink?.classList.add('active');
             mcpLink?.classList.add('has-active-submenu');
 
             // Extract API ID from URL path and update submenu links
-            const apiIdMatch = currentPath.match(/\/mcp\/([^\/]+)/);
+            const apiIdMatch = currentPath.match(/\/mcp\/([^/]+)/);
             if (apiIdMatch && apiIdMatch[1]) {
                 const apiId = apiIdMatch[1];
 
                 // Update the submenu links with the correct API ID and base path
-                document.getElementById('mcp-overview').href = `${basePath}/mcp/${apiId}`;
-                document.getElementById('mcp-docs').href = `${basePath}/mcp/${apiId}/docs/specification`;
+                const mcpOverviewLink = document.getElementById('mcp-overview');
+                if (mcpOverviewLink) mcpOverviewLink.href = `${basePath}/mcp/${apiId}`;
+                const mcpDocsLink = document.getElementById('mcp-docs');
+                if (mcpDocsLink) mcpDocsLink.href = `${basePath}/mcp/${apiId}/docs/specification`;
 
                 // Set active submenu item
                 if (currentPath.includes('/docs')) {
@@ -159,8 +177,14 @@ document.addEventListener("DOMContentLoaded", function () {
                     document.getElementById('mcp-overview')?.classList.add('active');
                 }
             }
-        } else if (currentPath.includes('/subscriptions')) {
+        } else if (firstSegment === 'mcps') {
+            document.getElementById('mcps')?.classList.add('active');
+            mcpSubmenu?.classList.remove('show');
+            mcpLink?.classList.remove('has-active-submenu');
+        } else if (firstSegment === 'subscriptions') {
             document.getElementById('subscriptions')?.classList.add('active');
+        } else if (firstSegment === 'settings' || currentPath.includes('/settings')) {
+            document.getElementById('admin-settings')?.classList.add('active');
         }
     };
 

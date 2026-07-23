@@ -56,7 +56,9 @@ export default function ServiceProviderConnectionTab() {
   const showSnackbar = useAIWorkspaceSnackbar();
   const isReadOnlyProvider = Boolean(provider?.readOnly);
   const isFormDisabled = isLoading || Boolean(error) || isReadOnlyProvider;
-  const isOtherAuthType = (authenticationType || 'api-key') === 'other';
+  const effectiveAuthType = authenticationType || 'none';
+  const isOtherAuthType = effectiveAuthType === 'other';
+  const isNoCredentialsAuthType = effectiveAuthType === 'other' || effectiveAuthType === 'none';
 
   const valuePrefix = useMemo(() => {
     return providerTemplate?.metadata?.auth?.valuePrefix || '';
@@ -98,7 +100,7 @@ export default function ServiceProviderConnectionTab() {
   useEffect(() => {
     if (!provider) return;
     setProviderEndpoint(provider.upstream?.main?.url || '');
-    setAuthenticationType(provider.upstream?.main?.auth?.type || 'api-key');
+    setAuthenticationType(provider.upstream?.main?.auth?.type || 'none');
     setAuthenticationHeader(provider.upstream?.main?.auth?.header || '');
 
     if (initializedProviderIdRef.current === provider.id) {
@@ -153,7 +155,7 @@ export default function ServiceProviderConnectionTab() {
     const nextType = value.trim();
     if (!nextType || nextType === (provider.upstream?.main?.auth?.type || ''))
       return;
-    const isOther = nextType === 'other';
+    const isNoCredentials = nextType === 'other' || nextType === 'none';
     try {
       const {
         status,
@@ -171,8 +173,12 @@ export default function ServiceProviderConnectionTab() {
             url: provider.upstream?.main?.url || '',
             auth: {
               type: nextType,
-              header: isOther ? '' : provider.upstream?.main?.auth?.header || '',
-              value: isOther ? '' : provider.upstream?.main?.auth?.value || '',
+              header: isNoCredentials
+                ? ''
+                : provider.upstream?.main?.auth?.header || '',
+              value: isNoCredentials
+                ? ''
+                : provider.upstream?.main?.auth?.value || '',
             },
           },
         },
@@ -301,12 +307,12 @@ export default function ServiceProviderConnectionTab() {
           <FormLabel>Authentication</FormLabel>
           <Select
             size="small"
-            value={authenticationType || 'api-key'}
+            value={authenticationType || 'none'}
             disabled={isFormDisabled}
             onChange={(e) => {
               const nextValue = String(e.target.value);
               setAuthenticationType(nextValue);
-              if (nextValue === 'other') {
+              if (nextValue === 'other' || nextValue === 'none') {
                 setAuthenticationHeader('');
                 setCredentialValue('');
               }
@@ -320,6 +326,7 @@ export default function ServiceProviderConnectionTab() {
               }
             }}
           >
+            <MenuItem value="none">none</MenuItem>
             <MenuItem value="api-key">api-key</MenuItem>
             <MenuItem value="other">other</MenuItem>
           </Select>
@@ -331,7 +338,7 @@ export default function ServiceProviderConnectionTab() {
           )}
         </FormControl>
 
-        {!isOtherAuthType && (
+        {!isNoCredentialsAuthType && (
           <>
             <FormControl fullWidth>
               <FormLabel>Authentication Header</FormLabel>

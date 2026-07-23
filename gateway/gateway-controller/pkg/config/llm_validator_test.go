@@ -1499,6 +1499,28 @@ func TestValidateLLMProvider_UpstreamAuth(t *testing.T) {
 			},
 			expectError: false,
 		},
+		{
+			name: "valid other auth without header or value",
+			auth: &struct {
+				Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+			}{
+				Type: api.LLMProviderConfigDataUpstreamAuthTypeOther,
+			},
+			expectError: false,
+		},
+		{
+			name: "valid none auth without header or value",
+			auth: &struct {
+				Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+				Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+				Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+			}{
+				Type: api.LLMProviderConfigDataUpstreamAuthTypeNone,
+			},
+			expectError: false,
+		},
 	}
 
 	validator := NewLLMValidator()

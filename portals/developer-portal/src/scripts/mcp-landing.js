@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 
 (function() {
   // Copy an MCP server-config block to the clipboard (invoked via onclick in the sidebar).

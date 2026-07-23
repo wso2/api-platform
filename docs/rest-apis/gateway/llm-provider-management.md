@@ -297,6 +297,14 @@ Status Code **200**
 |»»»» context|string|false|none|Base path for all API routes (must start with /, no trailing slash)|
 |»»»» vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |»»»» template|string|true|none|Template name to use for this LLM Provider|
+|»»»» upstreamDefinitions|[[UpstreamDefinition](schemas.md#schemaupstreamdefinition)]|false|none|List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.|
+|»»»»» name|string|true|none|Unique identifier for this upstream definition|
+|»»»»» basePath|string|false|none|Base path prefix for all endpoints in this upstream (e.g., /api/v2). All requests to this upstream will have this path prepended. Must start with '/' and must not end with '/'; omit for root.|
+|»»»»» timeout|[UpstreamTimeout](schemas.md#schemaupstreamtimeout)|false|none|Timeout configuration for upstream requests|
+|»»»»»» connect|string|false|none|Connection timeout duration (e.g., "5s", "500ms")|
+|»»»»» upstreams|[object]|true|none|List of backend targets with optional weights for load balancing|
+|»»»»»» url|string(uri)|true|none|Backend URL (host and port only, path comes from basePath)|
+|»»»»»» weight|integer|false|none|Relative weight for load balancing across multiple upstream targets. Reserved for future multi-target load balancing; not applied yet (only the first target is currently used).|
 |»»»» upstream|any|true|none|none|
 
 *allOf*
@@ -360,6 +368,9 @@ Status Code **200**
 |»»»»»» methods|[string]|true|none|none|
 |»»»»»» params|object|true|none|JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.|
 |»»»» deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Provider is removed from router traffic but configuration and policies are preserved for potential redeployment.|
+|»»»» resilience|[Resilience](schemas.md#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
+|»»»»» timeout|string|false|none|Maximum time for the entire route (request to upstream response). "0s" disables the timeout.|
+|»»»»» idleTimeout|string|false|none|Per-route stream idle timeout (overrides the listener stream idle timeout for this route). "0s" disables the timeout.|
 
 *and*
 
@@ -382,6 +393,8 @@ Status Code **200**
 |hostRewrite|auto|
 |hostRewrite|manual|
 |type|api-key|
+|type|other|
+|type|none|
 |mode|allow_all|
 |mode|deny_all|
 |deploymentState|deployed|

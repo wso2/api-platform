@@ -167,7 +167,7 @@ services:
     image: ghcr.io/wso2/api-platform/sample-service:latest
     command: ["-addr", ":9080", "-pretty"]
     ports:
-      - "9080:9080"
+      - "${SAMPLE_BACKEND_HOST_PORT:-9080}:9080"
     networks: [e2e]
 
   # Second gateway (own controller + runtime + DB) for the multi-gateway
@@ -233,6 +233,13 @@ services:
         condition: service_healthy
       platform-api:
         condition: service_started
+    volumes:
+      # The devportal has no automatic APIP_DP_* env override (see
+      # src/config/configLoader.js) — an APIP_DP_* var only applies where this
+      # config.toml references it via {{ env "..." }}. It replaces the image's
+      # shipped configs/config.toml, which fails closed on the security secrets
+      # and wires only the SQLite file key (ignoring APIP_DP_DATABASE_TYPE etc.).
+      - ./devportal-config.toml:/app/configs/config.toml:ro
     environment:
       # Its own database on the shared postgres server (created by init-db.sql).
       # Postgres, not the devportal's default SQLite: the org-update path needs
@@ -266,6 +273,9 @@ services:
       # secret at rest; must not change across restarts or the stored secret
       # becomes undecryptable and outbound requests go unsigned.
       - APIP_DP_SECURITY_ENCRYPTIONKEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      # express-session signing secret (64 hex). Required — the devportal fails
+      # closed at startup if it doesn't resolve. Fixed test-only value.
+      - APIP_DP_SECURITY_SESSIONSECRET=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
     ports:
       - "${DP_HOST_PORT:-3000}:3000"
     networks: [e2e]

@@ -122,7 +122,7 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 			slog.Any("error", err))
 	}
 
-	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM provider replica sync")
+	l.updateSnapshot(entityID, event.EventID, "Failed to update xDS snapshot after LLM provider replica sync")
 	l.updatePoliciesForAPI(storedConfig, event.EventID)
 
 	l.logger.Info("Successfully processed LLM provider create/update event",
@@ -184,7 +184,7 @@ func (l *EventListener) handleLLMProxyCreateOrUpdate(event eventhub.Event) {
 		}
 	}
 
-	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM proxy replica sync")
+	l.updateSnapshot(entityID, event.EventID, "Failed to update xDS snapshot after LLM proxy replica sync")
 	l.updatePoliciesForAPI(storedConfig, event.EventID)
 
 	l.logger.Info("Successfully processed LLM proxy create/update event",
@@ -243,7 +243,7 @@ func (l *EventListener) handleLLMProviderDelete(event eventhub.Event) {
 		}
 	}
 
-	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM provider deletion")
+	l.updateSnapshot(entityID, event.EventID, "Failed to update xDS snapshot after LLM provider deletion")
 
 	if l.policyManager != nil && existingConfig != nil {
 		if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {
@@ -300,7 +300,7 @@ func (l *EventListener) handleLLMProxyDelete(event eventhub.Event) {
 		}
 	}
 
-	l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after LLM proxy deletion")
+	l.updateSnapshot(entityID, event.EventID, "Failed to update xDS snapshot after LLM proxy deletion")
 
 	if l.policyManager != nil && existingConfig != nil {
 		if err := l.policyManager.DeleteAPIConfig(existingConfig.Kind, existingConfig.Handle); err != nil {

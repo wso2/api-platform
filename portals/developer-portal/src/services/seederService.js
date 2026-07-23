@@ -18,7 +18,6 @@
 'use strict';
 
 const orgDao = require('../dao/organizationDao');
-const apiDao = require('../dao/apiDao');
 const labelDao = require('../dao/labelDao');
 const viewDao = require('../dao/viewDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');

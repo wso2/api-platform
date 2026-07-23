@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 const express = require('express');
 const { engine } = require('express-handlebars');
 const passport = require('passport');
@@ -29,6 +29,7 @@ const apiContent = require('./routes/pages/apiContentRoute');
 const applicationContent = require('./routes/pages/applicationsContentRoute');
 const customContent = require('./routes/pages/customPageRoute');
 const subscriptionsContent = require('./routes/pages/subscriptionsContentRoute');
+const apiKeysOverviewContent = require('./routes/pages/apiKeysOverviewRoute');
 const mcpRegistryRoute = require('./routes/pages/mcpRegistryRoute');
 const { config } = require('./config/configLoader');
 const Handlebars = require('handlebars');
@@ -36,7 +37,7 @@ const constants = require("./utils/constants");
 const designRoute = require('./routes/pages/designModeRoute');
 const settingsRoute = require('./routes/pages/settingsRoute');
 const apiWorkflowsRoute = require('./routes/pages/apiWorkflowsRoute');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const util = require('./utils/util');
 const sessionStore = require('./db/sessionStoreConfig');
 const { registerHelpers } = require('./helpers/handlebarsHelpers');
@@ -47,7 +48,7 @@ const app = express();
 app.disable('x-powered-by');
 const sessionSecret = config.security.sessionSecret;
 
-const SERVER_ID = uuidv4();
+const SERVER_ID = crypto.randomUUID();
 
 app.engine('.hbs', engine({
     extname: '.hbs'
@@ -177,6 +178,7 @@ if (config.designMode?.enabled) {
     app.use(constants.ROUTE.DEFAULT, settingsRoute);
     app.use(constants.ROUTE.DEFAULT, apiWorkflowsRoute);
     app.use(constants.ROUTE.DEFAULT, subscriptionsContent);
+    app.use(constants.ROUTE.DEFAULT, apiKeysOverviewContent);
     app.use(constants.ROUTE.DEFAULT, customContent);
 }
 

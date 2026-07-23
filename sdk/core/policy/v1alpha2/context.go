@@ -17,6 +17,41 @@ type Body struct {
 	Present bool
 }
 
+// DownstreamContext identifies the downstream client and carries a snapshot of
+// the client request.
+type DownstreamContext struct {
+	Request *DownstreamRequest
+}
+
+// DownstreamRequest holds a snapshot of the request as received from the
+// downstream client, captured before any policy mutation is applied.
+type DownstreamRequest struct {
+	Headers *Headers
+}
+
+// UpstreamRequestContext identifies the route's resolved upstream target during
+// the request phase.
+type UpstreamRequestContext struct {
+	Name string
+	URL string
+	BasePath string
+}
+
+// UpstreamResponseContext identifies the route's resolved upstream target during
+// the response phase and carries a snapshot of the upstream response.
+type UpstreamResponseContext struct {
+	Name string
+	URL string
+	BasePath string
+	Response *UpstreamResponse
+}
+
+// UpstreamResponse holds a snapshot of the response as received from the
+// upstream backend, captured before any policy mutation is applied.
+type UpstreamResponse struct {
+	Headers *Headers
+}
+
 // SharedContext contains data shared across request and response phases
 type SharedContext struct {
 	// ProjectID is the project ID which the API is associated with
@@ -75,6 +110,14 @@ type RequestHeaderContext struct {
 	Authority string
 	Scheme    string
 	Vhost     string
+
+	// Downstream holds the snapshot of the client request headers, captured
+	// before any policy mutation.
+	Downstream *DownstreamContext
+
+	// Upstream identifies the route's resolved upstream target for this
+	// request.
+	Upstream *UpstreamRequestContext
 }
 
 // RequestContext is passed to RequestPolicy.OnRequestBody.
@@ -93,12 +136,19 @@ type RequestContext struct {
 	Scheme    string
 	Vhost     string
 
-	// UpstreamInfo identifies the route's resolved upstream target (cluster name, URL,
-	// base path) for this request. Nil if no upstream has been resolved for the route.
-	// Authority/Scheme above reflect the inbound client-facing request and must not be
-	// used to address the actual upstream (e.g. for request signing) — use
-	// UpstreamInfo.URL instead.
+	// Deprecated: UpstreamInfo exposes the internal Envoy cluster name and its
+	// resolved-upstream shape was incorrect. Use Upstream (*UpstreamRequestContext)
+	// instead, which exposes Name rather than the internal cluster name.
+	// Retained for backward compatibility; will be removed in a future release.
 	UpstreamInfo *policyenginev1.UpstreamInfo
+
+	// Downstream holds the snapshot of the client request headers, captured
+	// before any policy mutation.
+	Downstream *DownstreamContext
+
+	// Upstream identifies the route's resolved upstream target for this
+	// request.
+	Upstream *UpstreamRequestContext
 }
 
 // ─── Response-phase contexts ─────────────────────────────────────────────────
@@ -119,6 +169,15 @@ type ResponseHeaderContext struct {
 
 	// Current response status code
 	ResponseStatus int
+
+	// Downstream holds the snapshot of the client request headers, captured
+	// before any policy mutation.
+	Downstream *DownstreamContext
+
+	// Upstream identifies the route's resolved upstream target and carries the
+	// snapshot of the upstream response headers, captured before any policy
+	// mutation.
+	Upstream *UpstreamResponseContext
 }
 
 // ResponseContext is passed to ResponsePolicy.OnResponseBody.
@@ -143,6 +202,15 @@ type ResponseContext struct {
 
 	// Current response status code
 	ResponseStatus int
+
+	// Downstream holds the snapshot of the client request headers, captured
+	// before any policy mutation.
+	Downstream *DownstreamContext
+
+	// Upstream identifies the route's resolved upstream target and carries the
+	// snapshot of the upstream response headers, captured before any policy
+	// mutation.
+	Upstream *UpstreamResponseContext
 }
 
 // ─── Streaming contexts ──────────────────────────────────────────────────────
@@ -180,6 +248,14 @@ type RequestStreamContext struct {
 	Authority string
 	Scheme    string
 	Vhost     string
+
+	// Downstream holds the snapshot of the client request headers, captured
+	// before any policy mutation.
+	Downstream *DownstreamContext
+
+	// Upstream identifies the route's resolved upstream target for this
+	// request.
+	Upstream *UpstreamRequestContext
 }
 
 // ResponseStreamContext is the per-chunk context passed to StreamingResponseBodyPolicy.
@@ -199,4 +275,13 @@ type ResponseStreamContext struct {
 
 	// Current response status code
 	ResponseStatus int
+
+	// Downstream holds the snapshot of the client request headers, captured
+	// before any policy mutation.
+	Downstream *DownstreamContext
+
+	// Upstream identifies the route's resolved upstream target and carries the
+	// snapshot of the upstream response headers, captured before any policy
+	// mutation.
+	Upstream *UpstreamResponseContext
 }

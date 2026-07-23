@@ -1,0 +1,6 @@
+# Gateway environment file — contains the control-plane registration token and other secrets
+api-platform.env
+
+# AES-256 at-rest encryption key
+gateway-controller/aesgcm-keys/
+resources/aesgcm-keys/

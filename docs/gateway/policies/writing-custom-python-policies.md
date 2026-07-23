@@ -570,10 +570,12 @@ Available in `on_request_body()`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `headers` | `Headers` | Read-only, case-insensitive request headers |
+| `headers` | `Headers` | Read-only, case-insensitive request headers (**current** — may reflect mutations by earlier header-phase policies) |
 | `body` | `Body \| None` | Buffered request body (`.content: bytes`, `.present: bool`) |
 | `path` | `str` | Request path (e.g., `/api/v1/items`) |
 | `method` | `str` | HTTP method (e.g., `POST`) |
+| `downstream` | `DownstreamContext \| None` | Snapshot of the **original** client request (`.request.headers: Headers`). `None` on older gateways — see [Validating original headers](#validating-original-headers-downstream--upstream) |
+| `upstream` | `UpstreamRequestContext \| None` | Resolved upstream target for this request (`.name: str`, `.url: str`, `.base_path: str`). `None` on older gateways |
 | `shared` | `SharedContext` | API metadata, auth context, and cross-policy metadata bag |
 
 ### `RequestHeaderContext`
@@ -582,11 +584,13 @@ Available in `on_request_headers()`.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `headers` | `Headers` | Read-only, case-insensitive request headers |
+| `headers` | `Headers` | Read-only, case-insensitive request headers (**current**) |
 | `path` | `str` | Request path |
 | `method` | `str` | HTTP method |
 | `authority` | `str` | Request authority |
 | `scheme` | `str` | Request scheme (`http`/`https`) |
+| `downstream` | `DownstreamContext \| None` | Snapshot of the **original** client request (`.request.headers: Headers`). `None` on older gateways |
+| `upstream` | `UpstreamRequestContext \| None` | Resolved upstream target for this request (`.name: str`, `.url: str`, `.base_path: str`). `None` on older gateways |
 | `shared` | `SharedContext` | API metadata, auth context, and cross-policy metadata bag |
 
 ### `ResponseContext`
@@ -599,9 +603,11 @@ Available in `on_response_body()`.
 | `request_body` | `Body \| None` | Original request body |
 | `request_path` | `str` | Original request path |
 | `request_method` | `str` | Original HTTP method |
-| `response_headers` | `Headers` | Response headers from upstream |
+| `response_headers` | `Headers` | Response headers (**current** — may reflect mutations by earlier header-phase policies) |
 | `response_body` | `Body \| None` | Buffered response body |
 | `response_status` | `int` | HTTP status code from upstream |
+| `downstream` | `DownstreamContext \| None` | Snapshot of the **original** client request (`.request.headers: Headers`). `None` on older gateways |
+| `upstream` | `UpstreamResponseContext \| None` | Resolved upstream target plus a snapshot of the **original** upstream response (`.name: str`, `.url: str`, `.base_path: str`, `.response.headers: Headers`). `None` on older gateways |
 | `shared` | `SharedContext` | API metadata, auth context, and cross-policy metadata bag |
 
 ### `ResponseHeaderContext`
@@ -611,8 +617,10 @@ Available in `on_response_headers()`.
 | Field | Type | Description |
 |-------|------|-------------|
 | `request_headers` | `Headers` | Original request headers |
-| `response_headers` | `Headers` | Response headers from upstream |
+| `response_headers` | `Headers` | Response headers (**current**) |
 | `response_status` | `int` | HTTP status code from upstream |
+| `downstream` | `DownstreamContext \| None` | Snapshot of the **original** client request (`.request.headers: Headers`). `None` on older gateways |
+| `upstream` | `UpstreamResponseContext \| None` | Resolved upstream target plus a snapshot of the **original** upstream response (`.name: str`, `.url: str`, `.base_path: str`, `.response.headers: Headers`). `None` on older gateways |
 | `shared` | `SharedContext` | API metadata, auth context, and cross-policy metadata bag |
 
 ### `SharedContext`
@@ -641,6 +649,56 @@ Read-only, case-insensitive header wrapper.
 | `has(name)` | `bool` | Whether the header exists |
 | `get_all()` | `dict[str, list[str]]` | Defensive copy of all headers |
 | `iterate()` | `Iterator[tuple[str, list[str]]]` | Iterate over `(name, values)` pairs |
+
+### Validating original headers (`downstream` / `upstream`)
+
+The gateway runs **every** policy's header phase before **any** policy's body
+phase, and header mutations are applied in place. So if a later policy rewrites
+a header during its header phase, a body-phase validator reading `headers` will
+see the *rewritten* value — not what the client (or backend) actually sent.
+
+When your policy needs to validate against the **original** value, read from the
+snapshot instead:
+
+- `ctx.downstream.request.headers` — the original **client request** headers.
+- `ctx.upstream.response.headers` — the original **upstream response** headers
+  (response-phase contexts only).
+
+These snapshots are captured before any policy mutation.
+
+**Always nil-check and fall back.** `downstream`/`upstream` — and their nested
+`request`/`response` — are `None` on older gateways that predate this feature. A
+`None` snapshot means "not available", so fall back to the mutable headers so
+your policy keeps working across gateway versions:
+
+```python
+def on_request_body(self, ctx: RequestContext, params: dict) -> RequestAction | None:
+    # Prefer the pristine client headers; fall back on older gateways.
+    headers = ctx.headers
+    if (
+        ctx.downstream is not None
+        and ctx.downstream.request is not None
+        and ctx.downstream.request.headers is not None
+    ):
+        headers = ctx.downstream.request.headers
+
+    token = headers.get("authorization")  # exactly what the client sent
+    if not token or not self._valid(token[0]):
+        return ImmediateResponse(
+            status_code=401,
+            headers={"content-type": "application/json"},
+            body=b'{"error":"unauthorized","message":"Invalid or expired credentials."}',
+        )
+    return None
+```
+
+For a response-phase policy validating a header the **backend** set, use
+`ctx.upstream.response.headers` with the same nil-check pattern (guarding
+`ctx.upstream`, `ctx.upstream.response`, then `.headers`).
+
+> **Note:** `headers` and `downstream.request.headers` are identical unless
+> another policy actually mutated the header, so test the mutate-then-validate
+> ordering explicitly — not just the happy path.
 
 ---
 

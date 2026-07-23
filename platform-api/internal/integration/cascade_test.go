@@ -24,6 +24,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+
+	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
 
 // graph holds the identifiers seeded into a single organization.
@@ -33,6 +35,7 @@ type graph struct {
 	plan, sub, gateway, deploy string
 	apiKey                     string
 	planLimit                  string
+	secretHandle               string
 }
 
 // seedOrgGraph inserts a representative object graph for one organization that
@@ -45,8 +48,9 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		org: id(), project: id(), app: id(),
 		apiArtifact: id(), depArtifact: id(),
 		plan: id(), sub: id(), gateway: id(), deploy: id(),
-		apiKey:    id(),
-		planLimit: id(),
+		apiKey:       id(),
+		planLimit:    id(),
+		secretHandle: id(),
 	}
 
 	it.exec(t, `INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid) VALUES (?, ?, ?, ?, ?)`,
@@ -79,6 +83,13 @@ func seedOrgGraph(t *testing.T, it *itDB) graph {
 		g.deploy, "d", g.depArtifact, g.org, g.gateway, []byte("x"))
 	it.exec(t, `INSERT INTO deployment_status (artifact_uuid, organization_uuid, gateway_uuid, deployment_uuid) VALUES (?, ?, ?, ?)`,
 		g.depArtifact, g.org, g.gateway, g.deploy)
+
+	// One gateway-scoped secret ref (written at deploy time) and one artifact-level secret
+	// ref (gateway_id = ''), so gateway deletion tests can assert only the former is removed.
+	it.exec(t, `INSERT INTO artifact_secret_refs (organization_uuid, artifact_uuid, secret_handle, gateway_id) VALUES (?, ?, ?, ?)`,
+		g.org, g.depArtifact, g.secretHandle, g.gateway)
+	it.exec(t, `INSERT INTO artifact_secret_refs (organization_uuid, artifact_uuid, secret_handle, gateway_id) VALUES (?, ?, ?, ?)`,
+		g.org, g.depArtifact, g.secretHandle, "")
 
 	// An API key on the deployment artifact + its application mapping.
 	it.exec(t, `INSERT INTO api_keys (uuid, artifact_uuid, handle, display_name, masked_api_key, api_key_hashes) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -128,6 +139,73 @@ func TestCascade_DeleteGatewayRemovesDeployments(t *testing.T) {
 	}
 	if got := it.count(t, "deployment_status", "deployment_uuid", g.deploy); got != 0 {
 		t.Fatalf("[%s] deployment_status not removed after gateway delete: %d remain", it.driver, got)
+	}
+}
+
+// TestCascade_GatewayRepoDeleteRemovesDeploymentInfo verifies that
+// GatewayRepo.Delete (issue #2658) explicitly removes deployments,
+// deployment_status and gateway-scoped artifact_secret_refs for the deleted
+// gateway, rather than relying solely on FK cascade — which on SQL Server does
+// not cover a deployment_status row without a matching deployments snapshot,
+// and never covers artifact_secret_refs (no FK to gateways on any engine).
+// It also confirms HasActiveDeployment no longer reports the artifact as
+// deployed, which is what previously blocked artifact deletion with a 409
+// ARTIFACT_DEPLOYED after the gateway had already been removed.
+func TestCascade_GatewayRepoDeleteRemovesDeploymentInfo(t *testing.T) {
+	it := openITDB(t)
+	defer it.db.Close()
+	g := seedOrgGraph(t, it)
+
+	if got := it.count(t, "deployment_status", "deployment_uuid", g.deploy); got != 1 {
+		t.Fatalf("precondition: want 1 deployment_status, got %d", got)
+	}
+	if got := it.count(t, "artifact_secret_refs", "secret_handle", g.secretHandle); got != 2 {
+		t.Fatalf("precondition: want 2 artifact_secret_refs, got %d", got)
+	}
+
+	deploymentRepo := repository.NewDeploymentRepo(it.db, repository.NewArtifactTableRegistry())
+	if active, err := deploymentRepo.HasActiveDeployment(g.depArtifact, g.org); err != nil {
+		t.Fatalf("HasActiveDeployment precondition check failed: %v", err)
+	} else if !active {
+		t.Fatalf("precondition: want artifact to have an active deployment")
+	}
+
+	gatewayRepo := repository.NewGatewayRepo(it.db)
+	if err := gatewayRepo.Delete(g.gateway, g.org); err != nil {
+		t.Fatalf("[%s] GatewayRepo.Delete failed: %v", it.driver, err)
+	}
+
+	if got := it.count(t, "deployments", "uuid", g.deploy); got != 0 {
+		t.Fatalf("[%s] deployment not removed after GatewayRepo.Delete: %d remain", it.driver, got)
+	}
+	if got := it.count(t, "deployment_status", "deployment_uuid", g.deploy); got != 0 {
+		t.Fatalf("[%s] deployment_status not removed after GatewayRepo.Delete: %d remain", it.driver, got)
+	}
+
+	var gatewayScopedRefs int
+	q := it.db.Rebind(`SELECT COUNT(*) FROM artifact_secret_refs WHERE secret_handle = ? AND gateway_id = ?`)
+	if err := it.db.QueryRow(q, g.secretHandle, g.gateway).Scan(&gatewayScopedRefs); err != nil {
+		t.Fatalf("count gateway-scoped artifact_secret_refs failed: %v", err)
+	}
+	if gatewayScopedRefs != 0 {
+		t.Fatalf("[%s] gateway-scoped artifact_secret_refs not removed after GatewayRepo.Delete: %d remain", it.driver, gatewayScopedRefs)
+	}
+
+	var artifactLevelRefs int
+	q = it.db.Rebind(`SELECT COUNT(*) FROM artifact_secret_refs WHERE secret_handle = ? AND gateway_id = ?`)
+	if err := it.db.QueryRow(q, g.secretHandle, "").Scan(&artifactLevelRefs); err != nil {
+		t.Fatalf("count artifact-level artifact_secret_refs failed: %v", err)
+	}
+	if artifactLevelRefs != 1 {
+		t.Fatalf("[%s] artifact-level artifact_secret_refs unexpectedly removed: want 1, got %d", it.driver, artifactLevelRefs)
+	}
+
+	active, err := deploymentRepo.HasActiveDeployment(g.depArtifact, g.org)
+	if err != nil {
+		t.Fatalf("HasActiveDeployment failed: %v", err)
+	}
+	if active {
+		t.Fatalf("[%s] HasActiveDeployment still reports an active deployment after gateway delete; artifact delete would be blocked with 409 ARTIFACT_DEPLOYED", it.driver)
 	}
 }
 

@@ -52,10 +52,9 @@ spec:
             secretKeyRef:
               name: gateway-credentials
               key: token
-        - name: APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE
-          value: "sqlite"
-        - name: APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH
-          value: "./data/gateway.db"
+        # Gateway storage (and all other gateway config) is set through the gateway Helm
+        # values (gateway.config.controller.storage.*), which the operator renders into the
+        # gateway's config.toml — not via operator env.
         - name: GATEWAY_DEFAULT_IMAGE
           value: "wso2/gateway-controller:latest"
         - name: GATEWAY_ROUTER_IMAGE
@@ -98,10 +97,44 @@ spec:
 | `GATEWAY_MANIFEST_PATH` | `--gateway-manifest-path` | `internal/controller/resources/api-platform-gateway-k8s-manifests.yaml` | Path to gateway Kubernetes manifest file |
 | `GATEWAY_CONTROLPLANE_HOST` | - | `host.docker.internal:8443` | Gateway control plane host address |
 | `GATEWAY_CONTROLPLANE_TOKEN` | - | `""` | Authentication token for control plane |
-| `APIP_GW_GATEWAY__CONTROLLER_STORAGE_TYPE` | - | `sqlite` | Storage backend type |
-| `APIP_GW_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH` | - | `./data/gateway.db` | SQLite database file path |
 | `GATEWAY_DEFAULT_IMAGE` | - | `wso2/gateway-controller:latest` | Default gateway controller image |
 | `GATEWAY_ROUTER_IMAGE` | - | `envoyproxy/envoy:v1.28-latest` | Default router/proxy image |
+
+> **Gateway-internal configuration** (storage, control-plane sync, logging, encryption,
+> policies, etc.) is **not** set via operator environment variables. It is configured through
+> the gateway Helm values (`gateway.config.*`), which the operator renders into the gateway's
+> `config.toml`. Secret/runtime values (control-plane token, DB passwords) are injected into
+> the gateway container as env and read back by `config.toml` `{{ env "NAME" "default" }}`
+> interpolation tokens at startup. The legacy `APIP_GW_*` koanf override layer has been removed,
+> so plain gateway-container env vars no longer override config.
+>
+> At-rest encryption is **mandatory**: every gateway requires an AES-256 key secret
+> (`gateway.controller.encryptionKeys`) in its namespace, and the controller fails to start
+> without it.
+
+### At-rest Encryption Key (Required)
+
+Every operator-managed gateway needs an AES-256 key secret in the **Gateway's own namespace**
+(the operator deploys the gateway release into that namespace). Provision it before the Gateway
+is reconciled, then enable `gateway.controller.encryptionKeys` in the gateway Helm values
+(directly in `gateway_values.yaml`, or via the per-Gateway values ConfigMap):
+
+```bash
+openssl rand 32 > default-aesgcm256-v1.bin
+kubectl create secret generic gateway-encryption-keys \
+  --from-file=default-aesgcm256-v1.bin=default-aesgcm256-v1.bin \
+  -n <gateway-namespace>
+```
+
+```yaml
+gateway:
+  controller:
+    encryptionKeys:
+      enabled: true
+      secretName: gateway-encryption-keys
+```
+
+The chart fails to render if `encryptionKeys` is not enabled.
 
 ### Logging Configuration
 

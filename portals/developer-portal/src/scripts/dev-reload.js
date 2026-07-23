@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 
 /* Live-reload: connects to the dev SSE endpoint. Only loaded when NODE_ENV=development. */
 (function () {

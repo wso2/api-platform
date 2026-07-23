@@ -19,7 +19,7 @@
 metadata:
   name: mistralai
 spec:
-  groupId: mistralai
+  groupId: wso2-mistralai
   displayName: Mistral
   managedBy: wso2
   version: v1.0

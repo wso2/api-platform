@@ -8,7 +8,6 @@ data:
   # These are *overrides* deep-merged into the operator's default gateway_values.yaml.
   values.yaml: |
     gateway:
-      developmentMode: true
       config:
         controller:
           controlplane:
@@ -25,6 +24,9 @@ data:
           enabled: false
           artifacts_dir: "/etc/api-platform-gateway/immutable_gateway/artifacts"
       controller:
+        encryptionKeys:
+          enabled: true
+          secretName: gateway-encryption-keys
         controlPlane:
           host: host.docker.internal:9444
           token:

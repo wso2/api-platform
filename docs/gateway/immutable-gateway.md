@@ -21,8 +21,13 @@ Enable immutable mode in `config.toml` or via environment variable:
 enabled = true
 ```
 
+To drive this from an environment variable instead, use an interpolation token in the config file —
 ```bash
 APIP_GW_IMMUTABLE_GATEWAY_ENABLED=true
+```
+```toml
+[immutable_gateway]
+enabled = '{{ env "APIP_GW_IMMUTABLE_GATEWAY_ENABLED" "false" }}'
 ```
 
 By default, the gateway controller loads artifacts from `/etc/api-platform-gateway/immutable_gateway/artifacts`. You only need to set `artifacts_dir` if you want to use a different path.
@@ -35,11 +40,16 @@ By default, the gateway controller loads artifacts from `/etc/api-platform-gatew
 > artifacts_dir = "/etc/api-platform-gateway/immutable_gateway/artifacts"
 > ```
 >
-> The equivalent environment variable overrides follow the standard `APIP_GW_` prefix convention:
->
+> To make either value environment-driven, wire it with a `{{ env }}` interpolation token in the
+> config file:
 > ```bash
 > APIP_GW_IMMUTABLE_GATEWAY_ENABLED=true
 > APIP_GW_IMMUTABLE_GATEWAY_ARTIFACTS_DIR=/etc/api-platform-gateway/immutable_gateway/artifacts
+> ```
+> ```toml
+> [immutable_gateway]
+> enabled       = '{{ env "APIP_GW_IMMUTABLE_GATEWAY_ENABLED" "false" }}'
+> artifacts_dir = '{{ env "APIP_GW_IMMUTABLE_GATEWAY_ARTIFACTS_DIR" "/etc/api-platform-gateway/immutable_gateway/artifacts" }}'
 > ```
 
 ## Artifact format
@@ -115,6 +125,9 @@ FROM ghcr.io/wso2/api-platform/gateway-controller:1.0.0
 
 COPY ./artifacts /etc/api-platform-gateway/immutable_gateway/artifacts
 
+# The ENV takes effect only if the mounted config.toml reads it via an interpolation token
+# ([immutable_gateway] enabled = '{{ env "APIP_GW_IMMUTABLE_GATEWAY_ENABLED" "false" }}'); there is
+# no APIP_GW_ prefix auto-override. Alternatively set [immutable_gateway] enabled = true directly.
 ENV APIP_GW_IMMUTABLE_GATEWAY_ENABLED=true
 ```
 
@@ -133,7 +146,9 @@ volumeMounts:
     readOnly: true
 ```
 
-Set `APIP_GW_IMMUTABLE_GATEWAY_ENABLED=true` in the container's environment variables.
+Enable immutable mode by setting `[immutable_gateway] enabled = true` in the mounted `config.toml`
+(or wire that key to `APIP_GW_IMMUTABLE_GATEWAY_ENABLED` with a `{{ env }}` interpolation token in
+the config
 
 ## Invoking the API
 

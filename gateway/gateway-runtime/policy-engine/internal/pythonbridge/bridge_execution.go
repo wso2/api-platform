@@ -54,6 +54,8 @@ func (b *bridge) buildRequestHeadersRequest(
 			Authority: reqCtx.Authority,
 			Scheme:    reqCtx.Scheme,
 			Vhost:     reqCtx.Vhost,
+			Downstream: b.translator.ToProtoDownstream(reqCtx.Downstream),
+			Upstream:   b.translator.ToProtoRequestUpstream(reqCtx.Upstream),
 		},
 	}
 	return b.newStreamRequest(ctx, reqCtx.SharedContext, params, proto.Phase_PHASE_REQUEST_HEADERS, &proto.StreamRequest_RequestHeaders{
@@ -75,6 +77,8 @@ func (b *bridge) buildRequestBodyRequest(
 			Authority: reqCtx.Authority,
 			Scheme:    reqCtx.Scheme,
 			Vhost:     reqCtx.Vhost,
+			Downstream: b.translator.ToProtoDownstream(reqCtx.Downstream),
+			Upstream:   b.translator.ToProtoRequestUpstream(reqCtx.Upstream),
 		},
 	}
 	return b.newStreamRequest(ctx, reqCtx.SharedContext, params, proto.Phase_PHASE_REQUEST_BODY, &proto.StreamRequest_RequestBody{
@@ -97,6 +101,8 @@ func (b *bridge) buildResponseHeadersRequest(
 				respCtx.ResponseHeaders,
 			),
 			ResponseStatus: int32(respCtx.ResponseStatus),
+			Downstream:     b.translator.ToProtoDownstream(respCtx.Downstream),
+			Upstream:       b.translator.ToProtoUpstream(respCtx.Upstream),
 		},
 	}
 	return b.newStreamRequest(ctx, respCtx.SharedContext, params, proto.Phase_PHASE_RESPONSE_HEADERS, &proto.StreamRequest_ResponseHeaders{
@@ -120,6 +126,8 @@ func (b *bridge) buildResponseBodyRequest(
 			),
 			ResponseBody:   b.translator.ToProtoBody(respCtx.ResponseBody),
 			ResponseStatus: int32(respCtx.ResponseStatus),
+			Downstream:     b.translator.ToProtoDownstream(respCtx.Downstream),
+			Upstream:       b.translator.ToProtoUpstream(respCtx.Upstream),
 		},
 	}
 	return b.newStreamRequest(ctx, respCtx.SharedContext, params, proto.Phase_PHASE_RESPONSE_BODY, &proto.StreamRequest_ResponseBody{
@@ -152,6 +160,8 @@ func (b *bridge) buildRequestChunkRequest(
 			Authority: reqCtx.Authority,
 			Scheme:    reqCtx.Scheme,
 			Vhost:     reqCtx.Vhost,
+			Downstream: b.translator.ToProtoDownstream(reqCtx.Downstream),
+			Upstream:   b.translator.ToProtoRequestUpstream(reqCtx.Upstream),
 		},
 		Chunk: b.translator.ToProtoStreamBody(chunk),
 	}
@@ -187,6 +197,8 @@ func (b *bridge) buildResponseChunkRequest(
 				respCtx.ResponseHeaders,
 			),
 			ResponseStatus: int32(respCtx.ResponseStatus),
+			Downstream:     b.translator.ToProtoDownstream(respCtx.Downstream),
+			Upstream:       b.translator.ToProtoUpstream(respCtx.Upstream),
 		},
 		Chunk: b.translator.ToProtoStreamBody(chunk),
 	}

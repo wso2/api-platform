@@ -1,0 +1,16 @@
+apiVersion: ai-workspace.api-platform.wso2.com/v1alpha
+kind: McpMetadata
+metadata:
+  name: mcp-proxy
+spec:
+  displayName: mcp-proxy
+  version: v1.0
+  # associatedGateways must live under spec for the CLI to fold it into the
+  # payload. These gateway handles are registered by the suite before apply.
+  associatedGateways:
+    - id: prod-eu-01
+      configurations:
+        host: prod-eu-01.api.wso2.com
+    - id: prod-eu-02
+      configurations:
+        host: prod-eu-02.api.wso2.com

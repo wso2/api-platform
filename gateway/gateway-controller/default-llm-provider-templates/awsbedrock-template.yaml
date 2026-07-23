@@ -22,7 +22,7 @@ metadata:
   name: awsbedrock
 spec:
   displayName: AWS Bedrock
-  groupId: awsbedrock
+  groupId: wso2-awsbedrock
   managedBy: wso2
   version: v1.0
   promptTokens:

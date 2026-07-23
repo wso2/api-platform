@@ -20,7 +20,6 @@ const { CustomError, ValidationError } = require('../utils/errors/customErrors')
 const orgDao = require('../dao/organizationDao');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const appDao = require('../dao/applicationDao');
-const apiDao = require('../dao/apiDao');
 const labelDao = require('../dao/labelDao');
 const viewDao = require('../dao/viewDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
@@ -33,9 +32,8 @@ const { logUserAction } = require('../middlewares/auditLogger');
 const constants = require('../utils/constants');
 const db = require('../db/driver');
 const { ApplicationDTO } = require('../dto/applicationDto');
-const APIDTO = require('../dto/apiDto');
 const { config } = require('../config/configLoader');
-const yaml = require('js-yaml');
+const yaml = require('../utils/yaml');
 const kmDao = require('../dao/keyManagerDao');
 
 function mapYamlToOrganization(parsed) {

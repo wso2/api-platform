@@ -323,7 +323,32 @@ func (r *GatewayRepo) Delete(gatewayID, organizationID string) error {
 		return err
 	}
 
-	// Delete gateway with organization isolation (gateway_tokens and deployments will be cascade deleted via FK)
+	// Deployment cleanup is explicit rather than left to FK cascade: on SQL Server the
+	// deployment_status.gateway_uuid edge is ON DELETE NO ACTION (to avoid the multiple
+	// cascade-paths restriction), so a status row with no matching deployments snapshot for
+	// this gateway would otherwise survive and make HasActiveDeployment report the artifact
+	// as still deployed. artifact_secret_refs has no FK to gateways at all on any engine.
+	// Status rows are deleted before deployments so this is correct regardless of the
+	// deployment_uuid -> deployments cascade edge.
+	deleteStatusQuery := `DELETE FROM deployment_status WHERE gateway_uuid = ? AND organization_uuid = ?`
+	if _, err = tx.Exec(r.db.Rebind(deleteStatusQuery), gatewayID, organizationID); err != nil {
+		return err
+	}
+
+	deleteDeploymentsQuery := `DELETE FROM deployments WHERE gateway_uuid = ? AND organization_uuid = ?`
+	if _, err = tx.Exec(r.db.Rebind(deleteDeploymentsQuery), gatewayID, organizationID); err != nil {
+		return err
+	}
+
+	// Gateway-scoped secret refs (gateway_id = gateway UUID). Artifact-level refs
+	// (gateway_id = '') are intentionally left untouched.
+	deleteSecretRefsQuery := `DELETE FROM artifact_secret_refs WHERE gateway_id = ? AND organization_uuid = ?`
+	if _, err = tx.Exec(r.db.Rebind(deleteSecretRefsQuery), gatewayID, organizationID); err != nil {
+		return err
+	}
+
+	// Delete gateway with organization isolation (gateway_tokens and gateway_endpoints will
+	// still be cascade deleted via FK; deployment-related tables were removed explicitly above)
 	deleteGatewayQuery := `DELETE FROM gateways WHERE uuid = ? AND organization_uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(deleteGatewayQuery), gatewayID, organizationID)
 	if err != nil {

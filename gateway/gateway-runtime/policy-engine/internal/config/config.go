@@ -24,22 +24,15 @@ import (
 	"math"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	toml "github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/providers/confmap"
-	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"github.com/wso2/api-platform/common/collector"
 	"github.com/wso2/api-platform/common/configinterpolate"
-)
-
-const (
-	// EnvPrefix is the prefix for environment variables used to configure the policy engine
-	EnvPrefix = "APIP_GW_"
 )
 
 // defaultFileSourceAllowlist is the policy-engine's default set of directories that
@@ -343,8 +336,8 @@ type AccessLogsServiceConfig struct {
 	ExtProcMaxHeaderLimit int           `koanf:"max_header_limit"`
 }
 
-// Load loads configuration from file, environment variables, and defaults
-// Priority: Environment variables > Config file > Defaults
+// Load loads configuration from a file layered over built-in defaults.
+// Priority: Config file > Defaults.
 //
 // The configuration supports Go-style duration strings (e.g., "10s", "5m", "1h")
 // for all duration fields. The DecodeHook automatically converts string durations
@@ -361,28 +354,11 @@ func Load(configPath string) (*Config, error) {
 		}
 	}
 
-	// Load environment variables with the prefix
-	// Double underscores (__) preserve literal underscores in field names
-	if err := k.Load(env.Provider(EnvPrefix, ".", func(s string) string {
-		s = strings.TrimPrefix(s, EnvPrefix)
-		s = strings.ToLower(s)
-
-		// Step 1: Preserve literal underscores with placeholder
-		s = strings.ReplaceAll(s, "__", "%UNDERSCORE%")
-		// Step 2: Convert single underscores to dots (nested paths)
-		s = strings.ReplaceAll(s, "_", ".")
-		// Step 3: Restore literal underscores
-		s = strings.ReplaceAll(s, "%UNDERSCORE%", "_")
-		return s
-	}), nil); err != nil {
-		return nil, fmt.Errorf("failed to load environment variables: %w", err)
-	}
-
 	// Resolve Go template tokens ({{ env }} / {{ file }}) in string leaves of the
-	// merged config before unmarshalling. Runs after the env merge so env values may
-	// themselves contain tokens; fails closed on a missing required value or a
-	// disallowed/oversize file. A token-free config is a no-op. Must run before the
-	// RawConfig capture below so policies see resolved values in ${config} expressions.
+	// file-loaded config before unmarshalling; fails closed on a missing required
+	// value or a disallowed/oversize file. A token-free config is a no-op. Must run
+	// before the RawConfig capture below so policies see resolved values in ${config}
+	// expressions.
 	k, err := interpolate(k)
 	if err != nil {
 		return nil, err
@@ -521,8 +497,8 @@ func defaultConfig() *Config {
 			RequestBody:     false,
 			ResponseHeaders: false,
 			ResponseBody:    false,
-			ExcludeFields: []string{},
-			Properties: map[string]string{},
+			ExcludeFields:   []string{},
+			Properties:      map[string]string{},
 		},
 		Analytics: AnalyticsConfig{
 			Enabled:           false,

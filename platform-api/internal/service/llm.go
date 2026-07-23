@@ -215,6 +215,7 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	if err != nil || baseHandle == "" {
 		return nil, apperror.ValidationFailed.New("The displayName must contain at least one alphanumeric character.")
 	}
+	baseHandle = applyReservedGroupIDGuard(baseHandle)
 	version := "v1.0"
 	if v := req.Version; v != "" {
 		normalized, ok := normalizeTemplateVersion(v)
@@ -471,6 +472,16 @@ func makeTemplateHandle(baseHandle, version string) string {
 	return baseHandle + "-" + strings.ReplaceAll(strings.ToLower(strings.TrimSpace(version)), ".", "-")
 }
 
+// applyReservedGroupIDGuard rewrites a generated custom-template group_id that falls in
+// the reserved WSO2 namespace ("wso2" exactly, or a "wso2-" prefix) to the "xwso2-"
+// namespace, so custom templates can never collide with WSO2 built-ins.
+func applyReservedGroupIDGuard(baseHandle string) string {
+	if baseHandle == constants.PolicyManagedByWSO2 || strings.HasPrefix(baseHandle, constants.ReservedTemplateGroupIDPrefix) {
+		return "x" + baseHandle
+	}
+	return baseHandle
+}
+
 func templateVersionCreatable(v string) bool {
 	major, _, ok := strings.Cut(strings.TrimPrefix(v, "v"), ".")
 	if !ok {
@@ -504,6 +515,18 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 	if count == 0 {
 		return nil, apperror.LLMProviderTemplateNotFound.New()
 	}
+
+	// Built-in (WSO2-managed) families are immutable via the REST API: new versions are
+	// only ever added by WSO2 through the seed data. Users must instead copy a built-in,
+	// which creates a new custom family through Create.
+	familyManagedBy, err := s.repo.ManagedByForGroupID(groupID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve template family owner: %w", err)
+	}
+	if familyManagedBy == constants.PolicyManagedByWSO2 {
+		return nil, apperror.LLMProviderTemplateBuiltInImmutable.New()
+	}
+
 	baseHandle := groupID
 
 	m := &model.LLMProviderTemplate{
@@ -695,14 +718,6 @@ func (s *LLMProviderTemplateService) SetVersionEnabled(orgUUID, groupID, version
 	}
 	if target == nil {
 		return nil, apperror.LLMProviderTemplateNotFound.New()
-	}
-	// Enable/disable is reserved for built-in ('wso2') templates only. Custom
-	// templates are managed via update/delete and cannot be toggled.
-	if target.ManagedBy != constants.PolicyManagedByWSO2 {
-		return nil, apperror.LLMProviderTemplateNotToggleable.New()
-	}
-	if err := ensureOriginMutable(target.Origin); err != nil {
-		return nil, err
 	}
 	if !enabled {
 		inUse, err := s.repo.CountProvidersUsingTemplate(groupID, orgUUID, v)
@@ -940,6 +955,13 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	}
 	migrateLegacyProviderPoliciesInPlace(&m.Configuration)
 
+	if m.Configuration.Upstream != nil && m.Configuration.Upstream.Main != nil {
+		m.Configuration.Upstream.Main.Auth = defaultUpstreamAuthToNone(m.Configuration.Upstream.Main.Auth)
+	}
+	if m.Configuration.Upstream != nil && m.Configuration.Upstream.Sandbox != nil {
+		m.Configuration.Upstream.Sandbox.Auth = defaultUpstreamAuthToNone(m.Configuration.Upstream.Sandbox.Auth)
+	}
+
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
 			return nil, apperror.LLMProviderExists.New()
@@ -1143,6 +1165,13 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		m.Configuration = existing.Configuration
 	}
 
+	if m.Configuration.Upstream != nil && m.Configuration.Upstream.Main != nil {
+		m.Configuration.Upstream.Main.Auth = defaultUpstreamAuthToNone(m.Configuration.Upstream.Main.Auth)
+	}
+	if m.Configuration.Upstream != nil && m.Configuration.Upstream.Sandbox != nil {
+		m.Configuration.Upstream.Sandbox.Auth = defaultUpstreamAuthToNone(m.Configuration.Upstream.Sandbox.Auth)
+	}
+
 	// Gateway associations are managed only when the field is present in the request. An
 	// omitted field leaves associations untouched; an explicit (possibly empty) list
 	// replaces the full set, removing any mapping no longer listed. Deployment state is not
@@ -1166,7 +1195,10 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	// Best-effort: delete the secret the credential was rotated away from. Must
 	// run after the update above persists the new reference, so the in-use
 	// check below no longer sees this provider pointing at the old handle.
-	if s.secretService != nil {
+	//
+	// Skip when switching to a credential-less type ("none"/"other"): the credential
+	// is dropped from this artifact
+	if s.secretService != nil && !isCredentialLessUpstreamAuthType(mainUpstreamAuthType(m.Configuration.Upstream)) {
 		s.secretService.cleanupRotatedSecret(
 			orgUUID,
 			mainUpstreamAuthValue(existing.Configuration.Upstream),
@@ -1413,6 +1445,8 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		AssociatedGateways: associatedGateways,
 	}
 	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
+
+	m.Configuration.UpstreamAuth = defaultUpstreamAuthToNone(m.Configuration.UpstreamAuth)
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
@@ -1671,7 +1705,9 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	}
 	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
 
-	// Preserve stored upstream auth credential when not supplied in update payload
+	// Preserve stored upstream auth credential only when the update provides an auth
+	// object with an empty value. If the auth object is omitted, treat it as explicit
+	// removal and clear stored auth (defaulted to "none" below).
 	m.Configuration.UpstreamAuth = preserveUpstreamAuthCredential(existing.Configuration.UpstreamAuth, m.Configuration.UpstreamAuth)
 
 	// The gateway owns the runtime configuration of a DP-originated (gateway_api) proxy,
@@ -1685,6 +1721,8 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		m.ProviderUUID = existing.ProviderUUID
 		m.Configuration = existing.Configuration
 	}
+
+	m.Configuration.UpstreamAuth = defaultUpstreamAuthToNone(m.Configuration.UpstreamAuth)
 
 	// Gateway associations are managed only when the field is present in the request. An
 	// omitted field leaves associations untouched; an explicit (possibly empty) list
@@ -1709,7 +1747,10 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	// Best-effort: delete the secret the credential was rotated away from. Must
 	// run after the update above persists the new reference, so the in-use
 	// check below no longer sees this proxy pointing at the old handle.
-	if s.secretService != nil {
+	//
+	// Skip when switching to a credential-less type ("none"/"other"): the credential
+	// is dropped from this artifact.
+	if s.secretService != nil && !isCredentialLessUpstreamAuthType(upstreamAuthType(m.Configuration.UpstreamAuth)) {
 		s.secretService.cleanupRotatedSecret(
 			orgUUID,
 			upstreamAuthValue(existing.Configuration.UpstreamAuth),
@@ -1831,7 +1872,7 @@ func preserveUpstreamAuthValue(existing, updated *model.UpstreamConfig) *model.U
 
 func preserveUpstreamAuthCredential(existing, updated *model.UpstreamAuth) *model.UpstreamAuth {
 	if updated == nil {
-		return existing
+		return nil
 	}
 	if existing == nil {
 		return updated
@@ -2217,6 +2258,8 @@ func normalizeUpstreamAuthType(authType string) string {
 		return string(api.Bearer)
 	case "other":
 		return string(api.Other)
+	case "none":
+		return string(api.None)
 	default:
 		return normalized
 	}
@@ -3292,4 +3335,48 @@ func resolveTemplateOpenAPISpec(ctx context.Context, tpl *model.LLMProviderTempl
 		return tpl.OpenAPISpec
 	}
 	return ""
+}
+
+// defaultUpstreamAuthToNone applies the platform's default upstream auth type and
+// strips credentials from credential-less types.
+func defaultUpstreamAuthToNone(auth *model.UpstreamAuth) *model.UpstreamAuth {
+	if auth == nil {
+		return &model.UpstreamAuth{Type: string(api.None)}
+	}
+	if strings.TrimSpace(auth.Type) == "" {
+		auth.Type = string(api.None)
+	}
+	if isCredentialLessUpstreamAuthType(auth.Type) {
+		auth.Header = ""
+		auth.Value = ""
+	}
+	return auth
+}
+
+// isCredentialLessUpstreamAuthType reports whether an upstream auth type carries no
+// credentials ("none" or "other"), in which case header/value are irrelevant.
+func isCredentialLessUpstreamAuthType(authType string) bool {
+	switch normalizeUpstreamAuthType(authType) {
+	case string(api.None), string(api.Other):
+		return true
+	default:
+		return false
+	}
+}
+
+// mainUpstreamAuthType nil-safely reads upstream.main.auth.type from an
+// UpstreamConfig, returning "" when any part of the chain is nil.
+func mainUpstreamAuthType(cfg *model.UpstreamConfig) string {
+	if cfg == nil || cfg.Main == nil || cfg.Main.Auth == nil {
+		return ""
+	}
+	return cfg.Main.Auth.Type
+}
+
+// upstreamAuthType nil-safely reads .Type from an UpstreamAuth.
+func upstreamAuthType(auth *model.UpstreamAuth) string {
+	if auth == nil {
+		return ""
+	}
+	return auth.Type
 }

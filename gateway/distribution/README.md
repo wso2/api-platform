@@ -34,7 +34,11 @@ No other tools are required to run the gateway.
 
 ## Quick Start
 
+Run the one-time setup (generates `api-platform.env` and the router listener TLS certificate), then
+start the stack:
+
 ```bash
+./scripts/setup.sh
 docker compose up -d
 ```
 
@@ -81,9 +85,9 @@ See `configs/config-template.toml` for a fully-commented reference of every avai
 To connect this gateway to a WSO2 API Platform control plane, set these variables before starting:
 
 ```bash
-# .env (place alongside docker-compose.yaml)
-GATEWAY_CONTROLPLANE_HOST=https://your-platform-host:9243
-GATEWAY_REGISTRATION_TOKEN=<token-from-platform>
+# api-platform.env
+APIP_GW_CONTROLLER_CONTROLPLANE_HOST=your-platform-host:9243
+APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=<token-from-platform>
 ```
 
 Then start the stack:
@@ -144,10 +148,10 @@ docker compose --profile metrics --profile tracing up -d
 
 ## Analytics (Moesif)
 
-To publish API analytics to Moesif, set your application ID before starting:
+To publish API analytics to Moesif, set your application ID in `api-platform.env` before starting:
 
 ```bash
-# .env
+# api-platform.env
 MOESIF_KEY=<your-moesif-application-id>
 ```
 

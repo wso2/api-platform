@@ -213,44 +213,25 @@ func TestKeyManager_KeyFilePermissionWarning(t *testing.T) {
 	assert.NotNil(t, km)
 }
 
-func TestKeyManager_DevModeAutoGeneration(t *testing.T) {
+// TestKeyManager_MissingKeyFileErrors verifies the server never auto-generates a
+// missing encryption key (there is no development/demo mode): a missing key file is
+// always a fatal error. Provisioning the key is setup.sh's job, not the server's.
+func TestKeyManager_MissingKeyFileErrors(t *testing.T) {
 	tmpDir := t.TempDir()
-	keyPath := filepath.Join(tmpDir, "auto-generated.key")
+	keyPath := filepath.Join(tmpDir, "missing.key")
 
-	_, err := os.Stat(keyPath)
-	require.True(t, os.IsNotExist(err))
-
-	origValue := os.Getenv("APIP_GW_DEVELOPMENT_MODE")
-	os.Setenv("APIP_GW_DEVELOPMENT_MODE", "true")
-	defer os.Setenv("APIP_GW_DEVELOPMENT_MODE", origValue)
-
-	km, err := NewKeyManager([]KeyConfig{
-		{Version: "auto-gen", FilePath: keyPath},
-	}, testLogger())
-	require.NoError(t, err)
-	assert.NotNil(t, km)
-
-	info, err := os.Stat(keyPath)
-	require.NoError(t, err)
-	assert.Equal(t, int64(AESKeySize), info.Size())
-
-	assert.Equal(t, os.FileMode(0600), info.Mode().Perm())
-}
-
-func TestKeyManager_DevModeOffNoAutoGeneration(t *testing.T) {
-	tmpDir := t.TempDir()
-	keyPath := filepath.Join(tmpDir, "no-auto-gen.key")
-
-	origValue := os.Getenv("APIP_GW_DEVELOPMENT_MODE")
-	os.Setenv("APIP_GW_DEVELOPMENT_MODE", "false")
-	defer os.Setenv("APIP_GW_DEVELOPMENT_MODE", origValue)
+	_, statErr := os.Stat(keyPath)
+	require.True(t, os.IsNotExist(statErr))
 
 	_, err := NewKeyManager([]KeyConfig{
-		{Version: "no-auto", FilePath: keyPath},
+		{Version: "v1", FilePath: keyPath},
 	}, testLogger())
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "encryption key file not found")
+	// The file must NOT have been created by the server.
+	_, statErr = os.Stat(keyPath)
+	assert.True(t, os.IsNotExist(statErr), "server must not auto-generate the key file")
 }
 
 func TestKeyConfig(t *testing.T) {

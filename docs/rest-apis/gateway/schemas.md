@@ -223,110 +223,6 @@ and
 |*anonymous*|object|false|none|none|
 |» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
 
-<h2 id="tocS_WebSubAPIRequest">WebSubAPIRequest</h2>
-
-<a id="schemawebsubapirequest"></a>
-<a id="schema_WebSubAPIRequest"></a>
-<a id="tocSwebsubapirequest"></a>
-<a id="tocswebsubapirequest"></a>
-
-```json
-{
-  "apiVersion": "gateway.api-platform.wso2.com/v1",
-  "kind": "WebSubApi",
-  "metadata": {
-    "name": "github-events-v1.0"
-  },
-  "spec": {
-    "displayName": "GitHub Events",
-    "version": "v1.0",
-    "context": "/github-events/$version",
-    "channels": [
-      {
-        "name": "issues",
-        "method": "SUB"
-      },
-      {
-        "name": "pull_requests",
-        "method": "SUB"
-      }
-    ]
-  }
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|apiVersion|string|true|none|API specification version|
-|kind|string|true|none|API type|
-|metadata|[Metadata](#schemametadata)|true|none|none|
-|spec|[WebhookAPIData](#schemawebhookapidata)|true|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1|
-|kind|WebSubApi|
-
-<h2 id="tocS_WebSubAPI">WebSubAPI</h2>
-
-<a id="schemawebsubapi"></a>
-<a id="schema_WebSubAPI"></a>
-<a id="tocSwebsubapi"></a>
-<a id="tocswebsubapi"></a>
-
-```json
-{
-  "apiVersion": "gateway.api-platform.wso2.com/v1",
-  "kind": "WebSubApi",
-  "metadata": {
-    "name": "github-events-v1.0"
-  },
-  "spec": {
-    "displayName": "GitHub Events",
-    "version": "v1.0",
-    "context": "/github-events/$version",
-    "channels": [
-      {
-        "name": "issues",
-        "method": "SUB"
-      },
-      {
-        "name": "pull_requests",
-        "method": "SUB"
-      }
-    ]
-  },
-  "status": {
-    "id": "github-events-v1.0",
-    "state": "deployed",
-    "createdAt": "2026-04-24T07:21:13Z",
-    "updatedAt": "2026-04-24T07:21:13Z",
-    "deployedAt": "2026-04-24T07:21:13Z"
-  }
-}
-
-```
-
-### Properties
-
-allOf
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|[WebSubAPIRequest](#schemawebsubapirequest)|false|none|none|
-
-and
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|object|false|none|none|
-|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
-
 <h2 id="tocS_Metadata">Metadata</h2>
 
 <a id="schemametadata"></a>
@@ -399,7 +295,7 @@ and
     }
   },
   "vhosts": {
-    "main": "api.example.com",
+    "main": "api.example.com;docs.example.com;*.example.com",
     "sandbox": "sandbox-api.example.com"
   },
   "subscriptionPlans": [
@@ -414,10 +310,28 @@ and
       "params": {}
     }
   ],
+  "resilience": {
+    "timeout": "15s",
+    "idleTimeout": "0s"
+  },
   "operations": [
     {
       "method": "GET",
       "path": "/books/{id}",
+      "match": {
+        "method": "GET",
+        "path": {
+          "value": "/books/{id}",
+          "type": "Exact"
+        },
+        "headers": [
+          {
+            "name": "version",
+            "value": "one",
+            "type": "Exact"
+          }
+        ]
+      },
       "policies": [
         {
           "name": "cors",
@@ -425,7 +339,11 @@ and
           "executionCondition": "request.metadata[authenticated] != true",
           "params": {}
         }
-      ]
+      ],
+      "resilience": {
+        "timeout": "15s",
+        "idleTimeout": "0s"
+      }
     }
   ],
   "deploymentState": "deployed"
@@ -445,10 +363,11 @@ and
 |» main|[Upstream](#schemaupstream)|true|none|Upstream backend configuration (single target or reference)|
 |» sandbox|[Upstream](#schemaupstream)|false|none|Upstream backend configuration (single target or reference)|
 |vhosts|object|false|none|Custom virtual hosts/domains for the API|
-|» main|string|true|none|Custom virtual host/domain for production traffic|
+|» main|string|true|none|Custom virtual host(s)/domain(s) for production traffic. One or more hostnames<br>separated by ';' — each hostname serves the main upstream (e.g. when a Gateway API<br>HTTPRoute attaches to multiple listener hostnames). The first entry is the primary<br>vhost. Each hostname may be a wildcard such as *.example.com.|
 |» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
 |subscriptionPlans|[string]|false|none|List of subscription plan names available for this API|
 |policies|[[Policy](#schemapolicy)]|false|none|List of API-level policies applied to all operations unless overridden|
+|resilience|[Resilience](#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
 |operations|[[Operation](#schemaoperation)]|true|none|List of HTTP operations/routes|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
 
@@ -490,11 +409,11 @@ Reusable upstream configuration with optional timeout and load balancing setting
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|true|none|Unique identifier for this upstream definition|
-|basePath|string|false|none|Base path prefix for all endpoints in this upstream (e.g., /api/v2). All requests to this upstream will have this path prepended.|
+|basePath|string|false|none|Base path prefix for all endpoints in this upstream (e.g., /api/v2). All requests to this upstream will have this path prepended. Must start with '/' and must not end with '/'; omit for root.|
 |timeout|[UpstreamTimeout](#schemaupstreamtimeout)|false|none|Timeout configuration for upstream requests|
 |upstreams|[object]|true|none|List of backend targets with optional weights for load balancing|
 |» url|string(uri)|true|none|Backend URL (host and port only, path comes from basePath)|
-|» weight|integer|false|none|Weight for load balancing (optional, default 100)|
+|» weight|integer|false|none|Relative weight for load balancing across multiple upstream targets. Reserved for future multi-target load balancing; not applied yet (only the first target is currently used).|
 
 <h2 id="tocS_UpstreamTimeout">UpstreamTimeout</h2>
 
@@ -517,6 +436,30 @@ Timeout configuration for upstream requests
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |connect|string|false|none|Connection timeout duration (e.g., "5s", "500ms")|
+
+<h2 id="tocS_Resilience">Resilience</h2>
+
+<a id="schemaresilience"></a>
+<a id="schema_Resilience"></a>
+<a id="tocSresilience"></a>
+<a id="tocsresilience"></a>
+
+```json
+{
+  "timeout": "15s",
+  "idleTimeout": "0s"
+}
+
+```
+
+Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|timeout|string|false|none|Maximum time for the entire route (request to upstream response). "0s" disables the timeout.|
+|idleTimeout|string|false|none|Per-route stream idle timeout (overrides the listener stream idle timeout for this route). "0s" disables the timeout.|
 
 <h2 id="tocS_Upstream">Upstream</h2>
 
@@ -574,6 +517,20 @@ xor
 {
   "method": "GET",
   "path": "/books/{id}",
+  "match": {
+    "method": "GET",
+    "path": {
+      "value": "/books/{id}",
+      "type": "Exact"
+    },
+    "headers": [
+      {
+        "name": "version",
+        "value": "one",
+        "type": "Exact"
+      }
+    ]
+  },
   "policies": [
     {
       "name": "cors",
@@ -581,7 +538,105 @@ xor
       "executionCondition": "request.metadata[authenticated] != true",
       "params": {}
     }
+  ],
+  "resilience": {
+    "timeout": "15s",
+    "idleTimeout": "0s"
+  }
+}
+
+```
+
+An operation is matched either by the simple top-level method+path form, or by the richer 'match' block (method + path + headers). When 'match' is present it is authoritative and the top-level method/path are ignored. At least one form must be provided.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|method|[OperationMethod](#schemaoperationmethod)|false|none|HTTP method (simple form; ignored when 'match' is set)|
+|path|string|false|none|Route path with optional {param} placeholders (simple form; ignored when 'match' is set)|
+|match|[OperationMatch](#schemaoperationmatch)|false|none|Request matching criteria for an operation. Extensible with query params, cookies, etc.|
+|policies|[[Policy](#schemapolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
+|resilience|[Resilience](#schemaresilience)|false|none|Backend/route timeout configuration. Maps to Envoy RouteAction timeouts. Can be set at the API level (applies to all routes) and/or the operation level (applies to that operation's route). When set at both levels, the operation-level value takes precedence. When unset, the gateway's global route timeout defaults apply.|
+
+<h2 id="tocS_OperationMethod">OperationMethod</h2>
+
+<a id="schemaoperationmethod"></a>
+<a id="schema_OperationMethod"></a>
+<a id="tocSoperationmethod"></a>
+<a id="tocsoperationmethod"></a>
+
+```json
+"GET"
+
+```
+
+HTTP method
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|string|false|none|HTTP method|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|*anonymous*|GET|
+|*anonymous*|POST|
+|*anonymous*|PUT|
+|*anonymous*|DELETE|
+|*anonymous*|PATCH|
+|*anonymous*|HEAD|
+|*anonymous*|OPTIONS|
+
+<h2 id="tocS_OperationMatch">OperationMatch</h2>
+
+<a id="schemaoperationmatch"></a>
+<a id="schema_OperationMatch"></a>
+<a id="tocSoperationmatch"></a>
+<a id="tocsoperationmatch"></a>
+
+```json
+{
+  "method": "GET",
+  "path": {
+    "value": "/books/{id}",
+    "type": "Exact"
+  },
+  "headers": [
+    {
+      "name": "version",
+      "value": "one",
+      "type": "Exact"
+    }
   ]
+}
+
+```
+
+Request matching criteria for an operation. Extensible with query params, cookies, etc.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|method|[OperationMethod](#schemaoperationmethod)|true|none|HTTP method|
+|path|[OperationPathMatch](#schemaoperationpathmatch)|true|none|none|
+|headers|[[OperationHeaderMatch](#schemaoperationheadermatch)]|false|none|Header matchers ANDed with the path match for Envoy route selection|
+
+<h2 id="tocS_OperationPathMatch">OperationPathMatch</h2>
+
+<a id="schemaoperationpathmatch"></a>
+<a id="schema_OperationPathMatch"></a>
+<a id="tocSoperationpathmatch"></a>
+<a id="tocsoperationpathmatch"></a>
+
+```json
+{
+  "value": "/books/{id}",
+  "type": "Exact"
 }
 
 ```
@@ -590,21 +645,46 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|method|string|true|none|HTTP method|
-|path|string|true|none|Route path with optional {param} placeholders|
-|policies|[[Policy](#schemapolicy)]|false|none|List of policies applied only to this operation (overrides or adds to API-level policies)|
+|value|string|true|none|Route path with optional {param} placeholders|
+|type|string|false|none|Path matching semantics for the operation route|
 
 #### Enumerated Values
 
 |Property|Value|
 |---|---|
-|method|GET|
-|method|POST|
-|method|PUT|
-|method|DELETE|
-|method|PATCH|
-|method|HEAD|
-|method|OPTIONS|
+|type|Exact|
+|type|PathPrefix|
+
+<h2 id="tocS_OperationHeaderMatch">OperationHeaderMatch</h2>
+
+<a id="schemaoperationheadermatch"></a>
+<a id="schema_OperationHeaderMatch"></a>
+<a id="tocSoperationheadermatch"></a>
+<a id="tocsoperationheadermatch"></a>
+
+```json
+{
+  "name": "version",
+  "value": "one",
+  "type": "Exact"
+}
+
+```
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|Header name (case-insensitive)|
+|value|string|true|none|Header value to match|
+|type|string|false|none|Header match type|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|type|Exact|
+|type|RegularExpression|
 
 <h2 id="tocS_Policy">Policy</h2>
 
@@ -631,390 +711,6 @@ xor
 |version|string|true|none|Version of the policy. Only major-only version is allowed (e.g., v0, v1). Full semantic version (e.g., v1.0.0) is not accepted and will be rejected. The Gateway Controller resolves the major version to the single matching full version installed in the gateway image.|
 |executionCondition|string|false|none|Expression controlling conditional execution of the policy|
 |params|object|false|none|Arbitrary parameters for the policy (free-form key/value structure)|
-
-<h2 id="tocS_WebhookAPIData">WebhookAPIData</h2>
-
-<a id="schemawebhookapidata"></a>
-<a id="schema_WebhookAPIData"></a>
-<a id="tocSwebhookapidata"></a>
-<a id="tocswebhookapidata"></a>
-
-```json
-{
-  "displayName": "reading-list-api",
-  "version": "v1.0",
-  "context": "/weather",
-  "vhosts": {
-    "main": "api.example.com",
-    "sandbox": "sandbox-api.example.com"
-  },
-  "allChannels": {
-    "on_subscription": {
-      "policies": [
-        {
-          "name": "cors",
-          "version": "v1",
-          "executionCondition": "request.metadata[authenticated] != true",
-          "params": {}
-        }
-      ]
-    },
-    "on_unsubscription": {
-      "policies": [
-        {
-          "name": "cors",
-          "version": "v1",
-          "executionCondition": "request.metadata[authenticated] != true",
-          "params": {}
-        }
-      ]
-    },
-    "on_message_received": {
-      "policies": [
-        {
-          "name": "cors",
-          "version": "v1",
-          "executionCondition": "request.metadata[authenticated] != true",
-          "params": {}
-        }
-      ]
-    },
-    "on_message_delivery": {
-      "policies": [
-        {
-          "name": "cors",
-          "version": "v1",
-          "executionCondition": "request.metadata[authenticated] != true",
-          "params": {}
-        }
-      ]
-    }
-  },
-  "channels": {
-    "property1": {
-      "on_subscription": {
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      },
-      "on_unsubscription": {
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      },
-      "on_message_received": {
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      },
-      "on_message_delivery": {
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      }
-    },
-    "property2": {
-      "on_subscription": {
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      },
-      "on_unsubscription": {
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      },
-      "on_message_received": {
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      },
-      "on_message_delivery": {
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      }
-    }
-  },
-  "deploymentState": "deployed"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|displayName|string|true|none|Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)|
-|version|string|true|none|Semantic version of the API|
-|context|string|true|none|Base path for all API routes (must start with /, no trailing slash)|
-|vhosts|object|false|none|Custom virtual hosts/domains for the API|
-|» main|string|true|none|Custom virtual host/domain for production traffic|
-|» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
-|allChannels|[WebSubAllChannelPolicies](#schemawebsuballchannelpolicies)|false|none|Policies applied to all channels, organized by event type.|
-|channels|object|false|none|Per-channel configuration keyed by channel name. Each key is a channel name and defines policies applied only to that channel.|
-|» **additionalProperties**|[WebSubChannel](#schemawebsubchannel)|false|none|A single channel definition with optional per-channel policy overrides.|
-|deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration, API keys, and policies are preserved for potential redeployment.|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|deploymentState|deployed|
-|deploymentState|undeployed|
-
-<h2 id="tocS_WebSubChannel">WebSubChannel</h2>
-
-<a id="schemawebsubchannel"></a>
-<a id="schema_WebSubChannel"></a>
-<a id="tocSwebsubchannel"></a>
-<a id="tocswebsubchannel"></a>
-
-```json
-{
-  "on_subscription": {
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
-  },
-  "on_unsubscription": {
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
-  },
-  "on_message_received": {
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
-  },
-  "on_message_delivery": {
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
-  }
-}
-
-```
-
-A single channel definition with optional per-channel policy overrides.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|on_subscription|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
-|on_unsubscription|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
-|on_message_received|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
-|on_message_delivery|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
-
-<h2 id="tocS_WebSubEventPolicies">WebSubEventPolicies</h2>
-
-<a id="schemawebsubeventpolicies"></a>
-<a id="schema_WebSubEventPolicies"></a>
-<a id="tocSwebsubeventpolicies"></a>
-<a id="tocswebsubeventpolicies"></a>
-
-```json
-{
-  "policies": [
-    {
-      "name": "cors",
-      "version": "v1",
-      "executionCondition": "request.metadata[authenticated] != true",
-      "params": {}
-    }
-  ]
-}
-
-```
-
-Policies for a single event type.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|policies|[[Policy](#schemapolicy)]|false|none|List of policies applied for this event type.|
-
-<h2 id="tocS_WebSubAllChannelPolicies">WebSubAllChannelPolicies</h2>
-
-<a id="schemawebsuballchannelpolicies"></a>
-<a id="schema_WebSubAllChannelPolicies"></a>
-<a id="tocSwebsuballchannelpolicies"></a>
-<a id="tocswebsuballchannelpolicies"></a>
-
-```json
-{
-  "on_subscription": {
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
-  },
-  "on_unsubscription": {
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
-  },
-  "on_message_received": {
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
-  },
-  "on_message_delivery": {
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
-  }
-}
-
-```
-
-Policies applied to all channels, organized by event type.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|on_subscription|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
-|on_unsubscription|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
-|on_message_received|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
-|on_message_delivery|[WebSubEventPolicies](#schemawebsubeventpolicies)|false|none|Policies for a single event type.|
-
-<h2 id="tocS_WebSubChannelPolicies">WebSubChannelPolicies</h2>
-
-<a id="schemawebsubchannelpolicies"></a>
-<a id="schema_WebSubChannelPolicies"></a>
-<a id="tocSwebsubchannelpolicies"></a>
-<a id="tocswebsubchannelpolicies"></a>
-
-```json
-{
-  "on_subscription": [
-    {
-      "name": "cors",
-      "version": "v1",
-      "executionCondition": "request.metadata[authenticated] != true",
-      "params": {}
-    }
-  ],
-  "on_unsubscription": [
-    {
-      "name": "cors",
-      "version": "v1",
-      "executionCondition": "request.metadata[authenticated] != true",
-      "params": {}
-    }
-  ],
-  "on_message_received": [
-    {
-      "name": "cors",
-      "version": "v1",
-      "executionCondition": "request.metadata[authenticated] != true",
-      "params": {}
-    }
-  ],
-  "on_message_delivery": [
-    {
-      "name": "cors",
-      "version": "v1",
-      "executionCondition": "request.metadata[authenticated] != true",
-      "params": {}
-    }
-  ]
-}
-
-```
-
-Policies applied to a specific channel, organized by event type.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|on_subscription|[[Policy](#schemapolicy)]|false|none|Policies applied when a client subscribes to this channel (e.g., rbac)|
-|on_unsubscription|[[Policy](#schemapolicy)]|false|none|Policies applied when a client unsubscribes from this channel|
-|on_message_received|[[Policy](#schemapolicy)]|false|none|Policies applied when a message is received for this channel|
-|on_message_delivery|[[Policy](#schemapolicy)]|false|none|Policies applied when delivering a message for this channel|
 
 <h2 id="tocS_Channel">Channel</h2>
 
@@ -1054,592 +750,6 @@ Channel (topic/event stream) definition for async APIs.
 |Property|Value|
 |---|---|
 |method|SUB|
-
-<h2 id="tocS_WebBrokerApiRequest">WebBrokerApiRequest</h2>
-
-<a id="schemawebbrokerapirequest"></a>
-<a id="schema_WebBrokerApiRequest"></a>
-<a id="tocSwebbrokerapirequest"></a>
-<a id="tocswebbrokerapirequest"></a>
-
-```json
-{
-  "apiVersion": "gateway.api-platform.wso2.com/v1",
-  "kind": "WebBrokerApi",
-  "metadata": {
-    "name": "stock-trading-v1.0"
-  },
-  "spec": {
-    "displayName": "Stock Trading WebBroker API",
-    "version": "v1.0",
-    "context": "/stock-trading/$version",
-    "receiver": {
-      "name": "websocket-receiver",
-      "type": "websocket"
-    },
-    "broker": {
-      "name": "kafka-driver",
-      "type": "kafka",
-      "properties": {
-        "brokers": [
-          "kafka-broker-1:9092",
-          "kafka-broker-2:9092"
-        ]
-      }
-    },
-    "allChannels": {
-      "on_connection_init": {
-        "policies": []
-      },
-      "on_produce": {
-        "policies": []
-      },
-      "on_consume": {
-        "policies": []
-      }
-    },
-    "channels": {
-      "prices": {
-        "produceTo": {
-          "topic": "stock.prices"
-        },
-        "consumeFrom": {
-          "topic": "stock.prices"
-        },
-        "on_connection_init": {
-          "policies": []
-        },
-        "on_produce": {
-          "policies": []
-        },
-        "on_consume": {
-          "policies": []
-        }
-      }
-    }
-  }
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|apiVersion|string|true|none|API specification version|
-|kind|string|true|none|API type|
-|metadata|[Metadata](#schemametadata)|true|none|none|
-|spec|[WebBrokerApiData](#schemawebbrokerapidata)|true|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|apiVersion|gateway.api-platform.wso2.com/v1|
-|kind|WebBrokerApi|
-
-<h2 id="tocS_WebBrokerApi">WebBrokerApi</h2>
-
-<a id="schemawebbrokerapi"></a>
-<a id="schema_WebBrokerApi"></a>
-<a id="tocSwebbrokerapi"></a>
-<a id="tocswebbrokerapi"></a>
-
-```json
-{
-  "apiVersion": "gateway.api-platform.wso2.com/v1",
-  "kind": "WebBrokerApi",
-  "metadata": {
-    "name": "stock-trading-v1.0"
-  },
-  "spec": {
-    "displayName": "Stock Trading WebBroker API",
-    "version": "v1.0",
-    "context": "/stock-trading/$version",
-    "receiver": {
-      "name": "websocket-receiver",
-      "type": "websocket"
-    },
-    "broker": {
-      "name": "kafka-driver",
-      "type": "kafka",
-      "properties": {
-        "brokers": [
-          "kafka-broker-1:9092",
-          "kafka-broker-2:9092"
-        ]
-      }
-    },
-    "allChannels": {
-      "on_connection_init": {
-        "policies": []
-      },
-      "on_produce": {
-        "policies": []
-      },
-      "on_consume": {
-        "policies": []
-      }
-    },
-    "channels": {
-      "prices": {
-        "produceTo": {
-          "topic": "stock.prices"
-        },
-        "consumeFrom": {
-          "topic": "stock.prices"
-        },
-        "on_connection_init": {
-          "policies": []
-        },
-        "on_produce": {
-          "policies": []
-        },
-        "on_consume": {
-          "policies": []
-        }
-      }
-    }
-  },
-  "status": {
-    "id": "stock-trading-v1.0",
-    "state": "deployed",
-    "createdAt": "2026-04-24T07:21:13Z",
-    "updatedAt": "2026-04-24T07:21:13Z",
-    "deployedAt": "2026-04-24T07:21:13Z"
-  }
-}
-
-```
-
-### Properties
-
-allOf
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|[WebBrokerApiRequest](#schemawebbrokerapirequest)|false|none|none|
-
-and
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|object|false|none|none|
-|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
-
-<h2 id="tocS_WebBrokerApiData">WebBrokerApiData</h2>
-
-<a id="schemawebbrokerapidata"></a>
-<a id="schema_WebBrokerApiData"></a>
-<a id="tocSwebbrokerapidata"></a>
-<a id="tocswebbrokerapidata"></a>
-
-```json
-{
-  "displayName": "Stock Trading WebBroker API",
-  "version": "v1.0",
-  "context": "/stock-trading",
-  "receiver": {
-    "name": "websocket-receiver",
-    "type": "websocket",
-    "properties": {}
-  },
-  "broker": {
-    "name": "kafka-driver",
-    "type": "kafka",
-    "properties": {
-      "brokers": [
-        "kafka-broker-1:9092",
-        "kafka-broker-2:9092"
-      ]
-    }
-  },
-  "allChannels": {
-    "on_connection_init": {
-      "policies": [
-        {
-          "name": "cors",
-          "version": "v1",
-          "executionCondition": "request.metadata[authenticated] != true",
-          "params": {}
-        }
-      ]
-    },
-    "on_produce": {
-      "policies": [
-        {
-          "name": "cors",
-          "version": "v1",
-          "executionCondition": "request.metadata[authenticated] != true",
-          "params": {}
-        }
-      ]
-    },
-    "on_consume": {
-      "policies": [
-        {
-          "name": "cors",
-          "version": "v1",
-          "executionCondition": "request.metadata[authenticated] != true",
-          "params": {}
-        }
-      ]
-    }
-  },
-  "channels": {
-    "property1": {
-      "produceTo": {
-        "topic": "stock.prices"
-      },
-      "consumeFrom": {
-        "topic": "stock.prices"
-      },
-      "on_connection_init": {
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      },
-      "on_produce": {
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      },
-      "on_consume": {
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      }
-    },
-    "property2": {
-      "produceTo": {
-        "topic": "stock.prices"
-      },
-      "consumeFrom": {
-        "topic": "stock.prices"
-      },
-      "on_connection_init": {
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      },
-      "on_produce": {
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      },
-      "on_consume": {
-        "policies": [
-          {
-            "name": "cors",
-            "version": "v1",
-            "executionCondition": "request.metadata[authenticated] != true",
-            "params": {}
-          }
-        ]
-      }
-    }
-  },
-  "vhosts": {
-    "main": "api.example.com",
-    "sandbox": "sandbox-api.example.com"
-  },
-  "deploymentState": "deployed"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|displayName|string|true|none|Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)|
-|version|string|true|none|Semantic version of the API|
-|context|string|true|none|Base path for all API routes (must start with /, no trailing slash)|
-|receiver|[WebBrokerApiReceiver](#schemawebbrokerapireceiver)|true|none|WebSocket receiver configuration|
-|broker|[WebBrokerApiBroker](#schemawebbrokerapibroker)|true|none|Message broker driver configuration|
-|allChannels|[WebBrokerApiAllChannelPolicies](#schemawebbrokerapiallchannelpolicies)|false|none|Protocol mediation policies applied to all channels|
-|channels|object|true|none|Map of WebSocket channels for bidirectional streaming with Kafka (key is channel name)|
-|» **additionalProperties**|[WebBrokerApiChannel](#schemawebbrokerapichannel)|false|none|WebSocket channel configuration with Kafka topic mapping|
-|vhosts|object|false|none|Custom virtual hosts/domains for the API|
-|» main|string|true|none|Custom virtual host/domain for production traffic|
-|» sandbox|string|false|none|Custom virtual host/domain for sandbox traffic|
-|deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the API is removed from router traffic but configuration and policies are preserved for potential redeployment.|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|deploymentState|deployed|
-|deploymentState|undeployed|
-
-<h2 id="tocS_WebBrokerApiReceiver">WebBrokerApiReceiver</h2>
-
-<a id="schemawebbrokerapireceiver"></a>
-<a id="schema_WebBrokerApiReceiver"></a>
-<a id="tocSwebbrokerapireceiver"></a>
-<a id="tocswebbrokerapireceiver"></a>
-
-```json
-{
-  "name": "websocket-receiver",
-  "type": "websocket",
-  "properties": {}
-}
-
-```
-
-WebSocket receiver configuration
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|name|string|true|none|Receiver name|
-|type|string|true|none|Receiver type|
-|properties|object|false|none|Additional receiver properties|
-
-<h2 id="tocS_WebBrokerApiBroker">WebBrokerApiBroker</h2>
-
-<a id="schemawebbrokerapibroker"></a>
-<a id="schema_WebBrokerApiBroker"></a>
-<a id="tocSwebbrokerapibroker"></a>
-<a id="tocswebbrokerapibroker"></a>
-
-```json
-{
-  "name": "kafka-driver",
-  "type": "kafka",
-  "properties": {
-    "brokers": [
-      "kafka-broker-1:9092",
-      "kafka-broker-2:9092"
-    ]
-  }
-}
-
-```
-
-Message broker driver configuration
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|name|string|true|none|Broker driver name|
-|type|string|true|none|Broker driver type|
-|properties|object|true|none|Broker driver properties (e.g., bootstrap servers)|
-
-<h2 id="tocS_WebBrokerApiAllChannelPolicies">WebBrokerApiAllChannelPolicies</h2>
-
-<a id="schemawebbrokerapiallchannelpolicies"></a>
-<a id="schema_WebBrokerApiAllChannelPolicies"></a>
-<a id="tocSwebbrokerapiallchannelpolicies"></a>
-<a id="tocswebbrokerapiallchannelpolicies"></a>
-
-```json
-{
-  "on_connection_init": {
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
-  },
-  "on_produce": {
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
-  },
-  "on_consume": {
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
-  }
-}
-
-```
-
-Protocol mediation policies applied to all channels
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|on_connection_init|[WebBrokerApiPolicyGroup](#schemawebbrokerapipolicygroup)|false|none|Group of policies|
-|on_produce|[WebBrokerApiPolicyGroup](#schemawebbrokerapipolicygroup)|false|none|Group of policies|
-|on_consume|[WebBrokerApiPolicyGroup](#schemawebbrokerapipolicygroup)|false|none|Group of policies|
-
-<h2 id="tocS_WebBrokerApiPolicyGroup">WebBrokerApiPolicyGroup</h2>
-
-<a id="schemawebbrokerapipolicygroup"></a>
-<a id="schema_WebBrokerApiPolicyGroup"></a>
-<a id="tocSwebbrokerapipolicygroup"></a>
-<a id="tocswebbrokerapipolicygroup"></a>
-
-```json
-{
-  "policies": [
-    {
-      "name": "cors",
-      "version": "v1",
-      "executionCondition": "request.metadata[authenticated] != true",
-      "params": {}
-    }
-  ]
-}
-
-```
-
-Group of policies
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|policies|[[Policy](#schemapolicy)]|false|none|List of policies to apply|
-
-<h2 id="tocS_WebBrokerApiChannel">WebBrokerApiChannel</h2>
-
-<a id="schemawebbrokerapichannel"></a>
-<a id="schema_WebBrokerApiChannel"></a>
-<a id="tocSwebbrokerapichannel"></a>
-<a id="tocswebbrokerapichannel"></a>
-
-```json
-{
-  "produceTo": {
-    "topic": "stock.prices"
-  },
-  "consumeFrom": {
-    "topic": "stock.prices"
-  },
-  "on_connection_init": {
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
-  },
-  "on_produce": {
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
-  },
-  "on_consume": {
-    "policies": [
-      {
-        "name": "cors",
-        "version": "v1",
-        "executionCondition": "request.metadata[authenticated] != true",
-        "params": {}
-      }
-    ]
-  }
-}
-
-```
-
-WebSocket channel configuration with Kafka topic mapping
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|produceTo|[WebBrokerApiProduceConfig](#schemawebbrokerapiproduceconfig)|false|none|Configuration for producing messages from WebSocket to Kafka|
-|consumeFrom|[WebBrokerApiConsumeConfig](#schemawebbrokerapiconsumeconfig)|false|none|Configuration for consuming messages from Kafka to WebSocket|
-|on_connection_init|[WebBrokerApiPolicyGroup](#schemawebbrokerapipolicygroup)|false|none|Group of policies|
-|on_produce|[WebBrokerApiPolicyGroup](#schemawebbrokerapipolicygroup)|false|none|Group of policies|
-|on_consume|[WebBrokerApiPolicyGroup](#schemawebbrokerapipolicygroup)|false|none|Group of policies|
-
-<h2 id="tocS_WebBrokerApiProduceConfig">WebBrokerApiProduceConfig</h2>
-
-<a id="schemawebbrokerapiproduceconfig"></a>
-<a id="schema_WebBrokerApiProduceConfig"></a>
-<a id="tocSwebbrokerapiproduceconfig"></a>
-<a id="tocswebbrokerapiproduceconfig"></a>
-
-```json
-{
-  "topic": "stock.prices"
-}
-
-```
-
-Configuration for producing messages from WebSocket to Kafka
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|topic|string|true|none|Kafka topic to produce messages to|
-
-<h2 id="tocS_WebBrokerApiConsumeConfig">WebBrokerApiConsumeConfig</h2>
-
-<a id="schemawebbrokerapiconsumeconfig"></a>
-<a id="schema_WebBrokerApiConsumeConfig"></a>
-<a id="tocSwebbrokerapiconsumeconfig"></a>
-<a id="tocswebbrokerapiconsumeconfig"></a>
-
-```json
-{
-  "topic": "stock.prices"
-}
-
-```
-
-Configuration for consuming messages from Kafka to WebSocket
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|topic|string|true|none|Kafka topic to consume messages from|
 
 <h2 id="tocS_APIKeyCreationRequest">APIKeyCreationRequest</h2>
 
@@ -2270,6 +1380,21 @@ and
   "context": "/everything",
   "specVersion": "2025-06-18",
   "vhost": "mcp1.example.com",
+  "upstreamDefinitions": [
+    {
+      "name": "my-upstream-1",
+      "basePath": "/api/v2",
+      "timeout": {
+        "connect": "5s"
+      },
+      "upstreams": [
+        {
+          "url": "http://prod-backend-1:5000",
+          "weight": 80
+        }
+      ]
+    }
+  ],
   "upstream": {
     "url": "http://prod-backend:5000/api/v2",
     "ref": "string",
@@ -2322,7 +1447,11 @@ and
       ]
     }
   ],
-  "deploymentState": "deployed"
+  "deploymentState": "deployed",
+  "resilience": {
+    "timeout": "15s",
+    "idleTimeout": "0s"
+  }
 }
 
 ```
@@ -2336,6 +1465,7 @@ and
 |context|string|false|none|MCP Proxy context path|
 |specVersion|string|false|none|MCP specification version|
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
+|upstreamDefinitions|[[UpstreamDefinition](#schemaupstreamdefinition)]|false|none|List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.|
 |upstream|any|true|none|The backend MCP server url and auth configurations|
 
 allOf
@@ -2359,6 +1489,7 @@ continued
 |resources|[[MCPResource](#schemamcpresource)]|false|none|none|
 |prompts|[[MCPPrompt](#schemamcpprompt)]|false|none|none|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the MCP Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.|
+|resilience|[Resilience](#schemaresilience)|false|none|API-level backend/route timeout configuration. Applies to the traffic-forwarding routes generated for this MCP proxy (GET/POST/DELETE on the MCP resource path). Supported at the API level only. Because MCP transports are long-lived streams, the route timeout defaults to disabled ("0s") for MCP unless a timeout is set here (unlike REST/LLM, which fall back to the gateway's global route timeout); the idle timeout remains the liveness guard.|
 
 #### Enumerated Values
 
@@ -3018,6 +2149,21 @@ and
   "context": "/openai",
   "vhost": "api.openai.com",
   "template": "openai",
+  "upstreamDefinitions": [
+    {
+      "name": "my-upstream-1",
+      "basePath": "/api/v2",
+      "timeout": {
+        "connect": "5s"
+      },
+      "upstreams": [
+        {
+          "url": "http://prod-backend-1:5000",
+          "weight": 80
+        }
+      ]
+    }
+  ],
   "upstream": {
     "url": "http://prod-backend:5000/api/v2",
     "ref": "string",
@@ -3078,7 +2224,11 @@ and
       ]
     }
   ],
-  "deploymentState": "deployed"
+  "deploymentState": "deployed",
+  "resilience": {
+    "timeout": "15s",
+    "idleTimeout": "0s"
+  }
 }
 
 ```
@@ -3092,6 +2242,7 @@ and
 |context|string|false|none|Base path for all API routes (must start with /, no trailing slash)|
 |vhost|string|false|none|Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).|
 |template|string|true|none|Template name to use for this LLM Provider|
+|upstreamDefinitions|[[UpstreamDefinition](#schemaupstreamdefinition)]|false|none|List of reusable upstream definitions with optional timeout configurations. Referenced by upstream.ref.|
 |upstream|any|true|none|none|
 
 allOf
@@ -3115,6 +2266,7 @@ continued
 |operationPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Operation-level policies scoped to specific paths/methods, evaluated after global policies.|
 |policies|[[LLMPolicy](#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Provider is removed from router traffic but configuration and policies are preserved for potential redeployment.|
+|resilience|[Resilience](#schemaresilience)|false|none|API-level backend/route timeout configuration. Applies to all routes generated for this LLM Provider (the routes that forward traffic upstream). Supported at the API level only - LLM routes are synthesized by the gateway, so there is no operation-level override.|
 
 #### Enumerated Values
 
@@ -3155,6 +2307,8 @@ continued
 |Property|Value|
 |---|---|
 |type|api-key|
+|type|other|
+|type|none|
 
 <h2 id="tocS_LLMUpstreamAuth">LLMUpstreamAuth</h2>
 
@@ -3185,6 +2339,8 @@ continued
 |Property|Value|
 |---|---|
 |type|api-key|
+|type|other|
+|type|none|
 
 <h2 id="tocS_LLMProxyProvider">LLMProxyProvider</h2>
 
@@ -3211,6 +2367,68 @@ continued
 |---|---|---|---|---|
 |id|string|true|none|Unique id of a deployed llm provider|
 |auth|[LLMUpstreamAuth](#schemallmupstreamauth)|false|none|none|
+
+<h2 id="tocS_LLMProxyAdditionalProvider">LLMProxyAdditionalProvider</h2>
+
+<a id="schemallmproxyadditionalprovider"></a>
+<a id="schema_LLMProxyAdditionalProvider"></a>
+<a id="tocSllmproxyadditionalprovider"></a>
+<a id="tocsllmproxyadditionalprovider"></a>
+
+```json
+{
+  "id": "anthropic-provider",
+  "as": "anthropic-upstream",
+  "auth": {
+    "type": "api-key",
+    "header": "string",
+    "value": "string"
+  },
+  "transformer": {
+    "type": "openai-to-anthropic",
+    "version": "v1",
+    "params": {}
+  }
+}
+
+```
+
+Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`). Optional auth config is used by the proxy when calling a protected LlmProvider over the internal loopback route.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|id|string|true|none|Unique id of a deployed llm provider|
+|as|string|false|none|Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted.|
+|auth|[LLMUpstreamAuth](#schemallmupstreamauth)|false|none|none|
+|transformer|[LLMProxyTransformer](#schemallmproxytransformer)|false|none|Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.|
+
+<h2 id="tocS_LLMProxyTransformer">LLMProxyTransformer</h2>
+
+<a id="schemallmproxytransformer"></a>
+<a id="schema_LLMProxyTransformer"></a>
+<a id="tocSllmproxytransformer"></a>
+<a id="tocsllmproxytransformer"></a>
+
+```json
+{
+  "type": "openai-to-anthropic",
+  "version": "v1",
+  "params": {}
+}
+
+```
+
+Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|type|string|true|none|Translator policy name (for example openai-to-anthropic).|
+|version|string|true|none|Major-only translator policy version (for example v1). The Gateway Controller resolves it to the installed full version.|
+|params|object|false|none|Translator-specific parameters (for example model, apiVersion).|
 
 <h2 id="tocS_LLMAccessControl">LLMAccessControl</h2>
 
@@ -3527,6 +2745,22 @@ and
       ]
     }
   ],
+  "additionalProviders": [
+    {
+      "id": "anthropic-provider",
+      "as": "anthropic-upstream",
+      "auth": {
+        "type": "api-key",
+        "header": "string",
+        "value": "string"
+      },
+      "transformer": {
+        "type": "openai-to-anthropic",
+        "version": "v1",
+        "params": {}
+      }
+    }
+  ],
   "policies": [
     {
       "name": "llm-cost-based-ratelimit",
@@ -3542,7 +2776,11 @@ and
       ]
     }
   ],
-  "deploymentState": "deployed"
+  "deploymentState": "deployed",
+  "resilience": {
+    "timeout": "15s",
+    "idleTimeout": "0s"
+  }
 }
 
 ```
@@ -3558,8 +2796,10 @@ and
 |provider|[LLMProxyProvider](#schemallmproxyprovider)|true|none|none|
 |globalPolicies|[[Policy](#schemapolicy)]|false|none|Global (api-level) policies applied across ALL operations as one shared scope, evaluated before operation-level policies.|
 |operationPolicies|[[OperationPolicy](#schemaoperationpolicy)]|false|none|Operation-level policies scoped to specific paths/methods, evaluated after global policies.|
+|additionalProviders|[[LLMProxyAdditionalProvider](#schemallmproxyadditionalprovider)]|false|none|Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies (e.g. an OpenAI translator) can route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target.|
 |policies|[[LLMPolicy](#schemallmpolicy)]|false|none|DEPRECATED - use operationPolicies. Still honoured (treated identically to operationPolicies).|
 |deploymentState|string|false|none|Desired deployment state - 'deployed' (default) or 'undeployed'. When set to 'undeployed', the LLM Proxy is removed from router traffic but configuration and policies are preserved for potential redeployment.|
+|resilience|[Resilience](#schemaresilience)|false|none|API-level backend/route timeout configuration. Applies to all routes generated for this LLM Proxy (the routes that forward traffic upstream). Supported at the API level only - LLM routes are synthesized by the gateway, so there is no operation-level override.|
 
 #### Enumerated Values
 
@@ -3879,127 +3119,6 @@ and
 |apiKeys|[[APIKey](#schemaapikey)]|false|none|[Details of an API key]|
 |totalCount|integer|false|none|Total number of API keys|
 |status|string|false|none|none|
-
-<h2 id="tocS_WebhookSecretCreationRequest">WebhookSecretCreationRequest</h2>
-
-<a id="schemawebhooksecretcreationrequest"></a>
-<a id="schema_WebhookSecretCreationRequest"></a>
-<a id="tocSwebhooksecretcreationrequest"></a>
-<a id="tocswebhooksecretcreationrequest"></a>
-
-```json
-{
-  "displayName": "GitHub Webhook"
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|displayName|string|true|none|Human-readable label for this secret (used to derive the immutable name slug).|
-
-<h2 id="tocS_WebhookSecretInfo">WebhookSecretInfo</h2>
-
-<a id="schemawebhooksecretinfo"></a>
-<a id="schema_WebhookSecretInfo"></a>
-<a id="tocSwebhooksecretinfo"></a>
-<a id="tocswebhooksecretinfo"></a>
-
-```json
-{
-  "name": "github-webhook",
-  "displayName": "GitHub Webhook",
-  "status": "active",
-  "createdAt": "2026-06-01T10:00:00Z",
-  "updatedAt": "2026-06-01T10:00:00Z"
-}
-
-```
-
-Metadata for an HMAC secret. The plaintext value is never included.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|name|string|false|none|URL-safe slug (immutable, used as path parameter for regenerate/delete).|
-|displayName|string|false|none|Human-readable label.|
-|status|string|false|none|none|
-|createdAt|string(date-time)|false|none|none|
-|updatedAt|string(date-time)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|active|
-|status|revoked|
-
-<h2 id="tocS_WebhookSecretCreationResponse">WebhookSecretCreationResponse</h2>
-
-<a id="schemawebhooksecretcreationresponse"></a>
-<a id="schema_WebhookSecretCreationResponse"></a>
-<a id="tocSwebhooksecretcreationresponse"></a>
-<a id="tocswebhooksecretcreationresponse"></a>
-
-```json
-{
-  "status": "success",
-  "message": "Webhook secret generated successfully",
-  "secret": "whsec_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b",
-  "webhookSecret": {
-    "name": "github-webhook",
-    "displayName": "GitHub Webhook",
-    "status": "active",
-    "createdAt": "2026-06-01T10:00:00Z",
-    "updatedAt": "2026-06-01T10:00:00Z"
-  }
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|true|none|none|
-|message|string|true|none|none|
-|secret|string|true|none|The generated plaintext secret value (whsec_ prefix + 64 hex chars).<br>Returned exactly once — store it immediately as it will not be retrievable again.|
-|webhookSecret|[WebhookSecretInfo](#schemawebhooksecretinfo)|false|none|Metadata for an HMAC secret. The plaintext value is never included.|
-
-<h2 id="tocS_WebhookSecretListResponse">WebhookSecretListResponse</h2>
-
-<a id="schemawebhooksecretlistresponse"></a>
-<a id="schema_WebhookSecretListResponse"></a>
-<a id="tocSwebhooksecretlistresponse"></a>
-<a id="tocswebhooksecretlistresponse"></a>
-
-```json
-{
-  "status": "success",
-  "totalCount": 2,
-  "secrets": [
-    {
-      "name": "github-webhook",
-      "displayName": "GitHub Webhook",
-      "status": "active",
-      "createdAt": "2026-06-01T10:00:00Z",
-      "updatedAt": "2026-06-01T10:00:00Z"
-    }
-  ]
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|false|none|none|
-|totalCount|integer|false|none|Total number of active secrets for this API|
-|secrets|[[WebhookSecretInfo](#schemawebhooksecretinfo)]|false|none|[Metadata for an HMAC secret. The plaintext value is never included.]|
 
 <h2 id="tocS_SecretListResponse">SecretListResponse</h2>
 

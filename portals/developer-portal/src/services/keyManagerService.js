@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const yaml = require('js-yaml');
+const yaml = require('../utils/yaml');
 const db = require('../db/driver');
 const { NotFoundError } = require('../utils/errors/customErrors');
 const kmDao = require('../dao/keyManagerDao');

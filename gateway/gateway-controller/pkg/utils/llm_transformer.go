@@ -235,9 +235,12 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		if err != nil {
 			return nil, err
 		}
-		condition := selectedProviderExecutionCondition(proxy.Spec.Provider.Id, true)
-		pol.ExecutionCondition = &condition
-		upstreamAuthPolicies = append(upstreamAuthPolicies, *pol)
+		// "other"/"none" auth yield no policy - nothing to attach.
+		if pol != nil {
+			condition := selectedProviderExecutionCondition(proxy.Spec.Provider.Id, true)
+			pol.ExecutionCondition = &condition
+			upstreamAuthPolicies = append(upstreamAuthPolicies, *pol)
+		}
 	}
 	if proxy.Spec.AdditionalProviders != nil {
 		for _, ap := range *proxy.Spec.AdditionalProviders {
@@ -251,9 +254,12 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 				if err != nil {
 					return nil, err
 				}
-				condition := selectedProviderExecutionCondition(name, false)
-				pol.ExecutionCondition = &condition
-				upstreamAuthPolicies = append(upstreamAuthPolicies, *pol)
+				// "other"/"none" auth yield no policy - nothing to attach.
+				if pol != nil {
+					condition := selectedProviderExecutionCondition(name, false)
+					pol.ExecutionCondition = &condition
+					upstreamAuthPolicies = append(upstreamAuthPolicies, *pol)
+				}
 			}
 
 			if ap.Transformer != nil {
@@ -438,6 +444,11 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 				Name:    constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
 				Version: policyVersion, Params: &params}
 			upstreamAuthPolicy = &mh
+		case api.LLMProviderConfigDataUpstreamAuthTypeOther,
+			api.LLMProviderConfigDataUpstreamAuthTypeNone:
+			// "other": auth handled entirely by user-attached policies.
+			// "none": no upstream authentication. In both cases the gateway
+			// attaches no auth policy of its own.
 		default:
 			return nil, fmt.Errorf("unsupported upstream auth type: %s", upstream.Auth.Type)
 		}
@@ -782,6 +793,10 @@ func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAu
 			Version: policyVersion,
 			Params:  &params,
 		}, nil
+	case api.LLMUpstreamAuthTypeOther, api.LLMUpstreamAuthTypeNone:
+		// "other": auth handled entirely by user-attached policies.
+		// "none": no upstream authentication. No auth policy is attached.
+		return nil, nil
 	default:
 		return nil, fmt.Errorf("unsupported upstream auth type: %s", auth.Type)
 	}

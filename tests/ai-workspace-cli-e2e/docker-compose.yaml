@@ -1,0 +1,38 @@
+# Standalone platform-api stack for the AI Workspace CLI integration test.
+#
+# platform-api is the AI Workspace backend the `ap ai-workspace` commands target.
+# The gateway data plane is NOT needed here: the test only exercises the CLI ->
+# platform-api control-plane path (login, projects, llm-providers, llm-proxies,
+# mcp-proxies), so a single platform-api process on SQLite is enough.
+#
+# The image tag is overridable with PLATFORM_API_IMAGE; the CI workflow builds
+# platform-api:it-e2e from source and passes it through (same pattern the
+# platform-api-devportal-e2e / platform-api-gateway-e2e suites use).
+services:
+  platform-api:
+    image: ${PLATFORM_API_IMAGE:-platform-api:it-e2e}
+    command: ["./platform-api", "-config", "/etc/platform-api/config.toml"]
+    environment:
+      - DATABASE_DRIVER=sqlite3
+      - DATABASE_PATH=/app/data/platform.db
+      - DATABASE_EXECUTE_SCHEMA_DDL=true
+      # Single encryption key — must be 32 bytes (64 hex chars). Used for all
+      # at-rest encryption (secrets, subscription tokens, HMAC).
+      - ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - AUTH_FILE_BASED_ENABLED=true
+      - AUTH_FILE_BASED_ORGANIZATION_ID=default
+      - AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
+      - AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
+      - AUTH_FILE_BASED_ORGANIZATION_REGION=us
+      # Signs login JWTs; must be 32 bytes (64 hex chars). Overrides the
+      # placeholder in platform-api-config.toml (env wins in koanf).
+      - AUTH_JWT_SECRET_KEY=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+    volumes:
+      - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
+    ports:
+      - "${PA_HOST_PORT:-9243}:9243"
+    networks: [aiwscli]
+
+networks:
+  aiwscli:
+    driver: bridge

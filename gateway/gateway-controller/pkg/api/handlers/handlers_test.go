@@ -843,6 +843,16 @@ func (m *MockStorage) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error
 	return pending, nil
 }
 
+func (m *MockStorage) GetGatewayOriginArtifactsForSync() ([]*models.StoredConfig, error) {
+	var all []*models.StoredConfig
+	for _, config := range m.configs {
+		if config != nil && config.Origin == models.OriginGatewayAPI {
+			all = append(all, config)
+		}
+	}
+	return all, nil
+}
+
 // MockControlPlaneClient implements controlplane.ControlPlaneClient for testing
 type MockControlPlaneClient struct {
 	connected     bool

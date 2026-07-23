@@ -22,7 +22,7 @@ metadata:
   name: gemini
 spec:
   displayName: Gemini
-  groupId: gemini
+  groupId: wso2-gemini
   managedBy: wso2
   version: v1.0
   promptTokens:

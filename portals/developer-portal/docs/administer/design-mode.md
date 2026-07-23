@@ -137,7 +137,7 @@ zip -r my-theme.zip layout/ partials/ styles/ images/
 **Option 2 — curl:** Replace `{viewName}` with the view name (e.g. `default`). The examples use a `$TOKEN` variable — get one first:
 ```bash
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
-  -d "username=admin&password=admin" | jq -r .token)
+  -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 ```
 
 Initial upload:
@@ -186,7 +186,7 @@ samples/
 ### `api.yaml` Format (REST API)
 
 ```yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: RestApi
 
 metadata:
@@ -214,7 +214,7 @@ spec:
 ### `api.yaml` Format (MCP Server)
 
 ```yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: MCP
 
 metadata:
@@ -261,7 +261,7 @@ The portal re-reads API definitions from disk on every page request. Edit `api.y
 The Applications page is available in design mode and shows entries from `applications_path`. The format follows the same Kubernetes-style manifest used across all sample files:
 
 ```yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: ApplicationList
 items:
 

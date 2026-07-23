@@ -43,21 +43,19 @@ func (l *EventListener) processAPIEvent(event eventhub.Event) {
 	}
 }
 
-func (l *EventListener) updateSnapshotAsync(entityID, correlationID, failureMessage string) {
+func (l *EventListener) updateSnapshot(entityID, correlationID, failureMessage string) {
 	if l.snapshotManager == nil {
 		return
 	}
 
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-		if err := l.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			l.logger.Error(failureMessage,
-				slog.String("entity_id", entityID),
-				slog.Any("error", err))
-		}
-	}()
+	if err := l.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
+		l.logger.Error(failureMessage,
+			slog.String("entity_id", entityID),
+			slog.Any("error", err))
+	}
 }
 
 // handleAPICreateOrUpdate handles API create or update events
@@ -109,7 +107,7 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 
 	// Update xDS snapshot for REST APIs only (WebSubApi and WebBrokerApi use Policy xDS)
 	if storedConfig.Kind != models.KindWebSubApi && storedConfig.Kind != models.KindWebBrokerApi {
-		l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after replica sync")
+		l.updateSnapshot(entityID, event.EventID, "Failed to update xDS snapshot after replica sync")
 	}
 
 	// Update policies
@@ -188,7 +186,7 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 
 	// Update xDS snapshot for REST APIs only (WebSubApi and WebBrokerApi use Policy xDS)
 	if existingConfig == nil || (existingConfig.Kind != models.KindWebSubApi && existingConfig.Kind != models.KindWebBrokerApi) {
-		l.updateSnapshotAsync(entityID, event.EventID, "Failed to update xDS snapshot after API deletion")
+		l.updateSnapshot(entityID, event.EventID, "Failed to update xDS snapshot after API deletion")
 	}
 
 	// Remove runtime config for the deleted API

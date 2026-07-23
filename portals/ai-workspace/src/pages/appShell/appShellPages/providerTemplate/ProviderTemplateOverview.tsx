@@ -45,7 +45,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Check, ChevronDown, ChevronLeft, Clock, Download, Edit, GitBranch, Lock, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { Check, ChevronDown, ChevronLeft, Clock, Copy, Download, Edit, GitBranch, Lock, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { formatRelativeTime } from '../../../../contexts/llmProvider';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
@@ -779,16 +779,20 @@ export default function ProviderTemplateOverview() {
                               </MenuItem>
                             );
                           })}
-                          <Divider />
-                          <MenuItem
-                            component={RouterLink}
-                            to="new-version"
-                            onClick={() => setVersionMenuAnchor(null)}
-                            sx={{ color: 'primary.main', gap: 1 }}
-                          >
-                            <GitBranch size={16} />
-                            Create new version
-                          </MenuItem>
+                          {!isBuiltIn && (
+                            <>
+                              <Divider />
+                              <MenuItem
+                                component={RouterLink}
+                                to="new-version"
+                                onClick={() => setVersionMenuAnchor(null)}
+                                sx={{ color: 'primary.main', gap: 1 }}
+                              >
+                                <GitBranch size={16} />
+                                Create new version
+                              </MenuItem>
+                            </>
+                          )}
                         </>
                       );
                     })()}
@@ -826,6 +830,18 @@ export default function ProviderTemplateOverview() {
             </Box>
 
             <Stack direction="column" spacing={1.5} alignItems="flex-end">
+              {isBuiltIn && (
+                <Button
+                  variant="outlined"
+                  startIcon={<Copy size={16} />}
+                  onClick={() =>
+                    navigate(`${listPath}/new`, { state: { copyFrom: template } })
+                  }
+                  data-cyid="provider-template-create-copy-button"
+                >
+                  Create a copy
+                </Button>
+              )}
               {!isBuiltIn && (
                 <Button
                   variant="contained"
@@ -841,19 +857,19 @@ export default function ProviderTemplateOverview() {
                   />
                 </Button>
               )}
-              {isReadOnly && (
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="body2" color="text.primary">
-                    {isEnabled ? 'Enabled' : 'Disabled'}
-                  </Typography>
-                  <Switch
-                    checked={isEnabled}
-                    disabled={isTogglingEnabled}
-                    onChange={(e) => void handleToggleEnabled(e.target.checked)}
-                    inputProps={{ 'aria-label': 'Enable or disable this version' }}
-                  />
-                </Stack>
-              )}
+              {/* Enable/disable applies to every template — built-in, custom, and
+                  gateway-originated — since it only affects control-plane listing. */}
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="body2" color="text.primary">
+                  {isEnabled ? 'Enabled' : 'Disabled'}
+                </Typography>
+                <Switch
+                  checked={isEnabled}
+                  disabled={isTogglingEnabled}
+                  onChange={(e) => void handleToggleEnabled(e.target.checked)}
+                  inputProps={{ 'aria-label': 'Enable or disable this version' }}
+                />
+              </Stack>
               {/* Custom templates can be deleted entirely (all versions). */}
               {canDelete && (
                 <Button

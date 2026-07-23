@@ -631,18 +631,17 @@ func (c *Client) pushGatewayArtifacts() {
 		return
 	}
 
-	// Only artifacts whose control-plane sync is incomplete (cp_sync_status pending/failed)
-	// are pushed. This avoids re-pushing artifacts that have already been successfully synced.
-	configs, err := c.db.GetPendingCPSyncArtifacts()
+	// Push ALL gateway-origin artifacts.
+	configs, err := c.db.GetGatewayOriginArtifactsForSync()
 	if err != nil {
-		c.logger.Error("Failed to list pending gateway-originated artifacts for control plane push", slog.Any("error", err))
+		c.logger.Error("Failed to list gateway-originated artifacts for control plane push", slog.Any("error", err))
 		return
 	}
 	if len(configs) == 0 {
 		return
 	}
 
-	// GetPendingCPSyncArtifacts returns metadata only; load each full config to push.
+	// The query returns metadata only; load each full config to push.
 	full := make([]*models.StoredConfig, 0, len(configs))
 	for _, meta := range configs {
 		cfg, err := c.db.GetConfig(meta.UUID)
@@ -657,9 +656,9 @@ func (c *Client) pushGatewayArtifacts() {
 		return
 	}
 
-	c.logger.Info("Pushing pending gateway-originated artifacts to control plane", slog.Int("count", len(full)))
+	c.logger.Info("Pushing gateway-originated artifacts to control plane", slog.Int("count", len(full)))
 
-	// Push the whole pending set as a single ordered, zipped batch.
+	// Push the whole set as a single ordered, zipped batch.
 	resp, err := c.pushArtifactsWithRetry(full)
 	if err != nil {
 		// Transport-level failure: the artifacts keep their pending/failed cp_sync_status and
