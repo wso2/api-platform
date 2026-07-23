@@ -48,9 +48,10 @@ services:
       - ./configs/config.toml:/etc/ai-workspace/config.toml:ro
       - ./resources/certificates:/etc/ai-workspace/tls:ro
     ports:
+      - "5080:5080"
       - "5380:5380"
     healthcheck:
-      test: ["CMD", "curl", "-fk", "https://localhost:5380/healthz"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:5080/healthz || curl -fk https://localhost:5380/healthz"]
       interval: 30s
       timeout: 5s
       start_period: 10s
