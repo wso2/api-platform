@@ -76,10 +76,10 @@ e2e-deps: ## Install Cypress dependencies for local E2E runs
 	npm install
 
 e2e-test: ## Run Cypress headlessly against a locally running docker compose stack
-	CYPRESS_BASE_URL=https://host.docker.internal:5380 docker run --rm --add-host=host.docker.internal:host-gateway -v "$$(pwd):/e2e" -w /e2e -e CYPRESS_BASE_URL cypress/included:13.17.0 cypress run --headless --browser electron --config-file cypress.config.js
+	CYPRESS_BASE_URL=https://host.docker.internal:9643 docker run --rm --add-host=host.docker.internal:host-gateway -v "$$(pwd):/e2e" -w /e2e -e CYPRESS_BASE_URL cypress/included:13.17.0 cypress run --headless --browser electron --config-file cypress.config.js
 
 e2e-open: ## Open Cypress UI against a locally running docker compose stack
-	CYPRESS_BASE_URL=https://localhost:5380 npx cypress open --e2e --config-file cypress.config.js
+	CYPRESS_BASE_URL=https://localhost:9643 npx cypress open --e2e --config-file cypress.config.js
 
 e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
 	@set -euo pipefail; \

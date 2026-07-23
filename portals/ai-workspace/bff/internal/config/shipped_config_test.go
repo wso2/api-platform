@@ -51,8 +51,8 @@ func TestShippedConfig_QuickstartLoadsWithNoEnv(t *testing.T) {
 	}
 	// The defaults in the file are the container's: the port it publishes and the SPA
 	// baked into the image.
-	if !cfg.Server.HTTPS.Enabled || cfg.Server.HTTPS.Port != 5380 {
-		t.Errorf("Server.HTTPS = {Enabled: %v, Port: %d}, want the container default {true, 5380}",
+	if !cfg.Server.HTTPS.Enabled || cfg.Server.HTTPS.Port != 9643 {
+		t.Errorf("Server.HTTPS = {Enabled: %v, Port: %d}, want the container default {true, 9643}",
 			cfg.Server.HTTPS.Enabled, cfg.Server.HTTPS.Port)
 	}
 	if cfg.Server.HTTP.Enabled {
@@ -80,7 +80,7 @@ func TestShippedConfig_QuickstartLoadsWithNoEnv(t *testing.T) {
 // `make bff-run` loads this same file and points the container-shaped defaults at the
 // developer's machine, purely through the {{ env }} tokens in it. A token is the only
 // way an environment variable reaches a key, so dropping one of these keys from
-// config.toml would silently strip the override and leave the BFF on :5380. This test
+// config.toml would silently strip the override and leave the BFF on :9643. This test
 // pins the Makefile's contract with the file. static_dir is NOT among these: the
 // shipped config has no token for it (the container always serves /app), so
 // `make bff-run` retargets it with the -static-dir CLI flag in main.go instead —

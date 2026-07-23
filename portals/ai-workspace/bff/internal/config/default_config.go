@@ -28,11 +28,11 @@ func defaultConfig() *Config {
 			StaticDir: "/app",
 			HTTP: HTTPListener{
 				Enabled: false,
-				Port:    5080,
+				Port:    9680,
 			},
 			HTTPS: HTTPSListener{
 				Enabled: true,
-				Port:    5380,
+				Port:    9643,
 				// Convention matches the container's mount path. A certificate pair is
 				// required there whenever the listener terminates TLS.
 				CertFile: "/etc/ai-workspace/tls/cert.pem",
