@@ -8,6 +8,11 @@ on:
         required: true
         type: string
         default: ''
+      developer_portal_version:
+        description: 'Developer Portal version to pin for the optional "with-developer-portal" Compose profile (e.g. 1.0.0). Need not be released yet — the image tag is pinned regardless, and its config template is taken from tag developer-portal/v<version> if that tag exists, otherwise from the working tree.'
+        required: true
+        type: string
+        default: ''
 
 env:
   DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}/api-platform
@@ -97,7 +102,10 @@ jobs:
       - name: Build distribution zip
         run: |
           echo "Bundling platform-api db-scripts from tag platform-api/v${{ inputs.platform_api_version }}"
-          make -C portals/ai-workspace dist PLATFORM_API_VERSION="${{ inputs.platform_api_version }}"
+          echo "Pinning optional developer-portal image to ${{ inputs.developer_portal_version }}"
+          make -C portals/ai-workspace dist \
+            PLATFORM_API_VERSION="${{ inputs.platform_api_version }}" \
+            DEVPORTAL_VERSION="${{ inputs.developer_portal_version }}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

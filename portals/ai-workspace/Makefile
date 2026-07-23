@@ -180,9 +180,11 @@ DIST_VERSION  := $(shell echo "$(VERSION)" | sed 's/-SNAPSHOT//')
 DIST_NAME     := wso2apip-ai-workspace-$(DIST_VERSION)
 DIST_DIR      := target/$(DIST_NAME)
 DIST_ZIP      := target/$(DIST_NAME).zip
-# Fallback applied to the captured value rather than with `|| echo` — see the
-# note on DEVPORTAL_VERSION below. An empty value here would also propagate into
-# PLATFORM_API_TAG, producing the malformed git tag "platform-api/v".
+# The fallback is applied to the captured value rather than with `|| echo`: in a
+# `sed … < file` pipeline the exit status is sed's, and sed succeeds on empty
+# input, so a missing or empty VERSION file would otherwise yield an empty string
+# — which would also propagate into PLATFORM_API_TAG, producing the malformed git
+# tag "platform-api/v".
 PLATFORM_API_VERSION ?= $(shell v=$$(sed 's/-SNAPSHOT//' ../../platform-api/VERSION 2>/dev/null); echo "$${v:-0.0.0}")
 PLATFORM_API_TAG := platform-api/v$(PLATFORM_API_VERSION)
 # Version used to pin the optional developer-portal image (the profile-gated
@@ -190,10 +192,25 @@ PLATFORM_API_TAG := platform-api/v$(PLATFORM_API_VERSION)
 # config.toml — the profile is opt-in and self-served (see README) — so only the
 # image tag is pinned here for a reproducible release.
 #
-# The fallback is applied to the captured value rather than with `|| echo`: in a
-# `cat … | sed …` pipeline the exit status is sed's, and sed succeeds on empty
-# input, so a missing or empty VERSION file would otherwise yield an empty string.
-DEVPORTAL_VERSION ?= $(shell v=$$(sed 's/-SNAPSHOT//' ../developer-portal/VERSION 2>/dev/null); echo "$${v:-0.0.0}")
+# Supplied explicitly when releasing (`make dist DEVPORTAL_VERSION=1.0.0`, driven
+# by the release workflow's developer_portal_version input) so the zip pins a
+# *released* developer-portal image rather than whatever the working tree happens
+# to carry. For local builds it falls back to the sibling VERSION file. There is
+# deliberately no hardcoded version fallback — `dist` fails below if this resolves
+# to empty, so a release can never silently ship a placeholder tag.
+DEVPORTAL_VERSION ?= $(shell sed 's/-SNAPSHOT//' ../developer-portal/VERSION 2>/dev/null | tr -d '[:space:]')
+DEVPORTAL_TAG     := developer-portal/v$(DEVPORTAL_VERSION)
+
+# As with PLATFORM_API_VERSION: an explicitly supplied version means "bundle that
+# release", so the [developer_portal] template appended to config-template.toml is
+# read from the tag rather than the working tree — otherwise the zip would document
+# settings from unreleased branch state against a released image.
+ifeq ($(origin DEVPORTAL_VERSION),command line)
+DEVPORTAL_FROM_TAG := true
+endif
+ifeq ($(origin DEVPORTAL_VERSION),environment)
+DEVPORTAL_FROM_TAG := true
+endif
 
 # When PLATFORM_API_VERSION is supplied explicitly (e.g. `make dist PLATFORM_API_VERSION=0.10.0`),
 # the platform-api db-scripts are fetched from the released git tag $(PLATFORM_API_TAG) so the
@@ -204,6 +221,30 @@ endif
 ifeq ($(origin PLATFORM_API_VERSION),environment)
 PLATFORM_API_FROM_TAG := true
 endif
+
+# Stage an OPTIONAL component's config template:
+# $(call stage_optional_template,<tag>,<repo-relative path>,<working-tree fallback>,<out>).
+#
+# The optional product does not have to be released when this distribution is cut —
+# its version may name a release that is only tagged/published later. So the tag is
+# preferred (its template then matches a published image) but a missing tag is a
+# warning, not an error: fall back to the working-tree template rather than failing
+# the release. CI checks out with actions/checkout's default shallow, tag-less clone,
+# so tags are fetched once before deciding.
+define stage_optional_template
+	@tag="$(1)"; \
+	if ! git -C ../.. rev-parse -q --verify "refs/tags/$$tag" >/dev/null 2>&1; then \
+		git -C ../.. fetch --tags --quiet || true; \
+	fi; \
+	if git -C ../.. cat-file -e "$$tag:$(2)" 2>/dev/null; then \
+		echo "  using config template from tag $$tag"; \
+		git -C ../.. show "$$tag:$(2)" > $(4); \
+	else \
+		echo "  NOTE: tag $$tag not found (not released yet?) — using the working-tree config template."; \
+		echo "        Documented settings may differ from the pinned image if that release diverges."; \
+		cp $(3) $(4); \
+	fi
+endef
 
 # Merge an AI Workspace config and a Platform API config into one unified
 # multi-component config file: $(call merge_config,<aiw-toml>,<cp-toml>,<out>).
@@ -250,9 +291,14 @@ endef
 
 .PHONY: dist clean-dist
 dist: clean-dist ## Build standalone AI Workspace + Platform API distribution zip
+	@if [ -z "$(strip $(DEVPORTAL_VERSION))" ]; then \
+		echo "Error: DEVPORTAL_VERSION is empty — the optional developer-portal image tag cannot be resolved." >&2; \
+		echo "Pass it explicitly (make dist DEVPORTAL_VERSION=1.0.0) or ensure ../developer-portal/VERSION exists." >&2; \
+		exit 1; \
+	fi
 	@echo "Building distribution $(DIST_NAME)..."
+	@echo "  optional developer-portal image pinned to $(DOCKER_REGISTRY)/developer-portal:$(DEVPORTAL_VERSION)"
 	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/scripts $(DIST_DIR)/resources/certificates $(DIST_DIR)/resources/platform-api/db-scripts
-	@cp ../../platform-api/resources/roles.yaml $(DIST_DIR)/resources/roles.yaml
 	# Stage the Platform API source configs (active + template) into temp files so
 	# the merge below can fold them into the unified config.toml/config-template.toml.
 	# Both the tag and working-tree branches produce the same two temp files.
@@ -273,11 +319,23 @@ ifeq ($(PLATFORM_API_FROM_TAG),true)
 		> $(DIST_DIR)/configs/.pa-config-template.toml
 	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/config/config.toml" \
 		> $(DIST_DIR)/configs/.pa-config.toml
+	@git -C ../.. show "$(PLATFORM_API_TAG):platform-api/resources/roles.yaml" \
+		> $(DIST_DIR)/resources/roles.yaml
 else
 	@cp ../../platform-api/internal/database/schema.*.sql $(DIST_DIR)/resources/platform-api/db-scripts/
 	@cp ../../platform-api/config/config-template.toml $(DIST_DIR)/configs/.pa-config-template.toml
 	@cp ../../platform-api/config/config.toml $(DIST_DIR)/configs/.pa-config.toml
+	@cp ../../platform-api/resources/roles.yaml $(DIST_DIR)/resources/roles.yaml
 endif
+	# The merge below assumes each component's config is namespaced under its own
+	# root table. Platform API versions predating the unified config ship
+	# un-namespaced tables ([database] rather than [platform_api.database]), which
+	# would merge into a silently broken file — fail loudly on that instead.
+	@if ! grep -q '^\[platform_api' $(DIST_DIR)/configs/.pa-config.toml; then \
+		echo "Error: the platform-api config for $(PLATFORM_API_VERSION) has no [platform_api] root table." >&2; \
+		echo "That version predates the unified multi-component config and cannot be bundled — pick a newer PLATFORM_API_VERSION." >&2; \
+		exit 1; \
+	fi
 	# Unified active config.toml: two sections ([ai_workspace] + [platform_api]),
 	# the same file mounted into both services (each reads only its own table).
 	# The optional Developer Portal is opt-in (see README), so its section is NOT
@@ -288,8 +346,15 @@ endif
 	# the optional Developer Portal template appended at the bottom, so a user
 	# enabling that profile has its [developer_portal] settings documented to copy.
 	$(call merge_config,configs/config-template.toml,$(DIST_DIR)/configs/.pa-config-template.toml,$(DIST_DIR)/configs/config-template.toml)
-	$(call append_section,DEVELOPER PORTAL (optional),../developer-portal/configs/config-template.toml,$(DIST_DIR)/configs/config-template.toml)
-	@rm -f $(DIST_DIR)/configs/.pa-config.toml $(DIST_DIR)/configs/.pa-config-template.toml
+	# Sourced from the developer-portal release tag when a version was supplied, so
+	# the documented settings match the pinned image.
+ifeq ($(DEVPORTAL_FROM_TAG),true)
+	$(call stage_optional_template,$(DEVPORTAL_TAG),portals/developer-portal/configs/config-template.toml,../developer-portal/configs/config-template.toml,$(DIST_DIR)/configs/.dp-config-template.toml)
+else
+	@cp ../developer-portal/configs/config-template.toml $(DIST_DIR)/configs/.dp-config-template.toml
+endif
+	$(call append_section,DEVELOPER PORTAL (optional),$(DIST_DIR)/configs/.dp-config-template.toml,$(DIST_DIR)/configs/config-template.toml)
+	@rm -f $(DIST_DIR)/configs/.pa-config.toml $(DIST_DIR)/configs/.pa-config-template.toml $(DIST_DIR)/configs/.dp-config-template.toml
 	@printf '%s\n' \
 		'# Generated secrets — never commit these.' \
 		'*.env' \

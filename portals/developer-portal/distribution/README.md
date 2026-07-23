@@ -17,6 +17,8 @@ wso2apip-developer-portal-<version>/
 └── resources/
     ├── developer-portal/
     │   └── db-scripts/                          # Developer Portal PostgreSQL schema (reference copy)
+    ├── platform-api/
+    │   └── db-scripts/                          # Platform API database schemas (reference copy)
     └── samples/
         ├── apis/                                # Sample REST/GraphQL/SOAP APIs
         └── mcps/                                # Sample MCP servers
@@ -157,7 +159,9 @@ docker compose up -d
 
 The Developer Portal uses **SQLite** by default (data persisted in a Docker volume) — tables are created automatically on first start. To switch to PostgreSQL, update `configs/config.toml`'s `[developer_portal.database]` block with `driver = "postgres"` and your connection details.
 
-`resources/developer-portal/db-scripts/` contains a reference copy of the Developer Portal's PostgreSQL schema and query files (also bundled inside the image) — provided for inspection; no manual SQL execution is required.
+The Platform API likewise defaults to SQLite; switch it with `configs/config.toml`'s `[platform_api.database]` block.
+
+`resources/developer-portal/db-scripts/` and `resources/platform-api/db-scripts/` contain reference copies of each component's schema and query files (also bundled inside the images) — provided for inspection; no manual SQL execution is required.
 
 ## License
 
