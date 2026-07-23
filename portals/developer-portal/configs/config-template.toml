@@ -188,3 +188,27 @@ auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimi
 poll_interval_ms = 2000
 batch_size = 50
 signature_tolerance_sec = 300
+
+# =============================================================================
+# API TRY-IT PROXY
+# =============================================================================
+# The "Try It" panel on an API's specification page runs in the browser and
+# calls the API's registered endpoint, which is a different origin from the
+# portal — so the browser blocks the response unless that endpoint returns CORS
+# headers naming this portal. Rather than requiring every gateway and backend to
+# trust the portal origin, the panel is pointed at a same-origin proxy that makes
+# the call server-side.
+#
+# The proxy will only call a URL contained by one of the endpoints registered for
+# that API (production/sandbox) — a caller cannot choose an arbitrary host.
+# Link-local and cloud-metadata addresses (169.254.169.254 and friends) are
+# refused at connection time regardless of the settings below.
+
+[developer_portal.tryout]
+enabled = true
+allow_http_endpoints = true    # false: only https:// endpoints may be called
+allow_private_endpoints = true # false: refuse endpoints resolving to private/loopback ranges
+tls_skip_verify = false        # development only
+timeout_ms = 15000
+max_request_bytes = 1048576    # 1 MiB
+max_response_bytes = 5242880   # 5 MiB

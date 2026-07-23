@@ -94,6 +94,14 @@ app.get('/llms.txt', (req, res) => {
     );
 });
 
+// API try-it proxy (Stoplight Elements `tryItCorsProxy`). Registered ahead of
+// the body parsers on purpose: it relays the request body verbatim, and a JSON
+// or urlencoded parser running first would consume the stream and leave only a
+// re-serialised approximation of what the caller actually sent. It needs no
+// session or passport state, so nothing is lost by placing it this early.
+const tryoutProxyRoute = require('./routes/pages/tryoutProxyRoute');
+app.use(constants.ROUTE.DEFAULT, tryoutProxyRoute);
+
 // Bound JSON/urlencoded body size (config-sourced).
 const bodyLimit = config.uploads?.maxBytes || 10485760;
 app.use(express.json({ limit: bodyLimit }));
