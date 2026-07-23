@@ -309,7 +309,10 @@ func TestLoad_BareTOMLScalars(t *testing.T) {
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
-[ai_workspace.server]
+[ai_workspace.server.http]
+enabled = true
+
+[ai_workspace.server.https]
 enabled = false
 
 [ai_workspace.session]
@@ -320,8 +323,8 @@ absolute_ttl = "2h"
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Server.Enabled {
-		t.Error("Server.Enabled = true, want false from the bare TOML boolean")
+	if cfg.Server.HTTPS.Enabled {
+		t.Error("Server.HTTPS.Enabled = true, want false from the bare TOML boolean")
 	}
 	if cfg.Session.AbsoluteTTL != 2*time.Hour {
 		t.Errorf("Session.AbsoluteTTL = %s, want 2h", cfg.Session.AbsoluteTTL)
@@ -329,7 +332,8 @@ absolute_ttl = "2h"
 }
 
 // A key in a table must not collide with the same key in another table — they are
-// distinct dotted paths, so [server] enabled and [auth.oidc] enabled are independent.
+// distinct dotted paths, so [server.https] enabled and [auth.oidc] enabled are
+// independent.
 func TestLoad_SameKeyInDifferentTables(t *testing.T) {
 	cfgPath := writeConfig(t, `
 [ai_workspace.auth]
@@ -338,7 +342,10 @@ mode = "oidc"
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
-[ai_workspace.server]
+[ai_workspace.server.http]
+enabled = true
+
+[ai_workspace.server.https]
 enabled = false
 
 [ai_workspace.auth.oidc]
@@ -353,8 +360,8 @@ redirect_url  = "https://localhost:5380/api/auth/callback"
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Server.Enabled {
-		t.Error("Server.Enabled = true, want false — [server] enabled must not read [auth.oidc] enabled")
+	if cfg.Server.HTTPS.Enabled {
+		t.Error("Server.HTTPS.Enabled = true, want false — [server.https] enabled must not read [auth.oidc] enabled")
 	}
 	if !cfg.Auth.OIDC.Enabled {
 		t.Error("OIDC.Enabled = false, want true")
@@ -406,7 +413,7 @@ func TestLoad_InvalidBool_Errors(t *testing.T) {
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
-[ai_workspace.server]
+[ai_workspace.server.https]
 enabled = "maybe"
 `)
 

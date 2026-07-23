@@ -19,6 +19,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -50,8 +51,12 @@ func TestShippedConfig_QuickstartLoadsWithNoEnv(t *testing.T) {
 	}
 	// The defaults in the file are the container's: the port it publishes and the SPA
 	// baked into the image.
-	if cfg.Addr() != ":5380" {
-		t.Errorf("Addr = %q, want the container default %q", cfg.Addr(), ":5380")
+	if !cfg.Server.HTTPS.Enabled || cfg.Server.HTTPS.Port != 5380 {
+		t.Errorf("Server.HTTPS = {Enabled: %v, Port: %d}, want the container default {true, 5380}",
+			cfg.Server.HTTPS.Enabled, cfg.Server.HTTPS.Port)
+	}
+	if cfg.Server.HTTP.Enabled {
+		t.Error("Server.HTTP.Enabled = true, want false — the quickstart only publishes HTTPS")
 	}
 	if cfg.Server.StaticDir != "/app" {
 		t.Errorf("StaticDir = %q, want the container default %q", cfg.Server.StaticDir, "/app")
@@ -93,7 +98,7 @@ func TestShippedConfig_MakeBffRunOverrides(t *testing.T) {
 	}
 
 	for _, tc := range []struct{ name, got, want string }{
-		{"Addr", cfg.Addr(), ":8081"},
+		{"Server.HTTPS.Port", strconv.Itoa(cfg.Server.HTTPS.Port), "8081"},
 		{"ControlPlane.URL", cfg.ControlPlane.URL, "https://localhost:9243"},
 		{"LogLevel", cfg.Logging.Level, "debug"},
 	} {

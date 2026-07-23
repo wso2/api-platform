@@ -27,12 +27,18 @@ func defaultConfig() *Config {
 		Server: ServerConfig{
 			StaticDir: "/app",
 			Domain:    "localhost:5380",
-			Enabled:   true,
-			Port:      5380,
-			// Convention matches the container's mount path. A certificate pair is
-			// required there whenever the listener terminates TLS.
-			CertFile: "/etc/ai-workspace/tls/cert.pem",
-			KeyFile:  "/etc/ai-workspace/tls/key.pem",
+			HTTP: HTTPListener{
+				Enabled: false,
+				Port:    5080,
+			},
+			HTTPS: HTTPSListener{
+				Enabled: true,
+				Port:    5380,
+				// Convention matches the container's mount path. A certificate pair is
+				// required there whenever the listener terminates TLS.
+				CertFile: "/etc/ai-workspace/tls/cert.pem",
+				KeyFile:  "/etc/ai-workspace/tls/key.pem",
+			},
 		},
 		Logging: LoggingConfig{
 			Level:  "info",

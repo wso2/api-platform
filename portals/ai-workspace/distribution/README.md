@@ -86,7 +86,7 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 | `[ai_workspace.control_plane].tls_skip_verify` | Skip upstream cert verification — local dev only |
 | `[ai_workspace.gateway].controlplane_host` | Address gateways use to reach the Platform API |
 | `[ai_workspace.gateway].platform_gateway_versions` | Gateway versions shown in the create-gateway selector |
-| `[ai_workspace.server].cert_file` / `key_file` | Listener certificate pair. Fixed to the mounted path, same as `ca_file` above |
+| `[ai_workspace.server.https].cert_file` / `key_file` | HTTPS listener certificate pair. Fixed to the mounted path, same as `ca_file` above |
 | `[ai_workspace.auth.oidc].*` | Used only when `[ai_workspace.auth] mode = "oidc"` — see [OIDC](#oidc-production) below |
 
 ### Platform API (`[platform_api.*]`)

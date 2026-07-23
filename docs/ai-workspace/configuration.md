@@ -2,7 +2,7 @@
 
 AI Workspace is configured through a `config.toml` file mounted into the container at `/etc/ai-workspace/config.toml`.
 
-All AI Workspace settings live under a single top-level `[ai_workspace]` table — the same namespacing convention the Platform API uses for its own `[platform_api]` table — so one `config.toml` can hold both services' sections side by side without their keys colliding. Keys are grouped into TOML tables (`[ai_workspace.logging]`, `[ai_workspace.control_plane]`, `[ai_workspace.server.https]`, `[ai_workspace.session]`, `[ai_workspace.auth]`, `[ai_workspace.auth.oidc]`); deployment-identity keys such as `domain` sit directly under `[ai_workspace]`. The session cookie's name, `Secure`, and `SameSite` attributes are not configurable — they are internal details of the BFF's session mechanism.
+All AI Workspace settings live under a single top-level `[ai_workspace]` table — the same namespacing convention the Platform API uses for its own `[platform_api]` table — so one `config.toml` can hold both services' sections side by side without their keys colliding. Keys are grouped into TOML tables (`[ai_workspace.logging]`, `[ai_workspace.control_plane]`, `[ai_workspace.server.http]`, `[ai_workspace.server.https]`, `[ai_workspace.session]`, `[ai_workspace.auth]`, `[ai_workspace.auth.oidc]`); deployment-identity keys such as `domain` sit directly under `[ai_workspace.server]`. The session cookie's name, `Secure`, and `SameSite` attributes are not configurable — they are internal details of the BFF's session mechanism.
 
 The file is the **only** source of configuration. Each value in it is written as an interpolation token that is resolved once at startup, so where the value comes from is visible in place:
 
@@ -114,13 +114,13 @@ A sibling of `[ai_workspace.auth.oidc]`, not nested inside it: this table applie
 URLs in your IDP application. The sign-in redirect is the **BFF callback** `/api/auth/callback`
 (the BFF, not the browser, completes the code exchange) — not a `/signin` route.
 
-The remaining tables (`[ai_workspace.server.https]`, `[ai_workspace.session]`) and the `[ai_workspace]` listener keys are documented inline in
+The remaining tables (`[ai_workspace.server.http]`, `[ai_workspace.server.https]`, `[ai_workspace.session]`) and the `[ai_workspace.server]` listener keys are documented inline in
 [`configs/config-template.toml`](../../portals/ai-workspace/configs/config-template.toml).
 
 ## Minimal Quick-Start Config (basic auth)
 
 ```toml
-[ai_workspace]
+[ai_workspace.server]
 domain = "localhost:8080"
 
 [ai_workspace.control_plane]
@@ -137,8 +137,10 @@ mode = "basic"
 
 ```toml
 [ai_workspace]
-domain             = "app.example.com"
 default_org_region = "us"
+
+[ai_workspace.server]
+domain = "app.example.com"
 
 [ai_workspace.control_plane]
 url = "https://api.example.com"
