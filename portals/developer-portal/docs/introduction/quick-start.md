@@ -79,19 +79,19 @@ apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: RestApi
 
 metadata:
-  name: ping-api-v1.0
+  name: reading-list-api-v1.0
 
 spec:
   type: REST
-  displayName: Ping API
+  displayName: Reading-List-API
   version: v1.0
-  description: Sample HTTP echo/probe API. Requires API key authentication. No subscription plans.
+  description: Sample reading-list API for tracking books and their reading status. Open access — no API key or subscription required.
   status: PUBLISHED
-  referenceID: ping-api-v1.0
+  referenceID: reading-list-api-v1.0
 
   tags:
-    - ping
-    - api-key
+    - reading-list
+    - books
 
   labels:
     - default
@@ -108,86 +108,131 @@ spec:
     technicalOwnerEmail: architecture@example.com
 
   endpoints:
-    sandboxUrl: http://localhost:8080/ping
-    productionUrl: http://localhost:8080/ping
+    sandboxUrl: http://localhost:8080/reading-list/v1.0
+    productionUrl: http://localhost:8080/reading-list/v1.0
 ```
 
 ```yaml
 # openapi.yaml
 openapi: 3.0.1
 info:
-  title: Ping API
-  version: 1.0.0
+  title: Reading-List-API
+  version: v1.0
   description: |
-    HTTP echo/probe API secured with an API key (`X-API-Key` header).
-    Use this API to inspect requests, test connectivity, and probe status codes.
-    No subscription plans are required — just an API key.
+    Track a personal reading list — add books, update their reading status,
+    and remove them when you are done.
+    Open access: no API key or subscription token is required.
 servers:
-  - url: /ping
-security:
-  - ApiKeyHeader: []
+  - url: /reading-list/v1.0
 components:
-  securitySchemes:
-    ApiKeyHeader:
-      type: apiKey
-      in: header
-      name: X-API-Key
   schemas:
-    PingResponse:
+    Book:
       type: object
-      description: Response returned by the ping/echo service
-      additionalProperties: true
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+          example: The Great Gatsby
+        author:
+          type: string
+          example: F. Scott Fitzgerald
+        status:
+          type: string
+          enum: [to_read, reading, read]
+      required: [title, author, status]
+    BookList:
+      type: object
+      properties:
+        books:
+          type: array
+          items:
+            $ref: '#/components/schemas/Book'
+      required: [books]
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
 
 paths:
-  /get:
+  /books:
     get:
-      summary: Echo a GET request
-      description: Returns the query parameters and headers sent with the request.
+      summary: List books
+      description: Returns every book on the reading list.
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PingResponse'
-
-  /post:
+                $ref: '#/components/schemas/BookList'
     post:
-      summary: Echo a POST request
-      description: Echoes the posted JSON body back in the response.
+      summary: Add a book
+      description: Adds a book to the reading list and returns it with its assigned id.
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
+              $ref: '#/components/schemas/Book'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+
+  /books/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get a book
+      description: Returns a single book by id.
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PingResponse'
-
-  /status/{code}:
-    get:
-      summary: Return a specific HTTP status code
-      description: Returns the given HTTP status code — useful for testing error handling.
-      parameters:
-        - name: code
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int32
-      responses:
-        '200':
-          description: Proxy response (actual status depends on the `code` path parameter)
+                $ref: '#/components/schemas/Book'
+        '404':
+          description: Not Found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PingResponse'
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Update a book
+      description: Replaces a book's details — commonly used to move it between reading statuses.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Book'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+    delete:
+      summary: Remove a book
+      description: Removes a book from the reading list.
+      responses:
+        '204':
+          description: No Content
 
 ```
 
@@ -206,7 +251,7 @@ curl -sk -X POST "https://localhost:9543/api/v0.9/apis" \
   -F "definition=@openapi.yaml;type=application/yaml"
 ```
 
-Refresh the portal — the Ping API now appears in the catalog. Click it to view the documentation and try-out console.
+Refresh the portal — the Reading-List-API now appears in the catalog. Click it to view the documentation and try-out console.
 
 ## What was just created?
 
@@ -216,7 +261,7 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 | Default view | `default` |
 | Portal URL | `https://localhost:9543/default/views/default` |
 | Admin credentials | Set when you ran `./scripts/setup.sh` (stored bcrypt-hashed in `api-platform.env`) |
-| Sample API | `Ping API` visible in the catalog |
+| Sample API | `Reading-List-API` visible in the catalog |
 
 ## Next steps
 

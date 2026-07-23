@@ -219,7 +219,10 @@ function loadOne(apiHandle, samplesDir = './samples/apis/') {
 function getDefinition(apiHandle, samplesDir = './samples/apis/') {
     const apiDir = getApiDir(apiHandle, samplesDir);
     if (!apiDir) return null;
-    for (const name of ['definition.graphql', 'definition.yml']) {
+    // Both YAML extensions are accepted: samples have been authored with each,
+    // and a sample whose definition file simply isn't found renders as an API
+    // with no specification rather than as an error, so the mismatch is silent.
+    for (const name of ['definition.graphql', 'definition.yml', 'definition.yaml']) {
         const candidate = path.join(apiDir, name);
         if (fs.existsSync(candidate)) return fs.readFileSync(candidate, 'utf-8');
     }

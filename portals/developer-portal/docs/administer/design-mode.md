@@ -170,7 +170,7 @@ APIs and MCP servers live in separate directories. The directory name becomes th
 ```
 samples/
 ├── apis/                          # REST, GraphQL, SOAP, WS APIs  →  /views/default/apis
-│   ├── ping-api-v1.0/
+│   ├── reading-list-api-v1.0/
 │   │   ├── api.yaml
 │   │   ├── definition.yml
 │   │   └── docs/
