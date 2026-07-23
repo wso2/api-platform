@@ -16,6 +16,7 @@
  * under the License.
  */
 const fs = require('fs').promises;
+const path = require('path');
 const { jwtVerify, decodeJwt, importSPKI } = require('jose');
 const constants = require('./constants');
 
@@ -35,6 +36,9 @@ const publicKeyCache = new Map();
 async function importPublicKeyFromPath(publicKeyPath) {
     const cached = publicKeyCache.get(publicKeyPath);
     if (cached) return cached;
+    if (typeof publicKeyPath !== 'string' || publicKeyPath.includes('\0') || path.normalize(publicKeyPath).includes('..')) {
+        throw new Error('invalid public key path');
+    }
     const pem = await fs.readFile(publicKeyPath, 'utf8');
     const key = await importSPKI(pem, constants.JWT_ASYMMETRIC_ALGORITHMS[0]);
     publicKeyCache.set(publicKeyPath, key);

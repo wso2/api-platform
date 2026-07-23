@@ -52,6 +52,9 @@ function buildDbSsl() {
     // verify-full
     const ssl = { require: true, rejectUnauthorized: true };
     if (db.sslRootCert) {
+        if (db.sslRootCert.includes('\0') || path.normalize(db.sslRootCert).includes('..')) {
+            throw new Error('Invalid database ssl_root_cert path');
+        }
         ssl.ca = fs.readFileSync(path.resolve(process.cwd(), db.sslRootCert)).toString();
     }
     return ssl;
