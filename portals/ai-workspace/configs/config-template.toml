@@ -99,7 +99,7 @@ domain = "localhost:5380"
 # interfaces (there is no host to configure), and the container publishes whichever
 # port(s) are enabled.
 #
-# Defaults: the HTTPS listener is on at 5380; the plain-HTTP listener is off. Enable
+# Defaults: the HTTPS listener is on at 9643; the plain-HTTP listener is off. Enable
 # the plain-HTTP listener only when a trusted upstream (ingress, service-mesh sidecar)
 # terminates TLS, or for internal traffic — never expose it directly to untrusted
 # networks.
@@ -109,11 +109,11 @@ domain = "localhost:5380"
 # fallback. setup.sh generates a pair for the quickstart.
 [ai_workspace.server.http]
 enabled = false
-port    = 5080
+port    = 9680
 
 [ai_workspace.server.https]
 enabled   = true
-port      = 5380
+port      = 9643
 cert_file = "/etc/ai-workspace/tls/cert.pem"
 key_file  = "/etc/ai-workspace/tls/key.pem"
 

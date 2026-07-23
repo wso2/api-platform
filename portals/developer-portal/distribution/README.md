@@ -75,7 +75,7 @@ Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD
 |------|---------|-------------|
 | `3000` | Developer Portal | HTTPS — browser entry point |
 | `9243` | Platform API | HTTPS — local-auth backend |
-| `5380` | AI Workspace | HTTPS — only when the `with-ai-workspace` profile is enabled (see below) |
+| `9643` | AI Workspace | HTTPS — only when the `with-ai-workspace` profile is enabled (see below) |
 
 ## AI Workspace (optional)
 
@@ -91,7 +91,7 @@ Then start the stack with the profile enabled:
 docker compose --profile with-ai-workspace up -d
 ```
 
-AI Workspace comes up at `https://localhost:5380`, backed by the same Platform API. Omit `--profile with-ai-workspace` on any later `docker compose` command to leave it stopped.
+AI Workspace comes up at `https://localhost:9643`, backed by the same Platform API. Omit `--profile with-ai-workspace` on any later `docker compose` command to leave it stopped.
 
 ## Configuration
 

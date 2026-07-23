@@ -53,10 +53,10 @@ Verify both services are healthy:
 
 ```bash
 curl -fk https://localhost:9243/health    # Platform API
-curl -fk https://localhost:5380/healthz   # AI Workspace
+curl -fk https://localhost:9643/healthz   # AI Workspace
 ```
 
-Open the AI Workspace in a browser at `https://localhost:5380` and log in with the admin credentials printed by `setup.sh`.
+Open the AI Workspace in a browser at `https://localhost:9643` and log in with the admin credentials printed by `setup.sh`.
 
 > **Browser trust warning?** Both services use a self-signed TLS certificate by default. Click **Advanced → Proceed** to continue. See [Custom TLS Certificates](#custom-tls-certificates) to remove the warning permanently.
 
@@ -64,7 +64,7 @@ Open the AI Workspace in a browser at `https://localhost:5380` and log in with t
 
 | Port | Service | Description |
 |------|---------|-------------|
-| `5380` | AI Workspace (BFF) | HTTPS — browser entry point |
+| `9643` | AI Workspace (BFF) | HTTPS — browser entry point |
 | `9243` | Platform API | HTTPS — backend REST API |
 | `3000` | Developer Portal | HTTPS — only when the `with-developer-portal` profile is enabled (see below) |
 
@@ -146,7 +146,7 @@ Replace the `password_hash` value under `[platform_api.auth.file.users]` in `con
 
 To delegate login to an external OIDC-compliant provider (Asgardeo, Keycloak, Auth0, etc.) instead of file-based auth, both services need to be reconfigured — the AI Workspace to send users to the IDP, and the Platform API to trust the tokens it issues.
 
-1. Register a **confidential** OIDC application in your IDP with redirect URL `https://<your-domain>/api/auth/callback` (use `https://localhost:5380/api/auth/callback` for local development), a post-logout redirect URL, and enable the **Authorization Code** and **Refresh Token** grants.
+1. Register a **confidential** OIDC application in your IDP with redirect URL `https://<your-domain>/api/auth/callback` (use `https://localhost:9643/api/auth/callback` for local development), a post-logout redirect URL, and enable the **Authorization Code** and **Refresh Token** grants.
 2. **AI Workspace** (`configs/config.toml`): set `[ai_workspace.auth] mode = "oidc"`. Every `[ai_workspace.auth.oidc]` key except `scope` defaults to empty and the server refuses to start in OIDC mode until each is set — either directly in the TOML or via its `APIP_AIW_AUTH_OIDC_*` token in `api-platform.env`:
 
    ```bash

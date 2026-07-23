@@ -131,7 +131,7 @@ The stack exposes:
 
 | Service | Port | Protocol |
 |---|---|---|
-| AI Workspace (Go BFF) | `5380` | HTTPS |
+| AI Workspace (Go BFF) | `9643` | HTTPS |
 | Platform API | `9243` | HTTPS |
 
 
@@ -210,7 +210,7 @@ For Asgardeo, on the application's **Protocol** tab:
 | Setting | Value |
 |---|---|
 | Allowed grant types | ☑ **Code** and ☑ **Refresh Token** |
-| Authorized redirect URL | `https://localhost:5380/api/auth/callback` |
+| Authorized redirect URL | `https://localhost:9643/api/auth/callback` |
 | Client authentication | a confidential method (default `client_secret_basic` works; the BFF also sends the secret in the body) |
 | PKCE | enabled (the BFF always sends `S256`) |
 | Access Token Type | `JWT` |
@@ -224,8 +224,8 @@ token, and the user is logged out the moment the access token expires. If your I
 Copy the **Client ID** and **Client Secret** — you'll need both below.
 
 > The redirect URL is the **BFF callback** (`/api/auth/callback`), not the SPA `/signin`
-> route. It is the same `https://localhost:5380` origin for both run modes below, because the
-> Vite dev server and the compose stack both serve the app on port `5380`.
+> route. It is the same `https://localhost:9643` origin for both run modes below, because the
+> Vite dev server and the compose stack both serve the app on port `9643`.
 
 ### 2. Register the `ap:*` scopes and grant them to your user
 
@@ -263,8 +263,8 @@ mode = "oidc"
 [ai_workspace.auth.oidc]
 authority                = "https://idp.example.com/oauth2/token"   # Asgardeo: https://api.asgardeo.io/t/acme/oauth2/token
 client_id                = "<your-client-id>"
-redirect_url             = "https://localhost:5380/api/auth/callback"
-post_logout_redirect_url = "https://localhost:5380/login"
+redirect_url             = "https://localhost:9643/api/auth/callback"
+post_logout_redirect_url = "https://localhost:9643/login"
 
 # The secret's *value* stays out of the file — this token pulls it in from the
 # environment at startup. Without the key here, the variable is never read.
@@ -347,8 +347,8 @@ export APIP_AIW_AUTH_MODE=oidc
 export APIP_AIW_AUTH_OIDC_AUTHORITY=https://api.asgardeo.io/t/<your-tenant>/oauth2/token
 export APIP_AIW_AUTH_OIDC_CLIENT_ID=<your-client-id>
 export APIP_AIW_AUTH_OIDC_CLIENT_SECRET=<your-client-secret>
-export APIP_AIW_AUTH_OIDC_REDIRECT_URL=https://localhost:5380/api/auth/callback
-export APIP_AIW_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL=https://localhost:5380/login
+export APIP_AIW_AUTH_OIDC_REDIRECT_URL=https://localhost:9643/api/auth/callback
+export APIP_AIW_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL=https://localhost:9643/login
 # Keep `offline_access` — without it the IDP issues no refresh token and the BFF cannot silently renew the session.
 export APIP_AIW_AUTH_OIDC_SCOPE="openid profile email offline_access ap:organization:manage ap:gateway:manage ap:rest_api:manage ..."
 make bff-run
@@ -424,7 +424,7 @@ Use the following commands after the stack is up:
   ```bash
   npm run test:e2e
   ```
-- Interactive Cypress UI against `https://localhost:5380`:
+- Interactive Cypress UI against `https://localhost:9643`:
   ```bash
   npm run test:e2e:open
   ```
@@ -433,7 +433,7 @@ Use the following commands after the stack is up:
   make e2e-open
   ```
 
-`npm run test:e2e` runs against `https://host.docker.internal:5380`, which maps back to your local quickstart stack from inside the Cypress container. The command adds an explicit `host-gateway` mapping so it also works on Linux Docker hosts. `npm run test:e2e:open` runs locally against `https://localhost:5380`.
+`npm run test:e2e` runs against `https://host.docker.internal:9643`, which maps back to your local quickstart stack from inside the Cypress container. The command adds an explicit `host-gateway` mapping so it also works on Linux Docker hosts. `npm run test:e2e:open` runs locally against `https://localhost:9643`.
 
 The tests default to `admin` / `admin`; pin the quickstart credentials to match
 (`ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./setup.sh --force`) or export
