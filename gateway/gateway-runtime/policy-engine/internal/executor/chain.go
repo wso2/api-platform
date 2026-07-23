@@ -20,7 +20,6 @@ package executor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -141,13 +140,9 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 			}
 		}
 
-		params, err := deepCopyParams(spec.Parameters.Raw)
-		if err != nil {
-			span.End()
-			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
-		}
-
-		action := headerPol.OnRequestHeaders(ctx, reqCtx, params)
+		// spec.Parameters.Raw is an immutable snapshot published at chain-build time and
+		// shared read-only across concurrent requests; policies must not mutate it.
+		action := headerPol.OnRequestHeaders(ctx, reqCtx, spec.Parameters.Raw)
 		executionTime := time.Since(policyStartTime)
 
 		// Apply header mutations to reqCtx so subsequent policies and CEL conditions see the mutated state
@@ -308,16 +303,10 @@ func (c *ChainExecutor) ExecuteRequestPolicies(ctx context.Context, policyList [
 			}
 		}
 
-		// Deep-copy params to prevent a policy from mutating the shared spec map
-		// across concurrent requests (nested maps/slices require a full deep copy).
-		params, err := deepCopyParams(spec.Parameters.Raw)
-		if err != nil {
-			span.End()
-			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
-		}
-
+		// spec.Parameters.Raw is an immutable snapshot published at chain-build time and
+		// shared read-only across concurrent requests; policies must not mutate it.
 		slog.Debug("[body] calling OnRequestBody", "policy", spec.Name, "version", spec.Version, "route", route)
-		action := rp.OnRequestBody(ctx, reqCtx, params)
+		action := rp.OnRequestBody(ctx, reqCtx, spec.Parameters.Raw)
 		executionTime := time.Since(policyStartTime)
 
 		// Record policy execution metrics
@@ -467,13 +456,9 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 			}
 		}
 
-		params, err := deepCopyParams(spec.Parameters.Raw)
-		if err != nil {
-			span.End()
-			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
-		}
-
-		action := headerPol.OnResponseHeaders(ctx, respCtx, params)
+		// spec.Parameters.Raw is an immutable snapshot published at chain-build time and
+		// shared read-only across concurrent requests; policies must not mutate it.
+		action := headerPol.OnResponseHeaders(ctx, respCtx, spec.Parameters.Raw)
 		executionTime := time.Since(policyStartTime)
 
 		// Apply header mutations to respCtx so subsequent policies and CEL conditions see the mutated state
@@ -629,16 +614,10 @@ func (c *ChainExecutor) ExecuteResponsePolicies(ctx context.Context, policyList 
 			}
 		}
 
-		// Deep-copy params to prevent a policy from mutating the shared spec map
-		// across concurrent requests (nested maps/slices require a full deep copy).
-		params, err := deepCopyParams(spec.Parameters.Raw)
-		if err != nil {
-			span.End()
-			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
-		}
-
+		// spec.Parameters.Raw is an immutable snapshot published at chain-build time and
+		// shared read-only across concurrent requests; policies must not mutate it.
 		slog.Debug("[body] calling OnResponseBody", "policy", spec.Name, "version", spec.Version, "route", route)
-		action := rp.OnResponseBody(ctx, respCtx, params)
+		action := rp.OnResponseBody(ctx, respCtx, spec.Parameters.Raw)
 		executionTime := time.Since(policyStartTime)
 
 		// Record policy execution metrics
@@ -788,14 +767,10 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 			}
 		}
 
-		params, err := deepCopyParams(spec.Parameters.Raw)
-		if err != nil {
-			span.End()
-			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
-		}
-
+		// spec.Parameters.Raw is an immutable snapshot published at chain-build time and
+		// shared read-only across concurrent requests; policies must not mutate it.
 		slog.Debug("[streaming] calling OnRequestBodyChunk", "policy", spec.Name, "version", spec.Version, "route", route, "end_of_stream", currentChunk.EndOfStream)
-		action := streamingPol.OnRequestBodyChunk(ctx, reqCtx, currentChunk, params)
+		action := streamingPol.OnRequestBodyChunk(ctx, reqCtx, currentChunk, spec.Parameters.Raw)
 		executionTime := time.Since(policyStartTime)
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, "executed").Inc()
@@ -936,14 +911,10 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 			}
 		}
 
-		params, err := deepCopyParams(spec.Parameters.Raw)
-		if err != nil {
-			span.End()
-			return nil, fmt.Errorf("failed to clone parameters for policy %s:%s: %w", spec.Name, spec.Version, err)
-		}
-
+		// spec.Parameters.Raw is an immutable snapshot published at chain-build time and
+		// shared read-only across concurrent requests; policies must not mutate it.
 		slog.Debug("[streaming] calling OnResponseBodyChunk", "policy", spec.Name, "version", spec.Version, "route", route, "end_of_stream", currentChunk.EndOfStream)
-		action := streamingPol.OnResponseBodyChunk(ctx, respCtx, currentChunk, params)
+		action := streamingPol.OnResponseBodyChunk(ctx, respCtx, currentChunk, spec.Parameters.Raw)
 		executionTime := time.Since(policyStartTime)
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, "executed").Inc()
@@ -1064,22 +1035,6 @@ func applyResponseModifications(ctx *policy.ResponseContext, mods *policy.Downst
 	if mods.StatusCode != nil {
 		ctx.ResponseStatus = *mods.StatusCode
 	}
-}
-
-// deepCopyParams returns a deep copy of a map[string]interface{} via a JSON round-trip.
-func deepCopyParams(src map[string]interface{}) (map[string]interface{}, error) {
-	if len(src) == 0 {
-		return make(map[string]interface{}), nil
-	}
-	b, err := json.Marshal(src)
-	if err != nil {
-		return nil, err
-	}
-	var dst map[string]interface{}
-	if err := json.Unmarshal(b, &dst); err != nil {
-		return nil, err
-	}
-	return dst, nil
 }
 
 // ─── ChainExecutor ────────────────────────────────────────────────────────────
