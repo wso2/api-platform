@@ -142,6 +142,7 @@ func getFeaturePaths() []string {
 		"features/llm-provider-wide-ratelimit.feature",
 		"features/log-message.feature",
 		"features/route-path-matching.feature",
+		"features/path-normalization.feature",
 		"features/header-routing.feature",
 		"features/secrets.feature",
 		"features/template-functions.feature",
