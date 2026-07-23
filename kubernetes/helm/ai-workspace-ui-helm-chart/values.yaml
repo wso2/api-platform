@@ -43,7 +43,7 @@ global:
 enabled: false
 image:
   repository: ghcr.io/wso2/api-platform/ai-workspace
-  tag: "1.1.0-SNAPSHOT"
+  tag: "1.0.0-alpha2"
   pullPolicy: IfNotPresent
 # Pull secrets for THIS component only (merged with global.imagePullSecrets).
 imagePullSecrets: []
