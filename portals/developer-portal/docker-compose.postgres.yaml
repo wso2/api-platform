@@ -47,6 +47,12 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+    # Without this, postgres joins compose's own implicit "default" network
+    # while devportal/platform-api (which explicitly declare networks: in
+    # docker-compose.yaml) only join devportal-network — two disjoint
+    # networks, so devportal can't resolve "postgres" by hostname at all.
+    networks:
+      - devportal-network
 
   devportal:
     depends_on:

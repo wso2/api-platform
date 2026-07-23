@@ -18,8 +18,6 @@
 'use strict';
 
 const crypto = require('crypto');
-const fs = require('fs');
-const path = require('path');
 const db = require('../db/driver');
 const { groupBy } = require('../db/rows');
 const constants = require('../utils/constants');
@@ -39,10 +37,81 @@ const VIEW_LABEL_MAPPINGS_TABLE = 'dp_view_label_mappings';
 const PUBLISHED_STATUSES = [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED];
 const STATUS_PLACEHOLDERS = PUBLISHED_STATUSES.map(() => '?').join(', ');
 
-const SEARCH_APIS_POSTGRES_SQL = fs.readFileSync(
-    path.join(__dirname, '../../database/queries/search-apis.postgres.sql'),
-    'utf8'
-);
+/**
+ * Full-text search query for dp_api_metadata (PostgreSQL only). Used by search()
+ * below via db.bindNamedParams(). Named parameters:
+ *   :searchTerm   — the user-supplied search string
+ *   :orgId        — the organisation UUID to scope results to
+ *   :viewId       — nullable; the view UUID to scope results to (API must have a label mapped
+ *                   to this view). `view` is an optional query param — when omitted, results
+ *                   are unscoped by view rather than matching nothing.
+ *   :includeType  — nullable; when set, only rows with metadata.type = :includeType match
+ *   :excludeType  — nullable; when set, rows with metadata.type = :excludeType are excluded
+ *                   (keeps /apis and /mcp-servers list results type-scoped at the SQL level
+ *                   rather than relying on callers to filter in application code)
+ *
+ * Other dialects use the LIKE-based fallback in searchFallback() below.
+ *
+ * Associations (contents/labels/tags/subscription plans + limits) are deliberately
+ * NOT aggregated here — none of them feed the WHERE clause, and JSONB_AGG'ing
+ * dp_api_subscription_plan_mappings would only yield mapping-table columns
+ * (api_uuid, plan_uuid), not the actual plan data (handle, display_name, limits)
+ * that APIDTO/APISubscriptionPlan need. search() below runs these rows through
+ * the same attachAssociations() every other list method uses instead, per the
+ * project's app-side-stitching convention (no JSON aggregation).
+ */
+const SEARCH_APIS_POSTGRES_SQL = `
+    SELECT
+        metadata.*,
+        ts_rank(
+            to_tsvector('english', metadata.metadata_search::text),
+            plainto_tsquery('english', COALESCE(:searchTerm, ''))
+        ) AS rank_metadata,
+        STRING_AGG(
+            DISTINCT CASE
+                WHEN content.file_content IS NOT NULL
+                AND to_tsvector('english', convert_from(content.file_content, 'UTF8')) @@ plainto_tsquery('english', :searchTerm)
+                THEN content.type
+                ELSE 'METADATA'
+            END, ', '
+        ) AS "DATA_SOURCE"
+    FROM
+        dp_api_metadata metadata
+    LEFT JOIN
+        dp_api_contents content
+        ON metadata.uuid = content.api_uuid
+        AND (
+            content.file_name LIKE '%.hbs'
+            OR content.file_name LIKE '%.md%'
+            OR content.file_name LIKE '%.json%'
+            OR content.file_name LIKE '%.xml%'
+            OR content.file_name LIKE '%.graphql%'
+        )
+    WHERE
+        (
+            to_tsvector('english', metadata.metadata_search::text) @@ plainto_tsquery('english', COALESCE(:searchTerm, ''))
+            OR (
+                content.file_content IS NOT NULL AND
+                to_tsvector('english', convert_from(content.file_content, 'UTF8')) @@ plainto_tsquery('english', :searchTerm)
+            )
+        )
+        AND metadata.org_uuid = :orgId
+        AND (:includeType::text IS NULL OR metadata.type = :includeType)
+        AND (:excludeType::text IS NULL OR metadata.type != :excludeType)
+        AND (
+            :viewId::uuid IS NULL
+            OR EXISTS (
+                SELECT 1
+                FROM dp_api_label_mappings alm
+                JOIN dp_view_label_mappings vlm ON alm.label_uuid = vlm.label_uuid
+                WHERE alm.api_uuid = metadata.uuid AND vlm.view_uuid = :viewId
+            )
+        )
+    GROUP BY
+        metadata.uuid
+    ORDER BY
+        rank_metadata DESC;
+`;
 
 /**
  * App-side "eager load" mirroring the previous Sequelize `include:` shape on
