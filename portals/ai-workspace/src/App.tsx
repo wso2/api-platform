@@ -67,10 +67,11 @@ import ServiceProviderDeploy from './pages/appShell/appShellPages/serviceProvide
 import EditServiceProvider from './pages/appShell/appShellPages/serviceProvider/EditServiceProvider';
 
 import GatewaysLayout from './pages/appShell/appShellPages/gateways/GatewaysLayout.tsx';
+import CustomPoliciesList from './pages/appShell/appShellPages/gateways/CustomPoliciesList';
 import OrgRegisterPage from './pages/register/OrgRegisterPage';
 import Insights from './pages/appShell/appShellPages/insights/Main';
 import QuickStart from './pages/appShell/appShellPages/quickStart/Main';
-import Settings from './pages/appShell/appShellPages/settings/Main';
+import Settings, { SettingsIndexRedirect } from './pages/appShell/appShellPages/settings/Main';
 import ProviderTemplatesList from './pages/appShell/appShellPages/providerTemplate/ProviderTemplatesList';
 import ExternalServersList from './pages/appShell/appShellPages/externalServers/ExternalServersList';
 import ExternalServersNew from './pages/appShell/appShellPages/externalServers/ExternalServersNew';
@@ -540,10 +541,7 @@ export default function App() {
             />
             <Route path="settings" element={<ServiceProviderLayout />}>
               <Route element={<Settings />}>
-                <Route
-                  index
-                  element={<Navigate to="llm-provider-templates" replace />}
-                />
+                <Route index element={<SettingsIndexRedirect />} />
                 <Route
                   path="llm-provider-templates"
                   element={
@@ -581,6 +579,14 @@ export default function App() {
                   element={
                     <WithPageBoundary>
                       <CreateProviderTemplateVersion />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="custom-policies"
+                  element={
+                    <WithPageBoundary>
+                      <CustomPoliciesList />
                     </WithPageBoundary>
                   }
                 />

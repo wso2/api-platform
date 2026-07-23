@@ -22,17 +22,33 @@ import { GuardrailsResponse } from '../utils/types';
 
 /**
  * Fetch guardrail policies from Policy Hub API
- * 
+ *
  * @param categories - Comma-separated list of categories (default: 'Guardrails,AI')
+ * @param limit - Max number of policies to return per page (default: 40)
+ * @param offset - Number of policies to skip, for pagination (default: 0)
  * @returns Promise with the policies response
  */
 export const getGuardrails = async (
-  categories: string
+  categories: string,
+  limit = 60,
+  offset = 0
 ): Promise<GuardrailsResponse> => {
   return get<GuardrailsResponse>(
     '/policies',
-    { categories, limit: 40 },
+    { categories, limit, offset },
     API_BASE_URLS.policyHubApi
+  );
+};
+
+/** Fetch all policies for the gateway policy catalogue. */
+export const getPolicies = async (
+  offset = 0,
+  limit = 100,
+): Promise<GuardrailsResponse> => {
+  return get<GuardrailsResponse>(
+    '/policies',
+    { offset, limit },
+    API_BASE_URLS.policyHubApi,
   );
 };
 
@@ -56,6 +72,7 @@ export const getPolicyDefinition = async (
 // Export all policy hub API functions
 const policyHubApis = {
   getGuardrails,
+  getPolicies,
   getPolicyDefinition,
 };
 
