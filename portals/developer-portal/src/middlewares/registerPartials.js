@@ -43,7 +43,7 @@ const registerPartials = async (req, res, next) => {
   }
   registerInternalPartials(req);
   if (config.designMode?.enabled) {
-    const baseUrl = config.server.baseUrl + constants.ROUTE.VIEWS_PATH + req.params.viewName;
+    const baseUrl = constants.ROUTE.VIEWS_PATH + req.params.viewName;
     // Always load the full set of defaults first so no partial is missing
     await registerAllPartialsFromFile(baseUrl, req, './src/defaultContent');
     // Then override with the designer's custom files (skip if pathToLayout is already src/defaultContent)
@@ -76,7 +76,7 @@ const registerPartials = async (req, res, next) => {
           req.params.viewName = 'default';
         }
         const viewSegment = req.params.viewName || 'default';
-        const baseUrl = config.server.baseUrl + "/" + req.params.orgName + constants.ROUTE.VIEWS_PATH + viewSegment;
+        const baseUrl = "/" + req.params.orgName + constants.ROUTE.VIEWS_PATH + viewSegment;
         await registerAllPartialsFromFile(baseUrl, req, './src/defaultContent');
 
         if (isNonConfigure) {

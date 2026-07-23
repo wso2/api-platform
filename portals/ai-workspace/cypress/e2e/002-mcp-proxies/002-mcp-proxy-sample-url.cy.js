@@ -30,7 +30,7 @@ describe('AI Workspace - MCP proxy sample URL lifecycle', () => {
     // even when the UI flow fails before its inline cleanup runs.
     cy.request({
       method: 'POST',
-      url: '/api/proxy/api/portal/v0.9/auth/login',
+      url: '/proxy/api/portal/v0.9/auth/login',
       form: true,
       body: {
         username: Cypress.env('ADMIN_USER'),
@@ -191,7 +191,7 @@ function toSlug(value) {
 function sweepE2EMCPProxies(authToken) {
   const headers = { Authorization: `Bearer ${authToken}` };
   cy.request({
-    url: '/api/proxy/api/v0.9/projects',
+    url: '/proxy/api/v0.9/projects',
     headers,
     failOnStatusCode: false,
   }).then((response) => {
@@ -200,7 +200,7 @@ function sweepE2EMCPProxies(authToken) {
     projects.forEach((project) => {
       if (!project.id) return;
       cy.request({
-        url: `/api/proxy/api/v0.9/mcp-proxies?projectId=${encodeURIComponent(project.id)}&limit=100&offset=0`,
+        url: `/proxy/api/v0.9/mcp-proxies?projectId=${encodeURIComponent(project.id)}&limit=100&offset=0`,
         headers,
         failOnStatusCode: false,
       }).then((listResponse) => {
@@ -214,7 +214,7 @@ function sweepE2EMCPProxies(authToken) {
           if (!proxy.id) return;
           cy.request({
             method: 'DELETE',
-            url: `/api/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(proxy.id)}`,
+            url: `/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(proxy.id)}`,
             headers,
             failOnStatusCode: false,
           });
@@ -227,7 +227,7 @@ function sweepE2EMCPProxies(authToken) {
 // Look up a project by its human-readable displayName and delete it by handle.
 function deleteProjectByName(authToken, targetName) {
   cy.request({
-    url: '/api/proxy/api/v0.9/projects',
+    url: '/proxy/api/v0.9/projects',
     headers: { Authorization: `Bearer ${authToken}` },
     failOnStatusCode: false,
   }).then((response) => {
@@ -238,7 +238,7 @@ function deleteProjectByName(authToken, targetName) {
     if (!target?.id) return;
     cy.request({
       method: 'DELETE',
-      url: `/api/proxy/api/v0.9/projects/${encodeURIComponent(target.id)}`,
+      url: `/proxy/api/v0.9/projects/${encodeURIComponent(target.id)}`,
       headers: { Authorization: `Bearer ${authToken}` },
       failOnStatusCode: false,
     });

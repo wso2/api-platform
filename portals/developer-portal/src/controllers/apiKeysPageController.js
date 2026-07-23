@@ -17,7 +17,6 @@
  */
  
 const { renderTemplateWithView, resolveActor } = require('../utils/util');
-const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
@@ -147,7 +146,6 @@ const loadAPIApiKeys = async (req, res, next) => {
             selectedAppId: selectedAppHandle,
             apiMetadata: metaData,
             apiHandle: apiHandle,
-            isReadOnlyMode: config.server.readOnlyMode,
             showApiKeysNav,
             csrfToken: getSessionCsrfToken(req),
         };

@@ -46,7 +46,7 @@ func tokenFromContext(r *http.Request) string {
 }
 
 // ReverseProxy builds an httputil.ReverseProxy targeting the Platform API.
-// prefix (e.g. "/api/proxy") is stripped from the path before forwarding.
+// prefix (e.g. "/proxy") is stripped from the path before forwarding.
 func ReverseProxy(target *url.URL, prefix string, transport http.RoundTripper) *httputil.ReverseProxy {
 	rp := &httputil.ReverseProxy{
 		Transport: transport,

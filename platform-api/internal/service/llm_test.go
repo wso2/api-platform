@@ -355,37 +355,6 @@ func TestMapProxyModelToAPI_DoesNotExposeProviderAuthValue(t *testing.T) {
 	}
 }
 
-func TestValidateLLMResourceLimit(t *testing.T) {
-	t.Run("below limit should pass", func(t *testing.T) {
-		err := validateLLMResourceLimit(4, 5, apperror.LLMProviderLimitReached.New())
-		if err != nil {
-			t.Fatalf("expected no error below limit, got: %v", err)
-		}
-	})
-
-	t.Run("at limit should fail", func(t *testing.T) {
-		err := validateLLMResourceLimit(5, 5, apperror.LLMProviderLimitReached.New())
-		if !apperror.LLMProviderLimitReached.Is(err) {
-			t.Fatalf("expected ErrLLMProviderLimitReached, got: %v", err)
-		}
-	})
-
-	t.Run("above limit should fail", func(t *testing.T) {
-		err := validateLLMResourceLimit(6, 5, apperror.LLMProxyLimitReached.New())
-		if !apperror.LLMProxyLimitReached.Is(err) {
-			t.Fatalf("expected ErrLLMProxyLimitReached, got: %v", err)
-		}
-	})
-
-	t.Run("unlimited (limit <= 0) should always pass", func(t *testing.T) {
-		for _, limit := range []int{0, -1} {
-			if err := validateLLMResourceLimit(1_000_000, limit, apperror.LLMProviderLimitReached.New()); err != nil {
-				t.Fatalf("expected no error for unlimited (limit=%d), got: %v", limit, err)
-			}
-		}
-	})
-}
-
 func TestGenerateLLMProviderDeploymentYAML_WithSecurityAPIKeyPolicy(t *testing.T) {
 	trueValue := true
 
@@ -1062,6 +1031,10 @@ func (m *mockLLMProviderRepo) Create(p *model.LLMProvider) error {
 	return nil
 }
 
+func (m *mockLLMProviderRepo) CreateWithCustomPolicyUsages(p *model.LLMProvider, _ []string) error {
+	return m.Create(p)
+}
+
 func (m *mockLLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvider, error) {
 	if m.getByIDFunc != nil {
 		return m.getByIDFunc(providerID, orgUUID)
@@ -1072,6 +1045,10 @@ func (m *mockLLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMPro
 func (m *mockLLMProviderRepo) Update(p *model.LLMProvider) error {
 	m.updated = p
 	return nil
+}
+
+func (m *mockLLMProviderRepo) UpdateWithCustomPolicyUsages(p *model.LLMProvider, _ []string) error {
+	return m.Update(p)
 }
 
 type mockLLMTemplateRepo struct {

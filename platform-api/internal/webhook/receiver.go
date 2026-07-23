@@ -133,7 +133,7 @@ func (r *Receiver) RegisterRoutes(mux *http.ServeMux) {
 }
 
 // ReceiveEvent runs the full webhook flow: size-limited read -> signature verify -> envelope
-// decode/validate -> gateway_type filter -> idempotency -> dispatch -> mark processed.
+// decode/validate -> idempotency -> dispatch -> mark processed.
 func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error {
 	if !r.cfg.Enabled {
 		return apperror.NotFound.New().WithLogMessage("webhook endpoint is disabled")
@@ -175,14 +175,7 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error 
 	}
 	log = log.With("orgId", env.OrgID)
 
-	// 4. gateway_type filter — events for other gateway types are a no-op (accepted, not processed).
-	if r.cfg.GatewayType != "" && env.GatewayType != "" && env.GatewayType != r.cfg.GatewayType {
-		log.Info("Webhook event for a different gateway_type; accepting as no-op", "eventGatewayType", env.GatewayType)
-		httputil.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "ignored", "reason": "gateway_type mismatch"})
-		return nil
-	}
-
-	// 5. Dispatch to the matching handler. Duplicate (at-least-once) deliveries are made safe by
+	// 4. Dispatch to the matching handler. Duplicate (at-least-once) deliveries are made safe by
 	//    each handler being idempotent by domain identity, so no envelope-level dedup is needed.
 	handle, ok := r.handlers[env.EventType]
 	if !ok {

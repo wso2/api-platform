@@ -28,15 +28,19 @@ const sql = require('mssql');
  */
 function buildConnectionConfig(config) {
     const db = config.database;
+    // sslMode is shared with the postgres adapter's config.database.sslMode
+    // (see ../dbSsl.js) — 'verify-full' here maps to encrypt+cert verification,
+    // 'disable' to a plain, unencrypted connection.
+    const verifyFull = db.sslMode === 'verify-full';
     return {
         server: db.host,
         port: db.port,
         database: db.name,
-        user: db.username,
+        user: db.user,
         password: db.password,
         options: {
-            encrypt: !!db.ssl?.enabled,
-            trustServerCertificate: !db.ssl?.enabled,
+            encrypt: verifyFull,
+            trustServerCertificate: !verifyFull,
         },
         pool: { max: 50, min: 2, idleTimeoutMillis: 10000 },
         connectionTimeout: 30000,

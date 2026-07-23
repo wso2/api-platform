@@ -11,10 +11,10 @@ wso2apip-ai-workspace-<version>/
 ├── scripts/
 │   └── setup.sh                                 # One-time TLS + secrets provisioning
 ├── configs/
-│   ├── config.toml                              # AI Workspace active configuration
-│   ├── config-template.toml                     # AI Workspace full configuration reference
-│   ├── config-platform-api.toml                 # Platform API active configuration
-│   └── config-platform-api-template.toml        # Platform API full configuration reference
+│   ├── config.toml                              # Active configuration for BOTH services —
+│   │                                             #   [platform_api.*] and [ai_workspace.*]
+│   │                                             #   tables side by side in one file
+│   └── config-template.toml                     # Full configuration reference for both
 └── resources/
     ├── roles.yaml                               # Platform API role definitions
     └── platform-api/
@@ -40,7 +40,8 @@ docker compose up -d
 
 | Output | Contents |
 |---|---|
-| `api-platform.env` (git-ignored) | `APIP_CP_ENCRYPTION_KEY` (at-rest encryption), `APIP_CP_AUTH_JWT_SECRET_KEY` (signs login JWTs), `APIP_CP_ADMIN_USERNAME`, `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt) |
+| `api-platform.env` (git-ignored) | `APIP_CP_ENCRYPTION_KEY` (at-rest encryption), `APIP_CP_ADMIN_USERNAME`, `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt) |
+| `resources/keys/jwt_private.pem` + `jwt_public.pem` (git-ignored) | RS256 keypair signing/verifying login JWTs; read by `config.toml` via `{{ file }}` |
 | `resources/certificates/cert.pem` + `key.pem` | Self-signed TLS pair shared by both services (SAN: `localhost`, `platform-api`, `ai-workspace`) |
 
 The admin password is generated and printed once by `setup.sh` — it is not stored anywhere; only its bcrypt hash lands in `api-platform.env`. Re-running `setup.sh` keeps existing files; pass `--force` to rotate keys and credentials, or `--certs-only` to (re)generate just the TLS pair. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables skip the interactive prompts (used by CI to pin known test credentials).
@@ -67,39 +68,41 @@ Open the AI Workspace in a browser at `https://localhost:5380` and log in with t
 
 ## Configuration
 
-Edit `configs/config.toml` for AI Workspace settings and `configs/config-platform-api.toml` for Platform API settings. Both are read directly by the running containers — no rebuild required, just restart the affected service.
+Both services read their settings from the single `configs/config.toml` — Platform API's `[platform_api.*]` tables and AI Workspace's `[ai_workspace.*]` tables live side by side in the same file (each service reads only its own top-level table and ignores the other's), and `docker-compose.yaml` mounts that one file into both containers. Edit it and restart the affected service — no rebuild required.
 
-Each config TOML writes its values as `'{{ env "..." }}'` tokens, so a key can be set from the environment without editing the file — the token names the variable, by convention the key uppercased and prefixed with `APIP_AIW_` (AI Workspace) or `APIP_CP_` (Platform API), e.g. `APIP_AIW_LOG_LEVEL`, `APIP_CP_DATABASE_HOST`. A key with no token is not settable from the environment: uncomment or add it in the TOML first. To source a value from a mounted file instead — the right choice for secrets — swap the token for `'{{ file "/secrets/..." }}'`. Never write a secret as a raw literal in either file.
+Each config key writes its value as a `'{{ env "..." }}'` token, so it can be set from the environment without editing the file — the token names the variable, by convention the key's path uppercased and prefixed `APIP_AIW_` (AI Workspace) or `APIP_CP_` (Platform API), e.g. `APIP_AIW_LOGGING_LEVEL`, `APIP_CP_DATABASE_HOST`. A key with no token is not settable from the environment: uncomment or add it in the TOML first. To source a value from a mounted file instead — the right choice for secrets — swap the token for `'{{ file "/secrets/..." }}'`. Never write a secret as a raw literal.
 
-Environment overrides go in `api-platform.env` (git-ignored; loaded into both containers via `env_file`, format `raw`, since the bcrypt password hash contains `$`, which must not be treated as a compose interpolation variable). This is also where OIDC mode's `APIP_AIW_OIDC_CLIENT_SECRET` belongs — it's the only file compose passes into the containers, so a separate `.env` alongside it would never reach the app.
+Environment overrides go in `api-platform.env` (git-ignored; loaded into both containers via `env_file`, format `raw`, since the bcrypt password hash contains `$`, which must not be treated as a compose interpolation variable). This is also where OIDC mode's `APIP_AIW_AUTH_OIDC_CLIENT_SECRET` belongs — it's the only file compose passes into the containers, so a separate `.env` alongside it would never reach the app.
 
-### AI Workspace (`configs/config.toml`)
+### AI Workspace (`[ai_workspace.*]`)
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `domain` | Host and port shown in the browser address bar | `localhost:5380` |
-| `auth_mode` | `basic` (file-based quickstart) or `oidc` (external IDP) | `basic` |
-| `controlplane_host` | Address gateways use to reach the Platform API | `host.docker.internal:9243` |
-| `platform_gateway_versions` | Gateway versions shown in the create-gateway selector | _(current release)_ |
-| `[platform_api].url` | Base URL of the upstream Platform API hop | `https://platform-api:9243` |
-| `[platform_api].ca_file` | PEM bundle trusted for the upstream's TLS cert (appended to system roots). Fixed to the mounted path — not env-overridable; edit the TOML if you change the volume mount in `docker-compose.yaml` | `/etc/ai-workspace/tls/cert.pem` |
-| `[platform_api].tls_skip_verify` | Skip upstream cert verification — local dev only | `false` |
-| `[tls].cert_file` / `key_file` | Listener certificate pair — required when `[tls].enabled` is `true`. Fixed to the mounted path, same as `ca_file` above | `/etc/ai-workspace/tls/{cert,key}.pem` |
-| `[oidc].*` | Used only when `auth_mode = "oidc"` — see [OIDC](#oidc-production) below | _(empty)_ |
+| Setting | Description |
+|---------|-------------|
+| `[ai_workspace] default_org_region` | Default region assigned to new organizations on first login |
+| `[ai_workspace.server] domain` | Host and port shown in the browser address bar |
+| `[ai_workspace.auth] mode` | `basic` (file-based quickstart) or `oidc` (external IDP) |
+| `[ai_workspace.control_plane].url` | Base URL of the upstream Platform API hop |
+| `[ai_workspace.control_plane].ca_file` | PEM bundle trusted for the upstream's TLS cert (appended to system roots). Fixed to the mounted path — not env-overridable; edit the TOML if you change the volume mount in `docker-compose.yaml` |
+| `[ai_workspace.control_plane].tls_skip_verify` | Skip upstream cert verification — local dev only |
+| `[ai_workspace.gateway].controlplane_host` | Address gateways use to reach the Platform API |
+| `[ai_workspace.gateway].platform_gateway_versions` | Gateway versions shown in the create-gateway selector |
+| `[ai_workspace.server].cert_file` / `key_file` | Listener certificate pair. Fixed to the mounted path, same as `ca_file` above |
+| `[ai_workspace.auth.oidc].*` | Used only when `[ai_workspace.auth] mode = "oidc"` — see [OIDC](#oidc-production) below |
 
-### Platform API (`configs/config-platform-api.toml`)
+### Platform API (`[platform_api.*]`)
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `log_level` | Log level (`DEBUG`, `INFO`, `WARN`, `ERROR`) | `INFO` |
-| `encryption_key` | Single 32-byte key (64 hex chars or base64) used for all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets). Generate with `openssl rand -hex 32` | _(from `setup.sh`)_ |
-| `[database].driver` | `sqlite3` or `postgres` | `sqlite3` |
-| `[auth.jwt].secret_key` | 32-byte HMAC key signing login JWTs | _(from `setup.sh`)_ |
-| `[auth.idp]` | JWKS-based IDP auth — disabled in quickstart mode; enable for Asgardeo, Keycloak, Auth0, etc. | disabled |
-| `[auth.file_based.users]` | Local user credentials (change the password hash before sharing) | admin, generated by `setup.sh` |
-| `[https]` | Listener on `:9243`; `cert_dir` holds `cert.pem`/`key.pem` | `/etc/platform-api/tls` |
+| Setting | Description |
+|---------|-------------|
+| `[platform_api.logging].level` | Log level (`debug`, `info`, `warn`, `error`; matched case-insensitively) |
+| `[platform_api.security].encryption_key` | Single 32-byte key (64 hex chars or base64) used for all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets). Generate with `openssl rand -hex 32` |
+| `[platform_api.database].driver` | `sqlite3` or `postgres` |
+| `[platform_api.auth].mode` | `file` (quickstart default), `external_token`, or `idp` — selects exactly one auth mode |
+| `[platform_api.auth.jwt].public_key_file` / `private_key_file` | RS256 (asymmetric) PEM keys; `public_key_file` verifies every token, `private_key_file` signs login JWTs in `file` mode. Read via `{{ file }}` — HMAC and unsigned tokens are rejected |
+| `[platform_api.auth.idp]` | JWKS-based IDP auth — active when `mode = "idp"`; configure for Asgardeo, Keycloak, Auth0, etc. |
+| `[platform_api.auth.file.users]` | Local user credentials, active when `mode = "file"` (change the password hash before sharing) |
+| `[platform_api.server.https]` | Listener on `:9243`; `cert_file`/`key_file` point at `cert.pem`/`key.pem` |
 
-See `configs/config-template.toml` and `configs/config-platform-api-template.toml` for a fully-commented reference of every available setting.
+Each key's default value is written inline in `configs/config-template.toml` — a fully-commented reference of every available setting and its default for both services, so defaults are not restated here.
 
 ## Authentication Modes
 
@@ -111,28 +114,28 @@ The admin user is generated by `setup.sh` (see [Quick Start](#quick-start)). To 
 htpasswd -bnBC 10 "" NEW_PASSWORD | tr -d ':\n'
 ```
 
-Replace the `password_hash` value in `configs/config-platform-api.toml` before starting.
+Replace the `password_hash` value under `[platform_api.auth.file.users]` in `configs/config.toml` before starting.
 
 ### OIDC (production)
 
 To delegate login to an external OIDC-compliant provider (Asgardeo, Keycloak, Auth0, etc.) instead of file-based auth, both services need to be reconfigured — the AI Workspace to send users to the IDP, and the Platform API to trust the tokens it issues.
 
 1. Register a **confidential** OIDC application in your IDP with redirect URL `https://<your-domain>/api/auth/callback` (use `https://localhost:5380/api/auth/callback` for local development), a post-logout redirect URL, and enable the **Authorization Code** and **Refresh Token** grants.
-2. **AI Workspace** (`configs/config.toml`): set `auth_mode = "oidc"`. Every `[oidc]` key except `scope` defaults to empty and the server refuses to start in OIDC mode until each is set — either directly in the TOML or via its `APIP_AIW_OIDC_*` token in `api-platform.env`:
+2. **AI Workspace** (`configs/config.toml`): set `[ai_workspace.auth] mode = "oidc"`. Every `[ai_workspace.auth.oidc]` key except `scope` defaults to empty and the server refuses to start in OIDC mode until each is set — either directly in the TOML or via its `APIP_AIW_AUTH_OIDC_*` token in `api-platform.env`:
 
    ```bash
-   APIP_AIW_OIDC_AUTHORITY=https://idp.example.com
-   APIP_AIW_OIDC_CLIENT_ID=<your-client-id>
-   APIP_AIW_OIDC_CLIENT_SECRET=<your-client-secret>
-   APIP_AIW_OIDC_REDIRECT_URL=https://<your-domain>/api/auth/callback
-   APIP_AIW_OIDC_POST_LOGOUT_REDIRECT_URL=https://<your-domain>/login
+   APIP_AIW_AUTH_OIDC_AUTHORITY=https://idp.example.com
+   APIP_AIW_AUTH_OIDC_CLIENT_ID=<your-client-id>
+   APIP_AIW_AUTH_OIDC_CLIENT_SECRET=<your-client-secret>
+   APIP_AIW_AUTH_OIDC_REDIRECT_URL=https://<your-domain>/api/auth/callback
+   APIP_AIW_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL=https://<your-domain>/login
    ```
 
-   Leaving `APIP_AIW_OIDC_SCOPE` unset requests the full `ap:*` scope set.
+   Leaving `APIP_AIW_AUTH_OIDC_SCOPE` unset requests the full `ap:*` scope set.
 
-3. **Platform API** (`configs/config-platform-api.toml`): the `[auth.idp]` fields have no env-var tokens in the quickstart file, so edit the TOML directly — set `enabled = true` and fill in `jwks_url` and `issuer` for your IDP. Then set `[auth.file_based].enabled = false`: while file-based auth is enabled it takes priority, and the IDP is not used regardless of `[auth.idp]`. Align `[auth.idp.claim_mappings]` with `[oidc.claim_mappings]` in `configs/config.toml` — both services must read the same claims out of the same token.
+3. **Platform API** (`[platform_api.*]` tables in `configs/config.toml`): the `[platform_api.auth.idp]` fields have no env-var tokens in the quickstart file, so edit the TOML directly — set `[platform_api.auth] mode = "idp"` and fill in `jwks_url` and `issuer` for your IDP. `mode` selects exactly one auth mode, so switching to `"idp"` stops the file-based login endpoint from being used. Align `[platform_api.auth.claim_mappings]` with `[ai_workspace.auth.claim_mappings]` — both services must read the same claims out of the same token.
 
-See `configs/config-template.toml` and `configs/config-platform-api-template.toml` for the full, per-field reference, and the [WSO2 API Platform documentation](https://wso2.com/api-platform/docs/) (AI Workspace section) for a full OIDC setup walkthrough including Asgardeo scope registration.
+See `configs/config-template.toml` for the full, per-field reference, and the [WSO2 API Platform documentation](https://wso2.com/api-platform/docs/) (AI Workspace section) for a full OIDC setup walkthrough including Asgardeo scope registration.
 
 ## Custom TLS Certificates
 
@@ -144,10 +147,10 @@ docker compose up -d
 
 ## Database
 
-The Platform API uses **SQLite** by default (data persisted in a Docker volume). To switch to PostgreSQL, update `configs/config-platform-api.toml`:
+The Platform API uses **SQLite** by default (data persisted in a Docker volume). To switch to PostgreSQL, update `[platform_api.database]` in `configs/config.toml`:
 
 ```toml
-[database]
+[platform_api.database]
 driver = "postgres"
 host   = "your-db-host"
 port   = 5432

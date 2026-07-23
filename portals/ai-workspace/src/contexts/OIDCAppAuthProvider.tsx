@@ -20,11 +20,11 @@ import React, { useCallback, useMemo } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { AppAuthContext, type AppUser, type AppOrg } from './AppAuthContext';
 import {
-  OIDC_USERNAME_CLAIM,
-  OIDC_EMAIL_CLAIM,
-  OIDC_ORG_ID_CLAIM,
-  OIDC_ORG_NAME_CLAIM,
-  OIDC_ORG_HANDLE_CLAIM,
+  USERNAME_CLAIM,
+  EMAIL_CLAIM,
+  ORG_ID_CLAIM,
+  ORG_NAME_CLAIM,
+  ORG_HANDLE_CLAIM,
 } from '../config.env';
 import { checkPermission, isPlatformRole } from '../auth/permissions';
 import type { PlatformRole } from '../auth/permissions';
@@ -77,16 +77,16 @@ export function OIDCAppAuthProvider({ children }: { children: React.ReactNode })
     const claim = (key: string) =>
       (idClaims[key] as string | undefined) || (atClaims[key] as string | undefined) || null;
 
-    const orgId     = (atClaims[OIDC_ORG_ID_CLAIM]     as string | undefined) || null;
-    const orgName   = (atClaims[OIDC_ORG_NAME_CLAIM]   as string | undefined) || null;
-    const orgHandle = (atClaims[OIDC_ORG_HANDLE_CLAIM] as string | undefined) || null;
+    const orgId     = (atClaims[ORG_ID_CLAIM]     as string | undefined) || null;
+    const orgName   = (atClaims[ORG_NAME_CLAIM]   as string | undefined) || null;
+    const orgHandle = (atClaims[ORG_HANDLE_CLAIM] as string | undefined) || null;
     const org: AppOrg | null = (orgId || orgHandle)
       ? { id: orgId ?? '', name: orgName ?? orgHandle ?? '', handle: orgHandle ?? '' }
       : null;
 
     return {
-      name: claim(OIDC_USERNAME_CLAIM),
-      email: claim(OIDC_EMAIL_CLAIM),
+      name: claim(USERNAME_CLAIM),
+      email: claim(EMAIL_CLAIM),
       role,
       scopes,
       org,

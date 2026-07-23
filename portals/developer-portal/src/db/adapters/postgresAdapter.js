@@ -17,14 +17,13 @@
  */
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
 const { Pool } = require('pg');
+const { buildDbSsl } = require('../dbSsl');
 
 /** PostgreSQL adapter (`pg`). Pool-backed; transactions check out a dedicated client. */
 function createPostgresAdapter(config) {
     const poolConfig = {
-        user: config.database.username,
+        user: config.database.user,
         host: config.database.host,
         database: config.database.name,
         password: config.database.password,
@@ -35,13 +34,12 @@ function createPostgresAdapter(config) {
         connectionTimeoutMillis: 30000,
     };
 
-    if (config.database.ssl?.enabled) {
-        const caPath = path.join(process.cwd(), config.database.ssl.caFile);
-        poolConfig.ssl = {
-            require: true,
-            rejectUnauthorized: true,
-            ca: fs.readFileSync(caPath).toString(),
-        };
+    // buildDbSsl() reads config.database.sslMode/sslRootCert and fails closed
+    // on an unrecognized mode — the same helper dbSsl.js's docstring says is
+    // shared across the database layer, so this pool's TLS handling matches it.
+    const ssl = buildDbSsl();
+    if (ssl) {
+        poolConfig.ssl = ssl;
     }
 
     const pool = new Pool(poolConfig);

@@ -23,14 +23,12 @@
 
     const orgId = cfg.dataset.orgId;
     const appId = cfg.dataset.appId;
-    const readOnly = cfg.dataset.readOnly === 'true';
     let keysByApi = [];
     try {
         keysByApi = JSON.parse(cfg.dataset.availableKeysByApi || '[]');
     } catch (e) {
         keysByApi = [];
     }
-    if (readOnly) return;
 
     function jsonMutationHeaders() {
         return { 'Content-Type': 'application/json', 'X-CSRF-Token': window.devportalApi.csrfToken() };

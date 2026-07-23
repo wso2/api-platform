@@ -26,12 +26,13 @@ import (
 // defaultConfig returns a Server with all default values.
 func defaultConfig() *Server {
 	return &Server{
-		LogLevel:                   "INFO",
-		LogFormat:                  "text",
+		Logging: Logging{
+			Level:  "info",
+			Format: "text",
+		},
 		DBSchemaPath:               "./internal/database/schema.sql",
 		OpenAPISpecPath:            "./resources/openapi.yaml",
 		LLMTemplateDefinitionsPath: "./resources/default-llm-provider-templates",
-		EnableScopeValidation:      true,
 		Database: Database{
 			Driver:          "sqlite3",
 			Path:            "./data/api_platform.db",
@@ -40,6 +41,10 @@ func defaultConfig() *Server {
 			ConnMaxLifetime: 300,
 		},
 		Auth: Auth{
+			// Default mode verifies locally-issued, asymmetrically-signed (RS256) JWTs;
+			// the quickstart config selects "file" to add username/password login on top.
+			Mode:            AuthModeExternalToken,
+			ScopeValidation: true,
 			// SkipPaths bypasses JWT/IDP auth middleware. Paths below the health/metrics
 			// probes are internal gateway routes authenticated via gateway token instead.
 			SkipPaths: []string{
@@ -61,25 +66,22 @@ func defaultConfig() *Server {
 				"/api/internal/" + constants.APIVersion + "/webhook/events",
 			},
 			JWT: JWT{
-				Enabled:        true,
-				Issuer:         "platform-api",
-				SkipValidation: true,
+				Issuer:   "platform-api",
+				TokenTTL: time.Hour,
 			},
 			IDP: IDP{
-				Enabled:        false,
 				ValidationMode: "scope",
-				ClaimMappings: IDPClaimMappings{
-					OrganizationClaimName: "organization",
-					OrgNameClaimName:      "org_name",
-					OrgHandleClaimName:    "org_handle",
-					UserIDClaimName:       "sub",
-					UsernameClaimName:     "username",
-					EmailClaimName:        "email",
-					ScopeClaimName:        "scope",
-				},
 			},
-			FileBased: FileBased{
-				Enabled: false,
+			ClaimMappings: ClaimMappings{
+				Organization: "organization",
+				OrgName:      "org_name",
+				OrgHandle:    "org_handle",
+				UserID:       "sub",
+				Username:     "username",
+				Email:        "email",
+				Scope:        "scope",
+			},
+			File: FileBased{
 				Organization: FileBasedOrg{
 					ID:          "default",
 					DisplayName: "Default",
@@ -96,65 +98,48 @@ func defaultConfig() *Server {
 				},
 			},
 		},
-		WebSocket: WebSocket{
-			MaxConnections:       1000,
-			ConnectionTimeout:    30,
-			RateLimitPerMin:      1000,
-			MaxConnectionsPerOrg: 3,
-			MetricsLogEnabled:    true,
-			MetricsLogInterval:   10,
-		},
-		DefaultDevPortal: DefaultDevPortal{
-			Enabled:               false,
-			Name:                  "Default DevPortal",
-			Identifier:            "default",
-			APIUrl:                "http://localhost:3001",
-			Hostname:              "devportal.local",
-			APIKey:                "default-api-key",
-			HeaderKeyName:         "x-wso2-api-key",
-			Timeout:               10,
-			RoleClaimName:         "roles",
-			GroupsClaimName:       "groups",
-			OrganizationClaimName: "organizationID",
-			AdminRole:             "admin",
-			SubscriberRole:        "Internal/subscriber",
-			SuperAdminRole:        "superAdmin",
-		},
 		Deployments: Deployments{
 			MaxPerAPIGateway: 20,
 			TimeoutEnabled:   true,
 			TimeoutInterval:  20,
 			TimeoutDuration:  60,
 		},
-		// ArtifactLimits are unlimited by default: every limit is left at its
-		// zero value, which LimitReached treats as "no limit". Operators can cap
-		// a specific artifact kind per organization by setting a positive value
-		// (config file key artifact_limits.max_* or env ARTIFACT_LIMITS_MAX_*).
-		ArtifactLimits: ArtifactLimits{},
 		// By default the HTTPS listener serves on 9243 and the plain-HTTP listener
 		// is off — preserving the historical single-TLS-port behavior. Enable the
-		// HTTP listener (and/or move ports) via the [http] / [https] config or the
-		// HTTP_* / HTTPS_* env vars.
-		HTTP: HTTPListener{
-			Enabled: false,
-			Port:    "9080",
+		// HTTP listener (and/or move ports) via the [server.http] / [server.https]
+		// config sections.
+		Listeners: ServerListeners{
+			HTTP: HTTPListener{
+				Enabled: false,
+				Port:    9080,
+			},
+			HTTPS: HTTPSListener{
+				Enabled:  true,
+				Port:     9243,
+				CertFile: "./data/certs/cert.pem",
+				KeyFile:  "./data/certs/key.pem",
+			},
+			// Finite by default so a slow or idle peer cannot hold a connection open
+			// indefinitely. Write is the loosest of the four because some handlers
+			// proxy slow upstreams (LLM completions, deployments).
+			Timeouts: Timeouts{
+				ReadHeader: 10 * time.Second,
+				Read:       60 * time.Second,
+				Write:      120 * time.Second,
+				Idle:       120 * time.Second,
+			},
+			WebSocket: WebSocket{
+				MaxConnections:     1000,
+				ConnectionTimeout:  30,
+				RateLimitPerMin:    1000,
+				MetricsLogEnabled:  true,
+				MetricsLogInterval: 10,
+			},
 		},
-		HTTPS: HTTPSListener{
-			Enabled: true,
-			Port:    "9243",
-			CertDir: "./data/certs",
-		},
-		// Finite by default so a slow or idle peer cannot hold a connection open
-		// indefinitely. Write is the loosest of the four because some handlers
-		// proxy slow upstreams (LLM completions, deployments).
-		Timeouts: Timeouts{
-			ReadHeader: 10 * time.Second,
-			Read:       60 * time.Second,
-			Write:      120 * time.Second,
-			Idle:       120 * time.Second,
-		},
-		APIKey: APIKey{
-			HashingAlgorithms: []string{"sha256"},
+		Security: Security{
+			APIKey: APIKey{
+				HashingAlgorithms: []string{"sha256"},
+			},
 		},
 		EventHub: EventHub{
 			PollInterval:    3 * time.Second,
@@ -163,7 +148,6 @@ func defaultConfig() *Server {
 		},
 		Webhook: Webhook{
 			Enabled:            false,
-			GatewayType:        "wso2/api-platform",
 			SignatureTolerance: 5 * time.Minute,
 			MaxBodySize:        1 << 20, // 1 MiB
 			SignatureHeader:    "X-Devportal-Signature",

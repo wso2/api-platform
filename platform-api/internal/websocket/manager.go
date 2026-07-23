@@ -25,8 +25,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/wso2/api-platform/platform-api/internal/repository"
-
 	"github.com/google/uuid"
 )
 
@@ -56,12 +54,6 @@ type Manager struct {
 
 	// heartbeatTimeout specifies when to consider a connection dead (default 30s)
 	heartbeatTimeout time.Duration
-
-	// maxConnectionsPerOrg enforces per-organization connection limits
-	maxConnectionsPerOrg int
-
-	// gatewayRepo provides access to gateway data for org-scoped connection counting
-	gatewayRepo repository.GatewayRepository
 
 	// slogger is the structured logger instance
 	slogger *slog.Logger
@@ -95,48 +87,38 @@ type Manager struct {
 
 // ManagerConfig contains configuration parameters for the connection manager
 type ManagerConfig struct {
-	MaxConnections       int           // Maximum concurrent connections (default 1000)
-	HeartbeatInterval    time.Duration // Ping interval (default 20s)
-	HeartbeatTimeout     time.Duration // Pong timeout (default 30s)
-	MaxConnectionsPerOrg int           // Maximum connections per organization (default 3)
-	MetricsLogEnabled    bool          // Enable periodic metrics logging (default true)
-	MetricsLogInterval   time.Duration // Interval between metrics log entries (default 10s)
-}
-
-type OrgConnectionStats struct {
-	OrganizationID string `json:"organizationId"`
-	CurrentCount   int    `json:"currentCount"`
-	MaxAllowed     int    `json:"maxAllowed"`
+	MaxConnections     int           // Maximum concurrent connections (default 1000)
+	HeartbeatInterval  time.Duration // Ping interval (default 20s)
+	HeartbeatTimeout   time.Duration // Pong timeout (default 30s)
+	MetricsLogEnabled  bool          // Enable periodic metrics logging (default true)
+	MetricsLogInterval time.Duration // Interval between metrics log entries (default 10s)
 }
 
 // DefaultManagerConfig returns sensible default configuration values
 func DefaultManagerConfig() ManagerConfig {
 	return ManagerConfig{
-		MaxConnections:       1000,
-		HeartbeatInterval:    20 * time.Second,
-		HeartbeatTimeout:     30 * time.Second,
-		MaxConnectionsPerOrg: 3,
-		MetricsLogEnabled:    true,
-		MetricsLogInterval:   10 * time.Second,
+		MaxConnections:     1000,
+		HeartbeatInterval:  20 * time.Second,
+		HeartbeatTimeout:   30 * time.Second,
+		MetricsLogEnabled:  true,
+		MetricsLogInterval: 10 * time.Second,
 	}
 }
 
 // NewManager creates a new connection manager with the provided configuration
-func NewManager(config ManagerConfig, gatewayRepo repository.GatewayRepository, slogger *slog.Logger) *Manager {
+func NewManager(config ManagerConfig, slogger *slog.Logger) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	mgr := &Manager{
-		connections:          sync.Map{},
-		connectionCount:      0,
-		maxConnections:       config.MaxConnections,
-		heartbeatInterval:    config.HeartbeatInterval,
-		heartbeatTimeout:     config.HeartbeatTimeout,
-		maxConnectionsPerOrg: config.MaxConnectionsPerOrg,
-		gatewayRepo:          gatewayRepo,
-		slogger:              slogger,
-		shutdownCtx:          ctx,
-		shutdownFn:           cancel,
-		metricsLogEnabled:    config.MetricsLogEnabled,
-		metricsLogInterval:   config.MetricsLogInterval,
+		connections:        sync.Map{},
+		connectionCount:    0,
+		maxConnections:     config.MaxConnections,
+		heartbeatInterval:  config.HeartbeatInterval,
+		heartbeatTimeout:   config.HeartbeatTimeout,
+		slogger:            slogger,
+		shutdownCtx:        ctx,
+		shutdownFn:         cancel,
+		metricsLogEnabled:  config.MetricsLogEnabled,
+		metricsLogInterval: config.MetricsLogInterval,
 	}
 	// Disable metrics logging if the interval is non-positive to prevent
 	// time.NewTicker from panicking.
@@ -177,16 +159,6 @@ func (m *Manager) SetConnectionHooks(onConnect, onDisconnect func(gatewayID stri
 func (m *Manager) Register(gatewayID string, transport Transport, authToken string,
 	orgID string) (*Connection, error) {
 
-	// Check per-org limit first (count from main connections map)
-	orgCount := m.countOrgConnections(orgID)
-	if orgCount >= m.maxConnectionsPerOrg {
-		return nil, &OrgConnectionLimitError{
-			OrganizationID: orgID,
-			CurrentCount:   orgCount,
-			MaxAllowed:     m.maxConnectionsPerOrg,
-		}
-	}
-
 	// Check global connection limit
 	m.mu.Lock()
 	if m.connectionCount >= m.maxConnections {
@@ -212,7 +184,7 @@ func (m *Manager) Register(gatewayID string, transport Transport, authToken stri
 	m.IncrementSuccessfulConnections()
 
 	m.slogger.Info("Gateway connected", "gatewayID", gatewayID, "connectionID", connectionID,
-		"orgID", orgID, "totalConnections", m.GetConnectionCount(), "orgConnections", m.countOrgConnections(orgID))
+		"orgID", orgID, "totalConnections", m.GetConnectionCount())
 
 	if m.onConnect != nil {
 		m.onConnect(gatewayID)
@@ -311,25 +283,6 @@ func (m *Manager) GetConnectionCount() int {
 	return m.connectionCount
 }
 
-// countOrgConnections counts the number of connections for a specific organization
-// by fetching the org's gateways and only counting connections for those gateway IDs.
-func (m *Manager) countOrgConnections(orgID string) int {
-	gateways, err := m.gatewayRepo.GetByOrganizationID(orgID)
-	if err != nil {
-		m.slogger.Error("Failed to fetch gateways for org", "orgID", orgID, "error", err)
-		return 0
-	}
-
-	count := 0
-	for _, gw := range gateways {
-		if connsInterface, ok := m.connections.Load(gw.ID); ok {
-			conns := connsInterface.([]*Connection)
-			count += len(conns)
-		}
-	}
-	return count
-}
-
 // monitorHeartbeat periodically sends ping frames and detects connection death.
 // Runs in a background goroutine for each connection.
 //
@@ -409,21 +362,6 @@ func (m *Manager) Shutdown() {
 	m.wg.Wait()
 
 	m.slogger.Info("WebSocket manager shutdown complete")
-}
-
-// GetOrgConnectionStats returns connection statistics for a specific organization
-func (m *Manager) GetOrgConnectionStats(orgID string) OrgConnectionStats {
-	return OrgConnectionStats{
-		OrganizationID: orgID,
-		CurrentCount:   m.countOrgConnections(orgID),
-		MaxAllowed:     m.maxConnectionsPerOrg,
-	}
-}
-
-// CanAcceptOrgConnection checks if the organization can accept a new connection
-// without actually adding it. Use this for pre-upgrade validation.
-func (m *Manager) CanAcceptOrgConnection(orgID string) bool {
-	return m.countOrgConnections(orgID) < m.maxConnectionsPerOrg
 }
 
 type metricsPayload struct {

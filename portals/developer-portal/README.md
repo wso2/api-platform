@@ -31,7 +31,7 @@ The fastest way to get the portal running — no local Node install required. Re
 docker compose up
 ```
 
-`./scripts/setup.sh` is a one-time step: it generates devportal's and the Platform API's encryption/JWT secrets, a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored) and `configs/config-platform-api.toml` (also git-ignored — copy `configs/config-platform-api-template.toml` instead for a static, no-dependencies starting point). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build devportal from source instead of using the published image, run `docker compose up --build`.
+`./scripts/setup.sh` is a one-time step: it generates devportal's and the Platform API's encryption/JWT secrets, a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build devportal from source instead of using the published image, run `docker compose up --build`.
 
 Then open **https://localhost:3000/default/views/default** and log in with the admin credentials `./scripts/setup.sh` printed.
 
@@ -140,14 +140,17 @@ Use this for active development, custom IdP configuration, or when you prefer to
 
 ### 2. Use `npm run start:local`, not `npm start`
 
-`configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `platform_api.base_url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off, `http://localhost:3000`, and `platform_api.base_url` pointed at `localhost` (see [Local auth](#local-auth) if you're running the Platform API sidecar).
+`configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `auth.local.platform_api_url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off, `auth.local.platform_api_url` pointed at `localhost`, and `auth.local.public_key_path` pointed at the host-side `resources/keys/` that `scripts/setup.sh` writes rather than the container mount path (see [Local auth](#local-auth) if you're running the Platform API sidecar).
 
 ### 3. Configure the Identity Provider (optional)
 
-The portal's login flow requires a valid OAuth2/OIDC provider. Update the `[idp]` block in `configs/config.toml`:
+The portal's login flow requires a valid OAuth2/OIDC provider. Set `[developer_portal.auth]` `mode = "idp"` and fill in the `[developer_portal.auth.idp]` block in `configs/config.toml`:
 
 ```toml
-[idp]
+[developer_portal.auth]
+mode = "idp"
+
+[developer_portal.auth.idp]
 issuer = "https://<your-idp>/oauth2/token"
 authorization_url = "https://<your-idp>/oauth2/authorize"
 token_url = "https://<your-idp>/oauth2/token"
@@ -163,7 +166,7 @@ For local exploration you can skip IdP setup by using the Platform API sidecar i
 
 #### SQLite (default — no setup required)
 
-The portal uses SQLite out of the box. The database file is created automatically at the path configured by `database.file` (default: `./devportal.db`). No installation or schema migration step is needed.
+The portal uses SQLite out of the box. The database file is created automatically at the path configured by `database.path` (default: `./devportal.db`). No installation or schema migration step is needed.
 
 #### PostgreSQL (optional)
 
@@ -178,15 +181,15 @@ docker run --name devportal-postgres \
   -d postgres:16
 ```
 
-Then update the `[database]` block in `configs/config.toml`:
+Then update the `[developer_portal.database]` block in `configs/config.toml`:
 
 ```toml
-[database]
-type = "postgres"
+[developer_portal.database]
+driver = "postgres"
 host = "localhost"
 port = 5432
 name = "devportal"
-username = "postgres"
+user = "postgres"
 password = "postgres"
 ```
 
@@ -194,7 +197,7 @@ In production, set the password via the `APIP_DP_DATABASE_PASSWORD` environment 
 
 ### 5. Seed default organization
 
-The default organization is seeded automatically on startup when `organization.default_name` is set in config (or via `APIP_DP_ORGANIZATION_DEFAULTNAME` env var).
+The default organization is seeded automatically on startup when `organization.default_name` is set in config (or via `APIP_DP_ORGANIZATION_DEFAULT_NAME` env var).
 No manual step is required.
 
 ### 6. Install and run
@@ -228,23 +231,25 @@ The full annotated list of settings is in [`configs/config-template.toml`](confi
 
 ### Local auth
 
-For quick exploration without an IdP, the portal delegates credential validation to a Platform API sidecar. Users, bcrypt-hashed passwords, and `dp:*` scopes are defined in `configs/config-platform-api.toml` (copy from `configs/config-platform-api-template.toml`):
+For quick exploration without an IdP, the portal delegates credential validation to a Platform API sidecar. `docker-compose.yaml` mounts the Platform API's own [`../../platform-api/config/config.toml`](../../platform-api/config/config.toml) directly — there is no per-portal copy. Users, bcrypt-hashed passwords, and `dp:*` scopes are defined there, under `[[platform_api.auth.file.users]]`:
 
 ```toml
-[[auth.file_based.users]]
+[[platform_api.auth.file.users]]
 username      = "admin"
 password_hash = "$2y$10$..."   # bcrypt hash — generate with: htpasswd -bnBC 12 "" <pw> | tr -d ':\n'
 scopes        = "dp:org_manage dp:api_manage ..."
 ```
 
-The portal config (or `APIP_DP_PLATFORMAPI_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `base_url` to `https://localhost:9243` (the sidecar's port published to the host) and `insecure = true` (self-signed cert), so no manual edit is needed for that flow:
+The portal config (or `APIP_DP_AUTH_LOCAL_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `platform_api_url` to `https://localhost:9243` (the sidecar's port published to the host) and `tls_skip_verify = true` (self-signed cert), so no manual edit is needed for that flow:
 
 ```toml
-[platform_api]
-base_url = "https://localhost:9243"      # env: APIP_DP_PLATFORMAPI_BASEURL
-jwt_secret = ""                           # same as the Platform API's APIP_CP_AUTH_JWT_SECRET_KEY — env: APIP_DP_PLATFORMAPI_JWTSECRET
-insecure = true                           # Platform API uses a self-signed cert
+[developer_portal.auth.local]
+platform_api_url = "https://localhost:9243"  # env: APIP_DP_AUTH_LOCAL_PLATFORM_API_URL
+public_key_path = "/etc/devportal/keys/jwt_public.pem"  # path to the Platform API's auth.jwt.public_key PEM — env: APIP_DP_AUTH_LOCAL_PUBLIC_KEY_PATH
+tls_skip_verify = true                    # Platform API uses a self-signed cert
 ```
+
+Tokens are signed asymmetrically (RS256): the Platform API mints them with its `auth.jwt.private_key` and the portal verifies them against the matching public key above. There is no shared HMAC secret, and the private key never leaves the Platform API — `scripts/setup.sh` generates the keypair into `resources/keys/`, and `docker-compose.yaml` mounts only `jwt_public.pem`'s directory into the portal (at `/etc/devportal/keys`).
 
 For production, configure an OIDC identity provider per organization instead of local auth.
 
@@ -262,12 +267,12 @@ Every config key can be overridden with an `APIP_DP_*` environment variable. You
 |---------|-------------|
 | `APIP_DP_DATABASE_HOST` | `config.database.host` |
 | `APIP_DP_DATABASE_PORT` | `config.database.port` |
-| `APIP_DP_TLS_ENABLED` | `config.tls.enabled` |
-| `APIP_DP_IDP_CLIENTID` | `config.idp.clientId` |
-| `APIP_DP_IDP_ISSUER` | `config.idp.issuer` |
-| `APIP_DP_SERVER_BASEURL` | `config.server.baseUrl` |
+| `APIP_DP_SERVER_HTTPS_ENABLED` | `config.server.https.enabled` |
+| `APIP_DP_IDP_CLIENTID` | `config.auth.idp.clientId` |
+| `APIP_DP_IDP_ISSUER` | `config.auth.idp.issuer` |
 | `APIP_DP_SERVER_PORT` | `config.server.port` |
-| `APIP_DP_DATABASE_SSL_ENABLED` | `config.database.ssl.enabled` |
+| `APIP_DP_SERVER_BASE_URL` | `config.server.baseUrl` |
+| `APIP_DP_DATABASE_SSL_MODE` | `config.database.sslMode` |
 
 `.env` example:
 ```dotenv

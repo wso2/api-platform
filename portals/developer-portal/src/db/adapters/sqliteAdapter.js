@@ -38,7 +38,7 @@ const AsyncLock = require('async-lock');
  * until the transaction finishes.
  */
 function createSqliteAdapter(config) {
-    const storage = config.database.file || './devportal.db';
+    const storage = config.database.path || './devportal.db';
     const dir = path.dirname(storage);
     if (dir && dir !== '.') {
         fs.mkdirSync(dir, { recursive: true });

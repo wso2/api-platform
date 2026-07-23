@@ -91,6 +91,12 @@ func main() {
 	// The container reads its mounted config.toml, so -config is only needed to run
 	// the BFF outside one (see `make bff-run`).
 	configFile := flag.String("config", config.DefaultConfigFile, "path to config.toml")
+	// The shipped config.toml has no {{ env }} token for static_dir — the container
+	// always serves the SPA baked in at /app, so there's nothing for an operator to
+	// override. `make bff-run` is the one caller that needs a different directory
+	// (the locally-built ../dist), so it's a dev-only CLI flag rather than a config
+	// key, keeping the shipped config free of a token no deployment ever sets.
+	staticDir := flag.String("static-dir", "", "override the directory serving the built SPA (local dev only, e.g. `make bff-run`)")
 	flag.Parse()
 
 	cfg, err := config.Load(*configFile)
@@ -99,7 +105,10 @@ func main() {
 		slog.Error("configuration error", "err", err)
 		os.Exit(1)
 	}
-	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.LogLevel, Format: cfg.LogFormat}))
+	if *staticDir != "" {
+		cfg.Server.StaticDir = *staticDir
+	}
+	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.Logging.Level, Format: cfg.Logging.Format}))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -112,7 +121,7 @@ func main() {
 	defer srv.Close()
 
 	httpServer := &http.Server{
-		Addr:              cfg.Addr,
+		Addr:              cfg.Addr(),
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
@@ -120,7 +129,7 @@ func main() {
 		IdleTimeout:       120 * time.Second,
 	}
 
-	tlsConfig, err := buildTLS(cfg.TLS)
+	tlsConfig, err := buildTLS(cfg.Server)
 	if err != nil {
 		slog.Error("failed to set up TLS", "err", err)
 		os.Exit(1)
@@ -128,13 +137,13 @@ func main() {
 	httpServer.TLSConfig = tlsConfig
 
 	go func() {
-		url := portalURL(cfg.Addr, tlsConfig != nil)
+		url := portalURL(cfg.Addr(), tlsConfig != nil)
 		slog.Info("AI Workspace BFF started",
-			"addr", cfg.Addr,
+			"addr", cfg.Addr(),
 			"url", url,
-			"auth_mode", cfg.AuthMode,
-			"platform_api", cfg.PlatformAPI.URL,
-			"oidc_enabled", cfg.OIDC.Enabled,
+			"auth_mode", cfg.Auth.Mode,
+			"control_plane", cfg.ControlPlane.URL,
+			"oidc_enabled", cfg.Auth.OIDC.Enabled,
 		)
 		printStartedMarker(url)
 		var serveErr error
@@ -165,10 +174,10 @@ func main() {
 // disabled no certificate is read or required. Otherwise a mounted cert/key pair
 // is required — there is no self-signed fallback; use the quickstart setup
 // script (or your own tooling) to generate a pair and mount it.
-func buildTLS(c config.TLSConfig) (*tls.Config, error) {
-	if !c.TerminateTLS {
+func buildTLS(c config.ServerConfig) (*tls.Config, error) {
+	if !c.Enabled {
 		// Plain HTTP is only safe when something upstream terminates TLS.
-		slog.Warn("TLS: disabled ([tls] enabled = false) — serving plain HTTP. " +
+		slog.Warn("TLS: disabled ([server] enabled = false) — serving plain HTTP. " +
 			"Terminate TLS at an ingress or service-mesh sidecar and " +
 			"never expose this listener directly to untrusted networks.")
 		return nil, nil
@@ -180,8 +189,8 @@ func buildTLS(c config.TLSConfig) (*tls.Config, error) {
 	}
 	if !fileExists(c.CertFile) {
 		return nil, fmt.Errorf("TLS is enabled but no certificate is mounted: "+
-			"set [tls] cert_file (%q) and key_file (%q) to existing files, "+
-			"or set [tls] enabled = false to serve plain HTTP behind a TLS-terminating proxy", c.CertFile, c.KeyFile)
+			"set [server] cert_file (%q) and key_file (%q) to existing files, "+
+			"or set [server] enabled = false to serve plain HTTP behind a TLS-terminating proxy", c.CertFile, c.KeyFile)
 	}
 	cert, err := tlsutil.CertFromFiles(c.CertFile, c.KeyFile)
 	if err != nil {

@@ -53,7 +53,7 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
 
     cy.request({
       method: 'POST',
-      url: '/api/proxy/api/portal/v0.9/auth/login',
+      url: '/proxy/api/portal/v0.9/auth/login',
       form: true,
       body: {
         username: Cypress.env('ADMIN_USER'),
@@ -63,7 +63,7 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
 
     cy.then(() =>
       cy.request({
-        url: '/api/proxy/api/v0.9/organizations',
+        url: '/proxy/api/v0.9/organizations',
         headers: { Authorization: `Bearer ${authToken}` },
       })
     ).then((r) => { organizationId = r.body?.list?.[0]?.id ?? ''; });
@@ -150,7 +150,7 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
     if (createdServerId && authToken) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(createdServerId)}`,
+        url: `/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(createdServerId)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });
@@ -159,7 +159,7 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
     if (createdProjectId && authToken) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/projects/${encodeURIComponent(createdProjectId)}`,
+        url: `/proxy/api/v0.9/projects/${encodeURIComponent(createdProjectId)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });
@@ -228,7 +228,7 @@ describe('AI Workspace — MCP server secret management (update / no-auth server
 
     cy.request({
       method: 'POST',
-      url: '/api/proxy/api/portal/v0.9/auth/login',
+      url: '/proxy/api/portal/v0.9/auth/login',
       form: true,
       body: {
         username: Cypress.env('ADMIN_USER'),
@@ -238,7 +238,7 @@ describe('AI Workspace — MCP server secret management (update / no-auth server
 
     cy.then(() =>
       cy.request({
-        url: '/api/proxy/api/v0.9/organizations',
+        url: '/proxy/api/v0.9/organizations',
         headers: { Authorization: `Bearer ${authToken2}` },
       })
     ).then((r) => { organizationId2 = r.body?.list?.[0]?.id ?? ''; });
@@ -309,7 +309,7 @@ describe('AI Workspace — MCP server secret management (update / no-auth server
     if (createdServerId2 && authToken2) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(createdServerId2)}`,
+        url: `/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(createdServerId2)}`,
         headers: { Authorization: `Bearer ${authToken2}` },
         failOnStatusCode: false,
       });
@@ -318,7 +318,7 @@ describe('AI Workspace — MCP server secret management (update / no-auth server
     if (createdProjectId2 && authToken2) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/projects/${encodeURIComponent(createdProjectId2)}`,
+        url: `/proxy/api/v0.9/projects/${encodeURIComponent(createdProjectId2)}`,
         headers: { Authorization: `Bearer ${authToken2}` },
         failOnStatusCode: false,
       });

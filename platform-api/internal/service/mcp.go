@@ -152,15 +152,6 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 	}
 	req.Id = &handle
 
-	// Enforce the per-organization MCP proxy limit (unlimited when not configured).
-	proxyCount, err := s.repo.Count(orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to count existing MCP proxies: %w", err)
-	}
-	if config.LimitReached(proxyCount, s.cfg.ArtifactLimits.MaxMCPProxiesPerOrg) {
-		return nil, apperror.MCPProxyLimitReached.New()
-	}
-
 	// Validate {{ secret "..." }} placeholders anywhere in the request — the
 	// gateway-controller's template engine resolves placeholders generically
 	// across the whole artifact (policies included), not just upstream.auth,

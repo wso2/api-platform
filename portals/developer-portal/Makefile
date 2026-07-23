@@ -144,8 +144,14 @@ dist: clean-dist ## Build standalone developer portal distribution zip
 	@cp -R samples/mcps $(DIST_DIR)/resources/samples/
 	@cp configs/config.toml $(DIST_DIR)/configs/config.toml
 	@cp configs/config-template.toml $(DIST_DIR)/configs/config-template.toml
-	@cp configs/config-platform-api-template.toml $(DIST_DIR)/configs/config-platform-api-template.toml
-	@cp docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
+	# The source docker-compose.yaml mounts ../../platform-api/config/config.toml
+	# directly (the monorepo's single source-of-truth Platform API config, no
+	# per-portal copy) — the standalone zip has no platform-api/ sibling, so bake
+	# a real copy into its own configs/ dir and repoint the compose file at it.
+	@cp ../../platform-api/config/config.toml $(DIST_DIR)/configs/config-platform-api.toml
+	@cp ../../platform-api/config/config-template.toml $(DIST_DIR)/configs/config-platform-api-template.toml
+	@sed 's#\.\./\.\./platform-api/config/config\.toml#./configs/config-platform-api.toml#' \
+		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md
 	@mkdir -p $(DIST_DIR)/scripts
 	@cp scripts/setup.sh $(DIST_DIR)/scripts/setup.sh

@@ -9,9 +9,12 @@
 #
 # AI Workspace configuration template
 #
-# Copy this file to config.toml and edit the values for your deployment.
-# This file is read by the AI Workspace container at startup, and is the only source of
-# configuration.
+# Copy this file to config.toml and edit the values for your deployment. It is the
+# only source of configuration, read by the AI Workspace container at startup.
+#
+# All settings live under [ai_workspace] / [ai_workspace.*], mirroring the Platform
+# API's own [platform_api] / [platform_api.*] tables so one config.toml can hold both
+# services side by side without their tables colliding.
 #
 # HOW VALUES ARE RESOLVED
 # Each value is an interpolation token, resolved once at startup:
@@ -19,50 +22,40 @@
 #   key = '{{ env "APIP_AIW_KEY" "default" }}'
 #          └── environment variable    └── value used when the variable is unset
 #
-# So a key written this way can be set by its environment variable — no edit to this
-# file required. The token is what reads the environment: there is no implicit override,
-# so a key written as a plain literal (key = "value"), or left commented out below,
-# ignores the variable entirely. Uncomment the key first to make it settable that way.
+# The token is what reads the environment — a plain literal or a commented-out key
+# ignores the variable entirely. By convention the variable name is the key's table
+# path under [ai_workspace], uppercased with underscores, prefixed APIP_AIW_:
 #
-# By convention the variable is the key's table path, uppercased, dots as underscores,
-# prefixed with APIP_AIW_:
+#   [ai_workspace] domain                    ->  APIP_AIW_DOMAIN
+#   [ai_workspace.server.https] port         ->  APIP_AIW_SERVER_HTTPS_PORT
+#   [ai_workspace.auth.oidc] client_id       ->  APIP_AIW_AUTH_OIDC_CLIENT_ID
 #
-#   [platform_api] url  ->  APIP_AIW_PLATFORM_API_URL
-#   [oidc] client_id    ->  APIP_AIW_OIDC_CLIENT_ID
-#   domain (no table)   ->  APIP_AIW_DOMAIN
-#
-# To source a value from a mounted file instead of the environment — the right
-# choice for secrets — swap the token:
+# For secrets, source from a mounted file instead of the environment:
 #
 #   key = '{{ file "/secrets/ai-workspace/key" }}'
 #
-# A {{ file }} token is required and fails closed: if the file is missing, or lives
-# outside the allowed source directories (/etc/ai-workspace and /secrets/ai-workspace
-# by default; override with APIP_CONFIG_FILE_SOURCE_ALLOWLIST), the server refuses to
-# start rather than run with an empty value. An {{ env }} token with no default
-# behaves the same way.
+# Both {{ file }} and a required {{ env }} (no default) fail closed at startup — a
+# missing file, a file outside the allowed source directories (/etc/ai-workspace and
+# /secrets/ai-workspace; override with APIP_CONFIG_FILE_SOURCE_ALLOWLIST), or an unset
+# required variable all refuse to start rather than run with an empty value.
 #
-# Never write a secret as a raw literal in this file, and never hardcode one in
-# docker-compose.yaml.
+# Never write a secret as a raw literal here or hardcode one in docker-compose.yaml.
 #
 # KEY ORDER
-# Within every table, keys are ordered so the ones that decide whether the rest apply
-# come first:
-#
-#   1. the gate — enabled, or the mode that selects this table (auth_mode)
-#   2. required identity/connection keys (url, authority, client_id, client_secret)
-#   3. optional behaviour, in the order you would tune it
-#   4. TLS/trust and other hardening keys last
-#
+# Within each table: 1) the gate (enabled/mode), 2) required identity/connection keys
+# (url, authority, client_id, client_secret), 3) optional behaviour, 4) TLS/trust last.
 # Keep new keys in that order rather than appending to the end of a table.
 #
 # QUICK START (basic-auth mode):
 #   1. Copy this file to config.toml.
-#   2. Set auth_mode = "basic" (uses the users defined in config-platform-api.toml).
+#   2. Set [ai_workspace.auth] mode = "basic" (uses the users defined in
+#      [platform_api.auth.file.users] in the same config.toml).
 #   3. Run: docker compose up
 #
-# OIDC mode: set auth_mode = "oidc" and fill in the [oidc] table below.
+# OIDC mode: set [ai_workspace.auth] mode = "oidc" and fill in [ai_workspace.auth.oidc].
 # --------------------------------------------------------------------
+
+[ai_workspace]
 
 # ====================================================================
 # Deployment identity
@@ -71,206 +64,189 @@
 # window.__RUNTIME_CONFIG__. Never put a credential among them.
 # ====================================================================
 
-# Authentication mode for the UI: "basic" (local users) or "oidc" (external IDP).
-# Choosing "oidc" enables the [oidc] table below.
-auth_mode = '{{ env "APIP_AIW_AUTH_MODE" "basic" }}'
-
-# Domain shown in the browser address bar (host:port, or just host for port 80/443).
-domain = '{{ env "APIP_AIW_DOMAIN" "localhost:5380" }}'
-
-# Control-plane host — the host:port that deployed gateways use to reach the Platform
-# API. Shown in gateway setup instructions (keys.env, helm values). Must be the
-# externally reachable address, not a relative/proxy path.
-controlplane_host = '{{ env "APIP_AIW_CONTROLPLANE_HOST" "localhost:9243" }}'
-
 # Default region assigned to new organizations on first login.
-default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
-
-# Gateway versions offered in the create-gateway version selector (JSON array string).
-# Each entry: version (helm chart minor), latestVersion (image/chart tag shown to the
-# user and used in the helm --version flag), channel ("STS" | "LTS"). The first entry
-# is the default selection.
-platform_gateway_versions = '{{ env "APIP_AIW_PLATFORM_GATEWAY_VERSIONS" "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]" }}'
-
-# Verbose logging in the browser console.
-debug = '{{ env "APIP_AIW_DEBUG" "false" }}'
+default_org_region = "us"
 
 
-# ====================================================================
+# ---------------------------------------------------------------------------
 # Server
 #
-# Everything from here down configures the AI Workspace server itself. These values
-# stay server-side and are never sent to the browser (the [oidc] claim names being the
-# one exception — the SPA needs them to display user/org identity).
+# Everything in this table configures the AI Workspace server itself. These values
+# stay server-side and are never sent to the browser, with two exceptions: domain
+# (the SPA needs it to display the deployment's own address) and the
+# [ai_workspace.auth.oidc] claim names (the SPA needs them to display user/org identity).
 #
 # All keys are optional: the value in each token's default position is the built-in
 # default.
-# ====================================================================
+# ---------------------------------------------------------------------------
 
-# Address the server listens on (host:port). The container publishes this port.
-listen_addr = '{{ env "APIP_AIW_LISTEN_ADDR" ":5380" }}'
+# Note: the directory serving the built SPA (index.html + assets) is not
+# configurable here — the container always serves the copy baked in at /app.
+# Local dev (`make bff-run`) points the BFF at a different build via the
+# -static-dir CLI flag instead, since no deployment ever needs to override it.
 
-# Directory holding the built SPA (index.html + assets).
-static_dir = '{{ env "APIP_AIW_STATIC_DIR" "/app" }}'
+# The single listener follows the platform-wide [server.https] shape. The listener
+# always binds all interfaces (there is no host to configure), and the container
+# publishes this port.
+[ai_workspace.server]
 
-# Same-origin prefix the SPA calls; it is stripped before forwarding upstream. The
-# browser's API base URL is derived from this, so the browser only ever talks to the
-# app origin and never hits the platform-api certificate directly.
-proxy_prefix = '{{ env "APIP_AIW_PROXY_PREFIX" "/api/proxy" }}'
+# Domain shown in the browser address bar (host:port, or just host for port 80/443).
+# Browser-safe — served to the SPA as APIP_AIW_SERVER_DOMAIN.
+domain = "localhost:5380"
 
-# Custom header required on state-mutating requests (CSRF protection).
-csrf_header = '{{ env "APIP_AIW_CSRF_HEADER" "X-Requested-By" }}'
+# Port the server listens on.
+port = 5380
 
-log_level  = '{{ env "APIP_AIW_LOG_LEVEL" "info" }}'    # debug | info | warn | error
-log_format = '{{ env "APIP_AIW_LOG_FORMAT" "text" }}'   # text | json
+# Paths to a mounted TLS certificate and key. REQUIRED when enabled = true; setup.sh
+# generates a pair for the quickstart.
+cert_file = "/etc/ai-workspace/tls/cert.pem"
+key_file  = "/etc/ai-workspace/tls/key.pem"
 
 
 # ---------------------------------------------------------------------------
-# Upstream Platform API — the server-to-server hop the BFF proxies to.
+# Logging. level/format are this process's own logs; browser_debug is
+# browser-safe — served to the SPA to control verbose console logging there.
+# Level is matched case-insensitively; lowercase is canonical.
 # ---------------------------------------------------------------------------
-[platform_api]
+[ai_workspace.logging]
 
-# Base URL used to reach the Platform API. REQUIRED. In docker compose this is the
-# compose hostname; running locally, use localhost. Its http/https scheme decides
-# whether the upstream hop uses TLS.
-url = '{{ env "APIP_AIW_PLATFORM_API_URL" "https://platform-api:9243" }}'
+level         = "info"    # debug | info | warn | error
+format        = "text"    # text | json
+browser_debug = "false"
 
-# File-based login path on the Platform API (basic-auth mode).
-login_path = '{{ env "APIP_AIW_PLATFORM_API_LOGIN_PATH" "/api/portal/v0.9/auth/login" }}'
+
+# ---------------------------------------------------------------------------
+# Upstream Platform API (control plane) — the server-to-server hop the BFF proxies to.
+# ---------------------------------------------------------------------------
+[ai_workspace.control_plane]
+
+# Base URL to reach the Platform API. REQUIRED. Use the compose hostname in docker
+# compose, or localhost when running locally. The scheme decides if the hop uses TLS.
+url = "https://platform-api:9243"
+
+# Same-origin prefix the SPA calls; stripped before forwarding upstream, so the
+# browser only ever talks to the app origin and never sees the platform-api cert.
+proxy_prefix = "/proxy"
+
+# Platform API's portal route prefix. BFF-initiated calls (e.g. file-based login) are
+# built as this base path plus the route's own suffix, e.g. base + "/auth/login".
+portal_base_path = "/api/portal/v0.9"
 
 # --- Trust for the upstream's TLS certificate ---
 
-# Accept the Platform API's self-signed certificate without verification (local
-# development only) — prefer trusting the certificate with ca_file instead.
-tls_skip_verify = '{{ env "APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY" "false" }}'
+# Accept the Platform API's self-signed certificate without verification (local dev
+# only) — prefer ca_file instead.
+tls_skip_verify = "false"
 
-# PEM bundle to trust for the upstream's TLS certificate. Appended to the system
-# roots, so public CAs keep working.
-ca_file = '{{ env "APIP_AIW_PLATFORM_API_CA_FILE" "" }}'
+# PEM bundle to trust for the upstream's TLS certificate, appended to system roots.
+ca_file = ""
 
 
 # ---------------------------------------------------------------------------
-# TLS on the AI Workspace listener.
+# Gateway deployment info — browser-safe values the SPA shows in gateway setup
+# instructions. Unlike [ai_workspace.control_plane] (the BFF's own hop), this is what
+# an externally deployed gateway needs to reach the Platform API itself.
 # ---------------------------------------------------------------------------
-[tls]
+[ai_workspace.gateway]
 
-# Terminate TLS on this listener. Set false only when a trusted upstream (ingress
-# controller, service-mesh sidecar) terminates TLS for you — no certificate is then
-# read, generated, or required.
-enabled = '{{ env "APIP_AIW_TLS_ENABLED" "true" }}'
+# host:port that deployed gateways use to reach the Platform API, shown in setup
+# instructions (keys.env, helm values). Must be externally reachable, not a proxy path.
+controlplane_host = "localhost:9243"
 
-# Paths to a mounted TLS certificate and key. REQUIRED when enabled = true —
-# there is no self-signed fallback; setup.sh generates a pair for the quickstart.
-cert_file = '{{ env "APIP_AIW_TLS_CERT_FILE" "/etc/ai-workspace/tls/cert.pem" }}'
-key_file  = '{{ env "APIP_AIW_TLS_KEY_FILE" "/etc/ai-workspace/tls/key.pem" }}'
+# Gateway versions offered in the create-gateway version selector (JSON array string).
+# Each entry: version (helm chart minor), latestVersion (image/chart tag, used in the
+# helm --version flag), channel ("STS" | "LTS"). The first entry is the default.
+platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-beta\",\"channel\":\"STS\"}]"
+
 
 
 # ---------------------------------------------------------------------------
 # Server-side session lifetime.
 # ---------------------------------------------------------------------------
-[session]
+[ai_workspace.session]
 
 # Session store. Only "memory" is supported today ("redis" is future).
-store = '{{ env "APIP_AIW_SESSION_STORE" "memory" }}'
+store = "memory"
 
 # Sliding idle window (Go duration, e.g. "30m"). Reserved — not enforced yet.
-idle_timeout = '{{ env "APIP_AIW_SESSION_IDLE_TIMEOUT" "30m" }}'
+idle_timeout = "30m"
 
 # Hard cap on session lifetime regardless of activity/refresh (Go duration).
-absolute_ttl = '{{ env "APIP_AIW_SESSION_ABSOLUTE_TTL" "8h" }}'
+absolute_ttl = "8h"
 
 
 # ---------------------------------------------------------------------------
-# Session cookie attributes.
+# Auth — chooses the login UX and gates the OIDC client below.
 # ---------------------------------------------------------------------------
-[cookie]
+[ai_workspace.auth]
 
-name = '{{ env "APIP_AIW_COOKIE_NAME" "_ai_workspace_session" }}'
-
-# Mark the session cookie Secure (HTTPS-only). Set false only for local HTTP.
-secure = '{{ env "APIP_AIW_COOKIE_SECURE" "true" }}'
-
-# SameSite policy: "lax" | "strict" | "none".
-samesite = '{{ env "APIP_AIW_COOKIE_SAMESITE" "lax" }}'
+# Authentication mode for the UI: "basic" (local users) or "oidc" (external IDP).
+# Choosing "oidc" enables the [ai_workspace.auth.oidc] table below.
+mode = "basic"
 
 
 # ---------------------------------------------------------------------------
-# OIDC — set auth_mode = "oidc" above to enable.
+# JWT claim name mappings — which token claim carries each user/org field. Applies to
+# BOTH auth modes (a sibling of [ai_workspace.auth.oidc], not nested in it): in basic
+# mode the Platform API signs JWTs using these same claim names, so the two services
+# must agree. Mirrors [platform_api.auth.claim_mappings] in the same config.toml
+# key for key — override only if your IDP uses different claim names.
+# ---------------------------------------------------------------------------
+[ai_workspace.auth.claim_mappings]
+
+organization = "organization" # claim carrying the org ID
+org_name     = "org_name"          # org display name
+org_handle   = "org_handle"      # org URL slug
+username     = "username"
+email        = "email"
+scope        = "scope"                # space-separated scope string
+roles        = "roles"
+
+
+# ---------------------------------------------------------------------------
+# OIDC — set [ai_workspace.auth] mode = "oidc" above to enable.
 #
 # The BFF is a confidential client: it performs the whole handshake, and the client
 # credentials never reach the browser.
 # ---------------------------------------------------------------------------
-[oidc]
+[ai_workspace.auth.oidc]
 
-# Force the OIDC client on independently of auth_mode. Setting auth_mode = "oidc"
-# already enables it, so this is rarely needed.
-enabled = '{{ env "APIP_AIW_OIDC_ENABLED" "false" }}'
+# Force the OIDC client on independently of mode. Rarely needed — mode = "oidc"
+# above already enables it.
+enabled = "false"
 
 # Issuer URL — endpoints are auto-discovered from /.well-known/openid-configuration.
-authority = '{{ env "APIP_AIW_OIDC_AUTHORITY" "https://accounts.example.com" }}'
+authority = "https://accounts.example.com"
 
 # Client ID registered in your IDP.
-client_id = '{{ env "APIP_AIW_OIDC_CLIENT_ID" "your-client-id" }}'
+client_id = "your-client-id"
 
-# The confidential-client secret. Required in OIDC mode, and deliberately has no
-# default: an unset variable fails startup rather than running with an empty credential.
-# Prefer the {{ file }} form in production — the value then never enters the
-# environment at all.
-client_secret = '{{ env "APIP_AIW_OIDC_CLIENT_SECRET" }}'
+# Confidential-client secret. REQUIRED in OIDC mode with no default — an unset
+# variable fails startup. Prefer the {{ file }} form in production.
+client_secret = ""
 
-# The callback the IDP redirects to after login — a server-side callback, not an SPA
-# route. Must equal the redirect URI registered on the IDP application.
-redirect_url = '{{ env "APIP_AIW_OIDC_REDIRECT_URL" "https://localhost:5380/api/auth/callback" }}'
+# Server-side callback the IDP redirects to after login (not an SPA route). Must
+# match the redirect URI registered on the IDP application.
+redirect_url = "https://localhost:5380/api/auth/callback"
 
 # Absolute URL the IDP redirects to after logout (must be pre-registered there).
-post_logout_redirect_url = '{{ env "APIP_AIW_OIDC_POST_LOGOUT_REDIRECT_URL" "https://localhost:5380/login" }}'
+post_logout_redirect_url = "https://localhost:5380/login"
 
-# Scopes requested at login (space-separated). Leave APIP_AIW_OIDC_SCOPE unset to
-# request the built-in full ap:* set (recommended). Override only to request a
-# narrower set — and keep offline_access in any override, or token refresh breaks.
-scope = '{{ env "APIP_AIW_OIDC_SCOPE" "" }}'
-
-
-# ---------------------------------------------------------------------------
-# JWT claim name mappings — which token claim carries each user/org field.
-#
-# This table mirrors [auth.idp.claim_mappings] in config-platform-api.toml key for key,
-# and the two must agree: both services read the same claims out of the same token.
-# The variables line up one-to-one as well:
-#
-#   APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME     (AI Workspace)
-#   APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME  (Platform API)
-#
-# Override only if your IDP uses claim names other than the defaults shown.
-#
-# Must be the last table under [oidc]: in TOML, a sub-table header ends the parent
-# table's key section, so any plain [oidc] key placed below it would land here instead.
-# ---------------------------------------------------------------------------
-[oidc.claim_mappings]
-
-organization_claim_name = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME" "org_id" }}'    # claim carrying the org ID
-org_name_claim_name     = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ORG_NAME_CLAIM_NAME" "org_name" }}'      # org display name
-org_handle_claim_name   = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ORG_HANDLE_CLAIM_NAME" "org_handle" }}'  # org URL slug
-username_claim_name     = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_USERNAME_CLAIM_NAME" "username" }}'
-email_claim_name        = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_EMAIL_CLAIM_NAME" "email" }}'
-scope_claim_name        = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_SCOPE_CLAIM_NAME" "scope" }}'            # space-separated scope string
-role_claim_name         = '{{ env "APIP_AIW_OIDC_CLAIM_MAPPINGS_ROLE_CLAIM_NAME" "platform_role" }}'
+# Scopes requested at login (space-separated). Defaults to the full ap:* set the
+# Platform API authorizes against (recommended) — trim only what you need to
+# restrict, and always keep offline_access or token refresh breaks.
+scope = "openid profile email offline_access ap:organization:read ap:organization:manage ap:organization:subscription:read ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage ap:application:association:read ap:application:association:create ap:application:association:delete ap:application:association:manage ap:application:association:api_key:read ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:gateway_custom_policy:read ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage ap:gateway:artifact:read ap:gateway:manifest:read ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import ap:rest_api:gateway:read ap:rest_api:gateway:create ap:rest_api:gateway:manage ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage ap:rest_api:deployment:undeploy ap:rest_api:deployment:restore ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage ap:rest_api:publication:read ap:rest_api:publication:create ap:rest_api:publication:delete ap:devportal:read ap:devportal:create ap:devportal:update ap:devportal:delete ap:devportal:manage ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage ap:llm_template:read ap:llm_template:create ap:llm_template:update ap:llm_template:delete ap:llm_template:manage ap:llm_provider:read ap:llm_provider:create ap:llm_provider:update ap:llm_provider:delete ap:llm_provider:manage ap:llm_provider:api_key:read ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage ap:llm_provider:deployment:read ap:llm_provider:deployment:create ap:llm_provider:deployment:delete ap:llm_provider:deployment:manage ap:llm_provider:deployment:undeploy ap:llm_provider:deployment:restore ap:llm_proxy:read ap:llm_proxy:create ap:llm_proxy:update ap:llm_proxy:delete ap:llm_proxy:manage ap:llm_proxy:api_key:read ap:llm_proxy:api_key:create ap:llm_proxy:api_key:delete ap:llm_proxy:api_key:manage ap:llm_proxy:deployment:read ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage ap:llm_proxy:deployment:undeploy ap:llm_proxy:deployment:restore ap:mcp_proxy:read ap:mcp_proxy:create ap:mcp_proxy:update ap:mcp_proxy:delete ap:mcp_proxy:manage ap:mcp_proxy:deployment:read ap:mcp_proxy:deployment:create ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:deployment:restore ap:websub_api:read ap:websub_api:create ap:websub_api:update ap:websub_api:delete ap:websub_api:manage ap:websub_api:api_key:read ap:websub_api:api_key:create ap:websub_api:api_key:delete ap:websub_api:api_key:manage ap:websub_api:api_key:update ap:websub_api:deployment:read ap:websub_api:deployment:create ap:websub_api:deployment:delete ap:websub_api:deployment:manage ap:websub_api:deployment:undeploy ap:websub_api:deployment:restore ap:websub_api:publication:read ap:websub_api:publication:create ap:websub_api:publication:delete ap:webbroker_api:read ap:webbroker_api:create ap:webbroker_api:update ap:webbroker_api:delete ap:webbroker_api:manage ap:webbroker_api:api_key:read ap:webbroker_api:api_key:create ap:webbroker_api:api_key:delete ap:webbroker_api:api_key:manage ap:webbroker_api:api_key:update ap:webbroker_api:deployment:read ap:webbroker_api:deployment:create ap:webbroker_api:deployment:delete ap:webbroker_api:deployment:manage ap:webbroker_api:deployment:undeploy ap:webbroker_api:deployment:restore ap:webbroker_api:publication:read ap:webbroker_api:publication:create ap:webbroker_api:publication:delete ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage ap:git:read"
 
 
 # ====================================================================
 # Settings with no config key
 #
-# The path to this file cannot be a key in it: the server reads its mount,
-# /etc/ai-workspace/config.toml, unless -config names another path
-# (`bff -config ../configs/config.toml`, as `make bff-run` does).
-#
-# The variables below are read straight from the environment by the server itself, not
-# through a token, because each is needed before (or independently of) the config file.
-# They are not config keys, so they have no entry above.
+# Read straight from the environment by the server itself (not through a token),
+# since each is needed before or independently of the config file.
 # ====================================================================
 #
 #   APIP_CONFIG_FILE_SOURCE_ALLOWLIST
 #                        Comma-separated directories a {{ file "..." }} token may
-#                        read from. Replaces (not extends) the defaults
-#                        /etc/ai-workspace and /secrets/ai-workspace. Shared by
-#                        every component in the platform.
+#                        read from. Replaces the defaults /etc/ai-workspace and
+#                        /secrets/ai-workspace. Shared by every component in the
+#                        platform.

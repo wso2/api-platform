@@ -39,12 +39,10 @@ const (
 const (
 	CodeLLMProviderNotFound                   = "LLM_PROVIDER_NOT_FOUND"
 	CodeLLMProviderExists                     = "LLM_PROVIDER_EXISTS"
-	CodeLLMProviderLimitReached               = "LLM_PROVIDER_LIMIT_REACHED"
 	CodeLLMProviderAPIKeyNotFound             = "LLM_PROVIDER_API_KEY_NOT_FOUND"
 	CodeLLMProviderDeploymentValidationFailed = "LLM_PROVIDER_DEPLOYMENT_VALIDATION_FAILED"
 	CodeLLMProxyNotFound                      = "LLM_PROXY_NOT_FOUND"
 	CodeLLMProxyExists                        = "LLM_PROXY_EXISTS"
-	CodeLLMProxyLimitReached                  = "LLM_PROXY_LIMIT_REACHED"
 	CodeLLMProxyAPIKeyNotFound                = "LLM_PROXY_API_KEY_NOT_FOUND"
 	CodeLLMProviderRefNotFound                = "LLM_PROVIDER_REF_NOT_FOUND"
 	CodeLLMProxyDeploymentValidationFailed    = "LLM_PROXY_DEPLOYMENT_VALIDATION_FAILED"
@@ -104,7 +102,6 @@ const (
 const (
 	CodeMCPProxyNotFound                   = "MCP_PROXY_NOT_FOUND"
 	CodeMCPProxyExists                     = "MCP_PROXY_EXISTS"
-	CodeMCPProxyLimitReached               = "MCP_PROXY_LIMIT_REACHED"
 	CodeMCPProxyDeploymentValidationFailed = "MCP_PROXY_DEPLOYMENT_VALIDATION_FAILED"
 )
 
@@ -182,12 +179,10 @@ const (
 // WebSub and WebBroker API domain codes, raised by the event-gateway plugin
 // and by the two gateway-internal artifact lookups.
 const (
-	CodeWebSubAPINotFound        = "WEBSUB_API_NOT_FOUND"
-	CodeWebSubAPIExists          = "WEBSUB_API_EXISTS"
-	CodeWebSubAPILimitReached    = "WEBSUB_API_LIMIT_REACHED"
-	CodeWebBrokerAPINotFound     = "WEBBROKER_API_NOT_FOUND"
-	CodeWebBrokerAPIExists       = "WEBBROKER_API_EXISTS"
-	CodeWebBrokerAPILimitReached = "WEBBROKER_API_LIMIT_REACHED"
+	CodeWebSubAPINotFound    = "WEBSUB_API_NOT_FOUND"
+	CodeWebSubAPIExists      = "WEBSUB_API_EXISTS"
+	CodeWebBrokerAPINotFound = "WEBBROKER_API_NOT_FOUND"
+	CodeWebBrokerAPIExists   = "WEBBROKER_API_EXISTS"
 )
 
 // HMAC secret domain codes (WebSub subscriber callback signing secrets).

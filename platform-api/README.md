@@ -6,7 +6,7 @@ Backend service that powers the API Platform portals, gateways, and automation f
 
 ### Prerequisites
 
-Before using the Platform API, obtain a bearer token for authentication. In local JWT mode (default) you can generate a token using the configured `APIP_CP_AUTH_JWT_SECRET_KEY`. In IDP mode, obtain a token from your identity provider.
+Before using the Platform API, obtain a bearer token for authentication. In `file` or `external_token` auth mode you can generate a token using the HMAC key configured at `platform_api.auth.jwt.secret_key`. In `idp` mode, obtain a token from your identity provider. See [Configuration](#configuration) below.
 
 ### Build and Run
 
@@ -20,22 +20,36 @@ cd platform-api
 go run ./cmd/main.go
 ```
 
+`config/config.toml` is the local-development config, used with `platform_api.auth.mode = "file"`
+(username/password login backed by the organization/user block in that file) — the same mode the
+AI Workspace and Developer Portal quickstarts use, so it works out of the box with either, with no
+env vars set. It's the one Platform API config shared by every quickstart (both docker-compose
+setups mount it directly), so its admin user's scopes cover both the `ap:*` (AI Workspace /
+platform-admin) and `dp:*` (Developer Portal) namespaces. Set `APIP_CP_ADMIN_USERNAME` /
+`APIP_CP_ADMIN_PASSWORD_HASH` to pick your own login credentials (generate a hash with
+`htpasswd -bnBC 12 "" <password> | tr -d ':\n'`), or set `platform_api.auth.mode = "external_token"`
+for locally-signed HMAC tokens with no local users — see
+[`config/config-template.toml`](config/config-template.toml) for the full reference.
+
 ### Database Configuration
 
-Platform API supports `sqlite3` (default), `postgres`, and `sqlserver`.
+Platform API supports `sqlite3` (default), `postgres`, and `sqlserver`. Configure the driver
+under `[platform_api.database]` in your config file, e.g. for SQL Server:
+
+```toml
+[platform_api.database]
+driver   = "sqlserver"
+host     = "sqlserver.example.internal"
+port     = "1433"
+name     = "platform_api"
+username = "sa"
+password = '{{ env "DB_PASSWORD" }}'   # or '{{ file "/secrets/platform-api/db_password" }}'
+ssl_mode = "disable"
+```
 
 ```bash
-# SQL Server example
-export DATABASE_DRIVER=sqlserver
-export DATABASE_HOST=sqlserver.example.internal
-export DATABASE_PORT=1433
-export DATABASE_NAME=platform_api
-export DATABASE_USER=sa
-export DATABASE_PASSWORD='<strong-password>'
-export DATABASE_SSL_MODE=disable
-
 cd platform-api
-go run ./cmd/main.go
+go run ./cmd/main.go -config config/config.toml
 ```
 
 ### Step-by-Step Workflow
@@ -230,120 +244,63 @@ The connected gateway will receive a deployment event via WebSocket:
 ## Configuration
 
 Configuration is read from a TOML config file (`-config <path>`), layered over built-in
-defaults. **Environment variables do not override config keys directly.** The only way an
-environment variable affects a setting is through an explicit `{{ env "NAME" }}` interpolation
-token placed in the config file, which is resolved at load time via `os.LookupEnv`; a field
-with no token always takes its literal TOML value (or the built-in default). See "Providing
-secrets via the config file" below.
+defaults. **There are no fixed, prescriptive environment variable names** — a key omitted from
+the file simply falls back to its built-in default, a literal value in the file is used as-is,
+and the only way an environment variable (or a mounted file) affects a setting is by writing an
+explicit interpolation token as that key's value:
 
-One variable is intentionally **not** prefixed: the shared `APIP_CONFIG_FILE_SOURCE_ALLOWLIST`. The `{{ env "NAME" }}` interpolation
-tokens in the config file read the literal name via `os.LookupEnv` (independent of the koanf
-prefix mechanism); the samples use the same `APIP_CP_`-prefixed names for one consistent
-namespace — e.g. `{{ env "APIP_CP_ENCRYPTION_KEY" }}` (see "Providing secrets via the config
-file" below).
-
-### Authentication
-
-Two authentication modes are supported. Exactly one should be active at a time.
-
-```
-APIP_CP_AUTH_IDP_ENABLED=false (default)  →  Local JWT mode  (HMAC signature verification)
-APIP_CP_AUTH_IDP_ENABLED=true             →  IDP mode        (JWKS-based verification)
+```toml
+some_key = '{{ env "ANY_VAR_NAME" "optional-default" }}'   # from an env var, with a fallback
+some_key = '{{ env "ANY_VAR_NAME" }}'                        # from an env var, no fallback — unset fails config load
+some_key = '{{ file "/secrets/platform-api/some-file" }}'    # from a mounted file (preferred for secrets)
 ```
 
-> `APIP_CP_ENCRYPTION_KEY` and `APIP_CP_AUTH_JWT_SECRET_KEY` are **required**; startup
-> fails without them. TLS certificates are likewise required whenever the HTTPS
-> listener is enabled — the server never generates a self-signed pair.
+The name inside the token (`ANY_VAR_NAME`) is a free choice — it's read via `os.LookupEnv` at
+load time and isn't tied to any specific naming scheme. [`config/config-template.toml`](config/config-template.toml)
+is the authoritative reference: it lists every key the binary reads, each already wrapped in an
+`{{ env }}` token using the `APIP_CP_*` naming convention as one consistent example — copy it and
+edit the values, or replace the tokens with plain literals. `{{ file }}` reads are restricted to
+an allowlisted directory (default `/etc/platform-api`, `/secrets/platform-api`) and fail closed:
+a missing/empty required source, or a missing/disallowed/oversize file, aborts startup.
 
----
+### Key sections
 
-#### Local JWT Mode (default)
+All settings live under `[platform_api]` / `[platform_api.*]`. The main sections:
 
-The server signs and validates HMAC login tokens using the key that `auth.jwt.secret_key` resolves to — a 32-byte value (64 hex chars or base64). This key is **required** at startup whenever local JWT or file-based auth is enabled and is never generated; a missing or malformed value fails startup. The sample config reads it from `{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}`.
-
-`auth.jwt.skip_validation` is a development-only switch that accepts bearer values without a signature check. It is honored **only in demo mode** — startup is rejected if it is `true` while `APIP_DEMO_MODE=false` — and it does **not** remove the required secret key above.
-
-| Variable | Default | Description |
-|---|---|---|
-| `APIP_CP_AUTH_JWT_SECRET_KEY` | _(empty)_ | HMAC key for signing/verifying login JWTs — 32-byte value (64 hex or base64; `openssl rand -hex 32`). **Required** whenever local JWT or file-based auth is enabled. |
-| `APIP_CP_AUTH_JWT_ISSUER` | `platform-api` | Expected `iss` claim value |
-| `APIP_CP_AUTH_JWT_SKIP_VALIDATION` | `false` | Skip signature verification — **development only**, honored solely in demo mode |
-
-Run locally. The config file supplies the `{{ env }}` tokens, so export the referenced variable and pass `-config`:
-```bash
-export APIP_CP_AUTH_JWT_SECRET_KEY="$(openssl rand -hex 32)"
-go run ./cmd/main.go -config config/config.toml
-```
-
-To skip signature checks during local development, set `skip_validation = true` under `[auth.jwt]` in the config file (demo mode only) and run the same command.
-
-**Legacy variable names.** These unprefixed names are **no longer read** — environment
-variables affect configuration only through `{{ env "…" }}` tokens (see above). Use the
-current token variable name (or the config key directly) instead:
-
-| Old name | New name |
+| Section | Purpose |
 |---|---|
-| `JWT_SECRET_KEY` | `APIP_CP_AUTH_JWT_SECRET_KEY` |
-| `JWT_ISSUER` | `APIP_CP_AUTH_JWT_ISSUER` |
-| `JWT_SKIP_VALIDATION` | `APIP_CP_AUTH_JWT_SKIP_VALIDATION` |
-| `JWT_SKIP_PATHS` | `APIP_CP_AUTH_SKIP_PATHS` |
+| `[platform_api]` | resource paths |
+| `[platform_api.logging]` | `level`, `format` |
+| `[platform_api.security]` | `encryption_key` (**required** — at-rest AES-256 key, 32 bytes as hex or base64, never auto-generated) |
+| `[platform_api.security.api_key]` | `hashing_algorithms` accepted for API key verification |
+| `[platform_api.database]` | `driver` (`sqlite3` / `postgres` / `sqlserver`), connection fields, pool sizing |
+| `[platform_api.auth]` | `mode` — one of `external_token`, `file`, or `idp`; `scope_validation`; `skip_paths` |
+| `[platform_api.auth.jwt]` | Asymmetric (RS256) token settings: `issuer`, `public_key` (**required** — PEM RSA public key, verifies tokens), `private_key` (**required in `file` mode** — PEM RSA private key, signs login tokens), `token_ttl` |
+| `[platform_api.auth.idp]` / `[platform_api.auth.claim_mappings]` | JWKS endpoint, issuer/audience, validation mode, and JWT claim-name mappings for `idp` mode |
+| `[platform_api.auth.file.organization]` / `[[platform_api.auth.file.users]]` | Local org + username/password/scope entries for `file` mode |
+| `[platform_api.server.http]` / `[platform_api.server.https]` | Listener enablement, ports, and (HTTPS) `cert_file` / `key_file` paths (certificates are always required for HTTPS — no self-signed fallback) |
+| `[platform_api.server.timeouts]` | Read/write/idle timeouts |
+| `[platform_api.server.cors]` | `allowed_origins` for credentialed cross-origin requests |
+| `[platform_api.server.websocket]` | Gateway WebSocket connection limits and rate limiting |
+| `[platform_api.deployments]` | Deployment caps and stuck-deployment timeout handling |
+| `[platform_api.gateway]` | Gateway registration verification toggles |
+| `[platform_api.event_hub]` | Multi-replica event delivery polling/retention |
+| `[platform_api.webhook]` | Developer Portal webhook receiver: `enabled`, `secret` (required when enabled), signature/body limits |
 
----
+#### Authentication modes
 
-#### IDP Mode
+`platform_api.auth.mode` selects exactly one mode; only that mode's section is read:
 
-Tokens are validated against any standards-compliant identity provider (Thunder, Asgardeo, Keycloak, Azure AD, Okta, etc.) using its JWKS endpoint. Set `APIP_CP_AUTH_IDP_ENABLED=true` and supply at minimum `APIP_CP_AUTH_IDP_JWKS_URL` and `APIP_CP_AUTH_IDP_ISSUER`.
+- **`external_token`** — verify locally-issued, asymmetrically-signed (RS256) JWTs (`[platform_api.auth.jwt]`); tokens are minted externally (e.g. by the Developer Portal) and signed with the matching RSA private key, verified here against `public_key`. Symmetric (HMAC) and unsigned (`none`) tokens are rejected.
+- **`file`** — `external_token` plus local username/password login: the login endpoint authenticates against `[platform_api.auth.file]` and issues RS256 JWTs signed with `[platform_api.auth.jwt].private_key`, verified with the matching `public_key`. Used by the AI Workspace and Developer Portal quickstarts.
+- **`idp`** — validate tokens against an external IDP's JWKS endpoint (Thunder, Asgardeo, Keycloak, Azure AD, Okta, etc.) via `[platform_api.auth.idp]`; `jwks_url` and `issuer` are required.
 
-| Variable | Default | Description |
-|---|---|---|
-| `APIP_CP_AUTH_IDP_ENABLED` | `false` | Set to `true` to activate IDP mode |
-| `APIP_CP_AUTH_IDP_NAME` | _(empty)_ | Optional label shown in startup logs (e.g. `thunder`, `asgardeo`) |
-| `APIP_CP_AUTH_IDP_JWKS_URL` | _(required)_ | IDP's JWKS endpoint for public key retrieval |
-| `APIP_CP_AUTH_IDP_ISSUER` | _(required)_ | Accepted JWT issuer |
-| `APIP_CP_AUTH_IDP_AUDIENCE` | _(empty)_ | Accepted JWT audience. When set, the token's `aud` claim must contain this value; empty skips the check |
-| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORGANIZATION_CLAIM_NAME` | `organization` | JWT claim holding the org UUID for the active session |
-| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORG_NAME_CLAIM_NAME` | `org_name` | JWT claim for the org display name |
-| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ORG_HANDLE_CLAIM_NAME` | `org_handle` | JWT claim for the org URL-safe handle |
-| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_USER_ID_CLAIM_NAME` | `sub` | JWT claim used as the canonical user identifier |
-| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_USERNAME_CLAIM_NAME` | `username` | JWT claim for the human-readable username |
-| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_EMAIL_CLAIM_NAME` | `email` | JWT claim for the user's email address |
-| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_SCOPE_CLAIM_NAME` | `scope` | JWT claim carrying granted OAuth2 scopes |
-| `APIP_CP_AUTH_IDP_VALIDATION_MODE` | `scope` | Authorization mode: `scope` (validate scope claim directly) or `role` (expand IDP roles to platform roles) |
-| `APIP_CP_AUTH_IDP_CLAIM_MAPPINGS_ROLES_CLAIM_PATH` | _(empty)_ | Dot-notation path to the roles claim (e.g. `realm_access.roles`). Required when `APIP_CP_AUTH_IDP_VALIDATION_MODE=role` |
-| `APIP_CP_AUTH_IDP_ROLE_MAPPINGS` | _(empty)_ | Comma-separated `idp-role=platform-role` pairs (e.g. `PLATFORM_ADMIN=admin,PLATFORM_DEV=developer`). When empty, IDP role values are used as-is |
+`platform_api.auth.skip_paths` is a structured list (not a scalar), so it's edited directly in
+the file rather than through a single token; setting it replaces the built-in default list.
 
-**Example — Asgardeo:**
-```bash
-export APIP_CP_AUTH_IDP_ENABLED=true
-export APIP_CP_AUTH_IDP_NAME=asgardeo
-export APIP_CP_AUTH_IDP_JWKS_URL=https://api.asgardeo.io/t/<org>/oauth2/jwks
-export APIP_CP_AUTH_IDP_ISSUER=https://api.asgardeo.io/t/<org>/oauth2/token
-export APIP_CP_AUTH_IDP_AUDIENCE=<client-id>
-export APIP_CP_AUTH_IDP_ORGANIZATION_CLAIM_NAME=organizationId
-export APIP_CP_AUTH_IDP_VALIDATION_MODE=scope
-export APIP_CP_AUTH_IDP_ROLES_CLAIM_PATH=scope
-```
+#### Role-Based Access Control (RBAC)
 
----
-
-#### Skip Paths
-
-Path prefixes listed here bypass authentication entirely. Used for internal gateway traffic and health checks.
-
-| Variable | Default |
-|---|---|
-| `APIP_CP_AUTH_SKIP_PATHS` | `/health,/metrics,/api/internal/v1/ws/gateways/connect,...` |
-
-To extend the default list:
-```bash
-export APIP_CP_AUTH_SKIP_PATHS="/health,/metrics,/api/internal/v1/ws/gateways/connect,/my-custom-path"
-```
-
----
-
-### Role-Based Access Control (RBAC)
-
-Per-route scope checks are enforced when `APIP_CP_ENABLE_SCOPE_VALIDATION=true`. Five built-in platform roles exist:
+Per-route scope checks are enforced when `platform_api.auth.scope_validation = true`. Five built-in platform roles exist:
 
 | Role | Persona | Access level |
 |---|---|---|
@@ -353,90 +310,42 @@ Per-route scope checks are enforced when `APIP_CP_ENABLE_SCOPE_VALIDATION=true`.
 | `operator` | CI/CD service account | Deploy and undeploy operations only; cannot create resources or manage credentials |
 | `viewer` | Auditor | Read-only access to all resources |
 
-| Variable | Default | Description |
-|---|---|---|
-| `APIP_CP_ENABLE_SCOPE_VALIDATION` | `false` | Set to `true` to enforce per-route scope/role checks |
+All three modes read identity fields — including scope — through the same
+`[platform_api.auth.claim_mappings]` table (`scope` defaults to the `scope` claim); `file` mode's
+login endpoint also signs the tokens it issues using these same claim names, so issuance and
+validation never drift apart. In **`idp` mode**, `validation_mode` additionally controls whether
+authorization uses the scope claim directly or expands IDP roles from `claim_mappings.roles` via
+`role_mappings`.
 
-In **local JWT mode**, scopes are read directly from the `scope` claim in the token.  
-In **IDP mode with `APIP_CP_AUTH_IDP_VALIDATION_MODE=scope`**, scopes are read from the claim named by `APIP_CP_AUTH_IDP_SCOPE_CLAIM_NAME`.  
-In **IDP mode with `APIP_CP_AUTH_IDP_VALIDATION_MODE=role`**, IDP roles are resolved from `APIP_CP_AUTH_IDP_ROLES_CLAIM_PATH`, mapped via `APIP_CP_AUTH_IDP_ROLE_MAPPINGS`, and matched against the required roles for each route.
+### Providing secrets via the config file
 
----
-
-### Database
-
-| Variable | Default | Description |
-|---|---|---|
-| `APIP_CP_DATABASE_DRIVER` | `sqlite3` | `sqlite3` or `postgres` |
-| `APIP_CP_DATABASE_DB_PATH` | `./data/api_platform.db` | SQLite file path (ignored for Postgres) |
-| `APIP_CP_DATABASE_HOST` | `localhost` | Postgres host |
-| `APIP_CP_DATABASE_PORT` | `5432` | Postgres port |
-| `APIP_CP_DATABASE_NAME` | `platform_api` | Postgres database name |
-| `APIP_CP_DATABASE_USER` | _(empty)_ | Postgres username |
-| `APIP_CP_DATABASE_PASSWORD` | _(empty)_ | Postgres password |
-| `APIP_CP_DATABASE_SSL_MODE` | `disable` | Postgres SSL mode (`disable`, `require`, `verify-full`) |
-| `APIP_CP_DATABASE_EXECUTE_SCHEMA_DDL` | `true` | Set to `false` when the DB user lacks DDL privileges |
-
----
-
-### Encryption
-
-`APIP_CP_ENCRYPTION_KEY` protects all at-rest encryption (secrets, subscription tokens, WebSub HMAC secrets). It is **never auto-generated** — the operator must provide it.
-
-| Variable | Default | Description |
-|---|---|---|
-| `APIP_CP_ENCRYPTION_KEY` | _(empty)_ | **Required.** 32-byte AES-256 key as 64 hex chars or base64 (32 bytes). Generate with `openssl rand -hex 32`. Startup fails if missing or malformed. |
-
-#### Providing secrets via the config file (preferred over raw values)
-
-When the Platform API is configured from a TOML file, do **not** write raw key values into
-it and do **not** hardcode them as literal env vars in a compose file. Reference each secret
-(`APIP_CP_ENCRYPTION_KEY`, `APIP_CP_AUTH_JWT_SECRET_KEY`, `APIP_CP_DATABASE_PASSWORD`,
-`APIP_CP_WEBHOOK_SECRET`, …) with an interpolation token that is resolved at startup,
-preferring a mounted file:
+Never write raw secret values into the config file, and never hardcode them as literals in a
+compose file. Reference each secret (`security.encryption_key`, `auth.jwt.secret_key`,
+`database.password`, `webhook.secret`, …) with an interpolation token, preferring a mounted file
+over an env var:
 
 ```toml
+[platform_api.security]
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'            # from an env var
 # preferred — from a mounted secret file:
 # encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
 ```
 
 For the `{{ env }}` form, supply the value from a git-ignored env file rather than the shell or
-the compose file — the samples keep secrets in `keys.env` and start the stack with
-`docker compose --env-file keys.env up`, which the compose forwards into the container
-via an `environment:` `${APIP_CP_…}` passthrough (never an `env_file:` block or a hardcoded value).
+a hardcoded literal in the compose file — the samples keep secrets in `api-platform.env` and
+mount it into the container via an `env_file:` entry (`format: raw`, since a bcrypt hash can
+contain `$`, which must not be treated as compose interpolation):
 
-`{{ file }}` reads are restricted to an allowlist (`/etc/platform-api`, `/secrets/platform-api`;
-override with the shared `APIP_CONFIG_FILE_SOURCE_ALLOWLIST` env var). Resolution fails closed:
-a missing/empty required env var, or a missing/disallowed/oversize file, aborts startup.
+```yaml
+services:
+  platform-api:
+    env_file:
+      - path: api-platform.env
+        required: true
+        format: raw
+```
 
 ---
-
-### Other Settings
-
-| Variable | Default | Description |
-|---|---|---|
-| `LOG_LEVEL` | `DEBUG` | Log verbosity (`DEBUG`, `INFO`, `WARN`, `ERROR`) |
-| `HTTPS_ENABLED` | `true` | Enable the TLS listener. Certificates are read from `HTTPS_CERT_DIR` (cert.pem / key.pem — required) |
-| `HTTPS_PORT` | `9243` | Port for the TLS listener |
-| `HTTPS_CERT_DIR` | `./data/certs` | Directory holding `cert.pem` / `key.pem` (used only when `HTTPS_ENABLED=true`) |
-| `HTTP_ENABLED` | `false` | Enable the plain-HTTP listener. Use only behind a TLS-terminating ingress/sidecar or for internal traffic — never expose directly to untrusted networks |
-| `HTTP_PORT` | `9080` | Port for the plain-HTTP listener |
-| `TIMEOUTS_READ_HEADER` | `10s` | Max time to read request headers, on both listeners (`0` disables) |
-| `TIMEOUTS_READ` | `60s` | Max time to read the whole request, including the body (`0` disables) |
-| `TIMEOUTS_WRITE` | `120s` | Max time for handler execution plus response write (`0` disables) |
-| `TIMEOUTS_IDLE` | `120s` | Max time a keep-alive connection may sit unused (`0` disables) |
-| `DEPLOYMENTS_MAX_PER_API_GATEWAY` | `20` | Maximum deployments per API per gateway |
-| `DEPLOYMENTS_TRANSITIONAL_STATUS_ENABLED` | `false` | Show `DEPLOYING`/`UNDEPLOYING` status before gateway ack |
-| `ARTIFACT_LIMITS_MAX_LLM_PROVIDERS_PER_ORG` | _unlimited_ | Max LLM providers per organization (`0` or unset = unlimited) |
-| `ARTIFACT_LIMITS_MAX_LLM_PROXIES_PER_ORG` | _unlimited_ | Max LLM proxies per organization (`0` or unset = unlimited) |
-| `ARTIFACT_LIMITS_MAX_MCP_PROXIES_PER_ORG` | _unlimited_ | Max MCP proxies per organization (`0` or unset = unlimited) |
-| `ARTIFACT_LIMITS_MAX_WEBSUB_APIS_PER_ORG` | _unlimited_ | Max WebSub APIs per organization (`0` or unset = unlimited) |
-| `ARTIFACT_LIMITS_MAX_WEBBROKER_APIS_PER_ORG` | _unlimited_ | Max WebBroker APIs per organization (`0` or unset = unlimited) |
-| `GATEWAY_ENABLE_VERSION_VERIFICATION` | `false` | Reject gateway connections with mismatched versions |
-| `API_KEY_HASHING_ALGORITHMS` | `sha256` | Comma-separated hash algorithms for API key storage |
-
-> The legacy `PORT`, `TLS_ENABLED`, and `TLS_CERT_DIR` env vars are still honored and map onto the HTTPS listener (`HTTPS_PORT`, `HTTPS_ENABLED`, `HTTPS_CERT_DIR`).
 
 ## Documentation
 

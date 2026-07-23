@@ -69,8 +69,7 @@
                     Revoking removes all credentials. Tokens already issued remain valid until they expire.
                 </span>
                 <div class="mk-footer-actions">
-                    <button class="mk-btn-danger {{#if isReadOnlyMode}}disabled{{/if}}"
-                        style="{{#if isReadOnlyMode}}pointer-events:none;opacity:.5{{/if}}"
+                    <button class="mk-btn-danger"
                         onclick="confirmAndRevokeKeys('{{appId}}', '{{keys.keyMappingId}}', '{{keyType}}')">
                         <i class="bi bi-trash3"></i> Revoke keys
                     </button>
@@ -95,10 +94,9 @@
                 <form id="inlineTokenForm-{{kmId}}-{{keyType}}" style="display:none"></form>
                 <div class="mk-token-actions">
                     <button id="tokenKeyBtn-{{keyType}}"
-                        class="mk-btn-primary {{#if isReadOnlyMode}}disabled{{/if}}"
+                        class="mk-btn-primary"
                         data-app-id="{{appId}}"
                         data-keymappingid="{{keys.keyMappingId}}"
-                        style="{{#if isReadOnlyMode}}pointer-events:none;opacity:.5{{/if}}"
                         onclick="openGenerateTokenModal('inlineTokenForm-{{kmId}}-{{keyType}}', '{{appId}}', '{{keys.keyMappingId}}', '{{kmName}}', '{{appName}}', '{{json subscriptionScopes}}', '{{keyType}}')">
                         <span class="button-normal-state"><i class="bi bi-lightning-fill"></i> Generate access token</span>
                         <span class="button-loading-state" style="display:none">
@@ -164,11 +162,9 @@
         <div id="addClientIdError-{{kmId}}-{{keyType}}" class="mk-error" style="display:none"></div>
         <div class="mk-add-clientid-row">
             <input type="text" class="mk-input" id="addClientIdInput-{{kmId}}-{{keyType}}"
-                placeholder="Paste client ID" {{#if isReadOnlyMode}}disabled{{/if}} />
+                placeholder="Paste client ID" />
             <button data-cyid="addClientId-{{keyType}}" id="addClientIdBtn-{{kmId}}-{{keyType}}"
-                class="mk-btn-primary {{#if isSandbox}}mk-btn-sandbox{{/if}} {{#if isReadOnlyMode}}disabled{{/if}}"
-                style="{{#if isReadOnlyMode}}pointer-events:none;opacity:.5{{/if}}"
-                {{#if isReadOnlyMode}}disabled{{/if}}
+                class="mk-btn-primary {{#if isSandbox}}mk-btn-sandbox{{/if}}"
                 onclick="addClientId('{{kmId}}', '{{keyType}}', '{{appId}}', '{{orgId}}', '{{kmName}}')">
                 <span class="button-normal-state"><i class="bi bi-plus-lg me-1"></i>Add</span>
                 <span class="button-loading-state" style="display:none">

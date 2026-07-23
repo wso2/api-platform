@@ -21,14 +21,14 @@
 set -e
 
 CERT_DIR=/etc/devportal/tls
-TLS_ENABLED="${APIP_DP_TLS_ENABLED:-false}"
+TLS_ENABLED="${APIP_DP_SERVER_HTTPS_ENABLED:-false}"
 
 # Fail closed: certificates are generated once by ./setup.sh (host-side, into a
 # bind-mounted directory), never here. Startup only checks that they exist —
 # it never generates a fallback, matching every other required secret.
 if [ "$TLS_ENABLED" = "true" ]; then
   if [ ! -f "$CERT_DIR/cert.pem" ] || [ ! -f "$CERT_DIR/key.pem" ]; then
-    echo "[entrypoint] ERROR: TLS is enabled (APIP_DP_TLS_ENABLED=true) but no certificate was found at $CERT_DIR/cert.pem / key.pem. Run ./setup.sh first, or mount your own certificate at $CERT_DIR." >&2
+    echo "[entrypoint] ERROR: TLS is enabled (APIP_DP_SERVER_HTTPS_ENABLED=true) but no certificate was found at $CERT_DIR/cert.pem / key.pem. Run ./setup.sh first, or mount your own certificate at $CERT_DIR." >&2
     exit 1
   fi
   echo "[entrypoint] TLS certificate found at $CERT_DIR"

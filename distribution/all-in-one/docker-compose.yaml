@@ -41,16 +41,40 @@ services:
       dockerfile: Dockerfile
     container_name: devportal
     environment:
-      - APIP_DP_PLATFORMAPI_JWTSECRET=${APIP_CP_AUTH_JWT_SECRET_KEY:-}
+      - APIP_DP_SERVER_HTTPS_ENABLED=false
+      - APIP_DP_DATABASE_DRIVER=postgres
+      - APIP_DP_DATABASE_HOST=postgres
+      - APIP_DP_DATABASE_PORT=5432
+      - APIP_DP_DATABASE_NAME=devportal
+      - APIP_DP_DATABASE_USER=postgres
+      - APIP_DP_DATABASE_PASSWORD=postgres
+      # platform-api signs its tokens with RS256; the devportal verifies them
+      # against jwt_public.pem from the shared keypair volume mounted below
+      # (auth.local.jwt_public_key in devportal-config.toml). There is no shared
+      # HMAC secret. tls_skip_verify covers platform-api's self-signed cert.
+      - APIP_DP_AUTH_LOCAL_PLATFORM_API_URL=https://platform-api:9243
+      - APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY=true
+      # Required — devportal fails closed at startup if either doesn't resolve
+      # to a 64-char hex string. Set both before `docker compose up`, e.g.:
+      #   export APIP_DP_SECURITY_ENCRYPTION_KEY=$(openssl rand -hex 32)
+      #   export APIP_DP_SECURITY_SESSION_SECRET=$(openssl rand -hex 32)
+      - APIP_DP_SECURITY_ENCRYPTION_KEY=${APIP_DP_SECURITY_ENCRYPTION_KEY:-}
+      - APIP_DP_SECURITY_SESSION_SECRET=${APIP_DP_SECURITY_SESSION_SECRET:-}
     ports:
-      - "3001:3001"
+      - "3001:3000"
     volumes:
-      - ../../portals/developer-portal/config.json:/app/config.json:ro
-      - ../../portals/developer-portal/secret.json:/app/secret.json:ro
+      # Replaces the image's shipped configs/config.toml (SQLite-only, fails
+      # closed on security secrets) — see devportal-config.toml for why.
+      - ./devportal-config.toml:/app/configs/config.toml:ro
+      # Same RS256 keypair volume platform-api signs with — the devportal reads
+      # only jwt_public.pem (0644) from it to verify those tokens.
+      - platform-api-jwt-keys:/etc/devportal/keys:ro
     depends_on:
       postgres:
         condition: service_healthy
-      platform-api-certgen:
+      platform-api:
+        condition: service_healthy
+      platform-api-jwtkeygen:
         condition: service_completed_successfully
 
   # One-shot init container: generates the TLS pair the platform-api HTTPS
@@ -68,20 +92,50 @@ services:
     volumes:
       - platform-api-certs:/certs
 
+  # One-shot init container: generates the RS256 keypair platform-api's
+  # auth.jwt config requires (config.toml reads it via {{ file }}). Tokens are
+  # signed asymmetrically — there is no shared HMAC secret anymore.
+  platform-api-jwtkeygen:
+    image: alpine/openssl
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        [ -f /keys/jwt_private.pem ] && [ -f /keys/jwt_public.pem ] && exit 0
+        openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+          -out /keys/jwt_private.pem 2>/dev/null
+        openssl rsa -in /keys/jwt_private.pem -pubout \
+          -out /keys/jwt_public.pem 2>/dev/null
+        # jwtkeygen runs as root; platform-api runs as uid 10001, so the private
+        # key must be owned by that uid, not made world-readable.
+        chown 10001 /keys/jwt_private.pem
+        chmod 0600 /keys/jwt_private.pem
+        chmod 0644 /keys/jwt_public.pem
+    volumes:
+      - platform-api-jwt-keys:/keys
+
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:latest 
+    image: ghcr.io/wso2/api-platform/platform-api:latest
     build:
       context: ../../platform-api
       dockerfile: Dockerfile
       additional_contexts:
         common: ../../common
+    # Mounts the shipped default config (../../platform-api/config/config.toml)
+    # so the APIP_CP_* env vars below actually take effect — {{ env }} / {{ file }}
+    # tokens only resolve from a loaded config file, they are not read directly.
+    command: ["-config", "/etc/platform-api/config.toml"]
     ports:
       - "9243:9243"
     volumes:
+      - ../../platform-api/config/config.toml:/etc/platform-api/config.toml:ro
       - platform-api-data:/api-platform/data
       - platform-api-certs:/app/data/certs
+      # RS256 JWT signing/verification keys — on the Platform API's {{ file }}
+      # allowlist (/etc/platform-api).
+      - platform-api-jwt-keys:/etc/platform-api/keys:ro
     environment:
-      - APIP_CP_DEFAULT_DEVPORTAL_API_URL=http://devportal:3001
+      - APIP_CP_DEFAULT_DEVPORTAL_API_URL=http://devportal:3000
       - APIP_CP_DATABASE_DRIVER=postgres
       - APIP_CP_DATABASE_HOST=postgres
       - APIP_CP_DATABASE_PORT=5432
@@ -93,11 +147,16 @@ services:
       - APIP_CP_DATABASE_MAX_IDLE_CONNS=10
       - APIP_CP_DATABASE_CONN_MAX_LIFETIME=300
       - APIP_CP_DATABASE_EXECUTE_SCHEMA_DDL=true
+      # Required — set before `docker compose up`, e.g.:
+      #   export APIP_CP_ENCRYPTION_KEY=$(openssl rand -hex 32)
       - APIP_CP_ENCRYPTION_KEY=${APIP_CP_ENCRYPTION_KEY:-}
-      - APIP_CP_AUTH_JWT_SECRET_KEY=${APIP_CP_AUTH_JWT_SECRET_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
+      platform-api-certgen:
+        condition: service_completed_successfully
+      platform-api-jwtkeygen:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "--no-check-certificate", "https://localhost:9243/health"]
       interval: 30s
@@ -119,5 +178,7 @@ volumes:
   platform-api-data:
     driver: local
   platform-api-certs:
+    driver: local
+  platform-api-jwt-keys:
     driver: local
   postgres_data:

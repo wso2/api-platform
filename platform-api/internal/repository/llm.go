@@ -757,6 +757,16 @@ func NewLLMProviderRepo(db *database.DB) LLMProviderRepository {
 }
 
 func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
+	return r.create(p, nil, false)
+}
+
+// CreateWithCustomPolicyUsages creates an LLM provider and its custom-policy
+// deletion guards in one transaction.
+func (r *LLMProviderRepo) CreateWithCustomPolicyUsages(p *model.LLMProvider, policyUUIDs []string) error {
+	return r.create(p, policyUUIDs, true)
+}
+
+func (r *LLMProviderRepo) create(p *model.LLMProvider, policyUUIDs []string, reconcilePolicyUsages bool) error {
 	uuidStr, err := utils.GenerateUUID()
 	if err != nil {
 		return fmt.Errorf("failed to generate LLM provider ID: %w", err)
@@ -823,6 +833,11 @@ func (r *LLMProviderRepo) Create(p *model.LLMProvider) error {
 	// Persist gateway associations (if any) within the same transaction.
 	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.CreatedBy, p.AssociatedGateways, now); err != nil {
 		return err
+	}
+	if reconcilePolicyUsages {
+		if err := replaceCustomPolicyUsagesTx(tx, r.db, p.UUID, policyUUIDs); err != nil {
+			return fmt.Errorf("failed to persist custom policy usages: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -946,6 +961,16 @@ func (r *LLMProviderRepo) Count(orgUUID string) (int, error) {
 }
 
 func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
+	return r.update(p, nil, false)
+}
+
+// UpdateWithCustomPolicyUsages updates an LLM provider and replaces its
+// custom-policy deletion guards in one transaction.
+func (r *LLMProviderRepo) UpdateWithCustomPolicyUsages(p *model.LLMProvider, policyUUIDs []string) error {
+	return r.update(p, policyUUIDs, true)
+}
+
+func (r *LLMProviderRepo) update(p *model.LLMProvider, policyUUIDs []string, reconcilePolicyUsages bool) error {
 	now := time.Now().UTC()
 	p.UpdatedAt = now
 
@@ -1016,6 +1041,11 @@ func (r *LLMProviderRepo) Update(p *model.LLMProvider) error {
 	if p.ReplaceAssociatedGateways {
 		if err := replaceArtifactGatewayAssociations(tx, r.db, providerUUID, p.OrganizationUUID, p.UpdatedBy, p.AssociatedGateways, now); err != nil {
 			return err
+		}
+	}
+	if reconcilePolicyUsages {
+		if err := replaceCustomPolicyUsagesTx(tx, r.db, providerUUID, policyUUIDs); err != nil {
+			return fmt.Errorf("failed to persist custom policy usages: %w", err)
 		}
 	}
 

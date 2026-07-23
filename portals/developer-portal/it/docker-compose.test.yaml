@@ -26,18 +26,25 @@
 
 services:
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.12.0
+    # Overridable so CI can point this at a freshly built image (make -C platform-api
+    # build) instead of the last release — this fixture's config-platform-api-it.toml
+    # tracks platform-api's current config schema, which a pinned old release may not
+    # understand.
+    image: ${PLATFORM_API_IMAGE:-ghcr.io/wso2/api-platform/platform-api:0.13.0-SNAPSHOT}
     command: ["-config", "/etc/platform-api/config-platform-api.toml"]
     environment:
       APIP_CP_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-      APIP_CP_AUTH_JWT_SECRET_KEY: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
     volumes:
       - ./configs/config-platform-api-it.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
-      # TLS pair generated once, host-side, by `make ensure-certs` (mirrors
-      # ../scripts/setup.sh's approach for the production compose) — read-only,
-      # 644-mode so the container's non-root user can read a host-owned file.
+      # TLS pair + RS256 JWT keypair generated once, host-side, by `make
+      # ensure-certs` (mirrors ../scripts/setup.sh's approach for the production
+      # compose) — read-only, 644-mode so the container's non-root user can read
+      # a host-owned file. Same host dir, two mount points: TLS cert/key.pem
+      # under /app/data/certs, jwt_{public,private}.pem under
+      # /etc/platform-api/keys (the Platform API's {{ file }} allowlist).
       - ./.certs:/app/data/certs:ro
+      - ./.certs:/etc/platform-api/keys:ro
     healthcheck:
       test: ["CMD", "curl", "-fk", "https://localhost:9243/health"]
       interval: 5s
@@ -55,13 +62,12 @@ services:
     environment:
       # SQLite — no external database required. Shared, DB-agnostic settings
       # (tls/logging/api-key/org/platform-api) live in ./test-config.toml.
-      APIP_DP_DATABASE_TYPE: sqlite
-      APIP_DP_DATABASE_FILE: /tmp/devportal-it.db
-      APIP_DP_SERVER_BASEURL: "http://devportal:3000"
+      APIP_DP_DATABASE_DRIVER: sqlite
+      APIP_DP_DATABASE_PATH: /tmp/devportal-it.db
       # devportal fails closed at startup without these — fixed test-only values,
       # not meant to be reused outside this CI fixture.
-      APIP_DP_SECURITY_ENCRYPTIONKEY: "7f40672c96fd437dc33550755e218d586014232ceb5b01c9405aab575bcb1f4a"
-      APIP_DP_SECURITY_SESSIONSECRET: "527948cfb2478dbd4dfcd9d466df65d8c70511236fe63dba0da0f5385676f593"
+      APIP_DP_SECURITY_ENCRYPTION_KEY: "7f40672c96fd437dc33550755e218d586014232ceb5b01c9405aab575bcb1f4a"
+      APIP_DP_SECURITY_SESSION_SECRET: "527948cfb2478dbd4dfcd9d466df65d8c70511236fe63dba0da0f5385676f593"
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
       interval: 10s
@@ -70,6 +76,12 @@ services:
       start_period: 20s
     volumes:
       - ./test-config.toml:/app/configs/config.toml:ro
+      # Public half of the RS256 JWT keypair from `make ensure-certs` — the
+      # devportal verifies Platform API tokens with it (test-config.toml reads it
+      # via {{ file }}). /etc/devportal is on the devportal's file allowlist.
+      # Mount only jwt_public.pem, not the whole .certs dir, so the private key
+      # (also in .certs, for platform-api) is never exposed to the devportal.
+      - ./.certs/jwt_public.pem:/etc/devportal/keys/jwt_public.pem:ro
       # Named volume at /tmp (not a new mount point) so Docker copies the image's
       # existing /tmp ownership/permissions into it on first use — a fresh mount
       # at a brand-new path would be root-owned and unwritable by the app user.

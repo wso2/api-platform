@@ -36,6 +36,11 @@ CYPRESS_PLATFORM ?= $(shell [ "$$(uname -m)" = "arm64" ] && echo "linux/arm64" |
 # platform-api (docker-compose.test*.yaml) instead of the old certgen init
 # container + named volume. 644, not 600, so the container's non-root user can
 # read a file owned by the host user (same tradeoff as setup.sh's CERT_FILE_MODE).
+#
+# Also provisions the RS256 JWT signing keypair platform-api's auth.jwt config
+# requires (config-platform-api-it.toml reads it via {{ file }}) — tokens are
+# signed asymmetrically, there is no shared HMAC secret to pass via env anymore.
+# Written into the same dir so one bind mount covers both TLS and JWT material.
 ensure-certs:
 	@mkdir -p $(CERT_DIR)
 	@if [ -f $(CERT_DIR)/cert.pem ] && [ -f $(CERT_DIR)/key.pem ]; then \
@@ -47,6 +52,16 @@ ensure-certs:
 			-subj "/O=WSO2 API Platform/CN=platform-api" \
 			-addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1" 2>/dev/null; \
 		chmod 644 $(CERT_DIR)/key.pem $(CERT_DIR)/cert.pem; \
+	fi
+	@if [ -f $(CERT_DIR)/jwt_private.pem ] && [ -f $(CERT_DIR)/jwt_public.pem ]; then \
+		echo "Using existing $(CERT_DIR)/jwt_{private,public}.pem"; \
+	else \
+		echo "Generating platform-api RS256 JWT keypair at $(CERT_DIR) ..."; \
+		openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+			-out $(CERT_DIR)/jwt_private.pem 2>/dev/null; \
+		openssl rsa -in $(CERT_DIR)/jwt_private.pem -pubout \
+			-out $(CERT_DIR)/jwt_public.pem 2>/dev/null; \
+		chmod 644 $(CERT_DIR)/jwt_private.pem $(CERT_DIR)/jwt_public.pem; \
 	fi
 
 # Tag the pre-built developer-portal image as :test so docker-compose.test.yaml can

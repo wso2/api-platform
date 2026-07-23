@@ -19,7 +19,7 @@
 
 /**
  * Single entry point DAOs use instead of Sequelize models. Selects the
- * dialect adapter (sqlite / postgres / mssql) from config.database.type and
+ * dialect adapter (sqlite / postgres / mssql) from config.database.driver and
  * exposes a uniform, dialect-agnostic API:
  *
  *   db.query(sql, params)      -> Promise<row[]>
@@ -42,7 +42,7 @@ const crypto = require('node:crypto');
 const { config } = require('../config/configLoader');
 const rebindHelpers = require('./rebind');
 
-const dialect = config.database.type;
+const dialect = config.database.driver;
 
 /**
  * Tracks the active transaction handle for the current async call chain, so a
@@ -75,7 +75,7 @@ function loadAdapter() {
             return require('./adapters/mssqlAdapter').createMssqlAdapter(config);
         default:
             throw new Error(
-                `Unsupported database.type "${dialect}" — expected one of: ` +
+                `Unsupported database.driver "${dialect}" — expected one of: ` +
                 `${Object.values(rebindHelpers.DIALECTS).join(', ')}`
             );
     }

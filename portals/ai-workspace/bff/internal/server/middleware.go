@@ -22,6 +22,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"ai-workspace-bff/internal/config"
 )
 
 // chain applies middlewares in order (outermost first).
@@ -81,7 +83,7 @@ func (s *Server) requireCSRF(next http.Handler) http.Handler {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
 			// Safe methods: no CSRF token required.
 		default:
-			if r.Header.Get(s.cfg.CSRFHeader) == "" {
+			if r.Header.Get(config.CSRFHeaderName) == "" {
 				writeErrorJSON(w, http.StatusForbidden, "MISSING_CSRF_HEADER", "missing CSRF header")
 				return
 			}

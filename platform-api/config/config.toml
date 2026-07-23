@@ -6,56 +6,34 @@
 # in compliance with the License. You may obtain a copy of the
 # License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
-#
-# Platform API configuration — quickstart (file-based auth)
-#
-# This file is read by the Platform API (Go binary).
-#
-# Default login: username = admin, password = admin
-# Change the password hash before deploying to a shared environment.
-# Generate a new hash: htpasswd -bnBC 12 "" <password> | tr -d ':\n'
-# --------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Server
-# ---------------------------------------------------------------------------
-log_level = "INFO"   # DEBUG | INFO | WARN | ERROR
-port      = "9243"
+[platform_api]
 
-# Validate OAuth2 scopes on incoming requests.
-enable_scope_validation = true
+[platform_api.logging]
+level = '{{ env "APIP_CP_LOGGING_LEVEL" "info" }}'
 
-# ---------------------------------------------------------------------------
-# Encryption
-# ---------------------------------------------------------------------------
-# Single 32-byte key (64 hex chars or base64) used for ALL at-rest encryption
-# (secrets, subscription tokens, WebSub HMAC secrets)
+[platform_api.security]
 encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
-# ---------------------------------------------------------------------------
-# Database
-# ---------------------------------------------------------------------------
-[database]
-driver = "sqlite3"          # "sqlite3" or "postgres"
-# path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
+[platform_api.database]
+driver = "sqlite3"
+path   = "./data/api_platform.db"
 
-# ---------------------------------------------------------------------------
-# Authentication
-# ---------------------------------------------------------------------------
+[platform_api.auth]
+mode             = "file"
+scope_validation = "true"
 
-# JWT (local HMAC) — issues signed tokens after file-based login.
-[auth.jwt]
-enabled         = true
-issuer          = "platform-api"
-secret_key      = '{{ env "APIP_CP_AUTH_JWT_SECRET_KEY" }}'
-skip_validation = false
+[platform_api.auth.jwt]
+issuer            = "platform-api"
+public_key_file   = "/etc/platform-api/keys/jwt_public.pem"
+private_key_file  = "/etc/platform-api/keys/jwt_private.pem"
 
-# IDP (JWKS-based) — disabled in quickstart mode.
-# Enable and configure when using Asgardeo, Keycloak, Auth0, etc.
-[auth.idp]
-enabled = false
-audience = []
+[platform_api.auth.file.organization]
+id           = "default"
+display_name = "Default"
+region       = "us"
 
-# File-based auth — local username/password login.
-[auth.file_based]
-enabled = false
+[[platform_api.auth.file.users]]
+username      = '{{ env "APIP_CP_ADMIN_USERNAME" "admin" }}'
+password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ." }}'
+scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read ap:secret:manage dp:org_read dp:org_create dp:org_update dp:org_manage dp:org_delete dp:org_content_read dp:org_content_write dp:org_content_manage dp:org_content_delete dp:api_read dp:api_create dp:api_update dp:api_manage dp:api_delete dp:api_content_read dp:api_content_write dp:api_content_manage dp:api_content_delete dp:mcp_read dp:mcp_create dp:mcp_update dp:mcp_manage dp:mcp_delete dp:mcp_content_read dp:mcp_content_create dp:mcp_content_update dp:mcp_content_manage dp:mcp_content_delete dp:api_key_create dp:api_key_read dp:api_key_update dp:api_key_manage dp:api_key_revoke dp:mcp_key_create dp:mcp_key_read dp:mcp_key_update dp:mcp_key_manage dp:mcp_key_revoke dp:api_workflow_create dp:api_workflow_read dp:api_workflow_update dp:api_workflow_delete dp:api_workflow_manage dp:app_create dp:app_read dp:app_update dp:app_manage dp:app_delete dp:app_key_create dp:app_key_manage dp:app_key_revoke dp:app_key_mapping_read dp:app_key_mapping_write dp:app_key_mapping_manage dp:subscription_create dp:subscription_read dp:subscription_update dp:subscription_manage dp:subscription_delete dp:sub_plan_create dp:sub_plan_read dp:sub_plan_update dp:sub_plan_manage dp:sub_plan_delete dp:km_create dp:km_read dp:km_update dp:km_manage dp:km_delete dp:view_create dp:view_read dp:view_update dp:view_manage dp:view_delete dp:label_create dp:label_read dp:label_update dp:label_manage dp:label_delete dp:webhook_subscriber_create dp:webhook_subscriber_read dp:webhook_subscriber_update dp:webhook_subscriber_delete dp:webhook_subscriber_manage dp:event_read dp:delivery_manage"

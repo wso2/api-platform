@@ -17,7 +17,9 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -30,58 +32,60 @@ var (
 )
 
 // The shipped config.toml must load with nothing set in the environment — that is the
-// quickstart: `docker compose up` with no .env beyond the two secrets. Its [oidc] keys
-// default to empty, which must leave OIDC off rather than fail startup.
+// quickstart: `docker compose up` with no .env beyond the two secrets. It ships without
+// an [ai_workspace.auth.oidc] table at all, which must leave OIDC off rather than fail startup.
 func TestShippedConfig_QuickstartLoadsWithNoEnv(t *testing.T) {
 	cfg, err := Load(quickstartConfig)
 	if err != nil {
 		t.Fatalf("Load(configs/config.toml) error = %v — the shipped quickstart config must load with an empty environment", err)
 	}
 
-	if cfg.AuthMode != "basic" {
-		t.Errorf("AuthMode = %q, want %q", cfg.AuthMode, "basic")
+	if cfg.Auth.Mode != "basic" {
+		t.Errorf("AuthMode = %q, want %q", cfg.Auth.Mode, "basic")
 	}
-	// The empty [oidc] defaults must not switch the OIDC client on, or Load would
-	// demand an authority/client_id/client_secret the quickstart has no use for.
-	if cfg.OIDC.Enabled {
-		t.Error("OIDC.Enabled = true, want false — the empty [oidc] defaults must leave basic mode intact")
+	// The missing [ai_workspace.auth.oidc] table must not switch the OIDC client on, or
+	// Load would demand an authority/client_id/client_secret the quickstart has no use for.
+	if cfg.Auth.OIDC.Enabled {
+		t.Error("OIDC.Enabled = true, want false — the empty [ai_workspace.auth.oidc] defaults must leave basic mode intact")
 	}
 	// The defaults in the file are the container's: the port it publishes and the SPA
 	// baked into the image.
-	if cfg.Addr != ":5380" {
-		t.Errorf("Addr = %q, want the container default %q", cfg.Addr, ":5380")
+	if cfg.Addr() != ":5380" {
+		t.Errorf("Addr = %q, want the container default %q", cfg.Addr(), ":5380")
 	}
-	if cfg.StaticDir != "/app" {
-		t.Errorf("StaticDir = %q, want the container default %q", cfg.StaticDir, "/app")
+	if cfg.Server.StaticDir != "/app" {
+		t.Errorf("StaticDir = %q, want the container default %q", cfg.Server.StaticDir, "/app")
 	}
-	if cfg.PlatformAPI.URL != "https://platform-api:9243" {
-		t.Errorf("PlatformAPI.URL = %q, want the compose hostname", cfg.PlatformAPI.URL)
+	if cfg.ControlPlane.URL != "https://platform-api:9243" {
+		t.Errorf("ControlPlane.URL = %q, want the compose hostname", cfg.ControlPlane.URL)
 	}
 	// The quickstart trusts the setup.sh-generated platform-api certificate via
 	// ca_file (mounted by docker-compose); verification stays on by default.
-	if cfg.PlatformAPI.TLSSkipVerify {
-		t.Error("PlatformAPI.TLSSkipVerify = true, want false — the quickstart trusts the upstream via ca_file, not by skipping verification")
+	if cfg.ControlPlane.TLSSkipVerify {
+		t.Error("ControlPlane.TLSSkipVerify = true, want false — the quickstart trusts the upstream via ca_file, not by skipping verification")
 	}
-	// docker-compose no longer injects APIP_AIW_PLATFORM_API_CA_FILE — the default
+	// docker-compose no longer injects APIP_AIW_CONTROL_PLANE_CA_FILE — the default
 	// must be the path the compose file mounts the certificate at. The shared
 	// self-signed cert.pem is its own CA.
-	if cfg.PlatformAPI.CAFile != "/etc/ai-workspace/tls/cert.pem" {
-		t.Errorf("PlatformAPI.CAFile = %q, want the docker-compose mount path %q", cfg.PlatformAPI.CAFile, "/etc/ai-workspace/tls/cert.pem")
+	if cfg.ControlPlane.CAFile != "/etc/ai-workspace/tls/cert.pem" {
+		t.Errorf("ControlPlane.CAFile = %q, want the docker-compose mount path %q", cfg.ControlPlane.CAFile, "/etc/ai-workspace/tls/cert.pem")
 	}
 }
 
 // `make bff-run` loads this same file and points the container-shaped defaults at the
 // developer's machine, purely through the {{ env }} tokens in it. A token is the only
 // way an environment variable reaches a key, so dropping one of these keys from
-// config.toml would silently strip the override and leave the BFF on :5380 serving
-// /app. This test pins the Makefile's contract with the file.
+// config.toml would silently strip the override and leave the BFF on :5380. This test
+// pins the Makefile's contract with the file. static_dir is NOT among these: the
+// shipped config has no token for it (the container always serves /app), so
+// `make bff-run` retargets it with the -static-dir CLI flag in main.go instead —
+// outside config.Load, and so outside this test.
 func TestShippedConfig_MakeBffRunOverrides(t *testing.T) {
 	// Exactly the variables the bff-run target sets.
-	t.Setenv("APIP_AIW_PLATFORM_API_URL", "https://localhost:9243")
-	t.Setenv("APIP_AIW_PLATFORM_API_TLS_SKIP_VERIFY", "true")
-	t.Setenv("APIP_AIW_LISTEN_ADDR", ":8081")
-	t.Setenv("APIP_AIW_STATIC_DIR", "../dist")
-	t.Setenv("APIP_AIW_LOG_LEVEL", "debug")
+	t.Setenv("APIP_AIW_CONTROL_PLANE_URL", "https://localhost:9243")
+	t.Setenv("APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY", "true")
+	t.Setenv("APIP_AIW_SERVER_HTTPS_PORT", "8081")
+	t.Setenv("APIP_AIW_LOGGING_LEVEL", "debug")
 
 	cfg, err := Load(quickstartConfig)
 	if err != nil {
@@ -89,10 +93,9 @@ func TestShippedConfig_MakeBffRunOverrides(t *testing.T) {
 	}
 
 	for _, tc := range []struct{ name, got, want string }{
-		{"Addr", cfg.Addr, ":8081"},
-		{"StaticDir", cfg.StaticDir, "../dist"},
-		{"PlatformAPI.URL", cfg.PlatformAPI.URL, "https://localhost:9243"},
-		{"LogLevel", cfg.LogLevel, "debug"},
+		{"Addr", cfg.Addr(), ":8081"},
+		{"ControlPlane.URL", cfg.ControlPlane.URL, "https://localhost:9243"},
+		{"LogLevel", cfg.Logging.Level, "debug"},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s = %q, want %q — `make bff-run` sets this variable, so configs/config.toml must carry the matching {{ env }} token",
@@ -101,59 +104,63 @@ func TestShippedConfig_MakeBffRunOverrides(t *testing.T) {
 	}
 }
 
-// The [oidc] tokens in the shipped config are what let `make bff-run` — and a compose
-// deployment — turn on OIDC from the environment alone, without editing the file.
-func TestShippedConfig_OIDCFromEnvAlone(t *testing.T) {
-	t.Setenv("APIP_AIW_AUTH_MODE", "oidc")
-	t.Setenv("APIP_AIW_OIDC_AUTHORITY", "https://idp.example.com")
-	t.Setenv("APIP_AIW_OIDC_CLIENT_ID", "client-id")
-	t.Setenv("APIP_AIW_OIDC_CLIENT_SECRET", "s3cr3t")
-	t.Setenv("APIP_AIW_OIDC_REDIRECT_URL", "https://localhost:5380/api/auth/callback")
-
-	cfg, err := Load(quickstartConfig)
+// configs/config.toml is deliberately minimal and ships without an
+// [ai_workspace.auth.oidc] table — the quickstart only ever runs in basic-auth mode.
+// configs/config-template.toml is the file a real deployment copies from, and its
+// [ai_workspace.auth.oidc] holds plain-literal placeholder values (mode = "basic",
+// an empty client_secret) rather than {{ env }} tokens, so OIDC is not settable from
+// the environment alone — a real deployment copies the template to config.toml and
+// edits [ai_workspace.auth] mode plus [ai_workspace.auth.oidc] directly. This
+// exercises that edited shape still loads correctly and keeps OIDC credentials off
+// the browser-safe runtime config.
+func TestShippedConfig_TemplateEditedForOIDC(t *testing.T) {
+	templateBytes, err := os.ReadFile(templateConfig)
 	if err != nil {
-		t.Fatalf("Load(configs/config.toml) error = %v — the [oidc] tokens must make OIDC settable from the environment", err)
+		t.Fatalf("read %s: %v", templateConfig, err)
 	}
-	if !cfg.OIDC.Enabled {
-		t.Fatal("OIDC.Enabled = false, want true — auth_mode = oidc must enable the client")
+	edited := strings.NewReplacer(
+		`mode = "basic"`, `mode = "oidc"`,
+		`authority = "https://accounts.example.com"`, `authority = "https://idp.example.com"`,
+		`client_id = "your-client-id"`, `client_id = "client-id"`,
+		`client_secret = ""`, `client_secret = "s3cr3t"`,
+	).Replace(string(templateBytes))
+
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(edited), 0o600); err != nil {
+		t.Fatalf("write edited template: %v", err)
 	}
-	if cfg.OIDC.ClientSecret != "s3cr3t" {
-		t.Errorf("OIDC.ClientSecret = %q, want the value from APIP_AIW_OIDC_CLIENT_SECRET", cfg.OIDC.ClientSecret)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load(edited template) error = %v", err)
+	}
+	if !cfg.Auth.OIDC.Enabled {
+		t.Fatal("OIDC.Enabled = false, want true — mode = oidc must enable the client")
+	}
+	if cfg.Auth.OIDC.ClientSecret != "s3cr3t" {
+		t.Errorf("OIDC.ClientSecret = %q, want %q", cfg.Auth.OIDC.ClientSecret, "s3cr3t")
 	}
 	// Whatever the mode, the client credentials stay server-side.
-	for _, key := range []string{"APIP_AIW_OIDC_CLIENT_SECRET", "APIP_AIW_OIDC_CLIENT_ID", "APIP_AIW_OIDC_AUTHORITY"} {
+	for _, key := range []string{"APIP_AIW_AUTH_OIDC_CLIENT_SECRET", "APIP_AIW_AUTH_OIDC_CLIENT_ID", "APIP_AIW_AUTH_OIDC_AUTHORITY"} {
 		if _, ok := cfg.RuntimeConfig[key]; ok {
 			t.Errorf("runtime config must not contain %s — the BFF owns the OIDC handshake", key)
 		}
 	}
 }
 
-// config-template.toml is copied to config.toml by users, so it must stay loadable.
-// Its client_secret token deliberately has no default — an unset variable fails startup
-// rather than running OIDC with an empty credential — so the variable is set here.
+// config-template.toml is copied to config.toml by users, so it must stay loadable
+// as shipped — OIDC off, basic auth, an unset (empty) client_secret.
 func TestShippedConfig_TemplateLoads(t *testing.T) {
-	t.Setenv("APIP_AIW_OIDC_CLIENT_SECRET", "s3cr3t")
-
 	cfg, err := Load(templateConfig)
 	if err != nil {
 		t.Fatalf("Load(configs/config-template.toml) error = %v — the template must remain a loadable config", err)
 	}
-	if cfg.AuthMode != "basic" {
-		t.Errorf("AuthMode = %q, want %q", cfg.AuthMode, "basic")
+	if cfg.Auth.Mode != "basic" {
+		t.Errorf("AuthMode = %q, want %q", cfg.Auth.Mode, "basic")
 	}
 	// Unlike the quickstart file, the template defaults to verifying the upstream
 	// certificate — it is the starting point for a real deployment.
-	if cfg.PlatformAPI.TLSSkipVerify {
-		t.Error("PlatformAPI.TLSSkipVerify = true, want false — the template must default to a verified upstream")
-	}
-}
-
-// The template's client_secret has no default on purpose: leaving the variable unset
-// must abort startup, not resolve to an empty credential.
-func TestShippedConfig_TemplateFailsClosedOnMissingSecret(t *testing.T) {
-	t.Setenv("APIP_AIW_OIDC_CLIENT_SECRET", "")
-
-	if _, err := Load(templateConfig); err == nil {
-		t.Fatal("Load(configs/config-template.toml) succeeded with APIP_AIW_OIDC_CLIENT_SECRET unset, want an error — the token has no default and must fail closed")
+	if cfg.ControlPlane.TLSSkipVerify {
+		t.Error("ControlPlane.TLSSkipVerify = true, want false — the template must default to a verified upstream")
 	}
 }

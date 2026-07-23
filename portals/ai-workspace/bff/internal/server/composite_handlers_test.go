@@ -101,15 +101,13 @@ func buildTestServer(t *testing.T, platformURL, jwt string) (*Server, *httptest.
 	}
 
 	cfg := &config.Config{
-		PlatformAPI: config.PlatformAPIConfig{URL: platformURL},
-		ProxyPrefix: "/api/proxy",
-		Cookie:      config.CookieConfig{Name: "_ai_workspace_session"},
-		CSRFHeader:  "X-Requested-By",
+		ControlPlane: config.ControlPlaneConfig{URL: platformURL, ProxyPrefix: "/proxy"},
+		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
 	}
 
 	s := &Server{
 		cfg:          cfg,
-		proxy:        proxy.ReverseProxy(mustParseURL(platformURL), cfg.ProxyPrefix, transport),
+		proxy:        proxy.ReverseProxy(mustParseURL(platformURL), cfg.ControlPlane.ProxyPrefix, transport),
 		refreshLocks: make(map[string]*refreshLock),
 	}
 
@@ -140,7 +138,7 @@ type recordedRequest struct {
 	auth   string
 }
 
-func fakePlatformAPI(t *testing.T, responses map[string]struct {
+func fakeControlPlane(t *testing.T, responses map[string]struct {
 	status int
 	body   string
 }) (*httptest.Server, *[]recordedRequest) {
@@ -168,7 +166,7 @@ func fakePlatformAPI(t *testing.T, responses map[string]struct {
 }
 
 func TestHandleCreateWithSecretCompensation_Success(t *testing.T) {
-	platform, calls := fakePlatformAPI(t, map[string]struct {
+	platform, calls := fakeControlPlane(t, map[string]struct {
 		status int
 		body   string
 	}{
@@ -239,7 +237,7 @@ func TestHandleCreateWithSecretCompensation_ProviderFailTriggersDelete(t *testin
 }
 
 func TestHandleCreateWithSecretCompensation_NoSecretNoDelete(t *testing.T) {
-	platform, calls := fakePlatformAPI(t, map[string]struct {
+	platform, calls := fakeControlPlane(t, map[string]struct {
 		status int
 		body   string
 	}{
@@ -269,11 +267,10 @@ func TestHandleCreateWithSecretCompensation_NoSecretNoDelete(t *testing.T) {
 }
 
 func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
-	platform, _ := fakePlatformAPI(t, nil)
+	platform, _ := fakeControlPlane(t, nil)
 	cfg := &config.Config{
-		PlatformAPI: config.PlatformAPIConfig{URL: platform.URL},
-		ProxyPrefix: "/api/proxy",
-		Cookie:      config.CookieConfig{Name: "_ai_workspace_session"},
+		ControlPlane: config.ControlPlaneConfig{URL: platform.URL, ProxyPrefix: "/proxy"},
+		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
 	}
 	transport, err := proxy.NewTransport(proxy.TLSClientOptions{SkipVerify: true})
 	if err != nil {
@@ -281,7 +278,7 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 	}
 	s := &Server{
 		cfg:          cfg,
-		proxy:        proxy.ReverseProxy(mustParseURL(platform.URL), cfg.ProxyPrefix, transport),
+		proxy:        proxy.ReverseProxy(mustParseURL(platform.URL), cfg.ControlPlane.ProxyPrefix, transport),
 		refreshLocks: make(map[string]*refreshLock),
 	}
 
