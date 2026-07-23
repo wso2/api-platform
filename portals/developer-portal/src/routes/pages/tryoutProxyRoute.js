@@ -21,6 +21,7 @@ const router = express.Router();
 const { config } = require('../../config/configLoader');
 const logger = require('../../config/logger');
 const util = require('../../utils/util');
+const { ensureAuthenticated } = require('../../middlewares/ensureAuthenticated');
 const tryoutProxyController = require('../../controllers/tryoutProxyController');
 
 // Mounted with `use` rather than a wildcard route: the target URL is appended
@@ -81,11 +82,32 @@ async function enforcePortalModeJson(req, res, next) {
     }
 }
 
+// The specification page's own access gate (ensureAuthenticated), so the proxy
+// is reachable exactly when that page is — including when a deployer has added
+// the page to pageAccessRules.authenticated/authorized, which the proxy would
+// otherwise ignore.
+//
+// The gate is evaluated against the PAGE path (…/{apiType}/{apiHandle}), declared
+// via req.accessControlPath: the page-access globs are written against page URLs,
+// and this request's own path carries an appended target URL whose encoding would
+// otherwise trip ensureAuthenticated's encoded-separator rejection.
+function authenticateLikeSpecPage(req, res, next) {
+    const { orgName, viewName, apiType, apiHandle } = req.params;
+    req.accessControlPath = `/${orgName}/views/${viewName}/${apiType}/${apiHandle}`;
+    return ensureAuthenticated(req, res, next);
+}
+
 router.use(
     '/:orgName/views/:viewName/:apiType/:apiHandle/tryout-proxy',
     handleRawBodyError,
     enforcePortalModeJson,
+    authenticateLikeSpecPage,
     tryoutProxyController.proxyTryoutRequest
 );
 
-module.exports = router;
+// Requests this router handles relay their body verbatim, so app.js must not let
+// a JSON/urlencoded parser consume the stream first. The pattern lives here, next
+// to the mount path it mirrors, so the two cannot drift apart.
+const BODY_PARSER_SKIP_PATTERN = /^\/[^/]+\/views\/[^/]+\/[^/]+\/[^/]+\/tryout-proxy(\/|$)/;
+
+module.exports = { router, BODY_PARSER_SKIP_PATTERN };

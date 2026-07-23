@@ -94,18 +94,21 @@ app.get('/llms.txt', (req, res) => {
     );
 });
 
-// API try-it proxy (Stoplight Elements `tryItCorsProxy`). Registered ahead of
-// the body parsers on purpose: it relays the request body verbatim, and a JSON
-// or urlencoded parser running first would consume the stream and leave only a
-// re-serialised approximation of what the caller actually sent. It needs no
-// session or passport state, so nothing is lost by placing it this early.
-const tryoutProxyRoute = require('./routes/pages/tryoutProxyRoute');
-app.use(constants.ROUTE.DEFAULT, tryoutProxyRoute);
-
 // Bound JSON/urlencoded body size (config-sourced).
 const bodyLimit = config.uploads?.maxBytes || 10485760;
-app.use(express.json({ limit: bodyLimit }));
-app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
+
+// The try-it proxy relays its request body verbatim, so neither parser may run
+// for it — either one would consume the stream and leave only a re-serialised
+// approximation of what the caller actually sent. Skipping them here (rather
+// than mounting the proxy ahead of them) lets the proxy be registered after
+// passport, so it can apply the same authentication gate as the page it serves.
+// The pattern is owned by the route module so it tracks that route's mount path.
+const tryoutProxy = require('./routes/pages/tryoutProxyRoute');
+const skipForTryoutProxy = (parser) => (req, res, next) =>
+    (tryoutProxy.BODY_PARSER_SKIP_PATTERN.test(req.path) ? next() : parser(req, res, next));
+
+app.use(skipForTryoutProxy(express.json({ limit: bodyLimit })));
+app.use(skipForTryoutProxy(express.urlencoded({ extended: true, limit: bodyLimit })));
 
 // Add audit logging middleware
 app.use(auditMiddleware({
@@ -127,6 +130,13 @@ app.use((req, res, next) => {
     next();
 });
 
+
+// API try-it proxy (Stoplight Elements `tryItCorsProxy`). Mounted here, after
+// passport.initialize()/passport.session(), so req.user and req.isAuthenticated()
+// are populated and the route can apply the same authentication gate the
+// specification page it serves goes through. Its raw body survives because the
+// parsers above skip this path.
+app.use(constants.ROUTE.DEFAULT, tryoutProxy.router);
 
 configurePassport(SERVER_ID);
 
