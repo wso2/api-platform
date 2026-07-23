@@ -78,7 +78,7 @@ function enforceSecurity(scope) {
             } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
                 enforceMTLS(req, res, next);
             } else {
-                req.session.returnTo = req.originalUrl || `/${req.params.orgName}`;
+                req.session.returnTo = accessControlUrl(req) || `/${req.params.orgName}`;
                 if (req.params.orgName) {
                     res.redirect(`/${req.params.orgName}/views/${req.session.view}/login`);
                 }
@@ -154,8 +154,20 @@ function hasTraversalSequence(originalUrl) {
     return decodedPath.includes('..') || decodedPath.includes('\\') || decodedPath.includes('\0');
 }
 
+// The URL this request's access rules are evaluated against.
+//
+// Normally that is the request URL itself. A route whose URL carries data that
+// is not part of the page's identity sets req.accessControlPath to the page path
+// it acts on — the try-it proxy appends a whole target URL to its path, which is
+// neither what the page-access globs are written against nor safe to run the
+// encoded-separator check over. Declaring the page path explicitly is what lets
+// such a route go through this gate unchanged instead of around it.
+function accessControlUrl(req) {
+    return req.accessControlPath || req.originalUrl;
+}
+
 const ensureAuthenticated = async (req, res, next) => {
-    if (hasTraversalSequence(req.originalUrl)) {
+    if (hasTraversalSequence(accessControlUrl(req))) {
         logger.warn('Rejected request with path-traversal sequence', { operation: 'ensureAuthenticated' });
         return res.status(400).json({ error: 'bad_request', message: 'Invalid request path.' });
     }
@@ -195,7 +207,7 @@ const ensureAuthenticated = async (req, res, next) => {
     // "?...") would silently fail to match any pattern lacking an explicit "?**" suffix —
     // e.g. "/*/settings" never matches "/org/settings?view=x", which would skip this entire
     // auth block. Match against the query-stripped pathname instead.
-    const pathname = req.originalUrl.split('?')[0];
+    const pathname = accessControlUrl(req).split('?')[0];
     if (pathname !== '/favicon.ico' && pathname !== '/images' &&
         AUTHENTICATED_PAGES.some(pattern => minimatch.minimatch(pathname, pattern))) {
         const orgId = req.params.orgName;
@@ -277,7 +289,7 @@ const ensureAuthenticated = async (req, res, next) => {
             }
             return next();
         } else {
-            req.session.returnTo = req.originalUrl || `/${req.params.orgName}`;
+            req.session.returnTo = accessControlUrl(req) || `/${req.params.orgName}`;
             req.session.save((err) => {
                 if (err) {
                     logger.error('Session save failed before login redirect', { error: err.message });

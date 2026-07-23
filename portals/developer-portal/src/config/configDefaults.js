@@ -176,6 +176,32 @@ const DEFAULTS = {
         maxZipEntries: 500,
         maxDepth: 10,
     },
+    // API "Try It" proxy — see src/services/tryoutProxyService.js.
+    tryout: {
+        enabled: true,
+        // Whether http:// (not just https://) registered endpoints may be called.
+        // Registered endpoints are operator-controlled, and self-hosted gateways
+        // are commonly plain http behind a TLS-terminating ingress.
+        allowHttpEndpoints: true,
+        // Whether an endpoint resolving into a private/loopback range may be
+        // called. OFF by default — deny-by-default: the registered-endpoint
+        // allowlist cannot protect against an endpoint that was itself
+        // registered to point at an internal service, so the IP denylist is the
+        // only control for that case and an operator must opt in explicitly.
+        //
+        // Self-hosted gateways commonly do live on a private address
+        // (docker-compose service name, cluster IP, localhost); such a
+        // deployment sets allow_private_endpoints = true after confirming that
+        // only intended services are reachable from the portal.
+        //
+        // Link-local and cloud-metadata addresses stay blocked either way.
+        allowPrivateEndpoints: false,
+        // Skip TLS verification for the upstream endpoint. Development only.
+        tlsSkipVerify: false,
+        timeoutMs: 15000,
+        maxRequestBytes: 1048576,   // 1 MiB
+        maxResponseBytes: 5242880,  // 5 MiB
+    },
     developer: {
         // Internal/debug knob for the /devportal REST router's response validation
         // strictness (express-openapi-validator) — 'off' | 'strict' | 'log-only'. Not

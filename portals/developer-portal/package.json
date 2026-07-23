@@ -7,6 +7,7 @@
     "start": "npm rebuild better-sqlite3 --ignore-scripts=false && NODE_ENV=development nodemon src/server.js",
     "start:local": "APIP_DP_SERVER_HTTPS_ENABLED=false APIP_DP_AUTH_LOCAL_PLATFORM_API_URL=https://localhost:9243 APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY=true APIP_DP_AUTH_LOCAL_PUBLIC_KEY_PATH=./resources/keys/jwt_public.pem APIP_DP_DATABASE_PATH=./devportal.db npm run start",
     "debug": "nodemon --inspect src/server.js",
+    "test": "node --test 'src/**/*.test.js'",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
@@ -41,6 +42,7 @@
     "express-validator": "7.3.2",
     "graphql": "17.0.2",
     "handlebars": "4.7.9",
+    "ipaddr.js": "2.4.0",
     "jose": "6.2.3",
     "js-yaml": "5.2.1",
     "marked": "18.0.6",

@@ -574,6 +574,21 @@ const loadDocsPage = async (req, res, next) => {
     res.send(html);
 }
 
+// Origin (scheme + host) the browser used for this request, for the rare case a
+// rendered page needs an absolute self-referencing URL rather than a path.
+//
+// X-Forwarded-Proto is honoured explicitly because the app does not enable
+// Express's `trust proxy`, so req.protocol otherwise reports the scheme of the
+// connection reaching this process — 'http' for any deployment where TLS is
+// terminated upstream, which would render an unusable mixed-content URL. A
+// spoofed header only affects the scheme in the spoofer's own page render;
+// nothing server-side is authorized off this value.
+function requestOrigin(req) {
+    const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+    const protocol = forwardedProto || req.protocol;
+    return `${protocol}://${req.get('host')}`;
+}
+
 const loadDocument = async (req, res, next) => {
     const { orgName, apiHandle, viewName, docType, docName } = req.params;
 
@@ -750,6 +765,21 @@ const loadDocument = async (req, res, next) => {
             }
             templateContent.baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
             templateContent.baseDocUrl = baseDocUrl;
+            // Base for Stoplight Elements' `tryItCorsProxy`: Elements appends the
+            // full target URL to this prefix, and the resulting same-origin request
+            // is served by tryoutProxyRoute. Left undefined when the proxy is off,
+            // in which case the try-it panel calls the endpoint directly (and works
+            // only for endpoints that return CORS headers for this portal).
+            //
+            // This has to be an ABSOLUTE URL. Elements builds the request as
+            // `new URL(corsProxy + serverUrl + path)` — the single-argument form,
+            // which has no base to resolve against, so a root-relative prefix
+            // throws "Failed to construct 'URL': Invalid URL" before any request
+            // is made. The origin is taken from the request so the proxy call
+            // stays same-origin with whatever host the browser actually used.
+            if (config.tryout?.enabled !== false && !config.designMode?.enabled) {
+                templateContent.tryoutProxyBase = `${requestOrigin(req)}${baseDocUrl}/tryout-proxy/`;
+            }
             templateContent.docTypes = docNames;
             templateContent.currentDocName = docName || null;
             templateContent.currentDocType = docType || null;

@@ -38,8 +38,15 @@ function resolveDir(samplesDir) {
  * escapes the samples/ sandbox. Returns null on any traversal/null-byte violation; callers
  * already treat null as "not found", so this fails closed with a clean 404 instead of a leak.
  */
+// Percent-encoded traversal and separator sequences never occur in a legitimate
+// sample path. path.resolve does not decode them, so they survive as literal
+// directory names rather than being normalised — meaning the containment check
+// below sees them as ordinary segments and any later decode would reopen the
+// traversal. Reject them outright (js-file-access.md directive 1).
+const ENCODED_TRAVERSAL_RE = /%2e|%2f|%5c|%00/i;
+
 function safeResolve(rootDir, ...segments) {
-    if (segments.some(s => typeof s !== 'string' || s.includes('\0'))) return null;
+    if (segments.some(s => typeof s !== 'string' || s.includes('\0') || ENCODED_TRAVERSAL_RE.test(s))) return null;
     const root = path.resolve(rootDir);
     const resolved = path.resolve(rootDir, ...segments);
     if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
@@ -219,7 +226,10 @@ function loadOne(apiHandle, samplesDir = './samples/apis/') {
 function getDefinition(apiHandle, samplesDir = './samples/apis/') {
     const apiDir = getApiDir(apiHandle, samplesDir);
     if (!apiDir) return null;
-    for (const name of ['definition.graphql', 'definition.yml']) {
+    // Both YAML extensions are accepted: samples have been authored with each,
+    // and a sample whose definition file simply isn't found renders as an API
+    // with no specification rather than as an error, so the mismatch is silent.
+    for (const name of ['definition.graphql', 'definition.yml', 'definition.yaml']) {
         const candidate = path.join(apiDir, name);
         if (fs.existsSync(candidate)) return fs.readFileSync(candidate, 'utf-8');
     }
