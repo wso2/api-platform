@@ -1,0 +1,279 @@
+# ============================================================================
+# developer-portal — component chart values
+# ============================================================================
+# The Developer Portal (Node.js app). It has its OWN database (separate from the
+# Platform API's) and authenticates users against the Platform API. Released on
+# its own; used as an umbrella subchart or standalone.
+#
+#   global.*   Cross-cutting settings. Under an umbrella these come from the
+#              umbrella; the block below is the STANDALONE default, overridden
+#              when nested.
+#   (rest)     This component's own settings. Structured config here is rendered
+#              into APIP_DP_* environment variables on the container.
+#
+# `enabled` is read by the umbrella's dependency condition (ignored standalone).
+
+# ----------------------------------------------------------------------------
+# global — STANDALONE defaults only (an umbrella's global.* overrides these)
+# ----------------------------------------------------------------------------
+global:
+  developmentMode: true
+  nameOverride: ""
+  fullnameOverride: ""
+  commonLabels: {}
+  commonAnnotations: {}
+  imagePullSecrets: []
+  serviceAccount:
+    # Standalone default is `false` → pods use the namespace "default" SA (this
+    # component ships no ServiceAccount template; the umbrella creates one).
+    create: false
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: true
+  wso2:
+    subscription:
+      imagePullSecret: ""
+  platformApi:
+    port: 9243
+    tlsEnabled: true
+
+# ----------------------------------------------------------------------------
+# Component toggle + container image
+# ----------------------------------------------------------------------------
+# Install the Developer Portal. Opt in per install (the umbrella sets this).
+enabled: false
+image:
+  repository: ghcr.io/wso2/api-platform/developer-portal
+  tag: "1.0.0-beta-SNAPSHOT"
+  pullPolicy: IfNotPresent
+# Pull secrets for THIS component only (merged with global.imagePullSecrets).
+imagePullSecrets: []
+
+# ----------------------------------------------------------------------------
+# config — becomes APIP_DP_* env vars on the container
+# ----------------------------------------------------------------------------
+config:
+  server:
+    # Public URL browsers use to reach the portal (scheme follows the TLS setting).
+    # Leave "" to derive it from the service + TLS; set it when fronting with a
+    # real hostname so login redirects and asset URLs are correct.
+    baseUrl: ""
+  # Demo features (sample-API seeding, onboarding prompts). null → follow
+  # global.developmentMode; set true/false to force.
+  demoEnabled: null
+  logging:
+    consoleOnly: true            # log to stdout only (no file)
+
+  # --- Database (the portal's OWN store, separate from the Platform API's) ---
+  database:
+    # sqlite   → file on the PVC; single replica; HPA unavailable. Good for demos.
+    # postgres → external server (configured below); enables multi-replica + HPA.
+    type: sqlite
+    # SQLite file (type=sqlite). Must sit under the mounted data volume.
+    file: /app/data/devportal.db
+    # PostgreSQL connection (type=postgres only). The password is NOT here — it
+    # comes from the Secret key secrets.keys.databasePassword. Leave host empty
+    # for sqlite.
+    host: ""
+    port: 5432
+    database: devportal          # database (schema) name (gateway-convention key)
+    user: postgres               # login role; password from the Secret
+    sslmode: disable             # disable | require | verify-ca | verify-full
+
+  # --- Security ---
+  security:
+    roleValidation: false        # enforce role checks on incoming tokens
+    # A shared API key some server-to-server callers present in a header.
+    serviceApiKey:
+      enabled: true
+      headerName: x-wso2-api-key
+      # The key value itself lives in the Secret (secrets.keys.serviceApiKeyValue),
+      # wired only when secrets.hasServiceApiKeyValue is true.
+
+  # --- How the portal reaches the Platform API ---
+  platformApi:
+    # Leave "" to derive the in-cluster Platform API URL automatically. Set to
+    # target an external Platform API.
+    baseUrl: ""
+    # Skip TLS verification on the portal → Platform API hop (needed while the
+    # Platform API uses a self-signed cert). Forced false when developmentMode
+    # is false.
+    insecure: true
+
+  # --- OIDC login (optional) ---
+  # Used when idp.clientId is set. The client secret comes from the Secret
+  # (secrets.keys.idpClientSecret), wired only when secrets.hasIdpClientSecret=true.
+  idp:
+    name: ""
+    issuer: ""
+    authorizationUrl: ""
+    tokenUrl: ""
+    userInfoUrl: ""
+    jwksUrl: ""
+    clientId: ""
+    callbackUrl: ""
+    logoutUrl: ""
+    scope: "openid profile email"
+
+  organization:
+    defaultName: default         # default organization name
+
+# Escape hatch: raw config.toml appended verbatim (env vars still override it).
+configToml: ""
+
+# ----------------------------------------------------------------------------
+# secrets — reference to a pre-created Kubernetes Secret (REQUIRED)
+# ----------------------------------------------------------------------------
+# The chart never creates or embeds secret values. Point existingSecret at a
+# Secret made by ./generate-secrets.sh. Render FAILS if it's unset. Required keys:
+# APIP_DP_SECURITY_ENCRYPTIONKEY and APIP_DP_PLATFORMAPI_JWTSECRET (the latter =
+# the Platform API's AUTH_JWT_SECRET_KEY, so the portal can verify its tokens).
+# The optional keys (OIDC client secret, service API key, DB password) are only
+# wired when the matching has* flag below is true.
+secrets:
+  existingSecret: ""
+  keys:
+    encryptionKey: APIP_DP_SECURITY_ENCRYPTIONKEY
+    platformApiJwtSecret: APIP_DP_PLATFORMAPI_JWTSECRET
+    idpClientSecret: APIP_DP_IDP_CLIENTSECRET
+    serviceApiKeyValue: APIP_DP_SECURITY_SERVICEAPIKEY_VALUE
+    databasePassword: APIP_DP_DATABASE_PASSWORD   # used only when database.type=postgres
+  # Flip to true ONLY if the referenced Secret actually carries that optional key,
+  # so the deployment wires it as an env var. generate-secrets.sh sets these for
+  # you in the values-secrets.yaml it writes.
+  hasIdpClientSecret: false
+  hasServiceApiKeyValue: false
+
+# ----------------------------------------------------------------------------
+# service — how the portal is exposed
+# ----------------------------------------------------------------------------
+service:
+  type: LoadBalancer            # LoadBalancer | NodePort | ClusterIP
+  annotations: {}
+  labels: {}
+  port: 3000
+  clusterIP: ""
+  externalTrafficPolicy: ""
+  loadBalancerClass: ""
+  loadBalancerSourceRanges: []
+  ipFamilyPolicy: ""
+  ipFamilies: []
+  nodePort: ""
+
+# Port the portal process listens on.
+containerPort: 3000
+
+# ----------------------------------------------------------------------------
+# tls — certificate for the portal's HTTPS listener (APIP_DP_TLS_*)
+# ----------------------------------------------------------------------------
+tls:
+  # selfSigned   → the app auto-generates a self-signed pair at startup (demo).
+  # secret       → mount an existing Secret's tls.crt / tls.key.
+  # cert-manager → provision a Certificate via cert-manager and mount it.
+  certificateProvider: selfSigned
+  # Where certs are mounted / read from (matches APIP_DP_TLS_CERTFILE etc.).
+  mountPath: /app/certs
+  certManager:
+    create: true
+    createIssuer: true
+    issuerRef:
+      name: selfsigned-issuer
+      kind: Issuer
+    commonName: devportal.localhost
+    dnsNames:
+      - devportal.localhost
+      - "*.localhost"
+    duration: 2160h
+    renewBefore: 720h
+  secret:
+    name: devportal-tls          # used when certificateProvider=secret
+    certKey: tls.crt
+    keyKey: tls.key
+
+# ----------------------------------------------------------------------------
+# persistence — the PVC backing SQLite
+# ----------------------------------------------------------------------------
+persistence:
+  enabled: true                 # required for database.type=sqlite
+  existingClaim: ""             # reuse a PVC you created yourself instead
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  storageClass: ""              # "" = cluster default StorageClass
+  labels: {}
+  # Annotations for the PVC ONLY (rendered only when persistence.enabled). The
+  # resource-policy=keep annotation makes the PVC — and its data — SURVIVE
+  # `helm uninstall`; a later `helm install` with the SAME release name re-adopts
+  # it. To intentionally wipe it:
+  #   kubectl delete pvc <release>-developer-portal-data
+  # Set to {} if you'd rather the PVC be deleted on uninstall.
+  annotations:
+    helm.sh/resource-policy: keep
+
+# ----------------------------------------------------------------------------
+# deployment — the pod/Deployment spec
+# ----------------------------------------------------------------------------
+deployment:
+  enabled: true
+  replicaCount: 1               # >1 requires database.type=postgres
+  volumeMountPath: /app/data
+  extraEnv: []
+  extraEnvFrom: []
+  extraVolumeMounts: []
+  extraVolumes: []
+  labels: {}
+  annotations: {}
+  podAnnotations: {}
+  podLabels: {}
+  priorityClassName: ""
+  livenessProbe:
+    httpGet: { path: /, port: http, scheme: HTTPS }
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet: { path: /, port: http, scheme: HTTPS }
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # Set CPU requests if you enable the HPA, so it can compute utilization.
+  resources: {}
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  strategy: {}
+  hostAliases: []
+  dnsPolicy: ""
+  dnsConfig: {}
+
+# ----------------------------------------------------------------------------
+# Autoscaling & disruption budget
+# ----------------------------------------------------------------------------
+# HorizontalPodAutoscaler. REQUIRES config.database.type=postgres — on sqlite the
+# chart refuses to render it (SQLite is single-replica). Enable only after
+# switching to postgres, and set deployment.resources.requests.cpu.
+hpa:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80    # 0 or "" to disable CPU-based scaling
+  targetMemoryUtilizationPercentage: "" # set a number to also scale on memory
+  customMetrics: []                     # extra autoscaling/v2 MetricSpec entries
+  behavior: {}                          # autoscaling/v2 scaleUp/scaleDown tuning
+
+# PodDisruptionBudget. Only meaningful at replicaCount >= 2 (with one replica
+# minAvailable: 1 blocks node drains). Set exactly ONE of the two below.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1               # integer or percentage string, e.g. "50%"
+  maxUnavailable: ""            # integer or percentage string, e.g. "25%"
+
+# Extra metadata for the generated ConfigMap.
+configMap:
+  annotations: {}
+  labels: {}

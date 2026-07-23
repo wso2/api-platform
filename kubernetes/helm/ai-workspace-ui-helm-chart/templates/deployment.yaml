@@ -1,0 +1,183 @@
+{{- $ui := .Values -}}
+{{- $deployment := $ui.deployment -}}
+{{- $secrets := $ui.secrets -}}
+{{- $tls := $ui.tls -}}
+{{- $selfSigned := eq $tls.certificateProvider "selfSigned" -}}
+{{- $tlsMounted := or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret") -}}
+{{- $platformApiUrl := default (include "apip.platformApi.internalURL" .) $ui.platformApi.url -}}
+{{- $skipVerify := and $ui.platformApi.tlsSkipVerify .Values.global.developmentMode -}}
+{{- $imageTag := default .Chart.AppVersion $ui.image.tag -}}
+{{- if $deployment.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "apip.aiWorkspace.fullname" . }}
+  labels:
+    {{- include "apip.componentLabels" (list . "ai-workspace" $deployment.labels) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . $deployment.annotations)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ $deployment.replicaCount }}
+  {{- with $deployment.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "apip.componentSelectorLabels" (list . "ai-workspace") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "apip.componentPodLabels" (list . "ai-workspace" $deployment.podLabels) | nindent 8 }}
+      {{- $podAnnotations := omit (merge (dict) (default (dict) $deployment.podAnnotations) (default (dict) .Values.global.commonAnnotations)) "checksum/config" }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with $podAnnotations }}
+        {{- include "apip.renderStringMap" . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "apip.serviceAccountName" . }}
+      {{- with (include "apip.componentImagePullSecretsBlock" (dict "root" . "componentPullSecrets" $ui.imagePullSecrets)) }}
+      {{- . | nindent 6 }}
+      {{- end }}
+      {{- with $deployment.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      {{- with $deployment.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if hasKey $deployment "terminationGracePeriodSeconds" }}
+      terminationGracePeriodSeconds: {{ $deployment.terminationGracePeriodSeconds }}
+      {{- end }}
+      {{- with $deployment.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.dnsPolicy }}
+      dnsPolicy: {{ . }}
+      {{- end }}
+      {{- with $deployment.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if hasKey $deployment "automountServiceAccountToken" }}
+      automountServiceAccountToken: {{ $deployment.automountServiceAccountToken }}
+      {{- end }}
+      containers:
+        - name: ai-workspace
+          image: {{ include "apip.componentImage" (dict "root" . "repository" $ui.image.repository "defaultRepository" "ghcr.io/wso2/api-platform/ai-workspace" "tag" $imageTag) | quote }}
+          imagePullPolicy: {{ $ui.image.pullPolicy }}
+          {{- with $deployment.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: BFF_ADDR
+              value: {{ printf ":%d" (int $ui.containerPort) | quote }}
+            - name: BFF_CONFIG_FILE
+              value: /etc/ai-workspace/config.toml
+            - name: PLATFORM_API_URL
+              value: {{ $platformApiUrl | quote }}
+            - name: PLATFORM_API_TLS_SKIP_VERIFY
+              value: {{ $skipVerify | toString | quote }}
+            {{- with $ui.platformApi.caFile }}
+            - name: PLATFORM_API_CA_FILE
+              value: {{ . | quote }}
+            {{- end }}
+            - name: SESSION_STORE
+              value: {{ $ui.sessionStore | quote }}
+            - name: COOKIE_SECURE
+              value: {{ $ui.cookie.secure | toString | quote }}
+            - name: COOKIE_SAMESITE
+              value: {{ $ui.cookie.sameSite | quote }}
+            - name: BFF_TLS_SELF_SIGNED
+              value: {{ $selfSigned | toString | quote }}
+            - name: VITE_AUTH_MODE
+              value: {{ $ui.config.authMode | quote }}
+            {{- if eq $ui.config.authMode "oidc" }}
+            # OIDC client secret from the external UI Secret (generate-secrets.sh).
+            # The secretName helper fails the render if ui.secrets.existingSecret is unset.
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "apip.aiWorkspace.secretName" . }}
+                  key: {{ $secrets.keys.oidcClientSecret }}
+            {{- end }}
+            {{- range $deployment.extraEnv }}
+            - {{- toYaml . | nindent 14 }}
+            {{- end }}
+          {{- with $deployment.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $ui.containerPort }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml $deployment.livenessProbe | nindent 12 }}
+          {{- with $deployment.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          readinessProbe:
+            {{- toYaml $deployment.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml ($deployment.resources | default dict) | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/ai-workspace/config.toml
+              subPath: config.toml
+            {{- if $tlsMounted }}
+            - name: tls-certs
+              mountPath: /etc/ai-workspace/tls
+              readOnly: true
+            {{- end }}
+            {{- with $deployment.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "apip.aiWorkspace.fullname" . }}-config
+            items:
+              - key: config.toml
+                path: config.toml
+        {{- if $tlsMounted }}
+        - name: tls-certs
+          secret:
+            {{- if eq $tls.certificateProvider "cert-manager" }}
+            secretName: {{ include "apip.aiWorkspace.fullname" . }}-tls
+            {{- else if eq $tls.certificateProvider "secret" }}
+            secretName: {{ $tls.secret.name }}
+            {{- end }}
+            items:
+              - key: {{ if eq $tls.certificateProvider "cert-manager" }}tls.crt{{ else }}{{ $tls.secret.certKey }}{{ end }}
+                path: tls.crt
+              - key: {{ if eq $tls.certificateProvider "cert-manager" }}tls.key{{ else }}{{ $tls.secret.keyKey }}{{ end }}
+                path: tls.key
+        {{- end }}
+        {{- with $deployment.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}
+

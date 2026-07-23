@@ -1,0 +1,19 @@
+{{- $dp := .Values -}}
+{{- if and $dp.deployment.enabled $dp.configToml }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "apip.developerPortal.fullname" . }}-config
+  labels:
+    {{- include "apip.componentLabels" (list . "developer-portal" $dp.configMap.labels) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . $dp.configMap.annotations)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+data:
+  # Optional raw config.toml. The Developer Portal is configured primarily via
+  # APIP_DP_* env vars (set on the Deployment); anything here is overridden by them.
+  config.toml: |
+    {{- $dp.configToml | nindent 4 }}
+{{- end }}
+

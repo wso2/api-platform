@@ -1,0 +1,12 @@
+apiVersion: v2
+name: platform-api
+description: >-
+  WSO2 API Platform — Platform API control plane (Go backend). Independently
+  released component chart; consumed by the product umbrella charts
+  (ai-workspace, developer-portal) and installable standalone.
+type: application
+version: 0.1.0
+appVersion: "0.12.0-SNAPSHOT"
+home: https://github.com/wso2/api-platform
+sources:
+  - https://github.com/wso2/api-platform

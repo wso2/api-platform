@@ -1,0 +1,50 @@
+{{- $ui := .Values -}}
+{{- $service := $ui.service -}}
+{{- $isNodePortCapable := or (eq $service.type "NodePort") (eq $service.type "LoadBalancer") -}}
+{{- if $ui.deployment.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "apip.developerPortal.fullname" . }}
+  labels:
+    {{- include "apip.componentLabels" (list . "developer-portal" $service.labels) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . $service.annotations)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $service.type }}
+  {{- with $service.clusterIP }}
+  clusterIP: {{ . }}
+  {{- end }}
+  {{- if and $service.externalTrafficPolicy $isNodePortCapable }}
+  externalTrafficPolicy: {{ $service.externalTrafficPolicy }}
+  {{- end }}
+  {{- if eq $service.type "LoadBalancer" }}
+  {{- with $service.loadBalancerClass }}
+  loadBalancerClass: {{ . }}
+  {{- end }}
+  {{- with $service.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+  {{- with $service.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ . }}
+  {{- end }}
+  {{- with $service.ipFamilies }}
+  ipFamilies:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    {{- include "apip.componentSelectorLabels" (list . "developer-portal") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $service.port }}
+      targetPort: http
+      protocol: TCP
+      {{- if and $isNodePortCapable $service.nodePort }}
+      nodePort: {{ $service.nodePort }}
+      {{- end }}
+{{- end }}
+

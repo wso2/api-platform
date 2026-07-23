@@ -1,0 +1,10 @@
+# Vendored subchart archives + lockfiles fetched by `helm dependency update`.
+# Build artifacts (the umbrellas pull their components in) — never commit them.
+ai-workspace-helm-chart/charts/
+ai-workspace-helm-chart/Chart.lock
+developer-portal-helm-chart/charts/
+developer-portal-helm-chart/Chart.lock
+
+# Generated secret references (created by generate-secrets.sh; no secret values,
+# but environment-specific).
+**/values-secrets.yaml

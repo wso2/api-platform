@@ -1,0 +1,12 @@
+apiVersion: v2
+name: developer-portal-ui
+description: >-
+  WSO2 API Platform — Developer Portal (Node.js app). Independently released
+  component chart; consumed by the developer-portal product umbrella
+  (and pluggable into others) and installable standalone.
+type: application
+version: 0.1.0
+appVersion: "1.0.0-beta-SNAPSHOT"
+home: https://github.com/wso2/api-platform
+sources:
+  - https://github.com/wso2/api-platform

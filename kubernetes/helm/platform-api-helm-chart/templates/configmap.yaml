@@ -1,0 +1,99 @@
+{{- $pa := .Values -}}
+{{- $cfg := $pa.config -}}
+{{- $db := $cfg.database -}}
+{{- $auth := $cfg.auth -}}
+{{- if $pa.deployment.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "apip.platformApi.fullname" . }}-config
+  labels:
+    {{- include "apip.componentLabels" (list . "platform-api" $pa.configMap.labels) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . $pa.configMap.annotations)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+data:
+  config-platform-api.toml: |
+    log_level = {{ $cfg.logLevel | quote }}
+    log_format = {{ $cfg.logFormat | quote }}
+    port = {{ $pa.containerPort | toString | quote }}
+    enable_scope_validation = {{ $cfg.enableScopeValidation }}
+
+    [database]
+    driver = {{ $db.driver | quote }}
+    {{- if eq $db.driver "postgres" }}
+    host = {{ $db.postgres.host | quote }}
+    port = {{ $db.postgres.port }}
+    name = {{ $db.postgres.database | quote }}
+    user = {{ $db.postgres.user | quote }}
+    ssl_mode = {{ $db.postgres.sslmode | quote }}
+    max_open_conns = {{ $db.postgres.max_open_conns }}
+    max_idle_conns = {{ $db.postgres.max_idle_conns }}
+    conn_max_lifetime = {{ $db.postgres.conn_max_lifetime }}
+    {{- else }}
+    path = {{ $db.path | quote }}
+    {{- end }}
+
+    [auth.jwt]
+    enabled = {{ $auth.jwt.enabled }}
+    issuer = {{ $auth.jwt.issuer | quote }}
+    skip_validation = {{ if .Values.global.developmentMode }}{{ $auth.jwt.skipValidation }}{{ else }}false{{ end }}
+
+    [auth.idp]
+    enabled = {{ $auth.idp.enabled }}
+    {{- if $auth.idp.enabled }}
+    {{- with $auth.idp.name }}
+    name = {{ . | quote }}
+    {{- end }}
+    jwks_url = {{ $auth.idp.jwksUrl | quote }}
+    issuer = {{ toJson $auth.idp.issuer }}
+    audience = {{ toJson $auth.idp.audience }}
+    validation_mode = {{ $auth.idp.validationMode | quote }}
+
+    [auth.idp.claim_mappings]
+    organization_claim_name = {{ $auth.idp.claimMappings.organizationClaimName | quote }}
+    org_name_claim_name = {{ $auth.idp.claimMappings.orgNameClaimName | quote }}
+    org_handle_claim_name = {{ $auth.idp.claimMappings.orgHandleClaimName | quote }}
+    user_id_claim_name = {{ $auth.idp.claimMappings.userIdClaimName | quote }}
+    username_claim_name = {{ $auth.idp.claimMappings.usernameClaimName | quote }}
+    email_claim_name = {{ $auth.idp.claimMappings.emailClaimName | quote }}
+    scope_claim_name = {{ $auth.idp.claimMappings.scopeClaimName | quote }}
+    roles_claim_path = {{ $auth.idp.claimMappings.rolesClaimPath | quote }}
+    {{- end }}
+
+    [auth.file_based]
+    enabled = {{ $auth.fileBased.enabled }}
+    {{- if $auth.fileBased.enabled }}
+
+    [auth.file_based.organization]
+    id = {{ $auth.fileBased.organization.id | quote }}
+    display_name = {{ $auth.fileBased.organization.displayName | quote }}
+    region = {{ $auth.fileBased.organization.region | quote }}
+    {{- range $auth.fileBased.users }}
+
+    [[auth.file_based.users]]
+    username = {{ .username | quote }}
+    password_hash = {{ .passwordHash | quote }}
+    scopes = {{ .scopes | quote }}
+    {{- end }}
+    {{- end }}
+
+    [tls]
+    enabled = {{ $cfg.tls.enabled }}
+    cert_dir = {{ $cfg.tls.certDir | quote }}
+
+    {{- if $cfg.cors.allowedOrigins }}
+
+    [cors]
+    allowed_origins = {{ toJson $cfg.cors.allowedOrigins }}
+    {{- end }}
+
+    [default_devportal]
+    enabled = {{ $cfg.defaultDevportal.enabled }}
+    {{- with $pa.configToml }}
+
+    {{ . | nindent 4 | trim }}
+    {{- end }}
+{{- end }}
+

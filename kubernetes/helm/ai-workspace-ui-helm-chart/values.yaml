@@ -1,0 +1,253 @@
+# ============================================================================
+# ai-workspace — component chart values
+# ============================================================================
+# The AI Workspace UI: a React single-page app served by a small Go BFF (backend
+# for frontend). It is stateless (no database) and talks only to the Platform API.
+# Released on its own; used as an umbrella subchart or standalone.
+#
+#   global.*   Cross-cutting settings. Under an umbrella these come from the
+#              umbrella; the block below is the STANDALONE default, overridden
+#              when nested.
+#   (rest)     This component's own settings.
+#
+# `enabled` is read by the umbrella's dependency condition (ignored standalone).
+
+# ----------------------------------------------------------------------------
+# global — STANDALONE defaults only (an umbrella's global.* overrides these)
+# ----------------------------------------------------------------------------
+global:
+  developmentMode: true
+  nameOverride: ""
+  fullnameOverride: ""
+  commonLabels: {}
+  commonAnnotations: {}
+  imagePullSecrets: []
+  serviceAccount:
+    # Standalone default is `false` → pods use the namespace "default" SA (this
+    # component ships no ServiceAccount template; the umbrella creates one).
+    create: false
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: true
+  wso2:
+    subscription:
+      imagePullSecret: ""
+  platformApi:
+    port: 9243
+    tlsEnabled: true
+
+# ----------------------------------------------------------------------------
+# Component toggle + container image
+# ----------------------------------------------------------------------------
+# Install the AI Workspace UI. Opt in per install (the umbrella sets this).
+enabled: false
+image:
+  repository: ghcr.io/wso2/api-platform/ai-workspace
+  tag: "1.1.0-SNAPSHOT"
+  pullPolicy: IfNotPresent
+# Pull secrets for THIS component only (merged with global.imagePullSecrets).
+imagePullSecrets: []
+
+# ----------------------------------------------------------------------------
+# config — rendered into /etc/ai-workspace/config.toml
+# ----------------------------------------------------------------------------
+config:
+  # Hostname (or host:port) the browser uses to reach the UI. Shown in the address
+  # bar and used to build redirect URLs.
+  domain: ai-workspace.localhost
+  # Region assigned to a new organization the first time someone logs in.
+  defaultOrgRegion: us
+  # How users sign in:
+  #   basic → the Platform API's file-based login (admin/admin in dev)
+  #   oidc  → an external OIDC provider (fill in config.oidc below + the secret)
+  authMode: basic
+  # Public address of the control plane that GATEWAYS dial to reach the Platform
+  # API. Shown verbatim in the in-UI "add a gateway" instructions.
+  controlplaneHost: ""
+  # Gateway build options offered in the create-gateway dropdown (a JSON string).
+  platformGatewayVersions: '[{"version":"1.2","latestVersion":"v1.2.0-M1","channel":"STS"}]'
+  # OIDC settings — used only when authMode=oidc. The client secret is NOT here;
+  # it comes from the Secret (secrets.keys.oidcClientSecret).
+  oidc:
+    authority: ""               # issuer / discovery base URL
+    clientId: ""
+    redirectUrl: ""             # login callback URL
+    postLogoutRedirectUrl: ""
+    scope: ""                   # e.g. "openid profile email"
+    # Map the IDP's token claims to what the UI expects:
+    usernameClaim: username
+    orgIdClaim: org_id
+    orgNameClaim: org_name
+    orgHandleClaim: org_handle
+
+# Escape hatch: raw TOML appended verbatim to the generated config.toml.
+configToml: ""
+
+# ----------------------------------------------------------------------------
+# platformApi — how the BFF reaches the Platform API (server-to-server)
+# ----------------------------------------------------------------------------
+platformApi:
+  # Leave "" to auto-derive the in-cluster Service URL from global.platformApi.
+  # Set only to point at an external Platform API.
+  url: ""
+  # Skip TLS verification on the BFF → Platform API hop. Needed while the Platform
+  # API uses a self-signed cert. Forced to false when developmentMode is false.
+  tlsSkipVerify: true
+  # Instead of skipping verification, mount a CA file (via extraVolumes/Mounts)
+  # and point to it here to properly verify the Platform API's certificate.
+  caFile: ""
+
+# ----------------------------------------------------------------------------
+# Session cookie & store
+# ----------------------------------------------------------------------------
+cookie:
+  secure: true                  # keep true when served over HTTPS
+  sameSite: lax                 # lax | strict | none
+# Where server-side sessions live: "memory" works for a single replica; use an
+# external store if you scale the UI to multiple replicas.
+sessionStore: memory
+
+# ----------------------------------------------------------------------------
+# secrets — OIDC client secret (REQUIRED only in OIDC mode)
+# ----------------------------------------------------------------------------
+# The BFF is a confidential OIDC client, so it needs a client secret when
+# authMode=oidc. In basic mode this is unused. Point existingSecret at a Secret
+# created by ./generate-secrets.sh; the chart never embeds the value.
+secrets:
+  existingSecret: ""
+  keys:
+    oidcClientSecret: OIDC_CLIENT_SECRET
+
+# ----------------------------------------------------------------------------
+# service — how the UI is exposed
+# ----------------------------------------------------------------------------
+service:
+  type: LoadBalancer            # LoadBalancer | NodePort | ClusterIP
+  annotations: {}
+  labels: {}
+  port: 5380
+  clusterIP: ""
+  externalTrafficPolicy: ""
+  loadBalancerClass: ""
+  loadBalancerSourceRanges: []
+  ipFamilyPolicy: ""
+  ipFamilies: []
+  nodePort: ""
+
+# Port the BFF process listens on.
+containerPort: 5380
+
+# ----------------------------------------------------------------------------
+# tls — certificate for the BFF's HTTPS listener
+# ----------------------------------------------------------------------------
+tls:
+  # selfSigned   → BFF generates a self-signed pair at startup (demo).
+  # secret       → mount an existing Secret's tls.crt / tls.key.
+  # cert-manager → provision a Certificate via cert-manager and mount it.
+  certificateProvider: selfSigned
+  certManager:
+    create: true
+    createIssuer: true
+    issuerRef:
+      name: selfsigned-issuer
+      kind: Issuer
+      # group: cert-manager.io
+    commonName: ai-workspace.localhost
+    dnsNames:
+      - ai-workspace.localhost
+      - "*.localhost"
+    duration: 2160h
+    renewBefore: 720h
+  secret:
+    name: ai-workspace-tls      # used when certificateProvider=secret
+    certKey: tls.crt
+    keyKey: tls.key
+
+# ----------------------------------------------------------------------------
+# deployment — the pod/Deployment spec
+# ----------------------------------------------------------------------------
+deployment:
+  enabled: true
+  replicaCount: 1
+  extraEnv: []
+  extraEnvFrom: []
+  extraVolumeMounts: []
+  extraVolumes: []
+  labels: {}
+  annotations: {}
+  podAnnotations: {}
+  podLabels: {}
+  priorityClassName: ""
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: http
+      scheme: HTTPS
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: http
+      scheme: HTTPS
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # Optional startup probe for slow first starts (uncomment to enable):
+  # startupProbe:
+  #   httpGet:
+  #     path: /healthz
+  #     port: http
+  #     scheme: HTTPS
+  #   periodSeconds: 5
+  #   failureThreshold: 30
+  # Set CPU requests if you enable the HPA, so it can compute utilization.
+  resources: {}
+    # limits:
+    #   cpu: 500m
+    #   memory: 256Mi
+    # requests:
+    #   cpu: 100m
+    #   memory: 128Mi
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  strategy: {}
+  # terminationGracePeriodSeconds: 30
+  hostAliases: []
+  dnsPolicy: ""
+  dnsConfig: {}
+  # automountServiceAccountToken: false
+
+# ----------------------------------------------------------------------------
+# Autoscaling & disruption budget
+# ----------------------------------------------------------------------------
+# HorizontalPodAutoscaler. The UI is stateless (no database), so — unlike the
+# Platform API / Developer Portal — there is NO postgres requirement; it can scale
+# freely. Off by default.
+hpa:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80    # 0 or "" to disable CPU-based scaling
+  targetMemoryUtilizationPercentage: "" # set a number to also scale on memory
+  customMetrics: []                     # extra autoscaling/v2 MetricSpec entries
+  behavior: {}                          # autoscaling/v2 scaleUp/scaleDown tuning
+
+# PodDisruptionBudget. Only meaningful at replicaCount >= 2 (with one replica
+# minAvailable: 1 blocks node drains). Set exactly ONE of the two below.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1                # integer or percentage string, e.g. "50%"
+  maxUnavailable: ""             # integer or percentage string, e.g. "25%"
+
+# Extra metadata for the generated ConfigMap.
+configMap:
+  annotations: {}
+  labels: {}

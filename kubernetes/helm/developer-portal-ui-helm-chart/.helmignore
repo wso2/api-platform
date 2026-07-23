@@ -1,0 +1,16 @@
+# Common Helm ignores
+.DS_Store
+.git/
+.gitignore
+.idea/
+.vscode/
+Thumbs.db
+*.swp
+*.tmp
+*.bak
+
+# Examples and documentation
+examples/
+
+# Local development overrides (not shipped)
+values-local.yaml

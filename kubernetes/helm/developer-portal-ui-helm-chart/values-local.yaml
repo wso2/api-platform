@@ -1,0 +1,13 @@
+# Local development values for the developer-portal-ui chart.
+# Usage (standalone):
+#   helm install developer-portal-ui ./developer-portal-ui-helm-chart -f values-local.yaml
+#
+# Overrides the defaults for local development:
+# - developmentMode on (self-signed TLS, sample-API seeding, file-based login)
+# - locally-built image (latest tag, IfNotPresent pull policy)
+global:
+  developmentMode: true
+
+image:
+  tag: "latest"
+  pullPolicy: IfNotPresent

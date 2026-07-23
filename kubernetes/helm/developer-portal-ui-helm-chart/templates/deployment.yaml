@@ -1,0 +1,271 @@
+{{- $dp := .Values -}}
+{{- $deployment := $dp.deployment -}}
+{{- $cfg := $dp.config -}}
+{{- $secrets := $dp.secrets -}}
+{{- $tls := $dp.tls -}}
+{{- $selfSigned := eq $tls.certificateProvider "selfSigned" -}}
+{{- $tlsFromSecret := or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret") -}}
+{{- $secretName := include "apip.developerPortal.secretName" . -}}
+{{- $imageTag := default .Chart.AppVersion $dp.image.tag -}}
+{{- $certDir := $tls.mountPath -}}
+{{- $baseUrl := default (printf "https://localhost:%d" (int $dp.containerPort)) $cfg.server.baseUrl -}}
+{{- $platformApiUrl := default (include "apip.platformApi.internalURL" .) $cfg.platformApi.baseUrl -}}
+{{- $demo := $cfg.demoEnabled -}}
+{{- if kindIs "invalid" $demo }}{{- $demo = .Values.global.developmentMode -}}{{- end }}
+{{- if $deployment.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "apip.developerPortal.fullname" . }}
+  labels:
+    {{- include "apip.componentLabels" (list . "developer-portal" $deployment.labels) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . $deployment.annotations)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ $deployment.replicaCount }}
+  {{- with $deployment.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "apip.componentSelectorLabels" (list . "developer-portal") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "apip.componentPodLabels" (list . "developer-portal" $deployment.podLabels) | nindent 8 }}
+      {{- with (merge (dict) (default (dict) $deployment.podAnnotations) (default (dict) .Values.global.commonAnnotations)) }}
+      annotations:
+        {{- include "apip.renderStringMap" . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "apip.serviceAccountName" . }}
+      {{- with (include "apip.componentImagePullSecretsBlock" (dict "root" . "componentPullSecrets" $dp.imagePullSecrets)) }}
+      {{- . | nindent 6 }}
+      {{- end }}
+      {{- with $deployment.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      {{- with $deployment.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if hasKey $deployment "terminationGracePeriodSeconds" }}
+      terminationGracePeriodSeconds: {{ $deployment.terminationGracePeriodSeconds }}
+      {{- end }}
+      {{- with $deployment.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.dnsPolicy }}
+      dnsPolicy: {{ . }}
+      {{- end }}
+      {{- with $deployment.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if hasKey $deployment "automountServiceAccountToken" }}
+      automountServiceAccountToken: {{ $deployment.automountServiceAccountToken }}
+      {{- end }}
+      containers:
+        - name: devportal
+          image: {{ include "apip.componentImage" (dict "root" . "repository" $dp.image.repository "defaultRepository" "ghcr.io/wso2/api-platform/developer-portal" "tag" $imageTag) | quote }}
+          imagePullPolicy: {{ $dp.image.pullPolicy }}
+          {{- with $deployment.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            # ── Server / TLS ──────────────────────────────────────────────
+            - name: APIP_DP_SERVER_PORT
+              value: {{ $dp.containerPort | toString | quote }}
+            - name: APIP_DP_SERVER_BASEURL
+              value: {{ $baseUrl | quote }}
+            - name: APIP_DP_TLS_ENABLED
+              value: "true"
+            - name: APIP_DP_TLS_CERTFILE
+              value: {{ printf "%s/server.crt" $certDir | quote }}
+            - name: APIP_DP_TLS_KEYFILE
+              value: {{ printf "%s/server.key" $certDir | quote }}
+            - name: APIP_DP_TLS_CAFILE
+              value: {{ printf "%s/server.crt" $certDir | quote }}
+            # ── Database ──────────────────────────────────────────────────
+            - name: APIP_DP_DATABASE_TYPE
+              value: {{ $cfg.database.type | quote }}
+            {{- if eq $cfg.database.type "postgres" }}
+            - name: APIP_DP_DATABASE_HOST
+              value: {{ $cfg.database.host | quote }}
+            - name: APIP_DP_DATABASE_PORT
+              value: {{ $cfg.database.port | toString | quote }}
+            - name: APIP_DP_DATABASE_NAME
+              value: {{ $cfg.database.database | quote }}
+            - name: APIP_DP_DATABASE_USERNAME
+              value: {{ $cfg.database.user | quote }}
+            - name: APIP_DP_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $secrets.keys.databasePassword | default "APIP_DP_DATABASE_PASSWORD" }}
+            {{- else }}
+            - name: APIP_DP_DATABASE_FILE
+              value: {{ $cfg.database.file | quote }}
+            {{- end }}
+            # ── Behaviour ─────────────────────────────────────────────────
+            - name: APIP_DP_DEMO_ENABLED
+              value: {{ $demo | toString | quote }}
+            - name: APIP_DP_LOGGING_CONSOLEONLY
+              value: {{ $cfg.logging.consoleOnly | toString | quote }}
+            - name: APIP_DP_SECURITY_ROLEVALIDATION
+              value: {{ $cfg.security.roleValidation | toString | quote }}
+            - name: APIP_DP_SECURITY_SERVICEAPIKEY_ENABLED
+              value: {{ $cfg.security.serviceApiKey.enabled | toString | quote }}
+            - name: APIP_DP_SECURITY_SERVICEAPIKEY_HEADERNAME
+              value: {{ $cfg.security.serviceApiKey.headerName | quote }}
+            - name: APIP_DP_ORGANIZATION_DEFAULTNAME
+              value: {{ $cfg.organization.defaultName | quote }}
+            # ── Platform API connectivity ────────────────────────────────
+            - name: APIP_DP_PLATFORMAPI_BASEURL
+              value: {{ $platformApiUrl | quote }}
+            - name: APIP_DP_PLATFORMAPI_INSECURE
+              value: {{ $cfg.platformApi.insecure | toString | quote }}
+            # ── Secrets (from the external Secret) ────────────────────────
+            - name: APIP_DP_SECURITY_ENCRYPTIONKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $secrets.keys.encryptionKey }}
+            - name: APIP_DP_PLATFORMAPI_JWTSECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $secrets.keys.platformApiJwtSecret }}
+            {{- if $secrets.hasServiceApiKeyValue }}
+            - name: APIP_DP_SECURITY_SERVICEAPIKEY_VALUE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $secrets.keys.serviceApiKeyValue }}
+            {{- end }}
+            # ── OIDC IDP (active when clientId is set) ────────────────────
+            {{- if $cfg.idp.clientId }}
+            - name: APIP_DP_IDP_NAME
+              value: {{ $cfg.idp.name | quote }}
+            - name: APIP_DP_IDP_ISSUER
+              value: {{ $cfg.idp.issuer | quote }}
+            - name: APIP_DP_IDP_AUTHORIZATIONURL
+              value: {{ $cfg.idp.authorizationUrl | quote }}
+            - name: APIP_DP_IDP_TOKENURL
+              value: {{ $cfg.idp.tokenUrl | quote }}
+            - name: APIP_DP_IDP_USERINFOURL
+              value: {{ $cfg.idp.userInfoUrl | quote }}
+            - name: APIP_DP_IDP_JWKSURL
+              value: {{ $cfg.idp.jwksUrl | quote }}
+            - name: APIP_DP_IDP_CLIENTID
+              value: {{ $cfg.idp.clientId | quote }}
+            - name: APIP_DP_IDP_CALLBACKURL
+              value: {{ $cfg.idp.callbackUrl | quote }}
+            - name: APIP_DP_IDP_LOGOUTURL
+              value: {{ $cfg.idp.logoutUrl | quote }}
+            - name: APIP_DP_IDP_SCOPE
+              value: {{ $cfg.idp.scope | quote }}
+            {{- if $secrets.hasIdpClientSecret }}
+            - name: APIP_DP_IDP_CLIENTSECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $secrets.keys.idpClientSecret }}
+            {{- end }}
+            {{- end }}
+            {{- range $deployment.extraEnv }}
+            - {{- toYaml . | nindent 14 }}
+            {{- end }}
+          {{- with $deployment.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $dp.containerPort }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml $deployment.livenessProbe | nindent 12 }}
+          {{- with $deployment.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          readinessProbe:
+            {{- toYaml $deployment.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml ($deployment.resources | default dict) | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ $deployment.volumeMountPath }}
+            - name: certs
+              mountPath: {{ $certDir }}
+              {{- if $tlsFromSecret }}
+              readOnly: true
+              {{- end }}
+            {{- if $dp.configToml }}
+            - name: config
+              mountPath: /app/configs/config.toml
+              subPath: config.toml
+            {{- end }}
+            {{- with $deployment.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: data
+          {{- if $dp.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ if $dp.persistence.existingClaim }}{{ $dp.persistence.existingClaim }}{{ else }}{{ include "apip.developerPortal.fullname" . }}-data{{ end }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: certs
+          {{- if $tlsFromSecret }}
+          secret:
+            {{- if eq $tls.certificateProvider "cert-manager" }}
+            secretName: {{ include "apip.developerPortal.fullname" . }}-tls
+            {{- else }}
+            secretName: {{ $tls.secret.name }}
+            {{- end }}
+            items:
+              - key: {{ if eq $tls.certificateProvider "cert-manager" }}tls.crt{{ else }}{{ $tls.secret.certKey }}{{ end }}
+                path: server.crt
+              - key: {{ if eq $tls.certificateProvider "cert-manager" }}tls.key{{ else }}{{ $tls.secret.keyKey }}{{ end }}
+                path: server.key
+          {{- else }}
+          # selfSigned: writable dir where the entrypoint generates server.crt/server.key.
+          emptyDir: {}
+          {{- end }}
+        {{- if $dp.configToml }}
+        - name: config
+          configMap:
+            name: {{ include "apip.developerPortal.fullname" . }}-config
+            items:
+              - key: config.toml
+                path: config.toml
+        {{- end }}
+        {{- with $deployment.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}
+

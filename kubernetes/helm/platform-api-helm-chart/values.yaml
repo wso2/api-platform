@@ -1,0 +1,344 @@
+# ============================================================================
+# platform-api — component chart values
+# ============================================================================
+# The shared Platform API control plane (Go backend). This chart is released on
+# its own and is used two ways:
+#   • as a subchart of a product umbrella (ai-workspace / developer-portal)
+#   • standalone (helm install this chart directly)
+#
+# Two kinds of settings live here:
+#   global.*   Cross-cutting settings shared by all components. Under an umbrella
+#              the umbrella supplies these; the block below is only the STANDALONE
+#              default and is overridden when this chart runs nested.
+#   (rest)     This component's own settings — image, config, service, storage, …
+#
+# `enabled` is read by the umbrella's dependency condition (ignored standalone).
+
+# ----------------------------------------------------------------------------
+# global — STANDALONE defaults only (an umbrella's global.* overrides these)
+# ----------------------------------------------------------------------------
+global:
+  developmentMode: true
+  nameOverride: ""
+  fullnameOverride: ""
+  commonLabels: {}
+  commonAnnotations: {}
+  imagePullSecrets: []
+  serviceAccount:
+    # Standalone default is `false` → pods use the namespace "default" SA, because
+    # this component ships no ServiceAccount template (the umbrella owns SA
+    # creation and sets create: true).
+    create: false
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: true
+  wso2:
+    subscription:
+      imagePullSecret: ""
+  platformApi:
+    port: 9243
+    tlsEnabled: true
+
+# ----------------------------------------------------------------------------
+# Component toggle + container image
+# ----------------------------------------------------------------------------
+# Install this component. Both portals need the Platform API, so leave it on
+# unless you point them at an EXTERNAL Platform API via the portal URL overrides.
+enabled: true
+image:
+  repository: ghcr.io/wso2/api-platform/platform-api
+  tag: 0.12.0-SNAPSHOT
+  pullPolicy: IfNotPresent
+# Pull secrets for THIS component only (merged with global.imagePullSecrets).
+imagePullSecrets: []
+
+# ----------------------------------------------------------------------------
+# config — rendered into /etc/platform-api/config-platform-api.toml
+# ----------------------------------------------------------------------------
+# Everything here becomes the app's config file. Secrets (encryption key, JWT
+# signing key, DB password, OIDC client secret) are NOT here — they're injected
+# as env vars from a Kubernetes Secret; see `secrets:` further down.
+config:
+  # Logging.
+  logLevel: INFO                 # DEBUG | INFO | WARN | ERROR
+  logFormat: json                # json | text
+  # Reject requests whose token lacks the required OAuth2 scope.
+  enableScopeValidation: true
+
+  # --- Database ---
+  database:
+    # Which backend to use:
+    #   sqlite3  — no external DB; the file lives on the PVC (see persistence).
+    #              Single replica only → the HPA cannot be used. Great for demos.
+    #   postgres — external PostgreSQL (configured below). Enables multiple
+    #              replicas and the HPA.
+    driver: sqlite3
+    # SQLite database file (driver=sqlite3 only). Must sit under the mounted data
+    # volume (deployment.volumeMountPath), so it persists on the PVC.
+    path: /app/data/api_platform.db
+    # PostgreSQL connection (driver=postgres only). The password is NOT set here —
+    # it comes from the Secret key secrets.keys.databasePassword.
+    postgres:
+      # Host reachable FROM THE CLUSTER: an in-cluster Service
+      # (e.g. my-postgresql.db.svc.cluster.local) or an external endpoint.
+      host: ""
+      port: 5432
+      # Database (schema) name to connect to. (Key is `database` to match the
+      # gateway chart's DB-config convention.)
+      database: platformapi
+      # Login role; its password comes from the Secret (see above).
+      user: postgres
+      sslmode: disable           # disable | require | verify-ca | verify-full
+      # Connection-pool tuning:
+      max_open_conns: 25         # max connections open at once
+      max_idle_conns: 10         # idle connections kept ready in the pool
+      conn_max_lifetime: 300     # recycle a connection after this many seconds
+
+  # --- TLS on the Platform API's own listener ---
+  tls:
+    # true  → the app serves HTTPS using certs from certDir (provisioned via the
+    #         top-level `tls:` block below).
+    # false → serves plain HTTP; put TLS termination in front (ingress / mesh).
+    enabled: true
+    certDir: /app/data/certs
+  # --- CORS ---
+  # Browser origins allowed to call the API with credentials. MUST be set to
+  # explicit origins when developmentMode is false. When empty AND developmentMode
+  # is true, a wildcard origin is allowed (dev convenience only).
+  cors:
+    allowedOrigins: []
+    # - https://workspace.example.com
+
+  # --- Authentication ---
+  # Pick exactly ONE real mode (jwt / idp / file_based). Enabling more than one is
+  # rejected at startup.
+  auth:
+    # jwt — local HMAC-signed tokens issued after file-based login. The usual
+    # choice for self-hosted setups. Its signing key comes from
+    # secrets.keys.authJwtSecretKey (required when developmentMode is false).
+    jwt:
+      enabled: true
+      issuer: platform-api
+      # Skip signature verification. Forced to false when developmentMode is false.
+      skipValidation: true
+    # file_based — local username/password login. Rejected when developmentMode
+    # is false (use idp in production).
+    fileBased:
+      enabled: true
+      organization:
+        id: default
+        displayName: Default
+        region: us
+      users:
+        - username: admin
+          # bcrypt hash of the password "admin". Regenerate with:
+          #   htpasswd -bnBC 12 "" <password> | tr -d ':\n'
+          passwordHash: "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
+          scopes: "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage"
+    # idp — validate tokens from an external OIDC provider (Asgardeo, Keycloak,
+    # Auth0, …) against its JWKS. Use this instead of jwt/file_based in production.
+    idp:
+      enabled: false
+      name: ""
+      jwksUrl: ""
+      issuer: []                 # accepted token issuers
+      audience: []               # accepted audiences; empty = don't check audience
+      validationMode: scope      # scope → check scope claim; role → check roles claim
+      # Map your IDP's token claim names to what the Platform API expects.
+      claimMappings:
+        organizationClaimName: organization
+        orgNameClaimName: org_name
+        orgHandleClaimName: org_handle
+        userIdClaimName: sub
+        usernameClaimName: username
+        emailClaimName: email
+        scopeClaimName: scope
+        rolesClaimPath: ""
+
+  # Seed a default Developer Portal on first start. Leave off for a standalone
+  # AI Workspace; the Developer Portal package turns this on itself.
+  defaultDevportal:
+    enabled: false
+
+# Escape hatch: raw TOML appended verbatim to the generated config file, for keys
+# not exposed as structured values above.
+configToml: ""
+
+# ----------------------------------------------------------------------------
+# secrets — reference to a pre-created Kubernetes Secret (REQUIRED)
+# ----------------------------------------------------------------------------
+# The chart never creates or embeds secret values. Point existingSecret at a
+# Secret made by ./generate-secrets.sh. Render FAILS if it's unset. The Secret
+# must hold ENCRYPTION_KEY and AUTH_JWT_SECRET_KEY (plus DATABASE_PASSWORD when
+# driver=postgres). `keys` maps each logical name to the key inside that Secret.
+secrets:
+  existingSecret: ""
+  keys:
+    encryptionKey: ENCRYPTION_KEY
+    authJwtSecretKey: AUTH_JWT_SECRET_KEY
+    databasePassword: DATABASE_PASSWORD
+
+# ----------------------------------------------------------------------------
+# service — how the API is exposed inside the cluster
+# ----------------------------------------------------------------------------
+service:
+  type: ClusterIP                # ClusterIP | NodePort | LoadBalancer
+  annotations: {}
+  labels: {}
+  # Port the Service listens on. Keep equal to containerPort unless you front it
+  # on a different port.
+  port: 9243
+  clusterIP: ""
+  externalTrafficPolicy: ""
+  loadBalancerClass: ""
+  loadBalancerSourceRanges: []
+  ipFamilyPolicy: ""
+  ipFamilies: []
+  nodePort: ""
+
+# Port the container process listens on (also written into config as `port`).
+containerPort: 9243
+
+# ----------------------------------------------------------------------------
+# tls — where the listener's certificate comes from (used when config.tls.enabled)
+# ----------------------------------------------------------------------------
+tls:
+  # cert-manager → a cert-manager Certificate provisions the cert.
+  # secret       → use an existing Secret containing tls.crt / tls.key.
+  # selfSigned   → the app generates a self-signed pair at startup (demo only;
+  #                requires developmentMode=true).
+  certificateProvider: selfSigned
+  certManager:
+    create: true
+    createIssuer: true
+    issuerRef:
+      name: selfsigned-issuer    # ignored when createIssuer=true
+      kind: Issuer
+      # group: cert-manager.io
+    commonName: platform-api.localhost
+    dnsNames:
+      - platform-api.localhost
+      - "*.localhost"
+    duration: 2160h
+    renewBefore: 720h
+  secret:
+    name: platform-api-tls       # used when certificateProvider=secret
+    certKey: tls.crt
+    keyKey: tls.key
+
+# ----------------------------------------------------------------------------
+# persistence — the PVC backing SQLite (and self-signed certs)
+# ----------------------------------------------------------------------------
+persistence:
+  # Required for driver=sqlite3 (holds the DB file and any self-signed certs).
+  # Safe to disable for a postgres deployment that also uses cert-manager/secret TLS.
+  enabled: true
+  existingClaim: ""              # reuse a PVC you created yourself instead
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  storageClass: ""               # "" = cluster default StorageClass
+  labels: {}
+  # Annotations for the PVC ONLY (rendered only when persistence.enabled). The
+  # resource-policy=keep annotation makes the PVC — and its data — SURVIVE
+  # `helm uninstall`; a later `helm install` with the SAME release name re-adopts
+  # it, so your data is preserved across reinstalls. To intentionally wipe it:
+  #   kubectl delete pvc <release>-platform-api-data
+  # Set to {} if you'd rather the PVC be deleted on uninstall.
+  annotations:
+    helm.sh/resource-policy: keep
+
+# ----------------------------------------------------------------------------
+# deployment — the pod/Deployment spec
+# ----------------------------------------------------------------------------
+deployment:
+  enabled: true
+  replicaCount: 1                # >1 requires driver=postgres
+  # Where the data volume mounts. Must contain config.database.path and
+  # config.tls.certDir.
+  volumeMountPath: /app/data
+  extraEnv: []                   # extra env vars (list of {name,value|valueFrom})
+  extraEnvFrom: []               # extra envFrom sources (configMapRef/secretRef)
+  extraVolumeMounts: []
+  extraVolumes: []
+  labels: {}
+  annotations: {}
+  podAnnotations: {}
+  podLabels: {}
+  priorityClassName: ""
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+      scheme: HTTPS
+    initialDelaySeconds: 20
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+      scheme: HTTPS
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # Optional startup probe for slow first starts (uncomment to enable):
+  # startupProbe:
+  #   httpGet:
+  #     path: /health
+  #     port: http
+  #     scheme: HTTPS
+  #   periodSeconds: 5
+  #   failureThreshold: 30
+  # CPU/memory requests & limits. NOTE: set CPU requests if you enable the HPA,
+  # otherwise it can't compute utilization.
+  resources: {}
+    # limits:
+    #   cpu: 500m
+    #   memory: 512Mi
+    # requests:
+    #   cpu: 250m
+    #   memory: 256Mi
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  strategy: {}
+  # terminationGracePeriodSeconds: 30
+  hostAliases: []
+  dnsPolicy: ""
+  dnsConfig: {}
+  # automountServiceAccountToken: false
+
+# ----------------------------------------------------------------------------
+# Autoscaling & disruption budget
+# ----------------------------------------------------------------------------
+# HorizontalPodAutoscaler. REQUIRES config.database.driver=postgres — on sqlite3
+# the chart refuses to render it (SQLite is single-replica). Enable only after
+# switching to postgres, and set deployment.resources.requests.cpu so the HPA has
+# a baseline to measure against.
+hpa:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80    # 0 or "" to disable CPU-based scaling
+  targetMemoryUtilizationPercentage: "" # set a number to also scale on memory
+  customMetrics: []                     # extra autoscaling/v2 MetricSpec entries
+  behavior: {}                          # autoscaling/v2 scaleUp/scaleDown tuning
+
+# PodDisruptionBudget. Only meaningful at replicaCount >= 2 — with a single replica
+# minAvailable: 1 blocks all voluntary evictions (node drains would hang). Set
+# exactly ONE of minAvailable / maxUnavailable.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1                # integer or percentage string, e.g. "50%"
+  maxUnavailable: ""             # integer or percentage string, e.g. "25%"
+
+# Extra metadata for the generated ConfigMap.
+configMap:
+  annotations: {}
+  labels: {}
