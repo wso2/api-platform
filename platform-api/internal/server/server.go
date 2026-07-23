@@ -430,91 +430,42 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// pdkDeps is the external tier's view: platform capabilities as public
 	// interfaces only, never raw repositories. Assigning the concrete services
-	// here works because they satisfy the pdk interfaces by shape (checked by the
-	// var _ pdk.X = (*Service)(nil) lines in internal/service).
+	// here works because they satisfy the pdk interfaces by shape, and the
+	// assignment itself is the compile-time contract check: if a service method
+	// signature drifts from the pdk interface, this stops building.
 	pdkDeps := &pdk.Deps{
 		Gateways: gatewayService,
 		Config:   cfg,
 		Logger:   slogger,
 	}
 
-	// Combine both tiers into one list: internal plugins as-is, external plugins
-	// wrapped so they present the internal plugin.Plugin shape. The loop below is
-	// tier-agnostic; only the Deps each receives differs (see externalPlugin).
-	plugins := make([]plugin.Plugin, 0, len(internalPlugins)+len(externalPlugins))
-	plugins = append(plugins, internalPlugins...)
-	for _, ep := range externalPlugins {
-		if ep == nil {
-			continue
-		}
-		plugins = append(plugins, &externalPlugin{p: ep, pdkDeps: pdkDeps})
+	wiring, err := initPlugins(slogger, mux, scopeRegistry, pluginDeps, pdkDeps, internalPlugins, externalPlugins)
+	if err != nil {
+		return nil, err
 	}
+	plugins := wiring.plugins
 
-	// Plugin-contributed middleware, collected in the loop below and spliced into
-	// the chain when it is built: preChain outermost (before CORS/auth), postChain
-	// innermost (after scope enforcement, before the mux).
-	var preChain, postChain []pdk.Middleware
-
-	// Plugins whose Init has already succeeded. If a later plugin aborts startup,
-	// these are shut down in reverse initialization order before returning, so a
-	// failed startup does not leave plugin-owned goroutines or connections behind.
-	var initializedPlugins []plugin.Plugin
-	shutdownInitializedPlugins := func() {
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer shutdownCancel()
-		for i := len(initializedPlugins) - 1; i >= 0; i-- {
-			if err := initializedPlugins[i].Shutdown(shutdownCtx); err != nil {
-				slogger.Error("Plugin shutdown error during failed startup",
-					"plugin", initializedPlugins[i].Name(), "error", err)
-			}
+	// From here on the plugins are running. Every remaining failure path in this
+	// function must stop them again, so the cleanup is deferred rather than
+	// repeated at each return — startupOK is set only on the success path.
+	startupOK := false
+	defer func() {
+		if !startupOK {
+			shutdownPlugins(slogger, plugins)
 		}
-	}
+	}()
 
+	// Declared public paths are appended before the auth middleware is built
+	// below, so the skip-path list is complete when the chain is assembled.
+	cfg.Auth.SkipPaths = append(cfg.Auth.SkipPaths, wiring.authSkipPaths...)
+
+	// Plugin-contributed middleware, spliced into the chain when it is built:
+	// preChain outermost (before CORS/auth), postChain innermost (after scope
+	// enforcement, before the mux).
+	preChain, postChain := wiring.preChain, wiring.postChain
+
+	// Wire plugin-owned repos/services into core services.
 	for _, p := range plugins {
-		if err := p.Init(pluginDeps); err != nil {
-			shutdownInitializedPlugins()
-			return nil, fmt.Errorf("plugin %q failed to initialize: %w", p.Name(), err)
-		}
-		initializedPlugins = append(initializedPlugins, p)
-		// Merge plugin-contributed scopes into the main registry. An OpenAPI spec
-		// is mandatory and must load: a plugin whose scopes never reach the
-		// registry would have its routes served with no scope requirement, so
-		// both an empty and an unloadable spec abort startup (GO-AUTH-007).
-		spec := p.OpenAPISpec()
-		if len(spec) == 0 {
-			shutdownInitializedPlugins()
-			return nil, fmt.Errorf("plugin %q returned an empty OpenAPI spec; a spec declaring each route's scopes is required", p.Name())
-		}
-		pluginRegistry, regErr := middleware.LoadScopeRegistryFromBytes(spec)
-		if regErr != nil {
-			shutdownInitializedPlugins()
-			return nil, fmt.Errorf("plugin %q OpenAPI spec failed to load into the scope registry: %w", p.Name(), regErr)
-		}
-		scopeRegistry.Merge(pluginRegistry)
-		p.RegisterRoutes(mux)
-		slogger.Info("Plugin initialized", "name", p.Name())
-		// Declared public paths are appended before the auth middleware is built
-		// below, so the skip-path list is complete when the chain is assembled.
-		if sp, ok := p.(plugin.AuthSkipPathProvider); ok {
-			cfg.Auth.SkipPaths = append(cfg.Auth.SkipPaths, sp.AuthSkipPaths()...)
-		}
-		// Collect plugin middleware into the two allowed positions. Same
-		// mirror-and-forward setup as AuthSkipPathProvider, so both tiers are
-		// handled here.
-		if mp, ok := p.(plugin.MiddlewareProvider); ok {
-			for _, m := range mp.Middleware() {
-				if m.Wrap == nil {
-					continue
-				}
-				switch m.Position {
-				case pdk.BeforePlatformChain:
-					preChain = append(preChain, m.Wrap)
-				case pdk.AfterPlatformChain:
-					postChain = append(postChain, m.Wrap)
-				}
-			}
-		}
-		// Wire plugin-owned repos/services into core services.
 		if ep, ok := p.(plugin.EventArtifactPlugin); ok {
 			internalGatewayService.SetEventArtifactRepos(ep.GetWebSubAPIRepo(), ep.GetWebBrokerAPIRepo())
 			internalGatewayHandler.SetHmacSecretService(ep.GetHmacSecretService())
@@ -523,7 +474,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			projectService.RegisterDeletionGuard(guard)
 		}
 	}
-	slogger.Info("Registered API routes successfully")
 
 	// Register the control-plane webhook receiver (Developer Portal -> Platform API) when enabled.
 	// Authenticity is established by HMAC signature; the route is excluded from JWT/IDP auth via
@@ -633,6 +583,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		slog.Int("rateLimitPerMin", cfg.Listeners.WebSocket.RateLimitPerMin),
 	)
 
+	startupOK = true
 	return &Server{
 		mux:            mux,
 		handler:        gohttpkit.Chain(chain...)(mux),
