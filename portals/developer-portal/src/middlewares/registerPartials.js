@@ -228,7 +228,7 @@ async function registerDocsPageContent(req, orgId, partialObject) {
     partialObject[constants.FILE_NAME.API_DOC_PARTIAL_NAME] = hbs.handlebars.partials[constants.FILE_NAME.API_DOC_PARTIAL_NAME];
   }
   const apiMetadata = await apiDao.get(orgId, apiId);
-  let apiType = apiMetadata[0].dataValues.type;
+  let apiType = apiMetadata[0].type;
   let baseUrl;
 
   if (apiType === constants.API_TYPE.MCP) {

@@ -60,9 +60,6 @@ help: ## Show this help message
 	@echo 'Docs Targets:'
 	@echo '  make generate-apidocs            - Generate REST API docs from OpenAPI spec'
 	@echo ''
-	@echo 'Database Targets:'
-	@echo '  make generate-ddl                - Generate DDL files from models for all supported dialects'
-	@echo ''
 	@echo 'Clean Targets:'
 	@echo '  make clean                       - Clean all build artifacts'
 	@echo ''
@@ -178,18 +175,6 @@ clean-dist: ## Remove distribution staging dir and zip
 .PHONY: clean
 clean: clean-dist ## Clean all build artifacts
 	@echo "Cleaned developer portal build artifacts"
-
-# Database Targets
-
-.PHONY: generate-ddl
-generate-ddl: ## Generate DDL schema files from Sequelize models for all supported dialects
-	@echo "Generating DDL files (postgres, mysql, mariadb, mssql, sqlite)..."
-	@node tools/generate-ddl.js postgres
-	@node tools/generate-ddl.js mysql
-	@node tools/generate-ddl.js mariadb
-	@node tools/generate-ddl.js mssql
-	@node tools/generate-ddl.js sqlite
-	@echo "Done. Files written to database/"
 
 # Docs Targets
 

@@ -20,12 +20,47 @@ class CustomError extends Error {
         super(message);
         this.statusCode = statusCode;
         this.code = statusCode;
-        this.message = message; 
-        this.description = description; 
+        this.message = message;
+        this.description = description;
         Error.captureStackTrace(this, this.constructor); // Capture the stack trace
     }
 }
 
+/**
+ * Replaces `Sequelize.EmptyResultError` now that Sequelize is gone. Same
+ * single-argument `new NotFoundError(message)` shape, so every previous
+ * `new Sequelize.EmptyResultError(msg)` / `error instanceof Sequelize.EmptyResultError`
+ * site converts mechanically: swap the class, keep everything else. Used across
+ * DAOs, services, controllers, and middleware as the "no matching row" signal —
+ * some callers translate it straight to an HTTP 404, others treat it as an
+ * internal not-found signal (e.g. falling back to `return null`).
+ */
+class NotFoundError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'NotFoundError';
+        Error.captureStackTrace(this, this.constructor);
+    }
+}
+
+/**
+ * Replaces `Sequelize.ValidationError` now that Sequelize is gone. Throughout
+ * this codebase that class was already used purely as a generic "bad request"
+ * signal (payload/business-rule validation), essentially never tied to actual
+ * Sequelize model-attribute validation — so this is a like-for-like swap:
+ * `new Sequelize.ValidationError(msg)` -> `new ValidationError(msg)`,
+ * `error instanceof Sequelize.ValidationError` -> `error instanceof ValidationError`.
+ */
+class ValidationError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'ValidationError';
+        Error.captureStackTrace(this, this.constructor);
+    }
+}
+
 module.exports = {
-    CustomError
+    CustomError,
+    NotFoundError,
+    ValidationError,
 };

@@ -19,9 +19,9 @@ const https = require('https');
 const http = require('http');
 const { URL } = require('url');
 const { config } = require('../../config/configLoader');
+const db = require('../../db/driver');
+const { parseJsonColumn } = require('../../db/rows');
 const eventDao = require('../../dao/eventDao');
-const DPEvent = require('../../models/event');
-const { Organization } = require('../../models/organization');
 const { getSubscriber } = require('./subscriberRegistry');
 const { sign } = require('./signer');
 const logger = require('../../config/logger');
@@ -111,12 +111,27 @@ async function runBatch() {
     if (deliveries.length === 0) return;
 
     const eventIds = [...new Set(deliveries.map(d => d.event_uuid))];
-    const events = await DPEvent.findAll({ where: { uuid: eventIds } });
+    const eventPlaceholders = eventIds.map(() => '?').join(', ');
+    const events = await db.query(`SELECT * FROM dp_events WHERE uuid IN (${eventPlaceholders})`, eventIds);
+    // payload is JSONB on postgres (auto-parsed by `pg`) but TEXT on sqlite/mssql —
+    // parse it back into an object here, matching eventDao.js's own parseEventRow.
+    // Without this, `{ ...event.payload }` below silently spreads a JSON STRING
+    // character-by-character instead of spreading its actual fields.
+    for (const event of events) {
+        event.payload = parseJsonColumn(event.payload);
+    }
     const eventMap = Object.fromEntries(events.map(e => [e.uuid, e]));
 
     const orgIds = [...new Set(events.map(e => e.org_uuid))];
-    const orgs = await Organization.findAll({ where: { uuid: orgIds }, attributes: ['uuid', 'cp_ref_id'] });
-    const orgCpRefIdMap = Object.fromEntries(orgs.map(o => [o.uuid, o.cp_ref_id]));
+    let orgCpRefIdMap = {};
+    if (orgIds.length > 0) {
+        const orgPlaceholders = orgIds.map(() => '?').join(', ');
+        const orgs = await db.query(
+            `SELECT uuid, cp_ref_id FROM dp_organizations WHERE uuid IN (${orgPlaceholders})`,
+            orgIds
+        );
+        orgCpRefIdMap = Object.fromEntries(orgs.map(o => [o.uuid, o.cp_ref_id]));
+    }
 
     for (const delivery of deliveries) {
         const event = eventMap[delivery.event_uuid];

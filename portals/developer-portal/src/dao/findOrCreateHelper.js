@@ -15,25 +15,52 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { Sequelize } = require('sequelize');
+'use strict';
+
+const db = require('../db/driver');
 
 /**
- * findOrCreate that survives a race between concurrent requests creating the
- * same row: on a unique-constraint violation, falls back to a plain lookup
- * instead of failing. Shared by DAOs (userIdpReferenceDao, userOrganizationMappingDao)
- * that need idempotent find-or-create semantics under concurrent access.
+ * SELECT-then-INSERT that survives a race between concurrent requests
+ * creating the same row: on a unique-constraint violation, falls back to a
+ * plain lookup instead of failing. Shared by DAOs (userIdpReferenceDao,
+ * userOrganizationMappingDao, tagDao, labelDao) that need idempotent
+ * find-or-create semantics under concurrent access.
+ *
+ *   table      - table name
+ *   whereCols  - column -> value used both to look the row up and to re-look
+ *                it up after losing the insert race
+ *   insertCols - full column -> value set for the INSERT (superset of whereCols,
+ *                including any generated primary key)
+ *   exec       - db or an open transaction handle (defaults to the module-level db)
  */
-const findOrCreateSafe = async (Model, where, defaults) => {
+const findOrCreateSafe = async (table, whereCols, insertCols, exec = db) => {
+    const whereClause = Object.keys(whereCols).map((c) => `${c} = ?`).join(' AND ');
+    const whereParams = Object.values(whereCols);
+
+    const existing = await exec.queryOne(`SELECT * FROM ${table} WHERE ${whereClause}`, whereParams);
+    if (existing) return existing;
+
+    const insertColNames = Object.keys(insertCols);
+    const placeholders = insertColNames.map(() => '?').join(', ');
     try {
-        const [instance] = await Model.findOrCreate({ where, defaults });
-        return instance;
+        await db.withSavepoint(exec, () => exec.execute(
+            `INSERT INTO ${table} (${insertColNames.join(', ')}) VALUES (${placeholders})`,
+            Object.values(insertCols)
+        ));
     } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            const instance = await Model.findOne({ where });
-            if (instance) return instance;
+        if (!db.isDuplicateKeyError(error)) {
+            throw error;
         }
-        throw error;
+        // Lost the race — another request created it first; fall through to re-select.
     }
+
+    const created = await exec.queryOne(`SELECT * FROM ${table} WHERE ${whereClause}`, whereParams);
+    if (!created) {
+        // Neither our insert nor the presumed racing insert produced a row —
+        // something other than a duplicate-key race went wrong.
+        throw new Error(`findOrCreateSafe: row not found in "${table}" after insert`);
+    }
+    return created;
 };
 
 module.exports = { findOrCreateSafe };

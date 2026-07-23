@@ -15,21 +15,65 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { Op, Sequelize } = require('sequelize');
-const sequelize = require('../db/sequelizeConfig');
-const DPEvent = require('../models/event');
-const DPEventDelivery = require('../models/eventDelivery');
+'use strict';
+
+const crypto = require('crypto');
+const db = require('../db/driver');
+const { groupBy, parseJsonColumn } = require('../db/rows');
+
+const EVENTS_TABLE = 'dp_events';
+const DELIVERIES_TABLE = 'dp_event_deliveries';
+
+/** Normalizes a dp_events row: `payload` JSON column back to a JS object. */
+function parseEventRow(row) {
+    if (!row) return row;
+    return { ...row, payload: parseJsonColumn(row.payload) };
+}
+
+/** Normalizes a dp_event_deliveries row: `encrypted_fields` JSON column back to a JS object. */
+function parseDeliveryRow(row) {
+    if (!row) return row;
+    return { ...row, encrypted_fields: parseJsonColumn(row.encrypted_fields) };
+}
 
 /**
  * Write an event row within the caller's transaction.
- * Returns the created event instance.
+ * Returns the created event row.
  */
 async function create({ eventType, orgId, aggregateType, aggregateId, payload }, transaction) {
-    return DPEvent.create(
-        { type: eventType, org_uuid: orgId,
-          aggregate_type: aggregateType, aggregate_uuid: aggregateId, payload: payload || {} },
-        { transaction }
+    const exec = transaction || db;
+    const uuid = crypto.randomUUID();
+    const row = {
+        uuid,
+        type: eventType,
+        org_uuid: orgId,
+        aggregate_type: aggregateType,
+        aggregate_uuid: aggregateId,
+        payload: payload || {},
+        occurred_at: new Date(),
+        status: 'PENDING',
+    };
+
+    await exec.execute(
+        `INSERT INTO ${EVENTS_TABLE} (uuid, type, org_uuid, aggregate_type, aggregate_uuid, payload, occurred_at, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [row.uuid, row.type, row.org_uuid, row.aggregate_type, row.aggregate_uuid,
+            JSON.stringify(row.payload), row.occurred_at, row.status]
     );
+
+    // eventPublisher.js (a currently-live, not-yet-migrated caller) mutates the
+    // `status` field on the object returned here and then calls `.save({ transaction })`
+    // on it, relying on the old Sequelize instance's `.save()` method. Attach a minimal
+    // compatible shim — persisting just `status`, the only field that call site ever
+    // mutates — so that call site keeps working until eventPublisher.js is migrated to
+    // call an explicit DAO update instead.
+    row.save = async (opts) => {
+        const saveExec = (opts && opts.transaction) || exec;
+        await saveExec.execute(`UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ?`, [row.status, row.uuid]);
+        return row;
+    };
+
+    return row;
 }
 
 /**
@@ -39,14 +83,28 @@ async function create({ eventType, orgId, aggregateType, aggregateId, payload },
  * the webhook payload's `data` by the delivery worker.
  */
 async function createDeliveries(eventId, subscribers, perSubscriberEncrypted, transaction) {
-    const rows = subscribers.map(sub => ({
+    const exec = transaction || db;
+    const rows = subscribers.map((sub) => ({
+        uuid: crypto.randomUUID(),
         event_uuid: eventId,
         subscriber_id: sub.id,
         target_url: sub.url,
         encrypted_fields: (perSubscriberEncrypted && perSubscriberEncrypted[sub.id]) || null,
-        status: 'PENDING'
+        status: 'PENDING',
     }));
-    return DPEventDelivery.bulkCreate(rows, { transaction });
+
+    for (const row of rows) {
+        await exec.execute(
+            `INSERT INTO ${DELIVERIES_TABLE} (uuid, event_uuid, subscriber_id, target_url, encrypted_fields, status)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+                row.uuid, row.event_uuid, row.subscriber_id, row.target_url,
+                row.encrypted_fields !== null ? JSON.stringify(row.encrypted_fields) : null,
+                row.status,
+            ]
+        );
+    }
+    return rows;
 }
 
 /**
@@ -54,24 +112,22 @@ async function createDeliveries(eventId, subscribers, perSubscriberEncrypted, tr
  * Returns events with their delivery rows.
  */
 async function claimPending(batchSize) {
-    const isPostgres = sequelize.getDialect() === 'postgres';
-    const txOpts = isPostgres ? { isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.READ_COMMITTED } : {};
-    return sequelize.transaction(txOpts, async (t) => {
-        const findOpts = {
-            where: { status: 'PENDING' },
-            order: [['occurred_at', 'ASC']],
-            limit: batchSize,
-            transaction: t,
-        };
-        if (isPostgres) {
-            findOpts.lock = t.LOCK.UPDATE;
-            findOpts.skipLocked = true;
-        }
-        const events = await DPEvent.findAll(findOpts);
+    const isPostgres = db.getDialect() === 'postgres';
+    return db.withTransaction(async (tx) => {
+        const lockClause = isPostgres ? ' FOR UPDATE SKIP LOCKED' : '';
+        const events = await tx.query(
+            `SELECT * FROM ${EVENTS_TABLE} WHERE status = ? ORDER BY occurred_at ASC LIMIT ?${lockClause}`,
+            ['PENDING', batchSize]
+        );
         if (events.length === 0) return [];
-        const ids = events.map(e => e.uuid);
-        await DPEvent.update({ status: 'DISPATCHED' }, { where: { uuid: { [Op.in]: ids } }, transaction: t });
-        return events;
+
+        const ids = events.map((e) => e.uuid);
+        const placeholders = ids.map(() => '?').join(', ');
+        await tx.execute(
+            `UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid IN (${placeholders})`,
+            ['DISPATCHED', ...ids]
+        );
+        return events.map(parseEventRow);
     });
 }
 
@@ -79,35 +135,31 @@ async function claimPending(batchSize) {
  * Claim a batch of PENDING delivery rows using SELECT FOR UPDATE SKIP LOCKED.
  */
 async function claimDueDeliveries(batchSize) {
-    const isPostgres = sequelize.getDialect() === 'postgres';
-    const txOpts = isPostgres ? { isolationLevel: Sequelize.Transaction.ISOLATION_LEVELS.READ_COMMITTED } : {};
-    return sequelize.transaction(txOpts, async (t) => {
+    const isPostgres = db.getDialect() === 'postgres';
+    return db.withTransaction(async (tx) => {
         // Recover stale IN_FLIGHT rows left by a crashed or stopped worker. Any delivery
         // that has been IN_FLIGHT for more than 5 minutes without a terminal update is
         // marked FAILED so it re-enters PENDING on the next dispatch cycle.
         const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
-        await DPEventDelivery.update(
-            { status: 'FAILED', last_error: 'Delivery abandoned: worker stopped mid-flight' },
-            { where: { status: 'IN_FLIGHT', last_attempt_at: { [Op.lt]: staleThreshold } }, transaction: t }
+        await tx.execute(
+            `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_error = ? WHERE status = ? AND last_attempt_at < ?`,
+            ['FAILED', 'Delivery abandoned: worker stopped mid-flight', 'IN_FLIGHT', staleThreshold]
         );
 
-        const findOpts = {
-            where: { status: 'PENDING' },
-            limit: batchSize,
-            transaction: t,
-        };
-        if (isPostgres) {
-            findOpts.lock = t.LOCK.UPDATE;
-            findOpts.skipLocked = true;
-        }
-        const rows = await DPEventDelivery.findAll(findOpts);
-        if (rows.length === 0) return [];
-        const ids = rows.map(r => r.uuid);
-        await DPEventDelivery.update(
-            { status: 'IN_FLIGHT', last_attempt_at: new Date() },
-            { where: { uuid: { [Op.in]: ids } }, transaction: t }
+        const lockClause = isPostgres ? ' FOR UPDATE SKIP LOCKED' : '';
+        const rows = await tx.query(
+            `SELECT * FROM ${DELIVERIES_TABLE} WHERE status = ? LIMIT ?${lockClause}`,
+            ['PENDING', batchSize]
         );
-        return rows;
+        if (rows.length === 0) return [];
+
+        const ids = rows.map((r) => r.uuid);
+        const placeholders = ids.map(() => '?').join(', ');
+        await tx.execute(
+            `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_attempt_at = ? WHERE uuid IN (${placeholders})`,
+            ['IN_FLIGHT', new Date(), ...ids]
+        );
+        return rows.map(parseDeliveryRow);
     });
 }
 
@@ -115,26 +167,24 @@ async function claimDueDeliveries(batchSize) {
  * Mark a delivery as delivered.
  */
 async function markDelivered(deliveryId, httpStatus) {
-    await DPEventDelivery.update(
-        { status: 'DELIVERED', last_http_status: httpStatus, delivered_at: new Date() },
-        { where: { uuid: deliveryId } }
+    await db.execute(
+        `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_http_status = ?, delivered_at = ? WHERE uuid = ?`,
+        ['DELIVERED', httpStatus, new Date(), deliveryId]
     );
-    await reconcile(await DPEventDelivery.findByPk(deliveryId));
+    const delivery = await db.queryOne(`SELECT * FROM ${DELIVERIES_TABLE} WHERE uuid = ?`, [deliveryId]);
+    await reconcile(parseDeliveryRow(delivery));
 }
 
 /**
  * Mark a delivery as failed. Single attempt — no retry scheduling.
  */
 async function markFailed(deliveryId, { httpStatus, error }) {
-    await DPEventDelivery.update(
-        {
-            status: 'FAILED',
-            last_http_status: httpStatus ?? null,
-            last_error: error ? String(error).slice(0, 1000) : null
-        },
-        { where: { uuid: deliveryId } }
+    await db.execute(
+        `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_http_status = ?, last_error = ? WHERE uuid = ?`,
+        ['FAILED', httpStatus ?? null, error ? String(error).slice(0, 1000) : null, deliveryId]
     );
-    await reconcile(await DPEventDelivery.findByPk(deliveryId));
+    const delivery = await db.queryOne(`SELECT * FROM ${DELIVERIES_TABLE} WHERE uuid = ?`, [deliveryId]);
+    await reconcile(parseDeliveryRow(delivery));
 }
 
 /**
@@ -143,14 +193,14 @@ async function markFailed(deliveryId, { httpStatus, error }) {
  */
 async function reconcile(delivery) {
     if (!delivery) return;
-    const all = await DPEventDelivery.findAll({ where: { event_uuid: delivery.event_uuid } });
+    const all = await db.query(`SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid = ?`, [delivery.event_uuid]);
     if (all.length === 0) return;
-    const terminal = all.every(d => d.status === 'DELIVERED' || d.status === 'FAILED');
+    const terminal = all.every((d) => d.status === 'DELIVERED' || d.status === 'FAILED');
     if (!terminal) return;
-    const allDelivered = all.every(d => d.status === 'DELIVERED');
-    await DPEvent.update(
-        { status: allDelivered ? 'ALL_DELIVERED' : 'FAILED' },
-        { where: { uuid: delivery.event_uuid } }
+    const allDelivered = all.every((d) => d.status === 'DELIVERED');
+    await db.execute(
+        `UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ?`,
+        [allDelivered ? 'ALL_DELIVERED' : 'FAILED', delivery.event_uuid]
     );
 }
 
@@ -158,25 +208,53 @@ async function reconcile(delivery) {
  * Admin: list recent events with delivery counts.
  */
 async function list({ orgId, status, limit = 50, offset = 0 }) {
-    const where = {};
-    if (orgId) where.org_uuid = orgId;
-    if (status) where.status = status;
-    return DPEvent.findAndCountAll({
-        where,
-        order: [['occurred_at', 'DESC']],
-        limit,
-        offset,
-        include: [{ model: DPEventDelivery, attributes: ['uuid', 'subscriber_id', 'status', 'delivered_at'] }],
-    });
+    const conditions = [];
+    const params = [];
+    if (orgId) {
+        conditions.push('org_uuid = ?');
+        params.push(orgId);
+    }
+    if (status) {
+        conditions.push('status = ?');
+        params.push(status);
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const countRow = await db.queryOne(`SELECT COUNT(*) AS count FROM ${EVENTS_TABLE} ${whereClause}`, params);
+    const count = countRow ? Number(countRow.count) : 0;
+
+    const { clause, params: pageParams } = db.paginationClause(limit, offset);
+    const events = await db.query(
+        `SELECT * FROM ${EVENTS_TABLE} ${whereClause} ORDER BY occurred_at DESC ${clause}`,
+        [...params, ...pageParams]
+    );
+
+    if (events.length === 0) return { count, rows: [] };
+
+    const ids = events.map((e) => e.uuid);
+    const placeholders = ids.map(() => '?').join(', ');
+    const deliveries = await db.query(
+        `SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid IN (${placeholders})`,
+        ids
+    );
+    const deliveriesByEvent = groupBy(deliveries, 'event_uuid');
+
+    const rows = events.map((e) => parseEventRow({
+        ...e,
+        dp_event_deliveries: (deliveriesByEvent.get(e.uuid) || []).map(parseDeliveryRow),
+    }));
+
+    return { count, rows };
 }
 
 /**
  * Admin: get a single event with all delivery details.
  */
 async function get(eventId) {
-    return DPEvent.findByPk(eventId, {
-        include: [{ model: DPEventDelivery }],
-    });
+    const event = await db.queryOne(`SELECT * FROM ${EVENTS_TABLE} WHERE uuid = ?`, [eventId]);
+    if (!event) return null;
+    const deliveries = await db.query(`SELECT * FROM ${DELIVERIES_TABLE} WHERE event_uuid = ?`, [eventId]);
+    return parseEventRow({ ...event, dp_event_deliveries: deliveries.map(parseDeliveryRow) });
 }
 
 /**
@@ -184,12 +262,19 @@ async function get(eventId) {
  * newest event first. Used by the webhook subscriber's "recent deliveries" log.
  */
 async function listDeliveriesForSubscriber(orgId, subscriberId, limit = 20) {
-    return DPEventDelivery.findAll({
-        where: { subscriber_id: subscriberId },
-        include: [{ model: DPEvent, where: { org_uuid: orgId }, attributes: ['type', 'occurred_at'] }],
-        order: [[DPEvent, 'occurred_at', 'DESC']],
-        limit
-    });
+    const rows = await db.query(
+        `SELECT d.*, e.type AS event_type, e.occurred_at AS event_occurred_at
+         FROM ${DELIVERIES_TABLE} d
+         INNER JOIN ${EVENTS_TABLE} e ON e.uuid = d.event_uuid
+         WHERE d.subscriber_id = ? AND e.org_uuid = ?
+         ORDER BY e.occurred_at DESC
+         LIMIT ?`,
+        [subscriberId, orgId, limit]
+    );
+    return rows.map(({ event_type, event_occurred_at, ...delivery }) => parseDeliveryRow({
+        ...delivery,
+        dp_event: { type: event_type, occurred_at: event_occurred_at },
+    }));
 }
 
 module.exports = {

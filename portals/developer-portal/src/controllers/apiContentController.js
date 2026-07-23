@@ -543,9 +543,9 @@ const loadDocsPage = async (req, res, next) => {
             }
 
             const apiMetadata = await apiDao.get(orgId, apiId);
-            let apiType = apiMetadata[0].dataValues.type;
+            let apiType = apiMetadata[0].type;
             const metaForNav = {
-                refId: apiMetadata[0].dataValues.ref_id,
+                refId: apiMetadata[0].ref_id,
             };
 
             const templateContent = {
@@ -553,7 +553,7 @@ const loadDocsPage = async (req, res, next) => {
                 baseDocUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
                 docTypes: docNames,
                 apiType: apiType,
-                apiName: apiMetadata[0].dataValues.name || '',
+                apiName: apiMetadata[0].name || '',
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
                 // resolveShowApiKeysNav returns false early for GraphQL/MCP/SOAP and lazily
@@ -742,7 +742,8 @@ const loadDocument = async (req, res, next) => {
             const viewName = req.params.viewName;
             let docNames = await apiMetadataService.getAPIDocTypes(orgId, apiId);
             const apiMetadata = await apiDao.get(orgId, apiId);
-            let apiType = apiMetadata[0].dataValues.type;
+            let apiType = apiMetadata[0].type;
+            const referenceId = apiMetadata[0].ref_id;
             // All MCPs (registry and CP) need a Specification entry in the sidebar
             if (apiType === constants.API_TYPE.MCP && !docNames.some(d => d.type === constants.DOC_TYPES.DOCS.API_DEFINITION)) {
                 docNames = [{ type: constants.DOC_TYPES.DOCS.API_DEFINITION }, ...docNames];
@@ -752,7 +753,7 @@ const loadDocument = async (req, res, next) => {
             templateContent.docTypes = docNames;
             templateContent.currentDocName = docName || null;
             templateContent.currentDocType = docType || null;
-            templateContent.apiName = apiMetadata[0].dataValues.name || '';
+            templateContent.apiName = apiMetadata[0].name || '';
             let profile = null;
             if (req.user) {
                 profile = {
@@ -765,7 +766,7 @@ const loadDocument = async (req, res, next) => {
             templateContent.profile = req.isAuthenticated() ? profile : null;
             templateContent.apiType = apiType;
             templateContent.devportalMode = devportalMode;
-            const row = apiMetadata[0].dataValues;
+            const row = apiMetadata[0];
             const metaForNav = {
                 refId: row.ref_id,
             };

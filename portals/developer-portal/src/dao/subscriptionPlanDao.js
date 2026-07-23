@@ -15,15 +15,17 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const SubscriptionPlan = require('../models/subscriptionPlan');
-const SubscriptionPlanLimit = require('../models/subscriptionPlanLimit');
-const APISubscriptionPlan = require('../models/apiSubscriptionPlan');
-const { APIMetadata } = require('../models/apiMetadata');
-const { Sequelize } = require('sequelize');
-const crypto = require('crypto');
+'use strict';
 
-const PLAN_INCLUDE = [{ model: SubscriptionPlanLimit, as: 'limits' }];
-const LIMIT_ORDER = [[{ model: SubscriptionPlanLimit, as: 'limits' }, 'uuid', 'ASC']];
+const crypto = require('crypto');
+const db = require('../db/driver');
+const { groupBy } = require('../db/rows');
+const { ValidationError } = require('../utils/errors/customErrors');
+
+const SUBSCRIPTION_PLANS_TABLE = 'dp_subscription_plans';
+const SUBSCRIPTION_PLAN_LIMITS_TABLE = 'dp_subscription_plan_limits';
+const API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE = 'dp_api_subscription_plan_mappings';
+
 const VALID_LIMIT_TYPES = ['REQUEST_COUNT', 'EVENT_COUNT', 'BANDWIDTH', 'TOTAL_TOKEN_COUNT'];
 
 const buildSubscriptionPlanRow = (orgId, plan) => {
@@ -41,15 +43,15 @@ const normalizeLimits = (limits) => {
   return limits.map(l => {
     if (typeof l.limitCount !== 'number' || !Number.isFinite(l.limitCount) ||
         (l.limitCount !== -1 && l.limitCount <= 0)) {
-      throw new Sequelize.ValidationError('limitCount must be -1 (unlimited) or a positive number for each limit');
+      throw new ValidationError('limitCount must be -1 (unlimited) or a positive number for each limit');
     }
     const limitType = (l.limitType || 'REQUEST_COUNT').toUpperCase();
     if (!VALID_LIMIT_TYPES.includes(limitType)) {
-      throw new Sequelize.ValidationError(`limitType must be one of ${VALID_LIMIT_TYPES.join(', ')}`);
+      throw new ValidationError(`limitType must be one of ${VALID_LIMIT_TYPES.join(', ')}`);
     }
     if (l.timeAmount !== undefined && l.timeAmount !== null &&
         (typeof l.timeAmount !== 'number' || !Number.isFinite(l.timeAmount) || l.timeAmount <= 0)) {
-      throw new Sequelize.ValidationError('timeAmount must be a positive number when provided');
+      throw new ValidationError('timeAmount must be a positive number when provided');
     }
     return {
       uuid: crypto.randomUUID(),
@@ -62,48 +64,92 @@ const normalizeLimits = (limits) => {
 };
 
 const replaceLimits = async (planId, limits, t) => {
-  await SubscriptionPlanLimit.destroy({ where: { plan_uuid: planId }, transaction: t });
+  const exec = t || db;
+  await exec.execute(`DELETE FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid = ?`, [planId]);
   const rows = normalizeLimits(limits);
-  if (rows.length === 0) return;
-  await SubscriptionPlanLimit.bulkCreate(
-    rows.map(r => ({ ...r, plan_uuid: planId })),
-    { transaction: t }
+  for (const r of rows) {
+    await exec.execute(
+      `INSERT INTO ${SUBSCRIPTION_PLAN_LIMITS_TABLE} (uuid, plan_uuid, limit_type, time_unit, time_amount, limit_count)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [r.uuid, planId, r.limit_type, r.time_unit, r.time_amount, r.limit_count]
+    );
+  }
+};
+
+/**
+ * App-side "eager load" of a plan's limits, mirroring the previous
+ * `include: PLAN_INCLUDE, order: LIMIT_ORDER` shape: one query for all limit
+ * rows belonging to the given plans, grouped and attached under `.limits`,
+ * ordered by `uuid ASC` within each group.
+ */
+const attachLimits = async (plans, t) => {
+  const exec = t || db;
+  if (plans.length === 0) return plans;
+  const planIds = plans.map(p => p.uuid);
+  const placeholders = planIds.map(() => '?').join(', ');
+  const limitRows = await exec.query(
+    `SELECT * FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid IN (${placeholders}) ORDER BY uuid ASC`,
+    planIds
   );
+  const grouped = groupBy(limitRows, 'plan_uuid');
+  for (const plan of plans) {
+    plan.limits = grouped.get(plan.uuid) || [];
+  }
+  return plans;
+};
+
+/** Fetches a single plan (scoped to its organization) with `.limits` attached. */
+const findPlanByUuid = async (orgId, planId, t) => {
+  const exec = t || db;
+  const plan = await exec.queryOne(
+    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE uuid = ? AND org_uuid = ?`,
+    [planId, orgId]
+  );
+  if (!plan) return null;
+  await attachLimits([plan], t);
+  return plan;
 };
 
 const create = async (orgId, plan, createdBy, t) => {
-  try {
-    const row = buildSubscriptionPlanRow(orgId, plan);
-    row.created_by = createdBy;
-    row.updated_by = createdBy;
+  const exec = t || db;
+  const uuid = crypto.randomUUID();
+  const now = new Date();
+  const row = buildSubscriptionPlanRow(orgId, plan);
 
-    const created = await SubscriptionPlan.create(row, { transaction: t });
-    await replaceLimits(created.uuid, plan.limits || [], t);
-    return await SubscriptionPlan.findOne({ where: { uuid: created.uuid }, include: PLAN_INCLUDE, order: LIMIT_ORDER, transaction: t });
-  } catch (error) {
-    if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
-      throw error;
-    }
-    throw new Sequelize.DatabaseError(error);
-  }
+  await exec.execute(
+    `INSERT INTO ${SUBSCRIPTION_PLANS_TABLE}
+       (uuid, org_uuid, handle, display_name, description, ref_id, created_by, updated_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [uuid, row.org_uuid, row.handle, row.display_name, row.description, row.ref_id, createdBy, createdBy, now, now]
+  );
+  await replaceLimits(uuid, plan.limits || [], t);
+  return findPlanByUuid(orgId, uuid, t);
 };
 
 const createMany = async (orgId, plans, createdBy, t) => {
-  try {
-    const uuids = [];
-    for (const plan of plans) {
-      const row = { ...buildSubscriptionPlanRow(orgId, plan), created_by: createdBy, updated_by: createdBy };
-      const p = await SubscriptionPlan.create(row, { transaction: t });
-      await replaceLimits(p.uuid, plan.limits || [], t);
-      uuids.push(p.uuid);
-    }
-    return await SubscriptionPlan.findAll({ where: { uuid: uuids }, include: PLAN_INCLUDE, order: LIMIT_ORDER, transaction: t });
-  } catch (error) {
-    if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
-      throw error;
-    }
-    throw new Sequelize.DatabaseError(error);
+  const exec = t || db;
+  const uuids = [];
+  for (const plan of plans) {
+    const uuid = crypto.randomUUID();
+    const now = new Date();
+    const row = buildSubscriptionPlanRow(orgId, plan);
+    await exec.execute(
+      `INSERT INTO ${SUBSCRIPTION_PLANS_TABLE}
+         (uuid, org_uuid, handle, display_name, description, ref_id, created_by, updated_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [uuid, row.org_uuid, row.handle, row.display_name, row.description, row.ref_id, createdBy, createdBy, now, now]
+    );
+    await replaceLimits(uuid, plan.limits || [], t);
+    uuids.push(uuid);
   }
+  if (uuids.length === 0) return [];
+  const placeholders = uuids.map(() => '?').join(', ');
+  const rows = await exec.query(
+    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE uuid IN (${placeholders}) AND org_uuid = ?`,
+    [...uuids, orgId]
+  );
+  await attachLimits(rows, t);
+  return rows;
 };
 
 const put = async (orgId, plan, updatedBy, t) => {
@@ -117,167 +163,102 @@ const put = async (orgId, plan, updatedBy, t) => {
 };
 
 const update = async (orgId, planId, plan, updatedBy, t) => {
-  try {
-    const row = buildSubscriptionPlanRow(orgId, plan);
+  const exec = t || db;
+  const row = buildSubscriptionPlanRow(orgId, plan);
+  const updatedAt = new Date();
 
-    // Don't update primary keys
-    delete row.org_uuid;
-    if (!Object.prototype.hasOwnProperty.call(plan, 'refId')) {
-      delete row.ref_id;
-    }
-    row.updated_by = updatedBy;
-    row.updated_at = new Date();
-
-    await SubscriptionPlan.update(row, {
-      where: { uuid: planId, org_uuid: orgId },
-      transaction: t
-    });
-
-    if (Object.prototype.hasOwnProperty.call(plan, 'limits')) {
-      await replaceLimits(planId, plan.limits || [], t);
-    }
-
-    return await SubscriptionPlan.findOne({
-      where: { uuid: planId, org_uuid: orgId },
-      include: PLAN_INCLUDE,
-      order: LIMIT_ORDER,
-      transaction: t
-    });
-  } catch (error) {
-    if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.ValidationError) {
-      throw error;
-    }
-    throw new Sequelize.DatabaseError(error);
+  // Don't update primary keys — org_uuid never changes; ref_id only changes
+  // when the caller explicitly supplied it.
+  const setCols = ['handle = ?', 'display_name = ?', 'description = ?'];
+  const params = [row.handle, row.display_name, row.description];
+  if (Object.prototype.hasOwnProperty.call(plan, 'refId')) {
+    setCols.push('ref_id = ?');
+    params.push(row.ref_id);
   }
+  setCols.push('updated_by = ?', 'updated_at = ?');
+  params.push(updatedBy, updatedAt);
+
+  await exec.execute(
+    `UPDATE ${SUBSCRIPTION_PLANS_TABLE} SET ${setCols.join(', ')} WHERE uuid = ? AND org_uuid = ?`,
+    [...params, planId, orgId]
+  );
+
+  if (Object.prototype.hasOwnProperty.call(plan, 'limits')) {
+    await replaceLimits(planId, plan.limits || [], t);
+  }
+
+  return findPlanByUuid(orgId, planId, t);
 };
 
 const deletePlan = async (orgId, planName, t) => {
-
-    try {
-        const subscriptionPlanResponse = await SubscriptionPlan.destroy({
-            where: {
-                handle: planName,
-                org_uuid: orgId
-            },
-            transaction: t
-        });
-        return subscriptionPlanResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.ValidationError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
-
-const getByName = async (orgId, planName, t) => {
-
-    try {
-        const subscriptionPlanResponse = await SubscriptionPlan.findOne({
-            where: {
-                handle: planName,
-                org_uuid: orgId
-            },
-            include: PLAN_INCLUDE,
-            order: LIMIT_ORDER,
-            transaction: t
-        });
-        return subscriptionPlanResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.ValidationError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
+  const exec = t || db;
+  const { rowCount } = await exec.execute(
+    `DELETE FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE handle = ? AND org_uuid = ?`,
+    [planName, orgId]
+  );
+  return rowCount;
 };
 
-const listByApi = async (apiId, t) => {
+const getByName = async (orgId, planName, t) => {
+  const exec = t || db;
+  const plan = await exec.queryOne(
+    `SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE handle = ? AND org_uuid = ?`,
+    [planName, orgId]
+  );
+  if (!plan) return null;
+  await attachLimits([plan], t);
+  return plan;
+};
 
-    try {
-        const subscriptionPlanResponse = await SubscriptionPlan.findAll({
-            include: [
-                {
-                    model: APIMetadata,
-                    where: { uuid: apiId },
-                    through: { attributes: [] }
-                },
-                ...PLAN_INCLUDE,
-            ],
-            order: LIMIT_ORDER,
-            transaction: t
-        });
-        return subscriptionPlanResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+/**
+ * Plans mapped to a given API, via the dp_api_subscription_plan_mappings join
+ * table. Mirrors the previous belongsToMany `include: [{model: APIMetadata,
+ * where: {uuid: apiId}}, ...PLAN_INCLUDE]` shape. Intentionally not scoped by
+ * org_uuid — the original Sequelize query wasn't either.
+ */
+const listByApi = async (apiId, t) => {
+  const exec = t || db;
+  const plans = await exec.query(
+    `SELECT sp.* FROM ${SUBSCRIPTION_PLANS_TABLE} sp
+     JOIN ${API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE} m ON m.plan_uuid = sp.uuid
+     WHERE m.api_uuid = ?`,
+    [apiId]
+  );
+  await attachLimits(plans, t);
+  return plans;
+};
 
 const list = async (orgId, t) => {
-    try {
-
-        const subscriptionPlansResponse = await SubscriptionPlan.findAll({
-            where: {
-                org_uuid: orgId
-            },
-            include: PLAN_INCLUDE,
-            order: LIMIT_ORDER,
-            transaction: t
-        });
-        return subscriptionPlansResponse;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+  const exec = t || db;
+  const plans = await exec.query(`SELECT * FROM ${SUBSCRIPTION_PLANS_TABLE} WHERE org_uuid = ?`, [orgId]);
+  await attachLimits(plans, t);
+  return plans;
+};
 
 const createApiMapping = async (apiSubscriptionPlans, apiId, createdBy, t) => {
-  try {
-    const rows = apiSubscriptionPlans.map((plan) => ({
-      plan_uuid: plan.planId,
-      api_uuid: apiId,
-      created_by: createdBy,
-    }));
-
-    return await APISubscriptionPlan.bulkCreate(rows, { transaction: t });
-  } catch (error) {
-    if (error instanceof Sequelize.ValidationError) throw error;
-    throw new Sequelize.DatabaseError(error);
+  const exec = t || db;
+  const now = new Date();
+  const created = [];
+  for (const plan of apiSubscriptionPlans) {
+    const uuid = crypto.randomUUID();
+    await exec.execute(
+      `INSERT INTO ${API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE} (uuid, plan_uuid, api_uuid, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [uuid, plan.planId, apiId, createdBy, now]
+    );
+    created.push({ uuid, plan_uuid: plan.planId, api_uuid: apiId, created_by: createdBy, created_at: now });
   }
+  return created;
 };
 
 const updateApiMapping = async (subscriptionPlans, apiId, updatedBy, t) => {
-
-    let plansToCreate = [];
-    try {
-        for (const plan of subscriptionPlans) {
-            plansToCreate.push({
-                plan_uuid: plan.planId,
-                api_uuid: apiId,
-                created_by: updatedBy,
-            })
-        }
-        await APISubscriptionPlan.destroy({
-            where: {
-                api_uuid: apiId
-            },
-            transaction: t
-        });
-        if (plansToCreate.length > 0) {
-            return await APISubscriptionPlan.bulkCreate(plansToCreate, { transaction: t });
-        }
-        return plansToCreate;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+  const exec = t || db;
+  await exec.execute(`DELETE FROM ${API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE} WHERE api_uuid = ?`, [apiId]);
+  if (subscriptionPlans.length > 0) {
+    return createApiMapping(subscriptionPlans, apiId, updatedBy, t);
+  }
+  return [];
+};
 
 module.exports = {
     create,

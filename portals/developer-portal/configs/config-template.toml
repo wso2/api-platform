@@ -63,15 +63,15 @@ console_only = true     # true: log to stdout only. false: also write rotating l
 # Supported types: sqlite (default), postgres.
 
 [developer_portal.database]
-driver = "sqlite"             # sqlite | postgres
+driver = "sqlite"             # sqlite | postgres | mssql
 path = "./devportal.db"       # SQLite only
-host = "localhost"            # PostgreSQL only
-port = 5432                   # PostgreSQL only
-name = "devportal"            # PostgreSQL only
-user = "postgres"             # PostgreSQL only
-password = ""                 # PostgreSQL only
-ssl_mode = "disable"          # PostgreSQL only: disable | verify-full
-ssl_root_cert = "./resources/security/ca.pem"   # CA cert — used by verify-full
+host = "localhost"            # PostgreSQL / MSSQL only
+port = 5432                   # PostgreSQL / MSSQL only (Change to 1433 for MSSQL)
+name = "devportal"            # PostgreSQL / MSSQL only
+user = "postgres"             # PostgreSQL / MSSQL only
+password = ""                 # PostgreSQL / MSSQL only
+ssl_mode = "disable"          # PostgreSQL / MSSQL only: disable | verify-full
+ssl_root_cert = "./resources/security/ca.pem"   # CA cert - used by verify-full
 
 # =============================================================================
 # SECURITY CONFIGURATION

@@ -74,10 +74,7 @@ const loadApplicationData = async (req, orgName, applicationHandle, viewName) =>
     if (Array.isArray(applicationList.appKeyMappings) && applicationList.appKeyMappings.length > 0) {
         applicationReference = applicationList.appKeyMappings[0].asClientId;
         try {
-            const { ApplicationKeyMapping } = require('../models/application');
-            const localMappings = await ApplicationKeyMapping.findAll({
-                where: { app_uuid: applicationId }
-            });
+            const localMappings = await appDao.getKeyMappings(orgId, applicationId);
             const keyList = [];
             for (const mapping of localMappings) {
                 if (mapping.as_client_id && mapping.km_uuid) {
