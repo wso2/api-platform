@@ -234,6 +234,12 @@ server_header_transformation = "OVERWRITE"
 server_header_value = "WSO2 API Platform"
 # Downstream per-connection buffer limit in bytes (default: 1048576 / 1 MiB)
 per_connection_buffer_limit_bytes = 1048576
+# Disable dot-segment resolution and duplicate-slash merging on the request path. Defaults to
+# false (normalization enabled) so route matching cannot be fooled by ".." or "//" in the path.
+disable_path_normalization = false
+# How to handle escaped slashes ("%2F"/"%5C") in the request path. Options: "KEEP_UNCHANGED"
+# (default), "REJECT_REQUEST", "UNESCAPE_AND_REDIRECT", "UNESCAPE_AND_FORWARD".
+path_with_escaped_slashes_action = "KEEP_UNCHANGED"
 
 # HTTP Connection Manager (downstream) timeouts
 # A value of zero disables any of these timeout settings.

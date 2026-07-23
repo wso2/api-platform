@@ -371,8 +371,9 @@ func testRouterConfig() *config.RouterConfig {
 			Enabled: false,
 		},
 		HTTPListener: config.HTTPListenerConfig{
-			ServerHeaderTransformation: commonconstants.OVERWRITE,
+			ServerHeaderTransformation:    commonconstants.OVERWRITE,
 			PerConnectionBufferLimitBytes: 1048576,
+			PathWithEscapedSlashesAction:  commonconstants.KEEP_UNCHANGED,
 		},
 		LuaScriptPath: "../../lua/request_transformation.lua",
 	}
@@ -1260,6 +1261,98 @@ func TestTranslator_CreateListener_HCMTimeouts(t *testing.T) {
 			assert.Equal(t, tt.timeouts.StreamIdleTimeout, manager.GetStreamIdleTimeout().AsDuration(), "stream_idle_timeout")
 			require.NotNil(t, manager.GetCommonHttpProtocolOptions(), "common_http_protocol_options must be set")
 			assert.Equal(t, tt.timeouts.IdleTimeout, manager.GetCommonHttpProtocolOptions().GetIdleTimeout().AsDuration(), "idle_timeout")
+		})
+	}
+}
+
+func TestTranslator_CreateListener_PathNormalization(t *testing.T) {
+	tests := []struct {
+		name                     string
+		disablePathNormalization bool
+		wantNormalizePath        bool
+		wantMergeSlashes         bool
+	}{
+		{
+			name:                     "enabled by default",
+			disablePathNormalization: false,
+			wantNormalizePath:        true,
+			wantMergeSlashes:         true,
+		},
+		{
+			name:                     "disabled via config",
+			disablePathNormalization: true,
+			wantNormalizePath:        false,
+			wantMergeSlashes:         false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := createTestLogger()
+			routerCfg := testRouterConfig()
+			routerCfg.HTTPListener.DisablePathNormalization = tt.disablePathNormalization
+			cfg := testConfig()
+			cfg.Router = *routerCfg
+			translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+			lis, _, err := translator.createListener(nil, false)
+			require.NoError(t, err)
+
+			manager := extractHCM(t, lis)
+			require.NotNil(t, manager.GetNormalizePath(), "normalize_path must be explicitly set")
+			assert.Equal(t, tt.wantNormalizePath, manager.GetNormalizePath().GetValue(), "normalize_path")
+			assert.Equal(t, tt.wantMergeSlashes, manager.GetMergeSlashes(), "merge_slashes")
+		})
+	}
+}
+
+func TestTranslator_CreateListener_PathWithEscapedSlashesAction(t *testing.T) {
+	tests := []struct {
+		name                         string
+		pathWithEscapedSlashesAction string
+		want                         hcm.HttpConnectionManager_PathWithEscapedSlashesAction
+	}{
+		{
+			name:                         "keeps unchanged by default",
+			pathWithEscapedSlashesAction: commonconstants.KEEP_UNCHANGED,
+			want:                         hcm.HttpConnectionManager_KEEP_UNCHANGED,
+		},
+		{
+			name:                         "configurable to reject",
+			pathWithEscapedSlashesAction: commonconstants.REJECT_REQUEST,
+			want:                         hcm.HttpConnectionManager_REJECT_REQUEST,
+		},
+		{
+			name:                         "configurable to unescape and forward",
+			pathWithEscapedSlashesAction: commonconstants.UNESCAPE_AND_FORWARD,
+			want:                         hcm.HttpConnectionManager_UNESCAPE_AND_FORWARD,
+		},
+		{
+			name:                         "configurable to unescape and redirect",
+			pathWithEscapedSlashesAction: commonconstants.UNESCAPE_AND_REDIRECT,
+			want:                         hcm.HttpConnectionManager_UNESCAPE_AND_REDIRECT,
+		},
+		{
+			name:                         "unknown value falls back to keep unchanged",
+			pathWithEscapedSlashesAction: "SOMETHING_UNKNOWN",
+			want:                         hcm.HttpConnectionManager_KEEP_UNCHANGED,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := createTestLogger()
+			routerCfg := testRouterConfig()
+			routerCfg.HTTPListener.PathWithEscapedSlashesAction = tt.pathWithEscapedSlashesAction
+			cfg := testConfig()
+			cfg.Router = *routerCfg
+			translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+			lis, _, err := translator.createListener(nil, false)
+			require.NoError(t, err)
+
+			manager := extractHCM(t, lis)
+			assert.Equal(t, tt.want, manager.GetPathWithEscapedSlashesAction(), "path_with_escaped_slashes_action")
 		})
 	}
 }

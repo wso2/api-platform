@@ -305,12 +305,17 @@ gateway:
               route_idle_timeout_ms: 300000
               connect_timeout_ms: 5000
 
-          # HTTP Connection Manager (downstream) configuration: server-header handling and timeouts
+          # HTTP Connection Manager (downstream) configuration: server-header, path handling, and timeouts
           http_listener:
             # Server header handling: APPEND_IF_ABSENT | OVERWRITE | PASS_THROUGH
             server_header_transformation: OVERWRITE
             # Value written for the Server response header
             server_header_value: "WSO2 API Platform"
+            # Disable RFC 3986 dot-segment normalization and duplicate-slash merging
+            disable_path_normalization: false
+            # Escaped slash handling: KEEP_UNCHANGED | REJECT_REQUEST |
+            # UNESCAPE_AND_REDIRECT | UNESCAPE_AND_FORWARD
+            path_with_escaped_slashes_action: KEEP_UNCHANGED
 
             # Downstream (client-facing) timeouts. A value of "0s" disables the timeout.
             timeouts:

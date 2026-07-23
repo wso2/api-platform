@@ -1780,6 +1780,99 @@ idle_timeout = "30m"
 	})
 }
 
+func TestDefaultConfig_PathNormalizationEnabledByDefault(t *testing.T) {
+	cfg := defaultConfig()
+	assert.False(t, cfg.Router.HTTPListener.DisablePathNormalization, "path normalization must be enabled by default")
+}
+
+func TestLoadConfig_PathNormalization(t *testing.T) {
+	t.Run("omitted section defaults to enabled", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(""), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		assert.False(t, cfg.Router.HTTPListener.DisablePathNormalization)
+	})
+
+	t.Run("explicit opt-out parses from toml", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		toml := `
+[router.http_listener]
+disable_path_normalization = true
+`
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		assert.True(t, cfg.Router.HTTPListener.DisablePathNormalization)
+	})
+}
+
+func TestDefaultConfig_PathWithEscapedSlashesActionKeepUnchangedByDefault(t *testing.T) {
+	cfg := defaultConfig()
+	assert.Equal(t, commonconstants.KEEP_UNCHANGED, cfg.Router.HTTPListener.PathWithEscapedSlashesAction,
+		"escaped-slash paths must be left unchanged by default")
+}
+
+func TestLoadConfig_PathWithEscapedSlashesAction(t *testing.T) {
+	t.Run("omitted section defaults to keep unchanged", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(""), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		assert.Equal(t, commonconstants.KEEP_UNCHANGED, cfg.Router.HTTPListener.PathWithEscapedSlashesAction)
+	})
+
+	t.Run("explicit override parses from toml", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		toml := `
+[router.http_listener]
+path_with_escaped_slashes_action = "UNESCAPE_AND_FORWARD"
+`
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		assert.Equal(t, commonconstants.UNESCAPE_AND_FORWARD, cfg.Router.HTTPListener.PathWithEscapedSlashesAction)
+	})
+}
+
+func TestConfig_ValidateHTTPListenerConfig_PathWithEscapedSlashesAction(t *testing.T) {
+	tests := []struct {
+		name        string
+		action      string
+		wantErr     bool
+		errContains string
+	}{
+		{name: "Valid REJECT_REQUEST", action: commonconstants.REJECT_REQUEST, wantErr: false},
+		{name: "Valid KEEP_UNCHANGED", action: commonconstants.KEEP_UNCHANGED, wantErr: false},
+		{name: "Valid UNESCAPE_AND_REDIRECT", action: commonconstants.UNESCAPE_AND_REDIRECT, wantErr: false},
+		{name: "Valid UNESCAPE_AND_FORWARD", action: commonconstants.UNESCAPE_AND_FORWARD, wantErr: false},
+		{name: "Empty defaults to KEEP_UNCHANGED", action: "", wantErr: false},
+		{name: "Invalid action", action: "INVALID", wantErr: true, errContains: "path_with_escaped_slashes_action must be one of"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Router.HTTPListener.PathWithEscapedSlashesAction = tt.action
+			err := cfg.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestConfig_CaseInsensitiveAlgorithm(t *testing.T) {
 	cfg := validConfig()
 	cfg.APIKey.Algorithm = strings.ToUpper(constants.HashingAlgorithmSHA256)
