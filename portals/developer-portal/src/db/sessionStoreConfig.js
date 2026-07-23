@@ -18,6 +18,7 @@
 const session = require('express-session');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
+const { SqlSessionStore } = require('./sqlSessionStore');
 
 function createSessionStore() {
     if (config.designMode?.enabled) {
@@ -25,29 +26,10 @@ function createSessionStore() {
         return new session.MemoryStore();
     }
 
-    const dialect = config.database.driver;
-
-    if (dialect === 'sqlite') {
-        const SequelizeStore = require('connect-session-sequelize')(session.Store);
-        const sequelize = require('./sequelizeConfig');
-        const store = new SequelizeStore({
-            db: sequelize,
-            tableName: 'sessions',
-            checkExpirationInterval: 60 * 60 * 1000,
-            expiration: 60 * 60 * 1000,
-        });
-        store.sync();
-        return store;
-    }
-
-    const pgSession = require('connect-pg-simple')(session);
-    const pool = require('./dbPool');
-    return new pgSession({
-        pool,
-        tableName: 'sessions',
-        pruneSessionInterval: 3600,
-        debug: (message) => logger.debug('Session store debug', { message }),
-    });
+    // One store implementation for every dialect (sqlite/postgres/mssql) — see
+    // sqlSessionStore.js. Replaces the previous connect-session-sequelize (sqlite)
+    // / connect-pg-simple (postgres) split now that Sequelize is gone.
+    return new SqlSessionStore({ pruneSessionInterval: 3600 });
 }
 
 module.exports = createSessionStore();

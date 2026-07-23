@@ -15,27 +15,36 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { Organization, OrgContent } = require('../models/organization');
-const { Sequelize, Op } = require('sequelize');
+'use strict';
+
+const crypto = require('crypto');
+const db = require('../db/driver');
+const { toBlobBuffer } = require('../db/rows');
+const { NotFoundError } = require('../utils/errors/customErrors');
 const viewDao = require('./viewDao');
-const { Application, ApplicationKeyMapping, SubscriptionMapping } = require('../models/application');
-const { KeyManager } = require('../models/keyManager');
-const APIKey = require('../models/apiKey');
-const DPEvent = require('../models/event');
-const DPEventDelivery = require('../models/eventDelivery');
-const { APIWorkflow } = require('../models/apiWorkflow');
-const { WebhookSubscriber } = require('../models/webhookSubscriber');
-const View = require('../models/view');
-const Labels = require('../models/label');
-const Tags = require('../models/tag');
 const constants = require('../utils/constants');
 
+const ORG_TABLE = 'dp_organizations';
+const ORG_CONTENT_TABLE = 'dp_organization_assets';
+
 const create = async (orgData, t) => {
-    let devPortalId = "";
-    if (orgData.handle) {
-        devPortalId = orgData.handle.toLowerCase();
-    }
-    const createOrgData = {
+    const exec = t || db;
+    const devPortalId = orgData.handle ? orgData.handle.toLowerCase() : '';
+    const uuid = crypto.randomUUID();
+
+    await exec.execute(
+        `INSERT INTO ${ORG_TABLE}
+            (uuid, display_name, business_owner, business_owner_contact, business_owner_email,
+             handle, idp_ref_id, cp_ref_id, configuration, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            uuid, orgData.displayName, orgData.businessOwner, orgData.businessOwnerContact,
+            orgData.businessOwnerEmail, devPortalId, orgData.idpRefId, orgData.cpRefId,
+            orgData.configuration, orgData.createdBy, orgData.createdBy,
+        ]
+    );
+    return {
+        uuid,
         display_name: orgData.displayName,
         business_owner: orgData.businessOwner,
         business_owner_contact: orgData.businessOwnerContact,
@@ -45,338 +54,259 @@ const create = async (orgData, t) => {
         cp_ref_id: orgData.cpRefId,
         configuration: orgData.configuration,
         created_by: orgData.createdBy,
-        updated_by: orgData.createdBy
+        updated_by: orgData.createdBy,
     };
-    try {
-        const organization = await Organization.create(createOrgData, { transaction: t });
-        return organization;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
 };
 
 // Matches by handle, then name, then idp_ref_id, in that priority order — deterministic
 // even if one org's handle happens to equal another org's name or idp_ref_id, unlike a
 // single Op.or query (which returns whichever row the DB orders first).
 const findOrgByIdentifier = async (param, t) => {
-    const opts = { ...(t && { transaction: t }) };
+    const exec = t || db;
     const handle = typeof param === 'string' ? param.toLowerCase() : param;
-    return (await Organization.findOne({ where: { handle }, ...opts })) ||
-        (await Organization.findOne({ where: { display_name: param }, ...opts })) ||
-        (await Organization.findOne({ where: { idp_ref_id: param }, ...opts }));
+    return (await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE handle = ?`, [handle])) ||
+        (await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE display_name = ?`, [param])) ||
+        (await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE idp_ref_id = ?`, [param]));
 };
 
 const get = async (param, t) => {
-    try {
-        const organization = await findOrgByIdentifier(param, t);
-        if (!organization) {
-            throw new Sequelize.EmptyResultError('Organization not found');
-        }
-        return organization;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    const organization = await findOrgByIdentifier(param, t);
+    if (!organization) {
+        throw new NotFoundError('Organization not found');
     }
+    return organization;
 };
 
 // For internal callers that already hold a resolved org uuid (e.g. req.orgId set by
 // auth middleware) — not for public REST lookups, which should use get()/handle instead.
 const getByUuid = async (uuid, t) => {
-    try {
-        const organization = await Organization.findOne({
-            where: { uuid },
-            ...(t && { transaction: t }),
-        });
-        if (!organization) {
-            throw new Sequelize.EmptyResultError('Organization not found');
-        }
-        return organization;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    const exec = t || db;
+    const organization = await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE uuid = ?`, [uuid]);
+    if (!organization) {
+        throw new NotFoundError('Organization not found');
     }
+    return organization;
 };
 
 const getId = async (orgName) => {
-    try {
-        const organization = await findOrgByIdentifier(orgName);
-        if (!organization) {
-            throw new Sequelize.EmptyResultError('Organization not found');
-        }
-        return organization.uuid;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    const organization = await findOrgByIdentifier(orgName);
+    if (!organization) {
+        throw new NotFoundError('Organization not found');
     }
+    return organization.uuid;
 };
 
 const list = async () => {
-    try {
-        const organizations = await Organization.findAll();
-        if (organizations.length === 0) {
-            return [];
-        }
-        return organizations;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
+    return db.query(`SELECT * FROM ${ORG_TABLE}`);
 };
 
 const update = async (orgData, t) => {
-    try {
-        const existing = await get(orgData.orgId, t);
-        const devPortalId = orgData.handle ? orgData.handle.toLowerCase() : existing.handle;
-        const [updatedRowsCount] = await Organization.update(
-            {
-                display_name: orgData.displayName,
-                business_owner: orgData.businessOwner,
-                business_owner_contact: orgData.businessOwnerContact,
-                business_owner_email: orgData.businessOwnerEmail,
-                handle: devPortalId,
-                idp_ref_id: orgData.idpRefId,
-                ...(orgData.cpRefId !== undefined && { cp_ref_id: orgData.cpRefId }),
-                ...(orgData.configuration !== undefined && { configuration: orgData.configuration }),
-                updated_by: orgData.updatedBy,
-                updated_at: new Date()
-            },
-            {
-                where: { uuid: existing.uuid },
-                transaction: t,
-            }
-        );
-        if (updatedRowsCount < 1) {
-            throw new Sequelize.EmptyResultError('Organization not found');
-        }
-        // `returning: true` only works on Postgres/MSSQL — Sequelize's sqlite
-        // dialect doesn't support RETURNING on UPDATE, so re-fetch explicitly
-        // instead (same pattern as applicationDao.update).
-        const updatedOrg = await Organization.findOne({ where: { uuid: existing.uuid }, transaction: t });
-        return [updatedRowsCount, [updatedOrg]];
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    const exec = t || db;
+    const existing = await get(orgData.orgId, t);
+    const devPortalId = orgData.handle ? orgData.handle.toLowerCase() : existing.handle;
+    const updatedAt = new Date();
+
+    const setClauses = [
+        'display_name = ?', 'business_owner = ?', 'business_owner_contact = ?',
+        'business_owner_email = ?', 'handle = ?', 'idp_ref_id = ?', 'updated_by = ?', 'updated_at = ?',
+    ];
+    const params = [
+        orgData.displayName, orgData.businessOwner, orgData.businessOwnerContact,
+        orgData.businessOwnerEmail, devPortalId, orgData.idpRefId, orgData.updatedBy, updatedAt,
+    ];
+    if (orgData.cpRefId !== undefined) {
+        setClauses.push('cp_ref_id = ?');
+        params.push(orgData.cpRefId);
     }
+    if (orgData.configuration !== undefined) {
+        setClauses.push('configuration = ?');
+        params.push(orgData.configuration);
+    }
+    params.push(existing.uuid);
+
+    const { rowCount } = await exec.execute(
+        `UPDATE ${ORG_TABLE} SET ${setClauses.join(', ')} WHERE uuid = ?`,
+        params
+    );
+    if (rowCount < 1) {
+        throw new NotFoundError('Organization not found');
+    }
+    // Some dialects don't support RETURNING on UPDATE — re-fetch explicitly instead
+    // (same pattern as applicationDao.update).
+    const updatedOrg = await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE uuid = ?`, [existing.uuid]);
+    return [rowCount, [updatedOrg]];
 };
 
-// Tables whose org_uuid FK is ON DELETE NO ACTION (database/schema.postgres.sql)
-// block Organization.destroy() unless their rows are removed first. Tables with
+// Tables whose org_uuid FK is ON DELETE NO ACTION (database/schema.*.sql) block
+// deleting the organization row unless their rows are removed first. Tables with
 // ON DELETE CASCADE/SET NULL (dp_api_metadata, dp_subscription_plans, dp_audit,
 // dp_user_organization_mappings, and the *_mappings join tables) are left to the
 // database to handle and aren't touched here.
 const deleteOrgDependents = async (orgUuid, t) => {
-    const opts = { transaction: t };
+    const exec = t || db;
 
-    const events = await DPEvent.findAll({ attributes: ['uuid'], where: { org_uuid: orgUuid }, ...opts });
+    const events = await exec.query('SELECT uuid FROM dp_events WHERE org_uuid = ?', [orgUuid]);
     if (events.length) {
-        await DPEventDelivery.destroy({ where: { event_uuid: { [Op.in]: events.map(e => e.uuid) } }, ...opts });
+        const placeholders = events.map(() => '?').join(', ');
+        await exec.execute(
+            `DELETE FROM dp_event_deliveries WHERE event_uuid IN (${placeholders})`,
+            events.map((e) => e.uuid)
+        );
     }
-    await DPEvent.destroy({ where: { org_uuid: orgUuid }, ...opts });
+    await exec.execute('DELETE FROM dp_events WHERE org_uuid = ?', [orgUuid]);
 
-    await APIKey.destroy({ where: { org_uuid: orgUuid }, ...opts });
-    await SubscriptionMapping.destroy({ where: { org_uuid: orgUuid }, ...opts });
+    await exec.execute('DELETE FROM dp_api_keys WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM dp_subscriptions WHERE org_uuid = ?', [orgUuid]);
 
-    const [apps, keyManagers] = await Promise.all([
-        Application.findAll({ attributes: ['uuid'], where: { org_uuid: orgUuid }, ...opts }),
-        KeyManager.findAll({ attributes: ['uuid'], where: { org_uuid: orgUuid }, ...opts }),
-    ]);
+    // Sequential, not Promise.all: both queries share the same connection/transaction
+    // handle (sqlite's single connection, or an open tx on postgres/mssql), so running
+    // them concurrently would interleave two statements on one session.
+    const apps = await exec.query('SELECT uuid FROM dp_applications WHERE org_uuid = ?', [orgUuid]);
+    const keyManagers = await exec.query('SELECT uuid FROM dp_key_managers WHERE org_uuid = ?', [orgUuid]);
     if (apps.length || keyManagers.length) {
-        await ApplicationKeyMapping.destroy({
-            where: {
-                [Op.or]: [
-                    ...(apps.length ? [{ app_uuid: { [Op.in]: apps.map(a => a.uuid) } }] : []),
-                    ...(keyManagers.length ? [{ km_uuid: { [Op.in]: keyManagers.map(k => k.uuid) } }] : []),
-                ],
-            },
-            ...opts,
-        });
+        const conditions = [];
+        const params = [];
+        if (apps.length) {
+            conditions.push(`app_uuid IN (${apps.map(() => '?').join(', ')})`);
+            params.push(...apps.map((a) => a.uuid));
+        }
+        if (keyManagers.length) {
+            conditions.push(`km_uuid IN (${keyManagers.map(() => '?').join(', ')})`);
+            params.push(...keyManagers.map((k) => k.uuid));
+        }
+        await exec.execute(`DELETE FROM dp_app_key_mappings WHERE ${conditions.join(' OR ')}`, params);
     }
-    await Application.destroy({ where: { org_uuid: orgUuid }, ...opts });
-    await KeyManager.destroy({ where: { org_uuid: orgUuid }, ...opts });
+    await exec.execute('DELETE FROM dp_applications WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM dp_key_managers WHERE org_uuid = ?', [orgUuid]);
 
-    await APIWorkflow.destroy({ where: { org_uuid: orgUuid }, ...opts });
-    await OrgContent.destroy({ where: { org_uuid: orgUuid }, ...opts });
+    await exec.execute('DELETE FROM dp_api_workflows WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute(`DELETE FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ?`, [orgUuid]);
     // dp_view_label_mappings/dp_api_label_mappings cascade automatically from
     // dp_views/dp_labels ON DELETE CASCADE.
-    await View.destroy({ where: { org_uuid: orgUuid }, ...opts });
-    await Labels.destroy({ where: { org_uuid: orgUuid }, ...opts });
-    await Tags.destroy({ where: { org_uuid: orgUuid }, ...opts });
-    await WebhookSubscriber.destroy({ where: { org_uuid: orgUuid }, ...opts });
+    await exec.execute('DELETE FROM dp_views WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM dp_labels WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM dp_tags WHERE org_uuid = ?', [orgUuid]);
+    await exec.execute('DELETE FROM dp_webhook_subscribers WHERE org_uuid = ?', [orgUuid]);
 };
 
 const deleteOrg = async (orgId, t) => {
-    try {
-        const existing = await get(orgId, t);
-        await deleteOrgDependents(existing.uuid, t);
-        const deletedRowsCount = await Organization.destroy({
-            where: { uuid: existing.uuid },
-            ...(t && { transaction: t }),
-        });
-        if (deletedRowsCount < 1) {
-            throw Object.assign(new Sequelize.EmptyResultError('Organization not found'));
-        }
-        return deletedRowsCount;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    const exec = t || db;
+    const existing = await get(orgId, t);
+    await deleteOrgDependents(existing.uuid, t);
+    const { rowCount } = await exec.execute(`DELETE FROM ${ORG_TABLE} WHERE uuid = ?`, [existing.uuid]);
+    if (rowCount < 1) {
+        throw new NotFoundError('Organization not found');
     }
-}
+    return rowCount;
+};
 
 const createContent = async (orgData, t) => {
+    const exec = t || db;
     const viewId = await viewDao.getId(orgData.orgId, orgData.viewName);
-    try {
-        const orgContent = await OrgContent.create({
-            file_type: orgData.fileType,
-            file_name: orgData.fileName,
-            file_content: orgData.fileContent,
-            file_path: orgData.filePath,
-            org_uuid: orgData.orgId,
-            view_uuid: viewId,
-            created_by: orgData.createdBy,
-            updated_by: orgData.createdBy
-        }, { transaction: t });
-        return orgContent;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+    const uuid = crypto.randomUUID();
+    const content = toBlobBuffer(orgData.fileContent);
+    await exec.execute(
+        `INSERT INTO ${ORG_CONTENT_TABLE}
+            (uuid, file_type, file_name, file_content, file_path, org_uuid, view_uuid, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+            uuid, orgData.fileType, orgData.fileName, content, orgData.filePath,
+            orgData.orgId, viewId, orgData.createdBy, orgData.createdBy,
+        ]
+    );
+    return {
+        uuid,
+        file_type: orgData.fileType,
+        file_name: orgData.fileName,
+        file_content: content,
+        file_path: orgData.filePath,
+        org_uuid: orgData.orgId,
+        view_uuid: viewId,
+        created_by: orgData.createdBy,
+        updated_by: orgData.createdBy,
+    };
+};
 
 const updateContent = async (orgData) => {
     const viewId = await viewDao.getId(orgData.orgId, orgData.viewName);
-    try {
-        const [updatedRowsCount, updatedOrgContent] = await OrgContent.update({
-            file_type: orgData.fileType,
-            file_name: orgData.fileName,
-            file_content: orgData.fileContent,
-            file_path: orgData.filePath,
-            updated_by: orgData.updatedBy,
-            updated_at: new Date()
-        },
-            {
-                where: {
-                    file_type: orgData.fileType,
-                    file_name: orgData.fileName,
-                    file_path: orgData.filePath,
-                    org_uuid: orgData.orgId,
-                    view_uuid: viewId
-                },
-                returning: true
-            });
-        if (updatedRowsCount < 1) {
-            throw new Sequelize.EmptyResultError('No new resources found');
-        }
-        return [updatedRowsCount, updatedOrgContent];
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    const updatedAt = new Date();
+    const content = toBlobBuffer(orgData.fileContent);
+    const { rowCount } = await db.execute(
+        `UPDATE ${ORG_CONTENT_TABLE}
+         SET file_type = ?, file_name = ?, file_content = ?, file_path = ?, updated_by = ?, updated_at = ?
+         WHERE file_type = ? AND file_name = ? AND file_path = ? AND org_uuid = ? AND view_uuid = ?`,
+        [
+            orgData.fileType, orgData.fileName, content, orgData.filePath, orgData.updatedBy, updatedAt,
+            orgData.fileType, orgData.fileName, orgData.filePath, orgData.orgId, viewId,
+        ]
+    );
+    if (rowCount < 1) {
+        throw new NotFoundError('No new resources found');
     }
-}
+    const updatedOrgContent = await db.query(
+        `SELECT * FROM ${ORG_CONTENT_TABLE}
+         WHERE file_type = ? AND file_name = ? AND file_path = ? AND org_uuid = ? AND view_uuid = ?`,
+        [orgData.fileType, orgData.fileName, orgData.filePath, orgData.orgId, viewId]
+    );
+    return [rowCount, updatedOrgContent];
+};
 
 const getContent = async (orgData) => {
-    try {
-        const viewId = await viewDao.getId(orgData.orgId, orgData.viewName);
-        if (orgData.fileName || orgData.filePath) {
-            return await OrgContent.findOne(
-                {
-                    where: {
-                        org_uuid: orgData.orgId,
-                        view_uuid: viewId,
-                        file_type: orgData.fileType,
-                        ...(orgData.fileName && { file_name: orgData.fileName }),
-                        ...(orgData.filePath && { file_path: orgData.filePath })
-                    }
-                });
-        } else {
-            return await OrgContent.findAll(
-                {
-                    where: {
-                        org_uuid: orgData.orgId,
-                        view_uuid: viewId,
-                        file_type: orgData.fileType,
-                    }
-                });
+    const viewId = await viewDao.getId(orgData.orgId, orgData.viewName);
+    if (orgData.fileName || orgData.filePath) {
+        const conditions = ['org_uuid = ?', 'view_uuid = ?', 'file_type = ?'];
+        const params = [orgData.orgId, viewId, orgData.fileType];
+        if (orgData.fileName) {
+            conditions.push('file_name = ?');
+            params.push(orgData.fileName);
         }
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
+        if (orgData.filePath) {
+            conditions.push('file_path = ?');
+            params.push(orgData.filePath);
         }
-        throw new Sequelize.DatabaseError(error);
+        return db.queryOne(`SELECT * FROM ${ORG_CONTENT_TABLE} WHERE ${conditions.join(' AND ')}`, params);
     }
+    return db.query(
+        `SELECT * FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ? AND view_uuid = ? AND file_type = ?`,
+        [orgData.orgId, viewId, orgData.fileType]
+    );
 };
 
 const deleteContent = async (orgId, viewName, fileName) => {
     const viewId = await viewDao.getId(orgId, viewName);
-    try {
-        const deletedRowsCount = await OrgContent.destroy({
-            where: {
-                org_uuid: orgId,
-                view_uuid: viewId,
-                file_name: fileName
-            }
-        });
-
-        if (deletedRowsCount < 1) {
-            throw Object.assign(new Sequelize.EmptyResultError('Organization content not found'));
-        }
-        return deletedRowsCount;
-    } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    const { rowCount } = await db.execute(
+        `DELETE FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ? AND view_uuid = ? AND file_name = ?`,
+        [orgId, viewId, fileName]
+    );
+    if (rowCount < 1) {
+        throw new NotFoundError('Organization content not found');
     }
+    return rowCount;
 };
 
 // Deletes only theme-related content rows (style/layout/partial/markDown/template/image) for
 // the view — scoped so a theme reset/replace never touches unrelated per-view assets like
 // llms-config.json, which shares this same table.
 const deleteThemeContent = async (orgId, viewName, t) => {
+    const exec = t || db;
     const viewId = await viewDao.getId(orgId, viewName);
-    try {
-        return await OrgContent.destroy({
-            where: {
-                org_uuid: orgId,
-                view_uuid: viewId,
-                file_type: constants.THEME_FILE_TYPES
-            },
-            transaction: t
-        });
-    } catch (error) {
-        throw new Sequelize.DatabaseError(error);
-    }
+    const placeholders = constants.THEME_FILE_TYPES.map(() => '?').join(', ');
+    const { rowCount } = await exec.execute(
+        `DELETE FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ? AND view_uuid = ? AND file_type IN (${placeholders})`,
+        [orgId, viewId, ...constants.THEME_FILE_TYPES]
+    );
+    return rowCount;
 };
 
 const hasThemeContent = async (orgId, viewName) => {
     const viewId = await viewDao.getId(orgId, viewName);
     if (!viewId) return false;
-    const count = await OrgContent.count({
-        where: {
-            org_uuid: orgId,
-            view_uuid: viewId,
-            file_type: constants.THEME_FILE_TYPES
-        }
-    });
-    return count > 0;
+    const placeholders = constants.THEME_FILE_TYPES.map(() => '?').join(', ');
+    const rows = await db.query(
+        `SELECT 1 AS found FROM ${ORG_CONTENT_TABLE} WHERE org_uuid = ? AND view_uuid = ? AND file_type IN (${placeholders})`,
+        [orgId, viewId, ...constants.THEME_FILE_TYPES]
+    );
+    return rows.length > 0;
 };
 
 module.exports = {

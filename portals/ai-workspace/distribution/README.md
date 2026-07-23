@@ -14,7 +14,8 @@ wso2apip-ai-workspace-<version>/
 │   ├── config.toml                              # Active configuration for BOTH services —
 │   │                                             #   [platform_api.*] and [ai_workspace.*]
 │   │                                             #   tables side by side in one file
-│   └── config-template.toml                     # Full configuration reference for both
+│   └── config-template.toml                     # Full configuration reference for both,
+│                                                 #   plus optional [developer_portal] at the bottom
 └── resources/
     ├── roles.yaml                               # Platform API role definitions
     └── platform-api/
@@ -65,6 +66,29 @@ Open the AI Workspace in a browser at `https://localhost:5380` and log in with t
 |------|---------|-------------|
 | `5380` | AI Workspace (BFF) | HTTPS — browser entry point |
 | `9243` | Platform API | HTTPS — backend REST API |
+| `3000` | Developer Portal | HTTPS — only when the `with-developer-portal` profile is enabled (see below) |
+
+## Developer Portal (optional)
+
+This package runs AI Workspace and the Platform API by default. The **Developer Portal** ships in the same `docker-compose.yaml` as an optional component behind the `with-developer-portal` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/), sharing the one Platform API — so you can add it without standing up a second Platform API.
+
+The portal mounts the **same** `configs/config.toml` the other services do and reads only its own `[developer_portal]` section (it ignores `[ai_workspace]`/`[platform_api]`, including their tokens). It is **off by default**: a plain `docker compose up -d` never starts it. Enabling it takes two one-time steps, because that shipped `config.toml` does **not** carry a `[developer_portal]` section:
+
+1. **Add the `[developer_portal]` section to `configs/config.toml`.** Copy the `[developer_portal.*]` tables from the bottom of the shipped `configs/config-template.toml` (the "Developer Portal (optional)" section) and append them to this stack's `configs/config.toml`. The compose stack already provides everything they reference — the defaults point at `https://platform-api:9243` and read the JWT public key from `/etc/devportal/keys/jwt_public.pem`.
+2. **Add its required secrets** to `api-platform.env`. The portal fails closed at startup without them:
+
+   ```bash
+   echo "APIP_DP_SECURITY_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> api-platform.env
+   echo "APIP_DP_SECURITY_SESSION_SECRET=$(openssl rand -hex 32)" >> api-platform.env
+   ```
+
+Then start the stack with the profile enabled:
+
+```bash
+docker compose --profile with-developer-portal up -d
+```
+
+The portal comes up at `https://localhost:3000`, verifying Platform API-issued tokens with the same RS256 public key the rest of the stack uses. It keeps its own data in the `developer-portal-data` volume. Omit `--profile with-developer-portal` on any later `docker compose` command to leave it stopped.
 
 ## Configuration
 
@@ -101,7 +125,10 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 | `[platform_api.auth.file.users]` | Local user credentials, active when `mode = "file"` (change the password hash before sharing) |
 | `[platform_api.server.https]` | Listener on `:9243`; `cert_file`/`key_file` point at `cert.pem`/`key.pem` |
 
-Each key's default value is written inline in `configs/config-template.toml` — a fully-commented reference of every available setting and its default for both services, so defaults are not restated here.
+Each key's default value is written inline in `configs/config-template.toml` — a
+fully-commented reference of every available setting and its default for both active
+components, plus the optional `[developer_portal]` section at the bottom, so defaults
+are not restated here.
 
 ## Authentication Modes
 
@@ -134,7 +161,7 @@ To delegate login to an external OIDC-compliant provider (Asgardeo, Keycloak, Au
 
 3. **Platform API** (`[platform_api.*]` tables in `configs/config.toml`): the `[platform_api.auth.idp]` fields have no env-var tokens in the quickstart file, so edit the TOML directly — set `[platform_api.auth] mode = "idp"` and fill in `jwks_url` and `issuer` for your IDP. `mode` selects exactly one auth mode, so switching to `"idp"` stops the file-based login endpoint from being used. Align `[platform_api.auth.claim_mappings]` with `[ai_workspace.auth.claim_mappings]` — both services must read the same claims out of the same token.
 
-See `configs/config-template.toml` for the full, per-field reference, and the [WSO2 API Platform documentation](https://wso2.com/api-platform/docs/) (AI Workspace section) for a full OIDC setup walkthrough including Asgardeo scope registration.
+See `configs/config-template.toml` for the full, per-field reference of both active components (and the optional `[developer_portal]` section at the bottom), and the [WSO2 API Platform documentation](https://wso2.com/api-platform/docs/) (AI Workspace section) for a full OIDC setup walkthrough including Asgardeo scope registration.
 
 ## Custom TLS Certificates
 

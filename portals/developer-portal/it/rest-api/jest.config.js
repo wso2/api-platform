@@ -25,10 +25,10 @@ module.exports = {
     // support/cleanup.js, so specs don't accumulate objects in the shared org.
     setupFilesAfterEnv: ['<rootDir>/support/autoCleanup.js'],
     testTimeout: 20000,
-    // The devportal-under-test runs SQLite through a single Sequelize connection
-    // (pool: { max: 1 } — see src/db/sequelizeConfig.js, correct for a single-writer
-    // SQLite file) shared by every model AND the session store. Because
-    // better-sqlite3 is synchronous, that one connection processes every DB op —
+    // The devportal-under-test runs SQLite through a single shared connection
+    // (see src/db/adapters/sqliteAdapter.js — correct for a single-writer SQLite
+    // file) used by every DAO AND the session store. Because better-sqlite3 is
+    // synchronous, that one connection processes every DB op —
     // logins' session writes, fixture CRUD from every spec file, the webhook
     // dispatcher/delivery-worker polling — strictly one at a time regardless of
     // Jest's worker count, so parallel workers add queuing/coordination risk

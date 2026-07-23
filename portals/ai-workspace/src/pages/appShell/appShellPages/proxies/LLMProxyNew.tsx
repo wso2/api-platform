@@ -411,6 +411,7 @@ function LLMProxyNewContent({
             enabled: Boolean(providerDetail?.security?.apiKey?.enabled),
             key: providerDetail?.security?.apiKey?.key ?? '',
             in: providerDetail?.security?.apiKey?.in ?? 'header',
+            valuePrefix: providerDetail?.security?.apiKey?.valuePrefix,
           },
         },
       };

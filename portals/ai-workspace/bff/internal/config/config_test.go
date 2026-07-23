@@ -56,6 +56,42 @@ url = "https://platform-api:9243"
 	}
 }
 
+// A merged multi-component config file also carries a foreign [platform_api] section
+// with its own interpolation tokens — here deliberately poisonous ones: an {{ env }}
+// with no default that is left unset, and a {{ file }} path outside the AI Workspace's
+// allowlist. Load must interpolate and consume ONLY the [ai_workspace] subtree, leaving
+// the foreign section (and its tokens) untouched. Guards the k.Cut(aiWorkspaceConfigKey)
+// scoping in loadConfigKoanf: without cutting before interpolation, the whole-tree
+// expand would fail closed on these tokens.
+func TestLoad_IgnoresForeignComponentSection(t *testing.T) {
+	// APIP_CP_SECURITY_ENCRYPTION_KEY is intentionally never set, and /etc/platform-api
+	// is not on the AI Workspace's {{ file }} allowlist.
+	cfgPath := writeConfig(t, `
+[ai_workspace.logging]
+level = "warn"
+
+[ai_workspace.control_plane]
+url = "https://platform-api:9243"
+
+[platform_api.security]
+encryption_key = '{{ env "APIP_CP_SECURITY_ENCRYPTION_KEY" }}'
+
+[platform_api.auth.jwt]
+public_key = '{{ file "/etc/platform-api/keys/jwt_public.pem" }}'
+`)
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v — the foreign [platform_api] tokens must not be resolved", err)
+	}
+	if cfg.Logging.Level != "warn" {
+		t.Errorf("LogLevel = %q, want %q", cfg.Logging.Level, "warn")
+	}
+	if cfg.ControlPlane.URL != "https://platform-api:9243" {
+		t.Errorf("ControlPlane.URL = %q, want the config.toml value", cfg.ControlPlane.URL)
+	}
+}
+
 // The environment reaches a key only through that key's {{ env }} token: the token
 // supplies the variable's value, and its default applies when the variable is unset.
 func TestLoad_EnvTokenSuppliesValueAndDefault(t *testing.T) {

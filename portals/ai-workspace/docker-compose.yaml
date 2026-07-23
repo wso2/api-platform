@@ -57,6 +57,35 @@ services:
       start_period: 10s
       retries: 3
 
+  # Optional: enable the developer portal with --profile with-developer-portal
+  developer-portal:
+    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-beta-SNAPSHOT
+    container_name: developer-portal
+    restart: unless-stopped
+    profiles: ["with-developer-portal"]
+    depends_on:
+      platform-api:
+        condition: service_healthy
+    env_file:
+      - path: api-platform.env
+        required: true
+        format: raw
+    volumes:
+      - ./configs/config.toml:/app/configs/config.toml:ro
+      - developer-portal-data:/app/data
+      - ./resources/certificates:/etc/devportal/tls:ro
+      - ./resources/keys:/etc/devportal/keys:ro
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
 volumes:
   platform-api-data:
+    driver: local
+  developer-portal-data:
     driver: local

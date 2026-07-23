@@ -21,15 +21,14 @@ const util = require('../utils/util');
 const appDao = require('../dao/applicationDao');
 const apiKeyService = require('../services/apiKeyService');
 const { publish } = require('../services/webhooks/eventPublisher');
-const sequelize = require('../db/sequelizeConfig');
+const db = require('../db/driver');
 const constants = require('../utils/constants');
 const { ApplicationDTO } = require('../dto/applicationDto');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
-const { Sequelize } = require("sequelize");
+const { CustomError, NotFoundError } = require('../utils/errors/customErrors');
 const yaml = require('../utils/yaml');
 const kmDao = require('../dao/keyManagerDao');
 const { generateToken } = require('../services/oauthTokenService');
-const { CustomError } = require('../utils/errors/customErrors');
 const { logUserAction } = require('../middlewares/auditLogger');
 // ***** POST / DELETE / PUT Functions ***** (Only work in production)
 
@@ -67,8 +66,8 @@ const listApplications = async (req, res) => {
     const userId = util.resolveActor(req);
     try {
         const applications = await appDao.list(orgId, userId);
-        const auditList = await userIdpReferenceDao.buildListAuditFields(applications.map(a => a.dataValues));
-        const dtos = applications.map((a, i) => new ApplicationDTO(a.dataValues, auditList[i]));
+        const auditList = await userIdpReferenceDao.buildListAuditFields(applications);
+        const dtos = applications.map((a, i) => new ApplicationDTO(a, auditList[i]));
         return res.status(200).json(util.toPaginatedList(dtos, req));
     } catch (error) {
         logger.error('Error occurred while listing applications', { orgId: orgId, error: error.message, stack: error.stack });
@@ -82,9 +81,9 @@ const saveApplication = async (req, res) => {
     try {
         const applicationData = parseApplicationDataFromRequest(req);
         const application = await appDao.create(orgId, userId, applicationData);
-        const createdApp = application.dataValues;
+        const createdApp = application;
         try {
-            await sequelize.transaction((t) => publish('application.created',
+            await db.withTransaction((t) => publish('application.created',
                 { application_id: createdApp.uuid, display_name: createdApp.display_name, handle: createdApp.handle, description: createdApp.description, type: 'web' },
                 { transaction: t, orgId: orgId, aggregateType: 'application', aggregateId: createdApp.uuid }
             ));
@@ -115,11 +114,11 @@ const updateApplication = async (req, res) => {
         const applicationData = parseApplicationDataFromRequest(req);
         const [updatedRows, updatedApp] = await appDao.update(orgId, appId, userId, applicationData);
         if (!updatedRows) {
-            throw new Sequelize.EmptyResultError("No record found to update");
+            throw new NotFoundError("No record found to update");
         }
         try {
-            const renamedApp = updatedApp[0].dataValues;
-            await sequelize.transaction(async (t) => {
+            const renamedApp = updatedApp[0];
+            await db.withTransaction(async (t) => {
                 await publish('application.updated',
                     { application_id: appId, display_name: renamedApp.display_name, handle: renamedApp.handle, description: renamedApp.description, type: 'web' },
                     { transaction: t, orgId: orgId, aggregateType: 'application', aggregateId: appId }
@@ -129,8 +128,8 @@ const updateApplication = async (req, res) => {
             logger.warn('Failed to publish webhook events after app update', { orgId: orgId, appId: appId, error: pubErr.message });
         }
         logUserAction('APPLICATION_UPDATED', req, { orgId, appId, resourceUuid: appId, resourceType: 'application' });
-        const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedApp[0].dataValues);
-        res.status(200).send(new ApplicationDTO(updatedApp[0].dataValues, audit));
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedApp[0]);
+        res.status(200).send(new ApplicationDTO(updatedApp[0], audit));
     } catch (error) {
         logger.error("Error occurred while updating the application", { orgId: orgId, error: error.message, stack: error.stack });
         util.handleError(res, error);
@@ -140,11 +139,7 @@ const updateApplication = async (req, res) => {
 // ***** Delete Application *****
 
 const revokeAppKeyMappings = async (orgId, appId, t) => {
-    const { ApplicationKeyMapping } = require('../models/application');
-    const mappings = await ApplicationKeyMapping.findAll({
-        where: { app_uuid: appId },
-        transaction: t,
-    });
+    const mappings = await appDao.getKeyMappings(orgId, appId, t);
     const mappingIds = mappings.map((mapping) => mapping.uuid);
     await appDao.deleteMappingsByIds(orgId, mappingIds, t);
 };
@@ -156,7 +151,7 @@ const revokeAppKeyMappings = async (orgId, appId, t) => {
  */
 const publishApplicationDeletedEvents = async (orgId, applicationId, appToDelete, affectedKeys) => {
     try {
-        await sequelize.transaction(async (t) => {
+        await db.withTransaction(async (t) => {
             if (appToDelete) {
                 await publish('application.deleted',
                     { application_id: applicationId, display_name: appToDelete.display_name, handle: appToDelete.handle },
@@ -182,7 +177,7 @@ const publishApplicationDeletedEvents = async (orgId, applicationId, appToDelete
 const deleteApplicationAndSnapshotKeys = async (orgId, applicationId, userId) => {
     let appToDelete = null;
     let affectedKeys = [];
-    await sequelize.transaction(async (t) => {
+    await db.withTransaction(async (t) => {
         appToDelete = await appDao.get(orgId, applicationId, userId, t);
         affectedKeys = await apiKeyService.list(orgId, { appId: applicationId }, t);
         await revokeAppKeyMappings(orgId, applicationId, t);
@@ -215,8 +210,8 @@ const getApplication = async (req, res) => {
         if (!app) {
             return res.status(404).json({ status: 'error', code: '404', message: 'Application not found' });
         }
-        const audit = await userIdpReferenceDao.buildSingleAuditFields(app.dataValues);
-        return res.status(200).json(new ApplicationDTO(app.dataValues, audit));
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(app);
+        return res.status(200).json(new ApplicationDTO(app, audit));
     } catch (error) {
         logger.error('Error occurred while getting the application', { orgId, appId: applicationHandle, error: error.message });
         util.handleError(res, error);
@@ -302,7 +297,7 @@ const generateKeys = async (req, res) => {
             keyManager: kmName,
             type: keyType,
             tokenEndpoint: kmRecord.token_endpoint,
-            keyMappingId: keyMappingRecord?.dataValues?.uuid,
+            keyMappingId: keyMappingRecord?.uuid,
         };
 
         return res.status(200).json(responseData);
@@ -329,10 +324,7 @@ const generateOAuthKeys = async (req, res) => {
         const applicationId = appRecord.uuid;
         const keyMappingId = req.params.keyMappingId;
 
-        const { ApplicationKeyMapping } = require('../models/application');
-        const keyMapping = await ApplicationKeyMapping.findOne({
-            where: { uuid: keyMappingId, app_uuid: applicationId },
-        });
+        const keyMapping = await appDao.getKeyMappingById(applicationId, keyMappingId);
         if (!keyMapping || !keyMapping.km_uuid) {
             throw new CustomError(404, 'Key mapping not found or missing key manager reference');
         }
@@ -377,10 +369,7 @@ const revokeOAuthKeys = async (req, res) => {
         const applicationId = appRecord.uuid;
         const keyMappingId = req.params.keyMappingId;
 
-        const { ApplicationKeyMapping } = require('../models/application');
-        const deletedRows = await ApplicationKeyMapping.destroy({
-            where: { uuid: keyMappingId, app_uuid: applicationId },
-        });
+        const deletedRows = await appDao.deleteKeyMappingById(applicationId, keyMappingId);
         if (!deletedRows) {
             throw new CustomError(404, 'Key mapping not found');
         }

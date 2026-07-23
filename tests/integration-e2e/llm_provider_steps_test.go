@@ -23,10 +23,11 @@ package e2e
 //  1. Create a secret in platform-api (POST /api/v0.9/secrets, multipart/form-data).
 //  2. Create an LLM provider whose upstream auth value is a {{ secret "handle" }}
 //     placeholder (POST /api/v0.9/llm-providers).
-//  3. Deploy the provider to the gateway (POST /api/v0.9/llm-providers/{id}/deployments),
-//     then restart the gateway-controller so its one-time startup sync runs: it fetches
-//     all secrets first (syncSecretsBulk), then renders every deployed provider, so the
-//     secret reference is always resolved before the provider is processed.
+//  3. Deploy the provider to the gateway (POST /api/v0.9/llm-providers/{id}/deployments).
+//     The platform-api broadcasts an llmprovider.deployed WebSocket event to the
+//     already-connected controller, whose handleLLMProviderDeployedEvent fetches the
+//     provider definition, calls syncSecretRefsFromYAML to resolve the {{ secret "..." }}
+//     reference on demand, then creates the provider configuration — no restart required.
 //  4. Poll the gateway management API until the provider appears, confirming that
 //     the controller successfully resolved secret references at deploy time.
 
@@ -121,12 +122,11 @@ func (w *world) anLLMProviderReferencingSecret() error {
 	return nil
 }
 
-// deployLLMProviderToGateway deploys the LLM provider to gateway 1 and then
-// restarts the gateway controller so it picks up the deployment via its
-// startup full-sync path. On startup the controller calls syncSecretsBulk
-// first (which fetches all secrets the gateway has access to) before rendering
-// any artifact YAML, so secret references are always resolved before the
-// provider is processed — no event-driven timing race.
+// deployLLMProviderToGateway deploys the LLM provider to gateway 1. The
+// platform-api broadcasts an llmprovider.deployed WebSocket event to the
+// already-connected controller, whose handleLLMProviderDeployedEvent resolves
+// the {{ secret "..." }} reference on demand and creates the provider
+// configuration — no restart required.
 func (w *world) deployLLMProviderToGateway() error {
 	if w.llmProviderID == "" {
 		return fmt.Errorf("no LLM provider id — run 'an LLM provider that references the secret' first")
@@ -148,13 +148,6 @@ func (w *world) deployLLMProviderToGateway() error {
 	w.llmDepID = jsonField(body, "deploymentId")
 	if st >= 300 || w.llmDepID == "" {
 		return fmt.Errorf("deploy LLM provider failed (%d): %s", st, body)
-	}
-
-	// Restart the controller so it runs its one-time startup sync, which
-	// fetches all secrets first and then processes all deployed providers.
-	// This mirrors how deploy() works for REST APIs (steps_test.go).
-	if err := compose(nil, "restart", "gateway-controller"); err != nil {
-		return fmt.Errorf("restart gateway-controller: %w", err)
 	}
 	return nil
 }

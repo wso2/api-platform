@@ -64,7 +64,7 @@ const loadSettingsPage = async (req, res) => {
         templateContent.orgId = orgId;
 
         // The Organization tab manages only the current org (no listing/add/delete).
-        const cur = orgDetails.dataValues || orgDetails;
+        const cur = orgDetails;
         templateContent.currentOrg = {
             id: cur.handle,
             displayName: cur.display_name,
@@ -100,7 +100,7 @@ const loadSettingsPage = async (req, res) => {
         const apiWorkflows = await apiWorkflowService.getAllAPIWorkflowsFromDB(orgId, viewId);
         templateContent.apiWorkflows = apiWorkflows;
 
-        const allAPIs = await apiDao.getByCondition({ org_uuid: orgId });
+        const allAPIs = await apiDao.getByCondition({ orgId });
         const docNamesByApiId = await apiFileDao.listDocNamesForApis(orgId, allAPIs.map(api => api.uuid));
         const mappedAPIs = allAPIs.map(api => ({
             apiId: api.handle,

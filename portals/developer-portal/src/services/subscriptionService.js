@@ -18,7 +18,7 @@
 const apiDao = require('../dao/apiDao');
 const subDao = require('../dao/subscriptionDao');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
-const sequelize = require('../db/sequelizeConfig');
+const db = require('../db/driver');
 const { publish: publishWebhookEvent } = require('./webhooks/eventPublisher');
 const util = require('../utils/util');
 const constants = require('../utils/constants');
@@ -112,7 +112,7 @@ const createSubscription = async (req, res) => {
         const planId = matchedPlan.uuid;
 
         let newSub;
-        await sequelize.transaction(async (t) => {
+        await db.withTransaction(async (t) => {
             newSub = await subDao.create(
                 orgId, apiId, planId, createdBy, t
             );
@@ -130,7 +130,7 @@ const createSubscription = async (req, res) => {
         const audit = await userIdpReferenceDao.buildSingleAuditFields(created);
         return res.status(201).json(formatSubscriptionResponse(created, audit));
     } catch (error) {
-        if (error.name === 'SequelizeUniqueConstraintError') {
+        if (db.isDuplicateKeyError(error)) {
             return util.sendError(res, 409, 'Conflict', { errors: [{ message: 'A subscription for this API already exists' }] });
         }
         logger.error('Error creating subscription', {
@@ -199,7 +199,7 @@ const updateSubscription = async (req, res) => {
         }
 
         let sub;
-        await sequelize.transaction(async (t) => {
+        await db.withTransaction(async (t) => {
             const updated = await subDao.updateStatus(orgId, subscriptionId, status, actorId, t);
             if (!updated) {
                 const err = new Error('Subscription not found');
@@ -207,7 +207,7 @@ const updateSubscription = async (req, res) => {
                 throw err;
             }
             await publishWebhookEvent('subscription.updated',
-                await buildWebhookPayload({ ...existing.get({ plain: true }), status: status }, existing.dp_api_metadata, existing.dp_subscription_plan),
+                await buildWebhookPayload({ ...existing, status: status }, existing.dp_api_metadata, existing.dp_subscription_plan),
                 { transaction: t, orgId: orgId, aggregateType: 'subscription', aggregateId: subscriptionId });
         });
         sub = await subDao.get(orgId, subscriptionId, actorId);
@@ -259,7 +259,7 @@ const changePlan = async (req, res) => {
 
         const previousPlan = existing.dp_subscription_plan;
 
-        await sequelize.transaction(async (t) => {
+        await db.withTransaction(async (t) => {
             const updated = await subDao.updatePlan(orgId, subscriptionId, planId, actorId, t);
             if (!updated) {
                 const err = new Error('Subscription not found');
@@ -306,7 +306,7 @@ const regenerateSubscriptionToken = async (req, res) => {
         const plan = existing.dp_subscription_plan;
         let newToken;
 
-        await sequelize.transaction(async (t) => {
+        await db.withTransaction(async (t) => {
             newToken = await subDao.regenerateToken(orgId, subscriptionId, actorId, t);
             if (!newToken) {
                 const err = new Error('Subscription not found');
@@ -346,7 +346,7 @@ const deleteSubscription = async (req, res) => {
         const apiMetadata = existing.dp_api_metadata;
         const plan = existing.dp_subscription_plan;
 
-        await sequelize.transaction(async (t) => {
+        await db.withTransaction(async (t) => {
             const deleted = await subDao.delete(orgId, subscriptionId, actorId, t);
             if (!deleted) throw Object.assign(new Error('Not found'), { statusCode: 404 });
             await safePublish('subscription.deleted', await buildWebhookPayload(existing, apiMetadata, plan), {
