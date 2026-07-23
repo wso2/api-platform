@@ -3458,9 +3458,11 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
-          description: UUID of the gateway whose manifest contains the policy
-          example: "019d18ee-fed1-7e86-bef6-f64211c3c5bc"
+            minLength: 3
+            maxLength: 40
+            readOnly: true
+          description: Handle (URL-friendly slug) of the gateway whose manifest contains the policy
+          example: "prod-gateway-01"
         - name: policyName
           in: query
           required: true

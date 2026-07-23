@@ -97,6 +97,8 @@ import {
 import type { ColorScheme } from "../../../../utils/colorScheme";
 import AIGatewayStepBanner from "../quickStart/AIGatewayStepBanner";
 import ErrorAlert from "../../../../Components/common/ErrorAlert";
+import { GatewayPoliciesProvider } from "../../../../contexts/GatewayPoliciesContext";
+import GatewayPolicies from "./GatewayPolicies";
 
 const resolveGatewayVersion = (gatewayVersion?: string): string => {
   const entry = gatewayVersion
@@ -217,6 +219,7 @@ export default function ViewGateway() {
   const [showDrawerRegistrationToken, setShowDrawerRegistrationToken] =
     useState(false);
   const [tabIndex, setTabIndex] = useState(0);
+  const [viewTabIndex, setViewTabIndex] = useState(0);
   const [isRegenerateDialogOpen, setIsRegenerateDialogOpen] = useState(false);
   const [isRegeneratingToken, setIsRegeneratingToken] = useState(false);
   const [hasJustRegeneratedToken, setHasJustRegeneratedToken] = useState(false);
@@ -717,8 +720,20 @@ export default function ViewGateway() {
         </Box>
       </Card>
 
-      {/* Get Started Card */}
       <Card>
+        <Tabs
+          value={viewTabIndex}
+          onChange={(_, value) => setViewTabIndex(value)}
+          variant="scrollable"
+          allowScrollButtonsMobile
+        >
+          <Tab label="Configurations" />
+          <Tab label="Policies" />
+        </Tabs>
+        <Divider />
+
+        {/* Get Started */}
+        <Box sx={{ display: viewTabIndex === 0 ? "block" : "none" }}>
         <CardContent sx={{ p: 3 }}>
           <Box sx={{ mb: 3 }}>
             <Typography variant="h5">Get Started</Typography>
@@ -1144,6 +1159,15 @@ export default function ViewGateway() {
             </Stack>
           </TabPanel>
         </CardContent>
+        </Box>
+
+        {viewTabIndex === 1 && (
+          <GatewayPoliciesProvider
+            gatewayId={gateway.id}
+          >
+            <GatewayPolicies />
+          </GatewayPoliciesProvider>
+        )}
       </Card>
 
       <Drawer

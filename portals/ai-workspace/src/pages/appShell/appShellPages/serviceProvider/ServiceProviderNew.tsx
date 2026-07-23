@@ -33,7 +33,6 @@ import {
   ProviderTemplateProvider,
   useProviderTemplate,
 } from '../../../../contexts/llmProvider';
-import { useGuardrails } from '../../../../contexts/GuardrailsContext';
 import { ChevronLeft } from '@wso2/oxygen-ui-icons-react';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
@@ -211,8 +210,6 @@ export default function ServiceProviderNew() {
     Record<string, unknown>
   >({});
 
-  const { guardrails: availableGuardrails = [] } = useGuardrails();
-
   useEffect(() => {
     if (isProjectLevel && hasPermission(SCOPES.LLM_PROVIDER_MANAGE)) {
       setCurrentProject(null);
@@ -248,10 +245,6 @@ export default function ServiceProviderNew() {
     );
   }
 
-  const selectedGuardrailPolicy = availableGuardrails.find(
-    (policy) => policy.name === selectedGuardrail
-  );
-
   const handleOpenGuardrailDrawer = () => {
     setSelectedGuardrail(null);
     setGuardrailSettings({});
@@ -264,12 +257,14 @@ export default function ServiceProviderNew() {
     setGuardrailSettings(existing?.settings ?? {});
   };
 
-  const handleAddGuardrail = (settings: Record<string, unknown>) => {
-    if (!selectedGuardrail || !selectedGuardrailPolicy) return;
+  const handleAddGuardrail = (
+    guardrail: { name: string; version: string },
+    settings: Record<string, unknown>
+  ) => {
     setGuardrailSettings(settings);
     setGuardrails((prev) => {
       const existingIndex = prev.findIndex(
-        (item) => item.name === selectedGuardrail
+        (item) => item.name === guardrail.name
       );
       const configurationSummary = Object.entries(settings)
         .filter(([, value]) => Boolean(value))
@@ -291,8 +286,8 @@ export default function ServiceProviderNew() {
         return [
           ...prev,
           {
-            name: selectedGuardrail,
-            version: selectedGuardrailPolicy.version || '1.0.0',
+            name: guardrail.name,
+            version: guardrail.version || '1.0.0',
             configuration: configurationSummary,
             settings,
           },
@@ -300,8 +295,8 @@ export default function ServiceProviderNew() {
       }
       const next = [...prev];
       next[existingIndex] = {
-        name: selectedGuardrail,
-        version: selectedGuardrailPolicy.version || '1.0.0',
+        name: guardrail.name,
+        version: guardrail.version || '1.0.0',
         configuration: configurationSummary,
         settings,
       };
