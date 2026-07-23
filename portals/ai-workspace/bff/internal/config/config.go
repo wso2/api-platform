@@ -28,7 +28,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -42,6 +41,15 @@ import (
 // values the SPA reads) are deliberately not modeled here; they flow to RuntimeConfig
 // straight from the parsed config, gated by browserSafeKeys (see runtime_config.go).
 type Config struct {
+	// Domain is the externally-reachable host:port for this deployment (e.g. the
+	// address an nginx reverse proxy exposes it on), used only for the startup log
+	// banner. The internal listener bind address (see ServerConfig) is not what an
+	// operator should visit when a proxy in front of the BFF exposes a different
+	// host/port, so this is a separate, explicit value rather than derived from the
+	// listener. Not browser-safe: the SPA never needs it, since the browser already
+	// knows its own address via window.location.
+	Domain string `koanf:"domain"`
+
 	Server       ServerConfig       `koanf:"server"`
 	Logging      LoggingConfig      `koanf:"logging"`
 	ControlPlane ControlPlaneConfig `koanf:"control_plane"`
@@ -54,30 +62,34 @@ type Config struct {
 	RuntimeConfig map[string]string `koanf:"-"`
 }
 
-// ServerConfig is [ai_workspace.server] — the single listener, following the
-// platform-wide [server.https] shape. Domain is the one browser-safe key here (served
-// to the SPA as APIP_AIW_SERVER_DOMAIN); everything else stays server-side.
+// ServerConfig is [ai_workspace.server]: two independent listeners, following the
+// platform-wide [server.http] / [server.https] shape — either or both may run, each
+// on its own port, so a deployment can serve plain HTTP internally, HTTPS externally,
+// or both at once to migrate clients between them without downtime. The listeners
+// always bind all interfaces, so there is no host to configure. The SPA never needs
+// to be told its own origin — the browser already knows it via window.location; this
+// is not sent to the browser (see browserSafeKeys in runtime_config.go).
 type ServerConfig struct {
-	StaticDir string `koanf:"static_dir"` // directory containing the built SPA (index.html + assets)
-	// Domain is shown in the browser address bar (host:port, or just host for port
-	// 80/443). Browser-safe — see browserSafeKeys in runtime_config.go.
-	Domain string `koanf:"domain"`
-	// Enabled makes the BFF terminate TLS itself, presenting the certificate and
-	// decrypting inbound TLS; set it false only when a trusted upstream (ingress,
-	// service-mesh sidecar) terminates TLS and forwards plain HTTP, in which case the
-	// listener serves plain HTTP on the same port and no certificate is read or
-	// required. CertFile/KeyFile are required when Enabled — there is no self-signed
-	// fallback.
+	StaticDir string        `koanf:"static_dir"` // directory containing the built SPA (index.html + assets)
+	HTTP      HTTPListener  `koanf:"http"`
+	HTTPS     HTTPSListener `koanf:"https"`
+}
+
+// HTTPListener configures the plain-HTTP listener. Enable it only when a trusted
+// upstream (ingress, service-mesh sidecar) terminates TLS, or for internal traffic;
+// never expose it directly to untrusted networks.
+type HTTPListener struct {
+	Enabled bool `koanf:"enabled"`
+	Port    int  `koanf:"port"`
+}
+
+// HTTPSListener configures the TLS listener. CertFile/KeyFile are required when
+// Enabled — there is no self-signed fallback.
+type HTTPSListener struct {
 	Enabled  bool   `koanf:"enabled"`
 	Port     int    `koanf:"port"`
 	CertFile string `koanf:"cert_file"`
 	KeyFile  string `koanf:"key_file"`
-}
-
-// Addr is the listener address, ":" + port (e.g. ":5380"). The listener always binds
-// all interfaces, so there is no host to configure.
-func (c *Config) Addr() string {
-	return ":" + strconv.Itoa(c.Server.Port)
 }
 
 // LoggingConfig is [ai_workspace.logging]. Level/Format are this process's own logs;
@@ -296,8 +308,17 @@ func (c *Config) validate() error {
 	if c.Auth.Mode != "basic" && c.Auth.Mode != "oidc" {
 		return fmt.Errorf("invalid [auth] mode %q: must be \"basic\" or \"oidc\"", c.Auth.Mode)
 	}
-	if c.Server.Port < 1 || c.Server.Port > 65535 {
-		return fmt.Errorf("[server] port must be between 1 and 65535, got %d", c.Server.Port)
+	if !c.Server.HTTP.Enabled && !c.Server.HTTPS.Enabled {
+		return fmt.Errorf("no listeners enabled: set [server.http] enabled = true and/or [server.https] enabled = true")
+	}
+	if c.Server.HTTP.Enabled && (c.Server.HTTP.Port < 1 || c.Server.HTTP.Port > 65535) {
+		return fmt.Errorf("[server.http] port must be between 1 and 65535, got %d", c.Server.HTTP.Port)
+	}
+	if c.Server.HTTPS.Enabled && (c.Server.HTTPS.Port < 1 || c.Server.HTTPS.Port > 65535) {
+		return fmt.Errorf("[server.https] port must be between 1 and 65535, got %d", c.Server.HTTPS.Port)
+	}
+	if c.Server.HTTP.Enabled && c.Server.HTTPS.Enabled && c.Server.HTTP.Port == c.Server.HTTPS.Port {
+		return fmt.Errorf("[server.http] port and [server.https] port must differ, both are %d", c.Server.HTTP.Port)
 	}
 	// Every session duration is a lifetime, where <= 0 is never meaningful.
 	if c.Session.IdleTimeout <= 0 {

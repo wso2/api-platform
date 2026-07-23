@@ -36,10 +36,6 @@ import { getEnvOrDefault } from './utils/getEnvOrDefault';
 // Verbose logging in the browser console.
 export const DEBUG = getEnvOrDefault('APIP_AIW_LOGGING_BROWSER_DEBUG', false);
 
-// Domain and environment settings
-export const DOMAIN = getEnvOrDefault('APIP_AIW_SERVER_DOMAIN', 'localhost:5380');
-
-
 // Default region used when auto-registering an organization on first login.
 export const DEFAULT_ORG_REGION = getEnvOrDefault('APIP_AIW_DEFAULT_ORG_REGION', 'us');
 
@@ -109,14 +105,17 @@ export const OIDC_SCOPE = getEnvOrDefault(
   ' ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage'
 );
 
-// OIDC redirect URIs — app-specific, not IDP-specific.
+// OIDC redirect URIs — app-specific, not IDP-specific. Defaults are derived from
+// window.location.origin rather than a configured domain/scheme: the browser always
+// knows its own actual origin, so this can never drift out of sync with whichever
+// listener/domain it's actually being served from (unlike a static config value).
 export const OIDC_REDIRECT_URI = getEnvOrDefault(
   'APIP_AIW_OIDC_REDIRECT_URI',
-  `https://${DOMAIN}/signin`
+  `${window.location.origin}/signin`
 );
 export const OIDC_POST_LOGOUT_REDIRECT_URI = getEnvOrDefault(
   'APIP_AIW_OIDC_POST_LOGOUT_REDIRECT_URI',
-  `https://${DOMAIN}/login`
+  `${window.location.origin}/login`
 );
 
 // API Base URLs

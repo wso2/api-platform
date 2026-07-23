@@ -245,7 +245,7 @@ client_secret = '{{ env "CUSTOM_SECRET_VAR" }}'
 
 // The upstream URL is mandatory — the BFF has nothing to proxy to without it.
 func TestLoad_MissingControlPlaneURL_Errors(t *testing.T) {
-	cfgPath := writeConfig(t, "[ai_workspace.server]\ndomain = \"localhost:5380\"")
+	cfgPath := writeConfig(t, "[ai_workspace]\ndefault_org_region = \"us\"")
 
 	_, err := Load(cfgPath)
 	if err == nil {
@@ -260,8 +260,8 @@ func TestLoad_MissingControlPlaneURL_Errors(t *testing.T) {
 // and OIDC client credentials must never appear in it.
 func TestLoad_RuntimeConfigExcludesServerSideKeys(t *testing.T) {
 	cfgPath := writeConfig(t, `
-[ai_workspace.server]
-domain    = "localhost:5380"
+[ai_workspace]
+default_org_region = "us"
 
 [ai_workspace.auth]
 mode = "oidc"
@@ -281,8 +281,8 @@ redirect_url  = "https://localhost:5380/api/auth/callback"
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if got := cfg.RuntimeConfig["APIP_AIW_SERVER_DOMAIN"]; got != "localhost:5380" {
-		t.Errorf("APIP_AIW_SERVER_DOMAIN = %q, want the browser-safe domain to be surfaced", got)
+	if got := cfg.RuntimeConfig["APIP_AIW_DEFAULT_ORG_REGION"]; got != "us" {
+		t.Errorf("APIP_AIW_DEFAULT_ORG_REGION = %q, want the browser-safe value to be surfaced", got)
 	}
 	for _, v := range cfg.RuntimeConfig {
 		if strings.Contains(v, "s3cr3t") || strings.Contains(v, "platform-api:9243") {
@@ -321,20 +321,20 @@ url = "https://platform-api:9243"
 // under that same name, exactly as if it had been written as a literal.
 func TestLoad_BrowserSafeKeyFromEnvToken(t *testing.T) {
 	cfgPath := writeConfig(t, `
-[ai_workspace.server]
-domain = '{{ env "APIP_AIW_SERVER_DOMAIN" "localhost:5380" }}'
+[ai_workspace]
+default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
 
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
 `)
-	t.Setenv("APIP_AIW_SERVER_DOMAIN", "app.example.com")
+	t.Setenv("APIP_AIW_DEFAULT_ORG_REGION", "eu")
 
 	cfg, err := Load(cfgPath)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if got := cfg.RuntimeConfig["APIP_AIW_SERVER_DOMAIN"]; got != "app.example.com" {
-		t.Errorf("APIP_AIW_SERVER_DOMAIN = %q, want the token-resolved value to reach the browser", got)
+	if got := cfg.RuntimeConfig["APIP_AIW_DEFAULT_ORG_REGION"]; got != "eu" {
+		t.Errorf("APIP_AIW_DEFAULT_ORG_REGION = %q, want the token-resolved value to reach the browser", got)
 	}
 }
 
@@ -345,7 +345,10 @@ func TestLoad_BareTOMLScalars(t *testing.T) {
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
-[ai_workspace.server]
+[ai_workspace.server.http]
+enabled = true
+
+[ai_workspace.server.https]
 enabled = false
 
 [ai_workspace.session]
@@ -356,8 +359,8 @@ absolute_ttl = "2h"
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Server.Enabled {
-		t.Error("Server.Enabled = true, want false from the bare TOML boolean")
+	if cfg.Server.HTTPS.Enabled {
+		t.Error("Server.HTTPS.Enabled = true, want false from the bare TOML boolean")
 	}
 	if cfg.Session.AbsoluteTTL != 2*time.Hour {
 		t.Errorf("Session.AbsoluteTTL = %s, want 2h", cfg.Session.AbsoluteTTL)
@@ -365,7 +368,8 @@ absolute_ttl = "2h"
 }
 
 // A key in a table must not collide with the same key in another table — they are
-// distinct dotted paths, so [server] enabled and [auth.oidc] enabled are independent.
+// distinct dotted paths, so [server.https] enabled and [auth.oidc] enabled are
+// independent.
 func TestLoad_SameKeyInDifferentTables(t *testing.T) {
 	cfgPath := writeConfig(t, `
 [ai_workspace.auth]
@@ -374,7 +378,10 @@ mode = "oidc"
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
-[ai_workspace.server]
+[ai_workspace.server.http]
+enabled = true
+
+[ai_workspace.server.https]
 enabled = false
 
 [ai_workspace.auth.oidc]
@@ -389,8 +396,8 @@ redirect_url  = "https://localhost:5380/api/auth/callback"
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.Server.Enabled {
-		t.Error("Server.Enabled = true, want false — [server] enabled must not read [auth.oidc] enabled")
+	if cfg.Server.HTTPS.Enabled {
+		t.Error("Server.HTTPS.Enabled = true, want false — [server.https] enabled must not read [auth.oidc] enabled")
 	}
 	if !cfg.Auth.OIDC.Enabled {
 		t.Error("OIDC.Enabled = false, want true")
@@ -442,7 +449,7 @@ func TestLoad_InvalidBool_Errors(t *testing.T) {
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
 
-[ai_workspace.server]
+[ai_workspace.server.https]
 enabled = "maybe"
 `)
 

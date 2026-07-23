@@ -59,22 +59,30 @@
 
 # ====================================================================
 # Deployment identity
-#
-# These keys are browser-safe: they are the subset served to the SPA as
-# window.__RUNTIME_CONFIG__. Never put a credential among them.
 # ====================================================================
 
-# Default region assigned to new organizations on first login.
+# Default region assigned to new organizations on first login. Browser-safe: served
+# to the SPA as window.__RUNTIME_CONFIG__.
 default_org_region = "us"
+
+# Externally-reachable host:port for this deployment, shown only in the startup log
+# banner ("Visit https://..."). Not browser-safe — the SPA never needs it, since the
+# browser already knows its own address via window.location. Leave unset to fall back
+# to the enabled listener's own bind address, which is correct for direct,
+# non-proxied access. Set this when a reverse proxy (e.g. nginx) in front of the BFF
+# exposes it on a different host or port than the listener binds to internally —
+# otherwise the log would show the internal address, which an operator can't reach.
+domain = "localhost:5380"
 
 
 # ---------------------------------------------------------------------------
 # Server
 #
 # Everything in this table configures the AI Workspace server itself. These values
-# stay server-side and are never sent to the browser, with two exceptions: domain
-# (the SPA needs it to display the deployment's own address) and the
-# [ai_workspace.auth.oidc] claim names (the SPA needs them to display user/org identity).
+# stay server-side and are never sent to the browser — the SPA never needs to be told
+# its own address, since the browser already knows it via window.location. The one
+# exception is the [ai_workspace.auth.oidc] claim names (the SPA needs them to display
+# user/org identity).
 #
 # All keys are optional: the value in each token's default position is the built-in
 # default.
@@ -85,20 +93,27 @@ default_org_region = "us"
 # Local dev (`make bff-run`) points the BFF at a different build via the
 # -static-dir CLI flag instead, since no deployment ever needs to override it.
 
-# The single listener follows the platform-wide [server.https] shape. The listener
-# always binds all interfaces (there is no host to configure), and the container
-# publishes this port.
-[ai_workspace.server]
+# The plain-HTTP and HTTPS listeners are independent — enable either or both, each on
+# its own port. Serve plain HTTP internally, HTTPS externally, or run both at once
+# (e.g. to migrate clients between them without downtime). Both always bind all
+# interfaces (there is no host to configure), and the container publishes whichever
+# port(s) are enabled.
+#
+# Defaults: the HTTPS listener is on at 5380; the plain-HTTP listener is off. Enable
+# the plain-HTTP listener only when a trusted upstream (ingress, service-mesh sidecar)
+# terminates TLS, or for internal traffic — never expose it directly to untrusted
+# networks.
+#
+# cert_file / key_file must point at a certificate pair when [server.https]
+# enabled = true. Certificates are always required — there is no self-signed
+# fallback. setup.sh generates a pair for the quickstart.
+[ai_workspace.server.http]
+enabled = false
+port    = 5080
 
-# Domain shown in the browser address bar (host:port, or just host for port 80/443).
-# Browser-safe — served to the SPA as APIP_AIW_SERVER_DOMAIN.
-domain = "localhost:5380"
-
-# Port the server listens on.
-port = 5380
-
-# Paths to a mounted TLS certificate and key. REQUIRED when enabled = true; setup.sh
-# generates a pair for the quickstart.
+[ai_workspace.server.https]
+enabled   = true
+port      = 5380
 cert_file = "/etc/ai-workspace/tls/cert.pem"
 key_file  = "/etc/ai-workspace/tls/key.pem"
 
