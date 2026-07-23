@@ -38,8 +38,15 @@ function resolveDir(samplesDir) {
  * escapes the samples/ sandbox. Returns null on any traversal/null-byte violation; callers
  * already treat null as "not found", so this fails closed with a clean 404 instead of a leak.
  */
+// Percent-encoded traversal and separator sequences never occur in a legitimate
+// sample path. path.resolve does not decode them, so they survive as literal
+// directory names rather than being normalised — meaning the containment check
+// below sees them as ordinary segments and any later decode would reopen the
+// traversal. Reject them outright (js-file-access.md directive 1).
+const ENCODED_TRAVERSAL_RE = /%2e|%2f|%5c|%00/i;
+
 function safeResolve(rootDir, ...segments) {
-    if (segments.some(s => typeof s !== 'string' || s.includes('\0'))) return null;
+    if (segments.some(s => typeof s !== 'string' || s.includes('\0') || ENCODED_TRAVERSAL_RE.test(s))) return null;
     const root = path.resolve(rootDir);
     const resolved = path.resolve(rootDir, ...segments);
     if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;

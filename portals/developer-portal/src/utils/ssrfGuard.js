@@ -65,6 +65,7 @@ const PRIVATE_CIDRS = [
     '198.18.0.0/15',    // benchmarking
     '::1/128',          // IPv6 loopback
     'fc00::/7',         // IPv6 unique-local — the RFC 1918 analogue
+    'fec0::/10',        // IPv6 site-local — deprecated by RFC 3879 but still routed on some networks
 ];
 
 function parseCidrs(cidrs) {

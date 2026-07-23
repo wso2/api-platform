@@ -91,10 +91,47 @@ async function enforcePortalModeJson(req, res, next) {
 // via req.accessControlPath: the page-access globs are written against page URLs,
 // and this request's own path carries an appended target URL whose encoding would
 // otherwise trip ensureAuthenticated's encoded-separator rejection.
+// ensureAuthenticated answers a browser navigating to a page: it redirects to the
+// login screen when the caller isn't authenticated, and hands 403s to app.js's
+// central handler, which renders an HTML error page. The try-it panel fetches
+// this endpoint, so both outcomes are answered here instead, with the one generic
+// credential failure this endpoint returns everywhere else — same status and body
+// whichever way the gate refused (js-error-handling.md directive 4).
+function unauthorizedJson(res) {
+    return res.status(401).json({
+        error: 'unauthorized',
+        message: 'Invalid or expired credentials.',
+    });
+}
+
 function authenticateLikeSpecPage(req, res, next) {
     const { orgName, viewName, apiType, apiHandle } = req.params;
     req.accessControlPath = `/${orgName}/views/${viewName}/${apiType}/${apiHandle}`;
-    return ensureAuthenticated(req, res, next);
+
+    // The login redirect is issued via res.redirect and never reaches next(), so
+    // it is intercepted here. Swapped only for the duration of the gate.
+    const originalRedirect = res.redirect;
+    let redirected = false;
+    res.redirect = () => {
+        redirected = true;
+        res.redirect = originalRedirect;
+        logger.warn('Try-it proxy request rejected: caller is not authenticated for this page', {
+            operation: 'proxyTryoutRequest',
+        });
+        return unauthorizedJson(res);
+    };
+
+    return ensureAuthenticated(req, res, (err) => {
+        if (!redirected) res.redirect = originalRedirect;
+        if (err) {
+            logger.warn('Try-it proxy request rejected by the page access gate', {
+                status: err.status,
+                operation: 'proxyTryoutRequest',
+            });
+            return unauthorizedJson(res);
+        }
+        return next();
+    });
 }
 
 router.use(

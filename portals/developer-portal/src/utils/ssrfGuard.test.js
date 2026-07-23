@@ -88,7 +88,9 @@ test('isDenied: IPv4-mapped IPv6 is normalized before matching', async (t) => {
 });
 
 test('isDenied: allowPrivate governs private ranges only', async (t) => {
-    const privateAddrs = ['10.0.0.5', '172.16.0.1', '192.168.1.1', '127.0.0.1', '::1', 'fc00::1', '100.64.1.1'];
+    // fec0::1 is IPv6 site-local: deprecated by RFC 3879, but still routed on
+    // some networks, so it belongs in the private set rather than being allowed.
+    const privateAddrs = ['10.0.0.5', '172.16.0.1', '192.168.1.1', '127.0.0.1', '::1', 'fc00::1', 'fec0::1', '100.64.1.1'];
 
     await t.test('private ranges denied when allowPrivate is false', () => {
         for (const ip of privateAddrs) {
