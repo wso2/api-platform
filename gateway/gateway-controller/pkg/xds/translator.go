@@ -1185,6 +1185,21 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 // SharedRouteConfigName is the name of the shared route configuration used by both HTTP and HTTPS listeners
 const SharedRouteConfigName = "shared_route_config"
 
+// convertPathWithEscapedSlashesAction maps the configured string to the Envoy HCM enum.
+// Unknown values fall back to KEEP_UNCHANGED.
+func convertPathWithEscapedSlashesAction(action string) hcm.HttpConnectionManager_PathWithEscapedSlashesAction {
+	switch action {
+	case commonconstants.REJECT_REQUEST:
+		return hcm.HttpConnectionManager_REJECT_REQUEST
+	case commonconstants.UNESCAPE_AND_REDIRECT:
+		return hcm.HttpConnectionManager_UNESCAPE_AND_REDIRECT
+	case commonconstants.UNESCAPE_AND_FORWARD:
+		return hcm.HttpConnectionManager_UNESCAPE_AND_FORWARD
+	default:
+		return hcm.HttpConnectionManager_KEEP_UNCHANGED
+	}
+}
+
 // createListener creates an Envoy listener with access logging
 // If isHTTPS is true, creates an HTTPS listener with TLS configuration
 // Uses RDS (Route Discovery Service) to share route configuration between listeners
@@ -1251,6 +1266,11 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		CommonHttpProtocolOptions: &core.HttpProtocolOptions{
 			IdleTimeout: durationpb.New(t.routerConfig.HTTPListener.Timeouts.IdleTimeout),
 		},
+		// Resolve dot-segments and merge duplicate slashes before route matching (enabled unless
+		// explicitly disabled). Escaped slashes are handled separately via PathWithEscapedSlashesAction.
+		NormalizePath:                wrapperspb.Bool(!t.routerConfig.HTTPListener.DisablePathNormalization),
+		MergeSlashes:                 !t.routerConfig.HTTPListener.DisablePathNormalization,
+		PathWithEscapedSlashesAction: convertPathWithEscapedSlashesAction(t.routerConfig.HTTPListener.PathWithEscapedSlashesAction),
 	}
 
 	// Add access logs if enabled
@@ -1330,7 +1350,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 				},
 			},
 		},
-		FilterChains: []*listener.FilterChain{filterChain},
+		FilterChains:                  []*listener.FilterChain{filterChain},
 		PerConnectionBufferLimitBytes: wrapperspb.UInt32(t.routerConfig.HTTPListener.PerConnectionBufferLimitBytes),
 	}, routeConfig, nil
 }

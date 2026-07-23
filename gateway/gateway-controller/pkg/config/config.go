@@ -594,10 +594,18 @@ type VHostEntry struct {
 
 // HTTPListenerConfig holds HTTP listener related configuration of an API
 type HTTPListenerConfig struct {
-	ServerHeaderTransformation 		string      `koanf:"server_header_transformation"` 		// Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
-	ServerHeaderValue          		string      `koanf:"server_header_value"`          		// Custom value for the Server header
-	Timeouts                   		HCMTimeouts `koanf:"timeouts"`                     		// HTTP Connection Manager (downstream) timeouts
-	PerConnectionBufferLimitBytes 	uint32 		`koanf:"per_connection_buffer_limit_bytes"` // Downstream per-connection buffer limit in bytes
+	ServerHeaderTransformation    string      `koanf:"server_header_transformation"`      // Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
+	ServerHeaderValue             string      `koanf:"server_header_value"`               // Custom value for the Server header
+	Timeouts                      HCMTimeouts `koanf:"timeouts"`                          // HTTP Connection Manager (downstream) timeouts
+	PerConnectionBufferLimitBytes uint32      `koanf:"per_connection_buffer_limit_bytes"` // Downstream per-connection buffer limit in bytes
+	// DisablePathNormalization turns off dot-segment resolution and duplicate-slash merging on
+	// the downstream HCM. Defaults to false (normalization enabled) so route matching cannot be
+	// fooled by ".." or "//" in the request path.
+	DisablePathNormalization bool `koanf:"disable_path_normalization"`
+	// PathWithEscapedSlashesAction controls handling of escaped slashes ("%2F"/"%5C") in the
+	// request path. Options: "KEEP_UNCHANGED", "REJECT_REQUEST", "UNESCAPE_AND_REDIRECT",
+	// "UNESCAPE_AND_FORWARD". Defaults to "KEEP_UNCHANGED".
+	PathWithEscapedSlashesAction string `koanf:"path_with_escaped_slashes_action"`
 }
 
 // HCMTimeouts holds HTTP Connection Manager (downstream/connection) timeouts.
@@ -980,7 +988,9 @@ func defaultConfig() *Config {
 					StreamIdleTimeout:     5 * time.Minute, // Envoy default
 					IdleTimeout:           1 * time.Hour,   // Envoy default (connection-level)
 				},
-				PerConnectionBufferLimitBytes: 1048576, // 1 MiB, matches Envoy's built-in default
+				PerConnectionBufferLimitBytes: 1048576,                        // 1 MiB, matches Envoy's built-in default
+				DisablePathNormalization:      false,                          // Path normalization enabled by default
+				PathWithEscapedSlashesAction:  commonconstants.KEEP_UNCHANGED, // Leave escaped-slash paths unchanged by default
 			},
 		},
 		Analytics: AnalyticsConfig{
@@ -2000,6 +2010,35 @@ func (c *Config) validateHTTPListenerConfig() error {
 	if httpListener.PerConnectionBufferLimitBytes > constants.MaxReasonableBufferLimitBytes {
 		return fmt.Errorf("http_listener.per_connection_buffer_limit_bytes must not exceed %d, got: %d",
 			constants.MaxReasonableBufferLimitBytes, httpListener.PerConnectionBufferLimitBytes)
+	}
+
+	// Leave escaped-slash paths unchanged when unset.
+	if httpListener.PathWithEscapedSlashesAction == "" {
+		httpListener.PathWithEscapedSlashesAction = commonconstants.KEEP_UNCHANGED
+	}
+
+	validEscapedSlashesActions := []string{
+		commonconstants.KEEP_UNCHANGED,
+		commonconstants.REJECT_REQUEST,
+		commonconstants.UNESCAPE_AND_REDIRECT,
+		commonconstants.UNESCAPE_AND_FORWARD,
+	}
+
+	isValidAction := false
+	for _, valid := range validEscapedSlashesActions {
+		if httpListener.PathWithEscapedSlashesAction == valid {
+			isValidAction = true
+			break
+		}
+	}
+
+	if !isValidAction {
+		return fmt.Errorf("http_listener.path_with_escaped_slashes_action must be one of: %s, %s, %s, %s. Got: %s",
+			commonconstants.KEEP_UNCHANGED,
+			commonconstants.REJECT_REQUEST,
+			commonconstants.UNESCAPE_AND_REDIRECT,
+			commonconstants.UNESCAPE_AND_FORWARD,
+			httpListener.PathWithEscapedSlashesAction)
 	}
 
 	return nil
