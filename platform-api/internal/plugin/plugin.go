@@ -107,9 +107,6 @@ type Deps struct {
 // prefixes narrow and specific — this is an auth-bypass surface (GO-AUTH-004).
 // Matching is a prefix match, so an over-broad prefix aborts startup: a path must
 // be non-empty, start with "/", not be "/" alone, and contain no "..".
-//
-// This is the internal-tier counterpart to pdk.AuthSkipPathProvider; the server
-// wraps external plugins so both tiers are handled by the same hook.
 type AuthSkipPathProvider interface {
 	AuthSkipPaths() []string
 }

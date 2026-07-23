@@ -118,9 +118,7 @@ func initPlugins(
 
 		// Declared public paths are collected here and appended to the config's
 		// skip-path list by the caller, before the auth middleware is built, so the
-		// list is complete when the chain is assembled. This is an in-tree-only
-		// hook: externalPlugin does not implement plugin.AuthSkipPathProvider, so
-		// an external plugin can never reach it (GO-AUTH-004).
+		// list is complete when the chain is assembled.
 		if sp, ok := p.(plugin.AuthSkipPathProvider); ok {
 			for _, path := range sp.AuthSkipPaths() {
 				if err := validateAuthSkipPath(path); err != nil {

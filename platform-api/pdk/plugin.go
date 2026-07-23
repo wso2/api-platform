@@ -45,8 +45,7 @@ type Plugin interface {
 
 	// RegisterRoutes mounts the plugin's HTTP routes on the shared mux. Only
 	// called after Init has succeeded. Every route registered here is served
-	// through the platform's authentication chain — an external plugin cannot
-	// declare public (unauthenticated) paths.
+	// through the platform's authentication and scope chain.
 	RegisterRoutes(mux *http.ServeMux)
 
 	// OpenAPISpec returns the plugin's OpenAPI 3.x YAML bytes, merged into the
@@ -61,10 +60,3 @@ type Plugin interface {
 	// Shutdown is called during graceful server shutdown.
 	Shutdown(ctx context.Context) error
 }
-
-// NOTE: there is deliberately no way for an external plugin to declare public
-// (unauthenticated) paths. Auth skip paths are a prefix-matched auth-bypass
-// surface (GO-AUTH-004), so widening them stays a deployment-level decision made
-// by the operator through platform_api.auth.skip_paths, not something a plugin
-// can assert about itself. Every route an external plugin mounts is served under
-// the platform auth and scope chain.

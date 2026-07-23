@@ -48,8 +48,7 @@ func (f *fakeExternalPlugin) OpenAPISpec() []byte { return []byte(f.spec) }
 
 func (f *fakeExternalPlugin) Shutdown(context.Context) error { return nil }
 
-// externalSkipPathPlugin carries an AuthSkipPaths method that pdk declares no
-// interface for.
+// externalSkipPathPlugin carries an AuthSkipPaths method.
 type externalSkipPathPlugin struct {
 	*fakeExternalPlugin
 	paths []string
@@ -110,9 +109,9 @@ func TestInitPlugins_ExternalTierIsHeldToTheSameGuards(t *testing.T) {
 	})
 }
 
-// The external tier has no auth-skip-path hook: every route it mounts is
-// authenticated. A plugin that happens to carry an AuthSkipPaths method — even
-// one returning the root prefix — must not widen the auth bypass (GO-AUTH-004).
+// Every route an external plugin mounts is authenticated: an AuthSkipPaths
+// method on the plugin — even one returning the root prefix — must not widen the
+// auth bypass (GO-AUTH-004).
 func TestInitPlugins_ExternalTierCannotDeclareAuthSkipPaths(t *testing.T) {
 	ext := &externalSkipPathPlugin{
 		fakeExternalPlugin: &fakeExternalPlugin{name: "api-cloud", spec: specWithScopes},

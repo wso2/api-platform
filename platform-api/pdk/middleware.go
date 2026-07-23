@@ -53,10 +53,9 @@ type PositionedMiddleware struct {
 	Wrap     Middleware
 }
 
-// MiddlewareProvider is an OPTIONAL interface a Plugin may implement (like
-// AuthSkipPathProvider) to contribute middleware to the request chain. Return an
-// empty slice to add none. Within a position, middleware runs in plugin
-// registration order.
+// MiddlewareProvider is an OPTIONAL interface a Plugin may implement to
+// contribute middleware to the request chain. Return an empty slice to add none.
+// Within a position, middleware runs in plugin registration order.
 type MiddlewareProvider interface {
 	Middleware() []PositionedMiddleware
 }
