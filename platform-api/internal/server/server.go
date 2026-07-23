@@ -455,20 +455,39 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// innermost (after scope enforcement, before the mux).
 	var preChain, postChain []pdk.Middleware
 
+	// Plugins whose Init has already succeeded. If a later plugin aborts startup,
+	// these are shut down in reverse initialization order before returning, so a
+	// failed startup does not leave plugin-owned goroutines or connections behind.
+	var initializedPlugins []plugin.Plugin
+	shutdownInitializedPlugins := func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+		for i := len(initializedPlugins) - 1; i >= 0; i-- {
+			if err := initializedPlugins[i].Shutdown(shutdownCtx); err != nil {
+				slogger.Error("Plugin shutdown error during failed startup",
+					"plugin", initializedPlugins[i].Name(), "error", err)
+			}
+		}
+	}
+
 	for _, p := range plugins {
 		if err := p.Init(pluginDeps); err != nil {
+			shutdownInitializedPlugins()
 			return nil, fmt.Errorf("plugin %q failed to initialize: %w", p.Name(), err)
 		}
+		initializedPlugins = append(initializedPlugins, p)
 		// Merge plugin-contributed scopes into the main registry. An OpenAPI spec
 		// is mandatory and must load: a plugin whose scopes never reach the
 		// registry would have its routes served with no scope requirement, so
 		// both an empty and an unloadable spec abort startup (GO-AUTH-007).
 		spec := p.OpenAPISpec()
 		if len(spec) == 0 {
+			shutdownInitializedPlugins()
 			return nil, fmt.Errorf("plugin %q returned an empty OpenAPI spec; a spec declaring each route's scopes is required", p.Name())
 		}
 		pluginRegistry, regErr := middleware.LoadScopeRegistryFromBytes(spec)
 		if regErr != nil {
+			shutdownInitializedPlugins()
 			return nil, fmt.Errorf("plugin %q OpenAPI spec failed to load into the scope registry: %w", p.Name(), regErr)
 		}
 		scopeRegistry.Merge(pluginRegistry)
