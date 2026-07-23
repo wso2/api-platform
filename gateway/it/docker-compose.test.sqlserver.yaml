@@ -79,7 +79,10 @@ services:
       - it-gateway-runtime-network
 
   # One-shot: SQL Server does not auto-create an application database, so create
-  # gateway_test once the server is healthy. The controller auto-creates its schema.
+  # gateway_test once the server is healthy. gateway-controller no longer auto-applies
+  # schema DDL against external databases on startup (schema must be pre-provisioned
+  # by the operator) — apply the shipped schema script here instead, so the IT suite
+  # exercises the same pre-provisioned-DB path operators use.
   mssql-init:
     container_name: it-mssql-init
     image: mcr.microsoft.com/mssql/server:2022-latest
@@ -89,11 +92,16 @@ services:
     environment:
       - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:-Gateway_Strong!Pass123}
       - MSSQL_DB=gateway_test
+    volumes:
+      - ../gateway-controller/pkg/storage/gateway-controller-db.sqlserver.sql:/schema/gateway-controller-schema.sql:ro
     entrypoint: ["/bin/bash", "-c"]
     command:
       - >
         /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
         -Q "IF DB_ID('$$MSSQL_DB') IS NULL CREATE DATABASE [$$MSSQL_DB]"
+        &&
+        /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
+        -d "$$MSSQL_DB" -i /schema/gateway-controller-schema.sql
     restart: "no"
     networks:
       - it-gateway-runtime-network

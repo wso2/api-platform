@@ -22,7 +22,9 @@ wso2apip-api-gateway-<version>/
 └── resources/
     ├── certificates/            # CA certificate for upstream TLS verification
     ├── listener-certs/          # Self-signed TLS certificate/key for the HTTPS listener
-    └── secure-backend/          # Test certificates for mTLS backend testing
+    ├── secure-backend/          # Test certificates for mTLS backend testing
+    └── gateway-controller/
+        └── db-scripts/          # Schema DDL for external Postgres/SQL Server (see Database)
 ```
 
 ## Prerequisites
@@ -79,6 +81,47 @@ Edit `configs/config.toml` before starting the gateway. The most commonly change
 | `tracing.enabled` | Enable OpenTelemetry tracing | `false` |
 
 See `configs/config-template.toml` for a fully-commented reference of every available setting.
+
+## Database
+
+The gateway controller supports three storage backends, selected via `[controller.storage].type` in `configs/config.toml`:
+
+| `type` | Description | Schema provisioning |
+|--------|--------------|----------------------|
+| `sqlite` (default) | Local file-based database (`./data/gateway.db`) | Applied automatically on startup |
+| `postgres` | External PostgreSQL | Must be pre-provisioned by the operator |
+| `sqlserver` | External Microsoft SQL Server | Must be pre-provisioned by the operator |
+
+For `sqlite`, no manual step is required — the controller creates and migrates the local database file itself on first start.
+
+For `postgres` and `sqlserver`, the controller connects to the database you provide but does **not** run any schema DDL against it — auto-applying DDL against an operator-owned external database at startup is treated as a security risk. Before starting the controller, create the target database and apply the matching script from `resources/gateway-controller/db-scripts/`:
+
+```bash
+# PostgreSQL
+psql "host=<host> port=<port> dbname=<database> user=<user>" \
+  -f resources/gateway-controller/db-scripts/gateway-controller-db.postgres.sql
+
+# SQL Server
+sqlcmd -S <host>,<port> -d <database> -U <user> \
+  -i resources/gateway-controller/db-scripts/gateway-controller-db.sqlserver.sql
+```
+
+Then point the controller at the database in `configs/config.toml`:
+
+```toml
+[controller.storage]
+type = "postgres"   # or "sqlserver"
+
+[controller.storage.postgres]
+host = "your-postgres-host"
+port = 5432
+database = "gateway"
+user = "gateway"
+password = ""       # prefer supplying via api-platform.env
+sslmode = "require"
+```
+
+See `configs/config-template.toml` for the full `[controller.storage.*]` reference, including the SQL Server equivalent under `[controller.storage.database]`.
 
 ## Connecting to WSO2 API Platform
 
