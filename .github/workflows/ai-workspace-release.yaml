@@ -100,12 +100,15 @@ jobs:
           git push origin portals/ai-workspace/v${{ steps.version.outputs.version }}
 
       - name: Build distribution zip
+        env:
+          PLATFORM_API_VERSION: ${{ inputs.platform_api_version }}
+          DEVPORTAL_VERSION: ${{ inputs.developer_portal_version }}
         run: |
-          echo "Bundling platform-api db-scripts from tag platform-api/v${{ inputs.platform_api_version }}"
-          echo "Pinning optional developer-portal image to ${{ inputs.developer_portal_version }}"
+          echo "Bundling platform-api db-scripts from tag platform-api/v${PLATFORM_API_VERSION}"
+          echo "Pinning optional developer-portal image to ${DEVPORTAL_VERSION}"
           make -C portals/ai-workspace dist \
-            PLATFORM_API_VERSION="${{ inputs.platform_api_version }}" \
-            DEVPORTAL_VERSION="${{ inputs.developer_portal_version }}"
+            PLATFORM_API_VERSION="${PLATFORM_API_VERSION}" \
+            DEVPORTAL_VERSION="${DEVPORTAL_VERSION}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
