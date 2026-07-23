@@ -2,6 +2,17 @@ name: Developer Portal Release
 
 on:
   workflow_dispatch:
+    inputs:
+      platform_api_version:
+        description: 'Platform API version to bundle (e.g. 0.13.0). If empty, uses platform-api/VERSION. When set, configs and db-scripts are fetched from tag platform-api/v<version> and docker-compose is pinned to it.'
+        required: true
+        type: string
+        default: ''
+      ai_workspace_version:
+        description: 'AI Workspace version to pin for the optional "with-ai-workspace" Compose profile (e.g. 1.0.0). Need not be released yet — the image tag is pinned regardless, and its config template is taken from tag portals/ai-workspace/v<version> if that tag exists, otherwise from the working tree.'
+        required: true
+        type: string
+        default: ''
 
 env:
   DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}/api-platform
@@ -10,6 +21,10 @@ env:
 jobs:
   release:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -53,7 +68,14 @@ jobs:
         run: make -C portals/developer-portal build
 
       - name: Run tests
-        run: make test-devportal
+        env:
+          # The IT compose files read ${PLATFORM_API_IMAGE}, defaulting to the
+          # working tree's SNAPSHOT tag. Point them at the released image being
+          # bundled so the tests exercise the same version the zip pins.
+          PLATFORM_API_IMAGE: ${{ env.DOCKER_REGISTRY }}/platform-api:${{ inputs.platform_api_version }}
+        run: |
+          echo "Running integration tests against ${PLATFORM_API_IMAGE}"
+          make test-devportal
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -74,6 +96,42 @@ jobs:
           fi
           git tag -a developer-portal/v${{ steps.version.outputs.version }} -m "Developer Portal ${{ steps.version.outputs.version }}"
           git push origin developer-portal/v${{ steps.version.outputs.version }}
+
+      - name: Build distribution zip
+        env:
+          PLATFORM_API_VERSION: ${{ inputs.platform_api_version }}
+          AIW_VERSION: ${{ inputs.ai_workspace_version }}
+        run: |
+          echo "Bundling platform-api configs and db-scripts from tag platform-api/v${PLATFORM_API_VERSION}"
+          echo "Pinning optional ai-workspace image to ${AIW_VERSION}"
+          make -C portals/developer-portal dist \
+            PLATFORM_API_VERSION="${PLATFORM_API_VERSION}" \
+            AIW_VERSION="${AIW_VERSION}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: developer-portal/v${{ steps.version.outputs.version }}
+          name: Developer Portal ${{ steps.version.outputs.version }}
+          body: |
+            ## Developer Portal Release ${{ steps.version.outputs.version }}
+
+            ### Docker Image
+            ```bash
+            docker pull ${{ env.DOCKER_REGISTRY }}/developer-portal:${{ steps.version.outputs.version }}
+            ```
+
+            ### Supported Platforms
+            - `linux/amd64`
+            - `linux/arm64`
+
+            ### Distribution
+            The attached `wso2apip-developer-portal-${{ steps.version.outputs.version }}.zip` contains the
+            standalone Developer Portal + Platform API distribution (docker-compose and configs).
+          files: portals/developer-portal/target/wso2apip-developer-portal-${{ steps.version.outputs.version }}.zip
+          draft: true
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
       - name: Bump to next dev version
         run: make -C portals/developer-portal version-bump-next-dev

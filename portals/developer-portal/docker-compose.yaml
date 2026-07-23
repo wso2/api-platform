@@ -55,7 +55,7 @@ services:
     networks:
       - devportal-network
 
-  # Optional: enable the developer portal with --profile with-ai-workspace
+  # Optional: enable AI Workspace with --profile with-ai-workspace
   ai-workspace:
     image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-beta-SNAPSHOT
     container_name: ai-workspace
