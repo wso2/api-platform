@@ -1,7 +1,6 @@
 go 1.26.5
 
 use (
-	./api-cloud
 	./cli/it
 	./cli/src
 	./common
