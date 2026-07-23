@@ -51,17 +51,6 @@ func (e *externalPlugin) OpenAPISpec() []byte { return e.p.OpenAPISpec() }
 
 func (e *externalPlugin) Shutdown(ctx context.Context) error { return e.p.Shutdown(ctx) }
 
-// AuthSkipPaths forwards the optional pdk.AuthSkipPathProvider so external plugins
-// declare public paths through the same server hook as internal ones. It returns
-// nil when the wrapped plugin does not implement the interface, making the
-// server's plugin.AuthSkipPathProvider assertion a harmless no-op in that case.
-func (e *externalPlugin) AuthSkipPaths() []string {
-	if sp, ok := e.p.(pdk.AuthSkipPathProvider); ok {
-		return sp.AuthSkipPaths()
-	}
-	return nil
-}
-
 // Middleware forwards the optional pdk.MiddlewareProvider so external plugins
 // contribute chain middleware through the same server hook as internal ones. It
 // returns nil when the wrapped plugin does not implement the interface, making the

@@ -118,7 +118,9 @@ func initPlugins(
 
 		// Declared public paths are collected here and appended to the config's
 		// skip-path list by the caller, before the auth middleware is built, so the
-		// list is complete when the chain is assembled.
+		// list is complete when the chain is assembled. This is an in-tree-only
+		// hook: externalPlugin does not implement plugin.AuthSkipPathProvider, so
+		// an external plugin can never reach it (GO-AUTH-004).
 		if sp, ok := p.(plugin.AuthSkipPathProvider); ok {
 			for _, path := range sp.AuthSkipPaths() {
 				if err := validateAuthSkipPath(path); err != nil {
@@ -128,9 +130,9 @@ func initPlugins(
 			}
 		}
 
-		// Collect plugin middleware into the two allowed positions. Same
-		// mirror-and-forward setup as AuthSkipPathProvider, so both tiers are
-		// handled here.
+		// Collect plugin middleware into the two allowed positions. pdk mirrors
+		// this interface and externalPlugin forwards it, so both tiers are handled
+		// by this one assertion.
 		if mp, ok := p.(plugin.MiddlewareProvider); ok {
 			for _, m := range mp.Middleware() {
 				if m.Wrap == nil {

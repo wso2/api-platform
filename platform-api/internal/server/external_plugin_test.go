@@ -48,7 +48,8 @@ func (f *fakeExternalPlugin) OpenAPISpec() []byte { return []byte(f.spec) }
 
 func (f *fakeExternalPlugin) Shutdown(context.Context) error { return nil }
 
-// externalSkipPathPlugin additionally implements pdk.AuthSkipPathProvider.
+// externalSkipPathPlugin carries an AuthSkipPaths method that pdk declares no
+// interface for.
 type externalSkipPathPlugin struct {
 	*fakeExternalPlugin
 	paths []string
@@ -95,8 +96,8 @@ func TestInitPlugins_ExternalTierReceivesPDKDeps(t *testing.T) {
 	}
 }
 
-// External plugins go through the same scope and skip-path guards as internal
-// ones — the wrapper must not become a way around them.
+// External plugins go through the same scope guard as internal ones — the
+// wrapper must not become a way around it.
 func TestInitPlugins_ExternalTierIsHeldToTheSameGuards(t *testing.T) {
 	t.Run("spec without scopes", func(t *testing.T) {
 		ext := &fakeExternalPlugin{name: "api-cloud", spec: specWithoutScopes}
@@ -107,17 +108,23 @@ func TestInitPlugins_ExternalTierIsHeldToTheSameGuards(t *testing.T) {
 			t.Fatal("expected an external plugin with no declared scopes to abort startup")
 		}
 	})
+}
 
-	t.Run("over-broad skip path", func(t *testing.T) {
-		ext := &externalSkipPathPlugin{
-			fakeExternalPlugin: &fakeExternalPlugin{name: "api-cloud", spec: specWithScopes},
-			paths:              []string{"/"},
-		}
+// The external tier has no auth-skip-path hook: every route it mounts is
+// authenticated. A plugin that happens to carry an AuthSkipPaths method — even
+// one returning the root prefix — must not widen the auth bypass (GO-AUTH-004).
+func TestInitPlugins_ExternalTierCannotDeclareAuthSkipPaths(t *testing.T) {
+	ext := &externalSkipPathPlugin{
+		fakeExternalPlugin: &fakeExternalPlugin{name: "api-cloud", spec: specWithScopes},
+		paths:              []string{"/"},
+	}
 
-		_, err := initPlugins(testLogger(), http.NewServeMux(), emptyRegistry(t),
-			&plugin.Deps{}, &pdk.Deps{}, nil, []pdk.Plugin{ext})
-		if err == nil {
-			t.Fatal("expected an external plugin's root skip path to abort startup")
-		}
-	})
+	wiring, err := initPlugins(testLogger(), http.NewServeMux(), emptyRegistry(t),
+		&plugin.Deps{}, &pdk.Deps{}, nil, []pdk.Plugin{ext})
+	if err != nil {
+		t.Fatalf("initPlugins: unexpected error: %v", err)
+	}
+	if len(wiring.authSkipPaths) != 0 {
+		t.Fatalf("external plugin contributed skip paths %v; the external tier has no such hook", wiring.authSkipPaths)
+	}
 }
