@@ -68,13 +68,18 @@ func printStartedMarker(url string) {
 		"\n\n")
 }
 
-// portalURL renders the browser-visitable address of the portal. A wildcard or
-// empty listen host is reported as localhost, since "https://:8081" and
-// "https://0.0.0.0:8081" are not addresses a human can click.
-func portalURL(addr string, tlsEnabled bool) string {
+// portalURL renders the browser-visitable address of the portal. When cfg.Domain is
+// set, it is used as-is: the BFF's own listen address is not what an operator should
+// visit when a reverse proxy (e.g. nginx) in front of it exposes a different host or
+// port. Otherwise a wildcard or empty listen host falls back to localhost, since
+// "https://:8081" and "https://0.0.0.0:8081" are not addresses a human can click.
+func portalURL(addr, domain string, tlsEnabled bool) string {
 	scheme := "http"
 	if tlsEnabled {
 		scheme = "https"
+	}
+	if domain != "" {
+		return scheme + "://" + domain
 	}
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -170,7 +175,7 @@ func runListeners(cfg *config.Config, handler http.Handler) error {
 			"listener directly to untrusted networks.")
 		s := newListenerServer(httpCfg.Port, handler)
 		servers = append(servers, s)
-		url := portalURL(s.Addr, false)
+		url := portalURL(s.Addr, cfg.Domain, false)
 		slog.Info("AI Workspace BFF: starting HTTP listener",
 			"addr", s.Addr, "url", url, "auth_mode", cfg.Auth.Mode,
 			"control_plane", cfg.ControlPlane.URL, "oidc_enabled", cfg.Auth.OIDC.Enabled,
@@ -188,7 +193,7 @@ func runListeners(cfg *config.Config, handler http.Handler) error {
 		s := newListenerServer(httpsCfg.Port, handler)
 		s.TLSConfig = tlsConfig
 		servers = append(servers, s)
-		url := portalURL(s.Addr, true)
+		url := portalURL(s.Addr, cfg.Domain, true)
 		slog.Info("AI Workspace BFF: starting HTTPS listener",
 			"addr", s.Addr, "url", url, "auth_mode", cfg.Auth.Mode,
 			"control_plane", cfg.ControlPlane.URL, "oidc_enabled", cfg.Auth.OIDC.Enabled,

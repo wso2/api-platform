@@ -41,6 +41,15 @@ import (
 // values the SPA reads) are deliberately not modeled here; they flow to RuntimeConfig
 // straight from the parsed config, gated by browserSafeKeys (see runtime_config.go).
 type Config struct {
+	// Domain is the externally-reachable host:port for this deployment (e.g. the
+	// address an nginx reverse proxy exposes it on), used only for the startup log
+	// banner. The internal listener bind address (see ServerConfig) is not what an
+	// operator should visit when a proxy in front of the BFF exposes a different
+	// host/port, so this is a separate, explicit value rather than derived from the
+	// listener. Not browser-safe: the SPA never needs it, since the browser already
+	// knows its own address via window.location.
+	Domain string `koanf:"domain"`
+
 	Server       ServerConfig       `koanf:"server"`
 	Logging      LoggingConfig      `koanf:"logging"`
 	ControlPlane ControlPlaneConfig `koanf:"control_plane"`
@@ -58,7 +67,8 @@ type Config struct {
 // on its own port, so a deployment can serve plain HTTP internally, HTTPS externally,
 // or both at once to migrate clients between them without downtime. The listeners
 // always bind all interfaces, so there is no host to configure. The SPA never needs
-// to be told its own origin — the browser already knows it via window.location.
+// to be told its own origin — the browser already knows it via window.location; this
+// is not sent to the browser (see browserSafeKeys in runtime_config.go).
 type ServerConfig struct {
 	StaticDir string        `koanf:"static_dir"` // directory containing the built SPA (index.html + assets)
 	HTTP      HTTPListener  `koanf:"http"`

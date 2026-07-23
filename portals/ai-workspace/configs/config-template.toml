@@ -26,6 +26,7 @@
 # ignores the variable entirely. By convention the variable name is the key's table
 # path under [ai_workspace], uppercased with underscores, prefixed APIP_AIW_:
 #
+#   [ai_workspace] domain                    ->  APIP_AIW_DOMAIN
 #   [ai_workspace.server.https] port         ->  APIP_AIW_SERVER_HTTPS_PORT
 #   [ai_workspace.auth.oidc] client_id       ->  APIP_AIW_AUTH_OIDC_CLIENT_ID
 #
@@ -58,13 +59,20 @@
 
 # ====================================================================
 # Deployment identity
-#
-# These keys are browser-safe: they are the subset served to the SPA as
-# window.__RUNTIME_CONFIG__. Never put a credential among them.
 # ====================================================================
 
-# Default region assigned to new organizations on first login.
+# Default region assigned to new organizations on first login. Browser-safe: served
+# to the SPA as window.__RUNTIME_CONFIG__.
 default_org_region = "us"
+
+# Externally-reachable host:port for this deployment, shown only in the startup log
+# banner ("Visit https://..."). Not browser-safe — the SPA never needs it, since the
+# browser already knows its own address via window.location. Leave unset to fall back
+# to the enabled listener's own bind address, which is correct for direct,
+# non-proxied access. Set this when a reverse proxy (e.g. nginx) in front of the BFF
+# exposes it on a different host or port than the listener binds to internally —
+# otherwise the log would show the internal address, which an operator can't reach.
+domain = "localhost:5380"
 
 
 # ---------------------------------------------------------------------------
