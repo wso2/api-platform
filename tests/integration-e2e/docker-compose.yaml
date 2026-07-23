@@ -268,9 +268,15 @@ services:
       # and wires only the SQLite path key (ignoring APIP_DP_DATABASE_DRIVER etc.).
       - ./devportal-config.toml:/app/configs/config.toml:ro
       # Same RS256 keypair volume platform-api signs with — the devportal reads
-      # only jwt_public.pem (0644) from it to verify those tokens. The private
-      # key stays 0600/uid-10001 and is not readable by this container's user.
-      - platform-api-jwt-keys:/etc/devportal/keys:ro
+      # only jwt_public.pem to verify those tokens. A subpath mount exposes just
+      # that one file, so the private key is never mounted into this container
+      # (defence in depth on top of its 0600/uid-10001 permissions).
+      - type: volume
+        source: platform-api-jwt-keys
+        target: /etc/devportal/keys/jwt_public.pem
+        read_only: true
+        volume:
+          subpath: jwt_public.pem
     environment:
       # Its own database on the shared postgres server (created by init-db.sql).
       # Postgres, not the devportal's default SQLite: the org-update path needs
