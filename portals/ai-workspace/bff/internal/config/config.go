@@ -255,7 +255,7 @@ func Load(path string) (*Config, error) {
 	}
 
 	// Defaults first, then overlay the file. WeaklyTypedInput lets a {{ env }} token's
-	// string value decode into the typed field (e.g. "5380" -> int, "true" -> bool);
+	// string value decode into the typed field (e.g. "9680" -> int, "true" -> bool);
 	// a value that cannot be coerced (e.g. enabled = "maybe") fails startup here rather
 	// than being silently dropped.
 	cfg := defaultConfig()

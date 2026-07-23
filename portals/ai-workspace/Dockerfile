@@ -62,17 +62,17 @@ COPY --chown=$USER_UID:$USER_GID --from=bff /bff /usr/local/bin/bff
 USER $USER_UID
 
 # No ENV config defaults are baked in on purpose: the BFF's built-in defaults already
-# match what this image needs (static dir /app, listener :5380, self-signed TLS,
+# match what this image needs (static dir /app, listener :9643, self-signed TLS,
 # in-memory sessions, Secure/Lax cookies). Configure a deployment by mounting a
 # config.toml at /etc/ai-workspace/config.toml; its '{{ env "APIP_AIW_..." }}' tokens
 # are what pull values in from the environment.
 
-EXPOSE 5380
+EXPOSE 9643 9680
 
 # Probe HTTPS first (the default), then fall back to HTTP so the check also works
 # when TLS is disabled (tls_self_signed = false and no cert mounted).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -fk https://localhost:5380/healthz || curl -f http://localhost:5380/healthz || exit 1
+  CMD curl -fk https://localhost:9643/healthz || curl -f http://localhost:9643/healthz || exit 1
 
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/usr/local/bin/bff"]
