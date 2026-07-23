@@ -27,6 +27,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 // mockLLMProviderTemplateCRUDRepo is a configurable fake covering the
@@ -133,6 +134,21 @@ func (m *mockLLMProviderTemplateCRUDRepo) CreateNewVersion(t *model.LLMProviderT
 	}
 	m.createdVersion = t
 	return nil
+}
+
+func (m *mockLLMProviderTemplateCRUDRepo) CreateImportedVersion(t *model.LLMProviderTemplate) (bool, error) {
+	if m.createNewVersionErr != nil {
+		return false, m.createNewVersionErr
+	}
+	makeLatest := true
+	for _, ev := range m.listVersionsResult {
+		if ev != nil && !utils.TemplateVersionNewer(t.Version, ev.Version) {
+			makeLatest = false
+		}
+	}
+	t.IsLatest = makeLatest
+	m.createdVersion = t
+	return makeLatest, nil
 }
 
 func (m *mockLLMProviderTemplateCRUDRepo) CountVersions(templateID, orgUUID string) (int, error) {

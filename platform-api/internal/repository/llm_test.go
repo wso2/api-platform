@@ -173,3 +173,68 @@ func TestLLMProviderTemplateRepo_GetByID_ExactVersion(t *testing.T) {
 		t.Fatalf("GetByID(unknown) = %+v, want nil", got)
 	}
 }
+
+// CreateImportedVersion must decide is_latest from the family it reads inside its own transaction
+// (not from any pre-computed value), so a lower version added after a higher one never steals the
+// latest slot and a genuine duplicate version is rejected. This is the regression guard for the
+// concurrent-import latest race: the decision + demotion + insert are one atomic unit.
+func TestLLMProviderTemplateRepo_CreateImportedVersion_DecidesLatestFromFamily(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	t.Cleanup(cleanup)
+
+	repo := NewLLMProviderTemplateRepo(db)
+	orgUUID := "org-imp-001"
+	projectUUID := "project-imp-001"
+	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
+
+	// Seed the family's first version as the current latest.
+	v2 := &model.LLMProviderTemplate{OrganizationUUID: orgUUID, ID: "openai-v2", GroupID: "openai", Name: "OpenAI", Version: "v2.0", Origin: "gateway_api"}
+	madeLatest, err := repo.CreateImportedVersion(v2)
+	if err != nil || !madeLatest {
+		t.Fatalf("CreateImportedVersion(v2.0) = (%v, %v), want (true, nil)", madeLatest, err)
+	}
+
+	// A lower version arriving afterwards must NOT become latest and must NOT demote v2.0.
+	v1 := &model.LLMProviderTemplate{OrganizationUUID: orgUUID, ID: "openai-v1", GroupID: "openai", Name: "OpenAI", Version: "v1.0", Origin: "gateway_api"}
+	madeLatest, err = repo.CreateImportedVersion(v1)
+	if err != nil {
+		t.Fatalf("CreateImportedVersion(v1.0) error: %v", err)
+	}
+	if madeLatest {
+		t.Errorf("v1.0 must not become latest when v2.0 already exists")
+	}
+	if got, _ := repo.GetByID("openai-v2", orgUUID); got == nil || !got.IsLatest {
+		t.Errorf("v2.0 must remain is_latest after a lower version is added")
+	}
+
+	// A higher version arriving afterwards becomes latest and demotes v2.0.
+	v3 := &model.LLMProviderTemplate{OrganizationUUID: orgUUID, ID: "openai-v3", GroupID: "openai", Name: "OpenAI", Version: "v3.0", Origin: "gateway_api"}
+	madeLatest, err = repo.CreateImportedVersion(v3)
+	if err != nil || !madeLatest {
+		t.Fatalf("CreateImportedVersion(v3.0) = (%v, %v), want (true, nil)", madeLatest, err)
+	}
+	if got, _ := repo.GetByID("openai-v2", orgUUID); got == nil || got.IsLatest {
+		t.Errorf("v2.0 must be demoted once v3.0 joins the family")
+	}
+
+	// A duplicate version (different handle, same group_id+version) is rejected, not retried forever.
+	dup := &model.LLMProviderTemplate{OrganizationUUID: orgUUID, ID: "openai-v3-dup", GroupID: "openai", Name: "OpenAI", Version: "v3.0", Origin: "gateway_api"}
+	if _, err := repo.CreateImportedVersion(dup); err == nil {
+		t.Errorf("CreateImportedVersion(duplicate v3.0) = nil error, want a version-exists error")
+	}
+
+	// Exactly one latest survives in the family.
+	all, err := repo.ListVersions("openai", orgUUID, 100, 0)
+	if err != nil {
+		t.Fatalf("ListVersions error: %v", err)
+	}
+	latestCount := 0
+	for _, v := range all {
+		if v.IsLatest {
+			latestCount++
+		}
+	}
+	if latestCount != 1 {
+		t.Errorf("family has %d is_latest rows, want exactly 1", latestCount)
+	}
+}
