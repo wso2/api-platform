@@ -9,8 +9,8 @@ All resources, including organization lifecycle endpoints
 Operations declare the least-privilege OAuth2 scopes required for each resource action.
 
 Base URLs:
-* <a href="https://localhost:3000/api/v0.9">https://localhost:3000/api/v0.9</a>
-* <a href="http://localhost:3000/api/v0.9">http://localhost:3000/api/v0.9</a>
+* <a href="https://localhost:9543/api/v0.9">https://localhost:9543/api/v0.9</a>
+* <a href="http://localhost:9543/api/v0.9">http://localhost:9543/api/v0.9</a>
 
 ## Table of Contents
 

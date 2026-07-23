@@ -15,7 +15,7 @@
 # APIP_DP_* var the compose file relies on MUST have a matching token here.
 
 [developer_portal.server]
-port = '{{ env "APIP_DP_SERVER_PORT" "3000" }}'
+port = '{{ env "APIP_DP_SERVER_PORT" "9543" }}'
 
 [developer_portal.server.https]
 # Plain HTTP inside the compose network — the e2e client talks to it over http.

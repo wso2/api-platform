@@ -45,13 +45,15 @@ services:
       - path: api-platform.env
         required: true
         format: raw
+    environment:
+      APIP_DP_SERVER_PORT: ${APIP_DP_SERVER_PORT:-9543}
     volumes:
       - ./configs/config.toml:/app/configs/config.toml:ro
       - sqlite_data:/app/data
       - ./resources/certificates:/etc/devportal/tls:ro
       - ./resources/keys:/etc/devportal/keys:ro
     ports:
-      - "3000:3000"
+      - "${APIP_DP_SERVER_PORT:-9543}:${APIP_DP_SERVER_PORT:-9543}"
     networks:
       - devportal-network
 

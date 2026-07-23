@@ -10,7 +10,7 @@
 
 ```shell
 
-curl -X POST https://localhost:3000/api/v0.9/views \
+curl -X POST https://localhost:9543/api/v0.9/views \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -120,7 +120,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:3000/api/v0.9/views \
+curl -X GET https://localhost:9543/api/v0.9/views \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -226,7 +226,7 @@ Status Code **200**
 
 ```shell
 
-curl -X PUT https://localhost:3000/api/v0.9/views/{viewId} \
+curl -X PUT https://localhost:9543/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -351,7 +351,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:3000/api/v0.9/views/{viewId} \
+curl -X GET https://localhost:9543/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -451,7 +451,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X DELETE https://localhost:3000/api/v0.9/views/{viewId} \
+curl -X DELETE https://localhost:9543/api/v0.9/views/{viewId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

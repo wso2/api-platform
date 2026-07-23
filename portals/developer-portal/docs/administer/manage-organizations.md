@@ -34,7 +34,7 @@ spec:
 ```
 
 ```bash
-curl -k -X POST https://localhost:3000/api/v0.9/organizations \
+curl -k -X POST https://localhost:9543/api/v0.9/organizations \
   -H "Authorization: Bearer $TOKEN" \
   -F "organization=@org.yaml"
 ```
@@ -56,7 +56,7 @@ After creation, the organization is accessible at `/<orgHandle>/views/<viewName>
 ## List Organizations
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/organizations -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:9543/api/v0.9/organizations -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Update an Organization
@@ -76,7 +76,7 @@ spec:
 ```
 
 ```bash
-curl -k -X PUT https://localhost:3000/api/v0.9/organizations/{orgId} \
+curl -k -X PUT https://localhost:9543/api/v0.9/organizations/{orgId} \
   -H "Authorization: Bearer $TOKEN" \
   -F "organization=@org-update.yaml"
 ```
@@ -84,7 +84,7 @@ curl -k -X PUT https://localhost:3000/api/v0.9/organizations/{orgId} \
 ## Delete an Organization
 
 ```bash
-curl -k -X DELETE https://localhost:3000/api/v0.9/organizations/{orgId} -H "Authorization: Bearer $TOKEN"
+curl -k -X DELETE https://localhost:9543/api/v0.9/organizations/{orgId} -H "Authorization: Bearer $TOKEN"
 ```
 
 > **Warning:** Deleting an organization removes all of its views, APIs, subscriptions, and applications. This action is irreversible.
@@ -159,7 +159,7 @@ For scripts and CLI tools, get a Bearer token directly from the Platform API and
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
-curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:3000/api/v0.9/organizations
+curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:9543/api/v0.9/organizations
 ```
 
 The token is verified locally by the Developer Portal against the Platform API's RS256 public key (`auth.local.public_key_path`), with no extra call to the Platform API per request.

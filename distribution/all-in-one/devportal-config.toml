@@ -13,7 +13,7 @@
 # a key below explicitly references it via a {{ env "..." }} token.
 
 [developer_portal.server]
-port = '{{ env "APIP_DP_SERVER_PORT" "3000" }}'
+port = '{{ env "APIP_DP_SERVER_PORT" "9543" }}'
 
 [developer_portal.server.https]
 # Plain HTTP — nothing in this stack talks to devportal over TLS.

@@ -10,7 +10,7 @@
 
 ```shell
 
-curl -X POST https://localhost:3000/api/v0.9/apis \
+curl -X POST https://localhost:9543/api/v0.9/apis \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -164,7 +164,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:3000/api/v0.9/apis \
+curl -X GET https://localhost:9543/api/v0.9/apis \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -388,7 +388,7 @@ Status Code **200**
 
 ```shell
 
-curl -X GET https://localhost:3000/api/v0.9/apis/{apiId} \
+curl -X GET https://localhost:9543/api/v0.9/apis/{apiId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -504,7 +504,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X PUT https://localhost:3000/api/v0.9/apis/{apiId} \
+curl -X PUT https://localhost:9543/api/v0.9/apis/{apiId} \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -654,7 +654,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X DELETE https://localhost:3000/api/v0.9/apis/{apiId} \
+curl -X DELETE https://localhost:9543/api/v0.9/apis/{apiId} \
   -u {username}:{password} \
   -H 'Accept: text/plain' \
   -H 'Authorization: Bearer {access-token}'

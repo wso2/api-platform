@@ -34,7 +34,7 @@
 const supertest = require('supertest');
 const { autoTrackFromResponse } = require('./cleanup');
 
-const BASE_URL = process.env.DEVPORTAL_BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.DEVPORTAL_BASE_URL || 'http://localhost:9543';
 const API_PREFIX = '/api/v0.9';
 const ORG_HANDLE = process.env.DEVPORTAL_ORG_HANDLE || 'default';
 

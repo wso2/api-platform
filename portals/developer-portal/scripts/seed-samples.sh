@@ -63,7 +63,7 @@ else
     exit 1
 fi
 
-DEVPORTAL_URL="${DEVPORTAL_URL:-https://localhost:3000}"
+DEVPORTAL_URL="${DEVPORTAL_URL:-https://localhost:9543}"
 PLATFORM_API_URL="${PLATFORM_API_URL:-https://localhost:9243}"
 
 # Colors/symbols only when writing to an interactive terminal (respects the

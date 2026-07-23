@@ -101,7 +101,7 @@ services:
       APIP_DP_SECURITY_ENCRYPTION_KEY: "7f40672c96fd437dc33550755e218d586014232ceb5b01c9405aab575bcb1f4a"
       APIP_DP_SECURITY_SESSION_SECRET: "527948cfb2478dbd4dfcd9d466df65d8c70511236fe63dba0da0f5385676f593"
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:9543/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -118,7 +118,7 @@ services:
     working_dir: /e2e
     shm_size: '2gb'
     environment:
-      CYPRESS_BASE_URL: "http://devportal:3000"
+      CYPRESS_BASE_URL: "http://devportal:9543"
       CYPRESS_API_KEY: "devportal-it-test-key"
     volumes:
       - ./ui:/e2e
@@ -134,7 +134,7 @@ services:
         condition: service_healthy
     working_dir: /rest-api
     environment:
-      DEVPORTAL_BASE_URL: "http://devportal:3000"
+      DEVPORTAL_BASE_URL: "http://devportal:9543"
       DEVPORTAL_ORG_HANDLE: "default"
       DEVPORTAL_ADMIN_USERNAME: "admin"
       DEVPORTAL_ADMIN_PASSWORD: "admin"

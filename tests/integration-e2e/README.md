@@ -92,7 +92,7 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
   portal) and are otherwise skipped automatically.
 - `PA_HOST_PORT` / `GW_HTTP_PORT` / `GW2_HTTP_PORT` / `DP_HOST_PORT` override the
   published host ports to avoid clashing with other local stacks (defaults 9243 /
-  18080 / 18081 / 3000).
+  18080 / 18081 / 9543).
 - `DEVPORTAL_IMAGE` overrides the developer-portal image (default
   `developer-portal:it-e2e`). `PA_WEBHOOK_KEY` is set automatically by the suite
   (a container-readable copy of the webhook private key) — you don't normally set it.

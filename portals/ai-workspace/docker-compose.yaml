@@ -76,9 +76,9 @@ services:
       - ./resources/certificates:/etc/devportal/tls:ro
       - ./resources/keys:/etc/devportal/keys:ro
     ports:
-      - "3000:3000"
+      - "9543:9543"
     healthcheck:
-      test: ["CMD", "curl", "-fk", "https://localhost:3000/health"]
+      test: ["CMD", "curl", "-fk", "https://localhost:9543/health"]
       interval: 30s
       timeout: 5s
       start_period: 10s

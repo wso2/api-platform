@@ -40,8 +40,8 @@
 # cert_file/key_file are required only when enabled=true (no self-signed fallback).
 
 [developer_portal.server]
-base_url = '{{ env "APIP_DP_SERVER_BASE_URL" "https://localhost:3000" }}'
-port = 3000
+base_url = '{{ env "APIP_DP_SERVER_BASE_URL" "https://localhost:9543" }}'
+port = 9543
 
 [developer_portal.server.https]
 enabled = false
@@ -123,11 +123,11 @@ user_info_url = "https://localhost:9443/oauth2/userinfo"
 client_id = ""
 client_secret = ""
 audience = ""
-callback_url = "http://localhost:3000/default/callback"
+callback_url = "http://localhost:9543/default/callback"
 scope = "openid profile email"
 sign_up_url = ""
 logout_url = "https://localhost:9443/oidc/logout"
-logout_redirect_uri = "http://localhost:3000/default"
+logout_redirect_uri = "http://localhost:9543/default"
 certificate = ""
 jwks_url = "https://localhost:9443/oauth2/jwks"
 token_refresh_timeout_ms = 10000
