@@ -107,11 +107,13 @@ API_CREATED=0; API_SKIPPED=0; API_FAILED=0
 MCP_CREATED=0; MCP_SKIPPED=0; MCP_FAILED=0
 
 # Uploads sample_dir/docs/ as the content ZIP for an already-created API/MCP server.
-# Result is left in DOCS_RESULT (a ready-to-print fragment) rather than printed
-# directly, so seed_entry can fold it into that sample's single summary line.
+# Result is left in DOCS_RESULT (a ready-to-print fragment) and DOCS_FAILED (0/1)
+# rather than printed directly, so seed_entry can fold the fragment into that
+# sample's single summary line and tally the outcome into the right counter.
 seed_docs() {
     local sample_dir="$1" resource_path="$2"
     DOCS_RESULT=""
+    DOCS_FAILED=0
     [ -d "$sample_dir/docs" ] || return 0
 
     local tmp_zip
@@ -135,6 +137,7 @@ seed_docs() {
         DOCS_RESULT="${C_GREEN}docs ${SYM_OK}${C_RESET}"
     else
         DOCS_RESULT="${C_RED}docs ${SYM_FAIL} (${http_code})${C_RESET}"
+        DOCS_FAILED=1
     fi
 }
 
@@ -193,13 +196,21 @@ seed_entry() {
     if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
         id=$(echo "$body" | jq -r '.id // empty')
         DOCS_RESULT=""
+        DOCS_FAILED=0
         [ -n "$id" ] && seed_docs "$sample_dir" "/api/v0.9/$endpoint/$id"
-        if [ -n "$DOCS_RESULT" ]; then
+        if [ "$DOCS_FAILED" -eq 1 ]; then
+            # Entry itself was created, but its docs upload failed — surface this
+            # as a failure (red symbol, FAILED tally) rather than a clean success,
+            # so the closing summary's failed count isn't silently undercounted.
+            printf "  ${C_RED}%s${C_RESET} %-28s ${C_DIM}(id: %s, %s${C_DIM})${C_RESET}\n" "$SYM_FAIL" "$name" "$id" "$DOCS_RESULT"
+            bump_counter "$endpoint" FAILED
+        elif [ -n "$DOCS_RESULT" ]; then
             printf "  ${C_GREEN}%s${C_RESET} %-28s ${C_DIM}(id: %s, %s${C_DIM})${C_RESET}\n" "$SYM_OK" "$name" "$id" "$DOCS_RESULT"
+            bump_counter "$endpoint" CREATED
         else
             printf "  ${C_GREEN}%s${C_RESET} %-28s ${C_DIM}(id: %s)${C_RESET}\n" "$SYM_OK" "$name" "$id"
+            bump_counter "$endpoint" CREATED
         fi
-        bump_counter "$endpoint" CREATED
     elif [ "$http_code" -eq 409 ]; then
         printf "  ${C_YELLOW}%s${C_RESET} %-28s ${C_DIM}(already exists)${C_RESET}\n" "$SYM_SKIP" "$name"
         bump_counter "$endpoint" SKIPPED

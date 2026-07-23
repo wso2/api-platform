@@ -32,25 +32,15 @@
 --
 -- Other dialects use a LIKE-based fallback in searchAPIMetadataFallback().
 
+-- Associations (contents/labels/tags/subscription plans + limits) are deliberately
+-- NOT aggregated here — none of them feed the WHERE clause below, and JSONB_AGG'ing
+-- dp_api_subscription_plan_mappings only yields mapping-table columns (api_uuid,
+-- plan_uuid), not the actual plan data (handle, display_name, limits) that
+-- APIDTO/APISubscriptionPlan need. src/dao/apiDao.js's search() runs these rows
+-- through the same attachAssociations() every other list method uses instead,
+-- per the project's app-side-stitching convention (no JSON aggregation).
 SELECT
     metadata.*,
-    COALESCE(
-        JSONB_AGG(DISTINCT JSONB_BUILD_OBJECT('api_uuid', images.api_uuid, 'lookup_key', images.lookup_key, 'file_name', images.file_name, 'type', images.type))
-            FILTER (WHERE images.api_uuid IS NOT NULL),
-        '[]'
-    ) AS "DP_API_CONTENTs",
-    COALESCE(
-        JSONB_AGG(DISTINCT TO_JSONB(spm.*)) FILTER (WHERE spm.api_uuid IS NOT NULL),
-        '[]'
-    ) AS "DP_API_SUBSCRIPTION_PLAN_MAPPING",
-    COALESCE(
-        ARRAY_AGG(DISTINCT lbl.handle) FILTER (WHERE lbl.handle IS NOT NULL),
-        '{}'
-    ) AS "DP_LABELs",
-    COALESCE(
-        ARRAY_AGG(DISTINCT tg.name) FILTER (WHERE tg.name IS NOT NULL),
-        '{}'
-    ) AS "DP_TAGs",
     ts_rank(
         to_tsvector('english', metadata.metadata_search::text),
         plainto_tsquery('english', COALESCE(:searchTerm, ''))
@@ -75,24 +65,6 @@ LEFT JOIN
         OR content.file_name LIKE '%.xml%'
         OR content.file_name LIKE '%.graphql%'
     )
-LEFT OUTER JOIN
-    dp_api_contents images
-    ON metadata.uuid = images.api_uuid AND images.type = 'IMAGE'
-LEFT OUTER JOIN
-    dp_api_subscription_plan_mappings spm
-    ON metadata.uuid = spm.api_uuid
-LEFT OUTER JOIN
-    dp_api_label_mappings alm_join
-    ON metadata.uuid = alm_join.api_uuid
-LEFT OUTER JOIN
-    dp_labels lbl
-    ON alm_join.label_uuid = lbl.uuid
-LEFT OUTER JOIN
-    dp_api_tag_mappings atm_join
-    ON metadata.uuid = atm_join.api_uuid
-LEFT OUTER JOIN
-    dp_tags tg
-    ON atm_join.tag_uuid = tg.uuid
 WHERE
     (
         to_tsvector('english', metadata.metadata_search::text) @@ plainto_tsquery('english', COALESCE(:searchTerm, ''))

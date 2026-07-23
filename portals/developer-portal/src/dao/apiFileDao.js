@@ -214,7 +214,7 @@ const deleteFile = async (fileName, type, orgId, apiId, t) => {
          WHERE c.file_name = ? AND c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ?`,
         [fileName, apiId, `%${type}%`, orgId]
     );
-    let rowCount;
+    let rowCount = 0;
     for (const content of contentsToDelete) {
         ({ rowCount } = await exec.execute(
             `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND file_name = ? AND type = ?`,
@@ -231,7 +231,7 @@ const deleteAll = async (type, orgId, apiId, t) => {
          WHERE c.api_uuid = ? AND c.type LIKE ? AND m.org_uuid = ?`,
         [apiId, `%${type}%`, orgId]
     );
-    let rowCount;
+    let rowCount = 0;
     for (const content of contentsToDelete) {
         ({ rowCount } = await exec.execute(
             `DELETE FROM ${CONTENT_TABLE} WHERE api_uuid = ? AND file_name = ? AND type = ?`,

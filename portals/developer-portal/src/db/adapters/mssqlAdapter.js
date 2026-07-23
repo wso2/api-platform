@@ -47,6 +47,12 @@ function buildConnectionConfig(config) {
 function createMssqlAdapter(config) {
     const pool = new sql.ConnectionPool(buildConnectionConfig(config));
     const ready = pool.connect();
+    // Every caller awaits `ready` before issuing a query (see run()/withTransaction()
+    // below), so a connect() failure still surfaces correctly to the first caller —
+    // but until that first await happens, an unhandled rejection here would crash
+    // the process. Attach a no-op catch immediately to prevent that; the real error
+    // still propagates through every `await ready` call site.
+    ready.catch(() => { /* surfaced to callers via query rejections */ });
     // Surface pool-level connection errors instead of letting them crash the
     // process as unhandled 'error' events (mssql/tedious convention).
     pool.on('error', () => { /* connection errors surface to callers via query rejections */ });

@@ -158,6 +158,35 @@ function bindNamedParams(sqlText, valuesByName) {
 }
 
 /**
+ * Returns the create/release/rollback SQL for a savepoint named `name`, in the
+ * active dialect's syntax. Used to recover a transaction after a caught,
+ * expected error (e.g. a duplicate-key race in a find-or-create) — see
+ * db.withSavepoint() in driver.js for why this is necessary on Postgres/MSSQL
+ * but not SQLite: on Postgres, any error inside a transaction poisons the
+ * *entire* transaction ("current transaction is aborted, commands ignored
+ * until end of transaction block") until a ROLLBACK or ROLLBACK TO SAVEPOINT
+ * runs — a plain catch-and-continue silently fails every statement after it.
+ *
+ * MSSQL has no explicit "release" statement — a savepoint is automatically
+ * discarded on commit or superseded by the next SAVE TRANSACTION with the
+ * same name, so `release` is null there.
+ */
+function savepointStatements(dialect, name) {
+    if (dialect === DIALECTS.MSSQL) {
+        return {
+            create: `SAVE TRANSACTION ${name}`,
+            release: null,
+            rollback: `ROLLBACK TRANSACTION ${name}`,
+        };
+    }
+    return {
+        create: `SAVEPOINT ${name}`,
+        release: `RELEASE SAVEPOINT ${name}`,
+        rollback: `ROLLBACK TO SAVEPOINT ${name}`,
+    };
+}
+
+/**
  * Reports whether `err` is a unique-constraint / duplicate-key violation for
  * the active dialect. Replaces `error instanceof Sequelize.UniqueConstraintError`
  * checks throughout the DAOs.
@@ -187,5 +216,6 @@ module.exports = {
     paginationClause,
     buildUpsert,
     bindNamedParams,
+    savepointStatements,
     isDuplicateKeyError,
 };

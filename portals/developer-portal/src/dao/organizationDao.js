@@ -158,10 +158,11 @@ const deleteOrgDependents = async (orgUuid, t) => {
     await exec.execute('DELETE FROM dp_api_keys WHERE org_uuid = ?', [orgUuid]);
     await exec.execute('DELETE FROM dp_subscriptions WHERE org_uuid = ?', [orgUuid]);
 
-    const [apps, keyManagers] = await Promise.all([
-        exec.query('SELECT uuid FROM dp_applications WHERE org_uuid = ?', [orgUuid]),
-        exec.query('SELECT uuid FROM dp_key_managers WHERE org_uuid = ?', [orgUuid]),
-    ]);
+    // Sequential, not Promise.all: both queries share the same connection/transaction
+    // handle (sqlite's single connection, or an open tx on postgres/mssql), so running
+    // them concurrently would interleave two statements on one session.
+    const apps = await exec.query('SELECT uuid FROM dp_applications WHERE org_uuid = ?', [orgUuid]);
+    const keyManagers = await exec.query('SELECT uuid FROM dp_key_managers WHERE org_uuid = ?', [orgUuid]);
     if (apps.length || keyManagers.length) {
         const conditions = [];
         const params = [];

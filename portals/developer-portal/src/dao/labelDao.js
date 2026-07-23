@@ -144,11 +144,11 @@ const update = async (orgId, label, updatedBy, t) => {
     if (!row) {
         const uuid = crypto.randomUUID();
         try {
-            await exec.execute(
+            await db.withSavepoint(exec, () => exec.execute(
                 `INSERT INTO ${LABELS_TABLE} (uuid, handle, display_name, org_uuid, created_by, updated_by)
                  VALUES (?, ?, ?, ?, ?, ?)`,
                 [uuid, label.handle, label.displayName, orgId, updatedBy, updatedBy]
-            );
+            ));
             return {
                 uuid,
                 handle: label.handle,

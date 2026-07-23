@@ -43,10 +43,10 @@ const findOrCreateSafe = async (table, whereCols, insertCols, exec = db) => {
     const insertColNames = Object.keys(insertCols);
     const placeholders = insertColNames.map(() => '?').join(', ');
     try {
-        await exec.execute(
+        await db.withSavepoint(exec, () => exec.execute(
             `INSERT INTO ${table} (${insertColNames.join(', ')}) VALUES (${placeholders})`,
             Object.values(insertCols)
-        );
+        ));
     } catch (error) {
         if (!db.isDuplicateKeyError(error)) {
             throw error;

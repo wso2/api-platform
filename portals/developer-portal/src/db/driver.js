@@ -38,6 +38,7 @@
  * how each dialect's driver actually wants those placeholders expressed.
  */
 const { AsyncLocalStorage } = require('node:async_hooks');
+const crypto = require('node:crypto');
 const { config } = require('../config/configLoader');
 const rebindHelpers = require('./rebind');
 
@@ -104,7 +105,7 @@ function ambient(method) {
     };
 }
 
-module.exports = {
+const driverApi = {
     getDialect: () => dialect,
     query: ambient('query'),
     queryOne: ambient('queryOne'),
@@ -119,5 +120,37 @@ module.exports = {
         rebindHelpers.buildUpsert(dialect, table, insertCols, conflictCols, updateCols),
     bindNamedParams: (sqlText, valuesByName) => rebindHelpers.bindNamedParams(sqlText, valuesByName),
     isDuplicateKeyError: (err) => rebindHelpers.isDuplicateKeyError(dialect, err),
+    /**
+     * Runs `fn` guarded by a SAVEPOINT when `exec` is a live transaction handle,
+     * so a caught, expected error inside it (e.g. a duplicate-key race in a
+     * find-or-create) can be recovered from with ROLLBACK TO SAVEPOINT instead
+     * of poisoning the rest of the transaction — see rebind.js's
+     * savepointStatements() for why this matters on Postgres/MSSQL.
+     *
+     * When `exec` is the bare module-level db (no active transaction — compared
+     * by reference, since every withTransaction() call produces a fresh wrap()
+     * object), there is no multi-statement session to protect: each statement
+     * already commits independently, so `fn` just runs directly.
+     */
+    withSavepoint: async (exec, fn) => {
+        if (exec === driverApi) {
+            return fn();
+        }
+        const name = `sp_${crypto.randomBytes(4).toString('hex')}`;
+        const { create, release, rollback } = rebindHelpers.savepointStatements(dialect, name);
+        await exec.execute(create);
+        try {
+            const result = await fn();
+            if (release) {
+                await exec.execute(release);
+            }
+            return result;
+        } catch (err) {
+            await exec.execute(rollback);
+            throw err;
+        }
+    },
     close: () => adapter.close(),
 };
+
+module.exports = driverApi;

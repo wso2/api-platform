@@ -333,7 +333,9 @@ const search = async (orgId, searchTerm, viewName, t, typeFilter) => {
         includeType: typeFilter?.include || null,
         excludeType: typeFilter?.exclude || null,
     });
-    return exec.query(sql, params);
+    const rows = await exec.query(sql, params);
+    await attachAssociations(rows, t);
+    return rows;
 };
 
 const getId = async (orgId, apiHandle) => {
@@ -370,7 +372,7 @@ const getHandle = async (orgId, apiRefId) => {
         `SELECT handle FROM ${API_METADATA_TABLE} WHERE ref_id = ? AND org_uuid = ?`,
         [apiRefId, orgId]
     );
-    return api.handle;
+    return api?.handle ?? null;
 };
 
 const getIdByRef = async (orgId, referenceId, t) => {

@@ -68,11 +68,11 @@ const update = async (orgId, handle, displayName, updatedBy, t) => {
         const uuid = crypto.randomUUID();
         const initialDisplayName = displayName ? displayName : handle;
         try {
-            await exec.execute(
+            await db.withSavepoint(exec, () => exec.execute(
                 `INSERT INTO ${VIEWS_TABLE} (uuid, handle, display_name, org_uuid, created_by, updated_by)
                  VALUES (?, ?, ?, ?, ?, ?)`,
                 [uuid, handle, initialDisplayName, orgId, updatedBy, updatedBy]
-            );
+            ));
             return {
                 uuid,
                 handle,
