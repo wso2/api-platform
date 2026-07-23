@@ -81,6 +81,16 @@ function resolveDesignFallback(filePath) {
  * stays consistent across every page instead of breaking one scenario at a time.
  */
 function rewriteViewStyles(content, orgId, viewName) {
+    // orgId/viewName are identifiers interpolated into the layout string that is later
+    // passed to Handlebars.compile() (see renderTemplateWithView / renderTemplateFromAPI).
+    // Handlebars metacharacters ({ }) would turn a crafted viewName into live template
+    // code (SSTI), and .escape() upstream does not neutralize braces — so reject them
+    // here at the single choke point. A null byte is never legitimate either.
+    for (const [label, value] of [['orgId', orgId], ['viewName', viewName]]) {
+        if (typeof value === 'string' && /[{}\0]/.test(value)) {
+            throw new CustomError(400, constants.ERROR_CODE[400], `Invalid ${label}: illegal characters`);
+        }
+    }
     return content.replace(
         /\/styles\//g,
         `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?orgId=${orgId}&fileType=style&fileName=`
@@ -880,16 +890,19 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                         content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     }
                     validateScripts(strContent);
+                    validateTemplateExpressions(strContent);
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("partials")) {
                     strContent = strContent.replace(/"\/images\/([^"]+)/g, `"${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
                     strContent = strContent.replace(/'\/images\/([^']+)/g, `'${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=image&fileName=$1`);
                     content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     validateScripts(strContent);
+                    validateTemplateExpressions(strContent);
                     fileType = "partial"
                 } else if (file.name.endsWith(".md") && dir.endsWith("content")) {
                     fileType = "markDown";
                 } else if (file.name.endsWith(".hbs")) {
                     validateScripts(strContent);
+                    validateTemplateExpressions(strContent);
                     fileType = "template";
                 } else if (imageExtensions.includes(fileExtension)) {
                     fileType = "image";
@@ -1005,6 +1018,106 @@ function validateScripts(strContent) {
             logger.error("Error occurred while validating scripts", {
                 error: error.message,
                 description: error.description,
+                stack: error.stack,
+            });
+        }
+        throw error;
+    }
+}
+
+// Helper names that let an uploaded theme serialise/exfiltrate context (e.g. {{{json @root}}},
+// {{getValue profile "csrfToken"}}). These are never used by the packaged default theme outside
+// <script> data islands (which are stripped before parsing here), so rejecting them causes no
+// false positives. NOTE: `lookup` is deliberately excluded — the default theme uses it benignly
+// as {{#with (lookup limits 0)}}; its dangerous form ({{lookup this "csrfToken"}}) is instead
+// caught by the whole-context-argument rule below.
+const DISALLOWED_TEMPLATE_HELPERS = new Set(['json', 'getvalue', 'jsonsafesubscriptions']);
+// Helpers that serialise or dynamically index whatever they're handed. Passing the WHOLE render
+// context to one of these dumps everything (incl. csrfToken) or bypasses the path denylist —
+// e.g. {{{jsonBeautify this}}}, {{lookup this "csrfToken"}}. The default theme only ever passes
+// a narrowed value (this.inputSchema, lookup limits 0), so scoping the whole-context check to
+// these helpers avoids flagging benign loop-item calls like {{stripMdExtension this}}.
+const CONTEXT_SENSITIVE_HELPERS = new Set(['json', 'jsonbeautify', 'jsonattr', 'jsonsafesubscriptions', 'getvalue', 'lookup']);
+// Context keys a theme must never echo. csrfToken is only ever injected into forms server-side;
+// a template that references it is attempting to steal it. (profile / @root are intentionally
+// NOT here — the default theme legitimately renders {{profile.firstName}}, {{@root.baseUrl}}, etc.)
+const DISALLOWED_TEMPLATE_PATHS = new Set(['csrftoken']);
+
+/**
+ * Reject SSTI/data-exfiltration constructs in uploaded theme .hbs before it is stored and later
+ * fed to Handlebars.compile() (renderGivenTemplate / renderLlmsTxt / renderMarkdownTemplateFromAPI).
+ * validateScripts() only inspects <script> tags; this closes the Handlebars-expression gap.
+ *
+ * Complements, not replaces, validateScripts — run both. Uses the Handlebars AST (robust vs regex).
+ * The denylist is deliberately tight (verified against the default theme) to avoid breaking
+ * legitimate customisation; it is not exhaustive, so keep the render context minimal as well.
+ */
+function validateTemplateExpressions(strContent) {
+    try {
+        // validateScripts has already rejected any <script> not on its allowlist, so every
+        // remaining script block is vetted. Strip them all so the legitimate {{{json ...}}} /
+        // {{{jsonSafeSubscriptions ...}}} data islands inside them aren't re-flagged here.
+        const withoutScripts = String(strContent).replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+
+        let ast;
+        try {
+            ast = Handlebars.parse(withoutScripts);
+        } catch (parseError) {
+            throw new CustomError(400, constants.ERROR_CODE[400],
+                `Invalid template syntax in uploaded theme: ${parseError.message}`);
+        }
+
+        const reject = (detail) => {
+            logger.error('Template expression validation failed', { detail });
+            throw new CustomError(400, constants.ERROR_CODE[400],
+                `Disallowed template expression in uploaded theme: ${detail}`);
+        };
+
+        const helperHead = (node) => {
+            const p = node && node.path;
+            if (p && p.type === 'PathExpression' && Array.isArray(p.parts) && p.parts.length) {
+                return String(p.parts[0]).toLowerCase();
+            }
+            return '';
+        };
+
+        // A PathExpression that refers to the ENTIRE render context: bare @root, or bare
+        // this/`.` at depth 0. Passing this to a serialising/dynamic helper dumps everything
+        // (incl. csrfToken), e.g. {{{jsonBeautify this}}} or {{lookup this "csrfToken"}}.
+        // Legitimate use always narrows first (@root.baseUrl, this.inputSchema, lookup limits 0).
+        const isWholeContextRef = (n) => n && n.type === 'PathExpression' && Array.isArray(n.parts)
+            && ((n.data === true && n.parts.length === 1 && String(n.parts[0]).toLowerCase() === 'root')
+                || (!n.data && n.depth === 0 && n.parts.length === 0));
+
+        class ExpressionGuard extends Handlebars.Visitor {
+            // Covers {{helper ...}}, {{#helper ...}} and (helper ...) subexpressions.
+            checkCallable(node) {
+                const head = helperHead(node);
+                if (head && DISALLOWED_TEMPLATE_HELPERS.has(head)) {
+                    reject(`helper "${head}" is not allowed`);
+                }
+                if (head && CONTEXT_SENSITIVE_HELPERS.has(head)
+                    && Array.isArray(node.params) && node.params.some(isWholeContextRef)) {
+                    reject(`passing the whole context to helper "${head}" is not allowed`);
+                }
+            }
+            MustacheStatement(node) { this.checkCallable(node); super.MustacheStatement(node); }
+            BlockStatement(node) { this.checkCallable(node); super.BlockStatement(node); }
+            SubExpression(node) { this.checkCallable(node); super.SubExpression(node); }
+            // Runs for every path — output, helper argument, hash value or block param.
+            PathExpression(node) {
+                const head = (Array.isArray(node.parts) && node.parts.length)
+                    ? String(node.parts[0]).toLowerCase() : '';
+                if (head && DISALLOWED_TEMPLATE_PATHS.has(head)) {
+                    reject(`reference to "${head}" is not allowed`);
+                }
+            }
+        }
+        new ExpressionGuard().accept(ast);
+    } catch (error) {
+        if (!(error instanceof CustomError)) {
+            logger.error('Error occurred while validating template expressions', {
+                error: error.message,
                 stack: error.stack,
             });
         }
@@ -1206,6 +1319,7 @@ module.exports = {
     validateRequestParameters,
     rejectExtraProperties,
     readFilesInDirectory,
+    validateTemplateExpressions,
     appendAPIImageURL,
     appendSubscriptionPlanDetails,
     listFiles,
