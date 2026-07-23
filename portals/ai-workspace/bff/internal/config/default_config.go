@@ -26,7 +26,6 @@ func defaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
 			StaticDir: "/app",
-			Domain:    "localhost:5380",
 			HTTP: HTTPListener{
 				Enabled: false,
 				Port:    5080,

@@ -26,7 +26,6 @@
 # ignores the variable entirely. By convention the variable name is the key's table
 # path under [ai_workspace], uppercased with underscores, prefixed APIP_AIW_:
 #
-#   [ai_workspace] domain                    ->  APIP_AIW_DOMAIN
 #   [ai_workspace.server.https] port         ->  APIP_AIW_SERVER_HTTPS_PORT
 #   [ai_workspace.auth.oidc] client_id       ->  APIP_AIW_AUTH_OIDC_CLIENT_ID
 #
@@ -72,9 +71,10 @@ default_org_region = "us"
 # Server
 #
 # Everything in this table configures the AI Workspace server itself. These values
-# stay server-side and are never sent to the browser, with two exceptions: domain
-# (the SPA needs it to display the deployment's own address) and the
-# [ai_workspace.auth.oidc] claim names (the SPA needs them to display user/org identity).
+# stay server-side and are never sent to the browser — the SPA never needs to be told
+# its own address, since the browser already knows it via window.location. The one
+# exception is the [ai_workspace.auth.oidc] claim names (the SPA needs them to display
+# user/org identity).
 #
 # All keys are optional: the value in each token's default position is the built-in
 # default.
@@ -90,12 +90,7 @@ default_org_region = "us"
 # (e.g. to migrate clients between them without downtime). Both always bind all
 # interfaces (there is no host to configure), and the container publishes whichever
 # port(s) are enabled.
-[ai_workspace.server]
-
-# Domain shown in the browser address bar (host:port, or just host for port 80/443).
-# Browser-safe — served to the SPA as APIP_AIW_SERVER_DOMAIN.
-domain = "localhost:5380"
-
+#
 # Defaults: the HTTPS listener is on at 5380; the plain-HTTP listener is off. Enable
 # the plain-HTTP listener only when a trusted upstream (ingress, service-mesh sidecar)
 # terminates TLS, or for internal traffic — never expose it directly to untrusted

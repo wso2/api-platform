@@ -3,11 +3,6 @@
 default_org_region = "us"
 
 
-[ai_workspace.server]
-
-domain = '{{ env "APIP_AIW_SERVER_DOMAIN" "localhost:5380" }}'
-
-
 [ai_workspace.server.https]
 
 port      = '{{ env "APIP_AIW_SERVER_HTTPS_PORT" "5380" }}'

@@ -56,17 +56,13 @@ type Config struct {
 // ServerConfig is [ai_workspace.server]: two independent listeners, following the
 // platform-wide [server.http] / [server.https] shape — either or both may run, each
 // on its own port, so a deployment can serve plain HTTP internally, HTTPS externally,
-// or both at once to migrate clients between them without downtime. Domain is the one
-// browser-safe key here (served to the SPA as APIP_AIW_SERVER_DOMAIN); everything else
-// stays server-side. The listeners always bind all interfaces, so there is no host to
-// configure.
+// or both at once to migrate clients between them without downtime. The listeners
+// always bind all interfaces, so there is no host to configure. The SPA never needs
+// to be told its own origin — the browser already knows it via window.location.
 type ServerConfig struct {
-	StaticDir string `koanf:"static_dir"` // directory containing the built SPA (index.html + assets)
-	// Domain is shown in the browser address bar (host:port, or just host for port
-	// 80/443). Browser-safe — see browserSafeKeys in runtime_config.go.
-	Domain string        `koanf:"domain"`
-	HTTP   HTTPListener  `koanf:"http"`
-	HTTPS  HTTPSListener `koanf:"https"`
+	StaticDir string        `koanf:"static_dir"` // directory containing the built SPA (index.html + assets)
+	HTTP      HTTPListener  `koanf:"http"`
+	HTTPS     HTTPSListener `koanf:"https"`
 }
 
 // HTTPListener configures the plain-HTTP listener. Enable it only when a trusted

@@ -79,7 +79,6 @@ Environment overrides go in `api-platform.env` (git-ignored; loaded into both co
 | Setting | Description |
 |---------|-------------|
 | `[ai_workspace] default_org_region` | Default region assigned to new organizations on first login |
-| `[ai_workspace.server] domain` | Host and port shown in the browser address bar |
 | `[ai_workspace.auth] mode` | `basic` (file-based quickstart) or `oidc` (external IDP) |
 | `[ai_workspace.control_plane].url` | Base URL of the upstream Platform API hop |
 | `[ai_workspace.control_plane].ca_file` | PEM bundle trusted for the upstream's TLS cert (appended to system roots). Fixed to the mounted path — not env-overridable; edit the TOML if you change the volume mount in `docker-compose.yaml` |

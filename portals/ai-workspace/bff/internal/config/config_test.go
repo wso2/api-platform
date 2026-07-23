@@ -209,7 +209,7 @@ client_secret = '{{ env "CUSTOM_SECRET_VAR" }}'
 
 // The upstream URL is mandatory — the BFF has nothing to proxy to without it.
 func TestLoad_MissingControlPlaneURL_Errors(t *testing.T) {
-	cfgPath := writeConfig(t, "[ai_workspace.server]\ndomain = \"localhost:5380\"")
+	cfgPath := writeConfig(t, "[ai_workspace]\ndefault_org_region = \"us\"")
 
 	_, err := Load(cfgPath)
 	if err == nil {
@@ -224,8 +224,8 @@ func TestLoad_MissingControlPlaneURL_Errors(t *testing.T) {
 // and OIDC client credentials must never appear in it.
 func TestLoad_RuntimeConfigExcludesServerSideKeys(t *testing.T) {
 	cfgPath := writeConfig(t, `
-[ai_workspace.server]
-domain    = "localhost:5380"
+[ai_workspace]
+default_org_region = "us"
 
 [ai_workspace.auth]
 mode = "oidc"
@@ -245,8 +245,8 @@ redirect_url  = "https://localhost:5380/api/auth/callback"
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if got := cfg.RuntimeConfig["APIP_AIW_SERVER_DOMAIN"]; got != "localhost:5380" {
-		t.Errorf("APIP_AIW_SERVER_DOMAIN = %q, want the browser-safe domain to be surfaced", got)
+	if got := cfg.RuntimeConfig["APIP_AIW_DEFAULT_ORG_REGION"]; got != "us" {
+		t.Errorf("APIP_AIW_DEFAULT_ORG_REGION = %q, want the browser-safe value to be surfaced", got)
 	}
 	for _, v := range cfg.RuntimeConfig {
 		if strings.Contains(v, "s3cr3t") || strings.Contains(v, "platform-api:9243") {
@@ -285,20 +285,20 @@ url = "https://platform-api:9243"
 // under that same name, exactly as if it had been written as a literal.
 func TestLoad_BrowserSafeKeyFromEnvToken(t *testing.T) {
 	cfgPath := writeConfig(t, `
-[ai_workspace.server]
-domain = '{{ env "APIP_AIW_SERVER_DOMAIN" "localhost:5380" }}'
+[ai_workspace]
+default_org_region = '{{ env "APIP_AIW_DEFAULT_ORG_REGION" "us" }}'
 
 [ai_workspace.control_plane]
 url = "https://platform-api:9243"
 `)
-	t.Setenv("APIP_AIW_SERVER_DOMAIN", "app.example.com")
+	t.Setenv("APIP_AIW_DEFAULT_ORG_REGION", "eu")
 
 	cfg, err := Load(cfgPath)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if got := cfg.RuntimeConfig["APIP_AIW_SERVER_DOMAIN"]; got != "app.example.com" {
-		t.Errorf("APIP_AIW_SERVER_DOMAIN = %q, want the token-resolved value to reach the browser", got)
+	if got := cfg.RuntimeConfig["APIP_AIW_DEFAULT_ORG_REGION"]; got != "eu" {
+		t.Errorf("APIP_AIW_DEFAULT_ORG_REGION = %q, want the token-resolved value to reach the browser", got)
 	}
 }
 
