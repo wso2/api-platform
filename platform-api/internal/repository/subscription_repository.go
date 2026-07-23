@@ -28,7 +28,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -49,20 +49,14 @@ func hashSubscriptionToken(token string) string {
 }
 
 // getSubscriptionTokenEncryptionKey returns the 32-byte key for subscription token encryption.
-// Precedence: DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY → DATABASE_ENCRYPTION_KEY → AUTH_JWT_SECRET_KEY.
+// The single configured EncryptionKey is used for all at-rest encryption.
 func getSubscriptionTokenEncryptionKey() ([]byte, error) {
 	cfg := config.GetConfig()
-	keyStr := cfg.Database.SubscriptionTokenEncryptionKey
-	if keyStr == "" {
-		keyStr = cfg.Database.EncryptionKey
+	if cfg.Security.EncryptionKey == "" {
+		return nil, fmt.Errorf("subscription token encryption requires EncryptionKey. Set encryption_key" +
+			" in config via {{ env }}/{{ file }}")
 	}
-	if keyStr == "" {
-		keyStr = cfg.Auth.JWT.SecretKey
-	}
-	if keyStr == "" {
-		return nil, fmt.Errorf("subscription token encryption requires DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY, DATABASE_ENCRYPTION_KEY, or AUTH_JWT_SECRET_KEY")
-	}
-	return utils.DeriveEncryptionKey(keyStr)
+	return utils.DeriveEncryptionKey(cfg.Security.EncryptionKey)
 }
 
 // SubscriptionRepo implements SubscriptionRepository
@@ -108,7 +102,7 @@ func (r *SubscriptionRepo) Create(sub *model.Subscription) error {
 		return fmt.Errorf("failed to encrypt subscription token: %w", err)
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	sub.CreatedAt = now
 	sub.UpdatedAt = now
 
@@ -125,7 +119,7 @@ func (r *SubscriptionRepo) Create(sub *model.Subscription) error {
 	)
 	if err != nil {
 		if isSubscriptionUniqueViolation(err) {
-			return constants.ErrSubscriptionAlreadyExists
+			return apperror.SubscriptionExists.New()
 		}
 		return fmt.Errorf("failed to insert subscription: %w", err)
 	}
@@ -175,7 +169,7 @@ func (r *SubscriptionRepo) GetByID(subscriptionID, orgUUID string) (*model.Subsc
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrSubscriptionNotFound
+			return nil, apperror.SubscriptionNotFound.New()
 		}
 		return nil, err
 	}
@@ -241,28 +235,19 @@ func (r *SubscriptionRepo) ListByFilters(orgUUID string, apiUUID *string, subscr
 	return list, rows.Err()
 }
 
-// decryptionKeyCandidates returns all derived keys to try during decryption, in precedence order.
-// Tokens may have been encrypted with any of the three key sources across different deployments,
-// so decryption must attempt all of them: SubscriptionTokenEncryptionKey → EncryptionKey → SecretKey.
+// decryptionKeyCandidates returns the derived key(s) to try during decryption.
+// With the single consolidated EncryptionKey there is at most one candidate; the slice
+// shape is retained so callers can keep iterating (and so back-compat candidates could be
+// re-introduced for a migration if ever needed).
 func decryptionKeyCandidates() [][]byte {
 	cfg := config.GetConfig()
-	sources := []string{
-		cfg.Database.SubscriptionTokenEncryptionKey,
-		cfg.Database.EncryptionKey,
-		cfg.Auth.JWT.SecretKey,
+	if cfg.Security.EncryptionKey == "" {
+		return nil
 	}
-	seen := map[string]bool{}
-	var keys [][]byte
-	for _, s := range sources {
-		if s == "" || seen[s] {
-			continue
-		}
-		seen[s] = true
-		if k, err := utils.DeriveEncryptionKey(s); err == nil {
-			keys = append(keys, k)
-		}
+	if k, err := utils.DeriveEncryptionKey(cfg.Security.EncryptionKey); err == nil {
+		return [][]byte{k}
 	}
-	return keys
+	return nil
 }
 
 // decryptSubscriptionToken decrypts stored token for API response.
@@ -309,7 +294,7 @@ func (r *SubscriptionRepo) CountByFilters(orgUUID string, apiUUID *string, subsc
 
 // Update updates an existing subscription with all mutable fields.
 func (r *SubscriptionRepo) Update(sub *model.Subscription) error {
-	sub.UpdatedAt = time.Now()
+	sub.UpdatedAt = time.Now().UTC()
 	query := `
 		UPDATE subscriptions
 		SET subscription_plan_uuid = ?, application_id = ?, status = ?, updated_by = ?, updated_at = ?
@@ -324,7 +309,7 @@ func (r *SubscriptionRepo) Update(sub *model.Subscription) error {
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		return constants.ErrSubscriptionNotFound
+		return apperror.SubscriptionNotFound.New()
 	}
 	return nil
 }
@@ -352,16 +337,16 @@ func (r *SubscriptionRepo) UpdateToken(subscriptionID, orgUUID, newToken string)
 		SET subscription_token = ?, subscription_token_hash = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?
 	`
-	result, err := r.db.Exec(r.db.Rebind(query), encryptedToken, hashedToken, time.Now(), subscriptionID, orgUUID)
+	result, err := r.db.Exec(r.db.Rebind(query), encryptedToken, hashedToken, time.Now().UTC(), subscriptionID, orgUUID)
 	if err != nil {
 		if isSubscriptionUniqueViolation(err) {
-			return constants.ErrSubscriptionAlreadyExists
+			return apperror.SubscriptionExists.New()
 		}
 		return fmt.Errorf("failed to update subscription token: %w", err)
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		return constants.ErrSubscriptionNotFound
+		return apperror.SubscriptionNotFound.New()
 	}
 	return nil
 }
@@ -375,7 +360,7 @@ func (r *SubscriptionRepo) Delete(subscriptionID, orgUUID string) error {
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		return constants.ErrSubscriptionNotFound
+		return apperror.SubscriptionNotFound.New()
 	}
 	return nil
 }

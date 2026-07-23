@@ -28,7 +28,9 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	coreservice "github.com/wso2/api-platform/platform-api/internal/service"
@@ -45,6 +47,7 @@ type WebBrokerAPIDeploymentService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *coreservice.GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
@@ -58,6 +61,7 @@ func NewWebBrokerAPIDeploymentService(
 	orgRepo repository.OrganizationRepository,
 	artifactRepo repository.ArtifactRepository,
 	apiRepo repository.APIRepository,
+	apiKeyRepo repository.APIKeyRepository,
 	gatewayEventsService *coreservice.GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
@@ -69,6 +73,7 @@ func NewWebBrokerAPIDeploymentService(
 		orgRepo:              orgRepo,
 		artifactRepo:         artifactRepo,
 		apiRepo:              apiRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		slogger:              slogger,
@@ -152,18 +157,18 @@ func (s *WebBrokerAPIDeploymentService) GetWebBrokerAPIDeploymentsByHandle(apiHa
 // deployWebBrokerAPI deploys a WebBroker API to a gateway
 func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *api.DeployRequest, orgID, createdBy string) (*api.DeploymentResponse, error) {
 	if req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
 	// DP-originated artifacts are read-only in the control plane; deployment cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgID); err != nil {
 		return nil, err
 	}
 	if req.Base == "" {
-		return nil, constants.ErrDeploymentBaseRequired
+		return nil, apperror.ValidationFailed.New("Base is required (use 'current' or a deploymentId).")
 	}
 	gatewayHandle := strings.TrimSpace(req.GatewayId)
 	if gatewayHandle == "" {
-		return nil, constants.ErrDeploymentGatewayIDRequired
+		return nil, apperror.ValidationFailed.New("Gateway ID is required.")
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
@@ -173,7 +178,7 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayID := gateway.ID
 
@@ -182,7 +187,7 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 		return nil, err
 	}
 	if webbrokerAPI == nil {
-		return nil, constants.ErrWebBrokerAPINotFound
+		return nil, apperror.WebBrokerAPINotFound.New()
 	}
 
 	// Generate deployment ID
@@ -196,6 +201,11 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 
 	if req.Base == "current" {
 		d := buildWebBrokerAPIDeploymentYAML(webbrokerAPI)
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(webbrokerAPI.DataVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(constants.WebBrokerApi, sourceDataVersion, targetDataVersion, d); err != nil {
+			return nil, fmt.Errorf("failed to transform WebBroker API deployment for gateway %s: %w", gateway.Version, err)
+		}
 		contentBytes, err = yaml.Marshal(d)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal WebBroker API deployment YAML: %w", err)
@@ -203,8 +213,8 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 	} else {
 		baseDeployment, err := s.deploymentRepo.GetWithContent(req.Base, apiUUID, orgID)
 		if err != nil {
-			if errors.Is(err, constants.ErrDeploymentNotFound) {
-				return nil, constants.ErrBaseDeploymentNotFound
+			if apperror.DeploymentNotFound.Is(err) {
+				return nil, apperror.DeploymentBaseNotFound.New()
 			}
 			return nil, fmt.Errorf("failed to get base deployment: %w", err)
 		}
@@ -241,7 +251,7 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgID, gatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -260,6 +270,9 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 		if err := s.gatewayEventsService.BroadcastWebBrokerAPIDeploymentEvent(gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebBroker API deployment event", "error", err)
 		}
+
+		// Push existing active API keys for this API to the gateway (see BackfillAPIKeysToGateway).
+		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, createdBy)
 	}
 
 	return toAPIDeploymentResponse(
@@ -298,7 +311,7 @@ func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(apiUUID s
 		return nil, err
 	}
 	if webbrokerAPI == nil {
-		return nil, constants.ErrWebBrokerAPINotFound
+		return nil, apperror.WebBrokerAPINotFound.New()
 	}
 
 	var deployment *model.Deployment
@@ -308,7 +321,7 @@ func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(apiUUID s
 			return nil, err
 		}
 		if deployment == nil {
-			return nil, constants.ErrDeploymentNotFound
+			return nil, apperror.DeploymentNotFound.New()
 		}
 	} else if gatewayId != nil {
 		deployment, err = s.deploymentRepo.GetCurrentByGateway(apiUUID, *gatewayId, orgID)
@@ -316,18 +329,18 @@ func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(apiUUID s
 			return nil, err
 		}
 		if deployment == nil {
-			return nil, constants.ErrDeploymentNotFound
+			return nil, apperror.DeploymentNotFound.New()
 		}
 	} else {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("Either a deploymentId or a gatewayId is required.")
 	}
 
 	if gatewayId != nil && deployment.GatewayID != *gatewayId {
-		return nil, constants.ErrGatewayIDMismatch
+		return nil, apperror.DeploymentGatewayMismatch.New()
 	}
 
 	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
-		return nil, constants.ErrDeploymentNotActive
+		return nil, apperror.DeploymentNotActive.New("WebBroker API")
 	}
 
 	gateway, err := s.gatewayRepo.GetByUUID(deployment.GatewayID)
@@ -335,14 +348,14 @@ func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(apiUUID s
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	initialStatus := model.DeploymentStatusUndeployed
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusUndeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgID, deployment.GatewayID, deployment.DeploymentID,
 		initialStatus, string(model.DeploymentStatusUndeployed),
@@ -391,16 +404,16 @@ func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID st
 		return nil, err
 	}
 	if targetDeployment == nil {
-		return nil, constants.ErrDeploymentNotFound
+		return nil, apperror.DeploymentNotFound.New()
 	}
 
 	// Only allow restoring ARCHIVED (nil status) or UNDEPLOYED deployments
 	if targetDeployment.Status != nil && *targetDeployment.Status != model.DeploymentStatusUndeployed {
-		return nil, constants.ErrInvalidDeploymentRestoreState
+		return nil, apperror.DeploymentRestoreConflict.New()
 	}
 
 	if targetDeployment.GatewayID != *gatewayId {
-		return nil, constants.ErrGatewayIDMismatch
+		return nil, apperror.DeploymentGatewayMismatch.New()
 	}
 
 	currentDeploymentID, status, _, err := s.deploymentRepo.GetStatus(apiUUID, orgID, targetDeployment.GatewayID)
@@ -408,7 +421,7 @@ func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID st
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
 	}
 	if currentDeploymentID == *deploymentId && status == model.DeploymentStatusDeployed {
-		return nil, constants.ErrDeploymentAlreadyDeployed
+		return nil, apperror.DeploymentRestoreConflict.New()
 	}
 
 	gateway, err := s.gatewayRepo.GetByUUID(targetDeployment.GatewayID)
@@ -416,14 +429,14 @@ func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID st
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil || gateway.OrganizationID != orgID {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	initialStatus := model.DeploymentStatusDeployed
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		apiUUID, orgID, targetDeployment.GatewayID, *deploymentId,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -443,6 +456,9 @@ func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID st
 		if err := s.gatewayEventsService.BroadcastWebBrokerAPIDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast WebBroker API deployment event", "error", err)
 		}
+
+		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
+		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -466,7 +482,7 @@ func (s *WebBrokerAPIDeploymentService) getWebBrokerAPIDeployment(apiUUID, deplo
 		return nil, err
 	}
 	if webbrokerAPI == nil {
-		return nil, constants.ErrWebBrokerAPINotFound
+		return nil, apperror.WebBrokerAPINotFound.New()
 	}
 
 	deployment, err := s.deploymentRepo.GetWithState(deploymentID, apiUUID, orgID)
@@ -474,7 +490,7 @@ func (s *WebBrokerAPIDeploymentService) getWebBrokerAPIDeployment(apiUUID, deplo
 		return nil, err
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotFound
+		return nil, apperror.DeploymentNotFound.New()
 	}
 
 	return toAPIDeploymentResponse(
@@ -498,7 +514,7 @@ func (s *WebBrokerAPIDeploymentService) getWebBrokerAPIDeployments(apiUUID, orgI
 		return nil, err
 	}
 	if webbrokerAPI == nil {
-		return nil, constants.ErrWebBrokerAPINotFound
+		return nil, apperror.WebBrokerAPINotFound.New()
 	}
 
 	if status != nil {
@@ -511,7 +527,7 @@ func (s *WebBrokerAPIDeploymentService) getWebBrokerAPIDeployments(apiUUID, orgI
 			string(model.DeploymentStatusFailed):      true,
 		}
 		if !validStatuses[*status] {
-			return nil, constants.ErrInvalidDeploymentStatus
+			return nil, apperror.DeploymentInvalidStatus.New()
 		}
 	}
 
@@ -557,7 +573,7 @@ func (s *WebBrokerAPIDeploymentService) deleteWebBrokerAPIDeployment(apiUUID, de
 		return err
 	}
 	if webbrokerAPI == nil {
-		return constants.ErrWebBrokerAPINotFound
+		return apperror.WebBrokerAPINotFound.New()
 	}
 
 	deployment, err := s.deploymentRepo.GetWithState(deploymentID, apiUUID, orgID)
@@ -565,11 +581,11 @@ func (s *WebBrokerAPIDeploymentService) deleteWebBrokerAPIDeployment(apiUUID, de
 		return err
 	}
 	if deployment == nil {
-		return constants.ErrDeploymentNotFound
+		return apperror.DeploymentNotFound.New()
 	}
 
 	if deployment.Status != nil && *deployment.Status == model.DeploymentStatusDeployed {
-		return constants.ErrDeploymentIsDeployed
+		return apperror.DeploymentActive.New()
 	}
 
 	if err := s.deploymentRepo.Delete(deploymentID, apiUUID, orgID); err != nil {
@@ -596,8 +612,6 @@ func (s *WebBrokerAPIDeploymentService) ensureAPIGatewayAssociation(apiUUID, gat
 		ArtifactID:     apiUUID,
 		OrganizationID: orgUUID,
 		GatewayID:      gatewayID,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
 	}
 	if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
 		s.slogger.Error("Failed to create API-gateway association", "apiUUID", apiUUID, "gatewayID", gatewayID, "orgUUID", orgUUID, "error", err)
@@ -617,7 +631,7 @@ func (s *WebBrokerAPIDeploymentService) getWebBrokerAPIUUIDByHandle(handle, orgU
 		return "", err
 	}
 	if artifact == nil {
-		return "", constants.ErrArtifactNotFound
+		return "", apperror.ArtifactNotFound.New()
 	}
 
 	return artifact.UUID, nil

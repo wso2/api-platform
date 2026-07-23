@@ -21,7 +21,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -218,6 +218,14 @@ func llmProxyReferencesSecret(cr *apiv1.LlmProxy, secretNS, secretName string) b
 			return true
 		}
 	}
+	for i := range cr.Spec.AdditionalProviders {
+		auth := cr.Spec.AdditionalProviders[i].Auth
+		if auth != nil && auth.Value.ValueFrom != nil {
+			if cr.Namespace == secretNS && strings.TrimSpace(auth.Value.ValueFrom.Name) == secretName {
+				return true
+			}
+		}
+	}
 	return llmProxyReferencesValueFromKind(cr, secretKeyRefKey, secretNS, secretName)
 }
 
@@ -240,4 +248,3 @@ func llmProxyReferencesValueFromKind(cr *apiv1.LlmProxy, kind, targetNS, targetN
 	}
 	return false
 }
-

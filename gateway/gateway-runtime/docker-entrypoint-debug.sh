@@ -85,9 +85,14 @@ export LOG_LEVEL="${LOG_LEVEL:-info}"
 # GOMAXPROCS limits Go's CPU usage - set to leave cores for Envoy (default: 2)
 # ROUTER_CONCURRENCY sets Envoy's worker thread count (default: auto-detect, 0 means use all cores)
 # APIP_GW_POLICY_ENGINE_METRICS_ENABLED controls metrics collection (default: true, set false for high-load)
+# APIP_GW_ROUTER_RE2_MAX_PROGRAM_SIZE sets Envoy's RE2 regex program-size error cap (default: 400).
+#   Envoy's built-in default is 100, which is too low for paths with many path parameters
+#   (each [^/]+ segment costs ~10 units; 7 params → program size 115 → RouteConfiguration rejected).
+#   400 covers paths with up to ~30 path parameters. Override if your API has deeper paths.
 export GOMAXPROCS="${GOMAXPROCS:-2}"
 export ROUTER_CONCURRENCY="${ROUTER_CONCURRENCY:-0}"
 export APIP_GW_POLICY_ENGINE_METRICS_ENABLED="${APIP_GW_POLICY_ENGINE_METRICS_ENABLED:-true}"
+export APIP_GW_ROUTER_RE2_MAX_PROGRAM_SIZE="${APIP_GW_ROUTER_RE2_MAX_PROGRAM_SIZE:-400}"
 
 # Graceful shutdown configuration (see docker-entrypoint.sh for details).
 # On SIGTERM the Router (Envoy) is drained before processes are terminated so in-flight
@@ -114,6 +119,7 @@ log "  Log Level: ${LOG_LEVEL}"
 log "  Policy Engine Socket: ${POLICY_ENGINE_SOCKET}"
 log "  GOMAXPROCS: ${GOMAXPROCS}"
 log "  Router Concurrency: ${ROUTER_CONCURRENCY}"
+log "  Router RE2 Max Program Size: ${APIP_GW_ROUTER_RE2_MAX_PROGRAM_SIZE}"
 log "  Policy Engine Metrics: ${APIP_GW_POLICY_ENGINE_METRICS_ENABLED}"
 [[ ${#ROUTER_ARGS[@]} -gt 0 ]] && log "  Router extra args: ${ROUTER_ARGS[*]}"
 [[ ${#PE_ARGS[@]} -gt 0 ]] && log "  Policy Engine extra args: ${PE_ARGS[*]}"

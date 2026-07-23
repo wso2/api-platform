@@ -45,7 +45,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Check, ChevronDown, ChevronLeft, Clock, Download, Edit, GitBranch, Lock, Trash2 } from '@wso2/oxygen-ui-icons-react';
+import { Check, ChevronDown, ChevronLeft, Clock, Copy, Download, Edit, GitBranch, Lock, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { formatRelativeTime } from '../../../../contexts/llmProvider';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
@@ -102,6 +102,9 @@ function TabPanel({ value, index, children }: TabPanelProps) {
 
 const tabs = ['Overview', 'Connection', 'Token Mapping'];
 
+const UNSAVED_CHANGES_MESSAGE =
+  'You have unsaved changes. Please save or cancel before leaving this page.';
+
 function parseOpenApiSpec(text: string): Record<string, unknown> | null {
   if (!text.trim()) return null;
   try {
@@ -122,7 +125,8 @@ function specServerUrl(text: string): string | null {
     servers?: Array<{ url?: string }>;
   } | null;
   const url = spec?.servers?.[0]?.url;
-  return typeof url === 'string' && url.trim() ? url.trim() : null;
+  const trimmed = typeof url === 'string' ? url.trim() : '';
+  return trimmed && isValidHttpUrl(trimmed) ? trimmed : null;
 }
 
 function isParseableSpec(text: string): boolean {
@@ -178,6 +182,14 @@ export default function ProviderTemplateOverview() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const listPath = buildOrgPath(currentOrganization, '/settings/llm-provider-templates');
+
+  const handleTabChange = (_: React.SyntheticEvent, value: number) => {
+    if (value !== tabIndex && isDirty) {
+      showSnackbar(UNSAVED_CHANGES_MESSAGE, 'error');
+      return;
+    }
+    setTabIndex(value);
+  };
 
   useEffect(() => {
     const organizationId = currentOrganization?.uuid;
@@ -264,7 +276,7 @@ export default function ProviderTemplateOverview() {
     setEndpointUrl(t.metadata?.endpointUrl ?? '');
     setProvider(
       (t.managedBy ?? t.provider)?.trim() ||
-        (isBuiltInProviderTemplate(t.id) ? 'wso2' : 'customer')
+        (isBuiltInProviderTemplate(t.id) ? 'wso2' : 'organization')
     );
     setOpenapiSpecUrl(t.metadata?.openapiSpecUrl ?? '');
     setLogoUrlField(t.metadata?.logoUrl ?? '');
@@ -412,7 +424,7 @@ export default function ProviderTemplateOverview() {
       id: template.id,
       displayName: template.displayName,
       version: currentVersion,
-      managedBy: provider.trim() || 'customer',
+      managedBy: provider.trim() || 'organization',
       description: template.description,
       ...fromTokenConfig(defaultTokens),
       metadata: Object.keys(metadata).length ? metadata : undefined,
@@ -714,7 +726,7 @@ export default function ProviderTemplateOverview() {
                     endIcon={<ChevronDown size={16} />}
                     sx={{ borderRadius: 5, px: 1.5 }}
                   >
-                    {selectedVersion || template.version || 'v1'}
+                    {selectedVersion || template.version || 'v1.0'}
                   </Button>
                   <Menu
                     anchorEl={versionMenuAnchor}
@@ -743,9 +755,9 @@ export default function ProviderTemplateOverview() {
                             {sectionLabel}
                           </Typography>
                           {visibleVersions.map((v) => {
-                            const ver = v.version || 'v1';
+                            const ver = v.version || 'v1.0';
                             const isSelected =
-                              ver === (selectedVersion || template.version || 'v1');
+                              ver === (selectedVersion || template.version || 'v1.0');
                             return (
                               <MenuItem
                                 key={ver}
@@ -767,16 +779,20 @@ export default function ProviderTemplateOverview() {
                               </MenuItem>
                             );
                           })}
-                          <Divider />
-                          <MenuItem
-                            component={RouterLink}
-                            to="new-version"
-                            onClick={() => setVersionMenuAnchor(null)}
-                            sx={{ color: 'primary.main', gap: 1 }}
-                          >
-                            <GitBranch size={16} />
-                            Create new version
-                          </MenuItem>
+                          {!isBuiltIn && (
+                            <>
+                              <Divider />
+                              <MenuItem
+                                component={RouterLink}
+                                to="new-version"
+                                onClick={() => setVersionMenuAnchor(null)}
+                                sx={{ color: 'primary.main', gap: 1 }}
+                              >
+                                <GitBranch size={16} />
+                                Create new version
+                              </MenuItem>
+                            </>
+                          )}
                         </>
                       );
                     })()}
@@ -801,10 +817,31 @@ export default function ProviderTemplateOverview() {
                     {lastUpdated ? formatRelativeTime(lastUpdated) : '—'}
                   </Typography>
                 </Stack>
+                {template.createdBy && (
+                  <Typography variant="caption" color="text.secondary">
+                    <FormattedMessage
+                      id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.ProviderTemplateOverview.createdBy"
+                      defaultMessage="Created by: {createdBy}"
+                      values={{ createdBy: template.createdBy }}
+                    />
+                  </Typography>
+                )}
               </Stack>
             </Box>
 
             <Stack direction="column" spacing={1.5} alignItems="flex-end">
+              {isBuiltIn && (
+                <Button
+                  variant="outlined"
+                  startIcon={<Copy size={16} />}
+                  onClick={() =>
+                    navigate(`${listPath}/new`, { state: { copyFrom: template } })
+                  }
+                  data-cyid="provider-template-create-copy-button"
+                >
+                  Create a copy
+                </Button>
+              )}
               {!isBuiltIn && (
                 <Button
                   variant="contained"
@@ -820,19 +857,19 @@ export default function ProviderTemplateOverview() {
                   />
                 </Button>
               )}
-              {isReadOnly && (
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="body2" color="text.primary">
-                    {isEnabled ? 'Enabled' : 'Disabled'}
-                  </Typography>
-                  <Switch
-                    checked={isEnabled}
-                    disabled={isTogglingEnabled}
-                    onChange={(e) => void handleToggleEnabled(e.target.checked)}
-                    inputProps={{ 'aria-label': 'Enable or disable this version' }}
-                  />
-                </Stack>
-              )}
+              {/* Enable/disable applies to every template — built-in, custom, and
+                  gateway-originated — since it only affects control-plane listing. */}
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="body2" color="text.primary">
+                  {isEnabled ? 'Enabled' : 'Disabled'}
+                </Typography>
+                <Switch
+                  checked={isEnabled}
+                  disabled={isTogglingEnabled}
+                  onChange={(e) => void handleToggleEnabled(e.target.checked)}
+                  inputProps={{ 'aria-label': 'Enable or disable this version' }}
+                />
+              </Stack>
               {/* Custom templates can be deleted entirely (all versions). */}
               {canDelete && (
                 <Button
@@ -866,7 +903,7 @@ export default function ProviderTemplateOverview() {
         <Card>
           <Tabs
             value={tabIndex}
-            onChange={(_, value) => setTabIndex(value)}
+            onChange={handleTabChange}
             variant="scrollable"
             allowScrollButtonsMobile
           >

@@ -44,12 +44,17 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
+// defaultMaxResponseBytes is the fallback ceiling applied to response bodies
+// read from the platform-API when PlatformAPIConfig.MaxResponseBytes is unset.
+const defaultMaxResponseBytes = 50 << 20 // 50 MiB
+
 // PlatformAPIConfig contains configuration for fetching API definitions
 type PlatformAPIConfig struct {
 	BaseURL            string        // Base URL for API requests
 	Token              string        // Authentication token
 	InsecureSkipVerify bool          // Skip TLS verification
 	Timeout            time.Duration // Request timeout
+	MaxResponseBytes   int64         // Maximum bytes read from a single response body
 }
 
 // APIUtilsService provides utilities for API operations
@@ -73,6 +78,9 @@ func NewAPIUtilsService(config PlatformAPIConfig, logger *slog.Logger) *APIUtils
 	// Set default timeout if not provided
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Second
+	}
+	if config.MaxResponseBytes <= 0 {
+		config.MaxResponseBytes = defaultMaxResponseBytes
 	}
 	if config.InsecureSkipVerify {
 		logger.Warn("TLS certificate verification disabled for API utils (insecure_skip_verify=true)")
@@ -640,16 +648,22 @@ func (s *APIUtilsService) FetchMCPProxyDefinition(proxyID string) ([]byte, error
 	return bodyBytes, nil
 }
 
-// FetchWebSubAPIDefinition downloads the WebSub API definition as a zip file from the control plane
-func (s *APIUtilsService) FetchWebSubAPIDefinition(apiID string) ([]byte, error) {
-	apiURL := s.getBaseURL() + "/websub-apis/" + apiID
+// FetchResourceZip performs a generic authenticated GET against
+// {baseURL}{resourcePath}, expecting a zip response, and returns the raw
+// bytes. resourceLabel is used only for log/error messages (e.g. "WebSub API
+// definition"). Extracted as a reusable primitive so external modules with
+// their own resource kinds (e.g. event-gateway-controller's WebSub/WebBroker
+// APIs) can fetch zip definitions without duplicating this HTTP/auth
+// boilerplate the way FetchAPIDefinition/FetchLLMProviderDefinition/
+// FetchLLMProxyDefinition above do for kinds known to core.
+func (s *APIUtilsService) FetchResourceZip(resourcePath, resourceLabel string) ([]byte, error) {
+	url := s.getBaseURL() + resourcePath
 
-	s.logger.Debug("Fetching WebSub API definition",
-		slog.String("api_id", apiID),
-		slog.String("url", apiURL),
+	s.logger.Debug("Fetching "+resourceLabel,
+		slog.String("url", url),
 	)
 
-	req, err := http.NewRequest("GET", apiURL, nil)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -659,67 +673,60 @@ func (s *APIUtilsService) FetchWebSubAPIDefinition(apiID string) ([]byte, error)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch WebSub API definition: %w", err)
+		return nil, fmt.Errorf("failed to fetch %s: %w", resourceLabel, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("WebSub API request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, s.config.MaxResponseBytes))
+		return nil, fmt.Errorf("%s request failed with status %d: %s", resourceLabel, resp.StatusCode, string(bodyBytes))
 	}
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, s.config.MaxResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
+	if int64(len(bodyBytes)) > s.config.MaxResponseBytes {
+		return nil, fmt.Errorf("%s response exceeds maximum allowed size", resourceLabel)
+	}
 
-	s.logger.Debug("Successfully fetched WebSub API definition",
-		slog.String("api_id", apiID),
+	s.logger.Debug("Successfully fetched "+resourceLabel,
 		slog.Int("size_bytes", len(bodyBytes)),
 	)
 
 	return bodyBytes, nil
 }
 
-// FetchWebBrokerAPIDefinition downloads the WebBroker API definition as a zip file from the control plane
-func (s *APIUtilsService) FetchWebBrokerAPIDefinition(apiID string) ([]byte, error) {
-	apiURL := s.getBaseURL() + "/webbroker-apis/" + apiID
+// FetchResourceJSON performs a generic authenticated GET against
+// {baseURL}{resourcePath}, expecting a JSON response, and decodes it into out.
+// See FetchResourceZip for why this exists as a reusable primitive.
+func (s *APIUtilsService) FetchResourceJSON(resourcePath, resourceLabel string, out any) error {
+	url := s.getBaseURL() + resourcePath
 
-	s.logger.Debug("Fetching WebBroker API definition",
-		slog.String("api_id", apiID),
-		slog.String("url", apiURL),
-	)
-
-	req, err := http.NewRequest("GET", apiURL, nil)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Add("api-key", s.config.Token)
-	req.Header.Add("Accept", "application/zip")
+	req.Header.Add("Accept", "application/json")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch WebBroker API definition: %w", err)
+		return fmt.Errorf("failed to fetch %s: %w", resourceLabel, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("WebBroker API request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, s.config.MaxResponseBytes))
+		return fmt.Errorf("%s request failed with status %d: %s", resourceLabel, resp.StatusCode, string(bodyBytes))
 	}
 
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+	if err := json.NewDecoder(io.LimitReader(resp.Body, s.config.MaxResponseBytes)).Decode(out); err != nil {
+		return fmt.Errorf("failed to decode %s response: %w", resourceLabel, err)
 	}
 
-	s.logger.Debug("Successfully fetched WebBroker API definition",
-		slog.String("api_id", apiID),
-		slog.Int("size_bytes", len(bodyBytes)),
-	)
-
-	return bodyBytes, nil
+	return nil
 }
 
 // CreateMCPProxyFromYAML creates an MCP proxy configuration from YAML data using the MCP deployment service
@@ -959,7 +966,11 @@ type ImportArtifactRequest struct {
 	CreatedAt     time.Time              `json:"createdAt"`
 	UpdatedAt     time.Time              `json:"updatedAt"`
 	DeployedAt    *time.Time             `json:"deployedAt,omitempty"`
+	Properties    map[string]interface{} `json:"properties,omitempty"`
 }
+
+// deploymentRevisionProperty is the Properties key carrying the per-deployment revision.
+const deploymentRevisionProperty = "deploymentRevision"
 
 // ImportArtifactsResponse is the control plane's reply to the bulk DP->CP push: per-artifact
 // results keyed by the artifact's data-plane UUID (dpid), plus aggregate counts.
@@ -1210,6 +1221,12 @@ func (s *APIUtilsService) buildImportArtifactRequest(artifact *models.StoredConf
 		utc := artifact.UpdatedAt.UTC()
 		deployedAt = &utc
 	}
+	var properties map[string]interface{}
+	if deployedAt != nil {
+		properties = map[string]interface{}{
+			deploymentRevisionProperty: deployedAt.Format(time.RFC3339Nano),
+		}
+	}
 	return ImportArtifactRequest{
 		DPID:          artifact.UUID,
 		Configuration: configuration,
@@ -1217,6 +1234,7 @@ func (s *APIUtilsService) buildImportArtifactRequest(artifact *models.StoredConf
 		CreatedAt:     artifact.CreatedAt.UTC(),
 		UpdatedAt:     artifact.UpdatedAt.UTC(),
 		DeployedAt:    deployedAt,
+		Properties:    properties,
 	}, nil
 }
 
@@ -1235,69 +1253,11 @@ func MapToStruct(data map[string]interface{}, out interface{}) error {
 	return nil
 }
 
-// platformHmacSecretInfo is the per-secret DTO returned by the internal HMAC endpoint.
-type platformHmacSecretInfo struct {
-	Name   string `json:"name"`
-	Secret string `json:"secret"`
-}
-
-// platformHmacSecretsResponse is the response body from GET /websub-apis/:id/secrets.
-type platformHmacSecretsResponse struct {
-	ArtifactID string                   `json:"artifactId"`
-	Secrets    []platformHmacSecretInfo `json:"secrets"`
-}
-
-// HmacSecretInfo is the public view of a platform-managed HMAC secret.
-type HmacSecretInfo struct {
-	Name      string
-	Plaintext string
-}
-
-// FetchWebSubAPIHmacSecrets fetches the plaintext HMAC secrets for a WebSub API artifact
-// from the platform-API internal endpoint.
-func (s *APIUtilsService) FetchWebSubAPIHmacSecrets(artifactID string) ([]HmacSecretInfo, error) {
-	secretsURL := s.getBaseURL() + "/websub-apis/" + artifactID + "/secrets"
-
-	s.logger.Debug("Fetching WebSub API HMAC secrets",
-		slog.String("artifact_id", artifactID),
-		slog.String("url", secretsURL),
-	)
-
-	req, err := http.NewRequest("GET", secretsURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create HMAC secrets request: %w", err)
-	}
-	req.Header.Add("api-key", s.config.Token)
-	req.Header.Add("Accept", "application/json")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch HMAC secrets: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("HMAC secrets request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	var response platformHmacSecretsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("failed to decode HMAC secrets response: %w", err)
-	}
-
-	secrets := make([]HmacSecretInfo, 0, len(response.Secrets))
-	for _, s := range response.Secrets {
-		secrets = append(secrets, HmacSecretInfo{Name: s.Name, Plaintext: s.Secret})
-	}
-
-	s.logger.Debug("Successfully fetched WebSub API HMAC secrets",
-		slog.String("artifact_id", artifactID),
-		slog.Int("count", len(secrets)),
-	)
-
-	return secrets, nil
-}
+// Note: WebSub HMAC secret fetching (platformHmacSecretInfo,
+// platformHmacSecretsResponse, HmacSecretInfo, FetchWebSubAPIHmacSecrets) is
+// NOT defined here. It is event-gateway-specific and owned by the
+// event-gateway-controller module (event-gateway/gateway-controller/pkg/controlplanehooks),
+// built on top of FetchResourceJSON above.
 
 // CheckArtifactsExist checks which artifact UUIDs still exist on the platform.
 // Returns the subset of provided UUIDs that exist. Used during sync to avoid

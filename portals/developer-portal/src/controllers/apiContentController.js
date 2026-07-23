@@ -16,7 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const { renderTemplate, renderTemplateFromAPI, renderGivenTemplate, loadLayoutFromAPI, loadMarkdown, isAiDisabledForPortal } = require('../utils/util');
+const { renderTemplate, renderTemplateFromAPI, isAiDisabledForPortal } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
@@ -26,7 +26,6 @@ const exphbs = require('express-handlebars');
 const util = require('../utils/util');
 const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
-const appDao = require('../dao/applicationDao');
 const apiDao = require('../dao/apiDao');
 const apiFileDao = require('../dao/apiFileDao');
 const viewDao = require('../dao/viewDao');
@@ -34,11 +33,9 @@ const subDao = require('../dao/subscriptionDao');
 const apiMetadataService = require('../services/apiMetadataService');
 const { apiUsesApiKeySecurity, findSubscriptionTokenHeader } = require('../utils/apiDefinitionUtil');
 const sampleApiLoader = require('../utils/sampleApiLoader');
-const adminService = require('../services/adminService');
-const { seedSampleAPIs, seedSampleMCPs, markSamplesSeeded } = require('../services/sampleSeederService');
 const apiWorkflowService = require('../services/apiWorkflowService');
 const { buildSchema, getIntrospectionQuery, graphql: executeGraphQL } = require('graphql');
-const yaml = require('js-yaml');
+const yaml = require('../utils/yaml');
 const generateArray = (length) => Array.from({ length });
 
 const loadAPIs = async (req, res, next) => {
@@ -55,7 +52,7 @@ const loadAPIs = async (req, res, next) => {
         }
         const templateContent = {
             apiMetadata: metaDataList,
-            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.VIEWS_PATH + viewName,
             devMode: true,
         }
         const listingPage = isMcpListing ? 'pages/mcp' : 'pages/apis';
@@ -128,8 +125,6 @@ const loadAPIs = async (req, res, next) => {
                 orgId: orgId,
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
-                isReadOnlyMode: config.server.readOnlyMode,
-                demoEnabled: config.demo?.enabled === true,
                 applications: []
             };
 
@@ -144,10 +139,6 @@ const loadAPIs = async (req, res, next) => {
                 error: error.message, 
                 stack: error.stack
             });
-            const templateContent = {
-                baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                devportalMode: devportalMode,
-            }
             if (Number(error?.statusCode) === 401) {
                 logger.warn("User is not authorized to access the API or user session expired, hence redirecting to login page", {
                     orgName: orgName,
@@ -208,6 +199,7 @@ const loadAPIContent = async (req, res, next) => {
             }
         }
 
+        const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         const templateContent = {
             devMode: true,
             apiContent: '',
@@ -216,9 +208,9 @@ const loadAPIContent = async (req, res, next) => {
             schemaDefinition,
             apiMetadata: metaData,
             subscriptionPlans: metaData.subscriptionPlans,
-            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.VIEWS_PATH + viewName,
             schemaUrl: `/mock/${apiHandle}/definition.yml`,
-            showApiKeysNav: apiUsesApiKeySecurity(metaData),
+            showApiKeysNav: await resolveShowApiKeysNav(null, null, apiType, metaData, definitionResponse.swagger ?? null),
             showSubscriptionsNav: (metaData.subscriptionPlans || []).length > 0,
         }
         const landingPage = isMCP ? 'pages/mcp-landing' : 'pages/api-landing';
@@ -371,9 +363,30 @@ const loadAPIContent = async (req, res, next) => {
                     isAdmin: req.user.isAdmin,
                 }
             }
-            let schemaFileName = constants.FILE_NAME.API_DEFINITION_XML;
-            if (metaData.type === constants.API_TYPE.GRAPHQL) {
-                schemaFileName = constants.FILE_NAME.API_DEFINITION_GRAPHQL;
+            // Build the definition download link from the file that is actually stored, resolved
+            // by its doc-type (one definition per API). The stored name is the uploaded basename,
+            // not a fixed constant, so guessing a filename here would 404 for any file uploaded
+            // under a different name (e.g. a SOAP WSDL named 'service.wsdl'). MCP tools schemas live
+            // under SCHEMA_DEFINITION and are served from /mcp-servers; everything else under
+            // API_DEFINITION from /apis.
+            const definitionDocType = metaData.type === constants.API_TYPE.MCP
+                ? constants.DOC_TYPES.SCHEMA_DEFINITION
+                : constants.DOC_TYPES.API_DEFINITION;
+            const definitionAssetBasePath = metaData.type === constants.API_TYPE.MCP
+                ? '/mcp-servers/'
+                : constants.ROUTE.API_FILE_PATH;
+            let schemaUrl = null;
+            try {
+                const definitionDoc = await apiFileDao.getByType(definitionDocType, orgId, apiId);
+                if (definitionDoc?.file_name) {
+                    schemaUrl = `${req.protocol}://${req.get('host')}${constants.DEVPORTAL_API.orgPath(orgId)}`
+                        + `${definitionAssetBasePath}${apiId}/assets?type=${definitionDocType}`
+                        + `&fileName=${encodeURIComponent(definitionDoc.file_name)}`;
+                }
+            } catch (schemaErr) {
+                logger.debug('Could not resolve definition file for download link', {
+                    orgId, apiId, error: schemaErr.message
+                });
             }
 
             let apiDefinitionForNav = null;
@@ -395,7 +408,7 @@ const loadAPIContent = async (req, res, next) => {
                 subscriptionPlans: subscriptionPlans,
                 subscriptions: subscriptions,
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
-                schemaUrl: `${req.protocol}://${req.get('host')}${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${apiId}${constants.API_TEMPLATE_FILE_NAME}${schemaFileName}`,
+                schemaUrl: schemaUrl,
                 loadDefault: loadDefault,
                 resources: apiDetails,
                 orgId: orgId,
@@ -403,9 +416,8 @@ const loadAPIContent = async (req, res, next) => {
                 scopes: [],
                 devportalMode: devportalMode,
                 profile: req.isAuthenticated() ? profile : null,
-                isReadOnlyMode: config.server.readOnlyMode,
             };
-            templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaData, apiDefinitionForNav);
+            templateContent.showApiKeysNav = await resolveShowApiKeysNav(orgId, apiId, metaData.type, metaData, apiDefinitionForNav);
             templateContent.showSubscriptionsNav = (metaData?.subscriptionPlans || []).length > 0;
             templateContent.hasSubscriptionToken = !!findSubscriptionTokenHeader(apiDefinitionForNav);
             if (metaData.type == constants.API_TYPE.MCP) {
@@ -486,7 +498,7 @@ const getAPIDefinition = async (orgName, viewName, apiHandle) => {
 
 const loadDocsPage = async (req, res, next) => {
 
-    const { orgName, apiHandle, viewName, docType } = req.params;
+    const { orgName, apiHandle, viewName } = req.params;
     let html = "";
     if (config.designMode?.enabled) {
         const layoutPath = config.designMode.pathToLayout;
@@ -495,14 +507,18 @@ const loadDocsPage = async (req, res, next) => {
         const metaForNav = {
             refId: apiMetadata.refId,
         };
+        // Load the definition so the API Keys nav is computed the same way as every
+        // other API-scoped page — without it the check always returns false and the
+        // API Keys item is hidden on the documentation page.
+        const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         const templateContent = {
             apiMD: '',
-            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
-            baseDocUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
+            baseUrl: constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
+            baseDocUrl: constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
             docTypes: docNames,
             apiType: apiMetadata.type,
             apiName: apiMetadata.name || '',
-            showApiKeysNav: apiUsesApiKeySecurity(metaForNav),
+            showApiKeysNav: await resolveShowApiKeysNav(null, null, apiMetadata.type, metaForNav, definitionResponse.swagger ?? null),
         }
         html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
@@ -532,19 +548,6 @@ const loadDocsPage = async (req, res, next) => {
                 refId: apiMetadata[0].dataValues.ref_id,
             };
 
-            let apiDefinitionForNav = null;
-            if (apiType !== constants.API_TYPE.GRAPHQL && apiType !== constants.API_TYPE.MCP) {
-                try {
-                    apiDefinitionForNav = await getApiDefinitionFileContent(orgId, apiId);
-                } catch (definitionErr) {
-                    logger.debug('Could not load API definition for API keys nav check', {
-                        orgId,
-                        apiId,
-                        error: definitionErr.message
-                    });
-                }
-            }
-
             const templateContent = {
                 baseUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
                 baseDocUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
@@ -553,7 +556,9 @@ const loadDocsPage = async (req, res, next) => {
                 apiName: apiMetadata[0].dataValues.name || '',
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
-                showApiKeysNav: apiUsesApiKeySecurity(metaForNav, apiDefinitionForNav),
+                // resolveShowApiKeysNav returns false early for GraphQL/MCP/SOAP and lazily
+                // fetches the definition itself for the remaining types, so no preload here.
+                showApiKeysNav: await resolveShowApiKeysNav(orgId, apiId, apiType, metaForNav),
             };
             html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/docs", viewName);
         } catch (error) {
@@ -610,14 +615,17 @@ const loadDocument = async (req, res, next) => {
             const raw = sampleApiLoader.getDocMarkdown(apiHandle, docName, resolveSamplesPath(apiHandle), docType) || '';
             templateContent.apiMD = raw ? require('marked').parse(raw) : '';
         }
-        templateContent.baseUrl = config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;
-        templateContent.baseDocUrl = config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
+        templateContent.baseUrl = constants.ROUTE.VIEWS_PATH + viewName;
+        templateContent.baseDocUrl = constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
         templateContent.docTypes = metaData.docTypes;
         templateContent.currentDocName = docName || null;
         templateContent.currentDocType = docType || null;
         templateContent.apiName = metaData.name || '';
         const metaForNav = { refId: metaData.refId };
-        templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
+        // Pass the definition so the API Keys nav is computed the same way as every
+        // other API-scoped page — without it the check always returns false and the
+        // API Keys item is hidden on the documentation page.
+        templateContent.showApiKeysNav = await resolveShowApiKeysNav(null, null, definitionResponse.apiType, metaForNav, definitionResponse.swagger ?? null);
         const html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
         res.send(html);
         return;
@@ -630,7 +638,6 @@ const loadDocument = async (req, res, next) => {
         baseDocUrl = '/' + orgName + '/views/' + viewName + "/mcp/" + apiHandle
     }
     try {
-        const hbs = exphbs.create({});
         let templateContent = {
             "isAPIDefinition": false,
             "isWebSocketTryout": false,
@@ -736,7 +743,6 @@ const loadDocument = async (req, res, next) => {
             let docNames = await apiMetadataService.getAPIDocTypes(orgId, apiId);
             const apiMetadata = await apiDao.get(orgId, apiId);
             let apiType = apiMetadata[0].dataValues.type;
-            const referenceId = apiMetadata[0].dataValues.ref_id;
             // All MCPs (registry and CP) need a Specification entry in the sidebar
             if (apiType === constants.API_TYPE.MCP && !docNames.some(d => d.type === constants.DOC_TYPES.DOCS.API_DEFINITION)) {
                 docNames = [{ type: constants.DOC_TYPES.DOCS.API_DEFINITION }, ...docNames];
@@ -763,7 +769,8 @@ const loadDocument = async (req, res, next) => {
             const metaForNav = {
                 refId: row.ref_id,
             };
-            templateContent.showApiKeysNav = apiUsesApiKeySecurity(metaForNav);
+            // Compute the API Keys nav the same way as every other API-scoped page.
+            templateContent.showApiKeysNav = await resolveShowApiKeysNav(orgId, apiId, apiType, metaForNav, definitionResponse.swagger ?? null);
             html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/docs", viewName);
         } catch (error) {
             logger.error('Failed to load api content', {
@@ -818,10 +825,16 @@ async function loadAPIMetaData(req, orgId, apiId, viewName) {
         const data = metaData ? JSON.stringify(metaData) : {};
         metaData = JSON.parse(data);
         //replace image urls
+        // Use the handle (metaData.id), not the raw uuid — the /apis/{apiId}/assets
+        // endpoint resolves apiId via getIdExcludingType, which matches on `handle`.
+        // A uuid here never matches and the asset request 404s. This mirrors
+        // appendAPIImageURL (listing page), which already uses the handle.
+        // orgId is appended so the (public) image endpoint can resolve the view for
+        // anonymous visitors with no session — mirrors appendAPIImageURL and getOrgAsset.
         let images = metaData.apiImageMetadata;
         for (const key in images) {
-            let apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${apiId}${constants.API_TEMPLATE_FILE_NAME}`;
-            const modifiedApiImageURL = apiImageUrl + images[key];
+            let apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${metaData.id}${constants.API_TEMPLATE_FILE_NAME}`;
+            const modifiedApiImageURL = apiImageUrl + images[key] + `${constants.ORG_ID_PARAM}${orgId}`;
             images[key] = modifiedApiImageURL;
         }
     }
@@ -854,6 +867,49 @@ async function getApiDefinitionFileContent(orgId, apiId) {
     }
 
     throw new Error('API definition file not found');
+}
+
+/**
+ * Single source of truth for the "API Keys" sidebar item visibility on any
+ * API-scoped page (landing, documentation, api-keys). It loads the stored API
+ * definition and inspects its security schemes so every page derives the flag
+ * the same way — previously each page computed it separately and some (e.g. the
+ * documentation page) omitted the definition, hiding the nav item inconsistently.
+ *
+ * GraphQL/MCP/SOAP definitions are not OpenAPI security-scheme documents we can
+ * inspect for apiKey security, so they resolve to false without a definition load.
+ *
+ * @param {string} orgId
+ * @param {string} apiId
+ * @param {string} apiType - constants.API_TYPE.*
+ * @param {object} metaData - any truthy metadata object for the API
+ * @param {string|object} [preloadedDefinition] - the API definition if the caller
+ *        already loaded it (pass to avoid a second read); omit to load from storage.
+ * @returns {Promise<boolean>}
+ */
+async function resolveShowApiKeysNav(orgId, apiId, apiType, metaData, preloadedDefinition) {
+    if (!metaData) {
+        return false;
+    }
+    if (apiType === constants.API_TYPE.GRAPHQL
+        || apiType === constants.API_TYPE.MCP
+        || apiType === constants.API_TYPE.SOAP) {
+        return false;
+    }
+    let apiDefinition = preloadedDefinition;
+    if (apiDefinition === undefined) {
+        apiDefinition = null;
+        try {
+            apiDefinition = await getApiDefinitionFileContent(orgId, apiId);
+        } catch (definitionErr) {
+            logger.debug('Could not load API definition for API keys nav check', {
+                orgId,
+                apiId,
+                error: definitionErr.message
+            });
+        }
+    }
+    return apiUsesApiKeySecurity(metaData, apiDefinition);
 }
 
 function parseApiDefinitionContent(apiDefinitionContent) {
@@ -1071,20 +1127,19 @@ const loadAPIContentMd = async (req, res) => {
         let specHeading = 'OpenAPI Specification';
         const apiType = metaData?.type;
         try {
-            if (apiType === constants.API_TYPE.GRAPHQL) {
-                specHeading = 'GraphQL Schema';
-                const raw = await apiFileDao.get(constants.FILE_NAME.API_DEFINITION_GRAPHQL, constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
-                if (raw) apiDefinition = raw.file_content.toString(constants.CHARSET_UTF8);
-            } else if (apiType === constants.API_TYPE.MCP) {
-                specHeading = 'Tool Schema';
-                const raw = await apiFileDao.getDoc(constants.DOC_TYPES.SCHEMA_DEFINITION, orgId, apiId, null);
-                if (raw) apiDefinition = raw.file_content.toString(constants.CHARSET_UTF8);
-            } else {
-                if (apiType === constants.API_TYPE.WS || apiType === constants.API_TYPE.WEBSUB) specHeading = 'AsyncAPI Specification';
-                else if (apiType === 'SOAP') specHeading = 'WSDL';
-                const raw = await apiFileDao.get(constants.FILE_NAME.API_DEFINITION_FILE_NAME, constants.DOC_TYPES.API_DEFINITION, orgId, apiId);
-                if (raw) apiDefinition = raw.file_content.toString(constants.CHARSET_UTF8);
-            }
+            // Resolve the definition by its doc-type rather than a guessed filename: the stored
+            // name is the uploaded basename, so a fixed name would miss anything uploaded under a
+            // different name. There is one definition per API (SCHEMA_DEFINITION for MCP tools
+            // schemas, API_DEFINITION for every other type).
+            if (apiType === constants.API_TYPE.GRAPHQL) specHeading = 'GraphQL Schema';
+            else if (apiType === constants.API_TYPE.MCP) specHeading = 'Tool Schema';
+            else if (apiType === constants.API_TYPE.WS || apiType === constants.API_TYPE.WEBSUB) specHeading = 'AsyncAPI Specification';
+            else if (apiType === 'SOAP') specHeading = 'WSDL';
+            const definitionDocType = apiType === constants.API_TYPE.MCP
+                ? constants.DOC_TYPES.SCHEMA_DEFINITION
+                : constants.DOC_TYPES.API_DEFINITION;
+            const raw = await apiFileDao.getDoc(definitionDocType, orgId, apiId, null);
+            if (raw) apiDefinition = raw.file_content.toString(constants.CHARSET_UTF8);
         } catch (defErr) {
             logger.warn('Could not load API definition for markdown', { orgId, apiId, error: defErr.message });
         }
@@ -1377,13 +1432,13 @@ const loadAPIDefinitionRaw = async (req, res) => {
         const orgId = orgDetails.uuid;
 
         if (await isAiDisabledForPortal(orgId, viewName)) {
-            return res.status(404).json({ message: 'Not Found' });
+            return util.sendError(res, 404, 'Not Found');
         }
 
         const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
 
         if (definitionResponse.metaData?.agentVisibility === 'HIDDEN') {
-            return res.status(404).json({ message: 'API specification not found' });
+            return util.sendError(res, 404, 'API specification not found');
         }
 
         const typeConfig = SPEC_FORMAT_MAP[definitionResponse.apiType] || SPEC_FORMAT_DEFAULT;
@@ -1393,7 +1448,7 @@ const loadAPIDefinitionRaw = async (req, res) => {
         }
 
         const raw = definitionResponse[typeConfig.field];
-        if (!raw) return res.status(404).json({ message: 'API specification not found' });
+        if (!raw) return util.sendError(res, 404, 'API specification not found');
 
         const apiType = definitionResponse.apiType;
 
@@ -1411,9 +1466,6 @@ const loadAPIDefinitionRaw = async (req, res) => {
         let spec = typeof raw === 'string' ? parseApiDefinitionContent(raw) : raw;
 
         const endpoints = definitionResponse.metaData?.endPoints;
-        const isAsyncAPI = apiType === constants.API_TYPE.WS || apiType === constants.API_TYPE.WEBSUB;
-        const isRestAPI = apiType !== constants.API_TYPE.GRAPHQL && apiType !== constants.API_TYPE.MCP && !isAsyncAPI;
-
         const prodUrl = endpoints?.productionURL || '';
         const sandboxUrl = endpoints?.sandboxURL || '';
         if (apiType === constants.API_TYPE.WS || apiType === constants.API_TYPE.WEBSUB) {
@@ -1431,7 +1483,7 @@ const loadAPIDefinitionRaw = async (req, res) => {
             error: error.message,
             stack: error.stack
         });
-        res.status(500).json({ message: 'Failed to load specification.' });
+        util.sendError(res, 500, 'Failed to load specification.');
     }
 };
 
@@ -1475,31 +1527,6 @@ const loadDocumentMd = async (req, res) => {
     }
 };
 
-const seedSamples = async (req, res) => {
-    const { orgName } = req.params;
-    // Demo mode is the gate, deliberately in place of an admin check — it's meant to let
-    // anyone (including anonymous visitors) populate a public demo instance with samples.
-    // Outside demo mode this is unreachable regardless of login/role.
-    if (!config.demo?.enabled) {
-        return res.status(403).json({ error: 'Demo mode disabled' });
-    }
-    try {
-        const orgDetails = await orgDao.get(orgName);
-        const apiResults = await seedSampleAPIs(orgDetails.uuid);
-        const mcpResults = await seedSampleMCPs(orgDetails.uuid);
-        const results  = [...apiResults, ...mcpResults];
-        const deployed = results.filter(r => r.status === 'ok').length;
-        const skipped  = results.filter(r => r.status === 'exists').length;
-        const failed   = results.filter(r => r.status === 'failed').length;
-        markSamplesSeeded();
-        logger.info('Sample seed complete', { orgName, deployed, skipped, failed });
-        res.json({ results, deployed, skipped, failed });
-    } catch (err) {
-        logger.error('Sample seed error', { orgName, error: err.message });
-        res.status(500).json({ error: 'Failed to seed samples' });
-    }
-};
-
 module.exports = {
     loadAPIs,
     loadAPIContent,
@@ -1512,5 +1539,5 @@ module.exports = {
     loadAPIContentMd,
     loadDocumentMd,
     loadSpecificationRaw: loadAPIDefinitionRaw,
-    seedSamples,
+    resolveShowApiKeysNav,
 };

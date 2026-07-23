@@ -21,7 +21,23 @@ module.exports = {
     testMatch: ['**/*.spec.js'],
     globalSetup: '<rootDir>/support/global-setup.js',
     globalTeardown: '<rootDir>/support/global-teardown.js',
-    testTimeout: 10000,
+    // Registers a per-suite afterAll that deletes resources tracked via
+    // support/cleanup.js, so specs don't accumulate objects in the shared org.
+    setupFilesAfterEnv: ['<rootDir>/support/autoCleanup.js'],
+    testTimeout: 20000,
+    // The devportal-under-test runs SQLite through a single Sequelize connection
+    // (pool: { max: 1 } — see src/db/sequelizeConfig.js, correct for a single-writer
+    // SQLite file) shared by every model AND the session store. Because
+    // better-sqlite3 is synchronous, that one connection processes every DB op —
+    // logins' session writes, fixture CRUD from every spec file, the webhook
+    // dispatcher/delivery-worker polling — strictly one at a time regardless of
+    // Jest's worker count, so parallel workers add queuing/coordination risk
+    // without any real throughput gain. Under load, queued ops can exceed the
+    // test timeout and surface as spurious "Login failed" redirects
+    // (authController.js's session.regenerate/logIn failure branches), not real
+    // auth bugs — this was flaky even at maxWorkers: 2 depending on host load.
+    // Fully serial removes the contention risk entirely.
+    maxWorkers: 1,
     reporters: [
         'default',
         ['jest-junit', { outputDirectory: 'reports', outputName: 'rest-api-results.xml' }],

@@ -1,0 +1,50 @@
+      <!-- ══ Organization (current org only) ══ -->
+      <div class="cfg-panel" id="cfg-organizations">
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title">Organization</h2>
+            <p class="cfg-panel-desc">Manage the details of this organization.</p>
+          </div>
+        </div>
+
+        {{#if currentOrg}}
+        <div class="cfg-form-grid" style="max-width:760px;">
+          <div class="cfg-form-group">
+            <label for="org-display">Name <span class="required">*</span></label>
+            <input type="text" id="org-display" class="cfg-form-input" value="{{currentOrg.displayName}}" />
+          </div>
+          <div class="cfg-form-group">
+            <label for="org-handle">Handle</label>
+            <input type="text" id="org-handle" class="cfg-form-input cfg-form-input--mono" value="{{currentOrg.id}}" readonly />
+            <p class="cfg-field-hint">Identifier used in URLs. Cannot be changed.</p>
+          </div>
+          <div class="cfg-form-group">
+            <label for="org-owner">Business owner</label>
+            <input type="text" id="org-owner" class="cfg-form-input" value="{{currentOrg.businessOwner}}" />
+          </div>
+          <div class="cfg-form-group">
+            <label for="org-owner-contact">Business owner contact</label>
+            <input type="text" id="org-owner-contact" class="cfg-form-input" value="{{currentOrg.businessOwnerContact}}" />
+          </div>
+          <div class="cfg-form-group">
+            <label for="org-owner-email">Business owner email</label>
+            <input type="email" id="org-owner-email" class="cfg-form-input" value="{{currentOrg.businessOwnerEmail}}" />
+          </div>
+          <div class="cfg-form-group">
+            <label for="org-idp-ref">IDP reference ID</label>
+            <input type="text" id="org-idp-ref" class="cfg-form-input" value="{{currentOrg.idpRefId}}" />
+          </div>
+          <div class="cfg-form-group">
+            <label for="org-cp-ref">Control plane reference ID</label>
+            <input type="text" id="org-cp-ref" class="cfg-form-input" value="{{currentOrg.cpRefId}}" />
+          </div>
+        </div>
+        <div style="margin-top:20px;">
+          <button class="cfg-btn-primary" id="cfg-save-org-btn" type="button" data-handle="{{currentOrg.id}}">
+            <i class="bi bi-floppy me-1"></i> Save changes
+          </button>
+        </div>
+        {{else}}
+        <p class="cfg-tbl-empty">Organization details are unavailable.</p>
+        {{/if}}
+      </div><!-- /#cfg-organizations -->

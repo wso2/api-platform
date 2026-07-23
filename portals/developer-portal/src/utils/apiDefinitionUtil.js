@@ -16,7 +16,7 @@
  * under the License.
  */
 const logger = require('../config/logger');
-const yaml = require('js-yaml');
+const yaml = require('./yaml');
 
 const securitySchemeHasApiKey = (securityScheme) =>
     Array.isArray(securityScheme) && securityScheme.includes('api_key');

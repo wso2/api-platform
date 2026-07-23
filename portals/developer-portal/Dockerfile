@@ -17,12 +17,12 @@
 # --------------------------------------------------------------------
 
 # Developer Portal Dockerfile
-# Uses node:23-slim (Debian/glibc) so better-sqlite3 can compile its native binding.
+# Uses node:24-slim (Debian/glibc, current LTS) so better-sqlite3 can compile its native binding.
 # Build tools (python3, make, g++) are installed only in the builder stage and are not
 # carried into the runtime image.
 
 # Build stage — installs production dependencies (including native build of better-sqlite3)
-FROM node:23-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 # Install native build tools required by better-sqlite3's node-gyp compilation.
 # python3 is needed by node-gyp; make and g++ compile the C++ binding.
@@ -31,7 +31,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 # Runtime stage
-FROM node:23-slim
+FROM node:24-slim
 
 # Install runtime utilities needed by the entrypoint (openssl for cert generation)
 RUN apt-get update && apt-get install -y --no-install-recommends openssl curl && rm -rf /var/lib/apt/lists/*
@@ -51,9 +51,11 @@ EXPOSE 8080
 # Create a non-root user with UID 10001 to satisfy Checkov CKV_CHOREO_1
 RUN groupadd -g 10001 appgroup && useradd -u 10001 -g appgroup -s /bin/bash -M appuser
 
-# Pre-create the certs and logs directories owned by the non-root user so the
-# entrypoint script can write self-signed certs, and the app can write log files.
-RUN mkdir -p /app/certs /app/logs /app/data && chown -R 10001:10001 /app/certs /app/logs /app/data
+# Pre-create the logs and data directories owned by the non-root user so the
+# app can write log files and its database. The TLS certificate is bind-mounted
+# read-only at /etc/devportal/tls (generated host-side by setup.sh) — never
+# written to by the container.
+RUN mkdir -p /app/logs /app/data && chown -R 10001:10001 /app/logs /app/data
 
 RUN chmod +x /app/docker-entrypoint.sh
 

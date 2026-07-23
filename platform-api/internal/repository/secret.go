@@ -27,7 +27,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	sqlite3 "github.com/mattn/go-sqlite3"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -42,7 +42,7 @@ func NewSecretRepo(db *database.DB) SecretRepository {
 }
 
 func (r *SecretRepo) Create(s *model.Secret) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	s.CreatedAt = now
 	s.UpdatedAt = now
 
@@ -83,7 +83,7 @@ func (r *SecretRepo) Create(s *model.Secret) error {
 	)
 	if err != nil {
 		if isSecretUniqueViolation(err) {
-			return constants.ErrSecretAlreadyExists
+			return apperror.SecretExists.Wrap(err)
 		}
 		return fmt.Errorf("failed to create secret: %w", err)
 	}
@@ -124,7 +124,7 @@ func (r *SecretRepo) GetByHandle(orgID, handle string) (*model.Secret, error) {
 	s, err := scanSecret(r.db.QueryRow(query, orgID, handle))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrSecretNotFound
+			return nil, apperror.SecretNotFound.Wrap(err)
 		}
 		return nil, fmt.Errorf("failed to get secret: %w", err)
 	}
@@ -202,7 +202,7 @@ func (r *SecretRepo) Count(orgID string) (int, error) {
 }
 
 func (r *SecretRepo) Update(s *model.Secret) error {
-	s.UpdatedAt = time.Now()
+	s.UpdatedAt = time.Now().UTC()
 
 	query := r.db.Rebind(`
 		UPDATE secrets
@@ -225,7 +225,7 @@ func (r *SecretRepo) Update(s *model.Secret) error {
 		return err
 	}
 	if rows == 0 {
-		return constants.ErrSecretNotFound
+		return apperror.SecretNotFound.New()
 	}
 	return nil
 }
@@ -249,7 +249,7 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 	var lockedID string
 	if err := tx.QueryRow(lockQuery, orgID, handle).Scan(&lockedID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrSecretNotFound
+			return nil, apperror.SecretNotFound.Wrap(err)
 		}
 		return nil, fmt.Errorf("failed to lock secret row: %w", err)
 	}
@@ -294,7 +294,7 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 		SET status = 'DEPRECATED', updated_at = ?, updated_by = ?
 		WHERE organization_uuid = ? AND handle = ?
 	`)
-	result, err := tx.Exec(deleteQuery, time.Now(), updatedBy, orgID, handle)
+	result, err := tx.Exec(deleteQuery, time.Now().UTC(), updatedBy, orgID, handle)
 	if err != nil {
 		return nil, fmt.Errorf("failed to deprecate secret: %w", err)
 	}
@@ -303,7 +303,7 @@ func (r *SecretRepo) FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]m
 		return nil, err
 	}
 	if affected == 0 {
-		return nil, constants.ErrSecretNotFound
+		return nil, apperror.SecretNotFound.New()
 	}
 
 	if err := tx.Commit(); err != nil {

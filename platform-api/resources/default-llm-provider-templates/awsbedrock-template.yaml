@@ -19,13 +19,13 @@
 metadata:
   name: awsbedrock
 spec:
-  groupId: awsbedrock
+  groupId: wso2-awsbedrock
   displayName: AWS Bedrock
   managedBy: wso2
   version: v1.0
   metadata:
-    logoUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/aws.bedrock/icon.png
-    openapiSpecUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/aws.bedrock/openapi.yaml
+    logoUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/awsbedrock/icon.png
+    openapiSpecUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/awsbedrock/openapi.yaml
   promptTokens:
     location: payload
     identifier: $.usage.inputTokens

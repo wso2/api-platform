@@ -1,14 +1,13 @@
 package service
 
 import (
-	"errors"
 	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -42,7 +41,7 @@ func TestMapTemplateResourceMappingAPI_RejectsEmptyResource(t *testing.T) {
 	if mapped != nil {
 		t.Fatal("expected mapped resource to be nil when validation fails")
 	}
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput, got: %v", err)
 	}
 }
@@ -60,7 +59,7 @@ func TestMapTemplateResourceMappingsAPI_StopsOnInvalidResource(t *testing.T) {
 	if mapped != nil {
 		t.Fatal("expected mapped resources to be nil when validation fails")
 	}
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput, got: %v", err)
 	}
 }
@@ -76,6 +75,9 @@ func TestNormalizeUpstreamAuthType(t *testing.T) {
 		{name: "api key upper with underscore", input: "API_KEY", expected: "api-key"},
 		{name: "basic", input: "basic", expected: "basic"},
 		{name: "bearer", input: "bearer", expected: "bearer"},
+		{name: "other", input: "other", expected: "other"},
+		{name: "none", input: "none", expected: "none"},
+		{name: "none upper", input: "NONE", expected: "none"},
 		{name: "unknown preserved", input: "custom", expected: "custom"},
 		{name: "empty", input: "", expected: ""},
 	}
@@ -87,6 +89,48 @@ func TestNormalizeUpstreamAuthType(t *testing.T) {
 				t.Fatalf("expected %q, got %q", tc.expected, actual)
 			}
 		})
+	}
+}
+
+// TestMapLLMUpstreamYAMLToModel_DefaultsToNone verifies the DP->CP import default:
+// a gateway-pushed provider whose upstream.auth block is absent (or empty-typed)
+// is stored with auth type "none", while an explicit "other" type is preserved.
+func TestMapLLMUpstreamYAMLToModel_DefaultsToNone(t *testing.T) {
+	// No auth block => "none".
+	got := mapLLMUpstreamYAMLToModel(dto.LLMUpstreamYAML{URL: "https://api.openai.com/v1"})
+	if got == nil || got.Main == nil || got.Main.Auth == nil || got.Main.Auth.Type != "none" {
+		t.Fatalf("expected auth type 'none' for absent auth, got %+v", got)
+	}
+
+	// Explicit "other" is preserved.
+	otherType := api.Other
+	got = mapLLMUpstreamYAMLToModel(dto.LLMUpstreamYAML{
+		URL:  "https://api.openai.com/v1",
+		Auth: &api.UpstreamAuth{Type: &otherType},
+	})
+	if got == nil || got.Main == nil || got.Main.Auth == nil || got.Main.Auth.Type != "other" {
+		t.Fatalf("expected auth type 'other' preserved, got %+v", got)
+	}
+}
+
+// TestMapUpstreamConfigToDTO_ReturnsAuthAsIs verifies the read (GET) path returns the stored
+// upstream config as-is: no auth block is synthesised when none is stored, and a stored type
+// is returned unchanged.
+func TestMapUpstreamConfigToDTO_ReturnsAuthAsIs(t *testing.T) {
+	// No stored auth -> no auth block in the response (not defaulted to "none").
+	out := mapUpstreamConfigToDTO(&model.UpstreamConfig{
+		Main: &model.UpstreamEndpoint{URL: "https://api.openai.com/v1"},
+	})
+	if out.Main.Auth != nil {
+		t.Fatalf("expected no auth block for stored nil auth, got %+v", out.Main.Auth)
+	}
+
+	// A stored explicit type is returned unchanged.
+	out = mapUpstreamConfigToDTO(&model.UpstreamConfig{
+		Main: &model.UpstreamEndpoint{URL: "https://api.openai.com/v1", Auth: &model.UpstreamAuth{Type: "none"}},
+	})
+	if out.Main.Auth == nil || out.Main.Auth.Type == nil || string(*out.Main.Auth.Type) != "none" {
+		t.Fatalf("expected stored auth type 'none' returned as-is, got %+v", out.Main.Auth)
 	}
 }
 
@@ -204,6 +248,47 @@ func TestMapUpstreamConfigToDTO_DoesNotExposeAuthValue(t *testing.T) {
 	}
 }
 
+func TestMapSecurityModelToAPI_PreservesValuePrefix(t *testing.T) {
+	in := &model.SecurityConfig{
+		Enabled: utils.BoolPtr(true),
+		APIKey: &model.APIKeySecurity{
+			Enabled:     utils.BoolPtr(true),
+			Key:         "Authorization",
+			In:          "header",
+			ValuePrefix: "Bearer",
+		},
+	}
+
+	out := mapSecurityModelToAPI(in)
+	if out == nil || out.ApiKey == nil {
+		t.Fatal("expected api key security to be present")
+	}
+	if out.ApiKey.ValuePrefix == nil || *out.ApiKey.ValuePrefix != "Bearer" {
+		t.Fatalf("expected inbound value prefix to be preserved, got %v", out.ApiKey.ValuePrefix)
+	}
+}
+
+func TestMapSecurityAPIToModel_PreservesValuePrefix(t *testing.T) {
+	inLoc := api.APIKeySecurityInHeader
+	in := &api.SecurityConfig{
+		Enabled: utils.BoolPtr(true),
+		ApiKey: &api.APIKeySecurity{
+			Enabled:     utils.BoolPtr(true),
+			Key:         utils.StringPtrIfNotEmpty("Authorization"),
+			In:          &inLoc,
+			ValuePrefix: utils.StringPtrIfNotEmpty("Bearer"),
+		},
+	}
+
+	out := mapSecurityAPIToModel(in)
+	if out == nil || out.APIKey == nil {
+		t.Fatal("expected api key security to be present")
+	}
+	if out.APIKey.ValuePrefix != "Bearer" {
+		t.Fatalf("expected inbound value prefix to be preserved, got %q", out.APIKey.ValuePrefix)
+	}
+}
+
 func TestMapProviderModelToAPI_DoesNotExposeUpstreamAuthValue(t *testing.T) {
 	in := &model.LLMProvider{
 		ID:      "provider-1",
@@ -270,37 +355,6 @@ func TestMapProxyModelToAPI_DoesNotExposeProviderAuthValue(t *testing.T) {
 	}
 }
 
-func TestValidateLLMResourceLimit(t *testing.T) {
-	t.Run("below limit should pass", func(t *testing.T) {
-		err := validateLLMResourceLimit(4, 5, constants.ErrLLMProviderLimitReached)
-		if err != nil {
-			t.Fatalf("expected no error below limit, got: %v", err)
-		}
-	})
-
-	t.Run("at limit should fail", func(t *testing.T) {
-		err := validateLLMResourceLimit(5, 5, constants.ErrLLMProviderLimitReached)
-		if err != constants.ErrLLMProviderLimitReached {
-			t.Fatalf("expected ErrLLMProviderLimitReached, got: %v", err)
-		}
-	})
-
-	t.Run("above limit should fail", func(t *testing.T) {
-		err := validateLLMResourceLimit(6, 5, constants.ErrLLMProxyLimitReached)
-		if err != constants.ErrLLMProxyLimitReached {
-			t.Fatalf("expected ErrLLMProxyLimitReached, got: %v", err)
-		}
-	})
-
-	t.Run("unlimited (limit <= 0) should always pass", func(t *testing.T) {
-		for _, limit := range []int{0, -1} {
-			if err := validateLLMResourceLimit(1_000_000, limit, constants.ErrLLMProviderLimitReached); err != nil {
-				t.Fatalf("expected no error for unlimited (limit=%d), got: %v", limit, err)
-			}
-		}
-	})
-}
-
 func TestGenerateLLMProviderDeploymentYAML_WithSecurityAPIKeyPolicy(t *testing.T) {
 	trueValue := true
 
@@ -334,9 +388,10 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAPIKeyPolicy(t *testing.T
 			Security: &model.SecurityConfig{
 				Enabled: &trueValue,
 				APIKey: &model.APIKeySecurity{
-					Enabled: &trueValue,
-					Key:     "X-API-Key",
-					In:      "header",
+					Enabled:     &trueValue,
+					Key:         "Authorization",
+					In:          "header",
+					ValuePrefix: "Bearer",
 				},
 			},
 		},
@@ -396,11 +451,14 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAPIKeyPolicy(t *testing.T
 	if policy.Params == nil {
 		t.Fatalf("expected policy params to be present")
 	}
-	if (*policy.Params)["key"] != "X-API-Key" {
-		t.Fatalf("expected params.key X-API-Key, got: %#v", (*policy.Params)["key"])
+	if (*policy.Params)["key"] != "Authorization" {
+		t.Fatalf("expected params.key Authorization, got: %#v", (*policy.Params)["key"])
 	}
 	if (*policy.Params)["in"] != "header" {
 		t.Fatalf("expected params.in header, got: %#v", (*policy.Params)["in"])
+	}
+	if (*policy.Params)["valuePrefix"] != "Bearer" {
+		t.Fatalf("expected params.valuePrefix Bearer, got: %#v", (*policy.Params)["valuePrefix"])
 	}
 }
 
@@ -430,9 +488,10 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAndAdditionalPolicy(t *te
 			Security: &model.SecurityConfig{
 				Enabled: &trueValue,
 				APIKey: &model.APIKeySecurity{
-					Enabled: &trueValue,
-					Key:     "X-API-Key",
-					In:      "header",
+					Enabled:     &trueValue,
+					Key:         "Authorization",
+					In:          "header",
+					ValuePrefix: "Bearer",
 				},
 			},
 			Policies: []model.LLMPolicy{
@@ -482,8 +541,11 @@ func TestGenerateLLMProviderDeploymentYAML_WithSecurityAndAdditionalPolicy(t *te
 	if apiKeyPolicy.Name != "api-key-auth" {
 		t.Fatalf("expected api-key-auth global policy, got: %s", apiKeyPolicy.Name)
 	}
-	if apiKeyPolicy.Params == nil || (*apiKeyPolicy.Params)["key"] != "X-API-Key" {
-		t.Fatalf("expected api-key-auth params.key X-API-Key")
+	if apiKeyPolicy.Params == nil || (*apiKeyPolicy.Params)["key"] != "Authorization" {
+		t.Fatalf("expected api-key-auth params.key Authorization")
+	}
+	if (*apiKeyPolicy.Params)["valuePrefix"] != "Bearer" {
+		t.Fatalf("expected api-key-auth params.valuePrefix Bearer")
 	}
 
 	guardrailPolicy := findOperationPolicy(out.Spec.OperationPolicies, "word-count-guardrail")
@@ -639,34 +701,26 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderGlobalRateLimit(t *testin
 		t.Fatalf("expected token duration 1h, got: %#v", firstTokenLimit["duration"])
 	}
 
-	requestPolicy := findGlobalPolicy(out.Spec.GlobalPolicies, "advanced-ratelimit")
+	requestPolicy := findGlobalPolicy(out.Spec.GlobalPolicies, "basic-ratelimit")
 	if requestPolicy == nil {
-		t.Fatalf("expected advanced-ratelimit global policy to exist")
+		t.Fatalf("expected basic-ratelimit global policy to exist")
 	}
 	if requestPolicy.Params == nil {
 		t.Fatalf("expected request policy to have params")
 	}
-	quotas, ok := (*requestPolicy.Params)["quotas"].([]interface{})
-	if !ok || len(quotas) != 1 {
-		t.Fatalf("expected quotas with one entry, got: %#v", (*requestPolicy.Params)["quotas"])
+	if _, ok := (*requestPolicy.Params)["keyExtraction"]; ok {
+		t.Fatalf("expected no keyExtraction on global basic-ratelimit, got: %#v", (*requestPolicy.Params)["keyExtraction"])
 	}
-	firstQuota, ok := quotas[0].(map[string]interface{})
-	if !ok {
-		t.Fatalf("expected first quota as object, got: %#v", quotas[0])
-	}
-	if firstQuota["name"] != "request-limit" {
-		t.Fatalf("expected quota name request-limit, got: %#v", firstQuota["name"])
-	}
-	limits, ok := firstQuota["limits"].([]interface{})
+	limits, ok := (*requestPolicy.Params)["limits"].([]interface{})
 	if !ok || len(limits) != 1 {
-		t.Fatalf("expected quota limits with one entry, got: %#v", firstQuota["limits"])
+		t.Fatalf("expected limits with one entry, got: %#v", (*requestPolicy.Params)["limits"])
 	}
 	firstRequestLimit, ok := limits[0].(map[string]interface{})
 	if !ok {
 		t.Fatalf("expected first request limit as object, got: %#v", limits[0])
 	}
-	if firstRequestLimit["limit"] != 1 {
-		t.Fatalf("expected request limit 1, got: %#v", firstRequestLimit["limit"])
+	if firstRequestLimit["requests"] != 1 {
+		t.Fatalf("expected request count 1, got: %#v", firstRequestLimit["requests"])
 	}
 	if firstRequestLimit["duration"] != "1h" {
 		t.Fatalf("expected request duration 1h, got: %#v", firstRequestLimit["duration"])
@@ -752,9 +806,9 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimit(t *
 		t.Fatalf("expected token policy path /audio/speech")
 	}
 
-	requestPolicy := findOperationPolicy(out.Spec.OperationPolicies, "advanced-ratelimit")
+	requestPolicy := findOperationPolicy(out.Spec.OperationPolicies, "basic-ratelimit")
 	if requestPolicy == nil {
-		t.Fatalf("expected advanced-ratelimit operation policy to exist")
+		t.Fatalf("expected basic-ratelimit operation policy to exist")
 	}
 	if len(requestPolicy.Paths) != 2 {
 		t.Fatalf("expected 2 request policy paths, got: %d", len(requestPolicy.Paths))
@@ -787,24 +841,16 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimit(t *
 	}
 
 	for _, p := range []*api.OperationPolicyPath{assistantsRequestPath, audioRequestPath} {
-		quotas, ok := p.Params["quotas"].([]interface{})
-		if !ok || len(quotas) != 1 {
-			t.Fatalf("expected quotas with one entry, got: %#v", p.Params["quotas"])
-		}
-		firstQuota, ok := quotas[0].(map[string]interface{})
-		if !ok {
-			t.Fatalf("expected first quota object, got: %#v", quotas[0])
-		}
-		limits, ok := firstQuota["limits"].([]interface{})
+		limits, ok := p.Params["limits"].([]interface{})
 		if !ok || len(limits) != 1 {
-			t.Fatalf("expected limits with one entry, got: %#v", firstQuota["limits"])
+			t.Fatalf("expected limits with one entry, got: %#v", p.Params["limits"])
 		}
 		firstRequestLimit, ok := limits[0].(map[string]interface{})
 		if !ok {
 			t.Fatalf("expected request limit object, got: %#v", limits[0])
 		}
-		if firstRequestLimit["limit"] != 1 {
-			t.Fatalf("expected request limit 1, got: %#v", firstRequestLimit["limit"])
+		if firstRequestLimit["requests"] != 1 {
+			t.Fatalf("expected request count 1, got: %#v", firstRequestLimit["requests"])
 		}
 		if firstRequestLimit["duration"] != "1h" {
 			t.Fatalf("expected request duration 1h, got: %#v", firstRequestLimit["duration"])
@@ -885,9 +931,9 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimitAndD
 		t.Fatalf("expected 3 token policy paths (default + 2 unique resources), got: %d", len(tokenPolicy.Paths))
 	}
 
-	requestPolicy := findOperationPolicy(out.Spec.OperationPolicies, "advanced-ratelimit")
+	requestPolicy := findOperationPolicy(out.Spec.OperationPolicies, "basic-ratelimit")
 	if requestPolicy == nil {
-		t.Fatalf("expected advanced-ratelimit operation policy to exist")
+		t.Fatalf("expected basic-ratelimit operation policy to exist")
 	}
 	if len(requestPolicy.Paths) != 3 {
 		t.Fatalf("expected 3 request policy paths (default + 2 unique resources), got: %d", len(requestPolicy.Paths))
@@ -917,24 +963,16 @@ func TestGenerateLLMProviderDeploymentYAML_WithProviderResourceWiseRateLimitAndD
 	}
 
 	for _, p := range requestPolicy.Paths {
-		quotas, ok := p.Params["quotas"].([]interface{})
-		if !ok || len(quotas) != 1 {
-			t.Fatalf("expected quotas with one entry, got: %#v", p.Params["quotas"])
-		}
-		firstQuota, ok := quotas[0].(map[string]interface{})
-		if !ok {
-			t.Fatalf("expected first quota object, got: %#v", quotas[0])
-		}
-		limits, ok := firstQuota["limits"].([]interface{})
+		limits, ok := p.Params["limits"].([]interface{})
 		if !ok || len(limits) != 1 {
-			t.Fatalf("expected limits with one entry, got: %#v", firstQuota["limits"])
+			t.Fatalf("expected limits with one entry, got: %#v", p.Params["limits"])
 		}
 		firstRequestLimit, ok := limits[0].(map[string]interface{})
 		if !ok {
 			t.Fatalf("expected request limit object, got: %#v", limits[0])
 		}
-		if firstRequestLimit["limit"] != 1 || firstRequestLimit["duration"] != "1h" {
-			t.Fatalf("expected request limit {limit:1,duration:1h}, got: %#v", firstRequestLimit)
+		if firstRequestLimit["requests"] != 1 || firstRequestLimit["duration"] != "1h" {
+			t.Fatalf("expected request limit {requests:1,duration:1h}, got: %#v", firstRequestLimit)
 		}
 	}
 }
@@ -993,6 +1031,10 @@ func (m *mockLLMProviderRepo) Create(p *model.LLMProvider) error {
 	return nil
 }
 
+func (m *mockLLMProviderRepo) CreateWithCustomPolicyUsages(p *model.LLMProvider, _ []string) error {
+	return m.Create(p)
+}
+
 func (m *mockLLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvider, error) {
 	if m.getByIDFunc != nil {
 		return m.getByIDFunc(providerID, orgUUID)
@@ -1003,6 +1045,10 @@ func (m *mockLLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMPro
 func (m *mockLLMProviderRepo) Update(p *model.LLMProvider) error {
 	m.updated = p
 	return nil
+}
+
+func (m *mockLLMProviderRepo) UpdateWithCustomPolicyUsages(p *model.LLMProvider, _ []string) error {
+	return m.Update(p)
 }
 
 type mockLLMTemplateRepo struct {
@@ -1116,7 +1162,7 @@ func TestLLMProviderServiceCreateRejectsMultipleModelProvidersForNativeTemplate(
 	}
 
 	_, err := service.Create("org-1", "alice", request)
-	if err != constants.ErrInvalidInput {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidInput, got: %v", err)
 	}
 	if providerRepo.createCalled {
@@ -1246,7 +1292,7 @@ func TestLLMProviderServiceCreateRejectsInvalidGlobalPolicyVersion(t *testing.T)
 	request.GlobalPolicies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
 
 	_, err := service.Create("org-1", "alice", request)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
@@ -1258,7 +1304,7 @@ func TestLLMProviderServiceCreateRejectsInvalidOperationPolicyVersion(t *testing
 	request.OperationPolicies = &[]api.OperationPolicy{{Name: "token-ratelimit", Version: "1"}}
 
 	_, err := service.Create("org-1", "alice", request)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
@@ -1270,7 +1316,7 @@ func TestLLMProviderServiceCreateRejectsInvalidLegacyPolicyVersion(t *testing.T)
 	request.Policies = &[]api.LLMPolicy{{Name: "basic-ratelimit", Version: "V1"}}
 
 	_, err := service.Create("org-1", "alice", request)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
@@ -1287,7 +1333,7 @@ func TestLLMProviderServiceUpdateRejectsInvalidPolicyVersion(t *testing.T) {
 	request.GlobalPolicies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
 
 	_, err := service.Update("org-1", "provider-1", "alice", request)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
@@ -1296,13 +1342,13 @@ func TestLLMProviderServiceCreateReturnsConflictForDuplicateHandle(t *testing.T)
 	providerRepo := &mockLLMProviderRepo{existsResult: true}
 	templateRepo := &mockLLMTemplateRepo{
 		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai"}, nil
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", Enabled: true}, nil
 		},
 	}
 	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 
 	_, err := service.Create("org-1", "alice", validProviderRequest("openai"))
-	if err != constants.ErrLLMProviderExists {
+	if !apperror.LLMProviderExists.Is(err) {
 		t.Fatalf("expected ErrLLMProviderExists, got: %v", err)
 	}
 }
@@ -1338,7 +1384,7 @@ func TestLLMProviderServiceUpdatePreservesUpstreamAuthValue(t *testing.T) {
 	}
 	templateRepo := &mockLLMTemplateRepo{
 		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
-			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai"}, nil
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", Enabled: true}, nil
 		},
 	}
 	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
@@ -1374,7 +1420,7 @@ func TestLLMProxyServiceCreateFailsWhenProviderNotFound(t *testing.T) {
 	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 
 	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
-	if err != constants.ErrLLMProviderNotFound {
+	if !apperror.LLMProviderNotFound.Is(err) {
 		t.Fatalf("expected ErrLLMProviderNotFound, got: %v", err)
 	}
 }
@@ -1392,7 +1438,7 @@ func TestLLMProxyServiceCreateRejectsInvalidPolicyVersion(t *testing.T) {
 	request.GlobalPolicies = &[]api.Policy{{Name: "api-key-auth", Version: "v1.0.0"}}
 
 	_, err := service.Create("org-1", "alice", request)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
@@ -1410,7 +1456,7 @@ func TestLLMProxyServiceUpdateRejectsInvalidPolicyVersion(t *testing.T) {
 	request.OperationPolicies = &[]api.OperationPolicy{{Name: "token-ratelimit", Version: "1"}}
 
 	_, err := service.Update("org-1", "proxy-1", "alice", request)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("expected ErrInvalidPolicyVersion, got: %v", err)
 	}
 }
@@ -1425,7 +1471,7 @@ func TestLLMProxyServiceCreateReturnsConflictForDuplicateHandle(t *testing.T) {
 	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 
 	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
-	if err != constants.ErrLLMProxyExists {
+	if !apperror.LLMProxyExists.Is(err) {
 		t.Fatalf("expected ErrLLMProxyExists, got: %v", err)
 	}
 }
@@ -1520,12 +1566,280 @@ func TestLLMProxyServiceUpdatePreservesProviderAuthValue(t *testing.T) {
 	}
 }
 
+// TestLLMProviderServiceCreate_DisabledTemplate_Rejected proves a provider
+// cannot be created against a disabled template.
+func TestLLMProviderServiceCreate_DisabledTemplate_Rejected(t *testing.T) {
+	providerRepo := &mockLLMProviderRepo{}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", Enabled: false}, nil
+		},
+	}
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	_, err := service.Create("org-1", "alice", validProviderRequest("openai"))
+	if !apperror.LLMProviderTemplateDisabled.Is(err) {
+		t.Fatalf("expected LLMProviderTemplateDisabled, got: %v", err)
+	}
+	if providerRepo.created != nil {
+		t.Error("expected provider creation to be aborted, but repo.Create was called")
+	}
+}
+
+// TestLLMProviderServiceUpdate_DisabledTemplate_Rejected proves a provider
+// cannot be updated to reference a disabled template.
+func TestLLMProviderServiceUpdate_DisabledTemplate_Rejected(t *testing.T) {
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "prov-uuid", ID: providerID, TemplateUUID: "tpl-openai"}, nil
+		},
+	}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", Enabled: false}, nil
+		},
+	}
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	_, err := service.Update("org-1", "provider-1", "alice", validProviderRequest("openai"))
+	if !apperror.LLMProviderTemplateDisabled.Is(err) {
+		t.Fatalf("expected LLMProviderTemplateDisabled, got: %v", err)
+	}
+	if providerRepo.updated != nil {
+		t.Error("expected provider update to be aborted, but repo.Update was called")
+	}
+}
+
+// TestLLMProviderServiceCreate_PolicySecretRef_Rejected proves secret-ref
+// validation now covers the whole request, not just upstream.auth — a
+// placeholder embedded in a policy param (not upstream) must also be rejected.
+func TestLLMProviderServiceCreate_PolicySecretRef_Rejected(t *testing.T) {
+	now := time.Now()
+	providerRepo := &mockLLMProviderRepo{}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-1", ID: templateID, Enabled: true, CreatedAt: now, UpdatedAt: now}, nil
+		},
+	}
+	orgRepo := &mockOrganizationRepo{org: &model.Organization{ID: "org-1"}}
+	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService())
+	service := NewLLMProviderService(providerRepo, templateRepo, orgRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service.SetSecretService(secretService)
+
+	request := validProviderRequest("openai")
+	params := map[string]interface{}{"value": `{{ secret "nonexistent-policy-secret" }}`}
+	request.GlobalPolicies = &[]api.Policy{{Name: "set-headers", Version: "v1", Params: &params}}
+
+	_, err := service.Create("org-1", "alice", request)
+	if err == nil {
+		t.Fatal("expected error for non-existent secret placeholder in a policy param, got nil")
+	}
+	if !apperror.ValidationFailed.Is(err) {
+		t.Errorf("expected a validation error for missing secret ref, got: %v", err)
+	}
+	if providerRepo.created != nil {
+		t.Error("expected provider creation to be aborted, but repo.Create was called")
+	}
+}
+
+func TestLLMProxyServiceCreate_MissingSecretRef_Rejected(t *testing.T) {
+	proxyRepo := &mockLLMProxyRepo{}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService())
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service.SetSecretService(secretService)
+
+	request := validProxyRequest("provider-1", "project-1")
+	request.Provider.Auth = &api.UpstreamAuth{
+		Type:   upstreamAuthTypePtr("api-key"),
+		Header: stringPtr("Authorization"),
+		Value:  stringPtr(`{{ secret "nonexistent-proxy-secret" }}`),
+	}
+
+	_, err := service.Create("org-1", "alice", request)
+	if err == nil {
+		t.Fatal("expected error for non-existent secret placeholder, got nil")
+	}
+	if !apperror.ValidationFailed.Is(err) {
+		t.Errorf("expected a validation error for missing secret ref, got: %v", err)
+	}
+	if proxyRepo.created != nil {
+		t.Error("expected proxy creation to be aborted, but repo.Create was called")
+	}
+}
+
+func TestLLMProxyServiceUpdate_MissingSecretRef_Rejected(t *testing.T) {
+	now := time.Now()
+	proxyRepo := &mockLLMProxyRepo{
+		getByIDFunc: func(proxyID, orgUUID string) (*model.LLMProxy, error) {
+			return &model.LLMProxy{
+				UUID: "proxy-uuid", ID: proxyID, Name: "Old Proxy", Version: "v1.0",
+				ProjectUUID: "project-1", ProviderUUID: "provider-uuid",
+				CreatedAt: now, UpdatedAt: now,
+				Configuration: model.LLMProxyConfig{
+					Provider:     "provider-1",
+					UpstreamAuth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: `{{ secret "existing-handle" }}`},
+				},
+			}, nil
+		},
+	}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService())
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service.SetSecretService(secretService)
+
+	request := validProxyRequest("provider-1", "project-1")
+	request.Provider.Auth = &api.UpstreamAuth{
+		Type:   upstreamAuthTypePtr("api-key"),
+		Header: stringPtr("Authorization"),
+		Value:  stringPtr(`{{ secret "nonexistent-proxy-secret" }}`),
+	}
+
+	_, err := service.Update("org-1", "proxy-1", "alice", request)
+	if err == nil {
+		t.Fatal("expected error for non-existent secret placeholder, got nil")
+	}
+	if !apperror.ValidationFailed.Is(err) {
+		t.Errorf("expected a validation error for missing secret ref, got: %v", err)
+	}
+	if proxyRepo.updated != nil {
+		t.Error("expected proxy update to be aborted, but repo.Update was called")
+	}
+}
+
+// TestLLMProviderServiceUpdate_CleansUpRotatedSecret proves rotating a
+// provider's upstream credential deprecates the secret it replaced — the
+// same cleanupRotatedSecret path LLM Proxy and REST API are also tested
+// against, exercised here for the Provider service specifically.
+func TestLLMProviderServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
+	now := time.Now()
+	providerRepo := &mockLLMProviderRepo{}
+	providerRepo.getByIDFunc = func(providerID, orgUUID string) (*model.LLMProvider, error) {
+		if providerRepo.updated == nil {
+			return &model.LLMProvider{
+				UUID:         "prov-uuid",
+				ID:           providerID,
+				Name:         "Old Provider",
+				Version:      "v1.0",
+				TemplateUUID: "tpl-openai",
+				CreatedAt:    now,
+				UpdatedAt:    now,
+				Configuration: model.LLMProviderConfig{
+					Upstream: &model.UpstreamConfig{
+						Main: &model.UpstreamEndpoint{
+							URL:  "https://example.com/openai/v1",
+							Auth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: `{{ secret "old-handle" }}`},
+						},
+					},
+				},
+			}, nil
+		}
+		updated := *providerRepo.updated
+		updated.UUID = "prov-uuid"
+		updated.CreatedAt = now
+		updated.UpdatedAt = now
+		return &updated, nil
+	}
+	templateRepo := &mockLLMTemplateRepo{
+		getByIDFunc: func(templateID, orgUUID string) (*model.LLMProviderTemplate, error) {
+			return &model.LLMProviderTemplate{UUID: "tpl-openai", ID: "openai", Enabled: true}, nil
+		},
+	}
+	secretRepo := newMockRepo()
+	secretRepo.secrets["old-handle"] = &model.Secret{Handle: "old-handle", Status: model.SecretStatusActive}
+	secretRepo.secrets["new-handle"] = &model.Secret{Handle: "new-handle", Status: model.SecretStatusActive}
+	secretService := NewSecretService(secretRepo, &mockVault{}, newTestIdentityService())
+
+	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service.SetSecretService(secretService)
+
+	request := validProviderRequest("openai")
+	request.Upstream.Main.Auth = &api.UpstreamAuth{
+		Type:   upstreamAuthTypePtr("api-key"),
+		Header: stringPtr("Authorization"),
+		Value:  stringPtr(`{{ secret "new-handle" }}`),
+	}
+
+	if _, err := service.Update("org-1", "provider-1", "alice", request); err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if secretRepo.secrets["old-handle"].Status != model.SecretStatusDeprecated {
+		t.Fatalf("expected old secret to be deprecated, got status=%v", secretRepo.secrets["old-handle"].Status)
+	}
+	if secretRepo.secrets["new-handle"].Status != model.SecretStatusActive {
+		t.Fatalf("expected new secret to remain active, got status=%v", secretRepo.secrets["new-handle"].Status)
+	}
+}
+
+func TestLLMProxyServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
+	now := time.Now()
+	proxyRepo := &mockLLMProxyRepo{}
+	proxyRepo.getByIDFunc = func(proxyID, orgUUID string) (*model.LLMProxy, error) {
+		if proxyRepo.updated == nil {
+			return &model.LLMProxy{
+				UUID:         "proxy-uuid",
+				ID:           proxyID,
+				Name:         "Old Proxy",
+				Version:      "v1.0",
+				ProjectUUID:  "project-1",
+				ProviderUUID: "provider-uuid",
+				CreatedAt:    now,
+				UpdatedAt:    now,
+				Configuration: model.LLMProxyConfig{
+					Provider:     "provider-1",
+					UpstreamAuth: &model.UpstreamAuth{Type: "api-key", Header: "Authorization", Value: `{{ secret "old-handle" }}`},
+				},
+			}, nil
+		}
+		updated := *proxyRepo.updated
+		updated.UUID = "proxy-uuid"
+		updated.CreatedAt = now
+		updated.UpdatedAt = now
+		return &updated, nil
+	}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	secretRepo := newMockRepo()
+	secretRepo.secrets["old-handle"] = &model.Secret{Handle: "old-handle", Status: model.SecretStatusActive}
+	secretRepo.secrets["new-handle"] = &model.Secret{Handle: "new-handle", Status: model.SecretStatusActive}
+	secretService := NewSecretService(secretRepo, &mockVault{}, newTestIdentityService())
+
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+	service.SetSecretService(secretService)
+
+	request := validProxyRequest("provider-1", "project-1")
+	request.Provider.Auth = &api.UpstreamAuth{
+		Type:   upstreamAuthTypePtr("api-key"),
+		Header: stringPtr("Authorization"),
+		Value:  stringPtr(`{{ secret "new-handle" }}`),
+	}
+
+	_, err := service.Update("org-1", "proxy-1", "test-user", request)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if secretRepo.secrets["old-handle"].Status != model.SecretStatusDeprecated {
+		t.Fatalf("expected old secret to be deprecated, got status=%v", secretRepo.secrets["old-handle"].Status)
+	}
+}
+
 func validProviderRequest(template string) *api.LLMProvider {
 	return &api.LLMProvider{
-		Id:       strPointer("provider-1"),
-		DisplayName:     "Test Provider",
-		Version:  "v1.0",
-		Template: template,
+		Id:          strPointer("provider-1"),
+		DisplayName: "Test Provider",
+		Version:     "v1.0",
+		Template:    template,
 		Upstream: api.Upstream{
 			Main: api.UpstreamDefinition{Url: stringPtr("https://example.com/openai/v1")},
 		},
@@ -1535,10 +1849,10 @@ func validProviderRequest(template string) *api.LLMProvider {
 
 func validProxyRequest(providerID, projectID string) *api.LLMProxy {
 	return &api.LLMProxy{
-		Id:        strPointer("proxy-1"),
-		DisplayName:      "Test Proxy",
-		Version:   "v1.0",
-		ProjectId: projectID,
+		Id:          strPointer("proxy-1"),
+		DisplayName: "Test Proxy",
+		Version:     "v1.0",
+		ProjectId:   projectID,
 		Provider: api.LLMProxyProvider{
 			Id: providerID,
 		},
@@ -1552,4 +1866,120 @@ func stringPtr(s string) *string {
 func upstreamAuthTypePtr(v string) *api.UpstreamAuthType {
 	t := api.UpstreamAuthType(v)
 	return &t
+}
+
+func TestLLMProxyServiceCreateFailsWhenAdditionalProviderNotFound(t *testing.T) {
+	proxyRepo := &mockLLMProxyRepo{}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			if providerID == "provider-1" {
+				return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+			}
+			return nil, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	req := validProxyRequest("provider-1", "project-1")
+	req.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{{Id: "missing-provider"}}
+
+	if _, err := service.Create("org-1", "alice", req); !apperror.LLMProviderRefNotFound.Is(err) {
+		t.Fatalf("expected LLMProviderRefNotFound, got: %v", err)
+	}
+}
+
+func TestLLMProxyServiceCreateFailsWhenAdditionalProviderNameCollides(t *testing.T) {
+	proxyRepo := &mockLLMProxyRepo{}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	req := validProxyRequest("provider-1", "project-1")
+	// The additional provider exists, but its upstream `as` name collides with
+	// the primary provider id, which the gateway rejects at transform time.
+	req.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{
+		{Id: "provider-2", As: stringPtr("provider-1")},
+	}
+
+	if _, err := service.Create("org-1", "alice", req); !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("expected ValidationFailed, got: %v", err)
+	}
+}
+
+func TestLLMProxyServiceUpdateFailsWhenAdditionalProviderNotFound(t *testing.T) {
+	now := time.Now()
+	proxyRepo := &mockLLMProxyRepo{}
+	proxyRepo.getByIDFunc = func(proxyID, orgUUID string) (*model.LLMProxy, error) {
+		return &model.LLMProxy{
+			UUID:          "proxy-uuid",
+			ID:            proxyID,
+			Name:          "Old Proxy",
+			Version:       "v1.0",
+			ProjectUUID:   "project-1",
+			ProviderUUID:  "provider-uuid",
+			CreatedAt:     now,
+			UpdatedAt:     now,
+			Configuration: model.LLMProxyConfig{Provider: "provider-1"},
+		}, nil
+	}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			if providerID == "provider-1" {
+				return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+			}
+			return nil, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	req := validProxyRequest("provider-1", "project-1")
+	req.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{{Id: "missing-provider"}}
+
+	if _, err := service.Update("org-1", "proxy-1", "test-user", req); !apperror.LLMProviderRefNotFound.Is(err) {
+		t.Fatalf("expected LLMProviderRefNotFound, got: %v", err)
+	}
+	if proxyRepo.updated != nil {
+		t.Fatalf("expected update to be rejected before persisting, but proxy was updated")
+	}
+}
+
+func TestLLMProxyServiceUpdateFailsWhenAdditionalProviderNameCollides(t *testing.T) {
+	now := time.Now()
+	proxyRepo := &mockLLMProxyRepo{}
+	proxyRepo.getByIDFunc = func(proxyID, orgUUID string) (*model.LLMProxy, error) {
+		return &model.LLMProxy{
+			UUID:          "proxy-uuid",
+			ID:            proxyID,
+			Name:          "Old Proxy",
+			Version:       "v1.0",
+			ProjectUUID:   "project-1",
+			ProviderUUID:  "provider-uuid",
+			CreatedAt:     now,
+			UpdatedAt:     now,
+			Configuration: model.LLMProxyConfig{Provider: "provider-1"},
+		}, nil
+	}
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	req := validProxyRequest("provider-1", "project-1")
+	// Two additional providers resolve to the same upstream `as` name.
+	req.AdditionalProviders = &[]api.LLMProxyAdditionalProvider{
+		{Id: "provider-2", As: stringPtr("shared")},
+		{Id: "provider-3", As: stringPtr("shared")},
+	}
+
+	if _, err := service.Update("org-1", "proxy-1", "test-user", req); !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("expected ValidationFailed, got: %v", err)
+	}
+	if proxyRepo.updated != nil {
+		t.Fatalf("expected update to be rejected before persisting, but proxy was updated")
+	}
 }

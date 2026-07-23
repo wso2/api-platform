@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { APIMetadata, APILabels, APITags } = require('../models/apiMetadata');
+const { APIMetadata, APITags } = require('../models/apiMetadata');
 const SubscriptionPlan = require('../models/subscriptionPlan');
 const SubscriptionPlanLimit = require('../models/subscriptionPlanLimit');
 const APIContent = require('../models/apiContent');
@@ -82,7 +82,6 @@ const update = async (orgId, apiId, apiMetadata, updatedBy, t) => {
             ref_id: apiMetadata.referenceId,
             status: apiMetadata.status,
             name: apiMetadata.name,
-            handle: apiMetadata.handle ? apiMetadata.handle : `${apiMetadata.name.toLowerCase().replace(/\s+/g, '')}-v${apiMetadata.version}`,
             description: apiMetadata.description,
             version: apiMetadata.version,
             type: apiMetadata.type,
@@ -282,14 +281,16 @@ const list = async (orgId, viewName, t, typeFilter) => {
     return apiList;
 };
 
-const listFromAllViews = async (orgId, t) => {
+const listFromAllViews = async (orgId, t, typeFilter) => {
 
     let apiList = [];
     try {
         const publicAPIS = await APIMetadata.findAll({
             where: {
                 org_uuid: orgId,
-                status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] }
+                status: { [Op.in]: [constants.API_STATUS.PUBLISHED, constants.API_STATUS.DEPRECATED] },
+                ...(typeFilter?.include && { type: typeFilter.include }),
+                ...(typeFilter?.exclude && { type: { [Op.ne]: typeFilter.exclude } })
             },
             include: [{
                 model: APIContent,

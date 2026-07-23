@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -36,12 +37,12 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -224,10 +225,6 @@ func main() {
 	apiKeySnapshotManager := apikeyxds.NewAPIKeySnapshotManager(apiKeyStore, log)
 	apiKeyXDSManager := apikeyxds.NewAPIKeyStateManager(apiKeyStore, apiKeySnapshotManager, log)
 
-	// Initialize in-memory webhook secret store (shared with the HMAC policy via the common package)
-	webhookSecretStore := webhooksecret.GetStoreInstance()
-	webhookSecretSnapshotManager := webhooksecretxds.NewSnapshotManager(webhookSecretStore, log)
-
 	// Initialize in-memory lazy resource store and components for xDS
 	lazyResourceStore := storage.NewLazyResourceStore(log)
 	lazyResourceSnapshotManager := lazyresourcexds.NewLazyResourceSnapshotManager(lazyResourceStore, log)
@@ -296,17 +293,6 @@ func main() {
 		}
 		// Create secrets service
 		secretsService = secrets.NewSecretsService(db, encryptionProviderManager, log)
-
-		// Load webhook secrets from database into the in-memory store
-		log.Info("Loading webhook secrets from database")
-		if err := storage.LoadWebhookSecretsFromDatabase(db, encryptionProviderManager, webhookSecretStore); err != nil {
-			log.Error("Failed to load webhook secrets from database", slog.Any("error", err))
-			os.Exit(1)
-		}
-		log.Info("Loaded webhook secrets from database")
-		if err := webhookSecretSnapshotManager.RefreshSnapshot(); err != nil {
-			log.Warn("Failed to generate initial webhook secret xDS snapshot", slog.Any("error", err))
-		}
 	}
 	log.Info("Loaded encryption providers")
 
@@ -331,7 +317,7 @@ func main() {
 	for key, def := range policyDefinitions {
 		def.ManagedBy = "wso2"
 		if localPolicies[def.Name+"|"+def.Version] {
-			def.ManagedBy = "customer"
+			def.ManagedBy = "organization"
 		}
 		policyDefinitions[key] = def
 	}
@@ -432,6 +418,21 @@ func main() {
 	transformerRegistry := transform.NewRegistry(restTransformer, llmTransformer)
 	policyManager.SetTransformers(transformerRegistry)
 
+	// Wire the same transformer into the Envoy xDS translator so Envoy routes are built from the
+	// RuntimeDeployConfig (RDC) path — identical to how the policy engine's RouteConfig/PolicyChain
+	// resources are keyed. Without this the Envoy translator falls back to the legacy per-operation
+	// path, which (a) does not render header matchers and (b) names routes "method|path|vhost"
+	// (3 segments), while the policy resources are keyed "method|path|vhost|<header-hash>". The
+	// policy engine resolves the chain by the Envoy route name, so the mismatch makes every
+	// header-matched route fail with 500 ("policy chain not found"). WebSubApi is intentionally
+	// excluded so it keeps using the async-specific legacy translation path.
+	translator.SetTransformers(map[string]models.ConfigTransformer{
+		"RestApi":     transformerRegistry,
+		"Mcp":         transformerRegistry,
+		"LlmProvider": transformerRegistry,
+		"LlmProxy":    transformerRegistry,
+	})
+
 	// Load runtime configs from existing API configurations on startup.
 	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;
 	// the single UpdateSnapshot call below covers all of them.
@@ -479,7 +480,7 @@ func main() {
 			cfg.Controller.PolicyServer.TLS.KeyFile,
 		))
 	}
-	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, subscriptionSnapshotManager, webhookSecretSnapshotManager, cfg.Controller.PolicyServer.Port, log, serverOpts...)
+	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, subscriptionSnapshotManager, nil, cfg.Controller.PolicyServer.Port, log, serverOpts...)
 	go func() {
 		if err := policyXDSServer.Start(); err != nil {
 			log.Error("Policy xDS server failed", slog.Any("error", err))
@@ -505,7 +506,6 @@ func main() {
 
 	apiSvc := utils.NewAPIDeploymentService(configStore, db, snapshotManager, validator, &cfg.Router, eventHubInstance, gatewayID, secretsService)
 	mcpSvc := utils.NewMCPDeploymentService(configStore, db, snapshotManager, policyManager, policyValidator, eventHubInstance, gatewayID, secretsService)
-	webhookSecretService := utils.NewWebhookSecretService(db, encryptionProviderManager, webhookSecretStore, eventHubInstance, gatewayID, log)
 	llmSvc := utils.NewLLMDeploymentService(configStore, db, snapshotManager, lazyResourceXDSManager, templateDefinitions,
 		apiSvc, &cfg.Router, policyVersionResolver, policyValidator)
 
@@ -525,8 +525,8 @@ func main() {
 		subscriptionSnapshotManager,
 		eventHubInstance,
 		secretsService,
-		webhookSecretStore,
-		webhookSecretSnapshotManager,
+		webhooksecret.GetStoreInstance(),
+		nil,
 	)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
@@ -581,9 +581,6 @@ func main() {
 		cfg,
 		policyDefinitions,
 		secretsService,
-		webhookSecretStore,
-		webhookSecretSnapshotManager,
-		encryptionProviderManager,
 	)
 	if err := evtListener.Start(); err != nil {
 		log.Error("Failed to start event listener", slog.Any("error", err))
@@ -609,7 +606,6 @@ func main() {
 		subscriptionSnapshotManager,
 		secretsService,
 		restAPIService,
-		webhookSecretService,
 	)
 
 	// Load immutable gateway artifacts from the filesystem (no-op when immutable mode is disabled).
@@ -665,6 +661,14 @@ func main() {
 		outerMiddlewares = append(outerMiddlewares, middleware.MetricsMiddleware())
 	}
 	handler := gohttpkit.Chain(outerMiddlewares...)(mux)
+
+	// Enable block/mutex profiling sampling when pprof is enabled. These are the
+	// only profiles that need explicit rate setup; 0 leaves them disabled. Gated so
+	// the sampling overhead is never paid unless pprof is deliberately turned on.
+	if cfg.Controller.AdminServer.Pprof.Enabled {
+		runtime.SetBlockProfileRate(cfg.Controller.AdminServer.Pprof.BlockProfileRate)
+		runtime.SetMutexProfileFraction(cfg.Controller.AdminServer.Pprof.MutexProfileFraction)
+	}
 
 	// Start controller admin server for debug endpoints if enabled.
 	var controllerAdminServer *adminserver.Server
@@ -813,17 +817,6 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /rest-apis/{id}":     {"admin", "developer"},
 		"DELETE /rest-apis/{id}":  {"admin", "developer"},
 
-		"POST /websub-apis":         {"admin", "developer"},
-		"GET /websub-apis":          {"admin", "developer"},
-		"GET /websub-apis/{id}":     {"admin", "developer"},
-		"PUT /websub-apis/{id}":     {"admin", "developer"},
-		"DELETE /websub-apis/{id}":  {"admin", "developer"},
-
-		"POST /webbroker-apis":         {"admin", "developer"},
-		"GET /webbroker-apis":          {"admin", "developer"},
-		"GET /webbroker-apis/{id}":     {"admin", "developer"},
-		"DELETE /webbroker-apis/{id}":  {"admin", "developer"},
-
 		"GET /certificates":          {"admin", "developer"},
 		"POST /certificates":         {"admin", "developer"},
 		"DELETE /certificates/{id}":  {"admin"},
@@ -872,23 +865,6 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /llm-proxies/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
 		"POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
 		"DELETE /llm-proxies/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
-
-		"POST /websub-apis/{id}/api-keys":                          {"admin", "consumer"},
-		"GET /websub-apis/{id}/api-keys":                           {"admin", "consumer"},
-		"PUT /websub-apis/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
-		"POST /websub-apis/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
-		"DELETE /websub-apis/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
-
-		"POST /websub-apis/{id}/secrets":                                {"admin", "consumer"},
-		"GET /websub-apis/{id}/secrets":                                 {"admin", "consumer"},
-		"DELETE /websub-apis/{id}/secrets/{secretName}":                 {"admin", "consumer"},
-		"POST /websub-apis/{id}/secrets/{secretName}/regenerate":        {"admin", "consumer"},
-
-		"POST /webbroker-apis/{id}/api-keys":                          {"admin", "consumer"},
-		"GET /webbroker-apis/{id}/api-keys":                           {"admin", "consumer"},
-		"PUT /webbroker-apis/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
-		"POST /webbroker-apis/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
-		"DELETE /webbroker-apis/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
 
 		// Root-level subscription endpoints
 		"POST /subscriptions":                        {"admin", "developer"},

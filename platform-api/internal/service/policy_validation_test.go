@@ -18,11 +18,10 @@
 package service
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/api"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 )
 
 func TestIsValidPolicyVersion(t *testing.T) {
@@ -65,7 +64,7 @@ func TestValidatePolicyVersions(t *testing.T) {
 	}
 	invalid := []api.Policy{{Name: "SET_HEADER", Version: "v1.0.0"}}
 	err := validatePolicyVersions(&invalid)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Errorf("expected ErrInvalidPolicyVersion, got %v", err)
 	}
 }
@@ -76,7 +75,7 @@ func TestValidateLLMPolicyVersions(t *testing.T) {
 	}
 	invalid := []api.LLMPolicy{{Name: "API_KEY_AUTH", Version: "1.0"}}
 	err := validateLLMPolicyVersions(&invalid)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Errorf("expected ErrInvalidPolicyVersion, got %v", err)
 	}
 }
@@ -87,7 +86,7 @@ func TestValidateOperationPolicyVersions(t *testing.T) {
 	}
 	invalid := []api.OperationPolicy{{Name: "RATE_LIMIT", Version: "v1.2"}}
 	err := validateOperationPolicyVersions(&invalid)
-	if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Errorf("expected ErrInvalidPolicyVersion, got %v", err)
 	}
 }
@@ -105,7 +104,7 @@ func TestValidateOperationAndChannelPolicyVersions(t *testing.T) {
 	t.Run("bad operation policy version", func(t *testing.T) {
 		operations := []api.Operation{{Request: api.OperationRequest{Policies: &badPolicies}}}
 		err := validateOperationAndChannelPolicyVersions(&operations, nil)
-		if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+		if !apperror.ValidationFailed.Is(err) {
 			t.Errorf("expected ErrInvalidPolicyVersion, got %v", err)
 		}
 	})
@@ -113,7 +112,7 @@ func TestValidateOperationAndChannelPolicyVersions(t *testing.T) {
 	t.Run("bad channel policy version", func(t *testing.T) {
 		channels := []api.Channel{{Request: api.ChannelRequest{Policies: &badPolicies}}}
 		err := validateOperationAndChannelPolicyVersions(nil, &channels)
-		if !errors.Is(err, constants.ErrInvalidPolicyVersion) {
+		if !apperror.ValidationFailed.Is(err) {
 			t.Errorf("expected ErrInvalidPolicyVersion, got %v", err)
 		}
 	})

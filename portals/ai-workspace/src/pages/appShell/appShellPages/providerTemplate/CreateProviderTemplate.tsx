@@ -17,7 +17,7 @@
  */
 
 import React, { useRef, useState } from 'react';
-import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import { useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import YAML from 'yaml';
 import {
   Accordion,
@@ -45,13 +45,17 @@ import { buildOrgPath } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import type {
   CreateProviderTemplateRequest,
+  ProviderTemplate,
+  ResourceMappings,
   TemplateMetadata,
+  TemplateMetadataAuth,
 } from '../../../../utils/types';
 import {
   DEFAULT_AUTH_CONFIG,
   DEFAULT_TOKEN_CONFIG,
   fromTokenConfig,
   isValidHttpUrl,
+  toTokenConfig,
   TOKEN_FIELDS,
   TOKEN_LOCATIONS,
   type TokenConfig,
@@ -99,22 +103,41 @@ function isParseableSpec(text: string): boolean {
 
 export default function CreateProviderTemplate() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { currentOrganization } = useAppShell();
   const { createTemplate } = useProviderTemplates();
   const showSnackbar = useAIWorkspaceSnackbar();
 
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [endpointUrl, setEndpointUrl] = useState('');
-  const [openapiSpecUrl, setOpenapiSpecUrl] = useState('');
+  const copyFrom = (location.state as { copyFrom?: ProviderTemplate } | null)
+    ?.copyFrom;
+
+  const initialName = copyFrom ? `${copyFrom.displayName} Copy` : '';
+  const [name, setName] = useState(initialName);
+  const [description, setDescription] = useState(copyFrom?.description ?? '');
+  const [endpointUrl, setEndpointUrl] = useState(
+    copyFrom?.metadata?.endpointUrl ?? ''
+  );
+  const [openapiSpecUrl, setOpenapiSpecUrl] = useState(
+    copyFrom?.metadata?.openapiSpecUrl ?? ''
+  );
   const [isFetchingSpec, setIsFetchingSpec] = useState(false);
   const [specFileName, setSpecFileName] = useState('');
-  const [specContent, setSpecContent] = useState('');
-  const [specFetched, setSpecFetched] = useState(false);
+  const [specContent, setSpecContent] = useState(copyFrom?.openapi ?? '');
+  const [specFetched, setSpecFetched] = useState(
+    Boolean(copyFrom?.metadata?.openapiSpecUrl || copyFrom?.openapi)
+  );
 
-  const [tokenConfig, setTokenConfig] = useState<TokenConfig>(() => ({
-    ...DEFAULT_TOKEN_CONFIG,
-  }));
+  const copiedAuth = useRef<TemplateMetadataAuth | undefined>(
+    copyFrom?.metadata?.auth
+  );
+  const copiedLogoUrl = useRef<string | undefined>(copyFrom?.metadata?.logoUrl);
+  const copiedResourceMappings = useRef<ResourceMappings | undefined>(
+    copyFrom?.resourceMappings
+  );
+
+  const [tokenConfig, setTokenConfig] = useState<TokenConfig>(() =>
+    copyFrom ? toTokenConfig(copyFrom) : { ...DEFAULT_TOKEN_CONFIG }
+  );
   const [nameTouched, setNameTouched] = useState(false);
   const [specUrlTouched, setSpecUrlTouched] = useState(false);
   const [endpointUrlTouched, setEndpointUrlTouched] = useState(false);
@@ -226,7 +249,10 @@ export default function CreateProviderTemplate() {
     if (endpointUrl.trim()) metadata.endpointUrl = endpointUrl.trim();
     if (openapiSpecUrl.trim()) metadata.openapiSpecUrl = openapiSpecUrl.trim();
 
-    metadata.auth = { ...DEFAULT_AUTH_CONFIG };
+    metadata.auth = copiedAuth.current
+      ? { ...copiedAuth.current }
+      : { ...DEFAULT_AUTH_CONFIG };
+    if (copiedLogoUrl.current) metadata.logoUrl = copiedLogoUrl.current;
 
     const payload: CreateProviderTemplateRequest = {
       id: normalizedTemplateId,
@@ -235,6 +261,7 @@ export default function CreateProviderTemplate() {
       description: description.trim() || undefined,
       ...tokenFields,
       metadata: Object.keys(metadata).length ? metadata : undefined,
+      resourceMappings: copiedResourceMappings.current,
 
       openapi: specContent.trim() ? specContent : undefined,
     };
@@ -268,12 +295,30 @@ export default function CreateProviderTemplate() {
       <Stack spacing={2} mt={2}>
         <PageTitle>
           <PageTitle.Header>
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplate.title"
-              defaultMessage={'Add LLM Provider Template'}
-            />
+            {copyFrom ? (
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplate.copyTitle"
+                defaultMessage={'Copy LLM Provider Template'}
+              />
+            ) : (
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplate.title"
+                defaultMessage={'Add LLM Provider Template'}
+              />
+            )}
           </PageTitle.Header>
         </PageTitle>
+        {copyFrom && (
+          <Typography variant="body2" color="text.secondary">
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.providerTemplate.CreateProviderTemplate.copySubtitle"
+              defaultMessage={
+                'Creating a new custom template from "{source}".'
+              }
+              values={{ source: copyFrom.displayName }}
+            />
+          </Typography>
+        )}
       </Stack>
 
       {/* component="form" makes Enter submit and groups inputs semantically. */}

@@ -23,7 +23,6 @@ import (
 	"strings"
 	"sync"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -35,6 +34,12 @@ type ConfigStore struct {
 	handle       map[string]string               // Key: "handle" → Value: config ID
 	snapVersion  int64                           // Current xDS snapshot version
 	TopicManager *TopicManager
+
+	// webSubTopicUpdater is an optional hook, set by an event-gateway-controller
+	// binary, that derives WebSub hub topics from a WebSubApi config and syncs
+	// them into TopicManager. Nil (and skipped) when event-gateway support is
+	// not compiled in.
+	webSubTopicUpdater func(cfg *models.StoredConfig, tm *TopicManager) error
 
 	// LLM Provider Templates
 	templates          map[string]*models.StoredLLMProviderTemplate // Key: template ID
@@ -91,8 +96,8 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 		cs.labelsByAPI[cfg.Handle] = labelsCopy
 	}
 
-	if cfg.Kind == "WebSubApi" {
-		err := cs.updateTopics(cfg)
+	if cfg.Kind == "WebSubApi" && cs.webSubTopicUpdater != nil {
+		err := cs.webSubTopicUpdater(cfg, cs.TopicManager)
 		if err != nil {
 			return err
 		}
@@ -140,8 +145,8 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 		cs.nameVersion[newKey] = cfg.UUID
 	}
 
-	if cfg.Kind == "WebSubApi" {
-		err := cs.updateTopics(cfg)
+	if cfg.Kind == "WebSubApi" && cs.webSubTopicUpdater != nil {
+		err := cs.webSubTopicUpdater(cfg, cs.TopicManager)
 		if err != nil {
 			return err
 		}
@@ -175,37 +180,10 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 	return nil
 }
 
-func (cs *ConfigStore) updateTopics(cfg *models.StoredConfig) error {
-	webSubCfg, ok := cfg.Configuration.(api.WebSubAPI)
-	if !ok {
-		return fmt.Errorf("configuration is not a WebSubAPI")
-	}
-	asyncData := webSubCfg.Spec
-	// Maintaining a topic map to process topics
-	// Running these inside Add or Delete configs might add extra latency to the API Deployment process
-	// TODO: Optimize topic management if needed by maintaining a separate topic manager struct
-
-	apiTopicsPerRevision := make(map[string]bool)
-	var channels map[string]api.WebSubChannel
-	if asyncData.Channels != nil {
-		channels = *asyncData.Channels
-	}
-	for chName := range channels {
-		contextWithVersion := strings.ReplaceAll(asyncData.Context, "$version", asyncData.Version)
-		contextWithVersion = strings.TrimPrefix(contextWithVersion, "/")
-		contextWithVersion = strings.ReplaceAll(contextWithVersion, "/", "_")
-		name := strings.TrimPrefix(chName, "/")
-		modifiedTopic := fmt.Sprintf("%s_%s", contextWithVersion, name)
-		cs.TopicManager.Add(cfg.UUID, modifiedTopic)
-		apiTopicsPerRevision[modifiedTopic] = true
-	}
-
-	for _, topic := range cs.TopicManager.GetAllByConfig(cfg.UUID) {
-		if _, exists := apiTopicsPerRevision[topic]; !exists {
-			cs.TopicManager.Remove(cfg.UUID, topic)
-		}
-	}
-	return nil
+// SetWebSubTopicUpdater registers the event-gateway hook invoked from Add/Update
+// when a WebSubApi config is stored. Passing nil (the default) disables it.
+func (cs *ConfigStore) SetWebSubTopicUpdater(fn func(cfg *models.StoredConfig, tm *TopicManager) error) {
+	cs.webSubTopicUpdater = fn
 }
 
 // Delete removes a configuration from memory

@@ -23,7 +23,7 @@ import (
 	"sort"
 	"strings"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -110,6 +110,11 @@ func llmProxyExternalDepsFingerprint(ctx context.Context, c client.Client, cr *a
 	if cr.Spec.Provider.Auth != nil {
 		accumulateBackingFromSecretValueSource(cr.Spec.Provider.Auth.Value, cr.Namespace, backing)
 	}
+	for i := range cr.Spec.AdditionalProviders {
+		if cr.Spec.AdditionalProviders[i].Auth != nil {
+			accumulateBackingFromSecretValueSource(cr.Spec.AdditionalProviders[i].Auth.Value, cr.Namespace, backing)
+		}
+	}
 	for i := range cr.Spec.Policies {
 		for j := range cr.Spec.Policies[i].Paths {
 			if p := cr.Spec.Policies[i].Paths[j].Params; p != nil {
@@ -139,4 +144,3 @@ func resolveRawExtensionValueFrom(ctx context.Context, c client.Client, defaultN
 	raw.Raw = out
 	return nil
 }
-

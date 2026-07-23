@@ -45,11 +45,6 @@ router.get('/:orgName/views/:viewName/mcps.md', (req, res, next) => {
     next();
 }, util.enforcePortalMode, apiController.loadMCPsMd);
 
-router.post('/:orgName/views/:viewName/apis/seed-samples', (req, res, next) => {
-    if (req.params.orgName === 'favicon.ico') return res.status(404).json({ error: 'Not Found' });
-    next();
-}, ensureAuthenticated, apiController.seedSamples);
-
 router.get('/:orgName/views/:viewName/apis', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');
@@ -100,9 +95,15 @@ router.get('/:orgName/views/:viewName/api/:apiHandle/api-keys', (req, res, next)
     next();
 }, authController.handleSilentSSO, registerPartials, util.enforcePortalMode, ensureAuthenticated, apiKeysContentController.loadAPIApiKeys);
 
-router.get('/:orgName/views/:viewName/:apiType(api|mcp)/:apiHandle/docs/specification.:format(json|graphql|xml)', (req, res, next) => {
+// Express 5 / path-to-regexp v8 dropped inline regex params (`:apiType(api|mcp)`,
+// `:format(json|graphql|xml)`), so the params are unconstrained here and validated in
+// the guard below — an invalid value calls next('route') to fall through as before.
+router.get('/:orgName/views/:viewName/:apiType/:apiHandle/docs/specification.:format', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');
+    }
+    if (!['api', 'mcp'].includes(req.params.apiType) || !['json', 'graphql', 'xml'].includes(req.params.format)) {
+        return next('route');
     }
     next();
   }, registerPartials, util.enforcePortalMode, ensureAuthenticated, apiController.loadSpecificationRaw);
@@ -121,9 +122,13 @@ router.get('/:orgName/views/:viewName/mcp/:apiHandle/docs/specification', (req, 
     next();
 }, authController.handleSilentSSO, registerPartials, util.enforcePortalMode, ensureAuthenticated, apiController.loadDocument);
 
-router.get('/:orgName/views/:viewName/:apiType(api|mcp)/:apiHandle/docs/:docType/:docName.md', (req, res, next) => {
+// Express 5: `:apiType(api|mcp)` inline regex dropped — validated in the guard below.
+router.get('/:orgName/views/:viewName/:apiType/:apiHandle/docs/:docType/:docName.md', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico') {
         return res.status(404).send('Not Found');
+    }
+    if (!['api', 'mcp'].includes(req.params.apiType)) {
+        return next('route');
     }
     next();
 }, util.enforcePortalMode, apiController.loadDocumentMd);

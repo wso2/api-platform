@@ -88,10 +88,18 @@ export async function createProviderTemplate(
  * console.log(response); // { count: 1, list: [...], pagination: {...} }
  * ```
  */
-export async function getProviderTemplates(baseUrl: string): Promise<ProviderTemplatesResponse> {
+export async function getProviderTemplates(
+  baseUrl: string,
+  latestOnly: boolean = true
+): Promise<ProviderTemplatesResponse> {
   try {
+    // latestOnly=true restricts the response to the is_latest version per
+    // family; false returns every version so callers can group/compare.
+    const query = latestOnly
+      ? `?query=${encodeURIComponent('latest:true')}`
+      : '';
     const response = await get<ProviderTemplatesResponse>(
-      `/llm-provider-templates?query=${encodeURIComponent('latest:true')}`,
+      `/llm-provider-templates${query}`,
       undefined,
       baseUrl
     );

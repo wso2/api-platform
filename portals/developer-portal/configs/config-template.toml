@@ -2,84 +2,119 @@
 # DEVELOPER PORTAL CONFIGURATION TEMPLATE
 # =============================================================================
 # Documentation reference only — enumerates every supported config.toml key
-# with its default value. To actually run the portal, copy config.toml.example
-# instead (same keys, with setup-oriented comments and copy/paste guidance).
+# with its default value, as plain literals. See configs/config.toml for the
+# concrete file this project actually ships, which wires some of these same
+# keys up to environment variables using the syntax below.
 #
 # Precedence (lowest to highest):
-#   1. Built-in defaults (src/config/configLoader.js)
-#   2. configs/config.toml
-#   3. APIP_DP_* environment variables
+#   1. Built-in defaults (src/config/configDefaults.js)
+#   2. configs/config.toml, with any {{ env }} / {{ file }} references resolved
 #
-# Every key below can be overridden via APIP_DP_<LEVEL1>_<LEVEL2>_... (one
-# underscore-separated token per config level, case-insensitive, "__" for a
-# literal underscore in a key name). Example: security.service_api_key.value
-# -> APIP_DP_SECURITY_SERVICEAPIKEY_VALUE.
+# There is no automatic environment-variable override. A key's value comes
+# from an env var or a file ONLY if you explicitly say so, using Handlebars-
+# style template syntax as the value. Use single-quoted TOML literal strings
+# (as below) so the inner double quotes need no backslash-escaping:
+#
+#   platform_api_url = '{{ env "APIP_DP_AUTH_LOCAL_PLATFORM_API_URL" }}'
+#   encryption_key = '{{ file "/secrets/devportal/encryption-key" }}'
+#
+#   {{ env "NAME" }}            -> NAME's value. FAILS CLOSED (aborts startup)
+#                                   if NAME is unset or empty — it does not
+#                                   fall through to the built-in default shown
+#                                   below.
+#   {{ env "NAME" "default" }}  -> NAME's value if set, else the literal
+#                                   "default".
+#   {{ file "/path" }}          -> contents of /path, trimmed. Always
+#                                   required — a missing/unreadable/
+#                                   disallowed file is a hard startup error.
+#
+# Partial substitution works too: 'foo-{{ env "X" }}' resolves to "foo-bar"
+# if X=bar.
 
 # =============================================================================
 # SERVER CONFIGURATION
 # =============================================================================
+# Single listener on server.port. https.enabled toggles whether it terminates
+# TLS itself; set enabled=false only when a trusted upstream (proxy/LB/ingress)
+# terminates TLS — the listener then serves plain HTTP on that port.
+# cert_file/key_file are required only when enabled=true (no self-signed fallback).
 
-[server]
-base_url = "http://localhost:3000"
+[developer_portal.server]
+base_url = '{{ env "APIP_DP_SERVER_BASE_URL" "https://localhost:3000" }}'
 port = 3000
-read_only_mode = false
 
-# =============================================================================
-# TLS CONFIGURATION
-# =============================================================================
-# Only relevant when the portal terminates TLS itself (not behind a proxy/LB).
-
-[tls]
+[developer_portal.server.https]
 enabled = false
 cert_file = "./resources/security/client-truststore.pem"
 key_file = "./resources/security/private-key.pem"
-ca_file = "./resources/security/client-truststore.pem"
 
 # =============================================================================
 # LOGGING CONFIGURATION
 # =============================================================================
 
-[logging]
-console_only = false
+[developer_portal.logging]
+level = "info"          # debug | info | warn | error
+format = "text"         # text | json
+console_only = true     # true: log to stdout only. false: also write rotating log files to disk
 
 # =============================================================================
 # DATABASE CONFIGURATION
 # =============================================================================
 # Supported types: sqlite (default), postgres.
 
-[database]
-type = "sqlite"
-file = "./devportal.db"       # SQLite only
+[developer_portal.database]
+driver = "sqlite"             # sqlite | postgres
+path = "./devportal.db"       # SQLite only
 host = "localhost"            # PostgreSQL only
 port = 5432                   # PostgreSQL only
 name = "devportal"            # PostgreSQL only
-username = "postgres"         # PostgreSQL only
+user = "postgres"             # PostgreSQL only
 password = ""                 # PostgreSQL only
-
-[database.ssl]
-enabled = false
-ca_file = "./resources/security/ca.pem"
+ssl_mode = "disable"          # PostgreSQL only: disable | verify-full
+ssl_root_cert = "./resources/security/ca.pem"   # CA cert — used by verify-full
 
 # =============================================================================
 # SECURITY CONFIGURATION
 # =============================================================================
 
-[security]
+[developer_portal.security]
 encryption_key = ""     # 64-char hex — AES-256-GCM key for encrypting secrets at rest
-role_validation = false # Enforce per-operation role validation
+session_secret = ""     # 64-char hex — express-session signing secret
 
 # Static shared-secret header for calling the devportal's own REST API.
-[security.service_api_key]
+[developer_portal.security.service_api_key]
 enabled = true
 header_name = "x-wso2-api-key"
 value = ""
 
 # =============================================================================
-# IDENTITY PROVIDER CONFIGURATION (OAuth2 / OIDC)
+# AUTHENTICATION
 # =============================================================================
-# Leave client_id empty to use local auth (platform_api below) instead of OIDC.
+# A mode gate plus the two backends it selects between: local (the default) and
+# idp. Configure the block matching your chosen mode; the other is ignored.
 
-[idp]
+[developer_portal.auth]
+# "local" — username/password validated against the Platform API control plane
+# ([developer_portal.auth.local] below). "idp" — external OIDC IDP (auth.idp below).
+mode = "local"          # local | idp
+role_validation = false # Enforce per-operation role validation
+
+# JWT claim name mappings — which token claim carries each field.
+# Dot-notation supported for nested claims (e.g. "realm_access.roles").
+[developer_portal.auth.claim_mappings]
+organization = "org_name"   # claim carrying the org ID
+roles = "roles"             # claim carrying the user's roles
+groups = "groups"
+
+# Local auth backend (the Platform API control plane) — used when auth.mode =
+# "local". Leave platform_api_url empty to disable local auth entirely.
+[developer_portal.auth.local]
+platform_api_url = ""
+public_key_path = ""    # path to the Platform API's RS256 public key PEM
+tls_skip_verify = false
+
+# Identity provider (OAuth2 / OIDC) — used when auth.mode = "idp".
+[developer_portal.auth.idp]
 name = "IS"
 issuer = "https://localhost:9443/oauth2/token"
 authorization_url = "https://localhost:9443/oauth2/authorize"
@@ -99,28 +134,11 @@ token_refresh_timeout_ms = 10000
 silent_sso = true      # Enable silent SSO
 org_callback = false   # Redirect to the org's own landing page after login
 
-# Claim name mappings — adjust to match what your IDP puts in the JWT.
-# Dot-notation supported for nested claims (e.g. "realm_access.roles").
-[idp.claims]
-role = "roles"
-org_id = "org_name"
-groups = "groups"
-
-[idp.roles]
+# Maps IDP role names to devportal's internal roles.
+[developer_portal.auth.idp.roles]
 admin = "admin"
 subscriber = "Internal/subscriber"
 super_admin = "superAdmin"
-
-# =============================================================================
-# PLATFORM API CONFIGURATION (local auth sidecar)
-# =============================================================================
-# Used only when idp.client_id is empty. Leave base_url empty
-# to disable local auth entirely.
-
-[platform_api]
-base_url = ""
-jwt_secret = ""
-insecure = false
 
 # =============================================================================
 # PAGE ACCESS RULES
@@ -131,7 +149,7 @@ insecure = false
 # design-mode page or a custom static route. Patterns are glob-matched (minimatch)
 # against the request URL and merged with (never replace) the built-in list.
 #
-# [page_access_rules]
+# [developer_portal.page_access_rules]
 # authenticated = ["**/my-custom-page"]
 # authorized = ["**/my-custom-page"]
 
@@ -140,18 +158,9 @@ insecure = false
 # =============================================================================
 # Bootstraps a default organization on startup (idempotent).
 
-[organization]
+[developer_portal.organization]
 default_name = "default"                 # "" disables auto-seeding
 auto_create_subscription_plans = true    # Auto-create Bronze/Silver/Gold/Unlimited/AsyncUnlimited
-
-# =============================================================================
-# DEMO MODE CONFIGURATION
-# =============================================================================
-# Enables the "Seed sample APIs" action and onboarding overlay. Do not enable
-# in production deployments.
-
-[demo]
-enabled = false
 
 # =============================================================================
 # DESIGN MODE CONFIGURATION
@@ -160,9 +169,9 @@ enabled = false
 # database. For content authoring and theming workflows only; do not enable
 # in a production environment. Disabled (commented) by default.
 
-# [design_mode]
+# [developer_portal.design_mode]
 # enabled = false
-# path_to_layout = "./resources/default-layout/"
+# path_to_layout = "./src/defaultContent/"
 # api_samples_path = "./samples/apis/"
 # mcp_samples_path = "./samples/mcps/"
 # subscription_plans_path = "./samples/subscription-plans.yaml"
@@ -175,7 +184,7 @@ enabled = false
 # the Webhook Subscribers API, not this file. Each delivery is attempted
 # exactly once; there is no retry/backoff.
 
-[webhooks.delivery]
+[developer_portal.webhooks.delivery]
 poll_interval_ms = 2000
 batch_size = 50
 signature_tolerance_sec = 300

@@ -137,14 +137,9 @@ const (
 	DeploymentLimitBuffer = 100
 )
 
-// Per-organization artifact creation limits are no longer hardcoded here. They are
-// configured via config.ArtifactLimits (config file keys artifact_limits.max_* or
-// env vars ARTIFACT_LIMITS_MAX_*) and default to unlimited. Enforcement uses
-// config.LimitReached, which treats a limit <= 0 as "no limit".
-
 // Gateway artifact apiVersion (the `apiVersion:` field on deployment artifacts).
 // GatewayApiVersionV1Alpha1 is the legacy value for gateways < 1.2.0 — use it only
-// in down-convert paths (deploymenttransform) that must produce artifacts
+// in down-convert paths (gatewaytranslator) that must produce artifacts
 // consumable by old gateways. New code should use GatewayApiVersion.
 const (
 	GatewayApiVersionV1Alpha1 = "gateway.api-platform.wso2.com/v1alpha1"
@@ -162,14 +157,23 @@ const (
 
 // Custom Policy ManagedBy constants
 const (
-	PolicyManagedByCustomer = "customer"
-	PolicyManagedByWSO2     = "wso2"
+	PolicyManagedByOrganization   = "organization"
+	PolicyManagedByWSO2           = "wso2"
+	PolicyManagedByLegacyCustomer = "customer"
 )
+
+const TemplateManagedByOrganization = "organization"
+
+// ReservedTemplateGroupIDPrefix is the group_id namespace reserved for WSO2-shipped
+// built-in templates. Custom templates created via the REST API must not use it; a
+// generated group_id that falls in this namespace is rewritten with the "x" prefix
+// (e.g. "wso2-openai" -> "xwso2-openai").
+const ReservedTemplateGroupIDPrefix = "wso2-"
 
 // ValidPolicyManagedBy holds accepted values for the managed_by field on gateway custom policies
 var ValidPolicyManagedBy = map[string]bool{
-	PolicyManagedByCustomer: true,
-	PolicyManagedByWSO2:     true,
+	PolicyManagedByOrganization: true,
+	PolicyManagedByWSO2:         true,
 }
 
 // API key status constants

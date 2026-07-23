@@ -28,6 +28,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
@@ -79,14 +80,18 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 		origin = constants.OriginCP
 	}
 
+	if p.DataVersion == "" {
+		p.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.MCPProxy, constants.GatewayApiVersion))
+	}
+
 	// Insert into mcp_proxies table
 	query := `
 		INSERT INTO mcp_proxies (
-			uuid, handle, display_name, version, project_uuid, description, created_by, updated_by, configuration, origin, created_at, updated_at, organization_uuid
+			uuid, handle, display_name, version, project_uuid, description, created_by, updated_by, configuration, origin, data_version, created_at, updated_at, organization_uuid
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 	_, err = tx.Exec(r.db.Rebind(query),
-		p.UUID, p.Handle, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, p.UpdatedBy, configurationJSON, origin, p.CreatedAt, p.UpdatedAt,
+		p.UUID, p.Handle, p.Name, p.Version, p.ProjectUUID, p.Description, p.CreatedBy, p.UpdatedBy, configurationJSON, origin, p.DataVersion, p.CreatedAt, p.UpdatedAt,
 		p.OrganizationUUID,
 	)
 	if err != nil {
@@ -98,7 +103,7 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 	}
 
 	// Persist gateway associations (if any) within the same transaction.
-	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+	if err := insertArtifactGatewayAssociations(tx, r.db, p.UUID, p.OrganizationUUID, p.CreatedBy, p.AssociatedGateways, now); err != nil {
 		return err
 	}
 
@@ -112,7 +117,7 @@ func (r *MCPProxyRepo) Create(p *model.MCPProxy) error {
 func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, error) {
 	query := `
 		SELECT
-			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
 			project_uuid, description, created_by, updated_by, configuration
 		FROM mcp_proxies
 		WHERE handle = ? AND organization_uuid = ?`
@@ -122,7 +127,7 @@ func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, err
 	var createdBy, updatedBy sql.NullString
 	var configurationJSON []byte
 	if err := row.Scan(
-		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
+		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
 		&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -154,7 +159,7 @@ func (r *MCPProxyRepo) GetByHandle(handle, orgUUID string) (*model.MCPProxy, err
 func (r *MCPProxyRepo) GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error) {
 	query := `
 		SELECT
-			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
 			project_uuid, description, created_by, updated_by, configuration
 		FROM mcp_proxies
 		WHERE uuid = ? AND organization_uuid = ?`
@@ -164,7 +169,7 @@ func (r *MCPProxyRepo) GetByUUID(uuid, orgUUID string) (*model.MCPProxy, error) 
 	var createdBy, updatedBy sql.NullString
 	var configurationJSON []byte
 	if err := row.Scan(
-		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
+		&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
 		&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &configurationJSON,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -191,7 +196,7 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 	pageClause, pageArgs := r.db.PaginationClause(limit, offset)
 	query := `
 		SELECT
-			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
 			project_uuid, description, created_by, updated_by, configuration
 		FROM mcp_proxies
 		WHERE organization_uuid = ?
@@ -209,7 +214,7 @@ func (r *MCPProxyRepo) List(orgUUID string, limit, offset int) ([]*model.MCPProx
 		var createdBy, updatedBy sql.NullString
 		var configurationJSON []byte
 		err := rows.Scan(
-			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
+			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
 			&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &configurationJSON,
 		)
 		if err != nil {
@@ -238,7 +243,7 @@ func (r *MCPProxyRepo) Count(orgUUID string) (int, error) {
 func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPProxy, error) {
 	query := `
 		SELECT
-			uuid, handle, display_name, version, organization_uuid, origin, created_at, updated_at,
+			uuid, handle, display_name, version, organization_uuid, origin, data_version, created_at, updated_at,
 			project_uuid, description, created_by, updated_by, configuration
 		FROM mcp_proxies
 		WHERE organization_uuid = ? AND project_uuid = ?
@@ -256,7 +261,7 @@ func (r *MCPProxyRepo) ListByProject(orgUUID, projectUUID string) ([]*model.MCPP
 		var createdBy, updatedBy sql.NullString
 		var configurationJSON []byte
 		err := rows.Scan(
-			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.CreatedAt, &p.UpdatedAt,
+			&p.UUID, &p.Handle, &p.Name, &p.Version, &p.OrganizationUUID, &p.Origin, &p.DataVersion, &p.CreatedAt, &p.UpdatedAt,
 			&p.ProjectUUID, &p.Description, &createdBy, &updatedBy, &configurationJSON,
 		)
 		if err != nil {
@@ -304,12 +309,14 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 	}
 	defer tx.Rollback()
 
-	// Get the proxy UUID from handle
-	var proxyUUID string
+	// Get the proxy UUID from handle (and its current data_version, so an
+	// unrelated edit that doesn't carry DataVersion forward on the incoming
+	// model preserves the stored value instead of blindly recomputing it).
+	var proxyUUID, existingDataVersion string
 	query := `
-		SELECT uuid FROM mcp_proxies
+		SELECT uuid, data_version FROM mcp_proxies
 		WHERE handle = ? AND organization_uuid = ?`
-	err = tx.QueryRow(r.db.Rebind(query), p.Handle, p.OrganizationUUID).Scan(&proxyUUID)
+	err = tx.QueryRow(r.db.Rebind(query), p.Handle, p.OrganizationUUID).Scan(&proxyUUID, &existingDataVersion)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sql.ErrNoRows
@@ -317,13 +324,21 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 		return err
 	}
 
+	if p.DataVersion == "" {
+		if existingDataVersion != "" {
+			p.DataVersion = existingDataVersion
+		} else {
+			p.DataVersion = string(gatewaytranslator.ComputeDataVersion(constants.MCPProxy, constants.GatewayApiVersion))
+		}
+	}
+
 	// Update mcp_proxies table (name/version/updated_at now live here)
 	query = `
 		UPDATE mcp_proxies
-		SET display_name = ?, version = ?, description = ?, configuration = ?, updated_by = ?, updated_at = ?
+		SET display_name = ?, version = ?, description = ?, configuration = ?, updated_by = ?, data_version = ?, updated_at = ?
 		WHERE uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(query),
-		p.Name, p.Version, p.Description, configurationJSON, p.UpdatedBy, now,
+		p.Name, p.Version, p.Description, configurationJSON, p.UpdatedBy, p.DataVersion, now,
 		proxyUUID,
 	)
 	if err != nil {
@@ -344,7 +359,7 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 	// Replace the full set of gateway associations within the same transaction when the
 	// caller manages associations. Deployments are intentionally left untouched.
 	if p.ReplaceAssociatedGateways {
-		if err := replaceArtifactGatewayAssociations(tx, r.db, proxyUUID, p.OrganizationUUID, p.AssociatedGateways, now); err != nil {
+		if err := replaceArtifactGatewayAssociations(tx, r.db, proxyUUID, p.OrganizationUUID, p.UpdatedBy, p.AssociatedGateways, now); err != nil {
 			return err
 		}
 	}
@@ -358,8 +373,8 @@ func (r *MCPProxyRepo) Update(p *model.MCPProxy) error {
 // EnsureGatewayAssociation creates a gateway association for the MCP proxy if one does not
 // already exist and resolves the metadata to use for the deployment. See
 // ensureArtifactGatewayAssociation for the full semantics.
-func (r *MCPProxyRepo) EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error) {
-	return ensureArtifactGatewayAssociation(r.db, proxyUUID, gatewayUUID, orgUUID, deployMetadata, metadataProvided)
+func (r *MCPProxyRepo) EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error) {
+	return ensureArtifactGatewayAssociation(r.db, proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata, metadataProvided)
 }
 
 // Delete deletes an MCP proxy by its handle and organization UUID

@@ -169,25 +169,25 @@ type AssociatedGatewayMapping struct {
 }
 
 type LLMProviderTemplate struct {
-	UUID             string                       `json:"uuid" db:"uuid"`
-	OrganizationUUID string                       `json:"organizationId" db:"organization_uuid"`
-	ID               string                       `json:"id" db:"handle"`
-	GroupID          string                       `json:"groupId,omitempty" db:"group_id"`
-	Name             string                       `json:"displayName" db:"display_name"`
-	Description      string                       `json:"description,omitempty" db:"description"`
-	ManagedBy        string                       `json:"managedBy,omitempty" db:"managed_by"`
-	CreatedBy        string                       `json:"createdBy,omitempty" db:"created_by"`
-	UpdatedBy        string                       `json:"updatedBy,omitempty" db:"updated_by"`
-	Version  		 string 					  `json:"version" db:"version"`
-	IsLatest 		 bool    					  `json:"isLatest" db:"is_latest"`
-	Enabled 		 bool 						  `json:"enabled" db:"enabled"`
-	Metadata         *LLMProviderTemplateMetadata `json:"metadata,omitempty" db:"-"`
-	PromptTokens     *ExtractionIdentifier        `json:"promptTokens,omitempty" db:"-"`
-	CompletionTokens *ExtractionIdentifier        `json:"completionTokens,omitempty" db:"-"`
-	TotalTokens      *ExtractionIdentifier        `json:"totalTokens,omitempty" db:"-"`
-	RemainingTokens  *ExtractionIdentifier        `json:"remainingTokens,omitempty" db:"-"`
-	RequestModel     *ExtractionIdentifier        `json:"requestModel,omitempty" db:"-"`
-	ResponseModel    *ExtractionIdentifier        `json:"responseModel,omitempty" db:"-"`
+	UUID             string                               `json:"uuid" db:"uuid"`
+	OrganizationUUID string                               `json:"organizationId" db:"organization_uuid"`
+	ID               string                               `json:"id" db:"handle"`
+	GroupID          string                               `json:"groupId,omitempty" db:"group_id"`
+	Name             string                               `json:"displayName" db:"display_name"`
+	Description      string                               `json:"description,omitempty" db:"description"`
+	ManagedBy        string                               `json:"managedBy,omitempty" db:"managed_by"`
+	CreatedBy        string                               `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy        string                               `json:"updatedBy,omitempty" db:"updated_by"`
+	Version          string                               `json:"version" db:"version"`
+	IsLatest         bool                                 `json:"isLatest" db:"is_latest"`
+	Enabled          bool                                 `json:"enabled" db:"enabled"`
+	Metadata         *LLMProviderTemplateMetadata         `json:"metadata,omitempty" db:"-"`
+	PromptTokens     *ExtractionIdentifier                `json:"promptTokens,omitempty" db:"-"`
+	CompletionTokens *ExtractionIdentifier                `json:"completionTokens,omitempty" db:"-"`
+	TotalTokens      *ExtractionIdentifier                `json:"totalTokens,omitempty" db:"-"`
+	RemainingTokens  *ExtractionIdentifier                `json:"remainingTokens,omitempty" db:"-"`
+	RequestModel     *ExtractionIdentifier                `json:"requestModel,omitempty" db:"-"`
+	ResponseModel    *ExtractionIdentifier                `json:"responseModel,omitempty" db:"-"`
 	ResourceMappings *LLMProviderTemplateResourceMappings `json:"resourceMappings,omitempty" db:"-"`
 	OpenAPISpec      string                               `json:"openapi,omitempty" db:"openapi_spec"`
 	Origin           string                               `json:"origin,omitempty" db:"origin"`
@@ -197,23 +197,24 @@ type LLMProviderTemplate struct {
 
 // LLMProvider represents an LLM provider entity
 type LLMProvider struct {
-	UUID             string             `json:"uuid" db:"uuid"`
-	OrganizationUUID string             `json:"organizationId" db:"organization_uuid"`
-	ID               string             `json:"id" db:"handle"`
-	Name             string             `json:"displayName" db:"display_name"`
-	Description      string             `json:"description,omitempty" db:"description"`
-	CreatedBy        string             `json:"createdBy,omitempty" db:"created_by"`
-	UpdatedBy        string             `json:"updatedBy,omitempty" db:"updated_by"`
-	Version          string             `json:"version" db:"version"`
-	TemplateUUID     string             `json:"templateUuid" db:"template_uuid"`
-	OpenAPISpec      string             `json:"openapi,omitempty" db:"openapi_spec"`
-	ModelProviders   []LLMModelProvider `json:"modelProviders,omitempty" db:"-"`
-	CreatedAt        time.Time          `json:"createdAt" db:"created_at"`
-	UpdatedAt        time.Time          `json:"updatedAt" db:"updated_at"`
-	Configuration    LLMProviderConfig  `json:"configuration" db:"configuration"`
-	Origin           string             `json:"origin,omitempty" db:"origin"`
-	AssociatedGateways []AssociatedGatewayMapping `json:"-" db:"-"`
-	ReplaceAssociatedGateways bool `json:"-" db:"-"`
+	UUID                      string                     `json:"uuid" db:"uuid"`
+	OrganizationUUID          string                     `json:"organizationId" db:"organization_uuid"`
+	ID                        string                     `json:"id" db:"handle"`
+	Name                      string                     `json:"displayName" db:"display_name"`
+	Description               string                     `json:"description,omitempty" db:"description"`
+	CreatedBy                 string                     `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy                 string                     `json:"updatedBy,omitempty" db:"updated_by"`
+	Version                   string                     `json:"version" db:"version"`
+	TemplateUUID              string                     `json:"templateUuid" db:"template_uuid"`
+	OpenAPISpec               string                     `json:"openapi,omitempty" db:"openapi_spec"`
+	ModelProviders            []LLMModelProvider         `json:"modelProviders,omitempty" db:"-"`
+	CreatedAt                 time.Time                  `json:"createdAt" db:"created_at"`
+	UpdatedAt                 time.Time                  `json:"updatedAt" db:"updated_at"`
+	Configuration             LLMProviderConfig          `json:"configuration" db:"configuration"`
+	Origin                    string                     `json:"origin,omitempty" db:"origin"`
+	DataVersion               string                     `json:"dataVersion,omitempty" db:"data_version"`
+	AssociatedGateways        []AssociatedGatewayMapping `json:"-" db:"-"`
+	ReplaceAssociatedGateways bool                       `json:"-" db:"-"`
 }
 
 type LLMProviderConfig struct {
@@ -233,36 +234,57 @@ type LLMProviderConfig struct {
 
 // LLMProxy represents an LLM proxy entity
 type LLMProxy struct {
-	UUID             string         `json:"uuid" db:"uuid"`
-	OrganizationUUID string         `json:"organizationId" db:"organization_uuid"`
-	ID               string         `json:"id" db:"handle"`
-	Name             string         `json:"displayName" db:"display_name"`
-	ProjectUUID      string         `json:"projectId" db:"project_uuid"`
-	Description      string         `json:"description,omitempty" db:"description"`
-	CreatedBy        string         `json:"createdBy,omitempty" db:"created_by"`
-	UpdatedBy        string         `json:"updatedBy,omitempty" db:"updated_by"`
-	Version          string         `json:"version" db:"version"`
-	ProviderUUID     string         `json:"providerUuid" db:"provider_uuid"`
-	OpenAPISpec      string         `json:"openapi,omitempty" db:"openapi_spec"`
-	CreatedAt        time.Time      `json:"createdAt" db:"created_at"`
-	UpdatedAt        time.Time      `json:"updatedAt" db:"updated_at"`
-	Configuration    LLMProxyConfig `json:"configuration" db:"configuration"`
-	Origin           string         `json:"origin,omitempty" db:"origin"`
-	AssociatedGateways []AssociatedGatewayMapping `json:"-" db:"-"`
-	ReplaceAssociatedGateways bool `json:"-" db:"-"`
+	UUID                      string                     `json:"uuid" db:"uuid"`
+	OrganizationUUID          string                     `json:"organizationId" db:"organization_uuid"`
+	ID                        string                     `json:"id" db:"handle"`
+	Name                      string                     `json:"displayName" db:"display_name"`
+	ProjectUUID               string                     `json:"projectId" db:"project_uuid"`
+	Description               string                     `json:"description,omitempty" db:"description"`
+	CreatedBy                 string                     `json:"createdBy,omitempty" db:"created_by"`
+	UpdatedBy                 string                     `json:"updatedBy,omitempty" db:"updated_by"`
+	Version                   string                     `json:"version" db:"version"`
+	ProviderUUID              string                     `json:"providerUuid" db:"provider_uuid"`
+	OpenAPISpec               string                     `json:"openapi,omitempty" db:"openapi_spec"`
+	CreatedAt                 time.Time                  `json:"createdAt" db:"created_at"`
+	UpdatedAt                 time.Time                  `json:"updatedAt" db:"updated_at"`
+	Configuration             LLMProxyConfig             `json:"configuration" db:"configuration"`
+	Origin                    string                     `json:"origin,omitempty" db:"origin"`
+	DataVersion               string                     `json:"dataVersion,omitempty" db:"data_version"`
+	AssociatedGateways        []AssociatedGatewayMapping `json:"-" db:"-"`
+	ReplaceAssociatedGateways bool                       `json:"-" db:"-"`
 }
 
 type LLMProxyConfig struct {
-	Name              string            `json:"name,omitempty" db:"-"`
-	Version           string            `json:"version,omitempty" db:"-"`
-	Context           *string           `json:"context,omitempty" db:"-"`
-	Vhost             *string           `json:"vhost,omitempty" db:"-"`
-	Provider          string            `json:"provider,omitempty" db:"-"`
-	UpstreamAuth      *UpstreamAuth     `json:"upstreamAuth,omitempty" db:"-"`
-	GlobalPolicies    []GlobalPolicy    `json:"globalPolicies,omitempty" db:"-"`
-	OperationPolicies []OperationPolicy `json:"operationPolicies,omitempty" db:"-"`
-	Policies          []LLMPolicy       `json:"policies,omitempty" db:"-"`
-	Security          *SecurityConfig   `json:"security,omitempty" db:"-"`
+	Name                string                       `json:"name,omitempty" db:"-"`
+	Version             string                       `json:"version,omitempty" db:"-"`
+	Context             *string                      `json:"context,omitempty" db:"-"`
+	Vhost               *string                      `json:"vhost,omitempty" db:"-"`
+	Provider            string                       `json:"provider,omitempty" db:"-"`
+	UpstreamAuth        *UpstreamAuth                `json:"upstreamAuth,omitempty" db:"-"`
+	AdditionalProviders []LLMProxyAdditionalProvider `json:"additionalProviders,omitempty" db:"-"`
+	GlobalPolicies      []GlobalPolicy               `json:"globalPolicies,omitempty" db:"-"`
+	OperationPolicies   []OperationPolicy            `json:"operationPolicies,omitempty" db:"-"`
+	Policies            []LLMPolicy                  `json:"policies,omitempty" db:"-"`
+	Security            *SecurityConfig              `json:"security,omitempty" db:"-"`
+}
+
+// LLMProxyAdditionalProvider is an additional LLM provider attached to a proxy
+// as a selectable upstream. Policies route to it by the `As` name (which
+// defaults to `ID` when empty). Provider upstream auth is taken from the
+// referenced LlmProvider's own configuration.
+type LLMProxyAdditionalProvider struct {
+	ID          string               `json:"id" db:"-"`
+	As          string               `json:"as,omitempty" db:"-"`
+	Transformer *LLMProxyTransformer `json:"transformer,omitempty" db:"-"`
+}
+
+// LLMProxyTransformer is a request/response translator applied when its
+// provider is the selected upstream. The gateway-controller injects it as a
+// conditional policy gated on that selection.
+type LLMProxyTransformer struct {
+	Type    string                 `json:"type" db:"-"`
+	Version string                 `json:"version" db:"-"`
+	Params  map[string]interface{} `json:"params,omitempty" db:"-"`
 }
 
 type SecurityConfig struct {
@@ -271,7 +293,8 @@ type SecurityConfig struct {
 }
 
 type APIKeySecurity struct {
-	Enabled *bool  `json:"enabled,omitempty" yaml:"enabled,omitempty"`
-	Key     string `json:"key,omitempty" yaml:"key,omitempty"`
-	In      string `json:"in,omitempty" yaml:"in,omitempty"`
+	Enabled     *bool  `json:"enabled,omitempty" yaml:"enabled,omitempty"`
+	Key         string `json:"key,omitempty" yaml:"key,omitempty"`
+	In          string `json:"in,omitempty" yaml:"in,omitempty"`
+	ValuePrefix string `json:"valuePrefix,omitempty" yaml:"valuePrefix,omitempty"`
 }

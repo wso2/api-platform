@@ -4,11 +4,11 @@
       {{#if apiMetadata.apiImageMetadata.api-icon}}
       <img class="aov-api-img" src="{{apiMetadata.apiImageMetadata.api-icon}}" alt="{{apiMetadata.name}}" />
       {{else}}
-      <div class="aov-api-avatar">{{firstTwoLetters (or apiMetadata.apiTitle apiMetadata.name)}}</div>
+      <div class="aov-api-avatar">{{firstTwoLetters (or apiMetadata.title apiMetadata.name)}}</div>
       {{/if}}
     </div>
     <div class="aov-hero-title-row">
-      <h1 class="aov-hero-name">{{or apiMetadata.apiTitle apiMetadata.name}}</h1>
+      <h1 class="aov-hero-name">{{or apiMetadata.title apiMetadata.name}}</h1>
       <div class="aov-hero-badges">
         {{#if apiMetadata.version}}
         <span class="dp-badge dp-badge--version">{{apiMetadata.version}}</span>

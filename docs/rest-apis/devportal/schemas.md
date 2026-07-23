@@ -145,101 +145,6 @@ xor
 |---|---|
 |status|error|
 
-<h2 id="tocS_SimpleErrorResponse">SimpleErrorResponse</h2>
-
-<a id="schemasimpleerrorresponse"></a>
-<a id="schema_SimpleErrorResponse"></a>
-<a id="tocSsimpleerrorresponse"></a>
-<a id="tocssimpleerrorresponse"></a>
-
-```json
-{
-  "code": "404",
-  "message": "Not Found",
-  "description": "Subscription not found"
-}
-
-```
-
-Ad hoc error shape used by the Subscriptions and API Keys handlers, which build error bodies inline instead of going through the shared error formatter. `code` is the HTTP status code as a string, not a catalog code.
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|code|string|true|none|none|
-|message|string|true|none|none|
-|description|string¦null|false|none|none|
-
-<h2 id="tocS_ValidationErrorList">ValidationErrorList</h2>
-
-<a id="schemavalidationerrorlist"></a>
-<a id="schema_ValidationErrorList"></a>
-<a id="tocSvalidationerrorlist"></a>
-<a id="tocsvalidationerrorlist"></a>
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "string",
-        "message": "string"
-      }
-    ]
-  }
-]
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|*anonymous*|[[ValidationError](#schemavalidationerror)]|false|none|none|
-
-<h2 id="tocS_ValidationError">ValidationError</h2>
-
-<a id="schemavalidationerror"></a>
-<a id="schema_ValidationError"></a>
-<a id="tocSvalidationerror"></a>
-<a id="tocsvalidationerror"></a>
-
-```json
-{
-  "status": "error",
-  "code": "COMMON_VALIDATION_ERROR",
-  "message": "Input validation failed.",
-  "errors": [
-    {
-      "field": "string",
-      "message": "string"
-    }
-  ]
-}
-
-```
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|status|string|true|none|none|
-|code|string|true|none|Machine-readable catalog code.|
-|message|string|true|none|none|
-|errors|[object]|false|none|Per-field validation errors.|
-|» field|string|true|none|none|
-|» message|string|true|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|status|error|
-
 <h2 id="tocS_OrganizationResponse">OrganizationResponse</h2>
 
 <a id="schemaorganizationresponse"></a>
@@ -345,7 +250,7 @@ Ad hoc error shape used by the Subscriptions and API Keys handlers, which build 
 ```json
 {
   "name": "string",
-  "apiTitle": "string",
+  "title": "string",
   "remotes": [
     {}
   ],
@@ -436,7 +341,7 @@ and
 ```json
 {
   "name": "string",
-  "apiTitle": "string",
+  "title": "string",
   "remotes": [
     {}
   ],
@@ -539,7 +444,7 @@ and
 ```json
 {
   "name": "string",
-  "apiTitle": "string",
+  "title": "string",
   "remotes": [
     {}
   ],
@@ -582,7 +487,7 @@ Fields are returned at the root of ApiMetadataResponse / ApiMetadataCreateRespon
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|false|none|none|
-|apiTitle|string¦null|false|none|none|
+|title|string¦null|false|none|none|
 |remotes|[object]|false|none|none|
 |version|string|false|none|none|
 |status|string|false|none|API lifecycle status.|
@@ -1123,7 +1028,7 @@ xor
 
 ```json
 {
-  "apiId": "weather-api-v1",
+  "artifactId": "weather-api-v1",
   "subscriptionPlanId": "Gold"
 }
 
@@ -1133,7 +1038,7 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiId|string|true|none|Developer Portal API ID.|
+|artifactId|string|true|none|Developer Portal API ID.|
 |subscriptionPlanId|string|true|none|Developer Portal subscription plan ID.|
 
 <h2 id="tocS_SubscriptionUpdateRequest">SubscriptionUpdateRequest</h2>
@@ -1172,7 +1077,7 @@ xor
 
 ```json
 {
-  "apiId": "weather-api-v1",
+  "artifactId": "weather-api-v1",
   "planId": "Gold"
 }
 
@@ -1182,7 +1087,7 @@ xor
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|apiId|string|false|none|Developer Portal API ID the subscription belongs to. Optional — if provided, it is validated against the API derived from the existing subscription record and the request is rejected with 400 if they don't match. It is never used as a fallback: if the API cannot be derived from the subscription record, the request fails with 400 regardless of this value.|
+|artifactId|string|false|none|Developer Portal API ID the subscription belongs to. Optional — if provided, it is validated against the API derived from the existing subscription record and the request is rejected with 400 if they don't match. It is never used as a fallback: if the API cannot be derived from the subscription record, the request fails with 400 regardless of this value.|
 |planId|string|true|none|Developer Portal subscription plan ID to switch to.|
 
 <h2 id="tocS_SubscriptionResponse">SubscriptionResponse</h2>
@@ -1195,7 +1100,7 @@ xor
 ```json
 {
   "subscriptionId": "sub-12345",
-  "apiId": "weather-api-v1",
+  "artifactId": "weather-api-v1",
   "subscriptionToken": "a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1",
   "subscriptionPlanName": "Gold",
   "status": "ACTIVE",
@@ -1214,7 +1119,7 @@ Subscription payload.
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |subscriptionId|string|false|none|none|
-|apiId|string|false|none|Developer Portal API ID.|
+|artifactId|string|false|none|Developer Portal API ID.|
 |subscriptionToken|string¦null|false|none|Plaintext subscription token, decrypted on every read (not just on create). Null if decryption fails (e.g. the encryption key changed since the token was stored).|
 |subscriptionPlanName|string|false|none|none|
 |status|string|false|none|none|
@@ -1279,7 +1184,6 @@ xor
 
 ```json
 {
-  "keyId": "key-12345",
   "id": "weather_prod_key",
   "displayName": "Weather Prod Key",
   "apiId": "weather-api-v1",
@@ -1299,7 +1203,6 @@ API key metadata returned by list operations. Secret material is omitted.
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|keyId|string|false|none|Developer Portal key identifier.|
 |id|string|false|none|none|
 |displayName|string|false|none|none|
 |apiId|string|false|none|Developer Portal API ID the key belongs to.|
@@ -1326,7 +1229,6 @@ API key metadata returned by list operations. Secret material is omitted.
 
 ```json
 {
-  "keyId": "key-12345",
   "id": "weather_prod_key",
   "displayName": "Weather Prod Key",
   "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
@@ -1336,13 +1238,12 @@ API key metadata returned by list operations. Secret material is omitted.
 
 ```
 
-API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these six fields.
+API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these five fields.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|keyId|string|false|none|Developer Portal key identifier.|
 |id|string|false|none|none|
 |displayName|string|false|none|none|
 |key|string|false|none|One-time plaintext API key secret.|
@@ -1365,7 +1266,6 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 ```json
 {
-  "keyId": "key-12345",
   "application": {
     "id": "my-weather-app",
     "displayName": "My Mobile App"
@@ -1378,7 +1278,6 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|keyId|string|false|none|none|
 |application|object|false|none|none|
 |» id|string|false|none|none|
 |» displayName|string|false|none|none|
@@ -1394,7 +1293,6 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 {
   "displayName": "Asgardeo",
   "id": "asgardeo-prod",
-  "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
@@ -1407,18 +1305,8 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 |---|---|---|---|---|
 |displayName|string|true|none|none|
 |id|string|false|none|Desired handle for the key manager (unique per org), stored as-is. Optional — defaults to the key manager's `displayName` when omitted.|
-|type|string|true|none|none|
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|true|none|OAuth2 token endpoint. The OAuth application itself must be created directly in this key manager; the portal only proxies `client_appKeyMappings` token requests to this endpoint.|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|type|ASGARDEO|
-|type|WSO2IS|
-|type|KEYCLOAK|
-|type|GENERIC_OIDC|
 
 <h2 id="tocS_KeyManagerUpdateRequest">KeyManagerUpdateRequest</h2>
 
@@ -1431,7 +1319,6 @@ API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResp
 {
   "displayName": "Asgardeo",
   "id": "asgardeo-prod",
-  "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
@@ -1446,18 +1333,8 @@ Partial update payload for a key manager. All fields are optional; only supplied
 |---|---|---|---|---|
 |displayName|string|false|none|none|
 |id|string|false|none|Desired handle for the key manager (unique per org), stored as-is.|
-|type|string|false|none|none|
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|type|ASGARDEO|
-|type|WSO2IS|
-|type|KEYCLOAK|
-|type|GENERIC_OIDC|
 
 <h2 id="tocS_KeyManagerResponseSchema">KeyManagerResponseSchema</h2>
 
@@ -1471,7 +1348,6 @@ Partial update payload for a key manager. All fields are optional; only supplied
   "id": "asgardeo-prod",
   "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
   "createdBy": "alice@example.com",
@@ -1491,22 +1367,12 @@ Key manager configuration.
 |id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
 |displayName|string|false|none|none|
 |orgId|string|false|none|none|
-|type|string|false|none|none|
 |enabled|boolean|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
 |createdBy|string|false|none|Identity of the user who created this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
 |updatedBy|string|false|none|Identity of the user who last updated this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
 |createdAt|string(date-time)|false|none|none|
 |updatedAt|string(date-time)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|type|ASGARDEO|
-|type|WSO2IS|
-|type|KEYCLOAK|
-|type|GENERIC_OIDC|
 
 <h2 id="tocS_KeyManagerPublicResponseSchema">KeyManagerPublicResponseSchema</h2>
 
@@ -1519,7 +1385,6 @@ Key manager configuration.
 {
   "id": "asgardeo-prod",
   "displayName": "Asgardeo",
-  "type": "ASGARDEO",
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
 
@@ -1533,17 +1398,7 @@ Minimal developer-facing key manager view.
 |---|---|---|---|---|
 |id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
 |displayName|string|false|none|none|
-|type|string|false|none|none|
 |tokenEndpoint|string(uri)|false|none|none|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|type|ASGARDEO|
-|type|WSO2IS|
-|type|KEYCLOAK|
-|type|GENERIC_OIDC|
 
 <h2 id="tocS_WebhookSubscriberRequest">WebhookSubscriberRequest</h2>
 

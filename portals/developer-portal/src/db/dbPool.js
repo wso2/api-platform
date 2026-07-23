@@ -18,14 +18,16 @@
 
 const { Pool } = require('pg');
 const { config } = require('../config/configLoader');
+const { buildDbSsl } = require('./dbSsl');
 
+const dbSsl = buildDbSsl();
 const poolConfig = {
-    user: config.database.username,
+    user: config.database.user,
     host: config.database.host,
     database: config.database.name,
     password: config.database.password,
     port: config.database.port,
-    ...(config.database.ssl.enabled && { ssl: { require: true, rejectUnauthorized: false } }),
+    ...(dbSsl && { ssl: dbSsl }),
 };
 
 const pool = new Pool(poolConfig);

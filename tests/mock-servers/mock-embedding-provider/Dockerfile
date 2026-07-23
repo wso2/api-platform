@@ -14,7 +14,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-FROM golang:1.26.2-alpine AS builder
+FROM golang:1.26.5-alpine AS builder
 
 WORKDIR /app
 
@@ -25,7 +25,7 @@ COPY main.go ./
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o mock-embedding-provider .
 
-FROM alpine:3.19
+FROM alpine:3.24
 
 RUN apk --no-cache add ca-certificates
 

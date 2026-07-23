@@ -16,6 +16,19 @@
 # under the License.
 # --------------------------------------------------------------------
 
+layered_runtime:
+  layers:
+    - name: static_layer
+      static_layer:
+        re2:
+          max_program_size:
+            # Raise the RE2 program size cap above Envoy's default of 100.
+            # Deep parameterized paths (e.g. 7 path params) generate regexes whose RE2
+            # program size exceeds 100, causing Envoy to reject the entire RouteConfiguration.
+            # Each [^/]+ segment costs ~10 program-size units; 400 covers paths with up to
+            # ~30 path parameters. Override at runtime via APIP_GW_ROUTER_RE2_MAX_PROGRAM_SIZE.
+            error_level: ${APIP_GW_ROUTER_RE2_MAX_PROGRAM_SIZE}
+
 static_resources:
   clusters:
     - name: xds_cluster

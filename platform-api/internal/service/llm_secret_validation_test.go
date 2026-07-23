@@ -30,12 +30,11 @@ package service
 
 import (
 	"database/sql"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -113,8 +112,8 @@ func TestLLMProviderService_Create_InvalidPlaceholder_Rejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-existent secret placeholder, got nil")
 	}
-	if !errors.Is(err, constants.ErrSecretRefMissing) {
-		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	if !apperror.ValidationFailed.Is(err) {
+		t.Errorf("expected VALIDATION_FAILED, got: %v", err)
 	}
 }
 
@@ -146,8 +145,8 @@ func TestLLMProviderService_Update_InvalidPlaceholder_Rejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-existent placeholder on update config, got nil")
 	}
-	if !errors.Is(err, constants.ErrSecretRefMissing) {
-		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	if !apperror.ValidationFailed.Is(err) {
+		t.Errorf("expected VALIDATION_FAILED, got: %v", err)
 	}
 }
 
@@ -162,10 +161,10 @@ func TestMCPProxyService_Create_MissingSecretRef_Rejected(t *testing.T) {
 	config := `{"main":{"url":"https://mcp.example.com","auth":{"value":"{{ secret \"nonexistent-mcp-secret\" }}"}}}`
 	err := svc.ValidateSecretRefs(orgID, config)
 	if err == nil {
-		t.Fatal("expected ErrSecretRefMissing for MCP proxy create with missing secret ref, got nil")
+		t.Fatal("expected a validation error for MCP proxy create with missing secret ref, got nil")
 	}
-	if !errors.Is(err, constants.ErrSecretRefMissing) {
-		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	if !apperror.ValidationFailed.Is(err) {
+		t.Errorf("expected VALIDATION_FAILED, got: %v", err)
 	}
 }
 
@@ -181,7 +180,7 @@ func TestMCPProxyService_Update_MissingSecretRef_Rejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected ErrSecretRefMissing for MCP proxy update with missing secret ref, got nil")
 	}
-	if !errors.Is(err, constants.ErrSecretRefMissing) {
-		t.Errorf("expected ErrSecretRefMissing, got: %v", err)
+	if !apperror.ValidationFailed.Is(err) {
+		t.Errorf("expected VALIDATION_FAILED, got: %v", err)
 	}
 }

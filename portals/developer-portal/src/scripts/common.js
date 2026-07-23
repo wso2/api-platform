@@ -68,33 +68,6 @@ document.addEventListener("DOMContentLoaded", function () {
             localStorage.setItem('sidebar-expanded', '1');
         }
     });
-    
-    
-    // Function to show loading state on subscription button
-    window.showSubscribeButtonLoading = function(button) {
-        if (button) {
-            if (!button.dataset.originalText) {
-                button.dataset.originalText = button.innerHTML;
-            }
-            button.disabled = true;
-
-            const trimmed = (button.textContent || '').trim();
-            if (trimmed === 'Subscribe') {
-                button.textContent = 'Subscribing...';
-            } else if (trimmed === 'Update') {
-                button.textContent = 'Updating...';
-            }
-        }
-    };
-
-    // Function to restore subscription button state
-    window.resetSubscribeButtonState = function(button) {
-        if (button && button.dataset.originalText) {
-            button.innerHTML = button.dataset.originalText;
-            button.disabled = false;
-            delete button.dataset.originalText;
-        }
-    };
 
     // Set active status based on current URL path
     const setActiveSidebarLink = () => {
@@ -120,31 +93,47 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const basePath = extractBasePath();
 
+        // Resolve the path segment that follows the view-scoped base path so nav
+        // matching is exact. e.g. "/org/views/default/api-keys" -> firstSegment "api-keys".
+        // Settings is org-scoped (/:org/settings) and does not sit under basePath, so it
+        // is handled via a suffix check below.
+        let rest = currentPath;
+        if (basePath && currentPath.indexOf(basePath) === 0) {
+            rest = currentPath.slice(basePath.length);
+        }
+        const firstSegment = rest.replace(/^\/+/, '').split('/')[0];
+
         // Remove active class from all links
         navLinks.forEach(link => link.classList.remove('active'));
 
-        // Set the active class based on path
-        if (currentPath.endsWith('/') || currentPath === '') {
+        // Match on the first path segment. Order the singular API/MCP detail routes
+        // (submenu-bearing) before the plural listing routes, and guard optional
+        // submenu elements — they are absent in single-mode portals
+        // (APIS_ONLY / MCP_SERVERS_ONLY).
+        if (firstSegment === '') {
             document.getElementById('home')?.classList.add('active');
-            apiSubmenu.classList.remove('show');
+            apiSubmenu?.classList.remove('show');
             apisLink?.classList.remove('has-active-submenu');
-        } else if (currentPath.includes('/apis')) {
-            apisLink?.classList.add('active');
-            apiSubmenu.classList.remove('show');
-            apisLink?.classList.remove('has-active-submenu');
-        } else if (currentPath.includes('/api/')) {
-            apiSubmenu.classList.add('show');
+        } else if (firstSegment === 'api-workflows') {
+            document.getElementById('api-workflows')?.classList.add('active');
+        } else if (firstSegment === 'api-keys') {
+            // Global API Keys page (distinct from the per-API /api/:id/api-keys submenu item)
+            document.getElementById('api-keys')?.classList.add('active');
+        } else if (firstSegment === 'api') {
+            apiSubmenu?.classList.add('show');
             apisLink?.classList.add('active');
             apisLink?.classList.add('has-active-submenu');
 
             // Extract API ID from URL path and update submenu links
-            const apiIdMatch = currentPath.match(/\/api\/([^\/]+)/);
+            const apiIdMatch = currentPath.match(/\/api\/([^/]+)/);
             if (apiIdMatch && apiIdMatch[1]) {
                 const apiId = apiIdMatch[1];
 
                 // Update the submenu links with the correct API ID and base path
-                document.getElementById('api-overview').href = `${basePath}/api/${apiId}`;
-                document.getElementById('api-docs').href = `${basePath}/api/${apiId}/docs/specification`;
+                const overviewLink = document.getElementById('api-overview');
+                if (overviewLink) overviewLink.href = `${basePath}/api/${apiId}`;
+                const docsLink = document.getElementById('api-docs');
+                if (docsLink) docsLink.href = `${basePath}/api/${apiId}/docs/specification`;
                 const apiKeysLink = document.getElementById('api-keys-nav');
                 if (apiKeysLink) {
                     apiKeysLink.href = `${basePath}/api/${apiId}/api-keys`;
@@ -159,25 +148,27 @@ document.addEventListener("DOMContentLoaded", function () {
                     document.getElementById('api-overview')?.classList.add('active');
                 }
             }
-        } else if (currentPath.includes('/applications/') || currentPath.includes('/applications')) {
+        } else if (firstSegment === 'apis') {
+            apisLink?.classList.add('active');
+            apiSubmenu?.classList.remove('show');
+            apisLink?.classList.remove('has-active-submenu');
+        } else if (firstSegment === 'applications') {
             applicationsLink?.classList.add('active');
-        } else if (currentPath.includes('/mcps')) {
-            document.getElementById('mcps')?.classList.add('active');
-            mcpSubmenu.classList.remove('show');
-            mcpLink?.classList.remove('has-active-submenu');
-        } else if (currentPath.includes('/mcp/')) {
-            mcpSubmenu.classList.add('show');
+        } else if (firstSegment === 'mcp') {
+            mcpSubmenu?.classList.add('show');
             mcpLink?.classList.add('active');
             mcpLink?.classList.add('has-active-submenu');
 
             // Extract API ID from URL path and update submenu links
-            const apiIdMatch = currentPath.match(/\/mcp\/([^\/]+)/);
+            const apiIdMatch = currentPath.match(/\/mcp\/([^/]+)/);
             if (apiIdMatch && apiIdMatch[1]) {
                 const apiId = apiIdMatch[1];
 
                 // Update the submenu links with the correct API ID and base path
-                document.getElementById('mcp-overview').href = `${basePath}/mcp/${apiId}`;
-                document.getElementById('mcp-docs').href = `${basePath}/mcp/${apiId}/docs/specification`;
+                const mcpOverviewLink = document.getElementById('mcp-overview');
+                if (mcpOverviewLink) mcpOverviewLink.href = `${basePath}/mcp/${apiId}`;
+                const mcpDocsLink = document.getElementById('mcp-docs');
+                if (mcpDocsLink) mcpDocsLink.href = `${basePath}/mcp/${apiId}/docs/specification`;
 
                 // Set active submenu item
                 if (currentPath.includes('/docs')) {
@@ -186,8 +177,14 @@ document.addEventListener("DOMContentLoaded", function () {
                     document.getElementById('mcp-overview')?.classList.add('active');
                 }
             }
-        } else if (currentPath.includes('/subscriptions')) {
+        } else if (firstSegment === 'mcps') {
+            document.getElementById('mcps')?.classList.add('active');
+            mcpSubmenu?.classList.remove('show');
+            mcpLink?.classList.remove('has-active-submenu');
+        } else if (firstSegment === 'subscriptions') {
             document.getElementById('subscriptions')?.classList.add('active');
+        } else if (firstSegment === 'settings' || currentPath.includes('/settings')) {
+            document.getElementById('admin-settings')?.classList.add('active');
         }
     };
 
@@ -219,30 +216,6 @@ document.addEventListener("DOMContentLoaded", function () {
     // Call the function when page loads
     setActiveDocLink();
 
-    // Copy MCP Server Config JSON to clipboard
-    window.copyServerConfig = async function(apiId) {
-        const preBlock = document.getElementById(`server-config-${apiId}`);
-        const buttonElement = preBlock.nextElementSibling;
-        const iconElement = buttonElement.querySelector('i');
-
-        try {
-            const text = preBlock.innerText.trim();
-            await navigator.clipboard.writeText(text);
-
-            iconElement.classList.remove('bi-clipboard');
-            iconElement.classList.add('bi-clipboard-check');
-            await showAlert('Server config copied to clipboard!', `default`);
-
-            setTimeout(() => {
-                iconElement.classList.remove('bi-clipboard-check');
-                iconElement.classList.add('bi-clipboard');
-            }, 1500);
-        } catch (err) {
-            console.error('Failed to copy server config:', err);
-            await showAlert('Failed to copy server config', true);
-        }
-    };
-    
     // Handle API card message overlays
     const messageOverlays = document.querySelectorAll('.message-overlay');
     messageOverlays.forEach(overlay => {
@@ -257,155 +230,6 @@ document.addEventListener("DOMContentLoaded", function () {
             });
         }
     });
-    
-    // Helper function to show message on an API card or subscription card
-    window.showApiMessage = function(overlay, message, type = 'success') {
-        if (overlay) {
-            // Clear any existing auto-hide timers
-            if (overlay.hideTimer) {
-                clearTimeout(overlay.hideTimer);
-                overlay.hideTimer = null;
-            }
-            
-            // Set message - keeping it simple and concise
-            const messageText = overlay.querySelector('.message-text');
-            if (messageText) messageText.textContent = message;
-            
-            // Set type (success/error)
-            overlay.classList.remove('success', 'error');
-            overlay.classList.add(type);
-            
-            // Update icon - ensure proper class structure for alignment
-            const icon = overlay.querySelector('.message-icon');
-            if (icon) {
-                icon.className = 'bi message-icon ' + type;
-                icon.classList.add(type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-circle-fill');
-            }
-            
-            // Show the overlay (remove hidden class if it exists)
-            overlay.classList.remove('hidden');
-            
-            // Auto-hide after the designated time only for success messages
-            // Error messages remain visible until user closes them manually
-            if (type === 'success') {
-                overlay.hideTimer = setTimeout(() => {
-                    overlay.classList.add('hidden');
-                }, 5000);
-            }
-            
-            return overlay;
-        }
-        return null;
-    };
-
-    // Toggle accordion chevron icons
-    document.querySelectorAll('.accordion-header').forEach(btn => {
-        btn.addEventListener('click', function () {
-            const icon = this.querySelector('.chevron-icon');
-            if (icon) {
-                icon.classList.toggle('bi-chevron-down');
-                icon.classList.toggle('bi-chevron-up');
-            }
-        });
-    });
-
-    // Load image vectors and apply theme colors
-    let primaryMain = getComputedStyle(document.documentElement).getPropertyValue("--primary-main-color").trim();
-    let primaryLight = getComputedStyle(document.documentElement).getPropertyValue("--primary-light-color").trim();
-    let primaryLightest = getComputedStyle(document.documentElement).getPropertyValue("--primary-lightest-color").trim();
-    let secondaryMain = getComputedStyle(document.documentElement).getPropertyValue("--secondary-main-color").trim();
-
-    const apisImage = document.getElementById("apisImage");
-    const launchImage = document.getElementById("launchImage");
-    const heroImage = document.getElementById("heroImage");
-    const applicationsImage = document.getElementById("applicationsImage");
-
-    if (apisImage) {
-        fetch(document.querySelector("#apisImage img").src)
-            .then(response => response.text())
-            .then(data => {
-                apisImage.innerHTML = data;
-                apisImage.querySelectorAll("#primaryMain").forEach(el => {
-                    el.setAttribute("fill", primaryMain);
-
-                });
-                apisImage.querySelectorAll("#primaryLight").forEach(el => {
-                    el.setAttribute("fill", primaryLight);
-
-                });
-                apisImage.querySelectorAll("#primaryLightest").forEach(el => {
-                    el.setAttribute("fill", primaryLightest);
-
-                });
-                apisImage.querySelectorAll("#secondaryMain").forEach(el => {
-                    el.setAttribute("fill", secondaryMain);
-
-                });
-            });
-    }
-
-    if (applicationsImage) {
-        fetch(document.querySelector("#applicationsImage img").src)
-            .then(response => response.text())
-            .then(data => {
-                applicationsImage.innerHTML = data;
-                applicationsImage.querySelectorAll("#primaryMain").forEach(el => {
-                    el.setAttribute("fill", primaryMain);
-                });
-                applicationsImage.querySelectorAll("#primaryLight").forEach(el => {
-                    el.setAttribute("fill", primaryLight);
-                });
-                applicationsImage.querySelectorAll("#primaryLightest").forEach(el => {
-                    el.setAttribute("fill", primaryLightest);
-                });
-                applicationsImage.querySelectorAll("#secondaryMain").forEach(el => {
-                    el.setAttribute("fill", secondaryMain);
-                });
-            });
-    }
-
-    if (launchImage) {
-        fetch(document.querySelector("#launchImage img").src)
-            .then(response => response.text())
-            .then(data => {
-                launchImage.innerHTML = data;
-                launchImage.querySelectorAll("#primaryMain").forEach(el => {
-                    el.setAttribute("fill", primaryMain);
-
-                });
-                launchImage.querySelectorAll("#primaryLight").forEach(el => {
-                    el.setAttribute("fill", primaryLight);
-
-                });
-                launchImage.querySelectorAll("#primaryLightest").forEach(el => {
-                    el.setAttribute("fill", primaryLightest);
-
-                });
-                launchImage.querySelectorAll("#secondaryMain").forEach(el => {
-                    el.setAttribute("fill", secondaryMain);
-                });
-            });
-    }
-
-    if (heroImage) {
-        fetch(document.querySelector("#heroImage img").src)
-            .then(response => response.text())
-            .then(data => {
-                heroImage.innerHTML = data;
-                heroImage.querySelectorAll("#primaryMain").forEach(el => {
-                    el.setAttribute("stop-color", primaryLightest);
-                });
-                heroImage.querySelectorAll("#primaryLight").forEach(el => {
-                    el.setAttribute("stop-color", primaryLight);
-                });
-                heroImage.querySelectorAll("#primaryLightest").forEach(el => {
-                    el.setAttribute("stop-color", primaryLightest);
-                });
-                heroImage.querySelectorAll("#secondaryMain").forEach(el => {
-                    el.setAttribute("stop-color", secondaryMain);
-                });
-            });
-    }
 
 });
 

@@ -48,6 +48,10 @@ func (m *MockStorage) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error
 	return nil, nil
 }
 
+func (m *MockStorage) GetGatewayOriginArtifactsForSync() ([]*models.StoredConfig, error) {
+	return nil, nil
+}
+
 // UpdateCPSyncStatus implements [storage.Storage].
 func (m *MockStorage) UpdateCPSyncStatus(uuid, cpArtifactID string, status models.CPSyncStatus, reason string) error {
 	return nil

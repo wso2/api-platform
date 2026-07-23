@@ -44,9 +44,8 @@ const provOrg = "org-prov-it-001"
 
 // setupLLMProviderEnv builds the real route -> handler -> service -> repository
 // stack over an in-memory SQLite DB, seeded with the shipped built-in templates
-// and a test organization. maxProviders <= 0 means unlimited (see
-// config.ArtifactLimits), letting individual tests exercise the limit-reached path.
-func setupLLMProviderEnv(t *testing.T, maxProviders int) (http.Handler, func()) {
+// and a test organization.
+func setupLLMProviderEnv(t *testing.T) (http.Handler, func()) {
 	t.Helper()
 
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -84,7 +83,7 @@ func setupLLMProviderEnv(t *testing.T, maxProviders int) (http.Handler, func()) 
 	}
 
 	identityService := service.NewIdentityService(repository.NewUserIdentityMappingRepo(db))
-	cfg := &config.Server{ArtifactLimits: config.ArtifactLimits{MaxLLMProvidersPerOrg: maxProviders}}
+	cfg := &config.Server{}
 
 	providerService := service.NewLLMProviderService(
 		providerRepo, templateRepo, orgRepo, seeder,
@@ -146,7 +145,7 @@ func validProviderBody(idSuffix string) string {
 // ---- Auth -------------------------------------------------------------
 
 func TestLLMProviderHTTP_CreateRequiresOrg_401(t *testing.T) {
-	r, cleanup := setupLLMProviderEnv(t, 0)
+	r, cleanup := setupLLMProviderEnv(t)
 	defer cleanup()
 
 	w := doProviderJSON(t, r, http.MethodPost, provBase, validProviderBody(""), false)
@@ -165,7 +164,7 @@ func TestLLMProviderHTTP_CreateRequiresOrg_401(t *testing.T) {
 // ---- Create: validation errors -----------------------------------------
 
 func TestLLMProviderHTTP_Create_InvalidBody_400(t *testing.T) {
-	r, cleanup := setupLLMProviderEnv(t, 0)
+	r, cleanup := setupLLMProviderEnv(t)
 	defer cleanup()
 
 	w := doProviderJSON(t, r, http.MethodPost, provBase, `not-json`, true)
@@ -175,7 +174,7 @@ func TestLLMProviderHTTP_Create_InvalidBody_400(t *testing.T) {
 }
 
 func TestLLMProviderHTTP_Create_MissingRequiredFields_400(t *testing.T) {
-	r, cleanup := setupLLMProviderEnv(t, 0)
+	r, cleanup := setupLLMProviderEnv(t)
 	defer cleanup()
 
 	// Missing displayName/version/template entirely.
@@ -190,7 +189,7 @@ func TestLLMProviderHTTP_Create_MissingRequiredFields_400(t *testing.T) {
 }
 
 func TestLLMProviderHTTP_Create_UnknownTemplate_400(t *testing.T) {
-	r, cleanup := setupLLMProviderEnv(t, 0)
+	r, cleanup := setupLLMProviderEnv(t)
 	defer cleanup()
 
 	body := `{
@@ -209,7 +208,7 @@ func TestLLMProviderHTTP_Create_UnknownTemplate_400(t *testing.T) {
 // ---- Create: conflicts --------------------------------------------------
 
 func TestLLMProviderHTTP_Create_DuplicateHandle_409(t *testing.T) {
-	r, cleanup := setupLLMProviderEnv(t, 0)
+	r, cleanup := setupLLMProviderEnv(t)
 	defer cleanup()
 
 	body := `{
@@ -234,24 +233,10 @@ func TestLLMProviderHTTP_Create_DuplicateHandle_409(t *testing.T) {
 	}
 }
 
-func TestLLMProviderHTTP_Create_LimitReached_409(t *testing.T) {
-	r, cleanup := setupLLMProviderEnv(t, 1) // only one provider allowed for this org
-	defer cleanup()
-
-	if w := doProviderJSON(t, r, http.MethodPost, provBase, validProviderBody("A"), true); w.Code != http.StatusCreated {
-		t.Fatalf("first create: expected 201, got %d: %s", w.Code, w.Body.String())
-	}
-
-	w := doProviderJSON(t, r, http.MethodPost, provBase, validProviderBody("B"), true)
-	if w.Code != http.StatusConflict {
-		t.Fatalf("limit reached: expected 409, got %d: %s", w.Code, w.Body.String())
-	}
-}
-
 // ---- Create: secret placeholder validation ------------------------------
 
 func TestLLMProviderHTTP_Create_MissingSecretRef_400(t *testing.T) {
-	r, cleanup := setupLLMProviderEnv(t, 0)
+	r, cleanup := setupLLMProviderEnv(t)
 	defer cleanup()
 
 	body := `{
@@ -275,7 +260,7 @@ func TestLLMProviderHTTP_Create_MissingSecretRef_400(t *testing.T) {
 // ---- Create: happy path (sanity check for the error tests above) -------
 
 func TestLLMProviderHTTP_Create_Success(t *testing.T) {
-	r, cleanup := setupLLMProviderEnv(t, 0)
+	r, cleanup := setupLLMProviderEnv(t)
 	defer cleanup()
 
 	w := doProviderJSON(t, r, http.MethodPost, provBase, validProviderBody(""), true)

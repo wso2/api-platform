@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
@@ -106,7 +107,7 @@ func setupImportTest(t *testing.T) *importTestDeps {
 	}
 	if _, err := db.Exec(`INSERT INTO projects (uuid, handle, display_name, organization_uuid, description, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-		importTestProjectID, "default", "default", importTestOrgID, ""); err != nil {
+		importTestProjectID, "default", "Default", importTestOrgID, ""); err != nil {
 		t.Fatalf("seed project: %v", err)
 	}
 	if _, err := db.Exec(`INSERT INTO gateways (uuid, organization_uuid, handle, display_name, description, properties, created_at, updated_at)
@@ -211,7 +212,7 @@ func TestArtifactImport_UnsupportedKind(t *testing.T) {
 	req.Configuration.Kind = "Nonexistent"
 
 	_, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
-	if !errors.Is(err, constants.ErrArtifactInvalidKind) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrArtifactInvalidKind", err)
 	}
 }
@@ -222,7 +223,7 @@ func TestArtifactImport_MissingProjectForProjectScopedKind(t *testing.T) {
 	req.Configuration.Metadata.Annotations = nil // REST requires a project
 
 	_, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrInvalidInput", err)
 	}
 }
@@ -235,7 +236,7 @@ func TestArtifactImport_NonexistentProject(t *testing.T) {
 
 	// Project provided but not present in the org -> the import fails with ErrProjectNotFound
 	// and no artifact is created.
-	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, req); !errors.Is(err, constants.ErrProjectNotFound) {
+	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, req); !apperror.ProjectNotFound.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrProjectNotFound", err)
 	}
 	art, err := d.artifactRepo.GetByHandle("x", importTestOrgID)
@@ -244,6 +245,45 @@ func TestArtifactImport_NonexistentProject(t *testing.T) {
 	}
 	if art != nil {
 		t.Errorf("artifact was created despite the project not existing in the org")
+	}
+}
+
+// TestArtifactImport_ResolvesProjectByHandleNotDisplayName is the regression guard for #2678:
+// the project-id annotation carries the project handle, not the display name. The seeded
+// project has handle "default" and display name "Default". A push whose annotation is the
+// handle ("default") must resolve and create the artifact; a push whose annotation is the
+// display name ("Default") must be rejected with ProjectNotFound.
+func TestArtifactImport_ResolvesProjectByHandleNotDisplayName(t *testing.T) {
+	d := setupImportTest(t)
+
+	// The display name ("Default") is not a handle -> the import must fail.
+	byDisplayName := restImportRequest("55555555-5555-5555-5555-555555555555", "by-display-name", "By Display Name")
+	byDisplayName.Configuration.Metadata.Annotations = projectAnnotations("Default")
+	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID, byDisplayName); !apperror.ProjectNotFound.Is(err) {
+		t.Fatalf("Import(display name) error = %v, want ErrProjectNotFound", err)
+	}
+	if art, err := d.artifactRepo.GetByHandle("by-display-name", importTestOrgID); err != nil {
+		t.Fatalf("GetByHandle: %v", err)
+	} else if art != nil {
+		t.Errorf("artifact was created for a display-name project reference")
+	}
+
+	// The handle ("default") resolves -> the import succeeds and lands in the project.
+	byHandle := restImportRequest("66666666-6666-6666-6666-666666666666", "by-handle", "By Handle")
+	byHandle.Configuration.Metadata.Annotations = projectAnnotations("default")
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, byHandle)
+	if err != nil {
+		t.Fatalf("Import(handle) error = %v", err)
+	}
+	apiModel, err := d.apiRepo.GetAPIByUUID(resp.ID, importTestOrgID)
+	if err != nil {
+		t.Fatalf("GetAPIByUUID: %v", err)
+	}
+	if apiModel == nil {
+		t.Fatalf("artifact was not created for a valid handle project reference")
+	}
+	if apiModel.ProjectID != importTestProjectID {
+		t.Errorf("artifact ProjectID = %q, want %q (the project resolved by handle)", apiModel.ProjectID, importTestProjectID)
 	}
 }
 
@@ -353,6 +393,193 @@ func TestArtifactImport_DPArtifactMetadataNotUpdatedOnStalePush(t *testing.T) {
 	}
 }
 
+// failOnceImporter wraps a real importer and returns a synthetic unique-constraint violation
+// on its first Import call, delegating to the real importer thereafter. It deterministically
+// simulates the TOCTOU race in which a concurrent same-handle push wins the create and this
+// push's INSERT is rejected by the (organization_uuid, handle) unique index.
+type failOnceImporter struct {
+	delegate GatewayArtifactImporter
+	calls    int
+}
+
+func (f *failOnceImporter) Kind() string          { return f.delegate.Kind() }
+func (f *failOnceImporter) RequiresProject() bool { return f.delegate.RequiresProject() }
+func (f *failOnceImporter) Import(ctx *ImportContext) (*ImportResult, error) {
+	f.calls++
+	if f.calls == 1 {
+		// A representative SQLite unique-violation string; IsUniqueViolation matches it.
+		return nil, errors.New("insert failed: UNIQUE constraint failed: rest_apis.organization_uuid, rest_apis.handle")
+	}
+	return f.delegate.Import(ctx)
+}
+
+// TestArtifactImport_RetriesAsUpdateOnHandleConflict verifies the TOCTOU fix: when the per-kind
+// importer's create loses a concurrent same-handle race (unique violation), the service
+// re-resolves by handle and retries as an Update — and last-in-wins still applies (the newer
+// push wins the working copy).
+func TestArtifactImport_RetriesAsUpdateOnHandleConflict(t *testing.T) {
+	d := setupImportTest(t)
+
+	const id1 = "99999999-9999-9999-9999-999999999991"
+	// The "winning" gateway creates and imports the handle first.
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		withDeployedAt(restImportRequest(id1, "shared-handle", "First Name"), baseDeployedAt))
+	if err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+	cpID := resp.ID
+
+	// Force the second (newer) push's first importer call to fail with a unique violation,
+	// as if its INSERT lost the create race.
+	real := d.svc.importers[constants.RestApi]
+	fake := &failOnceImporter{delegate: real}
+	d.svc.importers[constants.RestApi] = fake
+	t.Cleanup(func() { d.svc.importers[constants.RestApi] = real })
+
+	const id2 = "99999999-9999-9999-9999-999999999992"
+	resp2, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		withDeployedAt(restImportRequest(id2, "shared-handle", "Second Name"), newerDeployedAt))
+	if err != nil {
+		t.Fatalf("second import should recover via retry, got error: %v", err)
+	}
+	if fake.calls < 2 {
+		t.Fatalf("importer was not retried after the unique violation: calls = %d, want >= 2", fake.calls)
+	}
+	// The retry re-resolved to the existing artifact (same CP UUID, no duplicate minted).
+	if resp2.ID != cpID {
+		t.Errorf("retry returned a different artifact: got %q, want existing %q", resp2.ID, cpID)
+	}
+	// Last-in-wins preserved on the retry's Update path: the newer push wins the working copy.
+	art, _ := d.artifactRepo.GetByUUID(cpID, importTestOrgID)
+	if art == nil || art.Name != "Second Name" {
+		t.Errorf("artifact name = %v, want 'Second Name' (newer push wins on retry)", art)
+	}
+}
+
+// TestArtifactImport_RetryPreservesLastInWinsForStalePush verifies that when the losing push
+// is stale (older DeployedAt), the retry re-runs the last-in-wins decision and leaves the
+// working copy untouched (SkipWorkingCopy) rather than clobbering the newer winner.
+func TestArtifactImport_RetryPreservesLastInWinsForStalePush(t *testing.T) {
+	d := setupImportTest(t)
+
+	const id1 = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"
+	// The winner imports with the NEWER deployment time.
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		withDeployedAt(restImportRequest(id1, "stale-handle", "Winner Name"), newerDeployedAt))
+	if err != nil {
+		t.Fatalf("first import: %v", err)
+	}
+	cpID := resp.ID
+
+	real := d.svc.importers[constants.RestApi]
+	fake := &failOnceImporter{delegate: real}
+	d.svc.importers[constants.RestApi] = fake
+	t.Cleanup(func() { d.svc.importers[constants.RestApi] = real })
+
+	const id2 = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2"
+	// The loser pushes with an OLDER deployment time; after the forced conflict + retry it
+	// must be treated as stale and NOT overwrite the winner's metadata.
+	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		withDeployedAt(restImportRequest(id2, "stale-handle", "Loser Name"), olderDeployedAt)); err != nil {
+		t.Fatalf("second import should recover via retry, got error: %v", err)
+	}
+	if fake.calls < 2 {
+		t.Fatalf("importer was not retried after the unique violation: calls = %d, want >= 2", fake.calls)
+	}
+	art, _ := d.artifactRepo.GetByUUID(cpID, importTestOrgID)
+	if art == nil || art.Name != "Winner Name" {
+		t.Errorf("artifact name = %v, want unchanged 'Winner Name' (stale loser must not win on retry)", art)
+	}
+}
+
+// TestImportersReturnUniqueViolationOnDuplicateHandle verifies the load-bearing assumption of
+// the TOCTOU retry: for EVERY artifact kind, a duplicate (organization_uuid, handle) create
+// surfaces an error that repository.IsUniqueViolation detects — so importValidated actually
+// retries as an update. It runs against the real SQLite driver.
+//
+// Deployable kinds are exercised through importer.Import with ctx.Existing == nil (the losing
+// push's view of the race) after the row already exists, so the importer takes its Create branch
+// and hits the child table's UNIQUE(organization_uuid, handle) index. LLM provider templates are
+// org-level and the template importer re-resolves existence internally (GetByID) on every call,
+// so a duplicate create is only reachable under a true concurrent race; the violation therefore
+// originates in templateRepo.Create — which the importer propagates verbatim via %w — and is
+// verified at the repo layer here.
+func TestImportersReturnUniqueViolationOnDuplicateHandle(t *testing.T) {
+	// createCtx builds the losing push's context: Existing == nil (it read before the winner
+	// committed) forces the importer's Create branch even though the row now exists.
+	createCtx := func(req dto.ImportGatewayArtifactRequest, projectID string) *ImportContext {
+		return &ImportContext{
+			OrgID:         importTestOrgID,
+			GatewayID:     importTestGatewayID,
+			DPID:          req.DPID,
+			Configuration: req.Configuration,
+			Status:        req.Status,
+			ProjectID:     projectID,
+			ID:            "cp-" + req.DPID,
+			Existing:      nil,
+		}
+	}
+	assertViolation := func(t *testing.T, err error) {
+		t.Helper()
+		if err == nil {
+			t.Fatal("expected a unique-constraint violation, got nil")
+		}
+		if !repository.IsUniqueViolation(err) {
+			t.Fatalf("error is not detected as a unique violation by repository.IsUniqueViolation: %v", err)
+		}
+	}
+
+	t.Run("RestApi", func(t *testing.T) {
+		d := setupImportTest(t)
+		mustImport(t, d, restImportRequest("dp-rest-w", "dup-rest", "Rest Winner"))
+		imp := d.svc.importers[constants.RestApi]
+		_, err := imp.Import(createCtx(restImportRequest("dp-rest-l", "dup-rest", "Rest Loser"), importTestProjectID))
+		assertViolation(t, err)
+	})
+
+	t.Run("LLMProvider", func(t *testing.T) {
+		d := setupImportTest(t)
+		mustImport(t, d, dpTemplateReq("dp-tmpl", "dup-tmpl", "Tmpl"))
+		mustImport(t, d, dpProviderReq("dp-prov-w", "dup-prov", "Prov Winner", "dup-tmpl"))
+		imp := d.svc.importers[constants.LLMProvider]
+		_, err := imp.Import(createCtx(dpProviderReq("dp-prov-l", "dup-prov", "Prov Loser", "dup-tmpl"), ""))
+		assertViolation(t, err)
+	})
+
+	t.Run("LLMProxy", func(t *testing.T) {
+		d := setupImportTest(t)
+		mustImport(t, d, dpTemplateReq("dp-tmpl2", "dup-tmpl2", "Tmpl"))
+		mustImport(t, d, dpProviderReq("dp-prov2", "dup-prov2", "Prov", "dup-tmpl2"))
+		mustImport(t, d, dpProxyReq("dp-proxy-w", "dup-proxy", "Proxy Winner", "dup-prov2"))
+		imp := d.svc.importers[constants.LLMProxy]
+		_, err := imp.Import(createCtx(dpProxyReq("dp-proxy-l", "dup-proxy", "Proxy Loser", "dup-prov2"), importTestProjectID))
+		assertViolation(t, err)
+	})
+
+	t.Run("MCPProxy", func(t *testing.T) {
+		d := setupImportTest(t)
+		mustImport(t, d, dpMCPReq("dp-mcp-w", "dup-mcp", "Mcp Winner"))
+		imp := d.svc.importers[constants.MCPProxy]
+		_, err := imp.Import(createCtx(dpMCPReq("dp-mcp-l", "dup-mcp", "Mcp Loser"), importTestProjectID))
+		assertViolation(t, err)
+	})
+
+	t.Run("LLMProviderTemplate", func(t *testing.T) {
+		d := setupImportTest(t)
+		mustImport(t, d, dpTemplateReq("dp-tmpl-t", "dup-tmpl-t", "Tmpl Winner"))
+		// The template importer re-resolves by handle internally, so a single-threaded second
+		// Import would take the Update branch. Drive the duplicate at the repo layer — this is
+		// exactly the error importer.Import wraps and returns under a genuine concurrent race.
+		err := d.templateRepo.Create(&model.LLMProviderTemplate{
+			ID:               "dup-tmpl-t",
+			OrganizationUUID: importTestOrgID,
+			Name:             "Tmpl Loser",
+			Origin:           constants.OriginDP,
+		})
+		assertViolation(t, err)
+	})
+}
+
 func TestArtifactImport_UndeployedStatus(t *testing.T) {
 	d := setupImportTest(t)
 
@@ -446,7 +673,7 @@ func TestArtifactImport_Enforcement_ReadOnlyAndDeletion(t *testing.T) {
 	}
 
 	// Update of a DP artifact is blocked.
-	if err := ensureOriginMutable(api.Origin); !errors.Is(err, constants.ErrArtifactReadOnly) {
+	if err := ensureOriginMutable(api.Origin); !apperror.ArtifactReadOnly.Is(err) {
 		t.Errorf("ensureOriginMutable = %v, want ErrArtifactReadOnly", err)
 	}
 
@@ -458,7 +685,7 @@ func TestArtifactImport_Enforcement_ReadOnlyAndDeletion(t *testing.T) {
 	if !active {
 		t.Fatal("HasActiveDeployment = false, want true for a deployed artifact")
 	}
-	if err := ensureOriginDeletable(d.deployment, api.Origin, cpID, importTestOrgID); !errors.Is(err, constants.ErrArtifactDeployed) {
+	if err := ensureOriginDeletable(d.deployment, api.Origin, cpID, importTestOrgID); !apperror.ArtifactDeployed.Is(err) {
 		t.Errorf("ensureOriginDeletable (deployed) = %v, want ErrArtifactDeployed", err)
 	}
 
@@ -528,7 +755,7 @@ func TestArtifactImport_ProxyMissingProvider(t *testing.T) {
 	}
 
 	_, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
-	if !errors.Is(err, constants.ErrInvalidInput) {
+	if !apperror.ValidationFailed.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrInvalidInput for a missing provider reference", err)
 	}
 }
@@ -627,7 +854,147 @@ func TestArtifactImport_RedeployNoMetadataUpdateOnStalePush(t *testing.T) {
 func TestArtifactImport_GatewayNotFound(t *testing.T) {
 	d := setupImportTest(t)
 	_, err := d.svc.Import(importTestOrgID, "nonexistent-gateway", restImportRequest("a0000000-0000-0000-0000-000000000000", "x", "X"))
-	if !errors.Is(err, constants.ErrGatewayNotFound) {
+	if !apperror.GatewayNotFound.Is(err) {
 		t.Fatalf("Import() error = %v, want ErrGatewayNotFound", err)
+	}
+}
+
+// withDeployedAtRev sets DeployedAt and the matching deploymentRevision property, mirroring how
+// the gateway builds an import request (revision derived from the deployment time). Distinct
+// deployment times therefore carry distinct revisions; a re-push of the same deployment carries
+// the same revision and is deduped by the control plane.
+func withDeployedAtRev(req dto.ImportGatewayArtifactRequest, t time.Time) dto.ImportGatewayArtifactRequest {
+	req.DeployedAt = &t
+	req.Properties = map[string]interface{}{deploymentRevisionProperty: t.UTC().Format(time.RFC3339Nano)}
+	return req
+}
+
+// countDeployments returns the number of deployment rows for an artifact on a given gateway.
+func countDeployments(t *testing.T, d *importTestDeps, artifactUUID, gatewayID string) int {
+	t.Helper()
+	var n int
+	if err := d.db.QueryRow(
+		`SELECT COUNT(*) FROM deployments WHERE artifact_uuid = ? AND gateway_uuid = ?`,
+		artifactUUID, gatewayID,
+	).Scan(&n); err != nil {
+		t.Fatalf("count deployments: %v", err)
+	}
+	return n
+}
+
+// A replay re-push (reconnect / full reconcile) carries the same deploymentRevision as the current
+// deployment. It must not create a duplicate deployment row, but must keep the artifact and its
+// gateway association intact.
+func TestArtifactImport_ReplayDoesNotDuplicateDeployment(t *testing.T) {
+	d := setupImportTest(t)
+
+	const id = "22222222-2222-2222-2222-222222222222"
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		withDeployedAtRev(restImportRequest(id, "replay-api", "Replay API"), baseDeployedAt))
+	if err != nil {
+		t.Fatalf("initial import: %v", err)
+	}
+	cpID := resp.ID
+	if got := countDeployments(t, d, cpID, importTestGatewayID); got != 1 {
+		t.Fatalf("after initial import: deployments = %d, want 1", got)
+	}
+
+	// Re-push the same artifact twice (same revision) — simulates reconnect/full reconcile.
+	for i := 0; i < 2; i++ {
+		if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+			withDeployedAtRev(restImportRequest(id, "replay-api", "Replay API"), baseDeployedAt)); err != nil {
+			t.Fatalf("replay import %d: %v", i, err)
+		}
+	}
+	if got := countDeployments(t, d, cpID, importTestGatewayID); got != 1 {
+		t.Errorf("after replay re-pushes: deployments = %d, want 1 (no duplicates)", got)
+	}
+	// The association must still be present exactly once.
+	assocs, err := d.apiRepo.GetAPIAssociations(cpID, constants.AssociationTypeGateway, importTestOrgID)
+	if err != nil {
+		t.Fatalf("get associations: %v", err)
+	}
+	count := 0
+	for _, a := range assocs {
+		if a.GatewayID == importTestGatewayID {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("gateway associations = %d, want 1", count)
+	}
+}
+
+// Two genuinely distinct deployments (e.g. a create then an update, even when they reach the CP
+// out of order) carry distinct revisions and must both be recorded, while last-in-wins keeps the
+// newest working copy. This models the create/PUT reordering: the newer PUT lands first.
+func TestArtifactImport_DistinctRevisionsRecordSeparateDeployments(t *testing.T) {
+	d := setupImportTest(t)
+
+	const id = "33333333-3333-3333-3333-333333333333"
+	// PUT (newer) arrives first: creates the artifact with the newer working copy.
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		withDeployedAtRev(restImportRequest(id, "ro-api", "PUT Name"), newerDeployedAt))
+	if err != nil {
+		t.Fatalf("put import: %v", err)
+	}
+	cpID := resp.ID
+
+	// CREATE (older) arrives second: stale for the working copy (SkipWorkingCopy) but a genuinely
+	// distinct deployment — it must add a second deployment row.
+	if _, err := d.svc.Import(importTestOrgID, importTestGatewayID,
+		withDeployedAtRev(restImportRequest(id, "ro-api", "CREATE Name"), baseDeployedAt)); err != nil {
+		t.Fatalf("create import: %v", err)
+	}
+
+	if got := countDeployments(t, d, cpID, importTestGatewayID); got != 2 {
+		t.Errorf("distinct deployments = %d, want 2", got)
+	}
+	// Last-in-wins: the newer PUT metadata must survive the later, older CREATE push.
+	art, _ := d.artifactRepo.GetByUUID(cpID, importTestOrgID)
+	if art == nil || art.Name != "PUT Name" {
+		t.Errorf("working copy = %v, want newer 'PUT Name' to win", art)
+	}
+	// The latest deployment watermark is the newer time.
+	latest, err := d.deployment.GetLatestDeploymentTime(cpID, importTestOrgID)
+	if err != nil || latest == nil || !latest.Equal(newerDeployedAt) {
+		t.Errorf("latest deployment time = %v, want %v", latest, newerDeployedAt)
+	}
+}
+
+// The revision match is scoped per gateway: a second gateway re-pushing the same artifact with the
+// same revision must still record its own deployment (a new gateway registration must be synced).
+func TestArtifactImport_DifferentGatewaySameRevisionRecordsOwnDeployment(t *testing.T) {
+	d := setupImportTest(t)
+
+	const gw2 = "gw-import-002"
+	if _, err := d.db.Exec(`INSERT INTO gateways (uuid, organization_uuid, handle, display_name, description, properties, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+		gw2, importTestOrgID, "gw2", "Gateway 2", "", "{}"); err != nil {
+		t.Fatalf("seed gateway2: %v", err)
+	}
+	// The second gateway must authenticate; the import resolves the gateway by the ID passed in,
+	// so seeding the row is sufficient for the service to accept it.
+
+	const id = "44444444-4444-4444-4444-444444444444"
+	req := withDeployedAtRev(restImportRequest(id, "mg-api", "Multi GW API"), baseDeployedAt)
+
+	resp, err := d.svc.Import(importTestOrgID, importTestGatewayID, req)
+	if err != nil {
+		t.Fatalf("gw1 import: %v", err)
+	}
+	cpID := resp.ID
+
+	// Same artifact (same handle → same CP UUID) and same revision, but pushed by a different
+	// gateway: must create a deployment for gw2 rather than being deduped as a replay.
+	if _, err := d.svc.Import(importTestOrgID, gw2, req); err != nil {
+		t.Fatalf("gw2 import: %v", err)
+	}
+
+	if got := countDeployments(t, d, cpID, importTestGatewayID); got != 1 {
+		t.Errorf("gw1 deployments = %d, want 1", got)
+	}
+	if got := countDeployments(t, d, cpID, gw2); got != 1 {
+		t.Errorf("gw2 deployments = %d, want 1", got)
 	}
 }

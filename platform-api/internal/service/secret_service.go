@@ -23,6 +23,8 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -38,7 +40,7 @@ type SecretInUseError struct {
 }
 
 func (e *SecretInUseError) Error() string {
-	return constants.ErrSecretInUse.Error()
+	return "secret is referenced by one or more resources"
 }
 
 type SecretService struct {
@@ -91,7 +93,7 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 	if secretType == "" {
 		secretType = model.SecretTypeGeneric
 	} else if secretType != model.SecretTypeGeneric && secretType != model.SecretTypeCertificate {
-		return nil, apperror.ValidationFailed.Wrap(constants.ErrInvalidSecretType, "Invalid secret type: must be GENERIC or CERTIFICATE")
+		return nil, apperror.ValidationFailed.New("The secret type must be one of GENERIC or CERTIFICATE.")
 	}
 
 	exists, err := s.repo.Exists(orgID, req.Handle)
@@ -99,7 +101,7 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 		return nil, fmt.Errorf("failed to check secret existence: %w", err)
 	}
 	if exists {
-		return nil, apperror.SecretExists.Wrap(constants.ErrSecretAlreadyExists)
+		return nil, apperror.SecretExists.New()
 	}
 
 	ciphertext, err := s.vault.Encrypt(context.Background(), req.Value)
@@ -211,6 +213,61 @@ func (s *SecretService) Delete(orgID, handle, updatedBy string) error {
 	return nil
 }
 
+// extractSecretHandle returns the handle embedded in a {{ secret "handle" }}
+// placeholder, or "" if value is empty, plaintext, or otherwise not a placeholder.
+func extractSecretHandle(value string) string {
+	m := constants.SecretPlaceholderRe.FindStringSubmatch(value)
+	if len(m) < 2 {
+		return ""
+	}
+	return m[1]
+}
+
+// mainUpstreamAuthValue nil-safely reads upstream.main.auth.value from an
+// UpstreamConfig, returning "" when any part of the chain is nil.
+func mainUpstreamAuthValue(cfg *model.UpstreamConfig) string {
+	if cfg == nil || cfg.Main == nil || cfg.Main.Auth == nil {
+		return ""
+	}
+	return cfg.Main.Auth.Value
+}
+
+// sandboxUpstreamAuthValue nil-safely reads upstream.sandbox.auth.value from
+// an UpstreamConfig, returning "" when any part of the chain is nil.
+func sandboxUpstreamAuthValue(cfg *model.UpstreamConfig) string {
+	if cfg == nil || cfg.Sandbox == nil || cfg.Sandbox.Auth == nil {
+		return ""
+	}
+	return cfg.Sandbox.Auth.Value
+}
+
+// upstreamAuthValue nil-safely reads .Value from an UpstreamAuth.
+func upstreamAuthValue(auth *model.UpstreamAuth) string {
+	if auth == nil {
+		return ""
+	}
+	return auth.Value
+}
+
+// cleanupRotatedSecret best-effort deletes the secret previously referenced by
+// oldValue when it has been rotated to a different handle in newValue. Both
+// values are expected to be {{ secret "handle" }} placeholders (or empty/
+// plaintext, in which case nothing is deleted). Must be called only after the
+// resource's own config has been persisted with newValue, so the old handle
+// is no longer referenced by this resource by the time the in-use check runs.
+func (s *SecretService) cleanupRotatedSecret(orgUUID, oldValue, newValue, updatedBy string, logger *slog.Logger) {
+	oldHandle := extractSecretHandle(oldValue)
+	if oldHandle == "" {
+		return
+	}
+	if oldHandle == extractSecretHandle(newValue) {
+		return
+	}
+	if err := s.Delete(orgUUID, oldHandle, updatedBy); err != nil && logger != nil {
+		logger.Warn("could not delete rotated-out secret", "handle", oldHandle, "err", err)
+	}
+}
+
 // ValidateSecretRefs checks that every {{ secret "handle" }} placeholder in configText
 // resolves to an active org-scoped secret.
 func (s *SecretService) ValidateSecretRefs(orgID, configText string) error {
@@ -239,8 +296,8 @@ func (s *SecretService) ValidateSecretRefs(orgID, configText string) error {
 	}
 
 	if len(missing) > 0 {
-		return apperror.ValidationFailed.Wrap(fmt.Errorf("%w: %v", constants.ErrSecretRefMissing, missing),
-			"One or more referenced secrets do not exist")
+		return apperror.ValidationFailed.New(fmt.Sprintf(
+			"The following referenced secrets do not exist: %s.", strings.Join(missing, ", ")))
 	}
 	return nil
 }

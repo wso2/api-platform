@@ -30,9 +30,32 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/goenv"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 	"golang.org/x/mod/modfile"
 )
+
+// goGetMaxAttempts and goGetRetryBackoff control retries around the 'go get'
+// invocation below. Module proxy fetches occasionally fail with transient
+// network errors (e.g. an HTTP/2 stream INTERNAL_ERROR from proxy.golang.org)
+// that succeed on a bare retry; a timeout or a genuinely missing/invalid
+// module will simply fail again on retry at negligible extra cost.
+var (
+	goGetMaxAttempts  = 3
+	goGetRetryBackoff = 2 * time.Second
+)
+
+// runGoGet is a seam over exec.CommandContext so tests can stub out the real
+// 'go get' invocation.
+var runGoGet = func(ctx context.Context, dir, target string) (stderr []byte, err error) {
+	cmd := exec.CommandContext(ctx, "go", "get", target)
+	cmd.Dir = dir
+	cmd.Env = goenv.WithToolchain(cmd.Environ())
+	var buf bytes.Buffer
+	cmd.Stderr = &buf
+	err = cmd.Run()
+	return buf.Bytes(), err
+}
 
 // UpdateGoMod updates go.mod for discovered policies:
 //   - gomodule entries: runs 'go get' to pin the real module at its resolved version
@@ -54,23 +77,42 @@ func UpdateGoMod(srcDir string, policies []*types.DiscoveredPolicy) error {
 		}
 
 		target := fmt.Sprintf("%s@%s", policy.GoModulePath, policy.GoModuleVersion)
-		slog.Debug("running go get for remote policy",
-			"policy", policy.Name,
-			"target", target)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		cmd := exec.CommandContext(ctx, "go", "get", target)
-		cmd.Dir = srcDir
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
+		var lastErr error
+		var lastStderr []byte
+		for attempt := 1; attempt <= goGetMaxAttempts; attempt++ {
+			slog.Debug("running go get for remote policy",
+				"policy", policy.Name,
+				"target", target,
+				"attempt", attempt)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			stderr, runErr := runGoGet(ctx, srcDir, target)
+			timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded)
 			cancel()
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				return fmt.Errorf("go get timed out after 5min for %s in %s: %w; stderr: %s", target, srcDir, err, stderr.String())
+
+			if runErr == nil {
+				lastErr = nil
+				break
 			}
-			return fmt.Errorf("go get failed for %s in %s: %w; stderr: %s", target, srcDir, err, stderr.String())
+			if timedOut {
+				return fmt.Errorf("go get timed out after 5min for %s in %s: %w; stderr: %s", target, srcDir, runErr, stderr)
+			}
+
+			lastErr, lastStderr = runErr, stderr
+			if attempt < goGetMaxAttempts {
+				slog.Warn("go get failed, retrying",
+					"policy", policy.Name,
+					"target", target,
+					"attempt", attempt,
+					"maxAttempts", goGetMaxAttempts,
+					"err", runErr)
+				time.Sleep(goGetRetryBackoff * time.Duration(attempt))
+			}
 		}
-		cancel()
+		if lastErr != nil {
+			return fmt.Errorf("go get failed for %s in %s after %d attempts: %w; stderr: %s", target, srcDir, goGetMaxAttempts, lastErr, lastStderr)
+		}
 	}
 
 	// Second pass: add replace directives for filePath (local) entries

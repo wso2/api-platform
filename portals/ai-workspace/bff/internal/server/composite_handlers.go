@@ -67,7 +67,7 @@ func extractSecretHandles(body []byte) []string {
 // platformDo performs a single authenticated request against the Platform API,
 // returning the raw response. The caller is responsible for closing the body.
 func (s *Server) platformDo(ctx context.Context, jwt, method, path string, header http.Header, body []byte) (*http.Response, error) {
-	url := strings.TrimRight(s.cfg.PlatformAPIURL, "/") + path
+	url := strings.TrimRight(s.cfg.ControlPlane.URL, "/") + path
 	var reqBody io.Reader
 	if len(body) > 0 {
 		reqBody = bytes.NewReader(body)
@@ -135,7 +135,7 @@ func (s *Server) deleteSecretAsync(jwt, handle, apiBase string) {
 func (s *Server) handleCreateWithSecretCompensation(w http.ResponseWriter, r *http.Request, resourcePath, apiBasePath string) {
 	jwt, ok := s.tokenFromCookie(r)
 	if !ok {
-		writeErrorJSON(w, http.StatusUnauthorized, "NOT_AUTHENTICATED", "not authenticated")
+		writeErrorJSON(w, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired credentials.")
 		return
 	}
 

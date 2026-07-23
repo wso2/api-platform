@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 const { renderTemplate, renderTemplateFromAPI, loadMarkdown, filePrefix } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const markdown = require('marked');
@@ -51,7 +51,7 @@ const loadCustomContent = async (req, res, next) => {
         }
         const layoutPath = config.designMode.pathToLayout;
         let templateContent = {};
-        templateContent[constants.BASE_URL_NAME] = config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;
+        templateContent[constants.BASE_URL_NAME] = constants.ROUTE.VIEWS_PATH + viewName;
         //read all markdown content
         if (fs.existsSync(path.join(process.cwd(), layoutPath + 'pages', filePath, 'content'))) {
             const markdDownFiles = fs.readdirSync(path.join(process.cwd(), layoutPath + 'pages/' + filePath + '/content'));
@@ -64,7 +64,6 @@ const loadCustomContent = async (req, res, next) => {
 
     } else {
         let content = {};
-        let devportalMode = constants.DEVPORTAL_MODE.DEFAULT;
         try {
             filePath = 'pages/' + filePath;
             // Normalize application-specific manage-keys paths to the shared manage-keys page
@@ -83,7 +82,6 @@ const loadCustomContent = async (req, res, next) => {
             }
             const orgDetails = await orgDao.get(orgName);
             const orgId = orgDetails.uuid;
-            devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
             let markDownFiles = await orgDao.getContent({
                 orgId: orgId,
                 fileType: 'markDown',
@@ -96,16 +94,6 @@ const loadCustomContent = async (req, res, next) => {
                 });
             }
             content[constants.BASE_URL_NAME] = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
-            let profile = null;
-            if (req.user) {
-                profile = {
-                    imageURL: req.user.imageURL,
-                    firstName: req.user.firstName,
-                    lastName: req.user.lastName,
-                    email: req.user.email,
-                    isAdmin: req.user.isAdmin,
-                }
-            }
             html = await renderTemplateFromAPI(content, orgId, orgName, filePath, viewName);
         } catch (error) {
             logger.error('Error while loading custom content', {

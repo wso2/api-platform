@@ -19,7 +19,6 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -202,58 +201,15 @@ func (h *MCPProxyHandler) FetchMCPProxyServerInfo(w http.ResponseWriter, r *http
 
 	resp, err := h.service.FetchServerInfo(orgID, &req)
 	if err != nil {
-		reqURL := ""
-		if req.Url != nil {
-			reqURL = *req.Url
-		}
-		switch {
-		case errors.Is(err, constants.ErrInvalidURL):
-			return apperror.ValidationFailed.Wrap(err, "Invalid URL provided").
-				WithLogMessage(fmt.Sprintf("invalid URL provided for MCP server info fetch: %s", reqURL))
-		case errors.Is(err, constants.ErrURLUnreachable):
-			return apperror.ValidationFailed.Wrap(err, "URL is unreachable").
-				WithLogMessage(fmt.Sprintf("MCP server URL is unreachable: %s", reqURL))
-		case errors.Is(err, constants.ErrMCPServerUnauthorized):
-			return apperror.ValidationFailed.Wrap(err, "MCP server returned 401 Unauthorized. Check the provided credentials.").
-				WithLogMessage(fmt.Sprintf("MCP server returned 401 Unauthorized: %s", reqURL))
-		default:
-			return h.mapServiceError(err)
-		}
+		return h.mapServiceError(err)
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
 }
 
-// mapServiceError maps service errors to *apperror.Error values for the
-// centralized error mapper, preserving the exact status/code/message each
-// error produced before the migration (including the read-only /
-// deletion-guard mapping previously handled by respondArtifactGuardError).
+// mapServiceError hands a service-layer error to the centralized error mapper.
+// See serviceError in service_error.go.
 func (h *MCPProxyHandler) mapServiceError(err error) error {
-	switch {
-	case errors.Is(err, constants.ErrArtifactReadOnly):
-		return apperror.ArtifactReadOnly.Wrap(err, "Artifact is read-only: it originated from a data-plane gateway")
-	case errors.Is(err, constants.ErrArtifactRuntimeImmutable):
-		return apperror.ArtifactRuntimeImmutable.Wrap(err, "Runtime configuration of this artifact cannot be changed")
-	case errors.Is(err, constants.ErrArtifactDeployed):
-		return apperror.ArtifactDeployed.Wrap(err, "Artifact is still deployed on a gateway and cannot be deleted")
-	case errors.Is(err, constants.ErrHandleImmutable):
-		return apperror.ValidationFailed.Wrap(err, "The id is immutable and cannot be changed")
-	case errors.Is(err, constants.ErrInvalidInput):
-		return apperror.ValidationFailed.Wrap(err, "Invalid input parameters")
-	case errors.Is(err, constants.ErrInvalidPolicyVersion):
-		return apperror.ValidationFailed.Wrap(err, "Invalid policy version format")
-	case errors.Is(err, constants.ErrMCPProxyNotFound):
-		return apperror.MCPProxyNotFound.Wrap(err)
-	case errors.Is(err, constants.ErrMCPProxyExists):
-		return apperror.MCPProxyExists.Wrap(err)
-	case errors.Is(err, constants.ErrProjectNotFound):
-		return apperror.ProjectRefNotFound.Wrap(err)
-	case errors.Is(err, constants.ErrMCPProxyLimitReached):
-		return apperror.MCPProxyLimitReached.Wrap(err)
-	case errors.Is(err, constants.ErrSecretRefMissing):
-		return apperror.ValidationFailed.Wrap(err, "One or more referenced secrets do not exist")
-	default:
-		return apperror.Internal.Wrap(err)
-	}
+	return serviceError(err, "MCP proxy operation failed")
 }

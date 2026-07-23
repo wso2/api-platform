@@ -88,8 +88,6 @@ replay_pid*
 
 .vscode
 
-eslint.config.mjs
-
 .prettierrc
 
 config*.json
@@ -98,7 +96,13 @@ resources/default-layout
 resources/mock
 
 .env
-configs/config-platform-api.toml
+api-platform.env
+
+# ./setup.sh output: bind-mounted TLS cert
+resources/certificates/
+
+# ./setup.sh output: bind-mounted RS256 JWT signing keypair
+resources/keys/
 
 # Test reports
 it/reports/*

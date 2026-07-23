@@ -19,6 +19,8 @@
 package xds
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -27,10 +29,12 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/common/collector"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
@@ -44,9 +48,6 @@ import (
 	tracev3 "github.com/envoyproxy/go-control-plane/envoy/config/trace/v3"
 	fileaccesslog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	grpc_accesslogv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/grpc/v3"
-	dfpcluster "github.com/envoyproxy/go-control-plane/envoy/extensions/clusters/dynamic_forward_proxy/v3"
-	common_dfp "github.com/envoyproxy/go-control-plane/envoy/extensions/common/dynamic_forward_proxy/v3"
-	dfpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/dynamic_forward_proxy/v3"
 	extproc "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	luav3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/lua/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
@@ -88,17 +89,20 @@ func checkedUInt32FromPositiveInt(fieldName string, value int) (uint32, error) {
 
 // Translator converts API configurations to Envoy xDS resources
 type Translator struct {
-	logger       *slog.Logger
-	routerConfig *config.RouterConfig
-	certStore    *certstore.CertStore
-	config       *config.Config
-	transformers map[string]models.ConfigTransformer // kind → transformer (optional)
+	logger            *slog.Logger
+	routerConfig      *config.RouterConfig
+	certStore         *certstore.CertStore
+	config            *config.Config
+	transformers      map[string]models.ConfigTransformer // kind → transformer (optional)
+	eventGatewayHooks EventGatewayXDSHooks                // optional, set by an event-gateway-controller binary
 }
 
 // resolvedTimeout represents parsed timeout values for an upstream.
-// Currently only connect timeout is supported at the upstream definition level.
+// Route and Idle come from the resilience block.
 type resolvedTimeout struct {
 	Connect *time.Duration
+	Route   *time.Duration
+	Idle    *time.Duration
 }
 
 // NewTranslator creates a new translator
@@ -149,8 +153,46 @@ func convertServerHeaderTransformation(transformation string) hcm.HttpConnection
 // This format is used by both Envoy routes and the policy engine for route matching
 // It builds the full path by combining context, version, and path using ConstructFullPath
 func GenerateRouteName(method, context, apiVersion, path, vhost string) string {
+	return GenerateRouteNameWithDiscriminator(method, context, apiVersion, path, vhost, "")
+}
+
+// GenerateRouteNameWithDiscriminator builds a route key like GenerateRouteName but appends an
+// optional discriminator segment so that routes which share method, path and vhost but differ by
+// header matches (e.g. multiple Gateway-API HTTPRoute rules on the same path) do not collide in the
+// RuntimeDeployConfig route map. When discriminator is empty the result is byte-identical to
+// GenerateRouteName, so routes without header matches keep their historical key.
+//
+// The vhost stays at index 2 when splitting on "|"; the discriminator is the (optional) 4th segment.
+func GenerateRouteNameWithDiscriminator(method, context, apiVersion, path, vhost, discriminator string) string {
 	fullPath := ConstructFullPath(context, apiVersion, path)
-	return fmt.Sprintf("%s|%s|%s", method, fullPath, vhost)
+	if discriminator == "" {
+		return fmt.Sprintf("%s|%s|%s", method, fullPath, vhost)
+	}
+	return fmt.Sprintf("%s|%s|%s|%s", method, fullPath, vhost, discriminator)
+}
+
+// HeaderMatchDiscriminator returns a short, stable discriminator for a set of route header matchers,
+// or "" when there are no header matchers. It is used to keep route keys unique across routes that
+// share method/path/vhost but match on different headers. The output is deterministic across
+// reconciles: header names are lowercased (mirroring Envoy's case-insensitive header matching) and
+// the matchers are canonically sorted by (name, type, value) before hashing, so input order does not
+// affect the result.
+func HeaderMatchDiscriminator(headers []models.RouteHeaderMatch) string {
+	if len(headers) == 0 {
+		return ""
+	}
+	canonical := make([]string, 0, len(headers))
+	for _, h := range headers {
+		// type defaults to Exact to align with how routes are rendered when unset.
+		t := h.Type
+		if t == "" {
+			t = "Exact"
+		}
+		canonical = append(canonical, strings.ToLower(strings.TrimSpace(h.Name))+"\x1f"+t+"\x1f"+h.Value)
+	}
+	sort.Strings(canonical)
+	sum := sha256.Sum256([]byte(strings.Join(canonical, "\x1e")))
+	return hex.EncodeToString(sum[:8])
 }
 
 // ConstructFullPath builds the full path by replacing $version placeholder in context and appending path
@@ -169,6 +211,14 @@ func ConstructFullPath(context, apiVersion, path string) string {
 // GetCertStore returns the certificate store instance
 func (t *Translator) GetCertStore() *certstore.CertStore {
 	return t.certStore
+}
+
+// appendMCPResourcePathToBackend reports whether the legacy behaviour of appending the
+// "/mcp" resource path to the MCP backend upstream is enabled via configuration. When
+// enabled, MCP "/mcp" routes fall through to the standard rewrite (which preserves the
+// operation path on the upstream), matching the previous gateway version's behaviour.
+func (t *Translator) appendMCPResourcePathToBackend() bool {
+	return t.config != nil && t.config.MCP.AppendResourcePathToBackend
 }
 
 // SetTransformers sets the kind-to-transformer map used by TranslateConfigs.
@@ -190,28 +240,59 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 		if len(uc.Endpoints) == 0 {
 			continue
 		}
-		ep := uc.Endpoints[0]
-		parsedURL := &url.URL{
-			Scheme: "http",
-			Host:   net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port)),
-			Path:   uc.BasePath,
+		// Per-upstream connect timeout resolved by the transformer from
+		// upstreamDefinitions.timeout.connect; nil falls back to the router default
+		// inside createCluster/createWeightedCluster.
+		connectTimeout := uc.ConnectTimeout
+		if len(uc.Endpoints) == 1 {
+			ep := uc.Endpoints[0]
+			parsedURL := &url.URL{
+				Scheme: "http",
+				Host:   net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port)),
+				Path:   uc.BasePath,
+			}
+			if uc.TLS != nil && uc.TLS.Enabled {
+				parsedURL.Scheme = "https"
+			}
+			c := t.createCluster(clusterName, parsedURL, nil, connectTimeout)
+			clusters = append(clusters, c)
+			continue
 		}
-		if uc.TLS != nil && uc.TLS.Enabled {
-			parsedURL.Scheme = "https"
-		}
-		var connectTimeout *time.Duration
-		// Use global default; per-cluster timeout comes from the route's Timeout field
-		c := t.createCluster(clusterName, parsedURL, nil, connectTimeout)
+		c := t.createWeightedCluster(clusterName, uc.Endpoints, uc.TLS, connectTimeout)
 		clusters = append(clusters, c)
 	}
 
-	// Build routes from Routes map
-	for routeKey, rdcRoute := range rdc.Routes {
-		r := t.createRouteFromRDC(routeKey, rdcRoute, rdc)
+	// Build routes from Routes map. Iterate in a deterministic order — ascending
+	// Route.Order (the source operation/rule index), then route key — so the stable
+	// route sorter later resolves equal-precedence ties by Gateway-API rule order
+	// instead of relying on non-deterministic map iteration.
+	routeKeys := make([]string, 0, len(rdc.Routes))
+	for routeKey := range rdc.Routes {
+		routeKeys = append(routeKeys, routeKey)
+	}
+	sort.SliceStable(routeKeys, func(i, j int) bool {
+		oi, oj := rdc.Routes[routeKeys[i]].Order, rdc.Routes[routeKeys[j]].Order
+		if oi != oj {
+			return oi < oj
+		}
+		return routeKeys[i] < routeKeys[j]
+	})
+	for _, routeKey := range routeKeys {
+		r := t.createRouteFromRDC(routeKey, rdc.Routes[routeKey], rdc)
 		routes = append(routes, r)
 	}
 
 	return routes, clusters, nil
+}
+
+// routeTimeoutOrDefault returns the per-route timeout when configured (including an
+// explicit zero, which disables the timeout in Envoy), otherwise the global default
+// expressed in milliseconds.
+func (t *Translator) routeTimeoutOrDefault(v *time.Duration, defaultMs uint32) *durationpb.Duration {
+	if v != nil {
+		return durationpb.New(*v)
+	}
+	return durationpb.New(time.Duration(defaultMs) * time.Millisecond)
 }
 
 // createRouteFromRDC creates an Envoy route from a RuntimeDeployConfig Route.
@@ -220,44 +301,31 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	method := rdcRoute.Method
 	operationPath := rdcRoute.OperationPath
 
-	// Determine path type
+	// Path-type flags needed below for the regex rewrite. The route's path matcher itself
+	// is built by setMatchPathSpecifier (which handles wildcard/params/root/exact/default).
 	isWildcardPath := strings.HasSuffix(operationPath, "/*")
-	hasParams := strings.Contains(operationPath, "{")
 	isRootPath := operationPath == "/"
 
-	var pathSpecifier *route.RouteMatch_SafeRegex
-	if isWildcardPath {
-		prefixPath := strings.TrimSuffix(fullPath, "/*")
-		pathSpecifier = &route.RouteMatch_SafeRegex{
-			SafeRegex: &matcher.RegexMatcher{
-				Regex: "^" + regexp.QuoteMeta(prefixPath) + "(?:/.*)?$",
-			},
-		}
-	} else if hasParams {
-		regexPattern := t.pathToRegex(fullPath)
-		pathSpecifier = &route.RouteMatch_SafeRegex{
-			SafeRegex: &matcher.RegexMatcher{
-				Regex: regexPattern,
-			},
-		}
-	} else if isRootPath {
-		trimmedPath := strings.TrimSuffix(fullPath, "/")
-		pathSpecifier = &route.RouteMatch_SafeRegex{
-			SafeRegex: &matcher.RegexMatcher{
-				Regex: "^" + regexp.QuoteMeta(trimmedPath) + "/?$",
-			},
-		}
-	}
+	// For MCP proxies the "/mcp" path is only the gateway-facing endpoint marker; it must
+	// NOT be appended to the backend. The upstream is expected to be the full MCP endpoint
+	// URL, so the request is forwarded to exactly the configured upstream path. See below.
+	// When mcp.append_resource_path_to_backend is enabled, this special-casing is skipped so
+	// the route falls back to the legacy behaviour of appending "/mcp" to the upstream.
+	isMCPResourceRoute := rdc.Metadata.Kind == string(models.KindMcp) &&
+		operationPath == constants.MCP_RESOURCE_PATH &&
+		!t.appendMCPResourcePathToBackend()
 
-	// Build route action with timeouts
+	// Build route action with timeouts. Per-route resilience values (from the API/operation
+	// resilience block) take precedence; otherwise fall back to the global route defaults.
+	var routeResilienceTimeout, routeResilienceIdle *time.Duration
+	if rdcRoute.Timeout != nil {
+		routeResilienceTimeout = rdcRoute.Timeout.Timeout
+		routeResilienceIdle = rdcRoute.Timeout.IdleTimeout
+	}
 	routeAction := &route.Route_Route{
 		Route: &route.RouteAction{
-			Timeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutMs) * time.Millisecond,
-			),
-			IdleTimeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs) * time.Millisecond,
-			),
+			Timeout:     t.routeTimeoutOrDefault(routeResilienceTimeout, t.routerConfig.Upstream.Timeouts.RouteTimeoutMs),
+			IdleTimeout: t.routeTimeoutOrDefault(routeResilienceIdle, t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs),
 		},
 	}
 
@@ -290,30 +358,10 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 		r.RequestHeadersToRemove = append(r.RequestHeadersToRemove, constants.TargetUpstreamHeader)
 	}
 
-	r.Match = &route.RouteMatch{
-		Headers: []*route.HeaderMatcher{{
-			Name: ":method",
-			HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
-				StringMatch: &matcher.StringMatcher{
-					MatchPattern: &matcher.StringMatcher_Exact{
-						Exact: method,
-					},
-				},
-			},
-		}},
-	}
-
-	// Set path specifier
-	if isWildcardPath || hasParams || isRootPath {
-		r.Match.PathSpecifier = pathSpecifier
-	} else {
-		// Accept both /path and /path/ but preserve the trailing slash in the rewrite.
-		r.Match.PathSpecifier = &route.RouteMatch_SafeRegex{
-			SafeRegex: &matcher.RegexMatcher{
-				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
-			},
-		}
-	}
+	// Build the request matchers (shared with direct-response routes so both kinds of
+	// route match identical requests).
+	r.Match.Headers = buildMatchHeaders(method, rdcRoute)
+	t.setMatchPathSpecifier(r.Match, fullPath, operationPath, rdcRoute)
 
 	// Compute regex rewrite to strip context and prepend upstream path
 	upstreamPath := ""
@@ -332,7 +380,23 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	contextWithVersion := strings.TrimSuffix(fullPath, operationPath)
 
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
-	if isRootPath {
+	if isMCPResourceRoute {
+		// MCP "/mcp" resource: the whole gateway-facing path ("<context>/mcp") maps to
+		// exactly the configured upstream URL path. We deliberately do NOT append "/mcp"
+		// to the backend, because some MCP backends serve at a different path (or root)
+		// and don't support a "/mcp" sub-path. When the upstream has no path, forward to
+		// "/".
+		mcpSubstitution := upstreamPath
+		if mcpSubstitution == "" {
+			mcpSubstitution = "/"
+		}
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
+			},
+			Substitution: mcpSubstitution,
+		}
+	} else if isRootPath {
 		// Root path ("/") matches both /ctx and /ctx/. Using a non-capturing pattern
 		// avoids an empty capture group when the trailing slash is absent, which would
 		// produce an empty rewritten path. Always normalize to upstreamPath+"/".
@@ -363,6 +427,195 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	}
 
 	return r
+}
+
+// buildMatchHeaders builds the Envoy header matchers for a route: the mandatory :method matcher
+// followed by any configured header matches. A header match of type RegularExpression becomes a
+// SafeRegexMatch; everything else is an exact string match. This is what makes header-based route
+// selection and precedence work, including across separate HTTPRoutes sharing a vhost.
+func buildMatchHeaders(method string, rdcRoute *models.Route) []*route.HeaderMatcher {
+	headerMatchers := []*route.HeaderMatcher{{
+		Name: ":method",
+		HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+			StringMatch: &matcher.StringMatcher{
+				MatchPattern: &matcher.StringMatcher_Exact{Exact: method},
+			},
+		},
+	}}
+	for _, hm := range rdcRoute.MatchHeaders {
+		name := strings.ToLower(strings.TrimSpace(hm.Name))
+		matchType := strings.TrimSpace(hm.Type)
+		if matchType == "RegularExpression" {
+			headerMatchers = append(headerMatchers, &route.HeaderMatcher{
+				Name: name,
+				HeaderMatchSpecifier: &route.HeaderMatcher_SafeRegexMatch{
+					SafeRegexMatch: &matcher.RegexMatcher{Regex: hm.Value},
+				},
+			})
+		} else {
+			headerMatchers = append(headerMatchers, &route.HeaderMatcher{
+				Name: name,
+				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+					StringMatch: &matcher.StringMatcher{
+						MatchPattern: &matcher.StringMatcher_Exact{Exact: hm.Value},
+					},
+				},
+			})
+		}
+	}
+	return headerMatchers
+}
+
+// setMatchPathSpecifier sets m.PathSpecifier for the given operation, covering every path type:
+// wildcard prefix, parameterized ({param}) regex, root, Envoy's native exact matcher, and the
+// default plain-path regex (accepting an optional trailing slash). Branch precedence matches the
+// original createRouteFromRDC logic (wildcard > params > root > exact > default).
+func (t *Translator) setMatchPathSpecifier(m *route.RouteMatch, fullPath, operationPath string, rdcRoute *models.Route) {
+	isWildcardPath := strings.HasSuffix(operationPath, "/*")
+	hasParams := strings.Contains(operationPath, "{")
+	isRootPath := operationPath == "/"
+	isExactPath := strings.EqualFold(rdcRoute.PathMatchType, "Exact")
+
+	switch {
+	case isWildcardPath:
+		prefixPath := strings.TrimSuffix(fullPath, "/*")
+		m.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(prefixPath) + "(?:/.*)?$",
+			},
+		}
+	case hasParams:
+		m.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: t.pathToRegex(fullPath),
+			},
+		}
+	case isRootPath:
+		trimmedPath := strings.TrimSuffix(fullPath, "/")
+		m.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(trimmedPath) + "/?$",
+			},
+		}
+	case isExactPath:
+		// Use Envoy's native exact path matcher (not safe_regex) so that
+		// SortRoutesByPriority ranks Exact above Regex/Prefix. Rendering exact
+		// paths as safe_regex made every route look like a Regex to the sorter,
+		// which then fell back to regex-string length and let a longer prefix
+		// regex (e.g. ^/match(?:/.*)?$) outrank a shorter exact (^/match/exact$).
+		m.PathSpecifier = &route.RouteMatch_Path{
+			Path: fullPath,
+		}
+	default:
+		// Accept both /path and /path/ but preserve the trailing slash in the rewrite.
+		m.PathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
+			},
+		}
+	}
+}
+
+func (t *Translator) createWeightedCluster(
+	name string,
+	endpoints []models.Endpoint,
+	tls *models.UpstreamTLS,
+	connectTimeout *time.Duration,
+) *cluster.Cluster {
+	tlsEnabled := tls != nil && tls.Enabled
+
+	lbEndpoints := make([]*endpoint.LbEndpoint, 0, len(endpoints))
+	var transportSocketMatches []*cluster.Cluster_TransportSocketMatch
+	for i, ep := range endpoints {
+		lb := &endpoint.LbEndpoint{
+			HostIdentifier: &endpoint.LbEndpoint_Endpoint{
+				Endpoint: &endpoint.Endpoint{
+					Address: &core.Address{
+						Address: &core.Address_SocketAddress{
+							SocketAddress: &core.SocketAddress{
+								Protocol:      core.SocketAddress_TCP,
+								Address:       ep.Host,
+								PortSpecifier: &core.SocketAddress_PortValue{PortValue: uint32(ep.Port)},
+							},
+						},
+					},
+				},
+			},
+		}
+		if ep.Weight != nil && *ep.Weight > 0 {
+			lb.LoadBalancingWeight = &wrapperspb.UInt32Value{Value: uint32(*ep.Weight)}
+		}
+
+		// When the upstream definition is HTTPS, dial each endpoint over TLS. Endpoints in a
+		// weighted definition can have different hostnames, so each gets its own transport
+		// socket match carrying an UpstreamTlsContext with that endpoint's SNI, and the
+		// LbEndpoint is tagged with the matching lb_id. This mirrors processEndpoint (the
+		// single-endpoint path), generalized to multiple endpoints; certs are nil here, same
+		// as the single-endpoint RDC path, so TLS relies on SDS or the system trust store.
+		if tlsEnabled {
+			matchID := strconv.Itoa(i)
+			tlsContext := t.createUpstreamTLSContext(nil, ep.Host)
+			marshalledTLSContext, err := anypb.New(tlsContext)
+			if err != nil {
+				t.logger.Error("internal error while marshalling the weighted upstream TLS context",
+					slog.String("cluster", name), slog.Any("error", err))
+			} else {
+				transportSocketMatches = append(transportSocketMatches, &cluster.Cluster_TransportSocketMatch{
+					Name: constants.TransportSocketPrefix + matchID,
+					Match: &structpb.Struct{
+						Fields: map[string]*structpb.Value{
+							constants.LoadBalancerIDKey: structpb.NewStringValue(matchID),
+						},
+					},
+					TransportSocket: &core.TransportSocket{
+						Name: constants.EnvoyTLSTransportSocket,
+						ConfigType: &core.TransportSocket_TypedConfig{
+							TypedConfig: marshalledTLSContext,
+						},
+					},
+				})
+				lb.Metadata = &core.Metadata{
+					FilterMetadata: map[string]*structpb.Struct{
+						constants.TransportSocketMatchKey: {
+							Fields: map[string]*structpb.Value{
+								constants.LoadBalancerIDKey: structpb.NewStringValue(matchID),
+							},
+						},
+					},
+				}
+			}
+		}
+
+		lbEndpoints = append(lbEndpoints, lb)
+	}
+
+	var effectiveConnectTimeout time.Duration
+	if connectTimeout != nil {
+		effectiveConnectTimeout = *connectTimeout
+	} else {
+		effectiveConnectTimeout = time.Duration(t.routerConfig.Upstream.Timeouts.ConnectTimeoutMs) * time.Millisecond
+		if effectiveConnectTimeout == 0 {
+			effectiveConnectTimeout = 5 * time.Second
+		}
+	}
+
+	c := &cluster.Cluster{
+		Name:                 name,
+		ConnectTimeout:       durationpb.New(effectiveConnectTimeout),
+		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+		DnsLookupFamily:      cluster.Cluster_V4_PREFERRED,
+		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+		LoadAssignment: &endpoint.ClusterLoadAssignment{
+			ClusterName: name,
+			Endpoints: []*endpoint.LocalityLbEndpoints{{
+				LbEndpoints: lbEndpoints,
+			}},
+		},
+	}
+	if len(transportSocketMatches) > 0 {
+		c.TransportSocketMatches = transportSocketMatches
+	}
+	return c
 }
 
 // TranslateConfigs translates all API configurations to Envoy resources
@@ -427,7 +680,11 @@ func (t *Translator) TranslateConfigs(
 		// Legacy path: direct translation from StoredConfig (WebSubApi, or fallback)
 		if routesList == nil {
 			if cfg.Kind == "WebSubApi" {
-				routesList, clusterList, err = t.translateAsyncAPIConfig(cfg, configs)
+				if t.eventGatewayHooks == nil {
+					err = fmt.Errorf("WebSubApi configured but event-gateway support is not compiled into this binary")
+				} else {
+					routesList, clusterList, err = t.eventGatewayHooks.TranslateWebSubAPI(t, cfg, configs)
+				}
 			} else {
 				routesList, clusterList, err = t.translateAPIConfig(cfg, configs)
 			}
@@ -454,9 +711,11 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	for _, r := range allRoutes {
-		// Extract vhost from route name: "METHOD|PATH|VHOST"
+		// Extract vhost from route name: "METHOD|PATH|VHOST" with an optional
+		// "|DISCRIMINATOR" 4th segment for header-matched routes. The vhost is always
+		// at index 2; hostnames and paths never contain "|".
 		parts := strings.Split(r.Name, "|")
-		if len(parts) != 3 {
+		if len(parts) < 3 {
 			// Routes without proper naming (e.g., catch-all 404) should be added to all vhosts later
 			continue // or handle error
 		}
@@ -512,6 +771,16 @@ func (t *Translator) TranslateConfigs(
 			Name:    vhost,
 			Domains: t.getVHostDomains(vhost),
 			Routes:  routes,
+			// Strip any client-supplied x-envoy-original-path so it cannot survive to
+			// the collector.ignore_path_prefixes access-log filter (buildIgnorePathsAccessLogFilter):
+			// on a route that performs a path rewrite, Envoy's router unconditionally
+			// re-sets this header to the true pre-rewrite path after removal, so
+			// legitimate suppression (e.g. "/health") is unaffected; on a route that
+			// does not rewrite, removal leaves the header absent, which the filter's
+			// documented "absent -> never suppress" fallback already treats as safe —
+			// closing the gap where a client could otherwise self-suppress its own
+			// traffic/analytics record by sending a forged x-envoy-original-path.
+			RequestHeadersToRemove: []string{envoyOriginalPathHeader},
 		}
 		virtualHosts = append(virtualHosts, virtualHost)
 	}
@@ -561,58 +830,24 @@ func (t *Translator) TranslateConfigs(
 	policyEngineCluster := t.createPolicyEngineCluster()
 	clusters = append(clusters, policyEngineCluster)
 
-	// Add ALS cluster if gRPC access log is enabled
-	log.Debug("gRPC event server config", slog.Any("config", t.config.Analytics.GRPCEventServerCfg))
-	if t.config.Analytics.Enabled {
-		log.Info("gRPC access log is enabled, creating ALS cluster")
+	// Add ALS cluster if the collector is active (it ships access logs over gRPC)
+	log.Debug("gRPC event server config", slog.Any("config", t.config.Collector.Server))
+	if t.config.IsCollectorEnabled() {
+		log.Info("collector is enabled, creating ALS cluster")
 		alsCluster := t.createALSCluster()
 		clusters = append(clusters, alsCluster)
 	}
 
-	if t.routerConfig.EventGateway.Enabled {
-		// Add dynamic forward proxy cluster for WebSubHub
-		dynamicForwardProxyCluster := t.createDynamicForwardProxyCluster()
-		if dynamicForwardProxyCluster == nil {
-			return nil, fmt.Errorf("failed to create dynamic forward proxy cluster")
-		}
-		clusters = append(clusters, dynamicForwardProxyCluster)
-		dynamicProxyListener, err := t.createDynamicFwdListenerForWebSubHub(t.routerConfig.HTTPSEnabled)
+	if t.eventGatewayHooks != nil {
+		hubClusters, hubListeners, err := t.eventGatewayHooks.BuildHubResources(t, t.routerConfig.HTTPSEnabled)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create WebSub listener: %w", err)
+			return nil, fmt.Errorf("failed to build event-gateway hub resources: %w", err)
 		}
-		listeners = append(listeners, dynamicProxyListener)
-
-		parsedURL, err := url.Parse(t.routerConfig.EventGateway.WebSubHubURL)
-		if err != nil {
-			return nil, fmt.Errorf("invalid upstream URL: %w", err)
+		for _, c := range hubClusters {
+			clusters = append(clusters, c)
 		}
-		if parsedURL.Port() == "" {
-			parsedURL.Host = fmt.Sprintf("%s:%d", parsedURL.Hostname(), t.routerConfig.EventGateway.WebSubHubPort)
-		}
-		if parsedURL.Scheme == "" {
-			parsedURL.Scheme = "http"
-		}
-		websubhubCluster := t.createCluster(constants.WEBSUBHUB_INTERNAL_CLUSTER_NAME, parsedURL, nil, nil)
-		clusters = append(clusters, websubhubCluster)
-		websubInternalListener, err := t.createInternalListenerForWebSubHub(false)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create WebSub internal listener: %w", err)
-		}
-		listeners = append(listeners, websubInternalListener)
-		// Create HTTPS listener for WebSubHub communication if enabled
-		if t.routerConfig.HTTPSEnabled {
-			log.Info("HTTPS is enabled, creating HTTPS listener",
-				slog.Int("https_port", t.routerConfig.HTTPSPort))
-			httpsListener, err := t.createInternalListenerForWebSubHub(true)
-			if err != nil {
-				log.Error("Failed to create HTTPS listener", slog.Any("error", err))
-				return nil, fmt.Errorf("failed to create HTTPS listener: %w", err)
-			}
-			log.Info("HTTPS listener created successfully",
-				slog.String("listener_name", httpsListener.GetName()))
-			listeners = append(listeners, httpsListener)
-		} else {
-			log.Info("HTTPS is disabled, skipping HTTPS listener creation")
+		for _, l := range hubListeners {
+			listeners = append(listeners, l)
 		}
 	}
 
@@ -699,63 +934,6 @@ func (t *Translator) getVHostDomains(effectiveVHost string) []string {
 	return appendDomainPatterns(out, effectiveVHost)
 }
 
-// translateAsyncAPIConfig translates a single API configuration
-func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
-	webSubCfg, ok := cfg.Configuration.(api.WebSubAPI)
-	if !ok {
-		return nil, nil, fmt.Errorf("configuration is not a WebSubAPI")
-	}
-	apiData := webSubCfg.Spec
-
-	clusters := []*cluster.Cluster{}
-
-	mainClusterName := constants.WEBSUBHUB_INTERNAL_CLUSTER_NAME
-	parsedMainURL, err := url.Parse(t.routerConfig.EventGateway.WebSubHubURL)
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid upstream URL: %w", err)
-	}
-	if parsedMainURL.Path == "" {
-		parsedMainURL.Path = constants.WEBSUB_PATH
-	}
-
-	// Create routes for each operation (default to main cluster)
-	routesList := make([]*route.Route, 0)
-	mainRoutesList := make([]*route.Route, 0)
-
-	// Determine effective vhosts (fallback to global router defaults when not provided)
-	effectiveMainVHost := t.config.Router.VHosts.Main.Default
-	if apiData.Vhosts != nil {
-		if strings.TrimSpace(apiData.Vhosts.Main) != "" {
-			effectiveMainVHost = apiData.Vhosts.Main
-		}
-	}
-	apiProjectID := extractProjectIDFromConfig(cfg)
-
-	if apiData.Channels != nil {
-		for chName := range *apiData.Channels {
-			if !strings.HasPrefix(chName, "/") {
-				chName = "/" + chName
-			}
-			// WebSub hub channels are always SUB; use mainClusterName by default
-			r := t.createRoutePerTopic(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, "SUB", chName,
-				mainClusterName, effectiveMainVHost, cfg.Kind, apiProjectID)
-			mainRoutesList = append(mainRoutesList, r)
-			// Also create UNSUB route for unsubscription policies
-			rUnsub := t.createRoutePerTopic(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, "UNSUB", chName,
-				mainClusterName, effectiveMainVHost, cfg.Kind, apiProjectID)
-			mainRoutesList = append(mainRoutesList, rUnsub)
-		}
-	}
-	// Extract template handle and provider name for LLM provider/proxy scenarios
-	templateHandle := t.extractTemplateHandle(cfg, allConfigs)
-	providerName := t.extractProviderName(cfg, allConfigs)
-	r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, "POST", constants.WEBSUB_PATH, mainClusterName, "/", effectiveMainVHost, cfg.Kind, templateHandle, providerName, nil, apiProjectID, nil, false, nil)
-	routesList = append(routesList, mainRoutesList...)
-	routesList = append(routesList, r)
-
-	return routesList, clusters, nil
-}
-
 // translateAPIConfig translates a single API configuration
 func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
 	restCfg, ok := cfg.Configuration.(api.RestAPI)
@@ -818,13 +996,32 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		}
 	}
 
-	for _, op := range apiData.Operations {
-		// Determine if dynamic cluster selection should be used
-		// When upstreamDefinitions exist, use cluster_header routing so policies can select the upstream
-		useClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
+	// Resolve API-level resilience timeouts once; operation-level values override per field.
+	apiTimeout, apiIdleTimeout, err := ResolveResilience(apiData.Resilience)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid API-level resilience: %w", err)
+	}
 
-		r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, mainTimeout, useClusterHeader, upstreamDefPaths)
+	// Determine if dynamic cluster selection should be used. Enabled whenever the API has
+	// named upstream definitions (so a policy can select one) OR a sandbox upstream (so a
+	// policy can redirect between the API's own main/sandbox slots). Sandbox activity here
+	// mirrors restapi.go's Url/Ref-aware hasSandbox check, not the looser nil check below
+	// (which only gates whether the sandbox cluster itself gets built).
+	hasSandboxForClusterHeader := apiData.Upstream.Sandbox != nil &&
+		((apiData.Upstream.Sandbox.Url != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != "") ||
+			(apiData.Upstream.Sandbox.Ref != nil && strings.TrimSpace(*apiData.Upstream.Sandbox.Ref) != ""))
+	hasUpstreamDefinitions := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
+	useClusterHeader := hasUpstreamDefinitions || hasSandboxForClusterHeader
+
+	for _, op := range apiData.Operations {
+		opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.EffectiveMethod(), op.EffectivePath(), err)
+		}
+		opTimeoutCfg := combineRouteResilience(mainTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
+
+		r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, op.EffectiveMethod(), op.EffectivePath(),
+			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, opTimeoutCfg, useClusterHeader, upstreamDefPaths)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	routesList = append(routesList, mainRoutesList...)
@@ -845,13 +1042,18 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		sandboxCluster := t.createCluster(sbClusterName, parsedSbURL, nil, sbUpstreamClusterConnectTimeout)
 		clusters = append(clusters, sandboxCluster)
 
-		// Create sandbox routes. When upstreamDefinitions exist, enable dynamic cluster
-		// selection (mirrors main).
+		// Create sandbox routes. Mirrors main's useClusterHeader (dynamic cluster selection
+		// is on whenever upstreamDefinitions exist or a sandbox upstream is configured).
 		sbRoutesList := make([]*route.Route, 0)
-		sbUseClusterHeader := apiData.UpstreamDefinitions != nil && len(*apiData.UpstreamDefinitions) > 0
 		for _, op := range apiData.Operations {
-			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, sbTimeout, sbUseClusterHeader, upstreamDefPaths)
+			opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
+			if err != nil {
+				return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.EffectiveMethod(), op.EffectivePath(), err)
+			}
+			opTimeoutCfg := combineRouteResilience(sbTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
+
+			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, op.EffectiveMethod(), op.EffectivePath(),
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, opTimeoutCfg, useClusterHeader, upstreamDefPaths)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
@@ -1042,6 +1244,13 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 		HttpFilters:                httpFilters,
 		ServerHeaderTransformation: convertServerHeaderTransformation(t.routerConfig.HTTPListener.ServerHeaderTransformation),
 		ServerName:                 t.routerConfig.HTTPListener.ServerHeaderValue,
+		// HCM-level (downstream) timeouts. Defaults match Envoy's documented defaults.
+		RequestTimeout:        durationpb.New(t.routerConfig.HTTPListener.Timeouts.RequestTimeout),
+		RequestHeadersTimeout: durationpb.New(t.routerConfig.HTTPListener.Timeouts.RequestHeadersTimeout),
+		StreamIdleTimeout:     durationpb.New(t.routerConfig.HTTPListener.Timeouts.StreamIdleTimeout),
+		CommonHttpProtocolOptions: &core.HttpProtocolOptions{
+			IdleTimeout: durationpb.New(t.routerConfig.HTTPListener.Timeouts.IdleTimeout),
+		},
 	}
 
 	// Add access logs if enabled
@@ -1122,429 +1331,8 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 			},
 		},
 		FilterChains: []*listener.FilterChain{filterChain},
+		PerConnectionBufferLimitBytes: wrapperspb.UInt32(t.routerConfig.HTTPListener.PerConnectionBufferLimitBytes),
 	}, routeConfig, nil
-}
-
-func (t *Translator) createInternalListenerForWebSubHub(isHTTPS bool) (*listener.Listener, error) {
-	// Reverse proxy listener: exactly one route /websubhub/operations rewritten to /hub
-	// This allows clients to call /websubhub/operations and internally reach /hub on upstream.
-
-	routeConfig := &route.RouteConfiguration{
-		Name: "websubhub-internal-route",
-		VirtualHosts: []*route.VirtualHost{{
-			Name:    "WEBSUBHUB_INTERNAL_VHOST",
-			Domains: []string{"*"},
-			Routes: []*route.Route{{
-				Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Path{Path: "/websubhub/operations"}},
-				Action: &route.Route_Route{Route: &route.RouteAction{
-					ClusterSpecifier: &route.RouteAction_Cluster{Cluster: WebSubHubInternalClusterName},
-					Timeout:          durationpb.New(30 * time.Second),
-					PrefixRewrite:    "/hub", // rewrite path
-				}},
-			}},
-		}},
-	}
-
-	// Create router filter with typed config
-	routerConfig := &router.Router{}
-	routerAny, err := anypb.New(routerConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create router config: %w", err)
-	}
-
-	// Build HTTP filters chain
-	httpFilters := make([]*hcm.HttpFilter, 0)
-
-	// Add ext_proc filter for policy engine
-	extProcFilter, err := t.createExtProcFilter()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create ext_proc filter: %w", err)
-	}
-	httpFilters = append(httpFilters, extProcFilter)
-
-	luaFilter, err := t.createLuaFilter()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create lua filter: %w", err)
-	}
-	httpFilters = append(httpFilters, luaFilter)
-
-	// Add router filter (must be last)
-	httpFilters = append(httpFilters, &hcm.HttpFilter{
-		Name: wellknown.Router,
-		ConfigType: &hcm.HttpFilter_TypedConfig{
-			TypedConfig: routerAny,
-		},
-	})
-
-	// Create HTTP connection manager
-	manager := &hcm.HttpConnectionManager{
-		CodecType:         hcm.HttpConnectionManager_AUTO,
-		StatPrefix:        "http",
-		GenerateRequestId: wrapperspb.Bool(true),
-		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{
-			RouteConfig: routeConfig,
-		},
-		HttpFilters: httpFilters,
-	}
-
-	// Add access logs if enabled
-	if t.routerConfig.AccessLogs.Enabled {
-		accessLogs, err := t.createAccessLogConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create access log config: %w", err)
-		}
-		manager.AccessLog = accessLogs
-	}
-
-	// Add tracing if enabled
-	tracingConfig, err := t.createTracingConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create tracing config: %w", err)
-	}
-	if tracingConfig != nil {
-		manager.Tracing = tracingConfig
-	}
-
-	pbst, err := anypb.New(manager)
-	if err != nil {
-		return nil, err
-	}
-
-	// Determine listener name and port based on protocol
-	// TODO: Use config values for port
-	var listenerName string
-	var port uint32
-	if isHTTPS {
-		listenerName = fmt.Sprintf("listener_https_%d", constants.WEBSUB_HUB_INTERNAL_HTTPS_PORT)
-		port = uint32(constants.WEBSUB_HUB_INTERNAL_HTTPS_PORT)
-	} else {
-		listenerName = fmt.Sprintf("listener_http_%d", constants.WEBSUB_HUB_INTERNAL_HTTP_PORT)
-		port = uint32(constants.WEBSUB_HUB_INTERNAL_HTTP_PORT)
-	}
-
-	// Create filter chain
-	filterChain := &listener.FilterChain{
-		Filters: []*listener.Filter{{
-			Name: wellknown.HTTPConnectionManager,
-			ConfigType: &listener.Filter_TypedConfig{
-				TypedConfig: pbst,
-			},
-		}},
-	}
-
-	// Add TLS configuration if HTTPS
-	if isHTTPS {
-		tlsContext, err := t.createDownstreamTLSContext()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
-		}
-
-		tlsContextAny, err := anypb.New(tlsContext)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
-		}
-
-		filterChain.TransportSocket = &core.TransportSocket{
-			Name: "envoy.transport_sockets.tls",
-			ConfigType: &core.TransportSocket_TypedConfig{
-				TypedConfig: tlsContextAny,
-			},
-		}
-	}
-
-	return &listener.Listener{
-		Name: listenerName,
-		Address: &core.Address{
-			Address: &core.Address_SocketAddress{
-				SocketAddress: &core.SocketAddress{
-					Protocol: core.SocketAddress_TCP,
-					Address:  "0.0.0.0",
-					PortSpecifier: &core.SocketAddress_PortValue{
-						PortValue: port,
-					},
-				},
-			},
-		},
-		FilterChains: []*listener.FilterChain{filterChain},
-	}, nil
-
-	// routeConfig := &route.RouteConfiguration{
-	// 	Name: "websubhub-internal-route",
-	// 	VirtualHosts: []*route.VirtualHost{{
-	// 		Name:    "WEBSUBHUB_INTERNAL_VHOST",
-	// 		Domains: []string{"*"},
-	// 		Routes: []*route.Route{{
-	// 			Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Path{Path: "/websubhub/operations"}},
-	// 			Action: &route.Route_Route{Route: &route.RouteAction{
-	// 				ClusterSpecifier: &route.RouteAction_Cluster{Cluster: WebSubHubInternalClusterName},
-	// 				Timeout:          durationpb.New(30 * time.Second),
-	// 				PrefixRewrite:    "/hub", // rewrite path
-	// 			}},
-	// 		}},
-	// 	}},
-	// }
-
-	// // Router filter
-	// routerCfg := &router.Router{}
-	// routerAny, err := anypb.New(routerCfg)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to marshal router config: %w", err)
-	// }
-
-	// // HttpConnectionManager for port 8083
-	// hcmCfg := &hcm.HttpConnectionManager{
-	// 	StatPrefix:        "websubhub_internal_8083",
-	// 	CodecType:         hcm.HttpConnectionManager_AUTO,
-	// 	GenerateRequestId: wrapperspb.Bool(true),
-	// 	RouteSpecifier:    &hcm.HttpConnectionManager_RouteConfig{RouteConfig: routeConfig},
-	// 	HttpFilters: []*hcm.HttpFilter{
-	// 		{
-	// 			Name:       wellknown.Router,
-	// 			ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: routerAny},
-	// 		},
-	// 	},
-	// }
-
-	// // Attach access logs if enabled
-	// if t.routerConfig.AccessLogs.Enabled {
-	// 	accessLogs, err := t.createAccessLogConfig()
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("failed to create access log config: %w", err)
-	// 	}
-	// 	hcmCfg.AccessLog = accessLogs
-	// }
-
-	// // Add tracing if enabled
-	// tracingCfg, err := t.createTracingConfig()
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to create tracing config: %w", err)
-	// }
-	// if tracingCfg != nil {
-	// 	hcmCfg.Tracing = tracingCfg
-	// }
-
-	// hcmAny, err := anypb.New(hcmCfg)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to marshal http connection manager: %w", err)
-	// }
-
-	// return &listener.Listener{
-	// 	Name: "websubhub-internal-8083",
-	// 	Address: &core.Address{Address: &core.Address_SocketAddress{SocketAddress: &core.SocketAddress{
-	// 		Protocol:      core.SocketAddress_TCP,
-	// 		Address:       "0.0.0.0",
-	// 		PortSpecifier: &core.SocketAddress_PortValue{PortValue: 8083},
-	// 	}}},
-	// 	FilterChains: []*listener.FilterChain{{
-	// 		Filters: []*listener.Filter{{
-	// 			Name:       wellknown.HTTPConnectionManager,
-	// 			ConfigType: &listener.Filter_TypedConfig{TypedConfig: hcmAny},
-	// 		}},
-	// 	}},
-	// }, nil
-}
-
-// createDynamicFwdListenerForWebSubHub creates an Envoy listener with access logging
-func (t *Translator) createDynamicFwdListenerForWebSubHub(isHTTPS bool) (*listener.Listener, error) {
-	// Build the route configuration for dynamic forward proxy listener
-	// We ignore the passed virtualHosts here and construct the required one matching the sample.
-	dynamicForwardProxyRouteConfig := &route.RouteConfiguration{
-		Name: "dynamic-forward-proxy-routing",
-		VirtualHosts: []*route.VirtualHost{{
-			Name:    "DYNAMIXC_FORWARD_PROXY_VHOST_WEBSUBHUB",
-			Domains: []string{t.routerConfig.EventGateway.WebSubHubURL}, // this should be websubhub domains
-			Routes: []*route.Route{{
-				Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Prefix{Prefix: "/"}},
-				Action: &route.Route_Route{Route: &route.RouteAction{
-					ClusterSpecifier: &route.RouteAction_Cluster{Cluster: DynamicForwardProxyClusterName},
-					Timeout:          durationpb.New(30 * time.Second),
-					RetryPolicy: &route.RetryPolicy{
-						RetryOn:    "5xx,reset,connect-failure,refused-stream",
-						NumRetries: wrapperspb.UInt32(1),
-					},
-				}},
-			}},
-		}},
-	}
-	// Build HTTP filters chain
-	httpFilters := make([]*hcm.HttpFilter, 0)
-
-	// Add ext_proc filter for policy engine
-	extProcFilter, err := t.createExtProcFilter()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create ext_proc filter: %w", err)
-	}
-	httpFilters = append(httpFilters, extProcFilter)
-
-	luaFilter, err := t.createLuaFilter()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create lua filter: %w", err)
-	}
-	httpFilters = append(httpFilters, luaFilter)
-
-	dnsCacheConfig := &common_dfp.DnsCacheConfig{
-		// Required: unique name for the shared DNS cache
-		Name: "dynamic_forward_proxy_cache",
-
-		// Optional: how often DNS entries are refreshed
-		DnsRefreshRate: durationpb.New(60 * time.Second),
-
-		// Optional: how long hosts stay cached
-		HostTtl: durationpb.New(300 * time.Second),
-
-		// Optional: which DNS families to use (AUTO, V4_ONLY, V6_ONLY)
-		DnsLookupFamily: cluster.Cluster_V4_PREFERRED,
-
-		MaxHosts: &wrapperspb.UInt32Value{Value: 1024},
-	}
-
-	dfpFilterConfig := &dfpv3.FilterConfig{
-		ImplementationSpecifier: &dfpv3.FilterConfig_DnsCacheConfig{
-			DnsCacheConfig: dnsCacheConfig,
-		},
-	}
-	// Dynamic forward proxy filter config placeholder (typed config fields omitted for compatibility with current go-control-plane version)
-	dynamicFwdAny, err := anypb.New(dfpFilterConfig)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal dynamic forward proxy config: %w", err)
-	}
-
-	// Router filter
-	routerConfig := &router.Router{}
-	routerAny, err := anypb.New(routerConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal router config: %w", err)
-	}
-
-	// Add dynamic forward proxy router filter (must be last)
-	httpFilters = append(httpFilters, &hcm.HttpFilter{
-		Name: wellknown.Router,
-		ConfigType: &hcm.HttpFilter_TypedConfig{
-			TypedConfig: dynamicFwdAny,
-		},
-	})
-
-	// Add router filter (must be last)
-	httpFilters = append(httpFilters, &hcm.HttpFilter{
-		Name: wellknown.Router,
-		ConfigType: &hcm.HttpFilter_TypedConfig{
-			TypedConfig: routerAny,
-		},
-	})
-
-	// Create HTTP connection manager
-	httpConnManager := &hcm.HttpConnectionManager{
-		CodecType:         hcm.HttpConnectionManager_AUTO,
-		StatPrefix:        "http",
-		GenerateRequestId: wrapperspb.Bool(true),
-		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{
-			RouteConfig: dynamicForwardProxyRouteConfig,
-		},
-		HttpFilters: httpFilters,
-	}
-
-	// httpConnManager := &hcm.HttpConnectionManager{
-	// 	StatPrefix:     "WEBSUBHUB_INBOUND_8082_LISTENER",
-	// 	CodecType:      hcm.HttpConnectionManager_AUTO,
-	// 	RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{RouteConfig: dynamicForwardProxyRouteConfig},
-	// 	HttpFilters: []*hcm.HttpFilter{
-	// 		{ // dynamic forward proxy filter
-	// 			Name:       "envoy.filters.http.dynamic_forward_proxy",
-	// 			ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: dynamicFwdAny},
-	// 		},
-	// 		{ // router filter must be last
-	// 			Name:       wellknown.Router,
-	// 			ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: routerAny},
-	// 		},
-	// 	},
-	// }
-
-	// Attach access logs if enabled
-	if t.routerConfig.AccessLogs.Enabled {
-		accessLogs, err := t.createAccessLogConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create access log config: %w", err)
-		}
-		httpConnManager.AccessLog = accessLogs
-	}
-
-	// Add tracing if enabled
-	tracingCfgDFP, err := t.createTracingConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create tracing config: %w", err)
-	}
-	if tracingCfgDFP != nil {
-		httpConnManager.Tracing = tracingCfgDFP
-	}
-
-	// hcmAny, err := anypb.New(httpConnManager)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to marshal http connection manager: %w", err)
-	// }
-
-	pbst, err := anypb.New(httpConnManager)
-	if err != nil {
-		return nil, err
-	}
-
-	// Determine listener name and port based on protocol
-	// TODO: Use config values for port
-	var listenerName string
-	var port uint32
-	if isHTTPS {
-		listenerName = fmt.Sprintf("listener_https_%d", constants.WEBSUB_HUB_DYNAMIC_HTTPS_PORT)
-		port = uint32(constants.WEBSUB_HUB_DYNAMIC_HTTPS_PORT)
-	} else {
-		listenerName = fmt.Sprintf("listener_http_%d", constants.WEBSUB_HUB_DYNAMIC_HTTP_PORT)
-		port = uint32(constants.WEBSUB_HUB_DYNAMIC_HTTP_PORT)
-	}
-
-	//TODO: Add TLS Filter chain for HTTPS
-	// if isHTTPS {
-	// 	tlsContext, err := t.createDownstreamTLSContext()
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
-	// 	}
-
-	// 	tlsContextAny, err := anypb.New(tlsContext)
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
-	// 	}
-
-	// 	filterChain.TransportSocket = &core.TransportSocket{
-	// 		Name: "envoy.transport_sockets.tls",
-	// 		ConfigType: &core.TransportSocket_TypedConfig{
-	// 			TypedConfig: tlsContextAny,
-	// 		},
-	// 	}
-	// }
-
-	// Create filter chain
-	filterChain := &listener.FilterChain{
-		Filters: []*listener.Filter{{
-			Name: wellknown.HTTPConnectionManager,
-			ConfigType: &listener.Filter_TypedConfig{
-				TypedConfig: pbst,
-			},
-		}},
-	}
-
-	return &listener.Listener{
-		Name: listenerName,
-		Address: &core.Address{Address: &core.Address_SocketAddress{SocketAddress: &core.SocketAddress{
-			Protocol:      core.SocketAddress_TCP,
-			Address:       "0.0.0.0",
-			PortSpecifier: &core.SocketAddress_PortValue{PortValue: port},
-		}}},
-		FilterChains: []*listener.FilterChain{filterChain},
-		// FilterChains: []*listener.FilterChain{{
-		// 	Filters: []*listener.Filter{{
-		// 		Name:       wellknown.HTTPConnectionManager,
-		// 		ConfigType: &listener.Filter_TypedConfig{TypedConfig: hcmAny},
-		// 	}},
-		// }},
-	}, nil
 }
 
 // createRouteConfiguration creates a route configuration
@@ -1762,6 +1550,16 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	// Check if path is the root path "/" (should match both /ctx and /ctx/)
 	isRootPath := path == "/"
 
+	// Check if this is the "/mcp" resource of an MCP proxy. For MCP proxies the "/mcp"
+	// path is only the gateway-facing endpoint marker; it must NOT be appended to the
+	// backend. The upstream is expected to be the full MCP endpoint URL, so the request
+	// is forwarded to exactly the configured upstream path. See below for the rewrite.
+	// When mcp.append_resource_path_to_backend is enabled, this special-casing is skipped so
+	// the route falls back to the legacy behaviour of appending "/mcp" to the upstream.
+	isMCPResourceRoute := apiKind == string(models.KindMcp) &&
+		path == constants.MCP_RESOURCE_PATH &&
+		!t.appendMCPResourcePathToBackend()
+
 	var pathSpecifier *route.RouteMatch_SafeRegex
 	if isWildcardPath {
 		// For wildcard paths, require end-of-string or a slash after the prefix to avoid
@@ -1791,15 +1589,17 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 		}
 	}
 
-	// Currently the route level timeouts are configurable using the global configuration.
+	// Route-level timeouts: per-route resilience values (resilience block) take precedence,
+	// otherwise fall back to the global configuration defaults.
+	var routeTimeout, routeIdleTimeout *time.Duration
+	if timeoutCfg != nil {
+		routeTimeout = timeoutCfg.Route
+		routeIdleTimeout = timeoutCfg.Idle
+	}
 	routeAction := &route.Route_Route{
 		Route: &route.RouteAction{
-			Timeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutMs) * time.Millisecond,
-			),
-			IdleTimeout: durationpb.New(
-				time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs) * time.Millisecond,
-			),
+			Timeout:     t.routeTimeoutOrDefault(routeTimeout, t.routerConfig.Upstream.Timeouts.RouteTimeoutMs),
+			IdleTimeout: t.routeTimeoutOrDefault(routeIdleTimeout, t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutMs),
 		},
 	}
 
@@ -1884,7 +1684,23 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	// "/*" catch-all (empty literal prefix) and "/" root are unaffected. See issue #2071.
 	contextWithVersion := ConstructFullPath(context, apiVersion, "")
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
-	if isRootPath {
+	if isMCPResourceRoute {
+		// MCP "/mcp" resource: the whole gateway-facing path ("<context>/mcp") maps to
+		// exactly the configured upstream URL path. We deliberately do NOT append "/mcp"
+		// to the backend, because some MCP backends serve at a different path (or root)
+		// and don't support a "/mcp" sub-path. When the upstream has no path, forward to
+		// "/".
+		mcpSubstitution := upstreamPath
+		if mcpSubstitution == "" {
+			mcpSubstitution = "/"
+		}
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(fullPath) + "/?$",
+			},
+			Substitution: mcpSubstitution,
+		}
+	} else if isRootPath {
 		// Root path ("/") matches both /ctx and /ctx/. Using a non-capturing pattern
 		// avoids an empty capture group when the trailing slash is absent, which would
 		// produce an empty rewritten path. Always normalize to upstreamPath+"/".
@@ -2156,20 +1972,26 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 
 // createALSCluster creates an Envoy cluster for the gRPC access log service
 func (t *Translator) createALSCluster() *cluster.Cluster {
-	grpcConfig := t.config.Analytics.GRPCEventServerCfg
+	grpcConfig := t.config.Collector.Server
 
 	// Build the endpoint address (UDS or TCP)
 	var address *core.Address
 
 	if grpcConfig.Mode == "tcp" {
-		// TCP mode - use host:port
+		// TCP mode - use host:port. grpcConfig.Port is a deprecated override
+		// (see its doc comment); the fixed collector.ServerPort constant is used
+		// unless a config already sets it explicitly.
+		port := collector.ServerPort
+		if grpcConfig.Port != 0 {
+			port = grpcConfig.Port
+		}
 		address = &core.Address{
 			Address: &core.Address_SocketAddress{
 				SocketAddress: &core.SocketAddress{
 					Protocol: core.SocketAddress_TCP,
 					Address:  t.config.Router.PolicyEngine.Host,
 					PortSpecifier: &core.SocketAddress_PortValue{
-						PortValue: uint32(grpcConfig.Port),
+						PortValue: uint32(port),
 					},
 				},
 			},
@@ -2649,37 +2471,6 @@ func (t *Translator) processEndpoint(
 	return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, nil
 }
 
-// createDynamicForwardProxyCluster creates a dynamic forward proxy cluster for WebSubHub
-func (t *Translator) createDynamicForwardProxyCluster() *cluster.Cluster {
-	// Note: Due to go-control-plane API limitations, we use a placeholder Any for the typed config
-	// The actual DNS cache config should match the filter config in createListenerForWebSubHub
-	clusterConfig := &dfpcluster.ClusterConfig{
-		// optional: control connection pooling / subclusters here
-	}
-	clusterTypeAny, err := anypb.New(clusterConfig)
-	if err != nil {
-		t.logger.Error("Failed to marshal dynamic forward proxy cluster config", slog.Any("error", err))
-		return nil
-	}
-
-	return &cluster.Cluster{
-		Name:           DynamicForwardProxyClusterName,
-		ConnectTimeout: durationpb.New(5 * time.Second),
-		LbPolicy:       cluster.Cluster_CLUSTER_PROVIDED,
-		ClusterDiscoveryType: &cluster.Cluster_ClusterType{
-			ClusterType: &cluster.Cluster_CustomClusterType{
-				Name:        "envoy.clusters.dynamic_forward_proxy",
-				TypedConfig: clusterTypeAny,
-			},
-		},
-		UpstreamConnectionOptions: &cluster.UpstreamConnectionOptions{
-			TcpKeepalive: &core.TcpKeepalive{
-				KeepaliveTime: &wrapperspb.UInt32Value{Value: 300},
-			},
-		},
-	}
-}
-
 // pathToRegex converts a path with parameters to a regex pattern
 // Converts paths like /weather/v1.0/{country_code}/{city} to ^/weather/v1\.0/[^/]+/[^/]+$
 // Special characters (like dots in version) are escaped, but {params} become [^/]+ patterns
@@ -2785,8 +2576,8 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 		},
 	})
 
-	// If gRPC access log is enabled, create the configuration and append to existing access logs
-	if t.config.Analytics.Enabled {
+	// If the collector is active, create the gRPC access log config and append to existing access logs
+	if t.config.IsCollectorEnabled() {
 		t.logger.Info("Creating gRPC access log configuration")
 		grpcAccessLog, err := t.createGRPCAccessLog()
 		if err != nil {
@@ -2802,8 +2593,8 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 
 // createGRPCAccessLog creates a gRPC access log configuration for the gateway controller
 func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
-	grpcConfig := t.config.Analytics.GRPCEventServerCfg
-	bufferSizeBytes, err := checkedUInt32FromPositiveInt("analytics.grpc_event_server.buffer_size_bytes", grpcConfig.BufferSizeBytes)
+	grpcConfig := t.config.Collector.Server
+	bufferSizeBytes, err := checkedUInt32FromPositiveInt("collector.server.buffer_size_bytes", grpcConfig.BufferSizeBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -2831,11 +2622,100 @@ func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
 	}
 
 	return &accesslog.AccessLog{
-		Name: "envoy.access_loggers.http_grpc",
+		Name:   "envoy.access_loggers.http_grpc",
+		Filter: buildIgnorePathsAccessLogFilter(t.config.Collector.IgnorePathPrefixes),
 		ConfigType: &accesslog.AccessLog_TypedConfig{
 			TypedConfig: grpcAccessLogAny,
 		},
 	}, nil
+}
+
+// envoyOriginalPathHeader is the header Envoy's router sets to the pre-rewrite,
+// client-facing path whenever a route applies a path rewrite (PrefixRewrite/
+// RegexRewrite) — which every proxied API route in this gateway does, for
+// context-path stripping. buildIgnorePathsAccessLogFilter matches against this
+// header rather than :path so that collector.ignore_path_prefixes is evaluated
+// against what the client actually called, not the rewritten backend path.
+const envoyOriginalPathHeader = "x-envoy-original-path"
+
+// buildIgnorePathsAccessLogFilter builds an Envoy AccessLogFilter that suppresses
+// the ALS access-log entry entirely for requests whose client-facing path matches
+// one of the configured prefixes, so the policy-engine never receives them (no
+// analytics event, no traffic-log line). Returns nil (no filter, log everything)
+// when no usable prefixes are configured.
+func buildIgnorePathsAccessLogFilter(prefixes []string) *accesslog.AccessLogFilter {
+	filters := make([]*accesslog.AccessLogFilter, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		prefix = strings.TrimSpace(prefix)
+		if prefix == "" {
+			continue
+		}
+		filters = append(filters, notEffectivelyMatchesPrefix(prefix))
+	}
+	switch len(filters) {
+	case 0:
+		return nil
+	case 1:
+		return filters[0]
+	default:
+		return &accesslog.AccessLogFilter{
+			FilterSpecifier: &accesslog.AccessLogFilter_AndFilter{
+				AndFilter: &accesslog.AndFilter{Filters: filters},
+			},
+		}
+	}
+}
+
+// notEffectivelyMatchesPrefix builds the per-prefix filter: OR(origAbsent,
+// origDoesNotMatch) — i.e. suppress the log entry (filter evaluates false) only
+// when x-envoy-original-path is present AND matches the prefix; log (filter
+// evaluates true) in every other case, including when the header is absent
+// entirely. There is deliberately no fallback to matching bare :path: without
+// the original-path header we cannot distinguish a route that genuinely never
+// rewrites (where :path is the real client path) from an upstream/backend path
+// that merely happens to share the prefix, so we always log rather than risk a
+// false-positive suppression of legitimate traffic.
+func notEffectivelyMatchesPrefix(prefix string) *accesslog.AccessLogFilter {
+	origAbsent := headerPresentFilter(envoyOriginalPathHeader, false)
+	origDoesNotMatch := headerPrefixFilter(envoyOriginalPathHeader, prefix, true)
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_OrFilter{
+			OrFilter: &accesslog.OrFilter{
+				Filters: []*accesslog.AccessLogFilter{origAbsent, origDoesNotMatch},
+			},
+		},
+	}
+}
+
+// headerPrefixFilter builds an AccessLogFilter matching (or, when invert is
+// true, not matching) a header's value against a prefix.
+func headerPrefixFilter(headerName, prefix string, invert bool) *accesslog.AccessLogFilter {
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_HeaderFilter{
+			HeaderFilter: &accesslog.HeaderFilter{
+				Header: &route.HeaderMatcher{
+					Name:                 headerName,
+					InvertMatch:          invert,
+					HeaderMatchSpecifier: &route.HeaderMatcher_PrefixMatch{PrefixMatch: prefix},
+				},
+			},
+		},
+	}
+}
+
+// headerPresentFilter builds an AccessLogFilter matching whether a header is
+// present (present=true) or absent (present=false).
+func headerPresentFilter(headerName string, present bool) *accesslog.AccessLogFilter {
+	return &accesslog.AccessLogFilter{
+		FilterSpecifier: &accesslog.AccessLogFilter_HeaderFilter{
+			HeaderFilter: &accesslog.HeaderFilter{
+				Header: &route.HeaderMatcher{
+					Name:                 headerName,
+					HeaderMatchSpecifier: &route.HeaderMatcher_PresentMatch{PresentMatch: present},
+				},
+			},
+		},
+	}
 }
 
 // createTracingConfig creates tracing configuration for HCM if tracing is enabled
@@ -3032,6 +2912,68 @@ func parseTimeout(timeoutStr *string) (*time.Duration, error) {
 	}
 
 	return &duration, nil
+}
+
+// parseDurationAllowZero parses a duration string (e.g. "15s", "0s") into a *time.Duration.
+// Unlike parseTimeout it accepts zero ("0s" means the timeout is explicitly disabled). The format
+// is enforced against constants.ResilienceDurationPattern so this downstream parser stays
+// consistent with the CRD admission controller and the management-API validator: compound
+// ("1h30m"), negative ("-30s"), and unitless ("0") values are rejected. Returns nil for nil/empty.
+func parseDurationAllowZero(timeoutStr *string) (*time.Duration, error) {
+	if timeoutStr == nil || strings.TrimSpace(*timeoutStr) == "" {
+		return nil, nil
+	}
+
+	s := strings.TrimSpace(*timeoutStr)
+	if !constants.ResilienceDurationRegex.MatchString(s) {
+		return nil, fmt.Errorf("invalid timeout format %q: expected a single-unit duration like \"30s\", \"500ms\", or \"0s\" to disable", s)
+	}
+
+	duration, err := time.ParseDuration(s)
+	if err != nil {
+		return nil, fmt.Errorf("invalid timeout format: %w", err)
+	}
+
+	return &duration, nil
+}
+
+// ResolveResilience parses a resilience block into route timeout and idle-timeout durations.
+// A nil block, or unset fields, yield nil durations (meaning "use the global default").
+// "0s" yields a non-nil zero duration (meaning "explicitly disabled").
+func ResolveResilience(r *api.Resilience) (timeout *time.Duration, idleTimeout *time.Duration, err error) {
+	if r == nil {
+		return nil, nil, nil
+	}
+	if timeout, err = parseDurationAllowZero(r.Timeout); err != nil {
+		return nil, nil, fmt.Errorf("invalid resilience.timeout: %w", err)
+	}
+	if idleTimeout, err = parseDurationAllowZero(r.IdleTimeout); err != nil {
+		return nil, nil, fmt.Errorf("invalid resilience.idleTimeout: %w", err)
+	}
+	return timeout, idleTimeout, nil
+}
+
+// combineRouteResilience returns a resolvedTimeout for a single route, preserving the
+// upstream connect timeout from base and applying the effective route/idle timeouts
+// (operation-level overriding API-level, per field). It returns base unchanged when no
+// resilience is configured at either level.
+func combineRouteResilience(base *resolvedTimeout, apiTimeout, apiIdle, opTimeout, opIdle *time.Duration) *resolvedTimeout {
+	effTimeout := opTimeout
+	if effTimeout == nil {
+		effTimeout = apiTimeout
+	}
+	effIdle := opIdle
+	if effIdle == nil {
+		effIdle = apiIdle
+	}
+	if effTimeout == nil && effIdle == nil {
+		return base
+	}
+	rt := resolvedTimeout{Route: effTimeout, Idle: effIdle}
+	if base != nil {
+		rt.Connect = base.Connect
+	}
+	return &rt
 }
 
 // resolveTimeoutFromDefinition converts an UpstreamDefinition's timeout block into a resolvedTimeout.

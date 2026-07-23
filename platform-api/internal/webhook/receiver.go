@@ -133,7 +133,7 @@ func (r *Receiver) RegisterRoutes(mux *http.ServeMux) {
 }
 
 // ReceiveEvent runs the full webhook flow: size-limited read -> signature verify -> envelope
-// decode/validate -> gateway_type filter -> idempotency -> dispatch -> mark processed.
+// decode/validate -> idempotency -> dispatch -> mark processed.
 func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error {
 	if !r.cfg.Enabled {
 		return apperror.NotFound.New().WithLogMessage("webhook endpoint is disabled")
@@ -175,14 +175,7 @@ func (r *Receiver) ReceiveEvent(w http.ResponseWriter, req *http.Request) error 
 	}
 	log = log.With("orgId", env.OrgID)
 
-	// 4. gateway_type filter — events for other gateway types are a no-op (accepted, not processed).
-	if r.cfg.GatewayType != "" && env.GatewayType != "" && env.GatewayType != r.cfg.GatewayType {
-		log.Info("Webhook event for a different gateway_type; accepting as no-op", "eventGatewayType", env.GatewayType)
-		httputil.WriteJSON(w, http.StatusAccepted, map[string]string{"status": "ignored", "reason": "gateway_type mismatch"})
-		return nil
-	}
-
-	// 5. Dispatch to the matching handler. Duplicate (at-least-once) deliveries are made safe by
+	// 4. Dispatch to the matching handler. Duplicate (at-least-once) deliveries are made safe by
 	//    each handler being idempotent by domain identity, so no envelope-level dedup is needed.
 	handle, ok := r.handlers[env.EventType]
 	if !ok {
@@ -210,34 +203,26 @@ func (r *Receiver) resolveOrgUUID(env *Envelope) error {
 		return err
 	}
 	if org == nil {
-		return constants.ErrOrganizationNotFound
+		return apperror.OrganizationNotFound.New()
 	}
 	env.OrgID = org.ID
 	return nil
 }
 
-// mapWebhookError maps domain errors returned by the reused services to the matching apperror
-// catalog entry, preserving the same HTTP status classification the old statusForError gave them.
+// mapWebhookError maps errors raised while processing a webhook event to an
+// apperror catalog entry. The services this receiver reuses now build their
+// failures from the catalog, so a domain error already carries the right code
+// and status and passes through untouched; only the receiver's own envelope
+// sentinels and unclassified failures need mapping here.
 func mapWebhookError(err error) *apperror.Error {
-	// Services that have migrated to the apperror catalog return typed errors
-	// directly — pass them through untouched.
 	var appErr *apperror.Error
 	if errors.As(err, &appErr) {
 		return appErr
 	}
-	switch {
-	case errors.Is(err, ErrInvalidEnvelope), errors.Is(err, ErrUnsupportedEvent), errors.Is(err, ErrDecryptionFailed):
+	// Envelope-level failures are the receiver's own sentinels, not catalog errors.
+	if errors.Is(err, ErrInvalidEnvelope) || errors.Is(err, ErrUnsupportedEvent) || errors.Is(err, ErrDecryptionFailed) {
 		return apperror.ValidationFailed.Wrap(err, "Failed to process event")
-	case errors.Is(err, constants.ErrOrganizationNotFound):
-		return apperror.OrganizationNotFound.Wrap(err)
-	case errors.Is(err, constants.ErrSubscriptionNotFound):
-		return apperror.SubscriptionNotFound.Wrap(err)
-	case errors.Is(err, constants.ErrSubscriptionPlanNotFound), errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive):
-		return apperror.SubscriptionPlanNotFound.Wrap(err)
-	case errors.Is(err, constants.ErrAPINotFound), errors.Is(err, constants.ErrAPIKeyNotFound):
-		return apperror.ArtifactNotFound.Wrap(err)
-	default:
-		// Storage/EventHub failures and unexpected errors are retryable.
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to process webhook event")
 	}
+	// Storage/EventHub failures and unexpected errors are retryable.
+	return apperror.Internal.Wrap(err).WithLogMessage("failed to process webhook event")
 }

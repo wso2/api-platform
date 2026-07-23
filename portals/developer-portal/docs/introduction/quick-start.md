@@ -5,7 +5,8 @@ Get the Developer Portal running locally in a few minutes using Docker Compose.
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/) installed
-- Port 3000 available
+- `openssl` on your `PATH` (used by the setup script to generate certs and secrets)
+- Ports 3000 (Developer Portal) and 9243 (Platform API) available
 
 ## Steps
 
@@ -16,17 +17,23 @@ git clone https://github.com/wso2/api-platform.git
 cd api-platform/portals/developer-portal/
 ```
 
-### 2. Create configuration files
-
-Copy both sample configuration files:
+### 2. Run the setup script
 
 ```bash
-mkdir -p configs
-cp configs/config.toml.example configs/config.toml
-cp configs/config-platform-api.toml.example configs/config-platform-api.toml
+./scripts/setup.sh
 ```
 
-`config.toml` controls the Developer Portal itself. `config-platform-api.toml` configures the Platform API sidecar that validates login credentials and issues signed tokens. The default credentials in the example file are `admin` / `admin`.
+This one-time script provisions everything the containers need to start:
+
+- a self-signed TLS certificate under `resources/certificates/`
+- the Developer Portal's encryption/session secrets and the shared JWT signing key, written to `api-platform.env`
+- `configs/config-platform-api.toml` — the config for the Platform API sidecar that validates login credentials and issues signed tokens
+
+It also prompts you for an **admin username and password**. Press Enter at the password prompt to have a strong one generated for you — it is printed once at the end, so copy it before continuing. The credentials are stored bcrypt-hashed in `api-platform.env`.
+
+`config.toml`, which controls the Developer Portal itself, is already present in `configs/` — no copying needed.
+
+> The script is idempotent: re-running it only fills in what's missing and never overwrites an existing value. To rotate a secret, remove it from `api-platform.env` (or delete `resources/certificates/` for the TLS cert) and re-run.
 
 ### 3. Start the portal
 
@@ -34,7 +41,7 @@ cp configs/config-platform-api.toml.example configs/config-platform-api.toml
 docker compose up
 ```
 
-This starts the Developer Portal in demo mode (SQLite by default). On first boot the database schema and a default organization (`default`) with a `default` view are created automatically.
+This starts the Developer Portal (SQLite by default). On first boot the database schema and a default organization (`default`) with a `default` view are created automatically.
 
 ### 4. Open the portal
 
@@ -44,17 +51,31 @@ Navigate to:
 https://localhost:3000/default/views/default
 ```
 
-Sign in with `admin` / `admin` (the credentials defined in `configs/config-platform-api.toml`).
+Sign in with the admin username and password you set when running `./scripts/setup.sh`.
 
-You should see the default API catalog page. Since demo mode is on, you'll get a one-time onboarding prompt offering to deploy a set of sample APIs/MCPs — this is optional and can be skipped. You can also trigger it later from **Settings → Manage APIs → Seed sample APIs**.
+You should see the default API catalog page. It stays empty until you add APIs — either seed the bundled samples (next step) or publish your own (the step after).
 
-### 5. Publish your first API
+### 5. Seed sample APIs (optional)
+
+The fastest way to see a populated catalog is to deploy the bundled sample APIs and MCP servers:
+
+```bash
+./scripts/seed-samples.sh
+```
+
+This deploys everything under `samples/` into the `default` organization through the public REST API (the portal has no built-in seeding logic). It prompts for the admin username and password you set in step 2 — or set `ADMIN_USERNAME` / `ADMIN_PASSWORD` to skip the prompt. Safe to re-run: samples that already exist (matched by name and version) are skipped.
+
+> Requires `curl`, `jq`, and `zip` on your `PATH`. The portal must be running (step 3). Set `DEVPORTAL_URL` / `PLATFORM_API_URL` to override the defaults (`https://localhost:3000` / `https://localhost:9243`).
+
+Refresh the catalog page and the sample APIs appear. To publish an API of your own instead, continue below.
+
+### 6. Publish your first API
 
 Create an API manifest file and an OpenAPI definition, then upload them:
 
 ```yaml
 # api.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: RestApi
 
 metadata:
@@ -173,16 +194,16 @@ paths:
 Scripts and CLI tools authenticate with a Bearer token obtained directly from the Platform API. Get one once, then reuse it until it expires:
 
 ```bash
-# Get a token from the Platform API (runs alongside the devportal)
-# Basic auth against the Platform API is only available in demo mode
+# Get a token from the Platform API (runs alongside the devportal).
+# Use the admin credentials you set when running ./scripts/setup.sh.
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
-  -d "username=admin&password=admin" | jq -r .token)
+  -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
 # Publish the API (the token's org_handle claim scopes this to the "default" org)
 curl -sk -X POST "https://localhost:3000/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
-  -F "api=@api.yaml;type=application/yaml" \
-  -F "apiDefinition=@openapi.yaml;type=application/yaml"
+  -F "metadata=@api.yaml;type=application/yaml" \
+  -F "definition=@openapi.yaml;type=application/yaml"
 ```
 
 Refresh the portal — the Ping API now appears in the catalog. Click it to view the documentation and try-out console.
@@ -194,7 +215,7 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 | Organization | `default` |
 | Default view | `default` |
 | Portal URL | `https://localhost:3000/default/views/default` |
-| Admin credentials | `admin` / `admin` (Platform API — see `configs/config-platform-api.toml`) |
+| Admin credentials | Set when you ran `./scripts/setup.sh` (stored bcrypt-hashed in `api-platform.env`) |
 | Sample API | `Ping API` visible in the catalog |
 
 ## Next steps

@@ -15,9 +15,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
-const { renderTemplateFromAPI, resolveActor } = require('../utils/util');
-const { config } = require('../config/configLoader');
+ 
+const { renderTemplateWithView, resolveActor } = require('../utils/util');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
@@ -147,12 +146,11 @@ const loadAPIApiKeys = async (req, res, next) => {
             selectedAppId: selectedAppHandle,
             apiMetadata: metaData,
             apiHandle: apiHandle,
-            isReadOnlyMode: config.server.readOnlyMode,
             showApiKeysNav,
             csrfToken: getSessionCsrfToken(req),
         };
 
-        html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/api-keys', viewName);
+        html = await renderTemplateWithView('../pages/api-keys/page.hbs', './src/defaultContent/layout/main.hbs', templateContent, true, orgId, req.params.viewName);
         res.send(html);
     } catch (error) {
         logger.error('Error loading API keys page', {

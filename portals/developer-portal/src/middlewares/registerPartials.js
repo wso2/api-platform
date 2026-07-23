@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 const path = require('path');
 const fs = require('fs');
 const exphbs = require('express-handlebars');
@@ -43,7 +43,7 @@ const registerPartials = async (req, res, next) => {
   }
   registerInternalPartials(req);
   if (config.designMode?.enabled) {
-    const baseUrl = config.server.baseUrl + constants.ROUTE.VIEWS_PATH + req.params.viewName;
+    const baseUrl = constants.ROUTE.VIEWS_PATH + req.params.viewName;
     // Always load the full set of defaults first so no partial is missing
     await registerAllPartialsFromFile(baseUrl, req, './src/defaultContent');
     // Then override with the designer's custom files (skip if pathToLayout is already src/defaultContent)
@@ -57,19 +57,26 @@ const registerPartials = async (req, res, next) => {
     if (req.session.returnTo) {
       matchURL = req.session.returnTo;
     }
-    let devportalMode = constants.DEVPORTAL_MODE.DEFAULT;
-
     try {
-      const orgDetails = await orgDao.get(req.params.orgName);
-      devportalMode = orgDetails.configuration?.devportalMode || devportalMode;
       
-      const isViewConfigure = req.params.orgName && req.params.orgName !== "portal"
-        && req.params.viewName && /views\/.+\/settings/i.test(matchURL);
+      // Org-scoped settings page (/:orgName/settings) has no view segment, but still
+      // renders the default-content chrome (sidebar/header/footer) and its own partials.
+      // Register them against the default view's baseUrl.
+      const isOrgSettings = req.params.orgName && req.params.orgName !== "portal"
+        && !req.params.viewName && /^\/[^/]+\/settings(?:[/?#]|$)/i.test(matchURL);
       const isNonConfigure = req.params.orgName && req.params.orgName !== "portal"
-        && req.params.viewName && (!(/views\/.+\/settings/i.test(matchURL)));
+        && req.params.viewName;
 
-      if (isNonConfigure || isViewConfigure) {
-        const baseUrl = config.server.baseUrl + "/" + req.params.orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName;
+      if (isNonConfigure || isOrgSettings) {
+        // The org-scoped settings route carries no view segment. Downstream partial
+        // resolution (registerPartialsFromFile) reads req.params.viewName to look up
+        // per-view custom overrides, so default it to 'default' — the settings page
+        // renders the default view's chrome and its own default-content partials.
+        if (isOrgSettings && !req.params.viewName) {
+          req.params.viewName = 'default';
+        }
+        const viewSegment = req.params.viewName || 'default';
+        const baseUrl = "/" + req.params.orgName + constants.ROUTE.VIEWS_PATH + viewSegment;
         await registerAllPartialsFromFile(baseUrl, req, './src/defaultContent');
 
         if (isNonConfigure) {
@@ -106,11 +113,6 @@ const registerPartials = async (req, res, next) => {
 
 const registerInternalPartials = async (req) => {
 
-  let isAdmin, isSuperAdmin = false;
-  if (req.user) {
-    isAdmin = req.user["isAdmin"];
-    isSuperAdmin = req.user["isSuperAdmin"];
-  }
   const partialsDir = path.join(path.join(require.main.filename, '..', '/pages/partials'));
   const getDirectories = source =>
     fs.readdirSync(source, { withFileTypes: true })
@@ -146,10 +148,8 @@ const registerAllPartialsFromFile = async (baseURL, req, filePrefix) => {
   await registerPartialsFromFile(baseURL, base("pages", "docs", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "mcp", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "mcp-landing", "partials"), req);
-  await registerPartialsFromFile(baseURL, base("pages", "subscriptions", "partials"), req);
-  if (fs.existsSync(base("pages", "api-keys", "partials"))) {
-    await registerPartialsFromFile(baseURL, base("pages", "api-keys", "partials"), req);
-  }
+  await registerPartialsFromFile(baseURL, base("pages", "api-workflows", "partials"), req);
+  await registerPartialsFromFile(baseURL, base("pages", "api-workflows", "detail", "partials"), req);
 
   if (fs.existsSync(base("pages", filePath, "partials"))) {
     await registerPartialsFromFile(baseURL, base("pages", filePath, "partials"), req);

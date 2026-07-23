@@ -6,97 +6,34 @@
 # in compliance with the License. You may obtain a copy of the
 # License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
-#
-# Platform API configuration — quickstart (file-based auth)
-#
-# This file is read by the Platform API (Go binary).
-# Environment variables always override values set here.
-#
-# Default login: username = admin, password = admin
-# Change the password hash before deploying to a shared environment.
-# Generate a new hash: htpasswd -bnBC 12 "" <password> | tr -d ':\n'
-# --------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Server
-# ---------------------------------------------------------------------------
-log_level  = "INFO"   # DEBUG | INFO | WARN | ERROR
-log_format = "text"   # text | json
-port       = "9243"
+[platform_api]
 
-# ---------------------------------------------------------------------------
-# Database
-# ---------------------------------------------------------------------------
-[database]
-driver = "sqlite3"          # "sqlite3" or "postgres"
-# path   = "/app/data/api_platform.db"   # SQLite file path (ignored for postgres)
+[platform_api.logging]
+level = '{{ env "APIP_CP_LOGGING_LEVEL" "info" }}'
 
-# PostgreSQL — uncomment when driver = "postgres"
-# host     = "localhost"
-# port     = 5432
-# name     = "platform_api"
-# user     = "platform_api"
-# password = "change-me"
-# ssl_mode = "disable"
+[platform_api.security]
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 
-# ---------------------------------------------------------------------------
-# Authentication
-# ---------------------------------------------------------------------------
+[platform_api.database]
+driver = "sqlite3"
+path   = "./data/api_platform.db"
 
-# JWT (local HMAC) — issues signed tokens after file-based login.
-# secret_key is auto-generated at startup when not set (ephemeral — sessions reset on restart).
-# Set AUTH_JWT_SECRET_KEY env var or secret_key here to persist sessions across restarts.
-[auth.jwt]
-enabled = true
-issuer  = "platform-api"
+[platform_api.auth]
+mode             = "file"
+scope_validation = "true"
 
-# IDP (JWKS-based) — disabled in quickstart mode.
-# Enable and configure when using Asgardeo, Keycloak, Auth0, etc.
-[auth.idp]
-enabled = false
-# jwks_url = "https://idp.example.com/oauth2/jwks"
-# issuer   = ["https://idp.example.com/oauth2/token"]
-# audience — list of accepted "aud" values. When set, a token is rejected
-# unless its "aud" claim contains at least one of these values. Leave empty
-# to skip the check. Override with AUTH_IDP_AUDIENCE.
-audience = []
+[platform_api.auth.jwt]
+issuer            = "platform-api"
+public_key_file   = "/etc/platform-api/keys/jwt_public.pem"
+private_key_file  = "/etc/platform-api/keys/jwt_private.pem"
 
-# File-based auth — local username/password login.
-[auth.file_based]
-enabled = false
-
-[auth.file_based.organization]
-id           = "default"            # organization handle (URL-safe slug)
+[platform_api.auth.file.organization]
+id           = "default"
 display_name = "Default"
 region       = "us"
-# uuid is the platform organization UUID. It is stored as idp_organization_ref_uuid
-# and emitted as the `organization` claim in issued tokens. Leave unset to have one
-# generated at startup, or pin it to keep the org stable across fresh databases.
-# uuid       = "99089a17-72e0-4dd8-a2f4-c8dfbb085295"
 
-[[auth.file_based.users]]
-username      = "admin"
-password_hash = "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ."
-scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage"
-
-# ---------------------------------------------------------------------------
-# TLS
-# ---------------------------------------------------------------------------
-# [tls]
-# cert_dir = "/app/data/certs"
-
-# ---------------------------------------------------------------------------
-# CORS
-# ---------------------------------------------------------------------------
-# Required (non-wildcard) when APIP_DEMO_MODE=false. List the exact origins
-# (scheme + host + port) that are allowed to make credentialed cross-origin
-# requests, e.g. the Developer Portal / Admin UI origins.
-# Override with the CORS_ALLOWED_ORIGINS env var (comma-separated).
-# [cors]
-# allowed_origins = ["https://devportal.example.com", "https://admin.example.com"]
-
-# ---------------------------------------------------------------------------
-# DevPortal integration — disable for standalone deployments
-# ---------------------------------------------------------------------------
-[default_devportal]
-enabled = false
+[[platform_api.auth.file.users]]
+username      = '{{ env "APIP_CP_ADMIN_USERNAME" "admin" }}'
+password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ." }}'
+scopes        = "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:git:read ap:api_key:read ap:secret:manage dp:org_read dp:org_create dp:org_update dp:org_manage dp:org_delete dp:org_content_read dp:org_content_write dp:org_content_manage dp:org_content_delete dp:api_read dp:api_create dp:api_update dp:api_manage dp:api_delete dp:api_content_read dp:api_content_write dp:api_content_manage dp:api_content_delete dp:mcp_read dp:mcp_create dp:mcp_update dp:mcp_manage dp:mcp_delete dp:mcp_content_read dp:mcp_content_create dp:mcp_content_update dp:mcp_content_manage dp:mcp_content_delete dp:api_key_create dp:api_key_read dp:api_key_update dp:api_key_manage dp:api_key_revoke dp:mcp_key_create dp:mcp_key_read dp:mcp_key_update dp:mcp_key_manage dp:mcp_key_revoke dp:api_workflow_create dp:api_workflow_read dp:api_workflow_update dp:api_workflow_delete dp:api_workflow_manage dp:app_create dp:app_read dp:app_update dp:app_manage dp:app_delete dp:app_key_create dp:app_key_manage dp:app_key_revoke dp:app_key_mapping_read dp:app_key_mapping_write dp:app_key_mapping_manage dp:subscription_create dp:subscription_read dp:subscription_update dp:subscription_manage dp:subscription_delete dp:sub_plan_create dp:sub_plan_read dp:sub_plan_update dp:sub_plan_manage dp:sub_plan_delete dp:km_create dp:km_read dp:km_update dp:km_manage dp:km_delete dp:view_create dp:view_read dp:view_update dp:view_manage dp:view_delete dp:label_create dp:label_read dp:label_update dp:label_manage dp:label_delete dp:webhook_subscriber_create dp:webhook_subscriber_read dp:webhook_subscriber_update dp:webhook_subscriber_delete dp:webhook_subscriber_manage dp:event_read dp:delivery_manage"

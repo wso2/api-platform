@@ -42,41 +42,82 @@ services:
       retries: 60
     networks: [e2e]
 
+  # One-shot init container: generates the TLS pair the platform-api HTTPS
+  # listener requires (the server no longer generates a self-signed fallback).
+  platform-api-certgen:
+    image: alpine/openssl
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        [ -f /certs/cert.pem ] && [ -f /certs/key.pem ] && exit 0
+        openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+          -keyout /certs/key.pem -out /certs/cert.pem \
+          -subj "/O=WSO2 API Platform/CN=platform-api" \
+          -addext "subjectAltName=DNS:localhost,DNS:platform-api,IP:127.0.0.1"
+        # certgen runs as root; platform-api runs as uid 10001, so the key must be
+        # owned by that uid, not made world-readable.
+        chown 10001 /certs/key.pem
+        chmod 0600 /certs/key.pem
+    volumes:
+      - platform-api-certs:/certs
+    networks: [e2e]
+
+  # One-shot init container: generates the RS256 keypair platform-api's
+  # auth.jwt config requires (platform-api-config.toml reads it via {{ file }}).
+  # Tokens are signed asymmetrically — there is no shared HMAC secret anymore.
+  platform-api-jwtkeygen:
+    image: alpine/openssl
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        [ -f /keys/jwt_private.pem ] && [ -f /keys/jwt_public.pem ] && exit 0
+        openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+          -out /keys/jwt_private.pem 2>/dev/null
+        openssl rsa -in /keys/jwt_private.pem -pubout \
+          -out /keys/jwt_public.pem 2>/dev/null
+        # jwtkeygen runs as root; platform-api runs as uid 10001, so the private
+        # key must be owned by that uid, not made world-readable.
+        chown 10001 /keys/jwt_private.pem
+        chmod 0600 /keys/jwt_private.pem
+        chmod 0644 /keys/jwt_public.pem
+    volumes:
+      - platform-api-jwt-keys:/keys
+    networks: [e2e]
+
   platform-api:
     image: ${PLATFORM_API_IMAGE:-platform-api:it-e2e}
-    command: ["./platform-api", "-config", "/etc/platform-api/config.toml"]
+    command: ["-config", "/etc/platform-api/config.toml"]
     environment:
-      - DATABASE_DRIVER=postgres
-      - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_NAME=platform_api
-      - DATABASE_USER=apip
-      - DATABASE_PASSWORD=apip
-      - DATABASE_SSL_MODE=disable
-      # Must be 32 bytes (64 hex chars); the subscription-token encryption path
-      # (exercised by the webhook subscription.created handler) rejects shorter keys.
-      - DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - APIP_CP_DATABASE_DRIVER=postgres
+      - APIP_CP_DATABASE_HOST=postgres
+      - APIP_CP_DATABASE_PORT=5432
+      - APIP_CP_DATABASE_NAME=platform_api
+      - APIP_CP_DATABASE_USER=apip
+      - APIP_CP_DATABASE_PASSWORD=apip
+      - APIP_CP_DATABASE_SSL_MODE=disable
+      - APIP_CP_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       # Force file-based auth + a stable org so the scenario can log in and the
       # org is seeded (env overrides the mounted config file).
-      - AUTH_FILE_BASED_ENABLED=true
-      - AUTH_FILE_BASED_ORGANIZATION_ID=default
-      - AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
-      - AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
-      - AUTH_FILE_BASED_ORGANIZATION_REGION=us
-      - AUTH_JWT_SECRET_KEY=e2e-integration-secret-key-0123456789
+      - APIP_CP_AUTH_FILE_BASED_ENABLED=true
+      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_ID=default
+      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_UUID=99089a17-72e0-4dd8-a2f4-c8dfbb085295
+      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_DISPLAY_NAME=Default
+      - APIP_CP_AUTH_FILE_BASED_ORGANIZATION_REGION=us
       # The @devportal stack injects the admin user (with dp:* scopes) here so the
       # issued JWT is authorized on the developer portal. Empty (the default) means
       # platform-api uses its built-in admin (ap:* scopes only).
-      - AUTH_FILE_BASED_USERS=${AUTH_FILE_BASED_USERS:-}
+      - APIP_CP_AUTH_FILE_BASED_USERS=${AUTH_FILE_BASED_USERS:-}
       # Developer Portal webhook receiver (only the postgres stack runs the devportal).
       # Enabled via env so the sqlite/sqlserver stacks — which have no devportal and no
       # mounted key — leave it off. The private key must be readable by the container
       # user (uid 10001); the suite generates a fresh RSA pair, writes the 0644 private
       # key and points PA_WEBHOOK_KEY at it (see prepareWebhookKey in suite_test.go).
-      - WEBHOOK_ENABLED=true
-      - WEBHOOK_SECRET=5bd108b058ac9b318faf771c82a3f88bf6d3be5cc51c221e7ee213dabdbdee22
-      - WEBHOOK_PRIVATE_KEY_PATH=/etc/platform-api/devportal-webhook.pem
-      - WEBHOOK_GATEWAY_TYPE=wso2/api-platform
+      - APIP_CP_WEBHOOK_ENABLED=true
+      - APIP_CP_WEBHOOK_SECRET=5bd108b058ac9b318faf771c82a3f88bf6d3be5cc51c221e7ee213dabdbdee22
+      - APIP_CP_WEBHOOK_PRIVATE_KEY_PATH=/etc/platform-api/devportal-webhook.pem
+      - APIP_CP_WEBHOOK_GATEWAY_TYPE=wso2/api-platform
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro
       # RSA private key that platform-api decrypts the webhook's encrypted key/token
@@ -84,11 +125,17 @@ services:
       # suite always sets PA_WEBHOOK_KEY (the generated key); the default is only a
       # fallback for manual `docker compose up` after a suite run has generated it.
       - ${PA_WEBHOOK_KEY:-./.webhook-key.it.pem}:/etc/platform-api/devportal-webhook.pem:ro
+      - platform-api-certs:/app/data/certs
+      - platform-api-jwt-keys:/etc/platform-api/keys:ro
     ports:
       - "${PA_HOST_PORT:-9243}:9243"
     depends_on:
       postgres:
         condition: service_healthy
+      platform-api-certgen:
+        condition: service_completed_successfully
+      platform-api-jwtkeygen:
+        condition: service_completed_successfully
     networks: [e2e]
 
   gateway-controller:
@@ -145,7 +192,7 @@ services:
     image: ghcr.io/wso2/api-platform/sample-service:latest
     command: ["-addr", ":9080", "-pretty"]
     ports:
-      - "9080:9080"
+      - "${SAMPLE_BACKEND_HOST_PORT:-9080}:9080"
     networks: [e2e]
 
   # Second gateway (own controller + runtime + DB) for the multi-gateway
@@ -211,39 +258,59 @@ services:
         condition: service_healthy
       platform-api:
         condition: service_started
+      platform-api-jwtkeygen:
+        condition: service_completed_successfully
+    volumes:
+      # The devportal has no automatic APIP_DP_* env override (see
+      # src/config/configLoader.js) — an APIP_DP_* var only applies where this
+      # config.toml references it via {{ env "..." }}. It replaces the image's
+      # shipped configs/config.toml, which fails closed on the security secrets
+      # and wires only the SQLite path key (ignoring APIP_DP_DATABASE_DRIVER etc.).
+      - ./devportal-config.toml:/app/configs/config.toml:ro
+      # Same RS256 keypair volume platform-api signs with — the devportal reads
+      # only jwt_public.pem to verify those tokens. A subpath mount exposes just
+      # that one file, so the private key is never mounted into this container
+      # (defence in depth on top of its 0600/uid-10001 permissions).
+      - type: volume
+        source: platform-api-jwt-keys
+        target: /etc/devportal/keys/jwt_public.pem
+        read_only: true
+        volume:
+          subpath: jwt_public.pem
     environment:
       # Its own database on the shared postgres server (created by init-db.sql).
       # Postgres, not the devportal's default SQLite: the org-update path needs
       # UPDATE ... RETURNING, which SQLite doesn't support. Schema auto-migrates.
-      - APIP_DP_DATABASE_TYPE=postgres
+      - APIP_DP_DATABASE_DRIVER=postgres
       - APIP_DP_DATABASE_HOST=postgres
       - APIP_DP_DATABASE_PORT=5432
       - APIP_DP_DATABASE_NAME=devportal
-      - APIP_DP_DATABASE_USERNAME=apip
+      - APIP_DP_DATABASE_USER=apip
       - APIP_DP_DATABASE_PASSWORD=apip
-      # Plain HTTP to avoid the self-signed cert dance in tests (tls disabled).
-      - APIP_DP_TLS_ENABLED=false
-      - APIP_DP_SERVER_BASEURL=http://devportal:3000
+      # Plain HTTP to avoid the self-signed cert dance in tests (TLS disabled).
+      - APIP_DP_SERVER_HTTPS_ENABLED=false
       # Seed the "default" org so its handle matches platform-api's org handle
       # (the webhook resolves the control-plane org by handle via org.ref_id).
-      - APIP_DP_ORGANIZATION_DEFAULTNAME=default
-      - APIP_DP_DEMO_ENABLED=false
-      - APIP_DP_ORGANIZATION_AUTOCREATESUBSCRIPTIONPLANS=false
-      - APIP_DP_LOGGING_CONSOLEONLY=true
-      # Validate platform-api-issued JWTs locally: this MUST equal the stack's
-      # AUTH_JWT_SECRET_KEY so the admin token is accepted by the devportal.
-      - APIP_DP_PLATFORMAPI_BASEURL=https://platform-api:9243
-      - APIP_DP_PLATFORMAPI_JWTSECRET=e2e-integration-secret-key-0123456789
-      - APIP_DP_PLATFORMAPI_INSECURE=true
+      - APIP_DP_ORGANIZATION_DEFAULT_NAME=default
+      - APIP_DP_LOGGING_CONSOLE_ONLY=true
+      # platform-api signs its tokens with RS256; the devportal verifies them
+      # against jwt_public.pem from the shared keypair volume mounted above
+      # (auth.local.public_key_path in devportal-config.toml). There is no shared
+      # HMAC secret. tls_skip_verify covers platform-api's self-signed cert.
+      - APIP_DP_AUTH_LOCAL_PLATFORM_API_URL=https://platform-api:9243
+      - APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY=true
       # The webhook delivery worker POSTs over raw https with the default agent,
-      # and platform-api serves a self-signed cert here. APIP_DP_PLATFORMAPI_INSECURE
+      # and platform-api serves a self-signed cert here. auth.local.tls_skip_verify
       # only covers the auth client, so disable TLS verification globally for this
       # throwaway test container to let signed webhook deliveries through.
       - NODE_TLS_REJECT_UNAUTHORIZED=0
       # Stable AES-256-GCM key (64 hex) for encrypting the webhook subscriber
       # secret at rest; must not change across restarts or the stored secret
       # becomes undecryptable and outbound requests go unsigned.
-      - APIP_DP_SECURITY_ENCRYPTIONKEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - APIP_DP_SECURITY_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      # express-session signing secret (64 hex). Required — the devportal fails
+      # closed at startup if it doesn't resolve. Fixed test-only value.
+      - APIP_DP_SECURITY_SESSION_SECRET=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
     ports:
       - "${DP_HOST_PORT:-3000}:3000"
     networks: [e2e]
@@ -251,3 +318,7 @@ services:
 networks:
   e2e:
     driver: bridge
+
+volumes:
+  platform-api-certs:
+  platform-api-jwt-keys:

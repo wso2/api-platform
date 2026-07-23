@@ -27,6 +27,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -88,29 +89,16 @@ func (s *WebBrokerAPIService) toWebBrokerAPI(m *model.WebBrokerAPI) (*api.WebBro
 	return resp, nil
 }
 
-// webBrokerAPIListItemResolved converts m via mapWebBrokerAPIModelToListItem
-// and resolves its createdBy UUID to its raw external identity.
-func (s *WebBrokerAPIService) webBrokerAPIListItemResolved(m *model.WebBrokerAPI) (*api.WebBrokerAPIListItem, error) {
-	item := mapWebBrokerAPIModelToListItem(m)
-	if item == nil {
-		return nil, nil
-	}
-	if err := s.identity.ResolveIdentityField(&item.CreatedBy); err != nil {
-		return nil, err
-	}
-	return item, nil
-}
-
 // Create creates a new WebBroker API
 func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrokerAPI) (*api.WebBrokerAPI, error) {
 	if req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
 	if utils.ValueOrEmpty(req.Id) == "" || req.DisplayName == "" || req.Version == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The id, displayName and version fields are required.")
 	}
 	if req.ProjectId == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The projectId field is required.")
 	}
 
 	handle := utils.ValueOrEmpty(req.Id)
@@ -122,10 +110,10 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 			return nil, fmt.Errorf("failed to validate project: %w", err)
 		}
 		if project == nil {
-			return nil, constants.ErrProjectNotFound
+			return nil, apperror.ProjectRefNotFound.New()
 		}
 		if project.OrganizationID != orgUUID {
-			return nil, constants.ErrProjectNotFound
+			return nil, apperror.ProjectRefNotFound.New()
 		}
 	}
 
@@ -135,16 +123,7 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 		return nil, fmt.Errorf("failed to check WebBroker API exists: %w", err)
 	}
 	if exists {
-		return nil, constants.ErrWebBrokerAPIExists
-	}
-
-	// Enforce the per-organization WebBroker API limit (unlimited when not configured).
-	count, err := s.repo.Count(orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to count existing WebBroker APIs: %w", err)
-	}
-	if config.LimitReached(count, s.cfg.ArtifactLimits.MaxWebBrokerAPIsPerOrg) {
-		return nil, constants.ErrWebBrokerAPILimitReached
+		return nil, apperror.WebBrokerAPIExists.New()
 	}
 
 	transport := []string{"http", "https"}
@@ -172,6 +151,7 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
+		UpdatedBy:        createdBy,
 		Version:          req.Version,
 		LifeCycleStatus:  lifeCycleStatus,
 		Configuration: model.WebBrokerAPIConfiguration{
@@ -190,7 +170,7 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
-			return nil, constants.ErrWebBrokerAPIExists
+			return nil, apperror.WebBrokerAPIExists.Wrap(err)
 		}
 		return nil, fmt.Errorf("failed to create WebBroker API: %w", err)
 	}
@@ -204,7 +184,7 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 // Get retrieves a WebBroker API by its handle
 func (s *WebBrokerAPIService) Get(orgUUID, handle string) (*api.WebBrokerAPI, error) {
 	if handle == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The WebBroker API id is required.")
 	}
 
 	m, err := s.repo.GetByHandle(handle, orgUUID)
@@ -212,7 +192,7 @@ func (s *WebBrokerAPIService) Get(orgUUID, handle string) (*api.WebBrokerAPI, er
 		return nil, fmt.Errorf("failed to get WebBroker API: %w", err)
 	}
 	if m == nil {
-		return nil, constants.ErrWebBrokerAPINotFound
+		return nil, apperror.WebBrokerAPINotFound.New()
 	}
 
 	return s.toWebBrokerAPI(m)
@@ -245,14 +225,17 @@ func (s *WebBrokerAPIService) List(orgUUID, projectUUID string, limit, offset in
 	}
 
 	resp.List = make([]api.WebBrokerAPIListItem, 0, len(apis))
+	createdByFields := make([]**string, 0, len(apis))
 	for _, a := range apis {
-		item, err := s.webBrokerAPIListItemResolved(a)
-		if err != nil {
-			return nil, err
+		item := mapWebBrokerAPIModelToListItem(a)
+		if item == nil {
+			continue
 		}
-		if item != nil {
-			resp.List = append(resp.List, *item)
-		}
+		resp.List = append(resp.List, *item)
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 
 	return resp, nil
@@ -261,10 +244,10 @@ func (s *WebBrokerAPIService) List(orgUUID, projectUUID string, limit, offset in
 // Update updates an existing WebBroker API
 func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api.WebBrokerAPI) (*api.WebBrokerAPI, error) {
 	if handle == "" || req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The WebBroker API id and a request body are required.")
 	}
 	if req.DisplayName == "" || req.Version == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The displayName and version fields are required.")
 	}
 	// Get existing
 	existing, err := s.repo.GetByHandle(handle, orgUUID)
@@ -272,7 +255,7 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api
 		return nil, fmt.Errorf("failed to get WebBroker API: %w", err)
 	}
 	if existing == nil {
-		return nil, constants.ErrWebBrokerAPINotFound
+		return nil, apperror.WebBrokerAPINotFound.New()
 	}
 	// DP-originated artifacts are read-only in the control plane.
 	if err := ensureOriginMutable(existing.Origin); err != nil {
@@ -316,7 +299,7 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api
 
 	if err := s.repo.Update(existing); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrWebBrokerAPINotFound
+			return nil, apperror.WebBrokerAPINotFound.Wrap(err)
 		}
 		return nil, fmt.Errorf("failed to update WebBroker API: %w", err)
 	}
@@ -330,7 +313,7 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api
 // Delete deletes a WebBroker API by its handle
 func (s *WebBrokerAPIService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
-		return constants.ErrInvalidInput
+		return apperror.ValidationFailed.New("The WebBroker API id is required.")
 	}
 
 	// Get the WebBroker API UUID before deletion (needed for gateway deletion event)
@@ -339,7 +322,7 @@ func (s *WebBrokerAPIService) Delete(orgUUID, handle, deletedBy string) error {
 		return fmt.Errorf("failed to get WebBroker API: %w", err)
 	}
 	if webbrokerAPI == nil {
-		return constants.ErrWebBrokerAPINotFound
+		return apperror.WebBrokerAPINotFound.New()
 	}
 	// DP-originated artifacts are read-only in the control plane and cannot be deleted from the CP.
 	if err := ensureOriginMutable(webbrokerAPI.Origin); err != nil {
@@ -359,7 +342,7 @@ func (s *WebBrokerAPIService) Delete(orgUUID, handle, deletedBy string) error {
 
 	if err := s.repo.Delete(handle, orgUUID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return constants.ErrWebBrokerAPINotFound
+			return apperror.WebBrokerAPINotFound.Wrap(err)
 		}
 		return fmt.Errorf("failed to delete WebBroker API: %w", err)
 	}

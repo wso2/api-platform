@@ -21,7 +21,6 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -97,28 +96,7 @@ func (h *MCPProxyDeploymentHandler) DeployMCPProxy(w http.ResponseWriter, r *htt
 	}
 	deployment, err := h.deploymentService.DeployMCPProxyByHandle(proxyId, &req, orgId, createdBy)
 	if err != nil {
-		if guardErr := mapArtifactGuardError(err); guardErr != nil {
-			return guardErr
-		}
-		switch {
-		case errors.Is(err, constants.ErrMCPProxyNotFound):
-			return apperror.MCPProxyNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrGatewayNotFound):
-			return apperror.GatewayNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrBaseDeploymentNotFound):
-			return apperror.DeploymentBaseNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrDeploymentNameRequired):
-			return apperror.MCPProxyDeploymentValidationFailed.Wrap(err, "Deployment name is required")
-		case errors.Is(err, constants.ErrDeploymentBaseRequired):
-			return apperror.MCPProxyDeploymentValidationFailed.Wrap(err, "Base is required")
-		case errors.Is(err, constants.ErrDeploymentGatewayIDRequired):
-			return apperror.MCPProxyDeploymentValidationFailed.Wrap(err, "Gateway ID is required")
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.MCPProxyDeploymentValidationFailed.Wrap(err, "Invalid input")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to deploy MCP proxy %s", proxyId))
-		}
+		return serviceError(err, fmt.Sprintf("failed to deploy MCP proxy %s", proxyId))
 	}
 
 	setLocation(w, "mcp-proxies", proxyId, "deployments", deployment.DeploymentId.String())
@@ -151,24 +129,7 @@ func (h *MCPProxyDeploymentHandler) UndeployMCPProxyDeployment(w http.ResponseWr
 	deployment, err := h.deploymentService.UndeployDeploymentByHandle(proxyId, deploymentId, gatewayId, orgId)
 	if err != nil {
 		// DP-originated artifacts are read-only: undeployment cannot be initiated from the CP.
-		if guardErr := mapArtifactGuardError(err); guardErr != nil {
-			return guardErr
-		}
-		switch {
-		case errors.Is(err, constants.ErrMCPProxyNotFound):
-			return apperror.MCPProxyNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrDeploymentNotFound):
-			return apperror.DeploymentNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrGatewayNotFound):
-			return apperror.GatewayNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrDeploymentNotActive):
-			return apperror.DeploymentNotActive.Wrap(err, "MCP proxy")
-		case errors.Is(err, constants.ErrGatewayIDMismatch):
-			return apperror.DeploymentGatewayMismatch.Wrap(err)
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to undeploy MCP proxy %s deployment %s on gateway %s", proxyId, deploymentId, gatewayId))
-		}
+		return serviceError(err, fmt.Sprintf("failed to undeploy MCP proxy %s deployment %s on gateway %s", proxyId, deploymentId, gatewayId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, deployment)
@@ -200,24 +161,7 @@ func (h *MCPProxyDeploymentHandler) RestoreMCPProxyDeployment(w http.ResponseWri
 	deployment, err := h.deploymentService.RestoreMCPDeploymentByHandle(proxyId, deploymentId, gatewayId, orgId)
 	if err != nil {
 		// DP-originated artifacts are read-only: restore cannot be initiated from the CP.
-		if guardErr := mapArtifactGuardError(err); guardErr != nil {
-			return guardErr
-		}
-		switch {
-		case errors.Is(err, constants.ErrMCPProxyNotFound):
-			return apperror.MCPProxyNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrDeploymentNotFound):
-			return apperror.DeploymentNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrGatewayNotFound):
-			return apperror.GatewayNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrDeploymentAlreadyDeployed):
-			return apperror.DeploymentRestoreConflict.Wrap(err)
-		case errors.Is(err, constants.ErrGatewayIDMismatch):
-			return apperror.DeploymentGatewayMismatch.Wrap(err)
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to restore MCP proxy %s deployment %s on gateway %s", proxyId, deploymentId, gatewayId))
-		}
+		return serviceError(err, fmt.Sprintf("failed to restore MCP proxy %s deployment %s on gateway %s", proxyId, deploymentId, gatewayId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, deployment)
@@ -244,17 +188,7 @@ func (h *MCPProxyDeploymentHandler) DeleteMCPProxyDeployment(w http.ResponseWrit
 
 	err := h.deploymentService.DeleteDeploymentByHandle(proxyId, deploymentId, orgId)
 	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrMCPProxyNotFound):
-			return apperror.MCPProxyNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrDeploymentNotFound):
-			return apperror.DeploymentNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrDeploymentIsDeployed):
-			return apperror.DeploymentActive.Wrap(err)
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to delete MCP proxy %s deployment %s", proxyId, deploymentId))
-		}
+		return serviceError(err, fmt.Sprintf("failed to delete MCP proxy %s deployment %s", proxyId, deploymentId))
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -281,15 +215,7 @@ func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployment(w http.ResponseWriter,
 
 	deployment, err := h.deploymentService.GetDeploymentByHandle(proxyId, deploymentId, orgId)
 	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrMCPProxyNotFound):
-			return apperror.MCPProxyNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrDeploymentNotFound):
-			return apperror.DeploymentNotFound.Wrap(err)
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to get MCP proxy %s deployment %s", proxyId, deploymentId))
-		}
+		return serviceError(err, fmt.Sprintf("failed to get MCP proxy %s deployment %s", proxyId, deploymentId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, deployment)
@@ -333,15 +259,7 @@ func (h *MCPProxyDeploymentHandler) GetMCPProxyDeployments(w http.ResponseWriter
 
 	deployments, err := h.deploymentService.GetDeploymentsByHandle(proxyId, gatewayVal, statusVal, orgId)
 	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrMCPProxyNotFound):
-			return apperror.MCPProxyNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrInvalidDeploymentStatus):
-			return apperror.DeploymentInvalidStatus.Wrap(err)
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to get MCP proxy %s deployments", proxyId))
-		}
+		return serviceError(err, fmt.Sprintf("failed to get MCP proxy %s deployments", proxyId))
 	}
 
 	paginateDeploymentList(deployments, limit, offset)

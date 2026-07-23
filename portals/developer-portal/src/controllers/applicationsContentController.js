@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 const { renderTemplate, renderGivenTemplate, loadLayoutFromAPI, resolveActor } = require('../utils/util');
 const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
@@ -112,7 +112,6 @@ const loadApplicationData = async (req, orgName, applicationHandle, viewName) =>
         for (const km of dbKeyManagers) {
             kMmetaData.push({
                 id: km.handle,
-                type: km.type,
                 enabled: true,
                 tokenEndpoint: km.token_endpoint,
             });
@@ -189,7 +188,7 @@ const loadApplications = async (req, res, next) => {
     if (config.designMode?.enabled) {
         const templateContent = {
             applicationsMetadata: sampleApiLoader.loadApplications(),
-            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.VIEWS_PATH + viewName,
             devMode: true,
         };
         const html = renderTemplate('../pages/applications/page.hbs', config.designMode.pathToLayout + 'layout/main.hbs', templateContent, true);
@@ -199,7 +198,7 @@ const loadApplications = async (req, res, next) => {
     const orgName = req.params.orgName;
     const orgDetails = await orgDao.get(orgName);
     const devportalMode = orgDetails.configuration?.devportalMode || constants.DEVPORTAL_MODE.DEFAULT;
-    let html, metaData, templateContent;
+    let html, templateContent;
     try {
         const orgName = req.params.orgName;
         const orgId = await orgIDValue(orgName);
@@ -222,7 +221,6 @@ const loadApplications = async (req, res, next) => {
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: req.isAuthenticated() ? profile : null,
             devportalMode: devportalMode,
-            isReadOnlyMode: config.server.readOnlyMode,
         }
         const templateResponse = await templateResponseValue('applications');
         const layoutResponse = await loadLayoutFromAPI(orgId, viewName);
@@ -279,7 +277,6 @@ const loadApplication = async (req, res, next) => {
             subscriptionScopes: data.subscriptionScopes,
             profile: req.isAuthenticated() ? data.profile : null,
             devportalMode: devportalMode,
-            isReadOnlyMode: config.server.readOnlyMode,
             associatedApiKeys,
             availableKeysByApi
         }
@@ -340,7 +337,6 @@ const loadApplicationKeys = async (req, res, next) => {
             subscriptionScopes: data.subscriptionScopes,
             profile: req.isAuthenticated() ? data.profile : null,
             devportalMode: devportalMode,
-            isReadOnlyMode: config.server.readOnlyMode
         }
         const templateResponse = await templateResponseValue('manage-keys');
         const layoutResponse = await loadLayoutFromAPI(data.orgId, viewName);

@@ -45,6 +45,30 @@ vector_db_provider_ttl = 3600  # 1 hour in seconds
 # GATEWAY CONTROLLER CONFIGURATION
 # =============================================================================
 
+[controller.storage]
+type = '{{ env "APIP_GW_CONTROLLER_STORAGE_TYPE" "sqlite" }}'
+
+[controller.storage.sqlite]
+path = '{{ env "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH" "./data/gateway.db" }}'
+
+[controller.storage.postgres]
+host     = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_HOST" "" }}'
+port     = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PORT" "5432" }}'
+database = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_DATABASE" "" }}'
+user     = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_USER" "" }}'
+password = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD" "" }}'
+sslmode  = '{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_SSLMODE" "disable" }}'
+
+[controller.storage.database]
+# SQL Server DSN (used only when type = "sqlserver").
+dsn = '{{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN" "" }}'
+
+[controller.controlplane]
+host                    = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_HOST" "" }}'
+token                   = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN" "" }}'
+insecure_skip_verify    = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY" "false" }}'
+deployment_sync_enabled = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_DEPLOYMENT_SYNC_ENABLED" "true" }}'
+
 [controller.event_hub]
 # Faster poll interval for test responsiveness (default: 3s)
 poll_interval = "200ms"
@@ -59,7 +83,7 @@ password_hashed = false
 roles = ["admin"]
 
 [controller.logging]
-level = "debug"
+level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "debug" }}'
 
 [controller.metrics]
 enabled = true
@@ -71,6 +95,10 @@ enabled = true
 [router.access_logs]
 enabled = true
 format = "text"
+
+[router.http_listener.timeouts]
+# This is the only HCM timeout set to a small, testable value here.
+request_headers_timeout = "5s"
 
 # =============================================================================
 # POLICY ENGINE CONFIGURATION

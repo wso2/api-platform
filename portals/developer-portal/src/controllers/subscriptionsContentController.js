@@ -15,9 +15,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
-const { renderTemplateFromAPI, resolveActor } = require('../utils/util');
-const { config } = require('../config/configLoader');
+ 
+const { renderTemplateWithView, resolveActor } = require('../utils/util');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
@@ -73,10 +72,9 @@ const loadSubscriptions = async (req, res, next) => {
             devportalMode: devportalMode,
             orgId: orgId,
             subscriptions: allSubscriptions,
-            isReadOnlyMode: config.server.readOnlyMode,
         };
 
-        html = await renderTemplateFromAPI(templateContent, orgId, orgName, 'pages/subscriptions', viewName);
+        html = await renderTemplateWithView('../pages/subscriptions/page.hbs', './src/defaultContent/layout/main.hbs', templateContent, true, orgId, viewName);
         res.send(html);
     } catch (error) {
         logger.error('Error loading subscriptions page', {

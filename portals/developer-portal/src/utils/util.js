@@ -25,16 +25,12 @@ const { CustomError } = require('../utils/errors/customErrors');
 const orgDao = require('../dao/organizationDao');
 const constants = require('../utils/constants');
 const unzipper = require('unzipper');
-const axios = require('axios');
-const qs = require('qs');
-const https = require('https');
+const zlib = require('zlib');
 const { config } = require('../config/configLoader');
 const { body, param, query } = require('express-validator');
 const { Sequelize } = require('sequelize');
-const apiDao = require('../dao/apiDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const subscriptionPlanDTO = require('../dto/subscriptionPlanDto');
-const jwt = require('jsonwebtoken');
 const filePrefix = '/src/defaultContent/';
 
 // Function to load and convert markdown file to HTML
@@ -69,6 +65,23 @@ function resolveDesignFallback(filePath) {
     return abs;
 }
 
+/**
+ * Rewrite `/styles/` references (in a layout or stylesheet) to the view asset
+ * endpoint, carrying orgId so the PUBLIC endpoint can resolve the view's theme
+ * even without a session — e.g. anonymous view pages and the pre-auth login page.
+ *
+ * Centralised on purpose: this rewrite used to be hand-written at every render
+ * and upload site, and any site that omitted orgId served the default stylesheet
+ * to logged-out users. Route all `/styles/` rewrites through here so theming
+ * stays consistent across every page instead of breaking one scenario at a time.
+ */
+function rewriteViewStyles(content, orgId, viewName) {
+    return content.replace(
+        /\/styles\//g,
+        `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?orgId=${orgId}&fileType=style&fileName=`
+    );
+}
+
 function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) {
 
     let completeTemplatePath;
@@ -81,6 +94,49 @@ function renderTemplate(templatePath, layoutPath, templateContent, isTechnical) 
     const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
     const completeLayoutPath = resolveDesignFallback(layoutPath);
     const layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8)
+
+    const template = Handlebars.compile(templateResponse.toString());
+    const layout = Handlebars.compile(layoutResponse.toString());
+
+    const slots = {};
+    const showApiWorkflowsNav = config.features?.apiWorkflows === true;
+    const enrichedContent = { devportalMode: constants.DEVPORTAL_MODE.DEFAULT, ...templateContent, showApiWorkflowsNav, slots };
+    return layout({
+        ...enrichedContent,
+        body: template(enrichedContent),
+        devportalApiConfig: {
+            base: constants.DEVPORTAL_API.BASE_SEGMENT,
+            version: constants.DEVPORTAL_API.VERSION,
+        },
+        devReloadEnabled: process.env.NODE_ENV === 'development',
+    });
+}
+
+/**
+ * Like renderTemplate, but applies the active view's uploaded theme: when the
+ * view has a custom main.css, the layout's `/styles/` references are rewritten to
+ * the view asset endpoint, so themed CSS loads (and inherited stylesheets resolve
+ * via the endpoint's defaultContent fallback). Used by logged-in "technical" pages
+ * (subscriptions, API keys) and the login page so they match the view theme
+ * instead of always rendering the packaged default stylesheet.
+ */
+async function renderTemplateWithView(templatePath, layoutPath, templateContent, isTechnical, orgId, viewName) {
+    const completeTemplatePath = isTechnical
+        ? path.join(require.main.filename, templatePath)
+        : resolveDesignFallback(templatePath);
+    const templateResponse = fs.readFileSync(completeTemplatePath, constants.CHARSET_UTF8);
+
+    const completeLayoutPath = resolveDesignFallback(layoutPath);
+    let layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8);
+
+    if (orgId && viewName) {
+        const styleContent = await orgDao.getContent({ orgId, fileType: 'style', viewName, fileName: 'main.css' });
+        if (styleContent) {
+            // Carry orgId so the (public) asset endpoint can resolve the view's theme even
+            // when there's no session yet — e.g. the pre-auth login page.
+            layoutResponse = rewriteViewStyles(layoutResponse, orgId, viewName);
+        }
+    }
 
     const template = Handlebars.compile(templateResponse.toString());
     const layout = Handlebars.compile(layoutResponse.toString());
@@ -134,7 +190,7 @@ async function renderTemplateFromAPI(templateContent, orgId, orgName, filePath, 
     layoutResponse = fs.readFileSync(completeLayoutPath, constants.CHARSET_UTF8);
     const styleContent = await orgDao.getContent({ orgId: orgId, fileType: 'style', viewName: viewName, fileName: 'main.css' });
     if (styleContent) {
-        layoutResponse = layoutResponse.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=`);
+        layoutResponse = rewriteViewStyles(layoutResponse, orgId, viewName);
     }
 
     const template = Handlebars.compile(templateResponse.toString());
@@ -279,12 +335,41 @@ function handleError(res, error) {
     }
 }
 
+/**
+ * Emit a standard error response body:
+ *   { status: 'error', code, message, errors, [details], [trackingId] }
+ * `code` defaults to the HTTP-status catalog entry; pass opts.code to override
+ * with a resource-specific code. `errors` is always present (empty array when
+ * there are no field-level errors), matching handleError's shape.
+ */
+function sendError(res, statusCode, message, opts = {}) {
+    const body = {
+        status: 'error',
+        code: opts.code || HTTP_CODE_TO_CATALOG[statusCode] || 'INTERNAL_SERVER_ERROR',
+        message,
+        errors: opts.errors || [],
+    };
+    if (opts.details) body.details = opts.details;
+    if (opts.trackingId) body.trackingId = opts.trackingId;
+    return res.status(statusCode).json(body);
+}
+
+/**
+ * Wrap a fully-materialized list in the standard collection envelope:
+ *   { count, list, pagination: { limit, offset, total } }
+ * `total` is the grand total across all pages; `count` is the number of items
+ * returned in this page. limit/offset are applied here (in-memory) so every
+ * list endpoint paginates consistently.
+ */
 function toPaginatedList(list, req) {
-    const limit = Math.min(parseInt((req.query && req.query.limit) || '20', 10) || 20, 100);
-    const offset = parseInt((req.query && req.query.offset) || '0', 10) || 0;
+    const total = list.length;
+    const limit = Math.min(Math.max(parseInt((req.query && req.query.limit) || '20', 10) || 20, 0), 100);
+    const offset = Math.max(parseInt((req.query && req.query.offset) || '0', 10) || 0, 0);
+    const page = list.slice(offset, offset + limit);
     return {
-        list,
-        pagination: { total: list.length, limit, offset },
+        count: page.length,
+        list: page,
+        pagination: { limit, offset, total },
     };
 }
 
@@ -303,6 +388,113 @@ function resolveActor(req) {
         || req?.[constants.USER_ID]
         || req?.user?.[constants.USER_ID]
         || constants.SYSTEM_ACTOR;
+}
+
+// CRC-32 lookup table (IEEE 802.3 polynomial) used by the ZIP writer below.
+const CRC32_TABLE = (() => {
+    const table = new Int32Array(256);
+    for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) {
+            c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+        }
+        table[n] = c;
+    }
+    return table;
+})();
+
+function crc32(buf) {
+    let crc = -1;
+    for (let i = 0; i < buf.length; i++) {
+        crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ buf[i]) & 0xFF];
+    }
+    return (crc ^ -1) >>> 0;
+}
+
+// Builds a ZIP archive entirely in memory (no filesystem writes), using DEFLATE
+// via the built-in zlib. `entries` is an array of { path, content } where path is
+// the forward-slash entry name and content is a Buffer. Returns the archive Buffer.
+function createZipBuffer(entries) {
+    const localParts = [];
+    const centralParts = [];
+    let offset = 0;
+
+    for (const entry of entries) {
+        const nameBuf = Buffer.from(entry.path, constants.CHARSET_UTF8);
+        const content = Buffer.isBuffer(entry.content) ? entry.content : Buffer.from(entry.content);
+        const crc = crc32(content);
+        const compressed = zlib.deflateRawSync(content);
+        const method = 8; // DEFLATE
+
+        const local = Buffer.alloc(30);
+        local.writeUInt32LE(0x04034b50, 0);   // local file header signature
+        local.writeUInt16LE(20, 4);           // version needed to extract
+        local.writeUInt16LE(0x0800, 6);       // general purpose flag: UTF-8 filename (bit 11)
+        local.writeUInt16LE(method, 8);
+        local.writeUInt16LE(0, 10);           // mod time
+        local.writeUInt16LE(0x21, 12);        // mod date (1980-01-01)
+        local.writeUInt32LE(crc, 14);
+        local.writeUInt32LE(compressed.length, 18);
+        local.writeUInt32LE(content.length, 22);
+        local.writeUInt16LE(nameBuf.length, 26);
+        local.writeUInt16LE(0, 28);           // extra field length
+        localParts.push(local, nameBuf, compressed);
+
+        const central = Buffer.alloc(46);
+        central.writeUInt32LE(0x02014b50, 0);  // central directory header signature
+        central.writeUInt16LE(20, 4);          // version made by
+        central.writeUInt16LE(20, 6);          // version needed to extract
+        central.writeUInt16LE(0x0800, 8);      // general purpose flag: UTF-8 filename
+        central.writeUInt16LE(method, 10);
+        central.writeUInt16LE(0, 12);          // mod time
+        central.writeUInt16LE(0x21, 14);       // mod date
+        central.writeUInt32LE(crc, 16);
+        central.writeUInt32LE(compressed.length, 20);
+        central.writeUInt32LE(content.length, 24);
+        central.writeUInt16LE(nameBuf.length, 28);
+        central.writeUInt16LE(0, 30);          // extra field length
+        central.writeUInt16LE(0, 32);          // file comment length
+        central.writeUInt16LE(0, 34);          // disk number start
+        central.writeUInt16LE(0, 36);          // internal file attributes
+        central.writeUInt32LE(0, 38);          // external file attributes
+        central.writeUInt32LE(offset, 42);     // relative offset of local header
+        centralParts.push(central, nameBuf);
+
+        offset += local.length + nameBuf.length + compressed.length;
+    }
+
+    const localBuf = Buffer.concat(localParts);
+    const centralBuf = Buffer.concat(centralParts);
+
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);          // end of central directory signature
+    end.writeUInt16LE(0, 4);                   // number of this disk
+    end.writeUInt16LE(0, 6);                   // disk with central directory start
+    end.writeUInt16LE(entries.length, 8);      // central dir records on this disk
+    end.writeUInt16LE(entries.length, 10);     // total central dir records
+    end.writeUInt32LE(centralBuf.length, 12);  // size of central directory
+    end.writeUInt32LE(localBuf.length, 16);    // offset of central directory
+    end.writeUInt16LE(0, 20);                  // comment length
+
+    return Buffer.concat([localBuf, centralBuf, end]);
+}
+
+// Recursively reads every file under rootDir, returning { relativePath, content } entries
+// with forward-slash relative paths. Used to bundle the on-disk default theme for download.
+function readDirTree(rootDir, baseDir = '') {
+    const out = [];
+    const entries = fs.readdirSync(rootDir, { withFileTypes: true });
+    for (const entry of entries) {
+        if (entry.name === '.DS_Store' || entry.name === '__MACOSX') continue;
+        const abs = path.join(rootDir, entry.name);
+        const rel = baseDir ? `${baseDir}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+            out.push(...readDirTree(abs, rel));
+        } else if (entry.isFile()) {
+            out.push({ relativePath: rel, content: fs.readFileSync(abs) });
+        }
+    }
+    return out;
 }
 
 const unzipDirectory = async (zipPath, extractPath) => {
@@ -679,7 +871,7 @@ async function readFilesInDirectory(directory, orgId, protocol, host, viewName, 
                 } else if (file.name.endsWith(".hbs") && dir.endsWith("layout")) {
                     fileType = "layout"
                     if (file.name === "main.hbs") {
-                        strContent = strContent.replace(/\/styles\//g, `${constants.DEVPORTAL_API.orgPath(orgId)}/views/${viewName}/asset?fileType=style&fileName=`);
+                        strContent = rewriteViewStyles(strContent, orgId, viewName);
                         content = Buffer.from(strContent, constants.CHARSET_UTF8);
                     }
                     validateScripts(strContent);
@@ -740,18 +932,23 @@ function validateScripts(strContent) {
             "<script src='/technical-scripts/common.js' defer></script>",
             "<script src='/technical-scripts/subscription.js' defer></script>",
             "<script src='/technical-scripts/subscription-modal.js' defer></script>",
-            "<script src='/technical-scripts/subscriptions-page.js' defer></script>",
-            "<script src='/technical-scripts/api-keys-page.js' defer></script>",
             '<script src="/technical-scripts/oauth2-key-generation.js" defer></script>',
             "<script src='/technical-scripts/delete-confirmation-modal.js' defer></script>",
             "<script src='/technical-scripts/api-workflow-detail.js' defer></script>",
-            "<script src='/technical-scripts/api-workflows.js' defer></script>",
             "<script src='/technical-scripts/api-agent-prompt.js' defer></script>",
             '<script src="/technical-scripts/home-discover.js" defer></script>',
+            "<script src='/technical-scripts/home-particles.js' defer></script>",
+            "<script src='/technical-scripts/listing-cards.js' defer></script>",
+            "<script src='/technical-scripts/mcp-landing.js' defer></script>",
+            "<script src='/technical-scripts/api-subscription-plans.js' defer></script>",
+            "<script src='/technical-scripts/mcp-subscription-plans.js' defer></script>",
+            "<script src='/technical-scripts/dev-reload.js' defer></script>",
             '<script src="https://cdn.jsdelivr.net/npm/@jentic/arazzo-ui@1.0.0-alpha.30/dist/arazzo-ui.js" integrity="sha256-OYzURPQLK+lup5rGo+IQmVbjWOjVgjURBWDDtMHIOaw=" crossorigin="anonymous"></script>',
             '<script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" integrity="sha256-Rdw90D3AegZwWiwpibjH9wkBPwS9U4bjJ51ORH8H69c=" crossorigin="anonymous"></script>',
             '<script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js" integrity="sha256-Wt6n2O5BpwD8zBS7nVAxBPBHDMF6hK0+Fn0/UlHq4No=" crossorigin="anonymous"></script>',
             '<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js" integrity="sha512-78KH17QLT5e55GJqP76vutp1D2iAoy06WcYBXB6iBCsmO6wWzx0Qdg8EDpm8mKXv68BcvHOyeeP4wxAL0twJGQ==" crossorigin="anonymous"></script>',
+            "<script src=\"https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js\" integrity=\"sha384-oHYQNeDBTZNj6KnIfJMAzcEn2OTbeMKKXFeEwU6T+pH0oS1yTIzEBaW6BXmCtvs2\" crossorigin=\"anonymous\"></script>",
+            "<script src=\"https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js\" integrity=\"sha384-F/bZzf7p3Joyp5psL90p/p89AZJsndkSoGwRpXcZhleCWhd8SnRuoYo4d0yirjJp\" crossorigin=\"anonymous\"></script>",
         ]);
         const allowedInlineScripts = new Set([
             // Token-map JSON data island (api-landing/partials/api-subscription-plans.hbs)
@@ -771,8 +968,10 @@ function validateScripts(strContent) {
             // tokenMap + orgId bootstrap (api-subscriptions/partials/api-subscription-list.hbs
             // and subscriptions/partials/subscription-list.hbs)
             "<script>\n                window.__tokenMap = window.__tokenMap || {};\n                window.__subscriptionOrgId = \"{{@root.orgId}}\";\n            </script>",
-            // Modal click handler (apis/partials/api-listing.hbs)
-            "<script>\n    (function(){\n      function findClosest(el, selector){\n        while(el && el !== document){\n          if(el.matches && el.matches(selector)) return el;\n          el = el.parentNode;\n        }\n        return null;\n      }\n\n      document.addEventListener('click', function(e){\n        var modalTrigger = findClosest(e.target, '[data-modal]');\n        if(modalTrigger){\n          e.preventDefault();\n          if(modalTrigger.classList.contains('is-readonly') || modalTrigger.getAttribute('aria-disabled') === 'true'){\n            return;\n          }\n          if(typeof loadModal === 'function'){\n            loadModal(modalTrigger.getAttribute('data-modal'));\n          } else {\n            var id = modalTrigger.getAttribute('data-modal');\n            var el = document.getElementById(id);\n            if(el) {\n              el.style.display = 'flex';\n              document.body.classList.add('modal-open');\n              if(typeof prepareSubscriptionModal === 'function') {\n                try { prepareSubscriptionModal(id); } catch(err) { /* noop */ }\n              }\n            }\n          }\n          return;\n        }\n\n        var nav = findClosest(e.target, '[data-href]');\n        if(nav){\n          var href = nav.getAttribute('data-href');\n          if(href){ window.location.href = href; }\n        }\n      }, false);\n    })();\n  </script>",
+            // API config bootstrap (layout/main.hbs)
+            "<script>\n      // Devportal API base segment + version, sourced from server constants.\n      // Browser scripts build invocation URLs via window.devportalApi (common.js).\n      window.__DEVPORTAL_API__ = { base: \"{{devportalApiConfig.base}}\", version: \"{{devportalApiConfig.version}}\" };\n    </script>",
+            // Existing-subs JSON data island (mcp-landing/partials/mcp-subscription-plans.hbs)
+            "<script id=\"mcp-existing-subs-data\" type=\"application/json\">{{{json subscriptions}}}</script>",
         ]);
 
         const scriptRegex = /<script(?:\s+[^>]*)?>[\s\S]*?<\/script>/gi;
@@ -815,7 +1014,9 @@ function appendAPIImageURL(subList, req, orgId) {
         let apiImageUrl = '';
         for (const key in images) {
             apiImageUrl = `${constants.DEVPORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${element.id}${constants.API_TEMPLATE_FILE_NAME}`;
-            const modifiedApiImageURL = apiImageUrl + images[key];
+            // orgId is appended so the (public) image endpoint can resolve the view for
+            // anonymous visitors with no session — mirrors getOrgAsset.
+            const modifiedApiImageURL = apiImageUrl + images[key] + `${constants.ORG_ID_PARAM}${orgId}`;
             element.apiImageMetadata[key] = modifiedApiImageURL;
         }
     });
@@ -979,6 +1180,8 @@ async function isAiDisabledForPortal(orgId, viewName) {
 module.exports = {
     loadMarkdown,
     renderTemplate,
+    renderTemplateWithView,
+    rewriteViewStyles,
     loadLayoutFromAPI,
     loadTemplateFromAPI,
     renderTemplateFromAPI,
@@ -986,6 +1189,7 @@ module.exports = {
     renderLlmsTxt,
     renderGivenTemplate,
     handleError,
+    sendError,
     retrieveContentType,
     getAPIFileContent,
     getAPIImages,
@@ -1003,6 +1207,8 @@ module.exports = {
     readDocFiles,
     findFileByNameRecursive,
     unzipDirectory,
+    createZipBuffer,
+    readDirTree,
     filterAllowedAPIs,
     enforcePortalMode,
     isAiDisabledForPortal,

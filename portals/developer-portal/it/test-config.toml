@@ -4,24 +4,53 @@
 # at /app/configs/config.toml in both. Settings that are identical across both DB
 # variants live here; settings that differ (database connection, network hostnames)
 # stay as APIP_DP_* env vars in each compose file's environment: block.
+#
+# There is no automatic APIP_DP_* environment-variable override (see
+# src/config/configLoader.js / configs/config.toml) — an env var set in either
+# compose file's environment: block only takes effect where a key below
+# explicitly references it via a {{ env "..." "default" }} token. Every key
+# that either compose file overrides MUST have a matching token here, or the
+# override is silently ignored and the built-in default
+# (src/config/configDefaults.js) is used instead.
 
-[tls]
+[developer_portal.server.https]
 # Use plain HTTP inside the test network so Cypress doesn't need to trust a cert.
 enabled = false
 
-[logging]
+[developer_portal.logging]
 console_only = true
 
-[security.service_api_key]
+[developer_portal.database]
+# driver/path cover docker-compose.test.yaml (SQLite); host/port/user/password/name
+# cover docker-compose.test.postgres.yaml (PostgreSQL) — each compose file only sets
+# the env vars relevant to its own variant, so the other side's tokens just resolve
+# to these defaults, unused.
+driver   = '{{ env "APIP_DP_DATABASE_DRIVER" "sqlite" }}'
+path     = '{{ env "APIP_DP_DATABASE_PATH" "./data/devportal-it.db" }}'
+host     = '{{ env "APIP_DP_DATABASE_HOST" "localhost" }}'
+port     = '{{ env "APIP_DP_DATABASE_PORT" "5432" }}'
+user     = '{{ env "APIP_DP_DATABASE_USER" "postgres" }}'
+password = '{{ env "APIP_DP_DATABASE_PASSWORD" "" }}'
+name     = '{{ env "APIP_DP_DATABASE_NAME" "devportal" }}'
+
+[developer_portal.security]
+# Required — devportal fails closed at startup without these.
+encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTION_KEY" }}'
+session_secret = '{{ env "APIP_DP_SECURITY_SESSION_SECRET" }}'
+
+[developer_portal.security.service_api_key]
 enabled = true
 value = "devportal-it-test-key"
 
-[organization]
+[developer_portal.organization]
 default_name = "default"
 auto_create_subscription_plans = true
 
-[platform_api]
+[developer_portal.auth.local]
 # File-based (local) auth against the Platform API sidecar. Host is identical in
-# both DB variants; insecure accepts its self-signed cert inside the test network.
-base_url = "https://platform-api:9243"
-insecure = true
+# both DB variants; tls_skip_verify accepts its self-signed cert inside the test network.
+platform_api_url = "https://platform-api:9243"
+tls_skip_verify = true
+# Path to the public half of the RS256 keypair `make ensure-certs` generates —
+# the same file platform-api reads as its auth.jwt.private_key's counterpart.
+public_key_path = "/etc/devportal/keys/jwt_public.pem"

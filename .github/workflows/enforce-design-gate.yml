@@ -6,7 +6,7 @@ name: Enforce Design Gate
 #
 # Required secret:
 # - PROJECT_TOKEN: token with access to read/write the wso2 org Project v2
-#   and comment on issues in this repository.
+#   or API_PLATFORM_PROJECT_TOKEN if using the repository secret name below.
 on:
   schedule:
     - cron: '0 2 * * *'
@@ -17,7 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      issues: write
 
     steps:
       - name: Revert invalid Projects v2 items to Design
@@ -32,7 +31,6 @@ jobs:
             const REVERT_STATUS = 'Design';
             const REQUIRED_LABELS = ['Design Done', 'Mail Sent'];
             const GATE_TRIGGER_TYPE = 'feature';
-            const MARKER = '<!-- design-gate-enforced -->';
 
             const projectFragment = `
               id
@@ -71,24 +69,13 @@ jobs:
               return result.organization?.projectV2;
             }
 
-            async function hasDesignGateComment(issue) {
-              const comments = await github.paginate(github.rest.issues.listComments, {
-                owner: issue.repository.owner.login,
-                repo: issue.repository.name,
-                issue_number: issue.number,
-                per_page: 100,
-              });
-
-              return comments.some(comment => comment.body?.includes(MARKER));
-            }
-
             let project;
             try {
               project = await getProject();
             } catch (err) {
               core.setFailed([
                 `Could not access https://github.com/orgs/${PROJECT_OWNER}/projects/${PROJECT_NUMBER}.`,
-                'Check that PROJECT_TOKEN has access to the wso2 org project and this repository.',
+                'Check that API_PLATFORM_PROJECT_TOKEN has access to the wso2 org project.',
                 `Original error: ${err.message}`,
               ].join('\n'));
               return;
@@ -125,6 +112,9 @@ jobs:
                               number
                               state
                               title
+                              issueType {
+                                name
+                              }
                               repository {
                                 name
                                 owner {
@@ -192,8 +182,12 @@ jobs:
               }
 
               const labels = issue.labels.nodes.map(label => label.name);
-              if (!labels.includes(GATE_TRIGGER_TYPE)) {
-                console.log(`#${issue.number} is not a feature issue. Skipping.`);
+              const issueType = issue.issueType?.name || '';
+              const isFeatureIssue = labels.some(label => label.toLowerCase() === GATE_TRIGGER_TYPE)
+                || issueType.toLowerCase() === GATE_TRIGGER_TYPE;
+
+              if (!isFeatureIssue) {
+                console.log(`#${issue.number} is not a feature issue. Labels: ${labels.join(', ') || 'none'}. Type: ${issueType || 'none'}. Skipping.`);
                 continue;
               }
 
@@ -225,27 +219,6 @@ jobs:
                 itemId: item.id,
                 fieldId: statusField.id,
                 optionId: designOption.id,
-              });
-
-              if (await hasDesignGateComment(issue)) {
-                console.log(`#${issue.number} already has a design gate comment.`);
-                revertedCount += 1;
-                continue;
-              }
-
-              await github.rest.issues.createComment({
-                owner: issue.repository.owner.login,
-                repo: issue.repository.name,
-                issue_number: issue.number,
-                body: [
-                  MARKER,
-                  '> [!CAUTION]',
-                  `> **Design gate enforced.** This feature issue was in **${DESTINATION_STATUS}** but is missing required design labels, so it has been moved back to **${REVERT_STATUS}**.`,
-                  '>',
-                  '> Required labels before Development:',
-                  '>',
-                  ...REQUIRED_LABELS.map(label => `> - ${labels.includes(label) ? 'Present' : 'Missing'}: \`${label}\``),
-                ].join('\n'),
               });
 
               revertedCount += 1;

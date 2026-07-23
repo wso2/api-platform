@@ -23,6 +23,16 @@ data:
     shutdown_timeout = {{ $gc.server.shutdown_timeout | quote }}
     gateway_id = {{ $gc.server.gateway_id | quote }}
 
+    [controller.admin_server]
+    enabled = {{ $gc.admin_server.enabled }}
+    port = {{ $gc.admin_server.port }}
+    allowed_ips = [{{- range $i, $ip := $gc.admin_server.allowed_ips }}{{- if gt $i 0 }}, {{ end }}{{ $ip | quote }}{{- end }}]
+
+    [controller.admin_server.pprof]
+    enabled = {{ $gc.admin_server.pprof.enabled }}
+    block_profile_rate = {{ $gc.admin_server.pprof.block_profile_rate }}
+    mutex_profile_fraction = {{ $gc.admin_server.pprof.mutex_profile_fraction }}
+
     [controller.policy_server]
     port = {{ $gc.policy_server.port }}
 
@@ -46,6 +56,7 @@ data:
     port = {{ $pg.port | int }}
     database = {{ required "gateway.config.controller.storage.postgres.database is required when storage.type is \"postgres\" and dsn is unset" $pg.database | quote }}
     user = {{ required "gateway.config.controller.storage.postgres.user is required when storage.type is \"postgres\" and dsn is unset" $pg.user | quote }}
+    password = {{ `'{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD" "" }}'` }}
     sslmode = {{ $pg.sslmode | default "require" | quote }}
     connect_timeout = {{ $pg.connect_timeout | default "5s" | quote }}
     max_open_conns = {{ $pg.max_open_conns | default 25 | int }}
@@ -67,6 +78,7 @@ data:
     port = {{ coalesce $db.port $ss.port 1433 | int }}
     database = {{ required "gateway.config.controller.storage.database.database (or storage.sqlserver.database) is required when storage.type is \"sqlserver\" and dsn is unset" (coalesce $db.database $ss.database) | quote }}
     user = {{ required "gateway.config.controller.storage.database.user (or storage.sqlserver.user) is required when storage.type is \"sqlserver\" and dsn is unset" (coalesce $db.user $ss.user) | quote }}
+    password = {{ `'{{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD" "" }}'` }}
     connect_timeout = {{ coalesce $db.connect_timeout $ss.connect_timeout "5s" | quote }}
     max_open_conns = {{ coalesce $db.max_open_conns $ss.max_open_conns 25 | int }}
     max_idle_conns = {{ coalesce $db.max_idle_conns $ss.max_idle_conns 5 | int }}
@@ -81,8 +93,20 @@ data:
 
     [controller.policies]
     definitions_path = {{ $gc.policies.definitions_path | quote }}
+    {{- if $gc.policies.build_manifest_path }}
+    build_manifest_path = {{ $gc.policies.build_manifest_path | quote }}
+    {{- end }}
+
+    {{- if $gc.llm }}
+    [controller.llm]
+    {{- if $gc.llm.template_definitions_path }}
+    template_definitions_path = {{ $gc.llm.template_definitions_path | quote }}
+    {{- end }}
+    {{- end }}
 
     [controller.controlplane]
+    host = {{ .Values.gateway.controller.controlPlane.host | default "" | quote }}
+    token = {{ `'{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN" "" }}'` }}
     insecure_skip_verify = {{ $gc.controlplane.insecure_skip_verify }}
     reconnect_initial = {{ $gc.controlplane.reconnect_initial | quote }}
     reconnect_max = {{ $gc.controlplane.reconnect_max | quote }}
@@ -94,6 +118,19 @@ data:
     apim_oauth2_client_secret = {{ $gc.controlplane.apim_oauth2_client_secret | quote }}
     apim_oauth2_username = {{ $gc.controlplane.apim_oauth2_username | quote }}
     apim_oauth2_password = {{ $gc.controlplane.apim_oauth2_password | quote }}
+
+    {{- if $gc.event_hub }}
+    [controller.event_hub]
+    poll_interval = {{ $gc.event_hub.poll_interval | quote }}
+    cleanup_interval = {{ $gc.event_hub.cleanup_interval | quote }}
+    retention_period = {{ $gc.event_hub.retention_period | quote }}
+
+    [controller.event_hub.database]
+    max_open_conns = {{ $gc.event_hub.database.max_open_conns }}
+    max_idle_conns = {{ $gc.event_hub.database.max_idle_conns }}
+    conn_max_lifetime = {{ $gc.event_hub.database.conn_max_lifetime | quote }}
+    conn_max_idle_time = {{ $gc.event_hub.database.conn_max_idle_time | quote }}
+    {{- end }}
 
     {{- range $gc.encryption.providers }}
     [[controller.encryption.providers]]
@@ -111,6 +148,18 @@ data:
     https_enabled = {{ $router.https_enabled }}
     https_port = {{ $router.https_port }}
     tracing_service_name = {{ $router.tracing_service_name | default "" | quote }}
+
+    [router.vhosts.main]
+    {{- if $router.vhosts.main.domains }}
+    domains = [{{- range $i, $d := $router.vhosts.main.domains }}{{- if gt $i 0 }}, {{ end }}{{ $d | quote }}{{- end }}]
+    {{- end }}
+    default = {{ $router.vhosts.main.default | quote }}
+
+    [router.vhosts.sandbox]
+    {{- if $router.vhosts.sandbox.domains }}
+    domains = [{{- range $i, $d := $router.vhosts.sandbox.domains }}{{- if gt $i 0 }}, {{ end }}{{ $d | quote }}{{- end }}]
+    {{- end }}
+    default = {{ $router.vhosts.sandbox.default | quote }}
 
     [router.access_logs]
     enabled = {{ $router.access_logs.enabled }}
@@ -142,6 +191,23 @@ data:
     route_timeout_ms = {{ $router.upstream.timeouts.route_timeout_ms }}
     route_idle_timeout_ms = {{ $router.upstream.timeouts.route_idle_timeout_ms }}
     connect_timeout_ms = {{ $router.upstream.timeouts.connect_timeout_ms }}
+
+    {{- if $router.lua }}
+    [router.lua.request_transformation]
+    {{- if $router.lua.request_transformation.script_path }}
+    script_path = {{ $router.lua.request_transformation.script_path | quote }}
+    {{- end }}
+    {{- end }}
+
+    [router.http_listener]
+    server_header_transformation = {{ $router.http_listener.server_header_transformation | quote }}
+    server_header_value = {{ $router.http_listener.server_header_value | quote }}
+
+    [router.http_listener.timeouts]
+    request_timeout = {{ $router.http_listener.timeouts.request_timeout | quote }}
+    request_headers_timeout = {{ $router.http_listener.timeouts.request_headers_timeout | quote }}
+    stream_idle_timeout = {{ $router.http_listener.timeouts.stream_idle_timeout | quote }}
+    idle_timeout = {{ $router.http_listener.timeouts.idle_timeout | quote }}
 
     [router.policy_engine]
     mode = {{ $router.policy_engine.mode | quote }}
@@ -200,6 +266,10 @@ data:
     level = {{ $gc.logging.level | quote }}
     format = {{ $gc.logging.format | quote }}
 
+    [controller.metrics]
+    enabled = {{ .Values.gateway.controller.metrics.enabled }}
+    port = {{ .Values.gateway.controller.metrics.port }}
+
     [policy_engine.server]
     extproc_port = {{ $pe.server.extproc_port }}
 
@@ -207,6 +277,11 @@ data:
     enabled = {{ $pe.admin.enabled }}
     port = {{ $pe.admin.port }}
     allowed_ips = [{{- range $i, $ip := $pe.admin.allowed_ips }}{{- if gt $i 0 }}, {{ end }}{{ $ip | quote }}{{- end }}]
+
+    [policy_engine.admin.pprof]
+    enabled = {{ $pe.admin.pprof.enabled }}
+    block_profile_rate = {{ $pe.admin.pprof.block_profile_rate }}
+    mutex_profile_fraction = {{ $pe.admin.pprof.mutex_profile_fraction }}
 
     [policy_engine.config_mode]
     mode = {{ $pe.config_mode.mode | quote }}
@@ -227,6 +302,18 @@ data:
     [policy_engine.logging]
     level = {{ $pe.logging.level | quote }}
     format = {{ $pe.logging.format | quote }}
+
+    [policy_engine.metrics]
+    enabled = {{ $pe.metrics.enabled }}
+    port = {{ $pe.metrics.port }}
+
+    [policy_engine.python_executor]
+    timeout = {{ $pe.python_executor.timeout | quote }}
+
+    [policy_engine.python_executor.server]
+    mode = {{ $pe.python_executor.server.mode | quote }}
+    port = {{ $pe.python_executor.server.port }}
+    host = {{ $pe.python_executor.server.host | quote }}
 
     {{- if .Values.gateway.config.analytics }}
     {{- $analyticsEnabled := and (kindIs "bool" .Values.gateway.config.analytics.enabled) .Values.gateway.config.analytics.enabled }}
@@ -256,6 +343,86 @@ data:
     {{- end }}
     {{- end }}
 
+    {{- if .Values.gateway.config.collector }}
+    [collector]
+    {{- if .Values.gateway.config.collector.request_body }}
+    request_body = {{ .Values.gateway.config.collector.request_body }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.response_body }}
+    response_body = {{ .Values.gateway.config.collector.response_body }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.request_headers }}
+    request_headers = {{ .Values.gateway.config.collector.request_headers }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.response_headers }}
+    response_headers = {{ .Values.gateway.config.collector.response_headers }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.ignore_path_prefixes }}
+    ignore_path_prefixes = [{{- range $i, $p := .Values.gateway.config.collector.ignore_path_prefixes }}{{- if gt $i 0 }}, {{ end }}{{ $p | quote }}{{- end }}]
+    {{- end }}
+
+    {{- if .Values.gateway.config.collector.server }}
+    [collector.server]
+    {{- if .Values.gateway.config.collector.server.mode }}
+    mode = {{ .Values.gateway.config.collector.server.mode | quote }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.buffer_flush_interval }}
+    buffer_flush_interval = {{ .Values.gateway.config.collector.server.buffer_flush_interval | int64 }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.buffer_size_bytes }}
+    buffer_size_bytes = {{ .Values.gateway.config.collector.server.buffer_size_bytes | int64 }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.grpc_request_timeout }}
+    grpc_request_timeout = {{ .Values.gateway.config.collector.server.grpc_request_timeout | int64 }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.shutdown_timeout }}
+    shutdown_timeout = {{ .Values.gateway.config.collector.server.shutdown_timeout | quote }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.public_key_path }}
+    public_key_path = {{ .Values.gateway.config.collector.server.public_key_path | quote }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.private_key_path }}
+    private_key_path = {{ .Values.gateway.config.collector.server.private_key_path | quote }}
+    {{- end }}
+    {{- if kindIs "bool" .Values.gateway.config.collector.server.als_plain_text }}
+    als_plain_text = {{ .Values.gateway.config.collector.server.als_plain_text }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.max_message_size }}
+    max_message_size = {{ .Values.gateway.config.collector.server.max_message_size | int64 }}
+    {{- end }}
+    {{- if .Values.gateway.config.collector.server.max_header_limit }}
+    max_header_limit = {{ .Values.gateway.config.collector.server.max_header_limit | int64 }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+
+    {{- if .Values.gateway.config.traffic_logging }}
+    {{- $trafficLoggingEnabled := and (kindIs "bool" .Values.gateway.config.traffic_logging.enabled) .Values.gateway.config.traffic_logging.enabled }}
+    [traffic_logging]
+    enabled = {{ $trafficLoggingEnabled }}
+    {{- if .Values.gateway.config.traffic_logging.masked_headers }}
+    masked_headers = [{{- range $i, $h := .Values.gateway.config.traffic_logging.masked_headers }}{{- if gt $i 0 }}, {{ end }}{{ $h | quote }}{{- end }}]
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.max_payload_size }}
+    max_payload_size = {{ .Values.gateway.config.traffic_logging.max_payload_size | int64 }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.request_headers }}
+    request_headers = {{ .Values.gateway.config.traffic_logging.request_headers }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.request_body }}
+    request_body = {{ .Values.gateway.config.traffic_logging.request_body }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.response_headers }}
+    response_headers = {{ .Values.gateway.config.traffic_logging.response_headers }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.response_body }}
+    response_body = {{ .Values.gateway.config.traffic_logging.response_body }}
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.exclude_fields }}
+    exclude_fields = [{{- range $i, $f := .Values.gateway.config.traffic_logging.exclude_fields }}{{- if gt $i 0 }}, {{ end }}{{ $f | quote }}{{- end }}]
+    {{- end }}
+    {{- end }}
+
     {{- if .Values.gateway.config.tracing }}
     [tracing]
     enabled = {{ .Values.gateway.config.tracing.enabled }}
@@ -267,6 +434,11 @@ data:
     sampling_rate = {{ .Values.gateway.config.tracing.sampling_rate }}
     {{- end }}
 
+    {{- if .Values.gateway.config.subscriptions }}
+    [subscriptions]
+    enable_validation = {{ .Values.gateway.config.subscriptions.enable_validation }}
+    {{- end }}
+
     {{- if .Values.gateway.gatewayRuntime.policies.llmPricing.enabled }}
     [policy_configurations.llm_cost_v1]
     pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
@@ -276,10 +448,24 @@ data:
 {{ dict "policy_configurations" .Values.gateway.config.policy_configurations | toToml | indent 4 }}
     {{- end }}
 
+    {{- if .Values.gateway.config.api_key }}
+    [api_key]
+    api_keys_per_user_per_api = {{ .Values.gateway.config.api_key.api_keys_per_user_per_api }}
+    algorithm = {{ .Values.gateway.config.api_key.algorithm | quote }}
+    min_key_length = {{ .Values.gateway.config.api_key.min_key_length }}
+    max_key_length = {{ .Values.gateway.config.api_key.max_key_length }}
+    issuer = {{ .Values.gateway.config.api_key.issuer | quote }}
+    {{- end }}
+
     {{- if .Values.gateway.config.immutable_gateway }}
     [immutable_gateway]
     enabled = {{ .Values.gateway.config.immutable_gateway.enabled }}
     artifacts_dir = {{ .Values.gateway.config.immutable_gateway.artifacts_dir | quote }}
+    {{- end }}
+
+    {{- if .Values.gateway.config.mcp }}
+    [mcp]
+    append_resource_path_to_backend = {{ .Values.gateway.config.mcp.append_resource_path_to_backend }}
     {{- end }}
 
     {{- if .Values.gateway.config_toml }}

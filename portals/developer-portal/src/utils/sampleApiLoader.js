@@ -20,7 +20,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const yaml = require('js-yaml');
+const yaml = require('./yaml');
 const constants = require('./constants');
 const { config } = require('../config/configLoader');
 
@@ -190,7 +190,6 @@ function loadOne(apiHandle, samplesDir = './samples/apis/') {
     const apiDir = getApiDir(apiHandle, samplesDir);
     if (!apiDir) throw new Error(`Sample API not found: ${apiHandle}`);
     // Re-parse using the found directory's entry name relative to samplesDir
-    const dir = resolveDir(samplesDir);
     const entryName = path.basename(apiDir);
     const api = parseApiYaml(entryName, samplesDir);
     if (!api) throw new Error(`Sample API not found: ${apiHandle}`);
@@ -208,7 +207,7 @@ function getDefinition(apiHandle, samplesDir = './samples/apis/') {
 }
 
 /**
- * Load and parse the MCP schema definition file (schemaDefinition.yaml or .json).
+ * Load and parse the MCP schema definition file (definition.yaml or .json).
  * Returns { tools, resources, prompts } or null if not found.
  */
 function getMcpSchema(apiHandle, samplesDir = './samples/apis/') {

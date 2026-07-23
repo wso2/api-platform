@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the
+# License at http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+# AI Workspace quickstart setup. See README.md → "Quick Start".
+set -euo pipefail
+cd "$(dirname "$0")"
+# Distribution layout: scripts/setup.sh, one level below docker-compose.yaml.
+[[ -f docker-compose.yaml ]] || cd ..
+
+ENV_FILE="api-platform.env"
+CERTS_DIR="resources/certificates"
+# RS256 JWT keypair (PEM). Mounted into the platform-api container at
+# /etc/platform-api/keys and read by config.toml via {{ file }}.
+KEYS_DIR="resources/keys"
+FORCE=false
+CERTS_ONLY=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=true ;;
+    --certs-only) CERTS_ONLY=true ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: ./setup.sh [--force] [--certs-only]
+
+  --force         regenerate everything (rotates keys and credentials)
+  --certs-only    generate only the TLS certificates (used by `make bff-run`)
+
+ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the interactive
+prompts and pin the credentials (used by CI). See README.md → "Quick Start".
+EOF
+      exit 0
+      ;;
+    *) echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
+  esac
+done
+
+command -v openssl >/dev/null 2>&1 || { echo "error: openssl is required" >&2; exit 1; }
+
+log() { echo "[setup] $*"; }
+
+gen_cert() {
+  local san="$1"
+  if [[ "$FORCE" == false && -f "$CERTS_DIR/cert.pem" && -f "$CERTS_DIR/key.pem" ]]; then
+    log "  - $CERTS_DIR/cert.pem already exists — keeping it"
+    return
+  fi
+  openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
+    -keyout "$CERTS_DIR/key.pem" -out "$CERTS_DIR/cert.pem" \
+    -subj "/O=WSO2 API Platform/CN=localhost" \
+    -addext "subjectAltName=$san" >/dev/null 2>&1
+  chmod 644 "$CERTS_DIR/key.pem"
+  log "  - self-signed certificate generated at $CERTS_DIR/cert.pem"
+}
+
+log "Provisioning TLS certificate ..."
+mkdir -p "$CERTS_DIR"
+# Self-signed, so this one cert also doubles as the CA bundle the BFF trusts
+# for the upstream platform-api hop; SAN covers both compose hostnames.
+gen_cert "DNS:localhost,DNS:platform-api,DNS:ai-workspace,DNS:host.docker.internal,IP:127.0.0.1"
+
+if [[ "$CERTS_ONLY" == true ]]; then
+  exit 0
+fi
+
+if [[ "$FORCE" == false && -f "$ENV_FILE" ]]; then
+  log "$ENV_FILE already exists — keeping it (rerun with --force to rotate keys and credentials)"
+  echo
+  log "Setup complete."
+  echo
+  echo "  Next step:"
+  echo "    docker compose up"
+  exit 0
+fi
+
+# bcrypt isn't in openssl; use htpasswd when available, else the httpd image.
+bcrypt_hash() {
+  local password="$1"
+  if command -v htpasswd >/dev/null 2>&1; then
+    printf '%s' "$password" | htpasswd -niB -C 10 "" | cut -d: -f2 | tr -d '\r\n'
+  elif command -v docker >/dev/null 2>&1; then
+    printf '%s' "$password" | docker run --rm -i httpd:2.4-alpine htpasswd -niB -C 10 "" | cut -d: -f2 | tr -d '\r\n'
+  else
+    echo "error: need either htpasswd (apache2-utils / httpd-tools) or docker to bcrypt-hash the admin password" >&2
+    exit 1
+  fi
+}
+
+GENERATED_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-20)"
+
+if [[ -z "${ADMIN_USERNAME:-}" && -t 0 ]]; then
+  read -r -p "Admin username [admin]: " ADMIN_USERNAME
+fi
+ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
+
+if [[ -z "${ADMIN_PASSWORD:-}" && -t 0 ]]; then
+  read -r -s -p "Admin password [press Enter to generate one]: " ADMIN_PASSWORD
+  echo
+fi
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-$GENERATED_PASSWORD}"
+
+log "Generating secrets into $ENV_FILE ..."
+ENCRYPTION_KEY="$(openssl rand -hex 32)"
+log "  - APIP_CP_ENCRYPTION_KEY generated"
+
+log "Provisioning Platform API JWT signing keypair (RS256) ..."
+# Tokens are signed asymmetrically (RS256), not with a shared HMAC secret. The
+# Platform API mints login tokens with the RSA private key and verifies every
+# token with the matching public key. A PEM key is multi-line and does not
+# survive an env file (one KEY=VALUE per line), so — like the TLS cert above —
+# the keypair is written to files and read by config.toml via {{ file }}:
+#   config.toml -> public_key/private_key = '{{ file "/etc/platform-api/keys/jwt_*.pem" }}'
+# resources/keys is mounted into the platform-api container at
+# /etc/platform-api/keys (see docker-compose.yaml), which is on the Platform
+# API's {{ file }} allowlist.
+mkdir -p "$KEYS_DIR"
+# PKCS#8 private key + matching SPKI public key — the PEM encodings golang-jwt's
+# ParseRSAPrivateKeyFromPEM / ParseRSAPublicKeyFromPEM accept.
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+    -out "$KEYS_DIR/jwt_private.pem" 2>/dev/null
+openssl rsa -in "$KEYS_DIR/jwt_private.pem" -pubout \
+    -out "$KEYS_DIR/jwt_public.pem" 2>/dev/null
+# 644 (not 600) so the container's non-root user can read a host-owned file,
+# matching the TLS key.pem above.
+chmod 644 "$KEYS_DIR/jwt_private.pem" "$KEYS_DIR/jwt_public.pem"
+log "  - RS256 JWT keypair generated at $KEYS_DIR"
+
+log "Provisioning admin credentials ..."
+ADMIN_PASSWORD_HASH="$(bcrypt_hash "$ADMIN_PASSWORD")"
+log "  - APIP_CP_ADMIN_PASSWORD_HASH generated (bcrypt)"
+
+umask 177
+cat > "$ENV_FILE" <<EOF
+# Generated by setup.sh on $(date -u +"%Y-%m-%dT%H:%M:%SZ") — do not commit.
+# The admin password is not stored here; it was printed once by setup.sh.
+APIP_CP_ENCRYPTION_KEY=$ENCRYPTION_KEY
+APIP_CP_ADMIN_USERNAME=$ADMIN_USERNAME
+APIP_CP_ADMIN_PASSWORD_HASH=$ADMIN_PASSWORD_HASH
+EOF
+umask 022
+log "  - $ENV_FILE written"
+
+echo
+log "Setup complete."
+echo
+echo "  ------------------------------------------------------------------"
+echo "   Admin login:  $ADMIN_USERNAME / $ADMIN_PASSWORD"
+echo "   This password will not be shown again — copy it now."
+echo "   (It is stored, bcrypt-hashed, in $ENV_FILE)"
+echo "  ------------------------------------------------------------------"
+echo
+echo "  Next step:"
+echo "    docker compose up"

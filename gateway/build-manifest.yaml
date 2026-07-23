@@ -7,8 +7,11 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/analytics-header-filter@v1
     - name: api-key-auth
-      version: v1.0.4
+      version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v1
+    - name: aws-authentication
+      version: v0.10.0
+      gomodule: github.com/wso2/gateway-controllers/policies/aws-authentication@v0
     - name: aws-bedrock-guardrail
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/aws-bedrock-guardrail@v1
@@ -46,7 +49,7 @@ policies:
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v1
     - name: jwt-auth
-      version: v1.1.0
+      version: v1.2.2
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v1
     - name: llm-cost
       version: v1.0.3
@@ -61,10 +64,10 @@ policies:
       version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v1
     - name: mcp-auth
-      version: v1.0.3
+      version: v1.1.1
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v1
     - name: mcp-authz
-      version: v1.0.1
+      version: v1.0.2
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-authz@v1
     - name: mcp-ratelimit
       version: v1.1.0
@@ -81,6 +84,9 @@ policies:
     - name: opaque-token-auth
       version: v1.0.0
       gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1
+    - name: openai-to-bedrock-transformer
+      version: v0.9.0
+      gomodule: github.com/wso2/gateway-controllers/policies/openai-to-bedrock-transformer@v0
     - name: pii-masking-regex
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v1
@@ -93,6 +99,9 @@ policies:
     - name: prompt-template
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/prompt-template@v1
+    - name: redirect
+      version: v0.9.0
+      gomodule: github.com/wso2/gateway-controllers/policies/redirect@v0
     - name: regex-guardrail
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/regex-guardrail@v1

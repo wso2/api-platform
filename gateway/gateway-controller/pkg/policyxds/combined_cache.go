@@ -29,7 +29,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/subscriptionxds"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 )
 
 // CombinedCache combines policy, API key, lazy resource, subscription, route config, event channel,
@@ -178,7 +177,7 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, subscription cache.S
 			delete(c.watchers, watcherID)
 			return nil, fmt.Errorf("create event channel watch: %w", err)
 		}
-	case webhooksecretxds.WebhookSecretStateTypeURL:
+	case WebhookSecretStateTypeURL:
 		if c.webhookSecretCache == nil {
 			delete(c.watchers, watcherID)
 			return nil, fmt.Errorf("webhook secret cache is not configured for type %s", request.TypeUrl)
@@ -572,7 +571,7 @@ func (c *CombinedCache) CreateDeltaWatch(request *cache.DeltaRequest, subscripti
 				}
 			}
 		}
-	case webhooksecretxds.WebhookSecretStateTypeURL:
+	case WebhookSecretStateTypeURL:
 		if c.webhookSecretCache != nil {
 			if deltaWatcher, ok := c.webhookSecretCache.(interface {
 				CreateDeltaWatch(*cache.DeltaRequest, cache.Subscription, chan cache.DeltaResponse) (func(), error)

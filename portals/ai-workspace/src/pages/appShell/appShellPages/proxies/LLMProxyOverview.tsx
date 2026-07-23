@@ -133,6 +133,7 @@ const buildProxyUpdatePayload = (value: LLMProxy): UpdateProxyRequest => {
     delete updatePayload.vhost;
   }
   delete (updatePayload as Record<string, unknown>).createdBy;
+  delete (updatePayload as Record<string, unknown>).updatedBy;
   return updatePayload;
 };
 
@@ -234,9 +235,9 @@ function ProxyOverviewContent() {
       setSavedProxy(updatedProxy);
       showSnackbar('Proxy updated successfully.', 'success');
     } catch (err) {
-      setUpdateError(
-        err instanceof Error ? err.message : 'Failed to update proxy'
-      );
+      const message = err instanceof Error ? err.message : 'Failed to update proxy';
+      setUpdateError(message);
+      showSnackbar(message, 'error');
     } finally {
       setIsSavingChanges(false);
     }
@@ -424,6 +425,19 @@ function ProxyOverviewContent() {
                         {formatRelativeTime(proxy.updatedAt)}
                       </Typography>
                     </Stack>
+                    {proxy.createdBy && (
+                      <Stack direction="row" alignItems="center" gap={2}>
+                        <Typography variant="caption" color="text.secondary">
+                          <FormattedMessage
+                            id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyOverview.created.by"
+                            defaultMessage={'Created by :'}
+                          />
+                        </Typography>
+                        <Typography variant="body2">
+                          {proxy.createdBy}
+                        </Typography>
+                      </Stack>
+                    )}
                   </Stack>
                 </Box>
               </Box>

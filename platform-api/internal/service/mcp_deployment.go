@@ -20,18 +20,19 @@
 package service
 
 import (
-	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
+	"time"
+
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
-	"log/slog"
-	"strings"
-	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -42,6 +43,7 @@ type MCPDeploymentService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	orgRepo              repository.OrganizationRepository
+	apiKeyRepo           repository.APIKeyRepository
 	gatewayEventsService *GatewayEventsService
 	cfg                  *config.Server
 	utils                *utils.MCPUtils
@@ -50,13 +52,14 @@ type MCPDeploymentService struct {
 
 func NewMCPDeploymentService(mcpRepo repository.MCPProxyRepository, deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository, artifactRepo repository.ArtifactRepository,
-	gatewayEventsService *GatewayEventsService, cfg *config.Server, slogger *slog.Logger) *MCPDeploymentService {
+	apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService, cfg *config.Server, slogger *slog.Logger) *MCPDeploymentService {
 	return &MCPDeploymentService{
 		mcpRepo:              mcpRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
 		orgRepo:              orgRepo,
 		artifactRepo:         artifactRepo,
+		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		utils:                &utils.MCPUtils{},
@@ -91,7 +94,7 @@ func (s *MCPDeploymentService) RestoreMCPDeploymentByHandle(proxyHandle, deploym
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayUUID := gateway.ID
 
@@ -114,7 +117,7 @@ func (s *MCPDeploymentService) UndeployDeploymentByHandle(proxyHandle, deploymen
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayUUID := gateway.ID
 
@@ -178,14 +181,14 @@ func (s *MCPDeploymentService) GetDeploymentsByHandle(proxyHandle, gatewayID, st
 // deployMCPProxy deploys an MCP proxy to a gateway
 func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployRequest, orgId, createdBy string) (*api.DeploymentResponse, error) {
 	if req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.MCPProxyDeploymentValidationFailed.New("A request body is required.")
 	}
 	if req.Base == "" {
-		return nil, constants.ErrDeploymentBaseRequired
+		return nil, apperror.MCPProxyDeploymentValidationFailed.New("Base is required.")
 	}
 	gatewayHandle := strings.TrimSpace(req.GatewayId)
 	if gatewayHandle == "" {
-		return nil, constants.ErrDeploymentGatewayIDRequired
+		return nil, apperror.MCPProxyDeploymentValidationFailed.New("Gateway ID is required.")
 	}
 	metadata := utils.MapValueOrEmpty(req.Metadata)
 
@@ -195,7 +198,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 	gatewayID := gateway.ID
 
@@ -204,7 +207,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		return nil, err
 	}
 	if mcpProxy == nil {
-		return nil, constants.ErrMCPProxyNotFound
+		return nil, apperror.MCPProxyNotFound.New()
 	}
 
 	// DP-originated artifacts are read-only in the control plane and cannot be
@@ -231,7 +234,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 	if err != nil {
 		return nil, err
 	}
-	effectiveMetaJSON, err := s.mcpRepo.EnsureGatewayAssociation(mcpProxy.UUID, gatewayID, orgId, deployMetaJSON, metadataProvided)
+	effectiveMetaJSON, err := s.mcpRepo.EnsureGatewayAssociation(mcpProxy.UUID, gatewayID, orgId, createdBy, deployMetaJSON, metadataProvided)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure gateway association: %w", err)
 	}
@@ -265,6 +268,11 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 			d.Spec.Upstream.URL = *endpointURL
 			s.slogger.Debug("Endpoint URL overridden", "endpointURL", *endpointURL, "deploymentID", deploymentID)
 		}
+		sourceDataVersion := gatewaytranslator.PlatformDataVersion(mcpProxy.DataVersion)
+		targetDataVersion := gatewaytranslator.GatewayDataVersionForGateway(gateway.Version)
+		if err := gatewaytranslator.Translate(constants.MCPProxy, sourceDataVersion, targetDataVersion, d); err != nil {
+			return nil, fmt.Errorf("failed to transform MCP proxy deployment for gateway %s: %w", gateway.Version, err)
+		}
 		contentBytes, err = yaml.Marshal(d)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal MCP deployment YAML: %w", err)
@@ -273,8 +281,8 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		// Use existing deployment as base
 		baseDeployment, err := s.deploymentRepo.GetWithContent(req.Base, proxyUUID, orgId)
 		if err != nil {
-			if errors.Is(err, constants.ErrDeploymentNotFound) {
-				return nil, constants.ErrBaseDeploymentNotFound
+			if apperror.DeploymentNotFound.Is(err) {
+				return nil, apperror.DeploymentBaseNotFound.Wrap(err)
 			}
 			return nil, fmt.Errorf("failed to get base deployment: %w", err)
 		}
@@ -324,7 +332,7 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	if _, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxyUUID, orgId, gatewayID, deploymentID,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -344,6 +352,9 @@ func (s *MCPDeploymentService) deployMCPProxy(proxyUUID string, req *api.DeployR
 		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(gatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast MCP proxy deployment event", "error", err)
 		}
+
+		// Push existing active API keys for this proxy to the gateway (see BackfillAPIKeysToGateway).
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, gatewayID, createdBy)
 	}
 
 	// Return deployment response
@@ -371,13 +382,15 @@ func extractEndpointURLOverride(metadata map[string]interface{}) (*string, error
 	}
 	eu, ok := v.(string)
 	if !ok {
-		return nil, fmt.Errorf("%w: invalid endpoint URL in metadata: expected string, got %T", constants.ErrInvalidInput, v)
+		return nil, apperror.MCPProxyDeploymentValidationFailed.New(
+			fmt.Sprintf("The endpointUrl in metadata must be a string, got %T.", v))
 	}
 	if eu == "" {
 		return nil, nil
 	}
 	if err := validateEndpointURL(eu); err != nil {
-		return nil, fmt.Errorf("%w: invalid endpoint URL in metadata: %v", constants.ErrInvalidInput, err)
+		return nil, apperror.MCPProxyDeploymentValidationFailed.Wrap(err,
+			"The endpointUrl in metadata is not a valid URL.")
 	}
 	return &eu, nil
 }
@@ -396,7 +409,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 		return nil, err
 	}
 	if mcpProxy == nil {
-		return nil, constants.ErrMCPProxyNotFound
+		return nil, apperror.MCPProxyNotFound.New()
 	}
 
 	// Resolve deployment using provided deploymentId or gatewayId
@@ -408,7 +421,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 			return nil, err
 		}
 		if deployment == nil {
-			return nil, constants.ErrDeploymentNotFound
+			return nil, apperror.DeploymentNotFound.New()
 		}
 	} else if gatewayId != nil {
 		// Find current deployment for this gateway
@@ -417,20 +430,21 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 			return nil, err
 		}
 		if deployment == nil {
-			return nil, constants.ErrDeploymentNotFound
+			return nil, apperror.DeploymentNotFound.New()
 		}
 	} else {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.MCPProxyDeploymentValidationFailed.New(
+			"Either a deploymentId or a gatewayId is required.")
 	}
 
 	// Validate that the provided gatewayId matches the deployment's bound gateway
 	if gatewayId != nil && deployment.GatewayID != *gatewayId {
-		return nil, constants.ErrGatewayIDMismatch
+		return nil, apperror.DeploymentGatewayMismatch.New()
 	}
 
 	// Verify deployment is currently DEPLOYED (status already populated by GetWithState)
 	if deployment.Status == nil || *deployment.Status != model.DeploymentStatusDeployed {
-		return nil, constants.ErrDeploymentNotActive
+		return nil, apperror.DeploymentNotActive.New("MCP proxy")
 	}
 
 	// Validate gateway exists and belongs to organization
@@ -439,7 +453,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	// Set initial status based on config; transitional (UNDEPLOYING) only when enabled
@@ -447,7 +461,7 @@ func (s *MCPDeploymentService) undeployMCPProxyDeployment(proxyUUID string, depl
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusUndeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	newUpdatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxyUUID, orgId, deployment.GatewayID, deployment.DeploymentID,
 		initialStatus, string(model.DeploymentStatusUndeployed),
@@ -498,12 +512,12 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		return nil, err
 	}
 	if targetDeployment == nil {
-		return nil, constants.ErrDeploymentNotFound
+		return nil, apperror.DeploymentNotFound.New()
 	}
 
 	// Validate that the provided gatewayID matches the deployment's bound gateway
 	if targetDeployment.GatewayID != *gatewayId {
-		return nil, constants.ErrGatewayIDMismatch
+		return nil, apperror.DeploymentGatewayMismatch.New()
 	}
 
 	// Verify target deployment is NOT currently DEPLOYED
@@ -512,7 +526,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		return nil, fmt.Errorf("failed to get deployment status: %w", err)
 	}
 	if currentDeploymentID == *deploymentId && status == model.DeploymentStatusDeployed {
-		return nil, constants.ErrDeploymentAlreadyDeployed
+		return nil, apperror.DeploymentRestoreConflict.New()
 	}
 
 	// Validate gateway exists and belongs to organization
@@ -521,7 +535,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil || gateway.OrganizationID != orgId {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 
 	// Set initial status based on config; transitional (DEPLOYING) only when enabled
@@ -529,7 +543,7 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 	if s.cfg.Deployments.TransitionalStatusEnabled {
 		initialStatus = model.DeploymentStatusDeploying
 	}
-	performedAt := time.Now().Truncate(time.Millisecond)
+	performedAt := time.Now().UTC().Truncate(time.Millisecond)
 	updatedAt, err := s.deploymentRepo.SetCurrentWithDetails(
 		proxyUUID, orgId, targetDeployment.GatewayID, *deploymentId,
 		initialStatus, string(model.DeploymentStatusDeployed),
@@ -550,6 +564,9 @@ func (s *MCPDeploymentService) restoreMCPProxyDeployment(proxyUUID string, deplo
 		if err := s.gatewayEventsService.BroadcastMCPProxyDeploymentEvent(targetDeployment.GatewayID, deploymentEvent); err != nil {
 			s.slogger.Warn("Failed to broadcast MCP proxy deployment event", "error", err)
 		}
+
+		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
+		BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, proxyUUID, targetDeployment.GatewayID, "")
 	}
 
 	return toAPIDeploymentResponse(
@@ -574,7 +591,7 @@ func (s *MCPDeploymentService) getMCPProxyDeployment(proxyUUID string, deploymen
 		return nil, err
 	}
 	if mcpProxy == nil {
-		return nil, constants.ErrMCPProxyNotFound
+		return nil, apperror.MCPProxyNotFound.New()
 	}
 
 	// Get deployment with state derived via LEFT JOIN
@@ -583,7 +600,7 @@ func (s *MCPDeploymentService) getMCPProxyDeployment(proxyUUID string, deploymen
 		return nil, err
 	}
 	if deployment == nil {
-		return nil, constants.ErrDeploymentNotFound
+		return nil, apperror.DeploymentNotFound.New()
 	}
 
 	return toAPIDeploymentResponse(
@@ -608,7 +625,7 @@ func (s *MCPDeploymentService) getMCPProxyDeployments(proxyUUID string, orgId st
 		return nil, err
 	}
 	if mcpProxy == nil {
-		return nil, constants.ErrMCPProxyNotFound
+		return nil, apperror.MCPProxyNotFound.New()
 	}
 
 	// Validate status parameter
@@ -622,7 +639,7 @@ func (s *MCPDeploymentService) getMCPProxyDeployments(proxyUUID string, orgId st
 			string(model.DeploymentStatusFailed):      true,
 		}
 		if !validStatuses[*status] {
-			return nil, constants.ErrInvalidDeploymentStatus
+			return nil, apperror.DeploymentInvalidStatus.New()
 		}
 	}
 
@@ -670,7 +687,7 @@ func (s *MCPDeploymentService) deleteMCPProxyDeployment(proxyUUID string, deploy
 		return err
 	}
 	if mcpProxy == nil {
-		return constants.ErrMCPProxyNotFound
+		return apperror.MCPProxyNotFound.New()
 	}
 
 	// Verify deployment exists and belongs to the MCP proxy
@@ -679,12 +696,12 @@ func (s *MCPDeploymentService) deleteMCPProxyDeployment(proxyUUID string, deploy
 		return err
 	}
 	if deployment == nil {
-		return constants.ErrDeploymentNotFound
+		return apperror.DeploymentNotFound.New()
 	}
 
 	// Verify deployment is NOT currently DEPLOYED (status already populated by GetWithState)
 	if deployment.Status != nil && *deployment.Status == model.DeploymentStatusDeployed {
-		return constants.ErrDeploymentIsDeployed
+		return apperror.DeploymentActive.New()
 	}
 
 	// Delete the deployment artifact
@@ -706,7 +723,7 @@ func (s *MCPDeploymentService) getMCPProxyUUIDByHandle(handle, orgUUID string) (
 		return "", err
 	}
 	if artifact == nil {
-		return "", constants.ErrArtifactNotFound
+		return "", apperror.ArtifactNotFound.New()
 	}
 
 	return artifact.UUID, nil

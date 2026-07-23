@@ -38,6 +38,13 @@ Apply this rule whenever writing, refactoring, or reviewing Go (`.go`) code that
 * **Externalize Limits to Configuration:** The byte ceiling must come from application configuration (environment variable, config file) — never hardcoded. Provide a safe default that is used when the configuration key is absent.
 * **Return a Meaningful Error on Overflow:** If the limit is hit, return `HTTP 413 Request Entity Too Large` with a generic message. Do not expose the configured limit value in the error response.
 
+### 6. Uploaded Content Type Allowlisting and No Dynamic Code Execution on User Input
+
+* **Content-Sniff Before Trusting an Extension or Declared MIME Type:** Validate an uploaded file's actual byte content (magic-byte/structure sniffing) against an explicit allowlist of accepted types before storing or processing it — never trust the client-declared `Content-Type` header or the filename extension alone.
+* **Never Feed User Input to a Script/Expression/Template Engine Without a Sandbox:** If a feature accepts a script, expression, or template body from a request (a policy mediator, a transformation rule, an "execute this snippet" feature), never `eval`-equivalent it against the full language runtime. Execute it only inside an engine configured with an explicit allowlist of reachable classes/methods/built-ins — a blocklist of "dangerous" symbols is not sufficient, because the reachable surface of a general-purpose runtime is too large to enumerate exhaustively.
+* **Allowlist, Not Blocklist, for Reflective/Class Access:** Where a scripting or mediation feature must expose part of the Go runtime or a plugin API to user-supplied code, gate it with an explicit allowlist of permitted symbols. A blocklist approach only stops the specific bypasses already known at the time it was written.
+* **Treat "Admin-Only" Script Features the Same as Any Other Untrusted Input:** A feature reachable only by an authenticated administrator is still processing untrusted input from this rule's perspective — the authorization boundary controls *who* can reach the feature, not whether the feature itself is safe to execute arbitrary code.
+
 ---
 
 ## Code Examples for Enforcement
@@ -72,6 +79,19 @@ func ExtractZip(src, destDir string) {
         out, _ := os.Create(outPath)
         io.Copy(out, rc)                          // No decompression ratio guard
     }
+}
+
+func AcceptUpload(w http.ResponseWriter, r *http.Request, upload []byte, declaredType string) {
+    // Trusts the client-declared Content-Type / extension with no byte-level check —
+    // a ".png" upload containing SVG/HTML/script content is stored and later served as-is.
+    saveUploadedFile(upload, declaredType)
+}
+
+func RunScriptMediator(userScript string, ctx *MessageContext) error {
+    // Executes user-supplied script text against the full scripting-engine runtime
+    // with no allowlist of reachable classes/methods — arbitrary code execution.
+    engine := scripting.NewEngine()
+    return engine.Eval(userScript, ctx)
 }
 ```
 
@@ -222,6 +242,40 @@ func ExtractSingleEntry(cfg FileConfig, zipData []byte, entryName, destDir strin
     }
     return fmt.Errorf("requested entry not found in archive")
 }
+
+// GOOD: Content-sniff the actual bytes against an explicit allowlist — never
+// trust the client-declared Content-Type header or filename extension alone.
+var allowedUploadTypes = map[string]bool{
+    "image/png":  true,
+    "image/jpeg": true,
+    // "image/svg+xml" deliberately excluded — SVG is XML and can carry
+    // executable content; see js-output-encoding-xss.md for the JS-side
+    // handling required if SVG upload is ever added.
+}
+
+func AcceptUpload(w http.ResponseWriter, r *http.Request, upload []byte) error {
+    sniffed := http.DetectContentType(upload) // Inspects the actual bytes, not the header
+    if !allowedUploadTypes[sniffed] {
+        return fmt.Errorf("unsupported upload content type")
+    }
+    return saveUploadedFile(upload, sniffed)
+}
+
+// GOOD: A scripting/mediation feature restricted to an explicit allowlist of
+// reachable symbols — never the full runtime, and never gated by a blocklist
+// of "known dangerous" symbols alone.
+var allowedScriptSymbols = map[string]bool{
+    "ctx.GetProperty": true,
+    "ctx.SetProperty": true,
+    "math.Round":      true,
+    // Anything not explicitly listed here is unreachable from user scripts —
+    // e.g. no filesystem, network, process, or reflection access.
+}
+
+func RunScriptMediator(userScript string, ctx *MessageContext) error {
+    engine := scripting.NewSandboxedEngine(allowedScriptSymbols) // Allowlist enforced by the engine itself
+    return engine.Eval(userScript, ctx)
+}
 ```
 
 ---
@@ -232,3 +286,5 @@ func ExtractSingleEntry(cfg FileConfig, zipData []byte, entryName, destDir strin
 > * Is file processing done via `io.Reader` pipelines without intermediate `os.WriteFile` / `os.TempFile`? (If disk writes exist, remove them unless a third-party library strictly requires a path).
 > * Are all archive entries validated against the destination root before extraction? (If not, apply `safeJoin` on every entry).
 > * Is every inbound `io.Reader` wrapped in `io.LimitReader` with a limit sourced from configuration? (If hardcoded or absent, externalize to config with a safe default).
+> * Is an uploaded file's actual content sniffed (`http.DetectContentType`) against an allowlist, rather than trusting the declared `Content-Type` header or filename extension? (If trusted as-is, add content-sniffing.)
+> * Does any feature evaluate user-supplied script/expression/template text against the full scripting-engine runtime, or against a blocklist of "dangerous" symbols? (Both are insufficient — require an explicit allowlist of reachable classes/methods enforced by the engine itself.)

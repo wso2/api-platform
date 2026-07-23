@@ -25,14 +25,14 @@ You can create additional custom plans alongside these defaults.
 > **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
 > ```bash
 > TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
->   -d "username=admin&password=admin" | jq -r .token)
+>   -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 > ```
 
 Use the `SubscriptionPlan` manifest format:
 
 ```yaml
 # plan.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: SubscriptionPlan
 
 metadata:
@@ -65,7 +65,7 @@ To create multiple plans in one request, use the `SubscriptionPlanList` kind:
 
 ```yaml
 # plans.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: SubscriptionPlanList
 
 items:
@@ -111,7 +111,7 @@ curl -k https://localhost:3000/api/v0.9/subscription-plans/{planId} \
 
 ```yaml
 # plan-update.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: SubscriptionPlan
 
 metadata:

@@ -101,6 +101,7 @@ func dumpRouteMetadata(k *kernel.Kernel) RouteMetadataDump {
 			DefaultUpstreamCluster:  cfg.Metadata.DefaultUpstreamCluster,
 			UpstreamBasePath:        cfg.Metadata.UpstreamBasePath,
 			UpstreamDefinitionPaths: cfg.Metadata.UpstreamDefinitionPaths,
+			DefaultUpstream:         cfg.Metadata.DefaultUpstream,
 		})
 	}
 

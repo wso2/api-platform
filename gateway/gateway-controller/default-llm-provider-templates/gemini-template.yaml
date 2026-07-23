@@ -22,6 +22,9 @@ metadata:
   name: gemini
 spec:
   displayName: Gemini
+  groupId: wso2-gemini
+  managedBy: wso2
+  version: v1.0
   promptTokens:
     location: payload
     identifier: $.usageMetadata.promptTokenCount

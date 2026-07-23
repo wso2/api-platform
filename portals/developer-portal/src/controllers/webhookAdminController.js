@@ -17,6 +17,7 @@
  */
 const eventDao = require('../dao/eventDao');
 const logger = require('../config/logger');
+const util = require('../utils/util');
 
 function formatDelivery(d) {
     return {
@@ -62,12 +63,13 @@ async function listEvents(req, res) {
             offset: parsedOffset,
         });
         res.json({
+            count: result.rows.length,
             list: result.rows.map(formatEvent),
-            pagination: { total: result.count, limit: parsedLimit, offset: parsedOffset },
+            pagination: { limit: parsedLimit, offset: parsedOffset, total: result.count },
         });
     } catch (err) {
         logger.error('Failed to list events', { error: err.message });
-        res.status(500).json({ message: 'Failed to list events' });
+        util.sendError(res, 500, 'Failed to list events');
     }
 }
 
@@ -78,12 +80,12 @@ async function getEvent(req, res) {
     try {
         const event = await eventDao.get(req.params.eventId);
         if (!event || event.org_uuid !== req.orgId) {
-            return res.status(404).json({ message: 'Event not found' });
+            return util.sendError(res, 404, 'Event not found');
         }
         res.json(formatEvent(event));
     } catch (err) {
         logger.error('Failed to get event', { error: err.message });
-        res.status(500).json({ message: 'Failed to get event' });
+        util.sendError(res, 500, 'Failed to get event');
     }
 }
 

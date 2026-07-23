@@ -19,7 +19,7 @@
 metadata:
   name: gemini
 spec:
-  groupId: gemini
+  groupId: wso2-gemini
   displayName: Gemini
   managedBy: wso2
   version: v1.0
@@ -28,6 +28,8 @@ spec:
     auth:
       type: apiKey
       header: x-goog-api-key
+    logoUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/gemini/icon.png
+    openapiSpecUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/gemini/openapi.yaml
   promptTokens:
     location: payload
     identifier: $.usageMetadata.promptTokenCount

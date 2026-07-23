@@ -36,13 +36,15 @@ import (
 type OrganizationHandler struct {
 	orgService *service.OrganizationService
 	identity   *service.IdentityService
+	authzMode  string
 	slogger    *slog.Logger
 }
 
-func NewOrganizationHandler(orgService *service.OrganizationService, identity *service.IdentityService, slogger *slog.Logger) *OrganizationHandler {
+func NewOrganizationHandler(orgService *service.OrganizationService, identity *service.IdentityService, authzMode string, slogger *slog.Logger) *OrganizationHandler {
 	return &OrganizationHandler{
 		orgService: orgService,
 		identity:   identity,
+		authzMode:  authzMode,
 		slogger:    slogger,
 	}
 }
@@ -164,7 +166,21 @@ func (h *OrganizationHandler) GetOrganizationByID(w http.ResponseWriter, r *http
 func (h *OrganizationHandler) ListOrganizations(w http.ResponseWriter, r *http.Request) error {
 	limit, offset := parsePagination(r)
 
-	orgs, total, err := h.orgService.ListOrganizations(limit, offset)
+	// resolveActorErr also creates the caller's user_idp_references row on first
+	// use, which is what makes the membership heal below FK-safe.
+	performedBy, err := resolveActorErr(r, h.identity, "list organizations")
+	if err != nil {
+		return err
+	}
+
+	var orgs []api.Organization
+	var total int
+	if middleware.HasEffectiveScope(r, h.authzMode, "ap:organization:manage") {
+		orgs, total, err = h.orgService.ListOrganizations(limit, offset)
+	} else {
+		resolvedOrgUUID, _ := middleware.GetOrganizationFromRequest(r)
+		orgs, total, err = h.orgService.ListOrganizationsForUser(performedBy, resolvedOrgUUID, limit, offset)
+	}
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage("failed to list organizations")

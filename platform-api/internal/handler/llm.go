@@ -126,17 +126,7 @@ func (h *LLMHandler) CreateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 
 	created, err := h.templateService.Create(orgID, createdBy, &req)
 	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderTemplateExists):
-			return apperror.LLMProviderTemplateExists.Wrap(err)
-		case errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved):
-			return apperror.LLMProviderTemplateManagedByReserved.Wrap(err)
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid input")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to create LLM provider template in org %s", orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to create LLM provider template in org %s", orgID))
 	}
 
 	setLocation(w, "llm-provider-templates", strOrEmpty(created.Id))
@@ -180,19 +170,7 @@ func (h *LLMHandler) CopyLLMProviderTemplateVersion(w http.ResponseWriter, r *ht
 
 	created, err := h.templateService.CopyVersion(orgID, fromTemplateID, toTemplateID, toVersion, createdBy, overrides)
 	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			return apperror.LLMProviderTemplateVersionNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrLLMProviderTemplateVersionExists):
-			return apperror.LLMProviderTemplateVersionExists.Wrap(err)
-		case errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved):
-			return apperror.LLMProviderTemplateManagedByReserved.Wrap(err)
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid input. toVersion must match the v<major>.<minor> pattern starting from v1.0 (e.g. v1.0), and toTemplateId must match the family")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to copy LLM provider template version from %s to version %s in org %s", fromTemplateID, toVersion, orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to copy LLM provider template version from %s to version %s in org %s", fromTemplateID, toVersion, orgID))
 	}
 
 	setLocation(w, "llm-provider-templates", strOrEmpty(created.Id))
@@ -219,30 +197,14 @@ func (h *LLMHandler) ListLLMProviderTemplates(w http.ResponseWriter, r *http.Req
 		if version != "" {
 			resp, err := h.templateService.GetVersion(orgID, groupID, version)
 			if err != nil {
-				switch {
-				case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-					return apperror.LLMProviderTemplateVersionNotFound.Wrap(err)
-				case errors.Is(err, constants.ErrInvalidInput):
-					return apperror.ValidationFailed.Wrap(err, "Invalid version. Version must match the v<major>.<minor> pattern (e.g. v1.0)")
-				default:
-					return apperror.Internal.Wrap(err).
-						WithLogMessage(fmt.Sprintf("failed to get LLM provider template version %s of group %s in org %s", version, groupID, orgID))
-				}
+				return serviceError(err, fmt.Sprintf("failed to get LLM provider template version %s of group %s in org %s", version, groupID, orgID))
 			}
 			httputil.WriteJSON(w, http.StatusOK, resp)
 			return nil
 		}
 		resp, err := h.templateService.ListVersions(orgID, groupID, limit, offset)
 		if err != nil {
-			switch {
-			case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-				return apperror.LLMProviderTemplateNotFound.Wrap(err)
-			case errors.Is(err, constants.ErrInvalidInput):
-				return apperror.ValidationFailed.Wrap(err, "Invalid groupId")
-			default:
-				return apperror.Internal.Wrap(err).
-					WithLogMessage(fmt.Sprintf("failed to list LLM provider template versions of group %s in org %s", groupID, orgID))
-			}
+			return serviceError(err, fmt.Sprintf("failed to list LLM provider template versions of group %s in org %s", groupID, orgID))
 		}
 		httputil.WriteJSON(w, http.StatusOK, resp)
 		return nil
@@ -252,8 +214,7 @@ func (h *LLMHandler) ListLLMProviderTemplates(w http.ResponseWriter, r *http.Req
 
 	resp, err := h.templateService.List(orgID, limit, offset, latestOnly)
 	if err != nil {
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to list LLM provider templates in org %s", orgID))
+		return serviceError(err, fmt.Sprintf("failed to list LLM provider templates in org %s", orgID))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -269,15 +230,7 @@ func (h *LLMHandler) GetLLMProviderTemplate(w http.ResponseWriter, r *http.Reque
 
 	resp, err := h.templateService.Get(orgID, id)
 	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			return apperror.LLMProviderTemplateNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid template id")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to get LLM provider template %s in org %s", id, orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to get LLM provider template %s in org %s", id, orgID))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -300,19 +253,7 @@ func (h *LLMHandler) SetLLMProviderTemplateVersionEnabled(w http.ResponseWriter,
 
 	resp, err := h.templateService.SetEnabledByHandle(orgID, id, *body.Enabled)
 	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			return apperror.LLMProviderTemplateVersionNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid template id")
-		case errors.Is(err, constants.ErrLLMProviderTemplateInUse):
-			return apperror.LLMProviderTemplateInUse.Wrap(err)
-		case errors.Is(err, constants.ErrLLMProviderTemplateNotToggleable):
-			return apperror.LLMProviderTemplateNotToggleable.Wrap(err)
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to set LLM provider template version enabled for template %s in org %s", id, orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to set LLM provider template version enabled for template %s in org %s", id, orgID))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -341,24 +282,7 @@ func (h *LLMHandler) UpdateLLMProviderTemplate(w http.ResponseWriter, r *http.Re
 	}
 	resp, err := h.templateService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
-		if guardErr := mapArtifactGuardError(err); guardErr != nil {
-			return guardErr
-		}
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			return apperror.LLMProviderTemplateNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrLLMProviderTemplateReadOnly):
-			return apperror.LLMProviderTemplateReadOnly.Wrap(err)
-		case errors.Is(err, constants.ErrLLMProviderTemplateManagedByReserved):
-			return apperror.LLMProviderTemplateManagedByReserved.Wrap(err)
-		case errors.Is(err, constants.ErrHandleImmutable):
-			return apperror.ValidationFailed.Wrap(err, "The id is immutable and cannot be changed")
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid input")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to update LLM provider template %s in org %s", id, orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to update LLM provider template %s in org %s", id, orgID))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -374,19 +298,7 @@ func (h *LLMHandler) DeleteLLMProviderTemplateVersion(w http.ResponseWriter, r *
 	id := r.PathValue("llmProviderTemplateId")
 
 	if err := h.templateService.DeleteByHandle(orgID, id); err != nil {
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			return apperror.LLMProviderTemplateVersionNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrLLMProviderTemplateInUse):
-			return apperror.LLMProviderTemplateInUse.Wrap(err)
-		case errors.Is(err, constants.ErrLLMProviderTemplateReadOnly):
-			return apperror.LLMProviderTemplateReadOnly.Wrap(err)
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid template id")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to delete LLM provider template version %s in org %s", id, orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to delete LLM provider template version %s in org %s", id, orgID))
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -413,23 +325,7 @@ func (h *LLMHandler) CreateLLMProvider(w http.ResponseWriter, r *http.Request) e
 
 	created, err := h.providerService.Create(orgID, createdBy, &req)
 	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderLimitReached):
-			return apperror.LLMProviderLimitReached.Wrap(err)
-		case errors.Is(err, constants.ErrLLMProviderExists):
-			return apperror.LLMProviderExists.Wrap(err)
-		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			return apperror.LLMProviderTemplateRefNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrSecretRefMissing):
-			return apperror.ValidationFailed.Wrap(err, "One or more referenced secrets do not exist")
-		case errors.Is(err, constants.ErrInvalidPolicyVersion):
-			return apperror.ValidationFailed.Wrap(err, "Invalid policy version format")
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid input")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to create LLM provider in org %s", orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to create LLM provider in org %s", orgID))
 	}
 	setLocation(w, "llm-providers", strOrEmpty(created.Id))
 	httputil.WriteJSON(w, http.StatusCreated, created)
@@ -447,8 +343,7 @@ func (h *LLMHandler) ListLLMProviders(w http.ResponseWriter, r *http.Request) er
 
 	resp, err := h.providerService.List(orgID, limit, offset)
 	if err != nil {
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to list LLM providers in org %s", orgID))
+		return serviceError(err, fmt.Sprintf("failed to list LLM providers in org %s", orgID))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -464,15 +359,7 @@ func (h *LLMHandler) GetLLMProvider(w http.ResponseWriter, r *http.Request) erro
 
 	resp, err := h.providerService.Get(orgID, id)
 	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			return apperror.LLMProviderNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid provider id")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to get LLM provider %s in org %s", id, orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to get LLM provider %s in org %s", id, orgID))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -501,26 +388,7 @@ func (h *LLMHandler) UpdateLLMProvider(w http.ResponseWriter, r *http.Request) e
 	}
 	resp, err := h.providerService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
-		if guardErr := mapArtifactGuardError(err); guardErr != nil {
-			return guardErr
-		}
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			return apperror.LLMProviderNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrLLMProviderTemplateNotFound):
-			return apperror.LLMProviderTemplateRefNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrSecretRefMissing):
-			return apperror.ValidationFailed.Wrap(err, "One or more referenced secrets do not exist")
-		case errors.Is(err, constants.ErrHandleImmutable):
-			return apperror.ValidationFailed.Wrap(err, "The id is immutable and cannot be changed")
-		case errors.Is(err, constants.ErrInvalidPolicyVersion):
-			return apperror.ValidationFailed.Wrap(err, "Invalid policy version format")
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid input")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to update LLM provider %s in org %s", id, orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to update LLM provider %s in org %s", id, orgID))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -539,18 +407,7 @@ func (h *LLMHandler) DeleteLLMProvider(w http.ResponseWriter, r *http.Request) e
 	}
 
 	if err := h.providerService.Delete(orgID, id, deletedBy); err != nil {
-		if guardErr := mapArtifactGuardError(err); guardErr != nil {
-			return guardErr
-		}
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			return apperror.LLMProviderNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid provider id")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to delete LLM provider %s in org %s", id, orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to delete LLM provider %s in org %s", id, orgID))
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
@@ -579,23 +436,7 @@ func (h *LLMHandler) CreateLLMProxy(w http.ResponseWriter, r *http.Request) erro
 
 	created, err := h.proxyService.Create(orgID, createdBy, &req)
 	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrLLMProxyLimitReached):
-			return apperror.LLMProxyLimitReached.Wrap(err)
-		case errors.Is(err, constants.ErrLLMProxyExists):
-			return apperror.LLMProxyExists.Wrap(err)
-		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			return apperror.LLMProviderRefNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrProjectNotFound):
-			return apperror.ProjectNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrInvalidPolicyVersion):
-			return apperror.ValidationFailed.Wrap(err, "Invalid policy version format")
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid input")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to create LLM proxy in org %s", orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to create LLM proxy in org %s", orgID))
 	}
 	setLocation(w, "llm-proxies", strOrEmpty(created.Id))
 	httputil.WriteJSON(w, http.StatusCreated, created)
@@ -617,11 +458,7 @@ func (h *LLMHandler) ListLLMProxies(w http.ResponseWriter, r *http.Request) erro
 
 	resp, err := h.proxyService.List(orgID, &projectID, limit, offset)
 	if err != nil {
-		if errors.Is(err, constants.ErrProjectNotFound) {
-			return apperror.ProjectNotFound.Wrap(err)
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to list LLM proxies in org %s", orgID))
+		return serviceError(err, fmt.Sprintf("failed to list LLM proxies in org %s", orgID))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -639,15 +476,7 @@ func (h *LLMHandler) ListLLMProxiesByProvider(w http.ResponseWriter, r *http.Req
 
 	resp, err := h.proxyService.ListByProvider(orgID, providerID, limit, offset)
 	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			return apperror.LLMProviderNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid provider id")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to list LLM proxies by provider %s in org %s", providerID, orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to list LLM proxies by provider %s in org %s", providerID, orgID))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -663,15 +492,7 @@ func (h *LLMHandler) GetLLMProxy(w http.ResponseWriter, r *http.Request) error {
 
 	resp, err := h.proxyService.Get(orgID, id)
 	if err != nil {
-		switch {
-		case errors.Is(err, constants.ErrLLMProxyNotFound):
-			return apperror.LLMProxyNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid proxy id")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to get LLM proxy %s in org %s", id, orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to get LLM proxy %s in org %s", id, orgID))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -700,24 +521,7 @@ func (h *LLMHandler) UpdateLLMProxy(w http.ResponseWriter, r *http.Request) erro
 	}
 	resp, err := h.proxyService.Update(orgID, id, updatedBy, &req)
 	if err != nil {
-		if guardErr := mapArtifactGuardError(err); guardErr != nil {
-			return guardErr
-		}
-		switch {
-		case errors.Is(err, constants.ErrLLMProxyNotFound):
-			return apperror.LLMProxyNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrLLMProviderNotFound):
-			return apperror.LLMProviderRefNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrHandleImmutable):
-			return apperror.ValidationFailed.Wrap(err, "The id is immutable and cannot be changed")
-		case errors.Is(err, constants.ErrInvalidPolicyVersion):
-			return apperror.ValidationFailed.Wrap(err, "Invalid policy version format")
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid input")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to update LLM proxy %s in org %s", id, orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to update LLM proxy %s in org %s", id, orgID))
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 	return nil
@@ -736,18 +540,7 @@ func (h *LLMHandler) DeleteLLMProxy(w http.ResponseWriter, r *http.Request) erro
 	}
 
 	if err := h.proxyService.Delete(orgID, id, deletedBy); err != nil {
-		if guardErr := mapArtifactGuardError(err); guardErr != nil {
-			return guardErr
-		}
-		switch {
-		case errors.Is(err, constants.ErrLLMProxyNotFound):
-			return apperror.LLMProxyNotFound.Wrap(err)
-		case errors.Is(err, constants.ErrInvalidInput):
-			return apperror.ValidationFailed.Wrap(err, "Invalid proxy id")
-		default:
-			return apperror.Internal.Wrap(err).
-				WithLogMessage(fmt.Sprintf("failed to delete LLM proxy %s in org %s", id, orgID))
-		}
+		return serviceError(err, fmt.Sprintf("failed to delete LLM proxy %s in org %s", id, orgID))
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil

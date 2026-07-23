@@ -33,13 +33,13 @@
  *
  */
 
-const jwt = require('jsonwebtoken');
+const { safeDecodeJwt } = require('../utils/jwtDecode');
 const { jwtVerify, createRemoteJWKSet } = require('jose');
 
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
-const { extractPlatformJwtClaims } = require('../utils/platformJwt');
+const { verifyPlatformJwtClaims, decodePlatformJwtClaims } = require('../utils/platformJwt');
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
 const orgDao = require('../dao/organizationDao');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
@@ -126,8 +126,8 @@ async function verifyJwksWithRefresh(token, jwksURL, req) {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
         const jwtVerifyOptions = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
-        if (config.idp?.issuer) jwtVerifyOptions.issuer = config.idp.issuer;
-        if (config.idp?.audience) jwtVerifyOptions.audience = config.idp.audience;
+        if (config.auth.idp?.issuer) jwtVerifyOptions.issuer = config.auth.idp.issuer;
+        if (config.auth.idp?.audience) jwtVerifyOptions.audience = config.auth.idp.audience;
         const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);
         const rawScope = payload.scope ?? payload.scp;
         const scopes = Array.isArray(rawScope) ? rawScope.join(' ') : (rawScope || '');
@@ -159,12 +159,14 @@ async function verifyJwksWithRefresh(token, jwksURL, req) {
 
 async function verifyBearerToken(token, req) {
     const idp = resolveOrgIdp();
-    if (!idp || !idp.clientId) {
-        // Local auth mode: verify Platform API JWT with shared secret when configured.
-        const jwtSecret = config.platformApi?.jwtSecret;
-        const claims = extractPlatformJwtClaims(token, jwtSecret || null);
-        if (jwtSecret && !claims) return { valid: false, scopes: '' };
-        return { valid: true, scopes: claims?.scopes?.join(' ') ?? '' };
+    if (config.auth.mode !== 'idp') {
+        // Local auth mode: verify the Platform API JWT against its RS256 public key.
+        // Fail closed if no key path is configured — never accept an unverified token.
+        const publicKeyPath = config.auth.local?.publicKeyPath;
+        if (!publicKeyPath) return { valid: false, scopes: '' };
+        const claims = await verifyPlatformJwtClaims(token, publicKeyPath);
+        if (!claims) return { valid: false, scopes: '' };
+        return { valid: true, scopes: claims.scopes?.join(' ') ?? '' };
     }
     if (idp.certificate) {
         return verifyWithCertificate(token, idp.certificate);
@@ -231,9 +233,9 @@ async function authResolver(req, res, next) {
         // The session stores the org handle in the same ORGANIZATION_CLAIM slot used by IDP
         // sessions, so resolveOrgFromClaim works via the HANDLE lookup in orgDao.getId.
         if (req.isAuthenticated && req.isAuthenticated() &&
-            req.user?.isLocalAuth && !config.idp?.clientId) {
+            req.user?.isLocalAuth && config.auth.mode !== 'idp') {
             const platformToken = req.user[constants.ACCESS_TOKEN];
-            const claims = platformToken ? extractPlatformJwtClaims(platformToken, null) : null;
+            const claims = platformToken ? decodePlatformJwtClaims(platformToken) : null;
             const orgHandle = req.user[constants.ROLES.ORGANIZATION_CLAIM];
             const orgErr = await resolveOrgFromClaim(req, orgHandle);
             if (orgErr) return next(orgErr);
@@ -252,8 +254,8 @@ async function authResolver(req, res, next) {
         // on page routes, so scope enforcement here is redundant and would require listing all
         // dp:* scopes in the OIDC scope config. Set preauthorized to bypass the per-operation
         // scope check for session users (same as API key and mTLS paths).
-        if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.idp?.clientId) {
-            const orgIDClaim = config.idp?.claims?.orgId;
+        if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.auth.mode === 'idp') {
+            const orgIDClaim = config.auth.idp?.claims?.orgId;
             if (orgIDClaim) {
                 const sessionOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
                 if (!sessionOrgClaim) {
@@ -286,11 +288,11 @@ async function authResolver(req, res, next) {
                 err.status = 401;
                 return next(err);
             }
-            const decoded = jwt.decode(req.user?.[constants.ACCESS_TOKEN] || token) || {};
+            const decoded = safeDecodeJwt(req.user?.[constants.ACCESS_TOKEN] || token) || {};
             // Resolve org UUID from the token's org claim (IDP_REF_ID).
             // Only in IDP mode — local-auth and platform-JWT tokens carry no org claim.
-            const orgIDClaim = config.idp?.claims?.orgId;
-            if (config.idp?.clientId && orgIDClaim) {
+            const orgIDClaim = config.auth.idp?.claims?.orgId;
+            if (config.auth.mode === 'idp' && orgIDClaim) {
                 const tokenOrgClaim = decoded[orgIDClaim];
                 if (!tokenOrgClaim) {
                     const err = new Error('Missing organization claim in token');

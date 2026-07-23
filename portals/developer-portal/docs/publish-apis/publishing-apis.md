@@ -19,7 +19,7 @@ Create an API manifest file using the appropriate `kind`. The file **must** be n
 
 ```yaml
 # api.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: RestApi   # RestApi | WS | GraphQL | SOAP | WebSubApi
 
 metadata:
@@ -62,7 +62,7 @@ For an MCP server, use `mcp.yaml` instead:
 
 ```yaml
 # mcp.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: MCP
 
 metadata:
@@ -98,7 +98,7 @@ spec:
 > **Authentication:** The examples below use a `$TOKEN` variable. Obtain a Bearer token first:
 > ```bash
 > TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
->   -d "username=admin&password=admin" | jq -r .token)
+>   -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 > ```
 
 Send the manifest and definition together as a multipart upload:
@@ -107,24 +107,25 @@ Send the manifest and definition together as a multipart upload:
 # REST API with OpenAPI definition
 curl -k -X POST "https://localhost:3000/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
-  -F "api=@api.yaml" \
-  -F "apiDefinition=@openapi.yaml;type=application/yaml"
+  -F "metadata=@api.yaml" \
+  -F "definition=@openapi.yaml;type=application/yaml"
 ```
 
 ```bash
 # GraphQL API
 curl -k -X POST "https://localhost:3000/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
-  -F "api=@api.yaml" \
-  -F "apiDefinition=@schema.graphql;type=application/graphql"
+  -F "metadata=@api.yaml" \
+  -F "definition=@schema.graphql;type=application/graphql"
 ```
 
 ```bash
-# MCP server (note: MCP servers are created under /mcp-servers, not /apis)
+# MCP server (note: MCP servers are created under /mcp-servers, not /apis).
+# An MCP server's contract is its tools schema (schemaDefinition) — it has no apiDefinition.
 curl -k -X POST "https://localhost:3000/api/v0.9/mcp-servers" \
   -H "Authorization: Bearer $TOKEN" \
-  -F "api=@mcp.yaml" \
-  -F "apiDefinition=@mcp-spec.yaml;type=application/yaml"
+  -F "metadata=@mcp.yaml" \
+  -F "definition=@schemaDefinition.yaml;type=application/yaml"
 ```
 
 | Field | Required | Description |
@@ -155,8 +156,8 @@ The response includes the `apiId` needed for subsequent steps.
 curl -k -X PUT \
   "https://localhost:3000/api/v0.9/apis/{apiId}" \
   -H "Authorization: Bearer $TOKEN" \
-  -F 'apiMetadata={"id":"{apiId}","name":"Order API","endPoints":{"productionURL":"https://api.example.com/orders","sandboxURL":"https://sandbox.example.com/orders"}}' \
-  -F "apiDefinition=@openapi.yaml;type=application/yaml"
+  -F 'metadata={"id":"{apiId}","name":"Order API","endPoints":{"productionURL":"https://api.example.com/orders","sandboxURL":"https://sandbox.example.com/orders"}}' \
+  -F "definition=@openapi.yaml;type=application/yaml"
 ```
 
 ```bash
@@ -164,8 +165,8 @@ curl -k -X PUT \
 curl -k -X PUT \
   "https://localhost:3000/api/v0.9/apis/{apiId}" \
   -H "Authorization: Bearer $TOKEN" \
-  -F 'apiMetadata={"id":"{apiId}","name":"Order API","endPoints":{"productionURL":"https://api.example.com/orders","sandboxURL":"https://sandbox.example.com/orders"}}' \
-  -F "apiDefinition=@asyncapi.yaml;type=application/yaml"
+  -F 'metadata={"id":"{apiId}","name":"Order API","endPoints":{"productionURL":"https://api.example.com/orders","sandboxURL":"https://sandbox.example.com/orders"}}' \
+  -F "definition=@asyncapi.yaml;type=application/yaml"
 ```
 
 The uploaded definition is shown in the API's **Try-Out** tab and is exposed at the machine-readable spec endpoint for AI agent consumption.
@@ -285,7 +286,7 @@ Consumers subscribe to a plan (receiving a subscription token), generate an API 
 
 ```yaml
 # api-update.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: RestApi
 
 metadata:
@@ -304,7 +305,7 @@ spec:
 ```bash
 curl -k -X PUT https://localhost:3000/api/v0.9/apis/{apiId} \
   -H "Authorization: Bearer $TOKEN" \
-  -F "api=@api-update.yaml"
+  -F "metadata=@api-update.yaml"
 ```
 
 ## Delete an API

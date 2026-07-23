@@ -24,11 +24,14 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -38,28 +41,74 @@ import (
 	"ai-workspace-bff/internal/tlsutil"
 )
 
+// bannerWidth is the character width of the startup banner's rule lines.
+const bannerWidth = 72
+
+// centerInBanner left-pads s so it sits centered between the banner rules.
+func centerInBanner(s string) string {
+	if len(s) >= bannerWidth {
+		return s
+	}
+	return strings.Repeat(" ", (bannerWidth-len(s))/2) + s
+}
+
 // printStartedMarker writes a large, prominent banner for humans watching
 // the console, matching the gateway controller's startup banner style. It's
 // purely decorative — the structured "AI Workspace BFF started" slog.Info
 // line is the source of truth for log parsing.
-func printStartedMarker(mode string) {
+func printStartedMarker(url string) {
+	rule := strings.Repeat("=", bannerWidth)
 	fmt.Print("\n\n" +
-		"========================================================================\n" +
+		rule + "\n" +
 		"\n" +
-		"                    AI Workspace Started mode=" + mode + "\n" +
+		centerInBanner("AI Workspace Started") + "\n\n" +
+		centerInBanner("Visit "+url) + "\n" +
 		"\n" +
-		"========================================================================\n" +
+		rule + "\n" +
 		"\n\n")
 }
 
+// portalURL renders the browser-visitable address of the portal. A wildcard or
+// empty listen host is reported as localhost, since "https://:8081" and
+// "https://0.0.0.0:8081" are not addresses a human can click.
+func portalURL(addr string, tlsEnabled bool) string {
+	scheme := "http"
+	if tlsEnabled {
+		scheme = "https"
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return scheme + "://" + addr
+	}
+	switch host {
+	case "", "0.0.0.0", "::", "[::]":
+		host = "localhost"
+	}
+	return scheme + "://" + net.JoinHostPort(host, port)
+}
+
 func main() {
-	cfg, err := config.Load()
+	// The container reads its mounted config.toml, so -config is only needed to run
+	// the BFF outside one (see `make bff-run`).
+	configFile := flag.String("config", config.DefaultConfigFile, "path to config.toml")
+	// The shipped config.toml has no {{ env }} token for static_dir — the container
+	// always serves the SPA baked in at /app, so there's nothing for an operator to
+	// override. `make bff-run` is the one caller that needs a different directory
+	// (the locally-built ../dist), so it's a dev-only CLI flag rather than a config
+	// key, keeping the shipped config free of a token no deployment ever sets.
+	staticDir := flag.String("static-dir", "", "override the directory serving the built SPA (local dev only, e.g. `make bff-run`)")
+	flag.Parse()
+
+	cfg, err := config.Load(*configFile)
 	if err != nil {
 		slog.SetDefault(logger.NewLogger(logger.Config{Level: "info", Format: "text"}))
 		slog.Error("configuration error", "err", err)
 		os.Exit(1)
 	}
-	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.LogLevel, Format: cfg.LogFormat}))
+	if *staticDir != "" {
+		cfg.Server.StaticDir = *staticDir
+	}
+	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.Logging.Level, Format: cfg.Logging.Format}))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -72,7 +121,7 @@ func main() {
 	defer srv.Close()
 
 	httpServer := &http.Server{
-		Addr:              cfg.Addr,
+		Addr:              cfg.Addr(),
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
@@ -80,7 +129,7 @@ func main() {
 		IdleTimeout:       120 * time.Second,
 	}
 
-	tlsConfig, err := buildTLS(cfg.TLS, cfg.DemoMode)
+	tlsConfig, err := buildTLS(cfg.Server)
 	if err != nil {
 		slog.Error("failed to set up TLS", "err", err)
 		os.Exit(1)
@@ -88,18 +137,15 @@ func main() {
 	httpServer.TLSConfig = tlsConfig
 
 	go func() {
-		mode := "PRODUCTION"
-		if cfg.DemoMode {
-			mode = "DEMO"
-		}
+		url := portalURL(cfg.Addr(), tlsConfig != nil)
 		slog.Info("AI Workspace BFF started",
-			"addr", cfg.Addr,
-			"mode", mode,
-			"auth_mode", cfg.AuthMode,
-			"platform_api", cfg.PlatformAPIURL,
-			"oidc_enabled", cfg.OIDC.Enabled,
+			"addr", cfg.Addr(),
+			"url", url,
+			"auth_mode", cfg.Auth.Mode,
+			"control_plane", cfg.ControlPlane.URL,
+			"oidc_enabled", cfg.Auth.OIDC.Enabled,
 		)
-		printStartedMarker(mode)
+		printStartedMarker(url)
 		var serveErr error
 		if tlsConfig != nil {
 			serveErr = httpServer.ListenAndServeTLS("", "")
@@ -124,40 +170,34 @@ func main() {
 	}
 }
 
-// buildTLS returns the listener TLS config, or nil for plain HTTP. Priority:
-// mounted cert/key files (when both exist), then in-memory self-signed, then
-// disabled. In demo mode a missing mounted cert is not fatal — it falls back to
-// a self-signed cert; outside demo mode an operator-provided cert is required.
-func buildTLS(c config.TLSConfig, demoMode bool) (*tls.Config, error) {
+// buildTLS returns the listener TLS config, or nil for plain HTTP. When TLS is
+// disabled no certificate is read or required. Otherwise a mounted cert/key pair
+// is required — there is no self-signed fallback; use the quickstart setup
+// script (or your own tooling) to generate a pair and mount it.
+func buildTLS(c config.ServerConfig) (*tls.Config, error) {
+	if !c.Enabled {
+		// Plain HTTP is only safe when something upstream terminates TLS.
+		slog.Warn("TLS: disabled ([server] enabled = false) — serving plain HTTP. " +
+			"Terminate TLS at an ingress or service-mesh sidecar and " +
+			"never expose this listener directly to untrusted networks.")
+		return nil, nil
+	}
 	// A partial mount (exactly one of cert/key present) is a misconfiguration, not
 	// a request for plain HTTP — fail loudly instead of silently downgrading.
 	if fileExists(c.CertFile) != fileExists(c.KeyFile) {
 		return nil, fmt.Errorf("incomplete TLS mount: exactly one of cert (%q) and key (%q) is present", c.CertFile, c.KeyFile)
 	}
-	if fileExists(c.CertFile) && fileExists(c.KeyFile) {
-		cert, err := tlsutil.CertFromFiles(c.CertFile, c.KeyFile)
-		if err != nil {
-			return nil, err
-		}
-		slog.Info("TLS: using mounted certificate", "cert", c.CertFile)
-		return &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, nil
+	if !fileExists(c.CertFile) {
+		return nil, fmt.Errorf("TLS is enabled but no certificate is mounted: "+
+			"set [server] cert_file (%q) and key_file (%q) to existing files, "+
+			"or set [server] enabled = false to serve plain HTTP behind a TLS-terminating proxy", c.CertFile, c.KeyFile)
 	}
-	// No mounted cert. Auto-generating a self-signed certificate is a dev-only
-	// convenience — outside demo mode, require the operator to mount a real cert.
-	if !demoMode {
-		return nil, fmt.Errorf("APIP_DEMO_MODE=false requires a mounted TLS certificate: "+
-			"set BFF_TLS_CERT_FILE (%q) and BFF_TLS_KEY_FILE (%q) to existing files. "+
-			"Self-signed certificates are only auto-generated in demo mode", c.CertFile, c.KeyFile)
+	cert, err := tlsutil.CertFromFiles(c.CertFile, c.KeyFile)
+	if err != nil {
+		return nil, err
 	}
-	if c.SelfSigned {
-		cert, err := tlsutil.SelfSigned()
-		if err != nil {
-			return nil, err
-		}
-		slog.Warn("TLS: using in-memory self-signed certificate (browsers will warn)")
-		return &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, nil
-	}
-	return nil, nil
+	slog.Info("TLS: using mounted certificate", "cert", c.CertFile)
+	return &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}, nil
 }
 
 func fileExists(p string) bool {

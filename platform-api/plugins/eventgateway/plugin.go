@@ -33,6 +33,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/plugin"
@@ -153,6 +154,7 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 		deps.OrgRepo,
 		deps.ArtifactRepo,
 		deps.APIRepo,
+		deps.APIKeyRepo,
 		deps.GatewayEventsService,
 		cfg,
 		logger,
@@ -177,6 +179,7 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 		deps.OrgRepo,
 		deps.ArtifactRepo,
 		deps.APIRepo,
+		deps.APIKeyRepo,
 		deps.GatewayEventsService,
 		cfg,
 		logger,
@@ -256,14 +259,14 @@ func (p *EventGatewayPlugin) CheckProjectDeletion(orgID, projectID string) error
 		return err
 	}
 	if websubCount > 0 {
-		return constants.ErrProjectHasAssociatedWebSubAPIs
+		return apperror.ValidationFailed.New("Project has associated WebSub APIs")
 	}
 	webbrokerCount, err := p.webbrokerAPIRepo.CountByProject(orgID, projectID)
 	if err != nil {
 		return err
 	}
 	if webbrokerCount > 0 {
-		return constants.ErrProjectHasAssociatedWebBrokerAPIs
+		return apperror.ValidationFailed.New("Project has associated WebBroker APIs")
 	}
 	return nil
 }
@@ -275,18 +278,9 @@ func (p *EventGatewayPlugin) EnrichSubscription(orgID string, sub *api.Organizat
 	if err != nil {
 		return err
 	}
-	// A limit <= 0 means unlimited: report only usage, leaving Limit/Remaining
-	// unset so consumers treat the WebSub API quota as uncapped.
-	quota := &api.OrganizationQuota{Used: count}
-	if limit := p.cfg.ArtifactLimits.MaxWebSubAPIsPerOrg; limit > 0 {
-		quota.Limit = intPtr(limit)
-		quota.Remaining = intPtr(max(limit-count, 0))
-	}
-	sub.Quotas.WebsubApis = quota
+	sub.Quotas.WebsubApis = &api.OrganizationQuota{Used: count}
 	return nil
 }
-
-func intPtr(v int) *int { return &v }
 
 // selectSchema returns the DDL appropriate for the current database driver.
 func (p *EventGatewayPlugin) selectSchema(db *database.DB) string {

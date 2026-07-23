@@ -1,5 +1,5 @@
 .custom-bootstrap-alert {
-    background-color: #fff7f0;
+    background-color: var(--warning-surface);
     color: #2c2c2c;
     border-radius: 0;
     font-size: 0.75rem;
@@ -9,6 +9,6 @@
 }
 
 .alert-icon {
-    color: #f57c00;
+    color: var(--warning);
     font-size: 1.25rem;
 }

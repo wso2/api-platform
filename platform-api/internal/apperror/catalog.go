@@ -77,14 +77,12 @@ var (
 	LLMProviderNotFound                   = def(CodeLLMProviderNotFound, http.StatusNotFound, "The specified LLM provider could not be found.")
 	LLMProviderRefNotFound                = def(CodeLLMProviderRefNotFound, http.StatusBadRequest, "The referenced LLM provider could not be found.")
 	LLMProviderExists                     = def(CodeLLMProviderExists, http.StatusConflict, "An LLM provider with this ID already exists.")
-	LLMProviderLimitReached               = def(CodeLLMProviderLimitReached, http.StatusConflict, "LLM provider limit reached for the organization.")
 	LLMProviderAPIKeyNotFound             = def(CodeLLMProviderAPIKeyNotFound, http.StatusNotFound, "The specified API key could not be found.")
 	LLMProviderAPIKeyForbidden            = def(CodeLLMProviderAPIKeyForbidden, http.StatusForbidden, "You do not have permission to access this API key.")
 	LLMProviderDeploymentValidationFailed = def(CodeLLMProviderDeploymentValidationFailed, http.StatusBadRequest, "%s")
 
 	LLMProxyNotFound                   = def(CodeLLMProxyNotFound, http.StatusNotFound, "The specified LLM proxy could not be found.")
 	LLMProxyExists                     = def(CodeLLMProxyExists, http.StatusConflict, "An LLM proxy with this ID already exists.")
-	LLMProxyLimitReached               = def(CodeLLMProxyLimitReached, http.StatusConflict, "LLM proxy limit reached for the organization.")
 	LLMProxyAPIKeyNotFound             = def(CodeLLMProxyAPIKeyNotFound, http.StatusNotFound, "The specified API key could not be found.")
 	LLMProxyAPIKeyForbidden            = def(CodeLLMProxyAPIKeyForbidden, http.StatusForbidden, "You do not have permission to access this API key.")
 	LLMProxyDeploymentValidationFailed = def(CodeLLMProxyDeploymentValidationFailed, http.StatusBadRequest, "%s")
@@ -99,8 +97,10 @@ var (
 	LLMProviderTemplateVersionExists     = def(CodeLLMProviderTemplateVersionExists, http.StatusConflict, "This template version already exists.")
 	LLMProviderTemplateManagedByReserved = def(CodeLLMProviderTemplateManagedByReserved, http.StatusBadRequest, "'wso2' is reserved and cannot be used as managedBy on custom templates.")
 	LLMProviderTemplateInUse             = def(CodeLLMProviderTemplateInUse, http.StatusConflict, "This template version is in use by one or more providers.")
+	LLMProviderTemplateDisabled          = def(CodeLLMProviderTemplateDisabled, http.StatusBadRequest, "The referenced LLM provider template is disabled.")
 	LLMProviderTemplateReadOnly          = def(CodeLLMProviderTemplateReadOnly, http.StatusForbidden, "Built-in templates are read-only and cannot be modified.")
 	LLMProviderTemplateNotToggleable     = def(CodeLLMProviderTemplateNotToggleable, http.StatusForbidden, "Only built-in templates can be enabled or disabled.")
+	LLMProviderTemplateBuiltInImmutable  = def(CodeLLMProviderTemplateBuiltInImmutable, http.StatusForbidden, "Built-in templates cannot have new versions. Create a copy to make a custom template.")
 )
 
 // Gateway entries.
@@ -130,7 +130,6 @@ var (
 var (
 	MCPProxyNotFound                   = def(CodeMCPProxyNotFound, http.StatusNotFound, "The specified MCP proxy could not be found.")
 	MCPProxyExists                     = def(CodeMCPProxyExists, http.StatusConflict, "An MCP proxy with this ID already exists.")
-	MCPProxyLimitReached               = def(CodeMCPProxyLimitReached, http.StatusConflict, "MCP proxy limit reached for the organization.")
 	MCPProxyDeploymentValidationFailed = def(CodeMCPProxyDeploymentValidationFailed, http.StatusBadRequest, "%s")
 )
 
@@ -185,4 +184,22 @@ var (
 var (
 	ApplicationAPIKeyNotFound  = def(CodeApplicationAPIKeyNotFound, http.StatusNotFound, "The specified API key could not be found.")
 	ApplicationAPIKeyForbidden = def(CodeApplicationAPIKeyForbidden, http.StatusForbidden, "You do not have permission to access this API key.")
+)
+
+// WebSub / WebBroker API entries.
+var (
+	WebSubAPINotFound    = def(CodeWebSubAPINotFound, http.StatusNotFound, "The specified WebSub API could not be found.")
+	WebSubAPIExists      = def(CodeWebSubAPIExists, http.StatusConflict, "A WebSub API with this ID already exists.")
+	WebBrokerAPINotFound = def(CodeWebBrokerAPINotFound, http.StatusNotFound, "The specified WebBroker API could not be found.")
+	WebBrokerAPIExists   = def(CodeWebBrokerAPIExists, http.StatusConflict, "A WebBroker API with this ID already exists.")
+)
+
+// HMAC secret entries. The 32-character minimum is a fixed, publicly
+// documented rule, so stating it in the client message reveals nothing the
+// API contract does not already.
+var (
+	HmacSecretNotFound      = def(CodeHmacSecretNotFound, http.StatusNotFound, "The specified HMAC secret could not be found.")
+	HmacSecretExists        = def(CodeHmacSecretExists, http.StatusConflict, "An HMAC secret with this name already exists.")
+	HmacSecretInvalidValue  = def(CodeHmacSecretInvalidValue, http.StatusBadRequest, "The secret value must be at least 32 characters.")
+	HmacSecretNotConfigured = def(CodeHmacSecretNotConfigured, http.StatusServiceUnavailable, "HMAC secret management is not configured on this server.")
 )

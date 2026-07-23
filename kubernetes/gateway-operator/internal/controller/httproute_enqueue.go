@@ -22,7 +22,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 )
 
 func serviceMutationPredicate() predicate.Predicate {
@@ -353,6 +354,108 @@ func (r *HTTPRouteReconciler) enqueueHTTPRoutesForService(ctx context.Context, o
 			zap.String("controller", "HTTPRoute"),
 			zap.String("service", client.ObjectKeyFromObject(svc).String()),
 			zap.Strings("httpRoutes", ns))
+	}
+	return requests
+}
+
+func referenceGrantMutationPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc:  func(e event.CreateEvent) bool { return true },
+		UpdateFunc:  func(e event.UpdateEvent) bool { return true },
+		DeleteFunc:  func(e event.DeleteEvent) bool { return true },
+		GenericFunc: func(e event.GenericEvent) bool { return false },
+	}
+}
+
+func (r *HTTPRouteReconciler) enqueueHTTPRoutesForReferenceGrant(ctx context.Context, obj client.Object) []reconcile.Request {
+	grant, ok := obj.(*gatewayv1beta1.ReferenceGrant)
+	if !ok {
+		return nil
+	}
+	routes := &gatewayv1.HTTPRouteList{}
+	if err := r.List(ctx, routes); err != nil {
+		if r.Logger != nil {
+			r.Logger.Error("watch: list HTTPRoutes for ReferenceGrant enqueue", zap.Error(err))
+		}
+		return nil
+	}
+	var requests []reconcile.Request
+	for i := range routes.Items {
+		rt := &routes.Items[i]
+		if httpRouteAffectedByReferenceGrant(rt, grant) {
+			requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(rt)})
+		}
+	}
+	return requests
+}
+
+func httpRouteAffectedByReferenceGrant(route *gatewayv1.HTTPRoute, grant *gatewayv1beta1.ReferenceGrant) bool {
+	if route == nil || grant == nil {
+		return false
+	}
+	routeNS := route.Namespace
+	fromOK := false
+	for _, f := range grant.Spec.From {
+		if string(f.Namespace) != routeNS {
+			continue
+		}
+		if string(f.Kind) != "HTTPRoute" {
+			continue
+		}
+		if string(f.Group) != gatewayv1.GroupName {
+			continue
+		}
+		fromOK = true
+		break
+	}
+	if !fromOK {
+		return false
+	}
+	for _, rule := range route.Spec.Rules {
+		for _, b := range rule.BackendRefs {
+			svcNS := route.Namespace
+			if b.Namespace != nil && *b.Namespace != "" {
+				svcNS = string(*b.Namespace)
+			}
+			if svcNS != grant.Namespace {
+				continue
+			}
+			svcName := string(b.Name)
+			for _, t := range grant.Spec.To {
+				if string(t.Kind) != "Service" || string(t.Group) != "" {
+					continue
+				}
+				if t.Name == nil || string(*t.Name) == svcName {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func (r *HTTPRouteReconciler) enqueueHTTPRoutesForGateway(ctx context.Context, obj client.Object) []reconcile.Request {
+	gw, ok := obj.(*gatewayv1.Gateway)
+	if !ok {
+		return nil
+	}
+	routes := &gatewayv1.HTTPRouteList{}
+	if err := r.List(ctx, routes); err != nil {
+		if r.Logger != nil {
+			r.Logger.Error("watch: list HTTPRoutes for Gateway enqueue", zap.Error(err))
+		}
+		return nil
+	}
+	var requests []reconcile.Request
+	for i := range routes.Items {
+		rt := &routes.Items[i]
+		for _, p := range rt.Spec.ParentRefs {
+			if !parentRefTargetsGateway(p, gw, rt.Namespace) {
+				continue
+			}
+			requests = append(requests, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(rt)})
+			break
+		}
 	}
 	return requests
 }

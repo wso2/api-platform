@@ -843,6 +843,16 @@ func (m *MockStorage) GetPendingCPSyncArtifacts() ([]*models.StoredConfig, error
 	return pending, nil
 }
 
+func (m *MockStorage) GetGatewayOriginArtifactsForSync() ([]*models.StoredConfig, error) {
+	var all []*models.StoredConfig
+	for _, config := range m.configs {
+		if config != nil && config.Origin == models.OriginGatewayAPI {
+			all = append(all, config)
+		}
+	}
+	return all, nil
+}
+
 // MockControlPlaneClient implements controlplane.ControlPlaneClient for testing
 type MockControlPlaneClient struct {
 	connected     bool
@@ -1072,9 +1082,6 @@ func createTestAPIServerWithDB(db storage.Storage) *APIServer {
 	routerCfg := &config.RouterConfig{
 		GatewayHost: "localhost",
 		VHosts:      *vhosts,
-		EventGateway: config.EventGatewayConfig{
-			TimeoutSeconds: 10,
-		},
 	}
 	httpClient := &http.Client{Timeout: 10 * time.Second}
 	systemCfg := &config.Config{
@@ -1205,8 +1212,8 @@ func createTestStoredConfig(id, name, version, context string) *models.StoredCon
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 		},
@@ -1268,8 +1275,8 @@ func createTestRestAPIRequestBody(t *testing.T, handle, displayName, version, co
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 		},
@@ -2498,8 +2505,8 @@ func TestBuildStoredPolicyFromAPINoPolicies(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 		},
@@ -3484,27 +3491,6 @@ func BenchmarkListRestAPIs(b *testing.B) {
 }
 
 // Test for WebSubApi kind in buildStoredPolicyFromAPI
-func TestBuildStoredPolicyFromAPIWebSubApi(t *testing.T) {
-	server := createTestAPIServer()
-
-	// Note: WebSubApi requires different data structure than RestApi
-	// The function will return nil if parsing fails
-	apiConfig := api.WebSubAPI{
-		Kind: api.WebSubAPIKindWebSubApi,
-	}
-	cfg := &models.StoredConfig{
-		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.WebSubAPIKindWebSubApi),
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
-		Origin:              models.OriginGatewayAPI,
-	}
-
-	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
-	// Should return nil because the spec can't be parsed as WebhookAPIData without proper setup
-	assert.Nil(t, result)
-}
-
 // Test GetConfigDump with config missing handle
 func TestGetConfigDumpMissingHandle(t *testing.T) {
 	server := createTestAPIServer()
@@ -3525,7 +3511,7 @@ func TestGetConfigDumpMissingHandle(t *testing.T) {
 					Url: stringPtr("http://backend.com"),
 				},
 			},
-			Operations: []api.Operation{{Method: "GET", Path: "/"}},
+			Operations: []api.Operation{{Method: api.Ptr(api.OperationMethod("GET")), Path: api.Ptr("/")}},
 		},
 	}
 	cfg := &models.StoredConfig{
@@ -3617,8 +3603,8 @@ func TestBuildStoredPolicyFromAPIWithVhosts(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method: "GET",
-					Path:   "/resource",
+					Method: api.Ptr(api.OperationMethod("GET")),
+					Path:   api.Ptr("/resource"),
 				},
 			},
 			Policies: &policies,
@@ -3668,8 +3654,8 @@ func TestBuildStoredPolicyFromAPIOperationPolicies(t *testing.T) {
 			},
 			Operations: []api.Operation{
 				{
-					Method:   "GET",
-					Path:     "/resource",
+					Method:   api.Ptr(api.OperationMethod("GET")),
+					Path:     api.Ptr("/resource"),
 					Policies: &opPolicies,
 				},
 			},
@@ -3738,27 +3724,6 @@ func TestAPIKeyServiceNotConfigured(t *testing.T) {
 }
 
 // Test for WebSubAPI - simplified test
-func TestBuildStoredPolicyFromAPIWebSubApiWithPolicies(t *testing.T) {
-	server := createTestAPIServer()
-
-	// WebSubApi requires specific data structure that's complex to mock
-	// Testing that the function handles WebSubApi kind without panicking
-	apiConfig := api.WebSubAPI{
-		Kind: api.WebSubAPIKindWebSubApi,
-	}
-	cfg := &models.StoredConfig{
-		UUID:                "0000-test-id-0000-000000000000",
-		Kind:                string(api.WebSubAPIKindWebSubApi),
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
-		Origin:              models.OriginGatewayAPI,
-	}
-
-	result := policybuilder.DerivePolicyFromAPIConfig(cfg, server.routerConfig, server.systemConfig, server.policyDefinitions)
-	// Should return nil since we don't have valid spec data
-	assert.Nil(t, result)
-}
-
 // Test ListMCPProxies with stored configs that have unmarshal issues
 func TestListMCPProxiesUnmarshalError(t *testing.T) {
 	server := createTestAPIServer()

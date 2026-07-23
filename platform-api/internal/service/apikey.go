@@ -166,17 +166,45 @@ func filterGatewaysByAllowedTargets(gateways []*model.Gateway, allowedTargets st
 	if allowedTargets == "" || allowedTargets == constants.APIKeyAllowedTargetsAll {
 		return gateways
 	}
-	allowed := make(map[string]struct{})
-	for _, name := range strings.Split(allowedTargets, ",") {
-		allowed[strings.TrimSpace(name)] = struct{}{}
-	}
 	filtered := make([]*model.Gateway, 0, len(gateways))
 	for _, gw := range gateways {
-		if _, ok := allowed[gw.Name]; ok {
+		if gatewayAllowedByTargets(gw.Name, allowedTargets) {
 			filtered = append(filtered, gw)
 		}
 	}
 	return filtered
+}
+
+// filterAPIGatewaysByAllowedTargets is filterGatewaysByAllowedTargets for the
+// association-scoped []*model.APIGatewayWithDetails shape returned by
+// GetAPIGatewaysWithDetails. Matching is by gateway Name, identical to the base helper.
+func filterAPIGatewaysByAllowedTargets(gateways []*model.APIGatewayWithDetails, allowedTargets string) []*model.APIGatewayWithDetails {
+	if allowedTargets == "" || allowedTargets == constants.APIKeyAllowedTargetsAll {
+		return gateways
+	}
+	filtered := make([]*model.APIGatewayWithDetails, 0, len(gateways))
+	for _, gw := range gateways {
+		if gatewayAllowedByTargets(gw.Name, allowedTargets) {
+			filtered = append(filtered, gw)
+		}
+	}
+	return filtered
+}
+
+// gatewayAllowedByTargets reports whether a gateway (identified by name) is permitted by a
+// key's allowedTargets. An empty value or constants.APIKeyAllowedTargetsAll ("ALL") permits
+// every gateway; otherwise the gateway name must appear in the comma-separated list. This is
+// the single source of truth shared by the filter helpers and the deploy-time backfill.
+func gatewayAllowedByTargets(gatewayName, allowedTargets string) bool {
+	if allowedTargets == "" || allowedTargets == constants.APIKeyAllowedTargetsAll {
+		return true
+	}
+	for _, name := range strings.Split(allowedTargets, ",") {
+		if strings.TrimSpace(name) == gatewayName {
+			return true
+		}
+	}
+	return false
 }
 
 // randomHexString generates a random lowercase hex string of the requested length.
@@ -276,6 +304,104 @@ func (s *APIKeyService) resolveUniqueKeyName(artifactUUID string, req *api.Creat
 	return "", fmt.Errorf("failed to generate a unique API key name after %d retries", maxRetries)
 }
 
+// APIKeyCreatedEventFromModel builds an apikey.created broadcast payload from a
+// persisted API key record. It sends the hash JSON and masked key, never the plain
+// key. Used both at key-creation time and to (re)broadcast pre-existing keys to a
+// gateway the API is newly associated with at deploy time.
+func APIKeyCreatedEventFromModel(k *model.APIKey) *model.APIKeyCreatedEvent {
+	event := &model.APIKeyCreatedEvent{
+		UUID:         k.UUID,
+		ApiId:        k.ArtifactUUID,
+		Name:         k.Name,
+		ApiKeyHashes: k.APIKeyHashes,
+		MaskedApiKey: k.MaskedAPIKey,
+		Issuer:       k.Issuer,
+		CreatedAt:    k.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    k.UpdatedAt.Format(time.RFC3339),
+	}
+	if k.ExpiresAt != nil {
+		expiresAtStr := k.ExpiresAt.Format(time.RFC3339)
+		event.ExpiresAt = &expiresAtStr
+	}
+	return event
+}
+
+// BackfillAPIKeysToGateway (re)broadcasts an artifact's existing active API keys to a
+// gateway it has just been deployed/associated to. Keys are broadcast to their associated
+// gateways only once, at creation time (CreateAPIKey and the per-kind key services), so a
+// key created before this association would otherwise reach the gateway only after the
+// gateway-controller's next reconnect bulk sync — leaving a window where the artifact is
+// live but the key is rejected. Pushing existing keys here closes that window.
+//
+// It is artifact-kind-agnostic: ListByArtifact and the apikey.created event/controller
+// handler are the same for REST APIs, LLM providers/proxies, MCP proxies, and WebSub/
+// WebBroker APIs, so every deploy path can share this one helper.
+//
+// Best-effort: the controller upserts apikey.created idempotently, so re-sending a key the
+// gateway already holds is harmless, and any failure is logged without blocking the
+// deployment (the reconnect bulk sync remains the safety net).
+func BackfillAPIKeysToGateway(apiKeyRepo repository.APIKeyRepository, gatewayRepo repository.GatewayRepository, events *GatewayEventsService, slogger *slog.Logger, artifactUUID, gatewayID, actor string) {
+	if events == nil || apiKeyRepo == nil {
+		return
+	}
+
+	keys, err := apiKeyRepo.ListByArtifact(artifactUUID)
+	if err != nil {
+		if slogger != nil {
+			slogger.Warn("Failed to load API keys for deploy-time backfill",
+				"artifactId", artifactUUID, "gatewayId", gatewayID, "error", err)
+		}
+		return
+	}
+
+	// Resolve the target gateway's name once so we can honor each key's AllowedTargets,
+	// which is matched by gateway name — consistent with the create/revoke broadcast paths
+	// (filterGatewaysByAllowedTargets). If the name can't be resolved, keys restricted to
+	// specific targets are conservatively skipped (only "ALL"/unrestricted keys go through).
+	gatewayName := ""
+	if gatewayRepo != nil {
+		if gw, gwErr := gatewayRepo.GetByUUID(gatewayID); gwErr != nil {
+			if slogger != nil {
+				slogger.Warn("Failed to resolve gateway for API key backfill target filtering",
+					"gatewayId", gatewayID, "error", gwErr)
+			}
+		} else if gw != nil {
+			gatewayName = gw.Name
+		}
+	}
+
+	now := time.Now()
+	backfilled := 0
+	for _, k := range keys {
+		if k == nil || k.Status != constants.APIKeyStatusActive {
+			continue
+		}
+		// Skip expired keys — never push a dead key to a gateway.
+		if k.ExpiresAt != nil && !k.ExpiresAt.After(now) {
+			continue
+		}
+		// Honor per-key AllowedTargets — skip keys not permitted for this gateway.
+		if !gatewayAllowedByTargets(gatewayName, k.AllowedTargets) {
+			continue
+		}
+
+		event := APIKeyCreatedEventFromModel(k)
+		if err := events.BroadcastAPIKeyCreatedEvent(gatewayID, actor, event); err != nil {
+			if slogger != nil {
+				slogger.Warn("Failed to backfill API key to gateway",
+					"artifactId", artifactUUID, "gatewayId", gatewayID, "keyName", k.Name, "error", err)
+			}
+			continue
+		}
+		backfilled++
+	}
+
+	if backfilled > 0 && slogger != nil {
+		slogger.Info("Backfilled existing API keys to gateway at deploy time",
+			"artifactId", artifactUUID, "gatewayId", gatewayID, "count", backfilled)
+	}
+}
+
 // CreateAPIKey hashes an external API key and broadcasts it to gateways where the API is deployed.
 // This method is used when external platforms inject API keys to hybrid gateways.
 func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId, userId string, req *api.CreateAPIKeyRequest) error {
@@ -288,17 +414,16 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if apiMetadata == nil {
 		s.slogger.Warn("API not found by handle", "apiHandle", apiHandle, "orgId", orgId)
-		return apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
+		return apperror.ArtifactNotFound.New()
 	}
 	apiId := apiMetadata.ID
 
-	// Get all deployments for this API to find target gateways
+	// Get all deployments for this API to find target gateways.
+	// An empty list is valid: the key is still persisted centrally and any gateway
+	// associated later picks it up via deployment-time sync.
 	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
 	if err != nil {
 		return fmt.Errorf("failed to get API deployments for API handle: %s: %w", apiHandle, err)
-	}
-	if len(gateways) == 0 {
-		return apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
 	}
 
 	// Resolve key name (required for DB uniqueness; derive from request or generate)
@@ -350,6 +475,7 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		APIKeyHashes:   apiKeyHashesJSON,
 		Status:         constants.APIKeyStatusActive,
 		CreatedBy:      userId,
+		UpdatedBy:      userId,
 		ExpiresAt:      expiresAt,
 		Issuer:         issuer,
 		AllowedTargets: allowedTargets,
@@ -361,21 +487,8 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	_ = s.auditRepo.Record("CREATE", apiKeyUUID, "api_key", orgId, userId)
 
 	// Build the API key created event — send the hash JSON and masked key, not the plain key
-	event := &model.APIKeyCreatedEvent{
-		UUID:          apiKeyUUID,
-		ApiId:         apiId,
-		Name:          keyName,
-		ApiKeyHashes:  apiKeyHashesJSON,
-		MaskedApiKey:  maskedAPIKey,
-		ExternalRefId: req.ExternalRefId,
-		Issuer:        issuer,
-		CreatedAt:     dbKey.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:     dbKey.UpdatedAt.Format(time.RFC3339),
-	}
-	if expiresAt != nil {
-		expiresAtStr := expiresAt.Format(time.RFC3339)
-		event.ExpiresAt = &expiresAtStr
-	}
+	event := APIKeyCreatedEventFromModel(dbKey)
+	event.ExternalRefId = req.ExternalRefId
 
 	successCount := 0
 	failureCount := 0
@@ -414,7 +527,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if apiMetadata == nil {
 		s.slogger.Warn("API not found by handle for API key update", "apiHandle", apiHandle)
-		return apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
+		return apperror.ArtifactNotFound.New()
 	}
 	apiId := apiMetadata.ID
 
@@ -426,7 +539,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if len(gateways) == 0 {
 		s.slogger.Warn("No gateway deployments found for API", "apiHandle", apiHandle)
-		return apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
+		return apperror.GatewayConnectionUnavailable.New()
 	}
 
 	// Hash the API key with all configured algorithms before storage and broadcast
@@ -452,6 +565,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		MaskedAPIKey: maskedAPIKey,
 		APIKeyHashes: apiKeyHashesJSON,
 		Status:       constants.APIKeyStatusActive,
+		UpdatedBy:    userId,
 		ExpiresAt:    expiresAt,
 		Issuer:       req.Issuer,
 	}
@@ -525,7 +639,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	if apiMetadata == nil {
 		s.slogger.Warn("API not found by handle for API key revocation", "apiHandle", apiHandle)
-		return apperror.ArtifactNotFound.Wrap(constants.ErrAPINotFound)
+		return apperror.ArtifactNotFound.New()
 	}
 	apiId := apiMetadata.ID
 
@@ -535,14 +649,14 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 		return fmt.Errorf("failed to get API deployments: %w", err)
 	}
 	if len(gateways) == 0 {
-		return apperror.GatewayConnectionUnavailable.Wrap(constants.ErrGatewayUnavailable)
+		return apperror.GatewayConnectionUnavailable.New()
 	}
 
 	// Fetch UUID before revoke for consistent audit record (CREATE uses UUID, not name)
 	revokeKey, revokeKeyErr := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
 
 	// Revoke the API key in the database before broadcasting
-	if err := s.apiKeyRepo.Revoke(apiId, keyName); err != nil {
+	if err := s.apiKeyRepo.Revoke(apiId, keyName, userId); err != nil {
 		s.slogger.Error("Failed to revoke API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to revoke API key in database: %w", err)
 	}

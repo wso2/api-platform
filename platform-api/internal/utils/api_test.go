@@ -654,3 +654,38 @@ func TestBuildAPIDeploymentYAML(t *testing.T) {
 	}
 }
 
+// TestUpstreamConfigModelToAPI_RedactsAuthValue proves ModelToRESTAPI never
+// exposes the real upstream auth credential in a read response — matching the
+// LLM Provider/Proxy and MCP Proxy mappers' redaction behaviour.
+func TestUpstreamConfigModelToAPI_RedactsAuthValue(t *testing.T) {
+	util := &APIUtil{}
+
+	cfg := &model.UpstreamConfig{
+		Main: &model.UpstreamEndpoint{
+			URL:  "https://backend.internal/api",
+			Auth: &model.UpstreamAuth{Type: "bearer", Header: "Authorization", Value: "super-secret-token"},
+		},
+		Sandbox: &model.UpstreamEndpoint{
+			URL:  "https://sandbox.internal/api",
+			Auth: &model.UpstreamAuth{Type: "bearer", Header: "Authorization", Value: "another-secret-token"},
+		},
+	}
+
+	result := util.UpstreamConfigModelToAPI(cfg)
+
+	if result.Main.Auth == nil {
+		t.Fatal("expected main auth block to be present (structure retained)")
+	}
+	if result.Main.Auth.Value != nil {
+		t.Errorf("expected main auth value to be redacted (nil), got %q", *result.Main.Auth.Value)
+	}
+	if result.Main.Auth.Header == nil || *result.Main.Auth.Header != "Authorization" {
+		t.Errorf("expected main auth header to be preserved, got %v", result.Main.Auth.Header)
+	}
+	if result.Sandbox == nil || result.Sandbox.Auth == nil {
+		t.Fatal("expected sandbox auth block to be present (structure retained)")
+	}
+	if result.Sandbox.Auth.Value != nil {
+		t.Errorf("expected sandbox auth value to be redacted (nil), got %q", *result.Sandbox.Auth.Value)
+	}
+}

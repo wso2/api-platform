@@ -39,7 +39,7 @@ const (
 	// ManagementArtifactAPIVersion is the apiVersion stamped on all artifact
 	// payloads sent to the gateway-controller management API. This is the
 	// management API artifact version, which is independent of the Kubernetes
-	// CRD storage version (gateway.api-platform.wso2.com/v1alpha1).
+	// CRD versions (the CRDs serve v1alpha1 and v1, with v1 as storage).
 	ManagementArtifactAPIVersion = "gateway.api-platform.wso2.com/v1"
 
 	restAPIsResourcePath = ManagementAPIBasePath + "/rest-apis"

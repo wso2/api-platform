@@ -2,7 +2,7 @@
 
 /* ── Accordion card (Tools / Resources / Prompts) ────────────── */
 .mc-accordion {
-  border: 1px solid #e6eaf0;
+  border: 1px solid var(--border);
   border-radius: 0.75rem;
   overflow: hidden;
   margin-bottom: 0.75rem;
@@ -29,7 +29,7 @@
   display: flex;
   align-items: center;
   gap: 0.5625rem;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 0.84375rem;
   font-weight: 700;
   color: #7a4a12;
@@ -58,7 +58,7 @@
   margin: 0;
   font-size: 0.84375rem;
   line-height: 1.5;
-  color: #52607a;
+  color: var(--text-muted);
 }
 
 /* ── Resource meta rows (URI, MIME Type) ─────────────────────── */
@@ -71,19 +71,19 @@
 }
 .mc-accordion-meta-key {
   font-weight: 700;
-  color: #1a2433;
+  color: var(--text-strong);
   white-space: nowrap;
 }
 .mc-accordion-meta-val {
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 0.78125rem;
-  color: #52607a;
+  color: var(--text-muted);
 }
 
 /* ── JSON schema block inside accordion ─────────────────────── */
 .mc-json-block {
-  background: #f6f8fb;
-  border: 1px solid #eef1f5;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
   border-radius: 0.5625rem;
   padding: 0.875rem 1rem;
   overflow-x: auto;
@@ -99,7 +99,7 @@
 .mc-json-block pre code.hljs {
   background: transparent;
   padding: 0;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 0.75rem;
   line-height: 1.55;
 }
@@ -112,9 +112,9 @@
 
 .mc-config-block {
   position: relative;
-  border: 1px solid #e6eaf0;
+  border: 1px solid var(--border);
   border-radius: 0.75rem;
-  background: #f6f8fb;
+  background: var(--surface-sunken);
   padding: 1rem;
 }
 
@@ -134,7 +134,7 @@
 .mc-config-pre code.hljs {
   background: transparent;
   padding: 0;
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 0.75rem;
   line-height: 1.55;
 }
@@ -143,7 +143,7 @@
   margin: 0.75rem 0.125rem 0;
   font-size: 0.75rem;
   line-height: 1.5;
-  color: #8a93a0;
+  color: var(--text-muted);
 }
 
 /* ── MCP subscription modals — shared overlay ───────────────── */
@@ -153,7 +153,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(20, 40, 70, .34);
+  background: var(--overlay);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   z-index: 1055;
@@ -172,7 +172,7 @@
   width: 2rem; height: 2rem;
   border: none;
   background: transparent;
-  color: #9aa3af;
+  color: var(--text-subtle);
   border-radius: 0.5rem;
   font-size: 1.25rem;
   line-height: 1;
@@ -186,16 +186,16 @@
   position: relative;
   width: 32.5rem;
   max-width: 100%;
-  background: #fff;
+  background: var(--white);
   border-radius: 1.125rem;
-  box-shadow: 0 28px 70px rgba(10, 25, 50, .38);
+  box-shadow: 0 28px 70px color-mix(in srgb, var(--ink) 38%, transparent);
   animation: mc-pop .3s ease;
   overflow: hidden;
 }
 
 .mc-token-modal-header {
-  background: linear-gradient(135deg, #f1f6fc 0%, #e9f1fa 100%);
-  border-bottom: 1px solid #e0eaf4;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 5%, var(--surface)) 0%, color-mix(in srgb, var(--primary) 9%, var(--surface)) 100%);
+  border-bottom: 1px solid var(--border);
   padding: 2.125rem 2rem 1.75rem;
   text-align: center;
 }
@@ -204,20 +204,20 @@
   margin: 0 auto;
   width: 3.75rem; height: 3.75rem;
   border-radius: 50%;
-  background: linear-gradient(135deg, #34a853 0%, #2e7d32 100%);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--success) 78%, var(--white)) 0%, var(--success) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--white);
   font-size: 1.5rem;
-  box-shadow: 0 8px 22px rgba(46,125,50,.34), 0 0 0 7px rgba(46,125,50,.10);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--success) 34%, transparent), 0 0 0 7px color-mix(in srgb, var(--success) 10%, transparent);
 }
 
 .mc-token-modal-title {
   margin: 1.125rem 0 0;
   font-size: 1.3125rem;
   font-weight: 700;
-  color: #1a2433;
+  color: var(--text-strong);
   letter-spacing: -0.01em;
 }
 
@@ -225,7 +225,7 @@
   margin: 0.5rem 0 0;
   font-size: 0.90625rem;
   line-height: 1.55;
-  color: #52607a;
+  color: var(--text-muted);
 }
 
 .mc-token-modal-body {
@@ -252,7 +252,7 @@
   gap: 0.4375rem;
   font-size: 0.8125rem;
   font-weight: 700;
-  color: #1a2433;
+  color: var(--text-strong);
 }
 
 .mc-token-field {
@@ -273,7 +273,7 @@
 }
 
 .mc-token-val {
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 0.84375rem;
   font-weight: 600;
   line-height: 1.6;
@@ -306,7 +306,7 @@
   align-items: center;
   border: none;
   background: transparent;
-  color: #8a93a0;
+  color: var(--text-muted);
   border-radius: 0.375rem;
   padding: 0.375rem;
   cursor: pointer;
@@ -319,17 +319,17 @@
   display: flex;
   align-items: flex-start;
   gap: 0.6875rem;
-  background: #fdf6e3;
-  border: 1px solid #f3e2b3;
+  background: var(--warning-surface);
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--surface));
   border-radius: 0.6875rem;
   padding: 0.8125rem 0.9375rem;
   font-size: 0.84375rem;
   line-height: 1.55;
-  color: #7a5a12;
+  color: color-mix(in srgb, var(--warning) 55%, var(--ink));
 }
 
 .mc-inline-code {
-  font-family: var(--font-family-mono, monospace);
+  font-family: var(--font-family-mono);
   font-size: 0.78125rem;
   color: #c2185b;
 }
@@ -338,9 +338,9 @@
 .mc-manage-modal {
   width: 31.25rem;
   max-width: 100%;
-  background: #fff;
+  background: var(--white);
   border-radius: 1.125rem;
-  box-shadow: 0 28px 70px rgba(10, 25, 50, .38);
+  box-shadow: 0 28px 70px color-mix(in srgb, var(--ink) 38%, transparent);
   animation: mc-pop .3s ease;
   overflow: hidden;
 }
@@ -351,7 +351,7 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid #e6eaf0;
+  border-bottom: 1px solid var(--border);
 }
 
 .mc-manage-header-info {
@@ -364,8 +364,8 @@
   width: 2.5rem; height: 2.5rem;
   flex: none;
   border-radius: 0.6875rem;
-  background: #e8f1fb;
-  color: #1f6feb;
+  background: var(--primary-surface);
+  color: var(--primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -376,14 +376,14 @@
   margin: 0;
   font-size: 1.125rem;
   font-weight: 700;
-  color: #1a2433;
+  color: var(--text-strong);
   line-height: 1.2;
 }
 
 .mc-manage-subtitle {
   margin-top: 0.1875rem;
   font-size: 0.75rem;
-  color: #8a93a0;
+  color: var(--text-muted);
 }
 
 .mc-manage-body {
@@ -400,7 +400,7 @@
 .mc-manage-status-label {
   font-size: 0.8125rem;
   font-weight: 700;
-  color: #1a2433;
+  color: var(--text-strong);
 }
 
 .mc-manage-status-badge {
@@ -419,13 +419,13 @@
   border-radius: 50%;
   background: currentcolor;
 }
-.mc-manage-status-badge--active    { background: #e6f4ea; color: #2e7d32; }
-.mc-manage-status-badge--suspended { background: #fff4e6; color: #e65100; }
+.mc-manage-status-badge--active    { background: var(--success-surface); color: var(--success); }
+.mc-manage-status-badge--suspended { background: var(--warning-surface); color: var(--warning); }
 
 .mc-manage-divider {
   margin: 1.375rem 0 1.125rem;
   border: none;
-  border-top: 1px solid #e6eaf0;
+  border-top: 1px solid var(--border);
 }
 
 .mc-manage-actions {
@@ -446,25 +446,25 @@
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, opacity 0.15s;
-  background: #fff;
+  background: var(--white);
 }
-.mc-manage-action-btn.mc-manage-action-btn--regenerate { border: 1px solid #a9c1e6; color: #1f6feb; }
-.mc-manage-action-btn.mc-manage-action-btn--regenerate:hover { background: #f2f7fd; }
-.mc-manage-action-btn.mc-manage-action-btn--suspend { border: 1px solid #f3d2a8; color: #e65100; }
-.mc-manage-action-btn.mc-manage-action-btn--resume  { border: 1px solid #bfe3c6; color: #2e7d32; }
-.mc-manage-action-btn.mc-manage-action-btn--suspend:hover { background: #fff8f3; }
-.mc-manage-action-btn.mc-manage-action-btn--resume:hover  { background: #f3fbf4; }
-.mc-manage-action-btn.mc-manage-action-btn--unsub   { border: 1px solid #f0c5c5; color: #c62828; }
-.mc-manage-action-btn.mc-manage-action-btn--unsub:hover   { background: #fdf3f3; }
+.mc-manage-action-btn.mc-manage-action-btn--regenerate { border: 1px solid color-mix(in srgb, var(--primary) 34%, var(--surface)); color: var(--primary); }
+.mc-manage-action-btn.mc-manage-action-btn--regenerate:hover { background: color-mix(in srgb, var(--primary) 5%, var(--surface)); }
+.mc-manage-action-btn.mc-manage-action-btn--suspend { border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--surface)); color: var(--warning); }
+.mc-manage-action-btn.mc-manage-action-btn--resume  { border: 1px solid color-mix(in srgb, var(--success) 40%, var(--surface)); color: var(--success); }
+.mc-manage-action-btn.mc-manage-action-btn--suspend:hover { background: color-mix(in srgb, var(--warning) 7%, var(--surface)); }
+.mc-manage-action-btn.mc-manage-action-btn--resume:hover  { background: color-mix(in srgb, var(--success) 8%, var(--surface)); }
+.mc-manage-action-btn.mc-manage-action-btn--unsub   { border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--surface)); color: var(--danger); }
+.mc-manage-action-btn.mc-manage-action-btn--unsub:hover   { background: var(--danger-surface); }
 
 /* ── Unsubscribe warning dialog ──────────────────────────────── */
 .mc-unsub-dialog {
   width: 27.5rem;
   max-width: 100%;
-  background: #fff;
+  background: var(--white);
   border-radius: 1rem;
   padding: 1.875rem 1.875rem 1.625rem;
-  box-shadow: 0 24px 60px rgba(10, 25, 50, .34);
+  box-shadow: 0 24px 60px color-mix(in srgb, var(--ink) 34%, transparent);
   animation: mc-pop .3s ease;
 }
 
@@ -478,8 +478,8 @@
   width: 2.875rem; height: 2.875rem;
   flex: none;
   border-radius: 0.6875rem;
-  background: #fff4e6;
-  color: #e65100;
+  background: var(--warning-surface);
+  color: var(--warning);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -490,7 +490,7 @@
   margin: 0;
   font-size: 1.125rem;
   font-weight: 700;
-  color: #1a2433;
+  color: var(--text-strong);
   line-height: 1.3;
 }
 
@@ -498,7 +498,7 @@
   margin: 1rem 0 0;
   font-size: 0.875rem;
   line-height: 1.6;
-  color: #56657a;
+  color: var(--text-muted);
 }
 
 .mc-unsub-actions {
@@ -509,9 +509,9 @@
 }
 
 .mc-unsub-confirm-btn {
-  background: #c62828;
+  background: var(--danger);
   border: none;
-  color: #fff;
+  color: var(--white);
   border-radius: 1.25rem;
   padding: 0.625rem 1.375rem;
   font-size: 0.875rem;

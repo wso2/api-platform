@@ -45,7 +45,7 @@ describe('AI Workspace — MCP server secret management', () => {
     cy.login();
     cy.request({
       method: 'POST',
-      url: '/api/proxy/api/portal/v0.9/auth/login',
+      url: '/proxy/api/portal/v0.9/auth/login',
       form: true,
       body: {
         username: Cypress.env('ADMIN_USER'),
@@ -56,7 +56,7 @@ describe('AI Workspace — MCP server secret management', () => {
         expect(response.status).to.eq(200);
         authToken = response.body?.token ?? '';
         return cy.request({
-          url: '/api/proxy/api/v0.9/organizations',
+          url: '/proxy/api/v0.9/organizations',
           headers: { Authorization: `Bearer ${authToken}` },
         });
       })
@@ -70,7 +70,7 @@ describe('AI Workspace — MCP server secret management', () => {
     if (authToken && organizationId && createdServerId) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(createdServerId)}`,
+        url: `/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(createdServerId)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });
@@ -182,7 +182,7 @@ describe('AI Workspace — MCP server secret management', () => {
     const existingHandle = `${serverId}-auth`;
     cy.request({
       method: 'POST',
-      url: '/api/proxy/api/v0.9/secrets',
+      url: '/proxy/api/v0.9/secrets',
       headers: {
         Authorization: `Bearer ${authToken}`,
       },
@@ -446,7 +446,7 @@ describe('AI Workspace — MCP server secret management', () => {
 function deleteProjectByName(authToken, targetName, fallbackName) {
   if (!authToken) return;
   cy.request({
-    url: '/api/proxy/api/v0.9/projects',
+    url: '/proxy/api/v0.9/projects',
     headers: { Authorization: `Bearer ${authToken}` },
     failOnStatusCode: false,
   }).then((response) => {
@@ -458,7 +458,7 @@ function deleteProjectByName(authToken, targetName, fallbackName) {
     if (projects.length <= 1) {
       cy.request({
         method: 'POST',
-        url: '/api/proxy/api/v0.9/projects',
+        url: '/proxy/api/v0.9/projects',
         headers: {
           Authorization: `Bearer ${authToken}`,
           'Content-Type': 'application/json',
@@ -468,7 +468,7 @@ function deleteProjectByName(authToken, targetName, fallbackName) {
       }).then(() => {
         cy.request({
           method: 'DELETE',
-          url: `/api/proxy/api/v0.9/projects/${encodeURIComponent(target.id)}`,
+          url: `/proxy/api/v0.9/projects/${encodeURIComponent(target.id)}`,
           headers: { Authorization: `Bearer ${authToken}` },
           failOnStatusCode: false,
         });
@@ -476,7 +476,7 @@ function deleteProjectByName(authToken, targetName, fallbackName) {
     } else {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/projects/${encodeURIComponent(target.id)}`,
+        url: `/proxy/api/v0.9/projects/${encodeURIComponent(target.id)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });

@@ -1,4 +1,4 @@
-/* eslint-disable no-undef */
+ 
 /*
  * Copyright (c) 2024, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
  *
@@ -16,12 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const axios = require('axios');
-const https = require('https');
-const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const util = require('../utils/util');
-const orgDao = require('../dao/organizationDao');
 const appDao = require('../dao/applicationDao');
 const apiKeyService = require('../services/apiKeyService');
 const { publish } = require('../services/webhooks/eventPublisher');
@@ -30,7 +26,7 @@ const constants = require('../utils/constants');
 const { ApplicationDTO } = require('../dto/applicationDto');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const { Sequelize } = require("sequelize");
-const yaml = require('js-yaml');
+const yaml = require('../utils/yaml');
 const kmDao = require('../dao/keyManagerDao');
 const { generateToken } = require('../services/oauthTokenService');
 const { CustomError } = require('../utils/errors/customErrors');
@@ -267,7 +263,7 @@ const generateKeys = async (req, res) => {
         const appHandle = req.params.applicationId;
         const appRecord = await appDao.getId(orgId, userId, appHandle);
         if (!appRecord) {
-            return res.status(404).json({ message: 'Application not found' });
+            return util.sendError(res, 404, 'Application not found');
         }
         appId = appRecord.uuid;
         logger.info('Initiate create application key mapping...', { orgId: orgId, appId: appId });
@@ -278,17 +274,17 @@ const generateKeys = async (req, res) => {
         } = req.body;
 
         if (!consumerKey) {
-            return res.status(400).json({ message: 'consumerKey is required.' });
+            return util.sendError(res, 400, 'consumerKey is required.');
         }
 
         const kmRecord = await kmDao.getByHandle(orgId, kmName);
         if (!kmRecord) {
-            return res.status(404).json({ message: `Key manager '${kmName}' not found.` });
+            return util.sendError(res, 404, `Key manager '${kmName}' not found.`);
         }
 
         const keyType = (rawKeyType || constants.KEY_TYPE.PRODUCTION).toUpperCase();
         if (!Object.values(constants.KEY_TYPE).includes(keyType)) {
-            return res.status(400).json({ message: `Invalid type. Must be one of: ${Object.values(constants.KEY_TYPE).join(', ')}.` });
+            return util.sendError(res, 400, `Invalid type. Must be one of: ${Object.values(constants.KEY_TYPE).join(', ')}.`);
         }
 
         const appKeyMapping = {

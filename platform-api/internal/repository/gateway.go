@@ -42,8 +42,8 @@ func NewGatewayRepo(db *database.DB) GatewayRepository {
 
 // Create inserts a new gateway
 func (r *GatewayRepo) Create(gateway *model.Gateway) error {
-	gateway.CreatedAt = time.Now()
-	gateway.UpdatedAt = time.Now()
+	gateway.CreatedAt = time.Now().UTC()
+	gateway.UpdatedAt = time.Now().UTC()
 	gateway.IsActive = false // Set default value to false at registration
 
 	// Serialize properties to JSON bytes (BYTEA/BLOB column)
@@ -323,7 +323,32 @@ func (r *GatewayRepo) Delete(gatewayID, organizationID string) error {
 		return err
 	}
 
-	// Delete gateway with organization isolation (gateway_tokens and deployments will be cascade deleted via FK)
+	// Deployment cleanup is explicit rather than left to FK cascade: on SQL Server the
+	// deployment_status.gateway_uuid edge is ON DELETE NO ACTION (to avoid the multiple
+	// cascade-paths restriction), so a status row with no matching deployments snapshot for
+	// this gateway would otherwise survive and make HasActiveDeployment report the artifact
+	// as still deployed. artifact_secret_refs has no FK to gateways at all on any engine.
+	// Status rows are deleted before deployments so this is correct regardless of the
+	// deployment_uuid -> deployments cascade edge.
+	deleteStatusQuery := `DELETE FROM deployment_status WHERE gateway_uuid = ? AND organization_uuid = ?`
+	if _, err = tx.Exec(r.db.Rebind(deleteStatusQuery), gatewayID, organizationID); err != nil {
+		return err
+	}
+
+	deleteDeploymentsQuery := `DELETE FROM deployments WHERE gateway_uuid = ? AND organization_uuid = ?`
+	if _, err = tx.Exec(r.db.Rebind(deleteDeploymentsQuery), gatewayID, organizationID); err != nil {
+		return err
+	}
+
+	// Gateway-scoped secret refs (gateway_id = gateway UUID). Artifact-level refs
+	// (gateway_id = '') are intentionally left untouched.
+	deleteSecretRefsQuery := `DELETE FROM artifact_secret_refs WHERE gateway_id = ? AND organization_uuid = ?`
+	if _, err = tx.Exec(r.db.Rebind(deleteSecretRefsQuery), gatewayID, organizationID); err != nil {
+		return err
+	}
+
+	// Delete gateway with organization isolation (gateway_tokens and gateway_endpoints will
+	// still be cascade deleted via FK; deployment-related tables were removed explicitly above)
 	deleteGatewayQuery := `DELETE FROM gateways WHERE uuid = ? AND organization_uuid = ?`
 	result, err := tx.Exec(r.db.Rebind(deleteGatewayQuery), gatewayID, organizationID)
 	if err != nil {
@@ -346,6 +371,8 @@ func (r *GatewayRepo) Delete(gatewayID, organizationID string) error {
 
 // UpdateGateway updates gateway details
 func (r *GatewayRepo) UpdateGateway(gateway *model.Gateway) error {
+	gateway.UpdatedAt = time.Now().UTC()
+
 	var propertiesBytes []byte
 	if gateway.Properties != nil {
 		var err error
@@ -401,13 +428,13 @@ func (r *GatewayRepo) UpdateActiveStatus(gatewayId string, isActive bool) error 
 		SET is_active = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(r.db.Rebind(query), isActiveInt, time.Now(), gatewayId)
+	_, err := r.db.Exec(r.db.Rebind(query), isActiveInt, time.Now().UTC(), gatewayId)
 	return err
 }
 
 // CreateToken inserts a new token
 func (r *GatewayRepo) CreateToken(token *model.GatewayToken) error {
-	token.CreatedAt = time.Now()
+	token.CreatedAt = time.Now().UTC()
 
 	query := `
 		INSERT INTO gateway_tokens (uuid, gateway_uuid, token_hash, salt, status, created_by, created_at, revoked_by, revoked_at)
@@ -516,7 +543,7 @@ func (r *GatewayRepo) GetTokenByUUID(tokenId string) (*model.GatewayToken, error
 
 // RevokeToken updates token status to revoked
 func (r *GatewayRepo) RevokeToken(tokenId, revokedBy string) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	var revokedByVal interface{}
 	if revokedBy != "" {
 		revokedByVal = revokedBy
@@ -591,7 +618,7 @@ func (r *GatewayRepo) UpdateGatewayManifest(gatewayID string, manifest []byte) e
 // UpdateGatewayVersion persists the version string reported by the gateway controller on manifest push.
 func (r *GatewayRepo) UpdateGatewayVersion(gatewayID, version string) error {
 	query := `UPDATE gateways SET version = ?, updated_at = ? WHERE uuid = ?`
-	_, err := r.db.Exec(r.db.Rebind(query), version, time.Now(), gatewayID)
+	_, err := r.db.Exec(r.db.Rebind(query), version, time.Now().UTC(), gatewayID)
 	return err
 }
 

@@ -19,7 +19,7 @@
 metadata:
   name: azureai-foundry
 spec:
-  groupId: azureai-foundry
+  groupId: wso2-azureai-foundry
   displayName: Azure AI Foundry
   managedBy: wso2
   version: v1.0
@@ -27,7 +27,8 @@ spec:
     auth:
       type: apiKey
       header: api-key
-    logoUrl: https://raw.githubusercontent.com/nomadxd/openapi-connectors/main/openapi/azure.openai/icon.png
+    logoUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/azureai-foundry/icon.png
+    openapiSpecUrl: https://raw.githubusercontent.com/wso2/api-platform/main/llm-provider-specs/azureai-foundry/openapi.yaml
   promptTokens:
     location: payload
     identifier: $.usage.prompt_tokens

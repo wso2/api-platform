@@ -18,7 +18,7 @@
 
 const passport = require('passport');
 const OAuth2Strategy = require('passport-oauth2');
-const jwt = require('jsonwebtoken');
+const { safeDecodeJwt } = require('../utils/jwtDecode');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
@@ -37,23 +37,23 @@ function getNestedClaim(obj, path) {
 }
 
 function configurePassport(SERVER_ID) {
-    if (config.idp?.clientId) {
-        const idpScope = config.idp.scope;
+    if (config.auth.mode === 'idp') {
+        const idpScope = config.auth.idp.scope;
         const strategy = new OAuth2Strategy({
-            name: config.idp.name || 'oauth2',
-            issuer: config.idp.issuer,
-            authorizationURL: config.idp.authorizationUrl,
-            tokenURL: config.idp.tokenUrl,
-            userInfoURL: config.idp.userInfoUrl,
-            clientId: config.idp.clientId,
-            clientSecret: config.idp.clientSecret || undefined,
-            callbackURL: config.idp.callbackUrl,
+            name: config.auth.idp.name || 'oauth2',
+            issuer: config.auth.idp.issuer,
+            authorizationURL: config.auth.idp.authorizationUrl,
+            tokenURL: config.auth.idp.tokenUrl,
+            userInfoURL: config.auth.idp.userInfoUrl,
+            clientID: config.auth.idp.clientId,
+            clientSecret: config.auth.idp.clientSecret || undefined,
+            callbackURL: config.auth.idp.callbackUrl,
             pkce: true,
             state: true,
-            logoutURL: config.idp.logoutUrl,
-            logoutRedirectURI: config.idp.logoutRedirectUri,
+            logoutURL: config.auth.idp.logoutUrl,
+            logoutRedirectURI: config.auth.idp.logoutRedirectUri,
             certificate: '',
-            jwksURL: config.idp.jwksUrl,
+            jwksURL: config.auth.idp.jwksUrl,
             passReqToCallback: true,
             scope: typeof idpScope === 'string'
                 ? idpScope.split(/\s+/).filter(Boolean)
@@ -63,23 +63,23 @@ function configurePassport(SERVER_ID) {
                 return done(new Error('Access token missing'));
             }
             let isAdmin = false, isSuperAdmin = false;
-            const decodedJWT = jwt.decode(params.id_token) || {};
-            const decodedAccessToken = jwt.decode(accessToken);
+            const decodedJWT = safeDecodeJwt(params.id_token) || {};
+            const decodedAccessToken = safeDecodeJwt(accessToken);
             const firstName = decodedJWT['given_name'] || decodedJWT['nickname'];
             const lastName = decodedJWT['family_name'];
-            const organizationId = getNestedClaim(decodedJWT, config.idp.claims.orgId) ?? '';
-            const rawRoles = getNestedClaim(decodedJWT, config.idp.claims.role) ?? '';
+            const organizationId = getNestedClaim(decodedJWT, config.auth.claimMappings.organization) ?? '';
+            const rawRoles = getNestedClaim(decodedJWT, config.auth.claimMappings.roles) ?? '';
             const roles = Array.isArray(rawRoles)
                 ? rawRoles
                 : String(rawRoles).split(/[\s,]+/).filter(Boolean);
-            const rawGroups = getNestedClaim(decodedJWT, config.idp.claims.groups) ?? '';
+            const rawGroups = getNestedClaim(decodedJWT, config.auth.claimMappings.groups) ?? '';
             const groups = Array.isArray(rawGroups)
                 ? rawGroups
                 : String(rawGroups).split(/[\s,]+/).filter(Boolean);
-            if (roles.includes(config.idp.roles.superAdmin) || roles.includes(config.idp.roles.admin)) {
+            if (roles.includes(config.auth.idp.roles.superAdmin) || roles.includes(config.auth.idp.roles.admin)) {
                 isAdmin = true;
             }
-            if (roles.includes(config.idp.roles.superAdmin)) {
+            if (roles.includes(config.auth.idp.roles.superAdmin)) {
                 isSuperAdmin = true;
             }
             const returnTo = req.session.returnTo;

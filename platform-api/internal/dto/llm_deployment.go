@@ -28,6 +28,12 @@ type LLMProviderDeploymentYAML struct {
 	Spec       LLMProviderDeploymentSpec `yaml:"spec"`
 }
 
+// GetApiVersion returns the artifact's CRD apiVersion.
+func (d *LLMProviderDeploymentYAML) GetApiVersion() string { return d.ApiVersion }
+
+// SetApiVersion sets the artifact's CRD apiVersion.
+func (d *LLMProviderDeploymentYAML) SetApiVersion(v string) { d.ApiVersion = v }
+
 // LLMProviderDeploymentSpec represents the spec section for LLM provider deployments
 type LLMProviderDeploymentSpec struct {
 	DisplayName       string                `yaml:"displayName"`
@@ -59,19 +65,32 @@ type LLMProxyDeploymentYAML struct {
 	Spec       LLMProxyDeploymentSpec `yaml:"spec"`
 }
 
+// GetApiVersion returns the artifact's CRD apiVersion.
+func (d *LLMProxyDeploymentYAML) GetApiVersion() string { return d.ApiVersion }
+
+// SetApiVersion sets the artifact's CRD apiVersion.
+func (d *LLMProxyDeploymentYAML) SetApiVersion(v string) { d.ApiVersion = v }
+
 // LLMProxyDeploymentSpec represents the spec section for LLM proxy deployments
 type LLMProxyDeploymentSpec struct {
-	DisplayName       string                     `yaml:"displayName"`
-	Version           string                     `yaml:"version"`
-	Context           string                     `yaml:"context,omitempty"`
-	VHost             string                     `yaml:"vhost,omitempty"`
-	Provider          LLMProxyDeploymentProvider `yaml:"provider"`
-	GlobalPolicies    []api.Policy               `yaml:"globalPolicies,omitempty"`
-	OperationPolicies []api.OperationPolicy      `yaml:"operationPolicies,omitempty"`
-	Policies          []api.LLMPolicy            `yaml:"policies,omitempty"`
+	DisplayName         string                                 `yaml:"displayName"`
+	Version             string                                 `yaml:"version"`
+	Context             string                                 `yaml:"context,omitempty"`
+	VHost               string                                 `yaml:"vhost,omitempty"`
+	Provider            LLMProxyDeploymentProvider             `yaml:"provider"`
+	AdditionalProviders []LLMProxyDeploymentAdditionalProvider `yaml:"additionalProviders,omitempty"`
+	GlobalPolicies      []api.Policy                           `yaml:"globalPolicies,omitempty"`
+	OperationPolicies   []api.OperationPolicy                  `yaml:"operationPolicies,omitempty"`
+	Policies            []api.LLMPolicy                        `yaml:"policies,omitempty"`
 }
 
 type LLMProxyDeploymentProvider struct {
 	ID   string            `yaml:"id"`
 	Auth *api.UpstreamAuth `yaml:"auth,omitempty"`
+}
+
+type LLMProxyDeploymentAdditionalProvider struct {
+	ID          string                   `yaml:"id"`
+	As          string                   `yaml:"as,omitempty"`
+	Transformer *api.LLMProxyTransformer `yaml:"transformer,omitempty"`
 }

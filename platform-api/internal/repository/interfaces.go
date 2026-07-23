@@ -35,6 +35,8 @@ type OrganizationRepository interface {
 	DeleteOrganization(orgId string) error
 	ListOrganizations(limit, offset int) ([]*model.Organization, error)
 	CountOrganizations() (int, error)
+	ListOrganizationsForUser(userUUID string, limit, offset int) ([]*model.Organization, error)
+	CountOrganizationsForUser(userUUID string) (int, error)
 }
 
 // ProjectRepository defines the interface for project data access
@@ -116,7 +118,7 @@ type APIRepository interface {
 	// Unified API association methods (supports both gateways and dev portals)
 	CreateAPIAssociation(association *model.APIAssociation) error
 	GetAPIAssociations(apiUUID, associationType, orgUUID string) ([]*model.APIAssociation, error)
-	UpdateAPIAssociation(apiUUID, resourceId, associationType, orgUUID string) error
+	UpdateAPIAssociation(apiUUID, resourceId, associationType, orgUUID, updatedBy string) error
 
 	// API name validation methods
 	CheckAPIExistsByHandleInOrganization(handle, orgUUID string) (bool, error)
@@ -144,6 +146,7 @@ type DeploymentRepository interface {
 	GetDeployedGatewayIDs(artifactUUID, orgUUID string) ([]string, error)
 	HasActiveDeployment(artifactUUID, orgUUID string) (bool, error)
 	GetLatestDeploymentTime(artifactUUID, orgUUID string) (*time.Time, error)
+	GetLatestDeploymentRevision(artifactUUID, gatewayUUID, orgUUID string) (string, error)
 
 	// Gateway deployment methods
 	GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID string, since *time.Time) ([]*model.DeploymentInfo, error)
@@ -236,28 +239,31 @@ type LLMProviderTemplateRepository interface {
 	Exists(templateID, orgUUID string) (bool, error)
 	GetGroupID(handle, orgUUID string) (string, error)
 	ManagedByForHandle(handle, orgUUID string) (string, error)
+	ManagedByForGroupID(groupID, orgUUID string) (string, error)
 	CountProvidersUsingTemplate(templateID, orgUUID, version string) (int, error)
 }
 
 // LLMProviderRepository defines the interface for LLM provider persistence
 type LLMProviderRepository interface {
 	Create(p *model.LLMProvider) error
+	CreateWithCustomPolicyUsages(p *model.LLMProvider, policyUUIDs []string) error
 	GetByID(providerID, orgUUID string) (*model.LLMProvider, error)
 	List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error)
 	Count(orgUUID string) (int, error)
 	Update(p *model.LLMProvider) error
+	UpdateWithCustomPolicyUsages(p *model.LLMProvider, policyUUIDs []string) error
 	Delete(providerID, orgUUID string) error
 	Exists(providerID, orgUUID string) (bool, error)
 	// EnsureGatewayAssociation creates a gateway association for the provider if one
 	// does not already exist and resolves the metadata to use for the deployment.
-	EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
+	EnsureGatewayAssociation(providerUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // APIKeyRepository defines the interface for API key persistence
 type APIKeyRepository interface {
 	Create(key *model.APIKey) error
 	Update(key *model.APIKey) error
-	Revoke(artifactUUID, name string) error
+	Revoke(artifactUUID, name, updatedBy string) error
 	GetByArtifactAndName(artifactUUID, name string) (*model.APIKey, error)
 	ListByArtifact(artifactUUID string) ([]*model.APIKey, error)
 	ListByGatewayAndKind(gatewayID, orgID, kind, issuer string) ([]*model.APIKey, error)
@@ -280,7 +286,7 @@ type LLMProxyRepository interface {
 	Exists(proxyID, orgUUID string) (bool, error)
 	// EnsureGatewayAssociation creates a gateway association for the proxy if one does
 	// not already exist and resolves the metadata to use for the deployment.
-	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // MCPProxyRepository defines the interface for MCP proxy persistence
@@ -295,7 +301,7 @@ type MCPProxyRepository interface {
 	Update(p *model.MCPProxy) error
 	Delete(handle, orgUUID string) error
 	Exists(handle, orgUUID string) (bool, error)
-	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, deployMetadata string, metadataProvided bool) (string, error)
+	EnsureGatewayAssociation(proxyUUID, gatewayUUID, orgUUID, createdBy, deployMetadata string, metadataProvided bool) (string, error)
 }
 
 // WebSubAPIHmacSecretRepository defines the interface for WebSub API HMAC secret persistence
@@ -382,10 +388,10 @@ type UserIdentityMappingRepository interface {
 }
 
 // UserOrganizationMappingRepository defines the interface for user<->organization
-// membership persistence. Populate-only today (no reader depends on it). Both
-// FKs are declared without ON DELETE CASCADE; DeleteByUser/DeleteByOrg exist so
-// callers can perform the cascade in application code, in the same transaction
-// as the parent delete.
+// membership persistence. Both FKs are declared ON DELETE CASCADE in the
+// schema; DeleteByUser/DeleteByOrg additionally perform the same deletes in
+// application code, in the same transaction as the parent delete, as
+// defense-in-depth for pooled SQLite connections that may not enforce FKs.
 type UserOrganizationMappingRepository interface {
 	// AddMembership records that userUUID has onboarded to orgUUID. Idempotent:
 	// a duplicate (userUUID, orgUUID) pair is a no-op, not an error.

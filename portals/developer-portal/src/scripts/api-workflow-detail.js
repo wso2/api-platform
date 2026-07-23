@@ -94,7 +94,7 @@ function initArazzoUI(specContent) {
     } catch (error) {
         console.error('Error initializing Arazzo UI:', error);
         const wrapper = document.createElement('div');
-        wrapper.style.cssText = 'padding:2rem;text-align:center;color:#e74c3c;';
+        wrapper.style.cssText = 'padding:2rem;text-align:center;color:var(--danger);';
         const title = document.createElement('p');
         title.innerHTML = '<strong>Error loading Arazzo UI</strong>';
         const message = document.createElement('p');

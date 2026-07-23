@@ -659,16 +659,24 @@ curl -X PUT http://localhost:9090/rest-apis/PetStoreAPI \
 #### 1. Control Plane Not Configured
 
 ```bash
-# Check if host is set
-echo $APIP_GW_CONTROLLER__CONTROLPLANE__HOST
-# or check config.toml [controller.controlplane] section
+# Check the control-plane host in the config file / env file
+grep -A2 '\[controller.controlplane\]' config.toml
+grep APIP_GW_CONTROLLER_CONTROLPLANE_HOST api-platform.env
 ```
 
 **Fix:** Set the on-prem APIM host:
+`config.toml` reads environment variables through `{{ env }}` interpolation tokens, so set the value in `api-platform.env` 
+or edit `config.toml` directly:
 ```bash
-export APIP_GW_CONTROLLER__CONTROLPLANE__HOST=192.168.0.102:9443
-export APIP_GW_CONTROLLER__CONTROLPLANE__APIM_OAUTH2__CLIENT_ID=...
-export APIP_GW_CONTROLLER__CONTROLPLANE__APIM_OAUTH2__CLIENT_SECRET=...
+# In api-platform.env (read by the config.toml token host = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_HOST" "" }}')
+APIP_GW_CONTROLLER_CONTROLPLANE_HOST=192.168.0.102:9443
+APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_ID=...
+APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_SECRET=...
+```
+```toml
+[controller.controlplane]
+apim_oauth2_client_id     = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_ID" "" }}'
+apim_oauth2_client_secret = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_SECRET" "" }}'
 ```
 
 #### 2. APIM Not Reachable
@@ -714,7 +722,8 @@ curl -X GET http://localhost:9090/rest-apis/PetStoreAPI \
 
 ```bash
 # Look for connection logs
-export APIP_GW_LOG_LEVEL=debug
+# Set in api-platform.env; config.toml reads it via level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
+APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
 # Restart gateway controller
 # Check logs for: "Bottom-up sync: starting"
 ```
@@ -746,7 +755,8 @@ Check gateway controller logs for:
 3. Enable debug logging to see the actual response
 
 ```bash
-export APIP_GW_LOG_LEVEL=debug
+# Set in api-platform.env; config.toml reads it via level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
+APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
 ```
 
 ### Issue: "On-prem Control Plane Mode Not Enabled"

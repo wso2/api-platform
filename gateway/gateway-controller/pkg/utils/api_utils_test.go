@@ -361,6 +361,33 @@ func TestAPIUtilsService_PushArtifact(t *testing.T) {
 			"template deployedAt should equal UpdatedAt; got %v want %v", got.DeployedAt, cfg.UpdatedAt.UTC())
 	})
 
+	t.Run("Deployable push carries a deploymentRevision derived from deployedAt", func(t *testing.T) {
+		// The control plane uses deploymentRevision to dedupe replay re-pushes (reconnect /
+		// full reconcile) so they do not create duplicate deployments. It is derived from the
+		// deployment time, so it is stable across re-pushes yet distinct across deployments.
+		var got ImportArtifactRequest
+		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			reqs := readPushedArtifacts(t, r)
+			require.Len(t, reqs, 1)
+			got = reqs[0]
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"total":1,"success":1,"failed":0,"artifacts":{"0000-test-api-0000-000000000000":{"id":"cp-rest-1","origin":"gateway_api","status":"deployed"}}}`))
+		}))
+		defer server.Close()
+
+		cfg := createTestStoredConfig("RestApi")
+		deployedAt := time.Date(2026, 5, 6, 7, 8, 9, 123456789, time.UTC)
+		cfg.DeployedAt = &deployedAt
+
+		svc := NewAPIUtilsService(PlatformAPIConfig{BaseURL: server.URL, Token: "test-token"}, logger)
+		_, err := svc.PushArtifact(cfg.UUID, cfg, "")
+		require.NoError(t, err)
+
+		require.NotNil(t, got.Properties, "deployable push must carry Properties")
+		assert.Equal(t, deployedAt.Format(time.RFC3339Nano), got.Properties[deploymentRevisionProperty],
+			"deploymentRevision must equal the deployedAt in RFC3339Nano")
+	})
+
 	t.Run("HTTP error response", func(t *testing.T) {
 		server := newHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)

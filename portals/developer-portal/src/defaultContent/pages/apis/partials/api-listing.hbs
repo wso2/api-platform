@@ -30,15 +30,15 @@
           <path d="M192 128 H238" stroke="#a9c1e6" stroke-width="2" stroke-dasharray="3 7" stroke-linecap="round"/>
           <path d="M160 96 V62 H128" stroke="#a9c1e6" stroke-width="2" stroke-dasharray="3 7" stroke-linecap="round"/>
           <rect x="120" y="44" width="120" height="104" rx="16" fill="#dbe7f8" stroke="#9db8e0" stroke-width="2"/>
-          <rect x="138" y="66" width="84" height="11" rx="5.5" fill="#ffffff"/>
+          <rect x="138" y="66" width="84" height="11" rx="5.5" fill="var(--white)"/>
           <rect x="138" y="90" width="66" height="8" rx="4" fill="#b6caea"/>
           <rect x="138" y="108" width="78" height="8" rx="4" fill="#b6caea"/>
           <rect x="138" y="126" width="50" height="8" rx="4" fill="#b6caea"/>
           <circle cx="56" cy="62" r="27" fill="#c7d8f3" stroke="#8fa9d6" stroke-width="2"/>
           <circle cx="56" cy="62" r="6" fill="#5b7fb9"/>
           <circle cx="266" cy="128" r="27" fill="#5b7fb9"/>
-          <rect x="256" y="125" width="20" height="15" rx="3" fill="#fff"/>
-          <path d="M259 125 v-3.5 a7 7 0 0 1 14 0 V125" stroke="#fff" stroke-width="2.4" fill="none"/>
+          <rect x="256" y="125" width="20" height="15" rx="3" fill="var(--white)"/>
+          <path d="M259 125 v-3.5 a7 7 0 0 1 14 0 V125" stroke="var(--white)" stroke-width="2.4" fill="none"/>
         </svg>
       </div>
     </div>
@@ -145,8 +145,8 @@
             </a>
             {{else}}
             <a href="{{../baseUrl}}/api/{{id}}#subscriptionPlans"
-               class="dp-btn dp-btn--primary {{#if @root.isReadOnlyMode}}disabled{{/if}}"
-               {{#if @root.isReadOnlyMode}}aria-disabled="true" tabindex="-1"{{/if}}>Subscribe</a>
+               class="dp-btn dp-btn--primary"
+               >Subscribe</a>
             {{/if}}
           </div>
           {{/if}}
@@ -164,45 +164,5 @@
     </div>
   </div>
 
-  <script>
-    (function(){
-      function findClosest(el, selector){
-        while(el && el !== document){
-          if(el.matches && el.matches(selector)) return el;
-          el = el.parentNode;
-        }
-        return null;
-      }
-
-      document.addEventListener('click', function(e){
-        var modalTrigger = findClosest(e.target, '[data-modal]');
-        if(modalTrigger){
-          e.preventDefault();
-          if(modalTrigger.classList.contains('is-readonly') || modalTrigger.getAttribute('aria-disabled') === 'true'){
-            return;
-          }
-          if(typeof loadModal === 'function'){
-            loadModal(modalTrigger.getAttribute('data-modal'));
-          } else {
-            var id = modalTrigger.getAttribute('data-modal');
-            var el = document.getElementById(id);
-            if(el) {
-              el.style.display = 'flex';
-              document.body.classList.add('modal-open');
-              if(typeof prepareSubscriptionModal === 'function') {
-                try { prepareSubscriptionModal(id); } catch(err) { /* noop */ }
-              }
-            }
-          }
-          return;
-        }
-
-        var nav = findClosest(e.target, '[data-href]');
-        if(nav){
-          var href = nav.getAttribute('data-href');
-          if(href){ window.location.href = href; }
-        }
-      }, false);
-    })();
-  </script>
+  <script src='/technical-scripts/listing-cards.js' defer></script>
 </section>

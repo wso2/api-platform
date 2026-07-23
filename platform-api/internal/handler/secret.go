@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
-	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
@@ -80,15 +79,7 @@ func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) err
 
 	resp, err := h.secretService.Create(orgID, userID, &req)
 	if err != nil {
-		var appErr *apperror.Error
-		if errors.As(err, &appErr) {
-			return err
-		}
-		// Repository-origin duplicate (unique constraint) still surfaces as a sentinel.
-		if errors.Is(err, constants.ErrSecretAlreadyExists) {
-			return apperror.SecretExists.Wrap(err)
-		}
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to create secret")
+		return serviceError(err, "failed to create secret")
 	}
 
 	setLocation(w, "secrets", resp.Handle)
@@ -111,7 +102,12 @@ func (h *SecretHandler) ListSecrets(w http.ResponseWriter, r *http.Request) erro
 		if err != nil {
 			return apperror.ValidationFailed.Wrap(err, "updatedAfter must be an RFC3339 timestamp")
 		}
-		updatedAfter = &t
+		// Normalize to UTC so the comparison against UTC-stored updated_at
+		// values is a correct chronological comparison regardless of the
+		// offset the client sent (some drivers compare timestamp bind
+		// parameters as text, where mixed offsets sort incorrectly).
+		utc := t.UTC()
+		updatedAfter = &utc
 	}
 
 	resp, err := h.secretService.List(orgID, limit, offset, updatedAfter)
@@ -137,10 +133,7 @@ func (h *SecretHandler) GetSecret(w http.ResponseWriter, r *http.Request) error 
 
 	summary, err := h.secretService.Get(orgID, handle)
 	if err != nil {
-		if errors.Is(err, constants.ErrSecretNotFound) {
-			return apperror.SecretNotFound.Wrap(err)
-		}
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to get secret")
+		return serviceError(err, "failed to get secret")
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, summary)
@@ -178,10 +171,7 @@ func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) err
 
 	resp, err := h.secretService.Update(orgID, handle, userID, &req)
 	if err != nil {
-		if errors.Is(err, constants.ErrSecretNotFound) {
-			return apperror.SecretNotFound.Wrap(err)
-		}
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to update secret")
+		return serviceError(err, "failed to update secret")
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, resp)
@@ -207,10 +197,8 @@ func (h *SecretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) err
 
 	err = h.secretService.Delete(orgID, handle, userID)
 	if err != nil {
-		if errors.Is(err, constants.ErrSecretNotFound) {
-			return apperror.SecretNotFound.Wrap(err)
-		}
-
+		// SecretInUseError is a typed service error rather than a catalog error: it
+		// carries the blocking references, which become the response's details field.
 		var inUseErr *service.SecretInUseError
 		if errors.As(err, &inUseErr) {
 			refs := make([]dto.SecretReferenceDTO, 0, len(inUseErr.References))
@@ -220,7 +208,7 @@ func (h *SecretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) err
 			return apperror.SecretInUse.New().WithDetails(dto.SecretInUseDetails{References: refs})
 		}
 
-		return apperror.Internal.Wrap(err).WithLogMessage("failed to delete secret")
+		return serviceError(err, "failed to delete secret")
 	}
 
 	w.WriteHeader(http.StatusNoContent)

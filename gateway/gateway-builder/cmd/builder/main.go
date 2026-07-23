@@ -255,6 +255,20 @@ func main() {
 		errors.FatalError(errors.NewDockerError("Dockerfile generation failed", err))
 	}
 
+	// Stage python-executor into the gateway-runtime build context so that the
+	// Dockerfile's `COPY python-executor/ ...` directive resolves correctly when the
+	// CLI later runs `docker build` on the output directory.  Doing this here (inside
+	// the container) avoids a host-side file operation on root-owned output files,
+	// which fails with permission denied when using a rootful Docker daemon on Linux.
+	pythonExecutorSrc := filepath.Join(*outputDir, "python-executor")
+	if _, statErr := os.Stat(pythonExecutorSrc); statErr == nil {
+		pythonExecutorDst := filepath.Join(*outputDir, "gateway-runtime", "python-executor")
+		if err := fsutil.CopyDir(pythonExecutorSrc, pythonExecutorDst); err != nil {
+			errors.FatalError(errors.NewGenerationError("failed to stage python-executor into gateway-runtime build context", err))
+		}
+		slog.Info("Staged python-executor into gateway-runtime build context", "dst", pythonExecutorDst)
+	}
+
 	// Phase 6: Build Info Generation
 	slog.Info("Starting Phase 6: Build Info Generation", "phase", "build-info")
 

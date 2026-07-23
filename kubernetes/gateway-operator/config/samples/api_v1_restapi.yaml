@@ -1,6 +1,6 @@
 ---
 # Example 1: API with explicit gateway references (multiple gateways)
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: api-with-gateway-refs
@@ -21,11 +21,18 @@ spec:
   #     params:
   #       issuers:
   #         - WSO2KeyManager1
+  # API-level resilience applies to all operations unless overridden per operation.
+  resilience:
+    timeout: 15s
+    idleTimeout: 0s
   operations:
     - method: GET
       path: /info
     - method: POST
       path: /submit
+      # Operation-level resilience overrides the API-level values for this route.
+      resilience:
+        timeout: 5s
     - method: GET
       path: /helloworld
     - method: GET
@@ -34,7 +41,7 @@ spec:
 
 ---
 # Example 1: API with explicit gateway references (multiple gateways)
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1
 kind: RestApi
 metadata:
   name: api-with-gateway-refs-1
@@ -64,3 +71,29 @@ spec:
       path: /helloworld
     - method: GET
       path: /heyhelloworld
+
+
+---
+# Example 3: API routing through a reusable upstreamDefinition with a per-upstream connect timeout.
+# The upstream references the definition by name (url XOR ref); the connect timeout bounds TCP
+# connection establishment to the backend.
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: RestApi
+metadata:
+  name: api-with-upstream-definition
+spec:
+  displayName: test-api-upstreamdef
+  version: v1.0
+  context: /orders
+  upstreamDefinitions:
+    - name: orders-backend
+      timeout:
+        connect: 6s
+      upstreams:
+        - url: http://orders.default.svc.cluster.local:8080
+  upstream:
+    main:
+      ref: orders-backend
+  operations:
+    - method: GET
+      path: /info

@@ -216,7 +216,7 @@ export default function ServiceProviderNew() {
   useEffect(() => {
     if (isProjectLevel && hasPermission(SCOPES.LLM_PROVIDER_MANAGE)) {
       setCurrentProject(null);
-      navigate(buildOrgPath(currentOrganization, '/service-provider/new'), {
+      navigate(buildOrgPath(currentOrganization, '/service-provider/create'), {
         replace: true,
       });
     }
@@ -323,8 +323,7 @@ export default function ServiceProviderNew() {
       isVersionValid &&
       selectedTemplateId &&
       formState.upstreamUrl.trim() &&
-      formState.upstreamAuthType &&
-      formState.upstreamAuthValue.trim()
+      formState.upstreamAuthType
   );
 
   const toProviderId = (name: string): string =>
@@ -333,6 +332,11 @@ export default function ServiceProviderNew() {
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
+
+  const toMajorPolicyVersion = (version: string): string => {
+    const majorVersion = version.trim().match(/^v?(\d+)/i)?.[1];
+    return majorVersion ? `v${majorVersion}` : version;
+  };
 
   const handleCreateProvider = async () => {
     if (!isFormValid || !selectedTemplateId) return;
@@ -349,10 +353,20 @@ export default function ServiceProviderNew() {
             type: formState.upstreamAuthType,
             header: formState.upstreamAuthHeader,
 
-            value: formState.valuePrefix
-              ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
-              : formState.upstreamAuthValue,
+            value:
+              formState.valuePrefix && formState.upstreamAuthValue.trim()
+                ? `${formState.valuePrefix.trimEnd()} ${formState.upstreamAuthValue}`
+                : formState.upstreamAuthValue,
           },
+        },
+      };
+
+      const security = {
+        enabled: true,
+        apiKey: {
+          enabled: true,
+          key: 'X-API-Key',
+          in: 'header' as const,
         },
       };
 
@@ -365,6 +379,7 @@ export default function ServiceProviderNew() {
         template: selectedVersionTemplateId ?? selectedTemplateId,
         openapi: openapiSpec,
         upstream,
+        security,
         globalPolicies: [
           ...(familyHandle(selectedTemplateId) !== 'azure-openai' &&
           familyHandle(selectedTemplateId) !== 'azureai-foundry'
@@ -372,7 +387,7 @@ export default function ServiceProviderNew() {
             : []),
           ...guardrails.map((guardrail) => ({
             name: guardrail.name,
-            version: guardrail.version,
+            version: toMajorPolicyVersion(guardrail.version),
             params: guardrail.settings ?? {},
           })),
         ],

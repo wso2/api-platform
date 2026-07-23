@@ -86,8 +86,16 @@ func NewConnection(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
 			return nil, fmt.Errorf("failed to create database directory: %w", err)
 		}
 
-		// Open SQLite connection to the api_platform.db file
-		db, err = sql.Open(DriverSQLite, cfg.Path)
+		// Open SQLite connection to the api_platform.db file.
+		// _loc=UTC forces the driver to interpret and return timestamps in UTC,
+		// matching the time.Now().UTC() values written throughout the codebase.
+		dsn := cfg.Path
+		if strings.Contains(dsn, "?") {
+			dsn += "&_loc=UTC"
+		} else {
+			dsn += "?_loc=UTC"
+		}
+		db, err = sql.Open(DriverSQLite, dsn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open database: %w", err)
 		}
@@ -103,6 +111,17 @@ func NewConnection(cfg *config.Database, slogger *slog.Logger) (*DB, error) {
 			"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 			cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Name, cfg.SSLMode,
 		)
+		// sslrootcert verifies the server certificate (verify-ca/verify-full);
+		// sslcert/sslkey present a client certificate for mutual TLS.
+		if cfg.SSLRootCert != "" {
+			dsn += fmt.Sprintf(" sslrootcert=%s", cfg.SSLRootCert)
+		}
+		if cfg.SSLCert != "" {
+			dsn += fmt.Sprintf(" sslcert=%s", cfg.SSLCert)
+		}
+		if cfg.SSLKey != "" {
+			dsn += fmt.Sprintf(" sslkey=%s", cfg.SSLKey)
+		}
 
 		// Use pgx stdlib driver for PostgreSQL
 		db, err = sql.Open(DriverPGX, dsn)
@@ -574,6 +593,13 @@ func buildSQLServerDSN(cfg *config.Database) string {
 	q.Set("database", cfg.Name)
 	q.Set("encrypt", encrypt)
 	q.Set("TrustServerCertificate", trustServerCertificate)
+	// certificate pins the CA used to verify the server certificate; only
+	// meaningful once TrustServerCertificate is false. go-mssqldb has no
+	// client-certificate (mutual TLS) support, so ssl_cert/ssl_key are not
+	// applicable to this driver.
+	if cfg.SSLRootCert != "" && trustServerCertificate == "false" {
+		q.Set("certificate", cfg.SSLRootCert)
+	}
 
 	host := cfg.Host
 	if host == "" {

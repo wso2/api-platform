@@ -57,7 +57,7 @@ func (r *UserIdentityMappingRepo) GetOrCreateUUID(identity string) (string, erro
 
 	newUUID := uuid.New().String()
 	query := `INSERT INTO user_idp_references (uuid, idp_id, created_at) VALUES (?, ?, ?)`
-	_, err := r.db.Exec(r.db.Rebind(query), newUUID, identity, time.Now())
+	_, err := r.db.Exec(r.db.Rebind(query), newUUID, identity, time.Now().UTC())
 	if err != nil {
 		if isUniqueViolation(err) {
 			// Lost the race to another concurrent request inserting the same idp_id.
@@ -147,18 +147,8 @@ func dedupeNonEmpty(ids []string) []string {
 	return unique
 }
 
-// isUniqueViolation detects DB unique-constraint violations across SQLite and PostgreSQL.
+// isUniqueViolation detects DB unique-constraint violations. It delegates to the
+// shared, dialect-aware IsUniqueViolation (SQLite, PostgreSQL and SQL Server).
 func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	if strings.Contains(s, "UNIQUE constraint failed") {
-		return true
-	}
-	if strings.Contains(s, "duplicate key value violates unique constraint") ||
-		strings.Contains(s, "23505") {
-		return true
-	}
-	return false
+	return IsUniqueViolation(err)
 }

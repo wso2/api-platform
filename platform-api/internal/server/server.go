@@ -19,23 +19,16 @@ package server
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/hex"
-	"encoding/pem"
+	"errors"
 	"fmt"
 	"log/slog"
-	"math/big"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -76,22 +69,12 @@ type Server struct {
 	plugins        []plugin.Plugin // internal plugins + wrapped external plugins
 }
 
-// validateAuthConfig enforces production auth requirements when demo mode is off.
-func validateAuthConfig(cfg *config.Server) error {
-	if demoMode() {
-		return nil
-	}
-	if cfg.Auth.FileBased.Enabled {
-		return fmt.Errorf("file-based authentication (AUTH_FILE_BASED_ENABLED=true) is not allowed when APIP_DEMO_MODE=false; configure an IDP (AUTH_IDP_ENABLED=true) or JWT (AUTH_JWT_ENABLED=true) instead")
-	}
-	if !cfg.Auth.IDP.Enabled && !cfg.Auth.JWT.Enabled {
-		return fmt.Errorf("APIP_DEMO_MODE=false requires a real auth mode; set AUTH_IDP_ENABLED=true or AUTH_JWT_ENABLED=true")
-	}
-	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SkipValidation {
-		return fmt.Errorf("JWT signature validation cannot be skipped (AUTH_JWT_SKIP_VALIDATION=true) when APIP_DEMO_MODE=false; set AUTH_JWT_SKIP_VALIDATION=false for production")
-	}
-	if len(cfg.CORS.AllowedOrigins) == 0 || slices.Contains(cfg.CORS.AllowedOrigins, "*") {
-		return fmt.Errorf("CORS_ALLOWED_ORIGINS must be set to an explicit, non-wildcard list of origins when APIP_DEMO_MODE=false")
+// validateServerConfig enforces request-security requirements at startup that
+// are not covered by config-load validation. All checks are unconditional:
+// there is no relaxed/demo mode.
+func validateServerConfig(cfg *config.Server) error {
+	if slices.Contains(cfg.Listeners.CORS.AllowedOrigins, "*") {
+		return fmt.Errorf("cors.allowed_origins must not contain \"*\"; list explicit origins, or leave it empty to disable cross-origin access")
 	}
 	return nil
 }
@@ -109,8 +92,8 @@ func validateAuthConfig(cfg *config.Server) error {
 // differ only in the Deps each receives.
 func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	internalPlugins []plugin.Plugin, externalPlugins []pdk.Plugin) (*Server, error) {
-	if err := validateAuthConfig(cfg); err != nil {
-		slogger.Error("Invalid auth configuration for production mode", "error", err)
+	if err := validateServerConfig(cfg); err != nil {
+		slogger.Error("Invalid server configuration", "error", err)
 		return nil, err
 	}
 
@@ -159,8 +142,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	userIdentityMappingRepo := repository.NewUserIdentityMappingRepo(db)
 	userOrgMappingRepo := repository.NewUserOrganizationMappingRepo(db)
 
-	// Seed the file-based organization on startup if file-based auth mode is enabled.
-	if cfg.Auth.FileBased.Enabled {
+	// Seed the file-based organization on startup if file auth mode is selected.
+	if cfg.Auth.Mode == config.AuthModeFile {
 		if err := seedFileBasedOrg(cfg, orgRepo, slogger); err != nil {
 			return nil, fmt.Errorf("failed to seed file-based organization: %w", err)
 		}
@@ -217,14 +200,13 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// Initialize WebSocket manager first (needed for GatewayEventsService)
 	wsConfig := websocket.ManagerConfig{
-		MaxConnections:       cfg.WebSocket.MaxConnections,
-		HeartbeatInterval:    20 * time.Second,
-		HeartbeatTimeout:     time.Duration(cfg.WebSocket.ConnectionTimeout) * time.Second,
-		MaxConnectionsPerOrg: cfg.WebSocket.MaxConnectionsPerOrg,
-		MetricsLogEnabled:    cfg.WebSocket.MetricsLogEnabled,
-		MetricsLogInterval:   time.Duration(cfg.WebSocket.MetricsLogInterval) * time.Second,
+		MaxConnections:     cfg.Listeners.WebSocket.MaxConnections,
+		HeartbeatInterval:  20 * time.Second,
+		HeartbeatTimeout:   time.Duration(cfg.Listeners.WebSocket.ConnectionTimeout) * time.Second,
+		MetricsLogEnabled:  cfg.Listeners.WebSocket.MetricsLogEnabled,
+		MetricsLogInterval: time.Duration(cfg.Listeners.WebSocket.MetricsLogInterval) * time.Second,
 	}
-	wsManager := websocket.NewManager(wsConfig, gatewayRepo, slogger)
+	wsManager := websocket.NewManager(wsConfig, slogger)
 
 	// Initialize EventHub for multi-replica HA event delivery.
 	// Events published here are polled by all platform-api instances; each instance
@@ -270,40 +252,37 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	subscriptionService := service.NewSubscriptionService(apiRepo, artifactRepo, subscriptionRepo, subscriptionPlanRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
 	subscriptionPlanService := service.NewSubscriptionPlanService(subscriptionPlanRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, slogger)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, subscriptionRepo, subscriptionPlanRepo, llmProviderRepo, llmProxyRepo, mcpProxyRepo, deploymentRepo, gatewayRepo, orgRepo, projectRepo, apiKeyRepo, artifactRepo, secretRepo, cfg, slogger)
-	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.APIKey.HashingAlgorithms, slogger)
-	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, auditRepo, apiUtil, cfg, slogger)
+	apiKeyService := service.NewAPIKeyService(apiRepo, artifactRepo, apiKeyRepo, gatewayEventsService, auditRepo, cfg.Security.APIKey.HashingAlgorithms, slogger)
+	deploymentService := service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, gatewayEventsService, auditRepo, apiUtil, cfg, slogger)
 	llmTemplateService := service.NewLLMProviderTemplateService(llmTemplateRepo, auditRepo, identityService)
 	llmProviderService := service.NewLLMProviderService(llmProviderRepo, llmTemplateRepo, orgRepo, llmTemplateSeeder, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
+	llmProviderService.SetCustomPolicyRepository(customPolicyRepo)
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 
-	// Initialize the shared database encryption key used for all encrypted DB columns.
-	// DATABASE_SUBSCRIPTION_TOKEN_ENCRYPTION_KEY is accepted as a legacy alias.
-	// DeriveEncryptionKey requires 64-char hex or base64-to-32-bytes; when falling back to
-	// the raw JWT secret (arbitrary length), hash it to a valid 64-char hex key.
-	dbEncryptionKey := cfg.Database.EncryptionKey
-	if dbEncryptionKey == "" && cfg.Auth.JWT.SecretKey != "" {
-		h := sha256.Sum256([]byte(cfg.Auth.JWT.SecretKey))
-		dbEncryptionKey = hex.EncodeToString(h[:])
-	}
+	// The single configured encryption key (APIP_CP_ENCRYPTION_KEY) is used for all encrypted DB
+	// columns (secrets, subscription tokens, WebSub HMAC secrets)
+	dbEncryptionKey := cfg.Security.EncryptionKey
 	llmProviderDeploymentService := service.NewLLMProviderDeploymentService(
 		llmProviderRepo,
 		llmTemplateRepo,
 		deploymentRepo,
 		gatewayRepo,
 		orgRepo,
+		apiKeyRepo,
 		gatewayEventsService,
 		cfg,
 		slogger,
 	)
-	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
-	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, gatewayRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
+	llmProviderAPIKeyService := service.NewLLMProviderAPIKeyService(llmProviderRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
+	llmProxyAPIKeyService := service.NewLLMProxyAPIKeyService(llmProxyRepo, apiRepo, apiKeyRepo, gatewayEventsService, identityService, slogger)
 	apiKeyUserService := service.NewAPIKeyUserService(apiKeyRepo, identityService, slogger)
 	llmProxyDeploymentService := service.NewLLMProxyDeploymentService(
 		llmProxyRepo,
 		deploymentRepo,
 		gatewayRepo,
 		orgRepo,
+		apiKeyRepo,
 		gatewayEventsService,
 		cfg,
 		slogger,
@@ -314,6 +293,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		gatewayRepo,
 		orgRepo,
 		artifactRepo,
+		apiKeyRepo,
 		gatewayEventsService,
 		cfg,
 		slogger,
@@ -333,15 +313,10 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		mcpProxyService,
 	)
 
-	// Initialize secret vault and service.
-	// Key precedence: PLATFORM_SECRET_ENCRYPTION_KEY → DATABASE_ENCRYPTION_KEY → JWT secret hash.
-	secretKeyStr := cfg.Database.SecretEncryptionKey
-	if secretKeyStr == "" {
-		secretKeyStr = dbEncryptionKey
-	}
-	secretKey, keyErr := utils.DeriveEncryptionKey(secretKeyStr)
+	// Initialize secret vault and service using the single configured encryption key.
+	secretKey, keyErr := utils.DeriveEncryptionKey(cfg.Security.EncryptionKey)
 	if keyErr != nil {
-		return nil, fmt.Errorf("invalid secret encryption key: %w", keyErr)
+		return nil, fmt.Errorf("invalid encryption key: %w", keyErr)
 	}
 	secretVault, vaultErr := internalvault.NewInHouseVault(secretKey)
 	if vaultErr != nil {
@@ -350,28 +325,30 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	secretService := service.NewSecretService(secretRepo, secretVault, identityService)
 
 	// Initialize handlers
-	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
+	orgHandler := handler.NewOrganizationHandler(orgService, identityService, cfg.Auth.IDP.ValidationMode, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, identityService, slogger)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService, identityService, slogger)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService, subscriptionPlanService, identityService, slogger)
 	subscriptionPlanHandler := handler.NewSubscriptionPlanHandler(subscriptionPlanService, identityService, slogger)
 	appHandler := handler.NewApplicationHandler(appService, identityService, slogger)
-	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.WebSocket.RateLimitPerMin, slogger)
+	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, deploymentService, cfg.Listeners.WebSocket.RateLimitPerMin, slogger)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService, artifactImportService, secretService, slogger)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService, identityService, slogger)
 	deploymentHandler := handler.NewDeploymentHandler(deploymentService, identityService, slogger)
 	llmHandler := handler.NewLLMHandler(llmTemplateService, llmProviderService, llmProxyService, identityService, slogger)
-	llmDeploymentHandler := handler.NewLLMProviderDeploymentHandler(llmProviderDeploymentService, slogger)
+	llmDeploymentHandler := handler.NewLLMProviderDeploymentHandler(llmProviderDeploymentService, identityService, slogger)
 	llmProviderAPIKeyHandler := handler.NewLLMProviderAPIKeyHandler(llmProviderAPIKeyService, identityService, slogger)
 	llmProxyAPIKeyHandler := handler.NewLLMProxyAPIKeyHandler(llmProxyAPIKeyService, identityService, slogger)
 	apiKeyUserHandler := handler.NewAPIKeyUserHandler(apiKeyUserService, identityService, slogger)
-	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, slogger)
+	llmProxyDeploymentHandler := handler.NewLLMProxyDeploymentHandler(llmProxyDeploymentService, identityService, slogger)
 	mcpProxyHandler := handler.NewMCPProxyHandler(mcpProxyService, identityService, slogger)
 	mcpProxyDeploymentHandler := handler.NewMCPProxyDeploymentHandler(mcpDeploymentService, identityService, slogger)
 	// Wire secret placeholder validation into dependent services
 	llmProviderService.SetSecretService(secretService)
+	llmProxyService.SetSecretService(secretService)
 	mcpProxyService.WithSecretService(secretService)
+	apiService.SetSecretService(secretService)
 	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
 	// Start deployment timeout background job
 	timeoutConfig := service.DeploymentTimeoutConfig{
@@ -382,7 +359,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	timeoutService := service.NewDeploymentTimeoutService(deploymentRepo, timeoutConfig, slogger)
 
 	slogger.Info("Initialized all services and handlers successfully")
-	slogger.Info("Platform API configuration", slog.Bool("demoMode", demoMode()))
 
 	// Setup mux and register all routes.
 	mux := http.NewServeMux()
@@ -401,7 +377,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		return nil, err
 	}
 
-	if !cfg.EnableScopeValidation {
+	if !cfg.Auth.ScopeValidation {
 		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
 	}
 
@@ -544,7 +520,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			slogger,
 		)
 		webhookReceiver.RegisterRoutes(mux)
-		slogger.Info("Webhook receiver enabled", "path", webhook.RoutePath, "gatewayType", cfg.Webhook.GatewayType)
+		slogger.Info("Webhook receiver enabled", "path", webhook.RoutePath)
 	}
 
 	slogger.Info("Registered API routes successfully")
@@ -561,32 +537,35 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		chain = append(chain, mw)
 	}
 
-	// validateAuthConfig already rejected a missing/wildcard allowlist outside demo mode.
+	// validateServerConfig already rejected a wildcard allowlist.
 	// Cross-origin access is disabled by default (empty AllowedOrigins fails closed in the
-	// CORS middleware); operators must opt in explicitly via CORS_ALLOWED_ORIGINS.
-	corsOrigins := cfg.CORS.AllowedOrigins
+	// CORS middleware); operators must opt in explicitly via CORS.AllowedOrigins in config.
+	corsOrigins := cfg.Listeners.CORS.AllowedOrigins
 	if len(corsOrigins) == 0 {
-		slogger.Warn("CORS_ALLOWED_ORIGINS not set — cross-origin requests are disabled")
+		slogger.Warn("cors.allowed_origins not set in config — cross-origin requests are disabled")
 	} else if slices.Contains(corsOrigins, "*") {
-		slogger.Warn("CORS_ALLOWED_ORIGINS contains \"*\" — allowing all origins without credentials")
+		slogger.Warn("cors.allowed_origins contains \"*\" — allowing all origins without credentials")
 	}
 	chain = append(chain, gohttpkit.CORSMiddleware(gohttpkit.CORSOptions{
 		AllowedOrigins:   corsOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
 		AllowedHeaders:   []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
-		AllowCredentials: !slices.Contains(corsOrigins, "*"),
+		AllowCredentials: true,
 	}))
 
-	if cfg.Auth.FileBased.Enabled {
-		slogger.Info("Auth mode: file-based (HMAC-signed JWT)")
-		if !demoMode() {
-			slogger.Warn("file-based authentication is enabled — this is not recommended for production; please configure an IDP of your choice")
+	if cfg.Auth.Mode == config.AuthModeFile {
+		slogger.Info("Auth mode: file (local users, RS256-signed JWT)")
+		slogger.Warn("file-based authentication is enabled — this is not recommended for production; please configure an IDP of your choice")
+		publicKey, err := cfg.Auth.JWT.LoadPublicKey()
+		if err != nil {
+			return nil, fmt.Errorf("failed to load auth.jwt.public_key_file: %w", err)
 		}
 		chain = append(chain, middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
-			SecretKey:      cfg.Auth.JWT.SecretKey,
+			PublicKey:      publicKey,
 			TokenIssuer:    cfg.Auth.JWT.Issuer,
 			SkipPaths:      cfg.Auth.SkipPaths,
 			SkipValidation: false,
+			ClaimMappings:  buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap),
 		}))
 	} else {
 		authenticator, err := buildAuthenticator(cfg, slogger, roleScopeMap)
@@ -615,7 +594,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// values are already in the context when scope checks run.
 	chain = append(chain, middleware.ScopeEnforcer(scopeRegistry, middleware.ScopeEnforcerConfig{
 		ValidationMode: cfg.Auth.IDP.ValidationMode,
-		Enabled:        cfg.EnableScopeValidation,
+		Enabled:        cfg.Auth.ScopeValidation,
 	}))
 
 	// Plugin "after" middleware — innermost, after auth + scope enforcement, just
@@ -626,10 +605,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}
 
 	slogger.Info("WebSocket manager initialized",
-		slog.Int("maxConnections", cfg.WebSocket.MaxConnections),
-		slog.Int("heartbeatTimeout", cfg.WebSocket.ConnectionTimeout),
-		slog.Int("rateLimitPerMin", cfg.WebSocket.RateLimitPerMin),
-		slog.Int("maxConnectionsPerOrg", cfg.WebSocket.MaxConnectionsPerOrg),
+		slog.Int("maxConnections", cfg.Listeners.WebSocket.MaxConnections),
+		slog.Int("heartbeatTimeout", cfg.Listeners.WebSocket.ConnectionTimeout),
+		slog.Int("rateLimitPerMin", cfg.Listeners.WebSocket.RateLimitPerMin),
 	)
 
 	return &Server{
@@ -648,37 +626,40 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}, nil
 }
 
-// demoMode reports whether APIP_DEMO_MODE is enabled.
-// Defaults to true when the variable is unset.
-func demoMode() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
-	if v == "" {
-		return true
+// buildClaimMappings adapts the config-level claim name mapping (shared by all
+// three auth modes) into the middleware package's ClaimMappings, attaching the
+// resolved IDP-role-to-scope table alongside it.
+func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]string) middleware.ClaimMappings {
+	return middleware.ClaimMappings{
+		OrganizationClaim: cm.Organization,
+		OrgNameClaim:      cm.OrgName,
+		OrgHandleClaim:    cm.OrgHandle,
+		UserIDClaim:       cm.UserID,
+		UsernameClaim:     cm.Username,
+		EmailClaim:        cm.Email,
+		ScopeClaim:        cm.Scope,
+		RolesClaimPath:    cm.Roles,
+		RoleScopeMap:      roleScopeMap,
 	}
-	return v == "true" || v == "1"
 }
 
 // buildAuthenticator constructs an Authenticator from the server configuration.
-// Only called when file-based auth is disabled.
+// Only called when the auth mode is "external_token" or "idp" (file mode wires
+// its own local-JWT middleware).
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
-	if !cfg.Auth.IDP.Enabled {
-		if cfg.Auth.JWT.SkipValidation {
-			if !demoMode() {
-				slogger.Warn("WARNING: JWT signature validation is DISABLED (AUTH_JWT_SKIP_VALIDATION=true) but APIP_DEMO_MODE=false. " +
-					"Tokens are NOT verified — any bearer value will be accepted. " +
-					"Set APIP_DEMO_MODE=true to suppress this warning, or set AUTH_JWT_SKIP_VALIDATION=false for production.")
-			} else {
-				slogger.Warn("JWT mode: signature validation disabled (AUTH_JWT_SKIP_VALIDATION=true) [APIP_DEMO_MODE=true]")
-			}
-		} else {
-			slogger.Info("JWT mode: HMAC signature validation enabled")
+	if cfg.Auth.Mode != config.AuthModeIDP {
+		slogger.Info("Auth mode: jwt (asymmetric RS256 signature validation enabled)")
+		publicKey, err := cfg.Auth.JWT.LoadPublicKey()
+		if err != nil {
+			return nil, fmt.Errorf("failed to load auth.jwt.public_key_file: %w", err)
 		}
 		return middleware.NewJWTAuthenticator(
 			middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
-				SecretKey:      cfg.Auth.JWT.SecretKey,
+				PublicKey:      publicKey,
 				TokenIssuer:    cfg.Auth.JWT.Issuer,
 				SkipPaths:      cfg.Auth.SkipPaths,
-				SkipValidation: cfg.Auth.JWT.SkipValidation,
+				SkipValidation: false,
+				ClaimMappings:  buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap),
 			}),
 		), nil
 	}
@@ -692,7 +673,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 		Enabled:    true,
 		IssuerURL:  issuerURL,
 		JWKSUrl:    cfg.Auth.IDP.JWKSUrl,
-		ScopeClaim: cfg.Auth.IDP.ClaimMappings.ScopeClaimName,
+		ScopeClaim: cfg.Auth.ClaimMappings.Scope,
 	}
 	// Enforce audience validation only when at least one audience is configured.
 	if len(cfg.Auth.IDP.Audience) > 0 {
@@ -706,17 +687,7 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize IDP auth middleware: %w", err)
 	}
-	claimsMiddleware := middleware.PlatformClaimsMiddleware(middleware.PlatformClaimNames{
-		OrganizationClaim: cfg.Auth.IDP.ClaimMappings.OrganizationClaimName,
-		OrgNameClaim:      cfg.Auth.IDP.ClaimMappings.OrgNameClaimName,
-		OrgHandleClaim:    cfg.Auth.IDP.ClaimMappings.OrgHandleClaimName,
-		UserIDClaim:       cfg.Auth.IDP.ClaimMappings.UserIDClaimName,
-		UsernameClaim:     cfg.Auth.IDP.ClaimMappings.UsernameClaimName,
-		EmailClaim:        cfg.Auth.IDP.ClaimMappings.EmailClaimName,
-		ScopeClaim:        cfg.Auth.IDP.ClaimMappings.ScopeClaimName,
-		RolesClaimPath:    cfg.Auth.IDP.ClaimMappings.RolesClaimPath,
-		RoleScopeMap:      roleScopeMap,
-	})
+	claimsMiddleware := middleware.PlatformClaimsMiddleware(buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap))
 
 	idpLabel := cfg.Auth.IDP.Name
 	if idpLabel == "" {
@@ -737,128 +708,79 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 // Returns nil when role mode is not active or no mapping file is configured,
 // which causes IDP role names to be used as-is as scope values (passthrough).
 func loadRoleScopeMap(cfg *config.Server, registry *middleware.ScopeRegistry, slogger *slog.Logger) (map[string][]string, error) {
-	if !cfg.Auth.IDP.Enabled || cfg.Auth.IDP.ValidationMode != "role" || cfg.Auth.IDP.RoleMappingsFile == "" {
+	if cfg.Auth.Mode != config.AuthModeIDP || cfg.Auth.IDP.ValidationMode != "role" || cfg.Auth.IDP.RoleMappings == "" {
 		return nil, nil
 	}
 
-	m, err := middleware.LoadRoleScopeMap(cfg.Auth.IDP.RoleMappingsFile)
+	m, err := middleware.LoadRoleScopeMap(cfg.Auth.IDP.RoleMappings)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load role mappings file: %w", err)
 	}
 	if err := middleware.ValidateRoleScopeMap(m, registry); err != nil {
 		return nil, fmt.Errorf("invalid roles.yaml: %w", err)
 	}
-	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.IDP.RoleMappingsFile, "roles", len(m))
+	slogger.Info("Loaded role-to-scope mapping", "path", cfg.Auth.IDP.RoleMappings, "roles", len(m))
 
 	return m, nil
 }
 
-// generateSelfSignedCert creates a self-signed certificate for development and saves it to disk
-func generateSelfSignedCert(certPath, keyPath string, logger *slog.Logger) (tls.Certificate, error) {
-	// Generate private key
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+// buildTLSConfig resolves the TLS listener configuration. The caller invokes it
+// only when the HTTPS listener is enabled. Certificates are always required —
+// there is no self-signed fallback; use the quickstart setup script (or your
+// own tooling) to generate a pair and mount it.
+func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, error) {
+	certFile := httpsCfg.CertFile
+	keyFile := httpsCfg.KeyFile
+	if certFile == "" || keyFile == "" {
+		return nil, fmt.Errorf("HTTPS listener enabled but server.https.cert_file / server.https.key_file is not configured")
+	}
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		return tls.Certificate{}, err
+		return nil, fmt.Errorf(
+			"failed to load TLS certificates (cert %q / key %q): %w. "+
+				"Mount a certificate pair and point server.https.cert_file / key_file at it, "+
+				"or set server.https.enabled=false to serve plain HTTP behind a TLS-terminating proxy",
+			certFile, keyFile, err,
+		)
 	}
+	s.logger.Info("Using mounted certificates", "certFile", certFile, "keyFile", keyFile)
 
-	// CreateOrganization certificate template
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			Organization:  []string{"Platform API Dev"},
-			Country:       []string{"US"},
-			Province:      []string{""},
-			Locality:      []string{""},
-			StreetAddress: []string{""},
-			PostalCode:    []string{""},
-		},
-		NotBefore:   time.Now(),
-		NotAfter:    time.Now().Add(365 * 24 * time.Hour), // Valid for 1 year
-		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
-		DNSNames:    []string{"localhost"},
-	}
-
-	// CreateOrganization certificate
-	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	// CreateOrganization PEM blocks
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
-
-	// Save certificate and key to disk for persistence
-	if err := os.WriteFile(certPath, certPEM, 0644); err != nil {
-		return tls.Certificate{}, fmt.Errorf("failed to save certificate: %v", err)
-	}
-	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
-		return tls.Certificate{}, fmt.Errorf("failed to save private key: %v", err)
-	}
-	logger.Info("Saved certificate", "certPath", certPath, "keyPath", keyPath)
-
-	// CreateOrganization TLS certificate
-	cert, err := tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		logger.Error("Failed to create TLS certificate", "error", err)
-		return tls.Certificate{}, err
-	}
-
-	return cert, nil
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}, nil
 }
 
-// Start starts the HTTPS server
-func (s *Server) Start(port string, certDir string) error {
-	if port == "" {
-		s.logger.Error("Port cannot be empty")
-		return fmt.Errorf("port cannot be empty")
+// Start brings up the enabled listeners. The plain-HTTP and TLS listeners are
+// independent: either or both may run, each on its own port. This mirrors the
+// gateway router's http/https listener split. At least one listener must be
+// enabled.
+//
+// timeouts bounds connection lifetime on both listeners so a slow or idle peer
+// cannot hold one open indefinitely (Slowloris). It is validated at config load.
+func (s *Server) Start(listeners config.ServerListeners, timeouts config.Timeouts) error {
+	httpCfg := listeners.HTTP
+	httpsCfg := listeners.HTTPS
+	if !httpCfg.Enabled && !httpsCfg.Enabled {
+		s.logger.Error("No listeners enabled")
+		return fmt.Errorf("no listeners enabled: set server.http.enabled=true and/or server.https.enabled=true in config")
 	}
 
-	// Build certificate paths
-	certPath := filepath.Join(certDir, "cert.pem")
-	keyPath := filepath.Join(certDir, "key.pem")
-
-	var cert tls.Certificate
-	certGenerated := false
-
-	// Try to load existing certificates first
-	if _, certErr := os.Stat(certPath); certErr == nil {
-		if _, keyErr := os.Stat(keyPath); keyErr == nil {
-			loadedCert, err := tls.LoadX509KeyPair(certPath, keyPath)
-			if err != nil {
-				s.logger.Warn("Failed to load certificates", "error", err)
-			} else {
-				s.logger.Info("Using existing certificates", "certDir", certDir)
-				cert = loadedCert
-			}
-		}
+	// Preflight: validate listener configuration and build the TLS config before
+	// starting any listener, background job, or goroutine
+	if httpCfg.Enabled && (httpCfg.Port <= 0 || httpCfg.Port > 65535) {
+		return fmt.Errorf("HTTP listener enabled but server.http.port is invalid (got %d)", httpCfg.Port)
 	}
-
-	// Generate new certificate if not loaded
-	if cert.Certificate == nil {
-		if !demoMode() {
-			return fmt.Errorf(
-				"no TLS certificates found at %q (cert.pem / key.pem) and APIP_DEMO_MODE=false: "+
-					"mount real certificates or set TLS_CERT_DIR to a directory containing cert.pem and key.pem; "+
-					"self-signed certificate generation is only permitted in demo mode",
-				certDir,
-			)
+	var tlsConfig *tls.Config
+	if httpsCfg.Enabled {
+		if httpsCfg.Port <= 0 || httpsCfg.Port > 65535 {
+			return fmt.Errorf("HTTPS listener enabled but server.https.port is invalid (got %d)", httpsCfg.Port)
 		}
-		s.logger.Info("Generating self-signed certificate for development...")
-		// Ensure cert directory exists
-		if err := os.MkdirAll(certDir, 0755); err != nil {
-			s.logger.Error("Failed to create cert directory", "error", err)
-			return fmt.Errorf("failed to create cert directory: %v", err)
+		var err error
+		if tlsConfig, err = s.buildTLSConfig(httpsCfg); err != nil {
+			return err
 		}
-		generatedCert, err := generateSelfSignedCert(certPath, keyPath, s.logger)
-		if err != nil {
-			s.logger.Error("Failed to generate self-signed certificate", "error", err)
-			return fmt.Errorf("failed to generate self-signed certificate: %v", err)
-		}
-		cert = generatedCert
-		certGenerated = true
 	}
 
 	// Add a health endpoint. Routes added to s.mux after startup are reachable
@@ -867,39 +789,59 @@ func (s *Server) Start(port string, certDir string) error {
 		httputil.WriteJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 	})
 
-	// CreateOrganization TLS configuration
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		MinVersion:   tls.VersionTLS12,
-	}
-
-	address := fmt.Sprintf(":%s", port)
-	httpServer := &http.Server{
-		Addr:      address,
-		Handler:   s.handler,
-		TLSConfig: tlsConfig,
-	}
-
-	s.logger.Info("Starting HTTPS server", "address", "https://localhost:"+port)
-	if certGenerated {
-		s.logger.Warn("Note: Using self-signed certificate for development. Browsers will show security warnings.")
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go s.timeoutService.Start(ctx)
 
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- httpServer.ListenAndServeTLS("", "")
-	}()
+	// errCh is buffered for both listeners so a failing goroutine never blocks,
+	// even while the other listener is still being shut down.
+	errCh := make(chan error, 2)
+	var httpServers []*http.Server
 
-	mode := "PRODUCTION"
-	if demoMode() {
-		mode = "DEMO"
+	// Plain-HTTP listener.
+	if httpCfg.Enabled {
+		// Plain HTTP is only safe when something upstream terminates TLS, or for
+		// internal traffic. Say so loudly.
+		s.logger.Warn("Plain-HTTP listener is enabled (server.http.enabled=true); " +
+			"terminate TLS at an ingress or service-mesh sidecar and never expose this listener " +
+			"directly to untrusted networks.")
+		httpPort := strconv.Itoa(httpCfg.Port)
+		httpServer := &http.Server{
+			Addr:              ":" + httpPort,
+			Handler:           s.handler,
+			ReadHeaderTimeout: timeouts.ReadHeader,
+			ReadTimeout:       timeouts.Read,
+			WriteTimeout:      timeouts.Write,
+			IdleTimeout:       timeouts.Idle,
+		}
+		httpServers = append(httpServers, httpServer)
+		s.logger.Info("Starting HTTP listener", "address", "http://localhost:"+httpPort)
+		go func() {
+			errCh <- httpServer.ListenAndServe()
+		}()
 	}
-	s.logger.Info("Platform API started", "mode", mode)
+
+	// TLS listener.
+	if httpsCfg.Enabled {
+		httpsPort := strconv.Itoa(httpsCfg.Port)
+		httpsServer := &http.Server{
+			Addr:              ":" + httpsPort,
+			Handler:           s.handler,
+			TLSConfig:         tlsConfig,
+			ReadHeaderTimeout: timeouts.ReadHeader,
+			ReadTimeout:       timeouts.Read,
+			WriteTimeout:      timeouts.Write,
+			IdleTimeout:       timeouts.Idle,
+		}
+		httpServers = append(httpServers, httpsServer)
+		s.logger.Info("Starting HTTPS listener", "address", "https://localhost:"+httpsPort)
+		go func() {
+			errCh <- httpsServer.ListenAndServeTLS("", "")
+		}()
+	}
+
+	s.logger.Info("Platform API started")
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -908,8 +850,10 @@ func (s *Server) Start(port string, certDir string) error {
 	teardown := func() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
-		if err := httpServer.Shutdown(shutdownCtx); err != nil {
-			s.logger.Error("HTTP server shutdown error", "error", err)
+		for _, srv := range httpServers {
+			if err := srv.Shutdown(shutdownCtx); err != nil {
+				s.logger.Error("HTTP server shutdown error", "addr", srv.Addr, "error", err)
+			}
 		}
 		for _, p := range s.plugins {
 			if err := p.Shutdown(shutdownCtx); err != nil {
@@ -927,7 +871,12 @@ func (s *Server) Start(port string, certDir string) error {
 	case err := <-errCh:
 		cancel()
 		teardown()
-		return err
+		// A graceful Shutdown surfaces http.ErrServerClosed on the listener
+		// goroutine; that is a clean exit, not a startup failure.
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
 	case sig := <-quit:
 		s.logger.Info("Received shutdown signal", "signal", sig)
 		cancel()
@@ -947,7 +896,7 @@ func (s *Server) GetMux() *http.ServeMux {
 // is stored back into cfg (Organization.UUID) so the login handler issues tokens
 // whose `organization` claim matches the value the organization resolver looks up.
 func seedFileBasedOrg(cfg *config.Server, orgRepo repository.OrganizationRepository, slogger *slog.Logger) error {
-	ba := &cfg.Auth.FileBased
+	ba := &cfg.Auth.File
 
 	existing, err := orgRepo.GetOrganizationByHandle(ba.Organization.ID)
 	if err != nil {

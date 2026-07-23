@@ -1,43 +1,46 @@
 # API Platform Gateway Operator Helm Chart
 
-This Helm chart deploys the API Platform Gateway Operator, a Kubernetes operator that manages the lifecycle of API Gateway instances and API configurations.
+This Helm chart deploys the API Platform Gateway Operator, a Kubernetes operator that manages the lifecycle of API Gateway instances and the APIs deployed onto them.
 
 ## Overview
 
 The Gateway Operator is responsible for:
-- Managing GatewayConfiguration custom resources
-- Managing APIConfiguration custom resources  
-- Automatically deploying and configuring gateway instances
+- Managing `APIGateway` custom resources (gateway instances)
+- Managing `RestApi` and the other API-management custom resources (ApiKey, APIPolicy, Certificate, LlmProvider, LlmProviderTemplate, LlmProxy, ManagedSecret, Mcp, Subscription, SubscriptionPlan)
+- Automatically deploying and configuring gateway instances (via the gateway Helm chart)
 - Reconciling gateway state with desired configuration
-- Integrating with the control plane API
+- Optionally reconciling Kubernetes Gateway API resources (Gateway, HTTPRoute) for managed gateway classes
+
+All operator CRDs live in the API group **`gateway.api-platform.wso2.com`**, served at `v1alpha1` and `v1` (v1 is the storage version; the two schemas are identical and bridged with conversion `strategy: None`).
 
 ## Prerequisites
 
 - Kubernetes 1.19+
 - Helm 3.0+
-- cert-manager v1.0+ (optional, for TLS certificate management)
+- cert-manager v1.0+ (optional, for gateway TLS certificate management)
 
 ## Installation
 
 ### Basic Installation
 
 ```bash
-helm install apip-operator ./operator-helm-chart
+helm install apip-operator ./operator-helm-chart --namespace gateway-operator-system --create-namespace
 ```
 
 ### Install with Custom Values
 
 ```bash
 helm install apip-operator ./operator-helm-chart \
-  --set image.tag=v1.0.0 \
+  --namespace gateway-operator-system --create-namespace \
+  --set image.tag=0.10.0 \
   --set gateway.controlPlaneHost=http://my-control-plane:3001
 ```
 
 ### Install from OCI Registry
 
 ```bash
-helm install apip-operator oci://registry-1.docker.io/yourorg/api-platform-operator \
-  --version 0.0.1
+helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator \
+  --version <chart-version>
 ```
 
 ## Configuration
@@ -47,8 +50,9 @@ helm install apip-operator oci://registry-1.docker.io/yourorg/api-platform-opera
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `replicaCount` | Number of operator replicas | `1` |
-| `image.repository` | Operator image repository | `tharsanan/api-platform/gateway-controller` |
-| `image.tag` | Operator image tag | `latest` |
+| `watchNamespaces` | Namespaces to watch (cluster-wide if empty) | `[]` |
+| `image.repository` | Operator image repository | `ghcr.io/wso2/api-platform/gateway-operator` |
+| `image.tag` | Operator image tag | `0.10.0` |
 | `image.pullPolicy` | Image pull policy | `Always` |
 | `serviceAccount.create` | Create service account | `true` |
 | `serviceAccount.name` | Service account name | `controller-manager` |
@@ -60,39 +64,40 @@ helm install apip-operator oci://registry-1.docker.io/yourorg/api-platform-opera
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `gateway.controlPlaneHost` | Control plane API endpoint | `http://platform-api:3001` |
-| `gateway.helm.chartName` | Gateway Helm chart OCI or repo reference (ignored if `chartPath` is set) | `oci://...` |
-| `gateway.helm.chartVersion` | Gateway chart version (for remote pulls; also used in upgrade signatures) | `1.0.0` |
+| `gateway.helm.chartName` | Gateway Helm chart OCI or repo reference (ignored if `chartPath` is set) | `oci://ghcr.io/wso2/api-platform/helm-charts/gateway` |
+| `gateway.helm.chartVersion` | Gateway chart version (for remote pulls; also used in upgrade signatures) | `1.1.0` |
 | `gateway.helm.chartPath` | Local chart dir or `.tgz` path **inside the operator pod**; when non-empty, remote chart lookup (`chartName`/`chartVersion`) and registry auth are ignored | `""` |
 | `gateway.helm.valuesFilePath` | Path to gateway values file | `/config/gateway_values.yaml` |
+| `gateway.helm.insecureRegistry` | Skip TLS verification for OCI registries (still HTTPS) | `false` |
+| `gateway.helm.plainHTTP` | Use plain HTTP for OCI registries | `false` |
+| `gateway.helm.registryCredentialsSecret.name` | Secret holding private-registry credentials for the gateway chart pull (empty = anonymous) | `""` |
 
-### Gateway Default Values
+### Gateway API (Kubernetes Gateway API) Configuration
 
-The operator can deploy gateway instances with default values. These are defined under `gateway.values` and include:
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `gatewayApi.installStandardCRDs` | Install the standard-channel Gateway API CRDs | `true` |
+| `gatewayApi.managedGatewayClassNames` | `gatewayClassName` values this operator reconciles | `[wso2-api-platform]` |
+| `gatewayApi.clusterDomain` | Cluster DNS suffix for in-cluster Service URLs | `cluster.local` |
 
-#### Controller Configuration
-- Image: `tharsanan/api-platform/gateway-controller:v1.0.0-m4`
-- Service ports: REST (9090), xDS (18000), Policy (18001)
-- TLS support with cert-manager integration
-- Persistence with PVC support (100Mi default)
+### Gateway Default Values (`gateway.values`)
 
-#### Router Configuration
-- Image: `tharsanan/api-platform/gateway-router:v1.0.0-m4`
-- Service ports: HTTP (8080), HTTPS (8443), Admin (9901)
-- Envoy-based routing
-- Health probes on admin port
+The operator deploys gateway instances with the values under `gateway.values`, which mirror the gateway Helm chart's own `values.yaml` — see `kubernetes/helm/gateway-helm-chart/values.yaml` for the authoritative, fully-documented set. The two main components are:
 
-#### Policy Engine Configuration
-- Image: `tharsanan/api-platform/policy-engine:v1.0.0-m4`
-- Service port: External processor (9001)
-- xDS-based configuration
-- Admin interface support
+- **`gateway.values.gateway.controller`** — control plane of the gateway. Service type `ClusterIP` by default; ports `rest: 9090`, `xds: 18000`, `policy: 18001`, `admin: 9092`, `metrics: 9091`. Supports TLS (see below), storage, persistence, and `deployment.replicaCount`.
+- **`gateway.values.gateway.gatewayRuntime`** — the data plane (Envoy-based router + policy engine). Service type `LoadBalancer` by default; ports `http: 8080`, `https: 8443`, plus admin/metrics ports. Has its own `deployment.replicaCount`.
+
+Component container image tags come from the gateway chart; do not hardcode them here.
 
 ### Reconciliation Settings
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `reconciliation.enabled` | Enable periodic reconciliation | `true` |
-| `reconciliation.interval` | Reconciliation interval in seconds | `300` |
+| `reconciliation.syncPeriod` | Minimum frequency at which watched resources are re-reconciled (Go duration) | `10m` |
+| `reconciliation.maxConcurrentReconciles` | Maximum concurrent reconciles (must be ≥ 1) | `1` |
+| `reconciliation.maxRetryAttempts` | Maximum retry attempts for gateway operations | `10` |
+| `reconciliation.initialBackoff` | Initial retry backoff (Go duration) | `1s` |
+| `reconciliation.maxBackoffDuration` | Maximum exponential backoff (Go duration) | `60s` |
 
 ### Logging Configuration
 
@@ -105,39 +110,60 @@ The operator can deploy gateway instances with default values. These are defined
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `securityContext.runAsNonRoot` | Run as non-root user | `false` |
-| `securityContext.runAsUser` | User ID to run as | `null` |
+| `securityContext.runAsNonRoot` | Run as non-root user | `true` |
+| `securityContext.runAsUser` | User ID to run as | `10001` |
 
 ## Custom Resource Definitions (CRDs)
 
-The chart installs two CRDs:
+The chart ships all operator CRDs (group `gateway.api-platform.wso2.com`, served at `v1alpha1` and `v1`, with `v1` as the storage version) in the Helm-native `crds/` directory. Helm installs everything under `crds/` automatically on `helm install`.
 
-### 1. GatewayConfiguration
+> **Important — CRDs are install-only.** Helm applies `crds/` only when a CRD does not already exist, and **never updates or deletes** CRDs on `helm upgrade`, `helm uninstall`, or a re-`helm install` on a cluster where they already exist. This operator **requires the `v1` version to be served**, so:
+> - **Fresh clusters** (no pre-existing `gateway.api-platform.wso2.com` CRDs) get the correct v1+v1alpha1 CRDs and work out of the box.
+> - **Clusters that already have older (v1alpha1-only) CRDs** will NOT be upgraded by Helm. To move them to v1, delete the old CRDs first (`kubectl get crd -o name | grep gateway.api-platform.wso2.com | xargs kubectl delete`) then reinstall, or apply the updated CRDs manually with `kubectl apply -f crds/`.
 
-Defines a gateway instance with all its components (controller, router, policy engine).
+The two most commonly used kinds:
+
+### 1. APIGateway
+
+Defines a gateway instance. `spec.apiSelector` is required; the gateway topology (replicas, service types, images, TLS, …) is supplied through a referenced ConfigMap via `spec.configRef`.
 
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1alpha1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: APIGateway
 metadata:
   name: my-gateway
   namespace: default
 spec:
-  # Gateway specification
+  apiSelector:
+    scope: Cluster          # accept APIs from any namespace
+  infrastructure:
+    replicas: 1
+  storage:
+    type: sqlite
+  # controlPlane: { host: "...", tls: { enabled: true } }
+  # configRef: { name: my-gateway-values }   # ConfigMap with gateway Helm values
 ```
 
-### 2. APIConfiguration
+### 2. RestApi
 
-Defines an API that will be deployed to gateway instances.
+Defines an API deployed onto matching gateways.
 
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1alpha1
-kind: APIConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: RestApi
 metadata:
   name: my-api
   namespace: default
 spec:
-  # API specification
+  displayName: my-api
+  version: v1.0
+  context: /my-api
+  upstream:
+    main:
+      url: https://httpbin.org/anything
+  operations:                 # required
+    - method: GET
+      path: /
 ```
 
 ## Usage
@@ -146,7 +172,7 @@ spec:
 
 ```bash
 helm install apip-operator ./operator-helm-chart \
-  --namespace api-platform \
+  --namespace gateway-operator-system \
   --create-namespace
 ```
 
@@ -154,32 +180,52 @@ helm install apip-operator ./operator-helm-chart \
 
 ```bash
 # Check operator deployment
-kubectl get deployment controller-manager -n api-platform
+kubectl get deployment -n gateway-operator-system -l app.kubernetes.io/name=gateway-operator
 
 # Check operator pods
-kubectl get pods -n api-platform -l control-plane=controller-manager
+kubectl get pods -n gateway-operator-system -l app.kubernetes.io/name=gateway-operator
 
 # View operator logs
-kubectl logs -f deployment/controller-manager -n api-platform
+kubectl logs -f deployment/apip-operator-gateway-operator -n gateway-operator-system
 ```
 
 ### Create a Gateway Instance
 
+To control gateway topology (separate controller / data-plane replica counts, a LoadBalancer data plane, etc.), supply gateway Helm values through a ConfigMap referenced by `spec.configRef`:
+
 ```bash
 kubectl apply -f - <<EOF
-apiVersion: api.api-platform.wso2.com/v1alpha1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: APIGateway
 metadata:
   name: production-gateway
   namespace: default
 spec:
-  gateway:
-    controller:
-      replicaCount: 2
-    router:
-      replicaCount: 3
-      service:
-        type: LoadBalancer
+  apiSelector:
+    scope: Cluster
+  storage:
+    type: sqlite
+  configRef:
+    name: production-gateway-values
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: production-gateway-values
+  namespace: default
+data:
+  values.yaml: |
+    gateway:
+      controller:
+        deployment:
+          replicaCount: 2
+        service:
+          type: ClusterIP
+      gatewayRuntime:        # data-plane ("router")
+        deployment:
+          replicaCount: 3
+        service:
+          type: LoadBalancer
 EOF
 ```
 
@@ -187,51 +233,61 @@ EOF
 
 ```bash
 kubectl apply -f - <<EOF
-apiVersion: api.api-platform.wso2.com/v1alpha1
-kind: APIConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: RestApi
 metadata:
   name: petstore-api
   namespace: default
 spec:
-  # API specification
+  displayName: petstore
+  version: v1.0
+  context: /petstore
+  upstream:
+    main:
+      url: https://petstore.swagger.io
+  operations:
+    - method: GET
+      path: /pet/findByStatus
+    - method: POST
+      path: /pet
 EOF
 ```
 
 ### Monitor Resources
 
 ```bash
-# List all gateway configurations
-kubectl get gatewayconfiguration -A
+# List all gateway instances
+kubectl get apigateways -A
 
-# List all API configurations
-kubectl get apiconfiguration -A
+# List all APIs
+kubectl get restapis -A
 
 # Describe a specific gateway
-kubectl describe gatewayconfiguration production-gateway
+kubectl describe apigateway production-gateway
 ```
 
 ## Advanced Configuration
 
 ### Enable Debug Mode
 
-Debug mode runs the operator under Delve debugger for remote debugging:
+Debug mode runs the operator under the Delve debugger for remote debugging:
 
 ```yaml
 debug:
   enabled: true
   port: 2345
-  debugImage: "tharsanan/api-platform/gateway-controller:debug"
+  debugImage: "ghcr.io/wso2/api-platform/gateway-operator:0.10.0-debug"
 ```
 
 Connect your debugger to the debug port:
 
 ```bash
-kubectl port-forward deployment/controller-manager 2345:2345 -n api-platform
+kubectl port-forward deployment/apip-operator-gateway-operator 2345:2345 -n gateway-operator-system
 ```
 
 ### Custom Gateway Values
 
-Override default gateway values during installation:
+Override default gateway values during installation (these feed the gateway Helm chart):
 
 ```yaml
 gateway:
@@ -241,16 +297,18 @@ gateway:
         image:
           repository: myorg/custom-controller
           tag: v2.0.0
-        replicaCount: 3
-      router:
-        replicaCount: 5
+        deployment:
+          replicaCount: 3
+      gatewayRuntime:
+        deployment:
+          replicaCount: 5
         service:
           type: LoadBalancer
 ```
 
 ### TLS Configuration
 
-Enable cert-manager integration for automatic TLS certificates:
+Enable cert-manager integration for automatic gateway TLS certificates:
 
 ```yaml
 gateway:
@@ -306,16 +364,18 @@ resources:
 
 ```bash
 helm upgrade apip-operator ./operator-helm-chart \
-  --namespace api-platform \
+  --namespace gateway-operator-system \
   --reuse-values
 ```
+
+> **Note:** CRDs in `crds/` are **not** re-applied on `helm upgrade` (a Helm limitation). If a chart upgrade includes CRD schema changes, apply the updated CRDs manually with `kubectl apply -f crds/`. Because the operator requires the `v1` version to be served, do this **before** rolling out an operator image that expects it.
 
 ### Upgrade with New Values
 
 ```bash
 helm upgrade apip-operator ./operator-helm-chart \
-  --namespace api-platform \
-  --set image.tag=v2.0.0
+  --namespace gateway-operator-system \
+  --set image.tag=0.11.0
 ```
 
 ## Uninstallation
@@ -323,90 +383,77 @@ helm upgrade apip-operator ./operator-helm-chart \
 ### Uninstall the Release
 
 ```bash
-helm uninstall apip-operator --namespace api-platform
+helm uninstall apip-operator --namespace gateway-operator-system
 ```
 
-**Note:** This will not delete CRDs. To delete CRDs manually:
+**Note:** This does not delete the CRDs (Helm never removes CRDs installed from `crds/`). To delete them manually:
 
 ```bash
-kubectl delete crd gatewayconfiguration.api.api-platform.wso2.com
-kubectl delete crd apiconfiguration.api.api-platform.wso2.com
+kubectl get crd -o name | grep gateway.api-platform.wso2.com | xargs -r kubectl delete
 ```
 
 ## Troubleshooting
 
 ### Operator Not Starting
 
-Check operator logs:
+Check operator logs and events:
 ```bash
-kubectl logs deployment/controller-manager -n api-platform
-```
-
-Check events:
-```bash
-kubectl get events -n api-platform --sort-by='.lastTimestamp'
+kubectl logs deployment/apip-operator-gateway-operator -n gateway-operator-system
+kubectl get events -n gateway-operator-system --sort-by='.lastTimestamp'
 ```
 
 ### Gateway Not Deploying
 
-Check operator logs for reconciliation errors:
+Check operator logs for reconciliation errors, then describe the resource:
 ```bash
-kubectl logs deployment/controller-manager -n api-platform | grep -i error
-```
-
-Describe the gateway configuration:
-```bash
-kubectl describe gatewayconfiguration <name>
+kubectl logs deployment/apip-operator-gateway-operator -n gateway-operator-system | grep -i error
+kubectl describe apigateway <name>
 ```
 
 ### CRDs Not Installing
 
-Verify CRDs are installed:
+CRDs are installed from the chart's `crds/` directory on `helm install`. Verify:
 ```bash
-kubectl get crd | grep api-platform.wso2.com
+kubectl get crd | grep gateway.api-platform.wso2.com
 ```
-
-Manually install CRDs if needed:
-```bash
-kubectl apply -f crds/
-```
+If they are missing on a fresh install, ensure you did not pass `--skip-crds`. If they are present but **stale** (e.g. only `v1alpha1`), Helm will not update them on upgrade or reinstall — delete and reinstall, or run `kubectl apply -f crds/` (the operator requires the `v1` version to be served).
 
 ### Leader Election Issues
 
 If running multiple replicas, check leader election:
 ```bash
-kubectl logs deployment/controller-manager -n api-platform | grep leader
+kubectl logs deployment/apip-operator-gateway-operator -n gateway-operator-system | grep leader
 ```
 
 ## Architecture
 
 The operator follows the Kubernetes operator pattern:
 
-1. **Controller Manager**: Main operator process that watches CRDs
+1. **Controller Manager**: Main operator process that watches the CRDs
 2. **Reconciliation Loop**: Continuously ensures actual state matches desired state
-3. **Helm Integration**: Uses Helm to deploy gateway instances
-4. **Control Plane Integration**: Syncs with platform API for centralized management
+3. **Helm Integration**: Uses Helm to deploy gateway instances from the gateway chart
+4. **Control Plane Integration**: Syncs with the platform API for centralized management
 
 ## Components
 
-- **ClusterRole/ClusterRoleBinding**: Grants necessary RBAC permissions
-- **Leader Election Role/RoleBinding**: Manages leader election for HA
-- **ServiceAccount**: Identity for the operator
-- **Deployment**: Runs the operator controller manager
-- **ConfigMap**: Stores operator configuration and gateway values
-- **Finalizer Job**: Cleanup job for operator deletion
+- **`crds/` directory**: operator CRDs, installed by Helm on fresh install
+- **ClusterRole/ClusterRoleBinding & Role/RoleBinding**: operator runtime RBAC
+- **Leader Election Role/RoleBinding**: manages leader election for HA
+- **ServiceAccount**: runtime identity for the operator
+- **Deployment**: runs the operator controller manager
+- **ConfigMap**: stores operator configuration and gateway values
+- **Finalizer Job**: cleanup job run on operator deletion
 
 ## Development
 
 ### Local Testing
 
-Run the operator locally:
 ```bash
 cd kubernetes/gateway-operator
 make run
 ```
 
-### Building Custom Image
+### Building a Custom Image
 
 ```bash
 cd kubernetes/gateway-operator
@@ -424,7 +471,7 @@ make test
 
 For issues and questions:
 - GitHub Issues: https://github.com/wso2/api-platform
-- Documentation: See `/kubernetes/gateway-operator/` directory
+- Documentation: See the `/kubernetes/gateway-operator/` directory
 
 ## License
 

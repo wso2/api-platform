@@ -197,8 +197,8 @@ func testRestStoredConfig(uuid, handle, displayName, version string, status mode
 			},
 			Operations: []api.Operation{
 				{
-					Method: api.OperationMethodGET,
-					Path:   "/",
+					Method: api.Ptr(api.OperationMethodGET),
+					Path:   api.Ptr("/"),
 				},
 			},
 		},
@@ -256,9 +256,6 @@ func TestNewEventListener_RequiresSystemConfig(t *testing.T) {
 			nil,
 			nil,
 			nil,
-			nil,
-			nil,
-			nil,
 		)
 	})
 }
@@ -277,9 +274,6 @@ func TestNewEventListener_RequiresGatewayID(t *testing.T) {
 			nil,
 			newTestLogger(),
 			&config.Config{Controller: config.Controller{}},
-			nil,
-			nil,
-			nil,
 			nil,
 			nil,
 		)
@@ -306,9 +300,6 @@ func TestStart_SubscribesWithTrimmedGatewayID(t *testing.T) {
 				},
 			},
 		},
-		nil,
-		nil,
-		nil,
 		nil,
 		nil,
 	)

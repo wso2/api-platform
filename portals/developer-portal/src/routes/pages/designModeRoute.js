@@ -42,12 +42,22 @@ router.get('/views/:viewName/mcp/:apiHandle/docs/:docType/:docName', registerPar
 
 router.get('/views/:viewName/applications', registerPartials, applicationController.loadApplications);
 
-// eslint-disable-next-line no-useless-escape
-// Exclude specific paths (login, applications, configure intentionally disabled in design mode)
-router.get(['/favicon.ico', '/images/*', '/styles/*', '/login*', '/devportal/*', '/views/*'], (req, res) => {
+// Exclude specific paths (login, applications, org settings intentionally disabled in
+// design mode). Express 5 / path-to-regexp v8: bare `*`/prefix globs are expressed as
+// RegExps; the `:orgName/settings` param path stays a string.
+router.get([
+    '/favicon.ico',
+    /^\/images\//,
+    /^\/styles\//,
+    /^\/login/,
+    /^\/devportal\//,
+    /^\/views\//,
+    '/:orgName/settings',
+], (req, res) => {
     res.status(404).send('Not found');
 });
 
-router.get('/:path/*', registerPartials, contentController.loadCustomContent);
+// Trailing `*` -> named wildcard `*splat`; handler reads req.originalUrl, param unused.
+router.get('/:path/*splat', registerPartials, contentController.loadCustomContent);
 
 module.exports = router;

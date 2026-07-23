@@ -95,6 +95,12 @@ type MCPProxyDeploymentYAML struct {
 	Spec       MCPProxyDeploymentSpec `yaml:"spec" binding:"required"`
 }
 
+// GetApiVersion returns the artifact's CRD apiVersion.
+func (d *MCPProxyDeploymentYAML) GetApiVersion() string { return d.ApiVersion }
+
+// SetApiVersion sets the artifact's CRD apiVersion.
+func (d *MCPProxyDeploymentYAML) SetApiVersion(v string) { d.ApiVersion = v }
+
 // MCPProxyDeploymentSpec represents the spec section of the MCP proxy deployment YAML
 type MCPProxyDeploymentSpec struct {
 	DisplayName string           `yaml:"displayName" binding:"required"`
@@ -119,6 +125,12 @@ type WebSubAPIDeploymentYAML struct {
 	Metadata   DeploymentMetadata      `yaml:"metadata"`
 	Spec       WebSubAPIDeploymentSpec `yaml:"spec"`
 }
+
+// GetApiVersion returns the artifact's CRD apiVersion.
+func (d *WebSubAPIDeploymentYAML) GetApiVersion() string { return d.ApiVersion }
+
+// SetApiVersion sets the artifact's CRD apiVersion.
+func (d *WebSubAPIDeploymentYAML) SetApiVersion(v string) { d.ApiVersion = v }
 
 // WebSubAPIDeploymentSpec represents the spec section of the WebSub API deployment YAML
 type WebSubAPIDeploymentSpec struct {
@@ -192,6 +204,12 @@ type WebBrokerAPIDeploymentYAML struct {
 	Metadata   DeploymentMetadata         `yaml:"metadata"`
 	Spec       WebBrokerAPIDeploymentSpec `yaml:"spec"`
 }
+
+// GetApiVersion returns the artifact's CRD apiVersion.
+func (d *WebBrokerAPIDeploymentYAML) GetApiVersion() string { return d.ApiVersion }
+
+// SetApiVersion sets the artifact's CRD apiVersion.
+func (d *WebBrokerAPIDeploymentYAML) SetApiVersion(v string) { d.ApiVersion = v }
 
 // WebBrokerAPIDeploymentSpec represents the spec section of the WebBroker API deployment YAML
 type WebBrokerAPIDeploymentSpec struct {

@@ -318,6 +318,8 @@ const (
 	ApiKey UpstreamAuthType = "api-key"
 	Basic  UpstreamAuthType = "basic"
 	Bearer UpstreamAuthType = "bearer"
+	None   UpstreamAuthType = "none"
+	Other  UpstreamAuthType = "other"
 )
 
 // Defines values for UserAPIKeyItemArtifactType.
@@ -518,6 +520,9 @@ type APIKeySecurity struct {
 
 	// Key Name of the header or query parameter to be used for the API key
 	Key *string `json:"key,omitempty" yaml:"key,omitempty"`
+
+	// ValuePrefix Optional prefix to strip from the inbound API key value before validation, for example "Bearer"
+	ValuePrefix *string `json:"valuePrefix,omitempty" yaml:"valuePrefix,omitempty"`
 }
 
 // APIKeySecurityIn Location of the API key (header or query)
@@ -808,7 +813,7 @@ type CreateLLMProviderTemplateVersionRequest struct {
 	// value renames the template family.
 	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 
-	// ManagedBy Identifies who manages the template. Custom templates default to 'customer'.
+	// ManagedBy Identifies who manages the template. Custom templates default to 'organization'.
 	ManagedBy *string                      `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 	Metadata  *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
@@ -953,13 +958,13 @@ type CreateSubscriptionPlanRequestStatus string
 
 // CreateSubscriptionRequest defines model for CreateSubscriptionRequest.
 type CreateSubscriptionRequest struct {
-	// ApiId Handle (ID) of the artifact to subscribe to. Resolved against the table for the given kind.
-	ApiId string `binding:"required" json:"apiId" yaml:"apiId"`
-
 	// ApplicationId Handle (ID) of the application this subscription belongs to. Optional in token-based subscriptions.
 	ApplicationId *string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
 
-	// Kind Type of the artifact identified by apiId. Determines which artifact table apiId is resolved against.
+	// ArtifactId Handle (ID) of the artifact to subscribe to. Resolved against the table for the given kind.
+	ArtifactId string `binding:"required" json:"artifactId" yaml:"artifactId"`
+
+	// Kind Type of the artifact identified by artifactId. Determines which artifact table artifactId is resolved against.
 	Kind CreateSubscriptionRequestKind `binding:"required" json:"kind" yaml:"kind"`
 
 	// Status Subscription status (default ACTIVE)
@@ -972,7 +977,7 @@ type CreateSubscriptionRequest struct {
 	SubscriptionPlanId *string `json:"subscriptionPlanId,omitempty" yaml:"subscriptionPlanId,omitempty"`
 }
 
-// CreateSubscriptionRequestKind Type of the artifact identified by apiId. Determines which artifact table apiId is resolved against.
+// CreateSubscriptionRequestKind Type of the artifact identified by artifactId. Determines which artifact table artifactId is resolved against.
 type CreateSubscriptionRequestKind string
 
 // CreateSubscriptionRequestStatus Subscription status (default ACTIVE)
@@ -1439,7 +1444,7 @@ type LLMProviderTemplate struct {
 	IsLatest *bool `json:"isLatest,omitempty" yaml:"isLatest,omitempty"`
 
 	// ManagedBy Identifies who manages the template. Built-in templates use 'wso2';
-	// custom templates default to 'customer' and may be set to any value.
+	// custom templates default to 'organization' and may be set to any value.
 	ManagedBy *string                      `json:"managedBy,omitempty" yaml:"managedBy,omitempty"`
 	Metadata  *LLMProviderTemplateMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 
@@ -1559,6 +1564,9 @@ type LLMProviderTemplateResourceMappings struct {
 
 // LLMProxy defines model for LLMProxy.
 type LLMProxy struct {
+	// AdditionalProviders Optional list of additional LLM providers attached to this proxy as selectable upstreams. Policies route requests to any of these by setting the upstream name. The primary `provider` field above remains the default upstream and the FK target.
+	AdditionalProviders *[]LLMProxyAdditionalProvider `json:"additionalProviders,omitempty" yaml:"additionalProviders,omitempty"`
+
 	// AssociatedGateways Optional list of gateways this LLM proxy can be deployed to, along with per-gateway configuration overrides. This field is optional; omitting it does not change existing behaviour.
 	AssociatedGateways *[]AssociatedGateway `json:"associatedGateways,omitempty" yaml:"associatedGateways,omitempty"`
 
@@ -1626,6 +1634,18 @@ type LLMProxyAPIKeyListResponse struct {
 	Pagination Pagination   `json:"pagination" yaml:"pagination"`
 }
 
+// LLMProxyAdditionalProvider Additional LLM provider attached to this proxy as a selectable upstream. Policies route to it by referring to the `as` name (defaults to `id`).
+type LLMProxyAdditionalProvider struct {
+	// As Logical LLM Provider name used by policies to select this provider. Must be unique within the proxy. Defaults to `id` when omitted.
+	As *string `json:"as,omitempty" yaml:"as,omitempty"`
+
+	// Id Unique id of a deployed llm provider
+	Id string `binding:"required" json:"id" yaml:"id"`
+
+	// Transformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
+	Transformer *LLMProxyTransformer `json:"transformer,omitempty" yaml:"transformer,omitempty"`
+}
+
 // LLMProxyListItem defines model for LLMProxyListItem.
 type LLMProxyListItem struct {
 	// Context Context path where the proxy is exposed
@@ -1670,6 +1690,18 @@ type LLMProxyProvider struct {
 
 	// Id Unique id of a deployed llm provider
 	Id string `binding:"required" json:"id" yaml:"id"`
+}
+
+// LLMProxyTransformer Request/response translator applied when this provider is the selected upstream. The proxy injects the translator as a conditional policy whose execution condition matches this provider, so it runs only when the provider is selected. The provider's `as` name (defaults to `id`) is passed to the translator as its target upstream.
+type LLMProxyTransformer struct {
+	// Params Translator-specific parameters (for example model, apiVersion).
+	Params *map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
+
+	// Type Translator policy name (for example openai-to-anthropic).
+	Type string `binding:"required" json:"type" yaml:"type"`
+
+	// Version Major-only translator policy version (for example v1). The Gateway Controller resolves it to the installed full version.
+	Version string `binding:"required" json:"version" yaml:"version"`
 }
 
 // LLMRateLimitingConfig Rate limiting configuration for an LLM provider at provider and consumer levels.
@@ -2306,12 +2338,12 @@ type SecurityConfig struct {
 
 // Subscription defines model for Subscription.
 type Subscription struct {
-	// ApiId Handle (ID) of the subscribed artifact
-	ApiId *string `json:"apiId,omitempty" yaml:"apiId,omitempty"`
-
 	// ApplicationId Handle (ID) of the application this subscription belongs to (optional for token-based subscriptions)
-	ApplicationId *string    `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
-	CreatedAt     *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	ApplicationId *string `json:"applicationId,omitempty" yaml:"applicationId,omitempty"`
+
+	// ArtifactId Handle (ID) of the subscribed artifact
+	ArtifactId *string    `json:"artifactId,omitempty" yaml:"artifactId,omitempty"`
+	CreatedAt  *time.Time `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 
 	// CreatedBy User identifier of the user who created this resource
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
@@ -3115,8 +3147,8 @@ type ListSubscriptionPlansParams struct {
 
 // ListSubscriptionsParams defines parameters for ListSubscriptions.
 type ListSubscriptionsParams struct {
-	// ApiId Filter by API ID (UUID or handle)
-	ApiId *string `form:"apiId,omitempty" json:"apiId,omitempty" yaml:"apiId,omitempty"`
+	// ArtifactId Filter by artifact ID (UUID or handle)
+	ArtifactId *string `form:"artifactId,omitempty" json:"artifactId,omitempty" yaml:"artifactId,omitempty"`
 
 	// SubscriberId Filter by subscriber ID
 	SubscriberId *string `form:"subscriberId,omitempty" json:"subscriberId,omitempty" yaml:"subscriberId,omitempty"`

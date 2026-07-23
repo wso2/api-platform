@@ -590,12 +590,28 @@ type LLMTemplateParams struct {
 	Logger        *slog.Logger
 }
 
-// parseAndValidateLLMTemplate parses the raw spec and validates it, returning the typed template.
+// normalizeTemplateDefaults fills in default values for GroupId, Version, and ManagedBy if they are missing or empty.
+func normalizeTemplateDefaults(tmpl *api.LLMProviderTemplate) {
+	if tmpl.Spec.GroupId == nil || strings.TrimSpace(*tmpl.Spec.GroupId) == "" {
+		g := tmpl.Metadata.Name
+		tmpl.Spec.GroupId = &g
+	}
+	if tmpl.Spec.Version == nil || strings.TrimSpace(*tmpl.Spec.Version) == "" {
+		v := models.DefaultTemplateVersion
+		tmpl.Spec.Version = &v
+	}
+	if tmpl.Spec.ManagedBy == nil || strings.TrimSpace(*tmpl.Spec.ManagedBy) == "" {
+		p := models.DefaultTemplateManagedBy
+		tmpl.Spec.ManagedBy = &p
+	}
+}
+
 func (s *LLMDeploymentService) parseAndValidateLLMTemplate(params LLMTemplateParams) (*api.LLMProviderTemplate, error) {
 	var tmpl api.LLMProviderTemplate
 	if err := s.parser.Parse(params.Spec, params.ContentType, &tmpl); err != nil {
 		return nil, fmt.Errorf("%w: failed to parse template configuration: %v", ErrLLMTemplateValidation, err)
 	}
+	normalizeTemplateDefaults(&tmpl)
 
 	// Render template expressions into a separate copy for validation only; tmpl stays unrendered for persistence.
 	renderHolder := &models.StoredConfig{Configuration: tmpl}

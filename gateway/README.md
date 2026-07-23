@@ -35,10 +35,19 @@ make build-gateway-builder
 
 ### Run
 
+Run the one-time setup (generates `api-platform.env` and the router listener TLS certificate), then start the stack:
+
 ```bash
+./scripts/setup.sh
 docker compose up -d
 curl http://localhost:9092/api/admin/v0.9/health
 ```
+
+`setup.sh` is idempotent (rerun with `--force` to rotate certs and rewrite `api-platform.env`).
+
+For the full setup reference — flags (`--force`, `--certs-only`, `--with-encryption`), control-plane
+connection, at-rest encryption, and how configuration is delivered — see
+[docs/gateway/quick-start-guide.md](../docs/gateway/quick-start-guide.md).
 
 ### Test
 
@@ -68,18 +77,29 @@ make clean
 
 ### Gateway-Controller & Policy-Engine
 
-Environment variables use `APIP_GW_` prefix:
+Configuration is read from a TOML config file (mounted at `/etc/gateway-controller/config.toml`
+and `/etc/policy-engine/config.toml`) layered over built-in defaults. **Environment variables do
+not override config keys directly.** An environment value reaches a setting only through an explicit
+`{{ env "NAME" "default" }}` interpolation token in the config file, resolved at load time; a field
+with no token always takes its literal TOML value or the built-in default. Secrets can also be read
+from a mounted file with `{{ file "PATH" }}`.
 
-| Variable | Description |
-|----------|-------------|
-| `APIP_GW_CONTROLLER_STORAGE_TYPE` | `sqlite`, `postgres`, `sqlserver`, or `memory` |
-| `APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH` | Path to SQLite database |
-| `APIP_GW_CONTROLLER_STORAGE_POSTGRES_DSN` | PostgreSQL DSN (when storage type is `postgres`) |
-| `APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN` | SQL Server DSN (when storage type is `sqlserver`) |
-| `APIP_GW_CONTROLLER_LOGGING_LEVEL` | `debug`, `info`, `warn`, `error` |
-| `APIP_GW_POLICY__ENGINE_METRICS_PORT` | Policy engine metrics port |
+The sample composes deliver these values from `api-platform.env` via docker-compose `env_file:`
+(generate it with `./scripts/setup.sh`). The shipped
+`configs/config.toml` already carries `{{ env "APIP_GW_..." }}` tokens for the common settings —
+`APIP_GW_` is a naming convention on the token argument, not a prefix that auto-maps to config keys:
 
-See [gateway-controller/README.md](gateway-controller/README.md) for full configuration options.
+| Environment variable (token argument) | Config key | Description |
+|----------|----------|-------------|
+| `APIP_GW_CONTROLLER_STORAGE_TYPE` | `controller.storage.type` | `sqlite`, `postgres`, `sqlserver`, or `memory` |
+| `APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH` | `controller.storage.sqlite.path` | Path to SQLite database |
+| `APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN` | `controller.storage.database.dsn` | SQL Server DSN (when storage type is `sqlserver`) |
+| `APIP_GW_CONTROLLER_CONTROLPLANE_HOST` | `controller.controlplane.host` | Control plane endpoint |
+| `APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN` | `controller.controlplane.token` | Control plane registration token |
+| `APIP_GW_CONTROLLER_LOGGING_LEVEL` | `controller.logging.level` | `debug`, `info`, `warn`, `error` |
+
+See [gateway-controller/README.md](gateway-controller/README.md) and `configs/config-template.toml`
+for the full set of tokens and configuration options.
 
 ### Gateway Runtime
 

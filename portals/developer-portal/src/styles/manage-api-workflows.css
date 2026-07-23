@@ -1,7 +1,7 @@
 /* ===== Configure Page — Header & Tabs ===== */
 
 .container-fluid .container-header {
-    color: var(--primary-main-color);
+    color: var(--primary);
     font-size: 1.5rem;
     font-weight: 600;
 }
@@ -10,7 +10,7 @@
     display: flex !important;
     flex-direction: row !important;
     flex-wrap: nowrap !important;
-    border-bottom: 2px solid #e9ecef;
+    border-bottom: 2px solid var(--border);
 }
 
 .configure-tabs .nav-item {
@@ -19,7 +19,7 @@
 }
 
 .configure-tabs .nav-link {
-    color: #6c757d;
+    color: var(--text-muted);
     font-weight: 500;
     border: none;
     border-bottom: 3px solid transparent;
@@ -31,15 +31,15 @@
 }
 
 .configure-tabs .nav-link:hover {
-    color: var(--primary-main-color);
-    border-bottom-color: var(--primary-main-color);
+    color: var(--primary);
+    border-bottom-color: var(--primary);
     background-color: transparent;
 }
 
 .configure-tabs .nav-link.active {
-    color: var(--primary-main-color);
+    color: var(--primary);
     background: transparent;
-    border-bottom-color: var(--primary-main-color);
+    border-bottom-color: var(--primary);
     font-weight: 600;
 }
 
@@ -64,7 +64,7 @@
 .api-workflow-card {
     display: flex;
     flex-direction: column;
-    background: var(--main-bg-color);
+    background: var(--surface);
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.875rem;
     overflow: hidden;
@@ -74,7 +74,7 @@
 
 .api-workflow-card:hover {
     box-shadow: 0px 0.5rem 1.5rem rgba(0, 0, 0, 0.12);
-    border-color: var(--primary-main-color);
+    border-color: var(--primary);
 }
 
 .api-workflow-card-header {
@@ -103,24 +103,24 @@
 }
 
 .api-workflow-status-dot--published {
-    background-color: #16a34a;
+    background-color: var(--success);
 }
 
 .api-workflow-status-dot--draft {
-    background-color: #f59e0b;
+    background-color: var(--warning);
 }
 
 .api-workflow-status-label {
     font-size: 0.675rem;
     font-weight: 700;
     letter-spacing: 0.07em;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     text-transform: uppercase;
     white-space: nowrap;
 }
 
 .api-workflow-card-sep {
-    color: var(--bs-gray-400, #ced4da);
+    color: var(--bs-gray-400);
     font-size: 0.75rem;
 }
 
@@ -136,13 +136,13 @@
 }
 
 .api-workflow-content-type--arazzo {
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.1);
-    color: var(--primary-main-color);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--primary);
 }
 
 .api-workflow-content-type--md {
-    background: color-mix(in srgb, #16a34a 12%, transparent);
-    color: #15803d;
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+    color: var(--success);
 }
 
 .api-workflow-card-actions--hover {
@@ -160,7 +160,7 @@
 .api-workflow-card-title {
     font-size: 1.0625rem;
     font-weight: 700;
-    color: var(--main-text-color);
+    color: var(--text);
     margin-bottom: 0.5rem;
     line-height: 1.3;
 }
@@ -177,13 +177,13 @@
 }
 
 .api-workflow-status-published {
-    background-color: var(--bs-success-bg-subtle, #d1e7dd);
-    color: var(--bs-success-text-emphasis, #0a3622);
+    background-color: var(--bs-success-bg-subtle);
+    color: var(--bs-success-text-emphasis);
 }
 
 .api-workflow-status-draft {
-    background-color: var(--bs-warning-bg-subtle, #fff3cd);
-    color: var(--bs-warning-text-emphasis, #664d03);
+    background-color: var(--bs-warning-bg-subtle);
+    color: var(--bs-warning-text-emphasis);
 }
 
 .api-workflow-card-visibility-badges {
@@ -218,17 +218,17 @@
 
 .api-workflow-visibility-private {
     background: var(--bs-gray-500);
-    color: var(--white-text-color);
+    color: var(--white);
 }
 
 .api-workflow-agent-visible {
-    background-color: color-mix(in srgb, var(--success-color) 15%, white);
-    color: var(--primary-main-color);
+    background-color: color-mix(in srgb, var(--success) 15%, white);
+    color: var(--primary);
 }
 
 .api-workflow-agent-hidden {
-    background-color: color-mix(in srgb, var(--warning-color) 15%, white);
-    color: color-mix(in srgb, var(--warning-color) 80%, black);
+    background-color: color-mix(in srgb, var(--warning) 15%, white);
+    color: color-mix(in srgb, var(--warning) 80%, black);
 }
 
 .api-workflow-card-body {
@@ -238,7 +238,7 @@
 
 .api-workflow-card-description {
     font-size: 0.8125rem;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     line-height: 1.55;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -271,23 +271,23 @@
     height: 2rem;
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.5rem;
-    background: var(--main-bg-color);
-    color: var(--main-text-color);
+    background: var(--surface);
+    color: var(--text);
     font-size: 0.875rem;
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .api-workflow-action-btn:hover {
-    border-color: var(--primary-main-color);
-    color: var(--primary-main-color);
-    background: var(--primary-light-color);
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-light);
 }
 
 .api-workflow-action-btn--danger:hover {
-    border-color: var(--danger-color);
-    color: var(--danger-color);
-    background: var(--main-bg-color);
+    border-color: var(--danger);
+    color: var(--danger);
+    background: var(--surface);
 }
 
 
@@ -298,7 +298,7 @@
     justify-content: space-between;
     padding: 0.625rem 1rem;
     border-bottom: 1px solid var(--bs-gray-200);
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken);
 }
 
 .prompt-modal-toolbar {
@@ -309,7 +309,7 @@
 
 .prompt-tool-btn {
     background: none;
-    border: 1px solid var(--bs-gray-300, #dee2e6);
+    border: 1px solid var(--bs-gray-300);
     border-radius: 0.375rem;
     width: 34px;
     height: 34px;
@@ -317,15 +317,15 @@
     align-items: center;
     justify-content: center;
     font-size: 1rem;
-    color: var(--main-text-color);
+    color: var(--text);
     cursor: pointer;
     transition: all 0.2s ease;
 }
 
 .prompt-tool-btn:hover {
-    border-color: var(--primary-main-color);
-    color: var(--primary-main-color);
-    background: var(--primary-lightest-color);
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-surface);
 }
 
 .prompt-run-dropdown {
@@ -340,7 +340,7 @@
     height: 34px;
     white-space: nowrap;
     background: #D97757;;
-    color: #fff;
+    color: var(--white);
     border: none;
     border-radius: 0.375rem;
     font-size: 0.875rem;
@@ -358,7 +358,7 @@
     position: absolute;
     top: calc(100% + 6px);
     right: 0;
-    background: var(--main-bg-color);
+    background: var(--surface);
     border: 1px solid var(--bs-gray-200);
     border-radius: 0.5rem;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
@@ -379,14 +379,14 @@
     background: none;
     border: none;
     font-size: 0.875rem;
-    color: var(--main-text-color);
+    color: var(--text);
     cursor: pointer;
     transition: background 0.15s ease;
 }
 
 .run-option:hover {
-    background: var(--primary-lightest-color);
-    color: var(--primary-main-color);
+    background: var(--primary-surface);
+    color: var(--primary);
 }
 
 .api-workflow-prompt-pre {
@@ -396,8 +396,8 @@
     line-height: 1.7;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    background: var(--main-bg-color);
-    color: var(--main-text-color);
+    background: var(--surface);
+    color: var(--text);
     border: none;
     border-radius: 0;
 }
@@ -428,8 +428,8 @@
     width: 2rem;
     height: 2rem;
     border-radius: 50%;
-    background: var(--secondary-main-color);
-    color: var(--light-text-color);
+    background: var(--accent);
+    color: var(--white);
     font-size: 0.8125rem;
     font-weight: 700;
     display: flex;
@@ -441,13 +441,13 @@
 .af-section-title {
     font-size: 0.9375rem;
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
     line-height: 1.3;
 }
 
 .af-section-subtitle {
     font-size: 0.8125rem;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     margin-top: 0.15rem;
     line-height: 1.4;
 }
@@ -468,8 +468,8 @@
 
 .af-seg {
     display: inline-flex;
-    background: var(--bs-gray-100, #f8f9fa);
-    border: 1px solid var(--bs-gray-300, #dee2e6);
+    background: var(--bs-gray-100);
+    border: 1px solid var(--bs-gray-300);
     border-radius: 10px;
     padding: 4px;
 }
@@ -481,14 +481,14 @@
     padding: 10px 16px;
     border-radius: 6px;
     cursor: pointer;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     user-select: none;
     transition: background 0.15s ease, color 0.15s ease;
     margin-bottom: 0;
 }
 
 .af-seg-option:hover {
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.05);
+    background: color-mix(in srgb, var(--primary) 5%, transparent);
 }
 
 .af-seg-option--disabled {
@@ -499,7 +499,7 @@
 
 .af-seg .btn-check:checked + .af-seg-option {
     background: rgba(89, 82, 173, 0.1);
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 .af-seg-icon {
@@ -523,7 +523,7 @@
 
 .af-seg-sub {
     font-size: 11px;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     margin-top: 1px;
 }
 
@@ -546,8 +546,8 @@
     font-size: 9px;
     font-weight: 600;
     letter-spacing: 0.05em;
-    color: var(--bs-secondary, #6c757d);
-    background: var(--bs-gray-200, #e9ecef);
+    color: var(--bs-secondary);
+    background: var(--bs-gray-200);
     border-radius: 3px;
     padding: 1px 5px;
     vertical-align: middle;
@@ -560,14 +560,14 @@
     display: flex !important;
     flex-direction: row !important;
     flex-wrap: nowrap !important;
-    border-bottom: 2px solid #e9ecef;
+    border-bottom: 2px solid var(--border);
 }
 
 .af-flow-tab {
     padding: 0.5rem 1rem;
     font-size: 0.875rem;
     font-weight: 500;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
@@ -580,27 +580,27 @@
 }
 
 .af-flow-tab:hover {
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 .af-flow-tab.active {
-    color: var(--primary-main-color);
-    border-bottom-color: var(--primary-main-color);
+    color: var(--primary);
+    border-bottom-color: var(--primary);
     font-weight: 600;
 }
 
 .af-agent-hidden-icon {
     font-size: 0.875rem;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
 }
 
 /* ===== Agent Hidden Warning Banner ===== */
 
 .af-agent-hidden-banner {
-    border: 1px solid #ffc107;
-    border-left: 3px solid #ffc107;
+    border: 1px solid var(--warning);
+    border-left: 3px solid var(--warning);
     border-radius: 0.375rem;
-    background-color: #fffbeb;
+    background-color: var(--warning-surface);
     padding: 0.75rem 1rem;
     margin-bottom: 1.25rem;
 }
@@ -612,7 +612,7 @@
 }
 
 .af-agent-hidden-banner-icon {
-    color: #997404;
+    color: var(--warning);
     font-size: 1rem;
     flex-shrink: 0;
 }
@@ -620,7 +620,7 @@
 .af-agent-hidden-banner-text {
     flex: 1;
     font-size: 0.875rem;
-    color: #664d03;
+    color: var(--warning);
     display: flex;
     flex-direction: column;
     gap: 0.125rem;
@@ -629,7 +629,7 @@
 .af-agent-hidden-banner-action {
     background: none;
     border: none;
-    color: #664d03;
+    color: var(--warning);
     font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
@@ -645,7 +645,7 @@
 }
 
 .af-agent-hidden-banner-action:focus-visible {
-    outline: 2px solid #ffc107;
+    outline: 2px solid var(--warning);
     outline-offset: 2px;
     text-decoration: none;
 }
@@ -681,7 +681,7 @@
     padding: 0.625rem 0.75rem;
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.625rem;
-    background: var(--main-bg-color);
+    background: var(--surface);
     cursor: pointer;
     transition: border-color 0.15s ease, background 0.15s ease;
     user-select: none;
@@ -689,20 +689,20 @@
 }
 
 .af-api-card:hover {
-    border-color: var(--primary-main-color);
-    background: var(--main-bg-color);
+    border-color: var(--primary);
+    background: var(--surface);
 }
 
 .af-api-card-check {
     flex-shrink: 0;
     font-size: 1rem;
     margin-top: 0.1rem;
-    color: var(--bs-gray-400, #ced4da);
+    color: var(--bs-gray-400);
     transition: color 0.15s ease;
 }
 
 .af-api-card--selected .af-api-card-check {
-    color: var(--primary-light-color);
+    color: var(--primary-light);
 }
 
 .af-api-card-body {
@@ -749,8 +749,8 @@
     font-size: 0.65rem;
     font-weight: 600;
     border-radius: 999px;
-    background: var(--primary-lightest-color, #e8e8f4);
-    color: var(--primary-main-color);
+    background: var(--primary-surface);
+    color: var(--primary);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     white-space: nowrap;
@@ -766,13 +766,13 @@
 }
 
 .af-api-agent-badge--ready {
-    background: color-mix(in srgb, var(--bs-success, #198754) 15%, transparent);
-    color: var(--bs-success, #198754);
+    background: color-mix(in srgb, var(--bs-success) 15%, transparent);
+    color: var(--bs-success);
 }
 
 .af-api-agent-badge--not-ready {
-    background: color-mix(in srgb, var(--bs-secondary, #6c757d) 12%, transparent);
-    color: var(--bs-secondary, #6c757d);
+    background: color-mix(in srgb, var(--bs-secondary) 12%, transparent);
+    color: var(--bs-secondary);
 }
 
 .af-api-card--disabled {
@@ -782,7 +782,7 @@
 
 .af-api-card--disabled:hover {
     border-color: var(--bs-gray-300);
-    background: var(--main-bg-color);
+    background: var(--surface);
 }
 
 .af-api-card--disabled:hover .af-api-card-tooltip {
@@ -798,7 +798,7 @@
     inset: 0;
     border-radius: 0.625rem;
     background-color: rgba(0, 0, 0, 0.75);
-    color: #fff;
+    color: var(--white);
     font-size: 0.72rem;
     line-height: 1.4;
     text-align: center;
@@ -812,7 +812,7 @@
 
 .api-workflow-prompt-editor,
 .api-workflow-code-editor {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8125rem;
     line-height: 1.6;
     resize: vertical;
@@ -847,7 +847,7 @@
 
 .af-save-dropdown-hint {
     font-size: 0.75rem;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     margin-top: 0.1rem;
     white-space: normal;
 }
@@ -864,7 +864,7 @@
     gap: 0.5rem;
     padding: 0.875rem 1.5rem;
     margin: 1.25rem -1.5rem -1.5rem -1.5rem;
-    background: var(--main-bg-color);
+    background: var(--surface);
     border-top: 1px solid var(--bs-gray-200);
     box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.07);
     border-radius: 0 0 0.5rem 0.5rem;
@@ -882,7 +882,7 @@
     border: 1px solid var(--bs-gray-200);
     border-radius: 0.375rem;
     background: transparent;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     font-size: 0.75rem;
     cursor: pointer;
     transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
@@ -890,9 +890,9 @@
 }
 
 .af-collapse-btn:hover {
-    border-color: var(--primary-main-color);
-    color: var(--primary-main-color);
-    background: var(--primary-lightest-color, #e8e8f4);
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-surface);
 }
 
 .af-section-body--collapsed {
@@ -901,7 +901,7 @@
 
 .af-section-summary {
     font-size: 0.775rem;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     font-style: italic;
     white-space: nowrap;
     overflow: hidden;
@@ -918,7 +918,7 @@
     gap: 0.375rem;
     min-height: 2rem;
     padding: 0.375rem 0.625rem;
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken);
     border: 1px solid var(--bs-gray-200);
     border-radius: 0.5rem;
 }
@@ -927,8 +927,8 @@
     display: inline-flex;
     align-items: center;
     padding: 0.2em 0.65em;
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.1);
-    color: var(--primary-main-color);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--primary);
     border-radius: 999px;
     font-size: 0.74rem;
     font-weight: 500;
@@ -944,24 +944,24 @@
 }
 
 .af-show-selected-active {
-    border-color: var(--primary-main-color) !important;
-    color: var(--primary-main-color) !important;
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.06) !important;
+    border-color: var(--primary) !important;
+    color: var(--primary) !important;
+    background: color-mix(in srgb, var(--primary) 6%, transparent) !important;
 }
 
 /* ===== Selected API Card — stronger visual ===== */
 
 .af-api-card--selected {
-    border-color: var(--primary-main-color);
+    border-color: var(--primary);
     border-width: 1px;
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.035);
-    border-left: 3px solid var(--primary-main-color);
+    background: color-mix(in srgb, var(--primary) 3.5%, transparent);
+    border-left: 3px solid var(--primary);
 }
 
 /* ===== CodeMirror Editor ===== */
 
 .af-cm-host {
-    border: 1px solid var(--bs-gray-300, #dee2e6);
+    border: 1px solid var(--bs-gray-300);
     border-radius: 0.375rem;
     overflow: hidden;
     font-size: 0.8125rem;
@@ -969,11 +969,11 @@
 
 .af-cm-host .CodeMirror {
     height: 420px;
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8125rem;
     line-height: 1.6;
-    background: var(--main-bg-color);
-    color: var(--main-text-color);
+    background: var(--surface);
+    color: var(--text);
     border: none;
 }
 
@@ -982,22 +982,22 @@
 }
 
 .af-cm-host .CodeMirror-gutters {
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken);
     border-right: 1px solid var(--bs-gray-200);
 }
 
 .af-cm-host .CodeMirror-linenumber {
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     font-size: 0.75rem;
 }
 
 .af-cm-host:focus-within {
-    border-color: var(--primary-main-color);
-    box-shadow: 0 0 0 0.2rem rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.15);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .af-cm-invalid {
-    border-color: var(--bs-danger, #dc3545) !important;
+    border-color: var(--bs-danger) !important;
     box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.15) !important;
 }
 
@@ -1018,23 +1018,23 @@
     align-items: center;
     gap: 1rem;
     padding: 1.125rem 1.25rem;
-    border: 1px solid var(--bs-gray-200, #e9ecef);
+    border: 1px solid var(--bs-gray-200);
     border-radius: 1rem;
     cursor: pointer;
-    background: var(--main-bg-color);
+    background: var(--surface);
     transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
     user-select: none;
     position: relative;
 }
 
 .af-path-card:hover {
-    border-color: var(--primary-main-color);
-    box-shadow: 0 2px 12px rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.1);
+    border-color: var(--primary);
+    box-shadow: 0 2px 12px color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 .af-path-card--active {
-    border-color: var(--primary-main-color);
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.04);
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 4%, transparent);
 }
 
 .af-path-card-icon-wrap {
@@ -1042,7 +1042,7 @@
     width: 2.75rem;
     height: 2.75rem;
     border-radius: 0.75rem;
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.1);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1051,12 +1051,12 @@
 
 .af-path-card--active .af-path-card-icon-wrap,
 .af-path-card:hover .af-path-card-icon-wrap {
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.15);
+    background: color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .af-path-card-icon {
     font-size: 1.4rem;
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 .af-path-card-content {
@@ -1067,19 +1067,19 @@
 .af-path-card-title {
     font-size: 0.9375rem;
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
     margin-bottom: 0.2rem;
 }
 
 .af-path-card-desc {
     font-size: 0.78rem;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     line-height: 1.4;
 }
 
 .af-path-card-check {
     font-size: 1.25rem;
-    color: var(--primary-main-color);
+    color: var(--primary);
     flex-shrink: 0;
     opacity: 0;
     transition: opacity 0.18s ease;
@@ -1092,7 +1092,7 @@
 /* ===== Upload Zone ===== */
 
 .af-upload-zone {
-    border: 2px dashed var(--bs-gray-300, #dee2e6);
+    border: 2px dashed var(--bs-gray-300);
     border-radius: 1rem;
     padding: 2.75rem 2rem;
     text-align: center;
@@ -1102,8 +1102,8 @@
 
 .af-upload-zone:hover,
 .af-upload-zone--dragover {
-    border-color: var(--primary-main-color);
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.04);
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 4%, transparent);
 }
 
 .af-upload-zone-inner {
@@ -1112,7 +1112,7 @@
 
 .af-upload-zone-icon {
     font-size: 3rem;
-    color: var(--bs-gray-400, #ced4da);
+    color: var(--bs-gray-400);
     display: block;
     margin-bottom: 0.875rem;
     transition: color 0.2s ease, transform 0.2s ease;
@@ -1120,27 +1120,27 @@
 
 .af-upload-zone:hover .af-upload-zone-icon,
 .af-upload-zone--dragover .af-upload-zone-icon {
-    color: var(--primary-main-color);
+    color: var(--primary);
     transform: translateY(-3px);
 }
 
 .af-upload-zone-title {
     font-size: 1rem;
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
     margin-bottom: 0.375rem;
 }
 
 .af-upload-zone-sub {
     font-size: 0.8125rem;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     pointer-events: auto;
 }
 
 .af-upload-browse-btn {
     background: none;
     border: none;
-    color: var(--primary-main-color);
+    color: var(--primary);
     font-size: inherit;
     cursor: pointer;
     padding: 0;
@@ -1161,7 +1161,7 @@
 .af-upload-format-sep {
     display: inline-block;
     margin: 0 0.5rem;
-    color: var(--bs-gray-400, #ced4da);
+    color: var(--bs-gray-400);
 }
 
 .af-upload-format-pill {
@@ -1176,13 +1176,13 @@
 }
 
 .af-upload-format-pill--arazzo {
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.1);
-    color: var(--primary-main-color);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--primary);
 }
 
 .af-upload-format-pill--md {
-    background: color-mix(in srgb, #16a34a 12%, transparent);
-    color: #15803d;
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+    color: var(--success);
 }
 
 /* ===== Upload File Strip ===== */
@@ -1192,14 +1192,14 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.625rem 1rem;
-    background: color-mix(in srgb, var(--bs-success, #198754) 8%, var(--main-bg-color));
-    border: 1px solid color-mix(in srgb, var(--bs-success, #198754) 30%, var(--bs-gray-200));
+    background: color-mix(in srgb, var(--bs-success) 8%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--bs-success) 30%, var(--bs-gray-200));
     border-radius: 0.625rem;
 }
 
 .af-upload-file-strip-icon {
     font-size: 1.25rem;
-    color: var(--bs-success, #198754);
+    color: var(--bs-success);
     flex-shrink: 0;
 }
 
@@ -1207,7 +1207,7 @@
     flex: 1;
     font-weight: 500;
     font-size: 0.875rem;
-    color: var(--main-text-color);
+    color: var(--text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1225,13 +1225,13 @@
 }
 
 .af-upload-type-badge--arazzo {
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.1);
-    color: var(--primary-main-color);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--primary);
 }
 
 .af-upload-type-badge--md {
-    background: color-mix(in srgb, #16a34a 12%, transparent);
-    color: #15803d;
+    background: color-mix(in srgb, var(--success) 12%, transparent);
+    color: var(--success);
 }
 
 .af-upload-file-remove {
@@ -1244,22 +1244,22 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     cursor: pointer;
     font-size: 0.75rem;
     transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 
 .af-upload-file-remove:hover {
-    border-color: var(--bs-danger, #dc3545);
-    color: var(--bs-danger, #dc3545);
+    border-color: var(--bs-danger);
+    color: var(--bs-danger);
     background: rgba(220, 53, 69, 0.06);
 }
 
 /* ===== Source Description Validation ===== */
 
 .af-sd-validation {
-    border: 1px solid var(--bs-gray-200, #e9ecef);
+    border: 1px solid var(--bs-gray-200);
     border-radius: 0.625rem;
     overflow: visible;
 }
@@ -1267,12 +1267,12 @@
 .af-sd-validation-header {
     width: 100%;
     padding: 0.5rem 0.875rem;
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken);
     font-size: 0.78rem;
     font-weight: 600;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     border: none;
-    border-bottom: 1px solid var(--bs-gray-200, #e9ecef);
+    border-bottom: 1px solid var(--bs-gray-200);
     border-radius: 0.625rem 0.625rem 0 0;
     display: flex;
     align-items: center;
@@ -1282,7 +1282,7 @@
     cursor: pointer;
     text-align: left;
 }
-.af-sd-validation-header:hover { background: var(--bs-gray-200, #e9ecef); }
+.af-sd-validation-header:hover { background: var(--bs-gray-200); }
 .af-sd-chevron { font-size: 0.7rem; transition: transform 0.2s ease; flex-shrink: 0; }
 .af-sd-validation-header[aria-expanded="false"] .af-sd-chevron { transform: rotate(-90deg); }
 .af-sd-collapsed { display: none; }
@@ -1300,7 +1300,7 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.5rem 0.875rem;
-    border-bottom: 1px solid var(--bs-gray-100, #f8f9fa);
+    border-bottom: 1px solid var(--bs-gray-100);
     font-size: 0.8125rem;
 }
 
@@ -1322,7 +1322,7 @@
 
 .af-sd-item-name {
     font-weight: 500;
-    color: var(--main-text-color);
+    color: var(--text);
     display: flex;
     align-items: center;
     gap: 0.375rem;
@@ -1330,7 +1330,7 @@
 
 .af-sd-item-url {
     font-size: 0.72rem;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1348,28 +1348,28 @@
 }
 
 .af-sd-status--valid {
-    background: var(--bs-success-bg-subtle, #d1e7dd);
-    color: var(--bs-success-text-emphasis, #0a3622);
+    background: var(--bs-success-bg-subtle);
+    color: var(--bs-success-text-emphasis);
 }
 
 .af-sd-status--invalid {
-    background: var(--bs-danger-bg-subtle, #f8d7da);
+    background: var(--bs-danger-bg-subtle);
     color: var(--bs-danger-text-emphasis, #58151c);
 }
 
 .af-sd-status--checking {
-    background: var(--bs-gray-200, #e9ecef);
-    color: var(--bs-secondary, #6c757d);
+    background: var(--bs-gray-200);
+    color: var(--bs-secondary);
 }
 
 .af-sd-status--not-a-spec {
-    background: var(--bs-warning-bg-subtle, #fff3cd);
-    color: var(--bs-warning-text-emphasis, #664d03);
+    background: var(--bs-warning-bg-subtle);
+    color: var(--bs-warning-text-emphasis);
 }
 
 .af-sd-status--unreachable {
-    background: var(--bs-secondary-bg-subtle, #e9ecef);
-    color: var(--bs-secondary-text-emphasis, #495057);
+    background: var(--bs-secondary-bg-subtle);
+    color: var(--bs-secondary-text-emphasis);
 }
 
 .af-sd-checking-spinner {
@@ -1377,7 +1377,7 @@
     width: 0.875rem;
     height: 0.875rem;
     border: 2px solid var(--bs-gray-300);
-    border-top-color: var(--primary-main-color);
+    border-top-color: var(--primary);
     border-radius: 50%;
     animation: af-spin 0.7s linear infinite;
     flex-shrink: 0;
@@ -1394,17 +1394,17 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.5rem 0.875rem;
-    background: color-mix(in srgb, #16a34a 6%, var(--main-bg-color));
-    border: 1px solid color-mix(in srgb, #16a34a 20%, var(--bs-gray-200));
+    background: color-mix(in srgb, var(--success) 6%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--success) 20%, var(--bs-gray-200));
     border-radius: 0.5rem;
     font-size: 0.8125rem;
-    color: #15803d;
+    color: var(--success);
 }
 
 /* ===== Markdown Editor ===== */
 
 .af-md-editor {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8125rem;
     line-height: 1.7;
     resize: vertical;
@@ -1414,7 +1414,7 @@
 
 .af-md-word-count {
     font-size: 0.75rem;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     white-space: nowrap;
 }
 
@@ -1422,8 +1422,8 @@
 
 .af-create-format-toggle {
     display: inline-flex;
-    background: var(--bs-gray-100, #f8f9fa);
-    border: 1px solid var(--bs-gray-300, #dee2e6);
+    background: var(--bs-gray-100);
+    border: 1px solid var(--bs-gray-300);
     border-radius: 0.5rem;
     padding: 3px;
     gap: 2px;
@@ -1438,7 +1438,7 @@
     border-radius: 0.375rem;
     font-size: 0.8125rem;
     font-weight: 500;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     background: transparent;
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease;
@@ -1446,19 +1446,19 @@
 }
 
 .af-create-format-btn:hover {
-    color: var(--main-text-color);
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.06);
+    color: var(--text);
+    background: color-mix(in srgb, var(--primary) 6%, transparent);
 }
 
 .af-create-format-btn--active {
-    background: var(--main-bg-color);
-    color: var(--primary-main-color);
+    background: var(--surface);
+    color: var(--primary);
     font-weight: 600;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .af-create-format-btn--active:hover {
-    background: var(--main-bg-color);
+    background: var(--surface);
 }
 
 .af-create-format-btn:disabled {
@@ -1475,9 +1475,9 @@
 /* ===== Spec Editor Card ===== */
 
 .af-spec-editor-card {
-    border: 1px solid var(--bs-gray-300, #dee2e6);
+    border: 1px solid var(--bs-gray-300);
     border-radius: 0.5rem;
-    background: var(--main-bg-color, #fff);
+    background: var(--surface);
     overflow: hidden;
     margin-top: 0.75rem;
 }
@@ -1487,14 +1487,14 @@
     align-items: center;
     gap: 0.625rem;
     padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--bs-gray-200, #e9ecef);
-    background: var(--secondary-bg-color, #f8f9fa);
+    border-bottom: 1px solid var(--bs-gray-200);
+    background: var(--surface-sunken);
 }
 
 .af-spec-format-label {
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     white-space: nowrap;
@@ -1512,7 +1512,7 @@
 
 .af-bring-back-hint {
     font-size: 0.75rem;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     white-space: nowrap;
 }
 
@@ -1522,10 +1522,10 @@
     gap: 0.25rem;
     padding: 0 0.4rem;
     height: calc(0.75rem * 1.8);
-    border: 1px solid var(--primary-main-color);
+    border: 1px solid var(--primary);
     background: none;
     font-size: 0.75rem;
-    color: var(--primary-main-color);
+    color: var(--primary);
     cursor: pointer;
     border-radius: 4px;
     line-height: 1;
@@ -1534,12 +1534,12 @@
 }
 
 .af-bring-back-btn:hover {
-    background-color: var(--primary-main-color);
-    color: #fff;
+    background-color: var(--primary);
+    color: var(--white);
 }
 
 .af-bring-back-btn:focus-visible {
-    outline: 2px solid var(--primary-main-color);
+    outline: 2px solid var(--primary);
     outline-offset: 2px;
 }
 
@@ -1553,17 +1553,17 @@
 }
 
 .af-bring-back-feedback--error {
-    color: var(--bs-danger, #dc3545);
+    color: var(--bs-danger);
 }
 
 .af-bring-back-feedback--success {
-    color: var(--success-color, #198754);
+    color: var(--success);
     font-weight: 500;
 }
 
 .af-bring-back-caption {
     font-size: 0.75rem;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     margin: 0.375rem 1rem 0.25rem;
     padding: 0;
 }
@@ -1575,19 +1575,19 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.35rem 0.75rem;
-    background: var(--secondary-bg-color, #f8f9fa);
-    border-bottom: 1px solid var(--bs-gray-200, #e9ecef);
+    background: var(--surface-sunken);
+    border-bottom: 1px solid var(--bs-gray-200);
     font-size: 0.75rem;
 }
 
 .af-editor-filename {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
-    color: var(--bs-secondary, #6c757d);
+    font-family: var(--font-family-mono);
+    color: var(--bs-secondary);
 }
 
 .af-editor-linecount {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
-    color: var(--bs-secondary, #6c757d);
+    font-family: var(--font-family-mono);
+    color: var(--bs-secondary);
 }
 
 /* ── Empty state overlay ── */
@@ -1612,14 +1612,14 @@
 .af-editor-empty-title {
     font-size: 0.9375rem;
     font-weight: 600;
-    color: var(--main-text-color, #212529);
+    color: var(--text);
     margin: 0;
 }
 
 .af-editor-empty-body {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8125rem;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     margin: 0;
     text-align: center;
     padding: 0 1rem;
@@ -1632,13 +1632,13 @@
     justify-content: space-between;
     align-items: center;
     padding: 0.625rem 0.875rem;
-    border-top: 1px solid var(--bs-gray-200, #e9ecef);
-    background: var(--main-bg-color, #fff);
+    border-top: 1px solid var(--bs-gray-200);
+    background: var(--surface);
 }
 
 .af-editor-status {
     font-size: 0.8125rem;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
 }
 
 .af-editor-copy-btn {
@@ -1673,7 +1673,7 @@
     gap: 0.375rem;
     padding: 0.35rem 0.875rem;
     background: #c96a43;
-    color: #fff;
+    color: var(--white);
     border: 1px solid #b85c39;
     border-radius: 0.5rem;
     font-size: 0.8rem;
@@ -1693,8 +1693,8 @@
 .af-generate-claude-btn:disabled,
 .af-generate-claude-btn[disabled] {
     background: #e0c3b5;
-    border-color: #d4b0a0;
-    color: #fff;
+    border-color: var(--border-strong);
+    color: var(--white);
     cursor: not-allowed;
     opacity: 0.6;
 }
@@ -1705,7 +1705,7 @@
     gap: 0.5rem;
     padding: 0.5rem 1.125rem;
     background: #10a37f;
-    color: #fff;
+    color: var(--white);
     border: 1px solid #0d8f6e;
     border-radius: 0.5rem;
     font-size: 0.875rem;
@@ -1728,8 +1728,8 @@
     gap: 0.375rem;
     padding: 0.35rem 0.875rem;
     background: #007acc;
-    color: #fff;
-    border: 1px solid #006bb3;
+    color: var(--white);
+    border: 1px solid var(--info);
     border-radius: 0.5rem;
     font-size: 0.8rem;
     font-weight: 600;
@@ -1738,7 +1738,7 @@
 }
 
 .af-vscode-btn:hover {
-    background: #006bb3;
+    background: var(--info);
 }
 
 .af-vscode-btn:active {
@@ -1749,7 +1749,7 @@
 .af-vscode-btn[disabled] {
     background: #a0c4e0;
     border-color: #8fb8d8;
-    color: #fff;
+    color: var(--white);
     cursor: not-allowed;
     opacity: 0.6;
 }
@@ -1760,8 +1760,8 @@
     gap: 0.375rem;
     padding: 0.35rem 0.875rem;
     background: transparent;
-    color: var(--primary-main-color);
-    border: 1px solid var(--primary-main-color);
+    color: var(--primary);
+    border: 1px solid var(--primary);
     border-radius: 0.5rem;
     font-size: 0.8rem;
     font-weight: 600;
@@ -1770,8 +1770,8 @@
 }
 
 .af-rp-outlined-btn:hover {
-    background: var(--primary-main-color);
-    color: #fff;
+    background: var(--primary);
+    color: var(--white);
 }
 
 .af-rp-outlined-btn:disabled,
@@ -1799,13 +1799,13 @@
     display: inline-flex;
     align-items: center;
     cursor: default;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     font-size: 0.85rem;
     font-weight: 400;
 }
 
 .af-info-tip:hover {
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 .af-info-tip-content {
@@ -1815,8 +1815,8 @@
     bottom: calc(100% + 8px);
     transform: translateX(-50%);
     width: 280px;
-    background: #1e2230;
-    color: #f0f0f5;
+    background: var(--text-strong);
+    color: var(--surface-sunken);
     font-size: 0.78rem;
     font-weight: 400;
     line-height: 1.5;
@@ -1835,7 +1835,7 @@
     left: 50%;
     transform: translateX(-50%);
     border: 5px solid transparent;
-    border-top-color: #1e2230;
+    border-top-color: var(--text-strong);
 }
 
 .af-info-tip-content code {
@@ -1844,7 +1844,7 @@
     border-radius: 3px;
     padding: 0.05em 0.3em;
     color: #c9d1f5;
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
 }
 
 .af-info-tip:hover .af-info-tip-content,
@@ -1865,7 +1865,7 @@
     right: 100%;
     transform: translateY(-50%);
     border-top-color: transparent;
-    border-right-color: #1e2230;
+    border-right-color: var(--text-strong);
 }
 
 /* ===== Wizard Layout ===== */
@@ -1874,7 +1874,7 @@
 
 .af-wizard-header {
     padding: 1rem 1.5rem 1rem;
-    background: var(--main-bg-color);
+    background: var(--surface);
 }
 
 
@@ -1919,8 +1919,8 @@
 
 /* Section card — wraps header + content in a white rounded card */
 .af-rp-section-card {
-    background:var(--main-bg-color);
-    border:1px solid var(--bs-gray-200, #e9ecef);
+    background:var(--surface);
+    border:1px solid var(--bs-gray-200);
     border-radius:0.75rem;
     padding:0.875rem 1rem;
     display:flex; flex-direction:column; gap:0.625rem;
@@ -1936,7 +1936,7 @@
 
 /* Agent preview card */
 .af-agent-preview-card {
-    background:var(--main-bg-color);
+    background:var(--surface);
     border:1px solid var(--bs-gray-200);
     border-radius:0.625rem;
     padding:0.875rem 1rem;
@@ -1966,8 +1966,8 @@
     max-width: 70px
 }
 .af-preview-badge--public {
-    background:rgba(var(--primary-main-color-rgb,62,80,180),0.1);
-    color:var(--primary-main-color);
+    background:color-mix(in srgb, var(--primary) 10%, transparent);
+    color:var(--primary);
 }
 .af-preview-empty {
     font-size:0.8125rem; color:var(--bs-gray-400);
@@ -1981,7 +1981,7 @@
     font-size:0.8125rem; color:var(--bs-secondary);
     padding:0.5rem 0.75rem;
     border-radius:0.5rem;
-    background:var(--main-bg-color);
+    background:var(--surface);
     border:1px solid var(--bs-gray-200);
     transition:all 0.2s;
 }
@@ -1991,21 +1991,21 @@
     margin-top:0.05rem;
     background:var(--bs-gray-200);
 }
-.af-checklist-item.is-ok { color:var(--main-text-color); }
+.af-checklist-item.is-ok { color:var(--text); }
 .af-checklist-item.is-ok::before {
-    background:color-mix(in srgb,#16a34a 15%,transparent);
+    background:color-mix(in srgb,var(--success) 15%,transparent);
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%2316a34a' d='M13.485 1.431a1.473 1.473 0 0 0-2.084 0l-6.073 6.073-2.521-2.521a1.473 1.473 0 0 0-2.083 2.083l3.561 3.561a1.473 1.473 0 0 0 2.084 0l7.115-7.114a1.473 1.473 0 0 0 0-2.082'/%3E%3C/svg%3E");
     background-repeat:no-repeat; background-position:center;
     background-size:10px;
 }
 .af-checklist-item.is-warn::before {
-    background:color-mix(in srgb,#f59e0b 15%,transparent);
+    background:color-mix(in srgb,var(--warning) 15%,transparent);
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23f59e0b' d='M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16'/%3E%3Cpath fill='%23f59e0b' d='M7.002 11a1 1 0 1 1 2 0 1 1 0 0 1-2 0M7.1 4.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0z'/%3E%3C/svg%3E");
     background-repeat:no-repeat; background-position:center;
     background-size:10px;
 }
 .af-checklist-item.is-info::before {
-    background:color-mix(in srgb,var(--primary-main-color) 10%,transparent);
+    background:color-mix(in srgb,var(--primary) 10%,transparent);
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%235952ad' d='M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16'/%3E%3Cpath fill='%235952ad' d='m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0'/%3E%3C/svg%3E");
     background-repeat:no-repeat; background-position:center;
     background-size:10px;
@@ -2014,8 +2014,8 @@
 /* Field status inline indicator */
 .af-field-status { display:inline-flex; align-items:center; line-height:1; }
 .af-fsi { font-size:0.875rem; }
-.af-fsi-ok { color:#16a34a; }
-.af-fsi-warn { color:#f59e0b; }
+.af-fsi-ok { color:var(--success); }
+.af-fsi-warn { color:var(--warning); }
 
 /* Visibility Card Selector (Portal / Agent) */
 .af-visibility-cards {
@@ -2030,30 +2030,30 @@
     flex:1;
     display:flex; align-items:center; gap:0.75rem;
     padding:0.875rem 1rem;
-    border:2px solid var(--bs-gray-200, #e9ecef);
+    border:2px solid var(--bs-gray-200);
     border-radius:0.75rem;
     cursor:pointer;
-    background:var(--main-bg-color);
+    background:var(--surface);
     transition:border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
     user-select:none;
 }
 
 .af-visibility-card:hover {
-    border-color:var(--primary-main-color);
-    box-shadow:0 2px 8px rgba(var(--primary-main-color-rgb,62,80,180),0.1);
+    border-color:var(--primary);
+    box-shadow:0 2px 8px color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 .af-visibility-card--active {
-    border-color:var(--primary-main-color);
-    background:rgba(var(--primary-main-color-rgb,62,80,180),0.04);
-    box-shadow:0 0 0 1px var(--primary-main-color);
+    border-color:var(--primary);
+    background:color-mix(in srgb, var(--primary) 4%, transparent);
+    box-shadow:0 0 0 1px var(--primary);
 }
 
 .af-visibility-card-icon {
     flex-shrink:0;
     width:2.25rem; height:2.25rem;
     border-radius:0.5rem;
-    background:rgba(var(--primary-main-color-rgb,62,80,180),0.08);
+    background:color-mix(in srgb, var(--primary) 8%, transparent);
     display:flex; align-items:center; justify-content:center;
     font-size:1rem;
     color:var(--bs-secondary);
@@ -2062,15 +2062,15 @@
 
 .af-visibility-card--active .af-visibility-card-icon,
 .af-visibility-card:hover .af-visibility-card-icon {
-    background:rgba(var(--primary-main-color-rgb,62,80,180),0.14);
-    color:var(--primary-main-color);
+    background:color-mix(in srgb, var(--primary) 14%, transparent);
+    color:var(--primary);
 }
 
 .af-visibility-card-content { flex:1; min-width:0; }
 
 .af-visibility-card-title {
     font-size:0.875rem; font-weight:600;
-    color:var(--main-text-color); margin-bottom:0.125rem;
+    color:var(--text); margin-bottom:0.125rem;
 }
 
 .af-visibility-card-desc {
@@ -2079,7 +2079,7 @@
 
 .af-visibility-card-check {
     font-size:1.1rem;
-    color:var(--primary-main-color);
+    color:var(--primary);
     flex-shrink:0;
     opacity:0;
     transition:opacity 0.18s ease;
@@ -2125,9 +2125,9 @@
     align-items: center;
     gap: 0.375rem;
     padding: 0.3rem 0.65rem;
-    background: var(--primary-light-color);
-    color: #fff;
-    border: 1px solid var(--primary-light-color);
+    background: var(--primary-light);
+    color: var(--white);
+    border: 1px solid var(--primary-light);
     border-radius: 0.5rem;
     font-size: 0.8125rem;
     font-weight: 600;
@@ -2151,9 +2151,9 @@
 }
 
 .af-prompt-section {
-    border: 1px solid var(--bs-gray-200, #e9ecef);
+    border: 1px solid var(--bs-gray-200);
     border-radius: 0.625rem;
-    background: var(--main-bg-color);
+    background: var(--surface);
     overflow: hidden;
 }
 
@@ -2162,7 +2162,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.625rem 0.875rem;
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken);
     border-bottom: 1px solid var(--bs-gray-200);
     cursor: default;
     user-select: none;
@@ -2182,7 +2182,7 @@
 .af-prompt-section-title {
     font-size: 0.875rem;
     font-weight: 600;
-    color: var(--main-text-color);
+    color: var(--text);
     flex: 1;
 }
 
@@ -2194,7 +2194,7 @@
     height: 1.75rem;
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.375rem;
-    background: var(--main-bg-color);
+    background: var(--surface);
     color: var(--bs-secondary);
     font-size: 0.8rem;
     cursor: pointer;
@@ -2202,8 +2202,8 @@
     flex-shrink: 0;
 }
 .af-prompt-sec-btn:hover {
-    border-color: var(--primary-main-color);
-    color: var(--primary-main-color);
+    border-color: var(--primary);
+    color: var(--primary);
 }
 
 .af-prompt-section-body {
@@ -2217,14 +2217,14 @@
 .af-prompt-section-view {
     font-size: 0.8125rem;
     line-height: 1.65;
-    color: var(--main-text-color);
+    color: var(--text);
     white-space: pre-wrap;
     overflow-wrap: break-word;
 }
 
 .af-prompt-section-edit {
     width: 100%;
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8125rem;
     line-height: 1.65;
     resize: vertical;
@@ -2232,13 +2232,13 @@
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.375rem;
     padding: 0.5rem 0.625rem;
-    background: var(--main-bg-color);
-    color: var(--main-text-color);
+    background: var(--surface);
+    color: var(--text);
 }
 .af-prompt-section-edit:focus {
     outline: none;
-    border-color: var(--primary-main-color);
-    box-shadow: 0 0 0 0.15rem rgba(var(--primary-main-color-rgb,62,80,180),0.15);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 0.15rem color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .af-prompt-empty {
@@ -2260,18 +2260,18 @@
 .af-regen-spin { animation: af-regen-spin 0.7s linear infinite; }
 
 .af-field-readonly {
-    background-color: var(--secondary-bg-color, #f8f9fa) !important;
-    color: var(--bs-secondary, #6c757d) !important;
+    background-color: var(--surface-sunken) !important;
+    color: var(--bs-secondary) !important;
     cursor: not-allowed !important;
 }
 
 /* ===== Step 3 Right — Workflow .md Preview ===== */
 .af-workflow-md-preview {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.75rem;
     line-height: 1.65;
-    color: var(--main-text-color);
-    background: var(--secondary-bg-color, #f8f9fa);
+    color: var(--text);
+    background: var(--surface-sunken);
     border: 1px solid var(--bs-gray-200);
     border-radius: 0.375rem;
     padding: 0.75rem;
@@ -2287,7 +2287,7 @@
 .llms-config-toggle-card {
     border: 1px solid var(--bs-gray-200);
     border-radius: 0.75rem;
-    background: color-mix(in srgb, var(--primary-main-color) 4%, var(--main-bg-color));
+    background: color-mix(in srgb, var(--primary) 4%, var(--surface));
     padding: 1rem 1.25rem;
 }
 
@@ -2296,18 +2296,18 @@
     width: 2.5rem;
     height: 2.5rem;
     border-radius: 0.625rem;
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.1);
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 1.1rem;
-    color: var(--primary-main-color);
+    color: var(--primary);
 }
 
 .llms-url-code {
     font-size: 0.78rem;
-    color: var(--primary-main-color);
-    background: rgba(var(--primary-main-color-rgb, 62, 80, 180), 0.08);
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
     padding: 0.1em 0.4em;
     border-radius: 0.25rem;
 }
@@ -2317,7 +2317,7 @@
     font-weight: 700;
     letter-spacing: 0.07em;
     text-transform: uppercase;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     margin-bottom: 0.875rem;
     padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--bs-gray-200);
@@ -2341,7 +2341,7 @@
 }
 
 .llms-instructions-textarea {
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     font-size: 0.8125rem;
     line-height: 1.6;
     resize: vertical;
@@ -2353,7 +2353,7 @@
     border: 1px solid var(--bs-gray-300);
     border-radius: 0.75rem;
     overflow: hidden;
-    background: var(--main-bg-color);
+    background: var(--surface);
     min-width: 0;
 }
 
@@ -2363,7 +2363,7 @@
     justify-content: space-between;
     padding: 0.625rem 1rem;
     border-bottom: 1px solid var(--bs-gray-200);
-    background: var(--secondary-bg-color, #f8f9fa);
+    background: var(--surface-sunken);
 }
 
 .llms-preview-link {
@@ -2372,7 +2372,7 @@
 }
 
 .llms-preview-link:hover {
-    color: var(--primary-main-color) !important;
+    color: var(--primary) !important;
 }
 
 .llms-config-preview-body {
@@ -2380,17 +2380,17 @@
     padding: 1rem;
     font-size: 0.78rem;
     line-height: 1.6;
-    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-family-mono);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     max-height: 70vh;
     overflow-y: auto;
-    color: var(--main-text-color);
+    color: var(--text);
 }
 
 .llms-config-preview-body:empty::before {
     content: 'Preview will appear here…';
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary);
     font-style: italic;
     font-family: inherit;
 }
@@ -2404,16 +2404,16 @@
 }
 
 .common-btn-danger {
-    background-color: var(--danger-color);
+    background-color: var(--danger);
 }
 
 .common-btn-danger:hover {
-    background-color: #bb2d3b;
+    background-color: var(--danger);
 }
 
 .btn.common-btn-danger:disabled,
 .btn.common-btn-danger.disabled {
-    background-color: var(--danger-color);
+    background-color: var(--danger);
     opacity: 0.65;
 }
 
@@ -2431,9 +2431,9 @@
 }
 
 .af-api-filter-toggle--active {
-    background: color-mix(in srgb, var(--primary-main-color) 12%, transparent);
-    border-color: var(--primary-main-color) !important;
-    color: var(--primary-main-color) !important;
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    border-color: var(--primary) !important;
+    color: var(--primary) !important;
 }
 
 .af-api-filter-badge {
@@ -2447,8 +2447,8 @@
     font-weight: 700;
     line-height: 1;
     border-radius: 999px;
-    background: var(--primary-main-color);
-    color: var(--light-text-color, #fff);
+    background: var(--primary);
+    color: var(--white);
 }
 
 .af-api-filter-menu {
@@ -2458,8 +2458,8 @@
     right: 0;
     z-index: 200;
     min-width: 170px;
-    background: var(--main-bg-color, #fff);
-    border: 1px solid #dee2e6;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 0.5rem;
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     padding: 0.35rem 0;
@@ -2476,18 +2476,18 @@
     padding: 0.45rem 0.85rem;
     font-size: 0.8rem;
     font-weight: 500;
-    color: var(--main-text-color);
+    color: var(--text);
     cursor: pointer;
     margin: 0;
     user-select: none;
 }
 
 .af-api-filter-option:hover {
-    background: color-mix(in srgb, var(--primary-main-color) 8%, transparent);
+    background: color-mix(in srgb, var(--primary) 8%, transparent);
 }
 
 .af-api-filter-option input[type="checkbox"] {
-    accent-color: var(--primary-main-color);
+    accent-color: var(--primary);
     width: 0.9rem;
     height: 0.9rem;
     flex-shrink: 0;
@@ -2495,6 +2495,6 @@
 
 .af-api-filter-divider {
     height: 1px;
-    background: #dee2e6;
+    background: var(--border);
     margin: 0.25rem 0;
 }

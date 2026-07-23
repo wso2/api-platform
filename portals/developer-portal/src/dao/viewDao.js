@@ -18,6 +18,7 @@
 const View = require('../models/view');
 const ViewLabels = require('../models/viewLabel');
 const Labels = require('../models/label');
+const { OrgContent } = require('../models/organization');
 const { Sequelize } = require('sequelize');
 const constants = require('../utils/constants');
 const { CustomError } = require('../utils/errors/customErrors');
@@ -76,14 +77,34 @@ const update = async (orgId, handle, displayName, updatedBy, t) => {
     }
 }
 
-const deleteView = async (orgId, handle) => {
+const deleteView = async (orgId, handle, t) => {
 
     try {
+        const view = await View.findOne({
+            where: {
+                handle: handle,
+                org_uuid: orgId
+            },
+            transaction: t
+        });
+        if (!view) {
+            return 0;
+        }
+        // Neither dependent's view_uuid FK actually cascades at the SQLite level —
+        // dp_view_label_mappings (models/viewLabel.js) has no onDelete at all, and
+        // dp_organization_assets (models/organization.js's OrgContent) only sets
+        // onDelete: 'CASCADE' on the Sequelize association, which doesn't translate
+        // into the generated SQLite constraint. Destroying a view with either still
+        // attached fails with a FOREIGN KEY constraint error — detach both first,
+        // same pattern organizationDao's whole-org delete already uses for OrgContent.
+        await ViewLabels.destroy({ where: { view_uuid: view.dataValues.uuid }, transaction: t });
+        await OrgContent.destroy({ where: { view_uuid: view.dataValues.uuid }, transaction: t });
         const viewResponse = await View.destroy({
             where: {
                 handle: handle,
                 org_uuid: orgId
-            }
+            },
+            transaction: t
         });
         return viewResponse;
     } catch (error) {

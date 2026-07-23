@@ -65,6 +65,7 @@ import {
   getProjectSlug,
 } from '../../../../utils/projectRouting';
 import { truncateProviderDisplayName } from '../../../../utils/providerTemplateDisplay';
+import { resolveApiKeyAuthDisplay } from '../../../../utils/apiKeyAuthDisplay';
 import type { CreateProxyRequest, LLMProvider } from '../../../../utils/types';
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { logger } from '../../../../utils/logger';
@@ -279,8 +280,10 @@ function LLMProxyNewContent({
   const selectedProviderRequiresApiKey = Boolean(
     providerDetail?.security?.enabled && providerDetail.security.apiKey?.enabled
   );
-  const selectedProviderApiKeyName =
-    providerDetail?.security?.apiKey?.key?.trim() || 'X-API-Key';
+  const selectedProviderApiKeyName = resolveApiKeyAuthDisplay(
+    providerDetail?.security,
+    providerDetail?.globalPolicies
+  ).headerName;
   const projectSlug = getProjectSlug(effectiveProject);
   const generatedProxyId = toProxyId(formState.name);
   const computedContext = projectSlug
@@ -355,22 +358,29 @@ function LLMProxyNewContent({
       let providerAuthValue = providerDetail?.upstream?.main?.auth?.value ?? '';
       if (selectedProviderRequiresApiKey) {
         const rawKey = manualApiKeyValue.trim() || selectedProviderApiKeyValue || '';
-        const secretHandle = generateSecretHandle();
-        const secretResponse = await createSecret({
-          id: secretHandle,
-          displayName: `${generatedId} Provider API Key`,
-          description: `Auto-generated secret for LLM proxy ${generatedId}`,
-          value: rawKey,
-          type: 'GENERIC',
-        });
-        logger.info('Created secret for LLM proxy provider auth', {
-          secretHandle: secretResponse.id,
-          proxyId: generatedId,
-        });
-        createdSecretHandle = secretResponse.id;
-        providerAuthType = 'api-key';
-        providerAuthHeader = selectedProviderApiKeyName;
-        providerAuthValue = buildSecretPlaceholder(secretResponse.id);
+        const isAlreadyPlaceholder = rawKey.includes('{{ secret ');
+        if (isAlreadyPlaceholder) {
+          providerAuthType = 'api-key';
+          providerAuthHeader = selectedProviderApiKeyName;
+          providerAuthValue = rawKey;
+        } else {
+          const secretHandle = generateSecretHandle();
+          const secretResponse = await createSecret({
+            id: secretHandle,
+            displayName: `${generatedId} Provider API Key`,
+            description: `Auto-generated secret for LLM proxy ${generatedId}`,
+            value: rawKey,
+            type: 'GENERIC',
+          });
+          logger.info('Created secret for LLM proxy provider auth', {
+            secretHandle: secretResponse.id,
+            proxyId: generatedId,
+          });
+          createdSecretHandle = secretResponse.id;
+          providerAuthType = 'api-key';
+          providerAuthHeader = selectedProviderApiKeyName;
+          providerAuthValue = buildSecretPlaceholder(secretResponse.id);
+        }
       }
 
       const payload: CreateProxyRequest = {

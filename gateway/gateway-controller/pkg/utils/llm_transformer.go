@@ -148,6 +148,50 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	spec.Upstream.Main = api.Upstream{
 		Url: &upstream,
 	}
+
+	// Step 3.1: Resolve additional providers (multi-provider proxies). Each is
+	// exposed as a named UpstreamDefinition so policies can route to it via
+	// the loopback context. The primary provider above remains the default.
+	if proxy.Spec.AdditionalProviders != nil && len(*proxy.Spec.AdditionalProviders) > 0 {
+		seen := map[string]bool{proxy.Spec.Provider.Id: true}
+		var defs []api.UpstreamDefinition
+		for _, ap := range *proxy.Spec.AdditionalProviders {
+			if ap.Id == "" {
+				return nil, fmt.Errorf("additionalProviders entry must have a non-empty id")
+			}
+			name := ap.Id
+			if ap.As != nil && *ap.As != "" {
+				name = *ap.As
+			}
+			if seen[name] {
+				return nil, fmt.Errorf("duplicate upstream name '%s' in additionalProviders (must be unique within the proxy and not collide with the primary provider id)", name)
+			}
+			seen[name] = true
+
+			addCfg, err := t.db.GetConfigByKindAndHandle(string(api.LLMProviderConfigurationKindLlmProvider), ap.Id)
+			if err != nil {
+				return nil, fmt.Errorf("failed to look up additional provider '%s': %w", ap.Id, err)
+			}
+			if addCfg == nil {
+				return nil, fmt.Errorf("additional provider '%s' not found", ap.Id)
+			}
+			addCtx, err := addCfg.GetContext()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get context for additional provider '%s': %w", ap.Id, err)
+			}
+			addURL := fmt.Sprintf("%s://%s:%d%s",
+				constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort, addCtx)
+			defs = append(defs, api.UpstreamDefinition{
+				Name: name,
+				Upstreams: []struct {
+					Url    string `json:"url" yaml:"url"`
+					Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
+				}{{Url: addURL}},
+			})
+		}
+		spec.UpstreamDefinitions = &defs
+	}
+
 	// If provider has vhost configured add a host adding policy
 	if providerConfig.Spec.Vhost != nil && *providerConfig.Spec.Vhost != "" {
 		providerVhost := *providerConfig.Spec.Vhost
@@ -182,34 +226,49 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	}
 
 	// Step 3.5: Apply proxy-level provider auth for proxy->provider loopback upstream
-	var upstreamAuthPolicy *api.Policy
+	// and inline translators declared per additional provider. Both are attached as
+	// conditional policies so they run only when their provider is selected.
+	var upstreamAuthPolicies []api.Policy
+	var transformerPolicies []api.Policy
 	if proxy.Spec.Provider.Auth != nil {
-		auth := proxy.Spec.Provider.Auth
-		switch auth.Type {
-		case api.LLMUpstreamAuthTypeApiKey:
-			if auth.Value == nil || *auth.Value == "" {
-				return nil, fmt.Errorf("provider.auth.value is required")
+		pol, err := t.proxyUpstreamAuthPolicy(proxy.Spec.Provider.Auth, "provider.auth")
+		if err != nil {
+			return nil, err
+		}
+		// "other"/"none" auth yield no policy - nothing to attach.
+		if pol != nil {
+			condition := selectedProviderExecutionCondition(proxy.Spec.Provider.Id, true)
+			pol.ExecutionCondition = &condition
+			upstreamAuthPolicies = append(upstreamAuthPolicies, *pol)
+		}
+	}
+	if proxy.Spec.AdditionalProviders != nil {
+		for _, ap := range *proxy.Spec.AdditionalProviders {
+			name := ap.Id
+			if ap.As != nil && *ap.As != "" {
+				name = *ap.As
 			}
-			header := ""
-			if auth.Header != nil {
-				header = *auth.Header
+
+			if ap.Auth != nil {
+				pol, err := t.proxyUpstreamAuthPolicy(ap.Auth, fmt.Sprintf("additionalProviders[%s].auth", name))
+				if err != nil {
+					return nil, err
+				}
+				// "other"/"none" auth yield no policy - nothing to attach.
+				if pol != nil {
+					condition := selectedProviderExecutionCondition(name, false)
+					pol.ExecutionCondition = &condition
+					upstreamAuthPolicies = append(upstreamAuthPolicies, *pol)
+				}
 			}
-			params, err := GetUpstreamAuthApikeyPolicyParams(header, *auth.Value)
-			if err != nil {
-				return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
+
+			if ap.Transformer != nil {
+				pol, err := t.proxyTransformerPolicy(ap.Transformer, name, fmt.Sprintf("additionalProviders[%s].transformer", name))
+				if err != nil {
+					return nil, err
+				}
+				transformerPolicies = append(transformerPolicies, *pol)
 			}
-			policyVersion, err := t.resolvePolicyVersion(constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME)
-			if err != nil {
-				return nil, err
-			}
-			mh := api.Policy{
-				Name:    constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
-				Version: policyVersion,
-				Params:  &params,
-			}
-			upstreamAuthPolicy = &mh
-		default:
-			return nil, fmt.Errorf("unsupported upstream auth type: %s", auth.Type)
 		}
 	}
 
@@ -222,10 +281,10 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	operationRegistry := make(map[pathMethodKey]*api.Operation)
 	for _, method := range constants.WILDCARD_HTTP_METHODS {
 		op := &api.Operation{
-			Path:   constants.BASE_PATH + constants.WILD_CARD,
-			Method: api.OperationMethod(method),
+			Path:   api.Ptr(constants.BASE_PATH + constants.WILD_CARD),
+			Method: api.Ptr(api.OperationMethod(method)),
 		}
-		operationRegistry[pathMethodKey{path: op.Path, method: method}] = op
+		operationRegistry[pathMethodKey{path: op.EffectivePath(), method: method}] = op
 	}
 
 	// Phase 2: Process User-Defined Policies (operationPolicies + deprecated policies)
@@ -242,8 +301,8 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 
 				for _, op := range methodOperations {
 					// Use pathsMatch to determine if policy applies to this operation
-					if pathsMatch(op.Path, attachment.pathEntry.Path) {
-						for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+					if pathsMatch(op.EffectivePath(), attachment.pathEntry.Path) {
+						for _, targetPath := range expandPolicyTargetPaths(op.EffectivePath(), &tmpl.Configuration.Spec) {
 							if attachedPolicyPaths[targetPath] {
 								continue
 							}
@@ -254,8 +313,8 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 							targetOp, exists := operationRegistry[targetKey]
 							if !exists {
 								targetOp = &api.Operation{
-									Path:   targetPath,
-									Method: api.OperationMethod(policyMethod),
+									Path:   api.Ptr(targetPath),
+									Method: api.Ptr(api.OperationMethod(policyMethod)),
 								}
 								operationRegistry[targetKey] = targetOp
 							}
@@ -284,17 +343,25 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		ops = append(ops, *op)
 	}
 	ops = sortOperationsBySpecificity(ops)
-	if upstreamAuthPolicy != nil {
+	// Translators must run before upstream auth so the request is rewritten into
+	// the selected provider's shape before the upstream key is added.
+	if len(transformerPolicies) > 0 {
 		for i := range ops {
-			if ops[i].Policies == nil {
-				ops[i].Policies = &[]api.Policy{*upstreamAuthPolicy}
-			} else {
-				existing := *ops[i].Policies
-				existing = append(existing, *upstreamAuthPolicy)
-				ops[i].Policies = &existing
+			for _, transformerPolicy := range transformerPolicies {
+				appendOperationPolicy(&ops[i], transformerPolicy)
 			}
 		}
 	}
+	if len(upstreamAuthPolicies) > 0 {
+		for i := range ops {
+			for _, upstreamAuthPolicy := range upstreamAuthPolicies {
+				appendOperationPolicy(&ops[i], upstreamAuthPolicy)
+			}
+		}
+	}
+	// A proxy is always allow-all with no access control, so there are no deny routes:
+	// attach API-level resilience to all generated routes.
+	applyResilienceToTrafficRoutes(ops, proxy.Spec.Resilience, nil)
 	spec.Operations = ops
 
 	// Global (api-level) policies: route into the derived RestAPI's spec.Policies so they are
@@ -302,12 +369,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	// Append because the proxy may already hold an api-level host-header policy (see Step 3).
 	if proxy.Spec.GlobalPolicies != nil && len(*proxy.Spec.GlobalPolicies) > 0 {
 		gp := make([]api.Policy, len(*proxy.Spec.GlobalPolicies))
-		for i, p := range *proxy.Spec.GlobalPolicies {
-			if p.Name == "advanced-ratelimit" {
-				p = withGlobalAdvancedRatelimitKeyExtraction(p)
-			}
-			gp[i] = p
-		}
+		copy(gp, *proxy.Spec.GlobalPolicies)
 		if spec.Policies == nil {
 			spec.Policies = &gp
 		} else {
@@ -341,11 +403,19 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 		spec.Context = *provider.Spec.Context
 	}
 
-	// Step 2) Upstreams: map provider.Spec.Upstreams to api.Upstreams
-	// Map provider upstream and vhost to API main upstream and vhost
-	spec.Upstream.Main = api.Upstream{
-		Url: provider.Spec.Upstream.Url,
+	// Step 2) Upstreams: map provider upstream (direct url or upstreamDefinition ref) and vhost
+	// to the API main upstream. When a ref is used, carry the upstreamDefinitions through so the
+	// per-upstream connect timeout resolves the same way it does for RestApi.
+	if provider.Spec.Upstream.Ref != nil && strings.TrimSpace(*provider.Spec.Upstream.Ref) != "" {
+		spec.Upstream.Main = api.Upstream{
+			Ref: provider.Spec.Upstream.Ref,
+		}
+	} else {
+		spec.Upstream.Main = api.Upstream{
+			Url: provider.Spec.Upstream.Url,
+		}
 	}
+	spec.UpstreamDefinitions = provider.Spec.UpstreamDefinitions
 	if provider.Spec.Vhost != nil {
 		spec.Vhosts = &struct {
 			Main    string  `json:"main" yaml:"main"`
@@ -374,6 +444,11 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 				Name:    constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
 				Version: policyVersion, Params: &params}
 			upstreamAuthPolicy = &mh
+		case api.LLMProviderConfigDataUpstreamAuthTypeOther,
+			api.LLMProviderConfigDataUpstreamAuthTypeNone:
+			// "other": auth handled entirely by user-attached policies.
+			// "none": no upstream authentication. In both cases the gateway
+			// attaches no auth policy of its own.
 		default:
 			return nil, fmt.Errorf("unsupported upstream auth type: %s", upstream.Auth.Type)
 		}
@@ -387,6 +462,12 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 	}
 
 	var ops []api.Operation
+
+	// denyOpKeys tracks the routes created purely to deny traffic (the access-control
+	// exception routes, which carry the 404 respond policy). API-level resilience is NOT
+	// attached to these (they never reach an upstream). Populated in allow_all mode; empty
+	// in deny_all (where every created route is an allowed/forwarding route).
+	denyOpKeys := make(map[pathMethodKey]bool)
 
 	switch mode {
 	case api.AllowAll:
@@ -403,10 +484,10 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 		operationRegistry := make(map[pathMethodKey]*api.Operation)
 		for _, method := range constants.WILDCARD_HTTP_METHODS {
 			op := &api.Operation{
-				Path:   constants.BASE_PATH + constants.WILD_CARD,
-				Method: api.OperationMethod(method),
+				Path:   api.Ptr(constants.BASE_PATH + constants.WILD_CARD),
+				Method: api.Ptr(api.OperationMethod(method)),
 			}
-			operationRegistry[pathMethodKey{path: op.Path, method: method}] = op
+			operationRegistry[pathMethodKey{path: op.EffectivePath(), method: method}] = op
 		}
 
 		// Phase 2: Normalize and Process Access Control Exceptions (Deny List)
@@ -427,13 +508,14 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 			for _, method := range methods {
 				key := pathMethodKey{path: ex.Path, method: method}
 				deniedPathMethods[key] = true
+				denyOpKeys[key] = true
 
 				// Check if operation exists
 				if _, exists := operationRegistry[key]; !exists {
 					// Create operation for this specific denied path
 					op := &api.Operation{
-						Path:   ex.Path,
-						Method: api.OperationMethod(method),
+						Path:   api.Ptr(ex.Path),
+						Method: api.Ptr(api.OperationMethod(method)),
 					}
 					operationRegistry[key] = op
 				}
@@ -484,8 +566,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 							continue
 						}
 
-						if pathsMatch(op.Path, attachment.pathEntry.Path) {
-							for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+						if pathsMatch(op.EffectivePath(), attachment.pathEntry.Path) {
+							for _, targetPath := range expandPolicyTargetPaths(op.EffectivePath(), &tmpl.Configuration.Spec) {
 								if attachedPolicyPaths[targetPath] {
 									continue
 								}
@@ -496,8 +578,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 								targetOp, exists := operationRegistry[targetKey]
 								if !exists {
 									targetOp = &api.Operation{
-										Path:   targetPath,
-										Method: api.OperationMethod(policyMethod),
+										Path:   api.Ptr(targetPath),
+										Method: api.Ptr(api.OperationMethod(policyMethod)),
 									}
 									operationRegistry[targetKey] = targetOp
 								}
@@ -555,8 +637,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 		operationRegistry := make(map[pathMethodKey]*api.Operation)
 		for key := range normalizedExceptions {
 			op := &api.Operation{
-				Path:   key.path,
-				Method: api.OperationMethod(key.method),
+				Path:   api.Ptr(key.path),
+				Method: api.Ptr(api.OperationMethod(key.method)),
 			}
 			operationRegistry[key] = op
 		}
@@ -576,8 +658,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 					methodOperations := getOperationsForMethod(operationRegistry, policyMethod)
 
 					for _, op := range methodOperations {
-						if pathsMatch(op.Path, attachment.pathEntry.Path) {
-							for _, targetPath := range expandPolicyTargetPaths(op.Path, &tmpl.Configuration.Spec) {
+						if pathsMatch(op.EffectivePath(), attachment.pathEntry.Path) {
+							for _, targetPath := range expandPolicyTargetPaths(op.EffectivePath(), &tmpl.Configuration.Spec) {
 								if attachedPolicyPaths[targetPath] {
 									continue
 								}
@@ -588,8 +670,8 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 								targetOp, exists := operationRegistry[targetKey]
 								if !exists {
 									targetOp = &api.Operation{
-										Path:   targetPath,
-										Method: api.OperationMethod(policyMethod),
+										Path:   api.Ptr(targetPath),
+										Method: api.Ptr(api.OperationMethod(policyMethod)),
 									}
 									operationRegistry[targetKey] = targetOp
 								}
@@ -634,18 +716,15 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 			}
 		}
 	}
+	// Attach API-level resilience to every traffic-forwarding route, skipping the deny routes.
+	applyResilienceToTrafficRoutes(ops, provider.Spec.Resilience, denyOpKeys)
 	spec.Operations = ops
 
 	// Global (api-level) policies: route into the derived RestAPI's spec.Policies so they are
 	// applied across ALL operations as one shared scope, evaluated before operation-level policies.
 	if provider.Spec.GlobalPolicies != nil && len(*provider.Spec.GlobalPolicies) > 0 {
 		gp := make([]api.Policy, len(*provider.Spec.GlobalPolicies))
-		for i, p := range *provider.Spec.GlobalPolicies {
-			if p.Name == "advanced-ratelimit" {
-				p = withGlobalAdvancedRatelimitKeyExtraction(p)
-			}
-			gp[i] = p
-		}
+		copy(gp, *provider.Spec.GlobalPolicies)
 		if spec.Policies == nil {
 			spec.Policies = &gp
 		} else {
@@ -658,6 +737,27 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 	return output, nil
 }
 
+// applyResilienceToTrafficRoutes attaches the API-level resilience block to every operation that
+// forwards traffic upstream, skipping access-control deny routes (which only return a canned 404
+// and never reach an upstream, so a timeout on them is meaningless). denyKeys identifies the deny
+// routes by path+method; it is empty for deny_all and proxy (no deny routes exist there), so in
+// those cases the block is applied to all routes. A nil resilience block is a no-op.
+//
+// Resilience is attached at the operation level (not the derived API level) on purpose: that keeps
+// the deny routes on the gateway's global default timeout instead of inheriting the API-level value
+// via the translator's per-field fallback.
+func applyResilienceToTrafficRoutes(ops []api.Operation, resilience *api.Resilience, denyKeys map[pathMethodKey]bool) {
+	if resilience == nil {
+		return
+	}
+	for i := range ops {
+		if denyKeys[pathMethodKey{path: ops[i].EffectivePath(), method: ops[i].EffectiveMethod()}] {
+			continue
+		}
+		ops[i].Resilience = resilience
+	}
+}
+
 // GetUpstreamAuthApikeyPolicyParams renders the policy params with given header and value
 func GetUpstreamAuthApikeyPolicyParams(header, value string) (map[string]interface{}, error) {
 	rendered := fmt.Sprintf(constants.UPSTREAM_AUTH_APIKEY_POLICY_PARAMS, header, value)
@@ -666,6 +766,80 @@ func GetUpstreamAuthApikeyPolicyParams(header, value string) (map[string]interfa
 		return nil, err
 	}
 	return m, nil
+}
+
+func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAuth, field string) (*api.Policy, error) {
+	if auth == nil {
+		return nil, nil
+	}
+	switch auth.Type {
+	case api.LLMUpstreamAuthTypeApiKey:
+		if auth.Header == nil || *auth.Header == "" {
+			return nil, fmt.Errorf("%s.header is required", field)
+		}
+		if auth.Value == nil || *auth.Value == "" {
+			return nil, fmt.Errorf("%s.value is required", field)
+		}
+		params, err := GetUpstreamAuthApikeyPolicyParams(*auth.Header, *auth.Value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
+		}
+		policyVersion, err := t.resolvePolicyVersion(constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME)
+		if err != nil {
+			return nil, err
+		}
+		return &api.Policy{
+			Name:    constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
+			Version: policyVersion,
+			Params:  &params,
+		}, nil
+	case api.LLMUpstreamAuthTypeOther, api.LLMUpstreamAuthTypeNone:
+		// "other": auth handled entirely by user-attached policies.
+		// "none": no upstream authentication. No auth policy is attached.
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unsupported upstream auth type: %s", auth.Type)
+	}
+}
+
+// proxyTransformerPolicy builds a translator policy for an additional provider's
+// inline transformer. The provider's upstream name is passed to the translator
+// as its "providerId" param so it targets the correct upstream, and gates
+// execution so the translator runs only when this provider is selected.
+func (t *LLMProviderTransformer) proxyTransformerPolicy(transformer *api.LLMProxyTransformer, name, field string) (*api.Policy, error) {
+	if transformer == nil {
+		return nil, nil
+	}
+	if transformer.Type == "" {
+		return nil, fmt.Errorf("%s.type is required", field)
+	}
+	if transformer.Version == "" {
+		return nil, fmt.Errorf("%s.version is required", field)
+	}
+
+	params := map[string]interface{}{}
+	if transformer.Params != nil {
+		for k, v := range *transformer.Params {
+			params[k] = v
+		}
+	}
+	params["providerId"] = name
+
+	condition := selectedProviderExecutionCondition(name, false)
+	return &api.Policy{
+		Name:               transformer.Type,
+		Version:            transformer.Version,
+		Params:             &params,
+		ExecutionCondition: &condition,
+	}, nil
+}
+
+func selectedProviderExecutionCondition(providerName string, includeDefault bool) string {
+	selectedExpr := fmt.Sprintf("request.Metadata['selected_provider'] == '%s'", providerName)
+	if includeDefault {
+		return fmt.Sprintf("!('selected_provider' in request.Metadata) || %s", selectedExpr)
+	}
+	return fmt.Sprintf("'selected_provider' in request.Metadata && %s", selectedExpr)
 }
 
 // GetHostAdditionPolicyParams renders the policy params with given host value (host-rewrite)
@@ -815,29 +989,6 @@ func legacyToOperationPolicy(p api.LLMPolicy) api.OperationPolicy {
 	return op
 }
 
-// withGlobalAdvancedRatelimitKeyExtraction returns a copy of p with
-// keyExtraction set to [{type:"apiname"}] in params if not already present,
-// so that advanced-ratelimit in globalPolicies uses one shared API-level
-// counter rather than the default per-route (routename) bucket.
-func withGlobalAdvancedRatelimitKeyExtraction(p api.Policy) api.Policy {
-	// Treat nil params as an empty map so the apiname key-extraction default is
-	// injected even when the policy carried no params.
-	var existing map[string]interface{}
-	if p.Params != nil {
-		if _, ok := (*p.Params)["keyExtraction"]; ok {
-			return p
-		}
-		existing = *p.Params
-	}
-	newParams := make(map[string]interface{}, len(existing)+1)
-	for k, v := range existing {
-		newParams[k] = v
-	}
-	newParams["keyExtraction"] = []map[string]interface{}{{"type": "apiname"}}
-	p.Params = &newParams
-	return p
-}
-
 // collectOperationLevelLLMPolicies merges the operation-level policies with the deprecated
 // `policies` list (converted to operation policies), operationPolicies first. The deprecated
 // list is treated identically to operationPolicies; setting both is discouraged.
@@ -980,8 +1131,8 @@ func ensureOperation(operationRegistry map[pathMethodKey]*api.Operation, path, m
 	}
 
 	op := &api.Operation{
-		Path:   path,
-		Method: api.OperationMethod(method),
+		Path:   api.Ptr(path),
+		Method: api.Ptr(api.OperationMethod(method)),
 	}
 	operationRegistry[key] = op
 	return op
@@ -1208,8 +1359,8 @@ func sortOperationsBySpecificity(ops []api.Operation) []api.Operation {
 
 // shouldSwap determines if two operations should be swapped in sorting
 func shouldSwap(op1, op2 api.Operation) bool {
-	path1HasWildcard := strings.Contains(op1.Path, "*")
-	path2HasWildcard := strings.Contains(op2.Path, "*")
+	path1HasWildcard := strings.Contains(op1.EffectivePath(), "*")
+	path2HasWildcard := strings.Contains(op2.EffectivePath(), "*")
 
 	// Non-wildcard paths come before wildcard paths
 	if !path1HasWildcard && path2HasWildcard {
@@ -1220,15 +1371,15 @@ func shouldSwap(op1, op2 api.Operation) bool {
 	}
 
 	// Longer paths come before shorter paths
-	if len(op1.Path) != len(op2.Path) {
-		return len(op1.Path) < len(op2.Path)
+	if len(op1.EffectivePath()) != len(op2.EffectivePath()) {
+		return len(op1.EffectivePath()) < len(op2.EffectivePath())
 	}
 
 	// Lexicographic comparison for paths
-	if op1.Path != op2.Path {
-		return op1.Path > op2.Path
+	if op1.EffectivePath() != op2.EffectivePath() {
+		return op1.EffectivePath() > op2.EffectivePath()
 	}
 
 	// Method alphabetically
-	return string(op1.Method) > string(op2.Method)
+	return op1.EffectiveMethod() > op2.EffectiveMethod()
 }

@@ -22,14 +22,18 @@ Replace `${version}` with the API Platform Gateway release version you want to r
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway/v1.2.0-M1/wso2apip-api-gateway-1.2.0-M1.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway/v1.2.0-beta/wso2apip-api-gateway-1.2.0-beta.zip
 
 # Unzip the downloaded distribution.
-unzip wso2apip-api-gateway-1.2.0-M1.zip
+unzip wso2apip-api-gateway-1.2.0-beta.zip
 
+
+cd wso2apip-api-gateway-v1.2.0-beta/
+
+# One-time setup: provision the HTTPS listener certificate and api-platform.env.
+./scripts/setup.sh
 
 # Start the complete stack
-cd wso2apip-api-gateway-1.2.0-M1/
 docker compose up -d
 
 # Verify gateway controller admin endpoint is running
@@ -80,6 +84,76 @@ EOF
 # Test routing through the gateway
 curl -i http://localhost:8080/reading-list/v1.0/books
 curl -ik https://localhost:8443/reading-list/v1.0/books
+```
+
+### Setup Script (`scripts/setup.sh`)
+
+The gateway **never auto-generates keys or certificates**.
+Instead, `scripts/setup.sh` provisions everything the gateway needs before first start, and the server fails
+closed with a descriptive error if a required key or certificate is missing. Run it once from the
+distribution (or repo) root:
+
+```bash
+./scripts/setup.sh
+```
+
+It provisions, idempotently (existing files are kept unless `--force`):
+
+| Artifact | Purpose |
+|---|---|
+| `listener-certs/default-listener.crt` / `.key` | Self-signed certificate for the router's HTTPS ingress listener (`:8443`). |
+| `aesgcm-keys/default-aesgcm256-v1.bin` | AES-256 key for at-rest encryption of stored secrets (bind-mounted into the controller). |
+| `api-platform.env` | Required runtime settings, loaded into both containers via docker-compose `env_file:` — `GATEWAY_CONTROLLER_HOST` and `LOG_LEVEL`. |
+
+**Options:**
+
+| Flag | Effect |
+|---|---|
+| `--force` | Regenerate the certificate and encryption key, and rewrite `api-platform.env` (rotates them). |
+| `--certs-only` | Generate only the listener TLS certificate (skip the encryption key and `api-platform.env`). |
+| `--help` | Print usage. |
+
+Then start the stack:
+
+```bash
+docker compose up -d
+```
+
+#### How configuration is delivered
+
+`config.toml` pulls values in only through explicit `{{ env "NAME" "default" }}` interpolation tokens, resolved at startup.
+`setup.sh` writes those values into `api-platform.env`, which docker-compose loads into the containers
+via `env_file:` (`format: raw`, `required: true` — so `docker compose up` fails fast if
+`api-platform.env` is missing; run `./scripts/setup.sh` first). To change a setting, edit
+`config.toml` directly or set the variable its token reads in `api-platform.env`.
+
+#### Connecting to a WSO2 API Platform control plane (optional)
+
+The gateway runs standalone by default. To register it with a control plane, add the following to
+`api-platform.env` (both default to empty; `config.toml` reads them via `{{ env }}` tokens):
+
+```bash
+# api-platform.env
+APIP_GW_CONTROLLER_CONTROLPLANE_HOST=your-platform-host:9243
+APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=<registration-token-from-the-control-plane>
+```
+
+The registration token is issued by the control plane; `setup.sh` never generates it.
+
+#### At-rest encryption
+
+At-rest encryption of stored secrets is **enabled by default**. `setup.sh` generates the AES-256 key
+(`aesgcm-keys/default-aesgcm256-v1.bin`) and the compose bind-mounts it into the controller. The key
+is **required** at startup — the server never generates one and exits with a descriptive error if it
+is missing. Rotate it with `./scripts/setup.sh --force`.
+
+#### Moesif analytics (optional)
+
+Set your Moesif application id in `api-platform.env` and enable the publisher in `config.toml`:
+
+```bash
+# api-platform.env
+MOESIF_KEY=<your-moesif-application-id>
 ```
 
 ### Stopping the Gateway

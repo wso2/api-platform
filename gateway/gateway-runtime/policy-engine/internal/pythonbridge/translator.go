@@ -72,6 +72,55 @@ func (t *Translator) ToProtoHeaders(headers *policy.Headers) *proto.Headers {
 	return result
 }
 
+// ToProtoDownstream converts the downstream (client) header snapshot into the
+// transport form. Returns nil when the snapshot is absent so the field is left
+// unset on the wire and older/newer peers can detect its absence and fall back
+// to legacy validation.
+func (t *Translator) ToProtoDownstream(ds *policy.DownstreamContext) *proto.DownstreamContext {
+	if ds == nil || ds.Request == nil {
+		return nil
+	}
+	return &proto.DownstreamContext{
+		Request: &proto.DownstreamRequest{
+			Headers: t.ToProtoHeaders(ds.Request.Headers),
+		},
+	}
+}
+
+// ToProtoRequestUpstream converts the request-phase resolved upstream target
+// into the transport form. Returns nil when absent (see ToProtoDownstream for
+// the backward-compat contract).
+func (t *Translator) ToProtoRequestUpstream(us *policy.UpstreamRequestContext) *proto.UpstreamRequestContext {
+	if us == nil {
+		return nil
+	}
+	return &proto.UpstreamRequestContext{
+		Name:     us.Name,
+		Url:      us.URL,
+		BasePath: us.BasePath,
+	}
+}
+
+// ToProtoUpstream converts the response-phase resolved upstream target and its
+// response header snapshot into the transport form. Returns nil when absent
+// (see ToProtoDownstream for the backward-compat contract).
+func (t *Translator) ToProtoUpstream(us *policy.UpstreamResponseContext) *proto.UpstreamResponseContext {
+	if us == nil {
+		return nil
+	}
+	out := &proto.UpstreamResponseContext{
+		Name:     us.Name,
+		Url:      us.URL,
+		BasePath: us.BasePath,
+	}
+	if us.Response != nil {
+		out.Response = &proto.UpstreamResponse{
+			Headers: t.ToProtoHeaders(us.Response.Headers),
+		}
+	}
+	return out
+}
+
 // ToProtoBody converts buffered body data into the transport form.
 func (t *Translator) ToProtoBody(body *policy.Body) *proto.Body {
 	if body == nil {

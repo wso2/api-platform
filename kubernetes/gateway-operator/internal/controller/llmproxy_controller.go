@@ -30,7 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/gatewayclient"
 )
@@ -159,20 +159,38 @@ func (a *llmProxyAdapter) Deploy(ctx context.Context, k8sClient client.Client, g
 	}
 
 	specPayload := interface{}(spec)
-	if spec.Provider.Auth != nil {
-		resolved, err := resolveLLMProviderUpstreamAuth(ctx, k8sClient, cr.Namespace, spec.Provider.Auth, "spec.provider.auth.value")
-		if err != nil {
-			return DeployResult{}, err
-		}
-		if resolved == nil {
-			return DeployResult{}, &gatewayclient.NonRetryableError{Err: fmt.Errorf("internal: provider.auth resolution produced nil")}
-		}
+	if spec.Provider.Auth != nil || len(spec.AdditionalProviders) > 0 {
 		m, err := specToJSONMap(spec)
 		if err != nil {
 			return DeployResult{}, &gatewayclient.NonRetryableError{Err: err}
 		}
-		if err := flattenUpstreamAuthCredentialValue(m, "provider", *resolved); err != nil {
-			return DeployResult{}, &gatewayclient.NonRetryableError{Err: err}
+		if spec.Provider.Auth != nil {
+			resolved, err := resolveLLMProviderUpstreamAuth(ctx, k8sClient, cr.Namespace, spec.Provider.Auth, "spec.provider.auth.value")
+			if err != nil {
+				return DeployResult{}, err
+			}
+			if resolved == nil {
+				return DeployResult{}, &gatewayclient.NonRetryableError{Err: fmt.Errorf("internal: provider.auth resolution produced nil")}
+			}
+			if err := flattenUpstreamAuthCredentialValue(m, "provider", *resolved); err != nil {
+				return DeployResult{}, &gatewayclient.NonRetryableError{Err: err}
+			}
+		}
+		for i := range spec.AdditionalProviders {
+			if spec.AdditionalProviders[i].Auth == nil {
+				continue
+			}
+			fieldPath := fmt.Sprintf("spec.additionalProviders[%d].auth.value", i)
+			resolved, err := resolveLLMProviderUpstreamAuth(ctx, k8sClient, cr.Namespace, spec.AdditionalProviders[i].Auth, fieldPath)
+			if err != nil {
+				return DeployResult{}, err
+			}
+			if resolved == nil {
+				return DeployResult{}, &gatewayclient.NonRetryableError{Err: fmt.Errorf("internal: additionalProviders[%d].auth resolution produced nil", i)}
+			}
+			if err := flattenAdditionalProviderAuthCredentialValue(m, i, *resolved); err != nil {
+				return DeployResult{}, &gatewayclient.NonRetryableError{Err: err}
+			}
 		}
 		specPayload = m
 	}

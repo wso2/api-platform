@@ -44,12 +44,10 @@
       </a>
     </div>
     {{/in}}
-    {{#if showApiWorkflowsNav}}
     <a href="{{baseUrl}}/api-workflows" class="nav-link" id="api-workflows">
       <i class="bi bi-diagram-3 sidebar-icon"></i>
       <span class="nav-text">API Workflows</span>
     </a>
-    {{/if}}
     <a href="{{baseUrl}}/applications" class="nav-link" id="applications">
       <img src="/images/applications-icon.svg" class="sidebar-icon" alt="" />
       <span class="nav-text">Applications</span>
@@ -58,10 +56,15 @@
       <i class="bi bi-receipt sidebar-icon"></i>
       <span class="nav-text">Subscriptions</span>
     </a>
+    <a href="{{baseUrl}}/api-keys" class="nav-link" id="api-keys">
+      <i class="bi bi-key sidebar-icon"></i>
+      <span class="nav-text">API Keys</span>
+    </a>
   </nav>
 
   {{#if profile.isAdmin}}
-  <a href="{{baseUrl}}/settings" class="nav-link" id="admin-settings">
+  {{!-- Settings is org-scoped (no view segment); derive /:orgName/settings from the view-scoped baseUrl --}}
+  <a href="{{beforeSeparator baseUrl '/views/'}}/settings" class="nav-link" id="admin-settings">
     <i class="bi bi-gear sidebar-icon"></i>
     <span class="nav-text">Settings</span>
   </a>

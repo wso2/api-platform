@@ -57,9 +57,10 @@ import {
   buildProjectPath,
 } from '../../../../utils/projectRouting';
 import {
-  getProviderTemplateDisplayName,
+  resolveTemplateDisplayName,
   truncateProviderDisplayName,
 } from '../../../../utils/providerTemplateDisplay';
+import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import * as llmProviderApis from '../../../../apis/llmProviderApis';
 import { PLATFORM_API_BASE_URL } from '../../../../config.env';
@@ -117,6 +118,7 @@ export default function ServiceProviders() {
     refreshProviders,
   } = useLLMProviders();
   const { applications } = useApplications();
+  const { templatesResponse } = useProviderTemplates();
   const { currentProject, currentOrganization, setCurrentProject } =
     useAppShell();
   const isProjectLevel = Boolean(currentProject?.id);
@@ -126,9 +128,9 @@ export default function ServiceProviders() {
     ? buildProjectPath(
         currentOrganization,
         currentProject,
-        '/service-provider/new'
+        '/service-provider/create'
       )
-    : buildOrgPath(currentOrganization, '/service-provider/new');
+    : buildOrgPath(currentOrganization, '/service-provider/create');
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
@@ -528,8 +530,9 @@ export default function ServiceProviders() {
               const logoUrl = PROVIDER_LOGO_MAP[providerId];
               const hasLogo = Boolean(logoUrl);
               const descriptionText = provider.description?.trim() || '';
-              const templateDisplayName = getProviderTemplateDisplayName(
-                provider.template
+              const templateDisplayName = resolveTemplateDisplayName(
+                provider.template,
+                templatesResponse.list
               );
               const providerDisplayName = truncateProviderDisplayName(
                 provider.displayName

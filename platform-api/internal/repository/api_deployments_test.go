@@ -595,10 +595,83 @@ func TestGetControlPlaneDeploymentsByGateway_ExcludesGatewayOrigin(t *testing.T)
 }
 
 func TestMain(m *testing.M) {
-	// Allow GetConfig() to generate an ephemeral secret_encryption_key without failing.
-	os.Setenv("APIP_DEMO_MODE", "true")
+	// APIP_CP_ENCRYPTION_KEY and APIP_CP_AUTH_JWT_SECRET_KEY are required.
+	os.Setenv("APIP_CP_ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	os.Setenv("APIP_CP_AUTH_JWT_SECRET_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	code := m.Run()
 	os.Exit(code)
+}
+
+// TestGetLatestDeploymentRevision verifies the per-gateway revision lookup used by the DP->CP
+// import flow to dedupe replay re-pushes.
+func TestGetLatestDeploymentRevision(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	const (
+		orgUUID = "org-rev-001"
+		apiUUID = "api-rev-001"
+		gwUUID  = "gw-rev-001"
+	)
+	createTestAPI(t, db, apiUUID, orgUUID)
+	createTestGateway(t, db, gwUUID, orgUUID)
+
+	repo := NewDeploymentRepo(db, NewArtifactTableRegistry())
+
+	// No deployment yet → empty revision.
+	rev, err := repo.GetLatestDeploymentRevision(apiUUID, gwUUID, orgUUID)
+	if err != nil {
+		t.Fatalf("GetLatestDeploymentRevision (none): %v", err)
+	}
+	if rev != "" {
+		t.Errorf("revision with no deployment = %q, want empty", rev)
+	}
+
+	deployed := model.DeploymentStatusDeployed
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// One deployment carrying a revision.
+	if err := repo.CreateWithLimitEnforcement(&model.Deployment{
+		DeploymentID:   "dep-rev-1",
+		Name:           "dep-1",
+		ArtifactID:     apiUUID,
+		GatewayID:      gwUUID,
+		OrganizationID: orgUUID,
+		Content:        []byte("c1"),
+		Status:         &deployed,
+		CreatedAt:      base,
+		Metadata:       map[string]any{"gatewayRevision": "rev-A"},
+	}, 100); err != nil {
+		t.Fatalf("create dep-1: %v", err)
+	}
+	if rev, err = repo.GetLatestDeploymentRevision(apiUUID, gwUUID, orgUUID); err != nil || rev != "rev-A" {
+		t.Errorf("revision after dep-1 = %q (err %v), want rev-A", rev, err)
+	}
+
+	// A newer deployment with a different revision wins (latest by created_at).
+	if err := repo.CreateWithLimitEnforcement(&model.Deployment{
+		DeploymentID:   "dep-rev-2",
+		Name:           "dep-2",
+		ArtifactID:     apiUUID,
+		GatewayID:      gwUUID,
+		OrganizationID: orgUUID,
+		Content:        []byte("c2"),
+		Status:         &deployed,
+		CreatedAt:      base.Add(time.Hour),
+		Metadata:       map[string]any{"gatewayRevision": "rev-B"},
+	}, 100); err != nil {
+		t.Fatalf("create dep-2: %v", err)
+	}
+	if rev, err = repo.GetLatestDeploymentRevision(apiUUID, gwUUID, orgUUID); err != nil || rev != "rev-B" {
+		t.Errorf("revision after dep-2 = %q (err %v), want rev-B", rev, err)
+	}
+
+	// A different gateway has no deployment → empty (per-gateway scoping).
+	const gw2 = "gw-rev-002"
+	createTestGateway(t, db, gw2, orgUUID)
+	if rev, err = repo.GetLatestDeploymentRevision(apiUUID, gw2, orgUUID); err != nil || rev != "" {
+		t.Errorf("revision for other gateway = %q (err %v), want empty", rev, err)
+	}
 }

@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/cli/it
 
-go 1.26.2
+go 1.26.5
 
 require (
 	github.com/cucumber/godog v0.15.0
@@ -14,6 +14,8 @@ require (
 	github.com/gofrs/uuid v4.3.1+incompatible // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-memdb v1.3.4 // indirect
+	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 )

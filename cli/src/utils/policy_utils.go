@@ -341,9 +341,15 @@ func SetupTempGatewayWorkspace(buildFilePath string) (string, error) {
 	if err := EnsureDir(baseDir); err != nil {
 		return "", fmt.Errorf("failed to create temp base directory: %w", err)
 	}
+	if err := os.Chmod(baseDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to set temp base directory permissions: %w", err)
+	}
 	tempGatewayImageBuildDir, err := os.MkdirTemp(baseDir, "gateway-image-build-*")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp gateway image build directory: %w", err)
+	}
+	if err := os.Chmod(tempGatewayImageBuildDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to set temp gateway image build directory permissions: %w", err)
 	}
 
 	// Create output directory
@@ -351,11 +357,17 @@ func SetupTempGatewayWorkspace(buildFilePath string) (string, error) {
 	if err := EnsureDir(outputDir); err != nil {
 		return "", fmt.Errorf("failed to create output directory: %w", err)
 	}
+	if err := os.Chmod(outputDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to set output directory permissions: %w", err)
+	}
 
 	// Create policies directory
 	policiesDir := filepath.Join(tempGatewayImageBuildDir, "policies")
 	if err := EnsureDir(policiesDir); err != nil {
 		return "", fmt.Errorf("failed to create policies directory: %w", err)
+	}
+	if err := os.Chmod(policiesDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to set policies directory permissions: %w", err)
 	}
 
 	// Read and parse build file YAML (using a lightweight local struct to avoid import cycles)

@@ -1,0 +1,150 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+# --------------------------------------------------------------------
+
+# --------------------------------------------------------------------
+# OpenAI Multi-Provider Proxy
+#
+# Exposes one OpenAI-shaped /chat/completions endpoint and fans out to
+# several LLM providers. Two modes are supported by the translators:
+#
+#   * Single-provider mode  — attach exactly one translator with no
+#     router in front of it. With no "selected_provider" in the request
+#     metadata the translator runs unconditionally.
+#
+#   * Multi-provider mode    — put openai-header-router first. It writes
+#     the chosen provider into metadata["selected_provider"]. Each
+#     translator then runs only when that selection equals its own
+#     "providerId". The "providerId" doubles as the upstream cluster
+#     name, so it must match an entry in additionalProviders (id or as).
+#
+# --------------------------------------------------------------------
+
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProxy
+metadata:
+  name: openai-multi
+  annotations:
+    "gateway.api-platform.wso2.com/project-id": "default"
+spec:
+  displayName: OpenAI Multi-Provider Proxy
+  version: v1.0
+  context: /openai-multi
+  provider:
+    id: openai-provider
+    auth:
+      type: api-key
+      header: X-API-Key
+      value: REPLACE_WITH_OPENAI_PROVIDER_LOOPBACK_KEY
+  additionalProviders:
+    - id: anthropic-provider
+      # Optional alias, for when the provider id is not readable enough to use
+      # in a routing policy. When set, "as" -- not "id" -- becomes the upstream
+      # name that the router selects and the translator matches on, so the
+      # mapping below would have to send x-provider: anthropic to
+      # "anthropic-upstream" instead. Defaults to "id" when omitted.
+      # as: anthropic-upstream
+      auth:
+        type: api-key
+        header: X-API-Key
+        value: REPLACE_WITH_ANTHROPIC_PROVIDER_LOOPBACK_KEY
+      transformer:
+        type: openai-to-anthropic
+        version: v1
+        params:
+          model: claude-sonnet-4-5-20250929
+    - id: azure-openai-provider
+      auth:
+        type: api-key
+        header: X-API-Key
+        value: REPLACE_WITH_AZURE_OPENAI_PROVIDER_LOOPBACK_KEY
+      transformer:
+        type: openai-to-azure-openai
+        version: v1
+        params:
+          model: gpt-4o
+          apiVersion: "2024-02-15-preview"
+    - id: mistral-provider
+      auth:
+        type: api-key
+        header: X-API-Key
+        value: REPLACE_WITH_MISTRAL_PROVIDER_LOOPBACK_KEY
+      transformer:
+        type: openai-to-mistral
+        version: v1
+        params:
+          model: mistral-large-latest
+    - id: gemini-provider
+      auth:
+        type: api-key
+        header: X-API-Key
+        value: REPLACE_WITH_GEMINI_PROVIDER_LOOPBACK_KEY
+      transformer:
+        type: openai-to-gemini
+        version: v1
+        params:
+          model: gemini-2.5-flash
+          apiVersion: v1beta
+  policies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            key: X-API-Key
+            in: header
+    - name: openai-header-router
+      version: v1
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            headerName: x-provider
+            defaultProvider: openai-provider
+            mappings:
+              - headerValue: openai
+                provider: openai-provider
+              - headerValue: anthropic
+                provider: anthropic-provider
+              - headerValue: azure-openai
+                provider: azure-openai-provider
+              - headerValue: mistral
+                provider: mistral-provider
+              - headerValue: gemini
+                provider: gemini-provider
+
+    # - name: token-based-ratelimit
+    #   version: v1
+    #   paths:
+    #     - path: /chat/completions
+    #       methods: [POST]
+    #       params:
+    #         totalTokenLimits:
+    #           - count: 40
+    #             duration: "1m"
+    #         algorithm: fixed-window
+    #         backend: memory
+---
+# Client API key for this proxy. The api-key-auth policy above validates
+# the X-API-Key header against the key the gateway issues for this resource.
+# apiKey is omitted here, so the gateway generates one. Read it from the
+# create response (POST .../llm-proxies/openai-multi/api-keys).
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: ApiKey
+metadata:
+  name: openai-multi-consumer-key
+spec:
+  parentRef:
+    kind: LlmProxy
+    name: openai-multi
+  displayName: OpenAI multi-proxy consumer key
+  expiresIn:
+    duration: 30
+    unit: days

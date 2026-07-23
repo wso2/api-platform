@@ -137,3 +137,29 @@ func TestWriteHTTP(t *testing.T) {
 		t.Errorf("expected trackingId echoed in body, got %+v", body)
 	}
 }
+
+// TestErrorIs_MatchesOnCodeNotIdentity guards the behaviour that lets
+// errors.Is treat two independently constructed instances of the same catalog
+// entry as equal. Def.New allocates a fresh *Error each call, so pointer
+// identity would never match.
+func TestErrorIs_MatchesOnCodeNotIdentity(t *testing.T) {
+	a := NotFound.New()
+	b := NotFound.New()
+	if a == b {
+		t.Fatal("Def.New must allocate a distinct *Error each call")
+	}
+	if !errors.Is(a, b) {
+		t.Error("errors.Is should match two errors carrying the same catalog code")
+	}
+	if errors.Is(a, Conflict.New()) {
+		t.Error("errors.Is must not match errors carrying different catalog codes")
+	}
+	// The code must also be found through a wrapping chain.
+	wrapped := fmt.Errorf("context: %w", a)
+	if !errors.Is(wrapped, NotFound.New()) {
+		t.Error("errors.Is should see through fmt.Errorf %w wrapping")
+	}
+	if !NotFound.Is(wrapped) {
+		t.Error("Def.Is should see through fmt.Errorf %w wrapping")
+	}
+}

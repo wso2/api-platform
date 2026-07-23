@@ -27,6 +27,7 @@ import (
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -88,29 +89,16 @@ func (s *WebSubAPIService) toWebSubAPI(m *model.WebSubAPI) (*api.WebSubAPI, erro
 	return resp, nil
 }
 
-// webSubAPIListItemResolved converts m via mapWebSubAPIModelToListItem and
-// resolves its createdBy UUID to its raw external identity.
-func (s *WebSubAPIService) webSubAPIListItemResolved(m *model.WebSubAPI) (*api.WebSubAPIListItem, error) {
-	item := mapWebSubAPIModelToListItem(m)
-	if item == nil {
-		return nil, nil
-	}
-	if err := s.identity.ResolveIdentityField(&item.CreatedBy); err != nil {
-		return nil, err
-	}
-	return item, nil
-}
-
 // Create creates a new WebSub API
 func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI) (*api.WebSubAPI, error) {
 	if req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
 	if utils.ValueOrEmpty(req.Id) == "" || req.DisplayName == "" || req.Version == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The id, displayName and version fields are required.")
 	}
 	if req.ProjectId == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The projectId field is required.")
 	}
 
 	handle := utils.ValueOrEmpty(req.Id)
@@ -122,10 +110,10 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 			return nil, fmt.Errorf("failed to validate project: %w", err)
 		}
 		if project == nil {
-			return nil, constants.ErrProjectNotFound
+			return nil, apperror.ProjectRefNotFound.New()
 		}
 		if project.OrganizationID != orgUUID {
-			return nil, constants.ErrProjectNotFound
+			return nil, apperror.ProjectRefNotFound.New()
 		}
 	}
 
@@ -135,16 +123,7 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 		return nil, fmt.Errorf("failed to check WebSub API exists: %w", err)
 	}
 	if exists {
-		return nil, constants.ErrWebSubAPIExists
-	}
-
-	// Enforce the per-organization WebSub API limit (unlimited when not configured).
-	count, err := s.repo.Count(orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to count existing WebSub APIs: %w", err)
-	}
-	if config.LimitReached(count, s.cfg.ArtifactLimits.MaxWebSubAPIsPerOrg) {
-		return nil, constants.ErrWebSubAPILimitReached
+		return nil, apperror.WebSubAPIExists.New()
 	}
 
 	transport := []string{"http", "https"}
@@ -172,6 +151,7 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
+		UpdatedBy:        createdBy,
 		Version:          req.Version,
 		LifeCycleStatus:  lifeCycleStatus,
 		Origin:           constants.OriginCP,
@@ -189,7 +169,7 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
-			return nil, constants.ErrWebSubAPIExists
+			return nil, apperror.WebSubAPIExists.Wrap(err)
 		}
 		return nil, fmt.Errorf("failed to create WebSub API: %w", err)
 	}
@@ -203,7 +183,7 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 // Get retrieves a WebSub API by its handle
 func (s *WebSubAPIService) Get(orgUUID, handle string) (*api.WebSubAPI, error) {
 	if handle == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The WebSub API id is required.")
 	}
 
 	m, err := s.repo.GetByHandle(handle, orgUUID)
@@ -211,7 +191,7 @@ func (s *WebSubAPIService) Get(orgUUID, handle string) (*api.WebSubAPI, error) {
 		return nil, fmt.Errorf("failed to get WebSub API: %w", err)
 	}
 	if m == nil {
-		return nil, constants.ErrWebSubAPINotFound
+		return nil, apperror.WebSubAPINotFound.New()
 	}
 
 	return s.toWebSubAPI(m)
@@ -244,14 +224,17 @@ func (s *WebSubAPIService) List(orgUUID, projectUUID string, limit, offset int) 
 	}
 
 	resp.List = make([]api.WebSubAPIListItem, 0, len(apis))
+	createdByFields := make([]**string, 0, len(apis))
 	for _, a := range apis {
-		item, err := s.webSubAPIListItemResolved(a)
-		if err != nil {
-			return nil, err
+		item := mapWebSubAPIModelToListItem(a)
+		if item == nil {
+			continue
 		}
-		if item != nil {
-			resp.List = append(resp.List, *item)
-		}
+		resp.List = append(resp.List, *item)
+		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
+	}
+	if err := s.identity.ResolveIdentityFields(createdByFields); err != nil {
+		return nil, err
 	}
 
 	return resp, nil
@@ -260,10 +243,10 @@ func (s *WebSubAPIService) List(orgUUID, projectUUID string, limit, offset int) 
 // Update updates an existing WebSub API
 func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.WebSubAPI) (*api.WebSubAPI, error) {
 	if handle == "" || req == nil {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The WebSub API id and a request body are required.")
 	}
 	if req.DisplayName == "" || req.Version == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The displayName and version fields are required.")
 	}
 	// Get existing
 	existing, err := s.repo.GetByHandle(handle, orgUUID)
@@ -271,7 +254,7 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 		return nil, fmt.Errorf("failed to get WebSub API: %w", err)
 	}
 	if existing == nil {
-		return nil, constants.ErrWebSubAPINotFound
+		return nil, apperror.WebSubAPINotFound.New()
 	}
 	// DP-originated artifacts are read-only in the control plane.
 	if err := ensureOriginMutable(existing.Origin); err != nil {
@@ -314,7 +297,7 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 
 	if err := s.repo.Update(existing); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrWebSubAPINotFound
+			return nil, apperror.WebSubAPINotFound.Wrap(err)
 		}
 		return nil, fmt.Errorf("failed to update WebSub API: %w", err)
 	}
@@ -328,7 +311,7 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 // Delete deletes a WebSub API by its handle
 func (s *WebSubAPIService) Delete(orgUUID, handle, deletedBy string) error {
 	if handle == "" {
-		return constants.ErrInvalidInput
+		return apperror.ValidationFailed.New("The WebSub API id is required.")
 	}
 
 	// Get the WebSub API UUID before deletion (needed for gateway deletion event)
@@ -337,7 +320,7 @@ func (s *WebSubAPIService) Delete(orgUUID, handle, deletedBy string) error {
 		return fmt.Errorf("failed to get WebSub API: %w", err)
 	}
 	if websubAPI == nil {
-		return constants.ErrWebSubAPINotFound
+		return apperror.WebSubAPINotFound.New()
 	}
 	// DP-originated artifacts are read-only in the control plane and cannot be deleted from the CP.
 	if err := ensureOriginMutable(websubAPI.Origin); err != nil {
@@ -357,7 +340,7 @@ func (s *WebSubAPIService) Delete(orgUUID, handle, deletedBy string) error {
 
 	if err := s.repo.Delete(handle, orgUUID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return constants.ErrWebSubAPINotFound
+			return apperror.WebSubAPINotFound.Wrap(err)
 		}
 		return fmt.Errorf("failed to delete WebSub API: %w", err)
 	}

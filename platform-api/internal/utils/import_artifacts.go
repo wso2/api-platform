@@ -142,14 +142,14 @@ func ArtifactImportRank(kind string) int {
 	return len(artifactImportOrder)
 }
 
-// ResolveImportProject extracts the project identifier from the k8s-shaped metadata.
-// The project is identified by the domain-prefixed project-id annotation or the label as a fallback.
+// ResolveImportProject extracts the project handle from the k8s-shaped metadata.
+// The project is identified by the domain-prefixed project-id annotation or the deprecated bare label as a fallback.
 func ResolveImportProject(md dto.ArtifactImportMetadata) string {
-	projectId := md.Annotations[commonconstants.AnnotationProjectID]
-	if projectId == "" {
-		projectId = md.Labels[commonconstants.DeprecatedLabelProjectID]
+	projectHandle := md.Annotations[commonconstants.AnnotationProjectID]
+	if projectHandle == "" {
+		projectHandle = md.Labels[commonconstants.DeprecatedLabelProjectID]
 	}
-	return projectId
+	return projectHandle
 }
 
 // IsNewerDeployment reports whether incoming supersedes the working copy's current
@@ -278,4 +278,25 @@ func DecodeSpec(spec map[string]interface{}, out interface{}) error {
 		return fmt.Errorf("failed to decode spec: %w", err)
 	}
 	return nil
+}
+
+// StringProperty reads a string value from an import request Properties bag, returning "" when
+// the bag is nil, the key is absent, or the value is not a string.
+func StringProperty(props map[string]interface{}, key string) string {
+	if props == nil {
+		return ""
+	}
+	if v, ok := props[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// RevisionMetadata builds the deployment metadata map carrying the gateway revision, or nil when
+// no revision was supplied (so pre-revision pushes store no metadata, as before).
+func RevisionMetadata(revision string) map[string]any {
+	if revision == "" {
+		return nil
+	}
+	return map[string]any{"gatewayRevision": revision}
 }

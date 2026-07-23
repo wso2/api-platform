@@ -28,10 +28,8 @@ import * as proxyApis from '../../apis/proxyApis';
 import * as llmProxiesApis from '../../apis/llmProxiesApis';
 import {
   createSecret,
-  deleteSecret,
   buildSecretPlaceholder,
   generateSecretHandle,
-  extractSecretHandle,
 } from '../../apis/secretApis';
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../config.env';
@@ -129,8 +127,10 @@ export function ProxyProvider({ children, proxyId }: ProxyProviderProps) {
     try {
       // If the provider auth value is a new plain-text credential (not already a
       // placeholder), create a new secret and substitute the placeholder before
-      // persisting. After a successful proxy update the old secret is deleted
-      // best-effort so the gateway is not left with a dangling reference.
+      // persisting. Cleanup of the secret being rotated away from happens
+      // server-side (platform-api), since auth.value is writeOnly and never
+      // comes back on a GET — this context's own state can never reliably
+      // hold the true prior value to delete.
       let updatesPayload = updates;
       const providerAuth = typeof updates.provider === 'object' ? updates.provider?.auth : undefined;
       const authValue = providerAuth?.value;
@@ -163,23 +163,12 @@ export function ProxyProvider({ children, proxyId }: ProxyProviderProps) {
       const updatedProxy = await proxyApis.updateProxy(proxyId, updatesPayload, organizationId, apimBaseUrl);
       setProxy(updatedProxy);
 
-      // Best-effort: delete the old secret only after the proxy update succeeds.
-      if (authValue && !isAlreadyPlaceholder) {
-        const existingAuth = typeof proxy?.provider === 'object' ? proxy?.provider?.auth : undefined;
-        const oldHandle = existingAuth?.value ? extractSecretHandle(existingAuth.value) : null;
-        if (oldHandle) {
-          deleteSecret(oldHandle).catch((err) => {
-            logger.warn('Could not delete old secret after proxy update', { oldHandle, err });
-          });
-        }
-      }
-
       return updatedProxy;
     } catch (err) {
       logger.error('Failed to update proxy:', err);
       throw err;
     }
-  }, [proxyId, organizationId, apimBaseUrl, proxy]);
+  }, [proxyId, organizationId, apimBaseUrl]);
 
   const deleteProxy = useCallback(async (): Promise<void> => {
     if (!proxyId || !organizationId) {

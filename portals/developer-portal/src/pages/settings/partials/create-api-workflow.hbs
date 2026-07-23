@@ -220,8 +220,9 @@
                 {{!-- ══ CREATE FROM TEMPLATE PATH ══ --}}
                 <div id="createPathContent" class="d-none">
 
-                    {{!-- API Selection --}}
-                    {{#if orgAPIs.length}}
+                    {{!-- API Selection (all APIs incl. MCP servers — the Manage APIs/MCP tab split
+                          only affects the settings list, not workflow association) --}}
+                    {{#if orgAllAPIs.length}}
 
                     <div class="mb-1">
                         <div class="fw-semibold small">Select APIs for this workflow</div>
@@ -232,7 +233,7 @@
 
                     {{!-- Hidden checkboxes — source of truth for selection --}}
                     <div style="display:none;" id="apiCheckboxStore">
-                        {{#each orgAPIs}}
+                        {{#each orgAllAPIs}}
                         <input type="checkbox" class="api-workflow-api-checkbox" value="{{this.apiId}}"
                             data-api-name="{{this.apiName}}" data-api-handle="{{this.apiHandle}}"
                             data-api-description="{{this.apiDescription}}" data-api-type="{{this.apiType}}"

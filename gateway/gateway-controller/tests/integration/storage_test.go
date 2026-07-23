@@ -81,8 +81,8 @@ func createTestConfig(name, version string) *models.StoredConfig {
 			},
 			Operations: []api.Operation{
 				{
-					Method: api.OperationMethodGET,
-					Path:   "/test",
+					Method: api.Ptr(api.OperationMethodGET),
+					Path:   api.Ptr("/test"),
 				},
 			},
 		},
@@ -409,8 +409,8 @@ func createTestConfigWithLabels(name, version string, labels map[string]string) 
 			},
 			Operations: []api.Operation{
 				{
-					Method: api.OperationMethodGET,
-					Path:   "/test",
+					Method: api.Ptr(api.OperationMethodGET),
+					Path:   api.Ptr("/test"),
 				},
 			},
 		},
@@ -691,42 +691,6 @@ func TestConfigStore_LabelsWithAllAPITypes(t *testing.T) {
 		assert.Equal(t, labels, retrieved)
 	})
 
-	t.Run("WebSubApi with labels", func(t *testing.T) {
-		asyncApiConfig := api.WebSubAPI{
-			ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1,
-			Kind:       api.WebSubAPIKindWebSubApi,
-			Metadata: api.Metadata{
-				Name:   "async-api-v1.0",
-				Labels: &labels,
-			},
-			Spec: api.WebhookAPIData{
-				DisplayName: "AsyncAPILabel",
-				Version:     "v1.0",
-				Context:     "/async",
-				Channels: &map[string]api.WebSubChannel{
-					"/events": {},
-				},
-			},
-		}
-		cfg := &models.StoredConfig{
-			UUID:                uuid.New().String(),
-			Kind:                string(api.WebSubAPIKindWebSubApi),
-			Handle:              "async-api-v1.0",
-			DisplayName:         "AsyncAPILabel",
-			Version:             "v1.0",
-			Configuration:       asyncApiConfig,
-			SourceConfiguration: asyncApiConfig,
-			DesiredState:        models.StateDeployed,
-			Origin:              models.OriginGatewayAPI,
-		}
-
-		err := configStore.Add(cfg)
-		require.NoError(t, err)
-
-		retrieved, err := configStore.GetLabelsMap(cfg.Handle)
-		assert.NoError(t, err)
-		assert.Equal(t, labels, retrieved)
-	})
 }
 
 func TestSQLiteStorage_LabelsPersistence(t *testing.T) {

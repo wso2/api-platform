@@ -47,7 +47,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/webhooksecretxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
 
@@ -109,6 +108,15 @@ type secretSyncer interface {
 	UpsertFromPlatform(handle, displayName, plaintext string) error
 }
 
+// WebhookSecretSnapshotRefresher is the extension point through which an
+// external event-gateway-controller binary supplies webhook-secret xDS
+// snapshot refresh. Core never implements this interface itself; it is only
+// ever satisfied by a webhooksecretxds.SnapshotManager living outside this
+// module.
+type WebhookSecretSnapshotRefresher interface {
+	RefreshSnapshot() error
+}
+
 // Client manages the WebSocket connection to the control plane
 type Client struct {
 	config                       config.ControlPlaneConfig
@@ -143,9 +151,10 @@ type Client struct {
 	syncOnce                     sync.Once   // ensures deployment sync runs only on first connect
 	isFirstConnect               atomic.Bool // true on first connect, flipped to false after
 	webhookSecretStore           *webhooksecret.WebhookSecretStore
-	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager
+	webhookSecretSnapshotManager WebhookSecretSnapshotRefresher
 	secretSyncer                 secretSyncer
 	secretHashCache              sync.Map // handle → last-known Platform API hash (string)
+	eventGatewayHooks            ControlPlaneEventGatewayHooks
 
 	// DP->CP push retry tuning.
 	pushMaxAttempts   int
@@ -174,7 +183,7 @@ func NewClient(
 	eventHubInstance eventhub.EventHub,
 	secretResolver funcs.SecretResolver,
 	webhookSecretStore *webhooksecret.WebhookSecretStore,
-	webhookSecretSnapshotManager *webhooksecretxds.SnapshotManager,
+	webhookSecretSnapshotManager WebhookSecretSnapshotRefresher,
 ) *Client {
 	if db == nil {
 		panic("control plane client requires non-nil storage")
@@ -1344,19 +1353,19 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 	case "mcpproxy.deleted":
 		c.handleMCPProxyDeletedEvent(event)
 	case "websub.deployed":
-		c.handleWebSubAPIDeployedEvent(event)
+		c.dispatchEventGatewayHook(event["type"], func(h ControlPlaneEventGatewayHooks) { h.HandleWebSubAPIDeployed(c, event) })
 	case "websub.undeployed":
-		c.handleWebSubAPIUndeployedEvent(event)
+		c.dispatchEventGatewayHook(event["type"], func(h ControlPlaneEventGatewayHooks) { h.HandleWebSubAPIUndeployed(c, event) })
 	case "websub.deleted":
-		c.handleWebSubAPIDeletedEvent(event)
+		c.dispatchEventGatewayHook(event["type"], func(h ControlPlaneEventGatewayHooks) { h.HandleWebSubAPIDeleted(c, event) })
 	case "websub.hmacsecret.created", "websub.hmacsecret.updated", "websub.hmacsecret.deleted":
-		c.handleWebSubAPIHmacSecretEvent(event)
+		c.dispatchEventGatewayHook(event["type"], func(h ControlPlaneEventGatewayHooks) { h.HandleWebSubAPIHmacSecretEvent(c, event) })
 	case "webbroker.deployed":
-		c.handleWebBrokerAPIDeployedEvent(event)
+		c.dispatchEventGatewayHook(event["type"], func(h ControlPlaneEventGatewayHooks) { h.HandleWebBrokerAPIDeployed(c, event) })
 	case "webbroker.undeployed":
-		c.handleWebBrokerAPIUndeployedEvent(event)
+		c.dispatchEventGatewayHook(event["type"], func(h ControlPlaneEventGatewayHooks) { h.HandleWebBrokerAPIUndeployed(c, event) })
 	case "webbroker.deleted":
-		c.handleWebBrokerAPIDeletedEvent(event)
+		c.dispatchEventGatewayHook(event["type"], func(h ControlPlaneEventGatewayHooks) { h.HandleWebBrokerAPIDeleted(c, event) })
 	case "application.updated":
 		c.handleApplicationUpdatedEvent(event)
 	default:
@@ -2574,587 +2583,6 @@ func (c *Client) handleLLMProxyDeletedEvent(event map[string]interface{}) {
 		slog.String("proxy_id", proxyID),
 		slog.String("correlation_id", deletedEvent.CorrelationID),
 	)
-}
-
-// syncHmacSecretsForArtifact fetches all platform-managed HMAC secrets for a WebSub API
-// artifact from platform-API and loads them into the in-memory webhook secret store.
-// It replaces any previously loaded secrets for this artifact atomically (clear then re-add).
-func (c *Client) syncHmacSecretsForArtifact(artifactID string) {
-	if c.webhookSecretStore == nil {
-		return
-	}
-
-	secrets, err := c.apiUtilsService.FetchWebSubAPIHmacSecrets(artifactID)
-	if err != nil {
-		c.logger.Warn("Failed to fetch platform HMAC secrets for WebSub API",
-			slog.String("artifact_id", artifactID),
-			slog.Any("error", err))
-		return
-	}
-
-	if err := c.webhookSecretStore.RemoveAllByAPI(artifactID); err != nil {
-		c.logger.Warn("Failed to clear existing HMAC secrets for WebSub API",
-			slog.String("artifact_id", artifactID),
-			slog.Any("error", err))
-		return
-	}
-
-	for _, s := range secrets {
-		if err := c.webhookSecretStore.Store(artifactID, s.Name, s.Plaintext); err != nil {
-			c.logger.Warn("Failed to store platform HMAC secret in memory",
-				slog.String("artifact_id", artifactID),
-				slog.String("secret_name", s.Name),
-				slog.Any("error", err))
-		}
-	}
-
-	if c.webhookSecretSnapshotManager != nil {
-		if err := c.webhookSecretSnapshotManager.RefreshSnapshot(); err != nil {
-			c.logger.Warn("Failed to refresh webhook secret xDS snapshot after platform sync",
-				slog.String("artifact_id", artifactID),
-				slog.Any("error", err))
-		}
-	}
-
-	c.logger.Info("Loaded platform HMAC secrets for WebSub API",
-		slog.String("artifact_id", artifactID),
-		slog.Int("count", len(secrets)))
-}
-
-// cleanupHmacSecretsForArtifact removes all in-memory HMAC secrets for an artifact and
-// refreshes the xDS snapshot. Called on WebSub API deletion (found and not-found paths).
-func (c *Client) cleanupHmacSecretsForArtifact(artifactID string) {
-	if c.webhookSecretStore == nil {
-		return
-	}
-	if err := c.webhookSecretStore.RemoveAllByAPI(artifactID); err != nil {
-		c.logger.Warn("Failed to remove HMAC secrets from store during WebSub API cleanup",
-			slog.String("artifact_id", artifactID),
-			slog.Any("error", err))
-	}
-	if c.webhookSecretSnapshotManager != nil {
-		if err := c.webhookSecretSnapshotManager.RefreshSnapshot(); err != nil {
-			c.logger.Warn("Failed to refresh webhook secret xDS snapshot after WebSub API cleanup",
-				slog.String("artifact_id", artifactID),
-				slog.Any("error", err))
-		}
-	}
-}
-
-// platformHmacSecretEventPayload is the payload for websub.hmacsecret.* events.
-type platformHmacSecretEventPayload struct {
-	ArtifactUUID string `json:"artifactUuid"`
-	SecretName   string `json:"secretName"`
-}
-
-func (c *Client) handleWebSubAPIDeployedEvent(event map[string]any) {
-	c.logger.Debug("WebSub API Deployment Event",
-		slog.Any("payload", event["payload"]),
-		slog.Any("timestamp", event["timestamp"]),
-		slog.Any("correlationId", event["correlationId"]),
-	)
-
-	eventBytes, err := json.Marshal(event)
-	if err != nil {
-		c.logger.Error("Failed to marshal WebSub API deployment event for parsing",
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	var deployedEvent WebSubAPIDeployedEvent
-	if err := json.Unmarshal(eventBytes, &deployedEvent); err != nil {
-		c.logger.Error("Failed to parse WebSub API deployment event",
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	apiID := deployedEvent.Payload.APIID
-	if apiID == "" {
-		c.logger.Error("API ID is empty in WebSub API deployment event")
-		return
-	}
-
-	c.logger.Info("Processing WebSub API deployment",
-		slog.String("api_id", apiID),
-		slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
-		slog.String("correlation_id", deployedEvent.CorrelationID),
-	)
-
-	// Fetch WebSub API definition from control plane
-	zipData, err := c.apiUtilsService.FetchWebSubAPIDefinition(apiID)
-	if err != nil {
-		c.logger.Error("Failed to fetch WebSub API definition",
-			slog.String("api_id", apiID),
-			slog.Any("error", err),
-		)
-		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "websub", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
-
-	yamlData, err := c.apiUtilsService.ExtractYAMLFromZip(zipData)
-	if err != nil {
-		c.logger.Error("Failed to extract YAML from WebSub API ZIP",
-			slog.String("api_id", apiID),
-			slog.Any("error", err),
-		)
-		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "websub", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
-
-	// Ensure any {{ secret "handle" }} references in the YAML are in local
-	// storage before rendering.
-	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
-
-	performedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
-	if performedAt.IsZero() {
-		performedAt = time.Now().Truncate(time.Millisecond)
-	}
-	// Reuse the existing local UUID for a bottom-up (DP->CP) synced API so the
-	// control-plane deploy is an in-place update
-	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, c.resolveLocalArtifactID(apiID), deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID, c.deploymentService)
-	if err != nil {
-		c.logger.Error("Failed to create WebSub API from YAML",
-			slog.String("api_id", apiID),
-			slog.Any("error", err),
-		)
-		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "websub", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
-
-	if result.IsStale {
-		c.logger.Debug("Skipped stale WebSub API deploy event (newer version exists in DB)",
-			slog.String("api_id", apiID),
-			slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
-		)
-		return
-	}
-
-	// Load platform-managed HMAC secrets into the webhook secret store.
-	if result.StoredConfig != nil {
-		c.syncHmacSecretsForArtifact(result.StoredConfig.UUID)
-	}
-
-	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "websub", "deploy", "success",
-		deployedEvent.Payload.PerformedAt, "")
-
-	c.logger.Info("Successfully processed WebSub API deployment event",
-		slog.String("api_id", apiID),
-		slog.String("correlation_id", deployedEvent.CorrelationID),
-	)
-}
-
-func (c *Client) handleWebSubAPIUndeployedEvent(event map[string]any) {
-	c.logger.Debug("WebSub API Undeployment Event",
-		slog.Any("payload", event["payload"]),
-		slog.Any("timestamp", event["timestamp"]),
-		slog.Any("correlationId", event["correlationId"]),
-	)
-
-	eventBytes, err := json.Marshal(event)
-	if err != nil {
-		c.logger.Error("Failed to marshal WebSub API undeployment event for parsing",
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	var undeployedEvent WebSubAPIUndeployedEvent
-	if err := json.Unmarshal(eventBytes, &undeployedEvent); err != nil {
-		c.logger.Error("Failed to parse WebSub API undeployment event",
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	apiID := undeployedEvent.Payload.APIID
-	if apiID == "" {
-		c.logger.Error("API ID is empty in WebSub API undeployment event")
-		return
-	}
-
-	apiConfig, err := c.findAPIConfig(apiID)
-	if err != nil {
-		if storage.IsNotFoundError(err) {
-			c.logger.Warn("WebSub API configuration not found for undeployment",
-				slog.String("api_id", apiID),
-			)
-			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "websub", "undeploy", "success",
-				undeployedEvent.Payload.PerformedAt, "")
-			return
-		}
-		c.logger.Error("Failed to fetch WebSub API configuration for undeployment",
-			slog.String("api_id", apiID),
-			slog.String("correlation_id", undeployedEvent.CorrelationID),
-			slog.Any("error", err),
-		)
-		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "websub", "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
-
-	if apiConfig.DeploymentID != "" && undeployedEvent.Payload.DeploymentID != "" &&
-		apiConfig.DeploymentID != undeployedEvent.Payload.DeploymentID {
-		c.logger.Warn("Ignoring stale WebSub API undeploy event: deployment ID mismatch",
-			slog.String("api_id", apiID),
-			slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
-			slog.String("current_deployment_id", apiConfig.DeploymentID),
-		)
-		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "websub", "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
-		return
-	}
-
-	performedAt := undeployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
-	if performedAt.IsZero() {
-		performedAt = time.Now().Truncate(time.Millisecond)
-	}
-	apiConfig.DesiredState = models.StateUndeployed
-	apiConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
-	apiConfig.DeployedAt = &performedAt
-	apiConfig.UpdatedAt = time.Now()
-
-	affected, err := c.db.UpsertConfig(apiConfig)
-	if err != nil {
-		c.logger.Error("Failed to upsert config for WebSub API undeployment",
-			slog.String("api_id", apiID),
-			slog.Any("error", err),
-		)
-		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "websub", "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
-	if !affected {
-		c.logger.Debug("Skipped stale WebSub API undeploy event (newer version exists in DB)",
-			slog.String("api_id", apiID),
-			slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
-		)
-		return
-	}
-
-	evt := eventhub.Event{
-		EventType: eventhub.EventTypeAPI,
-		Action:    "UPDATE",
-		EntityID:  apiID,
-		EventID:   undeployedEvent.CorrelationID,
-	}
-	if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
-		c.logger.Error("Failed to publish WebSub API undeployment event", slog.Any("error", err))
-	}
-
-	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "websub", "undeploy", "success",
-		undeployedEvent.Payload.PerformedAt, "")
-
-	c.logger.Info("Successfully processed WebSub API undeployment event",
-		slog.String("api_id", apiID),
-		slog.String("correlation_id", undeployedEvent.CorrelationID),
-	)
-}
-
-func (c *Client) handleWebSubAPIDeletedEvent(event map[string]any) {
-	c.logger.Debug("WebSub API Deleted Event",
-		slog.Any("payload", event["payload"]),
-		slog.Any("timestamp", event["timestamp"]),
-		slog.Any("correlationId", event["correlationId"]),
-	)
-
-	eventBytes, err := json.Marshal(event)
-	if err != nil {
-		c.logger.Error("Failed to marshal WebSub API deleted event for parsing",
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	var deletedEvent WebSubAPIDeletedEvent
-	if err := json.Unmarshal(eventBytes, &deletedEvent); err != nil {
-		c.logger.Error("Failed to parse WebSub API deleted event",
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	apiID := deletedEvent.Payload.APIID
-	if apiID == "" {
-		c.logger.Error("API ID is empty in WebSub API deleted event")
-		return
-	}
-
-	apiConfig, err := c.findAPIConfig(apiID)
-	if err != nil {
-		if storage.IsNotFoundError(err) {
-			c.logger.Warn("WebSub API configuration not found for deletion",
-				slog.String("api_id", apiID),
-			)
-			c.cleanupHmacSecretsForArtifact(apiID)
-			return
-		}
-		c.logger.Error("Failed to fetch WebSub API configuration for deletion",
-			slog.String("api_id", apiID),
-			slog.String("correlation_id", deletedEvent.CorrelationID),
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	c.performFullAPIDeletion(apiID, apiConfig, deletedEvent.CorrelationID)
-	c.cleanupHmacSecretsForArtifact(apiConfig.UUID)
-}
-
-func (c *Client) handleWebBrokerAPIDeployedEvent(event map[string]any) {
-	c.logger.Debug("WebBroker API Deployment Event",
-		slog.Any("payload", event["payload"]),
-		slog.Any("timestamp", event["timestamp"]),
-		slog.Any("correlationId", event["correlationId"]),
-	)
-
-	eventBytes, err := json.Marshal(event)
-	if err != nil {
-		c.logger.Error("Failed to marshal WebBroker API deployment event for parsing",
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	var deployedEvent WebBrokerAPIDeployedEvent
-	if err := json.Unmarshal(eventBytes, &deployedEvent); err != nil {
-		c.logger.Error("Failed to parse WebBroker API deployment event",
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	apiID := deployedEvent.Payload.APIID
-	if apiID == "" {
-		c.logger.Error("API ID is empty in WebBroker API deployment event")
-		return
-	}
-
-	c.logger.Info("Processing WebBroker API deployment",
-		slog.String("api_id", apiID),
-		slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
-		slog.String("correlation_id", deployedEvent.CorrelationID),
-	)
-
-	// Fetch WebBroker API definition from control plane
-	zipData, err := c.apiUtilsService.FetchWebBrokerAPIDefinition(apiID)
-	if err != nil {
-		c.logger.Error("Failed to fetch WebBroker API definition",
-			slog.String("api_id", apiID),
-			slog.Any("error", err),
-		)
-		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "webbroker", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
-
-	yamlData, err := c.apiUtilsService.ExtractYAMLFromZip(zipData)
-	if err != nil {
-		c.logger.Error("Failed to extract YAML from WebBroker API ZIP",
-			slog.String("api_id", apiID),
-			slog.Any("error", err),
-		)
-		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "webbroker", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
-
-	// Ensure any {{ secret "handle" }} references in the YAML are in local
-	// storage before rendering.
-	c.syncSecretRefsFromYAML(yamlData, deployedEvent.CorrelationID)
-
-	performedAt := deployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
-	if performedAt.IsZero() {
-		performedAt = time.Now().Truncate(time.Millisecond)
-	}
-	// Reuse the existing local UUID for a bottom-up (DP->CP) synced API so the
-	// control-plane deploy is an in-place update
-	result, err := c.apiUtilsService.CreateAPIFromYAML(yamlData, c.resolveLocalArtifactID(apiID), deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID, c.deploymentService)
-	if err != nil {
-		c.logger.Error("Failed to create WebBroker API from YAML",
-			slog.String("api_id", apiID),
-			slog.Any("error", err),
-		)
-		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "webbroker", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
-
-	if result.IsStale {
-		c.logger.Debug("Skipped stale WebBroker API deploy event (newer version exists in DB)",
-			slog.String("api_id", apiID),
-			slog.String("deployment_id", deployedEvent.Payload.DeploymentID),
-		)
-		return
-	}
-
-	c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "webbroker", "deploy", "success",
-		deployedEvent.Payload.PerformedAt, "")
-
-	c.logger.Info("Successfully processed WebBroker API deployment event",
-		slog.String("api_id", apiID),
-		slog.String("correlation_id", deployedEvent.CorrelationID),
-	)
-}
-
-func (c *Client) handleWebBrokerAPIUndeployedEvent(event map[string]any) {
-	c.logger.Debug("WebBroker API Undeployment Event",
-		slog.Any("payload", event["payload"]),
-		slog.Any("timestamp", event["timestamp"]),
-		slog.Any("correlationId", event["correlationId"]),
-	)
-
-	eventBytes, err := json.Marshal(event)
-	if err != nil {
-		c.logger.Error("Failed to marshal WebBroker API undeployment event for parsing",
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	var undeployedEvent WebBrokerAPIUndeployedEvent
-	if err := json.Unmarshal(eventBytes, &undeployedEvent); err != nil {
-		c.logger.Error("Failed to parse WebBroker API undeployment event",
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	apiID := undeployedEvent.Payload.APIID
-	if apiID == "" {
-		c.logger.Error("API ID is empty in WebBroker API undeployment event")
-		return
-	}
-
-	apiConfig, err := c.findAPIConfig(apiID)
-	if err != nil {
-		if storage.IsNotFoundError(err) {
-			c.logger.Warn("WebBroker API configuration not found for undeployment",
-				slog.String("api_id", apiID),
-			)
-			c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "webbroker", "undeploy", "success",
-				undeployedEvent.Payload.PerformedAt, "")
-			return
-		}
-		c.logger.Error("Failed to fetch WebBroker API configuration for undeployment",
-			slog.String("api_id", apiID),
-			slog.String("correlation_id", undeployedEvent.CorrelationID),
-			slog.Any("error", err),
-		)
-		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "webbroker", "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
-
-	if apiConfig.DeploymentID != "" && undeployedEvent.Payload.DeploymentID != "" &&
-		apiConfig.DeploymentID != undeployedEvent.Payload.DeploymentID {
-		c.logger.Warn("Ignoring stale WebBroker API undeploy event: deployment ID mismatch",
-			slog.String("api_id", apiID),
-			slog.String("event_deployment_id", undeployedEvent.Payload.DeploymentID),
-			slog.String("current_deployment_id", apiConfig.DeploymentID),
-		)
-		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "webbroker", "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "DEPLOYMENT_ID_MISMATCH")
-		return
-	}
-
-	performedAt := undeployedEvent.Payload.PerformedAt.Truncate(time.Millisecond)
-	if performedAt.IsZero() {
-		performedAt = time.Now().Truncate(time.Millisecond)
-	}
-	apiConfig.DesiredState = models.StateUndeployed
-	apiConfig.DeploymentID = undeployedEvent.Payload.DeploymentID
-	apiConfig.DeployedAt = &performedAt
-	apiConfig.UpdatedAt = time.Now()
-
-	affected, err := c.db.UpsertConfig(apiConfig)
-	if err != nil {
-		c.logger.Error("Failed to upsert config for WebBroker API undeployment",
-			slog.String("api_id", apiID),
-			slog.Any("error", err),
-		)
-		c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "webbroker", "undeploy", "failed",
-			undeployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
-		return
-	}
-	if !affected {
-		c.logger.Debug("Skipped stale WebBroker API undeploy event (newer version exists in DB)",
-			slog.String("api_id", apiID),
-			slog.String("deployment_id", undeployedEvent.Payload.DeploymentID),
-		)
-		return
-	}
-
-	evt := eventhub.Event{
-		EventType: eventhub.EventTypeAPI,
-		Action:    "UPDATE",
-		EntityID:  apiID,
-		EventID:   undeployedEvent.CorrelationID,
-	}
-	if err := c.eventHub.PublishEvent(c.gatewayID, evt); err != nil {
-		c.logger.Error("Failed to publish WebBroker API undeployment event", slog.Any("error", err))
-	}
-
-	c.sendDeploymentAck(undeployedEvent.Payload.DeploymentID, apiID, "webbroker", "undeploy", "success",
-		undeployedEvent.Payload.PerformedAt, "")
-
-	c.logger.Info("Successfully processed WebBroker API undeployment event",
-		slog.String("api_id", apiID),
-		slog.String("correlation_id", undeployedEvent.CorrelationID),
-	)
-}
-
-func (c *Client) handleWebBrokerAPIDeletedEvent(event map[string]any) {
-	c.logger.Debug("WebBroker API Deleted Event",
-		slog.Any("payload", event["payload"]),
-		slog.Any("timestamp", event["timestamp"]),
-		slog.Any("correlationId", event["correlationId"]),
-	)
-
-	eventBytes, err := json.Marshal(event)
-	if err != nil {
-		c.logger.Error("Failed to marshal WebBroker API deleted event for parsing",
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	var deletedEvent WebBrokerAPIDeletedEvent
-	if err := json.Unmarshal(eventBytes, &deletedEvent); err != nil {
-		c.logger.Error("Failed to parse WebBroker API deleted event",
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	apiID := deletedEvent.Payload.APIID
-	if apiID == "" {
-		c.logger.Error("API ID is empty in WebBroker API deleted event")
-		return
-	}
-
-	apiConfig, err := c.findAPIConfig(apiID)
-	if err != nil {
-		if storage.IsNotFoundError(err) {
-			c.logger.Warn("WebBroker API configuration not found for deletion; running orphan cleanup",
-				slog.String("api_id", apiID),
-			)
-			c.cleanupOrphanedResources(apiID, deletedEvent.CorrelationID)
-			return
-		}
-		c.logger.Error("Failed to fetch WebBroker API configuration for deletion",
-			slog.String("api_id", apiID),
-			slog.String("correlation_id", deletedEvent.CorrelationID),
-			slog.Any("error", err),
-		)
-		return
-	}
-
-	c.performFullAPIDeletion(apiID, apiConfig, deletedEvent.CorrelationID)
 }
 
 func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
@@ -4594,30 +4022,4 @@ func (c *Client) pushGatewayManifestOnConnect(gatewayID string) {
 		slog.String("gateway_id", gatewayID),
 		slog.Int("policy_count", len(policies)),
 	)
-}
-
-// handleWebSubAPIHmacSecretEvent handles websub.hmacsecret.created/updated/deleted events
-// from platform-API. It re-syncs all platform-managed HMAC secrets for the affected artifact.
-func (c *Client) handleWebSubAPIHmacSecretEvent(event map[string]any) {
-	payloadRaw, _ := event["payload"]
-	payloadBytes, err := json.Marshal(payloadRaw)
-	if err != nil {
-		c.logger.Error("Failed to marshal HMAC secret event payload", slog.Any("error", err))
-		return
-	}
-	var payload platformHmacSecretEventPayload
-	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-		c.logger.Error("Failed to parse HMAC secret event payload", slog.Any("error", err))
-		return
-	}
-	if payload.ArtifactUUID == "" {
-		c.logger.Warn("HMAC secret event missing artifactUuid, skipping")
-		return
-	}
-	c.logger.Info("Processing platform HMAC secret event",
-		slog.Any("type", event["type"]),
-		slog.String("artifact_uuid", payload.ArtifactUUID),
-		slog.String("secret_name", payload.SecretName),
-	)
-	c.syncHmacSecretsForArtifact(payload.ArtifactUUID)
 }

@@ -28,7 +28,7 @@ import { ApiError, buildApiError } from '../utils/apiError';
  * Organization schema from the Platform API.
  *
  * Requests are routed same-origin through the BFF proxy. The browser holds no
- * token: every call rides the HttpOnly `_bff_session` cookie and the BFF injects
+ * token: every call rides the HttpOnly `_ai_workspace_session` cookie and the BFF injects
  * the bearer token when proxying to the Platform API.
  */
 export interface PlatformOrganization {
@@ -56,7 +56,7 @@ const platformUrl = (path: string): string => `${PLATFORM_API_BASE_URL}${path}`;
 /**
  * Base JSON headers. No Authorization — the BFF injects the bearer token from
  * the session when proxying. All calls below use `credentials: 'include'` so the
- * HttpOnly `_bff_session` cookie rides along and the BFF can resolve the token.
+ * HttpOnly `_ai_workspace_session` cookie rides along and the BFF can resolve the token.
  */
 const jsonHeaders = (): Record<string, string> => ({
   'Content-Type': 'application/json',
@@ -124,28 +124,6 @@ export async function registerOrganization(
   const created: PlatformOrganization = await response.json();
   logger.info('Organization registered successfully:', created.id);
   return created;
-}
-
-/**
- * Get the current user's organization.
- *
- * Endpoint: GET /organizations
- * Auth:     BFF session cookie; the BFF injects the bearer token.
- */
-export async function getOrganization(): Promise<PlatformOrganization> {
-  const response = await fetch(platformUrl('/organizations'), {
-    method: 'GET',
-    credentials: 'include',
-    headers: jsonHeaders(),
-  });
-
-  if (!response.ok) {
-    const err = await parseApiError(response);
-    logger.error('getOrganization failed:', response.status, err.code, err.message, err.trackingId);
-    throw err;
-  }
-
-  return response.json();
 }
 
 /**

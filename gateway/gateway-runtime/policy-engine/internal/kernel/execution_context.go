@@ -32,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
 // maxStreamAccumulatorSize caps the amount of data accumulated before forcing
@@ -61,6 +62,12 @@ type PolicyExecutionContext struct {
 	// Shared context that spans the entire request/response lifecycle.
 	// Pointed to by each per-phase context's SharedContext field.
 	sharedCtx *policy.SharedContext
+
+	// downstreamHeaders is a snapshot of the client request headers, captured at
+	// buildRequestContexts before any policy mutation.
+	// Exposed to policies via Request*Context.Downstream and, on the response
+	// path, via Response*Context.Downstream.
+	downstreamHeaders *policy.Headers
 
 	// Policy chain for this request
 	policyChain *registry.PolicyChain
@@ -93,6 +100,11 @@ type PolicyExecutionContext struct {
 	// Maps upstream definition names to their URL paths.
 	// Used when UpstreamName is set to compute the correct path transformation.
 	upstreamDefinitionPaths map[string]string
+
+	// defaultUpstream is this route's own compiled-in upstream (cluster name, URL, base
+	// path) — whichever slot it belongs to. Always present; surfaced to policies via the
+	// "current_upstream" dynamic metadata object when no dynamic override is in effect.
+	defaultUpstream *policyenginev1.UpstreamInfo
 
 	// requestContentEncoding stores the Content-Encoding of the incoming request (e.g. "gzip", "br").
 	// The body is decompressed before being passed to policies, and re-compressed using this value
@@ -986,6 +998,13 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 
 	wrappedHeaders := policy.NewHeaders(headersMap)
 
+	// Capture a snapshot of the downstream (client) headers before any policy
+	// mutation. Header-phase policies mutate wrappedHeaders in
+	// place, so body/stream-phase validators need this pristine copy to inspect
+	// what the client actually sent.
+	ec.downstreamHeaders = cloneHeaders(wrappedHeaders)
+	downstream := &policy.DownstreamContext{Request: &policy.DownstreamRequest{Headers: ec.downstreamHeaders}}
+
 	ec.requestHeaderCtx = &policy.RequestHeaderContext{
 		SharedContext: sharedCtx,
 		Headers:       wrappedHeaders,
@@ -994,6 +1013,8 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 		Authority:     authority,
 		Scheme:        scheme,
 		Vhost:         routeMetadata.Vhost,
+		Downstream:    downstream,
+		Upstream:      toRequestUpstream(ec.defaultUpstream),
 	}
 
 	// requestBodyCtx shares the same shared context and headers; Body is set later.
@@ -1010,6 +1031,9 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 		Authority:     authority,
 		Scheme:        scheme,
 		Vhost:         routeMetadata.Vhost,
+		UpstreamInfo:  ec.defaultUpstream,
+		Downstream:    downstream,
+		Upstream:      toRequestUpstream(ec.defaultUpstream),
 	}
 
 	// Build the streaming context once; reused across all chunks for this request.
@@ -1021,6 +1045,8 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 		Authority:     authority,
 		Scheme:        scheme,
 		Vhost:         routeMetadata.Vhost,
+		Downstream:    downstream,
+		Upstream:      toRequestUpstream(ec.defaultUpstream),
 	}
 
 	// Detect request streaming at context-build time while headers are available.
@@ -1067,6 +1093,15 @@ func (ec *PolicyExecutionContext) buildResponseContexts(headers *extprocv3.HttpH
 
 	responseHeaders := policy.NewHeaders(responseHeadersMap)
 
+	// Downstream snapshot: the pristine client request headers captured at
+	// request time (ec.downstreamHeaders).
+	downstream := &policy.DownstreamContext{Request: &policy.DownstreamRequest{Headers: ec.downstreamHeaders}}
+
+	// Upstream: the route's resolved upstream target plus a snapshot of the
+	// original upstream response headers, captured before any response-header
+	// policy mutation.
+	upstream := toResponseUpstream(ec.defaultUpstream, cloneHeaders(responseHeaders))
+
 	ec.responseHeaderCtx = &policy.ResponseHeaderContext{
 		SharedContext:   ec.sharedCtx,
 		RequestHeaders:  ec.requestHeaderCtx.Headers,
@@ -1075,6 +1110,8 @@ func (ec *PolicyExecutionContext) buildResponseContexts(headers *extprocv3.HttpH
 		RequestMethod:   ec.requestHeaderCtx.Method,
 		ResponseHeaders: responseHeaders,
 		ResponseStatus:  responseStatus,
+		Downstream:      downstream,
+		Upstream:        upstream,
 	}
 
 	var responseBodyEOS *policy.Body
@@ -1090,6 +1127,8 @@ func (ec *PolicyExecutionContext) buildResponseContexts(headers *extprocv3.HttpH
 		ResponseHeaders: responseHeaders,
 		ResponseBody:    responseBodyEOS,
 		ResponseStatus:  responseStatus,
+		Downstream:      downstream,
+		Upstream:        upstream,
 	}
 
 	// Build the streaming context once; reused across all chunks for this response.
@@ -1101,6 +1140,8 @@ func (ec *PolicyExecutionContext) buildResponseContexts(headers *extprocv3.HttpH
 		RequestMethod:   ec.requestHeaderCtx.Method,
 		ResponseHeaders: responseHeaders,
 		ResponseStatus:  responseStatus,
+		Downstream:      downstream,
+		Upstream:        upstream,
 	}
 }
 
@@ -1136,6 +1177,49 @@ func isStreamingUpstreamResponse(headers *policy.Headers) bool {
 		}
 	}
 	return false
+}
+
+// cloneHeaders returns an independent copy of h — both the map and every
+// value slice — so it survives in-place mutation of the source headers. Built on
+// the SDK's public GetAll() (which already deep-copies) so no policy-facing
+// surface is added for this kernel-only concern. Used to snapshot the original
+// downstream/upstream headers before policy mutation.
+func cloneHeaders(h *policy.Headers) *policy.Headers {
+	return policy.NewHeaders(h.GetAll())
+}
+
+// toRequestUpstream maps the internal wire UpstreamInfo to the request-phase SDK
+// type surfaced to policies. Returns nil when no upstream is resolved so the
+// context field is left unset (older gateways / no route upstream).
+//
+// Name is intentionally left unset: the internal Envoy cluster name must
+// not be exposed here, and the wire UpstreamInfo carries no user-facing name.
+// Policies that still need the raw cluster name can read the deprecated
+// RequestContext.UpstreamInfo field.
+func toRequestUpstream(info *policyenginev1.UpstreamInfo) *policy.UpstreamRequestContext {
+	if info == nil {
+		return nil
+	}
+	return &policy.UpstreamRequestContext{
+		URL:      info.URL,
+		BasePath: info.BasePath,
+	}
+}
+
+// toResponseUpstream maps the internal wire UpstreamInfo plus the upstream
+// response header snapshot to the response-phase SDK type. The UpstreamResponseContext
+// is always built (the response came from an upstream), with the identity fields
+// filled only when info is available. Name is left unset for the same
+// reason as toRequestUpstream — the cluster name is not exposed here.
+func toResponseUpstream(info *policyenginev1.UpstreamInfo, respHeaders *policy.Headers) *policy.UpstreamResponseContext {
+	us := &policy.UpstreamResponseContext{
+		Response: &policy.UpstreamResponse{Headers: respHeaders},
+	}
+	if info != nil {
+		us.URL = info.URL
+		us.BasePath = info.BasePath
+	}
+	return us
 }
 
 // applyRequestHeaderMutations applies RequestHeaderAction mutations from all policy

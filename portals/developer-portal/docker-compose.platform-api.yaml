@@ -19,29 +19,34 @@
 # Platform API only — for local development with npm start
 #
 # Quick start:
-#   1. Build the Platform API image from source (../../platform-api):
-#        cd ../../platform-api && make build
-#      This is required — the published 0.10.0 image on ghcr.io predates the
-#      /auth/login endpoint that the username/password login form here uses.
+#   1. Run ./scripts/setup.sh once — generates the required secrets into
+#      api-platform.env (also read directly by `npm start` below).
 #   2. docker compose -f docker-compose.platform-api.yaml up -d
 #   3. npm start
 #   4. Open http://localhost:3000
-#      Login: admin / admin
-#
-# Set AUTH_JWT_SECRET_KEY in your shell or a .env file to keep sessions alive
-# across Platform API restarts. When unset a random key is generated at startup.
+#      Login with the admin credentials ./scripts/setup.sh printed.
 
 services:
   platform-api:
-    image: ghcr.io/wso2/api-platform/platform-api:0.11.0
+    image: ghcr.io/wso2/api-platform/platform-api:0.13.0-SNAPSHOT
     container_name: platform-api
     restart: unless-stopped
-    command: ["-config", "/etc/platform-api/config-platform-api.toml"]
-    environment:
-      - AUTH_JWT_SECRET_KEY=${AUTH_JWT_SECRET_KEY:-}
+    # Mounts the single source-of-truth config shipped with the Platform API
+    # itself (../../platform-api/config/config.toml) rather than keeping a
+    # separate copy under this portal's configs/ — every portal's compose
+    # file mounts the same file.
+    command: ["-config", "/etc/platform-api/config.toml"]
+    env_file:
+      - path: api-platform.env
+        required: true
+        format: raw
     volumes:
-      - ./configs/config-platform-api.toml:/etc/platform-api/config-platform-api.toml:ro
+      - ../../platform-api/config/config.toml:/etc/platform-api/config.toml:ro
       - platform-api-data:/app/data
+      # Certs land under /app/data/certs to match the binary's compiled
+      # default cert_file/key_file paths (./data/certs/{cert,key}.pem,
+      # resolved against WORKDIR /app) — no cert path override needed.
+      - ./resources/certificates:/app/data/certs:ro
     ports:
       - "9243:9243"
     healthcheck:
@@ -50,6 +55,6 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
-
 volumes:
   platform-api-data:
+    driver: local

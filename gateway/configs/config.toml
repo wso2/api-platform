@@ -1,16 +1,25 @@
+[collector]
+request_body = false
+response_body = false
+request_headers = false
+response_headers = false
 
 [analytics]
 enabled = true
-# Deprecated: allow_payloads is preserved for backward compatibility. When true
-# and when send_request_body/send_response_body are not explicitly set, both
-# request and response bodies will be included in analytics events.
-# allow_payloads = true
-send_request_body = false
-send_response_body = false
 enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]
-application_id = "<MOESIF_APPLICATION_ID>"
+application_id = '{{ env "APIP_GW_ANALYTICS_PUBLISHERS_MOESIF_APPLICATION_ID" "<your-moesif-application-id>" }}'
+
+[traffic_logging]
+enabled = false
+masked_headers = ["authorization", "x-api-key", "x-jwt-assertion"]
+max_payload_size = 2048
+request_headers = false
+response_headers = false
+request_body = false
+response_body = false
+exclude_fields = []
 
 [router]
 gateway_host = "*"
@@ -19,22 +28,39 @@ gateway_host = "*"
 enabled = true
 
 [controller.server]
-gateway_id = "platform-gateway-id"
+gateway_id = '{{ env "APIP_GW_CONTROLLER_SERVER_GATEWAY_ID" "platform-gateway-id" }}'
+
+[controller.storage]
+type = '{{ env "APIP_GW_CONTROLLER_STORAGE_TYPE" "sqlite" }}'
+
+[controller.storage.sqlite]
+path = '{{ env "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH" "./data/gateway.db" }}'
+
+[controller.storage.database]
+dsn = '{{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN" "" }}'
 
 [policy_engine.logging]
 level = "info"
 
 [controller.logging]
-level = "info"
+level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
+
+[controller.metrics]
+port = '{{ env "APIP_GW_CONTROLLER_METRICS_PORT" "9091" }}'
 
 [controller.controlplane]
-insecure_skip_verify = true
-gateway_name = "default"
-apim_oauth2_client_id = "your-client-id"
-apim_oauth2_client_secret = "your-client-secret"
+host = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_HOST" "" }}'
+token = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN" "" }}'
+insecure_skip_verify = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY" "true" }}'
+gateway_name = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_GATEWAY_NAME" "default" }}'
+apim_oauth2_client_id = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_ID" "" }}'
+apim_oauth2_client_secret = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_SECRET" "" }}'
 # Option 2: Resource Owner Password Credentials Flow (OAuth2)
 # apim_oauth2_username = "your-username"
 # apim_oauth2_password = "your-password"
+
+[controller.policies]
+definitions_path = '{{ env "APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH" "./default-policies" }}'
 
 [controller.auth.basic]
 enabled = true

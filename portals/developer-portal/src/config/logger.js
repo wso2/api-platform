@@ -19,7 +19,6 @@
 const winston = require('winston');
 const DailyRotateFile = require('winston-daily-rotate-file');
 const path = require('path');
-const fs = require('fs');
 
 // Try to load configuration
 let config = {};
@@ -93,12 +92,34 @@ const consoleFormat = winston.format.combine(
     })
 );
 
+// JSON format for structured log aggregation (config.logging.format = "json").
+const jsonFormat = winston.format.combine(
+    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    winston.format.errors({ stack: true }),
+    winston.format.printf((info) => {
+        const { timestamp, level, message, stack, filename, line, ...metadata } = info;
+        return JSON.stringify({
+            timestamp,
+            level: level.toUpperCase(),
+            ...(filename && line ? { source: `${path.basename(filename)}:${line}` } : {}),
+            message,
+            ...(stack ? { stack } : {}),
+            ...metadata,
+        });
+    })
+);
+
+// Output format — "text" (default) or "json" — from config.logging.format.
+const useJsonFormat = (config.logging?.format || 'text') === 'json';
+const fileFormat = useJsonFormat ? jsonFormat : customFormat;
+const consoleOutputFormat = useJsonFormat ? jsonFormat : consoleFormat;
+
 // Create the logger instance
 const createTransports = () => {
     const transports = [
         // Console transport - always included
         new winston.transports.Console({
-            format: consoleFormat
+            format: consoleOutputFormat
         })
     ];
 
@@ -116,7 +137,7 @@ const createTransports = () => {
                 maxSize: '50m',
                 maxFiles: '30d',
                 level: 'debug', // Include all levels
-                format: customFormat,
+                format: fileFormat,
             })
         );
     }
@@ -124,9 +145,9 @@ const createTransports = () => {
 };
 
 const logger = winston.createLogger({
-    level: process.env.LOG_LEVEL || 'info',
+    level: config.logging?.level || 'info',
     levels: logLevels,
-    format: customFormat,
+    format: fileFormat,
     transports: createTransports(),
 });
 
@@ -138,12 +159,21 @@ let auditFileLogger = null;
 if (!consoleOnly) {
     auditFileLogger = winston.createLogger({
         level: 'info',
-        format: winston.format.combine(
-            winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-            winston.format.printf((info) => {
-                return `[${info.timestamp}][AUDIT][audit:0] ${info.message}`;
-            })
-        ),
+        format: useJsonFormat
+            ? winston.format.combine(
+                winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+                winston.format.printf((info) => JSON.stringify({
+                    timestamp: info.timestamp,
+                    level: 'AUDIT',
+                    message: info.message,
+                }))
+            )
+            : winston.format.combine(
+                winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+                winston.format.printf((info) => {
+                    return `[${info.timestamp}][AUDIT][audit:0] ${info.message}`;
+                })
+            ),
         transports: [
             new DailyRotateFile({
                 filename: path.join(process.cwd(), 'logs', 'audit-%DATE%.log'),

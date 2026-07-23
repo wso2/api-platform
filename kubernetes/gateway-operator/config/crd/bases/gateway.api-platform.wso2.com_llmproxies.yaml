@@ -16,7 +16,7 @@ spec:
     singular: llmproxy
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - name: v1
     schema:
       openAPIV3Schema:
         description: LlmProxy is the Schema for the llmproxies API.
@@ -41,6 +41,111 @@ spec:
           spec:
             description: Spec is the LLM proxy configuration payload.
             properties:
+              additionalProviders:
+                description: |-
+                  AdditionalProviders are extra LLM providers attached as selectable
+                  upstreams for multi-provider routing.
+                items:
+                  description: |-
+                    LLMProxyAdditionalProvider references an additional LlmProvider that this
+                    proxy can route to by policy-selected upstream name.
+                  properties:
+                    as:
+                      description: As is the logical upstream name used by policies.
+                        Defaults to Id.
+                      type: string
+                    auth:
+                      description: |-
+                        Auth optionally configures credentials for proxy-to-provider loopback
+                        calls when the referenced provider is protected by an auth policy.
+                      properties:
+                        header:
+                          description: |-
+                            Header is the HTTP header to set on outbound requests when the auth
+                            type uses headers (e.g. api-key).
+                          type: string
+                        type:
+                          description: Type identifies the auth scheme. Only api-key
+                            is currently supported.
+                          enum:
+                          - api-key
+                          type: string
+                        value:
+                          description: |-
+                            Value sources the credential. Exactly one of value or valueFrom must
+                            be set.
+                          properties:
+                            value:
+                              description: |-
+                                Value is the inline plaintext value. Avoid for production use; prefer
+                                ValueFrom so the secret is stored in a Kubernetes Secret.
+                              type: string
+                            valueFrom:
+                              description: |-
+                                ValueFrom selects a key from a Kubernetes Secret in the same namespace
+                                as the owning CR.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must
+                                    be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key
+                                    must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          type: object
+                          x-kubernetes-validations:
+                          - message: exactly one of value or valueFrom must be set
+                            rule: has(self.value) != has(self.valueFrom)
+                      required:
+                      - type
+                      - value
+                      type: object
+                    id:
+                      description: Id is the LlmProvider handle (metadata.name).
+                      type: string
+                    transformer:
+                      description: |-
+                        Transformer optionally applies a request/response translator when this
+                        provider is the selected upstream. The proxy injects it as a conditional
+                        policy that runs only when this provider is selected.
+                      properties:
+                        params:
+                          description: |-
+                            Params carries translator-specific parameters (for example model,
+                            apiVersion).
+                          x-kubernetes-preserve-unknown-fields: true
+                        type:
+                          description: Type is the translator policy name (for example
+                            openai-to-anthropic).
+                          type: string
+                        version:
+                          description: |-
+                            Version is the major-only translator policy version (for example v1).
+                            The Gateway Controller resolves it to the installed full version.
+                          pattern: ^v\d+$
+                          type: string
+                      required:
+                      - type
+                      - version
+                      type: object
+                  required:
+                  - id
+                  type: object
+                type: array
               context:
                 description: Context is the base path for routes (must start with
                   /).
@@ -180,6 +285,21 @@ spec:
                 required:
                 - id
                 type: object
+              resilience:
+                description: |-
+                  Resilience configures API-level backend/route timeouts applied to all routes
+                  generated for this LLM proxy. Supported at the API level only.
+                properties:
+                  idleTimeout:
+                    description: IdleTimeout Per-route stream idle timeout. "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                  timeout:
+                    description: Timeout Maximum time for the entire route (request
+                      to upstream response). "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                type: object
               version:
                 description: Version is the semantic version of the LLM proxy.
                 pattern: ^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$
@@ -278,5 +398,389 @@ spec:
         type: object
     served: true
     storage: true
+    subresources:
+      status: {}
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: LlmProxy is the Schema for the llmproxies API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Spec is the LLM proxy configuration payload.
+            properties:
+              additionalProviders:
+                description: |-
+                  AdditionalProviders are extra LLM providers attached as selectable
+                  upstreams for multi-provider routing.
+                items:
+                  description: |-
+                    LLMProxyAdditionalProvider references an additional LlmProvider that this
+                    proxy can route to by policy-selected upstream name.
+                  properties:
+                    as:
+                      description: As is the logical upstream name used by policies.
+                        Defaults to Id.
+                      type: string
+                    auth:
+                      description: |-
+                        Auth optionally configures credentials for proxy-to-provider loopback
+                        calls when the referenced provider is protected by an auth policy.
+                      properties:
+                        header:
+                          description: |-
+                            Header is the HTTP header to set on outbound requests when the auth
+                            type uses headers (e.g. api-key).
+                          type: string
+                        type:
+                          description: Type identifies the auth scheme. Only api-key
+                            is currently supported.
+                          enum:
+                          - api-key
+                          type: string
+                        value:
+                          description: |-
+                            Value sources the credential. Exactly one of value or valueFrom must
+                            be set.
+                          properties:
+                            value:
+                              description: |-
+                                Value is the inline plaintext value. Avoid for production use; prefer
+                                ValueFrom so the secret is stored in a Kubernetes Secret.
+                              type: string
+                            valueFrom:
+                              description: |-
+                                ValueFrom selects a key from a Kubernetes Secret in the same namespace
+                                as the owning CR.
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must
+                                    be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key
+                                    must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          type: object
+                          x-kubernetes-validations:
+                          - message: exactly one of value or valueFrom must be set
+                            rule: has(self.value) != has(self.valueFrom)
+                      required:
+                      - type
+                      - value
+                      type: object
+                    id:
+                      description: Id is the LlmProvider handle (metadata.name).
+                      type: string
+                    transformer:
+                      description: |-
+                        Transformer optionally applies a request/response translator when this
+                        provider is the selected upstream. The proxy injects it as a conditional
+                        policy that runs only when this provider is selected.
+                      properties:
+                        params:
+                          description: |-
+                            Params carries translator-specific parameters (for example model,
+                            apiVersion).
+                          x-kubernetes-preserve-unknown-fields: true
+                        type:
+                          description: Type is the translator policy name (for example
+                            openai-to-anthropic).
+                          type: string
+                        version:
+                          description: |-
+                            Version is the major-only translator policy version (for example v1).
+                            The Gateway Controller resolves it to the installed full version.
+                          pattern: ^v\d+$
+                          type: string
+                      required:
+                      - type
+                      - version
+                      type: object
+                  required:
+                  - id
+                  type: object
+                type: array
+              context:
+                description: Context is the base path for routes (must start with
+                  /).
+                pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$
+                type: string
+              deploymentState:
+                description: DeploymentState toggles whether the proxy is router-attached.
+                enum:
+                - deployed
+                - undeployed
+                type: string
+              displayName:
+                description: DisplayName is a human-readable LLM proxy name.
+                type: string
+              policies:
+                description: Policies is the list of policies applied to this LLM
+                  proxy.
+                items:
+                  description: LLMPolicy describes a single LLM-level policy attachment.
+                  properties:
+                    name:
+                      description: Name is the name of the policy.
+                      type: string
+                    paths:
+                      description: Paths lists path/method/params triples for this
+                        policy.
+                      items:
+                        description: |-
+                          LLMPolicyPath defines a path/methods combination together with policy
+                          parameters; mirrors the management-API LLMPolicyPath.
+                        properties:
+                          methods:
+                            description: Methods is the list of HTTP methods.
+                            items:
+                              description: HTTPMethod names an allowed HTTP verb for
+                                LLM access-control and policy paths.
+                              enum:
+                              - GET
+                              - POST
+                              - PUT
+                              - PATCH
+                              - DELETE
+                              - HEAD
+                              - OPTIONS
+                              - '*'
+                              type: string
+                            type: array
+                          params:
+                            description: Params is a free-form parameter object specific
+                              to the policy.
+                            x-kubernetes-preserve-unknown-fields: true
+                          path:
+                            description: Path is the route path pattern.
+                            type: string
+                        required:
+                        - methods
+                        - path
+                        type: object
+                      type: array
+                    version:
+                      description: Version is the policy version (e.g. v1).
+                      pattern: ^v\d+$
+                      type: string
+                  required:
+                  - name
+                  - paths
+                  - version
+                  type: object
+                type: array
+              provider:
+                description: Provider references the deployed LLM provider this proxy
+                  fronts.
+                properties:
+                  auth:
+                    description: |-
+                      Auth optionally overrides upstream credentials when calling the
+                      referenced LLM provider.
+                    properties:
+                      header:
+                        description: |-
+                          Header is the HTTP header to set on outbound requests when the auth
+                          type uses headers (e.g. api-key).
+                        type: string
+                      type:
+                        description: Type identifies the auth scheme. Only api-key
+                          is currently supported.
+                        enum:
+                        - api-key
+                        type: string
+                      value:
+                        description: |-
+                          Value sources the credential. Exactly one of value or valueFrom must
+                          be set.
+                        properties:
+                          value:
+                            description: |-
+                              Value is the inline plaintext value. Avoid for production use; prefer
+                              ValueFrom so the secret is stored in a Kubernetes Secret.
+                            type: string
+                          valueFrom:
+                            description: |-
+                              ValueFrom selects a key from a Kubernetes Secret in the same namespace
+                              as the owning CR.
+                            properties:
+                              key:
+                                description: The key of the secret to select from.  Must
+                                  be a valid secret key.
+                                type: string
+                              name:
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                type: string
+                              optional:
+                                description: Specify whether the Secret or its key
+                                  must be defined
+                                type: boolean
+                            required:
+                            - key
+                            type: object
+                            x-kubernetes-map-type: atomic
+                        type: object
+                        x-kubernetes-validations:
+                        - message: exactly one of value or valueFrom must be set
+                          rule: has(self.value) != has(self.valueFrom)
+                    required:
+                    - type
+                    - value
+                    type: object
+                  id:
+                    description: Id is the LlmProvider handle (metadata.name).
+                    type: string
+                required:
+                - id
+                type: object
+              resilience:
+                description: |-
+                  Resilience configures API-level backend/route timeouts applied to all routes
+                  generated for this LLM proxy. Supported at the API level only.
+                properties:
+                  idleTimeout:
+                    description: IdleTimeout Per-route stream idle timeout. "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                  timeout:
+                    description: Timeout Maximum time for the entire route (request
+                      to upstream response). "0s" disables.
+                    pattern: ^\d+(\.\d+)?(ms|s|m|h)$
+                    type: string
+                type: object
+              version:
+                description: Version is the semantic version of the LLM proxy.
+                pattern: ^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$
+                type: string
+              vhost:
+                description: Vhost is the virtual host for routing.
+                type: string
+            required:
+            - displayName
+            - provider
+            - version
+            type: object
+          status:
+            description: |-
+              ResourceStatus carries the controller-managed lifecycle fields shared by
+              the new management-API CRDs.
+
+              For UUID-keyed kinds (Subscription, SubscriptionPlan, Certificate) the
+              gateway-controller assigns Id on first deploy; controllers persist it and
+              use it to address the resource for subsequent update/delete calls.
+            properties:
+              conditions:
+                description: |-
+                  Conditions represent the latest available observations of the
+                  resource's state. The standard types are Accepted and Programmed.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              id:
+                description: |-
+                  Id is the gateway-issued identifier for UUID-keyed resources. When
+                  set the controller addresses the resource via PUT/DELETE /<plural>/{id}.
+                type: string
+              lastUpdateTime:
+                description: LastUpdateTime is the last time the status was updated.
+                format: date-time
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: false
     subresources:
       status: {}

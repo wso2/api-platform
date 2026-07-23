@@ -53,7 +53,7 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
 
     cy.request({
       method: 'POST',
-      url: '/api/proxy/api/portal/v0.9/auth/login',
+      url: '/proxy/api/portal/v0.9/auth/login',
       form: true,
       body: {
         username: Cypress.env('ADMIN_USER'),
@@ -63,7 +63,7 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
 
     cy.then(() =>
       cy.request({
-        url: '/api/proxy/api/v0.9/organizations',
+        url: '/proxy/api/v0.9/organizations',
         headers: { Authorization: `Bearer ${authToken}` },
       })
     ).then((r) => { organizationId = r.body?.list?.[0]?.id ?? ''; });
@@ -71,6 +71,9 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
     cy.intercept('POST', '**/projects').as('setupProject');
     cy.intercept('POST', '**/secrets').as('setupSecret');
     cy.intercept('POST', /\/mcp-proxies(\?|$)/).as('setupServer');
+    // Registered up front so it can't miss the client-side navigation to
+    // /mcp-proxy/:id right after creation (see usage below).
+    cy.intercept('GET', /\/mcp-proxies\/[^/?]+(\?|$)/).as('getServerDetails');
 
     cy.contains('Projects', { timeout: 30000 }).should('be.visible').click();
     cy.contains('button, a', /Create Project|Add New Project/, { timeout: 30000 })
@@ -133,7 +136,13 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
       createdServerId = pi.response.body?.id ?? '';
     });
 
+    // The Overview page re-fetches the server on mount and derives the initial
+    // policy list from it (ExternalServersOverview's mapPolicies effect), which
+    // itself calls GET **/policies*. Wait for that fetch to settle before
+    // switching tabs, so it can't race with the test's own '@getPolicies' wait
+    // below on 'Add Policies'.
     cy.location('pathname', { timeout: 30000 }).should('match', /\/mcp-proxy\/[^/]+$/);
+    cy.wait('@getServerDetails', { timeout: 20000 });
     cy.contains('[role="tab"]', 'Policies', { timeout: 15000 }).click();
   });
 
@@ -141,7 +150,7 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
     if (createdServerId && authToken) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(createdServerId)}`,
+        url: `/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(createdServerId)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });
@@ -150,7 +159,7 @@ describe('AI Workspace — MCP server secret management (update / policy-save fl
     if (createdProjectId && authToken) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/projects/${encodeURIComponent(createdProjectId)}`,
+        url: `/proxy/api/v0.9/projects/${encodeURIComponent(createdProjectId)}`,
         headers: { Authorization: `Bearer ${authToken}` },
         failOnStatusCode: false,
       });
@@ -219,7 +228,7 @@ describe('AI Workspace — MCP server secret management (update / no-auth server
 
     cy.request({
       method: 'POST',
-      url: '/api/proxy/api/portal/v0.9/auth/login',
+      url: '/proxy/api/portal/v0.9/auth/login',
       form: true,
       body: {
         username: Cypress.env('ADMIN_USER'),
@@ -229,13 +238,14 @@ describe('AI Workspace — MCP server secret management (update / no-auth server
 
     cy.then(() =>
       cy.request({
-        url: '/api/proxy/api/v0.9/organizations',
+        url: '/proxy/api/v0.9/organizations',
         headers: { Authorization: `Bearer ${authToken2}` },
       })
     ).then((r) => { organizationId2 = r.body?.list?.[0]?.id ?? ''; });
 
     cy.intercept('POST', '**/projects').as('setupProject2');
     cy.intercept('POST', /\/mcp-proxies(\?|$)/).as('setupServer2');
+    cy.intercept('GET', /\/mcp-proxies\/[^/?]+(\?|$)/).as('getServerDetails2');
 
     cy.contains('Projects', { timeout: 30000 }).should('be.visible').click();
     cy.contains('button, a', /Create Project|Add New Project/, { timeout: 30000 })
@@ -291,6 +301,7 @@ describe('AI Workspace — MCP server secret management (update / no-auth server
     });
 
     cy.location('pathname', { timeout: 30000 }).should('match', /\/mcp-proxy\/[^/]+$/);
+    cy.wait('@getServerDetails2', { timeout: 20000 });
     cy.contains('[role="tab"]', 'Policies', { timeout: 15000 }).click();
   });
 
@@ -298,7 +309,7 @@ describe('AI Workspace — MCP server secret management (update / no-auth server
     if (createdServerId2 && authToken2) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(createdServerId2)}`,
+        url: `/proxy/api/v0.9/mcp-proxies/${encodeURIComponent(createdServerId2)}`,
         headers: { Authorization: `Bearer ${authToken2}` },
         failOnStatusCode: false,
       });
@@ -307,7 +318,7 @@ describe('AI Workspace — MCP server secret management (update / no-auth server
     if (createdProjectId2 && authToken2) {
       cy.request({
         method: 'DELETE',
-        url: `/api/proxy/api/v0.9/projects/${encodeURIComponent(createdProjectId2)}`,
+        url: `/proxy/api/v0.9/projects/${encodeURIComponent(createdProjectId2)}`,
         headers: { Authorization: `Bearer ${authToken2}` },
         failOnStatusCode: false,
       });

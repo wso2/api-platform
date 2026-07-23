@@ -159,6 +159,40 @@ func (s *APIDeploymentService) publishEvent(eventType eventhub.EventType, action
 	}
 }
 
+// KindDeployParser parses raw deployment payload bytes into a typed config for
+// a resource kind not known to core (e.g. "WebSubApi"/"WebBrokerApi"),
+// returning the parsed config, its handle/kind, and any artifact-id annotation.
+type KindDeployParser func(parser *config.Parser, data []byte, contentType string) (parsedConfig any, handle string, kind string, annotationArtifactID string, err error)
+
+// kindDeployParsers holds KindDeployParser functions for kinds not known to
+// core — registered by an event-gateway-controller binary via
+// RegisterKindDeployParser.
+var kindDeployParsers = map[string]KindDeployParser{}
+
+// RegisterKindDeployParser registers a deployment-payload parser for a
+// resource kind not known to core. Intended to be called from an init() in a
+// binary that links in support for that kind (e.g. event-gateway-controller).
+func RegisterKindDeployParser(resourceKind string, fn KindDeployParser) {
+	kindDeployParsers[resourceKind] = fn
+}
+
+// KindConfigValidator validates a rendered configuration of a kind not known
+// to core, returning the extracted display name/version and any validation
+// errors (empty means valid).
+type KindConfigValidator func(cfg any) (apiName, apiVersion string, validationErrors []config.ValidationError)
+
+// kindConfigValidators holds KindConfigValidator functions for kinds not known
+// to core — registered by an event-gateway-controller binary via
+// RegisterKindConfigValidator.
+var kindConfigValidators = map[string]KindConfigValidator{}
+
+// RegisterKindConfigValidator registers a config validator for a resource kind
+// not known to core. Intended to be called from an init() in a binary that
+// links in support for that kind (e.g. event-gateway-controller).
+func RegisterKindConfigValidator(resourceKind string, fn KindConfigValidator) {
+	kindConfigValidators[resourceKind] = fn
+}
+
 // DeployAPIConfiguration handles the complete API configuration deployment process
 // Important: The APIDeploymentResult contains resolved secrets. Do not expose them in responses.
 func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams) (*APIDeploymentResult, error) {
@@ -193,24 +227,6 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	// Version) are extracted later from the rendered Configuration so the validator and
 	// downstream logic see resolved template values, not raw template syntax.
 	switch resolvedKind {
-	case "WebSubApi":
-		var webSubConfig api.WebSubAPI
-		if err := s.parser.Parse(params.Data, params.ContentType, &webSubConfig); err != nil {
-			return nil, fmt.Errorf("failed to parse configuration: %w", err)
-		}
-		handle = webSubConfig.Metadata.Name
-		kind = string(webSubConfig.Kind)
-		parsedConfig = webSubConfig
-		annotationArtifactID = annotationValue(webSubConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
-	case "WebBrokerApi":
-		var webBrokerConfig api.WebBrokerApi
-		if err := s.parser.Parse(params.Data, params.ContentType, &webBrokerConfig); err != nil {
-			return nil, fmt.Errorf("failed to parse configuration: %w", err)
-		}
-		handle = webBrokerConfig.Metadata.Name
-		kind = string(webBrokerConfig.Kind)
-		parsedConfig = webBrokerConfig
-		annotationArtifactID = annotationValue(webBrokerConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
 	case "RestApi":
 		var restConfig api.RestAPI
 		if err := s.parser.Parse(params.Data, params.ContentType, &restConfig); err != nil {
@@ -221,7 +237,15 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		parsedConfig = restConfig
 		annotationArtifactID = annotationValue(restConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
 	default:
-		return nil, fmt.Errorf("unsupported resource kind %q: must be \"RestApi\", \"WebSubApi\", or \"WebBrokerApi\"", resolvedKind)
+		if fn, ok := kindDeployParsers[resolvedKind]; ok {
+			var err error
+			parsedConfig, handle, kind, annotationArtifactID, err = fn(s.parser, params.Data, params.ContentType)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse configuration: %w", err)
+			}
+			break
+		}
+		return nil, fmt.Errorf("unsupported resource kind %q: must be \"RestApi\"", resolvedKind)
 	}
 
 	// Resolve API ID: explicit param > artifact-id annotation > auto-generate
@@ -296,23 +320,6 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	// Validate against the rendered Configuration and extract spec-level identifiers.
 	var apiName, apiVersion string
 	switch c := storedCfg.Configuration.(type) {
-	case api.WebSubAPI:
-		apiName = c.Spec.DisplayName
-		apiVersion = c.Spec.Version
-		validationErrors := s.validator.Validate(&c)
-		if len(validationErrors) > 0 {
-			s.logValidationErrors(params.Logger, apiID, apiName, validationErrors)
-			return nil, &ValidationErrorListError{Errors: validationErrors}
-		}
-	case api.WebBrokerApi:
-		apiName = c.Spec.DisplayName
-		apiVersion = c.Spec.Version
-		// TODO: Add validation for WebBrokerApi once validator supports it
-		// validationErrors := s.validator.Validate(&c)
-		// if len(validationErrors) > 0 {
-		// 	s.logValidationErrors(params.Logger, apiID, apiName, validationErrors)
-		// 	return nil, &ValidationErrorListError{Errors: validationErrors}
-		// }
 	case api.RestAPI:
 		apiName = c.Spec.DisplayName
 		apiVersion = c.Spec.Version
@@ -322,6 +329,15 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			return nil, &ValidationErrorListError{Errors: validationErrors}
 		}
 	default:
+		if fn, ok := kindConfigValidators[kind]; ok {
+			var validationErrors []config.ValidationError
+			apiName, apiVersion, validationErrors = fn(storedCfg.Configuration)
+			if len(validationErrors) > 0 {
+				s.logValidationErrors(params.Logger, apiID, apiName, validationErrors)
+				return nil, &ValidationErrorListError{Errors: validationErrors}
+			}
+			break
+		}
 		return nil, fmt.Errorf("unexpected configuration type %T after rendering", storedCfg.Configuration)
 	}
 	storedCfg.DisplayName = apiName
@@ -492,46 +508,28 @@ func (s *APIDeploymentService) rollbackPersistedAPIConfiguration(
 	return nil
 }
 
+// KindTopicsForUpdateFunc computes the topic register/unregister diff for a
+// resource kind not known to core (e.g. "WebSubApi"), given the shared
+// TopicManager and the (rendered) config being deployed.
+type KindTopicsForUpdateFunc func(tm *storage.TopicManager, apiConfig models.StoredConfig) (topicsToRegister, topicsToUnregister []string)
+
+// kindTopicsForUpdateFuncs holds KindTopicsForUpdateFunc functions for kinds
+// not known to core — registered by an event-gateway-controller binary via
+// RegisterKindTopicsForUpdate.
+var kindTopicsForUpdateFuncs = map[string]KindTopicsForUpdateFunc{}
+
+// RegisterKindTopicsForUpdate registers a topics-for-update diff function for
+// a resource kind not known to core. Intended to be called from an init() in
+// a binary that links in support for that kind (e.g. event-gateway-controller).
+func RegisterKindTopicsForUpdate(resourceKind string, fn KindTopicsForUpdateFunc) {
+	kindTopicsForUpdateFuncs[resourceKind] = fn
+}
+
 func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig) ([]string, []string) {
-	topics := s.store.TopicManager.GetAllByConfig(apiConfig.UUID)
-	topicsToRegister := []string{}
-	topicsToUnregister := []string{}
-	apiTopicsPerRevision := make(map[string]bool)
-
-	webSubCfg, ok := apiConfig.Configuration.(api.WebSubAPI)
-	if !ok {
-		return topicsToRegister, topicsToUnregister
+	if fn, ok := kindTopicsForUpdateFuncs[apiConfig.Kind]; ok {
+		return fn(s.store.TopicManager, apiConfig)
 	}
-	asyncData := webSubCfg.Spec
-
-	var channels map[string]api.WebSubChannel
-	if asyncData.Channels != nil {
-		channels = *asyncData.Channels
-	}
-	for chName := range channels {
-		// Remove leading '/' from name, context, version and topic path if present
-		contextWithVersion := strings.ReplaceAll(asyncData.Context, "$version", asyncData.Version)
-		contextWithVersion = strings.TrimPrefix(contextWithVersion, "/")
-		contextWithVersion = strings.ReplaceAll(contextWithVersion, "/", "_")
-		name := strings.TrimPrefix(chName, "/")
-		modifiedTopic := fmt.Sprintf("%s_%s", contextWithVersion, name)
-		apiTopicsPerRevision[modifiedTopic] = true
-	}
-
-	for _, topic := range topics {
-		if _, exists := apiTopicsPerRevision[topic]; !exists {
-			topicsToUnregister = append(topicsToUnregister, topic)
-		}
-	}
-
-	for topic := range apiTopicsPerRevision {
-		if s.store.TopicManager.IsTopicExist(apiConfig.UUID, topic) {
-			continue
-		}
-		topicsToRegister = append(topicsToRegister, topic)
-	}
-
-	return topicsToRegister, topicsToUnregister
+	return []string{}, []string{}
 }
 
 func (s *APIDeploymentService) logValidationErrors(logger *slog.Logger, apiID string, apiName string, validationErrors []config.ValidationError) {
@@ -685,62 +683,35 @@ func resolveVhostSentinels(cfg *any, routerCfg *config.RouterConfig) error {
 			}
 		}
 		*cfg = c
-	case api.WebSubAPI:
-		if c.Spec.Vhosts == nil {
-			main := routerCfg.VHosts.Main.Default
-			c.Spec.Vhosts = &struct {
-				Main    string  `json:"main" yaml:"main"`
-				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: main,
+	default:
+		if fn, ok := kindVhostSentinelResolvers[fmt.Sprintf("%T", c)]; ok {
+			resolved, err := fn(c, routerCfg)
+			if err != nil {
+				return err
 			}
-			if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
-				c.Spec.Vhosts.Sandbox = &sandboxDefault
-			}
-			*cfg = c
-			return nil
+			*cfg = resolved
 		}
-		if c.Spec.Vhosts.Main == constants.VHostGatewayDefault {
-			c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
-		}
-		if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == constants.VHostGatewayDefault {
-			resolved := routerCfg.VHosts.Sandbox.Default
-			if resolved != "" {
-				c.Spec.Vhosts.Sandbox = &resolved
-			} else {
-				c.Spec.Vhosts.Sandbox = nil
-			}
-		}
-		*cfg = c
-	case api.WebBrokerApi:
-		if c.Spec.Vhosts == nil {
-			main := routerCfg.VHosts.Main.Default
-			c.Spec.Vhosts = &struct {
-				Main    string  `json:"main" yaml:"main"`
-				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main: main,
-			}
-			if sandboxDefault := routerCfg.VHosts.Sandbox.Default; sandboxDefault != "" {
-				c.Spec.Vhosts.Sandbox = &sandboxDefault
-			}
-			*cfg = c
-			return nil
-		}
-		if c.Spec.Vhosts.Main == constants.VHostGatewayDefault {
-			c.Spec.Vhosts.Main = routerCfg.VHosts.Main.Default
-		}
-		if c.Spec.Vhosts.Sandbox != nil && *c.Spec.Vhosts.Sandbox == constants.VHostGatewayDefault {
-			resolved := routerCfg.VHosts.Sandbox.Default
-			if resolved != "" {
-				c.Spec.Vhosts.Sandbox = &resolved
-			} else {
-				c.Spec.Vhosts.Sandbox = nil
-			}
-		}
-		*cfg = c
 	}
 	return nil
+}
+
+// KindVhostSentinelResolver resolves gateway-default vhost sentinels for a
+// config type not known to core (e.g. eventgateway.WebSubAPI), returning the
+// updated config value.
+type KindVhostSentinelResolver func(cfg any, routerCfg *config.RouterConfig) (any, error)
+
+// kindVhostSentinelResolvers holds KindVhostSentinelResolver functions keyed
+// by the dynamic Go type name (fmt.Sprintf("%T", cfg)) of the config value —
+// registered by an event-gateway-controller binary via
+// RegisterKindVhostSentinelResolver.
+var kindVhostSentinelResolvers = map[string]KindVhostSentinelResolver{}
+
+// RegisterKindVhostSentinelResolver registers a vhost-sentinel resolver for a
+// config Go type (given as e.g. "eventgateway.WebSubAPI") not known to core.
+// Intended to be called from an init() in a binary that links in support for
+// that type (e.g. event-gateway-controller).
+func RegisterKindVhostSentinelResolver(goTypeName string, fn KindVhostSentinelResolver) {
+	kindVhostSentinelResolvers[goTypeName] = fn
 }
 
 // annotationValue safely reads a single annotation key from a pointer-to-map.

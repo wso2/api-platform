@@ -1,3 +1,5 @@
+//go:build integration
+
 /*
  *  Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
@@ -22,11 +24,6 @@
 // data-access behavior — pagination, multi-table writes and delete cascades —
 // so backend-specific bugs (e.g. SQL Server LIMIT/cascade-path issues) are
 // caught instead of being hidden behind the SQLite unit-test path.
-//
-// Build-tagged `integration` so it is excluded from the default `go test ./...`.
-//
-//go:build integration
-
 package integration
 
 import (
@@ -44,10 +41,24 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// Allow GetConfig() to generate an ephemeral secret_encryption_key so tests
-	// that exercise subscription_repository.go don't panic at startup.
-	os.Setenv("APIP_DEMO_MODE", "true")
-	os.Exit(m.Run())
+	// config.GetConfig() is a process-wide singleton (used by subscription_repository.go for
+	// the at-rest encryption key). It resolves keys from the config file only — env vars reach
+	// config exclusively through {{ env }} tokens now — so seed the singleton with a temp
+	// config carrying throwaway 64-hex test keys.
+	const testKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	f, err := os.CreateTemp("", "it-config-*.toml")
+	if err != nil {
+		panic(fmt.Sprintf("integration harness: create temp config: %v", err))
+	}
+	if _, err := fmt.Fprintf(f, "[platform_api.security]\nencryption_key = %q\n\n[platform_api.auth]\nmode = \"idp\"\n\n[platform_api.auth.idp]\njwks_url = \"https://example.invalid/jwks\"\nissuer = \"https://example.invalid\"\n", testKey); err != nil {
+		panic(fmt.Sprintf("integration harness: write temp config: %v", err))
+	}
+	_ = f.Close()
+	config.SetConfigPath(f.Name())
+
+	code := m.Run()
+	_ = os.Remove(f.Name())
+	os.Exit(code)
 }
 
 // itDB describes the database engine under test.

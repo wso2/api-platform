@@ -19,6 +19,8 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"strings"
@@ -37,8 +39,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/gatewayclient"
@@ -113,15 +116,17 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		log.Debug("skip HTTPRoute: no Gateway parentRefs")
 		return ctrl.Result{}, nil
 	}
-	if len(parentTargets) > 1 {
-		msg := "HTTPRoute with multiple Gateway parentRefs is not supported; use a single parent Gateway"
+	if err := validateParentGatewayTargets(parentTargets); err != nil {
+		msg := err.Error()
 		log.Info("invalid HTTPRoute parentRefs", zap.Int("gatewayParents", len(parentTargets)), zap.String("reason", msg))
 		for _, target := range parentTargets {
 			_ = r.patchHTTPRouteParentCondition(ctx, route, target.ref, metav1.Condition{
-				Type:    string(gatewayv1.RouteConditionResolvedRefs),
-				Status:  metav1.ConditionFalse,
-				Reason:  "Invalid",
-				Message: msg,
+				Type:               string(gatewayv1.RouteConditionResolvedRefs),
+				Status:             metav1.ConditionFalse,
+				Reason:             "Invalid",
+				Message:            msg,
+				ObservedGeneration: route.Generation,
+				LastTransitionTime: metav1.Now(),
 			})
 		}
 		if err := r.cleanupPreviousGatewayDeployment(ctx, route, nil, log); err != nil {
@@ -130,7 +135,6 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 	parentKey := parentTargets[0].key
-	parentRef := parentTargets[0].ref
 
 	parentGW := &gatewayv1.Gateway{}
 	if err := r.Get(ctx, parentKey, parentGW); err != nil {
@@ -163,32 +167,82 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{Requeue: true}, nil
 	}
 
+	backendResolution, err := resolveHTTPRouteBackendRefs(ctx, r.Client, route, r.Config.GatewayAPI.ClusterDomain)
+	if err != nil {
+		// Transient backend lookup failure (e.g. API read error). Report a retry reason and
+		// requeue instead of latching a permanent ResolvedRefs result on the route.
+		log.Error("resolve backend refs", zap.Error(err))
+		r.patchResolvedRefsForParents(ctx, route, parentTargets, &HTTPRouteBackendResolution{
+			AllResolved:         false,
+			FirstFailureReason:  gatewayv1.RouteConditionReason("Retrying"),
+			FirstFailureMessage: err.Error(),
+		})
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+	r.patchResolvedRefsForParents(ctx, route, parentTargets, backendResolution)
+
+	anyAttached := false
+	for _, target := range parentTargets {
+		attached, attachReason, attachMessage := evaluateHTTPRouteAttachment(ctx, r.Client, parentGW, route, target.ref)
+		if attached {
+			anyAttached = true
+			_ = r.patchHTTPRouteParentCondition(ctx, route, target.ref, metav1.Condition{
+				Type:               string(gatewayv1.RouteConditionAccepted),
+				Status:             metav1.ConditionTrue,
+				Reason:             string(gatewayv1.RouteReasonAccepted),
+				Message:            "Route attaches to parent Gateway listener",
+				ObservedGeneration: route.Generation,
+				LastTransitionTime: metav1.Now(),
+			})
+		} else {
+			log.Info("HTTPRoute does not attach to parent Gateway listener",
+				zap.String("parentSection", normalizeParentRefSectionName(target.ref)),
+				zap.String("reason", string(attachReason)),
+				zap.String("message", attachMessage))
+			_ = r.patchHTTPRouteParentCondition(ctx, route, target.ref, metav1.Condition{
+				Type:               string(gatewayv1.RouteConditionAccepted),
+				Status:             metav1.ConditionFalse,
+				Reason:             string(attachReason),
+				Message:            attachMessage,
+				ObservedGeneration: route.Generation,
+				LastTransitionTime: metav1.Now(),
+			})
+		}
+	}
+
+	if !anyAttached {
+		if err := r.cleanupPreviousGatewayDeployment(ctx, route, nil, log); err != nil {
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+		return ctrl.Result{}, nil
+	}
+
 	gwInfo, regOK := registry.GetGatewayRegistry().Get(parentKey.Namespace, parentKey.Name)
 	if !regOK {
-		log.Info("parent Gateway not registered yet; waiting")
-		_ = r.patchHTTPRouteParentCondition(ctx, route, parentRef, metav1.Condition{
-			Type:    string(gatewayv1.RouteConditionAccepted),
-			Status:  metav1.ConditionFalse,
-			Reason:  "GatewayPending",
-			Message: "Platform gateway controller endpoint not registered",
-		})
+		log.Info("parent Gateway not registered yet; waiting for deploy")
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
-	spec, err := BuildAPIConfigFromHTTPRoute(ctx, r.Client, route, r.Config.GatewayAPI.ClusterDomain, log)
+	spec, err := BuildAPIConfigFromHTTPRoute(ctx, r.Client, parentGW, route, parentTargets, backendResolution, r.Config.GatewayAPI.ClusterDomain, log)
 	if err != nil {
 		log.Error("build API config", zap.Error(err))
 		requeueAfter := time.Duration(0)
-		reason := "Invalid"
-		if !IsInvalidHTTPRouteConfigError(err) {
+		reason := string(gatewayv1.RouteReasonResolvedRefs)
+		if IsHTTPRouteBackendRefError(err) {
+			reason = string(BackendRefResolutionReason(err))
+		} else if IsInvalidHTTPRouteConfigError(err) {
+			reason = "Invalid"
+		} else if IsTransientHTTPRouteConfigError(err) {
+			requeueAfter = 30 * time.Second
+			reason = "Retrying"
+		} else {
 			requeueAfter = 30 * time.Second
 			reason = "Retrying"
 		}
-		_ = r.patchHTTPRouteParentCondition(ctx, route, parentRef, metav1.Condition{
-			Type:    string(gatewayv1.RouteConditionResolvedRefs),
-			Status:  metav1.ConditionFalse,
-			Reason:  reason,
-			Message: err.Error(),
+		r.patchResolvedRefsForParents(ctx, route, parentTargets, &HTTPRouteBackendResolution{
+			AllResolved:         false,
+			FirstFailureReason:  gatewayv1.RouteConditionReason(reason),
+			FirstFailureMessage: err.Error(),
 		})
 		if requeueAfter > 0 {
 			return ctrl.Result{RequeueAfter: requeueAfter}, nil
@@ -211,19 +265,34 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	ep := gwInfo.GetGatewayServiceEndpoint()
 	exists, err := gatewayclient.RestAPIExists(ctx, ep, handle, auth)
 	if err != nil {
-		return r.handleRESTError(ctx, route, parentRef, log, err)
+		return r.handleRESTError(ctx, route, parentTargets, log, err)
 	}
 
-	if err := gatewayclient.DeployRestAPI(ctx, ep, handle, apiYAML, exists, auth); err != nil {
-		return r.handleRESTError(ctx, route, parentRef, log, err)
+	// Skip the deploy when the freshly built payload is identical to what we last deployed and the
+	// API still exists on the gateway. Reconciles fire for many reasons (watched Gateways/Services,
+	// resyncs); without this guard every reconcile re-POSTs identical config, making the
+	// gateway-controller re-snapshot and continuously re-push xDS (route-cache churn -> 5xx).
+	// The exists check ensures we still (re)deploy after a gateway-controller restart loses the API.
+	configHash := hashRestAPIPayload(apiYAML)
+	if exists && route.Annotations[AnnHTTPRouteLastDeployedConfigHash] == configHash {
+		log.Debug("HTTPRoute config unchanged; skipping redeploy",
+			zap.String("handle", handle),
+			zap.String("configHash", configHash))
+	} else {
+		if err := gatewayclient.DeployRestAPI(ctx, ep, handle, apiYAML, exists, auth); err != nil {
+			return r.handleRESTError(ctx, route, parentTargets, log, err)
+		}
+		log.Info("HTTPRoute deployed to gateway",
+			zap.String("parentGateway", parentKey.Name),
+			zap.String("handle", handle),
+			zap.String("gatewayEndpoint", ep),
+			zap.Bool("updated", exists),
+			zap.Int("operations", len(spec.Operations)),
+			zap.Int("apiLevelPolicies", len(spec.Policies)))
+		if err := r.persistLastDeployedConfigHash(ctx, route, configHash); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
-	log.Info("HTTPRoute deployed to gateway",
-		zap.String("parentGateway", parentKey.Name),
-		zap.String("handle", handle),
-		zap.String("gatewayEndpoint", ep),
-		zap.Bool("updated", exists),
-		zap.Int("operations", len(spec.Operations)),
-		zap.Int("apiLevelPolicies", len(spec.Policies)))
 
 	if err := r.cleanupPreviousGatewayDeployment(ctx, route, &parentKey, log); err != nil {
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
@@ -232,50 +301,100 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	_ = r.patchHTTPRouteParentCondition(ctx, route, parentRef,
-		metav1.Condition{
-			Type:               string(gatewayv1.RouteConditionResolvedRefs),
-			Status:             metav1.ConditionTrue,
-			Reason:             "ResolvedRefs",
-			Message:            "Backend references resolved and API deployed to platform gateway",
-			ObservedGeneration: route.Generation,
-			LastTransitionTime: metav1.Now(),
-		},
-		metav1.Condition{
-			Type:               string(gatewayv1.RouteConditionAccepted),
-			Status:             metav1.ConditionTrue,
-			Reason:             string(gatewayv1.RouteReasonAccepted),
-			Message:            "Route accepted by platform gateway operator",
-			ObservedGeneration: route.Generation,
-			LastTransitionTime: metav1.Now(),
-		},
-	)
+	if backendResolution.AllResolved {
+		r.patchResolvedRefsForParents(ctx, route, parentTargets, backendResolution)
+	} else {
+		r.patchResolvedRefsForParents(ctx, route, parentTargets, backendResolution)
+	}
+	for _, target := range parentTargets {
+		attached, _, _ := evaluateHTTPRouteAttachment(ctx, r.Client, parentGW, route, target.ref)
+		if !attached {
+			continue
+		}
+		_ = r.patchHTTPRouteParentCondition(ctx, route, target.ref,
+			metav1.Condition{
+				Type:               string(gatewayv1.RouteConditionAccepted),
+				Status:             metav1.ConditionTrue,
+				Reason:             string(gatewayv1.RouteReasonAccepted),
+				Message:            "Route accepted by platform gateway operator",
+				ObservedGeneration: route.Generation,
+				LastTransitionTime: metav1.Now(),
+			},
+		)
+	}
 	return ctrl.Result{}, nil
 }
 
-func (r *HTTPRouteReconciler) handleRESTError(ctx context.Context, route *gatewayv1.HTTPRoute, parentRef gatewayv1.ParentReference, log *zap.Logger, err error) (ctrl.Result, error) {
+func (r *HTTPRouteReconciler) patchResolvedRefsForParents(
+	ctx context.Context,
+	route *gatewayv1.HTTPRoute,
+	parentTargets []gatewayParentTarget,
+	resolution *HTTPRouteBackendResolution,
+) {
+	now := metav1.Now()
+	gen := route.Generation
+	for _, target := range parentTargets {
+		if resolution.AllResolved {
+			_ = r.patchHTTPRouteParentCondition(ctx, route, target.ref, metav1.Condition{
+				Type:               string(gatewayv1.RouteConditionResolvedRefs),
+				Status:             metav1.ConditionTrue,
+				Reason:             string(gatewayv1.RouteReasonResolvedRefs),
+				Message:            "All backend references resolved",
+				ObservedGeneration: gen,
+				LastTransitionTime: now,
+			})
+			continue
+		}
+		reason := string(resolution.FirstFailureReason)
+		if reason == "" {
+			reason = string(gatewayv1.RouteReasonRefNotPermitted)
+		}
+		_ = r.patchHTTPRouteParentCondition(ctx, route, target.ref, metav1.Condition{
+			Type:               string(gatewayv1.RouteConditionResolvedRefs),
+			Status:             metav1.ConditionFalse,
+			Reason:             reason,
+			Message:            resolution.FirstFailureMessage,
+			ObservedGeneration: gen,
+			LastTransitionTime: now,
+		})
+	}
+}
+
+func (r *HTTPRouteReconciler) handleRESTError(ctx context.Context, route *gatewayv1.HTTPRoute, parentTargets []gatewayParentTarget, log *zap.Logger, err error) (ctrl.Result, error) {
 	log.Error("gateway REST", zap.Error(err))
+	now := metav1.Now()
+	gen := route.Generation
 	var msg string
+	var requeue time.Duration
 	switch e := err.(type) {
 	case *gatewayclient.NonRetryableError:
 		msg = e.Error()
-		_ = r.patchHTTPRouteParentCondition(ctx, route, parentRef, metav1.Condition{
-			Type:    string(gatewayv1.RouteConditionAccepted),
-			Status:  metav1.ConditionFalse,
-			Reason:  "DeploymentFailed",
-			Message: msg,
-		})
+		for _, target := range parentTargets {
+			_ = r.patchHTTPRouteParentCondition(ctx, route, target.ref, metav1.Condition{
+				Type:               string(gatewayv1.RouteConditionAccepted),
+				Status:             metav1.ConditionFalse,
+				Reason:             "DeploymentFailed",
+				Message:            msg,
+				ObservedGeneration: gen,
+				LastTransitionTime: now,
+			})
+		}
 		return ctrl.Result{}, nil
 	default:
 		msg = err.Error()
+		requeue = 15 * time.Second
 	}
-	_ = r.patchHTTPRouteParentCondition(ctx, route, parentRef, metav1.Condition{
-		Type:    string(gatewayv1.RouteConditionAccepted),
-		Status:  metav1.ConditionFalse,
-		Reason:  "Retrying",
-		Message: msg,
-	})
-	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
+	for _, target := range parentTargets {
+		_ = r.patchHTTPRouteParentCondition(ctx, route, target.ref, metav1.Condition{
+			Type:               string(gatewayv1.RouteConditionAccepted),
+			Status:             metav1.ConditionFalse,
+			Reason:             "Retrying",
+			Message:            msg,
+			ObservedGeneration: gen,
+			LastTransitionTime: now,
+		})
+	}
+	return ctrl.Result{RequeueAfter: requeue}, nil
 }
 
 func (r *HTTPRouteReconciler) reconcileDeletion(ctx context.Context, route *gatewayv1.HTTPRoute, log *zap.Logger) (ctrl.Result, error) {
@@ -354,6 +473,31 @@ func lastDeployedParentGatewayKeyFromAnnotation(route *gatewayv1.HTTPRoute) (cli
 		return client.ObjectKey{}, false
 	}
 	return client.ObjectKey{Namespace: ns, Name: name}, true
+}
+
+// hashRestAPIPayload returns a stable hex digest of the deployed RestApi payload, used to detect
+// whether an HTTPRoute's generated config actually changed between reconciles.
+func hashRestAPIPayload(apiYAML []byte) string {
+	sum := sha256.Sum256(apiYAML)
+	return hex.EncodeToString(sum[:])
+}
+
+// persistLastDeployedConfigHash records the hash of the most recently deployed RestApi payload on the
+// HTTPRoute. It only patches when the value changes, so it does not itself create a reconcile loop.
+func (r *HTTPRouteReconciler) persistLastDeployedConfigHash(ctx context.Context, route *gatewayv1.HTTPRoute, hash string) error {
+	latest := &gatewayv1.HTTPRoute{}
+	if err := r.Get(ctx, client.ObjectKeyFromObject(route), latest); err != nil {
+		return err
+	}
+	if latest.Annotations != nil && latest.Annotations[AnnHTTPRouteLastDeployedConfigHash] == hash {
+		return nil
+	}
+	base := latest.DeepCopy()
+	if latest.Annotations == nil {
+		latest.Annotations = map[string]string{}
+	}
+	latest.Annotations[AnnHTTPRouteLastDeployedConfigHash] = hash
+	return r.Patch(ctx, latest, client.MergeFrom(base))
 }
 
 func (r *HTTPRouteReconciler) persistLastDeployedParentGateway(ctx context.Context, route *gatewayv1.HTTPRoute, parentKey client.ObjectKey) error {
@@ -503,10 +647,34 @@ func payloadMetadataForHTTPRoute(route *gatewayv1.HTTPRoute, handle string) gate
 	if len(route.Annotations) > 0 {
 		md.Annotations = make(map[string]string, len(route.Annotations))
 		for k, v := range route.Annotations {
+			// Skip the operator's own reconcile-bookkeeping annotations. They are written
+			// back onto the HTTPRoute after every deploy, so including them here would make
+			// the payload — and thus its config hash — depend on the previous deploy's hash.
+			// That is self-referential: the hash never matches the stored value, the dedup
+			// guard never trips, and the reconciler redeploys in a hot loop (~50/s). These
+			// annotations are operator-internal and meaningless to the gateway-controller.
+			if isOperatorBookkeepingAnnotation(k) {
+				continue
+			}
 			md.Annotations[k] = v
+		}
+		if len(md.Annotations) == 0 {
+			md.Annotations = nil
 		}
 	}
 	return md
+}
+
+// isOperatorBookkeepingAnnotation reports whether an annotation key is one the operator
+// writes onto the HTTPRoute during reconcile (deploy hash, last parent). These must never
+// feed into the deployed payload/config hash — see payloadMetadataForHTTPRoute.
+func isOperatorBookkeepingAnnotation(key string) bool {
+	switch key {
+	case AnnHTTPRouteLastDeployedConfigHash, AnnHTTPRouteLastDeployedParentGateway:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *HTTPRouteReconciler) patchHTTPRouteParentCondition(ctx context.Context, route *gatewayv1.HTTPRoute, parentRef gatewayv1.ParentReference, conds ...metav1.Condition) error {
@@ -623,6 +791,15 @@ func (r *HTTPRouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&corev1.ConfigMap{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueHTTPRoutesForConfigMap),
 			builder.WithPredicates(configMapMutationPredicate()),
+		).
+		Watches(
+			&gatewayv1beta1.ReferenceGrant{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueHTTPRoutesForReferenceGrant),
+			builder.WithPredicates(referenceGrantMutationPredicate()),
+		).
+		Watches(
+			&gatewayv1.Gateway{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueHTTPRoutesForGateway),
 		).
 		Complete(r)
 }

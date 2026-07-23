@@ -62,9 +62,11 @@
         <i class="bi bi-book"></i> Documentation
       </a>
       {{else}}
+      {{#if schemaUrl}}
       <a class="dp-btn dp-btn--outline" href="{{{schemaUrl}}}" download>
         <i class="bi bi-download"></i> Download
       </a>
+      {{/if}}
       {{/in}}
       {{#if showApiWorkflowsNav}}
       {{#unless (eq apiMetadata.agentVisibility "HIDDEN")}}

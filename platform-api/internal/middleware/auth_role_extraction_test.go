@@ -198,3 +198,76 @@ func TestResolvePlatformRoles(t *testing.T) {
 		})
 	}
 }
+
+// TestGetStringClaim verifies that every claim_mappings field — not just
+// roles — resolves a dot-separated path into a nested claim, not only a flat
+// top-level claim name.
+func TestGetStringClaim(t *testing.T) {
+	tests := []struct {
+		name   string
+		claims jwt.MapClaims
+		path   string
+		want   string
+	}{
+		{
+			name:   "flat top-level claim",
+			claims: jwt.MapClaims{"org_id": "acme"},
+			path:   "org_id",
+			want:   "acme",
+		},
+		{
+			name: "nested path into a sub-object",
+			claims: jwt.MapClaims{
+				"realm_access": map[string]interface{}{"org_id": "acme"},
+			},
+			path: "realm_access.org_id",
+			want: "acme",
+		},
+		{
+			name: "deeply nested path",
+			claims: jwt.MapClaims{
+				"a": map[string]interface{}{
+					"b": map[string]interface{}{"email": "user@example.com"},
+				},
+			},
+			path: "a.b.email",
+			want: "user@example.com",
+		},
+		{
+			name:   "missing claim returns empty string",
+			claims: jwt.MapClaims{"org_id": "acme"},
+			path:   "missing",
+			want:   "",
+		},
+		{
+			name: "path through a non-object value returns empty string",
+			claims: jwt.MapClaims{
+				"org_id": "acme",
+			},
+			path: "org_id.nested",
+			want: "",
+		},
+		{
+			name:   "empty path returns empty string",
+			claims: jwt.MapClaims{"org_id": "acme"},
+			path:   "",
+			want:   "",
+		},
+		{
+			name: "non-string value at path returns empty string",
+			claims: jwt.MapClaims{
+				"org_id": []interface{}{"acme"},
+			},
+			path: "org_id",
+			want: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := getStringClaim(tc.claims, tc.path); got != tc.want {
+				t.Errorf("getStringClaim() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

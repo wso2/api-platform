@@ -83,7 +83,7 @@ export default function GatewaysList() {
   // Prefetch environments so they're available when navigating to Add/Edit views
   useEnvironments();
 
-  const newGatewayPath = buildOrgPath(currentOrganization, '/gateways/new');
+  const newGatewayPath = buildOrgPath(currentOrganization, '/gateways/create');
   const aiGatewayCount = gateways.filter(
     (gateway) => gateway.functionalityType === 'ai'
   ).length;

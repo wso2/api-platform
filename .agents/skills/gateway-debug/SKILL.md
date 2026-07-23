@@ -117,6 +117,13 @@ cd "$REPO_ROOT/gateway" && docker compose down
 
 ## Step 2: Prepare the environment
 
+> **One-time provisioning (required before the first `docker compose up`).** Run `./scripts/setup.sh`
+> once from `<REPO_ROOT>/gateway` — it generates `api-platform.env` (required runtime defaults), the
+> router's HTTPS listener certificate, and the AES-256 at-rest encryption key. The gateway never
+> auto-generates keys/certs and has no demo mode: the compose `env_file:` is now `required: true`
+> (a missing `api-platform.env` fails `docker compose up`), and the controller exits at startup if the
+> encryption key is missing. Full reference: [Gateway Quick Start](../../../docs/gateway/quick-start-guide.md).
+
 > **Compose target — pick one before editing anything.** Step 2 (and Step 8
 > cleanup) operates on **one** compose file. Subsequent substeps reference
 > "the compose file" generically:
@@ -191,7 +198,8 @@ Confirm:
 - `ls "$REPO_ROOT/gateway/gateway-runtime/policy-engine/cmd/policy-engine/" | grep -E 'plugin_registry|build_info'` — both files should exist (gitignored).
 
 > Builder output is also where the controller reads policy definitions from
-> (`APIP_GW_CONTROLLER_POLICIES_DEFINITIONS__PATH` in `.vscode/launch.json`).
+> (`controller.policies.definitions_path`, wired to `APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH`
+> via a `{{ env }}` token in the config — the prefix override no longer applies on its own).
 > If the controller starts and complains it can't load policy definitions,
 > you skipped the builder.
 
@@ -230,6 +238,17 @@ immediately and you can attach / detach freely.
 The blocks below extract those env vars and run `dlv` from a single Bash
 invocation.
 
+> ⚠️ **Config change — the `APIP_GW_` prefix override was removed.** The gateway loaders now read
+> **only** the `-config` file layered over defaults; an environment value reaches a setting solely
+> through a `{{ env "NAME" }}` interpolation token in that file. The `APIP_GW_*` env vars below
+> therefore take effect **only** for keys whose config value is a matching token. `configs/config.toml`
+> currently tokenizes storage, control-plane, logging, metrics and the policies path — but **not** the
+> machine-specific dev paths (LLM-template dir, downstream TLS cert/key, lua script) or the local
+> tcp policy-engine/analytics split used here. For from-source `dlv` runs, point `-config` at a
+> **local, git-ignored** `config.toml` (copied from `configs/config-template.toml`) with those values
+> filled in — or add `{{ env }}` tokens for them to that local config so the variables below apply.
+> _Follow-up: ship a ready-made dev `config.toml` template for this recipe._
+
 ### 3a. Gateway Controller (dlv on `127.0.0.1:2345`)
 
 ```bash
@@ -251,7 +270,6 @@ APIP_GW_CONTROLLER_POLICIES_DEFINITIONS__PATH="$REPO_ROOT/gateway/gateway-builde
 APIP_GW_ROUTER_POLICY__ENGINE_MODE=tcp \
 APIP_GW_ROUTER_POLICY__ENGINE_HOST=host.docker.internal \
 APIP_GW_ANALYTICS_GRPC__EVENT__SERVER_MODE=tcp \
-APIP_GW_DEVELOPMENT_MODE=true \
 APIP_GW_IMMUTABLE__GATEWAY_ENABLED=false \
 APIP_GW_IMMUTABLE__GATEWAY_ARTIFACTS__DIR="$REPO_ROOT/gateway/examples" \
 dlv debug ./cmd/controller \

@@ -22,7 +22,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
@@ -39,7 +39,7 @@ func NewCustomPolicyRepo(db *database.DB) CustomPolicyRepository {
 
 // InsertCustomPolicy inserts or updates a custom policy by (organization_uuid, name, version).
 func (r *CustomPolicyRepo) InsertCustomPolicy(policy *model.CustomPolicy) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	query := r.db.BuildUpsertQuery(
 		"gateway_custom_policies",
 		[]string{"uuid", "organization_uuid", "name", "display_name", "version", "description", "policy_definition", "created_by", "updated_by", "created_at", "updated_at"},
@@ -113,7 +113,7 @@ func (r *CustomPolicyRepo) ListCustomPolicyByOrganization(orgUUID string) ([]*mo
 
 // UpdateCustomPolicy updates an existing policy's version and definition identified by (org, name, oldVersion).
 func (r *CustomPolicyRepo) UpdateCustomPolicy(policy *model.CustomPolicy, oldVersion string) error {
-	now := time.Now()
+	now := time.Now().UTC()
 	query := `
 		UPDATE gateway_custom_policies
 		SET version = ?, display_name = ?, description = ?, policy_definition = ?, updated_by = ?, updated_at = ?
@@ -232,6 +232,26 @@ func (r *CustomPolicyRepo) DeleteCustomPolicyUsage(policyUUID, apiUUID string) e
 	return err
 }
 
+// replaceCustomPolicyUsagesTx atomically replaces every custom-policy usage for
+// an artifact. It is used from artifact persistence transactions so the artifact
+// configuration and its deletion guards cannot diverge.
+func replaceCustomPolicyUsagesTx(tx *sql.Tx, db *database.DB, artifactUUID string, policyUUIDs []string) error {
+	if _, err := tx.Exec(db.Rebind(`DELETE FROM gateway_custom_policy_usages WHERE artifact_uuid = ?`), artifactUUID); err != nil {
+		return err
+	}
+	seen := make(map[string]struct{}, len(policyUUIDs))
+	for _, policyUUID := range policyUUIDs {
+		if _, exists := seen[policyUUID]; exists {
+			continue
+		}
+		seen[policyUUID] = struct{}{}
+		if _, err := tx.Exec(db.Rebind(`INSERT INTO gateway_custom_policy_usages (policy_uuid, artifact_uuid) VALUES (?, ?)`), policyUUID, artifactUUID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // DeleteCustomPolicyIfUnused atomically deletes the policy only when it has no active usages.
 func (r *CustomPolicyRepo) DeleteCustomPolicyIfUnused(orgUUID, policyUUID string) error {
 	deleteQuery := `
@@ -262,7 +282,7 @@ func (r *CustomPolicyRepo) DeleteCustomPolicyIfUnused(orgUUID, policyUUID string
 		return err
 	}
 	if count == 0 {
-		return constants.ErrCustomPolicyNotFound
+		return apperror.CustomPolicyNotFound.New()
 	}
-	return constants.ErrCustomPolicyInUse
+	return apperror.PolicyInUse.New()
 }

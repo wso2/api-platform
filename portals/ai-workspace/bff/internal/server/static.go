@@ -36,8 +36,12 @@ func spaHandler(staticDir string) http.Handler {
 		clean := filepath.Clean(r.URL.Path)
 		full := filepath.Join(staticDir, clean)
 
-		// Prevent path traversal outside staticDir.
-		if !strings.HasPrefix(full, filepath.Clean(staticDir)) {
+		// Prevent path traversal outside staticDir. Assert containment against
+		// the root with a trailing separator so a sibling dir whose name merely
+		// shares the prefix (e.g. root "/var/www" vs "/var/www-secret") cannot
+		// pass a bare HasPrefix check.
+		root := filepath.Clean(staticDir)
+		if full != root && !strings.HasPrefix(full, root+string(filepath.Separator)) {
 			http.NotFound(w, r)
 			return
 		}

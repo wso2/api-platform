@@ -95,18 +95,19 @@ func TestExtractSecretHandle(t *testing.T) {
 func buildTestServer(t *testing.T, platformURL, jwt string) (*Server, *httptest.Server) {
 	t.Helper()
 
-	transport := proxy.NewTransport(true)
+	transport, err := proxy.NewTransport(proxy.TLSClientOptions{SkipVerify: true})
+	if err != nil {
+		t.Fatalf("NewTransport: %v", err)
+	}
 
 	cfg := &config.Config{
-		PlatformAPIURL: platformURL,
-		ProxyPrefix:    "/api/proxy",
-		Cookie:         config.CookieConfig{Name: "_bff_session"},
-		CSRFHeader:     "X-Requested-By",
+		ControlPlane: config.ControlPlaneConfig{URL: platformURL, ProxyPrefix: "/proxy"},
+		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
 	}
 
 	s := &Server{
 		cfg:          cfg,
-		proxy:        proxy.ReverseProxy(mustParseURL(platformURL), cfg.ProxyPrefix, transport),
+		proxy:        proxy.ReverseProxy(mustParseURL(platformURL), cfg.ControlPlane.ProxyPrefix, transport),
 		refreshLocks: make(map[string]*refreshLock),
 	}
 
@@ -137,7 +138,7 @@ type recordedRequest struct {
 	auth   string
 }
 
-func fakePlatformAPI(t *testing.T, responses map[string]struct {
+func fakeControlPlane(t *testing.T, responses map[string]struct {
 	status int
 	body   string
 }) (*httptest.Server, *[]recordedRequest) {
@@ -165,7 +166,10 @@ func fakePlatformAPI(t *testing.T, responses map[string]struct {
 }
 
 func TestHandleCreateWithSecretCompensation_Success(t *testing.T) {
-	platform, calls := fakePlatformAPI(t, map[string]struct{ status int; body string }{
+	platform, calls := fakeControlPlane(t, map[string]struct {
+		status int
+		body   string
+	}{
 		"POST /api/v0.9/llm-providers": {http.StatusCreated, `{"id":"prov-1"}`},
 	})
 
@@ -233,7 +237,10 @@ func TestHandleCreateWithSecretCompensation_ProviderFailTriggersDelete(t *testin
 }
 
 func TestHandleCreateWithSecretCompensation_NoSecretNoDelete(t *testing.T) {
-	platform, calls := fakePlatformAPI(t, map[string]struct{ status int; body string }{
+	platform, calls := fakeControlPlane(t, map[string]struct {
+		status int
+		body   string
+	}{
 		"POST /api/v0.9/llm-providers": {http.StatusBadRequest, `{"error":"bad request"}`},
 	})
 
@@ -260,16 +267,18 @@ func TestHandleCreateWithSecretCompensation_NoSecretNoDelete(t *testing.T) {
 }
 
 func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
-	platform, _ := fakePlatformAPI(t, nil)
+	platform, _ := fakeControlPlane(t, nil)
 	cfg := &config.Config{
-		PlatformAPIURL: platform.URL,
-		ProxyPrefix:    "/api/proxy",
-		Cookie:         config.CookieConfig{Name: "_bff_session"},
+		ControlPlane: config.ControlPlaneConfig{URL: platform.URL, ProxyPrefix: "/proxy"},
+		Cookie:       config.CookieConfig{Name: "_ai_workspace_session"},
 	}
-	transport := proxy.NewTransport(true)
+	transport, err := proxy.NewTransport(proxy.TLSClientOptions{SkipVerify: true})
+	if err != nil {
+		t.Fatalf("NewTransport: %v", err)
+	}
 	s := &Server{
 		cfg:          cfg,
-		proxy:        proxy.ReverseProxy(mustParseURL(platform.URL), cfg.ProxyPrefix, transport),
+		proxy:        proxy.ReverseProxy(mustParseURL(platform.URL), cfg.ControlPlane.ProxyPrefix, transport),
 		refreshLocks: make(map[string]*refreshLock),
 	}
 
@@ -283,8 +292,10 @@ func TestHandleCreateWithSecretCompensation_Unauthenticated(t *testing.T) {
 	}
 	var body map[string]string
 	_ = json.NewDecoder(w.Body).Decode(&body)
-	if body["error"] != "not authenticated" {
-		t.Errorf("error = %q, want %q", body["error"], "not authenticated")
+	if body["code"] != "UNAUTHORIZED" {
+		t.Errorf("code = %q, want %q", body["code"], "UNAUTHORIZED")
+	}
+	if body["message"] != "Invalid or expired credentials." {
+		t.Errorf("message = %q, want %q", body["message"], "Invalid or expired credentials.")
 	}
 }
-

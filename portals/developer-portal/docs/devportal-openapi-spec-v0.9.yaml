@@ -184,21 +184,24 @@ paths:
         - $ref: "#/components/parameters/orgContentFileTypeQuery"
         - $ref: "#/components/parameters/orgContentFileNameQuery"
         - $ref: "#/components/parameters/filePathQuery"
+        - name: orgId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >-
+            Organization ID used to resolve a view's public style/image asset when no
+            session is present (e.g. the pre-auth login page). Ignored for authenticated
+            requests, which use the session organization.
       responses:
         "200":
           $ref: "#/components/responses/OrganizationContentAssetResponse"
         "400":
-          description: Invalid or missing `fileType`/`fileName` query parameters.
-          content:
-            text/plain:
-              schema:
-                type: string
+          $ref: "#/components/responses/BadRequest"
         "404":
-          description: No matching organization content asset was found.
-          content:
-            text/plain:
-              schema:
-                type: string
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
       security: []
   /views/{viewId}/apply-theme:
     parameters:
@@ -242,6 +245,34 @@ paths:
         - OAuth2Security:
             - dp:org_content_manage
             - dp:org_manage
+  /views/{viewId}/export-theme:
+    parameters:
+      - $ref: "#/components/parameters/viewId"
+    get:
+      tags:
+        - Organization Content
+      summary: Download the current theme
+      description: >-
+        Bundles the view's current custom theme assets into a single ZIP archive for download.
+        The archive is wrapped in a top-level folder so it can be re-uploaded via the apply-theme
+        endpoint. Returns 404 when the view has no custom theme.
+      operationId: exportTheme
+      responses:
+        "200":
+          description: Theme archive.
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:org_content_read
+            - dp:org_manage
   /apis:
     post:
       tags:
@@ -249,17 +280,17 @@ paths:
       summary: Create API metadata
       description: >-
         Creates Developer Portal API metadata from either a full API artifact ZIP, an API metadata YAML file (`api.yaml`
-        / `devportal.yaml` / `mcp.yaml`), or an `apiMetadata` JSON string. An API definition file is required unless
+        / `devportal.yaml` / `mcp.yaml`), or a `metadata` JSON string. An API definition file is required unless
         supplied by the artifact ZIP. The YAML `spec` block accepts: `displayName`, `version`, `description`, `type`,
         `status`, `agentVisibility`, `tags`, `labels`,
         `referenceId`, `endpoints` (sandboxUrl, productionUrl), `businessInformation` (owners), and `subscriptionPlans`.
         The service also stores labels, subscription plan mappings, image metadata, and schema definitions for
-        GraphQL APIs when provided. Via the JSON `apiMetadata` field, `type` is required — an omitted type is
+        GraphQL APIs when provided. Via the JSON `metadata` field, `type` is required — an omitted type is
         rejected with `400` (via YAML, an omitted `spec.type` defaults to `REST`). MCP servers must be created via
         `POST /api/v0.9/mcp-servers` instead — a request whose resolved `type` is `MCP` is rejected with `400`.
 
         `subscriptionPlans` links existing org-level plans to this API by name — it does not create plans. In YAML it is
-        a string array (`["Gold", "Silver"]`). In the JSON `apiMetadata` field it is an object array where only
+        a string array (`["Gold", "Silver"]`). In the JSON `metadata` field it is an object array where only
         `id` is used (`[{"id":"Gold"}]`); extra fields such as `planId`, `displayName`, or `requestCount`
         are ignored.
       operationId: createApiMetadata
@@ -290,11 +321,11 @@ paths:
         are never returned here — use `GET /api/v0.9/mcp-servers`.
       operationId: getAllApiMetadataForOrganization
       parameters:
-        - $ref: "#/components/parameters/apiSearchQuery"
-        - $ref: "#/components/parameters/apiNameQuery"
-        - $ref: "#/components/parameters/apiVersionQuery"
-        - $ref: "#/components/parameters/apiTagsQuery"
-        - $ref: "#/components/parameters/apiViewQuery"
+        - $ref: "#/components/parameters/searchQuery"
+        - $ref: "#/components/parameters/nameQuery"
+        - $ref: "#/components/parameters/versionQuery"
+        - $ref: "#/components/parameters/tagsQuery"
+        - $ref: "#/components/parameters/viewQuery"
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
       responses:
@@ -336,7 +367,7 @@ paths:
       summary: Update API metadata
       description: >-
         Updates Developer Portal API metadata and its stored definition. Accepts the same YAML spec fields and
-        `apiMetadata` JSON format as the create operation. The update flow can also adjust label mappings, subscription
+        `metadata` JSON format as the create operation. The update flow can also adjust label mappings, subscription
         plan mappings, schema definitions, and image metadata. Status changes to unpublished are rejected when active
         subscriptions exist. `type` is required (see the create operation) and is immutable — it must match the
         API's existing type; a different value is rejected with `409`.
@@ -511,7 +542,7 @@ paths:
       description: |
         Uploads the static content package for an API.
 
-        The `apiContent` ZIP must contain at least one of these root directories:
+        The `content` ZIP must contain at least one of these root directories:
         - `web/` for API landing-page assets such as markdown, HTML, CSS, JavaScript, and images.
         - `docs/` for downloadable API documents.
 
@@ -519,7 +550,7 @@ paths:
         Use `imageMetadata` to map uploaded images to API image roles such as the API icon.
       operationId: createApiContent
       requestBody:
-        $ref: "#/components/requestBodies/ApiContentZipMultipartBody"
+        $ref: "#/components/requestBodies/ContentZipMultipartBody"
       responses:
         "201":
           $ref: "#/components/responses/MessageResponse"
@@ -545,7 +576,7 @@ paths:
         Image metadata is updated only when image metadata can be resolved from the upload or request body.
       operationId: replaceApiContent
       requestBody:
-        $ref: "#/components/requestBodies/ApiContentZipMultipartBody"
+        $ref: "#/components/requestBodies/ContentZipMultipartBody"
       responses:
         "201":
           $ref: "#/components/responses/MessageResponse"
@@ -569,17 +600,28 @@ paths:
         The `type` query parameter selects the stored content category and `fileName` selects the file
         within that category. Text files and external document links are returned as text. Image files are
         returned as binary content with a media type derived from the file extension.
+
+        Image files (`type=IMAGE`) are publicly readable so that an API's icon renders on the public
+        listing and landing pages without a session — pass `orgId` to resolve the view when no session
+        is present (mirrors `GET /views/{viewId}/asset`). All other content categories require a session:
+        an anonymous request for a non-image type is rejected.
       operationId: getApiContentFile
-      security:
-        - OAuth2Security:
-            - dp:api_content_read
-            - dp:api_content_manage
+      security: []
       parameters:
-        - $ref: "#/components/parameters/apiContentTypeQuery"
-        - $ref: "#/components/parameters/apiContentFileNameQuery"
+        - $ref: "#/components/parameters/contentTypeQuery"
+        - $ref: "#/components/parameters/contentFileNameQuery"
+        - name: orgId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >-
+            Organization ID used to resolve the API's public image asset when no session is present
+            (e.g. the pre-auth listing/landing page). Ignored for authenticated requests, which use the
+            session organization. Only honored for `type=IMAGE`.
       responses:
         "200":
-          $ref: "#/components/responses/APIContentAssetResponse"
+          $ref: "#/components/responses/ContentAssetResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -597,7 +639,7 @@ paths:
         files matching that content category for the API.
       operationId: deleteApiContentFile
       parameters:
-        - $ref: "#/components/parameters/apiContentTypeQuery"
+        - $ref: "#/components/parameters/contentTypeQuery"
         - $ref: "#/components/parameters/fileNameQuery"
       responses:
         "204":
@@ -650,6 +692,9 @@ paths:
       summary: List labels
       description: Returns all labels configured for the organization.
       operationId: listLabels
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/LabelsResponse"
@@ -877,18 +922,18 @@ paths:
                 $ref: "#/components/schemas/SubscriptionResponse"
               example:
                 subscriptionId: sub-12345
-                apiId: weather-api-v1
+                artifactId: weather-api-v1
                 subscriptionToken: a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1
                 subscriptionPlanName: Gold
                 status: ACTIVE
                 createdBy: alice@example.com
                 createdAt: "2026-05-07T08:30:00Z"
         "400":
-          $ref: "#/components/responses/SimpleBadRequest"
+          $ref: "#/components/responses/BadRequest"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "409":
-          $ref: "#/components/responses/SimpleConflict"
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -901,25 +946,25 @@ paths:
       operationId: listSubscriptions
       summary: List subscriptions
       description: >-
-        Lists subscriptions owned by the authenticated user. When `apiId` is provided, results are additionally filtered
+        Lists subscriptions owned by the authenticated user. When `artifactId` is provided, results are additionally filtered
         by the Developer Portal API ID.
       parameters:
-        - $ref: "#/components/parameters/apiIdQueryOptional"
+        - $ref: "#/components/parameters/artifactIdQueryOptional"
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
       responses:
         "200":
           $ref: "#/components/responses/SubscriptionListResponse"
         "404":
-          description: Returned when `apiId` is provided but does not match an existing API.
+          description: Returned when `artifactId` is provided but does not match an existing API.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SimpleErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               example:
-                code: "404"
-                message: Not Found
-                description: API not found
+                status: error
+                code: RESOURCE_NOT_FOUND
+                message: API not found
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -939,7 +984,7 @@ paths:
         "200":
           $ref: "#/components/responses/SubscriptionResponse"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -958,9 +1003,9 @@ paths:
         "200":
           $ref: "#/components/responses/SubscriptionResponse"
         "400":
-          $ref: "#/components/responses/SimpleBadRequest"
+          $ref: "#/components/responses/BadRequest"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -977,7 +1022,7 @@ paths:
         "200":
           $ref: "#/components/responses/MessageResponse"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1002,9 +1047,9 @@ paths:
         "200":
           $ref: "#/components/responses/SubscriptionResponse"
         "400":
-          $ref: "#/components/responses/SimpleBadRequest"
+          $ref: "#/components/responses/BadRequest"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1028,12 +1073,37 @@ paths:
         "200":
           $ref: "#/components/responses/SubscriptionResponse"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
         - OAuth2Security:
             - dp:subscription_manage
+  /api-keys:
+    get:
+      tags:
+        - API Keys
+      operationId: listAllApiKeys
+      summary: List all API keys for the current user
+      description: >-
+        Lists every API key created by the authenticated user across all APIs in the
+        organization. Powers the Developer Portal's global "API Keys" page. Each item
+        additionally carries the owning API's name, version, and type. Secret material
+        is never returned.
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          $ref: "#/components/responses/ApiKeyListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+      security:
+        - OAuth2Security:
+            - dp:api_key_read
+            - dp:api_key_manage
   /apis/{apiId}/api-keys/generate:
     parameters:
       - $ref: "#/components/parameters/apiId"
@@ -1064,18 +1134,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiKeyResponse"
               example:
-                keyId: key-12345
                 id: weather_prod_key
                 displayName: Weather Prod Key
                 key: ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ
                 expiresAt: "2026-12-31T23:59:59Z"
                 status: ACTIVE
         "400":
-          $ref: "#/components/responses/SimpleBadRequest"
+          $ref: "#/components/responses/BadRequest"
         "403":
-          $ref: "#/components/responses/SimpleForbidden"
+          $ref: "#/components/responses/Forbidden"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1124,17 +1193,18 @@ paths:
         "200":
           $ref: "#/components/responses/ApiKeyGenerateResponse"
         "403":
-          $ref: "#/components/responses/SimpleForbidden"
+          $ref: "#/components/responses/Forbidden"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "409":
           description: The key has already been revoked and cannot be regenerated.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SimpleErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               example:
-                code: "409"
+                status: error
+                code: CONFLICT
                 message: Cannot regenerate a revoked key
         "500":
           $ref: "#/components/responses/InternalServerError"
@@ -1160,17 +1230,18 @@ paths:
         "204":
           description: API key revoked successfully.
         "403":
-          $ref: "#/components/responses/SimpleForbidden"
+          $ref: "#/components/responses/Forbidden"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "409":
           description: The key has already been revoked.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SimpleErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               example:
-                code: "409"
+                status: error
+                code: CONFLICT
                 message: Key already revoked or not found
         "500":
           $ref: "#/components/responses/InternalServerError"
@@ -1200,19 +1271,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiKeyApplicationResponse"
         "400":
-          $ref: "#/components/responses/SimpleBadRequest"
+          $ref: "#/components/responses/BadRequest"
         "403":
-          $ref: "#/components/responses/SimpleForbidden"
+          $ref: "#/components/responses/Forbidden"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "409":
           description: The key has already been revoked and cannot be associated with an application.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SimpleErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               example:
-                code: "409"
+                status: error
+                code: CONFLICT
                 message: Cannot associate a revoked key
         "500":
           $ref: "#/components/responses/InternalServerError"
@@ -1237,9 +1309,9 @@ paths:
         "204":
           description: Association removed (or none existed).
         "403":
-          $ref: "#/components/responses/SimpleForbidden"
+          $ref: "#/components/responses/Forbidden"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1252,13 +1324,15 @@ paths:
         - MCP Servers
       summary: Create MCP server metadata
       description: >-
-        Creates Developer Portal MCP server metadata. Mirrors `POST /api/v0.9/apis` — same artifact ZIP, YAML
-        (`api.yaml` / `devportal.yaml` / `mcp.yaml`), and `apiMetadata` JSON input formats — but the created record is
-        always typed `MCP`. Via the JSON `apiMetadata` field, `type` must be explicitly `MCP`; an omitted type or any
-        other value is rejected with a 400 (use `POST /api/v0.9/apis` instead).
+        Creates Developer Portal MCP server metadata. Accepts the same metadata input formats as
+        `POST /api/v0.9/apis` (artifact ZIP, `api.yaml` / `devportal.yaml` / `mcp.yaml`, or `metadata` JSON),
+        but the created record is always typed `MCP`. An MCP server's contract is its `definition` (tools schema) — the
+        tools, resources, and prompts it exposes — not an OpenAPI-style API contract; a `definition` is
+        required. Via the JSON `metadata` field, `type` must be
+        explicitly `MCP`; an omitted type or any other value is rejected with a 400 (use `POST /api/v0.9/apis`).
       operationId: createMcpServer
       requestBody:
-        $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
+        $ref: "#/components/requestBodies/McpServerMultipartBody"
       responses:
         "201":
           $ref: "#/components/responses/McpServerCreateResponse"
@@ -1283,11 +1357,11 @@ paths:
         records.
       operationId: getAllMcpServersForOrganization
       parameters:
-        - $ref: "#/components/parameters/apiSearchQuery"
-        - $ref: "#/components/parameters/apiNameQuery"
-        - $ref: "#/components/parameters/apiVersionQuery"
-        - $ref: "#/components/parameters/apiTagsQuery"
-        - $ref: "#/components/parameters/apiViewQuery"
+        - $ref: "#/components/parameters/searchQuery"
+        - $ref: "#/components/parameters/nameQuery"
+        - $ref: "#/components/parameters/versionQuery"
+        - $ref: "#/components/parameters/tagsQuery"
+        - $ref: "#/components/parameters/viewQuery"
         - $ref: "#/components/parameters/limit"
         - $ref: "#/components/parameters/offset"
       responses:
@@ -1328,12 +1402,13 @@ paths:
         - MCP Servers
       summary: Update MCP server metadata
       description: >-
-        Updates Developer Portal MCP server metadata and its stored definition. Mirrors `PUT /api/v0.9/apis/{apiId}`,
-        including `type` being required and immutable — it must stay `MCP`; any other value is rejected with `400`,
-        via the same resolveTypeOrReject check `POST /mcp-servers` uses.
+        Updates Developer Portal MCP server metadata and, when a `definition` is supplied, its stored
+        tools schema. `type` is required and immutable — it must stay `MCP`; any other value is rejected with
+        `400` via the same resolveTypeOrReject check `POST /mcp-servers` uses. An MCP server's `definition`
+        is its tools schema, not an OpenAPI-style API contract.
       operationId: updateMcpServer
       requestBody:
-        $ref: "#/components/requestBodies/ApiMetadataMultipartBody"
+        $ref: "#/components/requestBodies/McpServerMultipartBody"
       responses:
         "200":
           $ref: "#/components/responses/McpServerResponse"
@@ -1381,7 +1456,7 @@ paths:
         Uploads the static content package for an MCP server. Mirrors `POST /api/v0.9/apis/{apiId}/assets`.
       operationId: createMcpServerContent
       requestBody:
-        $ref: "#/components/requestBodies/ApiContentZipMultipartBody"
+        $ref: "#/components/requestBodies/ContentZipMultipartBody"
       responses:
         "201":
           $ref: "#/components/responses/MessageResponse"
@@ -1403,7 +1478,7 @@ paths:
         Replaces or adds static content files for an existing MCP server. Mirrors `PUT /api/v0.9/apis/{apiId}/assets`.
       operationId: replaceMcpServerContent
       requestBody:
-        $ref: "#/components/requestBodies/ApiContentZipMultipartBody"
+        $ref: "#/components/requestBodies/ContentZipMultipartBody"
       responses:
         "201":
           $ref: "#/components/responses/MessageResponse"
@@ -1428,11 +1503,11 @@ paths:
             - dp:mcp_content_read
             - dp:mcp_content_manage
       parameters:
-        - $ref: "#/components/parameters/apiContentTypeQuery"
-        - $ref: "#/components/parameters/apiContentFileNameQuery"
+        - $ref: "#/components/parameters/contentTypeQuery"
+        - $ref: "#/components/parameters/contentFileNameQuery"
       responses:
         "200":
-          $ref: "#/components/responses/APIContentAssetResponse"
+          $ref: "#/components/responses/ContentAssetResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -1447,7 +1522,7 @@ paths:
         Deletes stored MCP server content. Mirrors `DELETE /api/v0.9/apis/{apiId}/assets`.
       operationId: deleteMcpServerContentFile
       parameters:
-        - $ref: "#/components/parameters/apiContentTypeQuery"
+        - $ref: "#/components/parameters/contentTypeQuery"
         - $ref: "#/components/parameters/fileNameQuery"
       responses:
         "204":
@@ -1488,11 +1563,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiKeyResponse"
         "400":
-          $ref: "#/components/responses/SimpleBadRequest"
+          $ref: "#/components/responses/BadRequest"
         "403":
-          $ref: "#/components/responses/SimpleForbidden"
+          $ref: "#/components/responses/Forbidden"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1540,17 +1615,18 @@ paths:
         "200":
           $ref: "#/components/responses/ApiKeyGenerateResponse"
         "403":
-          $ref: "#/components/responses/SimpleForbidden"
+          $ref: "#/components/responses/Forbidden"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "409":
           description: The key has already been revoked and cannot be regenerated.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SimpleErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               example:
-                code: "409"
+                status: error
+                code: CONFLICT
                 message: Cannot regenerate a revoked key
         "500":
           $ref: "#/components/responses/InternalServerError"
@@ -1575,17 +1651,18 @@ paths:
         "204":
           description: API key revoked successfully.
         "403":
-          $ref: "#/components/responses/SimpleForbidden"
+          $ref: "#/components/responses/Forbidden"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "409":
           description: The key has already been revoked.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SimpleErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               example:
-                code: "409"
+                status: error
+                code: CONFLICT
                 message: Key already revoked or not found
         "500":
           $ref: "#/components/responses/InternalServerError"
@@ -1614,19 +1691,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiKeyApplicationResponse"
         "400":
-          $ref: "#/components/responses/SimpleBadRequest"
+          $ref: "#/components/responses/BadRequest"
         "403":
-          $ref: "#/components/responses/SimpleForbidden"
+          $ref: "#/components/responses/Forbidden"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "409":
           description: The key has already been revoked and cannot be associated with an application.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SimpleErrorResponse"
+                $ref: "#/components/schemas/ErrorResponse"
               example:
-                code: "409"
+                status: error
+                code: CONFLICT
                 message: Cannot associate a revoked key
         "500":
           $ref: "#/components/responses/InternalServerError"
@@ -1651,9 +1729,9 @@ paths:
         "204":
           description: Association removed (or none existed).
         "403":
-          $ref: "#/components/responses/SimpleForbidden"
+          $ref: "#/components/responses/Forbidden"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1678,7 +1756,7 @@ paths:
         "200":
           $ref: "#/components/responses/ApiKeyListResponse"
         "404":
-          $ref: "#/components/responses/SimpleNotFound"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -2521,7 +2599,7 @@ components:
         type: string
         example: workflow-12345
       description: The API workflow's handle (unique per org and view).
-    apiContentTypeQuery:
+    contentTypeQuery:
       name: type
       in: query
       required: true
@@ -2531,7 +2609,7 @@ components:
       description: >-
         Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the
         uploaded ZIP content was classified.
-    apiContentFileNameQuery:
+    contentFileNameQuery:
       name: fileName
       in: query
       required: true
@@ -2568,7 +2646,7 @@ components:
       schema:
         type: string
       description: Optional relative content path used together with `fileType` and `fileName`.
-    apiSearchQuery:
+    searchQuery:
       name: query
       in: query
       required: false
@@ -2576,15 +2654,15 @@ components:
         type: string
         example: weather
       description: Free-text API metadata search term.
-    apiNameQuery:
-      name: apiName
+    nameQuery:
+      name: name
       in: query
       required: false
       schema:
         type: string
         example: Weather API
       description: Exact API name filter.
-    apiVersionQuery:
+    versionQuery:
       name: version
       in: query
       required: false
@@ -2592,7 +2670,7 @@ components:
         type: string
         example: v1
       description: Exact API version filter.
-    apiTagsQuery:
+    tagsQuery:
       name: tags
       in: query
       required: false
@@ -2600,7 +2678,7 @@ components:
         type: string
         example: weather,public
       description: Comma-separated tag names. Matches APIs tagged with any of the given names.
-    apiViewQuery:
+    viewQuery:
       name: view
       in: query
       required: false
@@ -2608,16 +2686,8 @@ components:
         type: string
         example: default
       description: Developer Portal view name used to filter visible APIs.
-    apiIdQueryRequired:
-      name: apiId
-      in: query
-      required: true
-      schema:
-        type: string
-        example: weather-api-v1
-      description: Developer Portal API ID.
-    apiIdQueryOptional:
-      name: apiId
+    artifactIdQueryOptional:
+      name: artifactId
       in: query
       required: false
       schema:
@@ -2774,13 +2844,13 @@ components:
             displayName: Premium APIs
     SubscriptionCreateBody:
       required: true
-      description: Subscription creation payload. `apiId` is the Developer Portal API ID.
+      description: Subscription creation payload. `artifactId` is the Developer Portal API ID.
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/SubscriptionCreateRequest"
           example:
-            apiId: weather-api-v1
+            artifactId: weather-api-v1
             subscriptionPlanId: Gold
     SubscriptionUpdateBody:
       required: true
@@ -2986,7 +3056,6 @@ components:
           example:
             displayName: Asgardeo
             id: asgardeo-prod
-            type: ASGARDEO
             enabled: true
             tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
         multipart/form-data:
@@ -3115,33 +3184,31 @@ components:
     ApiMetadataMultipartBody:
       required: true
       description: >-
-        API metadata upload. Send either `artifact`, or `api` with `apiDefinition`, or `apiMetadata` with
-        `apiDefinition`. `schemaDefinition` is used for MCP APIs and GraphQL schema updates.
+        API metadata upload. Send either `artifact`, or `metadata` with `definition`. For a GraphQL API
+        the `definition` field carries the SDL schema. (MCP servers are created via `/mcp-servers` with
+        the dedicated `McpServerMultipartBody`, not this body.)
       content:
         multipart/form-data:
           schema:
             type: object
             properties:
-              api:
+              definition:
                 type: string
                 format: binary
-                description: API metadata YAML file.
-              apiDefinition:
-                type: string
-                format: binary
-                description: API definition file.
+                description: >-
+                  API definition file. For REST/SOAP/etc. this is the OpenAPI/WSDL/AsyncAPI contract;
+                  for a GraphQL API it is the SDL schema.
               artifact:
                 type: string
                 format: binary
                 description: Full API ZIP artifact containing metadata and definition files.
-              schemaDefinition:
-                type: string
-                format: binary
-                description: Schema definition file, used by MCP APIs.
-              apiMetadata:
+              metadata:
                 type: string
                 description: >-
-                  JSON string accepted by the service when the `api` YAML file is not supplied. Accepted top-level
+                  API metadata, supplied either as a JSON string field or as an uploaded YAML/JSON file
+                  (a k8s-style document with `kind`, `metadata.name`, and a `spec` block; file names
+                  `metadata.yaml`/`.yml`/`.json`, or the legacy `api.yaml`/`mcp.yaml`/`devportal.yaml`).
+                  As a JSON string it accepts these top-level
                   fields: `name`, `version`, `description`, `type`,
                   `agentVisibility`, `status`, `referenceId`, `id`, `tags`, `labels`,
                   `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
@@ -3154,7 +3221,46 @@ components:
                   "status":"PUBLISHED","tags":["weather"],"labels":["default"],"endPoints":{
                   "productionURL":"https://api.example.com/weather",
                   "sandboxURL":"https://sandbox.example.com/weather"},"subscriptionPlans":[{"id":"Gold"}]}
-    ApiContentZipMultipartBody:
+    McpServerMultipartBody:
+      required: true
+      description: >-
+        MCP server upload. Provide the server metadata via `metadata` (a JSON string or an uploaded
+        YAML/JSON file), or a full `artifact` ZIP, together with its `definition` — the tools, resources,
+        and prompts the server exposes. An MCP server has no OpenAPI-style API contract; its
+        `definition` (tools schema) IS its contract, so it is required on create (and replaces the
+        stored schema when supplied on update).
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            properties:
+              artifact:
+                type: string
+                format: binary
+                description: Full MCP server ZIP artifact containing the metadata and the definition.
+              definition:
+                type: string
+                format: binary
+                description: >-
+                  MCP tools schema (YAML or JSON) listing the tools, resources, and prompts the server
+                  exposes. Required on create; when supplied on update it replaces the stored schema.
+              metadata:
+                type: string
+                description: >-
+                  MCP server metadata, supplied either as a JSON string field or as an uploaded YAML/JSON
+                  file (a k8s-style document of kind `MCP`; file names `metadata.yaml`/`.yml`/`.json`, or
+                  the legacy `api.yaml`/`mcp.yaml`/`devportal.yaml`). As a JSON string it accepts these
+                  top-level fields:
+                  `name`, `version`, `description`, `type` (must be `MCP`), `agentVisibility`, `status`,
+                  `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL),
+                  and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already
+                  exist in the organization). `id` becomes the MCP server's stored handle.
+                example: >-
+                  {"name":"Travel Assistant MCP","version":"v1","description":"MCP server for travel
+                  planning tools","type":"MCP","agentVisibility":"VISIBLE","status":"PUBLISHED",
+                  "tags":["mcp"],"labels":["default"],"endPoints":{"productionURL":"https://mcp.example.com",
+                  "sandboxURL":"https://mcp.example.com"},"subscriptionPlans":[{"id":"Gold"}]}
+    ContentZipMultipartBody:
       required: true
       description: |
         API content ZIP upload.
@@ -3170,12 +3276,12 @@ components:
           schema:
             type: object
             required:
-              - apiContent
+              - content
             properties:
-              apiContent:
+              content:
                 type: string
                 format: binary
-                description: ZIP upload field named `apiContent`.
+                description: ZIP upload field named `content`.
               docMetadata:
                 type: string
                 description: Optional JSON string containing API document link metadata.
@@ -3253,6 +3359,10 @@ components:
                 type: array
                 items:
                   $ref: "#/components/schemas/OrganizationResponse"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
               pagination:
                 $ref: "#/components/schemas/Pagination"
     OrganizationContentUploadResponse:
@@ -3295,7 +3405,7 @@ components:
           schema:
             type: string
             format: binary
-    APIContentAssetResponse:
+    ContentAssetResponse:
       description: >-
         Stored API content asset. The concrete media type depends on the stored file extension or whether the content is
         an external document link.
@@ -3350,25 +3460,16 @@ components:
               $ref: "#/components/schemas/OrganizationContentListItemResponse"
     BadRequest:
       description: >-
-        Bad request. Input validation failures are returned as an array; other bad request errors are returned as a
-        standard error object.
+        Bad request. Validation and other bad-request errors are returned as a standard error object
+        (field-level details, when present, are carried in its `errors` array); some legacy handlers
+        return a message-only object.
       content:
         application/json:
           schema:
             oneOf:
-              - $ref: "#/components/schemas/ValidationErrorList"
               - $ref: "#/components/schemas/ErrorResponse"
               - $ref: "#/components/schemas/MessageResponse"
           examples:
-            validationError:
-              summary: Validation failure
-              value:
-                - status: error
-                  code: COMMON_VALIDATION_ERROR
-                  message: Input validation failed.
-                  errors:
-                    - field: name
-                      message: name is required.
             badRequest:
               summary: Bad request error
               value:
@@ -3399,45 +3500,6 @@ components:
             status: error
             code: CONFLICT
             message: Conflict
-    SimpleBadRequest:
-      description: Bad request.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/SimpleErrorResponse"
-          example:
-            code: "400"
-            message: Bad Request
-            description: Invalid request parameters
-    SimpleNotFound:
-      description: Resource not found.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/SimpleErrorResponse"
-          example:
-            code: "404"
-            message: Not Found
-            description: Subscription not found
-    SimpleConflict:
-      description: The request conflicts with an existing resource.
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/SimpleErrorResponse"
-          example:
-            code: "409"
-            message: Conflict
-            description: A subscription for this API already exists
-    SimpleForbidden:
-      description: Request is forbidden for the current runtime mode (e.g. read-only mode).
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/SimpleErrorResponse"
-          example:
-            code: "403"
-            message: Read-only mode
     UnsupportedMediaType:
       description: Unsupported request media type.
       content:
@@ -3496,7 +3558,7 @@ components:
             id: weather-api-v1
             refId: cp-api-12345
             name: Weather API
-            apiTitle: Weather Forecast API
+            title: Weather Forecast API
             version: v1
             status: PUBLISHED
             description: Weather forecast API.
@@ -3521,7 +3583,7 @@ components:
             id: weather-api-v1
             refId: cp-api-12345
             name: Weather API
-            apiTitle: Weather Forecast API
+            title: Weather Forecast API
             remotes: []
             version: v1
             status: PUBLISHED
@@ -3550,6 +3612,10 @@ components:
                 type: array
                 items:
                   $ref: "#/components/schemas/ApiMetadataResponse"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
               pagination:
                 $ref: "#/components/schemas/Pagination"
           example:
@@ -3567,6 +3633,7 @@ components:
                 endPoints:
                   sandboxURL: https://sandbox.example.com/weather
                   productionURL: https://api.example.com/weather
+            count: 1
             pagination:
               total: 1
               limit: 20
@@ -3587,7 +3654,7 @@ components:
             id: weather-api-v1
             refId: cp-api-12345
             name: Weather API
-            apiTitle: Weather Forecast API
+            title: Weather Forecast API
             version: v1
             status: PUBLISHED
             description: Weather forecast API.
@@ -3612,7 +3679,7 @@ components:
             id: weather-api-v1
             refId: cp-api-12345
             name: Weather API
-            apiTitle: Weather Forecast API
+            title: Weather Forecast API
             remotes: []
             version: v1
             status: PUBLISHED
@@ -3637,6 +3704,10 @@ components:
                 type: array
                 items:
                   $ref: "#/components/schemas/ApiMetadataResponse"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
               pagination:
                 $ref: "#/components/schemas/Pagination"
           example:
@@ -3654,6 +3725,7 @@ components:
                 endPoints:
                   sandboxURL: https://sandbox.example.com/weather
                   productionURL: https://api.example.com/weather
+            count: 1
             pagination:
               total: 1
               limit: 20
@@ -3675,6 +3747,10 @@ components:
                 type: array
                 items:
                   $ref: "#/components/schemas/SubscriptionPlanResponse"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
               pagination:
                 $ref: "#/components/schemas/Pagination"
           example:
@@ -3692,6 +3768,7 @@ components:
                 createdBy: alice@example.com
                 createdAt: "2026-05-07T08:30:00Z"
                 updatedAt: "2026-05-07T08:30:00Z"
+            count: 1
             pagination:
               total: 42
               limit: 20
@@ -3728,6 +3805,10 @@ components:
                 type: array
                 items:
                   $ref: "#/components/schemas/LabelResponse"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
               pagination:
                 $ref: "#/components/schemas/Pagination"
     LabelResponse:
@@ -3762,6 +3843,10 @@ components:
                 type: array
                 items:
                   $ref: "#/components/schemas/ApplicationResponse"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
               pagination:
                 $ref: "#/components/schemas/Pagination"
           example:
@@ -3773,6 +3858,7 @@ components:
                   - asClientId: asgardeo-client-abc123
                     kmId: km-uuid-12345
                     type: PRODUCTION
+            count: 1
             pagination:
               total: 1
               limit: 20
@@ -3785,7 +3871,7 @@ components:
             $ref: "#/components/schemas/SubscriptionResponse"
           example:
             subscriptionId: sub-12345
-            apiId: weather-api-v1
+            artifactId: weather-api-v1
             subscriptionToken: a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1
             subscriptionPlanName: Gold
             status: ACTIVE
@@ -3804,18 +3890,23 @@ components:
                 type: array
                 items:
                   $ref: "#/components/schemas/SubscriptionResponse"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
               pagination:
                 $ref: "#/components/schemas/Pagination"
           example:
             list:
               - subscriptionId: sub-12345
-                apiId: weather-api-v1
+                artifactId: weather-api-v1
                 subscriptionToken: a3f1e8b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1b3c5d7e9f10b2c4d6e8f0a1
                 subscriptionPlanName: Gold
                 status: ACTIVE
                 createdBy: alice@example.com
                 createdAt: "2026-05-07T08:30:00Z"
                 updatedAt: "2026-05-07T08:30:00Z"
+            count: 1
             pagination:
               total: 42
               limit: 20
@@ -3827,7 +3918,6 @@ components:
           schema:
             $ref: "#/components/schemas/ApiKeyResponse"
           example:
-            keyId: key-12345
             id: weather_prod_key
             displayName: Weather Prod Key
             key: ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ
@@ -3844,6 +3934,10 @@ components:
                 type: array
                 items:
                   $ref: "#/components/schemas/ApiKeyMetadataResponse"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
               pagination:
                 $ref: "#/components/schemas/Pagination"
     KeyManagerResponse:
@@ -3867,6 +3961,10 @@ components:
                   anyOf:
                     - $ref: "#/components/schemas/KeyManagerResponseSchema"
                     - $ref: "#/components/schemas/KeyManagerPublicResponseSchema"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
               pagination:
                 $ref: "#/components/schemas/Pagination"
           example:
@@ -3874,12 +3972,12 @@ components:
               - id: asgardeo-prod
                 displayName: Asgardeo
                 orgId: org-12345
-                type: ASGARDEO
                 enabled: true
                 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
                 createdBy: alice@example.com
                 createdAt: "2026-05-07T08:30:00Z"
                 updatedAt: "2026-05-07T08:30:00Z"
+            count: 1
             pagination:
               total: 42
               limit: 20
@@ -3901,6 +3999,10 @@ components:
                 type: array
                 items:
                   $ref: "#/components/schemas/WebhookSubscriberResponseSchema"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
               pagination:
                 $ref: "#/components/schemas/Pagination"
     ApplicationKeyResponse:
@@ -3975,6 +4077,10 @@ components:
                 type: array
                 items:
                   $ref: "#/components/schemas/APIWorkflowResponse"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
               pagination:
                 $ref: "#/components/schemas/Pagination"
     APIWorkflowPromptResponse:
@@ -4012,6 +4118,10 @@ components:
                 type: array
                 items:
                   $ref: "#/components/schemas/ViewResponse"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
               pagination:
                 $ref: "#/components/schemas/Pagination"
     ViewUpdateEchoResponse:
@@ -4036,6 +4146,10 @@ components:
                 type: array
                 items:
                   $ref: "#/components/schemas/WebhookEvent"
+              count:
+                type: integer
+                description: Number of items returned in this page.
+                example: 1
               pagination:
                 $ref: "#/components/schemas/Pagination"
     WebhookEventResponse:
@@ -4109,64 +4223,6 @@ components:
         errors:
           type: array
           description: Optional per-field validation errors.
-          items:
-            type: object
-            required:
-              - field
-              - message
-            properties:
-              field:
-                type: string
-              message:
-                type: string
-            additionalProperties: false
-      additionalProperties: false
-    SimpleErrorResponse:
-      type: object
-      description: >-
-        Ad hoc error shape used by the Subscriptions and API Keys handlers, which build error bodies inline instead of
-        going through the shared error formatter. `code` is the HTTP status code as a string, not a catalog code.
-      required:
-        - code
-        - message
-      properties:
-        code:
-          type: string
-          example: "404"
-        message:
-          type: string
-          example: Not Found
-        description:
-          type: string
-          nullable: true
-          example: Subscription not found
-      additionalProperties: false
-    ValidationErrorList:
-      type: array
-      items:
-        $ref: "#/components/schemas/ValidationError"
-    ValidationError:
-      type: object
-      required:
-        - status
-        - code
-        - message
-      properties:
-        status:
-          type: string
-          enum:
-            - error
-        code:
-          type: string
-          pattern: ^[A-Z][A-Z0-9_]*$
-          description: Machine-readable catalog code.
-          example: COMMON_VALIDATION_ERROR
-        message:
-          type: string
-          example: Input validation failed.
-        errors:
-          type: array
-          description: Per-field validation errors.
           items:
             type: object
             required:
@@ -4347,7 +4403,7 @@ components:
       properties:
         name:
           type: string
-        apiTitle:
+        title:
           type: string
           nullable: true
         remotes:
@@ -4814,10 +4870,10 @@ components:
     SubscriptionCreateRequest:
       type: object
       required:
-        - apiId
+        - artifactId
         - subscriptionPlanId
       properties:
-        apiId:
+        artifactId:
           type: string
           description: Developer Portal API ID.
           example: weather-api-v1
@@ -4843,7 +4899,7 @@ components:
       required:
         - planId
       properties:
-        apiId:
+        artifactId:
           type: string
           description: >-
             Developer Portal API ID the subscription belongs to. Optional — if provided, it is validated
@@ -4863,7 +4919,7 @@ components:
         subscriptionId:
           type: string
           example: sub-12345
-        apiId:
+        artifactId:
           type: string
           description: Developer Portal API ID.
           example: weather-api-v1
@@ -4937,10 +4993,6 @@ components:
       type: object
       description: API key metadata returned by list operations. Secret material is omitted.
       properties:
-        keyId:
-          type: string
-          description: Developer Portal key identifier.
-          example: key-12345
         id:
           type: string
           example: weather_prod_key
@@ -4984,12 +5036,8 @@ components:
       type: object
       description: >-
         API key response returned by generate/regenerate only. Unlike ApiKeyMetadataResponse, this does not include
-        apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these six fields.
+        apiId, appId, appDisplayName, createdAt, or revokedAt — generate/regenerate return only these five fields.
       properties:
-        keyId:
-          type: string
-          description: Developer Portal key identifier.
-          example: key-12345
         id:
           type: string
           example: weather_prod_key
@@ -5015,9 +5063,6 @@ components:
     ApiKeyApplicationResponse:
       type: object
       properties:
-        keyId:
-          type: string
-          example: key-12345
         application:
           type: object
           properties:
@@ -5031,7 +5076,6 @@ components:
       type: object
       required:
         - displayName
-        - type
         - tokenEndpoint
       properties:
         displayName:
@@ -5043,14 +5087,6 @@ components:
             Desired handle for the key manager (unique per org), stored as-is. Optional — defaults to the key
             manager's `displayName` when omitted.
           example: asgardeo-prod
-        type:
-          type: string
-          enum:
-            - ASGARDEO
-            - WSO2IS
-            - KEYCLOAK
-            - GENERIC_OIDC
-          example: ASGARDEO
         enabled:
           type: boolean
           default: true
@@ -5076,14 +5112,6 @@ components:
           type: string
           description: Desired handle for the key manager (unique per org), stored as-is.
           example: asgardeo-prod
-        type:
-          type: string
-          enum:
-            - ASGARDEO
-            - WSO2IS
-            - KEYCLOAK
-            - GENERIC_OIDC
-          example: ASGARDEO
         enabled:
           type: boolean
           default: true
@@ -5107,14 +5135,6 @@ components:
         orgId:
           type: string
           example: org-12345
-        type:
-          type: string
-          enum:
-            - ASGARDEO
-            - WSO2IS
-            - KEYCLOAK
-            - GENERIC_OIDC
-          example: ASGARDEO
         enabled:
           type: boolean
           example: true
@@ -5152,14 +5172,6 @@ components:
         displayName:
           type: string
           example: Asgardeo
-        type:
-          type: string
-          enum:
-            - ASGARDEO
-            - WSO2IS
-            - KEYCLOAK
-            - GENERIC_OIDC
-          example: ASGARDEO
         tokenEndpoint:
           type: string
           format: uri

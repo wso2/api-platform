@@ -21,26 +21,34 @@ package config
 import (
 	"fmt"
 	"log/slog"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	toml "github.com/knadh/koanf/parsers/toml/v2"
-	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+	"github.com/wso2/api-platform/common/collector"
+	"github.com/wso2/api-platform/common/configinterpolate"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
 const (
-	// EnvPrefix is the prefix for environment variables used to configure the gateway-controller
-	EnvPrefix = "APIP_GW_"
 	// DefaultLuaScriptPath is the default path for request transformation lua script
 	DefaultLuaScriptPath = "./lua/request_transformation.lua"
 )
+
+// defaultFileSourceAllowlist is the gateway-controller's default set of directories
+// that a {{ file "..." }} config-interpolation token may read from. It can be
+// overridden via the shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var
+// (see configinterpolate.ResolveAllowlist).
+var defaultFileSourceAllowlist = []string{
+	"/etc/gateway-controller",
+	"/secrets/gateway-controller",
+}
 
 // Config holds all configuration for the gateway-controller
 type Config struct {
@@ -48,31 +56,90 @@ type Config struct {
 	Router               RouterConfig           `koanf:"router"`
 	PolicyEngine         map[string]interface{} `koanf:"policy_engine"`
 	PolicyConfigurations map[string]interface{} `koanf:"policy_configurations"`
+	Collector            CollectorConfig        `koanf:"collector"`
 	Analytics            AnalyticsConfig        `koanf:"analytics"`
+	TrafficLogging       TrafficLoggingConfig   `koanf:"traffic_logging"`
 	TracingConfig        TracingConfig          `koanf:"tracing"`
 	APIKey               APIKeyConfig           `koanf:"api_key"`
 	// Subscriptions controls application-level subscription behaviour for APIs.
 	// When nil, subscription validation system policy remains disabled.
 	Subscriptions    *SubscriptionsConfig   `koanf:"subscriptions"`
 	ImmutableGateway ImmutableGatewayConfig `koanf:"immutable_gateway"`
+	MCP              MCPConfig              `koanf:"mcp"`
+}
+
+// MCPConfig holds configuration for MCP (Model Context Protocol) proxies.
+type MCPConfig struct {
+	// AppendResourcePathToBackend preserves the legacy behaviour where the "/mcp"
+	// gateway resource path is appended to the MCP backend upstream path. Older
+	// gateway versions forwarded a request for "<context>/mcp" to "<upstream>/mcp".
+	// The current default forwards to exactly the configured upstream path (the
+	// upstream is expected to be the full MCP endpoint URL). Enable this only if
+	// existing MCP API definitions rely on the "/mcp" suffix being appended to the
+	// backend.
+	AppendResourcePathToBackend bool `koanf:"append_resource_path_to_backend"`
+}
+
+// CollectorConfig holds the data-collection ("collector") configuration. The
+// collector is the shared capture pipeline (the analytics system policy plus the
+// Envoy→policy-engine ALS transport) that gathers request/response headers and
+// bodies. It underpins every consumer of that data (analytics and traffic logging)
+// and is implicitly active whenever a consumer is enabled — see
+// Config.IsCollectorEnabled. This section tunes capture and transport; it has no
+// on/off flag of its own.
+type CollectorConfig struct {
+	// RequestBody / ResponseBody capture request/response bodies into the
+	// collected event.
+	RequestBody  bool `koanf:"request_body"`
+	ResponseBody bool `koanf:"response_body"`
+	// RequestHeaders / ResponseHeaders, when true, make the collector
+	// capture ALL request / response headers, so every API's headers flow into
+	// the collected event without attaching a per-API header policy.
+	RequestHeaders  bool `koanf:"request_headers"`
+	ResponseHeaders bool `koanf:"response_headers"`
+	// IgnorePathPrefixes lists request path prefixes for which the collector
+	// produces no analytics event and no traffic-log line at all, as if the
+	// collector were disabled for that one request (e.g. health-check or
+	// metrics-scrape endpoints). Enforced by attaching an Envoy AccessLogFilter
+	// to the ALS access log (see xds.buildIgnorePathsAccessLogFilter) — Envoy
+	// itself never emits the log entry for a matching path, so the policy-engine
+	// never receives the request at all. Matched case-sensitively by prefix.
+	IgnorePathPrefixes []string `koanf:"ignore_path_prefixes"`
+	// Server tunes the Envoy→policy-engine gRPC access-log (ALS)
+	// transport that ships collected data. It is part of the collector and is
+	// configured under the shared [collector.server] section (the policy-engine reads
+	// the same section to configure its receiving ALS server).
+	Server GRPCEventServerConfig `koanf:"server"`
 }
 
 // AnalyticsConfig holds analytics configuration
 type AnalyticsConfig struct {
-	Enabled            bool                      `koanf:"enabled"`
-	EnabledPublishers  []string                  `koanf:"enabled_publishers"`
-	Publishers         AnalyticsPublishersConfig `koanf:"publishers"`
-	GRPCEventServerCfg GRPCEventServerConfig     `koanf:"grpc_event_server"`
-	// AllowPayloads controls whether request and response bodies are captured
-	// into analytics metadata and forwarded to analytics publishers.
-	// Deprecated: use SendRequestBody and SendResponseBody instead.
-	// When true, validateAnalyticsConfig maps both SendRequestBody and SendResponseBody
-	// to true if both are false. Because bools cannot represent "unset", this also
-	// applies when both new flags are explicitly false; remove allow_payloads when
-	// migrating and set the directional flags directly.
+	Enabled           bool                      `koanf:"enabled"`
+	EnabledPublishers []string                  `koanf:"enabled_publishers"`
+	Publishers        AnalyticsPublishersConfig `koanf:"publishers"`
+	// GRPCEventServerCfg is a deprecated alias. ALS transport tuning moved to
+	// [collector.server]; when set here it is migrated onto the collector during
+	// validation (with a warning). Prefer [collector.server].
+	GRPCEventServerCfg GRPCEventServerConfig `koanf:"grpc_event_server"`
+	// AllowPayloads, SendRequestBody and SendResponseBody are deprecated aliases.
+	// Body/header capture now lives under [collector]. When set, these are mapped
+	// onto collector.request_body / collector.response_body during
+	// validation (with a warning) for backward compatibility. Prefer the
+	// [collector] fields directly.
 	AllowPayloads    bool `koanf:"allow_payloads"`
 	SendRequestBody  bool `koanf:"send_request_body"`
 	SendResponseBody bool `koanf:"send_response_body"`
+}
+
+// TrafficLoggingConfig mirrors the policy-engine's stdout traffic-logging consumer.
+// The controller only needs to know whether it is enabled, so that the collector
+// (system policy + ALS sink) is activated when traffic logging is on even if
+// analytics is off. Presentation keys (masked_headers, max_payload_size) are
+// policy-engine-only and intentionally not bound here.
+type TrafficLoggingConfig struct {
+	// Enabled turns stdout JSON traffic logging on. Enabling it implicitly activates
+	// the collector (see Config.IsCollectorEnabled).
+	Enabled bool `koanf:"enabled"`
 }
 
 // SubscriptionsConfig holds configuration for application-level subscriptions.
@@ -107,9 +174,14 @@ type MoesifPublisherConfig struct {
 
 // GRPCEventServerConfig holds configuration for gRPC event server (combines access log service and ALS server config)
 type GRPCEventServerConfig struct {
-	Mode                string        `koanf:"mode"`                  // Connection mode: "uds" (default) or "tcp"
-	Port                int           `koanf:"port"`                  // ALS port for Envoy connection (TCP mode only)
-	ServerPort          int           `koanf:"server_port"`           // gRPC server port for ALS server
+	Mode string `koanf:"mode"` // Connection mode: "uds" (default) or "tcp"
+	// Port overrides the fixed Envoy→policy-engine ALS dial port (collector.ServerPort,
+	// 18090), used only in "tcp" mode. Deprecated: no longer defaulted here or documented
+	// in config-template.toml/Helm charts, so new deployments have no way to discover or
+	// set it. Kept solely so a config that already sets it explicitly keeps working;
+	// leave unset (0) to use the fixed port. Must match the policy-engine's
+	// collector.server.server_port override, or the two sides will fail to connect.
+	Port                int           `koanf:"port"`
 	BufferFlushInterval int           `koanf:"buffer_flush_interval"` // Envoy buffer flush interval (nanoseconds)
 	BufferSizeBytes     int           `koanf:"buffer_size_bytes"`     // Envoy buffer size
 	GRPCRequestTimeout  int           `koanf:"grpc_request_timeout"`  // Envoy gRPC timeout (nanoseconds)
@@ -228,9 +300,22 @@ type ServerConfig struct {
 
 // AdminServerConfig holds controller admin HTTP server configuration.
 type AdminServerConfig struct {
-	Enabled    bool     `koanf:"enabled"`
-	Port       int      `koanf:"port"`
-	AllowedIPs []string `koanf:"allowed_ips"`
+	Enabled    bool        `koanf:"enabled"`
+	Port       int         `koanf:"port"`
+	AllowedIPs []string    `koanf:"allowed_ips"`
+	Pprof      PprofConfig `koanf:"pprof"`
+}
+
+// PprofConfig gates the Go runtime profiling endpoints (net/http/pprof) served on
+// the admin HTTP server. Disabled by default; when disabled the /debug/pprof/*
+// routes are not registered at all (they return 404, not 403).
+type PprofConfig struct {
+	// Enabled registers the /debug/pprof/* handlers on the admin server.
+	Enabled bool `koanf:"enabled"`
+	// BlockProfileRate is passed to runtime.SetBlockProfileRate (0 = block profiling off).
+	BlockProfileRate int `koanf:"block_profile_rate"`
+	// MutexProfileFraction is passed to runtime.SetMutexProfileFraction (0 = mutex profiling off).
+	MutexProfileFraction int `koanf:"mutex_profile_fraction"`
 }
 
 // PolicyServerConfig holds policy xDS server-related configuration
@@ -444,7 +529,6 @@ type RouterConfig struct {
 	Upstream           RouterUpstream     `koanf:"upstream"`
 	PolicyEngine       PolicyEngineConfig `koanf:"policy_engine"`
 	DownstreamTLS      DownstreamTLS      `koanf:"downstream_tls"`
-	EventGateway       EventGatewayConfig `koanf:"event_gateway"`
 	VHosts             VHostsConfig       `koanf:"vhosts"`
 	TracingServiceName string             `koanf:"tracing_service_name"`
 
@@ -486,16 +570,6 @@ type LuaScriptConfig struct {
 	ScriptPath string `koanf:"script_path"`
 }
 
-// EventGatewayConfig holds event gateway specific configurations
-type EventGatewayConfig struct {
-	Enabled               bool   `koanf:"enabled"`
-	WebSubHubURL          string `koanf:"websub_hub_url"`
-	WebSubHubPort         int    `koanf:"websub_hub_port"`
-	RouterHost            string `koanf:"router_host"`
-	WebSubHubListenerPort int    `koanf:"websub_hub_listener_port"`
-	TimeoutSeconds        int    `koanf:"timeout_seconds"`
-}
-
 // DownstreamTLS holds downstream (listener) TLS configuration
 type DownstreamTLS struct {
 	CertPath               string `koanf:"cert_path"`
@@ -520,8 +594,18 @@ type VHostEntry struct {
 
 // HTTPListenerConfig holds HTTP listener related configuration of an API
 type HTTPListenerConfig struct {
-	ServerHeaderTransformation string `koanf:"server_header_transformation"` // Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
-	ServerHeaderValue          string `koanf:"server_header_value"`          // Custom value for the Server header
+	ServerHeaderTransformation 		string      `koanf:"server_header_transformation"` 		// Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
+	ServerHeaderValue          		string      `koanf:"server_header_value"`          		// Custom value for the Server header
+	Timeouts                   		HCMTimeouts `koanf:"timeouts"`                     		// HTTP Connection Manager (downstream) timeouts
+	PerConnectionBufferLimitBytes 	uint32 		`koanf:"per_connection_buffer_limit_bytes"` // Downstream per-connection buffer limit in bytes
+}
+
+// HCMTimeouts holds HTTP Connection Manager (downstream/connection) timeouts.
+type HCMTimeouts struct {
+	RequestTimeout        time.Duration `koanf:"request_timeout"`         // HCM request_timeout (default 0s = disabled)
+	RequestHeadersTimeout time.Duration `koanf:"request_headers_timeout"` // HCM request_headers_timeout (default 0s = disabled)
+	StreamIdleTimeout     time.Duration `koanf:"stream_idle_timeout"`     // HCM stream_idle_timeout (default 5m)
+	IdleTimeout           time.Duration `koanf:"idle_timeout"`            // common_http_protocol_options.idle_timeout (default 1h)
 }
 
 // PolicyEngineConfig holds policy engine ext_proc filter configuration
@@ -604,8 +688,8 @@ type EncryptionKeyConfig struct {
 	FilePath string `koanf:"file"`    // Path to raw binary key file
 }
 
-// LoadConfig loads configuration from file, environment variables, and defaults
-// Priority: Environment variables > Config file > Defaults
+// LoadConfig loads configuration from a file layered over built-in defaults.
+// Priority: Config file > Defaults.
 func LoadConfig(configPath string) (*Config, error) {
 	cfg := defaultConfig()
 
@@ -616,58 +700,12 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load config file: %w", err)
 	}
 
-	// Load environment variables with prefix
-	if err := k.Load(env.Provider(EnvPrefix, ".", func(s string) string {
-		s = strings.TrimPrefix(s, EnvPrefix)
-		s = strings.ToLower(s)
-
-		// Custom mappings for control plane variables
-		switch s {
-		case "controlplane_host":
-			return "controller.controlplane.host"
-		case "gateway_registration_token":
-			return "controller.controlplane.token"
-		case "reconnect_initial":
-			return "controller.controlplane.reconnect_initial"
-		case "reconnect_max":
-			return "controller.controlplane.reconnect_max"
-		case "polling_interval":
-			return "controller.controlplane.polling_interval"
-		case "insecure_skip_verify":
-			return "controller.controlplane.insecure_skip_verify"
-		// APIP_GW_ + CONTROLLER_CONTROLPLANE_* (underscore-to-dot would split insecure_skip_verify)
-		case "controller_controlplane_host":
-			return "controller.controlplane.host"
-		case "controller_controlplane_token":
-			return "controller.controlplane.token"
-		case "controller_controlplane_reconnect_initial":
-			return "controller.controlplane.reconnect_initial"
-		case "controller_controlplane_reconnect_max":
-			return "controller.controlplane.reconnect_max"
-		case "controller_controlplane_polling_interval":
-			return "controller.controlplane.polling_interval"
-		case "controller_controlplane_insecure_skip_verify":
-			return "controller.controlplane.insecure_skip_verify"
-		case "controller_controlplane_deployment_sync_enabled":
-			return "controller.controlplane.deployment_sync_enabled"
-		case "controller_controlplane_sync_batch_size":
-			return "controller.controlplane.sync_batch_size"
-		case "immutable_gateway_enabled":
-			return "immutable_gateway.enabled"
-		case "controller_controlplane_gateway_name":
-			return "controller.controlplane.gateway_name"
-		default:
-			// For other env vars, use standard mapping (underscore to dot)
-			// Step 1: Convert double underscore "__" into a temporary placeholder
-			s = strings.ReplaceAll(s, "__", "%UNDERSCORE%")
-			// Step 2: Convert single "_" into "."
-			s = strings.ReplaceAll(s, "_", ".")
-			// Step 3: Convert placeholder back into literal "_"
-			s = strings.ReplaceAll(s, "%UNDERSCORE%", "_")
-			return s
-		}
-	}), nil); err != nil {
-		return nil, fmt.Errorf("failed to load environment variables: %w", err)
+	// Resolve Go template tokens ({{ env }} / {{ file }}) in string leaves of the
+	// file-loaded config before unmarshalling; fails closed on a missing required
+	// value or a disallowed/oversize file. A token-free config is a no-op.
+	k, err := interpolate(k)
+	if err != nil {
+		return nil, err
 	}
 
 	// Unmarshal into Config struct with DecodeHook for duration strings
@@ -690,6 +728,52 @@ func LoadConfig(configPath string) (*Config, error) {
 	return cfg, nil
 }
 
+// interpolate resolves Go template tokens ({{ env }} / {{ file }}) in the merged
+// config and returns a fresh koanf instance holding the expanded values. It uses a
+// new instance (rather than reloading into k) so no un-expanded leaves survive. The
+// file-source allowlist is the gateway-controller default, overridable via the
+// shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var. Resolved values are never
+// logged; only reference counts are emitted at info level.
+func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
+	opts := configinterpolate.Options{
+		FileAllowlist: configinterpolate.ResolveAllowlist(defaultFileSourceAllowlist),
+	}
+	expanded, stats, err := configinterpolate.Expand(k.Raw(), opts)
+	if err != nil {
+		return nil, fmt.Errorf("config interpolation failed: %w", err)
+	}
+
+	out := koanf.New(".")
+	if err := out.Load(confmap.Provider(expanded, "."), nil); err != nil {
+		return nil, fmt.Errorf("failed to reload interpolated config: %w", err)
+	}
+	if stats.Fields > 0 {
+		slog.Info("config interpolation complete",
+			slog.Int("env_refs", stats.EnvRefs),
+			slog.Int("file_refs", stats.FileRefs),
+			slog.Int("fields", stats.Fields))
+	}
+	return out, nil
+}
+
+// defaultGRPCEventServerConfig returns the default Envoy→policy-engine ALS
+// transport tuning. Shared by the collector (canonical) and the deprecated
+// [analytics].grpc_event_server alias so a partial alias override migrates cleanly.
+func defaultGRPCEventServerConfig() GRPCEventServerConfig {
+	return GRPCEventServerConfig{
+		Mode:                "uds",       // UDS mode by default
+		BufferFlushInterval: 1000000000,  // 1 second
+		BufferSizeBytes:     16384,       // 16 KiB
+		GRPCRequestTimeout:  20000000000, // 20 seconds
+		ShutdownTimeout:     600 * time.Second,
+		PublicKeyPath:       "",
+		PrivateKeyPath:      "",
+		ALSPlainText:        true,
+		MaxMessageSize:      1000000000,
+		MaxHeaderLimit:      8192,
+	}
+}
+
 // defaultConfig returns a Config struct with default configuration values
 func defaultConfig() *Config {
 	return &Config{
@@ -705,6 +789,11 @@ func defaultConfig() *Config {
 				Enabled:    true,
 				Port:       9092,
 				AllowedIPs: []string{"*"},
+				Pprof: PprofConfig{
+					Enabled:              false,
+					BlockProfileRate:     0,
+					MutexProfileFraction: 0,
+				},
 			},
 			PolicyServer: PolicyServerConfig{
 				Port: 18001,
@@ -794,14 +883,6 @@ func defaultConfig() *Config {
 			},
 		},
 		Router: RouterConfig{
-			EventGateway: EventGatewayConfig{
-				Enabled:               false,
-				WebSubHubURL:          "http://host.docker.internal",
-				WebSubHubPort:         9098,
-				RouterHost:            "localhost",
-				WebSubHubListenerPort: 8083,
-				TimeoutSeconds:        30,
-			},
 			AccessLogs: AccessLogsConfig{
 				Enabled: true,
 				Format:  "text",
@@ -893,6 +974,13 @@ func defaultConfig() *Config {
 			HTTPListener: HTTPListenerConfig{
 				ServerHeaderTransformation: commonconstants.OVERWRITE,
 				ServerHeaderValue:          commonconstants.ServerName,
+				Timeouts: HCMTimeouts{
+					RequestTimeout:        0,               // 0s = disabled (Envoy default)
+					RequestHeadersTimeout: 0,               // 0s = disabled (Envoy default)
+					StreamIdleTimeout:     5 * time.Minute, // Envoy default
+					IdleTimeout:           1 * time.Hour,   // Envoy default (connection-level)
+				},
+				PerConnectionBufferLimitBytes: 1048576, // 1 MiB, matches Envoy's built-in default
 			},
 		},
 		Analytics: AnalyticsConfig{
@@ -908,23 +996,19 @@ func defaultConfig() *Config {
 					TimerWakeupSeconds: 3,
 				},
 			},
-			GRPCEventServerCfg: GRPCEventServerConfig{
-				Mode:                "uds",       // UDS mode by default
-				Port:                18090,       // Only used in TCP mode
-				ServerPort:          18090,       // ALS server port
-				BufferFlushInterval: 1000000000,  // 1 second
-				BufferSizeBytes:     16384,       // 16 KiB
-				GRPCRequestTimeout:  20000000000, // 20 seconds
-				ShutdownTimeout:     600 * time.Second,
-				PublicKeyPath:       "",
-				PrivateKeyPath:      "",
-				ALSPlainText:        true,
-				MaxMessageSize:      1000000000,
-				MaxHeaderLimit:      8192,
-			},
-			AllowPayloads:    false,
-			SendRequestBody:  false,
-			SendResponseBody: false,
+			// Deprecated alias: default mirrors the collector so a partial
+			// [analytics.grpc_event_server] override migrates cleanly.
+			GRPCEventServerCfg: defaultGRPCEventServerConfig(),
+			AllowPayloads:      false,
+			SendRequestBody:    false,
+			SendResponseBody:   false,
+		},
+		Collector: CollectorConfig{
+			RequestBody:     false,
+			ResponseBody:    false,
+			RequestHeaders:  false,
+			ResponseHeaders: false,
+			Server:          defaultGRPCEventServerConfig(),
 		},
 		TracingConfig: TracingConfig{
 			Enabled:        false,
@@ -943,6 +1027,11 @@ func defaultConfig() *Config {
 		ImmutableGateway: ImmutableGatewayConfig{
 			Enabled:      false,
 			ArtifactsDir: "/etc/api-platform-gateway/immutable_gateway/artifacts",
+		},
+		MCP: MCPConfig{
+			// Default to the current behaviour: the "/mcp" resource path is NOT appended
+			// to the MCP backend upstream. Set to true to restore the legacy behaviour.
+			AppendResourcePathToBackend: false,
 		},
 	}
 }
@@ -1259,13 +1348,6 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("event_hub.retention_period must be positive, got: %s", eh.RetentionPeriod)
 	}
 
-	// Validate event gateway configuration if enabled
-	if c.Router.EventGateway.Enabled {
-		if err := c.validateEventGatewayConfig(); err != nil {
-			return err
-		}
-	}
-
 	// Validate control plane configuration
 	if err := c.validateControlPlaneConfig(); err != nil {
 		return err
@@ -1291,7 +1373,7 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	if err := c.validateAnalyticsConfig(); err != nil {
+	if err := c.validateCollectorConfig(); err != nil {
 		return err
 	}
 
@@ -1314,30 +1396,6 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	return nil
-}
-
-func (c *Config) validateEventGatewayConfig() error {
-	if c.Router.EventGateway.WebSubHubPort < 1 || c.Router.EventGateway.WebSubHubPort > 65535 {
-		return fmt.Errorf("router.event_gateway.websub_hub_port must be between 1 and 65535, got: %d", c.Router.EventGateway.WebSubHubPort)
-	}
-	if c.Router.EventGateway.WebSubHubListenerPort < 1 || c.Router.EventGateway.WebSubHubListenerPort > 65535 {
-		return fmt.Errorf("router.event_gateway.websub_hub_listener_port must be between 1 and 65535, got: %d", c.Router.EventGateway.WebSubHubListenerPort)
-	}
-
-	// Validate WebSubHubURL if provided - must be a valid http(s) URL
-	if strings.TrimSpace(c.Router.EventGateway.WebSubHubURL) != "" {
-		u, err := url.Parse(c.Router.EventGateway.WebSubHubURL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-			return fmt.Errorf("router.event_gateway.websub_hub_url must be a valid URL with http or https scheme, got: %s", c.Router.EventGateway.WebSubHubURL)
-		}
-		if u.Host == "" {
-			return fmt.Errorf("router.event_gateway.websub_hub_url must include a valid host, got: %s", c.Router.EventGateway.WebSubHubURL)
-		}
-	}
-	if c.Router.EventGateway.TimeoutSeconds <= 0 {
-		return fmt.Errorf("router.event_gateway.timeout_seconds must be positive, got: %d", c.Router.EventGateway.TimeoutSeconds)
-	}
 	return nil
 }
 
@@ -1592,6 +1650,26 @@ func (c *Config) validateTimeoutConfig() error {
 			timeouts.ConnectTimeoutMs, constants.MaxReasonableTimeoutMs)
 	}
 
+	// Validate HCM (downstream/connection) timeouts. Unlike the upstream timeouts above,
+	// 0 is a valid value here: which denotes "disabled scenario"
+	// only reject negative values and unreasonably large ones are rejected.
+	maxConnTimeout := time.Duration(constants.MaxReasonableConnectionTimeoutMs) * time.Millisecond
+	hcmTimeouts := map[string]time.Duration{
+		"request_timeout":         c.Router.HTTPListener.Timeouts.RequestTimeout,
+		"request_headers_timeout": c.Router.HTTPListener.Timeouts.RequestHeadersTimeout,
+		"stream_idle_timeout":     c.Router.HTTPListener.Timeouts.StreamIdleTimeout,
+		"idle_timeout":            c.Router.HTTPListener.Timeouts.IdleTimeout,
+	}
+	for name, v := range hcmTimeouts {
+		if v < 0 {
+			return fmt.Errorf("router.http_listener.timeouts.%s must not be negative, got: %s", name, v)
+		}
+		if v > maxConnTimeout {
+			return fmt.Errorf("router.http_listener.timeouts.%s (%s) exceeds maximum reasonable timeout of %s",
+				name, v, maxConnTimeout)
+		}
+	}
+
 	return nil
 }
 
@@ -1697,52 +1775,117 @@ func validateDomains(field string, domains []string) error {
 	return nil
 }
 
-// validateAnalyticsConfig validates the analytics configuration
-func (c *Config) validateAnalyticsConfig() error {
-	// Validate analytics configuration
-	if c.Analytics.Enabled {
-		// Migration path for deprecated analytics.allow_payloads.
-		// Runs when both directional flags are false, which is indistinguishable
-		// from "not set" because bool fields cannot represent unset vs explicit false.
-		if c.Analytics.AllowPayloads {
-			slog.Warn("analytics.allow_payloads is deprecated; use analytics.send_request_body and analytics.send_response_body instead")
-			if !c.Analytics.SendRequestBody && !c.Analytics.SendResponseBody {
-				c.Analytics.SendRequestBody = true
-				c.Analytics.SendResponseBody = true
-			}
-		}
+// validateCollectorConfig migrates deprecated analytics aliases onto the collector
+// and validates the ALS transport tuning when the collector is active. The collector
+// has no on/off flag of its own: it is implicitly active whenever a consumer is
+// enabled (analytics or traffic logging) — see IsCollectorEnabled.
+func (c *Config) validateCollectorConfig() error {
+	c.migrateDeprecatedAnalyticsCapture()
+	c.migrateDeprecatedAnalyticsTransport()
+	c.Collector.IgnorePathPrefixes = normalizeIgnorePathPrefixes(c.Collector.IgnorePathPrefixes)
 
-		// Validate gRPC event server configuration
-		grpcEventServerCfg := c.Analytics.GRPCEventServerCfg
-
-		// Validate connection mode
-		switch grpcEventServerCfg.Mode {
-		case "uds", "":
-			// UDS mode (default) - port is unused for Envoy connection
-		case "tcp":
-			// TCP mode - validate port (host is derived from policy_engine.host)
-			if grpcEventServerCfg.Port <= 0 || grpcEventServerCfg.Port > 65535 {
-				return fmt.Errorf("analytics.grpc_event_server.port must be between 1 and 65535 when mode is tcp, got %d", grpcEventServerCfg.Port)
-			}
-		default:
-			return fmt.Errorf("analytics.grpc_event_server.mode must be 'uds' or 'tcp', got: %s", grpcEventServerCfg.Mode)
-		}
-
-		// Validate buffer and timeout settings
-		if grpcEventServerCfg.BufferFlushInterval <= 0 || grpcEventServerCfg.BufferSizeBytes <= 0 || grpcEventServerCfg.GRPCRequestTimeout <= 0 {
-			return fmt.Errorf(
-				"invalid gRPC event server configuration: bufferFlushInterval=%d, bufferSizeBytes=%d, grpcRequestTimeout=%d (all must be > 0)",
-				grpcEventServerCfg.BufferFlushInterval,
-				grpcEventServerCfg.BufferSizeBytes,
-				grpcEventServerCfg.GRPCRequestTimeout,
-			)
-		}
-
-		// Validate server port
-		if grpcEventServerCfg.ServerPort <= 0 || grpcEventServerCfg.ServerPort > 65535 {
-			return fmt.Errorf("analytics.grpc_event_server.server_port must be between 1 and 65535, got %d", grpcEventServerCfg.ServerPort)
+	if c.IsCollectorEnabled() {
+		if err := validateGRPCEventServerConfig(c.Collector.Server); err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+// normalizeIgnorePathPrefixes trims whitespace and drops empty entries from the
+// configured ignore-path prefixes. An unfiltered empty string would match every
+// path via strings.HasPrefix, silently blackholing all collector output, so
+// empty entries (including ones that are empty only after trimming) are
+// dropped rather than passed through. Returns nil if nothing survives.
+func normalizeIgnorePathPrefixes(prefixes []string) []string {
+	if len(prefixes) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(prefixes))
+	for _, p := range prefixes {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// IsCollectorEnabled reports whether the collector should run. The collector is
+// implicit: it is active whenever any consumer of the collected data is enabled
+// (analytics or stdout traffic logging), and off otherwise. When active, the
+// controller injects the analytics system policy and configures Envoy's ALS sink.
+func (c *Config) IsCollectorEnabled() bool {
+	return collector.IsEnabled(c.Analytics.Enabled, c.TrafficLogging.Enabled)
+}
+
+// migrateDeprecatedAnalyticsTransport maps a deprecated [analytics].grpc_event_server
+// override onto the collector when the collector's transport tuning is still at its
+// default, so existing configs keep working after the transport moved to [collector].
+// See collector.MigrateDeprecatedTransport for the shared (with the policy-engine)
+// migration logic and its guarding-while-analytics-enabled rationale.
+func (c *Config) migrateDeprecatedAnalyticsTransport() {
+	collector.MigrateDeprecatedTransport(
+		c.Analytics.Enabled,
+		c.Analytics.GRPCEventServerCfg,
+		&c.Collector.Server,
+		defaultGRPCEventServerConfig(),
+		"analytics.grpc_event_server",
+	)
+}
+
+// migrateDeprecatedAnalyticsCapture maps the deprecated analytics.allow_payloads /
+// analytics.send_request_body / analytics.send_response_body onto the collector's
+// body-capture flags, so existing configs keep working after capture settings
+// moved under [collector]. See collector.MigrateDeprecatedCapture for the shared
+// (with the policy-engine) migration logic and its guarding-while-analytics-
+// enabled rationale.
+func (c *Config) migrateDeprecatedAnalyticsCapture() {
+	collector.MigrateDeprecatedCapture(
+		c.Analytics.Enabled,
+		collector.CaptureFlags{
+			SendRequestBody:  c.Analytics.SendRequestBody,
+			SendResponseBody: c.Analytics.SendResponseBody,
+			AllowPayloads:    c.Analytics.AllowPayloads,
+		},
+		&c.Collector.RequestBody,
+		&c.Collector.ResponseBody,
+	)
+}
+
+// validateGRPCEventServerConfig validates the Envoy→policy-engine ALS transport tuning.
+// The transport port is normally the fixed, non-configurable collector.ServerPort
+// constant (see collector.ServerPort); cfg.Port is a deprecated override honored only
+// for backward compatibility with configs that already set it (see its doc comment).
+func validateGRPCEventServerConfig(cfg GRPCEventServerConfig) error {
+	// Validate connection mode
+	switch cfg.Mode {
+	case "uds", "tcp", "":
+	default:
+		return fmt.Errorf("collector.server.mode must be 'uds' or 'tcp', got: %s", cfg.Mode)
+	}
+
+	if cfg.Port != 0 {
+		slog.Warn("collector.server.port is deprecated and no longer documented; the ALS port is fixed at " +
+			strconv.Itoa(collector.ServerPort) + " by default. Honoring the configured override for backward " +
+			"compatibility — ensure the policy-engine's collector.server.server_port matches, or the two sides will fail to connect.")
+		if cfg.Port < 0 || cfg.Port > 65535 {
+			return fmt.Errorf("collector.server.port must be between 1 and 65535, got %d", cfg.Port)
+		}
+	}
+
+	// Validate buffer and timeout settings
+	if cfg.BufferFlushInterval <= 0 || cfg.BufferSizeBytes <= 0 || cfg.GRPCRequestTimeout <= 0 {
+		return fmt.Errorf(
+			"invalid gRPC event server configuration: bufferFlushInterval=%d, bufferSizeBytes=%d, grpcRequestTimeout=%d (all must be > 0)",
+			cfg.BufferFlushInterval,
+			cfg.BufferSizeBytes,
+			cfg.GRPCRequestTimeout,
+		)
+	}
+
 	return nil
 }
 
@@ -1847,6 +1990,16 @@ func (c *Config) validateHTTPListenerConfig() error {
 			commonconstants.OVERWRITE,
 			commonconstants.PASS_THROUGH,
 			httpListener.ServerHeaderTransformation)
+	}
+
+	// Set default value if not provided
+	if httpListener.PerConnectionBufferLimitBytes == 0 {
+		httpListener.PerConnectionBufferLimitBytes = 1048576 // 1 MiB, matches Envoy's built-in default
+	}
+
+	if httpListener.PerConnectionBufferLimitBytes > constants.MaxReasonableBufferLimitBytes {
+		return fmt.Errorf("http_listener.per_connection_buffer_limit_bytes must not exceed %d, got: %d",
+			constants.MaxReasonableBufferLimitBytes, httpListener.PerConnectionBufferLimitBytes)
 	}
 
 	return nil

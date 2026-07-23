@@ -18,25 +18,26 @@
 package config
 
 import (
-	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
+	"github.com/golang-jwt/jwt/v5"
 	toml "github.com/knadh/koanf/parsers/toml/v2"
-	kenv "github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
+	"github.com/wso2/api-platform/common/configinterpolate"
 	"github.com/wso2/api-platform/platform-api/internal/logger"
 )
 
@@ -48,7 +49,7 @@ type FileBasedUser struct {
 }
 
 // FileBasedUsers is a slice of FileBasedUser that can be decoded from a JSON string (env var)
-// or from a TOML array of tables ([[auth.file_based.users]]).
+// or from a TOML array of tables ([[auth.file.users]]).
 type FileBasedUsers []FileBasedUser
 
 // FileBasedOrg holds the single organization used in file-based auth mode.
@@ -69,68 +70,101 @@ type FileBasedOrg struct {
 }
 
 // FileBased holds configuration for local username/password authentication.
+// Active when Auth.Mode is AuthModeFile.
 type FileBased struct {
-	Enabled      bool           `koanf:"enabled"`
 	Organization FileBasedOrg   `koanf:"organization"`
 	Users        FileBasedUsers `koanf:"users"`
 }
 
+// Logging holds logging configuration.
+type Logging struct {
+	Level  string `koanf:"level"`
+	Format string `koanf:"format"`
+}
+
 // Server holds the configuration parameters for the application.
 type Server struct {
-	LogLevel  string `koanf:"log_level"`
-	LogFormat string `koanf:"log_format"`
-	Port      string `koanf:"port"`
+	Logging Logging `koanf:"logging"`
 
 	DBSchemaPath               string `koanf:"db_schema_path"`
 	OpenAPISpecPath            string `koanf:"openapi_spec_path"`
 	LLMTemplateDefinitionsPath string `koanf:"llm_template_definitions_path"`
+	OpenAPISpecMaxFetchBytes   int64  `koanf:"openapi_spec_max_fetch_bytes"`
 
-	Database         Database         `koanf:"database"`
-	Auth             Auth             `koanf:"auth"`
-	WebSocket        WebSocket        `koanf:"websocket"`
-	DefaultDevPortal DefaultDevPortal `koanf:"default_devportal"`
-	Deployments      Deployments      `koanf:"deployments"`
-	ArtifactLimits   ArtifactLimits   `koanf:"artifact_limits"`
-	TLS              TLS              `koanf:"tls"`
-	CORS             CORS             `koanf:"cors"`
-	APIKey           APIKey           `koanf:"api_key"`
-	Gateway          Gateway          `koanf:"gateway"`
-	EventHub         EventHub         `koanf:"event_hub"`
-	Webhook          Webhook          `koanf:"webhook"`
-
-	EnableScopeValidation bool `koanf:"enable_scope_validation"`
+	Database    Database        `koanf:"database"`
+	Auth        Auth            `koanf:"auth"`
+	Deployments Deployments     `koanf:"deployments"`
+	Listeners   ServerListeners `koanf:"server"`
+	Security    Security        `koanf:"security"`
+	Gateway     Gateway         `koanf:"gateway"`
+	EventHub    EventHub        `koanf:"event_hub"`
+	Webhook     Webhook         `koanf:"webhook"`
 }
+
+// Authentication modes selectable via auth.mode. Exactly one mode is active;
+// modeling the choice as a single discriminator (rather than per-mode enabled
+// flags) makes conflicting configurations inexpressible.
+const (
+	// AuthModeExternalToken verifies locally-issued, asymmetrically-signed JWTs
+	// (RS256) minted externally, e.g. by the Developer Portal. Verification uses
+	// the RSA public key in auth.jwt.public_key_file; symmetric (HMAC) and unsigned
+	// ("none") tokens are rejected.
+	AuthModeExternalToken = "external_token"
+	// AuthModeFile is AuthModeExternalToken plus local username/password login: the
+	// login endpoint authenticates users from auth.file and issues RS256 JWTs signed
+	// with the RSA private key in auth.jwt.private_key_file, verified with the matching
+	// auth.jwt.public_key_file.
+	AuthModeFile = "file"
+	// AuthModeIDP validates tokens against an external IDP's JWKS (auth.idp).
+	AuthModeIDP = "idp"
+)
 
 // Auth groups all authentication-related configuration.
 type Auth struct {
-	SkipPaths []string  `koanf:"skip_paths"`
-	IDP       IDP       `koanf:"idp"`
-	JWT       JWT       `koanf:"jwt"`
-	FileBased FileBased `koanf:"file_based"`
+	// Mode selects the active authentication mode: "external_token", "file", or "idp".
+	Mode string `koanf:"mode"`
+	// ScopeValidation enforces per-endpoint OAuth2 scopes on validated tokens.
+	// Disable only to temporarily bypass authorization during development.
+	ScopeValidation bool     `koanf:"scope_validation"`
+	SkipPaths       []string `koanf:"skip_paths"`
+	IDP             IDP      `koanf:"idp"`
+	// JWT is shared by two modes — "external_token" mode only verifies
+	// externally-minted tokens with the public key, "file" mode both signs (with
+	// the private key) and verifies (with the public key) using the RSA key pair.
+	JWT  JWT       `koanf:"jwt"`
+	File FileBased `koanf:"file"`
+	// ClaimMappings names the JWT claims that carry each identity field. It is
+	// shared by all three auth modes: "idp" reads incoming claims by these
+	// names, "file" mode's login endpoint signs tokens using these names, and
+	// "external_token" mode reads externally-minted tokens by these names too
+	// — one mapping, so issuance and validation can never drift apart. Every
+	// field accepts either a flat top-level claim name ("org_id") or a
+	// dot-separated path into a nested claim ("realm_access.org_id") — see
+	// resolveClaimPath in internal/middleware/auth.go.
+	ClaimMappings ClaimMappings `koanf:"claim_mappings"`
 }
 
-// IDPClaimMappings holds JWT claim name mappings for an IDP.
-type IDPClaimMappings struct {
-	OrganizationClaimName string `koanf:"organization_claim_name"`
-	OrgNameClaimName      string `koanf:"org_name_claim_name"`
-	OrgHandleClaimName    string `koanf:"org_handle_claim_name"`
-	UserIDClaimName       string `koanf:"user_id_claim_name"`
-	UsernameClaimName     string `koanf:"username_claim_name"`
-	EmailClaimName        string `koanf:"email_claim_name"`
-	ScopeClaimName        string `koanf:"scope_claim_name"`
-	RolesClaimPath        string `koanf:"roles_claim_path"`
+// ClaimMappings holds JWT claim name mappings, shared across all auth modes.
+type ClaimMappings struct {
+	Organization string `koanf:"organization"`
+	OrgName      string `koanf:"org_name"`
+	OrgHandle    string `koanf:"org_handle"`
+	UserID       string `koanf:"user_id"`
+	Username     string `koanf:"username"`
+	Email        string `koanf:"email"`
+	Scope        string `koanf:"scope"`
+	Roles        string `koanf:"roles"`
 }
 
-// IDP holds configuration for JWKS-based identity providers.
+// IDP holds configuration for JWKS-based identity providers. Active when
+// Auth.Mode is AuthModeIDP.
 type IDP struct {
-	Enabled          bool             `koanf:"enabled"`
-	Name             string           `koanf:"name"`
-	JWKSUrl          string           `koanf:"jwks_url"`
-	Issuer           []string         `koanf:"issuer"`
-	Audience         []string         `koanf:"audience"`
-	ValidationMode   string           `koanf:"validation_mode"`
-	RoleMappingsFile string           `koanf:"role_mappings_file"`
-	ClaimMappings    IDPClaimMappings `koanf:"claim_mappings"`
+	Name           string   `koanf:"name"`
+	JWKSUrl        string   `koanf:"jwks_url"`
+	Issuer         []string `koanf:"issuer"`
+	Audience       []string `koanf:"audience"`
+	ValidationMode string   `koanf:"validation_mode"`
+	RoleMappings   string   `koanf:"role_mappings"`
 }
 
 // EventHub holds EventHub-specific configuration for multi-replica HA event delivery.
@@ -151,9 +185,6 @@ type Webhook struct {
 	// PrivateKeyPath points to the PEM RSA private key used to decrypt encrypted_key fields.
 	// Optional: required only for events that carry encrypted secrets (API key generate/regenerate).
 	PrivateKeyPath string `koanf:"private_key_path"`
-	// GatewayType filters events meant for this platform type. Events with a different
-	// gateway_type are accepted as a no-op.
-	GatewayType string `koanf:"gateway_type"`
 	// SignatureTolerance bounds how old a signed request may be (replay protection).
 	SignatureTolerance time.Duration `koanf:"signature_tolerance"`
 	// MaxBodySize caps the request body size in bytes.
@@ -168,35 +199,130 @@ type Gateway struct {
 	EnableFunctionalityTypeVerification bool `koanf:"enable_functionality_type_verification"`
 }
 
-// TLS holds TLS certificate configuration.
-type TLS struct {
-	CertDir string `koanf:"cert_dir"`
+// ServerListeners models the [server] section: the two independent HTTP
+// listeners (each enabled independently and bound to its own port, so a
+// deployment can serve plain HTTP internally, HTTPS externally, or both at
+// once to migrate clients between them without downtime), plus the
+// cross-cutting settings — timeouts, CORS, WebSocket — that apply to
+// whichever listener(s) are serving requests.
+type ServerListeners struct {
+	HTTP      HTTPListener  `koanf:"http"`
+	HTTPS     HTTPSListener `koanf:"https"`
+	Timeouts  Timeouts      `koanf:"timeouts"`
+	CORS      CORS          `koanf:"cors"`
+	WebSocket WebSocket     `koanf:"websocket"`
+}
+
+// HTTPListener configures the plain-HTTP listener. Enable it only when a trusted
+// upstream (ingress, service-mesh sidecar) terminates TLS, or for internal
+// cluster traffic; never expose it directly to untrusted networks.
+type HTTPListener struct {
+	Enabled bool `koanf:"enabled"`
+	Port    int  `koanf:"port"`
+}
+
+// HTTPSListener configures the TLS listener. CertFile and KeyFile must point at a
+// certificate pair when Enabled is true; there is no self-signed fallback.
+type HTTPSListener struct {
+	Enabled  bool   `koanf:"enabled"`
+	Port     int    `koanf:"port"`
+	CertFile string `koanf:"cert_file"`
+	KeyFile  string `koanf:"key_file"`
+}
+
+// Timeouts bounds the lifetime of a connection on both listeners, so a slow or
+// idle peer cannot hold one open indefinitely (Slowloris). The values apply to
+// the plain-HTTP and HTTPS listeners alike, since both serve the same handler.
+//
+// A zero value disables the corresponding timeout, matching net/http semantics.
+// Disabling Read or ReadHeader removes the Slowloris protection — only do so
+// behind a proxy that already enforces its own bounds.
+//
+// WebSocket routes are unaffected: gorilla/websocket clears the hijacked
+// connection's deadlines during the upgrade, so long-lived sockets outlive these.
+type Timeouts struct {
+	// ReadHeader bounds how long a client may take to send request headers.
+	ReadHeader time.Duration `koanf:"read_header"`
+	// Read bounds the whole request read, including bodies such as uploaded API
+	// definitions. Must be >= ReadHeader when both are set.
+	Read time.Duration `koanf:"read"`
+	// Write bounds handler execution plus the response write. Keep it generous:
+	// some handlers proxy slow upstreams (LLM completions, deployments).
+	Write time.Duration `koanf:"write"`
+	// Idle bounds how long a keep-alive connection may sit unused between
+	// requests.
+	Idle time.Duration `koanf:"idle"`
 }
 
 // CORS holds cross-origin resource sharing configuration.
 type CORS struct {
 	// AllowedOrigins lists the exact origins permitted to make credentialed
-	// cross-origin requests. Must not be ["*"] outside demo mode — wildcard
+	// cross-origin requests. Must never be ["*"] — wildcard
 	// origins cannot be combined with credentialed requests.
 	AllowedOrigins []string `koanf:"allowed_origins"`
 }
 
-// JWT holds configuration for local HMAC JWT authentication.
+// JWT holds configuration for local asymmetric (RS256) JWT authentication.
+// Active when Auth.Mode is AuthModeExternalToken (verify-only, externally-minted
+// tokens) or AuthModeFile (file mode also issues these tokens). Signature
+// validation is always on and strictly asymmetric — symmetric (HMAC) and
+// unsigned ("none") algorithms are rejected.
+//
+// TODO(pqc): migrate — RS256 is quantum-vulnerable. Move to an ML-DSA (FIPS 204)
+// signature once a Go JWT library exposes it. See post-quantum-cryptography.md.
 type JWT struct {
-	Enabled        bool   `koanf:"enabled"`
-	SecretKey      string `koanf:"secret_key"`
-	Issuer         string `koanf:"issuer"`
-	SkipValidation bool   `koanf:"skip_validation"`
+	// PublicKeyFile is the path to a mounted PEM-encoded RSA public key file,
+	// used to verify token signatures. Required in both "external_token" and
+	// "file" modes. The key is read from disk at the point of use rather than
+	// being interpolated into config at load time, so the PEM content is never
+	// held in the config struct.
+	PublicKeyFile string `koanf:"public_key_file"`
+	// PrivateKeyFile is the path to a mounted PEM-encoded RSA private key file,
+	// used to sign tokens. Required only in "file" mode, whose login endpoint
+	// mints tokens; unused (and not required) in verify-only "external_token"
+	// mode. Read from disk at the point of use, never cached as content.
+	PrivateKeyFile string        `koanf:"private_key_file"`
+	Issuer         string        `koanf:"issuer"`
+	TokenTTL       time.Duration `koanf:"token_ttl"`
+}
+
+// LoadPublicKey reads and parses the PEM-encoded RSA public key from
+// PublicKeyFile. The file is read fresh on every call rather than cached,
+// so PublicKeyFile is a mounted-file path, never inlined PEM content.
+func (j *JWT) LoadPublicKey() (*rsa.PublicKey, error) {
+	raw, err := os.ReadFile(j.PublicKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read auth.jwt.public_key_file %q: %w", j.PublicKeyFile, err)
+	}
+	pub, err := jwt.ParseRSAPublicKeyFromPEM(raw)
+	if err != nil {
+		return nil, fmt.Errorf("auth.jwt.public_key_file %q must be a PEM-encoded RSA public key: %w", j.PublicKeyFile, err)
+	}
+	return pub, nil
+}
+
+// LoadPrivateKey reads and parses the PEM-encoded RSA private key from
+// PrivateKeyFile. The file is read fresh on every call rather than cached,
+// so PrivateKeyFile is a mounted-file path, never inlined PEM content.
+func (j *JWT) LoadPrivateKey() (*rsa.PrivateKey, error) {
+	raw, err := os.ReadFile(j.PrivateKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read auth.jwt.private_key_file %q: %w", j.PrivateKeyFile, err)
+	}
+	priv, err := jwt.ParseRSAPrivateKeyFromPEM(raw)
+	if err != nil {
+		return nil, fmt.Errorf("auth.jwt.private_key_file %q must be a PEM-encoded RSA private key: %w", j.PrivateKeyFile, err)
+	}
+	return priv, nil
 }
 
 // WebSocket holds WebSocket-specific configuration.
 type WebSocket struct {
-	MaxConnections       int  `koanf:"max_connections"`
-	ConnectionTimeout    int  `koanf:"connection_timeout"`
-	RateLimitPerMin      int  `koanf:"rate_limit_per_min"`
-	MaxConnectionsPerOrg int  `koanf:"max_connections_per_org"`
-	MetricsLogEnabled    bool `koanf:"metrics_log_enabled"`
-	MetricsLogInterval   int  `koanf:"metrics_log_interval"`
+	MaxConnections     int  `koanf:"max_connections"`
+	ConnectionTimeout  int  `koanf:"connection_timeout"`
+	RateLimitPerMin    int  `koanf:"rate_limit_per_min"`
+	MetricsLogEnabled  bool `koanf:"metrics_log_enabled"`
+	MetricsLogInterval int  `koanf:"metrics_log_interval"`
 }
 
 // Database holds database-specific configuration.
@@ -204,45 +330,23 @@ type Database struct {
 	// Driver supports: sqlite3, postgres/postgresql/pgx, sqlserver/mssql.
 	Driver string `koanf:"driver"`
 	// Path is the file path for SQLite databases.
-	Path            string `koanf:"path"`
-	Host            string `koanf:"host"`
-	Port            int    `koanf:"port"`
-	Name            string `koanf:"name"`
-	User            string `koanf:"user"`
-	Password        string `koanf:"password"`
-	SSLMode         string `koanf:"ssl_mode"`
+	Path     string `koanf:"path"`
+	Host     string `koanf:"host"`
+	Port     int    `koanf:"port"`
+	Name     string `koanf:"name"`
+	User     string `koanf:"user"`
+	Password string `koanf:"password"`
+	SSLMode  string `koanf:"ssl_mode"`
+	// SSLRootCert is the CA certificate file path used to verify the server's
+	// certificate. Required when SSLMode is "verify-ca" or "verify-full".
+	SSLRootCert string `koanf:"ssl_root_cert"`
+	// SSLCert and SSLKey are the client certificate/key pair used for mutual
+	// TLS. Optional; both must be set together or not at all.
+	SSLCert         string `koanf:"ssl_cert"`
+	SSLKey          string `koanf:"ssl_key"`
 	MaxOpenConns    int    `koanf:"max_open_conns"`
 	MaxIdleConns    int    `koanf:"max_idle_conns"`
 	ConnMaxLifetime int    `koanf:"conn_max_lifetime"`
-
-	EncryptionKey                  string `koanf:"encryption_key"`
-	SubscriptionTokenEncryptionKey string `koanf:"subscription_token_encryption_key"`
-	SecretEncryptionKey            string `koanf:"secret_encryption_key"`
-	// SecretEncryptionKeyFile is the path to a 32-byte binary key file used for secret encryption.
-	// Honoured in both demo and non-demo mode when neither SecretEncryptionKey nor
-	// EncryptionKey is set. In demo mode the file is auto-generated on first startup and
-	// reused on subsequent restarts; in non-demo mode the file must already exist (a missing
-	// or unreadable file is fatal). Matches the gateway controller key-management pattern.
-	SecretEncryptionKeyFile string `koanf:"secret_encryption_key_file"`
-}
-
-// DefaultDevPortal holds default DevPortal configuration for new organizations.
-type DefaultDevPortal struct {
-	Enabled       bool   `koanf:"enabled"`
-	Name          string `koanf:"name"`
-	Identifier    string `koanf:"identifier"`
-	APIUrl        string `koanf:"api_url"`
-	Hostname      string `koanf:"hostname"`
-	APIKey        string `koanf:"api_key"`
-	HeaderKeyName string `koanf:"header_key_name"`
-	Timeout       int    `koanf:"timeout"`
-
-	RoleClaimName         string `koanf:"role_claim_name"`
-	GroupsClaimName       string `koanf:"groups_claim_name"`
-	OrganizationClaimName string `koanf:"organization_claim_name"`
-	AdminRole             string `koanf:"admin_role"`
-	SubscriberRole        string `koanf:"subscriber_role"`
-	SuperAdminRole        string `koanf:"super_admin_role"`
 }
 
 // Deployments holds deployment-specific configuration.
@@ -254,27 +358,17 @@ type Deployments struct {
 	TimeoutDuration           int  `koanf:"timeout_duration"`
 }
 
-// ArtifactLimits holds the maximum number of each artifact kind an organization
-// may create. Each limit is optional: a value <= 0 (the default) means unlimited,
-// so organizations may create as many artifacts of that kind as they want.
-type ArtifactLimits struct {
-	MaxLLMProvidersPerOrg  int `koanf:"max_llm_providers_per_org"`
-	MaxLLMProxiesPerOrg    int `koanf:"max_llm_proxies_per_org"`
-	MaxMCPProxiesPerOrg    int `koanf:"max_mcp_proxies_per_org"`
-	MaxWebSubAPIsPerOrg    int `koanf:"max_websub_apis_per_org"`
-	MaxWebBrokerAPIsPerOrg int `koanf:"max_webbroker_apis_per_org"`
-}
-
-// LimitReached reports whether an organization currently holding currentCount
-// artifacts of some kind has reached its configured limit. A limit <= 0 means
-// unlimited, in which case this always returns false.
-func LimitReached(currentCount, limit int) bool {
-	return limit > 0 && currentCount >= limit
-}
-
 // APIKey holds API key-specific configuration.
 type APIKey struct {
 	HashingAlgorithms []string `koanf:"hashing_algorithms"`
+}
+
+// Security holds cryptographic/secret-handling configuration.
+type Security struct {
+	// EncryptionKey is the single 32-byte key used for ALL at-rest encryption
+	// (secrets, subscription tokens, WebSub HMAC secrets).
+	EncryptionKey string `koanf:"encryption_key"`
+	APIKey        APIKey `koanf:"api_key"`
 }
 
 // package-level singleton.
@@ -302,7 +396,21 @@ func GetConfig() *Server {
 	return settingInstance
 }
 
-// LoadConfig loads configuration with priority: env vars > config file > defaults.
+// defaultFileSourceAllowlist is the platform-api's default set of directories that a
+// {{ file "..." }} config-interpolation token may read from. It can be overridden via
+// the shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var (see configinterpolate.ResolveAllowlist).
+var defaultFileSourceAllowlist = []string{
+	"/etc/platform-api",
+	"/secrets/platform-api",
+}
+
+// platformAPIConfigKey is the top-level TOML table that all Platform API
+// settings live under (e.g. [platform_api], [platform_api.database]). This
+// namespacing lets a Platform API config file coexist with sibling services'
+// sections in a shared deployment config.
+const platformAPIConfigKey = "platform_api"
+
+// LoadConfig loads configuration with priority: config file > defaults.
 // configPath may be empty — when omitted only env vars and defaults are used.
 func LoadConfig(configPath string) (*Server, error) {
 	cfg := defaultConfig()
@@ -314,20 +422,16 @@ func LoadConfig(configPath string) (*Server, error) {
 		}
 	}
 
-	// Load environment variables. The callback maps known env var names to koanf
-	// dot-notation keys; unknown vars or empty values return "" and are skipped.
-	// Empty values are skipped so that ${VAR:-} placeholders in docker-compose
-	// do not override non-empty values already loaded from the config file.
-	if err := k.Load(kenv.ProviderWithValue("", ".", func(s, v string) (string, interface{}) {
-		if v == "" {
-			return "", nil
-		}
-		return envToKoanfKey(strings.ToLower(s)), v
-	}), nil); err != nil {
-		return nil, fmt.Errorf("failed to load environment variables: %w", err)
+	// Resolve {{ env }} / {{ file }} interpolation tokens after the env+file merge
+	// and before unmarshal, so any config field may pull its value from an
+	// environment variable or an allowlisted file. String leaves without a "{{"
+	// token pass through unchanged, so a token-free config is unaffected.
+	k, err := interpolate(k)
+	if err != nil {
+		return nil, err
 	}
 
-	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
+	if err := k.UnmarshalWithConf(platformAPIConfigKey, cfg, koanf.UnmarshalConf{
 		DecoderConfig: &mapstructure.DecoderConfig{
 			TagName:          "koanf",
 			WeaklyTypedInput: true,
@@ -345,9 +449,12 @@ func LoadConfig(configPath string) (*Server, error) {
 	// Install the configured logger as the slog default so the warnings/info logs
 	// emitted below (and any package-level slog.* call in this file) use the same
 	// format as the rest of the application, instead of slog's default handler.
-	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.LogLevel, Format: cfg.LogFormat}))
+	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.Logging.Level, Format: cfg.Logging.Format}))
 
-	if err := validateDefaultDevPortalConfig(&cfg.DefaultDevPortal); err != nil {
+	if err := validateLoggingConfig(cfg.Logging.Level, cfg.Logging.Format); err != nil {
+		return nil, err
+	}
+	if err := validateTimeoutsConfig(&cfg.Listeners.Timeouts); err != nil {
 		return nil, err
 	}
 	if err := validateDeploymentsConfig(&cfg.Deployments); err != nil {
@@ -356,417 +463,72 @@ func LoadConfig(configPath string) (*Server, error) {
 	if err := validateEventHubConfig(&cfg.EventHub); err != nil {
 		return nil, err
 	}
-	if err := validateIDPConfig(&cfg.Auth.IDP); err != nil {
+	if err := validateAuthConfig(&cfg.Auth); err != nil {
 		return nil, err
 	}
 	if err := validateWebhookConfig(&cfg.Webhook); err != nil {
 		return nil, err
 	}
-	if err := validateFileBasedConfig(&cfg.Auth.FileBased); err != nil {
+	if err := validateEncryptionKey(cfg.Security.EncryptionKey); err != nil {
 		return nil, err
 	}
-	if err := validateAuthModeExclusivity(&cfg.Auth); err != nil {
+	if err := validateDatabaseConfig(&cfg.Database); err != nil {
 		return nil, err
 	}
-
-	if cfg.Auth.JWT.Enabled && cfg.Auth.JWT.SecretKey == "" {
-		if !demoMode() {
-			return nil, fmt.Errorf(
-				"AUTH_JWT_SECRET_KEY must be configured when APIP_DEMO_MODE=false and JWT authentication is enabled; " +
-					"generate a secret with: openssl rand -hex 32",
-			)
-		}
-		key, err := generateRandomSecret()
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate JWT secret key: %w", err)
-		}
-		cfg.Auth.JWT.SecretKey = key
-		slog.Warn("AUTH_JWT_SECRET_KEY not set — generated an ephemeral demo key (restart will invalidate all sessions)",
-			slog.String("AUTH_JWT_SECRET_KEY", key))
+	if err := validateListenersConfig(&cfg.Listeners); err != nil {
+		return nil, err
 	}
-
-	// Resolve the secret key file path: explicit config → default alongside the DB file.
-	if cfg.Database.SecretEncryptionKeyFile == "" && cfg.Database.Path != "" {
-		cfg.Database.SecretEncryptionKeyFile = filepath.Join(filepath.Dir(cfg.Database.Path), "secret-encryption.key")
-	}
-
-	// SecretEncryptionKey is optional when the shared DATABASE_ENCRYPTION_KEY is configured;
-	// server.go resolves the final key via: SecretEncryptionKey → EncryptionKey.
-	// Only fail (or auto-generate in demo mode) when no key source is available at all.
-	if cfg.Database.SecretEncryptionKey == "" && cfg.Database.EncryptionKey == "" {
-		if cfg.Database.SecretEncryptionKeyFile != "" {
-			demoMode := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
-			isDemoMode := demoMode != "false" && demoMode != "0"
-			if isDemoMode {
-				// Demo mode: auto-generate the key file on first start, reload on subsequent starts.
-				hexKey, err := loadOrGenerateSecretKeyFile(cfg.Database.SecretEncryptionKeyFile)
-				if err == nil {
-					cfg.Database.SecretEncryptionKey = hexKey
-				} else {
-					slog.Warn("APIP_DEMO_MODE: could not initialise secret key file, falling back to ephemeral key",
-						slog.String("path", cfg.Database.SecretEncryptionKeyFile), slog.Any("err", err))
-				}
-			} else {
-				// Non-demo mode: the key file must already exist — never auto-generate.
-				hexKey, err := loadSecretKeyFile(cfg.Database.SecretEncryptionKeyFile)
-				if err != nil {
-					return nil, fmt.Errorf("failed to load secret key file: %w", err)
-				}
-				cfg.Database.SecretEncryptionKey = hexKey
-			}
-		}
-	}
-
-	if cfg.Database.SecretEncryptionKey == "" && cfg.Database.EncryptionKey == "" {
-		// APIP_DEMO_MODE defaults to enabled when unset; only an explicit
-		// "false"/"0" opts out and requires a configured encryption key.
-		demoMode := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
-		if demoMode == "false" || demoMode == "0" {
-			return nil, fmt.Errorf("no encryption key configured for secrets management. " +
-				"Set PLATFORM_SECRET_ENCRYPTION_KEY (secret-specific), DATABASE_ENCRYPTION_KEY (shared), " +
-				"or DATABASE_SECRET_ENCRYPTION_KEY_FILE (key file). " +
-				"Generate one with: openssl rand -hex 32. " +
-				"To allow an ephemeral key in a single-node dev environment, set APIP_DEMO_MODE=true")
-		}
-
-		// Demo mode with no usable key file — fall back to an ephemeral key.
-		// Secrets will not survive restarts.
-		key, err := generateRandomSecret()
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate secret encryption key: %w", err)
-		}
-		cfg.Database.SecretEncryptionKey = key
-		slog.Warn("APIP_DEMO_MODE: using an ephemeral random key — encrypted secrets will be unreadable after restart. " +
-			"Set DATABASE_SECRET_ENCRYPTION_KEY_FILE, PLATFORM_SECRET_ENCRYPTION_KEY, or DATABASE_ENCRYPTION_KEY.")
+	if err := validateCORSConfig(&cfg.Listeners.CORS); err != nil {
+		return nil, err
 	}
 
 	return cfg, nil
 }
 
-func generateRandomSecret() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
+// interpolate resolves Go template tokens ({{ env }} / {{ file }}) in the merged
+// config and returns a fresh koanf instance holding the expanded values. It loads the
+// expanded map into a new instance (rather than reloading into k) so no un-expanded
+// leaves survive. The file-source allowlist is the platform-api default, overridable
+// via the shared APIP_CONFIG_FILE_SOURCE_ALLOWLIST env var. Resolved values are never
+// logged; only reference counts are emitted at info level.
+func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
+	opts := configinterpolate.Options{
+		FileAllowlist: configinterpolate.ResolveAllowlist(defaultFileSourceAllowlist),
 	}
-	return hex.EncodeToString(b), nil
+	expanded, stats, err := configinterpolate.Expand(k.Raw(), opts)
+	if err != nil {
+		return nil, fmt.Errorf("config interpolation failed: %w", err)
+	}
+
+	out := koanf.New(".")
+	if err := out.Load(confmap.Provider(expanded, "."), nil); err != nil {
+		return nil, fmt.Errorf("failed to reload interpolated config: %w", err)
+	}
+	if stats.Fields > 0 {
+		slog.Info("config interpolation complete",
+			slog.Int("env_refs", stats.EnvRefs),
+			slog.Int("file_refs", stats.FileRefs),
+			slog.Int("fields", stats.Fields))
+	}
+	return out, nil
 }
 
-// demoMode reports whether APIP_DEMO_MODE is enabled.
-// Defaults to true when the variable is unset.
-func demoMode() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("APIP_DEMO_MODE")))
-	if v == "" {
+// valid32ByteKey reports whether keyStr is a 32-byte key encoded as 64 hex characters
+// or base64 decoding to 32 bytes — matching utils.DeriveEncryptionKey's acceptance.
+func valid32ByteKey(keyStr string) bool {
+	if len(keyStr) == 64 {
+		if k, err := hex.DecodeString(keyStr); err == nil && len(k) == 32 {
+			return true
+		}
+	}
+	if k, err := base64.StdEncoding.DecodeString(keyStr); err == nil && len(k) == 32 {
 		return true
 	}
-	return v == "true" || v == "1"
+	return false
 }
 
-const secretKeySize = 32 // AES-256
-
-// loadOrGenerateSecretKeyFile loads a 32-byte binary key file from filePath, creating it
-// (and any missing parent directories) on first run. This mirrors the gateway controller's
-// KeyManager pattern: raw binary key file, 0600 permissions, validate size on load.
-// Returns the key as a 64-char hex string for use with DeriveEncryptionKey.
-//
-// Concurrent first-time callers are safe: generateSecretKeyFile uses O_CREATE|O_EXCL so
-// only one writer succeeds; others see os.ErrExist and fall through to loadSecretKeyFile.
-func loadOrGenerateSecretKeyFile(filePath string) (string, error) {
-	err := generateSecretKeyFile(filePath)
-	switch {
-	case err == nil:
-		slog.Info("APIP_DEMO_MODE: generated and persisted secret encryption key — encrypted secrets will survive restarts",
-			slog.String("path", filePath),
-			slog.String("hint", "Set PLATFORM_SECRET_ENCRYPTION_KEY or DATABASE_ENCRYPTION_KEY for production or multi-replica deployments"))
-	case errors.Is(err, os.ErrExist):
-		// Another initializer already created the file — load the winner's key.
-	default:
-		return "", err
-	}
-	return loadSecretKeyFile(filePath)
-}
-
-// generateSecretKeyFile creates parent directories and writes 32 cryptographically
-// random bytes to filePath with permissions 0600. Uses O_CREATE|O_EXCL so concurrent
-// first-time callers are safe: only one writer succeeds, others get os.ErrExist.
-// Mirrors gateway-controller's generateKeyFile.
-func generateSecretKeyFile(filePath string) error {
-	if err := os.MkdirAll(filepath.Dir(filePath), 0700); err != nil {
-		return fmt.Errorf("failed to create key directory: %w", err)
-	}
-	key := make([]byte, secretKeySize)
-	if _, err := rand.Read(key); err != nil {
-		return fmt.Errorf("failed to generate random key: %w", err)
-	}
-	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		// Propagate os.ErrExist so the caller can distinguish "already created" from other errors.
-		return err
-	}
-	_, err = f.Write(key)
-	if closeErr := f.Close(); closeErr != nil && err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		os.Remove(filePath) // best-effort cleanup of a partial write
-		return fmt.Errorf("failed to write key file %s: %w", filePath, err)
-	}
-	return nil
-}
-
-// loadSecretKeyFile reads the key file, validates its size, warns if world-readable,
-// and returns the key as a 64-char hex string.
-func loadSecretKeyFile(filePath string) (string, error) {
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to stat secret key file %s: %w", filePath, err)
-	}
-	if info.Mode().Perm()&0004 != 0 {
-		slog.Warn("Secret encryption key file is world-readable — consider restricting permissions to 0600",
-			slog.String("path", filePath),
-			slog.String("permissions", info.Mode().Perm().String()))
-	}
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read secret key file %s: %w", filePath, err)
-	}
-	if len(data) != secretKeySize {
-		return "", fmt.Errorf("secret key file %s has wrong size: expected %d bytes, got %d", filePath, secretKeySize, len(data))
-	}
-	slog.Info("APIP_DEMO_MODE: loaded persisted secret encryption key", slog.String("path", filePath))
-	return hex.EncodeToString(data), nil
-}
-
-// envToKoanfKey maps a lowercased environment variable name to its koanf dot-notation key.
-// Returns "" for unknown variables, which causes koanf to skip them.
-// Supports both the current env var names (e.g. DATABASE_DB_PATH) and the legacy
-// WEBSOCKET_WS_* naming from the old envconfig setup.
-func envToKoanfKey(s string) string {
-	switch s {
-	// Server-level
-	case "log_level":
-		return "log_level"
-	case "log_format":
-		return "log_format"
-	case "port":
-		return "port"
-	case "db_schema_path":
-		return "db_schema_path"
-	case "openapi_spec_path":
-		return "openapi_spec_path"
-	case "llm_template_definitions_path":
-		return "llm_template_definitions_path"
-	case "enable_scope_validation":
-		return "enable_scope_validation"
-
-	// Database
-	case "database_driver":
-		return "database.driver"
-	case "database_db_path":
-		return "database.path"
-	case "database_host":
-		return "database.host"
-	case "database_port":
-		return "database.port"
-	case "database_name":
-		return "database.name"
-	case "database_user":
-		return "database.user"
-	case "database_password":
-		return "database.password"
-	case "database_ssl_mode":
-		return "database.ssl_mode"
-	case "database_max_open_conns":
-		return "database.max_open_conns"
-	case "database_max_idle_conns":
-		return "database.max_idle_conns"
-	case "database_conn_max_lifetime":
-		return "database.conn_max_lifetime"
-	case "database_encryption_key":
-		return "database.encryption_key"
-	case "database_subscription_token_encryption_key":
-		return "database.subscription_token_encryption_key"
-	case "platform_secret_encryption_key":
-		return "database.secret_encryption_key"
-	case "database_secret_encryption_key_file":
-		return "database.secret_encryption_key_file"
-
-	// Auth
-	case "auth_skip_paths":
-		return "auth.skip_paths"
-
-	// Auth JWT
-	case "auth_jwt_enabled":
-		return "auth.jwt.enabled"
-	case "auth_jwt_secret_key":
-		return "auth.jwt.secret_key"
-	case "auth_jwt_issuer":
-		return "auth.jwt.issuer"
-	case "auth_jwt_skip_validation":
-		return "auth.jwt.skip_validation"
-
-	// Auth IDP
-	case "auth_idp_enabled":
-		return "auth.idp.enabled"
-	case "auth_idp_name":
-		return "auth.idp.name"
-	case "auth_idp_jwks_url":
-		return "auth.idp.jwks_url"
-	case "auth_idp_issuer":
-		return "auth.idp.issuer"
-	case "auth_idp_audience":
-		return "auth.idp.audience"
-	case "auth_idp_validation_mode":
-		return "auth.idp.validation_mode"
-	case "auth_idp_role_mappings_file":
-		return "auth.idp.role_mappings_file"
-	case "auth_idp_claim_mappings_organization_claim_name":
-		return "auth.idp.claim_mappings.organization_claim_name"
-	case "auth_idp_claim_mappings_org_name_claim_name":
-		return "auth.idp.claim_mappings.org_name_claim_name"
-	case "auth_idp_claim_mappings_org_handle_claim_name":
-		return "auth.idp.claim_mappings.org_handle_claim_name"
-	case "auth_idp_claim_mappings_user_id_claim_name":
-		return "auth.idp.claim_mappings.user_id_claim_name"
-	case "auth_idp_claim_mappings_username_claim_name":
-		return "auth.idp.claim_mappings.username_claim_name"
-	case "auth_idp_claim_mappings_email_claim_name":
-		return "auth.idp.claim_mappings.email_claim_name"
-	case "auth_idp_claim_mappings_scope_claim_name":
-		return "auth.idp.claim_mappings.scope_claim_name"
-	case "auth_idp_claim_mappings_roles_claim_path":
-		return "auth.idp.claim_mappings.roles_claim_path"
-
-	// Auth FileBased
-	case "auth_file_based_enabled":
-		return "auth.file_based.enabled"
-	case "auth_file_based_organization_id":
-		return "auth.file_based.organization.id"
-	case "auth_file_based_organization_uuid":
-		return "auth.file_based.organization.uuid"
-	case "auth_file_based_organization_display_name":
-		return "auth.file_based.organization.display_name"
-	case "auth_file_based_organization_region":
-		return "auth.file_based.organization.region"
-	case "auth_file_based_users":
-		return "auth.file_based.users"
-
-	// WebSocket — accept both legacy WEBSOCKET_WS_* and clean WEBSOCKET_*
-	case "websocket_ws_max_connections", "websocket_max_connections":
-		return "websocket.max_connections"
-	case "websocket_ws_connection_timeout", "websocket_connection_timeout":
-		return "websocket.connection_timeout"
-	case "websocket_ws_rate_limit_per_minute", "websocket_rate_limit_per_min":
-		return "websocket.rate_limit_per_min"
-	case "websocket_ws_max_connections_per_org", "websocket_max_connections_per_org":
-		return "websocket.max_connections_per_org"
-	case "websocket_ws_metrics_log_enabled", "websocket_metrics_log_enabled":
-		return "websocket.metrics_log_enabled"
-	case "websocket_ws_metrics_log_interval", "websocket_metrics_log_interval":
-		return "websocket.metrics_log_interval"
-
-	// Default DevPortal
-	case "default_devportal_enabled":
-		return "default_devportal.enabled"
-	case "default_devportal_name":
-		return "default_devportal.name"
-	case "default_devportal_identifier":
-		return "default_devportal.identifier"
-	case "default_devportal_api_url":
-		return "default_devportal.api_url"
-	case "default_devportal_hostname":
-		return "default_devportal.hostname"
-	case "default_devportal_api_key":
-		return "default_devportal.api_key"
-	case "default_devportal_header_key_name":
-		return "default_devportal.header_key_name"
-	case "default_devportal_timeout":
-		return "default_devportal.timeout"
-	case "default_devportal_role_claim_name":
-		return "default_devportal.role_claim_name"
-	case "default_devportal_groups_claim_name":
-		return "default_devportal.groups_claim_name"
-	case "default_devportal_organization_claim_name":
-		return "default_devportal.organization_claim_name"
-	case "default_devportal_admin_role":
-		return "default_devportal.admin_role"
-	case "default_devportal_subscriber_role":
-		return "default_devportal.subscriber_role"
-	case "default_devportal_super_admin_role":
-		return "default_devportal.super_admin_role"
-
-	// Deployments
-	case "deployments_max_per_api_gateway":
-		return "deployments.max_per_api_gateway"
-	case "deployments_transitional_status_enabled":
-		return "deployments.transitional_status_enabled"
-	case "deployments_timeout_enabled":
-		return "deployments.timeout_enabled"
-	case "deployments_timeout_interval":
-		return "deployments.timeout_interval"
-	case "deployments_timeout_duration":
-		return "deployments.timeout_duration"
-
-	// Artifact limits (per organization; <= 0 means unlimited)
-	case "artifact_limits_max_llm_providers_per_org":
-		return "artifact_limits.max_llm_providers_per_org"
-	case "artifact_limits_max_llm_proxies_per_org":
-		return "artifact_limits.max_llm_proxies_per_org"
-	case "artifact_limits_max_mcp_proxies_per_org":
-		return "artifact_limits.max_mcp_proxies_per_org"
-	case "artifact_limits_max_websub_apis_per_org":
-		return "artifact_limits.max_websub_apis_per_org"
-	case "artifact_limits_max_webbroker_apis_per_org":
-		return "artifact_limits.max_webbroker_apis_per_org"
-
-	// TLS
-	case "tls_cert_dir":
-		return "tls.cert_dir"
-
-	// CORS
-	case "cors_allowed_origins":
-		return "cors.allowed_origins"
-
-	// API Key
-	case "api_key_hashing_algorithms":
-		return "api_key.hashing_algorithms"
-
-	// Gateway
-	case "gateway_enable_version_verification":
-		return "gateway.enable_version_verification"
-	case "gateway_enable_functionality_type_verification":
-		return "gateway.enable_functionality_type_verification"
-
-	// EventHub
-	case "event_hub_poll_interval":
-		return "event_hub.poll_interval"
-	case "event_hub_cleanup_interval":
-		return "event_hub.cleanup_interval"
-	case "event_hub_retention_period":
-		return "event_hub.retention_period"
-
-	// Webhook
-	case "webhook_enabled":
-		return "webhook.enabled"
-	case "webhook_secret":
-		return "webhook.secret"
-	case "webhook_private_key_path":
-		return "webhook.private_key_path"
-	case "webhook_gateway_type":
-		return "webhook.gateway_type"
-	case "webhook_signature_tolerance":
-		return "webhook.signature_tolerance"
-	case "webhook_max_body_size":
-		return "webhook.max_body_size"
-	case "webhook_signature_header":
-		return "webhook.signature_header"
-
-	default:
-		return ""
-	}
-}
-
-// fileBasedUsersDecodeHook handles decoding AUTH_FILE_BASED_USERS from a JSON string
-// (env var format) in addition to the native TOML array-of-tables format.
+// fileBasedUsersDecodeHook handles decoding auth.file.users from a JSON string
+// (e.g. a {{ env }} token) in addition to the native TOML array-of-tables format.
 func fileBasedUsersDecodeHook() mapstructure.DecodeHookFuncType {
 	return func(f reflect.Type, t reflect.Type, data interface{}) (interface{}, error) {
 		if t != reflect.TypeOf(FileBasedUsers{}) {
@@ -781,91 +543,241 @@ func fileBasedUsersDecodeHook() mapstructure.DecodeHookFuncType {
 		}
 		var users FileBasedUsers
 		if err := json.Unmarshal([]byte(s), &users); err != nil {
-			return nil, fmt.Errorf("failed to parse AUTH_FILE_BASED_USERS as JSON: %w", err)
+			return nil, fmt.Errorf("failed to parse auth.file.users as JSON: %w", err)
 		}
 		return users, nil
 	}
 }
 
-func validateDefaultDevPortalConfig(cfg *DefaultDevPortal) error {
-	if !cfg.Enabled {
+// validateTimeoutsConfig rejects negative durations (net/http treats only zero as
+// "no timeout"; a negative deadline would expire immediately and break every
+// request) and a Read bound that would cut off header reading before ReadHeader.
+func validateTimeoutsConfig(cfg *Timeouts) error {
+	for _, f := range []struct {
+		name  string
+		value time.Duration
+	}{
+		{"server.timeouts.read_header", cfg.ReadHeader},
+		{"server.timeouts.read", cfg.Read},
+		{"server.timeouts.write", cfg.Write},
+		{"server.timeouts.idle", cfg.Idle},
+	} {
+		if f.value < 0 {
+			return fmt.Errorf("%s must not be negative (got %s); use 0 to disable the timeout", f.name, f.value)
+		}
+	}
+	if cfg.Read > 0 && cfg.ReadHeader > cfg.Read {
+		return fmt.Errorf(
+			"server.timeouts.read_header (%s) must not exceed server.timeouts.read (%s): the header deadline would never be reached",
+			cfg.ReadHeader, cfg.Read,
+		)
+	}
+	return nil
+}
+
+// validateAuthConfig validates the selected auth mode and the section that mode
+// activates. Modes are mutually exclusive by construction: auth.mode is a single
+// discriminator, so conflicting-mode configurations are inexpressible and only
+// the active mode's section is validated.
+func validateAuthConfig(auth *Auth) error {
+	switch auth.Mode {
+	case AuthModeExternalToken:
+		// Verify-only: a public key is sufficient (tokens are minted elsewhere).
+		return validateJWTConfig(&auth.JWT, false)
+	case AuthModeFile:
+		// File mode also mints tokens, so it additionally needs a signing key.
+		if err := validateJWTConfig(&auth.JWT, true); err != nil {
+			return err
+		}
+		// TokenTTL only matters in file mode: the login endpoint mints tokens
+		// itself here, whereas in plain "external_token" mode tokens are minted
+		// externally and their expiry is whatever "exp" claim the issuer set.
+		if auth.JWT.TokenTTL <= 0 {
+			return fmt.Errorf("Auth.JWT.TokenTTL must be a positive duration when auth.mode is %q "+
+				"(set auth.jwt.token_ttl, e.g. \"8h\")", AuthModeFile)
+		}
+		return validateFileBasedConfig(&auth.File)
+	case AuthModeIDP:
+		return validateIDPConfig(&auth.IDP, &auth.ClaimMappings)
+	default:
+		return fmt.Errorf("auth.mode must be %q, %q, or %q (got %q)", AuthModeExternalToken, AuthModeFile, AuthModeIDP, auth.Mode)
+	}
+}
+
+// validateJWTConfig verifies the local asymmetric JWT key material is present
+// and readable. The RSA public key verifies token signatures and is required
+// in both the "external_token" and "file" auth modes. When requireSigningKey
+// is true (file mode, which mints tokens at its login endpoint) the RSA
+// private key is also required and must form a matching pair with the public
+// key. Keys are mounted files, read fresh here rather than cached: a missing
+// path, an unreadable file, or malformed material all fail startup. Only
+// asymmetric RSA keys are accepted, so symmetric (HMAC) verification is
+// structurally impossible.
+func validateJWTConfig(jwtCfg *JWT, requireSigningKey bool) error {
+	if jwtCfg.PublicKeyFile == "" {
+		return fmt.Errorf("Auth.JWT.PublicKeyFile is required when auth.mode is %q or %q "+
+			"(set auth.jwt.public_key_file to the path of a mounted PEM-encoded RSA public key)",
+			AuthModeExternalToken, AuthModeFile)
+	}
+	pub, err := jwtCfg.LoadPublicKey()
+	if err != nil {
+		return fmt.Errorf("invalid Auth.JWT.PublicKeyFile: %w", err)
+	}
+
+	if !requireSigningKey {
 		return nil
+	}
+
+	if jwtCfg.PrivateKeyFile == "" {
+		return fmt.Errorf("Auth.JWT.PrivateKeyFile is required when auth.mode is %q "+
+			"(set auth.jwt.private_key_file to the path of a mounted PEM-encoded RSA private key)",
+			AuthModeFile)
+	}
+	priv, err := jwtCfg.LoadPrivateKey()
+	if err != nil {
+		return fmt.Errorf("invalid Auth.JWT.PrivateKeyFile: %w", err)
+	}
+	if !priv.PublicKey.Equal(pub) {
+		return fmt.Errorf("Auth.JWT.PrivateKeyFile and Auth.JWT.PublicKeyFile must be a matching RSA key pair")
+	}
+	return nil
+}
+
+// validateEncryptionKey verifies the at-rest encryption key.
+// A missing or malformed key fails startup.
+func validateEncryptionKey(key string) error {
+	if key == "" {
+		return fmt.Errorf("EncryptionKey is required (set encryption_key in config via " +
+			"{{ env }}/{{ file }}")
+	}
+	if !valid32ByteKey(key) {
+		return fmt.Errorf("invalid EncryptionKey: must be 64 hex characters or " +
+			"base64 decoding to 32 bytes")
+	}
+	return nil
+}
+
+// validateLoggingConfig rejects a logging.level/logging.format typo at startup
+// instead of silently falling back to logger.NewLogger's default (info/json),
+// which would leave an operator's requested verbosity or encoding silently
+// ignored. The level is matched case-insensitively (canonical form is lowercase).
+func validateLoggingConfig(level, format string) error {
+	switch strings.ToLower(level) {
+	case "debug", "info", "warn", "warning", "error":
+	default:
+		return fmt.Errorf("logging.level must be one of \"debug\", \"info\", \"warn\", or \"error\" (got %q)", level)
+	}
+	switch strings.ToLower(format) {
+	case "text", "json":
+	default:
+		return fmt.Errorf("logging.format must be \"text\" or \"json\" (got %q)", format)
+	}
+	return nil
+}
+
+// validateDatabaseConfig fails closed when the selected driver's required
+// connection fields are missing, rather than surfacing an opaque driver-level
+// connection error only once the server tries to open the database.
+func validateDatabaseConfig(cfg *Database) error {
+	driver := strings.ToLower(cfg.Driver)
+	switch driver {
+	case "sqlite3", "postgres", "postgresql", "pgx", "sqlserver", "mssql":
+	default:
+		return fmt.Errorf("database.driver must be one of \"sqlite3\", \"postgres\", \"postgresql\", \"pgx\", "+
+			"\"sqlserver\", or \"mssql\" (got %q)", cfg.Driver)
+	}
+	if driver == "sqlite3" {
+		return nil
+	}
+	if cfg.Host == "" {
+		return fmt.Errorf("database.host is required when database.driver is %q", cfg.Driver)
+	}
+	if cfg.Port <= 0 || cfg.Port > 65535 {
+		return fmt.Errorf("database.port must be between 1 and 65535 when database.driver is %q (got %d)", cfg.Driver, cfg.Port)
 	}
 	if cfg.Name == "" {
-		return fmt.Errorf("default DevPortal is enabled but name is not configured")
+		return fmt.Errorf("database.name is required when database.driver is %q", cfg.Driver)
 	}
-	if cfg.Identifier == "" {
-		return fmt.Errorf("default DevPortal is enabled but identifier is not configured")
+	if cfg.User == "" {
+		return fmt.Errorf("database.user is required when database.driver is %q", cfg.Driver)
 	}
-	if cfg.APIUrl == "" {
-		return fmt.Errorf("default DevPortal is enabled but api_url is not configured")
+	switch cfg.SSLMode {
+	case "", "disable", "require", "verify-ca", "verify-full":
+	default:
+		return fmt.Errorf("database.ssl_mode must be \"disable\", \"require\", \"verify-ca\", or \"verify-full\" (got %q)", cfg.SSLMode)
 	}
-	if cfg.Hostname == "" {
-		return fmt.Errorf("default DevPortal is enabled but hostname is not configured")
+	if (cfg.SSLMode == "verify-ca" || cfg.SSLMode == "verify-full") && cfg.SSLRootCert == "" {
+		return fmt.Errorf("database.ssl_root_cert is required when database.ssl_mode is %q", cfg.SSLMode)
 	}
-	if cfg.APIKey == "" {
-		return fmt.Errorf("default DevPortal is enabled but api_key is not configured")
-	}
-	if cfg.HeaderKeyName == "" {
-		return fmt.Errorf("default DevPortal header_key_name is not configured")
-	}
-	return nil
-}
-
-// validateAuthModeExclusivity enforces that IDP (JWKS) auth is not enabled
-// alongside the local auth modes. When an IDP is configured every token must be
-// validated against its JWKS; leaving local HMAC auth on would let the server
-// silently validate (file-based) or accept (local JWT) tokens with the local
-// secret instead, shadowing the IDP. So enabling the IDP requires consciously
-// turning the local modes off.
-func validateAuthModeExclusivity(auth *Auth) error {
-	if !auth.IDP.Enabled {
-		return nil
-	}
-	if auth.JWT.Enabled {
-		return fmt.Errorf("auth.idp.enabled=true and auth.jwt.enabled=true are mutually exclusive: " +
-			"set auth.jwt.enabled=false to delegate authentication to the IDP (tokens are validated against auth.idp.jwks_url)")
-	}
-	if auth.FileBased.Enabled {
-		return fmt.Errorf("auth.idp.enabled=true and auth.file_based.enabled=true are mutually exclusive: " +
-			"set auth.file_based.enabled=false to delegate authentication to the IDP (tokens are validated against auth.idp.jwks_url)")
+	if (cfg.SSLCert == "") != (cfg.SSLKey == "") {
+		return fmt.Errorf("database.ssl_cert and database.ssl_key must both be set together, or both left empty")
 	}
 	return nil
 }
 
-func validateIDPConfig(idp *IDP) error {
-	if !idp.Enabled {
-		return nil
+// validateListenersConfig rejects an out-of-range port on either listener and
+// a port collision when both listeners are enabled, rather than failing at
+// bind time with a generic "address already in use" error.
+func validateListenersConfig(l *ServerListeners) error {
+	if l.HTTP.Enabled && (l.HTTP.Port <= 0 || l.HTTP.Port > 65535) {
+		return fmt.Errorf("server.http.port must be between 1 and 65535 (got %d)", l.HTTP.Port)
 	}
+	if l.HTTPS.Enabled && (l.HTTPS.Port <= 0 || l.HTTPS.Port > 65535) {
+		return fmt.Errorf("server.https.port must be between 1 and 65535 (got %d)", l.HTTPS.Port)
+	}
+	if l.HTTP.Enabled && l.HTTPS.Enabled && l.HTTP.Port == l.HTTPS.Port {
+		return fmt.Errorf("server.http.port and server.https.port must differ when both listeners are enabled (both are %d)", l.HTTP.Port)
+	}
+	return nil
+}
+
+// validateCORSConfig rejects a wildcard origin: CORS.AllowedOrigins is used
+// for credentialed cross-origin requests, and wildcard origins cannot be
+// combined with credentials without opening a cross-tenant exploit path.
+func validateCORSConfig(c *CORS) error {
+	for _, o := range c.AllowedOrigins {
+		if o == "*" {
+			return fmt.Errorf("cors.allowed_origins must not contain \"*\" (wildcard origins cannot be combined with credentialed requests)")
+		}
+	}
+	return nil
+}
+
+func validateIDPConfig(idp *IDP, claimMappings *ClaimMappings) error {
 	if idp.JWKSUrl == "" {
-		return fmt.Errorf("auth.idp.enabled=true requires auth.idp.jwks_url to be configured")
+		return fmt.Errorf("auth.mode=%q requires auth.idp.jwks_url to be configured", AuthModeIDP)
 	}
 	if len(idp.Issuer) == 0 {
-		return fmt.Errorf("auth.idp.enabled=true requires auth.idp.issuer to be configured")
+		return fmt.Errorf("auth.mode=%q requires auth.idp.issuer to be configured", AuthModeIDP)
 	}
 	switch idp.ValidationMode {
 	case "scope", "role":
 	default:
 		return fmt.Errorf("auth.idp.validation_mode must be \"scope\" or \"role\" (got %q)", idp.ValidationMode)
 	}
-	if idp.ValidationMode == "role" && idp.ClaimMappings.RolesClaimPath == "" {
-		return fmt.Errorf("auth.idp.validation_mode=role requires auth.idp.claim_mappings.roles_claim_path to be configured")
+	if idp.ValidationMode == "role" && claimMappings.Roles == "" {
+		return fmt.Errorf("auth.idp.validation_mode=role requires auth.claim_mappings.roles to be configured")
 	}
 	return nil
 }
 
 func validateFileBasedConfig(cfg *FileBased) error {
-	if !cfg.Enabled {
-		return nil
-	}
 	if cfg.Organization.ID == "" {
-		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.id to be configured")
+		return fmt.Errorf("auth.mode=%q requires auth.file.organization.id to be configured", AuthModeFile)
 	}
 	if cfg.Organization.DisplayName == "" {
-		return fmt.Errorf("auth.file_based.enabled=true requires auth.file_based.organization.display_name to be configured")
+		return fmt.Errorf("auth.mode=%q requires auth.file.organization.display_name to be configured", AuthModeFile)
 	}
 	if len(cfg.Users) == 0 {
-		return fmt.Errorf("auth.file_based.enabled=true requires at least one user in auth.file_based.users")
+		return fmt.Errorf("auth.mode=%q requires at least one user in auth.file.users", AuthModeFile)
+	}
+	for i, u := range cfg.Users {
+		if u.Username == "" {
+			return fmt.Errorf("auth.file.users[%d]: username is required (set it in config via {{ env }}/{{ file }})", i)
+		}
+		if u.PasswordHash == "" {
+			return fmt.Errorf("auth.file.users[%d] (%s): password_hash is required (set it in config via {{ env }}/{{ file }})", i, u.Username)
+		}
 	}
 	return nil
 }
@@ -887,9 +799,6 @@ func validateWebhookConfig(w *Webhook) error {
 	}
 	if w.SignatureHeader == "" {
 		w.SignatureHeader = "X-Devportal-Signature"
-	}
-	if w.GatewayType == "" {
-		w.GatewayType = "wso2/api-platform"
 	}
 	return nil
 }

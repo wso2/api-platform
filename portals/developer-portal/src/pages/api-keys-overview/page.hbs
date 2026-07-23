@@ -1,0 +1,201 @@
+<!--
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ -->
+
+{{#pageHead}}
+  <link rel="stylesheet" href="/technical-styles/api-keys-page.css">
+{{/pageHead}}
+{{#pageScripts}}
+  <script src="/technical-scripts/api-keys-overview.js" defer></script>
+{{/pageScripts}}
+
+<div class="page-container">
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">API Keys</h1>
+      <p class="page-desc">API keys you've generated across all APIs. Manage a key inline — regenerate or revoke it.</p>
+    </div>
+  </div>
+
+  {{!-- The list is rendered server-side (all keys, no client pagination). Per-key
+        management happens inline through the modals below (mirrors the Subscriptions
+        page); api-keys-overview.js reads each row's data-* attributes and calls the
+        per-API / per-MCP REST endpoints. --}}
+  <div id="api-keys-overview-root"
+       data-base-url="{{baseUrl}}">
+
+    {{#if apiKeysLoadError}}
+    <div style="background:#fdeaea;border:1px solid #f5c2c2;border-radius:0.5rem;padding:1rem 1.25rem;font-size:0.875rem;color:#c62828;margin-top:0.5rem;">
+      <strong>Unable to load API keys.</strong> Refresh the page or try again later.
+    </div>
+    {{else if apiKeys.length}}
+    <div class="ak-tablewrap" id="api-keys-overview-table-wrap">
+      <table class="ak-table" id="api-keys-overview-table">
+        <thead>
+          <tr>
+            <th>API</th><th>Name</th><th>Status</th><th>Expires</th><th>Application</th><th class="ak-th-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each apiKeys}}
+          {{!-- The key handle is the external identifier; the mutation endpoints expect it
+                as `keyId`. The uuid is internal and never rendered. --}}
+          <tr data-key-handle="{{this.id}}"
+              data-api-id="{{this.apiHandle}}"
+              data-api-type="{{this.apiType}}"
+              data-key-name="{{this.displayName}}"
+              data-status="{{this.status}}"
+              data-app-id="{{this.appId}}"
+              data-app-display-name="{{this.appDisplayName}}">
+            <td>
+              <a class="sub-api-link" href="{{@root.baseUrl}}/{{#if (eq (lowercase this.apiType) 'mcp')}}mcp{{else}}api{{/if}}/{{this.apiHandle}}">{{#if this.apiName}}{{this.apiName}}{{else}}{{this.apiHandle}}{{/if}}</a>
+              {{#if this.apiVersion}}<span class="ak-app" style="margin-left:0.375rem;color:#8a98a6;">{{this.apiVersion}}</span>{{/if}}
+            </td>
+            <td><span class="ak-key-name">{{this.displayName}}</span></td>
+            <td>
+              <span class="ak-status {{#if (eq (lowercase this.status) 'active')}}ak-status--active{{else}}ak-status--inactive{{/if}}">
+                <span class="ak-status-dot"></span>{{lowercase this.status}}
+              </span>
+            </td>
+            <td class="ak-expires">{{#if this.expiresAt}}{{formatExpiresAt this.expiresAt}}{{else}}Never{{/if}}</td>
+            <td class="ak-app">{{#if this.appDisplayName}}{{this.appDisplayName}}{{else}}-{{/if}}</td>
+            <td>
+              <div class="ak-actions">
+                <button type="button" class="ak-btn-app ak-row-app"
+                  {{#unless (eq (lowercase this.status) 'active')}}disabled title="Key is revoked"{{/unless}}>
+                  <i class="bi bi-grid"></i> {{#if this.appDisplayName}}Change app{{else}}Associate app{{/if}}
+                </button>
+                <button type="button" class="ak-btn-regen ak-row-regen"
+                  {{#unless (eq (lowercase this.status) 'active')}}disabled title="Key is revoked"{{/unless}}>
+                  <i class="bi bi-arrow-clockwise"></i> Regenerate
+                </button>
+                <button type="button" class="ak-btn-revoke ak-row-revoke"
+                  {{#unless (eq (lowercase this.status) 'active')}}disabled title="Key is already revoked"{{/unless}}>
+                  <i class="bi bi-slash-circle"></i> Revoke
+                </button>
+              </div>
+            </td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <div class="dp-empty" id="no-api-keys-overview">
+      <span class="dp-empty-icon"><i class="bi bi-key-fill"></i></span>
+      <h2 class="dp-empty-title">No API keys yet</h2>
+      <p class="dp-empty-desc">Open an API that supports API-key access and generate a key from its API Keys tab. Your keys will show up here.</p>
+    </div>
+    {{/if}}
+  </div>
+
+  {{> alert }}
+
+  <!-- Regenerate modal (same as the per-API API Keys page) -->
+  <div class="ak-overlay" id="regenerateApiKeyModal">
+    <div class="ak-modal">
+      <div class="ak-modal-head">
+        <h2 class="ak-modal-title">Regenerate API key</h2>
+        <button type="button" class="ak-modal-close" id="ak-regen-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="ak-modal-body">
+        <p style="margin:0;font-size:0.8125rem;line-height:1.5;color:#56657a;">The previous key will stop working immediately after regeneration.</p>
+        <input type="hidden" id="regenerate-key-id" value="" />
+        <div class="ak-form-group">
+          <label for="regenerate-api-key-name">Name</label>
+          <input type="text" id="regenerate-api-key-name" class="ak-form-input" autocomplete="off" disabled />
+        </div>
+        <div class="ak-form-group">
+          <label for="regenerate-api-key-expires">Expires at <span style="font-weight:400;color:#9aa3af;">— optional</span></label>
+          <input type="datetime-local" id="regenerate-api-key-expires" class="ak-form-input ak-form-input--date" />
+        </div>
+      </div>
+      <div class="ak-modal-footer">
+        <button type="button" class="dp-btn dp-btn--outline" id="ak-regen-cancel">Cancel</button>
+        <button type="button" class="dp-btn dp-btn--primary" id="btn-submit-regenerate-api-key">Regenerate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Key generated secret modal (same as the per-API API Keys page) -->
+  <div class="ak-overlay" id="showApiKeySecretModal">
+    <div class="ak-modal ak-modal--lg ak-modal--secret">
+      <button type="button" class="ak-modal-close ak-secret-close-abs" id="ak-secret-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+      <div class="ak-secret-hero">
+        <div class="ak-secret-success-icon"><i class="bi bi-check-lg"></i></div>
+        <h2 class="ak-secret-hero-title">API key generated</h2>
+        <p class="ak-secret-hero-subtitle">Key <strong id="ak-secret-key-name"></strong> was generated successfully.</p>
+      </div>
+      <div class="ak-modal-body">
+        <div class="ak-secret-key-label"><i class="bi bi-key"></i> Secret key</div>
+        <div class="ak-key-field">
+          <code class="ak-key-code" id="api-key-secret-value"></code>
+          <button type="button" class="copy-btn ak-copy-btn ak-copy-btn--abs" id="btn-copy-api-key-secret">
+            <span class="copy-btn-icon"><i class="bi bi-copy"></i></span>
+            <span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>
+          </button>
+        </div>
+        <div class="ak-warning-amber">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <span>Copy this key now. For your security, the full value is shown only once and can't be retrieved after closing.</span>
+        </div>
+      </div>
+      <div class="ak-modal-footer">
+        <button type="button" class="dp-btn dp-btn--primary" id="ak-secret-done">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Revoke confirmation modal (same as the per-API API Keys page) -->
+  <div class="ak-overlay" id="ak-revoke-modal">
+    <div class="ak-revoke-modal">
+      <div class="ak-revoke-head">
+        <span class="ak-revoke-icon"><i class="bi bi-slash-circle"></i></span>
+        <h2 class="ak-revoke-title">Revoke API key</h2>
+      </div>
+      <p class="ak-revoke-body">Are you sure you want to revoke <strong id="ak-revoke-name"></strong>? Requests using this key will immediately stop working. This action can't be undone.</p>
+      <div class="ak-revoke-footer">
+        <button type="button" class="dp-btn dp-btn--outline" id="ak-revoke-cancel">Cancel</button>
+        <button type="button" class="dp-btn dp-btn--primary" id="ak-revoke-confirm" style="background:#c62828;">Revoke key</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Associate app modal (same as the per-API API Keys page) -->
+  <div class="ak-overlay" id="ak-app-modal">
+    <div class="ak-modal">
+      <div class="ak-modal-head">
+        <h2 class="ak-modal-title">Associate with an app</h2>
+        <button type="button" class="ak-modal-close" id="ak-app-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="ak-modal-body">
+        <p style="margin:0 0 0.75rem;font-size:0.8125rem;line-height:1.5;color:#56657a;">Optional — used for usage analytics only. It has no effect on this key's validity.</p>
+        <input type="hidden" id="ak-app-key-id" value="" />
+        <div class="ak-form-group">
+          <label for="ak-app-select">App</label>
+          <select id="ak-app-select" class="ak-form-input">
+            <option value="">— None —</option>
+          </select>
+        </div>
+      </div>
+      <div class="ak-modal-footer">
+        <button type="button" class="dp-btn dp-btn--outline" id="ak-app-cancel">Cancel</button>
+        <button type="button" class="dp-btn dp-btn--primary" id="btn-submit-app-association">Save</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -44,9 +44,10 @@ import MistralAILogo from '../../../../assets/brands/mistralai.png';
 import OpenAILogo from '../../../../assets/brands/openAI.png';
 import { FormattedMessage } from 'react-intl';
 import {
-  getProviderTemplateDisplayName,
+  resolveTemplateDisplayName,
   truncateProviderDisplayName,
 } from '../../../../utils/providerTemplateDisplay';
+import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
@@ -100,6 +101,7 @@ export default function ServiceProvidersSummaryCard({
   showSeeMore = true,
 }: ServiceProvidersSummaryCardProps) {
   const { hasPermission } = useAppAuth();
+  const { templatesResponse } = useProviderTemplates();
   const displayCount = totalCount ?? providers.length;
   const visibleProviders = providers.slice(0, maxItems);
   const canClick = Boolean(onProviderClick);
@@ -316,8 +318,9 @@ export default function ServiceProvidersSummaryCard({
               const providerId = provider.id;
               const lastUpdated = provider.lastUpdated;
               const templateKey = (provider.template ?? '').toLowerCase();
-              const templateDisplayName = getProviderTemplateDisplayName(
-                provider.template
+              const templateDisplayName = resolveTemplateDisplayName(
+                provider.template,
+                templatesResponse.list
               );
               const providerDisplayName = truncateProviderDisplayName(
                 provider.displayName
@@ -340,6 +343,7 @@ export default function ServiceProvidersSummaryCard({
                       width: '100%',
                       p: 0,
                       alignItems: 'center',
+                      minHeight: '3.75rem',
                     },
                     '& .MuiCardHeader-content': {
                       minWidth: 0,
@@ -389,14 +393,16 @@ export default function ServiceProvidersSummaryCard({
                     }
                     subheader={
                       <Box sx={{ minWidth: 0, mt: 0.25 }}>
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          fontSize="0.75rem"
-                          sx={{ mb: 0.25 }}
-                        >
-                          {truncateText(descriptionText, 70)}
-                        </Typography>
+                        {descriptionText && (
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            fontSize="0.75rem"
+                            sx={{ mb: 0.25 }}
+                          >
+                            {truncateText(descriptionText, 70)}
+                          </Typography>
+                        )}
 
                         {templateDisplayName && (
                           <Stack

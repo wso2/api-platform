@@ -78,7 +78,7 @@ Feature: Startup DB Bootstrap
         context: /startup-db-mcp
         specVersion: "2025-06-18"
         upstream:
-          url: http://mcp-server-backend:3001
+          url: http://mcp-server-backend:3001/mcp
         tools: []
         resources: []
         prompts: []

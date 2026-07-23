@@ -68,8 +68,8 @@ func New(opts ...Option) (*App, error) {
 
 	if a.logger == nil {
 		a.logger = logger.NewLogger(logger.Config{
-			Level:  a.cfg.LogLevel,
-			Format: a.cfg.LogFormat,
+			Level:  a.cfg.Logging.Level,
+			Format: a.cfg.Logging.Format,
 		})
 	}
 
@@ -84,5 +84,5 @@ func (a *App) Run() error {
 	if err != nil {
 		return err
 	}
-	return srv.Start(a.cfg.Port, a.cfg.TLS.CertDir)
+	return srv.Start(a.cfg.Listeners, a.cfg.Listeners.Timeouts)
 }

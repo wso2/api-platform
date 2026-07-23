@@ -100,7 +100,7 @@ version-set: ## Set developer portal version and update artifacts
 		exit 1; \
 	fi
 	@echo "$(VERSION)" > VERSION
-	@sed -i.bak 's/"version": ".*"/"version": "$(VERSION)"/' package.json && rm -f package.json.bak
+	@npm version $(VERSION) --no-git-tag-version --allow-same-version >/dev/null
 	@(cd ../.. && bash scripts/update-docker-compose.sh developer-portal $(VERSION))
 	@echo "✓ Set developer portal version to $(VERSION)"
 
@@ -140,11 +140,27 @@ DIST_ZIP     := target/$(DIST_NAME).zip
 dist: clean-dist ## Build standalone developer portal distribution zip
 	@echo "Building distribution $(DIST_NAME)..."
 	@mkdir -p $(DIST_DIR)/configs
-	@cp -R database $(DIST_DIR)
+	@mkdir -p $(DIST_DIR)/resources/developer-portal/db-scripts
+	@cp -R database/* $(DIST_DIR)/resources/developer-portal/db-scripts
+	@mkdir -p $(DIST_DIR)/resources/samples
+	@cp -R samples/apis $(DIST_DIR)/resources/samples/
+	@cp -R samples/mcps $(DIST_DIR)/resources/samples/
 	@cp configs/config.toml $(DIST_DIR)/configs/config.toml
 	@cp configs/config-template.toml $(DIST_DIR)/configs/config-template.toml
-	@cp configs/config-platform-api.toml.example $(DIST_DIR)/configs/config-platform-api.toml
-	@cp distribution/docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
+	# The source docker-compose.yaml mounts ../../platform-api/config/config.toml
+	# directly (the monorepo's single source-of-truth Platform API config, no
+	# per-portal copy) — the standalone zip has no platform-api/ sibling, so bake
+	# a real copy into its own configs/ dir and repoint the compose file at it.
+	@cp ../../platform-api/config/config.toml $(DIST_DIR)/configs/config-platform-api.toml
+	@cp ../../platform-api/config/config-template.toml $(DIST_DIR)/configs/config-platform-api-template.toml
+	@sed 's#\.\./\.\./platform-api/config/config\.toml#./configs/config-platform-api.toml#' \
+		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml
+	@cp distribution/README.md $(DIST_DIR)/README.md
+	@mkdir -p $(DIST_DIR)/scripts
+	@cp scripts/setup.sh $(DIST_DIR)/scripts/setup.sh
+	@chmod +x $(DIST_DIR)/scripts/setup.sh
+	@cp scripts/seed-samples.sh $(DIST_DIR)/scripts/seed-samples.sh
+	@chmod +x $(DIST_DIR)/scripts/seed-samples.sh
 	@sed -i.bak \
 	    -e 's|image: .*/developer-portal:[^[:space:]]*|image: $(DEVPORTAL_IMAGE):$(DIST_VERSION)|g' \
 	    $(DIST_DIR)/docker-compose.yaml
@@ -168,11 +184,11 @@ clean: clean-dist ## Clean all build artifacts
 .PHONY: generate-ddl
 generate-ddl: ## Generate DDL schema files from Sequelize models for all supported dialects
 	@echo "Generating DDL files (postgres, mysql, mariadb, mssql, sqlite)..."
-	@node scripts/generate-ddl.js postgres
-	@node scripts/generate-ddl.js mysql
-	@node scripts/generate-ddl.js mariadb
-	@node scripts/generate-ddl.js mssql
-	@node scripts/generate-ddl.js sqlite
+	@node tools/generate-ddl.js postgres
+	@node tools/generate-ddl.js mysql
+	@node tools/generate-ddl.js mariadb
+	@node tools/generate-ddl.js mssql
+	@node tools/generate-ddl.js sqlite
 	@echo "Done. Files written to database/"
 
 # Docs Targets

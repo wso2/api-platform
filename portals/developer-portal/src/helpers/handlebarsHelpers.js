@@ -17,7 +17,6 @@
  */
 
 const Handlebars = require('handlebars');
-const constants = require('../utils/constants');
 
 const helpers = {
     // Array helpers
@@ -48,7 +47,11 @@ const helpers = {
     urlEncode: (value) => encodeURIComponent(value ?? ''),
 
     // JSON helpers
-    json: (context) => JSON.stringify(context ?? null),
+    // Replace tags and line separators
+    json: (context) => JSON.stringify(context ?? null)
+        .replace(/</g, '\\u003c')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029'),
     // For embedding JSON inside HTML double-quoted attributes
     jsonAttr: (context) => new Handlebars.SafeString(Handlebars.escapeExpression(JSON.stringify(context ?? null))),
 

@@ -46,6 +46,7 @@ type refreshLock struct {
 // Server holds the BFF dependencies and HTTP handler.
 type Server struct {
 	cfg       *config.Config
+	claims    session.ClaimMapping
 	store     session.Store
 	fileBased *auth.FileBased
 	oidc      *auth.OIDC
@@ -60,30 +61,42 @@ type Server struct {
 // session store, the file-based authenticator, and (when enabled) the OIDC
 // authenticator — discovering the IDP endpoints up front.
 func New(ctx context.Context, cfg *config.Config) (*Server, error) {
-	target, err := url.Parse(cfg.PlatformAPIURL)
+	target, err := url.Parse(cfg.ControlPlane.URL)
 	if err != nil {
 		return nil, err
 	}
 
-	transport := proxy.NewTransport(cfg.PlatformTLSSkipVerify)
+	transport, err := proxy.NewTransport(proxy.TLSClientOptions{
+		CAFile:     cfg.ControlPlane.CAFile,
+		SkipVerify: cfg.ControlPlane.TLSSkipVerify,
+	})
+	if err != nil {
+		return nil, err
+	}
 	upstream := &http.Client{Transport: transport, Timeout: 60 * time.Second}
+
+	// Shared by both auth modes: OIDC tokens from the configured IDP, and the HMAC
+	// JWTs the Platform API's file-based login endpoint signs with the same mapped
+	// claim names. Building it once keeps the two readers from drifting apart.
+	claims := buildClaimMapping(cfg.Auth.ClaimMappings)
 
 	s := &Server{
 		cfg:          cfg,
-		fileBased:    auth.NewFileBased(upstream, cfg.PlatformAPIURL, cfg.PlatformLoginPath, cfg.Session.AbsoluteTTL),
-		proxy:        proxy.ReverseProxy(target, cfg.ProxyPrefix, transport),
+		claims:       claims,
+		fileBased:    auth.NewFileBased(upstream, cfg.ControlPlane.URL, cfg.ControlPlane.PortalBasePath, cfg.Session.AbsoluteTTL, claims),
+		proxy:        proxy.ReverseProxy(target, cfg.ControlPlane.ProxyPrefix, transport),
 		refreshLocks: make(map[string]*refreshLock),
 	}
 
-	if cfg.OIDC.Enabled {
+	if cfg.Auth.OIDC.Enabled {
 		// The session store exists only to hold OIDC refresh/id tokens for renewal.
 		// File-based sessions are fully self-contained in the cookie JWT.
 		s.store = session.NewMemoryStore()
 		o, err := auth.NewOIDC(
 			ctx, upstream,
-			cfg.OIDC.Issuer, cfg.OIDC.ClientID, cfg.OIDC.ClientSecret,
-			cfg.OIDC.RedirectURL, cfg.OIDC.PostLogoutRedirectURL, cfg.OIDC.Scopes,
-			oidcClaimMapping(cfg.OIDC.Claims), cfg.Session.AbsoluteTTL,
+			cfg.Auth.OIDC.Issuer, cfg.Auth.OIDC.ClientID, cfg.Auth.OIDC.ClientSecret,
+			cfg.Auth.OIDC.RedirectURL, cfg.Auth.OIDC.PostLogoutRedirectURL, cfg.Auth.OIDC.Scopes,
+			claims, cfg.Session.AbsoluteTTL,
 		)
 		if err != nil {
 			return nil, err
@@ -110,11 +123,11 @@ func (s *Server) Close() error {
 	return nil
 }
 
-// oidcClaimMapping builds the claim mapping for OIDC tokens from config. Each
-// field overrides the session-package default only when set, so an operator can
-// point a single claim (e.g. the display name) at the right key via the
-// OIDC_CLAIM_* env vars without re-specifying the rest.
-func oidcClaimMapping(c config.ClaimMappingConfig) session.ClaimMapping {
+// buildClaimMapping builds the claim mapping shared by both auth modes from
+// config. Each field overrides the session-package default only when set, so an
+// operator can point a single claim (e.g. the display name) at the right key via
+// the CLAIM_MAPPINGS_* env vars without re-specifying the rest.
+func buildClaimMapping(c config.ClaimMappingConfig) session.ClaimMapping {
 	m := session.DefaultClaimMapping()
 	if c.Username != "" {
 		m.Username = c.Username
@@ -122,8 +135,8 @@ func oidcClaimMapping(c config.ClaimMappingConfig) session.ClaimMapping {
 	if c.Email != "" {
 		m.Email = c.Email
 	}
-	if c.Role != "" {
-		m.Role = c.Role
+	if c.Roles != "" {
+		m.Roles = c.Roles
 	}
 	if c.Scope != "" {
 		m.Scope = c.Scope

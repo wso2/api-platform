@@ -26,7 +26,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 )
@@ -74,6 +74,25 @@ func discoverControllerService(ctx context.Context, c client.Client, gatewayName
 	return svc, restPort, nil
 }
 
+// discoverGatewayRuntimeService finds the gateway-runtime Service for a Helm release.
+func discoverGatewayRuntimeService(ctx context.Context, c client.Client, gatewayName, namespace string) (*corev1.Service, error) {
+	releaseName := helm.GetReleaseName(gatewayName)
+	serviceList := &corev1.ServiceList{}
+	if err := c.List(ctx, serviceList,
+		client.InNamespace(namespace),
+		client.MatchingLabels{
+			"app.kubernetes.io/instance":  releaseName,
+			"app.kubernetes.io/component": "gateway-runtime",
+		},
+	); err != nil {
+		return nil, fmt.Errorf("failed to list gateway runtime services: %w", err)
+	}
+	if len(serviceList.Items) == 0 {
+		return nil, fmt.Errorf("no gateway runtime service found for release %s in namespace %s", releaseName, namespace)
+	}
+	return &serviceList.Items[0], nil
+}
+
 // registerGatewayInRegistry discovers the controller service and registers the gateway.
 func registerGatewayInRegistry(ctx context.Context, c client.Client, name, namespace string, apiSelector *apiv1.APISelector, controlPlaneHost string, helmValuesCM string, fromK8sGW bool) error {
 	svc, restPort, err := discoverControllerService(ctx, c, name, namespace)
@@ -95,8 +114,14 @@ func registerGatewayInRegistry(ctx context.Context, c client.Client, name, names
 }
 
 // gatewayHelmExpectedResourcesPresent reports whether cluster objects for the Helm release still exist
-// (at least one Deployment labeled for the release and the gateway-controller Service used for discovery).
-// A false result with a nil error means resources were likely removed out-of-band and Helm should re-run.
+// (at least one Deployment labeled for the release, the gateway-controller Service used for discovery,
+// and the gateway-runtime Service that syncGateway requires for the dataplane). A false result with a
+// nil error means resources were likely removed out-of-band and Helm should re-run.
+//
+// The gateway-runtime Service must be included here: syncGateway treats it as required downstream (it
+// errors out when discoverGatewayRuntimeService fails). If it were omitted, a runtime Service deleted
+// out-of-band would leave resourcesOK (and thus skipHelm) true, so Helm would never re-run to recreate
+// it, and reconcile would loop returning pending/error forever without ever healing.
 func gatewayHelmExpectedResourcesPresent(ctx context.Context, c client.Client, gatewayName, namespace string) (ok bool, detail string, err error) {
 	releaseName := helm.GetReleaseName(gatewayName)
 	deployments := &appsv1.DeploymentList{}
@@ -110,6 +135,9 @@ func gatewayHelmExpectedResourcesPresent(ctx context.Context, c client.Client, g
 	}
 	if _, _, err := discoverControllerService(ctx, c, gatewayName, namespace); err != nil {
 		return false, fmt.Sprintf("gateway controller Service not found: %v", err), nil
+	}
+	if _, err := discoverGatewayRuntimeService(ctx, c, gatewayName, namespace); err != nil {
+		return false, fmt.Sprintf("gateway runtime Service not found: %v", err), nil
 	}
 	return true, "", nil
 }

@@ -39,10 +39,10 @@ func TestReverseProxy_InjectsBearerStripsCookieAndPrefix(t *testing.T) {
 	defer backend.Close()
 
 	target, _ := url.Parse(backend.URL)
-	rp := ReverseProxy(target, "/api/proxy", backend.Client().Transport)
+	rp := ReverseProxy(target, "/proxy", backend.Client().Transport)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/proxy/api/v0.9/projects", nil)
-	req.Header.Set("Cookie", "_bff_session=secret-session-id")
+	req := httptest.NewRequest(http.MethodGet, "/proxy/api/v0.9/projects", nil)
+	req.Header.Set("Cookie", "_ai_workspace_session=secret-session-id")
 	req = WithToken(req, "injected-bearer-token")
 
 	rec := httptest.NewRecorder()
@@ -73,9 +73,9 @@ func TestReverseProxy_NoTokenNoAuthHeader(t *testing.T) {
 	defer backend.Close()
 
 	target, _ := url.Parse(backend.URL)
-	rp := ReverseProxy(target, "/api/proxy", backend.Client().Transport)
+	rp := ReverseProxy(target, "/proxy", backend.Client().Transport)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/proxy/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/proxy/health", nil)
 	req.Header.Set("Authorization", "Bearer should-be-removed")
 	rec := httptest.NewRecorder()
 	rp.ServeHTTP(rec, req)

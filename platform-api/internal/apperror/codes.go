@@ -39,12 +39,10 @@ const (
 const (
 	CodeLLMProviderNotFound                   = "LLM_PROVIDER_NOT_FOUND"
 	CodeLLMProviderExists                     = "LLM_PROVIDER_EXISTS"
-	CodeLLMProviderLimitReached               = "LLM_PROVIDER_LIMIT_REACHED"
 	CodeLLMProviderAPIKeyNotFound             = "LLM_PROVIDER_API_KEY_NOT_FOUND"
 	CodeLLMProviderDeploymentValidationFailed = "LLM_PROVIDER_DEPLOYMENT_VALIDATION_FAILED"
 	CodeLLMProxyNotFound                      = "LLM_PROXY_NOT_FOUND"
 	CodeLLMProxyExists                        = "LLM_PROXY_EXISTS"
-	CodeLLMProxyLimitReached                  = "LLM_PROXY_LIMIT_REACHED"
 	CodeLLMProxyAPIKeyNotFound                = "LLM_PROXY_API_KEY_NOT_FOUND"
 	CodeLLMProviderRefNotFound                = "LLM_PROVIDER_REF_NOT_FOUND"
 	CodeLLMProxyDeploymentValidationFailed    = "LLM_PROXY_DEPLOYMENT_VALIDATION_FAILED"
@@ -65,8 +63,10 @@ const (
 	CodeLLMProviderTemplateVersionExists     = "LLM_PROVIDER_TEMPLATE_VERSION_EXISTS"
 	CodeLLMProviderTemplateManagedByReserved = "LLM_PROVIDER_TEMPLATE_MANAGED_BY_RESERVED"
 	CodeLLMProviderTemplateInUse             = "LLM_PROVIDER_TEMPLATE_IN_USE"
+	CodeLLMProviderTemplateDisabled          = "LLM_PROVIDER_TEMPLATE_DISABLED"
 	CodeLLMProviderTemplateReadOnly          = "LLM_PROVIDER_TEMPLATE_READ_ONLY"
 	CodeLLMProviderTemplateNotToggleable     = "LLM_PROVIDER_TEMPLATE_NOT_TOGGLEABLE"
+	CodeLLMProviderTemplateBuiltInImmutable  = "LLM_PROVIDER_TEMPLATE_BUILT_IN_IMMUTABLE"
 )
 
 // Gateway domain codes, matching the examples documented in resources/openapi.yaml.
@@ -102,7 +102,6 @@ const (
 const (
 	CodeMCPProxyNotFound                   = "MCP_PROXY_NOT_FOUND"
 	CodeMCPProxyExists                     = "MCP_PROXY_EXISTS"
-	CodeMCPProxyLimitReached               = "MCP_PROXY_LIMIT_REACHED"
 	CodeMCPProxyDeploymentValidationFailed = "MCP_PROXY_DEPLOYMENT_VALIDATION_FAILED"
 )
 
@@ -175,4 +174,24 @@ const (
 const (
 	CodeApplicationAPIKeyNotFound  = "APPLICATION_API_KEY_NOT_FOUND"
 	CodeApplicationAPIKeyForbidden = "APPLICATION_API_KEY_FORBIDDEN"
+)
+
+// WebSub and WebBroker API domain codes, raised by the event-gateway plugin
+// and by the two gateway-internal artifact lookups.
+const (
+	CodeWebSubAPINotFound    = "WEBSUB_API_NOT_FOUND"
+	CodeWebSubAPIExists      = "WEBSUB_API_EXISTS"
+	CodeWebBrokerAPINotFound = "WEBBROKER_API_NOT_FOUND"
+	CodeWebBrokerAPIExists   = "WEBBROKER_API_EXISTS"
+)
+
+// HMAC secret domain codes (WebSub subscriber callback signing secrets).
+// HMAC_SECRET_NOT_CONFIGURED is a 503 rather than a 500: the encryption key is
+// a deployment-time setting, so the condition is transient from the client's
+// point of view and resolvable without a code change.
+const (
+	CodeHmacSecretNotFound      = "HMAC_SECRET_NOT_FOUND"
+	CodeHmacSecretExists        = "HMAC_SECRET_EXISTS"
+	CodeHmacSecretInvalidValue  = "HMAC_SECRET_INVALID_VALUE"
+	CodeHmacSecretNotConfigured = "HMAC_SECRET_NOT_CONFIGURED"
 )

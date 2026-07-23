@@ -32,6 +32,7 @@ const (
 	importPolicyAPIKeyAuth        = "api-key-auth"
 	importPolicyTokenRateLimit    = "token-based-ratelimit"
 	importPolicyAdvancedRateLimit = "advanced-ratelimit"
+	importPolicyBasicRateLimit    = "basic-ratelimit"
 	importPolicyCostRateLimit     = "llm-cost-based-ratelimit"
 	importPolicyLLMCost           = "llm-cost"
 )
@@ -59,6 +60,7 @@ func liftLLMPolicies(policies []model.LLMPolicy, liftRateLimits bool) (*model.Se
 		if !liftRateLimits &&
 			(p.Name == importPolicyTokenRateLimit ||
 				p.Name == importPolicyAdvancedRateLimit ||
+				p.Name == importPolicyBasicRateLimit ||
 				p.Name == importPolicyCostRateLimit) {
 			remaining = append(remaining, p)
 			continue
@@ -75,6 +77,10 @@ func liftLLMPolicies(policies []model.LLMPolicy, liftRateLimits bool) (*model.Se
 		case importPolicyAdvancedRateLimit:
 			for _, path := range p.Paths {
 				rl.addRequest(path)
+			}
+		case importPolicyBasicRateLimit:
+			for _, path := range p.Paths {
+				rl.addBasicRequest(path)
 			}
 		case importPolicyCostRateLimit:
 			for _, path := range p.Paths {
@@ -95,6 +101,7 @@ func liftAPIKeySecurity(p model.LLMPolicy) *model.SecurityConfig {
 	for _, path := range p.Paths {
 		key := asString(path.Params["key"])
 		in := asString(path.Params["in"])
+		valuePrefix := asString(path.Params["valuePrefix"])
 		if key == "" && in == "" {
 			continue
 		}
@@ -102,9 +109,10 @@ func liftAPIKeySecurity(p model.LLMPolicy) *model.SecurityConfig {
 		return &model.SecurityConfig{
 			Enabled: &enabled,
 			APIKey: &model.APIKeySecurity{
-				Enabled: &enabled,
-				Key:     key,
-				In:      in,
+				Enabled:     &enabled,
+				Key:         key,
+				In:          in,
+				ValuePrefix: valuePrefix,
 			},
 		}
 	}
@@ -192,6 +200,24 @@ func (b *rateLimitBuilder) addRequest(path model.LLMPolicyPath) {
 	cfg.Request = &model.RequestRateLimit{
 		Enabled: true,
 		Count:   asInt(first["limit"]),
+		Reset:   parseImportResetWindow(asString(first["duration"])),
+	}
+}
+
+// addBasicRequest lifts a basic-ratelimit policy (params: limits[].requests) back into
+// a provider-level request limit. basic-ratelimit carries no keyExtraction and no quota
+// wrapper; the "/*" path maps to the provider Global/Default and any other path to a
+// resource-wise limit.
+func (b *rateLimitBuilder) addBasicRequest(path model.LLMPolicyPath) {
+	limits := asSlice(path.Params["limits"])
+	if len(limits) == 0 {
+		return
+	}
+	first := asMap(limits[0])
+	cfg := b.target(false, path.Path)
+	cfg.Request = &model.RequestRateLimit{
+		Enabled: true,
+		Count:   asInt(first["requests"]),
 		Reset:   parseImportResetWindow(asString(first["duration"])),
 	}
 }

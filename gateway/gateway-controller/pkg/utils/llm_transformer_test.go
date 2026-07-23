@@ -498,14 +498,14 @@ func TestIsDeniedByException(t *testing.T) {
 
 func TestHasDenyPolicy(t *testing.T) {
 	t.Run("Nil policies returns false", func(t *testing.T) {
-		op := &api.Operation{Path: "/test", Method: "GET", Policies: nil}
+		op := &api.Operation{Path: api.Ptr("/test"), Method: api.Ptr(api.OperationMethod("GET")), Policies: nil}
 		result := hasDenyPolicy(op, testRespondVersion)
 		assert.False(t, result)
 	})
 
 	t.Run("Empty policies returns false", func(t *testing.T) {
 		policies := []api.Policy{}
-		op := &api.Operation{Path: "/test", Method: "GET", Policies: &policies}
+		op := &api.Operation{Path: api.Ptr("/test"), Method: api.Ptr(api.OperationMethod("GET")), Policies: &policies}
 		result := hasDenyPolicy(op, testRespondVersion)
 		assert.False(t, result)
 	})
@@ -514,7 +514,7 @@ func TestHasDenyPolicy(t *testing.T) {
 		policies := []api.Policy{
 			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: testRespondVersion},
 		}
-		op := &api.Operation{Path: "/test", Method: "GET", Policies: &policies}
+		op := &api.Operation{Path: api.Ptr("/test"), Method: api.Ptr(api.OperationMethod("GET")), Policies: &policies}
 		result := hasDenyPolicy(op, testRespondVersion)
 		assert.True(t, result)
 	})
@@ -523,7 +523,7 @@ func TestHasDenyPolicy(t *testing.T) {
 		policies := []api.Policy{
 			{Name: "other-policy", Version: "v1.0.0"},
 		}
-		op := &api.Operation{Path: "/test", Method: "GET", Policies: &policies}
+		op := &api.Operation{Path: api.Ptr("/test"), Method: api.Ptr(api.OperationMethod("GET")), Policies: &policies}
 		result := hasDenyPolicy(op, testRespondVersion)
 		assert.False(t, result)
 	})
@@ -533,7 +533,7 @@ func TestHasDenyPolicy(t *testing.T) {
 			{Name: "other-policy", Version: "v1.0.0"},
 			{Name: constants.ACCESS_CONTROL_DENY_POLICY_NAME, Version: testRespondVersion},
 		}
-		op := &api.Operation{Path: "/test", Method: "GET", Policies: &policies}
+		op := &api.Operation{Path: api.Ptr("/test"), Method: api.Ptr(api.OperationMethod("GET")), Policies: &policies}
 		result := hasDenyPolicy(op, testRespondVersion)
 		assert.True(t, result)
 	})
@@ -546,8 +546,8 @@ func TestDenyAppliesToTarget(t *testing.T) {
 		}
 		registry := map[pathMethodKey]*api.Operation{
 			{path: "/chat/completions", method: "GET"}: {
-				Path:     "/chat/completions",
-				Method:   "GET",
+				Path:     api.Ptr("/chat/completions"),
+				Method:   api.Ptr(api.OperationMethod("GET")),
 				Policies: &denyPolicies,
 			},
 		}
@@ -562,8 +562,8 @@ func TestDenyAppliesToTarget(t *testing.T) {
 		}
 		registry := map[pathMethodKey]*api.Operation{
 			{path: "/chat/*", method: "GET"}: {
-				Path:     "/chat/*",
-				Method:   "GET",
+				Path:     api.Ptr("/chat/*"),
+				Method:   api.Ptr(api.OperationMethod("GET")),
 				Policies: &denyPolicies,
 			},
 		}
@@ -578,8 +578,8 @@ func TestDenyAppliesToTarget(t *testing.T) {
 		}
 		registry := map[pathMethodKey]*api.Operation{
 			{path: "/chat/*", method: "GET"}: {
-				Path:     "/chat/*",
-				Method:   "GET",
+				Path:     api.Ptr("/chat/*"),
+				Method:   api.Ptr(api.OperationMethod("GET")),
 				Policies: &denyPolicies,
 			},
 		}
@@ -915,46 +915,46 @@ func TestSortOperationsBySpecificity(t *testing.T) {
 
 	t.Run("Single operation unchanged", func(t *testing.T) {
 		ops := []api.Operation{
-			{Path: "/users", Method: "GET"},
+			{Path: api.Ptr("/users"), Method: api.Ptr(api.OperationMethod("GET"))},
 		}
 		result := sortOperationsBySpecificity(ops)
 		assert.Len(t, result, 1)
-		assert.Equal(t, "/users", result[0].Path)
+		assert.Equal(t, "/users", result[0].EffectivePath())
 	})
 
 	t.Run("Non-wildcard before wildcard", func(t *testing.T) {
 		ops := []api.Operation{
-			{Path: "/*", Method: "GET"},
-			{Path: "/users", Method: "GET"},
+			{Path: api.Ptr("/*"), Method: api.Ptr(api.OperationMethod("GET"))},
+			{Path: api.Ptr("/users"), Method: api.Ptr(api.OperationMethod("GET"))},
 		}
 		result := sortOperationsBySpecificity(ops)
-		assert.Equal(t, "/users", result[0].Path)
-		assert.Equal(t, "/*", result[1].Path)
+		assert.Equal(t, "/users", result[0].EffectivePath())
+		assert.Equal(t, "/*", result[1].EffectivePath())
 	})
 
 	t.Run("Longer paths before shorter", func(t *testing.T) {
 		ops := []api.Operation{
-			{Path: "/a", Method: "GET"},
-			{Path: "/ab", Method: "GET"},
-			{Path: "/abc", Method: "GET"},
+			{Path: api.Ptr("/a"), Method: api.Ptr(api.OperationMethod("GET"))},
+			{Path: api.Ptr("/ab"), Method: api.Ptr(api.OperationMethod("GET"))},
+			{Path: api.Ptr("/abc"), Method: api.Ptr(api.OperationMethod("GET"))},
 		}
 		result := sortOperationsBySpecificity(ops)
-		assert.Equal(t, "/abc", result[0].Path)
-		assert.Equal(t, "/ab", result[1].Path)
-		assert.Equal(t, "/a", result[2].Path)
+		assert.Equal(t, "/abc", result[0].EffectivePath())
+		assert.Equal(t, "/ab", result[1].EffectivePath())
+		assert.Equal(t, "/a", result[2].EffectivePath())
 	})
 
 	t.Run("Complex sorting", func(t *testing.T) {
 		ops := []api.Operation{
-			{Path: "/*", Method: "GET"},
-			{Path: "/users/*", Method: "GET"},
-			{Path: "/users/123", Method: "GET"},
-			{Path: "/users", Method: "GET"},
+			{Path: api.Ptr("/*"), Method: api.Ptr(api.OperationMethod("GET"))},
+			{Path: api.Ptr("/users/*"), Method: api.Ptr(api.OperationMethod("GET"))},
+			{Path: api.Ptr("/users/123"), Method: api.Ptr(api.OperationMethod("GET"))},
+			{Path: api.Ptr("/users"), Method: api.Ptr(api.OperationMethod("GET"))},
 		}
 		result := sortOperationsBySpecificity(ops)
 
 		// Non-wildcard paths should come first
-		assert.False(t, containsWildcard(result[0].Path) && containsWildcard(result[1].Path))
+		assert.False(t, containsWildcard(result[0].EffectivePath()) && containsWildcard(result[1].EffectivePath()))
 	})
 }
 
@@ -969,36 +969,36 @@ func containsWildcard(path string) bool {
 
 func TestShouldSwap(t *testing.T) {
 	t.Run("Wildcard should come after non-wildcard", func(t *testing.T) {
-		op1 := api.Operation{Path: "/*", Method: "GET"}
-		op2 := api.Operation{Path: "/users", Method: "GET"}
+		op1 := api.Operation{Path: api.Ptr("/*"), Method: api.Ptr(api.OperationMethod("GET"))}
+		op2 := api.Operation{Path: api.Ptr("/users"), Method: api.Ptr(api.OperationMethod("GET"))}
 		result := shouldSwap(op1, op2)
 		assert.True(t, result)
 	})
 
 	t.Run("Non-wildcard should not swap with wildcard", func(t *testing.T) {
-		op1 := api.Operation{Path: "/users", Method: "GET"}
-		op2 := api.Operation{Path: "/*", Method: "GET"}
+		op1 := api.Operation{Path: api.Ptr("/users"), Method: api.Ptr(api.OperationMethod("GET"))}
+		op2 := api.Operation{Path: api.Ptr("/*"), Method: api.Ptr(api.OperationMethod("GET"))}
 		result := shouldSwap(op1, op2)
 		assert.False(t, result)
 	})
 
 	t.Run("Shorter path should come after longer", func(t *testing.T) {
-		op1 := api.Operation{Path: "/a", Method: "GET"}
-		op2 := api.Operation{Path: "/ab", Method: "GET"}
+		op1 := api.Operation{Path: api.Ptr("/a"), Method: api.Ptr(api.OperationMethod("GET"))}
+		op2 := api.Operation{Path: api.Ptr("/ab"), Method: api.Ptr(api.OperationMethod("GET"))}
 		result := shouldSwap(op1, op2)
 		assert.True(t, result)
 	})
 
 	t.Run("Same length paths compared lexicographically", func(t *testing.T) {
-		op1 := api.Operation{Path: "/bbb", Method: "GET"}
-		op2 := api.Operation{Path: "/aaa", Method: "GET"}
+		op1 := api.Operation{Path: api.Ptr("/bbb"), Method: api.Ptr(api.OperationMethod("GET"))}
+		op2 := api.Operation{Path: api.Ptr("/aaa"), Method: api.Ptr(api.OperationMethod("GET"))}
 		result := shouldSwap(op1, op2)
 		assert.True(t, result)
 	})
 
 	t.Run("Same path different methods compared alphabetically", func(t *testing.T) {
-		op1 := api.Operation{Path: "/users", Method: "POST"}
-		op2 := api.Operation{Path: "/users", Method: "GET"}
+		op1 := api.Operation{Path: api.Ptr("/users"), Method: api.Ptr(api.OperationMethod("POST"))}
+		op2 := api.Operation{Path: api.Ptr("/users"), Method: api.Ptr(api.OperationMethod("GET"))}
 		result := shouldSwap(op1, op2)
 		assert.True(t, result)
 	})
@@ -1184,10 +1184,10 @@ func TestTransformProvider_ExpandsWildcardPolicyPathWithTemplateMappings(t *test
 	var wildcardPostOp *api.Operation
 	for i := range result.Spec.Operations {
 		op := &result.Spec.Operations[i]
-		if op.Method == "POST" && op.Path == "/responses" {
+		if op.EffectiveMethod() == "POST" && op.EffectivePath() == "/responses" {
 			responsesOp = op
 		}
-		if op.Method == "POST" && op.Path == "/*" {
+		if op.EffectiveMethod() == "POST" && op.EffectivePath() == "/*" {
 			wildcardPostOp = op
 		}
 	}
@@ -2016,7 +2016,7 @@ func TestTransformProvider_WithUpstreamAuth(t *testing.T) {
 				break
 			}
 		}
-		assert.True(t, found, "operation %s %s should include upstream auth policy", op.Method, op.Path)
+		assert.True(t, found, "operation %s %s should include upstream auth policy", op.EffectiveMethod(), op.EffectivePath())
 	}
 }
 
@@ -2109,7 +2109,89 @@ func TestTransformProxy_WithUpstreamAuth(t *testing.T) {
 				break
 			}
 		}
-		assert.True(t, found, "operation %s %s should include upstream auth policy", op.Method, op.Path)
+		assert.True(t, found, "operation %s %s should include upstream auth policy", op.EffectiveMethod(), op.EffectivePath())
+	}
+}
+
+// TestTransformProxy_OtherAndNoneUpstreamAuth verifies that a proxy-level
+// upstream auth override of "other" or "none" transforms successfully and
+// attaches no upstream auth policy.
+func TestTransformProxy_OtherAndNoneUpstreamAuth(t *testing.T) {
+	for _, authType := range []api.LLMUpstreamAuthType{
+		api.LLMUpstreamAuthTypeOther,
+		api.LLMUpstreamAuthTypeNone,
+	} {
+		t.Run(string(authType), func(t *testing.T) {
+			store := storage.NewConfigStore()
+			db := newTestMockDB()
+			routerConfig := &config.RouterConfig{ListenerPort: 8080}
+			transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+			template := &models.StoredLLMProviderTemplate{
+				UUID: "0000-template-1-0000-000000000000",
+				Configuration: api.LLMProviderTemplate{
+					Metadata: api.Metadata{Name: "openai"},
+					Spec:     api.LLMProviderTemplateData{},
+				},
+			}
+			db.SaveLLMProviderTemplate(template)
+			require.NoError(t, store.AddTemplate(template))
+
+			upstreamURL := "https://api.openai.com"
+			provider := &api.LLMProviderConfiguration{
+				Metadata: api.Metadata{Name: "openai-provider"},
+				Spec: api.LLMProviderConfigData{
+					DisplayName:   "OpenAI Provider",
+					Version:       "v1.0",
+					Template:      "openai",
+					Upstream:      api.LLMProviderConfigData_Upstream{Url: &upstreamURL},
+					AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				},
+			}
+			providerAPI, err := transformer.Transform(provider, &api.RestAPI{})
+			require.NoError(t, err)
+
+			storedProvider := &models.StoredConfig{
+				UUID:                "0000-prov-cfg-1-0000-000000000000",
+				Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
+				Handle:              "openai-provider",
+				DisplayName:         "OpenAI Provider",
+				Version:             "v1.0",
+				Configuration:       *providerAPI,
+				SourceConfiguration: *provider,
+				DesiredState:        models.StateDeployed,
+				Origin:              models.OriginGatewayAPI,
+			}
+			db.SaveConfig(storedProvider)
+			require.NoError(t, store.Add(storedProvider))
+
+			proxy := &api.LLMProxyConfiguration{
+				Metadata: api.Metadata{Name: "openai-proxy"},
+				Spec: api.LLMProxyConfigData{
+					DisplayName: "OpenAI Proxy",
+					Version:     "v1.0",
+					Provider: api.LLMProxyProvider{
+						Id:   "openai-provider",
+						Auth: &api.LLMUpstreamAuth{Type: authType},
+					},
+				},
+			}
+
+			result, err := transformer.Transform(proxy, &api.RestAPI{})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.NotEmpty(t, result.Spec.Operations)
+
+			for _, op := range result.Spec.Operations {
+				if op.Policies == nil {
+					continue
+				}
+				for _, p := range *op.Policies {
+					assert.NotEqual(t, constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME, p.Name,
+						"proxy auth type %q should not attach an upstream auth policy", authType)
+				}
+			}
+		})
 	}
 }
 

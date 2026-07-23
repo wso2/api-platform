@@ -23,6 +23,7 @@ const subDao = require('../dao/subscriptionDao');
 const labelDao = require('../dao/labelDao');
 const tagDao = require('../dao/tagDao');
 const viewDao = require('../dao/viewDao');
+const apiWorkflowDao = require('../dao/apiWorkflowDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const apiFileDao = require('../dao/apiFileDao');
 const apiKeyDao = require("../dao/apiKeyDao");
@@ -32,7 +33,7 @@ const { config } = require('../config/configLoader');
 const path = require("path");
 const fs = require("fs").promises;
 const fsDir = require("fs");
-const yaml = require('js-yaml');
+const yaml = require('../utils/yaml');
 const APIDTO = require("../dto/apiDto");
 const ViewDTO = require("../dto/viewsDto");
 const APIDocDTO = require("../dto/apiDocDto");
@@ -53,6 +54,8 @@ const createAPIMetadata = async (req, res) => {
     let apiDefinitionFile, apiFileName = "";
     let fullApiBundle;
     const apiArtifactFile = req.files?.artifact?.[0];
+    // Single multipart field carrying the contract on a non-artifact upload; interpreted by type below.
+    const definitionUpload = req.files?.definition?.[0] || null;
 
     try {
         let artifactApiContent = [];
@@ -60,12 +63,15 @@ const createAPIMetadata = async (req, res) => {
         if (apiArtifactFile?.buffer) {
             fullApiBundle = await extractFullApiBundleFromUploadedZip(apiArtifactFile, orgId, 'new-api');
             apiMetadata = fullApiBundle.apiMetadata;
-            const preparedDefinition = prepareApiDefinitionForStorage(
-                fullApiBundle.apiDefinitionFileName,
-                fullApiBundle.apiDefinitionFile
-            );
-            apiDefinitionFile = preparedDefinition.apiDefinitionFile;
-            apiFileName = preparedDefinition.apiDefinitionFileName;
+            // MCP bundles carry a schemaDefinition (handled by the MCP branch) and no apiDefinition.
+            if (fullApiBundle.apiDefinitionFile) {
+                const preparedDefinition = prepareApiDefinitionForStorage(
+                    fullApiBundle.apiDefinitionFileName,
+                    fullApiBundle.apiDefinitionFile
+                );
+                apiDefinitionFile = preparedDefinition.apiDefinitionFile;
+                apiFileName = preparedDefinition.apiDefinitionFileName;
+            }
             artifactApiContent = await extractApiContentFromUploadedZip(apiArtifactFile, orgId, 'new-api', 'artifact');
             resolvedImageMetadata = buildImageMetadataFromContent(artifactApiContent);
             const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
@@ -74,36 +80,43 @@ const createAPIMetadata = async (req, res) => {
                     file.key = filenameToKey[file.fileName];
                 }
             });
-        } else if (req.files?.api?.[0]) {
+        } else if (req.files?.metadata?.[0]) {
+            // `metadata` supplied as an uploaded YAML/JSON file (k8s-style artifact document).
             apiMetadata = parseApiMetadataFromYamlRequest(req);
-            if (req.files?.apiDefinition?.[0]) {
-                const file = req.files.apiDefinition[0];
-                const preparedDefinition = prepareApiDefinitionForStorage(file.originalname, file.buffer);
-                apiDefinitionFile = preparedDefinition.apiDefinitionFile;
-                apiFileName = preparedDefinition.apiDefinitionFileName;
-            }
         } else {
-            apiMetadata = JSON.parse(req.body.apiMetadata);
+            if (!req.body.metadata) {
+                throw new Sequelize.ValidationError("Missing or invalid fields in the request payload");
+            }
+            apiMetadata = JSON.parse(req.body.metadata);
             // Type is resolved centrally below, using this raw (possibly omitted) value —
             // don't resolve here, or an omitted type on a /mcp-servers request can no
             // longer be told apart from an explicit REST.
             if (apiMetadata.id) {
                 apiMetadata.handle = apiMetadata.id;
             }
-            if (req.files?.apiDefinition?.[0]) {
-                const file = req.files.apiDefinition[0];
-                const preparedDefinition = prepareApiDefinitionForStorage(file.originalname, file.buffer);
-                apiDefinitionFile = preparedDefinition.apiDefinitionFile;
-                apiFileName = preparedDefinition.apiDefinitionFileName;
-            }
         }
 
         apiMetadata.type = resolveTypeOrReject(apiMetadata.type, req.__forceApiType);
 
-        // Validate input
-        const hasGraphQLSchema = apiMetadata.type === constants.API_TYPE.GRAPHQL &&
-            req.files?.schemaDefinition?.[0];
-        if (!apiMetadata.name || (!apiDefinitionFile && !hasGraphQLSchema) || !apiMetadata.endPoints) {
+        // Validate input. A single `definition` multipart field carries the contract for a
+        // non-artifact upload. Its meaning depends on the resolved type: for REST/SOAP/etc. it
+        // is the OpenAPI/WSDL definition (prepared and stored as an apiDefinition here); for
+        // GraphQL it is the SDL and for MCP it is the tools schema — both stored by their
+        // type-specific branches below. An MCP server's contract IS its tools schema; it has no
+        // OpenAPI-style apiDefinition (mirrors how sampleSeeder creates MCP servers from api.yaml
+        // plus a definition file).
+        const isMcp = apiMetadata.type === constants.API_TYPE.MCP;
+        const isGraphQL = apiMetadata.type === constants.API_TYPE.GRAPHQL;
+        if (definitionUpload && !fullApiBundle && !isMcp && !isGraphQL) {
+            const preparedDefinition = prepareApiDefinitionForStorage(definitionUpload.originalname, definitionUpload.buffer);
+            apiDefinitionFile = preparedDefinition.apiDefinitionFile;
+            apiFileName = preparedDefinition.apiDefinitionFileName;
+        }
+        const hasGraphQLSchema = isGraphQL && (definitionUpload || fullApiBundle?.apiDefinitionFile);
+        const hasMcpSchema = isMcp &&
+            (definitionUpload || fullApiBundle?.schemaDefinitionFile);
+        const hasContract = isMcp ? hasMcpSchema : (apiDefinitionFile || hasGraphQLSchema);
+        if (!apiMetadata.name || !hasContract || !apiMetadata.endPoints) {
             throw new Sequelize.ValidationError(
                 "Missing or Invalid fields in the request payload"
             );
@@ -172,8 +185,9 @@ const createAPIMetadata = async (req, res) => {
                 }
                 await tagDao.createApiMapping(orgId, apiId, tags, userId, t);
             }
-            // store api definition file (skipped for GraphQL — schema stored below via schemaDefinition)
-            if (apiDefinitionFile) {
+            // store api definition file (skipped for GraphQL — schema stored below via the definition
+            // field; and for MCP, whose contract is its tools schema — an MCP has no apiDefinition)
+            if (apiDefinitionFile && !isMcp) {
                 await apiFileDao.store(apiDefinitionFile, apiFileName, apiId, constants.DOC_TYPES.API_DEFINITION, userId, t);
             }
             // store uploaded documentation files
@@ -185,8 +199,8 @@ const createAPIMetadata = async (req, res) => {
             // Save MCP tools as schema definition if the API type is MCP
             if (constants.API_TYPE.MCP === apiMetadata.type) {
                 let schemaFile;
-                if (req.files?.schemaDefinition?.[0]) {
-                    schemaFile = req.files.schemaDefinition[0];
+                if (definitionUpload) {
+                    schemaFile = definitionUpload;
                 } else if (fullApiBundle?.schemaDefinitionFile) {
                     schemaFile = {
                         originalname: fullApiBundle.schemaDefinitionFileName,
@@ -209,8 +223,8 @@ const createAPIMetadata = async (req, res) => {
                 }
             }
 
-            if (constants.API_TYPE.GRAPHQL === apiMetadata.type && req.files?.schemaDefinition?.[0]) {
-                const file = req.files.schemaDefinition[0];
+            if (constants.API_TYPE.GRAPHQL === apiMetadata.type && definitionUpload) {
+                const file = definitionUpload;
                 const schemaDefinitionFile = file.buffer;
                 logger.debug('GraphQL schema definition file received', {
                     apiId: apiId,
@@ -358,7 +372,7 @@ const getAPIMetadata = async (req, res) => {
             // Create response object
             res.status(200).send(retrievedAPI);
         } else {
-            res.status(404).send("API not found");
+            util.sendError(res, 404, 'API not found');
         }
     } catch (error) {
         logger.error('API metadata retrieval failed', {
@@ -390,7 +404,7 @@ const getAllAPIMetadata = async (req, res) => {
     try {
         const orgId = req.orgId;
         const searchTerm = req.query.query;
-        const apiName = req.query.apiName;
+        const apiName = req.query.name;
         const apiVersion = req.query.version;
         const tags = req.query.tags;
         const view = req.query.view;
@@ -402,7 +416,7 @@ const getAllAPIMetadata = async (req, res) => {
             stack: error.stack,
             orgId: req.orgId,
             searchTerm: req.query.query,
-            apiName: req.query.apiName,
+            apiName: req.query.name,
             apiVersion: req.query.version,
             tags: req.query.tags,
             view: req.query.view
@@ -428,6 +442,8 @@ const getMetadataListFromDB = async (orgId, searchTerm, tags, apiName, apiVersio
             retrievedAPIs = await apiDao.search(orgId, searchTerm, viewName, t, typeFilter);
         } else if (viewName) {
             retrievedAPIs = await apiDao.list(orgId, viewName, t, typeFilter);
+        } else {
+            retrievedAPIs = await apiDao.listFromAllViews(orgId, t, typeFilter);
         }
         // Create response object
         let apiCreationResponse = [];
@@ -452,11 +468,13 @@ const updateAPIMetadata = async (req, res) => {
     let apiDefinitionFile, apiFileName = "";
     let fullApiBundle;
     const apiArtifactFile = req.files?.artifact?.[0];
+    // Single multipart field carrying the contract on a non-artifact upload; interpreted by type below.
+    const definitionUpload = req.files?.definition?.[0] || null;
 
     try {
         apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).send("API not found");
+            return util.sendError(res, 404, 'API not found');
         }
         // `type` is immutable after creation — resolveTypeOrReject below only enforces the
         // /apis-vs-/mcp-servers family boundary, not that the value matches this specific
@@ -474,12 +492,15 @@ const updateAPIMetadata = async (req, res) => {
         if (apiArtifactFile?.buffer) {
             fullApiBundle = await extractFullApiBundleFromUploadedZip(apiArtifactFile, orgId, apiId);
             apiMetadata = fullApiBundle.apiMetadata;
-            const preparedDefinition = prepareApiDefinitionForStorage(
-                fullApiBundle.apiDefinitionFileName,
-                fullApiBundle.apiDefinitionFile
-            );
-            apiDefinitionFile = preparedDefinition.apiDefinitionFile;
-            apiFileName = preparedDefinition.apiDefinitionFileName;
+            // MCP bundles carry a schemaDefinition (handled by the MCP branch) and no apiDefinition.
+            if (fullApiBundle.apiDefinitionFile) {
+                const preparedDefinition = prepareApiDefinitionForStorage(
+                    fullApiBundle.apiDefinitionFileName,
+                    fullApiBundle.apiDefinitionFile
+                );
+                apiDefinitionFile = preparedDefinition.apiDefinitionFile;
+                apiFileName = preparedDefinition.apiDefinitionFileName;
+            }
             artifactApiContent = await extractApiContentFromUploadedZip(apiArtifactFile, orgId, apiId, 'artifact');
             resolvedImageMetadata = buildImageMetadataFromContent(artifactApiContent);
             const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
@@ -488,33 +509,35 @@ const updateAPIMetadata = async (req, res) => {
                     file.key = filenameToKey[file.fileName];
                 }
             });
-        } else if (req.files?.api?.[0]) {
+        } else if (req.files?.metadata?.[0]) {
+            // `metadata` supplied as an uploaded YAML/JSON file (k8s-style artifact document).
             apiMetadata = parseApiMetadataFromYamlRequest(req);
-            if (req.files?.apiDefinition?.[0]) {
-                const file = req.files.apiDefinition[0];
-                const preparedDefinition = prepareApiDefinitionForStorage(file.originalname, file.buffer);
-                apiDefinitionFile = preparedDefinition.apiDefinitionFile;
-                apiFileName = preparedDefinition.apiDefinitionFileName;
-            }
         } else {
-            apiMetadata = JSON.parse(req.body.apiMetadata);
+            if (!req.body.metadata) {
+                throw new Sequelize.ValidationError("Missing or invalid fields in the request payload");
+            }
+            apiMetadata = JSON.parse(req.body.metadata);
             // Type is resolved centrally below, using this raw (possibly omitted) value —
             // don't resolve here, or an omitted type on a /mcp-servers request can no
             // longer be told apart from an explicit REST.
             if (apiMetadata.id) {
                 apiMetadata.handle = apiMetadata.id;
             }
-            if (req.files?.apiDefinition?.[0]) {
-                const file = req.files.apiDefinition[0];
-                const preparedDefinition = prepareApiDefinitionForStorage(file.originalname, file.buffer);
-                apiDefinitionFile = preparedDefinition.apiDefinitionFile;
-                apiFileName = preparedDefinition.apiDefinitionFileName;
-            }
         }
 
         apiMetadata.type = resolveTypeOrReject(apiMetadata.type, req.__forceApiType);
         if (existingType && apiMetadata.type !== existingType) {
             throw new CustomError(409, 'Conflict', `API type cannot be changed after creation (existing type is '${existingType}')`);
+        }
+        // An MCP server's contract is its tools schema (handled below); it has no apiDefinition.
+        // The single `definition` field is prepared as an apiDefinition only for the types that
+        // store one (not MCP, not GraphQL — those are handled by their branches below).
+        const isMcp = apiMetadata.type === constants.API_TYPE.MCP;
+        const isGraphQL = apiMetadata.type === constants.API_TYPE.GRAPHQL;
+        if (definitionUpload && !fullApiBundle && !isMcp && !isGraphQL) {
+            const preparedDefinition = prepareApiDefinitionForStorage(definitionUpload.originalname, definitionUpload.buffer);
+            apiDefinitionFile = preparedDefinition.apiDefinitionFile;
+            apiFileName = preparedDefinition.apiDefinitionFileName;
         }
 
         // Validate input — spec file is optional on update (already stored from create)
@@ -620,8 +643,9 @@ const updateAPIMetadata = async (req, res) => {
                 await subscriptionPlanDao.updateApiMapping(subscriptionPlans, apiId, userId, t);
                 updatedAPI[0].dataValues["dp_subscription_plans"] = await subscriptionPlanDao.listByApi(apiId, t);
             }
-            // update api definition file (only when a new file was uploaded)
-            if (apiDefinitionFile) {
+            // update api definition file (only when a new file was uploaded; never for MCP,
+            // whose contract is its schemaDefinition rather than an apiDefinition)
+            if (apiDefinitionFile && !isMcp) {
                 const updatedFileCount = await apiFileDao.update(apiDefinitionFile, apiFileName, apiId, orgId,
                     constants.DOC_TYPES.API_DEFINITION, userId, t);
                 if (!updatedFileCount) {
@@ -634,14 +658,16 @@ const updateAPIMetadata = async (req, res) => {
                     await apiFileDao.deleteByFileName(fileName, orgId, apiId, t);
                 }
             }
-            // upsert newly uploaded documentation files
+            // upsert newly uploaded documentation files — use update (upsert by file_name+type)
+            // rather than store (create), so re-uploading a doc with an existing name replaces it
+            // instead of hitting the (api_uuid, type, file_name) unique index and aborting the PUT.
             if (req.files?.docs) {
                 for (const doc of req.files.docs) {
-                    await apiFileDao.store(doc.buffer, doc.originalname, apiId, constants.DOC_TYPES.DOC_ID + constants.DOC_TYPES.DOCS.OTHER, userId, t);
+                    await apiFileDao.update(doc.buffer, doc.originalname, apiId, orgId, constants.DOC_TYPES.DOC_ID + constants.DOC_TYPES.DOCS.OTHER, userId, t);
                 }
             }
             // Update MCP tools schema definition if the API type is MCP
-            const hasSchemaDefinitionFile = !!req.files?.schemaDefinition?.[0] || !!fullApiBundle?.schemaDefinitionFile;
+            const hasSchemaDefinitionFile = !!definitionUpload || !!fullApiBundle?.schemaDefinitionFile;
             logger.debug('Processing MCP API schema definition', {
                 hasSchemaDefinition: hasSchemaDefinitionFile,
                 apiType: apiMetadata.type,
@@ -649,8 +675,8 @@ const updateAPIMetadata = async (req, res) => {
             });
             if (constants.API_TYPE.MCP === apiMetadata.type && hasSchemaDefinitionFile) {
                 let schemaFile;
-                if (req.files?.schemaDefinition?.[0]) {
-                    schemaFile = req.files.schemaDefinition[0];
+                if (definitionUpload) {
+                    schemaFile = definitionUpload;
                 } else if (fullApiBundle?.schemaDefinitionFile) {
                     schemaFile = {
                         originalname: fullApiBundle.schemaDefinitionFileName,
@@ -673,8 +699,8 @@ const updateAPIMetadata = async (req, res) => {
                 }
             }
 
-            if (constants.API_TYPE.GRAPHQL === apiMetadata.type && req.files?.schemaDefinition?.[0]) {
-                const file = req.files.schemaDefinition[0];
+            if (constants.API_TYPE.GRAPHQL === apiMetadata.type && definitionUpload) {
+                const file = definitionUpload;
                 const schemaDefinitionFile = file.buffer;
                 const schemaFileName = constants.FILE_NAME.API_DEFINITION_GRAPHQL;
                 logger.debug('GraphQL schema definition file received for update', {
@@ -724,7 +750,7 @@ const deleteAPIMetadata = async (req, res) => {
         try {
             apiId = await resolveScopedApiId(req, orgId, apiHandle);
             if (!apiId) {
-                return res.status(404).send("API not found");
+                return util.sendError(res, 404, 'API not found');
             }
             const subApis = await subDao.listByApi(orgId, apiId);
             if (subApis.length > 0) {
@@ -770,7 +796,7 @@ const createAPITemplate = async (req, res) => {
         const { apiId: apiHandle } = req.params;
         const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).send("API not found");
+            return util.sendError(res, 404, 'API not found');
         }
         const userId = util.resolveActor(req);
         const zipFilePath = req.file.path;
@@ -873,7 +899,7 @@ const createAPITemplate = async (req, res) => {
 };
 
 const createAPIContent = async (req, res) => {
-    const uploadedFile = req.files?.apiContent?.[0] ?? req.file;
+    const uploadedFile = req.files?.content?.[0] ?? req.file;
     logger.info('Creating API content...', {
         orgId: req.orgId,
         apiId: req.params.apiId,
@@ -884,7 +910,7 @@ const createAPIContent = async (req, res) => {
         const { apiId: apiHandle } = req.params;
         const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).send("API not found");
+            return util.sendError(res, 404, 'API not found');
         }
         const userId = util.resolveActor(req);
         let apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic');
@@ -943,7 +969,7 @@ const updateAPITemplate = async (req, res) => {
         const { apiId: apiHandle } = req.params;
         const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).send("API not found");
+            return util.sendError(res, 404, 'API not found');
         }
         const userId = util.resolveActor(req);
         let imageMetadata;
@@ -1041,7 +1067,7 @@ const updateAPITemplate = async (req, res) => {
 };
 
 const updateAPIContent = async (req, res) => {
-    const uploadedFile = req.files?.apiContent?.[0] ?? req.file;
+    const uploadedFile = req.files?.content?.[0] ?? req.file;
     logger.info('Updating API content...', {
         orgId: req.orgId,
         apiId: req.params.apiId,
@@ -1052,7 +1078,7 @@ const updateAPIContent = async (req, res) => {
         const { apiId: apiHandle } = req.params;
         const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).send("API not found");
+            return util.sendError(res, 404, 'API not found');
         }
         const userId = util.resolveActor(req);
         let imageMetadata;
@@ -1100,23 +1126,33 @@ const updateAPIContent = async (req, res) => {
 
 const getAPIFile = async (req, res) => {
 
-    const orgId = req.orgId;
     const { apiId: apiHandle } = req.params;
     const apiFileName = req.query.fileName;
     const type = req.query.type;
+    // The endpoint is public (security: []) so an API icon renders on the public
+    // listing/landing pages without a session. Anonymous access is limited to
+    // images: the session org always wins, and only image reads may fall back to
+    // the orgId query param. A request with no session org for any non-image type
+    // is rejected — non-image content stays session-scoped. Mirrors getOrgAsset.
+    const isImageType = type === constants.DOC_TYPES.IMAGES;
+    const orgId = req.orgId || (isImageType ? req.query.orgId : undefined);
     let apiFileResponse = "";
     let apiFile;
     let contentType = "";
     let apiId;
     try {
+        if (!orgId) {
+            // No session org, and either a non-image type or a missing orgId query param.
+            return util.sendError(res, 401, 'Authentication required');
+        }
         apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).send("API not found");
+            return util.sendError(res, 404, 'API not found');
         }
         const fileExtension = path.extname(apiFileName).toLowerCase();
         apiFileResponse = await apiFileDao.get(apiFileName, type, orgId, apiId);
         if (!apiFileResponse) {
-            return res.status(404).send("API File not found");
+            return util.sendError(res, 404, 'API File not found');
         }
         apiFile = apiFileResponse.file_content;
         //convert to text to check if link
@@ -1176,7 +1212,7 @@ const deleteAPIFile = async (req, res) => {
     try {
         const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
-            return res.status(404).send("API not found");
+            return util.sendError(res, 404, 'API not found');
         }
         let apiFileResponse;
         if (apiFileName) {
@@ -1184,10 +1220,10 @@ const deleteAPIFile = async (req, res) => {
         } else {
             apiFileResponse = await apiFileDao.deleteAll(fileType, orgId, apiId);
         }
-        if (!apiFileResponse) {
+        if (apiFileResponse) {
             res.status(204).send();
         } else {
-            res.status(404).send("API Content not found");
+            util.sendError(res, 404, 'API Content not found');
         }
     } catch (error) {
         logger.error('API content deletion failed', {
@@ -1250,7 +1286,7 @@ const createSubscriptionPlan = async (req, res) => {
     });
 
     if (!subscriptionPlan || typeof subscriptionPlan !== "object") {
-        return res.status(400).json({ message: "Request body is missing or invalid" });
+        return util.sendError(res, 400, "Request body is missing or invalid");
     }
 
     try {
@@ -1292,7 +1328,7 @@ const createSubscriptionPlans = async (req, res) => {
             const userId = util.resolveActor(req);
 
             if (!Array.isArray(subscriptionPlans) || subscriptionPlans.length === 0) {
-                return res.status(400).json({ message: "Missing or invalid fields in the request payload" });
+                return util.sendError(res, 400, "Missing or invalid fields in the request payload");
             }
 
             const createdRecords = [];
@@ -1339,7 +1375,7 @@ const updateSubscriptionPlan = async (req, res) => {
     const userId = util.resolveActor(req);
 
     if (!subscriptionPlan || typeof subscriptionPlan !== "object") {
-        return res.status(400).json({ message: "Request body is missing or invalid" });
+        return util.sendError(res, 400, "Request body is missing or invalid");
     }
 
     try {
@@ -1378,7 +1414,7 @@ const updateSubscriptionPlans = async (req, res) => {
             const userId = util.resolveActor(req);
 
             if (!Array.isArray(subscriptionPlans) || subscriptionPlans.length === 0) {
-                return res.status(400).json({ message: "Missing or invalid fields in the request payload" });
+                return util.sendError(res, 400, "Missing or invalid fields in the request payload");
             }
 
             const updatedRecords = [];
@@ -1519,7 +1555,7 @@ const getLabel = async (req, res) => {
     try {
         const labelId = await labelDao.getIdByHandle(orgId, labelHandle);
         if (!labelId) {
-            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Label not found' });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Label not found' }] });
         }
         const record = await labelDao.findById(orgId, labelId);
         res.status(200).json(new LabelDTO(record));
@@ -1538,7 +1574,7 @@ const updateLabel = async (req, res) => {
     try {
         const labelId = await labelDao.getIdByHandle(orgId, labelHandle);
         if (!labelId) {
-            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Label not found' });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Label not found' }] });
         }
         const record = await labelDao.updateById(orgId, labelId, label, userId);
         res.status(200).json(new LabelDTO(record));
@@ -1555,7 +1591,7 @@ const deleteLabel = async (req, res) => {
     try {
         const labelId = await labelDao.getIdByHandle(orgId, labelHandle);
         if (!labelId) {
-            return res.status(404).json({ code: '404', message: 'Not Found', description: 'Label not found' });
+            return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Label not found' }] });
         }
         await labelDao.deleteById(orgId, labelId);
         res.status(204).send();
@@ -1663,7 +1699,16 @@ const deleteView = async (req, res) => {
     const orgId = req.orgId;
     const name = req.params.viewId;
     try {
+        // The "default" view can't be deleted — required as a fallback view for the
+        // portal/settings UI. Rejected here regardless of what the UI already hides.
+        if (name === 'default') {
+            throw new CustomError(400, constants.ERROR_CODE[400], "The default view cannot be deleted");
+        }
         const viewUuid = await viewDao.getId(orgId, name);
+        const workflows = await apiWorkflowDao.list(orgId, viewUuid);
+        if (workflows.length > 0) {
+            throw new CustomError(409, constants.ERROR_MESSAGE.ERR_WORKFLOW_EXIST, "View has API workflows.");
+        }
         const viewDelete = await viewDao.delete(orgId, name);
         if (viewDelete === 0) {
             throw new Sequelize.EmptyResultError("Resource not found to delete");
@@ -1690,7 +1735,7 @@ const getView = async (req, res) => {
         if (view) {
             res.status(200).send(view);
         } else {
-            res.status(404).send(`View ${name} not found`);
+            util.sendError(res, 404, `View ${name} not found`);
         }
     } catch (error) {
         logger.error('view retrieve error failed', {
@@ -1878,32 +1923,38 @@ async function extractFullApiBundleFromUploadedZip(zipFile, orgId, apiId) {
             throw new Sequelize.ValidationError("Invalid full API zip: missing api.yaml, mcp.yaml or devportal.yaml");
         }
 
-        const definitionFilePath = await util.findFileByNameRecursive(rootPath, [
-            'definition.yaml',
-            'definition.yml',
-            'definition.json',
-            'apiDefinition.yaml',
-            'apiDefinition.yml',
-            'apiDefinition.json',
-        ]);
-        if (!definitionFilePath) {
-            throw new Sequelize.ValidationError("Invalid full API zip: missing definition file (definition.yaml/yml/json)");
-        }
-
         const apiMetadataBuffer = await fs.readFile(metadataFilePath);
         const apiMetadata = parseApiMetadataFromYamlFile(path.basename(metadataFilePath), apiMetadataBuffer);
-        const apiDefinitionFile = await fs.readFile(definitionFilePath);
-        const apiDefinitionFileName = path.basename(definitionFilePath);
+        const isMcp = apiMetadata.type === constants.API_TYPE.MCP;
 
-        const schemaDefinitionFilePath = await util.findFileByNameRecursive(rootPath, [
-            constants.FILE_NAME.SCHEMA_DEFINITION_FILE_NAME,
-            constants.FILE_NAME.SCHEMA_DEFINITION_YAML_FILE_NAME,
-        ]);
+        // The contract lives in a `definition` file. An MCP server's contract IS its tools
+        // schema (returned as schemaDefinitionFile so the MCP branch stores it under
+        // SCHEMA_DEFINITION); every other type carries an OpenAPI/WSDL/SDL definition
+        // (returned as apiDefinitionFile). Both use the same file name — the resolved
+        // API type decides how it is interpreted.
+        const definitionCandidates = [
+            constants.FILE_NAME.API_DEFINITION_YAML_FILE_NAME,
+            'definition.yml',
+            constants.FILE_NAME.API_DEFINITION_FILE_NAME,
+        ];
         let schemaDefinitionFile;
         let schemaDefinitionFileName;
-        if (schemaDefinitionFilePath) {
+        let apiDefinitionFile;
+        let apiDefinitionFileName;
+        if (isMcp) {
+            const schemaDefinitionFilePath = await util.findFileByNameRecursive(rootPath, definitionCandidates);
+            if (!schemaDefinitionFilePath) {
+                throw new Sequelize.ValidationError("Invalid MCP server zip: missing definition file (definition.yaml/yml/json)");
+            }
             schemaDefinitionFile = await fs.readFile(schemaDefinitionFilePath);
             schemaDefinitionFileName = path.basename(schemaDefinitionFilePath);
+        } else {
+            const definitionFilePath = await util.findFileByNameRecursive(rootPath, definitionCandidates);
+            if (!definitionFilePath) {
+                throw new Sequelize.ValidationError("Invalid full API zip: missing definition file (definition.yaml/yml/json)");
+            }
+            apiDefinitionFile = await fs.readFile(definitionFilePath);
+            apiDefinitionFileName = path.basename(definitionFilePath);
         }
 
         return {
@@ -1978,9 +2029,12 @@ function mapDevportalYamlToApiMetadata(parsedYaml) {
 }
 
 function parseApiMetadataFromYamlFile(fileName, fileBuffer) {
-    const allowedMetadataFileNames = new Set(['api.yaml', 'mcp.yaml', 'devportal.yaml']);
+    const allowedMetadataFileNames = new Set([
+        'metadata.yaml', 'metadata.yml', 'metadata.json',
+        'api.yaml', 'mcp.yaml', 'devportal.yaml',
+    ]);
     if (!allowedMetadataFileNames.has(String(fileName).toLowerCase())) {
-        throw new Sequelize.ValidationError("Invalid metadata file name. Expected 'api.yaml', 'mcp.yaml' or 'devportal.yaml'");
+        throw new Sequelize.ValidationError("Invalid metadata file name. Expected 'metadata.yaml', 'metadata.yml', 'metadata.json', 'api.yaml', 'mcp.yaml' or 'devportal.yaml'");
     }
 
     let parsedYaml;
@@ -1994,14 +2048,14 @@ function parseApiMetadataFromYamlFile(fileName, fileBuffer) {
 }
 
 function parseApiMetadataFromYamlRequest(req) {
-    const apiFile = req.files?.api?.[0];
-    if (!apiFile?.buffer) {
+    const metadataFile = req.files?.metadata?.[0];
+    if (!metadataFile?.buffer) {
         throw new Sequelize.ValidationError(
-            "Missing required multipart file field: 'api'"
+            "Missing required multipart file field: 'metadata'"
         );
     }
 
-    return parseApiMetadataFromYamlFile(apiFile.originalname, apiFile.buffer);
+    return parseApiMetadataFromYamlFile(metadataFile.originalname, metadataFile.buffer);
 }
 
 function legacyLimitsFromSpec(spec) {

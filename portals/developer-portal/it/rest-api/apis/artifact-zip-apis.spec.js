@@ -17,10 +17,10 @@
 // --------------------------------------------------------------------
 
 // POST/PUT /apis via the `artifact` full-ZIP upload path (as opposed to the JSON
-// `apiMetadata` field or the standalone `api`/`apiDefinition` YAML pair) — see
+// `metadata` field or the standalone `api`/`definition` YAML pair) — see
 // apiMetadataService.js's extractFullApiBundleFromUploadedZip. A ZIP must contain
 // one of api.yaml/mcp.yaml/devportal.yaml plus a definition file
-// (definition.(yaml|yml|json) or apiDefinition.(yaml|yml|json)); `web`/`docs`
+// (definition.(yaml|yml|json)); `web`/`docs`
 // directories are optional (extractApiContentFromUploadedZip's 'artifact' mode
 // tolerates neither being present).
 
@@ -107,10 +107,9 @@ describe('APIs via artifact ZIP upload', () => {
     // The specific scenario worth checking on its own: create via zip, then re-upload
     // essentially the same zip with one small field changed. Both the metadata handle
     // (metadata.name in the YAML, not spec.displayName) and the API's own `id` must
-    // stay stable across the round-trip — apiDao.update() only recomputes the handle
-    // from name+version when the request supplies no handle at all; the YAML path
-    // always supplies one via `metadata.name`, so unlike the JSON apiMetadata field
-    // path this doesn't risk drifting the id/handle as a side effect of the update.
+    // stay stable across the round-trip — apiDao.update() never touches the handle
+    // (it is immutable after creation), so no update path can
+    // drift the id/handle as a side effect.
     it('creates via zip then updates the same API with the same zip plus a small change', async () => {
         const { handle, zip: firstZip } = buildZip({ displayName: 'Stable Zip API', description: 'version one' });
         const create = await client.as('publisher').postMultipart('/apis').attach('artifact', firstZip, 'artifact.zip');

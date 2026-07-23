@@ -46,7 +46,7 @@ class APIDTO {
 class APIInfo {
     constructor(apiInfo) {
         this.name = apiInfo.name;
-        this.apiTitle = apiInfo.metadata_search?.apiTitle || null;
+        this.title = apiInfo.metadata_search?.title || null;
         this.remotes = apiInfo.metadata_search?.remotes || [];
         this.version = apiInfo.version;
         this.description = apiInfo.description;

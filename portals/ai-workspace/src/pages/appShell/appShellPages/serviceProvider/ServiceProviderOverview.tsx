@@ -88,10 +88,10 @@ import {
 } from '../../../../utils/projectRouting';
 import { API_BASE_URLS, PLATFORM_API_BASE_URL } from '../../../../config.env';
 import {
-  getProviderTemplateDisplayName,
+  resolveTemplateDisplayName,
   truncateProviderDisplayName,
 } from '../../../../utils/providerTemplateDisplay';
-import { filterOpenApiSpecByAccessControl } from '../../../../utils/openApiAccessControl';
+import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { SCOPES } from '../../../../auth/permissions';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
@@ -228,13 +228,14 @@ const UNSAVED_CHANGES_MESSAGE =
 const stripReadOnlyProviderFields = (
   value: LLMProvider
 ): UpdateLLMProviderRequest => {
-  const { status, createdAt, createdBy, updatedAt, lastUpdated, ...payload } =
+  const { status, createdAt, createdBy, updatedAt, updatedBy, lastUpdated, ...payload } =
     value;
   return payload;
 };
 
 function ServiceProviderOverviewContent() {
   const { refreshProviders } = useLLMProviders();
+  const { templatesResponse } = useProviderTemplates();
   const { refetch: refetchSelectedEntity } = useAIEntity();
   const {
     provider,
@@ -264,8 +265,8 @@ function ServiceProviderOverviewContent() {
     ? buildProjectPath(currentOrganization, currentProject, '/service-provider')
     : buildOrgPath(currentOrganization, '/service-provider');
   const createProxyPath = isProjectLevel
-    ? buildProjectPath(currentOrganization, currentProject, '/proxies/new')
-    : buildOrgPath(currentOrganization, '/proxies/new');
+    ? buildProjectPath(currentOrganization, currentProject, '/proxies/create')
+    : buildOrgPath(currentOrganization, '/proxies/create');
   const [tabIndex, setTabIndex] = useState(0);
   const [draftProvider, setDraftProvider] = useState<LLMProvider | null>(null);
   const draftProviderRef = useRef<LLMProvider | null>(null);
@@ -342,11 +343,6 @@ function ServiceProviderOverviewContent() {
     [openApiSpecText]
   );
   const activeAccessControl = (draftProvider ?? provider)?.accessControl;
-  const filteredOpenApiSpec = useMemo(
-    () =>
-      filterOpenApiSpecByAccessControl(parsedOpenApiSpec, activeAccessControl),
-    [parsedOpenApiSpec, activeAccessControl]
-  );
   const hasOpenApiSpecText = openApiSpecText.trim().length > 0;
   const apiKeyHeaderName = provider?.security?.apiKey?.key?.trim()
     ? provider.security.apiKey.key.trim()
@@ -529,7 +525,7 @@ function ServiceProviderOverviewContent() {
       buildProjectPath(
         currentOrganization,
         selectedProjectForProxy,
-        '/proxies/new'
+        '/proxies/create'
       ),
       {
         state: {
@@ -865,7 +861,10 @@ function ServiceProviderOverviewContent() {
   const providerDisplayName = truncateProviderDisplayName(provider.displayName);
   const logoUrl = PROVIDER_LOGO_MAP[providerKey];
   const hasLogo = Boolean(logoUrl);
-  const templateDisplayName = getProviderTemplateDisplayName(provider.template);
+  const templateDisplayName = resolveTemplateDisplayName(
+    provider.template,
+    templatesResponse.list
+  );
   const templateKey = (provider.template ?? '').toLowerCase();
   const templateLogo = TEMPLATE_LOGO_MAP[templateKey];
   const hasTemplateLogo = Boolean(templateLogo);
@@ -921,7 +920,8 @@ function ServiceProviderOverviewContent() {
 
     return (
       <SwaggerSpecViewer
-        spec={filteredOpenApiSpec ?? parsedOpenApiSpec ?? {}}
+        spec={parsedOpenApiSpec ?? {}}
+        accessControl={activeAccessControl}
         requestBaseUrl={generatedInvokeUrl}
         defaultHeaders={swaggerDefaultHeaders}
         disableTryOutBtn={gateways.length === 0}
@@ -932,6 +932,7 @@ function ServiceProviderOverviewContent() {
         docExpansion="list"
         defaultModelsExpandDepth={-1}
         displayRequestDuration
+        enableResourceSearch
       />
     );
   };
@@ -1209,6 +1210,15 @@ function ServiceProviderOverviewContent() {
                           {lastUpdated ? formatRelativeTime(lastUpdated) : '—'}
                         </Typography>
                       </Stack>
+                      {provider.createdBy && (
+                        <Typography variant="caption" color="text.secondary">
+                          <FormattedMessage
+                            id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.createdBy"
+                            defaultMessage="Created by: {createdBy}"
+                            values={{ createdBy: provider.createdBy }}
+                          />
+                        </Typography>
+                      )}
                     </Stack>
                   </Stack>
                 </Box>
@@ -1486,6 +1496,15 @@ function ServiceProviderOverviewContent() {
                       {lastUpdated ? formatRelativeTime(lastUpdated) : '—'}
                     </Typography>
                   </Stack>
+                  {provider.createdBy && (
+                    <Typography variant="caption" color="text.secondary">
+                      <FormattedMessage
+                        id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderOverview.createdBy.2"
+                        defaultMessage="Created by: {createdBy}"
+                        values={{ createdBy: provider.createdBy }}
+                      />
+                    </Typography>
+                  )}
                 </Stack>
               </Stack>
             </Box>

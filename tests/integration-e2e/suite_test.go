@@ -73,6 +73,10 @@ var (
 	ingressGw1   = "http://localhost:" + envOr("GW_HTTP_PORT", "18080")
 	ingressGw2   = "http://localhost:" + envOr("GW2_HTTP_PORT", "18081")
 	devportalAPI = "http://localhost:" + envOr("DP_HOST_PORT", "3000")
+	// gwMgmtAPI is the gateway-controller management REST API (port 9090 in the
+	// e2e compose, overridable via GW_MGMT_PORT). Used to verify that resources
+	// deployed via platform-api are visible on the data plane.
+	gwMgmtAPI = "http://localhost:" + envOr("GW_MGMT_PORT", "9090")
 )
 
 // REST API base paths, defined in one place so each product's API version/prefix can
@@ -453,3 +457,4 @@ func jsonField(body []byte, keys ...string) string {
 	}
 	return ""
 }
+

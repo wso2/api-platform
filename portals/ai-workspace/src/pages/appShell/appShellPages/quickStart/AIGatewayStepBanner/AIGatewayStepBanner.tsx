@@ -60,7 +60,10 @@ export default function AIGatewayStepBanner({
   const completedSteps = isActive ? 2 : 1;
   const progressValue = (completedSteps / TOTAL_STEPS) * 100;
   const isProviderQuotaReached = false;
-  const newProviderPath = buildOrgPath(currentOrganization, '/service-provider/new');
+  const newProviderPath = buildOrgPath(
+    currentOrganization,
+    '/service-provider/create'
+  );
 
   useEffect(() => {
     if (!isActive || !organizationId) return;

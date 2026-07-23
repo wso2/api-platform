@@ -38,6 +38,7 @@ type FileBased struct {
 	client   *http.Client
 	loginURL string
 	absTTL   time.Duration
+	mapping  session.ClaimMapping
 }
 
 type fileBasedLoginResponse struct {
@@ -46,12 +47,17 @@ type fileBasedLoginResponse struct {
 }
 
 // NewFileBased builds a file-based authenticator. platformBaseURL is the Platform
-// API origin (e.g. https://platform-api:9243); loginPath is its login route.
-func NewFileBased(client *http.Client, platformBaseURL, loginPath string, absTTL time.Duration) *FileBased {
+// API origin (e.g. https://platform-api:9243); portalBasePath is its portal route
+// prefix (e.g. /api/portal/v0.9), under which /auth/login lives. mapping is the
+// same claim mapping used for OIDC — the Platform API's file-based login endpoint
+// signs its JWTs using these same mapped claim names, so an operator who
+// customizes the claim names must not need to configure them twice.
+func NewFileBased(client *http.Client, platformBaseURL, portalBasePath string, absTTL time.Duration, mapping session.ClaimMapping) *FileBased {
 	return &FileBased{
 		client:   client,
-		loginURL: strings.TrimRight(platformBaseURL, "/") + loginPath,
+		loginURL: strings.TrimRight(platformBaseURL, "/") + strings.TrimRight(portalBasePath, "/") + "/auth/login",
 		absTTL:   absTTL,
+		mapping:  mapping,
 	}
 }
 
@@ -110,6 +116,6 @@ func (f *FileBased) Login(ctx context.Context, username, password string) (*sess
 		AccessToken:    body.Token,
 		AccessExpiry:   accessExpiry,
 		AbsoluteExpiry: abs,
-		User:           session.UserFromClaims(claims, nil, session.DefaultClaimMapping()),
+		User:           session.UserFromClaims(claims, nil, f.mapping),
 	}, nil
 }

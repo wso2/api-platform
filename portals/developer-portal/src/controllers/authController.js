@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-/* eslint-disable no-undef */
+ 
 const passport = require('passport');
 const axios = require('axios');
 const https = require('https');
@@ -26,7 +26,7 @@ const constants = require('../utils/constants');
 const util = require('../utils/util');
 const orgDao = require('../dao/organizationDao');
 const { validationResult } = require('express-validator');
-const { extractPlatformJwtClaims } = require('../utils/platformJwt');
+const { verifyPlatformJwtClaims } = require('../utils/platformJwt');
 
 
 
@@ -35,8 +35,8 @@ const login = async (req, res, next) => {
     const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName;
     if (!req.isAuthenticated()) {
         const fidp = req.query.fidp;
-        const fidpMap = config.idp?.fidp || {};
-        if (config.idp?.clientId) {
+        const fidpMap = config.auth.idp?.fidp || {};
+        if (config.auth.mode === 'idp') {
             // IDP mode: redirect directly to the IDP, no intermediate login page
             const orgDetails = await orgDao.get(orgName);
             const orgIdentifier = orgDetails?.idp_ref_id;
@@ -51,14 +51,16 @@ const login = async (req, res, next) => {
                 await passport.authenticate('oauth2', { ...(orgIdentifier && { org: orgIdentifier }) })(req, res, next);
             }
         } else {
-            // Local auth mode: show username/password form
+            // Local auth mode: show username/password form, themed with the active
+            // view's uploaded layout (falls back to the default styles otherwise).
+            const orgDetails = await orgDao.get(orgName);
             const templateContent = {
                 baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName,
                 localAuthEnabled: true,
                 loginError: req.query.error || null,
             };
-            const html = util.renderTemplate('../pages/login-page/page.hbs',
-                'src/pages/login-page/layout.hbs', templateContent, true);
+            const html = await util.renderTemplateWithView('../pages/login-page/page.hbs',
+                'src/pages/login-page/layout.hbs', templateContent, true, orgDetails?.uuid, req.params.viewName);
             res.send(html);
         }
     } else {
@@ -67,7 +69,7 @@ const login = async (req, res, next) => {
 };
 
 const handleCallback = async (req, res, next) => {
-    if (!config.idp?.clientId) return next();
+    if (config.auth.mode !== 'idp') return next();
     const rules = util.validateRequestParameters();
     for (const validation of rules) {
         await validation.run(req);
@@ -95,7 +97,7 @@ const handleCallback = async (req, res, next) => {
                 }
                 res.set('Cache-Control', 'no-store');
                 let returnTo = req.user.returnTo;
-                if (config.idp?.orgCallback && returnTo == null) {
+                if (config.auth.idp?.orgCallback && returnTo == null) {
                     returnTo = `/${req.params.orgName}`;
                 }
                 returnTo = returnTo || `/${req.params.orgName}`;
@@ -120,7 +122,7 @@ const handleSignUp = async (req, res) => {
     if (!errors.isEmpty()) {
         return res.status(400).json(util.getErrors(errors));
     }
-    const authJsonContent = config.idp;
+    const authJsonContent = config.auth.idp;
     if (authJsonContent?.signUpUrl) {
         res.redirect(authJsonContent.signUpUrl);
     } else {
@@ -139,7 +141,7 @@ const handleLogOut = async (req, res) => {
     if (!errors.isEmpty()) {
         return res.status(400).json(util.getErrors(errors));
     }
-    const authJsonContent = config.idp;
+    const authJsonContent = config.auth.idp;
     let idToken = ''
     if (req.user != null) {
         idToken = req.user.idToken;
@@ -166,7 +168,7 @@ const handleLogOut = async (req, res) => {
         });
     } else if (req.user && req.user.accessToken) {
         const referer = req.get('referer');
-        const regex = /(.+\/views\/[^\/]+)\/?/;
+        const regex = /(.+\/views\/[^/]+)\/?/;
         const match = referer ? referer.match(regex) : null;
         const logoutURL = match ? match[1] : null;
         req.logout((err) => {
@@ -208,7 +210,7 @@ const handleLogOutLanding = async (req, res) => {
 
 const handleSilentSSO = async (req, res, next) => {
     // Skip if no IDP configured or silent SSO is disabled
-    if (!config.idp?.clientId || !config.idp?.silentSso) return next();
+    if (config.auth.mode !== 'idp' || !config.auth.idp?.silentSso) return next();
 
     if (req.isAuthenticated() || req.session.silentAuthRedirected) {
         return next();
@@ -229,18 +231,25 @@ const handleLocalLogin = async (req, res) => {
     const { username, password } = req.body;
     const orgName = req.params.orgName;
     const viewName = req.params.viewName;
-    const baseUrl = `/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}`;
+    // orgName/viewName come from the URL and are echoed into the redirect targets
+    // below; constrain them to safe handle characters so a crafted value (e.g. one
+    // containing a backslash) can't turn a relative redirect into an off-site /
+    // protocol-relative one. Fall back to a server-controlled login path otherwise.
+    const SAFE_HANDLE = /^[a-zA-Z0-9_-]+$/;
+    const baseUrl = (SAFE_HANDLE.test(orgName || '') && SAFE_HANDLE.test(viewName || ''))
+        ? `/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}`
+        : '';
 
-    if (config.idp?.clientId) {
+    if (config.auth.mode === 'idp') {
         return res.status(404).send('Not found');
     }
     if (!username || !password) {
         return res.redirect(`${baseUrl}/login?error=Username+and+password+are+required`);
     }
 
-    const platformApiUrl = config.platformApi?.baseUrl;
+    const platformApiUrl = config.auth.local?.platformApiUrl;
     if (!platformApiUrl) {
-        logger.error('Local auth attempted but platformApi.baseUrl is not configured');
+        logger.error('Local auth attempted but auth.local.platform_api_url is not configured');
         return res.redirect(`${baseUrl}/login?error=Authentication+service+not+configured`);
     }
 
@@ -251,7 +260,7 @@ const handleLocalLogin = async (req, res) => {
             new URLSearchParams({ username, password }).toString(),
             {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                httpsAgent: new https.Agent({ rejectUnauthorized: !config.platformApi?.insecure }),
+                httpsAgent: new https.Agent({ rejectUnauthorized: !config.auth.local?.tlsSkipVerify }),
                 timeout: 10000,
             }
         );
@@ -266,16 +275,22 @@ const handleLocalLogin = async (req, res) => {
         return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
     }
 
-    // Decode JWT claims (token is already verified by the platform API)
-    const claims = extractPlatformJwtClaims(platformToken, null);
+    // Cryptographically verify the Platform API JWT against its RS256 public key
+    // before trusting any claims — do not rely on the transport alone, since
+    // auth.local.tls_skip_verify may be enabled. Fail closed if no key is configured.
+    const publicKeyPath = config.auth.local?.publicKeyPath;
+    if (!publicKeyPath) {
+        logger.error('Local auth attempted but auth.local.public_key_path is not configured');
+        return res.redirect(`${baseUrl}/login?error=Authentication+service+not+configured`);
+    }
+    const claims = await verifyPlatformJwtClaims(platformToken, publicKeyPath);
     if (!claims) {
-        logger.error('Failed to decode platform API token');
+        logger.error('Failed to verify platform API token');
         return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
     }
 
-    const adminRole = config.idp?.roles?.admin || 'admin';
-    const superAdminRole = config.idp?.roles?.superAdmin || 'superAdmin';
-    const subscriberRole = config.idp?.roles?.subscriber || 'Internal/subscriber';
+    const adminRole = config.auth.idp?.roles?.admin || 'admin';
+    const subscriberRole = config.auth.idp?.roles?.subscriber || 'Internal/subscriber';
     // Users with any _manage scope are treated as admins in the devportal
     const isAdmin = claims.scopes.some(s => s.endsWith('_manage'));
     const roles = isAdmin ? [adminRole] : [subscriberRole];

@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -67,7 +67,9 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 	// Preserve a caller-provided created_at (the DP->CP import flow sets it to the gateway's
 	// deployment time, which drives the last-in-wins watermark); default to now otherwise.
 	if deployment.CreatedAt.IsZero() {
-		deployment.CreatedAt = time.Now()
+		deployment.CreatedAt = time.Now().UTC()
+	} else {
+		deployment.CreatedAt = deployment.CreatedAt.UTC()
 	}
 
 	// Status must be provided and should be DEPLOYED for new deployments
@@ -76,7 +78,7 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 		deployment.Status = &deployed
 	}
 
-	updatedAt := time.Now()
+	updatedAt := time.Now().UTC()
 	deployment.UpdatedAt = &updatedAt
 
 	// 1. Count total deployments for this artifact+Gateway
@@ -167,9 +169,9 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 	// 4. Insert or update deployment status (UPSERT)
 	statusQuery := r.db.BuildUpsertQuery(
 		"deployment_status",
-		[]string{"artifact_uuid", "organization_uuid", "gateway_uuid", "deployment_uuid", "status", "status_desired", "performed_at", "status_reason", "updated_at"},
+		[]string{"artifact_uuid", "organization_uuid", "gateway_uuid", "deployment_uuid", "status", "status_desired", "performed_at", "performed_by", "status_reason", "updated_at"},
 		[]string{"artifact_uuid", "organization_uuid", "gateway_uuid"},
-		[]string{"deployment_uuid", "status", "status_desired", "performed_at", "status_reason=NULL", "updated_at"},
+		[]string{"deployment_uuid", "status", "status_desired", "performed_at", "performed_by", "status_reason=NULL", "updated_at"},
 	)
 
 	// Status and UpdatedAt are guaranteed to be non-nil by initialization at function start
@@ -181,6 +183,7 @@ func (r *DeploymentRepo) CreateWithLimitEnforcement(deployment *model.Deployment
 		*deployment.Status,
 		string(*deployment.Status),
 		*deployment.UpdatedAt,
+		deployment.CreatedBy,
 		nil,
 		*deployment.UpdatedAt,
 	)
@@ -247,7 +250,7 @@ func (r *DeploymentRepo) GetWithContent(deploymentID, artifactUUID, orgUUID stri
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrDeploymentNotFound
+			return nil, apperror.DeploymentNotFound.New()
 		}
 		return nil, err
 	}
@@ -273,7 +276,7 @@ func (r *DeploymentRepo) Delete(deploymentID, artifactUUID, orgUUID string) erro
 	}
 
 	if rowsAffected == 0 {
-		return constants.ErrDeploymentNotFound
+		return apperror.DeploymentNotFound.New()
 	}
 
 	return nil
@@ -340,10 +343,10 @@ func (r *DeploymentRepo) SetCurrent(artifactUUID, orgUUID, gatewayID, deployment
 // statusReason is an optional error code (cleared on new deployments).
 // Also maintains artifact_secret_refs (gateway_id rows): inserts refs on DEPLOYED, deletes them otherwise.
 func (r *DeploymentRepo) SetCurrentWithDetails(artifactUUID, orgUUID, gatewayID, deploymentID string, status model.DeploymentStatus, statusDesired string, performedAt *time.Time, statusReason string) (time.Time, error) {
-	updatedAt := time.Now()
+	updatedAt := time.Now().UTC()
 	var pat time.Time
 	if performedAt != nil {
-		pat = *performedAt
+		pat = performedAt.UTC()
 	} else {
 		pat = updatedAt
 	}
@@ -452,7 +455,7 @@ func (r *DeploymentRepo) UpdateStatusWithPerformedAtGuard(artifactUUID, orgUUID,
 		reasonVal = statusReason
 	}
 
-	updatedAt := time.Now()
+	updatedAt := time.Now().UTC()
 
 	if len(requireCurrentStatus) > 0 {
 		placeholders := make([]string, len(requireCurrentStatus))
@@ -495,7 +498,7 @@ func (r *DeploymentRepo) UpdateStatusWithPerformedAtGuard(artifactUUID, orgUUID,
 // GetStaleTransitionalStatuses finds deployment_status rows stuck in DEPLOYING/UNDEPLOYING
 // for longer than the given timeout duration.
 func (r *DeploymentRepo) GetStaleTransitionalStatuses(timeout time.Duration) ([]StaleDeploymentStatus, error) {
-	cutoff := time.Now().Add(-timeout)
+	cutoff := time.Now().UTC().Add(-timeout)
 	query := `
 		SELECT artifact_uuid, organization_uuid, gateway_uuid, deployment_uuid, status, status_desired, performed_at
 		FROM deployment_status
@@ -592,7 +595,7 @@ func (r *DeploymentRepo) GetWithState(deploymentID, artifactUUID, orgUUID string
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, constants.ErrDeploymentNotFound
+			return nil, apperror.DeploymentNotFound.New()
 		}
 		return nil, err
 	}
@@ -765,6 +768,37 @@ func (r *DeploymentRepo) GetLatestDeploymentTime(artifactUUID, orgUUID string) (
 	return &latest, nil
 }
 
+// GetLatestDeploymentRevision returns the gatewayRevision stored in the metadata of the most
+// recent deployment for the given (artifact, gateway, org), or "" when there is no deployment or
+// it carries no revision.
+func (r *DeploymentRepo) GetLatestDeploymentRevision(artifactUUID, gatewayUUID, orgUUID string) (string, error) {
+	query := `
+		SELECT metadata FROM deployments
+		WHERE artifact_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?
+		ORDER BY created_at DESC
+		` + r.db.FetchFirstClause(1)
+	var metadataBytes []byte
+	if err := r.db.QueryRow(r.db.Rebind(query), artifactUUID, gatewayUUID, orgUUID).Scan(&metadataBytes); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil
+		}
+		return "", err
+	}
+	if len(metadataBytes) == 0 {
+		return "", nil
+	}
+	var meta map[string]any
+	if err := json.Unmarshal(metadataBytes, &meta); err != nil {
+		// Unparseable metadata is treated as "no revision" rather than a hard error: the caller
+		// falls back to inserting a fresh deployment, which is safe (never drops a real deploy).
+		return "", nil
+	}
+	if rev, ok := meta["gatewayRevision"].(string); ok {
+		return rev, nil
+	}
+	return "", nil
+}
+
 // GetDeployedGatewayIDs returns the gateway IDs that have an active deployment status
 // (DEPLOYED or UNDEPLOYED) for the given artifact. Since the deployment_status table
 // only holds rows for those two states, a plain SELECT is sufficient.
@@ -814,7 +848,7 @@ func (r *DeploymentRepo) GetControlPlaneDeploymentsByGateway(gatewayID, orgUUID 
 		FROM deployment_status s
 		INNER JOIN artifacts a ON s.artifact_uuid = a.uuid
 		INNER JOIN (
-			`+r.reg.UnionAllSelect("uuid", "handle", "origin")+`
+			` + r.reg.UnionAllSelect("uuid", "handle", "origin") + `
 		) src ON src.uuid = s.artifact_uuid
 		WHERE s.gateway_uuid = ? AND s.organization_uuid = ?
 			AND src.origin <> 'gateway_api'`

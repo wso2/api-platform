@@ -26,6 +26,7 @@ Feature: Analytics - Basic Event Capture
           - method: GET
             path: /info
       """
+    And I wait for the endpoint "http://localhost:8080/analytics-test/v1/info" to be ready
     When I send a GET request to "http://localhost:8080/analytics-test/v1/info"
     Then the response status code should be 200
     And I wait 5 seconds for analytics to be published
@@ -52,7 +53,7 @@ Feature: Analytics - Basic Event Capture
           - method: POST
             path: /data
       """
-    And I wait for policy snapshot sync
+    And I wait for the endpoint "http://localhost:8080/metadata-test/v2/data" to be ready with method "POST" and body '{"test": "data"}'
     When I send a POST request to "http://localhost:8080/metadata-test/v2/data" with body:
       """
       {"test": "data"}
@@ -83,7 +84,7 @@ Feature: Analytics - Basic Event Capture
           - method: GET
             path: /ping
       """
-    And I wait for policy snapshot sync
+    And I wait for the endpoint "http://localhost:8080/multi-test/v1/ping" to be ready
     When I send a GET request to "http://localhost:8080/multi-test/v1/ping"
     And I send a GET request to "http://localhost:8080/multi-test/v1/ping"
     And I send a GET request to "http://localhost:8080/multi-test/v1/ping"

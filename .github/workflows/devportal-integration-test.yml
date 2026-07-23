@@ -33,10 +33,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Build platform-api image
+        run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-devportal
+
       - name: Build developer-portal image
         run: make -C portals/developer-portal build
 
       - name: Run REST API integration tests (${{ matrix.db }})
+        env:
+          PLATFORM_API_IMAGE: platform-api:it-devportal
         run: |
           if [ "${{ matrix.db }}" = "postgres" ]; then
             make -C portals/developer-portal/it test-rest-api-postgres
@@ -70,10 +75,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Build platform-api image
+        run: make -C platform-api build IMAGE_NAME=platform-api VERSION=it-devportal
+
       - name: Build developer-portal image
         run: make -C portals/developer-portal build
 
       - name: Run Cypress integration tests
+        env:
+          PLATFORM_API_IMAGE: platform-api:it-devportal
         run: make -C portals/developer-portal it
 
       - name: Upload Cypress reports

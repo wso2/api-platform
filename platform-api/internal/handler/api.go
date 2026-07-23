@@ -19,7 +19,6 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -85,56 +84,7 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 	}
 	apiResponse, err := h.apiService.CreateAPI(&req, orgId, createdBy)
 	if err != nil {
-		if errors.Is(err, constants.ErrHandleExists) {
-			return apperror.RESTAPIExists.Wrap(err, "An API with this handle already exists.").
-				WithLogMessage(fmt.Sprintf("API handle already exists in org %s", orgId))
-		}
-		if errors.Is(err, constants.ErrAPINameVersionAlreadyExists) {
-			return apperror.RESTAPIExists.Wrap(err, "An API with the same name and version already exists in the organization.").
-				WithLogMessage(fmt.Sprintf("API with same name and version already exists in org %s", orgId))
-		}
-		if errors.Is(err, constants.ErrAPIAlreadyExists) {
-			return apperror.RESTAPIExists.Wrap(err, "An API already exists in the project.").
-				WithLogMessage(fmt.Sprintf("API already exists in the project in org %s", orgId))
-		}
-		if errors.Is(err, constants.ErrProjectNotFound) {
-			return apperror.ProjectNotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("project not found in org %s", orgId))
-		}
-		if errors.Is(err, constants.ErrInvalidAPIName) {
-			return apperror.ValidationFailed.Wrap(err, "Invalid API name format").
-				WithLogMessage(fmt.Sprintf("invalid API name format in org %s", orgId))
-		}
-		if errors.Is(err, constants.ErrInvalidAPIContext) {
-			return apperror.ValidationFailed.Wrap(err, "Invalid API context format").
-				WithLogMessage(fmt.Sprintf("invalid API context format in org %s", orgId))
-		}
-		if errors.Is(err, constants.ErrInvalidAPIVersion) {
-			return apperror.ValidationFailed.Wrap(err, "Invalid API version format").
-				WithLogMessage(fmt.Sprintf("invalid API version format in org %s", orgId))
-		}
-		if errors.Is(err, constants.ErrInvalidLifecycleState) {
-			return apperror.ValidationFailed.Wrap(err, "Invalid lifecycle status").
-				WithLogMessage(fmt.Sprintf("invalid lifecycle status in org %s", orgId))
-		}
-		if errors.Is(err, constants.ErrInvalidAPIType) {
-			return apperror.ValidationFailed.Wrap(err, "Invalid API type").
-				WithLogMessage(fmt.Sprintf("invalid API type in org %s", orgId))
-		}
-		if errors.Is(err, constants.ErrInvalidTransport) {
-			return apperror.ValidationFailed.Wrap(err, "Invalid transport protocol").
-				WithLogMessage(fmt.Sprintf("invalid transport protocol in org %s", orgId))
-		}
-		if errors.Is(err, constants.ErrInvalidPolicyVersion) {
-			return apperror.ValidationFailed.Wrap(err, "Invalid policy version format").
-				WithLogMessage(fmt.Sprintf("invalid policy version format in org %s", orgId))
-		}
-		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
-			return apperror.ValidationFailed.Wrap(err, "Subscription plan not found or not active").
-				WithLogMessage(fmt.Sprintf("subscription plan not found or not active in org %s", orgId))
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to create API in org %s", orgId))
+		return serviceError(err, fmt.Sprintf("failed to create API in org %s", orgId))
 	}
 
 	setLocation(w, "rest-apis", strOrEmpty(apiResponse.Id))
@@ -157,12 +107,7 @@ func (h *APIHandler) GetAPI(w http.ResponseWriter, r *http.Request) error {
 
 	apiResponse, err := h.apiService.GetAPIByHandle(apiId, orgId)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.RESTAPINotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("API %s not found in org %s", apiId, orgId))
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to get API %s in org %s", apiId, orgId))
+		return serviceError(err, fmt.Sprintf("failed to get API %s in org %s", apiId, orgId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, apiResponse)
@@ -187,12 +132,7 @@ func (h *APIHandler) ListAPIs(w http.ResponseWriter, r *http.Request) error {
 
 	apis, total, err := h.apiService.GetAPIsByOrganization(orgId, projectId, opts)
 	if err != nil {
-		if errors.Is(err, constants.ErrProjectNotFound) {
-			return apperror.ProjectNotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("project %s not found in org %s", projectId, orgId))
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to get APIs for project %s in org %s", projectId, orgId))
+		return serviceError(err, fmt.Sprintf("failed to get APIs for project %s in org %s", projectId, orgId))
 	}
 
 	response := api.RESTAPIListResponse{
@@ -238,38 +178,7 @@ func (h *APIHandler) UpdateAPI(w http.ResponseWriter, r *http.Request) error {
 	}
 	apiResponse, err := h.apiService.UpdateAPIByHandle(apiId, &req, orgId, updatedBy)
 	if err != nil {
-		if guardErr := mapArtifactGuardError(err); guardErr != nil {
-			return guardErr
-		}
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.RESTAPINotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("API %s not found in org %s", apiId, orgId))
-		}
-		if errors.Is(err, constants.ErrHandleImmutable) {
-			return apperror.ValidationFailed.Wrap(err, "The id is immutable and cannot be changed")
-		}
-		if errors.Is(err, constants.ErrInvalidLifecycleState) {
-			return apperror.ValidationFailed.Wrap(err, "Invalid lifecycle status").
-				WithLogMessage(fmt.Sprintf("invalid lifecycle status for API %s in org %s", apiId, orgId))
-		}
-		if errors.Is(err, constants.ErrInvalidAPIType) {
-			return apperror.ValidationFailed.Wrap(err, "Invalid API type").
-				WithLogMessage(fmt.Sprintf("invalid API type for API %s in org %s", apiId, orgId))
-		}
-		if errors.Is(err, constants.ErrInvalidTransport) {
-			return apperror.ValidationFailed.Wrap(err, "Invalid transport protocol").
-				WithLogMessage(fmt.Sprintf("invalid transport protocol for API %s in org %s", apiId, orgId))
-		}
-		if errors.Is(err, constants.ErrInvalidPolicyVersion) {
-			return apperror.ValidationFailed.Wrap(err, "Invalid policy version format").
-				WithLogMessage(fmt.Sprintf("invalid policy version format for API %s in org %s", apiId, orgId))
-		}
-		if errors.Is(err, constants.ErrSubscriptionPlanNotFoundOrInactive) {
-			return apperror.ValidationFailed.Wrap(err, "Subscription plan not found or not active").
-				WithLogMessage(fmt.Sprintf("subscription plan not found or not active for API %s in org %s", apiId, orgId))
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to update API %s in org %s", apiId, orgId))
+		return serviceError(err, fmt.Sprintf("failed to update API %s in org %s", apiId, orgId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, apiResponse)
@@ -294,15 +203,7 @@ func (h *APIHandler) DeleteAPI(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	if err := h.apiService.DeleteAPIByHandle(apiId, orgId, deletedBy); err != nil {
-		if guardErr := mapArtifactGuardError(err); guardErr != nil {
-			return guardErr
-		}
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.RESTAPINotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("API %s not found in org %s", apiId, orgId))
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to delete API %s in org %s", apiId, orgId))
+		return serviceError(err, fmt.Sprintf("failed to delete API %s in org %s", apiId, orgId))
 	}
 
 	httputil.WriteJSON(w, http.StatusNoContent, nil)
@@ -337,18 +238,14 @@ func (h *APIHandler) AddGatewaysToAPI(w http.ResponseWriter, r *http.Request) er
 		gatewayIds[i] = gw.GatewayId
 	}
 
-	gatewaysResponse, err := h.apiService.AddGatewaysToAPIByHandle(apiId, gatewayIds, orgId)
+	createdBy, err := resolveActorErr(r, h.identity, "associate gateways with API")
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.RESTAPINotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("API %s not found in org %s", apiId, orgId))
-		}
-		if errors.Is(err, constants.ErrGatewayNotFound) {
-			return apperror.GatewayNotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("one or more gateways not found for API %s in org %s", apiId, orgId))
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to associate gateways with API %s in org %s", apiId, orgId))
+		return err
+	}
+
+	gatewaysResponse, err := h.apiService.AddGatewaysToAPIByHandle(apiId, gatewayIds, orgId, createdBy)
+	if err != nil {
+		return serviceError(err, fmt.Sprintf("failed to associate gateways with API %s in org %s", apiId, orgId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, gatewaysResponse)
@@ -372,12 +269,7 @@ func (h *APIHandler) GetAPIGateways(w http.ResponseWriter, r *http.Request) erro
 
 	gatewaysResponse, err := h.apiService.GetAPIGatewaysByHandle(apiId, orgId, limit, offset)
 	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			return apperror.RESTAPINotFound.Wrap(err).
-				WithLogMessage(fmt.Sprintf("API %s not found in org %s", apiId, orgId))
-		}
-		return apperror.Internal.Wrap(err).
-			WithLogMessage(fmt.Sprintf("failed to get gateways for API %s in org %s", apiId, orgId))
+		return serviceError(err, fmt.Sprintf("failed to get gateways for API %s in org %s", apiId, orgId))
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, gatewaysResponse)

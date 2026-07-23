@@ -865,6 +865,7 @@ export default function ServiceProviderRateLimitingTab({
       createdAt,
       createdBy,
       updatedAt,
+      updatedBy,
       lastUpdated,
       ...updatePayload
     } = provider;

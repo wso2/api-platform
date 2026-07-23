@@ -25,8 +25,10 @@ COPY policies /app/policies
 # Copy build manifest file for custom policy detection
 COPY build-manifest.yaml /app/build-manifest.yaml
 
-# Set environment variable for policy directory
-ENV APIP_GW_CONTROLLER_POLICIES_DEFINITIONS__PATH=/app/policies
+# Point the controller at the baked policy directory. The mounted config.toml reads this
+# value through its controller.policies.definitions_path interpolation token, which references
+# the env var APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH
+ENV APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH=/app/policies
 
 # Metadata labels
 LABEL org.opencontainers.image.title="API Platform Gateway Controller"

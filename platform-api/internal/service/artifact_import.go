@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -60,8 +61,8 @@ type ImportContext struct {
 	DeployedAt    *time.Time
 	Properties    map[string]interface{}
 
-	ProjectName string // metadata.project (may be empty)
-	ProjectID   string // resolved project UUID (empty for org-level kinds)
+	ProjectHandle string // project handle from the project-id annotation (may be empty)
+	ProjectID     string // resolved project UUID (empty for org-level kinds)
 
 	// Existing is the already-stored artifacts-table row keyed by ID, or nil if new.
 	// It is nil for organization-level kinds that are not backed by the artifacts
@@ -88,6 +89,10 @@ type GatewayArtifactImporter interface {
 	// Import creates or updates the artifact and returns the persisted result.
 	Import(ctx *ImportContext) (*ImportResult, error)
 }
+
+// deploymentRevisionProperty is the key under which the gateway sends a stable per-deployment
+// revision string (its deployment time in RFC3339Nano) in the import request Properties bag.
+const deploymentRevisionProperty = "deploymentRevision"
 
 // ArtifactImportService resolves the correct importer for a pushed artifact and
 // runs the shared pre/post processing (gateway auth, project resolution,
@@ -131,9 +136,9 @@ func NewArtifactImportService(
 	}
 	s.importers = map[string]GatewayArtifactImporter{
 		constants.RestApi:             newRestAPIImporter(apiRepo, artifactRepo),
-		constants.LLMProvider:         newLLMProviderImporter(providerRepo, templateRepo, artifactRepo),
+		constants.LLMProvider:         newLLMProviderImporter(providerRepo, templateRepo, artifactRepo, cfg, slogger),
 		constants.LLMProviderTemplate: newLLMProviderTemplateImporter(templateRepo),
-		constants.LLMProxy:            newLLMProxyImporter(proxyRepo, artifactRepo),
+		constants.LLMProxy:            newLLMProxyImporter(proxyRepo, providerRepo, artifactRepo),
 		constants.MCPProxy:            newMCPProxyImporter(mcpProxyRepo, artifactRepo, mcpServerInfo),
 	}
 	return s
@@ -186,7 +191,7 @@ func (s *ArtifactImportService) ImportArtifacts(orgID, gatewayID string, reqs []
 // the importer, and persists deployment/status for deployable kinds.
 func (s *ArtifactImportService) Import(orgID, gatewayID string, req dto.ImportGatewayArtifactRequest) (*dto.ImportGatewayArtifactResponse, error) {
 	if orgID == "" || gatewayID == "" || req.DPID == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The organization, gateway and artifact id are required.")
 	}
 	// Verify the gateway exists and belongs to the org before importing.
 	if _, err := s.getGatewayForOrg(orgID, gatewayID); err != nil {
@@ -204,22 +209,26 @@ func (s *ArtifactImportService) getGatewayForOrg(orgID, gatewayID string) (*mode
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil || gateway.OrganizationID != orgID {
-		return nil, constants.ErrGatewayNotFound
+		return nil, apperror.GatewayNotFound.New()
 	}
 	return gateway, nil
 }
+
+// importConflictMaxRetries bounds how many times importValidated re-resolves and retries a
+// single artifact import after a unique-constraint violation
+const importConflictMaxRetries = 3
 
 // importValidated imports a single artifact, assuming the gateway has already been resolved
 // and validated for the org (so a batch validates the gateway once instead of per artifact).
 func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto.ImportGatewayArtifactRequest) (*dto.ImportGatewayArtifactResponse, error) {
 	if req.DPID == "" {
-		return nil, constants.ErrInvalidInput
+		return nil, apperror.ValidationFailed.New("The artifact id is required.")
 	}
 	kind := req.Configuration.Kind
 	importer, ok := s.importers[kind]
 	if !ok {
 		s.slogger.Warn("Unsupported artifact kind for gateway import", "kind", kind, "artifactId", req.DPID)
-		return nil, fmt.Errorf("%w: %s", constants.ErrArtifactInvalidKind, kind)
+		return nil, apperror.ValidationFailed.New(fmt.Sprintf("Unsupported artifact kind %q.", kind))
 	}
 
 	// An "undeployed" push means the artifact was deleted from the gateway. The control
@@ -241,84 +250,53 @@ func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto
 		UpdatedAt:     req.UpdatedAt,
 		DeployedAt:    req.DeployedAt,
 		Properties:    req.Properties,
-		ProjectName:   utils.ResolveImportProject(req.Configuration.Metadata),
+		ProjectHandle: utils.ResolveImportProject(req.Configuration.Metadata),
 	}
 
 	// Resolve project for project-scoped kinds. Org-level kinds ignore the project.
 	if importer.RequiresProject() {
-		if ictx.ProjectName == "" {
-			// The gateway must always supply the project (as a metadata label) for
+		if ictx.ProjectHandle == "" {
+			// The gateway must always supply the project (as the project-id annotation) for
 			// project-scoped kinds; a push without one is a contract violation.
 			s.slogger.Error("Project is required for gateway-imported artifact but was not provided",
 				"kind", kind, "artifactId", req.DPID)
-			return nil, fmt.Errorf("%w: project is required for kind %s", constants.ErrInvalidInput, kind)
+			return nil, apperror.ValidationFailed.New(fmt.Sprintf("A project is required for artifact kind %q.", kind))
 		}
-		project, err := s.projectRepo.GetProjectByNameAndOrgID(ictx.ProjectName, orgID)
+		project, err := s.projectRepo.GetProjectByHandleAndOrgID(ictx.ProjectHandle, orgID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve project %q: %w", ictx.ProjectName, err)
+			return nil, fmt.Errorf("failed to resolve project %q: %w", ictx.ProjectHandle, err)
 		}
 		if project == nil {
 			// The project was provided but does not exist in this organization. Reject the
 			// import with ErrProjectNotFound (the project is never created or defaulted);
 			// the artifact is not created in the control plane.
 			s.slogger.Error("Project is not available in the organization; gateway artifact not imported",
-				"kind", kind, "artifactId", req.DPID, "project", ictx.ProjectName, "orgId", orgID)
-			return nil, fmt.Errorf("%w: project %q does not exist in org %q", constants.ErrProjectNotFound, ictx.ProjectName, orgID)
+				"kind", kind, "artifactId", req.DPID, "projectHandle", ictx.ProjectHandle, "orgId", orgID)
+			return nil, apperror.ProjectNotFound.New().WithLogMessage(
+				fmt.Sprintf("project with handle %q does not exist in org %q", ictx.ProjectHandle, orgID))
 		}
 		ictx.ProjectID = project.ID
 	}
 
-	// The control plane owns the artifact UUID; it does NOT reuse the data-plane UUID
-	// (the gateway mints a fresh one whenever the artifact is recreated). Match an
-	// already-imported artifact by its handle, which is unique per organization and
-	// stable across delete/recreate. When found, reuse its CP UUID (so a recreate
-	// re-attaches to the same artifact and only adds a new deployment); otherwise mint
-	// a new CP UUID. Org-level kinds (e.g. templates) are not in the artifacts table —
-	// GetByHandle returns nil and the importer resolves existence itself.
+	// Resolve the existing artifact by handle, decide the last-in-wins write mode, and run the
+	// per-kind importer — retrying on a unique-constraint violation to close a TOCTOU race.
 	handle := utils.ImportHandle(ictx.Configuration)
-	existing, err := s.artifactRepo.GetByHandle(handle, orgID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to look up existing artifact: %w", err)
-	}
-	if existing != nil {
-		// Guard against handle reuse across kinds. GetByHandle reports the artifact kind in
-		// the Type field (the artifacts.type column).
-		if existing.Type != kind {
-			return nil, fmt.Errorf("%w: artifact %q already exists with kind %s", constants.ErrArtifactExists, handle, existing.Type)
+	var result *ImportResult
+	var err error
+	for attempt := 0; ; attempt++ {
+		result, err = s.resolveAndImport(importer, ictx, handle, orgID, kind, req.DeployedAt)
+		if err == nil {
+			break
 		}
-		ictx.ID = existing.UUID
-		ictx.Existing = existing
-	} else {
-		ictx.ID = uuid.NewString()
-	}
-
-	// Decide the working-copy (metadata) write mode using last-in-wins by deployment time.
-	// The "latest deployment" watermark is derived from the artifact's existing deployment
-	// rows (deployments.created_at, set to each push's gateway deployment time): a push wins
-	// only when its deployment time is later than every recorded deployment of the artifact.
-	// Org-level kinds not backed by the artifacts table (templates) have existing == nil here
-	// and recompute the decision themselves in the importer using their own watermark.
-	var currentOrigin string
-	var currentDeployedAt *time.Time
-	if existing != nil {
-		currentOrigin = existing.Origin
-		latest, err := s.deploymentRepo.GetLatestDeploymentTime(existing.UUID, orgID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to look up latest deployment time: %w", err)
+		if attempt < importConflictMaxRetries && repository.IsUniqueViolation(err) {
+			s.slogger.Info("Concurrent same-handle import detected; re-resolving and retrying as update",
+				"kind", kind, "handle", handle, "orgId", orgID, "attempt", attempt+1)
+			continue
 		}
-		currentDeployedAt = latest
-	}
-	ictx.MetadataMode = utils.DecideMetadataWrite(existing == nil, currentOrigin, currentDeployedAt, req.DeployedAt)
-
-	result, err := importer.Import(ictx)
-	if err != nil {
 		return nil, err
 	}
 
-	// Persist deployment + status for deployable kinds (everything except templates). This
-	// runs for every non-undeploy push — including a stale (utils.SkipWorkingCopy) one — so each
-	// push is recorded as a deployment (with created_at = the gateway deployment time) and
-	// each gateway's own deployment status stays accurate even when its push lost the race.
+	// Persist deployment + status for deployable kinds (everything except templates).
 	if result.Deployable {
 		if err := s.writeDeployment(ictx, result.ID); err != nil {
 			return nil, err
@@ -336,9 +314,64 @@ func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto
 	}, nil
 }
 
+// resolveAndImport resolves the existing artifact by handle, computes the last-in-wins
+// metadata write mode for this push, and runs the per-kind importer once.
+func (s *ArtifactImportService) resolveAndImport(
+	importer GatewayArtifactImporter,
+	ictx *ImportContext,
+	handle, orgID, kind string,
+	incomingDeployedAt *time.Time,
+) (*ImportResult, error) {
+	// The control plane owns the artifact UUID; it does NOT reuse the data-plane UUID
+	// (the gateway mints a fresh one whenever the artifact is recreated).
+	existing, err := s.artifactRepo.GetByHandle(handle, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up existing artifact: %w", err)
+	}
+	if existing != nil {
+		// Guard against handle reuse across kinds. GetByHandle reports the artifact kind in
+		// the Type field (the artifacts.type column).
+		if existing.Type != kind {
+			return nil, apperror.ArtifactExists.New().WithLogMessage(
+				fmt.Sprintf("artifact %q already exists with kind %s", handle, existing.Type))
+		}
+		ictx.ID = existing.UUID
+		ictx.Existing = existing
+	} else {
+		ictx.ID = uuid.NewString()
+		ictx.Existing = nil
+	}
+
+	// Decide the working-copy (metadata) write mode using last-in-wins by deployment time.
+	var currentOrigin string
+	var currentDeployedAt *time.Time
+	if existing != nil {
+		currentOrigin = existing.Origin
+		latest, err := s.deploymentRepo.GetLatestDeploymentTime(existing.UUID, orgID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to look up latest deployment time: %w", err)
+		}
+		currentDeployedAt = latest
+	}
+	ictx.MetadataMode = utils.DecideMetadataWrite(existing == nil, currentOrigin, currentDeployedAt, incomingDeployedAt)
+
+	return importer.Import(ictx)
+}
+
 // writeDeployment records the immutable deployment artifact, upserts the current
 // deployment_status row, and ensures the artifact<->gateway association exists.
 func (s *ArtifactImportService) writeDeployment(ictx *ImportContext, artifactUUID string) error {
+	revision := utils.StringProperty(ictx.Properties, deploymentRevisionProperty)
+	if revision != "" {
+		latestRevision, err := s.deploymentRepo.GetLatestDeploymentRevision(artifactUUID, ictx.GatewayID, ictx.OrgID)
+		if err != nil {
+			return fmt.Errorf("failed to look up latest deployment revision: %w", err)
+		}
+		if latestRevision == revision {
+			return s.ensureGatewayAssociation(artifactUUID, ictx.GatewayID, ictx.OrgID)
+		}
+	}
+
 	content, err := yaml.Marshal(ictx.Configuration)
 	if err != nil {
 		return fmt.Errorf("failed to serialize deployment content: %w", err)
@@ -366,35 +399,33 @@ func (s *ArtifactImportService) writeDeployment(ictx *ImportContext, artifactUUI
 		Content:        content,
 		Status:         &status,
 		CreatedAt:      createdAt,
+		Metadata:       utils.RevisionMetadata(revision),
 	}
 	if err := s.deploymentRepo.CreateWithLimitEnforcement(deployment, hardLimit); err != nil {
 		return fmt.Errorf("failed to create deployment record: %w", err)
 	}
 
-	// Ensure the gateway association exists so the artifact is listed against the
-	// gateway in the control plane. association_mappings is generic across kinds.
-	assocs, err := s.apiRepo.GetAPIAssociations(artifactUUID, constants.AssociationTypeGateway, ictx.OrgID)
+	return s.ensureGatewayAssociation(artifactUUID, ictx.GatewayID, ictx.OrgID)
+}
+
+// ensureGatewayAssociation ensures the artifact<->gateway association exists so the artifact is
+// listed against the gateway in the control plane. association_mappings is generic across kinds.
+func (s *ArtifactImportService) ensureGatewayAssociation(artifactUUID, gatewayID, orgID string) error {
+	assocs, err := s.apiRepo.GetAPIAssociations(artifactUUID, constants.AssociationTypeGateway, orgID)
 	if err != nil {
 		return fmt.Errorf("failed to check artifact-gateway associations: %w", err)
 	}
-	associated := false
 	for _, a := range assocs {
-		if a.GatewayID == ictx.GatewayID {
-			associated = true
-			break
+		if a.GatewayID == gatewayID {
+			return nil
 		}
 	}
-	if !associated {
-		now := time.Now()
-		if err := s.apiRepo.CreateAPIAssociation(&model.APIAssociation{
-			ArtifactID:     artifactUUID,
-			OrganizationID: ictx.OrgID,
-			GatewayID:      ictx.GatewayID,
-			CreatedAt:      now,
-			UpdatedAt:      now,
-		}); err != nil {
-			return fmt.Errorf("failed to create artifact-gateway association: %w", err)
-		}
+	if err := s.apiRepo.CreateAPIAssociation(&model.APIAssociation{
+		ArtifactID:     artifactUUID,
+		OrganizationID: orgID,
+		GatewayID:      gatewayID,
+	}); err != nil {
+		return fmt.Errorf("failed to create artifact-gateway association: %w", err)
 	}
 	return nil
 }

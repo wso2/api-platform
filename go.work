@@ -1,27 +1,30 @@
-go 1.26.2
+go 1.26.5
 
 use (
 	./api-cloud
-	./httpkit
 	./cli/it
 	./cli/src
 	./common
 	./event-gateway/gateway-builder
-	./event-gateway/webhook-listener
+	./event-gateway/gateway-controller
 	./event-gateway/gateway-runtime
 	./event-gateway/it
+	./event-gateway/webhook-listener
 	./gateway/gateway-builder
 	./gateway/gateway-controller
 	./gateway/gateway-runtime/policy-engine
 	./gateway/it
 	./gateway/sample-policies/transform-payload-case
 	./gateway/system-policies/analytics
+	./httpkit
+	./kubernetes/conformance/runner
 	./kubernetes/gateway-operator
 	./platform-api
 	./portals/ai-workspace/bff
 	./samples/sample-service
 	./sdk/ai
 	./sdk/core
+	./tests/ai-workspace-cli-e2e
 	./tests/integration-e2e
 	./tests/mock-servers/mock-platform-api
 )

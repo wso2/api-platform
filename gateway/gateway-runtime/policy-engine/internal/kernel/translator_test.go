@@ -608,6 +608,73 @@ func TestTranslateRequestActionsCore_ShortCircuit_PreservesPriorRequestAnalytics
 	assert.Equal(t, "immediate-response", analyticsData.GetFields()["source"].GetStringValue())
 }
 
+// TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorAnalyticsMetadata
+// covers the request-header phase short-circuit path: an earlier policy (e.g. the
+// collector system policy capturing request headers) stamps request-header-phase
+// analytics metadata, then an auth policy rejects the request with 401 and
+// short-circuits the chain. The prior policy's metadata must survive onto the
+// immediate response's dynamic metadata, otherwise the ALS access-log entry is
+// missing it and the global traffic-logging publisher's line for that denied
+// request would be incomplete.
+func TestTranslateRequestHeaderActions_ShortCircuit_PreservesPriorAnalyticsMetadata(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path: "/api/test",
+		SharedContext: &policy.SharedContext{
+			APIId: "api-1",
+		},
+	}
+
+	result := &executor.RequestHeaderExecutionResult{
+		ShortCircuited: true,
+		Results: []executor.RequestHeaderPolicyResult{
+			{
+				Skipped: false,
+				Action: policy.UpstreamRequestHeaderModifications{
+					AnalyticsMetadata: map[string]any{
+						"request_headers": `{"x-request-id":"req-1"}`,
+					},
+				},
+			},
+		},
+		FinalAction: policy.ImmediateResponse{
+			StatusCode: 401,
+			Headers: map[string]string{
+				"content-type": "application/json",
+			},
+			Body: []byte(`{"error":"unauthorized"}`),
+			AnalyticsMetadata: map[string]any{
+				"source": "immediate-response",
+			},
+		},
+	}
+
+	resp, err := TranslateRequestHeaderActions(result, chain, execCtx)
+
+	assert.NoError(t, err)
+	require.NotNil(t, resp)
+
+	immediate := resp.GetImmediateResponse()
+	require.NotNil(t, immediate)
+	assert.Equal(t, uint32(401), uint32(immediate.Status.Code))
+
+	extProcNamespace := resp.DynamicMetadata.GetFields()[constants.ExtProcFilterName].GetStructValue()
+	require.NotNil(t, extProcNamespace)
+
+	analyticsData := extProcNamespace.GetFields()["analytics_data"].GetStructValue()
+	require.NotNil(t, analyticsData)
+
+	// The metadata stamped by the earlier policy survives the short-circuit...
+	assert.Equal(t, `{"x-request-id":"req-1"}`, analyticsData.GetFields()["request_headers"].GetStringValue())
+	// ...and the immediate response's own analytics metadata is still present.
+	assert.Equal(t, "immediate-response", analyticsData.GetFields()["source"].GetStringValue())
+}
+
 func TestTranslateRequestActionsCore_SkippedPolicy(t *testing.T) {
 	kernel := NewKernel()
 	chainExecutor := executor.NewChainExecutor(nil, nil, nil)

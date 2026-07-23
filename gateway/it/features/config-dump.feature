@@ -222,7 +222,7 @@ Feature: Configuration Dump Endpoint
         context: /config-mcp
         specVersion: "2025-06-18"
         upstream:
-          url: http://mcp-server-backend:3001
+          url: http://mcp-server-backend:3001/mcp
         tools: []
         resources: []
         prompts: []
@@ -302,7 +302,7 @@ Feature: Configuration Dump Endpoint
         context: /mixed-mcp
         specVersion: "2025-06-18"
         upstream:
-          url: http://mcp-server-backend:3001
+          url: http://mcp-server-backend:3001/mcp
         tools: []
         resources: []
         prompts: []

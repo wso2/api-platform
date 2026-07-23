@@ -19,7 +19,10 @@
 package utils
 
 import (
+	"io"
+	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,11 +41,6 @@ func stringPtr(s string) *string {
 // loadDummyConfig creates a dummy router configuration
 func loadDummyConfig() config.RouterConfig {
 	return config.RouterConfig{
-		EventGateway: config.EventGatewayConfig{
-			Enabled:       true,
-			WebSubHubURL:  "http://host.docker.internal",
-			WebSubHubPort: 9098,
-		},
 		AccessLogs: config.AccessLogsConfig{
 			Enabled: true,
 			Format:  "json",
@@ -230,8 +228,8 @@ func TestTransform_FullProvider(t *testing.T) {
 	// Verify auth policy is attached to all operations
 	require.NotEmpty(t, spec.Operations)
 	for _, op := range spec.Operations {
-		require.NotNil(t, op.Policies, "Operation %s %s should have policies", op.Method, op.Path)
-		require.NotEmpty(t, *op.Policies, "Operation %s %s should have at least one policy", op.Method, op.Path)
+		require.NotNil(t, op.Policies, "Operation %s %s should have policies", op.EffectiveMethod(), op.EffectivePath())
+		require.NotEmpty(t, *op.Policies, "Operation %s %s should have at least one policy", op.EffectiveMethod(), op.EffectivePath())
 
 		var authPolicy *api.Policy
 		for i := range *op.Policies {
@@ -241,7 +239,7 @@ func TestTransform_FullProvider(t *testing.T) {
 			}
 		}
 
-		require.NotNil(t, authPolicy, "Operation %s %s should include upstream auth policy", op.Method, op.Path)
+		require.NotNil(t, authPolicy, "Operation %s %s should include upstream auth policy", op.EffectiveMethod(), op.EffectivePath())
 		assert.Equal(t, testSetHeadersVersion, authPolicy.Version)
 		assert.NotNil(t, authPolicy.Params)
 	}
@@ -504,8 +502,8 @@ func TestTransform_ApiKeyAuth(t *testing.T) {
 	// Verify auth policy is attached to all operations
 	require.NotEmpty(t, spec.Operations)
 	for _, op := range spec.Operations {
-		require.NotNil(t, op.Policies, "Operation %s %s should have policies", op.Method, op.Path)
-		require.NotEmpty(t, *op.Policies, "Operation %s %s should have at least one policy", op.Method, op.Path)
+		require.NotNil(t, op.Policies, "Operation %s %s should have policies", op.EffectiveMethod(), op.EffectivePath())
+		require.NotEmpty(t, *op.Policies, "Operation %s %s should have at least one policy", op.EffectiveMethod(), op.EffectivePath())
 
 		var authPolicy *api.Policy
 		for i := range *op.Policies {
@@ -515,13 +513,66 @@ func TestTransform_ApiKeyAuth(t *testing.T) {
 			}
 		}
 
-		require.NotNil(t, authPolicy, "Operation %s %s should include upstream auth policy", op.Method, op.Path)
+		require.NotNil(t, authPolicy, "Operation %s %s should include upstream auth policy", op.EffectiveMethod(), op.EffectivePath())
 		assert.Equal(t, testSetHeadersVersion, authPolicy.Version)
 		require.NotNil(t, authPolicy.Params)
 
 		// Verify policy params contain header and value
 		params := *authPolicy.Params
 		assert.Contains(t, params, "request")
+	}
+}
+
+// TestTransform_OtherAndNoneAuth verifies that "other" and "none" upstream auth
+// types transform successfully but attach no upstream auth policy - for "other"
+// authentication is handled by user-attached policies, for "none" there is none.
+func TestTransform_OtherAndNoneAuth(t *testing.T) {
+	for _, authType := range []api.LLMProviderConfigDataUpstreamAuthType{
+		api.LLMProviderConfigDataUpstreamAuthTypeOther,
+		api.LLMProviderConfigDataUpstreamAuthTypeNone,
+	} {
+		t.Run(string(authType), func(t *testing.T) {
+			transformer, _ := setupTestTransformer(t)
+
+			provider := &api.LLMProviderConfiguration{
+				ApiVersion: "gateway.api-platform.wso2.com/v1",
+				Kind:       "LlmProvider",
+				Metadata:   api.Metadata{Name: "openai-provider"},
+				Spec: api.LLMProviderConfigData{
+					DisplayName: "test",
+					Version:     "v1.0",
+					Template:    "openai",
+					Upstream: api.LLMProviderConfigData_Upstream{
+						Url: stringPtr("https://api.example.com"),
+						Auth: &struct {
+							Header *string                                   `json:"header,omitempty" yaml:"header,omitempty"`
+							Type   api.LLMProviderConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+							Value  *string                                   `json:"value,omitempty" yaml:"value,omitempty"`
+						}{
+							Type: authType,
+						},
+					},
+					AccessControl: api.LLMAccessControl{
+						Mode: api.AllowAll,
+					},
+				},
+			}
+
+			output := &api.RestAPI{}
+			result, err := transformer.Transform(provider, output)
+			require.NoError(t, err)
+
+			// No upstream auth policy should be attached to any operation.
+			for _, op := range result.Spec.Operations {
+				if op.Policies == nil {
+					continue
+				}
+				for _, pol := range *op.Policies {
+					assert.NotEqual(t, constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME, pol.Name,
+						"auth type %q should not attach an upstream auth policy", authType)
+				}
+			}
+		})
 	}
 }
 
@@ -596,9 +647,9 @@ func TestTransform_AllowAll_NoExceptions(t *testing.T) {
 	// Should have only catch-all operation
 	require.Len(t, spec.Operations, len(constants.WILDCARD_HTTP_METHODS))
 	for i, op := range spec.Operations {
-		assert.Contains(t, constants.WILDCARD_HTTP_METHODS, string(op.Method),
+		assert.Contains(t, constants.WILDCARD_HTTP_METHODS, op.EffectiveMethod(),
 			"Operation %d method should be in WILDCARD_HTTP_METHODS", i)
-		assert.Equal(t, "/*", op.Path,
+		assert.Equal(t, "/*", op.EffectivePath(),
 			"Operation %d should have wildcard path", i)
 	}
 }
@@ -647,7 +698,7 @@ func TestTransform_AllowAll_WithSingleException(t *testing.T) {
 	catchAllCount := 0
 
 	for i, op := range spec.Operations {
-		if op.Path == "/admin" && op.Method == api.OperationMethod("GET") {
+		if op.EffectivePath() == "/admin" && op.EffectiveMethod() == "GET" {
 			foundGET = true
 			require.NotNil(t, op.Policies)
 			assert.Len(t, *op.Policies, 1)
@@ -655,7 +706,7 @@ func TestTransform_AllowAll_WithSingleException(t *testing.T) {
 			assert.Equal(t, constants.ACCESS_CONTROL_DENY_POLICY_NAME, policy.Name)
 			assert.Equal(t, testRespondVersion, policy.Version)
 		}
-		if op.Path == "/admin" && op.Method == api.OperationMethod("POST") {
+		if op.EffectivePath() == "/admin" && op.EffectiveMethod() == "POST" {
 			foundPOST = true
 			require.NotNil(t, op.Policies)
 			assert.Len(t, *op.Policies, 1)
@@ -663,10 +714,10 @@ func TestTransform_AllowAll_WithSingleException(t *testing.T) {
 			assert.Equal(t, constants.ACCESS_CONTROL_DENY_POLICY_NAME, policy.Name)
 			assert.Equal(t, testRespondVersion, policy.Version)
 		}
-		if op.Path == "/*" {
-			assert.Contains(t, constants.WILDCARD_HTTP_METHODS, string(op.Method),
+		if op.EffectivePath() == "/*" {
+			assert.Contains(t, constants.WILDCARD_HTTP_METHODS, op.EffectiveMethod(),
 				"Operation %d method should be in WILDCARD_HTTP_METHODS", i)
-			assert.Equal(t, "/*", op.Path,
+			assert.Equal(t, "/*", op.EffectivePath(),
 				"Operation %d should have wildcard path", i)
 			catchAllCount++
 
@@ -726,7 +777,7 @@ func TestTransform_AllowAll_WithSingleExceptionWithWildCardMethod(t *testing.T) 
 	foundCatchCount := 0
 
 	for _, op := range spec.Operations {
-		if op.Path == "/admin" {
+		if op.EffectivePath() == "/admin" {
 			foundWildCardCount++
 			require.NotNil(t, op.Policies)
 			assert.Len(t, *op.Policies, 1)
@@ -734,7 +785,7 @@ func TestTransform_AllowAll_WithSingleExceptionWithWildCardMethod(t *testing.T) 
 			assert.Equal(t, constants.ACCESS_CONTROL_DENY_POLICY_NAME, policy.Name)
 			assert.Equal(t, testRespondVersion, policy.Version)
 		}
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			foundCatchCount++
 			// Catch-all should not have policies
 			if op.Policies != nil {
@@ -790,7 +841,7 @@ func TestTransform_AllowAll_WithSingleExceptionWithWildCardResource(t *testing.T
 	foundCatchCount := 0
 
 	for _, op := range spec.Operations {
-		if op.Path == "/admin/*" {
+		if op.EffectivePath() == "/admin/*" {
 			foundWildCardCount++
 			require.NotNil(t, op.Policies)
 			assert.Len(t, *op.Policies, 1)
@@ -798,7 +849,7 @@ func TestTransform_AllowAll_WithSingleExceptionWithWildCardResource(t *testing.T
 			assert.Equal(t, constants.ACCESS_CONTROL_DENY_POLICY_NAME, policy.Name)
 			assert.Equal(t, testRespondVersion, policy.Version)
 		}
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			foundCatchCount++
 			// Catch-all should not have policies
 			if op.Policies != nil {
@@ -859,7 +910,7 @@ func TestTransform_AllowAll_WithMultipleExceptions(t *testing.T) {
 	catchAllOps := 0
 
 	for _, op := range spec.Operations {
-		switch op.Path {
+		switch op.EffectivePath() {
 		case "/admin":
 			adminOps++
 			require.NotNil(t, op.Policies)
@@ -951,8 +1002,8 @@ func TestTransform_DenyAll_WithSingleException(t *testing.T) {
 
 	// Should have only 1 operation (the exception)
 	require.Len(t, spec.Operations, 1)
-	assert.Equal(t, api.OperationMethod("POST"), spec.Operations[0].Method)
-	assert.Equal(t, "/v1/chat/completions", spec.Operations[0].Path)
+	assert.Equal(t, "POST", spec.Operations[0].EffectiveMethod())
+	assert.Equal(t, "/v1/chat/completions", spec.Operations[0].EffectivePath())
 
 	// Exception operations in deny_all mode should NOT have respond policy
 	if spec.Operations[0].Policies != nil {
@@ -997,22 +1048,22 @@ func TestTransform_DenyAll_WithSingleExceptionWithWildCardMethod(t *testing.T) {
 
 	// Verify all operations have the correct path and methods match WILDCARD_HTTP_METHODS
 	for i, op := range spec.Operations {
-		assert.Equal(t, "/v1/chat/completions", op.Path, "Operation %d should have wildcard path", i)
+		assert.Equal(t, "/v1/chat/completions", op.EffectivePath(), "Operation %d should have wildcard path", i)
 
 		// Verify the method is one of the wildcard methods
-		assert.Contains(t, constants.WILDCARD_HTTP_METHODS, string(op.Method),
-			"Operation %d method %s should be in WILDCARD_HTTP_METHODS", i, op.Method)
+		assert.Contains(t, constants.WILDCARD_HTTP_METHODS, op.EffectiveMethod(),
+			"Operation %d method %s should be in WILDCARD_HTTP_METHODS", i, op.EffectiveMethod())
 
 		// Exception operations in deny_all mode should NOT have respond policy
 		if op.Policies != nil {
-			assert.Len(t, *op.Policies, 0, "Operation %d (%s) should not have respond policy", i, op.Method)
+			assert.Len(t, *op.Policies, 0, "Operation %d (%s) should not have respond policy", i, op.EffectiveMethod())
 		}
 	}
 
 	// Additionally, verify all WILDCARD_HTTP_METHODS are present
 	foundMethods := make(map[string]bool)
 	for _, op := range spec.Operations {
-		foundMethods[string(op.Method)] = true
+		foundMethods[op.EffectiveMethod()] = true
 	}
 
 	for _, expectedMethod := range constants.WILDCARD_HTTP_METHODS {
@@ -1065,22 +1116,22 @@ func TestTransform_DenyAll_WithSingleExceptionWithWildCardResource(t *testing.T)
 
 	// Verify all operations have the correct path and methods match WILDCARD_HTTP_METHODS
 	for i, op := range spec.Operations {
-		assert.Equal(t, "/v1/chat/*", op.Path, "Operation %d should have wildcard path", i)
+		assert.Equal(t, "/v1/chat/*", op.EffectivePath(), "Operation %d should have wildcard path", i)
 
 		// Verify the method is one of the wildcard methods
-		assert.Contains(t, constants.WILDCARD_HTTP_METHODS, string(op.Method),
-			"Operation %d method %s should be in WILDCARD_HTTP_METHODS", i, op.Method)
+		assert.Contains(t, constants.WILDCARD_HTTP_METHODS, op.EffectiveMethod(),
+			"Operation %d method %s should be in WILDCARD_HTTP_METHODS", i, op.EffectiveMethod())
 
 		// Exception operations in deny_all mode should NOT have respond policy
 		if op.Policies != nil {
-			assert.Len(t, *op.Policies, 0, "Operation %d (%s) should not have respond policy", i, op.Method)
+			assert.Len(t, *op.Policies, 0, "Operation %d (%s) should not have respond policy", i, op.EffectiveMethod())
 		}
 	}
 
 	// Additionally, verify all WILDCARD_HTTP_METHODS are present
 	foundMethods := make(map[string]bool)
 	for _, op := range spec.Operations {
-		foundMethods[string(op.Method)] = true
+		foundMethods[op.EffectiveMethod()] = true
 	}
 
 	for _, expectedMethod := range constants.WILDCARD_HTTP_METHODS {
@@ -1136,7 +1187,7 @@ func TestTransform_DenyAll_WithMultipleExceptions(t *testing.T) {
 
 	paths := make(map[string]bool)
 	for _, op := range spec.Operations {
-		paths[op.Path] = true
+		paths[op.EffectivePath()] = true
 	}
 
 	assert.True(t, paths["/v1/chat/completions"])
@@ -1409,9 +1460,9 @@ func TestTransform_PolicyOnDifferentRoutes(t *testing.T) {
 		assert.Len(t, *op.Policies, 1)
 
 		policy := (*op.Policies)[0]
-		if op.Path == "/v1/chat/completions" {
+		if op.EffectivePath() == "/v1/chat/completions" {
 			assert.Equal(t, "content-length-guardrail", policy.Name)
-		} else if op.Path == "/v1/embeddings" {
+		} else if op.EffectivePath() == "/v1/embeddings" {
 			assert.Equal(t, "regex-guardrail", policy.Name)
 		}
 	}
@@ -1479,17 +1530,17 @@ func TestTransform_PolicyOnWildcardMethod_1(t *testing.T) {
 
 	for _, op := range spec.Operations {
 		// Each operation should have exactly one policy
-		require.NotNil(t, op.Policies, "Operation %s %s should have policies", op.Method, op.Path)
-		require.Len(t, *op.Policies, 1, "Operation %s %s should have exactly 1 policy", op.Method, op.Path)
+		require.NotNil(t, op.Policies, "Operation %s %s should have policies", op.EffectiveMethod(), op.EffectivePath())
+		require.Len(t, *op.Policies, 1, "Operation %s %s should have exactly 1 policy", op.EffectiveMethod(), op.EffectivePath())
 
 		// The policy should be set-headers
 		policy := (*op.Policies)[0]
-		assert.Equal(t, "set-headers", policy.Name, "Operation %s %s should have set-headers policy", op.Method, op.Path)
-		assert.Equal(t, "v0.1.0", policy.Version, "Operation %s %s should have correct policy version", op.Method, op.Path)
+		assert.Equal(t, "set-headers", policy.Name, "Operation %s %s should have set-headers policy", op.EffectiveMethod(), op.EffectivePath())
+		assert.Equal(t, "v0.1.0", policy.Version, "Operation %s %s should have correct policy version", op.EffectiveMethod(), op.EffectivePath())
 
 		// Verify the policy params are set correctly
-		require.NotNil(t, policy.Params, "Operation %s %s policy should have params", op.Method, op.Path)
-		assert.Contains(t, *policy.Params, "request", "Operation %s %s policy should have request param", op.Method, op.Path)
+		require.NotNil(t, policy.Params, "Operation %s %s policy should have params", op.EffectiveMethod(), op.EffectivePath())
+		assert.Contains(t, *policy.Params, "request", "Operation %s %s policy should have request param", op.EffectiveMethod(), op.EffectivePath())
 	}
 }
 
@@ -1555,24 +1606,24 @@ func TestTransform_PolicyOnWildcardMethod_2(t *testing.T) {
 
 	// Verify all operations have the policy attached
 	for i, op := range spec.Operations {
-		assert.Equal(t, "/v1/chat/completions", op.Path, "Operation %d should have correct path", i)
+		assert.Equal(t, "/v1/chat/completions", op.EffectivePath(), "Operation %d should have correct path", i)
 
 		// Verify the method is one of the wildcard methods
-		assert.Contains(t, constants.WILDCARD_HTTP_METHODS, string(op.Method),
-			"Operation %d method %s should be in WILDCARD_HTTP_METHODS", i, op.Method)
+		assert.Contains(t, constants.WILDCARD_HTTP_METHODS, op.EffectiveMethod(),
+			"Operation %d method %s should be in WILDCARD_HTTP_METHODS", i, op.EffectiveMethod())
 
 		// Each operation should have exactly one policy
-		require.NotNil(t, op.Policies, "Operation %s %s should have policies", op.Method, op.Path)
-		require.Len(t, *op.Policies, 1, "Operation %s %s should have exactly 1 policy", op.Method, op.Path)
+		require.NotNil(t, op.Policies, "Operation %s %s should have policies", op.EffectiveMethod(), op.EffectivePath())
+		require.Len(t, *op.Policies, 1, "Operation %s %s should have exactly 1 policy", op.EffectiveMethod(), op.EffectivePath())
 
 		// The policy should be set-headers
 		policy := (*op.Policies)[0]
-		assert.Equal(t, "set-headers", policy.Name, "Operation %s %s should have set-headers policy", op.Method, op.Path)
-		assert.Equal(t, "v0.1.0", policy.Version, "Operation %s %s should have correct policy version", op.Method, op.Path)
+		assert.Equal(t, "set-headers", policy.Name, "Operation %s %s should have set-headers policy", op.EffectiveMethod(), op.EffectivePath())
+		assert.Equal(t, "v0.1.0", policy.Version, "Operation %s %s should have correct policy version", op.EffectiveMethod(), op.EffectivePath())
 
 		// Verify the policy params are set correctly
-		require.NotNil(t, policy.Params, "Operation %s %s policy should have params", op.Method, op.Path)
-		assert.Contains(t, *policy.Params, "request", "Operation %s %s policy should have request param", op.Method, op.Path)
+		require.NotNil(t, policy.Params, "Operation %s %s policy should have params", op.EffectiveMethod(), op.EffectivePath())
+		assert.Contains(t, *policy.Params, "request", "Operation %s %s policy should have request param", op.EffectiveMethod(), op.EffectivePath())
 	}
 }
 
@@ -1697,7 +1748,7 @@ func TestTransform_AuthWithAllowAll(t *testing.T) {
 	foundException := false
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/admin" {
+		if op.EffectivePath() == "/admin" {
 			foundException = true
 			require.NotNil(t, op.Policies)
 			assert.Len(t, *op.Policies, 2)
@@ -1707,7 +1758,7 @@ func TestTransform_AuthWithAllowAll(t *testing.T) {
 			}
 			assert.True(t, policyNames[constants.ACCESS_CONTROL_DENY_POLICY_NAME])
 			assert.True(t, policyNames[constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME])
-		} else if op.Path == "/*" {
+		} else if op.EffectivePath() == "/*" {
 			catchAllCount++
 			require.NotNil(t, op.Policies)
 			assert.Len(t, *op.Policies, 1)
@@ -1808,7 +1859,7 @@ func TestTransform_EmptyExceptionsArray(t *testing.T) {
 	// Should behave same as no exceptions - 6 catch-all operations (one per HTTP method)
 	assert.Len(t, spec.Operations, len(constants.WILDCARD_HTTP_METHODS))
 	for _, op := range spec.Operations {
-		assert.Equal(t, "/*", op.Path)
+		assert.Equal(t, "/*", op.EffectivePath())
 	}
 }
 
@@ -1859,9 +1910,9 @@ func TestTransform_DuplicateExceptionPaths(t *testing.T) {
 	adminOps := 0
 	catchAllOps := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/admin" {
+		if op.EffectivePath() == "/admin" {
 			adminOps++
-		} else if op.Path == "/*" {
+		} else if op.EffectivePath() == "/*" {
 			catchAllOps++
 		}
 	}
@@ -1927,7 +1978,7 @@ func TestTransform_AllowAllWithPolicies(t *testing.T) {
 	// Find /admin operation
 	var adminOp *api.Operation
 	for i := range spec.Operations {
-		if spec.Operations[i].Path == "/admin" {
+		if spec.Operations[i].EffectivePath() == "/admin" {
 			adminOp = &spec.Operations[i]
 			break
 		}
@@ -2002,7 +2053,7 @@ func TestTransform_APILevelPolicy_AllowAll(t *testing.T) {
 	require.Len(t, spec.Operations, len(constants.WILDCARD_HTTP_METHODS), "Should have 6 catch-all operations (all HTTP methods)")
 
 	for _, op := range spec.Operations {
-		assert.Equal(t, "/*", op.Path)
+		assert.Equal(t, "/*", op.EffectivePath())
 		require.NotNil(t, op.Policies, "Catch-all operation should have policies")
 		require.Len(t, *op.Policies, 1, "Should have exactly 1 policy attached")
 
@@ -2073,8 +2124,8 @@ func TestTransform_APILevelPolicy_DenyAll(t *testing.T) {
 	require.Len(t, spec.Operations, 1, "Should have 1 operation from exception")
 
 	op := spec.Operations[0]
-	assert.Equal(t, "/health", op.Path)
-	assert.Equal(t, api.OperationMethod("GET"), op.Method)
+	assert.Equal(t, "/health", op.EffectivePath())
+	assert.Equal(t, "GET", op.EffectiveMethod())
 
 	// Verify GlobalAuth policy is attached to the operation
 	require.NotNil(t, op.Policies, "Operation should have policies attached")
@@ -2163,7 +2214,7 @@ func TestTransform_MultipleAPILevelPolicies_AllowAll(t *testing.T) {
 
 	// Verify all operations have all 3 policies attached
 	for _, op := range spec.Operations {
-		assert.Equal(t, "/*", op.Path)
+		assert.Equal(t, "/*", op.EffectivePath())
 		require.NotNil(t, op.Policies, "Operation should have policies")
 		require.Len(t, *op.Policies, 3, "Each operation should have 3 policies")
 
@@ -2238,7 +2289,7 @@ func TestTransform_UpstreamAuth_Plus_APILevelPolicy_AllowAll(t *testing.T) {
 	require.Len(t, spec.Operations, 6, "Should have 6 catch-all operations")
 
 	for _, op := range spec.Operations {
-		assert.Equal(t, "/*", op.Path)
+		assert.Equal(t, "/*", op.EffectivePath())
 		require.NotNil(t, op.Policies, "Operation should have policies")
 		require.Len(t, *op.Policies, 2, "Each operation should have GlobalRateLimit and upstream auth")
 
@@ -2330,8 +2381,8 @@ func TestTransform_UpstreamAuth_Plus_APILevelPolicy_DenyAll(t *testing.T) {
 
 	methodsFound := make(map[string]bool)
 	for _, op := range spec.Operations {
-		assert.Equal(t, "/api/v1/*", op.Path, "All operations should be for /api/v1/*")
-		methodsFound[string(op.Method)] = true
+		assert.Equal(t, "/api/v1/*", op.EffectivePath(), "All operations should be for /api/v1/*")
+		methodsFound[op.EffectiveMethod()] = true
 		require.NotNil(t, op.Policies, "All methods should have upstream auth policy")
 
 		policyNames := make(map[string]bool)
@@ -2341,7 +2392,7 @@ func TestTransform_UpstreamAuth_Plus_APILevelPolicy_DenyAll(t *testing.T) {
 		assert.True(t, policyNames[constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME])
 
 		// Check which methods have GlobalCORS policy attached
-		if op.Method == "GET" || op.Method == "POST" || op.Method == "DELETE" {
+		if op.EffectiveMethod() == "GET" || op.EffectiveMethod() == "POST" || op.EffectiveMethod() == "DELETE" {
 			require.Len(t, *op.Policies, 2, "These methods should have GlobalCORS and upstream auth")
 			assert.True(t, policyNames["GlobalCORS"])
 		} else {
@@ -2434,7 +2485,7 @@ func TestTransform_APILevel_Plus_OperationLevel_Policies_AllowAll(t *testing.T) 
 
 	// Verify catch-all operations (/*) have GlobalAuth
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			require.NotNil(t, op.Policies, "Catch-all operation should have policies")
 			require.Len(t, *op.Policies, 1, "Catch-all should have 1 policy")
 			assert.Equal(t, "GlobalAuth", (*op.Policies)[0].Name)
@@ -2616,7 +2667,7 @@ func TestTransform_APILevelPolicy_WildcardMethods_AllowAll(t *testing.T) {
 
 	// Verify all catch-all operations have GlobalPolicy attached
 	for _, op := range spec.Operations {
-		assert.Equal(t, "/*", op.Path)
+		assert.Equal(t, "/*", op.EffectivePath())
 		require.NotNil(t, op.Policies, "Operation should have policies")
 		require.Len(t, *op.Policies, 1, "Should have 1 policy attached")
 
@@ -2756,7 +2807,7 @@ func TestTransform_ExceptionPrecedence_ExactMatch(t *testing.T) {
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, operation := range spec.Operations {
-		if operation.Path == "/*" {
+		if operation.EffectivePath() == "/*" {
 			catchAllCount++
 			// Catch-all should not have policies
 			if operation.Policies != nil {
@@ -2832,7 +2883,7 @@ func TestTransform_ExceptionPrecedence_WildcardCoverage_InternalPath(t *testing.
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, operation := range spec.Operations {
-		if operation.Path == "/*" {
+		if operation.EffectivePath() == "/*" {
 			catchAllCount++
 			if operation.Policies != nil {
 				assert.Len(t, *operation.Policies, 0, "Catch-all should not have policies")
@@ -2934,7 +2985,7 @@ func TestTransform_ExceptionPrecedence_NestedWildcards(t *testing.T) {
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, operation := range spec.Operations {
-		if operation.Path == "/*" {
+		if operation.EffectivePath() == "/*" {
 			catchAllCount++
 			if operation.Policies != nil {
 				assert.Len(t, *operation.Policies, 0, "Catch-all should not have policies")
@@ -3009,7 +3060,7 @@ func TestTransform_ExceptionPrecedence_PolicyAllowedWhenNotCovered(t *testing.T)
 	// Verify exception operations exist
 	adminExceptionCount := 0
 	for _, operation := range spec.Operations {
-		if operation.Path == "/admin/*" {
+		if operation.EffectivePath() == "/admin/*" {
 			adminExceptionCount++
 			if operation.Policies != nil {
 				assert.Len(t, *operation.Policies, 1, "Should have block policy")
@@ -3025,7 +3076,7 @@ func TestTransform_ExceptionPrecedence_PolicyAllowedWhenNotCovered(t *testing.T)
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, operation := range spec.Operations {
-		if operation.Path == "/*" {
+		if operation.EffectivePath() == "/*" {
 			catchAllCount++
 			if operation.Policies != nil {
 				assert.Len(t, *operation.Policies, 0, "Catch-all should not have policies")
@@ -3137,7 +3188,7 @@ func TestTransform_ExceptionPrecedence_MultipleOverlappingExceptions(t *testing.
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, operation := range spec.Operations {
-		if operation.Path == "/*" {
+		if operation.EffectivePath() == "/*" {
 			catchAllCount++
 			if operation.Policies != nil {
 				assert.Len(t, *operation.Policies, 0, "Catch-all should not have policies")
@@ -3213,7 +3264,7 @@ func TestTransform_ExceptionPrecedence_WildcardMethodExpansion(t *testing.T) {
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, operation := range spec.Operations {
-		if operation.Path == "/*" {
+		if operation.EffectivePath() == "/*" {
 			catchAllCount++
 			if operation.Policies != nil {
 				assert.Len(t, *operation.Policies, 0, "Catch-all should not have policies")
@@ -3309,7 +3360,7 @@ func TestTransform_ExceptionPrecedence_PartialMethodCoverage(t *testing.T) {
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, operation := range spec.Operations {
-		if operation.Path == "/*" {
+		if operation.EffectivePath() == "/*" {
 			catchAllCount++
 			if operation.Policies != nil {
 				assert.Len(t, *operation.Policies, 0, "Catch-all should not have policies")
@@ -3378,7 +3429,7 @@ func TestTransform_ExceptionPrecedence_DeepNestedPath(t *testing.T) {
 	// Verify all blocked operations exist
 	apiOpCount := 0
 	for _, operation := range spec.Operations {
-		if operation.Path == "/api/*" {
+		if operation.EffectivePath() == "/api/*" {
 			apiOpCount++
 			if operation.Policies != nil {
 				assert.Len(t, *operation.Policies, 1, "Should have only deny policy")
@@ -3391,7 +3442,7 @@ func TestTransform_ExceptionPrecedence_DeepNestedPath(t *testing.T) {
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, operation := range spec.Operations {
-		if operation.Path == "/*" {
+		if operation.EffectivePath() == "/*" {
 			catchAllCount++
 			if operation.Policies != nil {
 				assert.Len(t, *operation.Policies, 0, "Catch-all should not have policies")
@@ -3483,7 +3534,7 @@ func TestTransform_Auth_Plus_APILevel_Plus_OperationLevel_AllowAll(t *testing.T)
 
 	// Verify catch-all operations (6) have GlobalRateLimit
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			require.NotNil(t, op.Policies, "Catch-all operation should have policies")
 			require.Len(t, *op.Policies, 2, "Should have GlobalRateLimit and upstream auth")
 			policyNames := make(map[string]bool)
@@ -3741,7 +3792,7 @@ func TestTransform_MultipleAPILevelPolicies_Plus_Exceptions_Plus_OperationPolici
 	// Verify catch-all operations (6) have GlobalRateLimit and GlobalLogging
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 			require.NotNil(t, op.Policies, "Catch-all operation should have policies")
 			require.Len(t, *op.Policies, 2, "Should have 2 policies")
@@ -3759,7 +3810,7 @@ func TestTransform_MultipleAPILevelPolicies_Plus_Exceptions_Plus_OperationPolici
 	// Verify /internal/* wildcard exception operations exist with deny policy (respond)
 	internalWildcardCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/internal/*" {
+		if op.EffectivePath() == "/internal/*" {
 			internalWildcardCount++
 			require.NotNil(t, op.Policies, "Operation should have policies")
 			require.Len(t, *op.Policies, 1, "Should have 1 policy (deny policy)")
@@ -3951,7 +4002,7 @@ func TestTransform_AllPolicyTypes_WildcardExceptions_WildcardOperations_AllowAll
 	// Verify catch-all operations (6) have GlobalSecurity and GlobalLogging (for POST/PUT/DELETE)
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 			require.NotNil(t, op.Policies, "Catch-all operation should have policies")
 
@@ -3962,7 +4013,7 @@ func TestTransform_AllPolicyTypes_WildcardExceptions_WildcardOperations_AllowAll
 			assert.True(t, policies["GlobalSecurity"], "Should have GlobalSecurity")
 
 			// GlobalLogging only applies to POST, PUT, DELETE
-			method := string(op.Method)
+			method := op.EffectiveMethod()
 			if method == "POST" || method == "PUT" || method == "DELETE" {
 				require.Len(t, *op.Policies, 3, "POST/PUT/DELETE should have both policies plus upstream auth")
 				assert.True(t, policies["GlobalLogging"], "POST/PUT/DELETE should have GlobalLogging")
@@ -4005,7 +4056,7 @@ func TestTransform_AllPolicyTypes_WildcardExceptions_WildcardOperations_AllowAll
 	// Verify /api/* operations (6 HTTP methods) have GlobalSecurity, GlobalLogging (for POST/PUT/DELETE), and APIMonitoring
 	apiWildcardCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/api/*" {
+		if op.EffectivePath() == "/api/*" {
 			apiWildcardCount++
 			require.NotNil(t, op.Policies, "Operation should have policies")
 
@@ -4017,7 +4068,7 @@ func TestTransform_AllPolicyTypes_WildcardExceptions_WildcardOperations_AllowAll
 			assert.True(t, policies["APIMonitoring"], "Should have APIMonitoring")
 
 			// GlobalLogging only applies to POST, PUT, DELETE
-			method := string(op.Method)
+			method := op.EffectiveMethod()
 			if method == "POST" || method == "PUT" || method == "DELETE" {
 				require.Len(t, *op.Policies, 4, "POST/PUT/DELETE should have 4 policies")
 				assert.True(t, policies["GlobalLogging"], "POST/PUT/DELETE should have GlobalLogging")
@@ -4244,7 +4295,7 @@ func TestTransform_AllPolicyTypes_WildcardExceptions_WildcardOperations_DenyAll(
 	// Verify NO catch-all operations in DenyAll mode
 	catchAllCount := 0
 	for _, operation := range spec.Operations {
-		if operation.Path == "/*" {
+		if operation.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -4848,7 +4899,7 @@ func TestTransform_PathMatchingEdgeCases_AllowAll_PolicyMoreGeneral(t *testing.T
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -4930,7 +4981,7 @@ func TestTransform_PathMatchingEdgeCases_AllowAll_NestedWildcardPolicies(t *test
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -5025,7 +5076,7 @@ func TestTransform_ComplexCombined_MultipleAPILevelPolicies_NestedWildcards_Allo
 	// Verify 6 catch-all operations (/*) have both GlobalAuth and GlobalRateLimit
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 			require.NotNil(t, op.Policies, "Catch-all operation should have policies")
 			require.Len(t, *op.Policies, 2, "Should have 2 policies (GlobalAuth, GlobalRateLimit)")
@@ -5044,7 +5095,7 @@ func TestTransform_ComplexCombined_MultipleAPILevelPolicies_NestedWildcards_Allo
 	// Verify api/* operations (6 HTTP methods) have GlobalAuth, GlobalRateLimit, and APIPolicy
 	apiWildcardCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "api/*" {
+		if op.EffectivePath() == "api/*" {
 			apiWildcardCount++
 			require.NotNil(t, op.Policies, "api/* operation should have policies")
 			require.Len(t, *op.Policies, 3, "Should have 3 policies (GlobalAuth, GlobalRateLimit, APIPolicy)")
@@ -5277,7 +5328,7 @@ func TestTransform_ComplexCombined_MultipleAPILevelPolicies_NestedWildcards_Deny
 	// Verify NO catch-all operations in DenyAll mode
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -5404,7 +5455,7 @@ func TestTransform_ComplexCombined_MaximumComplexity_AllowAll(t *testing.T) {
 	// Verify 6 catch-all operations (/*) have both GlobalAuth and GlobalRateLimit
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 			require.NotNil(t, op.Policies, "Catch-all operation should have policies")
 			require.Len(t, *op.Policies, 3, "Should have 3 policies (GlobalAuth, GlobalRateLimit, upstream auth)")
@@ -5804,7 +5855,7 @@ func TestTransform_ComplexCombined_MaximumComplexity_DenyAll(t *testing.T) {
 	// Verify NO catch-all operations in DenyAll mode
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -5875,7 +5926,7 @@ func TestTransform_PolicyWildcard_AllowAll(t *testing.T) {
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 			// Catch-all should have NO policies
 			if op.Policies != nil {
@@ -5958,7 +6009,7 @@ func TestTransform_PolicyWildcard_DenyAll(t *testing.T) {
 	// Verify NO catch-all operations in DenyAll mode
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -6427,7 +6478,7 @@ func TestTransform_PolicyWildcard_AllowAll_WithExceptionPrecedence(t *testing.T)
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 			if op.Policies != nil {
 				assert.Len(t, *op.Policies, 0)
@@ -6645,7 +6696,7 @@ func TestTransform_DynamicOperationCreation_AllowAll_PolicyCreatesOperation(t *t
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -6703,7 +6754,7 @@ func TestTransform_DynamicOperationCreation_OperationRegistry_PreventsDuplicates
 	completionsCount := 0
 	var completionsOp *api.Operation
 	for i := range spec.Operations {
-		if spec.Operations[i].Path == "chat/completions" && string(spec.Operations[i].Method) == "POST" {
+		if spec.Operations[i].EffectivePath() == "chat/completions" && spec.Operations[i].EffectiveMethod() == "POST" {
 			completionsCount++
 			completionsOp = &spec.Operations[i]
 		}
@@ -6897,7 +6948,7 @@ func TestTransform_DynamicOperationCreation_AllowAll_MultipleSpecificPolicies(t 
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -6951,14 +7002,14 @@ func TestTransform_OperationSorting_NonWildcardBeforeWildcard_DenyAll(t *testing
 
 	// Verify ordering: specific paths before wildcards
 	// Expected order: chat/completions, models/list, chat/*, models/*
-	assert.Equal(t, "chat/completions", spec.Operations[0].Path, "First should be chat/completions (specific)")
-	assert.Equal(t, "models/list", spec.Operations[1].Path, "Second should be models/list (specific)")
-	assert.Equal(t, "models/*", spec.Operations[2].Path, "Third should be models/* (wildcard)")
-	assert.Equal(t, "chat/*", spec.Operations[3].Path, "Fourth should be chat/* (wildcard)")
+	assert.Equal(t, "chat/completions", spec.Operations[0].EffectivePath(), "First should be chat/completions (specific)")
+	assert.Equal(t, "models/list", spec.Operations[1].EffectivePath(), "Second should be models/list (specific)")
+	assert.Equal(t, "models/*", spec.Operations[2].EffectivePath(), "Third should be models/* (wildcard)")
+	assert.Equal(t, "chat/*", spec.Operations[3].EffectivePath(), "Fourth should be chat/* (wildcard)")
 
 	// All should be GET method
 	for _, op := range spec.Operations {
-		assert.Equal(t, "GET", string(op.Method))
+		assert.Equal(t, "GET", op.EffectiveMethod())
 	}
 }
 
@@ -7002,15 +7053,15 @@ func TestTransform_OperationSorting_LongerPathsFirst_DenyAll(t *testing.T) {
 	assert.Equal(t, 5, len(spec.Operations))
 
 	// Verify ordering: longest paths first (most specific)
-	assert.Equal(t, "api/v1/chat/completions/stream", spec.Operations[0].Path, "First should be longest path")
-	assert.Equal(t, "api/v1/chat/completions", spec.Operations[1].Path, "Second should be second longest")
-	assert.Equal(t, "api/v1/chat", spec.Operations[2].Path, "Third should be third longest")
-	assert.Equal(t, "api/v1", spec.Operations[3].Path, "Fourth should be fourth longest")
-	assert.Equal(t, "api", spec.Operations[4].Path, "Fifth should be shortest")
+	assert.Equal(t, "api/v1/chat/completions/stream", spec.Operations[0].EffectivePath(), "First should be longest path")
+	assert.Equal(t, "api/v1/chat/completions", spec.Operations[1].EffectivePath(), "Second should be second longest")
+	assert.Equal(t, "api/v1/chat", spec.Operations[2].EffectivePath(), "Third should be third longest")
+	assert.Equal(t, "api/v1", spec.Operations[3].EffectivePath(), "Fourth should be fourth longest")
+	assert.Equal(t, "api", spec.Operations[4].EffectivePath(), "Fifth should be shortest")
 
 	// Verify path lengths are strictly decreasing
 	for i := 0; i < len(spec.Operations)-1; i++ {
-		assert.Greater(t, len(spec.Operations[i].Path), len(spec.Operations[i+1].Path),
+		assert.Greater(t, len(spec.Operations[i].EffectivePath()), len(spec.Operations[i+1].EffectivePath()),
 			"Path at index %d should be longer than path at index %d", i, i+1)
 	}
 }
@@ -7062,7 +7113,7 @@ func TestTransform_OperationSorting_CatchAllLast_AllowAll(t *testing.T) {
 	// Find where catch-all operations start
 	catchAllStartIndex := -1
 	for i, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllStartIndex = i
 			break
 		}
@@ -7072,20 +7123,20 @@ func TestTransform_OperationSorting_CatchAllLast_AllowAll(t *testing.T) {
 
 	// Verify all operations before catch-all are NOT catch-all
 	for i := 0; i < catchAllStartIndex; i++ {
-		assert.NotEqual(t, "/*", spec.Operations[i].Path,
+		assert.NotEqual(t, "/*", spec.Operations[i].EffectivePath(),
 			"Operation at index %d should not be catch-all", i)
 	}
 
 	// Verify all operations from catch-all start to end ARE catch-all
 	for i := catchAllStartIndex; i < len(spec.Operations); i++ {
-		assert.Equal(t, "/*", spec.Operations[i].Path,
+		assert.Equal(t, "/*", spec.Operations[i].EffectivePath(),
 			"Operation at index %d should be catch-all", i)
 	}
 
 	// Verify we have exactly 6 catch-all operations (one per HTTP method)
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -7132,14 +7183,14 @@ func TestTransform_OperationSorting_CatchAllLast_AllowAll(t *testing.T) {
 //	assert.Equal(t, 4, len(spec.Operations))
 //
 //	// All paths have same length (5 characters), should be sorted lexicographically
-//	assert.Equal(t, "apple", spec.Operations[0].Path)
-//	assert.Equal(t, "banana", spec.Operations[1].Path)
-//	assert.Equal(t, "mango", spec.Operations[2].Path)
-//	assert.Equal(t, "zebra", spec.Operations[3].Path)
+//	assert.Equal(t, "apple", spec.Operations[0].EffectivePath())
+//	assert.Equal(t, "banana", spec.Operations[1].EffectivePath())
+//	assert.Equal(t, "mango", spec.Operations[2].EffectivePath())
+//	assert.Equal(t, "zebra", spec.Operations[3].EffectivePath())
 //
 //	// Verify lexicographic ordering
 //	for i := 0; i < len(spec.Operations)-1; i++ {
-//		assert.Less(t, spec.Operations[i].Path, spec.Operations[i+1].Path,
+//		assert.Less(t, spec.Operations[i].EffectivePath(), spec.Operations[i+1].EffectivePath(),
 //			"Path at index %d should be lexicographically before path at index %d", i, i+1)
 //	}
 //}
@@ -7194,18 +7245,18 @@ func TestTransform_OperationSorting_ComplexMultipleWildcardLevels_DenyAll(t *tes
 	// 6. api/v1/* (wildcard, but more specific than api/*)
 	// 7. api/* (least specific wildcard)
 
-	assert.Equal(t, "api/v1/chat/completions/stream", spec.Operations[0].Path)
-	assert.Equal(t, "api/v1/chat/completions", spec.Operations[1].Path)
-	assert.Equal(t, "api/v1/chat", spec.Operations[2].Path)
-	assert.Equal(t, "models", spec.Operations[3].Path)
-	assert.Equal(t, "api/v1/chat/*", spec.Operations[4].Path)
-	assert.Equal(t, "api/v1/*", spec.Operations[5].Path)
-	assert.Equal(t, "api/*", spec.Operations[6].Path)
+	assert.Equal(t, "api/v1/chat/completions/stream", spec.Operations[0].EffectivePath())
+	assert.Equal(t, "api/v1/chat/completions", spec.Operations[1].EffectivePath())
+	assert.Equal(t, "api/v1/chat", spec.Operations[2].EffectivePath())
+	assert.Equal(t, "models", spec.Operations[3].EffectivePath())
+	assert.Equal(t, "api/v1/chat/*", spec.Operations[4].EffectivePath())
+	assert.Equal(t, "api/v1/*", spec.Operations[5].EffectivePath())
+	assert.Equal(t, "api/*", spec.Operations[6].EffectivePath())
 
 	// Verify non-wildcard operations come before wildcard operations
 	firstWildcardIndex := -1
 	for i, op := range spec.Operations {
-		if len(op.Path) > 0 && op.Path[len(op.Path)-1] == '*' {
+		if len(op.EffectivePath()) > 0 && op.EffectivePath()[len(op.EffectivePath())-1] == '*' {
 			firstWildcardIndex = i
 			break
 		}
@@ -7214,13 +7265,13 @@ func TestTransform_OperationSorting_ComplexMultipleWildcardLevels_DenyAll(t *tes
 
 	// All operations before index 4 should be non-wildcard
 	for i := 0; i < firstWildcardIndex; i++ {
-		assert.False(t, len(spec.Operations[i].Path) > 0 && spec.Operations[i].Path[len(spec.Operations[i].Path)-1] == '*',
+		assert.False(t, len(spec.Operations[i].EffectivePath()) > 0 && spec.Operations[i].EffectivePath()[len(spec.Operations[i].EffectivePath())-1] == '*',
 			"Operation at index %d should not be wildcard", i)
 	}
 
 	// All operations from index 4 onwards should be wildcard
 	for i := firstWildcardIndex; i < len(spec.Operations); i++ {
-		assert.True(t, len(spec.Operations[i].Path) > 0 && spec.Operations[i].Path[len(spec.Operations[i].Path)-1] == '*',
+		assert.True(t, len(spec.Operations[i].EffectivePath()) > 0 && spec.Operations[i].EffectivePath()[len(spec.Operations[i].EffectivePath())-1] == '*',
 			"Operation at index %d should be wildcard", i)
 	}
 }
@@ -7262,19 +7313,19 @@ func TestTransform_OperationSorting_MixedMethodsSamePath_DenyAll(t *testing.T) {
 
 	// All should have same path
 	for _, op := range spec.Operations {
-		assert.Equal(t, "chat/completions", op.Path)
+		assert.Equal(t, "chat/completions", op.EffectivePath())
 	}
 
 	// Verify methods are sorted alphabetically
 	expectedMethods := []string{"DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT"}
 	for i, op := range spec.Operations {
-		assert.Equal(t, expectedMethods[i], string(op.Method),
+		assert.Equal(t, expectedMethods[i], op.EffectiveMethod(),
 			"Method at index %d should be %s", i, expectedMethods[i])
 	}
 
 	// Verify alphabetical ordering
 	for i := 0; i < len(spec.Operations)-1; i++ {
-		assert.Less(t, string(spec.Operations[i].Method), string(spec.Operations[i+1].Method),
+		assert.Less(t, spec.Operations[i].EffectiveMethod(), spec.Operations[i+1].EffectiveMethod(),
 			"Method at index %d should be alphabetically before method at index %d", i, i+1)
 	}
 }
@@ -7337,12 +7388,12 @@ func TestTransform_OperationSorting_AllowAll_ComplexMixedOperations(t *testing.T
 	catchAllPaths := []string{}
 
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
-			catchAllPaths = append(catchAllPaths, op.Path)
-		} else if len(op.Path) > 0 && op.Path[len(op.Path)-1] == '*' {
-			wildcardPaths = append(wildcardPaths, op.Path)
+		if op.EffectivePath() == "/*" {
+			catchAllPaths = append(catchAllPaths, op.EffectivePath())
+		} else if len(op.EffectivePath()) > 0 && op.EffectivePath()[len(op.EffectivePath())-1] == '*' {
+			wildcardPaths = append(wildcardPaths, op.EffectivePath())
 		} else {
-			specificPaths = append(specificPaths, op.Path)
+			specificPaths = append(specificPaths, op.EffectivePath())
 		}
 	}
 
@@ -7352,10 +7403,10 @@ func TestTransform_OperationSorting_AllowAll_ComplexMixedOperations(t *testing.T
 	firstCatchAllIndex := -1
 
 	for i, op := range spec.Operations {
-		if firstWildcardIndex == -1 && len(op.Path) > 0 && op.Path[len(op.Path)-1] == '*' && op.Path != "/*" {
+		if firstWildcardIndex == -1 && len(op.EffectivePath()) > 0 && op.EffectivePath()[len(op.EffectivePath())-1] == '*' && op.EffectivePath() != "/*" {
 			firstWildcardIndex = i
 		}
-		if firstCatchAllIndex == -1 && op.Path == "/*" {
+		if firstCatchAllIndex == -1 && op.EffectivePath() == "/*" {
 			firstCatchAllIndex = i
 			break
 		}
@@ -7364,7 +7415,7 @@ func TestTransform_OperationSorting_AllowAll_ComplexMixedOperations(t *testing.T
 	// If we have wildcards, verify they come after specific paths
 	if firstWildcardIndex != -1 {
 		for i := 0; i < firstWildcardIndex; i++ {
-			assert.False(t, len(spec.Operations[i].Path) > 0 && spec.Operations[i].Path[len(spec.Operations[i].Path)-1] == '*',
+			assert.False(t, len(spec.Operations[i].EffectivePath()) > 0 && spec.Operations[i].EffectivePath()[len(spec.Operations[i].EffectivePath())-1] == '*',
 				"Operation at index %d should not be wildcard (before first wildcard at %d)", i, firstWildcardIndex)
 		}
 	}
@@ -7372,7 +7423,7 @@ func TestTransform_OperationSorting_AllowAll_ComplexMixedOperations(t *testing.T
 	// Verify catch-all operations are last
 	if firstCatchAllIndex != -1 {
 		for i := firstCatchAllIndex; i < len(spec.Operations); i++ {
-			assert.Equal(t, "/*", spec.Operations[i].Path,
+			assert.Equal(t, "/*", spec.Operations[i].EffectivePath(),
 				"Operation at index %d should be catch-all", i)
 		}
 	}
@@ -7429,22 +7480,22 @@ func TestTransform_OperationSorting_SpecificityPreservation_DenyAll(t *testing.T
 
 	assert.Equal(t, 6, len(spec.Operations))
 
-	assert.Equal(t, "a/b/c/d", spec.Operations[0].Path)
-	assert.Equal(t, "a/b/c", spec.Operations[1].Path)
-	assert.Equal(t, "a/b", spec.Operations[2].Path)
-	assert.Equal(t, "a", spec.Operations[3].Path)
-	assert.Equal(t, "a/b/*", spec.Operations[4].Path)
-	assert.Equal(t, "a/*", spec.Operations[5].Path)
+	assert.Equal(t, "a/b/c/d", spec.Operations[0].EffectivePath())
+	assert.Equal(t, "a/b/c", spec.Operations[1].EffectivePath())
+	assert.Equal(t, "a/b", spec.Operations[2].EffectivePath())
+	assert.Equal(t, "a", spec.Operations[3].EffectivePath())
+	assert.Equal(t, "a/b/*", spec.Operations[4].EffectivePath())
+	assert.Equal(t, "a/*", spec.Operations[5].EffectivePath())
 
 	// Verify no wildcard in first 4 operations
 	for i := 0; i < 4; i++ {
-		assert.False(t, len(spec.Operations[i].Path) > 0 && spec.Operations[i].Path[len(spec.Operations[i].Path)-1] == '*',
+		assert.False(t, len(spec.Operations[i].EffectivePath()) > 0 && spec.Operations[i].EffectivePath()[len(spec.Operations[i].EffectivePath())-1] == '*',
 			"Operation at index %d should not be wildcard", i)
 	}
 
 	// Verify wildcard in last 2 operations
 	for i := 4; i < 6; i++ {
-		assert.True(t, len(spec.Operations[i].Path) > 0 && spec.Operations[i].Path[len(spec.Operations[i].Path)-1] == '*',
+		assert.True(t, len(spec.Operations[i].EffectivePath()) > 0 && spec.Operations[i].EffectivePath()[len(spec.Operations[i].EffectivePath())-1] == '*',
 			"Operation at index %d should be wildcard", i)
 	}
 }
@@ -7505,7 +7556,7 @@ func TestTransform_AllowAll_UserPolicyOnCatchAll_NotDenied(t *testing.T) {
 	// Verify catch-all operations exist (no exceptions to deny)
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 			// Catch-all should have NO policies
 			if op.Policies != nil {
@@ -7592,7 +7643,7 @@ func TestTransform_AllowAll_UserPolicyOnSpecificOperation_NotDenied(t *testing.T
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -7693,7 +7744,7 @@ func TestTransform_AllowAll_DenyPolicyPreventsUserPolicy(t *testing.T) {
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -7812,7 +7863,7 @@ func TestTransform_AllowAll_PolicyOnAllowedPath_MixedExceptions(t *testing.T) {
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -7990,7 +8041,7 @@ func TestTransform_AllowAll_WildcardPolicyWithExceptions(t *testing.T) {
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -8105,7 +8156,7 @@ func TestTransform_AllowAll_MultiplePolicies_PartiallyDenied(t *testing.T) {
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -8204,7 +8255,7 @@ func TestTransform_AllowAll_NestedPolicyWithPartialExceptions(t *testing.T) {
 	// Verify catch-all operations exist
 	catchAllCount := 0
 	for _, op := range spec.Operations {
-		if op.Path == "/*" {
+		if op.EffectivePath() == "/*" {
 			catchAllCount++
 		}
 	}
@@ -8214,9 +8265,282 @@ func TestTransform_AllowAll_NestedPolicyWithPartialExceptions(t *testing.T) {
 // Helper function to find an operation by path and method
 func findOperation(ops []api.Operation, path string, method string) *api.Operation {
 	for i := range ops {
-		if ops[i].Path == path && string(ops[i].Method) == method {
+		if ops[i].EffectivePath() == path && string(ops[i].EffectiveMethod()) == method {
 			return &ops[i]
 		}
 	}
 	return nil
+}
+
+// ============================================================================
+// Resilience route-mapping tests
+// ============================================================================
+
+// These tests pin the LLM resilience route-mapping rule: API-level resilience is attached to every
+// traffic-forwarding route and never to the access-control deny routes.
+
+// In allow_all mode, the catch-all (and any policy-derived routes) carry the resilience block while
+// the exception/deny routes (which only return a 404) are left untouched.
+func TestTransformProvider_AllowAll_ResilienceSkipsDenyRoutes(t *testing.T) {
+	transformer, _ := setupTestTransformer(t)
+
+	exceptions := []api.RouteException{
+		{Path: "/admin", Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET, api.RouteExceptionMethodsPOST}},
+	}
+	timeout := "30s"
+	provider := &api.LLMProviderConfiguration{
+		ApiVersion: "gateway.api-platform.wso2.com/v1",
+		Kind:       "LlmProvider",
+		Metadata:   api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "test",
+			Version:     "v1.0",
+			Template:    "openai",
+			Upstream:    api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.example.com")},
+			AccessControl: api.LLMAccessControl{
+				Mode:       api.AllowAll,
+				Exceptions: &exceptions,
+			},
+			Resilience: &api.Resilience{Timeout: &timeout},
+		},
+	}
+
+	result, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+
+	sawCatchAll := false
+	sawDeny := false
+	for _, op := range result.Spec.Operations {
+		if op.EffectivePath() == "/admin" { // the deny/exception routes
+			sawDeny = true
+			assert.Nil(t, op.Resilience, "deny route %s %s must not carry resilience", op.EffectiveMethod(), op.EffectivePath())
+			continue
+		}
+		// catch-all (traffic-forwarding) routes
+		sawCatchAll = true
+		require.NotNil(t, op.Resilience, "traffic route %s %s should carry resilience", op.EffectiveMethod(), op.EffectivePath())
+		require.NotNil(t, op.Resilience.Timeout)
+		assert.Equal(t, "30s", *op.Resilience.Timeout)
+	}
+	assert.True(t, sawCatchAll, "expected at least one traffic-forwarding route")
+	assert.True(t, sawDeny, "expected at least one deny route")
+}
+
+// In deny_all mode every created route is an allow-listed forwarding route, so all of them carry the
+// resilience block.
+func TestTransformProvider_DenyAll_ResilienceOnAllRoutes(t *testing.T) {
+	transformer, _ := setupTestTransformer(t)
+
+	exceptions := []api.RouteException{
+		{Path: "/chat/completions", Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsPOST}},
+		{Path: "/models", Methods: []api.RouteExceptionMethods{api.RouteExceptionMethodsGET}},
+	}
+	timeout := "45s"
+	idle := "0s"
+	provider := &api.LLMProviderConfiguration{
+		ApiVersion: "gateway.api-platform.wso2.com/v1",
+		Kind:       "LlmProvider",
+		Metadata:   api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName: "test",
+			Version:     "v1.0",
+			Template:    "openai",
+			Upstream:    api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.example.com")},
+			AccessControl: api.LLMAccessControl{
+				Mode:       api.DenyAll,
+				Exceptions: &exceptions,
+			},
+			Resilience: &api.Resilience{Timeout: &timeout, IdleTimeout: &idle},
+		},
+	}
+
+	result, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotEmpty(t, result.Spec.Operations)
+
+	for _, op := range result.Spec.Operations {
+		require.NotNil(t, op.Resilience, "route %s %s should carry resilience", op.Method, op.Path)
+		require.NotNil(t, op.Resilience.Timeout)
+		assert.Equal(t, "45s", *op.Resilience.Timeout)
+		require.NotNil(t, op.Resilience.IdleTimeout)
+		assert.Equal(t, "0s", *op.Resilience.IdleTimeout)
+	}
+}
+
+// With no resilience block on the source provider, no operation gets a resilience block (unchanged
+// behavior — routes fall back to the gateway's global default timeout).
+func TestTransformProvider_NoResilience_NotAttached(t *testing.T) {
+	transformer, _ := setupTestTransformer(t)
+
+	provider := &api.LLMProviderConfiguration{
+		ApiVersion: "gateway.api-platform.wso2.com/v1",
+		Kind:       "LlmProvider",
+		Metadata:   api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName:   "test",
+			Version:       "v1.0",
+			Template:      "openai",
+			Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.example.com")},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+
+	result, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotEmpty(t, result.Spec.Operations)
+
+	for _, op := range result.Spec.Operations {
+		assert.Nil(t, op.Resilience, "route %s %s should not carry resilience", op.Method, op.Path)
+	}
+}
+
+// A proxy is always allow-all with no access control, so every generated route carries the
+// resilience block.
+func TestTransformProxy_ResilienceOnAllRoutes(t *testing.T) {
+	store := storage.NewConfigStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db := newTestSQLiteStorage(t, logger)
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-db-template-id-0000-000000000001",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
+			Metadata:   api.Metadata{Name: "openai"},
+			Spec:       api.LLMProviderTemplateData{DisplayName: "openai"},
+		},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	now := time.Now()
+	provider := &models.StoredConfig{
+		UUID:        "0000-db-provider-id-0000-000000000000",
+		Kind:        string(api.LLMProviderConfigurationKindLlmProvider),
+		Handle:      "db-provider",
+		DisplayName: "db-provider",
+		Version:     "v1.0",
+		Configuration: api.RestAPI{
+			ApiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.RestAPIKindRestApi,
+			Metadata:   api.Metadata{Name: "db-provider"},
+			Spec: api.APIConfigData{
+				DisplayName: "db-provider",
+				Version:     "v1.0",
+				Context:     "/db-provider",
+				Upstream: struct {
+					Main    api.Upstream  `json:"main" yaml:"main"`
+					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{Main: api.Upstream{Url: stringPtr("https://api.openai.com")}},
+			},
+		},
+		SourceConfiguration: api.LLMProviderConfiguration{
+			ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProviderConfigurationKindLlmProvider,
+			Metadata:   api.Metadata{Name: "db-provider"},
+			Spec: api.LLMProviderConfigData{
+				DisplayName:   "db-provider",
+				Version:       "v1.0",
+				Context:       stringPtr("/db-provider"),
+				Template:      "openai",
+				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.openai.com")},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			},
+		},
+		DesiredState: models.StateDeployed,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	require.NoError(t, db.SaveConfig(provider))
+
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	transformer := NewLLMProviderTransformer(store, db, routerConfig, newTestPolicyVersionResolver())
+
+	timeout := "75s"
+	proxy := &api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
+		Metadata:   api.Metadata{Name: "db-proxy"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "db-proxy",
+			Version:     "v1.0",
+			Provider:    api.LLMProxyProvider{Id: "db-provider"},
+			Resilience:  &api.Resilience{Timeout: &timeout},
+		},
+	}
+
+	result, err := transformer.Transform(proxy, &api.RestAPI{})
+	require.NoError(t, err)
+	require.NotEmpty(t, result.Spec.Operations)
+
+	for _, op := range result.Spec.Operations {
+		require.NotNil(t, op.Resilience, "proxy route %s %s should carry resilience", op.Method, op.Path)
+		require.NotNil(t, op.Resilience.Timeout)
+		assert.Equal(t, "75s", *op.Resilience.Timeout)
+	}
+}
+
+// ============================================================================
+// Upstream ref / connect-timeout threading tests
+// ============================================================================
+
+// The provider converter maps an upstream `ref` onto the derived RestAPI (instead of a direct url)
+// and threads the upstreamDefinitions through, so the per-upstream connect timeout resolves the same
+// way it does for RestApi.
+func TestTransform_Provider_UpstreamRef_ThreadsDefinitions(t *testing.T) {
+	transformer, _ := setupTestTransformer(t)
+
+	defs := &[]api.UpstreamDefinition{{
+		Name:    "openai-backend",
+		Timeout: &api.UpstreamTimeout{Connect: stringPtr("6s")},
+	}}
+	provider := &api.LLMProviderConfiguration{
+		ApiVersion: "gateway.api-platform.wso2.com/v1",
+		Kind:       "LlmProvider",
+		Metadata:   api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName:         "ref-provider",
+			Version:             "v1.0",
+			Template:            "openai",
+			UpstreamDefinitions: defs,
+			Upstream:            api.LLMProviderConfigData_Upstream{Ref: stringPtr("openai-backend")},
+			AccessControl:       api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+
+	res, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+
+	require.NotNil(t, res.Spec.Upstream.Main.Ref, "ref should be mapped onto the derived upstream")
+	assert.Equal(t, "openai-backend", *res.Spec.Upstream.Main.Ref)
+	assert.Nil(t, res.Spec.Upstream.Main.Url, "ref-based upstream must not also set url")
+
+	require.NotNil(t, res.Spec.UpstreamDefinitions, "upstreamDefinitions must be threaded through")
+	require.Len(t, *res.Spec.UpstreamDefinitions, 1)
+	require.NotNil(t, (*res.Spec.UpstreamDefinitions)[0].Timeout)
+	assert.Equal(t, "6s", *(*res.Spec.UpstreamDefinitions)[0].Timeout.Connect)
+}
+
+func TestTransform_Provider_UpstreamUrl_Unchanged(t *testing.T) {
+	transformer, _ := setupTestTransformer(t)
+
+	provider := &api.LLMProviderConfiguration{
+		ApiVersion: "gateway.api-platform.wso2.com/v1",
+		Kind:       "LlmProvider",
+		Metadata:   api.Metadata{Name: "openai-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName:   "url-provider",
+			Version:       "v1.0",
+			Template:      "openai",
+			Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.openai.com")},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+		},
+	}
+
+	res, err := transformer.Transform(provider, &api.RestAPI{})
+	require.NoError(t, err)
+
+	require.NotNil(t, res.Spec.Upstream.Main.Url)
+	assert.Equal(t, "https://api.openai.com", *res.Spec.Upstream.Main.Url)
+	assert.Nil(t, res.Spec.Upstream.Main.Ref)
+	assert.Nil(t, res.Spec.UpstreamDefinitions)
 }

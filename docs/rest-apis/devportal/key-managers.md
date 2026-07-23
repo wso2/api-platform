@@ -27,7 +27,6 @@ Creates a key manager configuration for the organization. If `id` is omitted, th
 {
   "displayName": "Asgardeo",
   "id": "asgardeo-prod",
-  "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
@@ -36,7 +35,6 @@ Creates a key manager configuration for the organization. If `id` is omitted, th
 ```yaml
 displayName: Asgardeo
 id: asgardeo-prod
-type: ASGARDEO
 enabled: true
 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
 
@@ -64,7 +62,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "asgardeo-prod",
   "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
   "createdBy": "alice@example.com",
@@ -74,23 +71,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "name",
-        "message": "name is required."
-      }
-    ]
-  }
-]
-```
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
 {
@@ -131,7 +112,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Key manager configuration response.|[KeyManagerResponseSchema](schemas.md#schemakeymanagerresponseschema)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
@@ -141,7 +122,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Property|Value|
 |---|---|
-|status|error|
 |status|error|
 
 ### Response Headers
@@ -194,7 +174,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "id": "asgardeo-prod",
       "displayName": "Asgardeo",
       "orgId": "org-12345",
-      "type": "ASGARDEO",
       "enabled": true,
       "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
       "createdBy": "alice@example.com",
@@ -202,6 +181,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "updatedAt": "2026-05-07T08:30:00Z"
     }
   ],
+  "count": 1,
   "pagination": {
     "total": 42,
     "limit": 20,
@@ -243,7 +223,6 @@ Status Code **200**
 |»»» id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
 |»»» displayName|string|false|none|none|
 |»»» orgId|string|false|none|none|
-|»»» type|string|false|none|none|
 |»»» enabled|boolean|false|none|none|
 |»»» tokenEndpoint|string(uri)|false|none|none|
 |»»» createdBy|string|false|none|Identity of the user who created this key manager, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
@@ -258,30 +237,17 @@ Status Code **200**
 |»» *anonymous*|[KeyManagerPublicResponseSchema](schemas.md#schemakeymanagerpublicresponseschema)|false|none|Minimal developer-facing key manager view.|
 |»»» id|string|false|none|The key manager's handle (unique per org). Not the internal database uuid.|
 |»»» displayName|string|false|none|none|
-|»»» type|string|false|none|none|
 |»»» tokenEndpoint|string(uri)|false|none|none|
 
 *continued*
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
+|» count|integer|false|none|Number of items returned in this page.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
 |»» offset|integer|true|none|Number of records skipped before this page.|
-
-#### Enumerated Values
-
-|Property|Value|
-|---|---|
-|type|ASGARDEO|
-|type|WSO2IS|
-|type|KEYCLOAK|
-|type|GENERIC_OIDC|
-|type|ASGARDEO|
-|type|WSO2IS|
-|type|KEYCLOAK|
-|type|GENERIC_OIDC|
 
 ## Get a key manager
 
@@ -324,7 +290,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "asgardeo-prod",
   "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
   "createdBy": "alice@example.com",
@@ -389,7 +354,6 @@ Updates an existing key manager configuration. Accepts either a `application/jso
 {
   "displayName": "Asgardeo",
   "id": "asgardeo-prod",
-  "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token"
 }
@@ -398,7 +362,6 @@ Updates an existing key manager configuration. Accepts either a `application/jso
 ```yaml
 displayName: Asgardeo
 id: asgardeo-prod
-type: ASGARDEO
 enabled: true
 tokenEndpoint: https://api.asgardeo.io/t/myorg/oauth2/token
 
@@ -427,7 +390,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   "id": "asgardeo-prod",
   "displayName": "Asgardeo",
   "orgId": "org-12345",
-  "type": "ASGARDEO",
   "enabled": true,
   "tokenEndpoint": "https://api.asgardeo.io/t/myorg/oauth2/token",
   "createdBy": "alice@example.com",
@@ -437,23 +399,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "name",
-        "message": "name is required."
-      }
-    ]
-  }
-]
-```
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
 {
@@ -504,7 +450,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Key manager configuration response.|[KeyManagerResponseSchema](schemas.md#schemakeymanagerresponseschema)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
 |404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The request conflicts with an existing resource.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
@@ -515,7 +461,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 |Property|Value|
 |---|---|
-|status|error|
 |status|error|
 
 ## Delete a key manager

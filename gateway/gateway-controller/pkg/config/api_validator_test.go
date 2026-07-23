@@ -145,22 +145,6 @@ func TestAPIValidator_ValidateKind(t *testing.T) {
 		}
 	})
 
-	// Test WebSubApi kind - valid
-	t.Run("Valid WebSubApi kind", func(t *testing.T) {
-		config := createValidWebSubAPIConfig()
-		errors := v.Validate(config)
-		hasKindError := false
-		for _, e := range errors {
-			if e.Field == "kind" {
-				hasKindError = true
-				break
-			}
-		}
-		if hasKindError {
-			t.Error("unexpected kind error")
-		}
-	})
-
 	// Test unsupported type
 	t.Run("Unsupported type", func(t *testing.T) {
 		errors := v.Validate("InvalidKind")
@@ -186,22 +170,6 @@ func TestAPIValidator_ValidateKind(t *testing.T) {
 		}
 	})
 
-	// Test invalid Kind on WebSubAPI
-	t.Run("Invalid WebSubApi kind", func(t *testing.T) {
-		config := createValidWebSubAPIConfig()
-		config.Kind = "InvalidKind"
-		errors := v.Validate(config)
-		hasKindError := false
-		for _, e := range errors {
-			if e.Field == "kind" {
-				hasKindError = true
-				break
-			}
-		}
-		if !hasKindError {
-			t.Error("expected kind error for invalid WebSubAPI kind, got none")
-		}
-	})
 }
 
 func TestAPIValidator_ValidateDisplayName(t *testing.T) {
@@ -391,8 +359,8 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Valid operations",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "/items"},
-				{Method: api.OperationMethodPOST, Path: "/items"},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/items")},
+				{Method: api.Ptr(api.OperationMethodPOST), Path: api.Ptr("/items")},
 			},
 			wantError: false,
 		},
@@ -405,7 +373,7 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Missing method",
 			operations: []api.Operation{
-				{Method: "", Path: "/items"},
+				{Method: api.Ptr(api.OperationMethod("")), Path: api.Ptr("/items")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].method",
@@ -413,7 +381,7 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Invalid method",
 			operations: []api.Operation{
-				{Method: "INVALID", Path: "/items"},
+				{Method: api.Ptr(api.OperationMethod("INVALID")), Path: api.Ptr("/items")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].method",
@@ -421,7 +389,7 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Missing path",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: ""},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].path",
@@ -429,7 +397,7 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Path without leading slash",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "items"},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("items")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].path",
@@ -437,14 +405,14 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 		{
 			name: "Valid path with parameters",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "/items/{id}"},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/items/{id}")},
 			},
 			wantError: false,
 		},
 		{
 			name: "Path with unbalanced braces",
 			operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "/items/{id"},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/items/{id")},
 			},
 			wantError: true,
 			errField:  "spec.operations[0].path",
@@ -478,6 +446,60 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 	}
 }
 
+func TestAPIValidator_ValidateResilience(t *testing.T) {
+	v := NewAPIValidator()
+
+	tests := []struct {
+		name      string
+		apiRes    *api.Resilience
+		opRes     *api.Resilience
+		wantError bool
+		errField  string
+	}{
+		{name: "No resilience is valid", wantError: false},
+		{name: "Valid API-level timeout + idleTimeout", apiRes: &api.Resilience{Timeout: stringPtr("15s"), IdleTimeout: stringPtr("0s")}, wantError: false},
+		{name: "Valid operation-level timeout", opRes: &api.Resilience{Timeout: stringPtr("2s")}, wantError: false},
+		{name: "0s is allowed (disabled)", apiRes: &api.Resilience{Timeout: stringPtr("0s"), IdleTimeout: stringPtr("0s")}, wantError: false},
+		{name: "Invalid API-level timeout format", apiRes: &api.Resilience{Timeout: stringPtr("15seconds")}, wantError: true, errField: "spec.resilience.timeout"},
+		{name: "Invalid API-level idleTimeout format", apiRes: &api.Resilience{IdleTimeout: stringPtr("abc")}, wantError: true, errField: "spec.resilience.idleTimeout"},
+		{name: "Negative API-level timeout rejected", apiRes: &api.Resilience{Timeout: stringPtr("-5s")}, wantError: true, errField: "spec.resilience.timeout"},
+		{name: "Compound API-level timeout rejected (must match CRD pattern)", apiRes: &api.Resilience{Timeout: stringPtr("1h30m")}, wantError: true, errField: "spec.resilience.timeout"},
+		{name: "Compound API-level idleTimeout rejected", apiRes: &api.Resilience{IdleTimeout: stringPtr("1m30s")}, wantError: true, errField: "spec.resilience.idleTimeout"},
+		{name: "Unitless API-level timeout rejected", apiRes: &api.Resilience{Timeout: stringPtr("30")}, wantError: true, errField: "spec.resilience.timeout"},
+		{name: "Bare 0 rejected (unit required)", apiRes: &api.Resilience{Timeout: stringPtr("0")}, wantError: true, errField: "spec.resilience.timeout"},
+		{name: "Fractional single-unit timeout allowed", apiRes: &api.Resilience{Timeout: stringPtr("1.5s")}, wantError: false},
+		{name: "Invalid operation-level timeout format", opRes: &api.Resilience{Timeout: stringPtr("nope")}, wantError: true, errField: "spec.operations[0].resilience.timeout"},
+		{name: "Compound operation-level timeout rejected", opRes: &api.Resilience{Timeout: stringPtr("1h30m")}, wantError: true, errField: "spec.operations[0].resilience.timeout"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := createValidRestAPIConfig()
+			cfg.Spec.Resilience = tt.apiRes
+			cfg.Spec.Operations[0].Resilience = tt.opRes
+
+			errors := v.Validate(cfg)
+			hasExpectedError := false
+			for _, e := range errors {
+				if e.Field == tt.errField {
+					hasExpectedError = true
+					break
+				}
+			}
+			if tt.wantError && !hasExpectedError {
+				t.Errorf("expected error for field %s, got: %v", tt.errField, errors)
+			}
+			if !tt.wantError {
+				for _, e := range errors {
+					if strings.Contains(e.Field, "resilience") {
+						t.Errorf("unexpected resilience error: %v", e)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestAPIValidator_ValidateAllHTTPMethods(t *testing.T) {
 	v := NewAPIValidator()
 
@@ -495,7 +517,7 @@ func TestAPIValidator_ValidateAllHTTPMethods(t *testing.T) {
 		t.Run(string(method), func(t *testing.T) {
 			config := createValidRestAPIConfig()
 			config.Spec.Operations = []api.Operation{
-				{Method: method, Path: "/test"},
+				{Method: api.Ptr(method), Path: api.Ptr("/test")},
 			}
 
 			errors := v.Validate(config)
@@ -507,159 +529,6 @@ func TestAPIValidator_ValidateAllHTTPMethods(t *testing.T) {
 		})
 	}
 }
-
-func TestAPIValidator_ValidateWebSubAPI(t *testing.T) {
-	v := NewAPIValidator()
-
-	config := createValidWebSubAPIConfig()
-
-	errors := v.Validate(config)
-	if len(errors) != 0 {
-		t.Errorf("expected no errors for valid WebSubApi, got: %v", errors)
-	}
-}
-
-func TestAPIValidator_ValidateChannels(t *testing.T) {
-	v := NewAPIValidator()
-
-	tests := []struct {
-		name      string
-		channels  map[string]api.WebSubChannel
-		wantError bool
-		errField  string
-	}{
-		{
-			name: "Valid channels",
-			channels: map[string]api.WebSubChannel{
-				"channel1": {},
-				"channel2": {},
-			},
-			wantError: false,
-		},
-		{
-			name:      "Empty channels",
-			channels:  map[string]api.WebSubChannel{},
-			wantError: true,
-			errField:  "spec.channels",
-		},
-		{
-			name: "Channel with braces (invalid)",
-			channels: map[string]api.WebSubChannel{
-				"channel/{id}": {},
-			},
-			wantError: true,
-			errField:  "spec.channels.channel/{id}",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			config := createValidWebSubAPIConfig()
-			config.Spec.Channels = &tt.channels
-
-			errors := v.Validate(config)
-			hasExpectedError := false
-			for _, e := range errors {
-				if strings.HasPrefix(e.Field, tt.errField) {
-					hasExpectedError = true
-					break
-				}
-			}
-			if tt.wantError && !hasExpectedError {
-				t.Errorf("expected error for field %s, got: %v", tt.errField, errors)
-			}
-		})
-	}
-}
-
-func TestAPIValidator_ValidateAsyncDisplayName(t *testing.T) {
-	v := NewAPIValidator()
-
-	tests := []struct {
-		name        string
-		displayName string
-		wantError   bool
-	}{
-		{name: "Valid name", displayName: "MyWebSub", wantError: false},
-		{name: "Empty name", displayName: "", wantError: true},
-		{name: "Name too long", displayName: strings.Repeat("a", 101), wantError: true},
-		{name: "Invalid characters", displayName: "test@#$", wantError: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			config := createValidWebSubAPIConfig()
-			config.Spec.DisplayName = tt.displayName
-
-			errors := v.Validate(config)
-			hasNameError := false
-			for _, e := range errors {
-				if e.Field == "spec.name" {
-					hasNameError = true
-					break
-				}
-			}
-			if tt.wantError && !hasNameError {
-				t.Error("expected name error, got none")
-			}
-			if !tt.wantError && hasNameError {
-				t.Error("unexpected name error")
-			}
-		})
-	}
-}
-
-func TestAPIValidator_ValidatePathParameters(t *testing.T) {
-	v := NewAPIValidator()
-
-	tests := []struct {
-		path     string
-		expected bool
-	}{
-		{"/items/{id}", true},
-		{"/items/{id}/sub/{subId}", true},
-		{"/items", true},
-		{"/items/{id", false},
-		{"/items/id}", false},
-		{"/items/{id}/{", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
-			result := v.validatePathParameters(tt.path)
-			if result != tt.expected {
-				t.Errorf("validatePathParameters(%s) = %v, want %v", tt.path, result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestAPIValidator_ValidatePathParametersForAsyncAPIs(t *testing.T) {
-	v := NewAPIValidator()
-
-	tests := []struct {
-		path     string
-		expected bool
-	}{
-		{"channel1", true},
-		{"my-channel", true},
-		{"channel/{id}", false},
-		{"{channel}", false},
-		{"channel}", false},
-		{"channel{", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
-			result := v.validatePathParametersForAsyncAPIs(tt.path)
-			if result != tt.expected {
-				t.Errorf("validatePathParametersForAsyncAPIs(%s) = %v, want %v", tt.path, result, tt.expected)
-			}
-		})
-	}
-}
-
-// Helper functions
 
 func createValidRestAPIConfig() *api.RestAPI {
 	return &api.RestAPI{
@@ -681,25 +550,7 @@ func createValidRestAPIConfig() *api.RestAPI {
 				},
 			},
 			Operations: []api.Operation{
-				{Method: api.OperationMethodGET, Path: "/items"},
-			},
-		},
-	}
-}
-
-func createValidWebSubAPIConfig() *api.WebSubAPI {
-	return &api.WebSubAPI{
-		ApiVersion: api.WebSubAPIApiVersionGatewayApiPlatformWso2Comv1,
-		Kind:       api.WebSubAPIKindWebSubApi,
-		Metadata: api.Metadata{
-			Name: "test-websub",
-		},
-		Spec: api.WebhookAPIData{
-			DisplayName: "Test WebSub",
-			Version:     "v1.0",
-			Context:     "/websub",
-			Channels: &map[string]api.WebSubChannel{
-				"channel1": {},
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr("/items")},
 			},
 		},
 	}

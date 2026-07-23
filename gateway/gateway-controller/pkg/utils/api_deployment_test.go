@@ -84,56 +84,6 @@ func TestAPIDeploymentResult(t *testing.T) {
 	assert.True(t, result.IsUpdate)
 }
 
-func TestGetTopicsForUpdate(t *testing.T) {
-	store := storage.NewConfigStore()
-	service := newTestAPIDeploymentService(store, nil, nil, nil, nil)
-
-	t.Run("Empty config returns empty lists", func(t *testing.T) {
-		// Create a config with invalid spec (will fail parsing)
-		storedCfg := models.StoredConfig{
-			UUID:   "0000-test-api-1-0000-000000000000",
-			Kind:   string(api.WebSubAPIKindWebSubApi),
-			Origin: models.OriginGatewayAPI,
-		}
-		// Set up an empty spec that will fail to parse
-		storedCfg.Configuration = api.WebSubAPI{
-			Kind: api.WebSubAPIKindWebSubApi,
-			Spec: api.WebhookAPIData{},
-		}
-
-		toRegister, toUnregister := service.GetTopicsForUpdate(storedCfg)
-		assert.Empty(t, toRegister)
-		assert.Empty(t, toUnregister)
-	})
-
-	t.Run("Valid WebSub config returns topics", func(t *testing.T) {
-		webhookData := api.WebhookAPIData{
-			DisplayName: "Test WebSub API",
-			Version:     "1.0.0",
-			Context:     "/test/$version",
-			Channels: &map[string]api.WebSubChannel{
-				"/events":        {},
-				"/notifications": {},
-			},
-		}
-
-		storedCfg := models.StoredConfig{
-			UUID:   "0000-websub-api-1-0000-000000000000",
-			Kind:   string(api.WebSubAPIKindWebSubApi),
-			Origin: models.OriginGatewayAPI,
-			Configuration: api.WebSubAPI{
-				Kind: api.WebSubAPIKindWebSubApi,
-				Spec: webhookData,
-			},
-		}
-
-		toRegister, toUnregister := service.GetTopicsForUpdate(storedCfg)
-		// New topics should be registered
-		assert.NotEmpty(t, toRegister)
-		assert.Empty(t, toUnregister)
-	})
-}
-
 func TestGetTopicsForDelete(t *testing.T) {
 	store := storage.NewConfigStore()
 	service := newTestAPIDeploymentService(store, nil, nil, nil, nil)
@@ -141,7 +91,7 @@ func TestGetTopicsForDelete(t *testing.T) {
 	t.Run("Returns topics from topic manager", func(t *testing.T) {
 		storedCfg := models.StoredConfig{
 			UUID:   "0000-test-api-1-0000-000000000000",
-			Kind:   string(api.WebSubAPIKindWebSubApi),
+			Kind:   "WebSubApi",
 			Origin: models.OriginGatewayAPI,
 		}
 
@@ -158,7 +108,7 @@ func TestGetTopicsForDelete(t *testing.T) {
 	t.Run("Returns empty for non-existent config", func(t *testing.T) {
 		storedCfg := models.StoredConfig{
 			UUID:   "0000-non-existent-api-0000-000000000000",
-			Kind:   string(api.WebSubAPIKindWebSubApi),
+			Kind:   "WebSubApi",
 			Origin: models.OriginGatewayAPI,
 		}
 
@@ -565,7 +515,9 @@ spec:
 		assert.ErrorAs(t, err, &validationErr)
 	})
 
-	t.Run("Infers WebSubApi kind from payload", func(t *testing.T) {
+	t.Run("Inferred WebSubApi kind fails without a registered kind parser", func(t *testing.T) {
+		// WebSubApi support is only available when an event-gateway-controller
+		// binary registers a KindDeployParser for it; core alone rejects it.
 		yamlData := `
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: WebSubApi
@@ -586,8 +538,7 @@ spec:
 
 		_, err := service.DeployAPIConfiguration(params)
 		assert.Error(t, err)
-		var validationErr *ValidationErrorListError
-		assert.ErrorAs(t, err, &validationErr)
+		assert.Contains(t, err.Error(), "unsupported resource kind")
 	})
 }
 
@@ -871,13 +822,7 @@ func TestSaveOrUpdateConfig_StaleEvent(t *testing.T) {
 
 func TestSendTopicRequestToHub_RetryLogic(t *testing.T) {
 	store := storage.NewConfigStore()
-	routerConfig := &config.RouterConfig{
-		EventGateway: config.EventGatewayConfig{
-			RouterHost:            "localhost",
-			WebSubHubListenerPort: 8084,
-			TimeoutSeconds:        1,
-		},
-	}
+	routerConfig := &config.RouterConfig{}
 	service := newTestAPIDeploymentService(store, nil, nil, nil, routerConfig)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -910,13 +855,7 @@ func TestSendTopicRequestToHub_RetryLogic(t *testing.T) {
 
 func TestRegisterAndUnregisterTopicWithHub(t *testing.T) {
 	store := storage.NewConfigStore()
-	routerConfig := &config.RouterConfig{
-		EventGateway: config.EventGatewayConfig{
-			RouterHost:            "localhost",
-			WebSubHubListenerPort: 8084,
-			TimeoutSeconds:        1,
-		},
-	}
+	routerConfig := &config.RouterConfig{}
 	service := newTestAPIDeploymentService(store, nil, nil, nil, routerConfig)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -1036,90 +975,6 @@ func TestResolveVhostSentinels_NilVhostsNoSandboxDefault(t *testing.T) {
 	require.NotNil(t, resolved.Vhosts, "nil vhosts should be populated with main default")
 	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
 	assert.Nil(t, resolved.Vhosts.Sandbox, "sandbox should remain nil when no sandbox default configured")
-}
-
-func TestResolveVhostSentinels_WebSubApi_NilVhostsPopulatesDefaults(t *testing.T) {
-	routerCfg := &config.RouterConfig{
-		VHosts: config.VHostsConfig{
-			Main:    config.VHostEntry{Default: "*.wso2.com"},
-			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
-		},
-	}
-
-	var cfg any = api.WebSubAPI{
-		Kind: api.WebSubAPIKindWebSubApi,
-		Spec: api.WebhookAPIData{Vhosts: nil},
-	}
-
-	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
-
-	resolved := cfg.(api.WebSubAPI).Spec
-	require.NotNil(t, resolved.Vhosts, "nil vhosts should be populated with defaults")
-	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
-	require.NotNil(t, resolved.Vhosts.Sandbox)
-	assert.Equal(t, "*-sandbox.wso2.com", *resolved.Vhosts.Sandbox)
-}
-
-func TestResolveVhostSentinels_WebSubApi(t *testing.T) {
-	sandbox := constants.VHostGatewayDefault
-	routerCfg := &config.RouterConfig{
-		VHosts: config.VHostsConfig{
-			Main:    config.VHostEntry{Default: "*.wso2.com"},
-			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
-		},
-	}
-
-	var cfg any = api.WebSubAPI{
-		Kind: api.WebSubAPIKindWebSubApi,
-		Spec: api.WebhookAPIData{
-			Vhosts: &struct {
-				Main    string  `json:"main" yaml:"main"`
-				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main:    constants.VHostGatewayDefault,
-				Sandbox: &sandbox,
-			},
-		},
-	}
-
-	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
-
-	resolved := cfg.(api.WebSubAPI).Spec
-	require.NotNil(t, resolved.Vhosts)
-	assert.Equal(t, "*.wso2.com", resolved.Vhosts.Main)
-	require.NotNil(t, resolved.Vhosts.Sandbox)
-	assert.Equal(t, "*-sandbox.wso2.com", *resolved.Vhosts.Sandbox)
-}
-
-func TestResolveVhostSentinels_WebSubApi_ExplicitValues(t *testing.T) {
-	sandboxValue := "custom-sandbox.example.com"
-	routerCfg := &config.RouterConfig{
-		VHosts: config.VHostsConfig{
-			Main:    config.VHostEntry{Default: "*.wso2.com"},
-			Sandbox: config.VHostEntry{Default: "*-sandbox.wso2.com"},
-		},
-	}
-
-	var cfg any = api.WebSubAPI{
-		Kind: api.WebSubAPIKindWebSubApi,
-		Spec: api.WebhookAPIData{
-			Vhosts: &struct {
-				Main    string  `json:"main" yaml:"main"`
-				Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-			}{
-				Main:    "custom.example.com",
-				Sandbox: &sandboxValue,
-			},
-		},
-	}
-
-	require.NoError(t, resolveVhostSentinels(&cfg, routerCfg))
-
-	resolved := cfg.(api.WebSubAPI).Spec
-	require.NotNil(t, resolved.Vhosts)
-	assert.Equal(t, "custom.example.com", resolved.Vhosts.Main)
-	require.NotNil(t, resolved.Vhosts.Sandbox)
-	assert.Equal(t, "custom-sandbox.example.com", *resolved.Vhosts.Sandbox)
 }
 
 func TestResolveVhostSentinels_NilCfgNoOp(t *testing.T) {

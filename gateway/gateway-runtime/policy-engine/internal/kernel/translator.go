@@ -35,6 +35,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
 // headerOp represents a single header operation (set, append, or remove)
@@ -60,6 +61,138 @@ func addAppendHeaderOps(headerOps map[string][]*headerOp, headersToAppend map[st
 type Mutations struct {
 	HeaderMutation *extprocv3.HeaderMutation
 	BodyMutation   *extprocv3.BodyMutation
+}
+
+// upstreamRedirectDirective captures the last dynamic-routing directive (a named upstream
+// definition) set by any policy in a chain — last-write-wins across the chain.
+type upstreamRedirectDirective struct {
+	name *string
+}
+
+// set records name as the new live directive. Call once per policy result; a nil/empty name
+// leaves it unchanged.
+func (d *upstreamRedirectDirective) set(name *string) {
+	if name != nil && *name != "" {
+		d.name = name
+	}
+}
+
+func (d upstreamRedirectDirective) isSet() bool {
+	return d.name != nil
+}
+
+// resolveUpstreamRedirect resolves a directive into a concrete UpstreamInfo. ok=false means
+// the directive could not be resolved — callers must leave routing untouched and fall back to
+// the route's default, exactly as if no directive had been set.
+func resolveUpstreamRedirect(execCtx *PolicyExecutionContext, d upstreamRedirectDirective) (info policyenginev1.UpstreamInfo, label string, basePathKnown bool, ok bool) {
+	if d.name != nil {
+		apiKind := execCtx.sharedCtx.APIKind
+		apiId := execCtx.sharedCtx.APIId
+		sanitizedDefName := sanitizeUpstreamDefinitionName(*d.name)
+		clusterName := constants.UpstreamDefinitionClusterPrefix + string(apiKind) + "_" + apiId + "_" + sanitizedDefName
+		info = policyenginev1.UpstreamInfo{ClusterName: clusterName}
+		if execCtx.upstreamDefinitionPaths != nil {
+			if bp, found := execCtx.upstreamDefinitionPaths[*d.name]; found {
+				info.BasePath = bp
+				basePathKnown = true
+			}
+		}
+		if !basePathKnown {
+			slog.Warn("UpstreamName: target upstream base path not found in upstreamDefinitionPaths",
+				"target_upstream", *d.name)
+		}
+		return info, *d.name, basePathKnown, true
+	}
+
+	return policyenginev1.UpstreamInfo{}, "", false, false
+}
+
+// applyUpstreamRedirect writes a resolved dynamic-routing override to header ops and dynamic
+// metadata: the existing x-target-upstream / TargetUpstreamClusterKey / TargetUpstreamNameKey
+// mechanism Envoy's cluster_header routing consumes, plus the CurrentUpstreamKey object that
+// always reflects the request's actual current destination for downstream consumers.
+func applyUpstreamRedirect(
+	execCtx *PolicyExecutionContext,
+	headerOps map[string][]*headerOp,
+	localDynamicMetadata map[string]map[string]interface{},
+	pathMutation **string,
+	info policyenginev1.UpstreamInfo,
+	label string,
+	basePathKnown bool,
+) {
+	extProcNS := constants.ExtProcFilterName
+
+	headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{
+		opType: "set",
+		value:  info.ClusterName,
+	})
+
+	if execCtx.dynamicMetadata[extProcNS] == nil {
+		execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
+	}
+	if localDynamicMetadata[extProcNS] == nil {
+		localDynamicMetadata[extProcNS] = make(map[string]interface{})
+	}
+
+	execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamClusterKey] = info.ClusterName
+	execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamNameKey] = label
+	execCtx.dynamicMetadata[extProcNS][constants.CurrentUpstreamKey] = info.ToMap()
+
+	localDynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
+	localDynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
+	localDynamicMetadata[extProcNS][constants.CurrentUpstreamKey] = info.ToMap()
+
+	if basePathKnown {
+		localDynamicMetadata[extProcNS]["target_upstream_base_path"] = info.BasePath
+		execCtx.dynamicMetadata[extProcNS]["target_upstream_base_path"] = info.BasePath
+
+		// Surface the raw request path as metadata["path"] so Lua rewrites :path once;
+		// guard so an earlier path-changing policy (e.g. request-rewrite) isn't clobbered.
+		if *pathMutation == nil {
+			rawPath := execCtx.requestBodyCtx.Path
+			*pathMutation = &rawPath
+		}
+	}
+}
+
+// applyDefaultUpstream writes the route's compiled-in default upstream to header ops and
+// dynamic metadata when no dynamic-routing policy overrode it — mirrors applyUpstreamRedirect
+// for the no-override path, so CurrentUpstreamKey is always present either way.
+func applyDefaultUpstream(
+	execCtx *PolicyExecutionContext,
+	headerOps map[string][]*headerOp,
+	localDynamicMetadata map[string]map[string]interface{},
+) {
+	extProcNS := constants.ExtProcFilterName
+
+	headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{
+		opType: "set",
+		value:  execCtx.defaultUpstreamCluster,
+	})
+
+	if execCtx.dynamicMetadata[extProcNS] == nil {
+		execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
+	}
+	if localDynamicMetadata[extProcNS] == nil {
+		localDynamicMetadata[extProcNS] = make(map[string]interface{})
+	}
+
+	localDynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
+	localDynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
+
+	// execCtx.defaultUpstream should always be set alongside defaultUpstreamCluster, but fall
+	// back to a partial UpstreamInfo built from the cluster name so CurrentUpstreamKey is never
+	// silently dropped (e.g. during a rolling upgrade against an older gateway-controller that
+	// doesn't yet send the full "default_upstream" metadata field).
+	info := execCtx.defaultUpstream
+	if info == nil {
+		info = &policyenginev1.UpstreamInfo{
+			ClusterName: execCtx.defaultUpstreamCluster,
+			BasePath:    execCtx.upstreamBasePath,
+		}
+	}
+	execCtx.dynamicMetadata[extProcNS][constants.CurrentUpstreamKey] = info.ToMap()
+	localDynamicMetadata[extProcNS][constants.CurrentUpstreamKey] = info.ToMap()
 }
 
 // RequestTranslationResult holds the output of translateRequestActionsCore.
@@ -142,7 +275,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	headerOps := make(map[string][]*headerOp)
 	var finalBodyLength int
 	bodyModified := false
-	var targetUpstreamName *string // Track the target upstream for cluster routing
+	var directive upstreamRedirectDirective // Track the last dynamic-routing directive
 
 	// Seed analyticsData from execution context so data set in a previous phase
 	// (e.g. request_headers captured during the request-headers phase) is carried
@@ -237,86 +370,24 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 				}
 
 				// Handle UpstreamName for dynamic cluster routing (last one wins)
-				if mods.UpstreamName != nil && *mods.UpstreamName != "" {
-					targetUpstreamName = mods.UpstreamName
-				}
+				directive.set(mods.UpstreamName)
 			}
 		}
 	}
 
-	// Handle dynamic cluster routing via header.
-	// When a policy sets UpstreamName, we set the x-target-upstream header directly.
-	// ClearRouteCache is always enabled so Envoy can re-evaluate routing.
-	if targetUpstreamName != nil {
-		// Policy explicitly set the upstream - add the prefix, kind, and API ID for scoped cluster name
-		// Format: upstream_<kind>_<apiId>_<sanitizedDefName>
-		// Sanitize the definition name (replace dots and colons for valid Envoy cluster name)
-		apiKind := execCtx.sharedCtx.APIKind
-		apiId := execCtx.sharedCtx.APIId
-		sanitizedDefName := sanitizeUpstreamDefinitionName(*targetUpstreamName)
-		clusterName := constants.UpstreamDefinitionClusterPrefix + string(apiKind) + "_" + apiId + "_" + sanitizedDefName
-
-		// Set the x-target-upstream header directly for cluster_header routing
-		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{
-			opType: "set",
-			value:  clusterName,
-		})
-
-		// Store in execution context for potential response phase use
-		extProcNS := constants.ExtProcFilterName
-		if execCtx.dynamicMetadata[extProcNS] == nil {
-			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
+	// Handle dynamic cluster routing via header. When a policy sets UpstreamName, resolve it
+	// and set the x-target-upstream header directly; if it can't be resolved, fall back to the
+	// route's default exactly as if no directive had been set. ClearRouteCache is always
+	// enabled so Envoy can re-evaluate routing.
+	applied := false
+	if directive.isSet() {
+		if info, label, basePathKnown, ok := resolveUpstreamRedirect(execCtx, directive); ok {
+			applyUpstreamRedirect(execCtx, headerOps, out.DynamicMetadata, &out.Mutations.Path, info, label, basePathKnown)
+			applied = true
 		}
-		if out.DynamicMetadata[extProcNS] == nil {
-			out.DynamicMetadata[extProcNS] = make(map[string]interface{})
-		}
-		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamClusterKey] = clusterName
-		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamNameKey] = *targetUpstreamName
-
-		// Pass api_context and upstream_base_path in dynamic metadata for Lua filter
-		// Lua filter's handle:metadata() only works for envoy.filters.http.lua namespace,
-		// so we must pass these via dynamic metadata
-		out.DynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
-		out.DynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
-
-		// When UpstreamName is used, provide the target upstream's base path for Lua filter
-		// The Lua filter handles path transformation and needs to know which upstream path to use
-		slog.Info("UpstreamName: checking upstreamDefinitionPaths",
-			"targetUpstream", *targetUpstreamName,
-			"hasUpstreamDefPaths", execCtx.upstreamDefinitionPaths != nil,
-			"upstreamDefPaths", execCtx.upstreamDefinitionPaths,
-			"apiContext", execCtx.apiContext)
-		if execCtx.upstreamDefinitionPaths != nil {
-			if targetUpstreamPath, ok := execCtx.upstreamDefinitionPaths[*targetUpstreamName]; ok {
-				// Set in both local DynamicMetadata (for response to Envoy) and execCtx (for response phase)
-				out.DynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
-				execCtx.dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
-				slog.Info("UpstreamName: set target upstream base path",
-					"targetUpstream", *targetUpstreamName,
-					"targetUpstreamPath", targetUpstreamPath)
-
-				// Surface the raw request path as metadata["path"] so Lua rewrites :path once;
-				// guard so an earlier path-changing policy (e.g. request-rewrite) isn't clobbered.
-				if out.Mutations.Path == nil {
-					rawPath := execCtx.requestBodyCtx.Path
-					out.Mutations.Path = &rawPath
-					slog.Info("UpstreamName: set mutations.Path", "path", rawPath)
-				} else {
-					slog.Info("UpstreamName: mutations.Path already set by policy")
-				}
-			} else {
-				slog.Warn("UpstreamName: target upstream not found in upstreamDefinitionPaths",
-					"targetUpstream", *targetUpstreamName,
-					"availableUpstreams", execCtx.upstreamDefinitionPaths)
-			}
-		}
-	} else if execCtx.defaultUpstreamCluster != "" {
-		// No policy set upstream, but route uses cluster_header routing
-		// Set the default cluster header so Envoy knows which cluster to use
-		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{
-			opType: "set",
-			value:  execCtx.defaultUpstreamCluster,
-		})
+	}
+	if !applied && execCtx.defaultUpstreamCluster != "" {
+		applyDefaultUpstream(execCtx, headerOps, out.DynamicMetadata)
 	}
 
 	// Always pass api_context and upstream_base_path in dynamic metadata when path rewrite is requested
@@ -387,7 +458,43 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 					},
 				},
 			}
-			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
+			// Preserve request-header-phase analytics metadata from policies that
+			// executed before the short-circuit (e.g. request headers captured by
+			// the collector system policy) so an immediate response like a 401
+			// still carries it to the ALS access log. Without this, a
+			// short-circuiting policy (auth) drops the metadata of any earlier
+			// policy and the global traffic-logging publisher's line for that
+			// denied request would be missing it. Mirrors translateRequestActionsCore's
+			// short-circuit path.
+			shortCircuitAnalyticsData := make(map[string]any)
+			for key, value := range execCtx.analyticsMetadata {
+				shortCircuitAnalyticsData[key] = value
+			}
+			for _, policyResult := range result.Results {
+				if policyResult.Skipped || policyResult.Action == nil {
+					continue
+				}
+				mods, ok := policyResult.Action.(policy.UpstreamRequestHeaderModifications)
+				if !ok {
+					continue
+				}
+				if mods.AnalyticsMetadata != nil {
+					for key, value := range mods.AnalyticsMetadata {
+						shortCircuitAnalyticsData[key] = value
+					}
+				}
+				dropAction := mods.AnalyticsHeaderFilter
+				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
+					originalHeaders := execCtx.requestBodyCtx.Headers.GetAll()
+					shortCircuitAnalyticsData["request_headers"] = finalizeAnalyticsHeaders(dropAction, originalHeaders)
+				}
+			}
+			if immResp.AnalyticsMetadata != nil {
+				for key, value := range immResp.AnalyticsMetadata {
+					shortCircuitAnalyticsData[key] = value
+				}
+			}
+			analyticsStruct, err := buildAnalyticsStruct(shortCircuitAnalyticsData, execCtx)
 			if err != nil {
 				return nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
 			}
@@ -404,7 +511,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 
 	path := execCtx.requestBodyCtx.Path
 	var mutations RequestMutations
-	var targetUpstreamName *string
+	var directive upstreamRedirectDirective
 
 	for _, pr := range result.Results {
 		if pr.Skipped || pr.Action == nil {
@@ -438,9 +545,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		if mods.Method != nil {
 			mutations.Method = mods.Method
 		}
-		if mods.UpstreamName != nil && *mods.UpstreamName != "" {
-			targetUpstreamName = mods.UpstreamName
-		}
+		directive.set(mods.UpstreamName)
 		if mods.AnalyticsMetadata != nil {
 			for key, value := range mods.AnalyticsMetadata {
 				analyticsData[key] = value
@@ -461,46 +566,15 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 	}
 
 	// Handle dynamic cluster routing
-	if targetUpstreamName != nil {
-		apiKind := execCtx.sharedCtx.APIKind
-		apiId := execCtx.sharedCtx.APIId
-		sanitizedDefName := sanitizeUpstreamDefinitionName(*targetUpstreamName)
-		clusterName := constants.UpstreamDefinitionClusterPrefix + string(apiKind) + "_" + apiId + "_" + sanitizedDefName
-		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{opType: "set", value: clusterName})
-		extProcNS := constants.ExtProcFilterName
-		if execCtx.dynamicMetadata[extProcNS] == nil {
-			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
+	applied := false
+	if directive.isSet() {
+		if info, label, basePathKnown, ok := resolveUpstreamRedirect(execCtx, directive); ok {
+			applyUpstreamRedirect(execCtx, headerOps, dynamicMetadata, &mutations.Path, info, label, basePathKnown)
+			applied = true
 		}
-		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamClusterKey] = clusterName
-		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamNameKey] = *targetUpstreamName
-		if dynamicMetadata[extProcNS] == nil {
-			dynamicMetadata[extProcNS] = make(map[string]interface{})
-		}
-		dynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
-		dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
-		if execCtx.upstreamDefinitionPaths != nil {
-			if targetUpstreamPath, ok := execCtx.upstreamDefinitionPaths[*targetUpstreamName]; ok {
-				dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
-				execCtx.dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
-				// Surface the raw request path as metadata["path"] so Lua rewrites :path once;
-				// guard so an earlier path-changing policy (e.g. request-rewrite) isn't clobbered.
-				if mutations.Path == nil {
-					rawPath := execCtx.requestBodyCtx.Path
-					mutations.Path = &rawPath
-				}
-			}
-		}
-	} else if execCtx.defaultUpstreamCluster != "" {
-		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{opType: "set", value: execCtx.defaultUpstreamCluster})
-		extProcNS := constants.ExtProcFilterName
-		if execCtx.dynamicMetadata[extProcNS] == nil {
-			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
-		}
-		if dynamicMetadata[extProcNS] == nil {
-			dynamicMetadata[extProcNS] = make(map[string]interface{})
-		}
-		dynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
-		dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
+	}
+	if !applied && execCtx.defaultUpstreamCluster != "" {
+		applyDefaultUpstream(execCtx, headerOps, dynamicMetadata)
 	}
 
 	mergeHeaderMutations(headerMutation, headerOps)
@@ -568,7 +642,7 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 	var bodyMutation *extprocv3.BodyMutation
 	var finalBodyLength int
 	bodyModified := false
-	var targetUpstreamName *string
+	var directive upstreamRedirectDirective
 
 	path := execCtx.requestBodyCtx.Path
 
@@ -605,9 +679,7 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		if mods.Method != nil {
 			mutations.Method = mods.Method
 		}
-		if mods.UpstreamName != nil && *mods.UpstreamName != "" {
-			targetUpstreamName = mods.UpstreamName
-		}
+		directive.set(mods.UpstreamName)
 		if mods.AnalyticsMetadata != nil {
 			for key, value := range mods.AnalyticsMetadata {
 				analyticsData[key] = value
@@ -667,9 +739,7 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		if mods.Method != nil {
 			mutations.Method = mods.Method
 		}
-		if mods.UpstreamName != nil && *mods.UpstreamName != "" {
-			targetUpstreamName = mods.UpstreamName
-		}
+		directive.set(mods.UpstreamName)
 		if mods.AnalyticsMetadata != nil {
 			for key, value := range mods.AnalyticsMetadata {
 				analyticsData[key] = value
@@ -689,47 +759,16 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 		}
 	}
 
-	// Handle dynamic cluster routing (last UpstreamName wins across both phases).
-	if targetUpstreamName != nil {
-		apiKind := execCtx.sharedCtx.APIKind
-		apiId := execCtx.sharedCtx.APIId
-		sanitizedDefName := sanitizeUpstreamDefinitionName(*targetUpstreamName)
-		clusterName := constants.UpstreamDefinitionClusterPrefix + string(apiKind) + "_" + apiId + "_" + sanitizedDefName
-		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{opType: "set", value: clusterName})
-		extProcNS := constants.ExtProcFilterName
-		if execCtx.dynamicMetadata[extProcNS] == nil {
-			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
+	// Handle dynamic cluster routing (last directive wins across both phases).
+	applied := false
+	if directive.isSet() {
+		if info, label, basePathKnown, ok := resolveUpstreamRedirect(execCtx, directive); ok {
+			applyUpstreamRedirect(execCtx, headerOps, dynamicMetadata, &mutations.Path, info, label, basePathKnown)
+			applied = true
 		}
-		if dynamicMetadata[extProcNS] == nil {
-			dynamicMetadata[extProcNS] = make(map[string]interface{})
-		}
-		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamClusterKey] = clusterName
-		execCtx.dynamicMetadata[extProcNS][constants.TargetUpstreamNameKey] = *targetUpstreamName
-		dynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
-		dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
-		if execCtx.upstreamDefinitionPaths != nil {
-			if targetUpstreamPath, ok := execCtx.upstreamDefinitionPaths[*targetUpstreamName]; ok {
-				dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
-				execCtx.dynamicMetadata[extProcNS]["target_upstream_base_path"] = targetUpstreamPath
-				// Surface the raw request path as metadata["path"] so Lua rewrites :path once;
-				// guard so an earlier path-changing policy (e.g. request-rewrite) isn't clobbered.
-				if mutations.Path == nil {
-					rawPath := execCtx.requestBodyCtx.Path
-					mutations.Path = &rawPath
-				}
-			}
-		}
-	} else if execCtx.defaultUpstreamCluster != "" {
-		headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{opType: "set", value: execCtx.defaultUpstreamCluster})
-		extProcNS := constants.ExtProcFilterName
-		if execCtx.dynamicMetadata[extProcNS] == nil {
-			execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
-		}
-		if dynamicMetadata[extProcNS] == nil {
-			dynamicMetadata[extProcNS] = make(map[string]interface{})
-		}
-		dynamicMetadata[extProcNS]["api_context"] = execCtx.apiContext
-		dynamicMetadata[extProcNS]["upstream_base_path"] = execCtx.upstreamBasePath
+	}
+	if !applied && execCtx.defaultUpstreamCluster != "" {
+		applyDefaultUpstream(execCtx, headerOps, dynamicMetadata)
 	}
 
 	if bodyModified {

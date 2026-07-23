@@ -20,7 +20,7 @@ const SubscriptionPlanLimit = require('../models/subscriptionPlanLimit');
 const APISubscriptionPlan = require('../models/apiSubscriptionPlan');
 const { APIMetadata } = require('../models/apiMetadata');
 const { Sequelize } = require('sequelize');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 const PLAN_INCLUDE = [{ model: SubscriptionPlanLimit, as: 'limits' }];
 const LIMIT_ORDER = [[{ model: SubscriptionPlanLimit, as: 'limits' }, 'uuid', 'ASC']];
@@ -52,7 +52,7 @@ const normalizeLimits = (limits) => {
       throw new Sequelize.ValidationError('timeAmount must be a positive number when provided');
     }
     return {
-      uuid: uuidv4(),
+      uuid: crypto.randomUUID(),
       limit_type: limitType,
       time_unit: l.timeUnit ? l.timeUnit.toUpperCase() : null,
       time_amount: l.timeAmount || 1,

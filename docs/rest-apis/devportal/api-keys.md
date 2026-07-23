@@ -1,5 +1,135 @@
 <h1 id="wso2-api-developer-portal-core-devportal-routes-api-keys">API Keys</h1>
 
+## List all API keys for the current user
+
+<a id="opIdlistAllApiKeys"></a>
+
+`GET /api-keys`
+
+> Code samples
+
+```shell
+
+curl -X GET https://localhost:3000/api/v0.9/api-keys \
+  -u {username}:{password} \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {access-token}'
+
+```
+
+Lists every API key created by the authenticated user across all APIs in the organization. Powers the Developer Portal's global "API Keys" page. Each item additionally carries the owning API's name, version, and type. Secret material is never returned.
+
+### Authentication
+
+<aside class="warning">
+This operation requires <strong>Basic Auth</strong> authentication.
+
+</aside>
+
+<h3 id="list-all-api-keys-for-the-current-user-parameters">Parameters</h3>
+
+|Name|In|Type|Required|Description|
+|---|---|---|---|---|
+|limit|query|integer|false|Maximum number of records to return.|
+|offset|query|integer|false|Number of records to skip before returning results.|
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "list": [
+    {
+      "id": "weather_prod_key",
+      "displayName": "Weather Prod Key",
+      "apiId": "weather-api-v1",
+      "appId": "my-weather-app",
+      "appDisplayName": "My Mobile App",
+      "status": "ACTIVE",
+      "expiresAt": "2026-12-31T23:59:59Z",
+      "createdAt": "2019-08-24T14:15:22Z",
+      "revokedAt": "2019-08-24T14:15:22Z"
+    }
+  ],
+  "count": 1,
+  "pagination": {
+    "total": 42,
+    "limit": 20,
+    "offset": 0
+  }
+}
+```
+
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
+
+```json
+{
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
+}
+```
+
+```json
+{
+  "message": "Missing or invalid fields in the request payload"
+}
+```
+
+> 500 Response
+
+```json
+{
+  "status": "error",
+  "code": "INTERNAL_SERVER_ERROR",
+  "message": "An unexpected error occurred."
+}
+```
+
+<h3 id="list-all-api-keys-for-the-current-user-responses">Responses</h3>
+
+|Status|Meaning|Description|Schema|
+|---|---|---|---|
+|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API key metadata records.|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
+|500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<h3 id="list-all-api-keys-for-the-current-user-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|» list|[[ApiKeyMetadataResponse](schemas.md#schemaapikeymetadataresponse)]|false|none|[API key metadata returned by list operations. Secret material is omitted.]|
+|»» id|string|false|none|none|
+|»» displayName|string|false|none|none|
+|»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
+|»» appId|string¦null|false|none|ID of the application this key is associated with, if any. Analytics attribution only.|
+|»» appDisplayName|string¦null|false|none|Display name of the associated application, if any.|
+|»» status|string|false|none|none|
+|»» expiresAt|string(date-time)¦null|false|none|none|
+|»» createdAt|string(date-time)|false|none|none|
+|»» revokedAt|string(date-time)¦null|false|none|none|
+|» count|integer|false|none|Number of items returned in this page.|
+|» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
+|»» total|integer|true|none|Total number of records matching the query.|
+|»» limit|integer|true|none|Maximum number of records returned in this response.|
+|»» offset|integer|true|none|Number of records skipped before this page.|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|ACTIVE|
+|status|REVOKED|
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
+
 ## Generate an API key
 
 <a id="opIdgenerateApiKey"></a>
@@ -50,7 +180,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "keyId": "key-12345",
   "id": "weather_prod_key",
   "displayName": "Weather Prod Key",
   "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
@@ -59,13 +188,19 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> 400 Response
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Invalid request parameters"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
+}
+```
+
+```json
+{
+  "message": "Missing or invalid fields in the request payload"
 }
 ```
 
@@ -73,8 +208,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "403",
-  "message": "Read-only mode"
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "Write operations are disabled in read-only mode."
 }
 ```
 
@@ -82,9 +218,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Not Found",
-  "description": "Subscription not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -103,10 +239,18 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |201|[Created](https://tools.ietf.org/html/rfc7231#section-6.3.2)|Generated API key. The plaintext `key` is returned exactly once.|[ApiKeyResponse](schemas.md#schemaapikeyresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode (e.g. read-only mode).|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<h3 id="generate-an-api-key-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
 
 ### Response Headers
 
@@ -157,7 +301,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "keyId": "key-12345",
       "id": "weather_prod_key",
       "displayName": "Weather Prod Key",
       "apiId": "weather-api-v1",
@@ -169,6 +312,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "revokedAt": "2019-08-24T14:15:22Z"
     }
   ],
+  "count": 1,
   "pagination": {
     "total": 42,
     "limit": 20,
@@ -177,23 +321,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.
-
-```json
-[
-  {
-    "status": "error",
-    "code": "COMMON_VALIDATION_ERROR",
-    "message": "Input validation failed.",
-    "errors": [
-      {
-        "field": "name",
-        "message": "name is required."
-      }
-    ]
-  }
-]
-```
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
 {
@@ -224,7 +352,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API key metadata records.|Inline|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Input validation failures are returned as an array; other bad request errors are returned as a standard error object.|Inline|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="list-api-keys-responseschema">Response Schema</h3>
@@ -234,7 +362,6 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[ApiKeyMetadataResponse](schemas.md#schemaapikeymetadataresponse)]|false|none|[API key metadata returned by list operations. Secret material is omitted.]|
-|»» keyId|string|false|none|Developer Portal key identifier.|
 |»» id|string|false|none|none|
 |»» displayName|string|false|none|none|
 |»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
@@ -244,6 +371,7 @@ Status Code **200**
 |»» expiresAt|string(date-time)¦null|false|none|none|
 |»» createdAt|string(date-time)|false|none|none|
 |»» revokedAt|string(date-time)¦null|false|none|none|
+|» count|integer|false|none|Number of items returned in this page.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|
@@ -260,7 +388,6 @@ Status Code **200**
 
 |Property|Value|
 |---|---|
-|status|error|
 |status|error|
 
 ## Regenerate an API key
@@ -317,7 +444,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "keyId": "key-12345",
   "id": "weather_prod_key",
   "displayName": "Weather Prod Key",
   "key": "ak_dGhpcyBpcyBub3QgYSByZWFsIGtleQ",
@@ -330,8 +456,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "403",
-  "message": "Read-only mode"
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "Write operations are disabled in read-only mode."
 }
 ```
 
@@ -339,9 +466,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Not Found",
-  "description": "Subscription not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -349,7 +476,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
+  "status": "error",
+  "code": "CONFLICT",
   "message": "Cannot regenerate a revoked key"
 }
 ```
@@ -369,9 +497,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Generated or regenerated API key. The plaintext `key` is returned exactly once.|[ApiKeyResponse](schemas.md#schemaapikeyresponse)|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode (e.g. read-only mode).|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The key has already been revoked and cannot be regenerated.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The key has already been revoked and cannot be regenerated.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Revoke an API key
@@ -424,8 +552,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "403",
-  "message": "Read-only mode"
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "Write operations are disabled in read-only mode."
 }
 ```
 
@@ -433,9 +562,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Not Found",
-  "description": "Subscription not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -443,7 +572,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
+  "status": "error",
+  "code": "CONFLICT",
   "message": "Key already revoked or not found"
 }
 ```
@@ -463,9 +593,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|API key revoked successfully.|None|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode (e.g. read-only mode).|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The key has already been revoked.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The key has already been revoked.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## Associate an API key with an application
@@ -520,7 +650,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "keyId": "key-12345",
   "application": {
     "id": "my-weather-app",
     "displayName": "My Mobile App"
@@ -528,13 +657,19 @@ This operation requires <strong>Basic Auth</strong> authentication.
 }
 ```
 
-> 400 Response
+> Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.
 
 ```json
 {
-  "code": "400",
-  "message": "Bad Request",
-  "description": "Invalid request parameters"
+  "status": "error",
+  "code": "MISSING_REQUIRED_PARAMETER",
+  "message": "Missing required parameter."
+}
+```
+
+```json
+{
+  "message": "Missing or invalid fields in the request payload"
 }
 ```
 
@@ -542,8 +677,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "403",
-  "message": "Read-only mode"
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "Write operations are disabled in read-only mode."
 }
 ```
 
@@ -551,9 +687,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Not Found",
-  "description": "Subscription not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -561,7 +697,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "409",
+  "status": "error",
+  "code": "CONFLICT",
   "message": "Cannot associate a revoked key"
 }
 ```
@@ -581,11 +718,19 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|Association updated.|[ApiKeyApplicationResponse](schemas.md#schemaapikeyapplicationresponse)|
-|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode (e.g. read-only mode).|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
-|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The key has already been revoked and cannot be associated with an application.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|400|[Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)|Bad request. Validation and other bad-request errors are returned as a standard error object (field-level details, when present, are carried in its `errors` array); some legacy handlers return a message-only object.|Inline|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|409|[Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)|The key has already been revoked and cannot be associated with an application.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+
+<h3 id="associate-an-api-key-with-an-application-responseschema">Response Schema</h3>
+
+#### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|error|
 
 ## Remove an API key's application association
 
@@ -637,8 +782,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "403",
-  "message": "Read-only mode"
+  "status": "error",
+  "code": "FORBIDDEN",
+  "message": "Write operations are disabled in read-only mode."
 }
 ```
 
@@ -646,9 +792,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Not Found",
-  "description": "Subscription not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -667,8 +813,8 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |204|[No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5)|Association removed (or none existed).|None|
-|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode (e.g. read-only mode).|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|403|[Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)|Request is forbidden for the current runtime mode or caller permissions.|[ErrorResponse](schemas.md#schemaerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 ## List API keys associated with an application
@@ -713,7 +859,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
 {
   "list": [
     {
-      "keyId": "key-12345",
       "id": "weather_prod_key",
       "displayName": "Weather Prod Key",
       "apiId": "weather-api-v1",
@@ -725,6 +870,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
       "revokedAt": "2019-08-24T14:15:22Z"
     }
   ],
+  "count": 1,
   "pagination": {
     "total": 42,
     "limit": 20,
@@ -737,9 +883,9 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```json
 {
-  "code": "404",
-  "message": "Not Found",
-  "description": "Subscription not found"
+  "status": "error",
+  "code": "ORG_NOT_FOUND",
+  "message": "Organization not found."
 }
 ```
 
@@ -758,7 +904,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 |Status|Meaning|Description|Schema|
 |---|---|---|---|
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|List of API key metadata records.|Inline|
-|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[SimpleErrorResponse](schemas.md#schemasimpleerrorresponse)|
+|404|[Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)|Resource not found.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 |500|[Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1)|Internal server error.|[ErrorResponse](schemas.md#schemaerrorresponse)|
 
 <h3 id="list-api-keys-associated-with-an-application-responseschema">Response Schema</h3>
@@ -768,7 +914,6 @@ Status Code **200**
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |» list|[[ApiKeyMetadataResponse](schemas.md#schemaapikeymetadataresponse)]|false|none|[API key metadata returned by list operations. Secret material is omitted.]|
-|»» keyId|string|false|none|Developer Portal key identifier.|
 |»» id|string|false|none|none|
 |»» displayName|string|false|none|none|
 |»» apiId|string|false|none|Developer Portal API ID the key belongs to.|
@@ -778,6 +923,7 @@ Status Code **200**
 |»» expiresAt|string(date-time)¦null|false|none|none|
 |»» createdAt|string(date-time)|false|none|none|
 |»» revokedAt|string(date-time)¦null|false|none|none|
+|» count|integer|false|none|Number of items returned in this page.|
 |» pagination|[Pagination](schemas.md#schemapagination)|false|none|Standard pagination metadata returned with collection responses.|
 |»» total|integer|true|none|Total number of records matching the query.|
 |»» limit|integer|true|none|Maximum number of records returned in this response.|

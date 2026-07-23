@@ -23,13 +23,11 @@ import (
 	"fmt"
 	"strings"
 
-	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 )
 
 const defaultKubernetesClusterDNS = "cluster.local"
@@ -178,166 +176,16 @@ func restAPIPathForHTTPRouteMatch(m gatewayv1.HTTPRouteMatch) (string, error) {
 	}
 }
 
-// BuildAPIConfigFromHTTPRoute maps HTTPRoute rules to APIConfigData (MVP: single Service backend across rules).
-// clusterDomain is the cluster DNS suffix (e.g. cluster.local or from CLUSTER_DOMAIN / gateway_api.cluster_domain).
-// log may be nil (tests); when set, emits structured diagnostics for policy loading and mapping.
-func BuildAPIConfigFromHTTPRoute(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, clusterDomain string, log *zap.Logger) (*apiv1.APIConfigData, error) {
-	if len(route.Spec.Rules) == 0 {
-		return nil, newInvalidHTTPRouteConfigError("HTTPRoute has no rules")
-	}
-	if log != nil {
-		log.Info("build API config from HTTPRoute",
-			zap.Int64("generation", route.Generation),
-			zap.String("resourceVersion", route.ResourceVersion),
-			zap.Int("ruleCount", len(route.Spec.Rules)))
-	}
-
-	displayName := route.Name
-	if v := route.Annotations[AnnHTTPRouteDisplayName]; v != "" {
-		displayName = v
-	}
-
-	version := route.Annotations[AnnHTTPRouteAPIVersion]
-	if version == "" {
-		version = "v1.0"
-	}
-
-	// Resolve backend URL (same Service required for all rules in MVP).
-	backendURL, err := firstBackendURL(ctx, c, route, clusterDomain)
-	if err != nil {
-		return nil, err
-	}
-
-	var ops []apiv1.Operation
-	for ruleIdx, rule := range route.Spec.Rules {
-		rulePolicies, err := policiesFromHTTPRouteRuleExtensionRefs(ctx, c, route, rule, ruleIdx, log)
-		if err != nil {
-			return nil, err
-		}
-		if len(rule.Matches) == 0 {
-			return nil, newInvalidHTTPRouteConfigError(
-				"rule[%d] has no matches; add at least one rule.matches entry (optional match.method; if omitted, all API verbs GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS are emitted)",
-				ruleIdx,
-			)
-		}
-		for _, m := range rule.Matches {
-			pathVal, err := restAPIPathForHTTPRouteMatch(m)
-			if err != nil {
-				return nil, err
-			}
-			methods := restAPIOperationMethodsForHTTPRouteMatch(m)
-			for _, method := range methods {
-				ops = append(ops, apiv1.Operation{
-					Method:   method,
-					Path:     pathVal,
-					Policies: copyPolicies(rulePolicies),
-				})
-			}
-		}
-	}
-
-	if len(ops) == 0 {
-		return nil, newInvalidHTTPRouteConfigError("no operations derived from HTTPRoute")
-	}
-
-	contextPath := strings.TrimSpace(route.Annotations[AnnHTTPRouteContext])
-	if contextPath == "" {
-		contextPath = "/"
-	} else if !strings.HasPrefix(contextPath, "/") {
-		contextPath = "/" + contextPath
-	}
-
-	apiPolicies, err := loadHTTPRouteAPIPolicies(ctx, c, route, log)
-	if err != nil {
-		return nil, err
-	}
-
-	spec := &apiv1.APIConfigData{
-		Context:     contextPath,
-		DisplayName: displayName,
-		Operations:  ops,
-		Upstream: apiv1.UpstreamConfig{
-			Main: apiv1.Upstream{Url: backendURL},
-		},
-		Version:  version,
-		Policies: apiPolicies,
-	}
-	if _, err := resolveAPIConfigPolicyParamsValueFrom(ctx, c, route.Namespace, spec, log); err != nil {
-		return nil, err
-	}
-	opsWithPol := 0
-	for i := range spec.Operations {
-		if len(spec.Operations[i].Policies) > 0 {
-			opsWithPol++
-		}
-	}
-	if log != nil {
-		log.Info("built API config from HTTPRoute",
-			zap.Int("operations", len(spec.Operations)),
-			zap.Int("apiLevelPolicies", len(spec.Policies)),
-			zap.Int("operationsWithAttachedPolicies", opsWithPol),
-			zap.Int("operationPolicyAnnotationEntries", 0))
-	}
-	return spec, nil
-}
-
 func firstBackendURL(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, clusterDomain string) (string, error) {
-	dnsBase := effectiveClusterDNSBase(clusterDomain)
-	ns := route.Namespace
-	var (
-		baselineSet   bool
-		baselineSvcNS string
-		baselineSvc   string
-		baselinePort  int32
-	)
-	for _, rule := range route.Spec.Rules {
-		for _, b := range rule.BackendRefs {
-			if b.Kind != nil && string(*b.Kind) != "" && string(*b.Kind) != "Service" {
-				continue
-			}
-			if b.Group != nil && string(*b.Group) != "" {
-				return "", newTransientHTTPRouteConfigError(
-					"unsupported backendRef: core Service backends require group to be omitted or empty (got group %q)",
-					string(*b.Group),
-				)
-			}
-			svcNS := ns
-			if b.Namespace != nil && *b.Namespace != "" {
-				svcNS = string(*b.Namespace)
-			}
-			svcName := string(b.Name)
-			if svcName == "" {
-				continue
-			}
-			if err := ensureCrossNamespaceServiceReferenceGrant(ctx, c, ns, svcNS, svcName); err != nil {
-				return "", err
-			}
-			svc := &corev1.Service{}
-			key := types.NamespacedName{Namespace: svcNS, Name: svcName}
-			if err := c.Get(ctx, key, svc); err != nil {
-				return "", newTransientHTTPRouteConfigError("get backend Service %s: %w", key.String(), err)
-			}
-			portNum, err := resolveServicePort(svc, b.Port)
-			if err != nil {
-				return "", err
-			}
-			if !baselineSet {
-				baselineSet = true
-				baselineSvcNS = svcNS
-				baselineSvc = svcName
-				baselinePort = portNum
-				continue
-			}
-			if svcNS != baselineSvcNS || svcName != baselineSvc || portNum != baselinePort {
-				return "", newInvalidHTTPRouteConfigError(
-					"HTTPRoute backendRefs must resolve to a single Service backend (first %s/%s:%d, found %s/%s:%d)",
-					baselineSvcNS, baselineSvc, baselinePort, svcNS, svcName, portNum,
-				)
-			}
-		}
+	res, err := resolveHTTPRouteBackendRefs(ctx, c, route, clusterDomain)
+	if err != nil {
+		return "", err
 	}
-	if baselineSet {
-		return fmt.Sprintf("http://%s.%s.svc.%s:%d", baselineSvc, baselineSvcNS, dnsBase, baselinePort), nil
+	if res.PlaceholderURL != "" {
+		return res.PlaceholderURL, nil
+	}
+	if !res.AllResolved && res.FirstFailureMessage != "" {
+		return "", newBackendRefError(res.FirstFailureReason, "%s", res.FirstFailureMessage)
 	}
 	return "", newInvalidHTTPRouteConfigError("no Service backendRef found on HTTPRoute")
 }

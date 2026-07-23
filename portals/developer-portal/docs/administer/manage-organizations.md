@@ -8,7 +8,7 @@ Create an `org.yaml` file using the Organization manifest format:
 
 ```yaml
 # org.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: Organization
 
 metadata:
@@ -63,7 +63,7 @@ curl -k https://localhost:3000/api/v0.9/organizations -H "Authorization: Bearer 
 
 ```yaml
 # org-update.yaml
-apiVersion: devportal.api-platform.wso2.com/v1alpha1
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: Organization
 
 metadata:
@@ -104,10 +104,10 @@ For local development and first-time setup, the portal ships with a built-in use
 
 ### Configuration
 
-Users and their scopes are defined in `configs/config-platform-api.toml`. Copy the example file to get started:
+Users and their scopes are defined in `configs/config-platform-api.toml`. Running `./scripts/setup.sh` (see the [Quick Start](../introduction/quick-start.md)) generates this file with a single admin user. To edit it by hand — or to create a static, no-dependencies starting point without the setup script — copy the template instead:
 
 ```bash
-cp configs/config-platform-api.toml.example configs/config-platform-api.toml
+cp configs/config-platform-api-template.toml configs/config-platform-api.toml
 ```
 
 Add or modify users in the `[[auth.file_based.users]]` sections:
@@ -140,29 +140,31 @@ Every devportal REST API operation requires a specific `dp:*` scope. Users witho
 | API publisher | `dp:api_manage dp:api_content_manage dp:org_read dp:label_read` |
 | Developer / subscriber | `dp:api_read dp:app_read dp:app_write dp:subscription_read dp:subscription_write` |
 
-See `configs/config-platform-api.toml.example` for the complete scope list used by the default admin user.
+See `configs/config-platform-api-template.toml` for the complete scope list used by the default admin user.
 
 ### Session persistence and scripted access
 
-The Platform API generates a random JWT signing key at startup. Sessions are invalidated when it restarts unless you pin the key. Set the **same value** in both services so the devportal can verify JWTs locally without a network round-trip:
+`auth.jwt.private_key`/`public_key` are **mandatory**: the Platform API requires the RS256 keypair at startup and never generates one — it fails to start if either is missing. `scripts/setup.sh` provisions the pair into `resources/keys/`. The Platform API signs with the private key; the devportal is pointed at only the public half via `auth.local.public_key_path` so it can verify Platform API-issued JWTs locally without a network round-trip (and so sessions survive restarts):
 
 ```bash
-# In .env (read by both services via docker-compose env_file / APIP_DP_* override)
-AUTH_JWT_SECRET_KEY=<random-64-char-string>
+# Generated once by scripts/setup.sh — PEM files, not env vars (a multi-line PEM
+# cannot live in an env file). Both config.tomls read them via {{ file "..." }}.
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out resources/keys/jwt_private.pem
+openssl rsa -in resources/keys/jwt_private.pem -pubout -out resources/keys/jwt_public.pem
 ```
 
 For scripts and CLI tools, get a Bearer token directly from the Platform API and pass it on each request — no session cookie required:
 
 ```bash
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
-  -d "username=admin&password=admin" | jq -r .token)
+  -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
 curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:3000/api/v0.9/organizations
 ```
 
-The token is verified locally by the Developer Portal using the shared `AUTH_JWT_SECRET_KEY` with no extra call to the Platform API per request.
+The token is verified locally by the Developer Portal against the Platform API's RS256 public key (`auth.local.public_key_path`), with no extra call to the Platform API per request.
 
-> **Note:** Local auth is for development only. For production, configure the global OIDC identity provider via `APIP_DP_IDP_*` environment variables.
+> **Note:** Local auth is for development only. For production, set `auth.mode = "idp"` and configure the OIDC identity provider under `[developer_portal.auth.idp]`.
 
 ---
 

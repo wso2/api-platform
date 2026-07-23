@@ -368,6 +368,88 @@ export function coerceValuesToSchemaTypes(
 }
 
 /**
+ * Remove empty optional values before policy parameters are submitted.
+ *
+ * Optional schema properties must be omitted when they are not configured.
+ * Sending an empty value still makes the property present and causes schema
+ * constraints such as minLength or minItems to be evaluated by the gateway.
+ * Required empty values are retained so the form validation can report them.
+ */
+export function omitOptionalEmptyValues(
+  schema: ParameterSchema,
+  values: ParameterValues
+): ParameterValues {
+  if (schema.type !== 'object' || !schema.properties) return values;
+
+  const required = new Set(schema.required ?? []);
+  const result: ParameterValues = {};
+
+  Object.entries(values).forEach(([key, originalValue]) => {
+    const propSchema = schema.properties?.[key];
+
+    // Preserve values not described by the schema for parameter objects that
+    // allow arbitrary additional properties.
+    if (!propSchema) {
+      result[key] = originalValue;
+      return;
+    }
+
+    let value = originalValue;
+
+    if (
+      propSchema.type === 'object' &&
+      propSchema.properties &&
+      typeof value === 'object' &&
+      value !== null &&
+      !Array.isArray(value)
+    ) {
+      value = omitOptionalEmptyValues(
+        propSchema,
+        value as ParameterValues
+      );
+    } else if (
+      propSchema.type === 'array' &&
+      propSchema.items?.type === 'object' &&
+      propSchema.items.properties &&
+      Array.isArray(value)
+    ) {
+      value = value.map((item) => {
+        if (
+          typeof item !== 'object' ||
+          item === null ||
+          Array.isArray(item)
+        ) {
+          return item;
+        }
+
+        return omitOptionalEmptyValues(
+          propSchema.items!,
+          item as ParameterValues
+        );
+      });
+    }
+
+    const isEmptyObject =
+      typeof value === 'object' &&
+      value !== null &&
+      !Array.isArray(value) &&
+      Object.keys(value as ParameterValues).length === 0;
+    const isEmpty =
+      value === undefined ||
+      value === null ||
+      value === '' ||
+      (Array.isArray(value) && value.length === 0) ||
+      isEmptyObject;
+
+    if (isEmpty && !required.has(key)) return;
+
+    result[key] = value;
+  });
+
+  return result;
+}
+
+/**
  * Create a new array item with default values based on item schema
  */
 export function createDefaultArrayItem(itemSchema: ParameterSchema): unknown {

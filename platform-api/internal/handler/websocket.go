@@ -102,16 +102,6 @@ func (h *WebSocketHandler) Connect(w http.ResponseWriter, r *http.Request) error
 			WithLogMessage(fmt.Sprintf("WebSocket authentication failed from IP %s", clientIP))
 	}
 
-	// Check organization connection limit before upgrading to WebSocket
-	if !h.manager.CanAcceptOrgConnection(gateway.OrganizationID) {
-		stats := h.manager.GetOrgConnectionStats(gateway.OrganizationID)
-		h.manager.IncrementFailedConnections()
-		return apperror.TooManyRequests.New(fmt.Sprintf(
-			"Organization connection limit reached. Maximum allowed connections: %d", stats.MaxAllowed)).
-			WithLogMessage(fmt.Sprintf("organization connection limit exceeded for org %s (count=%d, max=%d)",
-				gateway.OrganizationID, stats.CurrentCount, stats.MaxAllowed))
-	}
-
 	// Upgrade HTTP connection to WebSocket
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -129,29 +119,12 @@ func (h *WebSocketHandler) Connect(w http.ResponseWriter, r *http.Request) error
 		h.slogger.Error("Connection registration failed", "gatewayID", gateway.ID, "orgID", gateway.OrganizationID, "error", err)
 		h.manager.IncrementFailedConnections()
 
-		// Check if this is an org connection limit error
-		if orgLimitErr, ok := err.(*ws.OrgConnectionLimitError); ok {
-			errorMsg := map[string]interface{}{
-				"type":         "error",
-				"code":         "ORG_CONNECTION_LIMIT_EXCEEDED",
-				"message":      "Organization connection limit reached",
-				"currentCount": orgLimitErr.CurrentCount,
-				"maxAllowed":   orgLimitErr.MaxAllowed,
-			}
-			if jsonErr, _ := json.Marshal(errorMsg); jsonErr != nil {
-				conn.WriteMessage(websocket.TextMessage, jsonErr)
-			}
-			h.slogger.Warn("Organization connection limit exceeded", "orgID", orgLimitErr.OrganizationID,
-				"count", orgLimitErr.CurrentCount, "max", orgLimitErr.MaxAllowed)
-		} else {
-			// Generic error
-			errorMsg := map[string]string{
-				"type":    "error",
-				"message": err.Error(),
-			}
-			if jsonErr, _ := json.Marshal(errorMsg); jsonErr != nil {
-				conn.WriteMessage(websocket.TextMessage, jsonErr)
-			}
+		errorMsg := map[string]string{
+			"type":    "error",
+			"message": err.Error(),
+		}
+		if jsonErr, _ := json.Marshal(errorMsg); jsonErr != nil {
+			conn.WriteMessage(websocket.TextMessage, jsonErr)
 		}
 		conn.Close()
 		return nil

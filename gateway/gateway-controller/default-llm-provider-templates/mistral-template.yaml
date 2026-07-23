@@ -22,6 +22,9 @@ metadata:
   name: mistralai
 spec:
   displayName: MistralAI
+  groupId: wso2-mistralai
+  managedBy: wso2
+  version: v1.0
   promptTokens:
     location: payload
     identifier: $.usage.prompt_tokens
