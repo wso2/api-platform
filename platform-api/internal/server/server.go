@@ -84,7 +84,7 @@ func validateServerConfig(cfg *config.Server) error {
 //
 //   - internalPlugins — in-tree modules (e.g. eventgateway) that receive the full
 //     plugin.Deps (raw repos, services, DB, event hub). Supplied by cmd/main.go
-//     via builtinPlugins().
+//     via internal/builtins.Plugins().
 //   - externalPlugins — external/wrapper modules that receive only the
 //     capabilities in pdk.Deps. Supplied by the platform façade from WithPlugin.
 //

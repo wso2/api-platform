@@ -17,11 +17,11 @@
  *
  */
 
-// Package main — OSS build: no experimental plugins registered.
+// Package builtins — OSS build: no experimental plugins registered.
 // This file is compiled when the "experimental" build tag is NOT set.
-package main
+package builtins
 
 import "github.com/wso2/api-platform/platform-api/internal/plugin"
 
-// builtinPlugins returns no in-tree plugins for the default (OSS) build.
-func builtinPlugins() []plugin.Plugin { return nil }
+// Plugins returns no in-tree plugins for the default (OSS) build.
+func Plugins() []plugin.Plugin { return nil }

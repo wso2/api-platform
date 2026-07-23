@@ -21,6 +21,7 @@ import (
 	"flag"
 	"os"
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/builtins"
 	"github.com/wso2/api-platform/platform-api/internal/logger"
 	"github.com/wso2/api-platform/platform-api/internal/server"
 )
@@ -45,8 +46,9 @@ func main() {
 	slogger.Info("Initializing Platform API server...")
 	// Built-in (internal-tier) plugins are supplied here; the OSS entry point runs
 	// no external-tier (pdk) plugins — those come from wrapper modules via the
-	// platform façade.
-	srv, err := server.StartPlatformAPIServer(cfg, slogger, builtinPlugins(), nil)
+	// platform façade. builtins.Plugins() is build-tag selected in its own package
+	// so this entry point stays buildable as a single file (`go build ./cmd/main.go`).
+	srv, err := server.StartPlatformAPIServer(cfg, slogger, builtins.Plugins(), nil)
 	if err != nil {
 		slogger.Error("Failed to create server", "error", err)
 		os.Exit(1)
