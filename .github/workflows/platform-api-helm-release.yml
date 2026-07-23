@@ -1,0 +1,126 @@
+name: Release Platform API Helm Chart
+
+# Publishes the `platform-api` component chart (from the packaging model) to GHCR
+# as an OCI artifact. Self-contained — embeds the shared apip.* helpers, no
+# chart dependencies.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Chart version (semver, e.g. 0.1.0)'
+        required: true
+        type: string
+      appVersion:
+        description: 'App version to stamp into Chart.yaml (optional; blank = keep current)'
+        required: false
+        type: string
+      dryRun:
+        description: 'Package only — do not push, tag, or release'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  REGISTRY_USERNAME: api-platform-bot
+  ORGANIZATION: wso2
+  REGISTRY_PATH: api-platform/helm-charts
+  CHART_PATH: kubernetes/helm/platform-api-helm-chart
+  CHART_VERSION: ${{ inputs.version }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate version format
+        run: |
+          if ! echo "${CHART_VERSION}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9._-]+)?$'; then
+            echo "::error::Invalid version '${CHART_VERSION}'. Expected semver (e.g. 0.1.0 or 0.1.0-rc.1)."
+            exit 1
+          fi
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'latest'
+
+      - name: Set chart version (and appVersion if provided)
+        working-directory: ${{ env.CHART_PATH }}
+        run: |
+          sed -i "s/^version:.*/version: ${CHART_VERSION}/" Chart.yaml
+          if [ -n "${{ inputs.appVersion }}" ]; then
+            sed -i "s/^appVersion:.*/appVersion: \"${{ inputs.appVersion }}\"/" Chart.yaml
+          fi
+          CHART_NAME=$(grep '^name:' Chart.yaml | head -1 | awk '{print $2}')
+          echo "CHART_NAME=${CHART_NAME}" >> "$GITHUB_ENV"
+          echo "== Chart.yaml =="; grep -E '^(name|version|appVersion):' Chart.yaml
+
+      - name: Check release tag is free
+        if: ${{ !inputs.dryRun }}
+        run: |
+          TAG="helm-${CHART_NAME}-${CHART_VERSION}"
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
+            echo "::error::Tag '$TAG' already exists. Bump the version or delete the tag first."
+            exit 1
+          fi
+
+      - name: Package chart
+        working-directory: ${{ env.CHART_PATH }}
+        run: |
+          helm package .
+          ls -la *.tgz
+
+      - name: Login to GHCR
+        if: ${{ !inputs.dryRun }}
+        run: |
+          echo "${{ secrets.API_PLATFORM_BOT_TOKEN }}" | helm registry login "${REGISTRY}" --username "${REGISTRY_USERNAME}" --password-stdin
+
+      - name: Push chart
+        if: ${{ !inputs.dryRun }}
+        working-directory: ${{ env.CHART_PATH }}
+        run: |
+          helm push "${CHART_NAME}-${CHART_VERSION}.tgz" "oci://${REGISTRY}/${ORGANIZATION}/${REGISTRY_PATH}"
+
+      - name: Create and push git tag
+        if: ${{ !inputs.dryRun }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "helm-${CHART_NAME}-${CHART_VERSION}"
+          git push origin "refs/tags/helm-${CHART_NAME}-${CHART_VERSION}"
+
+      - name: Create draft GitHub Release
+        if: ${{ !inputs.dryRun }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: helm-${{ env.CHART_NAME }}-${{ inputs.version }}
+          name: ${{ env.CHART_NAME }} Helm Chart ${{ inputs.version }}
+          body: |
+            ## `${{ env.CHART_NAME }}` Helm Chart ${{ inputs.version }}
+
+            ```bash
+            helm install ${{ env.CHART_NAME }} oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }} --version ${{ inputs.version }}
+            ```
+          draft: true
+          prerelease: ${{ contains(inputs.version, '-') }}
+          token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+
+      - name: Summary
+        run: |
+          {
+            echo "### \`${CHART_NAME}\` Helm chart :package:"
+            echo "- Version: \`${CHART_VERSION}\`"
+            echo "- Registry: \`oci://${REGISTRY}/${ORGANIZATION}/${REGISTRY_PATH}/${CHART_NAME}\`"
+            [ "${{ inputs.dryRun }}" = "true" ] && echo "- **Dry run** — not pushed."
+            echo ""
+            echo "\`\`\`bash"
+            echo "helm install ${CHART_NAME} oci://${REGISTRY}/${ORGANIZATION}/${REGISTRY_PATH}/${CHART_NAME} --version ${CHART_VERSION}"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
