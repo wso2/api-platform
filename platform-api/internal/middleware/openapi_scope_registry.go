@@ -41,6 +41,14 @@ func (r *ScopeRegistry) Lookup(method, path string) ([]string, bool) {
 	return scopes, ok
 }
 
+// Len returns the number of (method, path) operations that carry a scope
+// requirement. A registry loaded from a plugin spec with Len() == 0 declares no
+// scope requirement for any route, which the server treats as a startup failure
+// (GO-AUTH-007) rather than serving those routes unguarded.
+func (r *ScopeRegistry) Len() int {
+	return len(r.scopes)
+}
+
 // AllScopes returns the set of every scope name declared across all operations.
 // Used at startup to validate that roles.yaml only references known scopes.
 func (r *ScopeRegistry) AllScopes() map[string]struct{} {
