@@ -35,7 +35,12 @@ services:
       POSTGRES_DB: devportal
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database:/docker-entrypoint-initdb.d:ro
+      # Mount only this dialect's schema file — ./database also holds
+      # schema.sqlite.sql and schema.sqlserver.sql, and Postgres's
+      # docker-entrypoint-initdb.d runs every .sql file it finds there in
+      # alphabetical order, so mounting the directory made it also try (and
+      # fail on) schema.sqlserver.sql's T-SQL-only syntax.
+      - ./database/schema.postgres.sql:/docker-entrypoint-initdb.d/schema.postgres.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U devportal -d devportal"]
       interval: 10s

@@ -144,16 +144,36 @@ function buildMssqlMerge(table, insertCols, conflictCols, updateCols) {
  * without this guard, `::uuid` would be misparsed as a bogus `:uuid` parameter).
  * A name used more than once in the SQL text is looked up once per occurrence,
  * in left-to-right order, so repeated params are bound correctly.
+ *
+ * `--` line comments are matched too, but only to skip them — a `:name`-shaped
+ * mention in a doc comment (e.g. this project's own header comments listing
+ * each parameter) must not be bound as a real placeholder. Postgres strips
+ * comments before parsing, so a bogus match there would consume a low `$N`
+ * slot that never actually appears in the executable SQL, and the driver
+ * fails with "could not determine data type of parameter $1" — silently
+ * shifting every real placeholder's index in the process. None of this
+ * codebase's .sql files use `--` inside a string literal or `/* *\/` block
+ * comments, so a first-`--`-per-line split is sufficient without a full
+ * SQL tokenizer.
  */
 function bindNamedParams(sqlText, valuesByName) {
     const params = [];
-    const sql = sqlText.replace(/(?<!:):(\w+)/g, (_match, name) => {
-        if (!Object.prototype.hasOwnProperty.call(valuesByName, name)) {
-            throw new Error(`bindNamedParams: missing value for :${name}`);
-        }
-        params.push(valuesByName[name]);
-        return '?';
-    });
+    const sql = sqlText
+        .split('\n')
+        .map((line) => {
+            const commentIdx = line.indexOf('--');
+            const code = commentIdx === -1 ? line : line.slice(0, commentIdx);
+            const comment = commentIdx === -1 ? '' : line.slice(commentIdx);
+            const replacedCode = code.replace(/(?<!:):(\w+)/g, (_match, name) => {
+                if (!Object.prototype.hasOwnProperty.call(valuesByName, name)) {
+                    throw new Error(`bindNamedParams: missing value for :${name}`);
+                }
+                params.push(valuesByName[name]);
+                return '?';
+            });
+            return replacedCode + comment;
+        })
+        .join('\n');
     return { sql, params };
 }
 
