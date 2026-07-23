@@ -155,7 +155,7 @@ test-platform-api: ## Run platform-api tests
 .PHONY: test-devportal
 test-devportal: ## Run developer portal integration tests
 	@echo "Running developer portal integration tests..."
-	$(MAKE) -C portals/developer-portal it
+	$(MAKE) -C portals/developer-portal/it test
 
 .PHONY: test-ai-workspace
 test-ai-workspace: ## Run AI Workspace E2E tests
