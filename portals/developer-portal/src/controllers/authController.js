@@ -231,7 +231,14 @@ const handleLocalLogin = async (req, res) => {
     const { username, password } = req.body;
     const orgName = req.params.orgName;
     const viewName = req.params.viewName;
-    const baseUrl = `/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}`;
+    // orgName/viewName come from the URL and are echoed into the redirect targets
+    // below; constrain them to safe handle characters so a crafted value (e.g. one
+    // containing a backslash) can't turn a relative redirect into an off-site /
+    // protocol-relative one. Fall back to a server-controlled login path otherwise.
+    const SAFE_HANDLE = /^[a-zA-Z0-9_-]+$/;
+    const baseUrl = (SAFE_HANDLE.test(orgName || '') && SAFE_HANDLE.test(viewName || ''))
+        ? `/${orgName}${constants.ROUTE.VIEWS_PATH}${viewName}`
+        : '';
 
     if (config.auth.mode === 'idp') {
         return res.status(404).send('Not found');
