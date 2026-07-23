@@ -21,9 +21,9 @@ import (
 	"fmt"
 	"strings"
 
-	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"log/slog"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -44,7 +44,7 @@ type LlmProxyReconciler struct {
 }
 
 // NewLlmProxyReconciler constructs a fully wired LlmProxy reconciler.
-func NewLlmProxyReconciler(c client.Client, cfg *config.OperatorConfig, logger *zap.Logger, tracker *ResourceTracker) *LlmProxyReconciler {
+func NewLlmProxyReconciler(c client.Client, cfg *config.OperatorConfig, logger *slog.Logger, tracker *ResourceTracker) *LlmProxyReconciler {
 	r := &LlmProxyReconciler{}
 	r.Client = c
 	r.Config = cfg

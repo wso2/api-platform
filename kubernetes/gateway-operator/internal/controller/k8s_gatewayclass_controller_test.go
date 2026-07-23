@@ -19,12 +19,12 @@ package controller
 
 import (
 	"context"
+	"log/slog"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -37,9 +37,9 @@ import (
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 )
 
-func testZapLogger(t *testing.T) *zap.Logger {
+func testSlogLogger(t *testing.T) *slog.Logger {
 	t.Helper()
-	return zaptest.NewLogger(t)
+	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
 func testOperatorConfigForGatewayClass(t *testing.T, classNames ...string) *config.OperatorConfig {
@@ -72,7 +72,7 @@ func TestK8sGatewayClassReconciler_AcceptedWhenManaged(t *testing.T) {
 		WithObjects(gc).
 		WithStatusSubresource(gc).
 		Build()
-	r := NewK8sGatewayClassReconciler(cl, scheme, testOperatorConfigForGatewayClass(t, "wso2-api-platform"), testZapLogger(t))
+	r := NewK8sGatewayClassReconciler(cl, scheme, testOperatorConfigForGatewayClass(t, "wso2-api-platform"), testSlogLogger(t))
 	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: gc.Name}})
 	require.NoError(t, err)
 
@@ -99,7 +99,7 @@ func TestK8sGatewayClassReconciler_NotAcceptedWhenNotInAllowlist(t *testing.T) {
 		WithObjects(gc).
 		WithStatusSubresource(gc).
 		Build()
-	r := NewK8sGatewayClassReconciler(cl, scheme, testOperatorConfigForGatewayClass(t, "wso2-api-platform"), testZapLogger(t))
+	r := NewK8sGatewayClassReconciler(cl, scheme, testOperatorConfigForGatewayClass(t, "wso2-api-platform"), testSlogLogger(t))
 	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: gc.Name}})
 	require.NoError(t, err)
 
@@ -125,7 +125,7 @@ func TestK8sGatewayClassReconciler_NoOpDifferentController(t *testing.T) {
 		WithObjects(gc).
 		WithStatusSubresource(gc).
 		Build()
-	r := NewK8sGatewayClassReconciler(cl, scheme, testOperatorConfigForGatewayClass(t, "other-class"), testZapLogger(t))
+	r := NewK8sGatewayClassReconciler(cl, scheme, testOperatorConfigForGatewayClass(t, "other-class"), testSlogLogger(t))
 	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: gc.Name}})
 	require.NoError(t, err)
 

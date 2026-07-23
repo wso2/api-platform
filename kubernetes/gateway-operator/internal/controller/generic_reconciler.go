@@ -25,11 +25,11 @@ import (
 	"sync"
 	"time"
 
-	"go.uber.org/zap"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"log/slog"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -172,7 +172,7 @@ type GenericReconciler struct {
 	client.Client
 	Adapter ResourceAdapter
 	Config  *config.OperatorConfig
-	Logger  *zap.Logger
+	Logger  *slog.Logger
 	Tracker *ResourceTracker
 }
 
@@ -185,9 +185,9 @@ func (r *GenericReconciler) trackingKey(req ctrl.Request) string {
 // expected to be wired up by the per-kind controller's SetupWithManager.
 func (r *GenericReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Logger.With(
-		zap.String("controller", r.Adapter.Kind()),
-		zap.String("namespace", req.Namespace),
-		zap.String("name", req.Name),
+		slog.String("controller", r.Adapter.Kind()),
+		slog.String("namespace", req.Namespace),
+		slog.String("name", req.Name),
 	)
 
 	obj := r.Adapter.NewObject()
@@ -196,14 +196,14 @@ func (r *GenericReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			r.Tracker.Delete(r.trackingKey(req))
 			return ctrl.Result{}, nil
 		}
-		log.Error("unable to fetch resource", zap.Error(err))
+		log.Error("unable to fetch resource", slog.Any("error", err))
 		return ctrl.Result{}, err
 	}
 
 	log.Info("Reconciling",
-		zap.String("name", obj.GetName()),
-		zap.String("namespace", obj.GetNamespace()),
-		zap.Int64("generation", obj.GetGeneration()))
+		slog.String("name", obj.GetName()),
+		slog.String("namespace", obj.GetNamespace()),
+		slog.Int64("generation", obj.GetGeneration()))
 
 	if !obj.GetDeletionTimestamp().IsZero() {
 		return r.reconcileDeletion(ctx, obj)
@@ -212,7 +212,7 @@ func (r *GenericReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if !controllerutil.ContainsFinalizer(obj, r.Adapter.FinalizerName()) {
 		controllerutil.AddFinalizer(obj, r.Adapter.FinalizerName())
 		if err := r.Update(ctx, obj); err != nil {
-			log.Error("failed to add finalizer", zap.Error(err))
+			log.Error("failed to add finalizer", slog.Any("error", err))
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
@@ -267,7 +267,7 @@ func (r *GenericReconciler) decideAndProcess(
 	entry *ResourceTrackingEntry,
 	hasEntry bool,
 ) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", r.Adapter.Kind()), zap.String("name", obj.GetName()))
+	log := r.Logger.With(slog.String("controller", r.Adapter.Kind()), slog.String("name", obj.GetName()))
 
 	if crGeneration == statusObservedGen && progCond != nil && progCond.Status == metav1.ConditionTrue {
 		if drift, ok := r.Adapter.(externalDepsDrifter); ok {
@@ -277,16 +277,16 @@ func (r *GenericReconciler) decideAndProcess(
 			}
 			if need {
 				log.Info("external dependency drift detected; redeploying gateway state",
-					zap.String("name", obj.GetName()),
-					zap.Int64("generation", crGeneration))
+					slog.String("name", obj.GetName()),
+					slog.Int64("generation", crGeneration))
 				return r.processDeployment(ctx, obj, trackingKey, crGeneration)
 			}
 		}
 		if r.Adapter.IsUUIDKeyed() {
 			if st := r.Adapter.GetStatus(obj); st != nil && st.Id == "" {
 				log.Info("Programmed=True but status.id is empty; reconciling uuid-keyed gateway id",
-					zap.String("name", obj.GetName()),
-					zap.Int64("generation", crGeneration))
+					slog.String("name", obj.GetName()),
+					slog.Int64("generation", crGeneration))
 				return r.processDeployment(ctx, obj, trackingKey, crGeneration)
 			}
 		}
@@ -306,8 +306,8 @@ func (r *GenericReconciler) decideAndProcess(
 		}
 		r.Tracker.Set(trackingKey, next)
 		log.Debug("already deployed, skipping",
-			zap.String("name", obj.GetName()),
-			zap.Int64("generation", crGeneration))
+			slog.String("name", obj.GetName()),
+			slog.Int64("generation", crGeneration))
 		return ctrl.Result{}, nil
 	}
 
@@ -318,50 +318,50 @@ func (r *GenericReconciler) decideAndProcess(
 				case ResourceStatusProcessing:
 					if entry.GatewayDeploySucceeded && entry.Generation == crGeneration {
 						log.Info("retrying programmed status after gateway deploy",
-							zap.String("name", obj.GetName()),
-							zap.Int64("generation", crGeneration))
+							slog.String("name", obj.GetName()),
+							slog.Int64("generation", crGeneration))
 						return r.handleDeploymentSuccess(ctx, obj, trackingKey, entry, entry.GatewayKey)
 					}
 					log.Debug("already processing, skipping false positive",
-						zap.String("name", obj.GetName()),
-						zap.Int64("generation", crGeneration))
+						slog.String("name", obj.GetName()),
+						slog.Int64("generation", crGeneration))
 					return ctrl.Result{}, nil
 				case ResourceStatusRetrying:
 					log.Info("retrying deployment",
-						zap.String("name", obj.GetName()),
-						zap.Int64("generation", crGeneration),
-						zap.Int("retryCount", entry.RetryCount))
+						slog.String("name", obj.GetName()),
+						slog.Int64("generation", crGeneration),
+						slog.Int("retryCount", entry.RetryCount))
 					return r.processDeployment(ctx, obj, trackingKey, crGeneration)
 				case ResourceStatusDeployed:
 					if crGeneration > statusObservedGen {
 						log.Info("retrying programmed status (tracker deployed, status not yet propagated)",
-							zap.String("name", obj.GetName()),
-							zap.Int64("generation", crGeneration))
+							slog.String("name", obj.GetName()),
+							slog.Int64("generation", crGeneration))
 						return r.handleDeploymentSuccess(ctx, obj, trackingKey, entry, entry.GatewayKey)
 					}
 					log.Debug("deployment and status in sync with tracker",
-						zap.String("name", obj.GetName()),
-						zap.Int64("generation", crGeneration))
+						slog.String("name", obj.GetName()),
+						slog.Int64("generation", crGeneration))
 					return ctrl.Result{}, nil
 				}
 			}
 			if entry.Generation < crGeneration {
 				log.Info("processing update",
-					zap.String("name", obj.GetName()),
-					zap.Int64("oldGeneration", entry.Generation),
-					zap.Int64("newGeneration", crGeneration))
+					slog.String("name", obj.GetName()),
+					slog.Int64("oldGeneration", entry.Generation),
+					slog.Int64("newGeneration", crGeneration))
 				return r.processDeployment(ctx, obj, trackingKey, crGeneration)
 			}
 		} else {
-			log.Info("processing", zap.String("name", obj.GetName()), zap.Int64("generation", crGeneration))
+			log.Info("processing", slog.String("name", obj.GetName()), slog.Int64("generation", crGeneration))
 			return r.processDeployment(ctx, obj, trackingKey, crGeneration)
 		}
 	}
 
 	log.Debug("no action needed",
-		zap.String("name", obj.GetName()),
-		zap.Int64("crGeneration", crGeneration),
-		zap.Int64("statusObservedGen", statusObservedGen))
+		slog.String("name", obj.GetName()),
+		slog.Int64("crGeneration", crGeneration),
+		slog.Int64("statusObservedGen", statusObservedGen))
 	return ctrl.Result{}, nil
 }
 
@@ -380,9 +380,9 @@ func (r *GenericReconciler) processDeployment(ctx context.Context, obj client.Ob
 			wait := time.Until(existingEntry.NextRetryTime)
 			if wait > 0 {
 				r.Logger.Info("waiting for backoff",
-					zap.String("kind", r.Adapter.Kind()),
-					zap.String("name", obj.GetName()),
-					zap.Duration("wait", wait))
+					slog.String("kind", r.Adapter.Kind()),
+					slog.String("name", obj.GetName()),
+					slog.Duration("wait", wait))
 				return ctrl.Result{RequeueAfter: wait}, nil
 			}
 		}
@@ -485,8 +485,8 @@ func (r *GenericReconciler) setInitialConditions(ctx context.Context, obj client
 }
 
 func (r *GenericReconciler) handleDeploymentSuccess(ctx context.Context, obj client.Object, trackingKey string, entry *ResourceTrackingEntry, gatewayKey string) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", r.Adapter.Kind()), zap.String("name", obj.GetName()))
-	log.Info("deployment succeeded", zap.String("gateway", gatewayKey))
+	log := r.Logger.With(slog.String("controller", r.Adapter.Kind()), slog.String("name", obj.GetName()))
+	log.Info("deployment succeeded", slog.String("gateway", gatewayKey))
 
 	if err := r.updateProgrammed(ctx, obj, metav1.Condition{
 		Type:               apiv1.ConditionProgrammed,
@@ -523,7 +523,7 @@ func (r *GenericReconciler) handleDeploymentError(ctx context.Context, obj clien
 }
 
 func (r *GenericReconciler) handleRetryableError(ctx context.Context, obj client.Object, trackingKey string, entry *ResourceTrackingEntry, err *gatewayclient.RetryableError) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", r.Adapter.Kind()), zap.String("name", obj.GetName()))
+	log := r.Logger.With(slog.String("controller", r.Adapter.Kind()), slog.String("name", obj.GetName()))
 	entry.GatewayDeploySucceeded = false
 	entry.RetryCount++
 	entry.LastRetryTime = time.Now()
@@ -535,9 +535,9 @@ func (r *GenericReconciler) handleRetryableError(ctx context.Context, obj client
 
 	if entry.RetryCount >= maxRetries {
 		log.Error("max retries exceeded",
-			zap.Error(err.Err),
-			zap.Int("retryCount", entry.RetryCount),
-			zap.Int("maxRetries", maxRetries))
+			slog.Any("error", err.Err),
+			slog.Int("retryCount", entry.RetryCount),
+			slog.Int("maxRetries", maxRetries))
 		if updateErr := r.updateProgrammed(ctx, obj, metav1.Condition{
 			Type:               apiv1.ConditionProgrammed,
 			Status:             metav1.ConditionFalse,
@@ -558,10 +558,10 @@ func (r *GenericReconciler) handleRetryableError(ctx context.Context, obj client
 	entry.NextRetryTime = time.Now().Add(backoff)
 
 	log.Info("deployment failed, scheduling retry",
-		zap.Int("retryCount", entry.RetryCount),
-		zap.Int("maxRetries", maxRetries),
-		zap.Duration("nextRetryIn", backoff),
-		zap.String("error", err.Error()))
+		slog.Int("retryCount", entry.RetryCount),
+		slog.Int("maxRetries", maxRetries),
+		slog.Duration("nextRetryIn", backoff),
+		slog.String("error", err.Error()))
 
 	if updateErr := r.updateProgrammed(ctx, obj, metav1.Condition{
 		Type:               apiv1.ConditionProgrammed,
@@ -581,10 +581,10 @@ func (r *GenericReconciler) handleRetryableError(ctx context.Context, obj client
 }
 
 func (r *GenericReconciler) handleNonRetryableError(ctx context.Context, obj client.Object, trackingKey string, entry *ResourceTrackingEntry, err *gatewayclient.NonRetryableError) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", r.Adapter.Kind()), zap.String("name", obj.GetName()))
+	log := r.Logger.With(slog.String("controller", r.Adapter.Kind()), slog.String("name", obj.GetName()))
 	log.Error("non-retryable deployment error",
-		zap.Error(err.Err),
-		zap.Int("statusCode", err.StatusCode))
+		slog.Any("error", err.Err),
+		slog.Int("statusCode", err.StatusCode))
 
 	entry.GatewayDeploySucceeded = false
 
@@ -611,7 +611,7 @@ func (r *GenericReconciler) handleNonRetryableError(ctx context.Context, obj cli
 }
 
 func (r *GenericReconciler) handleNoGateway(ctx context.Context, obj client.Object) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", r.Adapter.Kind()), zap.String("name", obj.GetName()))
+	log := r.Logger.With(slog.String("controller", r.Adapter.Kind()), slog.String("name", obj.GetName()))
 	log.Info("no matching gateway available")
 	if err := r.updateProgrammed(ctx, obj, metav1.Condition{
 		Type:               apiv1.ConditionProgrammed,
@@ -685,14 +685,14 @@ func (r *GenericReconciler) updateProgrammed(ctx context.Context, obj client.Obj
 }
 
 func (r *GenericReconciler) reconcileDeletion(ctx context.Context, obj client.Object) (ctrl.Result, error) {
-	log := r.Logger.With(zap.String("controller", r.Adapter.Kind()), zap.String("name", obj.GetName()))
+	log := r.Logger.With(slog.String("controller", r.Adapter.Kind()), slog.String("name", obj.GetName()))
 
 	if !controllerutil.ContainsFinalizer(obj, r.Adapter.FinalizerName()) {
 		return ctrl.Result{}, nil
 	}
 
 	if err := r.cleanupAllGateways(ctx, obj); err != nil {
-		log.Error("failed to clean up deployments", zap.Error(err))
+		log.Error("failed to clean up deployments", slog.Any("error", err))
 		return ctrl.Result{}, err
 	}
 
@@ -700,14 +700,14 @@ func (r *GenericReconciler) reconcileDeletion(ctx context.Context, obj client.Ob
 
 	controllerutil.RemoveFinalizer(obj, r.Adapter.FinalizerName())
 	if err := r.Update(ctx, obj); err != nil {
-		log.Error("failed to remove finalizer", zap.Error(err))
+		log.Error("failed to remove finalizer", slog.Any("error", err))
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
 }
 
 func (r *GenericReconciler) cleanupAllGateways(ctx context.Context, obj client.Object) error {
-	log := r.Logger.With(zap.String("controller", r.Adapter.Kind()), zap.String("name", obj.GetName()))
+	log := r.Logger.With(slog.String("controller", r.Adapter.Kind()), slog.String("name", obj.GetName()))
 	registryInstance := registry.GetGatewayRegistry()
 	ns, labels := r.Adapter.GatewaySelectionKey(obj)
 	matched := registryInstance.FindMatchingGateways(ns, labels)
@@ -717,11 +717,11 @@ func (r *GenericReconciler) cleanupAllGateways(ctx context.Context, obj client.O
 		authFn := r.buildAuthFn(gateway)
 		if err := r.Adapter.Delete(ctx, gateway.GetGatewayServiceEndpoint(), obj, authFn); err != nil {
 			log.Error("failed to delete from gateway",
-				zap.Error(err),
-				zap.String("gateway", gateway.Name))
+				slog.Any("error", err),
+				slog.String("gateway", gateway.Name))
 			deleteErrs = append(deleteErrs, fmt.Errorf("%s/%s: %w", gateway.Namespace, gateway.Name, err))
 		} else {
-			log.Info("resource deleted from gateway", zap.String("gateway", gateway.Name))
+			log.Info("resource deleted from gateway", slog.String("gateway", gateway.Name))
 		}
 	}
 	if len(deleteErrs) > 0 {

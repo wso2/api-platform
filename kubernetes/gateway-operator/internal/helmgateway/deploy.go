@@ -21,7 +21,7 @@ import (
 	"context"
 	"fmt"
 
-	"go.uber.org/zap"
+	"log/slog"
 
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
@@ -29,7 +29,7 @@ import (
 
 // DeployInput carries parameters shared by APIGateway and Kubernetes Gateway API reconciliation.
 type DeployInput struct {
-	Logger         *zap.Logger
+	Logger         *slog.Logger
 	Config         *config.OperatorConfig
 	GatewayName    string
 	Namespace      string
@@ -66,9 +66,9 @@ func InstallOrUpgrade(ctx context.Context, in DeployInput) error {
 }
 
 // Uninstall removes the platform-gateway Helm release.
-func Uninstall(ctx context.Context, logger *zap.Logger, cfg *config.OperatorConfig, gatewayName, namespace string) error {
+func Uninstall(ctx context.Context, logger *slog.Logger, cfg *config.OperatorConfig, gatewayName, namespace string) error {
 	releaseName := helm.GetReleaseName(gatewayName)
-	logger.Info("Uninstalling Helm release", zap.String("release", releaseName), zap.String("namespace", namespace))
+	logger.Info("Uninstalling Helm release", slog.String("release", releaseName), slog.String("namespace", namespace))
 
 	helmClient, err := helm.NewClientWithOptions(cfg.Gateway.PlainHTTP)
 	if err != nil {
