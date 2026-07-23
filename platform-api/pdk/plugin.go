@@ -48,8 +48,11 @@ type Plugin interface {
 	RegisterRoutes(mux *http.ServeMux)
 
 	// OpenAPISpec returns the plugin's OpenAPI 3.x YAML bytes, merged into the
-	// platform scope registry to enforce per-route scopes. Return nil when the
-	// plugin needs no scope enforcement.
+	// platform scope registry to enforce per-route scopes. It is mandatory:
+	// returning empty bytes, or bytes the registry loader rejects, aborts
+	// startup. Every route the plugin mounts must appear in this document with
+	// its required scopes, so no extension route can be served without an
+	// explicit scope requirement (GO-AUTH-007).
 	OpenAPISpec() []byte
 
 	// Shutdown is called during graceful server shutdown.

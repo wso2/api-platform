@@ -459,15 +459,19 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		if err := p.Init(pluginDeps); err != nil {
 			return nil, fmt.Errorf("plugin %q failed to initialize: %w", p.Name(), err)
 		}
-		// Merge plugin-contributed scopes into the main registry.
-		if spec := p.OpenAPISpec(); len(spec) > 0 {
-			pluginRegistry, regErr := middleware.LoadScopeRegistryFromBytes(spec)
-			if regErr != nil {
-				slogger.Warn("plugin scope registry load failed", "plugin", p.Name(), "error", regErr)
-			} else {
-				scopeRegistry.Merge(pluginRegistry)
-			}
+		// Merge plugin-contributed scopes into the main registry. An OpenAPI spec
+		// is mandatory and must load: a plugin whose scopes never reach the
+		// registry would have its routes served with no scope requirement, so
+		// both an empty and an unloadable spec abort startup (GO-AUTH-007).
+		spec := p.OpenAPISpec()
+		if len(spec) == 0 {
+			return nil, fmt.Errorf("plugin %q returned an empty OpenAPI spec; a spec declaring each route's scopes is required", p.Name())
 		}
+		pluginRegistry, regErr := middleware.LoadScopeRegistryFromBytes(spec)
+		if regErr != nil {
+			return nil, fmt.Errorf("plugin %q OpenAPI spec failed to load into the scope registry: %w", p.Name(), regErr)
+		}
+		scopeRegistry.Merge(pluginRegistry)
 		p.RegisterRoutes(mux)
 		slogger.Info("Plugin initialized", "name", p.Name())
 		// Declared public paths are appended before the auth middleware is built
