@@ -23,14 +23,21 @@
  * browser-supplied value (currently the API try-it proxy, see
  * src/services/tryoutProxyService.js).
  *
- * The check runs inside a custom `lookup` hook handed to the http/https Agent,
- * so it fires at the moment the socket resolves the hostname — not once, at
- * input-validation time. That is what closes the DNS-rebinding window: a
- * hostname that resolved to a public address during validation cannot re-resolve
- * to 169.254.169.254 for the actual connection without this hook seeing it.
+ * Two checks are needed, and callers must apply both:
+ *
+ *   1. createGuardedLookup — a `lookup` hook handed to the http/https Agent, so
+ *      the check fires at the moment the socket resolves the hostname rather
+ *      than once at input-validation time. That is what closes the DNS-rebinding
+ *      window: a hostname that resolved to a public address during validation
+ *      cannot re-resolve to 169.254.169.254 for the actual connection without
+ *      this hook seeing it.
+ *   2. assertAllowedHost — an up-front check for hosts that are already IP
+ *      literals. Node skips DNS resolution for those, so the hook in (1) is
+ *      never invoked for them and cannot be relied on alone.
  */
 
 const dns = require('node:dns');
+const net = require('node:net');
 const ipaddr = require('ipaddr.js');
 
 // Denied unconditionally, whatever the deployment looks like. 169.254.169.254
@@ -99,8 +106,39 @@ function isDenied(ip, { allowPrivate = false } = {}) {
 }
 
 /**
+ * Reject a target whose host is already an IP literal.
+ *
+ * The Agent `lookup` hook below cannot cover this case: Node skips DNS
+ * resolution entirely when the host is a literal address, so `lookup` is never
+ * invoked and a URL like "http://169.254.169.254/" would connect with the
+ * denylist never consulted. Literals therefore have to be checked up front, by
+ * the caller, before the request is issued.
+ *
+ * A non-literal hostname is a no-op here — the lookup hook handles it at dial
+ * time, which is what closes the DNS-rebinding window.
+ *
+ * @param {string} hostname          URL.hostname (IPv6 may arrive bracketed)
+ * @param {object} [opts]
+ * @param {boolean} [opts.allowPrivate]
+ * @throws {Error} with .statusCode when the literal is in a denied range
+ */
+function assertAllowedHost(hostname, { allowPrivate = false } = {}) {
+    // URL.hostname keeps the brackets on an IPv6 literal ("[::1]").
+    const host = String(hostname || '').replace(/^\[|\]$/g, '');
+    if (!net.isIP(host)) {
+        return;
+    }
+    if (isDenied(host, { allowPrivate })) {
+        throw Object.assign(new Error('Destination is not allowed'), { statusCode: 422 });
+    }
+}
+
+/**
  * Build a `lookup` implementation for a http/https Agent that rejects a
  * connection whose hostname resolves into a denied range.
+ *
+ * Only covers hostnames that actually get resolved — see assertAllowedHost for
+ * IP literals, which never reach this hook.
  *
  * @param {object} [opts]
  * @param {boolean} [opts.allowPrivate]
@@ -153,6 +191,7 @@ function assertAllowedScheme(raw, { allowHttp = false } = {}) {
 
 module.exports = {
     isDenied,
+    assertAllowedHost,
     createGuardedLookup,
     assertAllowedScheme,
 };

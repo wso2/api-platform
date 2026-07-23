@@ -184,11 +184,18 @@ const DEFAULTS = {
         // are commonly plain http behind a TLS-terminating ingress.
         allowHttpEndpoints: true,
         // Whether an endpoint resolving into a private/loopback range may be
-        // called. On by default because that is exactly where a self-hosted
-        // gateway lives (docker-compose service name, cluster IP, localhost);
-        // the endpoint allowlist, not the IP range, is the primary control here.
+        // called. OFF by default — deny-by-default: the registered-endpoint
+        // allowlist cannot protect against an endpoint that was itself
+        // registered to point at an internal service, so the IP denylist is the
+        // only control for that case and an operator must opt in explicitly.
+        //
+        // Self-hosted gateways commonly do live on a private address
+        // (docker-compose service name, cluster IP, localhost); such a
+        // deployment sets allow_private_endpoints = true after confirming that
+        // only intended services are reachable from the portal.
+        //
         // Link-local and cloud-metadata addresses stay blocked either way.
-        allowPrivateEndpoints: true,
+        allowPrivateEndpoints: false,
         // Skip TLS verification for the upstream endpoint. Development only.
         tlsSkipVerify: false,
         timeoutMs: 15000,

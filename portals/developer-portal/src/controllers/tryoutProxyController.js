@@ -52,7 +52,12 @@ function isSameSiteRequest(req) {
         return site === 'same-origin' || site === 'same-site' || site === 'none';
     }
     const origin = req.headers.origin;
-    if (!origin) return true; // Non-browser caller (curl, tests) — nothing to compare.
+    // Fail closed when neither signal is present. Every browser that can run the
+    // try-it panel sends Sec-Fetch-Site, so an absent pair means the caller is
+    // not the panel — and "no headers" must not be the one way to bypass the
+    // check. A non-browser caller (curl, a test) is expected to set an explicit
+    // same-origin Origin header.
+    if (!origin) return false;
     try {
         return new URL(origin).host === req.get('host');
     } catch {

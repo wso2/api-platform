@@ -49,7 +49,7 @@ const logger = require('../config/logger');
 const orgDao = require('../dao/organizationDao');
 const apiDao = require('../dao/apiDao');
 const apiMetadataService = require('./apiMetadataService');
-const { createGuardedLookup, assertAllowedScheme } = require('../utils/ssrfGuard');
+const { createGuardedLookup, assertAllowedScheme, assertAllowedHost } = require('../utils/ssrfGuard');
 
 function tryoutConfig() {
     return config.tryout || {};
@@ -160,6 +160,11 @@ function selectAllowedTarget(rawTarget, allowedEndpoints) {
     assertAllowedScheme(rawTarget, { allowHttp: cfg.allowHttpEndpoints !== false });
 
     const target = new URL(rawTarget);
+
+    // An IP-literal host never reaches the Agent's lookup hook — Node skips DNS
+    // resolution for literals — so the denylist has to be applied here or a
+    // target like "http://169.254.169.254/" would connect unchecked.
+    assertAllowedHost(target.hostname, { allowPrivate: cfg.allowPrivateEndpoints !== false });
 
     // No legitimate try-it target carries credentials, and userinfo is exactly
     // the shape that makes "https://gateway.example.com@attacker.example" read

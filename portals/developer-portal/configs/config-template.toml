@@ -207,7 +207,14 @@ signature_tolerance_sec = 300
 [developer_portal.tryout]
 enabled = true
 allow_http_endpoints = true    # false: only https:// endpoints may be called
-allow_private_endpoints = true # false: refuse endpoints resolving to private/loopback ranges
+# Deny-by-default. The registered-endpoint allowlist cannot protect against an
+# endpoint that was itself registered to point at an internal service, so the IP
+# denylist is the only control for that case — opt in explicitly. Set to true
+# when the gateway legitimately sits on a private address (docker-compose service
+# name, cluster IP, localhost), after confirming that only intended services are
+# reachable from the portal. Try-it against such a gateway fails while this is
+# false. Link-local/cloud-metadata addresses are refused either way.
+allow_private_endpoints = false
 tls_skip_verify = false        # development only
 timeout_ms = 15000
 max_request_bytes = 1048576    # 1 MiB
