@@ -180,13 +180,20 @@ DIST_VERSION  := $(shell echo "$(VERSION)" | sed 's/-SNAPSHOT//')
 DIST_NAME     := wso2apip-ai-workspace-$(DIST_VERSION)
 DIST_DIR      := target/$(DIST_NAME)
 DIST_ZIP      := target/$(DIST_NAME).zip
-PLATFORM_API_VERSION ?= $(shell cat ../../platform-api/VERSION 2>/dev/null | sed 's/-SNAPSHOT//' || echo "0.0.0")
+# Fallback applied to the captured value rather than with `|| echo` — see the
+# note on DEVPORTAL_VERSION below. An empty value here would also propagate into
+# PLATFORM_API_TAG, producing the malformed git tag "platform-api/v".
+PLATFORM_API_VERSION ?= $(shell v=$$(sed 's/-SNAPSHOT//' ../../platform-api/VERSION 2>/dev/null); echo "$${v:-0.0.0}")
 PLATFORM_API_TAG := platform-api/v$(PLATFORM_API_VERSION)
 # Version used to pin the optional developer-portal image (the profile-gated
 # service in docker-compose.yaml). Its config is not merged into the unified
 # config.toml — the profile is opt-in and self-served (see README) — so only the
 # image tag is pinned here for a reproducible release.
-DEVPORTAL_VERSION ?= $(shell cat ../developer-portal/VERSION 2>/dev/null | sed 's/-SNAPSHOT//' || echo "0.0.0")
+#
+# The fallback is applied to the captured value rather than with `|| echo`: in a
+# `cat … | sed …` pipeline the exit status is sed's, and sed succeeds on empty
+# input, so a missing or empty VERSION file would otherwise yield an empty string.
+DEVPORTAL_VERSION ?= $(shell v=$$(sed 's/-SNAPSHOT//' ../developer-portal/VERSION 2>/dev/null); echo "$${v:-0.0.0}")
 
 # When PLATFORM_API_VERSION is supplied explicitly (e.g. `make dist PLATFORM_API_VERSION=0.10.0`),
 # the platform-api db-scripts are fetched from the released git tag $(PLATFORM_API_TAG) so the

@@ -137,8 +137,12 @@ DIST_ZIP     := target/$(DIST_NAME).zip
 # service in docker-compose.yaml). Its config is not merged into the active
 # config.toml — the profile is opt-in and self-served (see README) — so only the
 # image tag is pinned here for a reproducible release.
+#
+# The fallback is applied to the captured value rather than with `|| echo`: in a
+# `cat … | sed …` pipeline the exit status is sed's, and sed succeeds on empty
+# input, so a missing or empty VERSION file would otherwise yield an empty string.
 AIW_IMAGE   := $(DOCKER_REGISTRY)/ai-workspace
-AIW_VERSION ?= $(shell cat ../ai-workspace/VERSION 2>/dev/null | sed 's/-SNAPSHOT//' || echo "0.0.0")
+AIW_VERSION ?= $(shell v=$$(sed 's/-SNAPSHOT//' ../ai-workspace/VERSION 2>/dev/null); echo "$${v:-0.0.0}")
 
 # Merge a Developer Portal config and a Platform API config into one unified
 # multi-component config file: $(call merge_config,<dp-toml>,<cp-toml>,<out>).
