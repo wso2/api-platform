@@ -123,6 +123,89 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 	return err
 }
 
+// CreateImportedVersion inserts a template version pushed from the gateway (DP->CP)
+func (r *LLMProviderTemplateRepo) CreateImportedVersion(t *model.LLMProviderTemplate, makeLatest bool) error {
+	configJSON, err := json.Marshal(&llmProviderTemplateConfig{
+		ManagedBy:        t.ManagedBy,
+		Metadata:         t.Metadata,
+		PromptTokens:     t.PromptTokens,
+		CompletionTokens: t.CompletionTokens,
+		TotalTokens:      t.TotalTokens,
+		RemainingTokens:  t.RemainingTokens,
+		RequestModel:     t.RequestModel,
+		ResponseModel:    t.ResponseModel,
+		ResourceMappings: t.ResourceMappings,
+	})
+	if err != nil {
+		return err
+	}
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Defensive: the importer resolves an existing version by handle before reaching this path,
+	// so (group_id, version) should be new here. Reject a collision rather than create a
+	// duplicate version within the family.
+	var sameVersion int
+	if err = tx.QueryRow(r.db.Rebind(`
+		SELECT COUNT(*) FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ? AND version = ?
+	`), t.GroupID, t.OrganizationUUID, t.Version).Scan(&sameVersion); err != nil {
+		return err
+	}
+	if sameVersion > 0 {
+		return apperror.LLMProviderTemplateVersionExists.New()
+	}
+
+	if makeLatest {
+		if _, err = tx.Exec(r.db.Rebind(`
+			UPDATE llm_provider_templates SET is_latest = ? WHERE group_id = ? AND organization_uuid = ? AND is_latest = ?
+		`), 0, t.GroupID, t.OrganizationUUID, 1); err != nil {
+			return err
+		}
+	}
+
+	if t.UUID == "" {
+		uuidStr, uerr := utils.GenerateUUID()
+		if uerr != nil {
+			return fmt.Errorf("failed to generate LLM provider template ID: %w", uerr)
+		}
+		t.UUID = uuidStr
+	}
+	t.IsLatest = makeLatest
+	t.Enabled = true
+	t.UpdatedBy = t.CreatedBy
+	now := time.Now().UTC()
+	if t.CreatedAt.IsZero() {
+		t.CreatedAt = now
+	}
+	if t.UpdatedAt.IsZero() {
+		t.UpdatedAt = now
+	}
+	origin := t.Origin
+	if origin == "" {
+		origin = constants.OriginCP
+	}
+
+	if _, err = tx.Exec(r.db.Rebind(`
+		INSERT INTO llm_provider_templates (
+			uuid, organization_uuid, handle, group_id, display_name, managed_by, description, created_by, updated_by,
+			origin, configuration, openapi_spec, version, is_latest, enabled, created_at, updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`),
+		t.UUID, t.OrganizationUUID, t.ID, t.GroupID, t.Name, t.ManagedBy, t.Description, t.CreatedBy, t.UpdatedBy,
+		origin, configJSON, []byte(t.OpenAPISpec), t.Version, boolToInt(t.IsLatest), boolToInt(t.Enabled),
+		t.CreatedAt, t.UpdatedAt,
+	); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 const maxCreateNewVersionRetries = 3
 
 func (r *LLMProviderTemplateRepo) CreateNewVersion(t *model.LLMProviderTemplate) error {

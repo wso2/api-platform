@@ -19,12 +19,17 @@ package service
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
+
+// defaultImportTemplateVersion is used when a gateway-pushed template omits spec.version.
+const defaultImportTemplateVersion = "v1.0"
 
 // llmProviderTemplateImporter imports LLM Provider Template artifacts. Templates are
 // organization-level configuration: they are not backed by the artifacts table and
@@ -41,7 +46,7 @@ func (i *llmProviderTemplateImporter) Kind() string          { return constants.
 func (i *llmProviderTemplateImporter) RequiresProject() bool { return false }
 
 func (i *llmProviderTemplateImporter) Import(ctx *ImportContext) (*ImportResult, error) {
-	version := utils.ImportVersion(ctx.Configuration)
+	handle := utils.ImportHandle(ctx.Configuration)
 
 	// Decode the configuration-bearing fields without clobbering identity fields.
 	var specTmpl model.LLMProviderTemplate
@@ -49,11 +54,24 @@ func (i *llmProviderTemplateImporter) Import(ctx *ImportContext) (*ImportResult,
 		return nil, err
 	}
 
+	version := strings.TrimSpace(specTmpl.Version)
+	if version == "" {
+		version = defaultImportTemplateVersion
+	}
+	groupID := strings.TrimSpace(specTmpl.GroupID)
+	if groupID == "" {
+		groupID = handle
+	}
+	managedBy := strings.TrimSpace(specTmpl.ManagedBy)
+	if managedBy == "" {
+		managedBy = constants.TemplateManagedByOrganization
+	}
+
 	// Templates are not in the artifacts table, so the orchestrator cannot resolve them
 	// by handle; resolve existence here by handle (metadata.name). When found, the
 	// template keeps its own control-plane UUID; ctx.ID (a freshly generated UUID) is
 	// used only when creating a new template.
-	existing, err := i.templateRepo.GetByID(utils.ImportHandle(ctx.Configuration), ctx.OrgID)
+	existing, err := i.templateRepo.GetByID(handle, ctx.OrgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up existing LLM provider template: %w", err)
 	}
@@ -62,7 +80,10 @@ func (i *llmProviderTemplateImporter) Import(ctx *ImportContext) (*ImportResult,
 		tmpl := &model.LLMProviderTemplate{
 			UUID:             ctx.ID,
 			OrganizationUUID: ctx.OrgID,
-			ID:               utils.ImportHandle(ctx.Configuration),
+			ID:               handle,
+			GroupID:          groupID,
+			Version:          version,
+			ManagedBy:        managedBy,
 			Name:             utils.ImportDisplayName(ctx.Configuration),
 			Origin:           constants.OriginDP,
 			Metadata:         specTmpl.Metadata,
@@ -81,7 +102,11 @@ func (i *llmProviderTemplateImporter) Import(ctx *ImportContext) (*ImportResult,
 			tmpl.CreatedAt = *ctx.DeployedAt
 			tmpl.UpdatedAt = *ctx.DeployedAt
 		}
-		if err := i.templateRepo.Create(tmpl); err != nil {
+		makeLatest, err := i.isNewestInFamily(groupID, version, ctx.OrgID)
+		if err != nil {
+			return nil, err
+		}
+		if err := i.templateRepo.CreateImportedVersion(tmpl, makeLatest); err != nil {
 			return nil, fmt.Errorf("failed to create LLM provider template from gateway import: %w", err)
 		}
 		return &ImportResult{ID: tmpl.UUID, DeployedVersion: version, Deployable: false}, nil
@@ -92,8 +117,10 @@ func (i *llmProviderTemplateImporter) Import(ctx *ImportContext) (*ImportResult,
 	// copy (templates aren't artifact-backed, so there is no deployments row to derive it from).
 	// A CP-owned template is never overwritten by a gateway push. Templates have no
 	// gateway-specific data, so any non-winning push (CP-owned or stale) is a no-op.
+	// group_id and version are identity for the row (keyed by handle) and are not re-written here.
 	if utils.DecideMetadataWrite(false, existing.Origin, &existing.UpdatedAt, ctx.DeployedAt) == utils.WriteFullMetadata {
 		existing.Name = utils.ImportDisplayName(ctx.Configuration)
+		existing.ManagedBy = managedBy
 		existing.Metadata = specTmpl.Metadata
 		existing.PromptTokens = specTmpl.PromptTokens
 		existing.CompletionTokens = specTmpl.CompletionTokens
@@ -113,4 +140,55 @@ func (i *llmProviderTemplateImporter) Import(ctx *ImportContext) (*ImportResult,
 	}
 	// Return the template's own control-plane UUID, not the orchestrator-generated one.
 	return &ImportResult{ID: existing.UUID, DeployedVersion: version, Deployable: false}, nil
+}
+
+// isNewestInFamily reports whether version is strictly higher than every version already stored for groupID
+func (i *llmProviderTemplateImporter) isNewestInFamily(groupID, version, orgID string) (bool, error) {
+	count, err := i.templateRepo.CountVersions(groupID, orgID)
+	if err != nil {
+		return false, fmt.Errorf("failed to count LLM provider template versions: %w", err)
+	}
+	if count == 0 {
+		return true, nil
+	}
+	versions, err := i.templateRepo.ListVersions(groupID, orgID, count, 0)
+	if err != nil {
+		return false, fmt.Errorf("failed to list LLM provider template versions: %w", err)
+	}
+	for _, ev := range versions {
+		if !templateVersionNewer(version, ev.Version) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// templateVersionNewer reports whether template version a is strictly higher than b.
+// versions are v<major>.<minor> (e.g. v1.0, v2.3)
+func templateVersionNewer(a, b string) bool {
+	aMaj, aMin, aOK := parseTemplateVersion(a)
+	bMaj, bMin, bOK := parseTemplateVersion(b)
+	if aOK && bOK {
+		if aMaj != bMaj {
+			return aMaj > bMaj
+		}
+		return aMin > bMin
+	}
+	return a > b
+}
+
+func parseTemplateVersion(v string) (major, minor int, ok bool) {
+	v = strings.TrimSpace(v)
+	v = strings.TrimPrefix(v, "v")
+	v = strings.TrimPrefix(v, "V")
+	majStr, minStr, found := strings.Cut(v, ".")
+	if !found {
+		return 0, 0, false
+	}
+	major, err1 := strconv.Atoi(majStr)
+	minor, err2 := strconv.Atoi(minStr)
+	if err1 != nil || err2 != nil {
+		return 0, 0, false
+	}
+	return major, minor, true
 }

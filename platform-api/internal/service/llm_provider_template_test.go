@@ -135,6 +135,15 @@ func (m *mockLLMProviderTemplateCRUDRepo) CreateNewVersion(t *model.LLMProviderT
 	return nil
 }
 
+func (m *mockLLMProviderTemplateCRUDRepo) CreateImportedVersion(t *model.LLMProviderTemplate, makeLatest bool) error {
+	if m.createNewVersionErr != nil {
+		return m.createNewVersionErr
+	}
+	t.IsLatest = makeLatest
+	m.createdVersion = t
+	return nil
+}
+
 func (m *mockLLMProviderTemplateCRUDRepo) CountVersions(templateID, orgUUID string) (int, error) {
 	return m.countVersionsResult, m.countVersionsErr
 }

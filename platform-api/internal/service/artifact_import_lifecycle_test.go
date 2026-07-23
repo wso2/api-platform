@@ -370,6 +370,71 @@ func TestImport_LLMProviderTemplate_CPOriginProtected(t *testing.T) {
 	}
 }
 
+// dpVersionedTemplateReq builds a gateway template push carrying the versioning identity
+// (groupId/version/managedBy) that issue #2717 requires the control plane to honor.
+func dpVersionedTemplateReq(dpID, handle, displayName, groupID, version, managedBy string) dto.ImportGatewayArtifactRequest {
+	req := dpTemplateReq(dpID, handle, displayName)
+	req.Configuration.Spec["groupId"] = groupID
+	req.Configuration.Spec["version"] = version
+	req.Configuration.Spec["managedBy"] = managedBy
+	return req
+}
+
+// A gateway pushes two handles sharing a groupId: the control plane must store them as two
+// versions of one family (same group_id, distinct versions, is_latest on the highest), not two
+// standalone templates — the core of issue #2717.
+func TestImport_LLMProviderTemplate_GroupIDAndVersionHonored(t *testing.T) {
+	d := setupImportTest(t)
+
+	mustImport(t, d, withDeployedAt(dpVersionedTemplateReq("dp-v1", "openai-v1", "OpenAI", "openai", "v1.0", "wso2"), baseDeployedAt))
+
+	v1, _ := d.templateRepo.GetByID("openai-v1", importTestOrgID)
+	if v1 == nil || v1.GroupID != "openai" || v1.Version != "v1.0" || v1.ManagedBy != "wso2" {
+		t.Fatalf("v1 = %+v, want group_id 'openai', version 'v1.0', managed_by 'wso2'", v1)
+	}
+	if !v1.IsLatest {
+		t.Errorf("first version must be is_latest")
+	}
+
+	// A second handle in the same family with a higher version.
+	mustImport(t, d, withDeployedAt(dpVersionedTemplateReq("dp-v2", "openai-v2", "OpenAI", "openai", "v2.0", "wso2"), newerDeployedAt))
+
+	v2, _ := d.templateRepo.GetByID("openai-v2", importTestOrgID)
+	if v2 == nil || v2.GroupID != "openai" || v2.Version != "v2.0" {
+		t.Fatalf("v2 = %+v, want group_id 'openai', version 'v2.0'", v2)
+	}
+	// v2 is the highest version -> it becomes latest, v1 is demoted.
+	if !v2.IsLatest {
+		t.Errorf("v2.0 must be is_latest after being added to the family")
+	}
+	v1After, _ := d.templateRepo.GetByID("openai-v1", importTestOrgID)
+	if v1After.IsLatest {
+		t.Errorf("v1.0 must be demoted once v2.0 joins the family")
+	}
+	if n, _ := d.templateRepo.CountVersions("openai", importTestOrgID); n != 2 {
+		t.Errorf("family 'openai' has %d versions, want 2", n)
+	}
+}
+
+// A gateway resync pushes versions newest-first (GetGatewayOriginArtifactsForSync orders by
+// created_at DESC). is_latest must track the highest version, not the last one pushed.
+func TestImport_LLMProviderTemplate_OutOfOrderVersionKeepsHighestLatest(t *testing.T) {
+	d := setupImportTest(t)
+
+	// v2.0 arrives first, then the older v1.0.
+	mustImport(t, d, withDeployedAt(dpVersionedTemplateReq("dp-v2", "openai-v2", "OpenAI", "openai", "v2.0", "wso2"), newerDeployedAt))
+	mustImport(t, d, withDeployedAt(dpVersionedTemplateReq("dp-v1", "openai-v1", "OpenAI", "openai", "v1.0", "wso2"), baseDeployedAt))
+
+	v2, _ := d.templateRepo.GetByID("openai-v2", importTestOrgID)
+	v1, _ := d.templateRepo.GetByID("openai-v1", importTestOrgID)
+	if !v2.IsLatest {
+		t.Errorf("v2.0 must remain is_latest even though v1.0 was pushed after it")
+	}
+	if v1.IsLatest {
+		t.Errorf("v1.0 must not be is_latest (it is lower than v2.0)")
+	}
+}
+
 // ===========================================================================
 // LLM Provider lifecycle (organization-level, deployment-backed,
 // references its template by handle)
