@@ -202,6 +202,8 @@ data:
     [router.http_listener]
     server_header_transformation = {{ $router.http_listener.server_header_transformation | quote }}
     server_header_value = {{ $router.http_listener.server_header_value | quote }}
+    disable_path_normalization = {{ $router.http_listener.disable_path_normalization }}
+    path_with_escaped_slashes_action = {{ $router.http_listener.path_with_escaped_slashes_action | quote }}
 
     [router.http_listener.timeouts]
     request_timeout = {{ $router.http_listener.timeouts.request_timeout | quote }}
