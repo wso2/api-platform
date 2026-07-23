@@ -55,7 +55,7 @@ Verify the Platform API is healthy:
 curl -fk https://localhost:9243/health
 ```
 
-Open the Developer Portal in a browser at `https://localhost:3000/default/views/default` and log in with the admin credentials printed by `setup.sh`.
+Open the Developer Portal in a browser at `https://localhost:9543/default/views/default` and log in with the admin credentials printed by `setup.sh`.
 
 > **Browser trust warning?** Both services use a self-signed TLS certificate by default. Click **Advanced → Proceed** to continue. See [Custom TLS Certificates](#custom-tls-certificates) to remove the warning permanently.
 
@@ -73,7 +73,7 @@ Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD
 
 | Port | Service | Description |
 |------|---------|-------------|
-| `3000` | Developer Portal | HTTPS — browser entry point |
+| `9543` | Developer Portal | HTTPS — browser entry point |
 | `9243` | Platform API | HTTPS — local-auth backend |
 | `9643` | AI Workspace | HTTPS — only when the `with-ai-workspace` profile is enabled (see below) |
 

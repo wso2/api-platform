@@ -45,12 +45,12 @@
 # will fail trying to read a TLS cert path that only exists in the containers.
 
 [developer_portal.server]
-port = '{{ env "APIP_DP_SERVER_PORT" "3000" }}'
+port = '{{ env "APIP_DP_SERVER_PORT" "9543" }}'
 # Canonical public origin of this portal, used only to build the absolute URLs
 # embedded in a generated agent prompt (so they don't depend on the request's
 # Host header). Set this to the portal's externally-reachable origin behind a
 # proxy/LB. Empty falls back to the request origin.
-base_url = '{{ env "APIP_DP_SERVER_BASE_URL" "https://localhost:3000" }}'
+base_url = '{{ env "APIP_DP_SERVER_BASE_URL" "https://localhost:9543" }}'
 
 # Single listener on server.port; enabled toggles whether it terminates TLS. Set
 # enabled=false only when a trusted upstream (proxy/LB/ingress) terminates TLS —

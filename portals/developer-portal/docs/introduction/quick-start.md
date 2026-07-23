@@ -6,7 +6,7 @@ Get the Developer Portal running locally in a few minutes using Docker Compose.
 
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/) installed
 - `openssl` on your `PATH` (used by the setup script to generate certs and secrets)
-- Ports 3000 (Developer Portal) and 9243 (Platform API) available
+- Ports 9543 (Developer Portal) and 9243 (Platform API) available
 
 ## Steps
 
@@ -48,7 +48,7 @@ This starts the Developer Portal (SQLite by default). On first boot the database
 Navigate to:
 
 ```
-https://localhost:3000/default/views/default
+https://localhost:9543/default/views/default
 ```
 
 Sign in with the admin username and password you set when running `./scripts/setup.sh`.
@@ -65,7 +65,7 @@ The fastest way to see a populated catalog is to deploy the bundled sample APIs 
 
 This deploys everything under `samples/` into the `default` organization through the public REST API (the portal has no built-in seeding logic). It prompts for the admin username and password you set in step 2 — or set `ADMIN_USERNAME` / `ADMIN_PASSWORD` to skip the prompt. Safe to re-run: samples that already exist (matched by name and version) are skipped.
 
-> Requires `curl`, `jq`, and `zip` on your `PATH`. The portal must be running (step 3). Set `DEVPORTAL_URL` / `PLATFORM_API_URL` to override the defaults (`https://localhost:3000` / `https://localhost:9243`).
+> Requires `curl`, `jq`, and `zip` on your `PATH`. The portal must be running (step 3). Set `DEVPORTAL_URL` / `PLATFORM_API_URL` to override the defaults (`https://localhost:9543` / `https://localhost:9243`).
 
 Refresh the catalog page and the sample APIs appear. To publish an API of your own instead, continue below.
 
@@ -200,7 +200,7 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
 # Publish the API (the token's org_handle claim scopes this to the "default" org)
-curl -sk -X POST "https://localhost:3000/api/v0.9/apis" \
+curl -sk -X POST "https://localhost:9543/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "metadata=@api.yaml;type=application/yaml" \
   -F "definition=@openapi.yaml;type=application/yaml"
@@ -214,7 +214,7 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 |---|---|
 | Organization | `default` |
 | Default view | `default` |
-| Portal URL | `https://localhost:3000/default/views/default` |
+| Portal URL | `https://localhost:9543/default/views/default` |
 | Admin credentials | Set when you ran `./scripts/setup.sh` (stored bcrypt-hashed in `api-platform.env`) |
 | Sample API | `Ping API` visible in the catalog |
 

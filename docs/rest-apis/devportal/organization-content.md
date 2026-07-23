@@ -10,7 +10,7 @@
 
 ```shell
 
-curl -X GET https://localhost:3000/api/v0.9/views/{viewId}/asset?fileType=string&fileName=string \
+curl -X GET https://localhost:9543/api/v0.9/views/{viewId}/asset?fileType=string&fileName=string \
   -u {username}:{password} \
   -H 'Accept: text/css'
 
@@ -99,7 +99,7 @@ Retrieves a single organization theme asset (CSS, image, etc.) by `fileType` and
 
 ```shell
 
-curl -X POST https://localhost:3000/api/v0.9/views/{viewId}/apply-theme \
+curl -X POST https://localhost:9543/api/v0.9/views/{viewId}/apply-theme \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -195,7 +195,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST https://localhost:3000/api/v0.9/views/{viewId}/reset-theme \
+curl -X POST https://localhost:9543/api/v0.9/views/{viewId}/reset-theme \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -246,7 +246,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:3000/api/v0.9/views/{viewId}/export-theme \
+curl -X GET https://localhost:9543/api/v0.9/views/{viewId}/export-theme \
   -u {username}:{password} \
   -H 'Accept: application/zip' \
   -H 'Authorization: Bearer {access-token}'

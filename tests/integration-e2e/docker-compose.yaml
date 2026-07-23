@@ -312,7 +312,7 @@ services:
       # closed at startup if it doesn't resolve. Fixed test-only value.
       - APIP_DP_SECURITY_SESSION_SECRET=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
     ports:
-      - "${DP_HOST_PORT:-3000}:3000"
+      - "${DP_HOST_PORT:-9543}:9543"
     networks: [e2e]
 
 networks:

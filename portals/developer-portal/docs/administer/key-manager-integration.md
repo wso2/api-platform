@@ -31,7 +31,7 @@ spec:
 ```
 
 ```bash
-curl -k -X POST https://localhost:3000/api/v0.9/key-managers \
+curl -k -X POST https://localhost:9543/api/v0.9/key-managers \
   -H "Authorization: Bearer $TOKEN" \
   -F "keymanager=@keymanager.yaml"
 ```
@@ -48,13 +48,13 @@ Every key manager is treated as a generic OAuth2 `client_credentials` provider.
 ## List Key Managers
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/key-managers -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:9543/api/v0.9/key-managers -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a Key Manager
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/key-managers/{kmId} -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:9543/api/v0.9/key-managers/{kmId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Update a Key Manager
@@ -72,7 +72,7 @@ spec:
 ```
 
 ```bash
-curl -k -X PUT https://localhost:3000/api/v0.9/key-managers/{kmId} \
+curl -k -X PUT https://localhost:9543/api/v0.9/key-managers/{kmId} \
   -H "Authorization: Bearer $TOKEN" \
   -F "keymanager=@keymanager-update.yaml"
 ```
@@ -80,7 +80,7 @@ curl -k -X PUT https://localhost:3000/api/v0.9/key-managers/{kmId} \
 ## Delete a Key Manager
 
 ```bash
-curl -k -X DELETE https://localhost:3000/api/v0.9/key-managers/{kmId} \
+curl -k -X DELETE https://localhost:9543/api/v0.9/key-managers/{kmId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 

@@ -66,7 +66,7 @@ Open the AI Workspace in a browser at `https://localhost:9643` and log in with t
 |------|---------|-------------|
 | `9643` | AI Workspace (BFF) | HTTPS — browser entry point |
 | `9243` | Platform API | HTTPS — backend REST API |
-| `3000` | Developer Portal | HTTPS — only when the `with-developer-portal` profile is enabled (see below) |
+| `9543` | Developer Portal | HTTPS — only when the `with-developer-portal` profile is enabled (see below) |
 
 ## Developer Portal (optional)
 
@@ -88,7 +88,7 @@ Then start the stack with the profile enabled:
 docker compose --profile with-developer-portal up -d
 ```
 
-The portal comes up at `https://localhost:3000`, verifying Platform API-issued tokens with the same RS256 public key the rest of the stack uses. It keeps its own data in the `developer-portal-data` volume. Omit `--profile with-developer-portal` on any later `docker compose` command to leave it stopped.
+The portal comes up at `https://localhost:9543`, verifying Platform API-issued tokens with the same RS256 public key the rest of the stack uses. It keeps its own data in the `developer-portal-data` volume. Omit `--profile with-developer-portal` on any later `docker compose` command to leave it stopped.
 
 ## Configuration
 

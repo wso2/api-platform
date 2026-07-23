@@ -8,7 +8,7 @@ For end-user documentation, see [docs/](docs/).
 
 | Port | Protocol | Description |
 |------|----------|-------------|
-| `3000` | HTTPS (default) / HTTP | Developer Portal UI and Admin REST API |
+| `9543` | HTTPS (default) / HTTP | Developer Portal UI and Admin REST API |
 
 ## Prerequisites
 
@@ -33,7 +33,7 @@ docker compose up
 
 `./scripts/setup.sh` is a one-time step: it generates devportal's and the Platform API's encryption/JWT secrets, a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build devportal from source instead of using the published image, run `docker compose up --build`.
 
-Then open **https://localhost:3000/default/views/default** and log in with the admin credentials `./scripts/setup.sh` printed.
+Then open **https://localhost:9543/default/views/default** and log in with the admin credentials `./scripts/setup.sh` printed.
 
 > **Browser warning:** the TLS certificate is self-signed. Click **Advanced → Proceed** (Chrome) or **Accept the Risk** (Firefox) to continue.
 
@@ -157,7 +157,7 @@ token_url = "https://<your-idp>/oauth2/token"
 user_info_url = "https://<your-idp>/oauth2/userinfo"
 jwks_url = "https://<your-idp>/oauth2/jwks"
 client_id = "<your-client-id>"
-callback_url = "http://localhost:3000/<handle>/callback"
+callback_url = "http://localhost:9543/<handle>/callback"
 ```
 
 For local exploration you can skip IdP setup by using the Platform API sidecar instead (see [Local auth](#local-auth)).
@@ -207,7 +207,7 @@ npm install
 npm run start:local
 ```
 
-Open **http://localhost:3000/default/views/default**
+Open **http://localhost:9543/default/views/default**
 
 ---
 
@@ -219,7 +219,7 @@ Deploys the sample APIs and MCP servers under `samples/` into the default organi
 ./scripts/seed-samples.sh
 ```
 
-Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD` to skip the prompt, e.g. in CI). Safe to re-run — entries that already exist are skipped. Set `DEVPORTAL_URL`/`PLATFORM_API_URL` to override the defaults (`https://localhost:3000` / `https://localhost:9243`) — e.g. `DEVPORTAL_URL=http://localhost:3000` when running against `npm run start:local`.
+Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD` to skip the prompt, e.g. in CI). Safe to re-run — entries that already exist are skipped. Set `DEVPORTAL_URL`/`PLATFORM_API_URL` to override the defaults (`https://localhost:9543` / `https://localhost:9243`) — e.g. `DEVPORTAL_URL=http://localhost:9543` when running against `npm run start:local`.
 
 ---
 
@@ -412,10 +412,10 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
 
 # Get the default org UUID
 ORG_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \
-  https://localhost:3000/organizations | jq -r '.[0].id')
+  https://localhost:9543/organizations | jq -r '.[0].id')
 
 # Create the API
-curl -sk -X POST "https://localhost:3000/api/v0.9/apis" \
+curl -sk -X POST "https://localhost:9543/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "api=@api.yaml;type=application/yaml" \
   -F "apiDefinition=@openapi.yaml;type=application/yaml"
@@ -429,6 +429,6 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 |---|---|
 | Organization | `default` |
 | Default view | `default` |
-| Portal URL | `https://localhost:3000/default/views/default` |
+| Portal URL | `https://localhost:9543/default/views/default` |
 | Admin credentials | printed by `./scripts/setup.sh` (local auth) |
 | Sample API | `Ping API` visible in the catalog |

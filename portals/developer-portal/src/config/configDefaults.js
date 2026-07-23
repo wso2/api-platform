@@ -31,12 +31,12 @@
  */
 const DEFAULTS = {
     server: {
-        port: 3000,
+        port: 9543,
         // Canonical public origin (scheme://host[:port]) of this portal. Used
         // ONLY to build the absolute URLs embedded in a generated agent prompt,
         // so those URLs don't depend on the request's (forgeable) Host header.
         // Empty = fall back to the request origin.
-        baseUrl: 'https://localhost:3000',
+        baseUrl: 'https://localhost:9543',
         // Single listener on server.port; https.enabled toggles whether it
         // terminates TLS. enabled=false serves plain HTTP on that port — for when
         // a trusted upstream terminates TLS. cert_file/key_file are required only
@@ -109,11 +109,11 @@ const DEFAULTS = {
             clientId: '',
             clientSecret: '',
             audience: '',
-            callbackUrl: 'http://localhost:3000/default/callback',
+            callbackUrl: 'http://localhost:9543/default/callback',
             scope: 'openid profile email',
             signUpUrl: '',
             logoutUrl: 'https://localhost:9443/oidc/logout',
-            logoutRedirectUri: 'http://localhost:3000/default',
+            logoutRedirectUri: 'http://localhost:9543/default',
             certificate: '',
             jwksUrl: 'https://localhost:9443/oauth2/jwks',
             tokenRefreshTimeoutMs: 10000,

@@ -77,7 +77,7 @@ ASGARDEO_RESOURCE_IDENTIFIER=https://<your-domain> \
 ./production/scripts/register_asgardeo_scopes.sh
 ```
 
-For local development, the default `ASGARDEO_RESOURCE_IDENTIFIER=https://localhost:3000` works without changes.
+For local development, the default `ASGARDEO_RESOURCE_IDENTIFIER=https://localhost:9543` works without changes.
 
 > The system application is only needed to run this script. Once the `dp:*` API resource is registered in Asgardeo, the system app can be deleted.
 

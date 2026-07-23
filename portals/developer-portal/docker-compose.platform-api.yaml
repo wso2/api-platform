@@ -23,7 +23,7 @@
 #      api-platform.env (also read directly by `npm start` below).
 #   2. docker compose -f docker-compose.platform-api.yaml up -d
 #   3. npm start
-#   4. Open http://localhost:3000
+#   4. Open http://localhost:9543
 #      Login with the admin credentials ./scripts/setup.sh printed.
 
 services:

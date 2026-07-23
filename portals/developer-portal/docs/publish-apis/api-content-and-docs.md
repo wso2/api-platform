@@ -34,7 +34,7 @@ At least one of `web/` or `docs/` must be present in the ZIP.
 
 ```bash
 curl -k -X POST \
-  "https://localhost:3000/api/v0.9/apis/{apiId}/assets" \
+  "https://localhost:9543/api/v0.9/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
   -F "content=@my-api-content.zip" \
   -F 'imageMetadata={"api-icon":"api-icon.png"}'
@@ -44,7 +44,7 @@ To update existing content, use `PUT`:
 
 ```bash
 curl -k -X PUT \
-  "https://localhost:3000/api/v0.9/apis/{apiId}/assets" \
+  "https://localhost:9543/api/v0.9/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
   -F "content=@my-api-content-v2.zip" \
   -F 'imageMetadata={"api-icon":"api-icon.png"}'
@@ -138,7 +138,7 @@ To link to externally hosted documentation (rather than uploaded files), pass `d
 
 ```bash
 curl -k -X POST \
-  "https://localhost:3000/api/v0.9/apis/{apiId}/assets" \
+  "https://localhost:9543/api/v0.9/apis/{apiId}/assets" \
   -H "Authorization: Bearer $TOKEN" \
   -F "content=@my-api-content.zip" \
   -F 'docMetadata=[{"name":"External Guide","url":"https://docs.example.com/guide","type":"LINK"}]'
@@ -149,7 +149,7 @@ curl -k -X POST \
 Retrieving content requires both a `type` (`web`, `document`, `image`, or `link`) and a `fileName` query parameter to select a single stored file:
 
 ```bash
-curl -k "https://localhost:3000/api/v0.9/apis/{apiId}/assets?type=document&fileName=getting-started.md" \
+curl -k "https://localhost:9543/api/v0.9/apis/{apiId}/assets?type=document&fileName=getting-started.md" \
   -H "Authorization: Bearer $TOKEN"
 ```
 

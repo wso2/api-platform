@@ -60,8 +60,9 @@ services:
       #   export APIP_DP_SECURITY_SESSION_SECRET=$(openssl rand -hex 32)
       - APIP_DP_SECURITY_ENCRYPTION_KEY=${APIP_DP_SECURITY_ENCRYPTION_KEY:-}
       - APIP_DP_SECURITY_SESSION_SECRET=${APIP_DP_SECURITY_SESSION_SECRET:-}
+      - APIP_DP_SERVER_PORT=${APIP_DP_SERVER_PORT:-9543}
     ports:
-      - "3001:3000"
+      - "${APIP_DP_SERVER_PORT:-9543}:${APIP_DP_SERVER_PORT:-9543}"
     volumes:
       # Replaces the image's shipped configs/config.toml (SQLite-only, fails
       # closed on security secrets) — see devportal-config.toml for why.
@@ -135,7 +136,7 @@ services:
       # allowlist (/etc/platform-api).
       - platform-api-jwt-keys:/etc/platform-api/keys:ro
     environment:
-      - APIP_CP_DEFAULT_DEVPORTAL_API_URL=http://devportal:3000
+      - APIP_CP_DEFAULT_DEVPORTAL_API_URL=http://devportal:${APIP_DP_SERVER_PORT:-9543}
       - APIP_CP_DATABASE_DRIVER=postgres
       - APIP_CP_DATABASE_HOST=postgres
       - APIP_CP_DATABASE_PORT=5432
