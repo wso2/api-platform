@@ -66,11 +66,11 @@ Open the AI Workspace in a browser at `https://localhost:5380` and log in with t
 |------|---------|-------------|
 | `5380` | AI Workspace (BFF) | HTTPS — browser entry point |
 | `9243` | Platform API | HTTPS — backend REST API |
-| `3000` | Developer Portal | HTTPS — only when the `developer-portal` profile is enabled (see below) |
+| `3000` | Developer Portal | HTTPS — only when the `with-developer-portal` profile is enabled (see below) |
 
 ## Developer Portal (optional)
 
-This package runs AI Workspace and the Platform API by default. The **Developer Portal** ships in the same `docker-compose.yaml` as an optional component behind the `developer-portal` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/), sharing the one Platform API — so you can add it without standing up a second Platform API.
+This package runs AI Workspace and the Platform API by default. The **Developer Portal** ships in the same `docker-compose.yaml` as an optional component behind the `with-developer-portal` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/), sharing the one Platform API — so you can add it without standing up a second Platform API.
 
 The portal mounts the **same** `configs/config.toml` the other services do and reads only its own `[developer_portal]` section (it ignores `[ai_workspace]`/`[platform_api]`, including their tokens). It is **off by default**: a plain `docker compose up -d` never starts it. Enabling it takes two one-time steps, because that shipped `config.toml` does **not** carry a `[developer_portal]` section:
 
@@ -85,10 +85,10 @@ The portal mounts the **same** `configs/config.toml` the other services do and r
 Then start the stack with the profile enabled:
 
 ```bash
-docker compose --profile developer-portal up -d
+docker compose --profile with-developer-portal up -d
 ```
 
-The portal comes up at `https://localhost:3000`, verifying Platform API-issued tokens with the same RS256 public key the rest of the stack uses. It keeps its own data in the `developer-portal-data` volume. Omit `--profile developer-portal` on any later `docker compose` command to leave it stopped.
+The portal comes up at `https://localhost:3000`, verifying Platform API-issued tokens with the same RS256 public key the rest of the stack uses. It keeps its own data in the `developer-portal-data` volume. Omit `--profile with-developer-portal` on any later `docker compose` command to leave it stopped.
 
 ## Configuration
 

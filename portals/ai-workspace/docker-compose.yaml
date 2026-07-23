@@ -64,7 +64,7 @@ services:
   # Optional component — NOT started by the default `docker compose up`. The
   # Platform API above is shared, so a single stack can add the Developer Portal
   # without a second Platform API. Enable it with:
-  #   docker compose --profile developer-portal up -d
+  #   docker compose --profile with-developer-portal up -d
   # It reads the SAME configs/config.toml the other services mount; each service
   # consumes only its own root table, so the portal reads [developer_portal] and
   # ignores [ai_workspace]/[platform_api] (and their {{ env }}/{{ file }} tokens).
@@ -77,7 +77,7 @@ services:
     image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-beta-SNAPSHOT
     container_name: developer-portal
     restart: unless-stopped
-    profiles: ["developer-portal"]
+    profiles: ["with-developer-portal"]
     depends_on:
       platform-api:
         condition: service_healthy

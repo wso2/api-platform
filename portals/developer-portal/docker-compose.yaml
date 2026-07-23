@@ -73,7 +73,7 @@ services:
   # Optional component — NOT started by the default `docker compose up`. The
   # Platform API above is shared, so a single stack can add AI Workspace without
   # a second Platform API. Enable it with:
-  #   docker compose --profile ai-workspace up -d
+  #   docker compose --profile with-ai-workspace up -d
   # It reads the SAME configs/config.toml the other services mount; each service
   # consumes only its own root table, so it reads [ai_workspace] and ignores
   # [developer_portal]/[platform_api] (and their {{ env }}/{{ file }} tokens).
@@ -84,7 +84,7 @@ services:
     image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-beta-SNAPSHOT
     container_name: ai-workspace
     restart: unless-stopped
-    profiles: ["ai-workspace"]
+    profiles: ["with-ai-workspace"]
     depends_on:
       platform-api:
         condition: service_healthy
