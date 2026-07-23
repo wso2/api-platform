@@ -242,6 +242,99 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderTransformerIsCo
 	assert.Equal(t, "claude-sonnet-4-5-20250929", (*transformerPolicy.Params)["model"])
 }
 
+// Test that a proxy that loops back into a provider with a downstream api-key-auth policy
+func TestLLMProviderTransformer_TransformProxy_LoopbackAuthCarriesProviderValuePrefix(t *testing.T) {
+	store := storage.NewConfigStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db := newTestSQLiteStorage(t, logger)
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-db-template-id-0000-000000000003",
+		Configuration: api.LLMProviderTemplate{
+			ApiVersion: api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1,
+			Kind:       api.LLMProviderTemplateKindLlmProviderTemplate,
+			Metadata:   api.Metadata{Name: "mistralai"},
+			Spec:       api.LLMProviderTemplateData{DisplayName: "mistralai"},
+		},
+	}
+	require.NoError(t, db.SaveLLMProviderTemplate(template))
+
+	// Provider whose downstream api-key-auth requires a "Bearer" prefix, carried as a
+	// global policy exactly as platform-api deploys it.
+	providerSourceConfig := api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
+		Metadata:   api.Metadata{Name: "mistral-provider"},
+		Spec: api.LLMProviderConfigData{
+			DisplayName:   "mistral-provider",
+			Version:       "v1.0",
+			Context:       stringPtr("/mistral-provider"),
+			Template:      "mistralai",
+			Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
+			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			GlobalPolicies: &[]api.Policy{{
+				Name: constants.API_KEY_AUTH_POLICY_NAME,
+				Params: &map[string]interface{}{
+					"in":          "header",
+					"key":         "X-API-Key",
+					"valuePrefix": "Bearer",
+				},
+			}},
+		},
+	}
+	require.NoError(t, db.SaveConfig(&models.StoredConfig{
+		UUID:                "mistral-provider-uuid",
+		Kind:                string(api.LLMProviderConfigurationKindLlmProvider),
+		Handle:              "mistral-provider",
+		DisplayName:         "mistral-provider",
+		Version:             "v1.0",
+		SourceConfiguration: providerSourceConfig,
+		DesiredState:        models.StateDeployed,
+	}))
+
+	transformer := NewLLMProviderTransformer(store, db, &config.RouterConfig{ListenerPort: 8080}, newTestPolicyVersionResolver())
+
+	proxy := &api.LLMProxyConfiguration{
+		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProxyConfigurationKindLlmProxy,
+		Metadata:   api.Metadata{Name: "proxy-from-mistral"},
+		Spec: api.LLMProxyConfigData{
+			DisplayName: "proxy-from-mistral",
+			Version:     "v1.0",
+			Provider: api.LLMProxyProvider{
+				Id: "mistral-provider",
+				Auth: &api.LLMUpstreamAuth{
+					Type:   api.LLMUpstreamAuthTypeApiKey,
+					Header: stringPtr("X-API-Key"),
+					Value:  stringPtr(`{{ secret "sec-1" }}`),
+				},
+			},
+		},
+	}
+
+	result, err := transformer.Transform(proxy, &api.RestAPI{})
+	require.NoError(t, err)
+
+	var authPolicy *api.Policy
+	for i := range result.Spec.Operations {
+		if result.Spec.Operations[i].Policies == nil {
+			continue
+		}
+		for _, pol := range *result.Spec.Operations[i].Policies {
+			if pol.Name == constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME {
+				p := pol
+				authPolicy = &p
+				break
+			}
+		}
+		if authPolicy != nil {
+			break
+		}
+	}
+	require.NotNil(t, authPolicy, "expected an upstream auth (set-headers) policy on the proxy")
+	assert.Equal(t, `Bearer {{ secret "sec-1" }}`, firstRequestHeaderValue(t, authPolicy.Params))
+}
+
 func firstRequestHeaderValue(t *testing.T, params *map[string]interface{}) string {
 	t.Helper()
 	require.NotNil(t, params)
