@@ -289,7 +289,7 @@ services:
       - APIP_DP_LOGGING_CONSOLE_ONLY=true
       # platform-api signs its tokens with RS256; the devportal verifies them
       # against jwt_public.pem from the shared keypair volume mounted above
-      # (auth.local.jwt_public_key in devportal-config.toml). There is no shared
+      # (auth.local.public_key_path in devportal-config.toml). There is no shared
       # HMAC secret. tls_skip_verify covers platform-api's self-signed cert.
       - APIP_DP_AUTH_LOCAL_PLATFORM_API_URL=https://platform-api:9243
       - APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY=true

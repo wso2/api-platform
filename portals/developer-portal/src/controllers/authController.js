@@ -26,7 +26,7 @@ const constants = require('../utils/constants');
 const util = require('../utils/util');
 const orgDao = require('../dao/organizationDao');
 const { validationResult } = require('express-validator');
-const { decodePlatformJwtClaims } = require('../utils/platformJwt');
+const { verifyPlatformJwtClaims } = require('../utils/platformJwt');
 
 
 
@@ -268,10 +268,17 @@ const handleLocalLogin = async (req, res) => {
         return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
     }
 
-    // Decode JWT claims (token is already verified by the platform API)
-    const claims = decodePlatformJwtClaims(platformToken);
+    // Cryptographically verify the Platform API JWT against its RS256 public key
+    // before trusting any claims — do not rely on the transport alone, since
+    // auth.local.tls_skip_verify may be enabled. Fail closed if no key is configured.
+    const publicKeyPath = config.auth.local?.publicKeyPath;
+    if (!publicKeyPath) {
+        logger.error('Local auth attempted but auth.local.public_key_path is not configured');
+        return res.redirect(`${baseUrl}/login?error=Authentication+service+not+configured`);
+    }
+    const claims = await verifyPlatformJwtClaims(platformToken, publicKeyPath);
     if (!claims) {
-        logger.error('Failed to decode platform API token');
+        logger.error('Failed to verify platform API token');
         return res.redirect(`${baseUrl}/login?error=Login+failed%2C+please+try+again`);
     }
 

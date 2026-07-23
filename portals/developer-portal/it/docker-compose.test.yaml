@@ -79,7 +79,9 @@ services:
       # Public half of the RS256 JWT keypair from `make ensure-certs` — the
       # devportal verifies Platform API tokens with it (test-config.toml reads it
       # via {{ file }}). /etc/devportal is on the devportal's file allowlist.
-      - ./.certs:/etc/devportal/keys:ro
+      # Mount only jwt_public.pem, not the whole .certs dir, so the private key
+      # (also in .certs, for platform-api) is never exposed to the devportal.
+      - ./.certs/jwt_public.pem:/etc/devportal/keys/jwt_public.pem:ro
       # Named volume at /tmp (not a new mount point) so Docker copies the image's
       # existing /tmp ownership/permissions into it on first use — a fresh mount
       # at a brand-new path would be root-owned and unwritable by the app user.

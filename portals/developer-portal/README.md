@@ -269,8 +269,8 @@ Every config key can be overridden with an `APIP_DP_*` environment variable. You
 | `APIP_DP_DATABASE_HOST` | `config.database.host` |
 | `APIP_DP_DATABASE_PORT` | `config.database.port` |
 | `APIP_DP_SERVER_HTTPS_ENABLED` | `config.server.https.enabled` |
-| `APIP_DP_IDP_CLIENTID` | `config.idp.clientId` |
-| `APIP_DP_IDP_ISSUER` | `config.idp.issuer` |
+| `APIP_DP_IDP_CLIENTID` | `config.auth.idp.clientId` |
+| `APIP_DP_IDP_ISSUER` | `config.auth.idp.issuer` |
 | `APIP_DP_SERVER_PORT` | `config.server.port` |
 | `APIP_DP_DATABASE_SSL_MODE` | `config.database.sslMode` |
 
