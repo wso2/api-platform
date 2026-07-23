@@ -57,10 +57,11 @@ type Plugin interface {
 
 	// OpenAPISpec returns the plugin's OpenAPI 3.x YAML bytes used to merge
 	// scope requirements into the platform scope registry. It is mandatory:
-	// returning empty bytes, or bytes the registry loader rejects, aborts
-	// startup. Every route the plugin registers must appear in this document
-	// with its required scopes, so no extension route can be served without an
-	// explicit scope requirement (GO-AUTH-007).
+	// returning empty bytes, bytes the registry loader rejects, or a spec that
+	// declares no scope requirement on any operation all abort startup. Every
+	// route the plugin registers must appear in this document with its required
+	// scopes, so no extension route can be served without an explicit scope
+	// requirement (GO-AUTH-007).
 	OpenAPISpec() []byte
 
 	// Shutdown is called during graceful server shutdown.
@@ -101,9 +102,11 @@ type Deps struct {
 }
 
 // AuthSkipPathProvider is an optional interface a Plugin may implement to declare
-// public (unauthenticated) path prefixes. The server appends the returned paths
-// to cfg.Auth.SkipPaths before the auth middleware is built. Keep prefixes narrow
-// and specific — this is an auth-bypass surface (GO-AUTH-004).
+// public (unauthenticated) path prefixes. The server validates each returned path
+// and appends it to cfg.Auth.SkipPaths before the auth middleware is built. Keep
+// prefixes narrow and specific — this is an auth-bypass surface (GO-AUTH-004).
+// Matching is a prefix match, so an over-broad prefix aborts startup: a path must
+// be non-empty, start with "/", not be "/" alone, and contain no "..".
 //
 // This is the internal-tier counterpart to pdk.AuthSkipPathProvider; the server
 // wraps external plugins so both tiers are handled by the same hook.

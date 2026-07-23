@@ -49,10 +49,11 @@ type Plugin interface {
 
 	// OpenAPISpec returns the plugin's OpenAPI 3.x YAML bytes, merged into the
 	// platform scope registry to enforce per-route scopes. It is mandatory:
-	// returning empty bytes, or bytes the registry loader rejects, aborts
-	// startup. Every route the plugin mounts must appear in this document with
-	// its required scopes, so no extension route can be served without an
-	// explicit scope requirement (GO-AUTH-007).
+	// returning empty bytes, bytes the registry loader rejects, or a spec that
+	// declares no scope requirement on any operation all abort startup. Every
+	// route the plugin mounts must appear in this document with its required
+	// scopes, so no extension route can be served without an explicit scope
+	// requirement (GO-AUTH-007).
 	OpenAPISpec() []byte
 
 	// Shutdown is called during graceful server shutdown.
@@ -60,9 +61,12 @@ type Plugin interface {
 }
 
 // AuthSkipPathProvider is an optional interface a Plugin may also implement to
-// declare public (unauthenticated) path prefixes. The server appends them to the
-// auth skip-path list before the auth middleware is built. Keep prefixes narrow
-// and specific — this is an auth-bypass surface (GO-AUTH-004).
+// declare public (unauthenticated) path prefixes. The server validates each path
+// and appends it to the auth skip-path list before the auth middleware is built.
+// Keep prefixes narrow and specific — this is an auth-bypass surface
+// (GO-AUTH-004). Matching is a prefix match, so an over-broad prefix aborts
+// startup: a path must be non-empty, start with "/", not be "/" alone, and
+// contain no "..".
 type AuthSkipPathProvider interface {
 	AuthSkipPaths() []string
 }
