@@ -45,8 +45,8 @@ Apply this rule whenever writing, refactoring, or reviewing JavaScript (`.js`) c
 ### ❌ Anti-Pattern (What to Reject)
 
 ```js
-// BAD: Leaks Sequelize error, sets X-Powered-By equivalent header, reveals auth failure reason,
-// uses source-tagged tracking ID.
+// BAD: Leaks Sequelize error, sets a leaky header, reveals auth failure reason,
+// uses a source-tagged tracking ID.
 app.post('/login', async (req, res) => {
   try {
     const user = await User.findOne({ where: { email: req.body.email } });
@@ -55,14 +55,13 @@ app.post('/login', async (req, res) => {
     }
     const valid = await bcrypt.compare(req.body.password, user.password);
     if (!valid) {
-      return res.status(401).json({ error: 'Wrong password' }); // Enumeration leak
+      return res.status(401).json({ error: 'Wrong password' }); // Distinct response — same enumeration leak
     }
-    res.json({ token: generateToken(user) });
   } catch (err) {
     res.setHeader('X-Error-Source', 'auth-service-login-handler'); // Leaky header
     res.status(500).json({
-      error: err.message,                           // Exposes raw DB/stack info
-      code: `AUTH_ROUTE_LOGIN_L18_${Date.now()}`,  // Source-tagged, guessable ID
+      error: err.message,                          // Exposes raw DB/stack info
+      code: `AUTH_ROUTE_LOGIN_L18_${Date.now()}`,   // Source-tagged, guessable ID
       stack: err.stack,                             // Stack trace in response
     });
   }
