@@ -10,6 +10,11 @@ on:
         description: 'Version to release (e.g., 0.3.10). Required for manual trigger.'
         required: true
         type: string
+      force_retag:
+        description: 'Force-move an existing sdk/ai tag to the current commit.'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   release:
@@ -69,14 +74,26 @@ jobs:
         run: |
           SDK_AI_TAG="sdk/ai/v${{ steps.version.outputs.version }}"
           if git rev-parse "$SDK_AI_TAG" >/dev/null 2>&1; then
-            echo "Error: Tag $SDK_AI_TAG already exists!"
-            exit 1
+            if [ "${{ inputs.force_retag }}" = "true" ]; then
+              echo "Tag $SDK_AI_TAG already exists, but force_retag=true so it will be moved"
+            else
+              echo "Error: Tag $SDK_AI_TAG already exists!"
+              echo "Re-run with force_retag=true to move the existing tag to the current commit."
+              exit 1
+            fi
+          else
+            echo "Tag $SDK_AI_TAG does not exist, proceeding with release"
           fi
-          echo "Tag $SDK_AI_TAG does not exist, proceeding with release"
 
       - name: Create and push tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "sdk/ai/v${{ steps.version.outputs.version }}" -m "SDK AI ${{ steps.version.outputs.version }}"
-          git push origin "sdk/ai/v${{ steps.version.outputs.version }}"
+          SDK_AI_TAG="sdk/ai/v${{ steps.version.outputs.version }}"
+          if [ "${{ inputs.force_retag }}" = "true" ]; then
+            git tag -fa "$SDK_AI_TAG" -m "SDK AI ${{ steps.version.outputs.version }}"
+            git push --force origin "$SDK_AI_TAG"
+          else
+            git tag -a "$SDK_AI_TAG" -m "SDK AI ${{ steps.version.outputs.version }}"
+            git push origin "$SDK_AI_TAG"
+          fi
