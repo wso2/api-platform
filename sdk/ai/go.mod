@@ -1,6 +1,6 @@
 module github.com/wso2/api-platform/sdk/ai
 
-go 1.26.5
+go 1.26.2
 
 require (
 	github.com/goccy/go-json v0.10.5
