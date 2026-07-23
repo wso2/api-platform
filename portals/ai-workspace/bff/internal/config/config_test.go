@@ -155,7 +155,7 @@ url = "https://platform-api:9243"
 authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = '{{ env "CUSTOM_SECRET_VAR" }}'
-redirect_url  = "https://localhost:5380/api/auth/callback"
+redirect_url  = "https://localhost:9643/api/auth/callback"
 `)
 	t.Setenv("CUSTOM_SECRET_VAR", "s3cr3t")
 
@@ -187,7 +187,7 @@ url = "https://platform-api:9243"
 authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = '{{ file "`+filepath.Join(secretDir, "oidc_client_secret")+`" }}'
-redirect_url  = "https://localhost:5380/api/auth/callback"
+redirect_url  = "https://localhost:9643/api/auth/callback"
 `)
 
 	cfg, err := Load(cfgPath)
@@ -273,7 +273,7 @@ url = "https://platform-api:9243"
 authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = "s3cr3t"
-redirect_url  = "https://localhost:5380/api/auth/callback"
+redirect_url  = "https://localhost:9643/api/auth/callback"
 `)
 
 	cfg, err := Load(cfgPath)
@@ -389,7 +389,7 @@ enabled       = true
 authority     = "https://idp.example.com"
 client_id     = "client-id"
 client_secret = "s3cr3t"
-redirect_url  = "https://localhost:5380/api/auth/callback"
+redirect_url  = "https://localhost:9643/api/auth/callback"
 `)
 
 	cfg, err := Load(cfgPath)

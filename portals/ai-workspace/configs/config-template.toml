@@ -72,7 +72,7 @@ default_org_region = "us"
 # non-proxied access. Set this when a reverse proxy (e.g. nginx) in front of the BFF
 # exposes it on a different host or port than the listener binds to internally —
 # otherwise the log would show the internal address, which an operator can't reach.
-domain = "localhost:5380"
+domain = "localhost:9643"
 
 
 # ---------------------------------------------------------------------------
@@ -242,10 +242,10 @@ client_secret = ""
 
 # Server-side callback the IDP redirects to after login (not an SPA route). Must
 # match the redirect URI registered on the IDP application.
-redirect_url = "https://localhost:5380/api/auth/callback"
+redirect_url = "https://localhost:9643/api/auth/callback"
 
 # Absolute URL the IDP redirects to after logout (must be pre-registered there).
-post_logout_redirect_url = "https://localhost:5380/login"
+post_logout_redirect_url = "https://localhost:9643/login"
 
 # Scopes requested at login (space-separated). Defaults to the full ap:* set the
 # Platform API authorizes against (recommended) — trim only what you need to
