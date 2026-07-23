@@ -56,13 +56,17 @@ function snakeToCamelDeep(value) {
  * Load configs/config.toml (snake_case), converted to camelCase.
  * Returns an empty object if the file does not exist, so DEFAULTS alone can
  * drive the app.
+ *
+ * Every key lives under the single [developer_portal] table. That wrapper is
+ * unwrapped here so the in-code config tree stays flat (config.server,
+ * config.security, …); anything outside the [developer_portal] table is ignored.
  */
 function loadTomlConfig() {
     const tomlPath = path.join(process.cwd(), 'configs', 'config.toml');
 
     if (fs.existsSync(tomlPath)) {
         const raw = fs.readFileSync(tomlPath, 'utf8');
-        return snakeToCamelDeep(toml.parse(raw));
+        return snakeToCamelDeep(toml.parse(raw)).developerPortal || {};
     }
     return {};
 }
@@ -321,7 +325,7 @@ function requireHexSecret(value, fieldName) {
             `[FATAL] security.${fieldName} did not resolve to a 64-character hex string. ` +
             'Refusing to start with a missing or malformed secret. ' +
             'Generate one with: openssl rand -hex 32 — then reference it from configs/config.toml, ' +
-            `e.g. ${fieldName === 'encryptionKey' ? 'encryption_key' : 'session_secret'} = '{{ env "APIP_DP_SECURITY_${fieldName === 'encryptionKey' ? 'ENCRYPTIONKEY' : 'SESSIONSECRET'}" }}'.\n`
+            `e.g. ${fieldName === 'encryptionKey' ? 'encryption_key' : 'session_secret'} = '{{ env "APIP_DP_SECURITY_${fieldName === 'encryptionKey' ? 'ENCRYPTION_KEY' : 'SESSION_SECRET'}" }}'.\n`
         );
         process.exit(1);
     }

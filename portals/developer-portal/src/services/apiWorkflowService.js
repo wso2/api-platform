@@ -379,7 +379,9 @@ const getAllAPIWorkflows = async (req, res) => {
 const generatePrompt = async (req, res) => {
     const { displayName, description, apis, orgHandle, viewName, id } = req.body;
     try {
-        const baseUrl = config.server.baseUrl || `${req.protocol}://${req.get('host')}`;
+        // Use only the configured canonical origin — never the request Host header
+        // (forgeable). If unset, generateAgentPrompt omits the absolute URLs.
+        const baseUrl = config.server?.baseUrl;
         const prompt = generateAgentPrompt(displayName, description, apis || [], orgHandle || '', viewName || 'default', baseUrl, id || '');
         res.status(200).json({ agentPrompt: prompt });
     } catch (error) {

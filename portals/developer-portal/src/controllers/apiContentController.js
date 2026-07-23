@@ -52,7 +52,7 @@ const loadAPIs = async (req, res, next) => {
         }
         const templateContent = {
             apiMetadata: metaDataList,
-            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.VIEWS_PATH + viewName,
             devMode: true,
         }
         const listingPage = isMcpListing ? 'pages/mcp' : 'pages/apis';
@@ -125,7 +125,6 @@ const loadAPIs = async (req, res, next) => {
                 orgId: orgId,
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
-                isReadOnlyMode: config.server.readOnlyMode,
                 applications: []
             };
 
@@ -209,7 +208,7 @@ const loadAPIContent = async (req, res, next) => {
             schemaDefinition,
             apiMetadata: metaData,
             subscriptionPlans: metaData.subscriptionPlans,
-            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.VIEWS_PATH + viewName,
             schemaUrl: `/mock/${apiHandle}/definition.yml`,
             showApiKeysNav: await resolveShowApiKeysNav(null, null, apiType, metaData, definitionResponse.swagger ?? null),
             showSubscriptionsNav: (metaData.subscriptionPlans || []).length > 0,
@@ -417,7 +416,6 @@ const loadAPIContent = async (req, res, next) => {
                 scopes: [],
                 devportalMode: devportalMode,
                 profile: req.isAuthenticated() ? profile : null,
-                isReadOnlyMode: config.server.readOnlyMode,
             };
             templateContent.showApiKeysNav = await resolveShowApiKeysNav(orgId, apiId, metaData.type, metaData, apiDefinitionForNav);
             templateContent.showSubscriptionsNav = (metaData?.subscriptionPlans || []).length > 0;
@@ -515,8 +513,8 @@ const loadDocsPage = async (req, res, next) => {
         const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         const templateContent = {
             apiMD: '',
-            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
-            baseDocUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
+            baseUrl: constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
+            baseDocUrl: constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
             docTypes: docNames,
             apiType: apiMetadata.type,
             apiName: apiMetadata.name || '',
@@ -617,8 +615,8 @@ const loadDocument = async (req, res, next) => {
             const raw = sampleApiLoader.getDocMarkdown(apiHandle, docName, resolveSamplesPath(apiHandle), docType) || '';
             templateContent.apiMD = raw ? require('marked').parse(raw) : '';
         }
-        templateContent.baseUrl = config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;
-        templateContent.baseDocUrl = config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
+        templateContent.baseUrl = constants.ROUTE.VIEWS_PATH + viewName;
+        templateContent.baseDocUrl = constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
         templateContent.docTypes = metaData.docTypes;
         templateContent.currentDocName = docName || null;
         templateContent.currentDocType = docType || null;

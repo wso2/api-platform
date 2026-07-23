@@ -36,8 +36,7 @@
         page); api-keys-overview.js reads each row's data-* attributes and calls the
         per-API / per-MCP REST endpoints. --}}
   <div id="api-keys-overview-root"
-       data-base-url="{{baseUrl}}"
-       data-read-only="{{#if isReadOnlyMode}}true{{else}}false{{/if}}">
+       data-base-url="{{baseUrl}}">
 
     {{#if apiKeysLoadError}}
     <div style="background:#fdeaea;border:1px solid #f5c2c2;border-radius:0.5rem;padding:1rem 1.25rem;font-size:0.875rem;color:#c62828;margin-top:0.5rem;">
@@ -75,9 +74,6 @@
             <td class="ak-expires">{{#if this.expiresAt}}{{formatExpiresAt this.expiresAt}}{{else}}Never{{/if}}</td>
             <td class="ak-app">{{#if this.appDisplayName}}{{this.appDisplayName}}{{else}}-{{/if}}</td>
             <td>
-              {{#if @root.isReadOnlyMode}}
-              <span style="font-size:0.8125rem;color:#8a98a6;">Read only</span>
-              {{else}}
               <div class="ak-actions">
                 <button type="button" class="ak-btn-app ak-row-app"
                   {{#unless (eq (lowercase this.status) 'active')}}disabled title="Key is revoked"{{/unless}}>
@@ -92,7 +88,6 @@
                   <i class="bi bi-slash-circle"></i> Revoke
                 </button>
               </div>
-              {{/if}}
             </td>
           </tr>
           {{/each}}
@@ -110,7 +105,6 @@
 
   {{> alert }}
 
-  {{#unless isReadOnlyMode}}
   <!-- Regenerate modal (same as the per-API API Keys page) -->
   <div class="ak-overlay" id="regenerateApiKeyModal">
     <div class="ak-modal">
@@ -204,5 +198,4 @@
       </div>
     </div>
   </div>
-  {{/unless}}
 </div>

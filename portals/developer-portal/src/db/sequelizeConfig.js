@@ -17,19 +17,18 @@
  */
  
 const { Sequelize } = require('sequelize');
-const path = require('path');
-const fs = require('fs');
 
 const { config } = require('../config/configLoader');
+const { buildDbSsl } = require('./dbSsl');
 
-const dialect = config.database.type;
+const dialect = config.database.driver;
 let sequelize;
 
 if (dialect === 'sqlite') {
     sequelize = new Sequelize({
         dialect: 'sqlite',
         dialectModule: require('./betterSqlite3Compat'),
-        storage: config.database.file || './devportal.db',
+        storage: config.database.path || './devportal.db',
         logging: false,
         pool: { max: 1, min: 1, acquire: 30000, idle: 10000 },
     });
@@ -51,20 +50,14 @@ if (dialect === 'sqlite') {
         },
     };
 
-    if (config.database.ssl.enabled) {
-        const dbCAPath = path.join(process.cwd(), config.database.ssl.caFile);
-        sequelizeOptions.dialectOptions = {
-            ssl: {
-                require: true,
-                rejectUnauthorized: true,
-                ca: fs.readFileSync(dbCAPath).toString(),
-            }
-        };
+    const ssl = buildDbSsl();
+    if (ssl) {
+        sequelizeOptions.dialectOptions.ssl = ssl;
     }
 
     sequelize = new Sequelize(
         config.database.name,
-        config.database.username,
+        config.database.user,
         config.database.password,
         sequelizeOptions
     );

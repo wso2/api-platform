@@ -53,7 +53,7 @@ function enforceSecurity(scope) {
                 return res.status(400).json(util.getErrors(errors));
             }
             // Local auth users: validate dp:* scope from platform JWT
-            if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.idp?.clientId) {
+            if (req.isAuthenticated() && req.user && req.user.isLocalAuth && config.auth.mode !== 'idp') {
                 const platformToken = req.user[constants.ACCESS_TOKEN];
                 if (!platformToken) return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
                 const tokenScopes = decodePlatformJwtClaims(platformToken)?.scopes ?? [];
@@ -159,9 +159,9 @@ const ensureAuthenticated = async (req, res, next) => {
         logger.warn('Rejected request with path-traversal sequence', { operation: 'ensureAuthenticated' });
         return res.status(400).json({ error: 'bad_request', message: 'Invalid request path.' });
     }
-    let adminRole = config.idp?.roles?.admin;
-    let superAdminRole = config.idp?.roles?.superAdmin;
-    let subscriberRole = config.idp?.roles?.subscriber;
+    let adminRole = config.auth.idp?.roles?.admin;
+    let superAdminRole = config.auth.idp?.roles?.superAdmin;
+    let subscriberRole = config.auth.idp?.roles?.subscriber;
     const rules = util.validateRequestParameters();
     for (let validation of rules) {
         await validation.run(req);
@@ -180,7 +180,7 @@ const ensureAuthenticated = async (req, res, next) => {
     // audit columns and "my resources" filters like subscriptions) must return the same
     // identity here as it does on /api/v0.9 REST routes, where authResolver always resolves it.
     if (req.isAuthenticated() && req.user && !req[constants.USER_ID]) {
-        if (req.user.isLocalAuth && !config.idp?.clientId) {
+        if (req.user.isLocalAuth && config.auth.mode !== 'idp') {
             req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
         } else {
             const earlyToken = accessTokenPresent(req);
@@ -207,7 +207,7 @@ const ensureAuthenticated = async (req, res, next) => {
         logger.debug("Request authentication status", { isAuthenticated: req.isAuthenticated() });
         if (req.isAuthenticated()) {
             // Config-auth: skip all token/exchange checks; roles already in session
-            if (req.user && req.user.isLocalAuth && !config.idp?.clientId) {
+            if (req.user && req.user.isLocalAuth && config.auth.mode !== 'idp') {
                 req.orgId = req.orgId || orgDetails?.uuid;
                 req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
                 if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(pathname, pattern))) {
@@ -229,7 +229,7 @@ const ensureAuthenticated = async (req, res, next) => {
                             req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                         }
                     }
-                    if (config.security.roleValidation) {
+                    if (config.auth.roleValidation) {
                         role = req.user[constants.ROLES.ROLE_CLAIM];
                         if (ensurePermission(pathname, role, req)) {
                             return next();
@@ -265,7 +265,7 @@ const ensureAuthenticated = async (req, res, next) => {
                     err.status = 403;
                     return next(err);
                 }
-                if (config.security.roleValidation) {
+                if (config.auth.roleValidation) {
                     if (ensurePermission(pathname, role, req)) {
                         return next();
                     } else {
@@ -305,7 +305,7 @@ function validateAuthentication(scope) {
             return res.status(400).json(util.getErrors(errors));
         }
         let IDP, valid, scopes;
-        IDP = config.idp || {};
+        IDP = config.auth.idp || {};
 
         let accessToken;
         if (req.isAuthenticated() && req.user) {
@@ -339,8 +339,8 @@ const validateWithJwks = async (token, jwksURL, req) => {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
         const jwtVerifyOptions = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
-        if (config.idp?.issuer) jwtVerifyOptions.issuer = config.idp.issuer;
-        if (config.idp?.audience) jwtVerifyOptions.audience = config.idp.audience;
+        if (config.auth.idp?.issuer) jwtVerifyOptions.issuer = config.auth.idp.issuer;
+        if (config.auth.idp?.audience) jwtVerifyOptions.audience = config.auth.idp.audience;
         const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);
         return { valid: true, scopes: payload.scope || '' };
     } catch (err) {

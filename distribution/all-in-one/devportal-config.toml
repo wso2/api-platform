@@ -1,48 +1,54 @@
 # Developer Portal configuration for the all-in-one (build-from-source) compose
 # stack. Mounted at /app/configs/config.toml — replaces the image's shipped
 # configs/config.toml, which fails closed at startup on the required security
-# secrets and only wires the SQLite `file` key (this stack shares one Postgres
+# secrets and only wires the SQLite `path` key (this stack shares one Postgres
 # server with platform-api).
 #
-# There is NO automatic APIP_DP_* environment-variable override (see
-# src/config/configLoader.js) — an env var set in docker-compose.yaml's
-# `devportal.environment` block only takes effect where a key below explicitly
-# references it via a {{ env "..." }} token.
+# Every key lives under the single [developer_portal] table; configLoader.js
+# unwraps it and IGNORES anything outside it, so a section at the top level is
+# silently dropped and its defaults (src/config/configDefaults.js) win instead.
+#
+# There is NO automatic APIP_DP_* environment-variable override — an env var set
+# in docker-compose.yaml's `devportal.environment` block only takes effect where
+# a key below explicitly references it via a {{ env "..." }} token.
 
-[server]
-base_url = '{{ env "APIP_DP_SERVER_BASEURL" "http://localhost:3001" }}'
-port     = 3000
+[developer_portal.server]
+port = '{{ env "APIP_DP_SERVER_PORT" "3000" }}'
 
-[tls]
+[developer_portal.server.https]
 # Plain HTTP — nothing in this stack talks to devportal over TLS.
-enabled = false
+enabled = '{{ env "APIP_DP_SERVER_HTTPS_ENABLED" "false" }}'
 
-[logging]
-console_only = true
+[developer_portal.logging]
+console_only = '{{ env "APIP_DP_LOGGING_CONSOLE_ONLY" "true" }}'
 
-[database]
-type     = '{{ env "APIP_DP_DATABASE_TYPE" "postgres" }}'
+[developer_portal.database]
+driver   = '{{ env "APIP_DP_DATABASE_DRIVER" "postgres" }}'
 host     = '{{ env "APIP_DP_DATABASE_HOST" "postgres" }}'
 port     = '{{ env "APIP_DP_DATABASE_PORT" "5432" }}'
 name     = '{{ env "APIP_DP_DATABASE_NAME" "devportal" }}'
-username = '{{ env "APIP_DP_DATABASE_USERNAME" "postgres" }}'
+user     = '{{ env "APIP_DP_DATABASE_USER" "postgres" }}'
 password = '{{ env "APIP_DP_DATABASE_PASSWORD" "postgres" }}'
 
-[organization]
-default_name = '{{ env "APIP_DP_ORGANIZATION_DEFAULTNAME" "default" }}'
+[developer_portal.organization]
+default_name = '{{ env "APIP_DP_ORGANIZATION_DEFAULT_NAME" "default" }}'
 
-[platform_api]
-# platform-api signs admin JWTs with RS256 — there is no shared HMAC secret to
-# set here. jwt_secret left empty makes the devportal decode the token payload
-# without verifying its signature, trusting the direct HTTPS connection
-# (insecure=true) instead — see extractPlatformJwtClaims in
-# src/utils/platformJwt.js. platform-api's cert is self-signed (platform-api-certgen).
-base_url = '{{ env "APIP_DP_PLATFORMAPI_BASEURL" "https://platform-api:9243" }}'
-insecure = true
+[developer_portal.auth]
+mode = "local"
 
-[security]
+[developer_portal.auth.local]
+# platform-api signs its tokens with RS256; the devportal verifies them against
+# the public half of that keypair, bind-mounted read-only at /etc/devportal/keys.
+# Only jwt_public.pem is exposed here (the private key stays with platform-api);
+# the devportal reads it from that path.
+platform_api_url = '{{ env "APIP_DP_AUTH_LOCAL_PLATFORM_API_URL" "https://platform-api:9243" }}'
+public_key_path  = '{{ env "APIP_DP_AUTH_LOCAL_PUBLIC_KEY_PATH" "/etc/devportal/keys/jwt_public.pem" }}'
+# platform-api's cert is self-signed (platform-api-certgen).
+tls_skip_verify  = '{{ env "APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'
+
+[developer_portal.security]
 # Required — devportal fails closed at startup if either doesn't resolve to a
-# 64-char hex string. Set APIP_DP_SECURITY_ENCRYPTIONKEY / APIP_DP_SECURITY_SESSIONSECRET
+# 64-char hex string. Set APIP_DP_SECURITY_ENCRYPTION_KEY / APIP_DP_SECURITY_SESSION_SECRET
 # in the environment before `docker compose up` (e.g. `openssl rand -hex 32` each).
-encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTIONKEY" }}'
-session_secret = '{{ env "APIP_DP_SECURITY_SESSIONSECRET" }}'
+encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTION_KEY" }}'
+session_secret = '{{ env "APIP_DP_SECURITY_SESSION_SECRET" }}'

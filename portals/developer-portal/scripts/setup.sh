@@ -109,7 +109,7 @@ mkdir -p "$DEVPORTAL_CERT_DIR"
 # Shared by both containers (mounted read-only into each at its own /etc/<service>/tls
 # path) — platform-api's HTTPSListener hardcodes the filenames cert.pem/key.pem within
 # its cert_dir, so this pair must use those exact names regardless of what devportal's
-# own (fully configurable) APIP_DP_TLS_CERTFILE/KEYFILE point at.
+# own (fully configurable) APIP_DP_SERVER_HTTPS_CERT_FILE/KEY_FILE point at.
 if [ -f "$DEVPORTAL_CERT_DIR/cert.pem" ] && [ -f "$DEVPORTAL_CERT_DIR/key.pem" ]; then
     log "  - $DEVPORTAL_CERT_DIR already has a certificate, leaving as-is"
 else
@@ -125,8 +125,8 @@ else
 fi
 
 log "Generating devportal secrets into api-platform.env ..."
-set_env_var "APIP_DP_SECURITY_ENCRYPTIONKEY" "$(openssl rand -hex 32)"
-set_env_var "APIP_DP_SECURITY_SESSIONSECRET" "$(openssl rand -hex 32)"
+set_env_var "APIP_DP_SECURITY_ENCRYPTION_KEY" "$(openssl rand -hex 32)"
+set_env_var "APIP_DP_SECURITY_SESSION_SECRET" "$(openssl rand -hex 32)"
 
 log "Generating Platform API encryption key into api-platform.env ..."
 set_env_var "APIP_CP_ENCRYPTION_KEY" "$(openssl rand -hex 32)"

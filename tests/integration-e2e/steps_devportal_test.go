@@ -51,11 +51,10 @@ import (
 //     returns to the user are exactly what the gateway validates.
 //
 // The devportal accepts the platform-api admin JWT directly (platform-api signs
-// it with RS256, so with no shared HMAC secret configured the devportal decodes
-// the payload without verifying the signature, trusting the direct HTTPS
-// connection instead — see APIP_DP_PLATFORMAPI_INSECURE in docker-compose.yaml —
-// and takes the org from the token's org_handle claim), so suite.token is reused
-// for every call here.
+// it with RS256 and the devportal verifies it against jwt_public.pem from the
+// shared keypair volume — auth.local.jwt_public_key in devportal-config.toml —
+// then takes the org from the token's org_handle claim), so suite.token is
+// reused for every call here.
 
 // webhookReceiverURL is the platform-api webhook receiver at its container-internal
 // host (the devportal reaches platform-api by service name on the compose network,
@@ -63,7 +62,7 @@ import (
 // is a var too).
 var webhookReceiverURL = "https://platform-api:9243" + webhookReceiverPath
 
-// The devportal org handle seeded via APIP_DP_ORGANIZATION_DEFAULTNAME; must match the platform-api
+// The devportal org handle seeded via APIP_DP_ORGANIZATION_DEFAULT_NAME; must match the platform-api
 // org handle so org.ref_id resolves.
 const devportalOrgHandle = "default"
 

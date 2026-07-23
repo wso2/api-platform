@@ -13,7 +13,7 @@
 # using Handlebars-style template syntax as the value. Use single-quoted TOML
 # literal strings (as below) so the inner double quotes need no escaping:
 #
-#   base_url       = '{{ env "APIP_DP_SERVER_BASEURL" }}'
+#   platform_api_url = '{{ env "APIP_DP_AUTH_LOCAL_PLATFORM_API_URL" }}'
 #   encryption_key = '{{ file "/secrets/devportal/encryption-key" }}'
 #
 #   {{ env "NAME" }}            -> NAME's value. FAILS CLOSED (aborts startup) if
@@ -31,7 +31,7 @@
 # This file's own fallbacks (the third arg to {{ env "NAME" "default" }} below)
 # are intentionally wired for the Docker Compose topology (docker-compose.yaml),
 # NOT for src/config/configDefaults.js's generic, dependency-free defaults —
-# e.g. tls.enabled defaults to true here (a real cert is bind-mounted at
+# e.g. server.https.enabled defaults to true here (a real cert is bind-mounted at
 # /etc/devportal/tls) vs. false in configDefaults.js (no cert available for a
 # bare `npm start`). configDefaults.js's DEFAULTS only take effect for keys this
 # file doesn't list at all (idp, organization, uploads, etc.), or if this file
@@ -39,40 +39,64 @@
 # see configDefaults.js's own comment for why its values stay generic.
 #
 # Running locally without Docker? Use `npm run start:local` instead of
-# `npm start` (package.json) — it overrides tls.enabled, server.base_url, and
-# platform_api.* to values that make sense outside Compose, all in one place.
+# `npm start` (package.json) — it overrides server.https.enabled and auth.local.* to
+# values that make sense outside Compose, all in one place.
 # Plain `npm start` inherits this file's Compose-oriented defaults as-is and
 # will fail trying to read a TLS cert path that only exists in the containers.
 
-[server]
-base_url = '{{ env "APIP_DP_SERVER_BASEURL" "https://localhost:3000" }}'
+[developer_portal.server]
+port = '{{ env "APIP_DP_SERVER_PORT" "3000" }}'
+# Canonical public origin of this portal, used only to build the absolute URLs
+# embedded in a generated agent prompt (so they don't depend on the request's
+# Host header). Set this to the portal's externally-reachable origin behind a
+# proxy/LB. Empty falls back to the request origin.
+base_url = '{{ env "APIP_DP_SERVER_BASE_URL" "https://localhost:3000" }}'
 
-[tls]
-enabled   = '{{ env "APIP_DP_TLS_ENABLED" "true" }}'
-cert_file = '{{ env "APIP_DP_TLS_CERTFILE" "/etc/devportal/tls/cert.pem" }}'
-key_file  = '{{ env "APIP_DP_TLS_KEYFILE" "/etc/devportal/tls/key.pem" }}'
-ca_file   = '{{ env "APIP_DP_TLS_CAFILE" "/etc/devportal/tls/cert.pem" }}'
+# Single listener on server.port; enabled toggles whether it terminates TLS. Set
+# enabled=false only when a trusted upstream (proxy/LB/ingress) terminates TLS —
+# the listener then serves plain HTTP on that port. cert_file/key_file must point
+# at a real pair when enabled=true (no self-signed fallback).
+[developer_portal.server.https]
+enabled   = '{{ env "APIP_DP_SERVER_HTTPS_ENABLED" "true" }}'
+cert_file = '{{ env "APIP_DP_SERVER_HTTPS_CERT_FILE" "/etc/devportal/tls/cert.pem" }}'
+key_file  = '{{ env "APIP_DP_SERVER_HTTPS_KEY_FILE" "/etc/devportal/tls/key.pem" }}'
 
-[logging]
-console_only = '{{ env "APIP_DP_LOGGING_CONSOLEONLY" "true" }}'
+[developer_portal.logging]
+level        = '{{ env "APIP_DP_LOGGING_LEVEL" "info" }}'   # debug | info | warn | error
+format       = '{{ env "APIP_DP_LOGGING_FORMAT" "text" }}'  # text | json
+console_only = '{{ env "APIP_DP_LOGGING_CONSOLE_ONLY" "true" }}'
 
-[database]
-# Relative — resolves to /app/data/devportal.db under Compose (cwd /app),
-# matching the sqlite_data volume mount at /app/data; Docker creates that
-# directory itself as the volume's mount point, so no extra step is needed
-# there. `npm start` (cwd = repo root) resolves this to ./data/devportal.db
-# instead — that directory does NOT get created automatically; see README's
+[developer_portal.database]
+driver = '{{ env "APIP_DP_DATABASE_DRIVER" "sqlite" }}'   # sqlite | postgres
+# SQLite path. Relative — resolves to /app/data/devportal.db under Compose (cwd
+# /app), matching the sqlite_data volume mount at /app/data; Docker creates that
+# directory itself as the volume's mount point, so no extra step is needed there.
+# `npm start` (cwd = repo root) resolves this to ./data/devportal.db instead —
+# that directory does NOT get created automatically; see README's
 # "Development (npm start)" section.
-file = '{{ env "APIP_DP_DATABASE_FILE" "./data/devportal.db" }}'
+path = '{{ env "APIP_DP_DATABASE_PATH" "./data/devportal.db" }}'
+# PostgreSQL connection — used when driver = "postgres" (e.g. the
+# docker-compose.postgres.yaml override sets these).
+host     = '{{ env "APIP_DP_DATABASE_HOST" "localhost" }}'
+port     = '{{ env "APIP_DP_DATABASE_PORT" "5432" }}'
+name     = '{{ env "APIP_DP_DATABASE_NAME" "devportal" }}'
+user     = '{{ env "APIP_DP_DATABASE_USER" "postgres" }}'
+password = '{{ env "APIP_DP_DATABASE_PASSWORD" "" }}'
 
-[platform_api]
-# Used for local auth credential validation when idp.client_id is empty.
-base_url   = '{{ env "APIP_DP_PLATFORMAPI_BASEURL" "https://platform-api:9243" }}'
-jwt_secret = '{{ env "APIP_DP_PLATFORMAPI_JWTSECRET" "" }}'
-insecure   = '{{ env "APIP_DP_PLATFORMAPI_INSECURE" "true" }}'
-
-[security]
+[developer_portal.security]
 # Required — devportal fails closed at startup if either doesn't resolve to a
 # 64-char hex string. Generate with: openssl rand -hex 32
-encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTIONKEY" }}'
-session_secret = '{{ env "APIP_DP_SECURITY_SESSIONSECRET" }}'
+encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTION_KEY" }}'
+session_secret = '{{ env "APIP_DP_SECURITY_SESSION_SECRET" }}'
+
+[developer_portal.auth.local]
+# The upstream Platform API. Used for local auth credential validation when
+# auth.mode = "local".
+platform_api_url = '{{ env "APIP_DP_AUTH_LOCAL_PLATFORM_API_URL" "https://platform-api:9243" }}'
+# Filesystem path to the Platform API's RS256 public key PEM — the matching half
+# of its [platform_api.auth.jwt].private_key. scripts/setup.sh generates the
+# keypair and docker-compose.yaml mounts it at /etc/devportal/keys; the devportal
+# reads this file to verify Platform API-issued tokens. `npm run start:local`
+# points it at the host-side copy in resources/keys.
+public_key_path  = '{{ env "APIP_DP_AUTH_LOCAL_PUBLIC_KEY_PATH" "/etc/devportal/keys/jwt_public.pem" }}'
+tls_skip_verify  = '{{ env "APIP_DP_AUTH_LOCAL_TLS_SKIP_VERIFY" "true" }}'

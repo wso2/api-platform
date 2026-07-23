@@ -14,7 +14,7 @@
       {{#applicationMetadata}}
       <div class="d-flex align-items-center edit-container mb-2">
         <h3 class="app-overview-title" id="applicationName" data-original="{{displayName}}">{{displayName}}</h3>
-        <button class="btn btn-sm edit-inline-btn {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}"
+        <button class="btn btn-sm edit-inline-btn"
           id="editNameBtn" title="Edit name">
           <i class="bi bi-pencil"></i>
         </button>
@@ -34,12 +34,12 @@
         {{#if description}}
         <p class="app-description mb-0" id="applicationDescription" data-original="{{description}}">{{description}}
         </p>
-        <button class="btn btn-sm edit-inline-btn {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}"
+        <button class="btn btn-sm edit-inline-btn"
           id="editDescriptionBtn" title="Edit description">
           <i class="bi bi-pencil"></i>
         </button>
         {{else}}
-        <button class="btn btn-sm common-btn-link p-0 {{#if @root.isReadOnlyMode}}disabled border-0{{/if}}"
+        <button class="btn btn-sm common-btn-link p-0"
           id="editDescriptionBtn" title="Add description">
           <i class="bi bi-plus"></i> Add description
         </button>
