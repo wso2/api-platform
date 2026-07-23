@@ -33,6 +33,11 @@ type CustomPolicyRepo struct {
 	db *database.DB
 }
 
+// Each custom-policy usage row uses two bind parameters. Keeping batches at
+// 499 rows stays below SQLite's conservative 999-parameter limit and therefore
+// also below the limits of the other supported databases.
+const maxCustomPolicyUsageRowsPerInsert = 499
+
 // NewCustomPolicyRepo creates a new CustomPolicyRepo
 func NewCustomPolicyRepo(db *database.DB) CustomPolicyRepository {
 	return &CustomPolicyRepo{db: db}
@@ -242,24 +247,30 @@ func replaceCustomPolicyUsagesTx(tx *sql.Tx, db *database.DB, artifactUUID strin
 	}
 
 	seen := make(map[string]struct{}, len(policyUUIDs))
-	valuePlaceholders := make([]string, 0, len(policyUUIDs))
-	args := make([]any, 0, len(policyUUIDs)*2)
+	uniquePolicyUUIDs := make([]string, 0, len(policyUUIDs))
 	for _, policyUUID := range policyUUIDs {
 		if _, exists := seen[policyUUID]; exists {
 			continue
 		}
 		seen[policyUUID] = struct{}{}
-		valuePlaceholders = append(valuePlaceholders, "(?, ?)")
-		args = append(args, policyUUID, artifactUUID)
-	}
-	if len(valuePlaceholders) == 0 {
-		return nil
+		uniquePolicyUUIDs = append(uniquePolicyUUIDs, policyUUID)
 	}
 
-	query := `INSERT INTO gateway_custom_policy_usages (policy_uuid, artifact_uuid) VALUES ` +
-		strings.Join(valuePlaceholders, ", ")
-	if _, err := tx.Exec(db.Rebind(query), args...); err != nil {
-		return err
+	for start := 0; start < len(uniquePolicyUUIDs); start += maxCustomPolicyUsageRowsPerInsert {
+		end := min(start+maxCustomPolicyUsageRowsPerInsert, len(uniquePolicyUUIDs))
+		batch := uniquePolicyUUIDs[start:end]
+		valuePlaceholders := make([]string, len(batch))
+		args := make([]any, 0, len(batch)*2)
+		for i, policyUUID := range batch {
+			valuePlaceholders[i] = "(?, ?)"
+			args = append(args, policyUUID, artifactUUID)
+		}
+
+		query := `INSERT INTO gateway_custom_policy_usages (policy_uuid, artifact_uuid) VALUES ` +
+			strings.Join(valuePlaceholders, ", ")
+		if _, err := tx.Exec(db.Rebind(query), args...); err != nil {
+			return err
+		}
 	}
 	return nil
 }

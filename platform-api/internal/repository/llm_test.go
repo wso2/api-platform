@@ -99,8 +99,18 @@ func TestLLMProviderRepoCustomPolicyUsageReconciliation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get usages after failed update: %v", err)
 	}
+	usageSet := make(map[string]struct{}, len(usages))
+	for _, policyUUID := range usages {
+		usageSet[policyUUID] = struct{}{}
+	}
 	if len(usages) != 2 {
-		t.Fatalf("policy usages = %v, want two deduplicated usages", usages)
+		t.Fatalf("policy usages = %v, want [%s %s]", usages, policy.UUID, secondPolicy.UUID)
+	}
+	if _, exists := usageSet[policy.UUID]; !exists {
+		t.Fatalf("policy usages = %v, missing %s", usages, policy.UUID)
+	}
+	if _, exists := usageSet[secondPolicy.UUID]; !exists {
+		t.Fatalf("policy usages = %v, missing %s", usages, secondPolicy.UUID)
 	}
 
 	// The plain update path must also reconcile usages. With no policy UUIDs,
