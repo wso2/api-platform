@@ -56,30 +56,20 @@ Use security level `-768` / `mode3` (NIST Level 3) as the minimum. Escalate to `
 ### ❌ Anti-Pattern (What to Reject)
 
 ```go
-// BAD: ECDH key exchange — quantum-vulnerable
+// BAD: quantum-vulnerable key exchange and signing, no PQC migration
 priv, _ := ecdh.P256().GenerateKey(rand.Reader)
-pub := priv.PublicKey()
-shared, _ := priv.ECDH(peerPub) // Broken by Shor's algorithm
+shared, _ := priv.ECDH(peerPub) // quantum-vulnerable, no TODO(pqc)
 
-// BAD: RSA encryption — quantum-vulnerable
-rsaKey, _ := rsa.GenerateKey(rand.Reader, 4096)
-cipher, _ := rsa.EncryptOAEP(sha256.New(), rand.Reader, &rsaKey.PublicKey, plaintext, nil)
-
-// BAD: No hybrid — PQC used in isolation before library maturity confirmed
-import "github.com/cloudflare/circl/kem/kyber/kyber768"
-pub, priv, _ := kyber768.GenerateKeyPair()
-ct, sharedSecret, _ := kyber768.Encapsulate(pub) // Sole key exchange — no classical fallback
-
-// BAD: AES-128 for long-lived session keys
-key := make([]byte, 16) // AES-128: only ~80-bit post-quantum security
-rand.Read(key)
-
-// BAD: Undocumented legacy algorithm
 func signLegacy(data []byte, key *rsa.PrivateKey) []byte {
     sig, _ := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, data)
-    return sig
-    // No TODO(pqc) comment — silently quantum-vulnerable
+    return sig // undocumented legacy algorithm
 }
+
+// BAD: PQC used without classical hybrid, and weak symmetric key size
+pub, _, _ := kyber768.GenerateKeyPair(rand.Reader)
+ct, sharedSecret, _ := kyber768.Scheme().Encapsulate(pub) // no X25519 hybrid leg
+
+key := make([]byte, 16) // AES-128 — reduced post-quantum security
 ```
 
 ### Best Practice (What to Generate)

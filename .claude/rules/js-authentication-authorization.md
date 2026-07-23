@@ -196,7 +196,7 @@ A request to `//public/%2e%2e/private/secret` can bypass a guard checking `req.p
 // BAD: Raw string prefix check on req.url — bypassable with encoded traversals
 app.use((req, res, next) => {
   if (req.url.startsWith('/public/')) {
-    return next(); // Skips auth — bypassable via /public/%2e%2e/admin
+    return next(); // Skips auth — bypassable via an encoded traversal sequence
   }
   authMiddleware(req, res, next);
 });
@@ -477,7 +477,7 @@ async function searchTenantsHandler(req, res, next) {
   const { name } = req.query;
   const [tenants] = await sequelize.query(
     `SELECT id, name, status FROM tenants WHERE name LIKE '%${name}%'`
-  ); // name = "%' OR '1'='1" defeats the filter entirely
+  ); // Injectable — filter can be defeated
   res.json(tenants);
 }
 
@@ -646,8 +646,7 @@ The JavaScript counterpart of GO-AUTH-010. Open redirect via weak callback URL v
 ### Non-Compliant Code
 
 ```js
-// BAD: Same-host substring check — bypassable via
-// "https://portal.example.com.attacker.com" or "https://portal.example.com@attacker.com".
+// BAD: Same-host substring check — bypassable via a crafted lookalike/userinfo host.
 app.get('/auth/callback', (req, res) => {
   const returnTo = req.query.returnTo || '/';
   if (returnTo.includes('portal.example.com')) {
