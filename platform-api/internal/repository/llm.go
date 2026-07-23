@@ -124,7 +124,7 @@ func (r *LLMProviderTemplateRepo) Create(t *model.LLMProviderTemplate) error {
 }
 
 // CreateImportedVersion inserts a template version pushed from the gateway (DP->CP)
-func (r *LLMProviderTemplateRepo) CreateImportedVersion(t *model.LLMProviderTemplate, makeLatest bool) error {
+func (r *LLMProviderTemplateRepo) CreateImportedVersion(t *model.LLMProviderTemplate) (bool, error) {
 	configJSON, err := json.Marshal(&llmProviderTemplateConfig{
 		ManagedBy:        t.ManagedBy,
 		Metadata:         t.Metadata,
@@ -137,40 +137,77 @@ func (r *LLMProviderTemplateRepo) CreateImportedVersion(t *model.LLMProviderTemp
 		ResourceMappings: t.ResourceMappings,
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 
+	var lastErr error
+	for attempt := 0; attempt < maxCreateNewVersionRetries; attempt++ {
+		madeLatest, err := r.createImportedVersionOnce(t, configJSON)
+		if err == nil {
+			return madeLatest, nil
+		}
+		if !r.db.IsDuplicateKeyError(err) {
+			return false, err
+		}
+		lastErr = err
+	}
+	return false, lastErr
+}
+
+func (r *LLMProviderTemplateRepo) createImportedVersionOnce(t *model.LLMProviderTemplate, configJSON []byte) (bool, error) {
 	tx, err := r.db.Begin()
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Defensive: the importer resolves an existing version by handle before reaching this path,
-	// so (group_id, version) should be new here. Reject a collision rather than create a
-	// duplicate version within the family.
-	var sameVersion int
-	if err = tx.QueryRow(r.db.Rebind(`
-		SELECT COUNT(*) FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ? AND version = ?
-	`), t.GroupID, t.OrganizationUUID, t.Version).Scan(&sameVersion); err != nil {
-		return err
+	rows, err := tx.Query(r.db.Rebind(`
+		SELECT version FROM llm_provider_templates WHERE group_id = ? AND organization_uuid = ?
+	`), t.GroupID, t.OrganizationUUID)
+	if err != nil {
+		return false, err
 	}
-	if sameVersion > 0 {
-		return apperror.LLMProviderTemplateVersionExists.New()
+	var existingVersions []string
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			rows.Close()
+			return false, err
+		}
+		existingVersions = append(existingVersions, v)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return false, err
+	}
+	rows.Close()
+
+	// The importer resolves an existing version by handle before reaching this path, so
+	// (group_id, version) should be new; a match here means a different handle already claimed this
+	// family version (a genuine conflict, or a concurrent writer seen on retry) — reject it.
+	makeLatest := true
+	for _, ev := range existingVersions {
+		if ev == t.Version {
+			return false, apperror.LLMProviderTemplateVersionExists.New()
+		}
+		if !utils.TemplateVersionNewer(t.Version, ev) {
+			makeLatest = false
+			break
+		}
 	}
 
 	if makeLatest {
 		if _, err = tx.Exec(r.db.Rebind(`
 			UPDATE llm_provider_templates SET is_latest = ? WHERE group_id = ? AND organization_uuid = ? AND is_latest = ?
 		`), 0, t.GroupID, t.OrganizationUUID, 1); err != nil {
-			return err
+			return false, err
 		}
 	}
 
 	if t.UUID == "" {
 		uuidStr, uerr := utils.GenerateUUID()
 		if uerr != nil {
-			return fmt.Errorf("failed to generate LLM provider template ID: %w", uerr)
+			return false, fmt.Errorf("failed to generate LLM provider template ID: %w", uerr)
 		}
 		t.UUID = uuidStr
 	}
@@ -200,10 +237,13 @@ func (r *LLMProviderTemplateRepo) CreateImportedVersion(t *model.LLMProviderTemp
 		origin, configJSON, []byte(t.OpenAPISpec), t.Version, boolToInt(t.IsLatest), boolToInt(t.Enabled),
 		t.CreatedAt, t.UpdatedAt,
 	); err != nil {
-		return err
+		return false, err
 	}
 
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return false, err
+	}
+	return makeLatest, nil
 }
 
 const maxCreateNewVersionRetries = 3

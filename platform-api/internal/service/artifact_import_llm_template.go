@@ -19,7 +19,6 @@ package service
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -102,11 +101,7 @@ func (i *llmProviderTemplateImporter) Import(ctx *ImportContext) (*ImportResult,
 			tmpl.CreatedAt = *ctx.DeployedAt
 			tmpl.UpdatedAt = *ctx.DeployedAt
 		}
-		makeLatest, err := i.isNewestInFamily(groupID, version, ctx.OrgID)
-		if err != nil {
-			return nil, err
-		}
-		if err := i.templateRepo.CreateImportedVersion(tmpl, makeLatest); err != nil {
+		if _, err := i.templateRepo.CreateImportedVersion(tmpl); err != nil {
 			return nil, fmt.Errorf("failed to create LLM provider template from gateway import: %w", err)
 		}
 		return &ImportResult{ID: tmpl.UUID, DeployedVersion: version, Deployable: false}, nil
@@ -140,55 +135,4 @@ func (i *llmProviderTemplateImporter) Import(ctx *ImportContext) (*ImportResult,
 	}
 	// Return the template's own control-plane UUID, not the orchestrator-generated one.
 	return &ImportResult{ID: existing.UUID, DeployedVersion: version, Deployable: false}, nil
-}
-
-// isNewestInFamily reports whether version is strictly higher than every version already stored for groupID
-func (i *llmProviderTemplateImporter) isNewestInFamily(groupID, version, orgID string) (bool, error) {
-	count, err := i.templateRepo.CountVersions(groupID, orgID)
-	if err != nil {
-		return false, fmt.Errorf("failed to count LLM provider template versions: %w", err)
-	}
-	if count == 0 {
-		return true, nil
-	}
-	versions, err := i.templateRepo.ListVersions(groupID, orgID, count, 0)
-	if err != nil {
-		return false, fmt.Errorf("failed to list LLM provider template versions: %w", err)
-	}
-	for _, ev := range versions {
-		if !templateVersionNewer(version, ev.Version) {
-			return false, nil
-		}
-	}
-	return true, nil
-}
-
-// templateVersionNewer reports whether template version a is strictly higher than b.
-// versions are v<major>.<minor> (e.g. v1.0, v2.3)
-func templateVersionNewer(a, b string) bool {
-	aMaj, aMin, aOK := parseTemplateVersion(a)
-	bMaj, bMin, bOK := parseTemplateVersion(b)
-	if aOK && bOK {
-		if aMaj != bMaj {
-			return aMaj > bMaj
-		}
-		return aMin > bMin
-	}
-	return a > b
-}
-
-func parseTemplateVersion(v string) (major, minor int, ok bool) {
-	v = strings.TrimSpace(v)
-	v = strings.TrimPrefix(v, "v")
-	v = strings.TrimPrefix(v, "V")
-	majStr, minStr, found := strings.Cut(v, ".")
-	if !found {
-		return 0, 0, false
-	}
-	major, err1 := strconv.Atoi(majStr)
-	minor, err2 := strconv.Atoi(minStr)
-	if err1 != nil || err2 != nil {
-		return 0, 0, false
-	}
-	return major, minor, true
 }

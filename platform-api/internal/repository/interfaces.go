@@ -223,7 +223,7 @@ type SubscriptionRepository interface {
 type LLMProviderTemplateRepository interface {
 	Create(t *model.LLMProviderTemplate) error
 	CreateNewVersion(t *model.LLMProviderTemplate) error
-	CreateImportedVersion(t *model.LLMProviderTemplate, makeLatest bool) error
+	CreateImportedVersion(t *model.LLMProviderTemplate) (bool, error)
 	GetByID(templateID, orgUUID string) (*model.LLMProviderTemplate, error)
 	GetByUUID(uuid, orgUUID string) (*model.LLMProviderTemplate, error)
 	GetByVersion(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error)
