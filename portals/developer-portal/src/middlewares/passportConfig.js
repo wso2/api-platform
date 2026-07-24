@@ -179,5 +179,5 @@ function configurePassport(SERVER_ID) {
     });
 }
 
-module.exports = { configurePassport };
+module.exports = { configurePassport, getNestedClaim };
 
