@@ -44,7 +44,8 @@ docker compose up -d
 
 `setup.sh` prints the admin password **once** — copy it. The username defaults to `admin`; set
 `ADMIN_USERNAME`/`ADMIN_PASSWORD` beforehand to run non-interactively. Only the bcrypt hash is stored,
-and the controller refuses to start without a credential.
+and — because basic auth is enabled in the shipped config — the controller refuses to start without a
+credential.
 
 Verify the gateway is healthy:
 

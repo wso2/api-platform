@@ -103,14 +103,17 @@ services:
     command:
       - |
         set -e
-        [ -f /keys/jwt_private.pem ] && [ -f /keys/jwt_public.pem ] && [ -f /keys/encryption.key ] && exit 0
-        openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+        # Generate only what's missing — never overwrite an existing JWT keypair
+        # (that would invalidate already-issued tokens) or an existing encryption
+        # key (that would make previously-encrypted data unreadable).
+        [ -f /keys/jwt_private.pem ] || openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
           -out /keys/jwt_private.pem 2>/dev/null
-        openssl rsa -in /keys/jwt_private.pem -pubout \
+        [ -f /keys/jwt_public.pem ] || openssl rsa -in /keys/jwt_private.pem -pubout \
           -out /keys/jwt_public.pem 2>/dev/null
         # At-rest encryption key: 32 bytes as 64 hex chars, read by config.toml
         # via {{ file "/etc/platform-api/keys/encryption.key" }}.
-        openssl rand -hex 32 > /keys/encryption.key
+        [ -f /keys/encryption.key ] || openssl rand -hex 32 > /keys/encryption.key
+        # Applied every run to both freshly-generated and pre-existing keys.
         # jwtkeygen runs as root; platform-api runs as uid 10001, so the private
         # key and encryption key must be owned by that uid, not world-readable.
         chown 10001 /keys/jwt_private.pem /keys/encryption.key

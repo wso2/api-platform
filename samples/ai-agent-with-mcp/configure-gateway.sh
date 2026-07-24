@@ -22,7 +22,7 @@ if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
 fi
 
 MGMT="http://localhost:9090/api/management/v0.9"
-AUTH_HEADER="Authorization: Basic $(printf %s "${ADMIN_USERNAME:-admin}:${ADMIN_PASSWORD:-admin}" | base64)"   # default admin/admin; override with ADMIN_USERNAME/ADMIN_PASSWORD
+AUTH_HEADER="Authorization: Basic $(printf %s "${ADMIN_USERNAME:-admin}:${ADMIN_PASSWORD:-admin}" | base64 | tr -d '\r\n')"   # default admin/admin; override with ADMIN_USERNAME/ADMIN_PASSWORD
 
 # Inbound API key clients use to call the LLM proxy.
 # The gateway's api-key-auth policy checks the x-api-key header,

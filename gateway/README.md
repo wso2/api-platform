@@ -46,7 +46,8 @@ curl http://localhost:9092/api/admin/v0.9/health
 
 `setup.sh` prints the admin password **once** — copy it. The username defaults to `admin`; set
 `ADMIN_USERNAME`/`ADMIN_PASSWORD` up front for non-interactive runs. Only the bcrypt hash is stored (in
-`api-platform.env`), and the controller refuses to start if the credential is missing.
+`api-platform.env`), and — because basic auth is enabled in the shipped config — the controller refuses
+to start if the credential is missing.
 
 `setup.sh` is idempotent (rerun with `--force` to rotate certs, the encryption key, and the admin
 password, and rewrite `api-platform.env`).

@@ -42,6 +42,7 @@ docker compose up -d
 | Output | Contents |
 |---|---|
 | `api-platform.env` (git-ignored) | `APIP_CP_ADMIN_USERNAME`, `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt) |
+| `resources/keys/encryption.key` (git-ignored) | Platform API at-rest encryption key (32 bytes, 64 hex chars); read by `config.toml` via `{{ file }}`. **Retain it** — losing or changing it makes previously-encrypted secrets unreadable. |
 | `resources/keys/jwt_private.pem` + `jwt_public.pem` (git-ignored) | RS256 keypair signing/verifying login JWTs; read by `config.toml` via `{{ file }}` |
 | `resources/certificates/cert.pem` + `key.pem` | Self-signed TLS pair shared by both services (SAN: `localhost`, `platform-api`, `ai-workspace`) |
 

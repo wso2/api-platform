@@ -130,10 +130,17 @@ log "  - RS256 JWT keypair generated at $KEYS_DIR"
 # Platform API at-rest encryption key. Written to a file (not api-platform.env) and
 # read by config.toml via {{ file "/etc/platform-api/keys/encryption.key" }} — the
 # same mounted keys dir as the JWT keypair. 32-byte key as 64 hex chars. 644 so the
-# container's non-root user can read the host-owned file (matching the JWT keys above).
-openssl rand -hex 32 > "$KEYS_DIR/encryption.key"
-chmod 644 "$KEYS_DIR/encryption.key"
-log "  - at-rest encryption key generated at $KEYS_DIR/encryption.key"
+# container's non-root user can read the host-owned bind-mounted file (matching the
+# JWT keys above; a tighter mode would block the non-root platform-api user).
+# Preserve an existing key across reruns — regenerating it makes previously-encrypted
+# data unreadable — so only create it when absent or when --force rotation is requested.
+if [[ "$FORCE" == true || ! -f "$KEYS_DIR/encryption.key" ]]; then
+  openssl rand -hex 32 > "$KEYS_DIR/encryption.key"
+  chmod 644 "$KEYS_DIR/encryption.key"
+  log "  - at-rest encryption key generated at $KEYS_DIR/encryption.key"
+else
+  log "  - $KEYS_DIR/encryption.key already exists — keeping it"
+fi
 
 log "Provisioning admin credentials ..."
 ADMIN_PASSWORD_HASH="$(bcrypt_hash "$ADMIN_PASSWORD")"
