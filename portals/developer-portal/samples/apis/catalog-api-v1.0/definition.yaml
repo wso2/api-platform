@@ -3,11 +3,12 @@ info:
   title: Catalog API
   version: 1.0.0
   description: |
-    Product catalog API with subscription-based access control.
+    Product catalog API with token-based subscription access control.
 
-    An **API key** (`X-API-Key` header) is required on every request. Subscribe to
-    a Gold or Bronze plan in the developer portal — no subscription token header
-    is needed; the gateway validates your plan via the API key alone.
+    Subscribe to a Gold or Bronze plan in the developer portal to receive a
+    **subscription token**. Every request must include both an **API key**
+    (`X-API-Key` header) and the **subscription token** (`X-Subscription-Token`
+    header).
 servers:
   - url: /catalog
 security:
@@ -18,6 +19,14 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
+  parameters:
+    SubscriptionTokenHeader:
+      name: X-Subscription-Token
+      x-header-type: subscription-token   # marks the API as token-based subscription
+      in: header
+      required: true
+      schema:
+        type: string
   schemas:
     Product:
       type: object
