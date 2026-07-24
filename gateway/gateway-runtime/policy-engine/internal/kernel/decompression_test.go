@@ -21,6 +21,7 @@ package kernel
 import (
 	"bytes"
 	"compress/gzip"
+	"io"
 	"testing"
 	"time"
 
@@ -258,6 +259,53 @@ func TestStreamDecompressor_Close_DoesNotHang(t *testing.T) {
 	}
 }
 
+// TestStreamDecompressor_Close_ReleasesParkedDecoder is the regression test for the
+// goroutine leak that occurred when a policy terminated a compressed response stream
+// mid-flight: the decoder had consumed a non-final chunk and parked waiting for input
+// that never arrived (EndOfStream never reached it). Close() must release that parked
+// goroutine — otherwise every early-terminated compressed stream leaks one goroutine.
+func TestStreamDecompressor_Close_ReleasesParkedDecoder(t *testing.T) {
+	// Build a gzip stream flushed after the first event so a leading, non-terminal
+	// slice is independently decodable — mimicking a mid-stream chunk.
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, err := zw.Write([]byte("event: message_start\n\n"))
+	require.NoError(t, err)
+	require.NoError(t, zw.Flush())
+	midStreamBytes := append([]byte{}, buf.Bytes()...)
+
+	sd := newStreamDecompressor("gzip")
+
+	// Feed the mid-stream chunk WITHOUT EndOfStream. FeedChunk returns once the
+	// decoder has consumed it and parked waiting for more input.
+	_, err = sd.FeedChunk(midStreamBytes, false)
+	require.NoError(t, err)
+
+	// Sanity-check the decoder is parked (not done) — this is the leak state.
+	sd.mu.Lock()
+	require.True(t, sd.feederBlocked, "decoder should be parked waiting for more input")
+	require.False(t, sd.done, "decoder should not have exited before Close")
+	sd.mu.Unlock()
+
+	// The stream is terminated early; Close() must release the parked goroutine.
+	sd.Close()
+
+	deadline := time.After(2 * time.Second)
+	for {
+		sd.mu.Lock()
+		done := sd.done
+		sd.mu.Unlock()
+		if done {
+			return // goroutine exited — no leak
+		}
+		select {
+		case <-deadline:
+			t.Fatal("decoder goroutine was not released after Close() — leak on mid-stream termination")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
 // TestStreamDecompressor_RoundTrip verifies the full cycle the streaming path
 // performs: incoming compressed bytes → decompress → policy modifies → recompress.
 // The final recompressed bytes must decompress back to the (modified) original.
@@ -279,4 +327,279 @@ func TestStreamDecompressor_RoundTrip(t *testing.T) {
 	final, err := decompressBody(recompressed, "gzip")
 	require.NoError(t, err)
 	assert.Equal(t, original, final)
+}
+
+// TestStreamDecompressor_ManyChunks_NoStall is the regression test for the
+// mid-stream stall that broke large Claude Code tasks. The previous io.Pipe +
+// bounded-channel (cap 64) design deadlocked once the decoder produced more
+// undrained output blocks than the channel could hold while a chunk was still
+// being consumed: the decoder goroutine blocked on the full channel, stopped
+// reading the pipe, so the pipe Write never returned, so FeedChunk never drained
+// the channel. It surfaced only on long/large responses (many chunks) — short
+// ones never filled the channel, which is why the two-chunk tests missed it.
+//
+// This feeds a long stream as many separate sync-flushed chunks and asserts every
+// byte comes back, within a deadline so a regression fails as a timeout, not a hang.
+func TestStreamDecompressor_ManyChunks_NoStall(t *testing.T) {
+	// Build a gzip stream flushed after each of many logical chunks, mirroring how
+	// an upstream (Anthropic) emits a continuous gzip stream with per-event flushes.
+	const numChunks = 500
+	var raw bytes.Buffer
+	var compressed bytes.Buffer
+	zw := gzip.NewWriter(&compressed)
+	flushOffsets := make([]int, 0, numChunks)
+	for i := 0; i < numChunks; i++ {
+		// ~250 bytes per SSE event, including ~200 bytes of filler text.
+		filler := string(bytes.Repeat([]byte("x"), 200))
+		line := []byte(`data: {"type":"content_block_delta","index":0,` +
+			`"delta":{"type":"text_delta","text":"token-` + filler + `"}}` + "\n\n")
+		raw.Write(line)
+		_, err := zw.Write(line)
+		require.NoError(t, err)
+		require.NoError(t, zw.Flush()) // sync-flush → a decodable boundary, like SSE
+		flushOffsets = append(flushOffsets, compressed.Len())
+	}
+	require.NoError(t, zw.Close())
+
+	sd := newStreamDecompressor("gzip")
+	compBytes := compressed.Bytes()
+	// Close() appended the gzip trailer after the last recorded flush offset — extend
+	// the final segment to the true end so the EOS chunk carries the trailer.
+	flushOffsets[len(flushOffsets)-1] = len(compBytes)
+
+	// Feed the compressed stream in slices aligned to the flush boundaries, each as a
+	// separate FeedChunk call — the shape that accumulated backlog in the old design.
+	done := make(chan []byte, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		var out []byte
+		prev := 0
+		for i, off := range flushOffsets {
+			eos := i == len(flushOffsets)-1
+			part, err := sd.FeedChunk(compBytes[prev:off], eos)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			out = append(out, part...)
+			prev = off
+		}
+		done <- out
+	}()
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("FeedChunk returned error: %v", err)
+	case out := <-done:
+		assert.Equal(t, raw.Bytes(), out, "every decompressed byte must be returned across all chunks")
+	case <-time.After(15 * time.Second):
+		sd.Close()
+		t.Fatal("streamDecompressor stalled on a long many-chunk stream (regression: mid-stream deadlock)")
+	}
+}
+
+// TestStreamDecompressor_HighRatioChunk_NoStall feeds a single chunk that
+// decompresses to far more than the old 64-block channel could buffer, exercising
+// the second face of the same bug: one FeedChunk whose decoded output alone would
+// have overrun the bounded channel mid-consume. With the unbounded output buffer
+// this must complete promptly and return all bytes.
+func TestStreamDecompressor_HighRatioChunk_NoStall(t *testing.T) {
+	// 8 MiB of highly compressible data → tiny compressed input, ~256 blocks of
+	// 32 KiB out — well past the old cap of 64.
+	original := bytes.Repeat([]byte("A"), 8<<20)
+	compressed := gzipCompress(original)
+
+	sd := newStreamDecompressor("gzip")
+
+	done := make(chan []byte, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		out, err := sd.FeedChunk(compressed, true)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		done <- out
+	}()
+
+	select {
+	case err := <-errCh:
+		t.Fatalf("FeedChunk returned error: %v", err)
+	case out := <-done:
+		assert.Equal(t, len(original), len(out))
+		assert.True(t, bytes.Equal(original, out))
+	case <-time.After(15 * time.Second):
+		sd.Close()
+		t.Fatal("streamDecompressor stalled on a high-ratio single chunk (regression: bounded-channel overrun)")
+	}
+}
+
+// TestStreamDecompressor_OutputCap_FailsTerminally verifies the decompression-bomb
+// guard: a tiny compressed input that expands past maxStreamAccumulatorSize must fail
+// terminally rather than growing the output buffer without bound.
+func TestStreamDecompressor_OutputCap_FailsTerminally(t *testing.T) {
+	// Compresses to a few KB but decompresses to just over the 10 MB cap.
+	original := bytes.Repeat([]byte("A"), maxStreamAccumulatorSize+1<<20)
+	compressed := gzipCompress(original)
+
+	sd := newStreamDecompressor("gzip")
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := sd.FeedChunk(compressed, true)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.Error(t, err, "expected a terminal error when decompressed output exceeds the cap")
+		assert.Contains(t, err.Error(), "maximum allowed size")
+	case <-time.After(15 * time.Second):
+		sd.Close()
+		t.Fatal("streamDecompressor hung instead of failing terminally on an oversized decode burst")
+	}
+}
+
+// =============================================================================
+// streamCompressor Tests
+// =============================================================================
+
+// gzipHeaderCount counts the number of gzip member headers (magic bytes 1f 8b 08)
+// in a byte slice. A correct single continuous stream has exactly one.
+func gzipHeaderCount(data []byte) int {
+	return bytes.Count(data, []byte{0x1f, 0x8b, 0x08})
+}
+
+// singleMemberGunzip decodes only the FIRST gzip member, mimicking downstream HTTP
+// decoders (such as the Claude Code client) that stop at the first member's trailer.
+func singleMemberGunzip(t *testing.T, data []byte) []byte {
+	t.Helper()
+	zr, err := gzip.NewReader(bytes.NewReader(data))
+	require.NoError(t, err)
+	zr.Multistream(false) // do NOT transparently continue into later members
+	out, err := io.ReadAll(zr)
+	require.NoError(t, err)
+	return out
+}
+
+// TestStreamCompressor_Gzip_MultipleChunks is the regression test for the analytics
+// streaming bug: multiple chunks must be re-compressed into ONE continuous gzip stream.
+func TestStreamCompressor_Gzip_MultipleChunks(t *testing.T) {
+	chunks := [][]byte{
+		[]byte("event: message_start\ndata: {\"type\":\"message_start\"}\n\n"),
+		[]byte("event: content_block_delta\ndata: {\"delta\":\"Hi\"}\n\n"),
+		[]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"),
+	}
+	var full []byte
+	for _, c := range chunks {
+		full = append(full, c...)
+	}
+
+	sc := newStreamCompressor("gzip")
+	var compressed []byte
+	for i, c := range chunks {
+		endOfStream := i == len(chunks)-1
+		out, err := sc.FeedChunk(c, endOfStream)
+		require.NoError(t, err)
+		compressed = append(compressed, out...)
+	}
+
+	// The whole body must be a SINGLE gzip member — this is the property the bug violated.
+	assert.Equal(t, 1, gzipHeaderCount(compressed),
+		"streaming compression must emit exactly one gzip member, not one per chunk")
+
+	// A single-member decoder (like the downstream client) must recover ALL chunks,
+	// not just the first. This is what failed for Claude Code before the fix.
+	assert.Equal(t, full, singleMemberGunzip(t, compressed))
+
+	// And a normal (multistream) decode must also yield the full body.
+	final, err := decompressBody(compressed, "gzip")
+	require.NoError(t, err)
+	assert.Equal(t, full, final)
+}
+
+// TestRecompressBody_PerChunk_ProducesMultipleMembers documents the OLD, buggy
+// behaviour that streamCompressor replaces: re-compressing each chunk independently
+// produces N gzip members, and a single-member decoder recovers only the first chunk.
+func TestRecompressBody_PerChunk_ProducesMultipleMembers(t *testing.T) {
+	chunks := [][]byte{
+		[]byte("event: message_start\n\n"),
+		[]byte("event: content_block_delta\n\n"),
+		[]byte("event: message_stop\n\n"),
+	}
+
+	var buggy []byte
+	for _, c := range chunks {
+		out, err := recompressBody(c, "gzip")
+		require.NoError(t, err)
+		buggy = append(buggy, out...)
+	}
+
+	// Per-chunk recompress yields one member per chunk...
+	assert.Equal(t, len(chunks), gzipHeaderCount(buggy))
+	// ...and a single-member decoder sees only the first chunk — the dropped-stream bug.
+	assert.Equal(t, chunks[0], singleMemberGunzip(t, buggy))
+}
+
+// TestStreamCompressor_Brotli_MultipleChunks verifies the brotli path round-trips
+// across multiple chunks into a single continuous stream.
+func TestStreamCompressor_Brotli_MultipleChunks(t *testing.T) {
+	chunks := [][]byte{
+		[]byte("first-chunk-payload"),
+		[]byte("second-chunk-payload"),
+		[]byte("third-chunk-payload"),
+	}
+	var full []byte
+	for _, c := range chunks {
+		full = append(full, c...)
+	}
+
+	sc := newStreamCompressor("br")
+	var compressed []byte
+	for i, c := range chunks {
+		out, err := sc.FeedChunk(c, i == len(chunks)-1)
+		require.NoError(t, err)
+		compressed = append(compressed, out...)
+	}
+
+	final, err := decompressBody(compressed, "br")
+	require.NoError(t, err)
+	assert.Equal(t, full, final)
+}
+
+// TestStreamCompressor_Gzip_EmptyFinalChunk mirrors the real Envoy flow where the
+// EndOfStream chunk carries zero bytes: the trailer must still be emitted so the
+// stream is well-formed.
+func TestStreamCompressor_Gzip_EmptyFinalChunk(t *testing.T) {
+	sc := newStreamCompressor("gzip")
+
+	out1, err := sc.FeedChunk([]byte("payload-one"), false)
+	require.NoError(t, err)
+	out2, err := sc.FeedChunk([]byte("payload-two"), false)
+	require.NoError(t, err)
+	// Final chunk with no data, only EndOfStream — as Envoy delivers it.
+	out3, err := sc.FeedChunk(nil, true)
+	require.NoError(t, err)
+
+	compressed := append(append(append([]byte{}, out1...), out2...), out3...)
+	assert.Equal(t, 1, gzipHeaderCount(compressed))
+	assert.Equal(t, []byte("payload-onepayload-two"), singleMemberGunzip(t, compressed))
+}
+
+// TestStreamCompressor_UnknownEncoding_Passthrough verifies unknown encodings pass
+// bytes through unchanged.
+func TestStreamCompressor_UnknownEncoding_Passthrough(t *testing.T) {
+	sc := newStreamCompressor("identity")
+	out, err := sc.FeedChunk([]byte("raw-bytes"), true)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("raw-bytes"), out)
+}
+
+// TestStreamCompressor_WriteAfterClose returns an error rather than corrupting output.
+func TestStreamCompressor_WriteAfterClose(t *testing.T) {
+	sc := newStreamCompressor("gzip")
+	_, err := sc.FeedChunk([]byte("data"), true)
+	require.NoError(t, err)
+	_, err = sc.FeedChunk([]byte("more"), false)
+	require.Error(t, err)
 }

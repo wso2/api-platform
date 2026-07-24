@@ -124,6 +124,10 @@ type PolicyExecutionContext struct {
 	// requestStreamDecomp performs per-chunk decompression for compressed streaming
 	// request bodies. Nil when the request is not Content-Encoded.
 	requestStreamDecomp *streamDecompressor
+	// requestStreamComp performs per-chunk re-compression for compressed streaming
+	// request bodies, keeping a single continuous stream open across chunks. Nil until
+	// the first compressed chunk is forwarded.
+	requestStreamComp *streamCompressor
 
 	// isStreamingResponse is set to true during response headers processing when
 	// streaming indicators are detected AND the policy chain supports streaming.
@@ -133,6 +137,10 @@ type PolicyExecutionContext struct {
 	// responseStreamDecomp performs per-chunk decompression for compressed streaming
 	// response bodies. Nil when the response is not Content-Encoded.
 	responseStreamDecomp *streamDecompressor
+	// responseStreamComp performs per-chunk re-compression for compressed streaming
+	// response bodies, keeping a single continuous stream open across chunks. Nil until
+	// the first compressed chunk is forwarded.
+	responseStreamComp *streamCompressor
 	// streamTerminated is set when a policy returns TerminateStream=true. Any
 	// subsequent upstream chunks that Envoy delivers after we have already sent
 	// EndOfStream downstream are silently suppressed — the downstream connection
@@ -852,6 +860,17 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		}
 		if execResult.StreamTerminated {
 			ec.streamTerminated = true
+		}
+
+		// Release the decompressor goroutine on the terminal chunk. On a normal
+		// EndOfStream the decoder already exited on its own after the feeder returned
+		// io.EOF; but when a policy terminates the stream early, EndOfStream never
+		// reaches the decoder, so it stays parked waiting for input that will never
+		// arrive — a goroutine leak. Close() releases it and is idempotent/safe on an
+		// already-finished decoder.
+		if ec.responseStreamDecomp != nil && (chunk.EndOfStream || execResult.StreamTerminated) {
+			ec.responseStreamDecomp.Close()
+			ec.responseStreamDecomp = nil
 		}
 		return TranslateStreamingResponseChunkAction(execResult, chunk, ec)
 	}
