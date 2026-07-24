@@ -22,11 +22,14 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/plugin"
 	"github.com/wso2/api-platform/platform-api/pdk"
+	gohttpkit "github.com/wso2/go-httpkit/middleware"
 )
 
 // specWithScopes is a minimal OpenAPI document declaring one scoped operation.
@@ -89,6 +92,42 @@ type skipPathPlugin struct {
 }
 
 func (s *skipPathPlugin) AuthSkipPaths() []string { return s.paths }
+
+// middlewarePlugin additionally implements plugin.MiddlewareProvider.
+type middlewarePlugin struct {
+	*fakePlugin
+	mw []pdk.PositionedMiddleware
+}
+
+func (m *middlewarePlugin) Middleware() []pdk.PositionedMiddleware { return m.mw }
+
+// recordingMiddleware returns a middleware that appends tag to *log as a request
+// passes through it. Chain composition has to be asserted this way round: func
+// values are not comparable in Go, so a collected pdk.Middleware cannot be matched
+// against the one the plugin handed in — only the order they actually run in is
+// observable.
+func recordingMiddleware(log *[]string, tag string) pdk.Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			*log = append(*log, tag)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// drive composes mws the way the server does — first element outermost, per
+// gohttpkit.Chain — and sends one request through, so the middleware built by
+// recordingMiddleware log the order they run in. It also fails loudly on a nil
+// Wrap that was collected rather than skipped, since calling one panics.
+func drive(t *testing.T, mws []pdk.Middleware) {
+	t.Helper()
+	chain := make([]func(http.Handler) http.Handler, 0, len(mws))
+	for _, mw := range mws {
+		chain = append(chain, mw)
+	}
+	handler := gohttpkit.Chain(chain...)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+}
 
 // run calls initPlugins with the fixed test collaborators.
 func run(t *testing.T, reg *middleware.ScopeRegistry, plugins ...plugin.Plugin) (*pluginWiring, error) {
@@ -184,5 +223,95 @@ func TestInitPlugins_CollectsValidAuthSkipPaths(t *testing.T) {
 		wiring.authSkipPaths[0] != "/api/v1/widgets/health" ||
 		wiring.authSkipPaths[1] != "/api/v1/widgets/callback" {
 		t.Fatalf("unexpected skip paths: %v", wiring.authSkipPaths)
+	}
+}
+
+// Sorting plugin middleware into the two chain positions is a security boundary,
+// not just plumbing: BeforePlatformChain runs before CORS and auth with no
+// identity in the context, while AfterPlatformChain runs after auth,
+// organization resolution, and scope enforcement, and is documented to read the
+// authenticated org from context (GO-AUTH-005). Middleware landing in the wrong
+// position fails silently — an audit or per-tenant rate limiter would simply see
+// no identity — so assert placement explicitly. Order within a position is part
+// of the same contract (see pdk.MiddlewareProvider): plugin registration order.
+func TestInitPlugins_MiddlewareIsPlacedByPositionInRegistrationOrder(t *testing.T) {
+	var log []string
+
+	first := &middlewarePlugin{
+		fakePlugin: &fakePlugin{name: "first", spec: specWithScopes},
+		mw: []pdk.PositionedMiddleware{
+			{Position: pdk.BeforePlatformChain, Wrap: recordingMiddleware(&log, "first-pre")},
+			{Position: pdk.AfterPlatformChain, Wrap: recordingMiddleware(&log, "first-post")},
+		},
+	}
+	second := &middlewarePlugin{
+		fakePlugin: &fakePlugin{name: "second", spec: specWithScopes},
+		mw: []pdk.PositionedMiddleware{
+			{Position: pdk.AfterPlatformChain, Wrap: recordingMiddleware(&log, "second-post")},
+			{Position: pdk.BeforePlatformChain, Wrap: recordingMiddleware(&log, "second-pre")},
+		},
+	}
+
+	wiring, err := run(t, emptyRegistry(t), first, second)
+	if err != nil {
+		t.Fatalf("initPlugins: unexpected error: %v", err)
+	}
+
+	// Each plugin declares its two positions in a different order, so a switch
+	// that ignored Position entirely could not produce both of these.
+	drive(t, wiring.preChain)
+	if want := []string{"first-pre", "second-pre"}; !slices.Equal(log, want) {
+		t.Errorf("preChain ran %v, want %v", log, want)
+	}
+
+	log = nil
+	drive(t, wiring.postChain)
+	if want := []string{"first-post", "second-post"}; !slices.Equal(log, want) {
+		t.Errorf("postChain ran %v, want %v", log, want)
+	}
+}
+
+// A malformed entry aborts startup rather than being dropped. Skipping one
+// silently would discard the middleware — and the plugin author's intent — with
+// no signal: a panic recovery or IP allow-list would simply never run. A nil
+// Wrap is malformed for the same reason and is not an opt-out; the documented
+// way to contribute nothing is an empty slice (see pdk.MiddlewareProvider).
+func TestInitPlugins_MalformedMiddlewareEntryAbortsStartup(t *testing.T) {
+	// Stands in for any real middleware: these entries exist only to be valid
+	// company for the malformed one below.
+	passthrough := pdk.Middleware(func(next http.Handler) http.Handler { return next })
+
+	tests := []struct {
+		name string
+		bad  pdk.PositionedMiddleware
+	}{
+		{"nil wrap", pdk.PositionedMiddleware{Position: pdk.BeforePlatformChain, Wrap: nil}},
+		// ChainPosition is an int with exactly two valid values, so an
+		// out-of-range positive and a negative both reach the default arm.
+		{"position above range", pdk.PositionedMiddleware{Position: 99, Wrap: passthrough}},
+		{"negative position", pdk.PositionedMiddleware{Position: -1, Wrap: passthrough}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// A well-formed entry precedes the bad one, so the abort is
+			// attributable to the malformed entry rather than to the plugin
+			// contributing nothing usable at all.
+			p := &middlewarePlugin{
+				fakePlugin: &fakePlugin{name: "widgets", spec: specWithScopes},
+				mw: []pdk.PositionedMiddleware{
+					{Position: pdk.BeforePlatformChain, Wrap: passthrough},
+					tc.bad,
+				},
+			}
+
+			wiring, err := run(t, emptyRegistry(t), p)
+			if err == nil {
+				t.Fatalf("expected a %s to abort startup, got nil error", tc.name)
+			}
+			if wiring != nil {
+				t.Errorf("expected no wiring on an aborted startup, got %+v", wiring)
+			}
+		})
 	}
 }

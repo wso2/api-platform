@@ -20,6 +20,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/wso2/api-platform/platform-api/internal/plugin"
@@ -55,6 +56,14 @@ type externalSkipPathPlugin struct {
 }
 
 func (f *externalSkipPathPlugin) AuthSkipPaths() []string { return f.paths }
+
+// externalMiddlewarePlugin implements pdk.MiddlewareProvider.
+type externalMiddlewarePlugin struct {
+	*fakeExternalPlugin
+	mw []pdk.PositionedMiddleware
+}
+
+func (f *externalMiddlewarePlugin) Middleware() []pdk.PositionedMiddleware { return f.mw }
 
 // The premise of the two-tier model: an external plugin receives pdk.Deps
 // (capabilities as public interfaces) and never the internal plugin.Deps, which
@@ -135,5 +144,59 @@ func TestInitPlugins_ExternalTierCannotDeclareAuthSkipPaths(t *testing.T) {
 	}
 	if len(wiring.authSkipPaths) != 0 {
 		t.Fatalf("external plugin contributed skip paths %v; the external tier has no such hook", wiring.authSkipPaths)
+	}
+}
+
+// Middleware, unlike auth skip paths above, IS forwarded for the external tier:
+// externalPlugin.Middleware passes pdk.MiddlewareProvider through so both tiers
+// reach the server's single wiring path. The asymmetry is deliberate — external
+// middleware cannot bypass auth, because BeforePlatformChain runs before the
+// platform's auth and cannot mark a request as authenticated, whereas a skip
+// path would remove the auth check outright (GO-AUTH-004).
+func TestInitPlugins_ExternalTierContributesMiddleware(t *testing.T) {
+	var log []string
+
+	ext := &externalMiddlewarePlugin{
+		fakeExternalPlugin: &fakeExternalPlugin{name: "api-cloud", spec: specWithScopes},
+		mw: []pdk.PositionedMiddleware{
+			{Position: pdk.BeforePlatformChain, Wrap: recordingMiddleware(&log, "ext-pre")},
+			{Position: pdk.AfterPlatformChain, Wrap: recordingMiddleware(&log, "ext-post")},
+		},
+	}
+
+	wiring, err := initPlugins(testLogger(), http.NewServeMux(), emptyRegistry(t),
+		&plugin.Deps{}, &pdk.Deps{}, nil, []pdk.Plugin{ext})
+	if err != nil {
+		t.Fatalf("initPlugins: unexpected error: %v", err)
+	}
+
+	drive(t, wiring.preChain)
+	if want := []string{"ext-pre"}; !slices.Equal(log, want) {
+		t.Errorf("preChain ran %v, want %v", log, want)
+	}
+
+	log = nil
+	drive(t, wiring.postChain)
+	if want := []string{"ext-post"}; !slices.Equal(log, want) {
+		t.Errorf("postChain ran %v, want %v", log, want)
+	}
+}
+
+// externalPlugin always satisfies plugin.MiddlewareProvider, because Middleware
+// is a method on the wrapper itself rather than on the wrapped plugin — the nil
+// return is the only thing that makes the server's interface assertion a no-op
+// for an external plugin that does not implement pdk.MiddlewareProvider. That is
+// a different code path from the internal tier's assertion, so cover it.
+func TestInitPlugins_ExternalTierWithoutMiddlewareContributesNone(t *testing.T) {
+	ext := &fakeExternalPlugin{name: "api-cloud", spec: specWithScopes}
+
+	wiring, err := initPlugins(testLogger(), http.NewServeMux(), emptyRegistry(t),
+		&plugin.Deps{}, &pdk.Deps{}, nil, []pdk.Plugin{ext})
+	if err != nil {
+		t.Fatalf("initPlugins: unexpected error: %v", err)
+	}
+	if len(wiring.preChain) != 0 || len(wiring.postChain) != 0 {
+		t.Fatalf("expected no middleware from a plugin that does not provide any, got pre=%d post=%d",
+			len(wiring.preChain), len(wiring.postChain))
 	}
 }
