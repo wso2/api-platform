@@ -17,18 +17,21 @@
  *
  */
 
-// Package main — experimental build: registers experimental plugins.
+// Package builtins — experimental build: registers experimental plugins.
 // Compiled only when the "experimental" build tag is set, e.g.:
 //
 //	go build -tags experimental ./cmd/main.go
 //	docker build --build-arg EXPERIMENTAL=true ...
-package main
+package builtins
 
 import (
 	"github.com/wso2/api-platform/platform-api/internal/plugin"
 	eventgateway "github.com/wso2/api-platform/platform-api/plugins/eventgateway"
 )
 
-func init() {
-	plugin.Register(eventgateway.New())
+// Plugins returns the in-tree (internal-tier) plugins compiled into this build.
+// The experimental build includes eventgateway. No global registry — the entry
+// point passes these explicitly to the server.
+func Plugins() []plugin.Plugin {
+	return []plugin.Plugin{eventgateway.New()}
 }

@@ -36,6 +36,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/service"
+	"github.com/wso2/api-platform/platform-api/pdk"
 
 	"github.com/wso2/api-platform/common/eventhub"
 )
@@ -55,8 +56,12 @@ type Plugin interface {
 	RegisterRoutes(mux *http.ServeMux)
 
 	// OpenAPISpec returns the plugin's OpenAPI 3.x YAML bytes used to merge
-	// scope requirements into the platform scope registry. Return nil if the
-	// plugin registers no routes that require scope enforcement.
+	// scope requirements into the platform scope registry. It is mandatory:
+	// returning empty bytes or bytes the registry loader rejects aborts startup.
+	//
+	// The merged registry is what ScopeEnforcer consults on each request, keyed
+	// by the matched route pattern. Declare the scopes each route requires
+	// (GO-AUTH-007).
 	OpenAPISpec() []byte
 
 	// Shutdown is called during graceful server shutdown.
@@ -94,6 +99,25 @@ type Deps struct {
 
 	// DBEncryptionKey is the derived hex key used for encrypted DB columns.
 	DBEncryptionKey string
+}
+
+// AuthSkipPathProvider is an optional interface a Plugin may implement to declare
+// public (unauthenticated) path prefixes. The server validates each returned path
+// and appends it to cfg.Auth.SkipPaths before the auth middleware is built. Keep
+// prefixes narrow and specific — this is an auth-bypass surface (GO-AUTH-004).
+// Matching is a prefix match, so an over-broad prefix aborts startup: a path must
+// be non-empty, start with "/", not be "/" alone, and contain no "..".
+type AuthSkipPathProvider interface {
+	AuthSkipPaths() []string
+}
+
+// MiddlewareProvider is an optional interface a Plugin may implement to contribute
+// middleware to the server's request chain. It mirrors pdk.MiddlewareProvider and
+// reuses the pdk positioned-middleware type, so internal and external plugins share
+// one wiring path in the server: the externalPlugin wrapper in
+// internal/server/external_plugin.go implements this by forwarding the pdk one.
+type MiddlewareProvider interface {
+	Middleware() []pdk.PositionedMiddleware
 }
 
 // HmacSecretServicer is the minimal interface for WebSub API HMAC secret
