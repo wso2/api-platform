@@ -128,8 +128,14 @@ func initPlugins(
 		// by this one assertion.
 		if mp, ok := p.(plugin.MiddlewareProvider); ok {
 			for _, m := range mp.Middleware() {
+				// A nil Wrap is a malformed entry, not a way to opt out: skipping
+				// it silently would drop middleware the author believes is wired
+				// (a panic recovery, an IP allow-list) with no signal, and letting
+				// it through panics when the chain is composed around the mux.
+				// Abort for the same reason an unknown position does below.
 				if m.Wrap == nil {
-					continue
+					return fail("plugin %q declared middleware at chain position %d with a nil Wrap; "+
+						"return an empty slice to contribute no middleware", p.Name(), m.Position)
 				}
 				switch m.Position {
 				case pdk.BeforePlatformChain:
