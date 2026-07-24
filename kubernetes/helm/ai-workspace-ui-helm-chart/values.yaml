@@ -61,6 +61,11 @@ config:
     # Public host (or host:port) the browser uses to reach the UI; shown in the
     # SPA and used to build redirect URLs. Leave "" to derive from the service.
     domain: ""
+    # Optional plain-HTTP listener — enable only behind a TLS-terminating
+    # proxy/ingress. The HTTPS listener always runs on containerPort.
+    http:
+      enabled: false
+      port: 9080
 
   logging:
     level: info                 # debug | info | warn | error
@@ -143,7 +148,7 @@ service:
   type: LoadBalancer            # LoadBalancer | NodePort | ClusterIP
   annotations: {}
   labels: {}
-  port: 5380
+  port: 9643
   clusterIP: ""
   externalTrafficPolicy: ""
   loadBalancerClass: ""
@@ -152,8 +157,8 @@ service:
   ipFamilies: []
   nodePort: ""
 
-# Port the BFF process listens on.
-containerPort: 5380
+# Port the BFF process listens on (the BFF's native default).
+containerPort: 9643
 
 # ----------------------------------------------------------------------------
 # tls — certificate for the BFF's HTTPS listener

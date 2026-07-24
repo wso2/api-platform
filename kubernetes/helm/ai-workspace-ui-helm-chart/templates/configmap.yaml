@@ -22,9 +22,14 @@ data:
   config.toml: |
     [ai_workspace]
     default_org_region = {{ $cfg.defaultOrgRegion | quote }}
-
-    [ai_workspace.server]
     domain = {{ $domain | quote }}
+
+    [ai_workspace.server.http]
+    enabled = {{ $cfg.server.http.enabled }}
+    port = {{ $cfg.server.http.port | int }}
+
+    [ai_workspace.server.https]
+    enabled = true
     port = {{ $ui.containerPort | int }}
     cert_file = "/etc/ai-workspace/tls/cert.pem"
     key_file = "/etc/ai-workspace/tls/key.pem"

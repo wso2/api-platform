@@ -156,10 +156,12 @@ spec:
             secretName: {{ $tls.secret.name }}
             {{- end }}
             items:
+              # Mount as cert.pem/key.pem to match config cert_file/key_file
+              # (/etc/ai-workspace/tls/cert.pem, .../key.pem).
               - key: {{ if eq $tls.certificateProvider "cert-manager" }}tls.crt{{ else }}{{ $tls.secret.certKey }}{{ end }}
-                path: tls.crt
+                path: cert.pem
               - key: {{ if eq $tls.certificateProvider "cert-manager" }}tls.key{{ else }}{{ $tls.secret.keyKey }}{{ end }}
-                path: tls.key
+                path: key.pem
         {{- end }}
         {{- with $deployment.extraVolumes }}
         {{- toYaml . | nindent 8 }}
