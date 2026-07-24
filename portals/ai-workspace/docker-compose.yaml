@@ -34,7 +34,7 @@ services:
       retries: 3
 
   ai-workspace:
-    image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-beta-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-rc
     container_name: ai-workspace
     restart: unless-stopped
     depends_on:
