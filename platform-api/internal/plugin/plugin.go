@@ -114,7 +114,8 @@ type AuthSkipPathProvider interface {
 // MiddlewareProvider is an optional interface a Plugin may implement to contribute
 // middleware to the server's request chain. It mirrors pdk.MiddlewareProvider and
 // reuses the pdk positioned-middleware type, so internal and external plugins share
-// one wiring path in the server (the externalPlugin wrapper forwards the pdk one).
+// one wiring path in the server: the externalPlugin wrapper in
+// internal/server/external_plugin.go implements this by forwarding the pdk one.
 type MiddlewareProvider interface {
 	Middleware() []pdk.PositionedMiddleware
 }
