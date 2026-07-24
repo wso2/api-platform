@@ -225,6 +225,39 @@ func TestUpstreamDefinitions_RoundTripThroughModel(t *testing.T) {
 	}
 }
 
+// TestReusableUpstreamsAPIToModel_NormalizesConnectTimeout verifies a whitespace-only connect
+// timeout is treated as unset (matching validation) and surrounding whitespace is trimmed, so no
+// meaningless value is persisted into the model or the emitted deployment YAML.
+func TestReusableUpstreamsAPIToModel_NormalizesConnectTimeout(t *testing.T) {
+	util := &APIUtil{}
+	blank := "   "
+	padded := "  5s  "
+	mainURL := "http://main:8080"
+	pool := []api.ReusableUpstream{
+		{Name: "blank-timeout", Timeout: &api.UpstreamTimeout{Connect: &blank}},
+		{Name: "padded-timeout", Timeout: &api.UpstreamTimeout{Connect: &padded}},
+	}
+	rest := &api.RESTAPI{
+		DisplayName:         "Trim API",
+		Context:             "/trim",
+		Version:             "v1",
+		ProjectId:           "proj-handle",
+		Upstream:            api.Upstream{Main: api.UpstreamDefinition{Url: &mainURL}},
+		UpstreamDefinitions: &pool,
+	}
+
+	defs := util.RESTAPIToModel(rest, "org-1").Configuration.UpstreamDefinitions
+	if len(defs) != 2 {
+		t.Fatalf("want 2 definitions, got %+v", defs)
+	}
+	if defs[0].Timeout != nil {
+		t.Errorf("blank connect must be treated as unset, got %+v", defs[0].Timeout)
+	}
+	if defs[1].Timeout == nil || defs[1].Timeout.Connect != "5s" {
+		t.Errorf("padded connect must be trimmed to 5s, got %+v", defs[1].Timeout)
+	}
+}
+
 // TestBuildAPIDeploymentYAML_EmitsAPILevelUpstreamRefs verifies API-level main and sandbox
 // refs are emitted as upstream.main.ref / upstream.sandbox.ref in the deployment YAML.
 func TestBuildAPIDeploymentYAML_EmitsAPILevelUpstreamRefs(t *testing.T) {
