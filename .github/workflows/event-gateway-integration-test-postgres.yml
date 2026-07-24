@@ -92,9 +92,13 @@ jobs:
             exit 1
           }
 
+          # Assert the full provisioned schema: core (artifacts) plus the
+          # event-gateway-specific tables the controller no longer creates for
+          # external DBs (websub_apis, webbroker_apis, webhook_secrets) — so a
+          # silently-failed pre-provisioning init hook is caught here.
           table_count="$(docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml exec -T postgres \
-            psql -U gateway -d gateway_test -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'artifacts';")"
-          [ "$table_count" = "1" ]
+            psql -U gateway -d gateway_test -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('artifacts', 'websub_apis', 'webbroker_apis', 'webhook_secrets');")"
+          [ "$table_count" = "4" ]
 
           conn_count="$(docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml exec -T postgres \
             psql -U gateway -d gateway_test -tAc "SELECT COUNT(*) FROM pg_stat_activity WHERE application_name = 'gateway-controller';")"

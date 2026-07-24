@@ -97,10 +97,10 @@ services:
     entrypoint: ["/bin/bash", "-c"]
     command:
       - >
-        /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
+        /opt/mssql-tools18/bin/sqlcmd -b -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
         -Q "IF DB_ID('$$MSSQL_DB') IS NULL CREATE DATABASE [$$MSSQL_DB]"
         &&
-        /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
+        /opt/mssql-tools18/bin/sqlcmd -b -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
         -d "$$MSSQL_DB" -i /schema/gateway-controller-schema.sql
     restart: "no"
     networks:

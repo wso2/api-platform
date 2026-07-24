@@ -103,11 +103,15 @@ jobs:
           }
           trap 'dump_logs; cleanup' EXIT
 
+          # Assert the full provisioned schema: core (artifacts) plus the
+          # event-gateway-specific tables the controller no longer creates for
+          # external DBs (websub_apis, webbroker_apis, webhook_secrets) — so a
+          # silently-failed pre-provisioning init step is caught here.
           table_count="$(docker compose -p "$PROJECT" -f docker-compose.test.sqlserver.yaml exec -T sqlserver \
             /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -d gateway_test -h -1 -W \
-            -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'artifacts'" | tr -d '[:space:]')"
-          echo "artifacts table_count=$table_count"
-          [ "$table_count" = "1" ]
+            -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM information_schema.tables WHERE table_name IN ('artifacts', 'websub_apis', 'webbroker_apis', 'webhook_secrets')" | tr -d '[:space:]')"
+          echo "provisioned table_count=$table_count"
+          [ "$table_count" = "4" ]
 
           # The controller's DSN sets 'app name=gateway-controller', so its sessions are
           # tagged accordingly in sys.dm_exec_sessions (SQL Server's analog of pg_stat_activity).
