@@ -6899,7 +6899,7 @@ components:
       properties:
         connect:
           type: string
-          description: Connection timeout duration (e.g., "5s", "500ms")
+          description: Connection timeout duration; must be a positive (non-zero) value (e.g., "5s", "500ms")
           pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
           example: 5s
 

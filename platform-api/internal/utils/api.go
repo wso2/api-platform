@@ -332,7 +332,11 @@ func (u *APIUtil) ReusableUpstreamsAPIToModel(definitions *[]api.ReusableUpstrea
 			BasePath: defaultStringPtr(definition.BasePath),
 		}
 		if definition.Timeout != nil && definition.Timeout.Connect != nil {
-			m.Timeout = &model.UpstreamTimeout{Connect: *definition.Timeout.Connect}
+			// A blank or whitespace-only connect is treated as unset (matching validation),
+			// so it is not persisted as a meaningless value in the deployment YAML.
+			if connect := strings.TrimSpace(*definition.Timeout.Connect); connect != "" {
+				m.Timeout = &model.UpstreamTimeout{Connect: connect}
+			}
 		}
 		targets := make([]model.UpstreamTarget, 0, len(definition.Upstreams))
 		for _, target := range definition.Upstreams {

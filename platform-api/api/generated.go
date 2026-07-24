@@ -2642,7 +2642,7 @@ type UpstreamReference = string
 
 // UpstreamTimeout Timeout configuration for upstream requests
 type UpstreamTimeout struct {
-	// Connect Connection timeout duration (e.g., "5s", "500ms")
+	// Connect Connection timeout duration; must be a positive (non-zero) value (e.g., "5s", "500ms")
 	Connect *string `json:"connect,omitempty" yaml:"connect,omitempty"`
 }
 
