@@ -11,6 +11,15 @@
 --   BOOLEAN           -> BIT
 --   INTEGER           -> INT
 -- Every object is guarded by IF NOT EXISTS so the batch is idempotent.
+--
+-- The filtered indexes below (CREATE INDEX ... WHERE ...) require QUOTED_IDENTIFIER
+-- and ANSI_NULLS to be ON. The Go database/sql driver connects with these ON, so
+-- the old in-controller ExecContext path applied this script cleanly; sqlcmd/ODBC
+-- connects with QUOTED_IDENTIFIER OFF, so applying via sqlcmd fails with
+-- "Msg 1934 ... CREATE INDEX failed ... 'QUOTED_IDENTIFIER'" and aborts the batch.
+-- Set them explicitly here so the script applies identically under both.
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
 
 -- Base table for all artifact types
 IF OBJECT_ID(N'dbo.artifacts', N'U') IS NULL
