@@ -64,6 +64,13 @@ const DEFAULTS = {
         // PostgreSQL TLS: disable | verify-full.
         sslMode: 'disable',
         sslRootCert: './resources/security/ca.pem',  // CA cert — used by verify-full
+        // Connection pool — PostgreSQL / MSSQL only. Same defaults both adapters
+        // used before this was configurable.
+        maxOpenConns: 50,  // matches platform-api's max_open_conns naming
+        minOpenConns: 2,
+        poolIdleTimeoutMs: 10000,
+        poolConnectionTimeoutMs: 30000,
+        poolRequestTimeoutMs: 30000,  // MSSQL only — per-query execution timeout
     },
     security: {
         encryptionKey: '',

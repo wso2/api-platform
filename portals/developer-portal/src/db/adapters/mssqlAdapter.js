@@ -42,9 +42,9 @@ function buildConnectionConfig(config) {
             encrypt: verifyFull,
             trustServerCertificate: !verifyFull,
         },
-        pool: { max: 50, min: 2, idleTimeoutMillis: 10000 },
-        connectionTimeout: 30000,
-        requestTimeout: 30000,
+        pool: { max: db.maxOpenConns, min: db.minOpenConns, idleTimeoutMillis: db.poolIdleTimeoutMs },
+        connectionTimeout: db.poolConnectionTimeoutMs,
+        requestTimeout: db.poolRequestTimeoutMs,
     };
 }
 

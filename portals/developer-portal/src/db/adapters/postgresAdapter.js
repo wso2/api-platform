@@ -28,10 +28,10 @@ function createPostgresAdapter(config) {
         database: config.database.name,
         password: config.database.password,
         port: config.database.port,
-        max: 50,
-        min: 2,
-        idleTimeoutMillis: 10000,
-        connectionTimeoutMillis: 30000,
+        max: config.database.maxOpenConns,
+        min: config.database.minOpenConns,
+        idleTimeoutMillis: config.database.poolIdleTimeoutMs,
+        connectionTimeoutMillis: config.database.poolConnectionTimeoutMs,
     };
 
     // buildDbSsl() reads config.database.sslMode/sslRootCert and fails closed

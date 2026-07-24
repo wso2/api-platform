@@ -334,4 +334,49 @@ function requireHexSecret(value, fieldName) {
 requireHexSecret(config.security.encryptionKey, 'encryptionKey');
 requireHexSecret(config.security.sessionSecret, 'sessionSecret');
 
+/**
+ * Fail-closed startup check: database connection-pool settings must resolve to
+ * sane numbers before the application is allowed to start. coerceValue() only
+ * converts a leaf to a Number when the *entire* string is numeric — a
+ * malformed override (e.g. APIP_DP_DATABASE_MAX_OPEN_CONNS="abc") is left as
+ * that raw string rather than becoming NaN, and would otherwise reach
+ * pg.Pool()/mssql.ConnectionPool() unvalidated (see postgresAdapter.js /
+ * mssqlAdapter.js), producing a silently broken or uncapped pool.
+ */
+function validateDatabasePoolConfig(database) {
+    if (database.driver !== 'postgres' && database.driver !== 'mssql') return;
+
+    const nonNegativeFields = [
+        'poolIdleTimeoutMs', 'poolConnectionTimeoutMs', 'poolRequestTimeoutMs', 'minOpenConns',
+    ];
+    for (const field of nonNegativeFields) {
+        const value = database[field];
+        if (!Number.isInteger(value) || value < 0) {
+            process.stderr.write(
+                `[FATAL] database.${field} must resolve to a non-negative integer, got ${JSON.stringify(value)}. ` +
+                'Refusing to start with an invalid database connection-pool setting.\n'
+            );
+            process.exit(1);
+        }
+    }
+
+    const maxOpenConns = database.maxOpenConns;
+    if (!Number.isInteger(maxOpenConns) || maxOpenConns < 1) {
+        process.stderr.write(
+            `[FATAL] database.maxOpenConns must resolve to an integer >= 1, got ${JSON.stringify(maxOpenConns)}. ` +
+            'Refusing to start with an invalid database connection-pool setting.\n'
+        );
+        process.exit(1);
+    }
+
+    if (database.minOpenConns > maxOpenConns) {
+        process.stderr.write(
+            `[FATAL] database.minOpenConns (${database.minOpenConns}) must not exceed database.maxOpenConns (${maxOpenConns}).\n`
+        );
+        process.exit(1);
+    }
+}
+
+validateDatabasePoolConfig(config.database);
+
 module.exports = { config };
