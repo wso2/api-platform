@@ -481,6 +481,7 @@ class Translator:
             scopes=dict(proto_ctx.scopes),
             credential_id=proto_ctx.credential_id,
             properties=dict(proto_ctx.properties),
+            typed_properties=Translator.struct_to_dict(proto_ctx.typed_properties),
             previous=previous,
         )
 

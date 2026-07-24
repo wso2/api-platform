@@ -19,6 +19,7 @@ package pythonbridge
 
 import (
 	"fmt"
+	"log/slog"
 
 	"google.golang.org/protobuf/types/known/structpb"
 	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
@@ -301,18 +302,29 @@ func (t *Translator) toProtoAuthContext(ctx *policy.AuthContext) *proto.AuthCont
 		properties[key] = value
 	}
 
+	var typedProperties *structpb.Struct
+	if len(ctx.TypedProperties) > 0 {
+		if s, err := structpb.NewStruct(ctx.TypedProperties); err == nil {
+			typedProperties = s
+		} else {
+			slog.Warn("pythonbridge: dropping AuthContext.TypedProperties; could not convert to protobuf struct",
+				"error", err)
+		}
+	}
+
 	return &proto.AuthContext{
-		Authenticated: ctx.Authenticated,
-		Authorized:    ctx.Authorized,
-		AuthType:      ctx.AuthType,
-		Subject:       ctx.Subject,
-		Issuer:        ctx.Issuer,
-		TokenId:       ctx.TokenId,
-		Audience:      append([]string(nil), ctx.Audience...),
-		Scopes:        scopes,
-		CredentialId:  ctx.CredentialID,
-		Properties:    properties,
-		Previous:      t.toProtoAuthContext(ctx.Previous),
+		Authenticated:   ctx.Authenticated,
+		Authorized:      ctx.Authorized,
+		AuthType:        ctx.AuthType,
+		Subject:         ctx.Subject,
+		Issuer:          ctx.Issuer,
+		TokenId:         ctx.TokenId,
+		Audience:        append([]string(nil), ctx.Audience...),
+		Scopes:          scopes,
+		CredentialId:    ctx.CredentialID,
+		Properties:      properties,
+		TypedProperties: typedProperties,
+		Previous:        t.toProtoAuthContext(ctx.Previous),
 	}
 }
 

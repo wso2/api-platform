@@ -242,6 +242,7 @@ message AuthContext {
   map<string, string> properties = 9;
   AuthContext previous = 10;
   string token_id = 11;
+  google.protobuf.Struct typed_properties = 12;
 }
 
 message RequestHeaderContext {
