@@ -1,6 +1,6 @@
-# Catalog API — Direct Subscription Sample
+# Catalog API — Token based subscription Sample
 
-This sample API demonstrates **direct subscription access** — the API has Gold and Bronze subscription plans, but callers don't need to include any auth token in their requests. Access is controlled entirely by the gateway based on your subscription, with no additional headers required.
+This sample API demonstrates **token based subscription access** — the API has Gold and Bronze subscription plans, but callers don't need to include any auth token in their requests. Access is controlled entirely by the gateway based on your subscription, with no additional headers required.
 
 ## Authentication
 
