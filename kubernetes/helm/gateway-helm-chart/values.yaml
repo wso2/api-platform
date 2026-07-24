@@ -575,6 +575,7 @@ gateway:
     #       # than a plaintext application ID — resolves it from a Secret-backed
     #       # env var at startup instead of storing it in the ConfigMap.
     #       application_id: '{{ env "APIP_GW_ANALYTICS_PUBLISHERS_MOESIF_APPLICATION_ID" "" }}'
+    #       moesif_base_url: "https://api.moesif.net"
     #       publish_interval: 5
     #       event_queue_size: 10000
     #       batch_size: 50
@@ -587,10 +588,13 @@ gateway:
     # by both components. Absent by default. Uncomment (together with analytics
     # and/or traffic_logging) to enable:
     # collector:
-    #   request_body: true
-    #   response_body: true
-    #   request_headers: true
-    #   response_headers: true
+    #   # Capture request/response bodies/headers into the collected event. Off by
+    #   # default, matching the gateway's own shipped default — enable deliberately
+    #   # per consumer. There is no redaction at this layer
+    #   request_body: false
+    #   response_body: false
+    #   request_headers: false
+    #   response_headers: false
     #   ignore_path_prefixes:
     #     - "/health"
     #   server:
@@ -599,6 +603,8 @@ gateway:
     #     buffer_size_bytes: 16384
     #     grpc_request_timeout: 20000000000
     #     shutdown_timeout: 600s
+    #     public_key_path: ""
+    #     private_key_path: ""
     #     als_plain_text: true
     #     max_message_size: 1000000000
     #     max_header_limit: 8192
