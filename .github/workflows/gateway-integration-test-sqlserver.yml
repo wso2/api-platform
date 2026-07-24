@@ -76,9 +76,10 @@ jobs:
           }
           trap 'dump_logs; cleanup' EXIT
 
-          docker logs it-gateway-controller > /tmp/gateway-controller.log 2>&1 || true
-          grep -Eq "Initializing SQLServer schema|SQLServer schema initialized" /tmp/gateway-controller.log
-
+          # The gateway-controller no longer applies schema DDL to external
+          # databases — the schema is pre-provisioned (here, via the mssql-init
+          # one-shot). Assert the schema is present by checking for the expected
+          # table rather than a controller schema-init log line.
           table_count="$(docker compose -p "$PROJECT" -f docker-compose.test.sqlserver.yaml exec -T sqlserver \
             /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -d gateway_test -h -1 -W \
             -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'artifacts'" | tr -d '[:space:]')"

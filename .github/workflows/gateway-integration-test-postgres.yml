@@ -61,9 +61,10 @@ jobs:
             exit 1
           }
 
-          docker logs it-gateway-controller > /tmp/gateway-controller.log 2>&1 || true
-          grep -Eq "Initializing PostgreSQL schema|PostgreSQL schema initialized" /tmp/gateway-controller.log
-
+          # The gateway-controller no longer applies schema DDL to external
+          # databases — the schema is pre-provisioned (here, via Postgres's
+          # first-boot init hook). Assert the schema is present by checking for
+          # the expected table rather than a controller schema-init log line.
           table_count="$(docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml exec -T postgres \
             psql -U gateway -d gateway_test -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'artifacts';")"
           [ "$table_count" = "1" ]
