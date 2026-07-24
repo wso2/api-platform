@@ -1,0 +1,413 @@
+# ============================================================================
+# platform-api — component chart values
+# ============================================================================
+# The shared Platform API control plane (Go backend). This chart is released on
+# its own and is used two ways:
+#   • as a subchart of a product umbrella (ai-workspace / developer-portal)
+#   • standalone (helm install this chart directly)
+#
+# Two kinds of settings live here:
+#   global.*   Cross-cutting settings shared by all components. Under an umbrella
+#              the umbrella supplies these; the block below is only the STANDALONE
+#              default and is overridden when this chart runs nested.
+#   (rest)     This component's own settings — image, config, service, storage, …
+#
+# `enabled` is read by the umbrella's dependency condition (ignored standalone).
+
+# ----------------------------------------------------------------------------
+# global — STANDALONE defaults only (an umbrella's global.* overrides these)
+# ----------------------------------------------------------------------------
+global:
+  nameOverride: ""
+  fullnameOverride: ""
+  commonLabels: {}
+  commonAnnotations: {}
+  imagePullSecrets: []
+  serviceAccount:
+    # Standalone default is `false` → pods use the namespace "default" SA, because
+    # this component ships no ServiceAccount template (the umbrella owns SA
+    # creation and sets create: true).
+    create: false
+    name: ""
+    annotations: {}
+    automountServiceAccountToken: true
+  wso2:
+    subscription:
+      imagePullSecret: ""
+  platformApi:
+    port: 9243
+    tlsEnabled: true
+
+# ----------------------------------------------------------------------------
+# Component toggle + container image
+# ----------------------------------------------------------------------------
+# Install this component. Both portals need the Platform API, so leave it on
+# unless you point them at an EXTERNAL Platform API via the portal URL overrides.
+enabled: true
+image:
+  repository: ghcr.io/wso2/api-platform/platform-api
+  tag: 0.13.0
+  pullPolicy: IfNotPresent
+# Pull secrets for THIS component only (merged with global.imagePullSecrets).
+imagePullSecrets: []
+
+# ----------------------------------------------------------------------------
+# config — rendered into /etc/platform-api/config-platform-api.toml under the
+# [platform_api.*] tables the Go binary reads (platform-api/config/config.go).
+# ----------------------------------------------------------------------------
+# Everything here becomes the app's config file. Secrets (encryption key, DB
+# password, webhook secret) are NOT here — they are injected as env vars from a
+# Kubernetes Secret and pulled in via the config's own {{ env }} tokens; the
+# RS256 JWT keys are mounted as PEM files. See `secrets:` further down.
+config:
+  # Resource paths loaded at startup. Defaults match the published container
+  # image — override only for a custom layout.
+  resources:
+    dbSchemaPath: ./internal/database/schema.sql
+    openapiSpecPath: ./resources/openapi.yaml
+    llmTemplateDefinitionsPath: ./resources/default-llm-provider-templates
+    # Byte cap when fetching a remote OpenAPI spec by URL. <= 0 uses the
+    # built-in 5 MiB default.
+    openapiSpecMaxFetchBytes: 5242880
+
+  logging:
+    level: info                  # debug | info | warn | error
+    format: json                 # text | json
+
+  security:
+    apiKey:
+      # Accepted API-key hashing algorithms, e.g. "sha256" or "sha256,sha512".
+      hashingAlgorithms: sha256
+
+  # --- Database ---
+  database:
+    # sqlite3  — no external DB; the file lives on the PVC (see persistence).
+    #            Single replica only → the HPA cannot be used.
+    # postgres — external PostgreSQL (configured below); enables multi-replica + HPA.
+    driver: sqlite3
+    # SQLite database file (driver=sqlite3 only). Must sit under the mounted data
+    # volume (deployment.volumeMountPath), so it persists on the PVC.
+    path: /app/data/api_platform.db
+    # PostgreSQL connection (driver=postgres only). The password is NOT set here —
+    # it comes from the Secret key secrets.keys.databasePassword.
+    postgres:
+      host: ""                   # in-cluster Service or external endpoint
+      port: 5432
+      name: platform_api         # database (schema) name
+      user: platform_api         # login role; password from the Secret
+      sslMode: disable           # disable | require | verify-ca | verify-full
+      sslRootCert: ""            # required for verify-ca / verify-full
+      sslCert: ""                # client cert for mTLS (postgres only; with sslKey)
+      sslKey: ""
+      maxOpenConns: 25
+      maxIdleConns: 10
+      connMaxLifetime: 300       # seconds before a connection is recycled
+
+  # --- Authentication ---
+  auth:
+    # Exactly one mode:
+    #   external_token — verify externally-minted RS256 JWTs with the public key.
+    #   file           — external_token + local username/password login (issues
+    #                    RS256 tokens signed with the private key).
+    #   idp            — validate tokens against an external IDP's JWKS.
+    mode: file
+    # Enforce per-endpoint OAuth2 scopes on validated tokens.
+    scopeValidation: true
+    # Paths that bypass auth. Empty keeps the binary's built-in default list
+    # (health/metrics/login/internal gateway routes); setting it REPLACES that list.
+    skipPaths: []
+    # Claim-name mappings shared by all modes.
+    claimMappings:
+      organization: organization
+      orgName: org_name
+      orgHandle: org_handle
+      userId: sub
+      username: username
+      email: email
+      scope: scope
+      roles: ""                  # e.g. "realm_access.roles" (Keycloak)
+    # Local RS256 JWT keys. public_key_file verifies tokens (every mode);
+    # private_key_file signs login tokens (file mode only). Both are mounted as
+    # PEM files from the Secret (secrets.keys.jwtPublicKey / jwtPrivateKey).
+    jwt:
+      issuer: platform-api
+      publicKeyFile: /etc/platform-api/keys/jwt_public.pem
+      privateKeyFile: /etc/platform-api/keys/jwt_private.pem
+      tokenTtl: 1h               # lifetime of file-mode login tokens (Go duration)
+    # file mode — local username/password login (rendered only when mode=file).
+    file:
+      organization:
+        id: default
+        displayName: Default
+        region: us
+        # Platform organization UUID, emitted as the `organization` claim. Pin it
+        # to keep the org stable across fresh databases.
+        uuid: 99089a17-72e0-4dd8-a2f4-c8dfbb085295
+      # The single file-mode admin user. Its username and bcrypt password hash
+      # are NEVER set here — they come from the Secret via APIP_CP_ADMIN_USERNAME /
+      # APIP_CP_ADMIN_PASSWORD_HASH (secrets.keys.adminUsername / adminPasswordHash),
+      # which generate-secrets.sh provisions with a generated username and a bcrypt
+      # hash. There is no admin/admin default: startup fails closed if unset. Only
+      # the granted scopes are configured here (add more users via configToml).
+      admin:
+        scopes: "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage"
+    # idp mode — external OIDC provider (rendered only when mode=idp). jwksUrl is
+    # required in that mode.
+    idp:
+      name: ""
+      jwksUrl: ""
+      issuer: []                 # accepted token issuers
+      audience: []               # accepted audiences; empty = don't check
+      validationMode: scope      # scope | role
+      roleMappings: ""           # path to a role→scope mapping YAML
+
+  # --- Server listeners ---
+  server:
+    # Plain-HTTP listener — enable only behind a TLS-terminating proxy/mesh.
+    http:
+      enabled: false
+      port: 9080
+    # HTTPS listener (serves on containerPort). Certs are provisioned by the
+    # top-level `tls:` block and mounted into certDir as cert.pem/key.pem — the
+    # binary has NO self-signed fallback, so certificateProvider must be
+    # cert-manager or secret.
+    https:
+      enabled: true
+      certDir: /app/data/certs
+    # Connection-lifetime bounds (Go durations). 0 disables a timeout.
+    timeouts:
+      readHeader: 10s
+      read: 60s
+      write: 120s
+      idle: 120s
+    # Browser origins allowed to call the API with credentials. MUST be explicit
+    # origins — never "*" (rejected at startup). Empty disables cross-origin access.
+    cors:
+      allowedOrigins: []
+      # - https://workspace.example.com
+    websocket:
+      maxConnections: 1000
+      connectionTimeout: 30      # seconds before an idle connection closes
+      rateLimitPerMin: 1000
+      metricsLogEnabled: true
+      metricsLogInterval: 10
+
+  # --- Gateway registration checks ---
+  gateway:
+    enableVersionVerification: false
+    enableFunctionalityTypeVerification: false
+
+  # --- Deployments ---
+  deployments:
+    maxPerApiGateway: 20
+    transitionalStatusEnabled: false
+    timeoutEnabled: true
+    timeoutInterval: 20
+    timeoutDuration: 60
+
+  # --- EventHub (multi-replica HA event delivery) ---
+  eventHub:
+    pollInterval: 3s
+    cleanupInterval: 10m
+    retentionPeriod: 1h
+
+  # --- Webhook receiver (signed events from the Developer Portal) ---
+  webhook:
+    enabled: false
+    # HMAC secret (required when enabled) comes from the Secret via
+    # APIP_CP_WEBHOOK_SECRET (secrets.keys.webhookSecret).
+    privateKeyPath: ""           # PEM RSA key to decrypt encrypted_key fields
+    signatureTolerance: 5m
+    maxBodySize: 1048576
+    signatureHeader: X-Devportal-Signature
+
+# Escape hatch: raw TOML appended verbatim to the generated config file, for keys
+# not exposed as structured values above.
+configToml: ""
+
+# ----------------------------------------------------------------------------
+# secrets — reference to a pre-created Kubernetes Secret (REQUIRED)
+# ----------------------------------------------------------------------------
+# The chart never creates or embeds secret values. Point existingSecret at a
+# Secret made by ./generate-secrets.sh. Render FAILS if it's unset. The Secret
+# must hold ENCRYPTION_KEY and the RS256 JWT key files jwt_public.pem /
+# jwt_private.pem (mounted into config.auth.jwt.*File), plus DATABASE_PASSWORD
+# when driver=postgres and WEBHOOK_SECRET when config.webhook.enabled. `keys`
+# maps each logical name to the key inside that Secret.
+secrets:
+  existingSecret: ""
+  keys:
+    encryptionKey: ENCRYPTION_KEY          # → APIP_CP_ENCRYPTION_KEY
+    databasePassword: DATABASE_PASSWORD    # → APIP_CP_DATABASE_PASSWORD (postgres)
+    webhookSecret: WEBHOOK_SECRET          # → APIP_CP_WEBHOOK_SECRET (webhook.enabled)
+    jwtPublicKey: jwt_public.pem           # mounted file → config.auth.jwt.publicKeyFile
+    jwtPrivateKey: jwt_private.pem         # mounted file → config.auth.jwt.privateKeyFile (file mode)
+    adminUsername: ADMIN_USERNAME          # → APIP_CP_ADMIN_USERNAME (auth.mode=file)
+    adminPasswordHash: ADMIN_PASSWORD_HASH # → APIP_CP_ADMIN_PASSWORD_HASH (auth.mode=file)
+
+# ----------------------------------------------------------------------------
+# service — how the API is exposed inside the cluster
+# ----------------------------------------------------------------------------
+service:
+  type: ClusterIP                # ClusterIP | NodePort | LoadBalancer
+  annotations: {}
+  labels: {}
+  # Port the Service listens on. Keep equal to containerPort unless you front it
+  # on a different port.
+  port: 9243
+  clusterIP: ""
+  externalTrafficPolicy: ""
+  loadBalancerClass: ""
+  loadBalancerSourceRanges: []
+  ipFamilyPolicy: ""
+  ipFamilies: []
+  nodePort: ""
+
+# Port the container process listens on (also written into config as `port`).
+containerPort: 9243
+
+# ----------------------------------------------------------------------------
+# tls — where the HTTPS listener's certificate comes from (used when
+# config.server.https.enabled). The Platform API has NO self-signed fallback,
+# so a real cert MUST be supplied via one of the providers below.
+# ----------------------------------------------------------------------------
+tls:
+  # cert-manager → a cert-manager Certificate provisions the cert.
+  # secret       → use an existing Secret containing tls.crt / tls.key.
+  certificateProvider: cert-manager
+  certManager:
+    create: true
+    # true  → create a self-signed Issuer and use it (dev/testing).
+    # false → use an existing issuer referenced by issuerRef (production CA).
+    createIssuer: true
+    issuerRef:
+      name: selfsigned-issuer    # used when createIssuer=false
+      kind: Issuer               # Issuer | ClusterIssuer
+      # group: cert-manager.io
+    commonName: platform-api.localhost
+    dnsNames:
+      - platform-api.localhost
+      - "*.localhost"
+    duration: 2160h
+    renewBefore: 720h
+  secret:
+    name: platform-api-tls       # used when certificateProvider=secret
+    certKey: tls.crt
+    keyKey: tls.key
+
+# ----------------------------------------------------------------------------
+# persistence — the PVC backing SQLite (and self-signed certs)
+# ----------------------------------------------------------------------------
+persistence:
+  # Required for driver=sqlite3 (holds the DB file and any self-signed certs).
+  # Safe to disable for a postgres deployment that also uses cert-manager/secret TLS.
+  enabled: true
+  existingClaim: ""              # reuse a PVC you created yourself instead
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  storageClass: ""               # "" = cluster default StorageClass
+  labels: {}
+  # Annotations for the PVC ONLY (rendered only when persistence.enabled). The
+  # resource-policy=keep annotation makes the PVC — and its data — SURVIVE
+  # `helm uninstall`; a later `helm install` with the SAME release name re-adopts
+  # it, so your data is preserved across reinstalls. To intentionally wipe it:
+  #   kubectl delete pvc <release>-platform-api-data
+  # Set to {} if you'd rather the PVC be deleted on uninstall.
+  annotations:
+    helm.sh/resource-policy: keep
+
+# ----------------------------------------------------------------------------
+# deployment — the pod/Deployment spec
+# ----------------------------------------------------------------------------
+deployment:
+  enabled: true
+  replicaCount: 1                # >1 requires driver=postgres
+  # Where the data volume mounts. Must contain config.database.path and
+  # config.tls.certDir.
+  volumeMountPath: /app/data
+  extraEnv: []                   # extra env vars (list of {name,value|valueFrom})
+  extraEnvFrom: []               # extra envFrom sources (configMapRef/secretRef)
+  extraVolumeMounts: []
+  extraVolumes: []
+  labels: {}
+  annotations: {}
+  podAnnotations: {}
+  podLabels: {}
+  priorityClassName: ""
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+      scheme: HTTPS
+    initialDelaySeconds: 20
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+      scheme: HTTPS
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # Optional startup probe for slow first starts (uncomment to enable):
+  # startupProbe:
+  #   httpGet:
+  #     path: /health
+  #     port: http
+  #     scheme: HTTPS
+  #   periodSeconds: 5
+  #   failureThreshold: 30
+  # CPU/memory requests & limits. NOTE: set CPU requests if you enable the HPA,
+  # otherwise it can't compute utilization.
+  resources: {}
+    # limits:
+    #   cpu: 500m
+    #   memory: 512Mi
+    # requests:
+    #   cpu: 250m
+    #   memory: 256Mi
+  podSecurityContext: {}
+  securityContext: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  strategy: {}
+  # terminationGracePeriodSeconds: 30
+  hostAliases: []
+  dnsPolicy: ""
+  dnsConfig: {}
+  # automountServiceAccountToken: false
+
+# ----------------------------------------------------------------------------
+# Autoscaling & disruption budget
+# ----------------------------------------------------------------------------
+# HorizontalPodAutoscaler. REQUIRES config.database.driver=postgres — on sqlite3
+# the chart refuses to render it (SQLite is single-replica). Enable only after
+# switching to postgres, and set deployment.resources.requests.cpu so the HPA has
+# a baseline to measure against.
+hpa:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80    # 0 or "" to disable CPU-based scaling
+  targetMemoryUtilizationPercentage: "" # set a number to also scale on memory
+  customMetrics: []                     # extra autoscaling/v2 MetricSpec entries
+  behavior: {}                          # autoscaling/v2 scaleUp/scaleDown tuning
+
+# PodDisruptionBudget. Only meaningful at replicaCount >= 2 — with a single replica
+# minAvailable: 1 blocks all voluntary evictions (node drains would hang). Set
+# exactly ONE of minAvailable / maxUnavailable.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1                # integer or percentage string, e.g. "50%"
+  maxUnavailable: ""             # integer or percentage string, e.g. "25%"
+
+# Extra metadata for the generated ConfigMap.
+configMap:
+  annotations: {}
+  labels: {}

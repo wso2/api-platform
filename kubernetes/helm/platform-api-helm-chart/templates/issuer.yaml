@@ -1,0 +1,22 @@
+{{- $pa := .Values -}}
+{{- $tls := $pa.tls -}}
+{{- if and $pa.deployment.enabled $pa.config.server.https.enabled (eq $tls.certificateProvider "cert-manager") }}
+{{- if and (eq $tls.certManager.issuerRef.kind "Issuer") $tls.certManager.createIssuer }}
+---
+# Self-signed Issuer for development/testing. In production replace this with a
+# proper CA issuer (Let's Encrypt, corporate CA, etc.) via createIssuer=false.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "apip.platformApi.fullname" . }}-selfsigned-issuer
+  labels:
+    {{- include "apip.componentLabels" (list . "platform-api" dict) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . dict)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  selfSigned: {}
+{{- end }}
+{{- end }}
+

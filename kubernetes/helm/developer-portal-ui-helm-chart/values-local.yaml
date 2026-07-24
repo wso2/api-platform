@@ -1,0 +1,20 @@
+# Local development values for the developer-portal-ui chart.
+# Usage (standalone, from kubernetes/helm/):
+#   helm install developer-portal-ui ./developer-portal-ui-helm-chart \
+#     -f developer-portal-ui-helm-chart/values.yaml -f developer-portal-ui-helm-chart/values-local.yaml
+#
+# Overrides the defaults for local development:
+# - locally-built image (latest tag, IfNotPresent pull policy)
+# - debug logging; skip TLS verification to the Platform API's self-signed cert
+image:
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+config:
+  logging:
+    level: debug
+  platformApi:
+    insecure: true
+  security:
+    # Relax role checks for local dev only (secure default is true).
+    roleValidation: false

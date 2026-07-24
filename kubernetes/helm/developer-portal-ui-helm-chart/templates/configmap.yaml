@@ -1,0 +1,139 @@
+{{- $dp := .Values -}}
+{{- $cfg := $dp.config -}}
+{{- $db := $cfg.database -}}
+{{- $auth := $cfg.auth -}}
+{{- $tls := $dp.tls -}}
+{{- $certDir := $tls.mountPath -}}
+{{- $baseUrl := default (printf "https://localhost:%d" (int $dp.containerPort)) $cfg.server.baseUrl -}}
+{{- $platformApiUrl := default (include "apip.platformApi.internalURL" .) $cfg.platformApi.baseUrl -}}
+{{- $tlsEnabled := ne $tls.certificateProvider "none" -}}
+{{- if $dp.deployment.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "apip.developerPortal.fullname" . }}-config
+  labels:
+    {{- include "apip.componentLabels" (list . "developer-portal" $dp.configMap.labels) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . $dp.configMap.annotations)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+data:
+  # Full [developer_portal.*] config, mounted at /app/configs/config.toml to
+  # replace the image's shipped config. configLoader.js unwraps [developer_portal]
+  # and ignores anything outside it. Non-secret values are literals from
+  # values.yaml; secrets are the portal's own {{ "{{ env \"APIP_DP_*\" }}" }} tokens,
+  # supplied as env vars from the referenced Secret (Secret -> env -> config).
+  config.toml: |
+    [developer_portal.server]
+    port = {{ $dp.containerPort | int }}
+    base_url = {{ $baseUrl | quote }}
+
+    [developer_portal.server.https]
+    enabled = {{ $tlsEnabled }}
+    {{- if $tlsEnabled }}
+    cert_file = {{ printf "%s/server.crt" $certDir | quote }}
+    key_file = {{ printf "%s/server.key" $certDir | quote }}
+    {{- end }}
+
+    [developer_portal.logging]
+    level = {{ $cfg.logging.level | quote }}
+    format = {{ $cfg.logging.format | quote }}
+    console_only = {{ $cfg.logging.consoleOnly }}
+
+    [developer_portal.database]
+    driver = {{ $db.type | quote }}
+    {{- if eq $db.type "sqlite" }}
+    path = {{ $db.file | quote }}
+    {{- else }}
+    host = {{ required "config.database.host is required when database.type is \"postgres\"" $db.host | quote }}
+    port = {{ $db.port | int }}
+    name = {{ $db.database | quote }}
+    user = {{ $db.user | quote }}
+    password = {{ `'{{ env "APIP_DP_DATABASE_PASSWORD" }}'` }}
+    ssl_mode = {{ $db.sslmode | quote }}
+    {{- with $db.sslRootCert }}
+    ssl_root_cert = {{ . | quote }}
+    {{- end }}
+    max_open_conns = {{ $db.maxOpenConns | int }}
+    min_open_conns = {{ $db.minOpenConns | int }}
+    pool_idle_timeout_ms = {{ $db.poolIdleTimeoutMs | int }}
+    pool_connection_timeout_ms = {{ $db.poolConnectionTimeoutMs | int }}
+    pool_request_timeout_ms = {{ $db.poolRequestTimeoutMs | int }}
+    {{- end }}
+
+    [developer_portal.security]
+    encryption_key = {{ `'{{ env "APIP_DP_SECURITY_ENCRYPTION_KEY" }}'` }}
+    session_secret = {{ `'{{ env "APIP_DP_SECURITY_SESSION_SECRET" }}'` }}
+
+    [developer_portal.security.service_api_key]
+    enabled = {{ $cfg.security.serviceApiKey.enabled }}
+    header_name = {{ $cfg.security.serviceApiKey.headerName | quote }}
+    {{- if $dp.secrets.hasServiceApiKeyValue }}
+    value = {{ `'{{ env "APIP_DP_SECURITY_SERVICE_API_KEY_VALUE" }}'` }}
+    {{- end }}
+
+    [developer_portal.auth]
+    mode = {{ ternary "idp" "local" (ne $auth.idp.clientId "") | quote }}
+    role_validation = {{ $cfg.security.roleValidation }}
+
+    [developer_portal.auth.claim_mappings]
+    organization = {{ $auth.claimMappings.organization | quote }}
+    roles = {{ $auth.claimMappings.roles | quote }}
+    groups = {{ $auth.claimMappings.groups | quote }}
+
+    [developer_portal.auth.local]
+    platform_api_url = {{ $platformApiUrl | quote }}
+    public_key_path = {{ $auth.publicKeyPath | quote }}
+    tls_skip_verify = {{ $cfg.platformApi.insecure }}
+
+    {{- if ne $auth.idp.clientId "" }}
+
+    [developer_portal.auth.idp]
+    name = {{ $auth.idp.name | quote }}
+    issuer = {{ $auth.idp.issuer | quote }}
+    authorization_url = {{ $auth.idp.authorizationUrl | quote }}
+    token_url = {{ $auth.idp.tokenUrl | quote }}
+    user_info_url = {{ $auth.idp.userInfoUrl | quote }}
+    jwks_url = {{ $auth.idp.jwksUrl | quote }}
+    client_id = {{ $auth.idp.clientId | quote }}
+    client_secret = {{ `'{{ env "APIP_DP_AUTH_IDP_CLIENT_SECRET" }}'` }}
+    callback_url = {{ $auth.idp.callbackUrl | quote }}
+    logout_url = {{ $auth.idp.logoutUrl | quote }}
+    scope = {{ $auth.idp.scope | quote }}
+    audience = {{ $auth.idp.audience | quote }}
+    certificate = {{ $auth.idp.certificate | quote }}
+    sign_up_url = {{ $auth.idp.signUpUrl | quote }}
+    logout_redirect_uri = {{ $auth.idp.logoutRedirectUri | quote }}
+    org_callback = {{ $auth.idp.orgCallback }}
+    silent_sso = {{ $auth.idp.silentSso }}
+    token_refresh_timeout_ms = {{ $auth.idp.tokenRefreshTimeoutMs | int }}
+
+    [developer_portal.auth.idp.roles]
+    admin = {{ $auth.idp.roles.admin | quote }}
+    subscriber = {{ $auth.idp.roles.subscriber | quote }}
+    super_admin = {{ $auth.idp.roles.superAdmin | quote }}
+    {{- end }}
+
+    [developer_portal.organization]
+    default_name = {{ $cfg.organization.defaultName | quote }}
+    auto_create_subscription_plans = {{ $cfg.organization.autoCreateSubscriptionPlans }}
+
+    [developer_portal.webhooks.delivery]
+    poll_interval_ms = {{ $cfg.webhooksDelivery.pollIntervalMs | int }}
+    batch_size = {{ $cfg.webhooksDelivery.batchSize | int }}
+    signature_tolerance_sec = {{ $cfg.webhooksDelivery.signatureToleranceSec | int }}
+
+    [developer_portal.tryout]
+    enabled = {{ $cfg.tryout.enabled }}
+    allow_http_endpoints = {{ $cfg.tryout.allowHttpEndpoints }}
+    allow_private_endpoints = {{ $cfg.tryout.allowPrivateEndpoints }}
+    tls_skip_verify = {{ $cfg.tryout.tlsSkipVerify }}
+    timeout_ms = {{ $cfg.tryout.timeoutMs | int }}
+    max_request_bytes = {{ $cfg.tryout.maxRequestBytes | int }}
+    max_response_bytes = {{ $cfg.tryout.maxResponseBytes | int }}
+    {{- with $dp.configToml }}
+
+    {{ . | nindent 4 | trim }}
+    {{- end }}
+{{- end }}

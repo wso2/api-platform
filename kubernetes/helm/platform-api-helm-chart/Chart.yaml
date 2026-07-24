@@ -1,0 +1,12 @@
+apiVersion: v2
+name: platform-api
+description: >-
+  WSO2 API Platform — Platform API control plane. Independently
+  released component chart; consumed by the product charts
+  (ai-workspace, developer-portal) and installable standalone.
+type: application
+version: 0.13.0
+appVersion: "0.13.0"
+home: https://github.com/wso2/api-platform
+sources:
+  - https://github.com/wso2/api-platform
