@@ -1,14 +1,14 @@
-<div class="mk-km-card {{#if isSandbox}}mk-km-card-sandbox{{/if}}">
+<div class="mk-km-card">
 
     {{!-- Card header --}}
     <div class="mk-km-header">
-        <div class="mk-km-icon {{#if isSandbox}}mk-km-icon-sandbox{{/if}}">
+        <div class="mk-km-icon">
             <i class="bi bi-key-fill"></i>
         </div>
         <div class="mk-km-info">
             <span class="mk-km-name">{{kmName}}</span>
         </div>
-        <span class="mk-km-badge {{#if isSandbox}}mk-km-badge-sandbox{{/if}}">
+        <span class="mk-km-badge">
             <span class="mk-km-badge-dot"></span> Active
         </span>
     </div>
@@ -151,7 +151,7 @@
     {{!-- Empty state — paste an externally-created client_id --}}
     <div class="mk-km-empty" id="generateKeyContainer-{{keyType}}"
         style="{{#if keys.consumerKey}}display:none{{/if}}">
-        <div class="mk-empty-icon-wrap {{#if isSandbox}}mk-empty-icon-sandbox{{/if}}">
+        <div class="mk-empty-icon-wrap">
             <i class="bi bi-key"></i>
         </div>
         <p class="mk-empty-title">No client ID linked yet</p>
@@ -164,7 +164,7 @@
             <input type="text" class="mk-input" id="addClientIdInput-{{kmId}}-{{keyType}}"
                 placeholder="Paste client ID" />
             <button data-cyid="addClientId-{{keyType}}" id="addClientIdBtn-{{kmId}}-{{keyType}}"
-                class="mk-btn-primary {{#if isSandbox}}mk-btn-sandbox{{/if}}"
+                class="mk-btn-primary"
                 onclick="addClientId('{{kmId}}', '{{keyType}}', '{{appId}}', '{{orgId}}', '{{kmName}}')">
                 <span class="button-normal-state"><i class="bi bi-plus-lg me-1"></i>Add</span>
                 <span class="button-loading-state" style="display:none">

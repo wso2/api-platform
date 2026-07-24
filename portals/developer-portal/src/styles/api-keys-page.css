@@ -1,5 +1,33 @@
 /* API Keys page — ak-* prefix */
 
+/* ── Section heading — identical to the "Manage Keys" title (.mk-title) so
+   the two read as sibling sections, not nested.
+   The `.section .ak-title` selector is required, not decorative:
+   oauth2-key-generation.css ships `.section h2 { font-size:16px; font-weight:500 }`
+   at specificity (0,1,1), which is also loaded on the application page and
+   beats a bare `.ak-title` (0,1,0). `.mk-title` escapes it only because it is
+   written as `.keys-section .mk-title` (0,2,0) — this matches that weight. ── */
+.ak-title,
+.section .ak-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 0.25rem;
+}
+
+/* Mirrors .mk-subtitle exactly. */
+.ak-page-desc {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+/* Mirrors .mk-header's 1.5rem gap (was Bootstrap `mb-3` = 1rem). */
+.ak-header {
+  margin-bottom: 1.5rem;
+}
+
 /* ── Page wrapper ─────────────────────────────────────────────── */
 .ak-page-wrap {
   padding-top: 0.5rem;
