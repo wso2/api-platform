@@ -30,6 +30,7 @@ type BuildFile struct {
 type GatewayConfig struct {
 	Version string        `yaml:"version"`
 	Images  GatewayImages `yaml:"images,omitempty"`
+	GoToolchain string `yaml:"goToolchain,omitempty"`
 }
 
 // GatewayImages represents optional custom image paths in the build file

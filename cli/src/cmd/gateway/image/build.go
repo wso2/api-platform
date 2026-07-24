@@ -57,6 +57,7 @@ var (
 	noCache                  bool
 	platform                 string
 	outputDir                string
+	goToolchain              string
 
 	// Computed values
 	imageTag string
@@ -84,6 +85,7 @@ func init() {
 	buildCmd.Flags().BoolVar(&noCache, "no-cache", false, "Build without using cache")
 	buildCmd.Flags().StringVar(&platform, "platform", "", "Target platform (e.g., linux/amd64)")
 	buildCmd.Flags().StringVar(&outputDir, "output-dir", "", "Output directory for build artifacts")
+	buildCmd.Flags().StringVar(&goToolchain, "go-toolchain", "", "GOTOOLCHAIN for the gateway-builder (e.g. auto, go1.26.5, go1.26.2+auto); overrides gateway.goToolchain in build.yaml (default: auto)")
 }
 
 // initializeDefaults sets smart defaults for gateway name and constructs the image tag
@@ -121,6 +123,10 @@ func initializeDefaults(buildFile *policy.BuildFile) error {
 	} else {
 		gatewayRuntimeBaseImg = fmt.Sprintf(utils.DefaultGatewayRuntime, gatewayVersion)
 	}
+
+	// Resolve GOTOOLCHAIN for the builder container.
+	// Precedence: --go-toolchain flag > build.yaml gateway.goToolchain > "auto".
+	goToolchain = gateway.ResolveGoToolchain(goToolchain, buildFile.Gateway.GoToolchain)
 
 	// Construct the full image tag: repository/name:version
 	imageTag = fmt.Sprintf("%s/%s:%s", imageRepository, gatewayName, gatewayVersion)
@@ -311,6 +317,7 @@ func runDockerBuild(tempDir string) error {
 		Push:                       push,
 		LogFilePath:                logFilePath,
 		OutputCopyDir:              outputDir,
+		GoToolchain:                goToolchain,
 	}
 
 	// Run the build

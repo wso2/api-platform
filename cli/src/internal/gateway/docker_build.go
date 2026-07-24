@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/wso2/api-platform/cli/internal/terminal"
 	"github.com/wso2/api-platform/cli/utils"
@@ -42,6 +43,7 @@ type DockerBuildConfig struct {
 	Push                       bool
 	LogFilePath                string
 	OutputCopyDir              string
+	GoToolchain 			   string
 }
 
 // BuildGatewayImages executes the docker build process for gateway images
@@ -96,9 +98,43 @@ func BuildGatewayImages(config DockerBuildConfig) error {
 	return nil
 }
 
+// DefaultGoToolchain is the GOTOOLCHAIN value used for the gateway-builder
+// container when neither the --go-toolchain flag nor build.yaml specifies one.
+//
+// The official golang base image used by gateway-builder pins
+// GOTOOLCHAIN=local, which makes the build fail when a policy's go.mod declares
+// a newer Go version than the builder ships (see issue #2796). "auto" lets the
+// builder's go toolchain download and use the required version on the fly.
+const DefaultGoToolchain = "auto"
+
+// ResolveGoToolchain picks the GOTOOLCHAIN value for the builder container.
+//
+// Precedence: flag value > build.yaml value > DefaultGoToolchain ("auto"). It
+// intentionally does NOT read the host's GOTOOLCHAIN — a developer's global Go
+// setting (e.g. a pinned "go1.26.2" for their own projects) must not silently
+// leak into the gateway build.
+func ResolveGoToolchain(flagVal, buildFileVal string) string {
+	if v := strings.TrimSpace(flagVal); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(buildFileVal); v != "" {
+		return v
+	}
+	return DefaultGoToolchain
+}
+
 // runGatewayBuilder runs the gateway-builder container
 func runGatewayBuilder(config DockerBuildConfig, logFile *os.File) error {
-	args := []string{"run", "--rm", "-v", config.TempDir + ":/workspace", config.GatewayBuilder,
+	toolchain := strings.TrimSpace(config.GoToolchain)
+	if toolchain == "" {
+		toolchain = DefaultGoToolchain
+	}
+
+	args := []string{"run", "--rm",
+		"-v", config.TempDir + ":/workspace",
+		// Override the builder base image's GOTOOLCHAIN=local
+		"-e", "GOTOOLCHAIN=" + toolchain,
+		config.GatewayBuilder,
 		"-gateway-controller-base-image", config.GatewayControllerBaseImage,
 		"-gateway-runtime-base-image", config.GatewayRuntimeBaseImage,
 	}

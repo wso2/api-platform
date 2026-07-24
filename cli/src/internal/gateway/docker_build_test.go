@@ -1,0 +1,55 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package gateway
+
+import "testing"
+
+func TestResolveGoToolchain(t *testing.T) {
+	cases := []struct {
+		name         string
+		flagVal      string
+		buildFileVal string
+		want         string
+	}{
+		{name: "both empty defaults to auto", flagVal: "", buildFileVal: "", want: "auto"},
+		{name: "whitespace-only defaults to auto", flagVal: "  ", buildFileVal: "\t", want: "auto"},
+		{name: "build.yaml used when flag empty", flagVal: "", buildFileVal: "go1.26.5", want: "go1.26.5"},
+		{name: "flag wins over build.yaml", flagVal: "go1.26.2+auto", buildFileVal: "go1.26.5", want: "go1.26.2+auto"},
+		{name: "flag used when build.yaml empty", flagVal: "auto", buildFileVal: "", want: "auto"},
+		{name: "values are trimmed", flagVal: "  go1.26.6  ", buildFileVal: "", want: "go1.26.6"},
+		{name: "build.yaml trimmed when flag blank", flagVal: "   ", buildFileVal: "  go1.26.5 ", want: "go1.26.5"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ResolveGoToolchain(tc.flagVal, tc.buildFileVal); got != tc.want {
+				t.Errorf("ResolveGoToolchain(%q, %q) = %q, want %q", tc.flagVal, tc.buildFileVal, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestResolveGoToolchainIgnoresHostEnv guards the intentional design choice
+// that the host's GOTOOLCHAIN must never influence the builder container.
+func TestResolveGoToolchainIgnoresHostEnv(t *testing.T) {
+	t.Setenv("GOTOOLCHAIN", "go1.20.0")
+	if got := ResolveGoToolchain("", ""); got != "auto" {
+		t.Errorf("ResolveGoToolchain ignored inputs but read host GOTOOLCHAIN: got %q, want %q", got, "auto")
+	}
+}
