@@ -412,6 +412,59 @@ func TestBuildDynamicMetadata_WithPath(t *testing.T) {
 }
 
 // =============================================================================
+// Per-op upstream + dynamic-endpoint precedence (regression: no double base prefix)
+// =============================================================================
+
+// TestTranslateRequestHeaderActions_DynamicEndpointDoesNotBakeBasePath guards the
+// per-op-upstream-ref behavior. When a dynamic-endpoint policy redirects a request to an
+// upstream definition that has a base path, the kernel must pass the original request path
+// plus target_upstream_base_path so Lua prepends the base exactly once.
+func TestTranslateRequestHeaderActions_DynamicEndpointDoesNotBakeBasePath(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+	execCtx.sharedCtx = &policy.SharedContext{}
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path:          "/per-op/v1.0/override",
+		SharedContext: execCtx.sharedCtx,
+	}
+	execCtx.apiContext = "/per-op/v1.0"
+	execCtx.upstreamBasePath = "/ref-svc" // the per-op route's default base path
+	execCtx.upstreamDefinitionPaths = map[string]string{
+		"op-policy-svc": "/op-policy-svc",
+	}
+
+	targetUpstream := "op-policy-svc"
+	result := &executor.RequestHeaderExecutionResult{
+		Results: []executor.RequestHeaderPolicyResult{
+			{
+				Action: policy.UpstreamRequestHeaderModifications{
+					UpstreamName: &targetUpstream,
+				},
+			},
+		},
+	}
+
+	resp, err := TranslateRequestHeaderActions(result, chain, execCtx)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.DynamicMetadata)
+
+	extProc := resp.DynamicMetadata.Fields[constants.ExtProcFilterName].GetStructValue()
+	require.NotNil(t, extProc)
+
+	// The target upstream's base path is advertised so the Lua prepends it exactly once.
+	assert.Equal(t, "/op-policy-svc", extProc.Fields["target_upstream_base_path"].GetStringValue())
+	// The ORIGINAL request path is handed to Lua via the single path metadata channel,
+	// not a pre-computed base-prefixed path.
+	assert.Equal(t, "/per-op/v1.0/override", extProc.Fields["path"].GetStringValue())
+	assert.NotContains(t, extProc.Fields, "request_transformation.target_path")
+}
+
+// =============================================================================
 // translateRequestActionsCore Tests
 // =============================================================================
 
@@ -997,4 +1050,44 @@ func TestTranslateRequestHeaderActionsWithBodyMerge_DynamicEndpoint(t *testing.T
 		assert.Equal(t, "/alternate", extProc.Fields["target_upstream_base_path"].GetStringValue())
 		assert.NotContains(t, extProc.Fields, "request_transformation.target_path")
 	})
+}
+
+// TestTranslateRequestHeaderActions_DynamicEndpointSanitizesClusterName pins the exact
+// x-target-upstream name for a definition name containing dots or colons, locking it byte-for-byte to
+// the controller's clusterkey.DefinitionName so the two modules' cluster names cannot drift.
+func TestTranslateRequestHeaderActions_DynamicEndpointSanitizesClusterName(t *testing.T) {
+	kernel := NewKernel()
+	chainExecutor := executor.NewChainExecutor(nil, nil, nil)
+	server := NewExternalProcessorServer(kernel, chainExecutor, config.TracingConfig{}, "")
+	execCtx := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
+	execCtx.sharedCtx = &policy.SharedContext{APIKind: "RestApi", APIId: "api-123"}
+	execCtx.requestBodyCtx = &policy.RequestContext{
+		Path:          "/api/whoami",
+		SharedContext: execCtx.sharedCtx,
+	}
+	execCtx.apiContext = "/api"
+	execCtx.upstreamBasePath = "/sandbox"
+	execCtx.upstreamDefinitionPaths = map[string]string{"host.example.com:8080": "/alternate"}
+
+	targetUpstream := "host.example.com:8080"
+	result := &executor.RequestHeaderExecutionResult{
+		Results: []executor.RequestHeaderPolicyResult{
+			{Action: policy.UpstreamRequestHeaderModifications{UpstreamName: &targetUpstream}},
+		},
+	}
+
+	resp, err := TranslateRequestHeaderActions(result, &registry.PolicyChain{}, execCtx)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	hm := resp.GetRequestHeaders().GetResponse().GetHeaderMutation()
+	require.NotNil(t, hm)
+	var headerValue string
+	for _, h := range hm.SetHeaders {
+		if h.Header.Key == constants.TargetUpstreamHeader {
+			headerValue = string(h.Header.RawValue)
+		}
+	}
+	assert.Equal(t, "upstream_RestApi_api-123_host_example_com_8080", headerValue,
+		"dots and colons in the definition name must be replaced with underscores to match the controller's cluster name")
 }

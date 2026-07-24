@@ -36,6 +36,8 @@ import (
 
 	"github.com/wso2/api-platform/common/collector"
 	commonconstants "github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils/clusterkey"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils/upstreamref"
 
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
@@ -945,7 +947,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	clusters := []*cluster.Cluster{}
 
 	// -------- MAIN UPSTREAM --------
-	mainClusterName, parsedMainURL, mainTimeout, err := t.resolveUpstreamCluster("main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
+	mainClusterName, parsedMainURL, mainTimeout, err := t.resolveUpstreamCluster(cfg.UUID, "main", &apiData.Upstream.Main, apiData.UpstreamDefinitions)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1018,42 +1020,90 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 		if err != nil {
 			return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.EffectiveMethod(), op.EffectivePath(), err)
 		}
-		opTimeoutCfg := combineRouteResilience(mainTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
+
+		params := routeParams{
+			clusterName:      mainClusterName,
+			urlPath:          parsedMainURL.Path,
+			timeout:          mainTimeout,
+			useClusterHeader: useClusterHeader,
+		}
+		if op.Upstream != nil && op.Upstream.Main != nil {
+			if err := t.applyPerOpRef(&params, "main", cfg.Kind, cfg.UUID, op.EffectiveMethod(), op.EffectivePath(), op.Upstream.Main.Ref, apiData.UpstreamDefinitions); err != nil {
+				return nil, nil, err
+			}
+		}
+		opTimeoutCfg := combineRouteResilience(params.timeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
 
 		r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, op.EffectiveMethod(), op.EffectivePath(),
-			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, opTimeoutCfg, useClusterHeader, upstreamDefPaths)
+			params.clusterName, params.urlPath, effectiveMainVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Main.HostRewrite, apiProjectID, opTimeoutCfg, params.useClusterHeader, upstreamDefPaths)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	routesList = append(routesList, mainRoutesList...)
 
 	// -------- SANDBOX UPSTREAM --------
-	if apiData.Upstream.Sandbox != nil {
-		sbClusterName, parsedSbURL, sbTimeout, err := t.resolveUpstreamCluster("sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)
-		if err != nil {
-			return nil, nil, err
-		}
+	apiSandboxHasContent := upstreamref.HasContent(apiData.Upstream.Sandbox)
+	hasSandbox := upstreamref.SandboxActive(apiData.Upstream.Sandbox, apiData.Operations)
+	if hasSandbox {
+		var sbClusterName string
+		var parsedSbURL *url.URL
+		var sbTimeout *resolvedTimeout
+		var sbRouteHostRewrite *api.UpstreamHostRewrite
 
-		// Timeout for sandbox upstream cluster
-		var sbUpstreamClusterConnectTimeout *time.Duration
-		if sbTimeout != nil {
-			sbUpstreamClusterConnectTimeout = sbTimeout.Connect
-		}
+		if apiSandboxHasContent {
+			sbClusterName, parsedSbURL, sbTimeout, err = t.resolveUpstreamCluster(cfg.UUID, "sandbox", apiData.Upstream.Sandbox, apiData.UpstreamDefinitions)
+			if err != nil {
+				return nil, nil, err
+			}
 
-		sandboxCluster := t.createCluster(sbClusterName, parsedSbURL, nil, sbUpstreamClusterConnectTimeout)
-		clusters = append(clusters, sandboxCluster)
+			// Timeout for sandbox upstream cluster
+			var sbUpstreamClusterConnectTimeout *time.Duration
+			if sbTimeout != nil {
+				sbUpstreamClusterConnectTimeout = sbTimeout.Connect
+			}
+
+			sandboxCluster := t.createCluster(sbClusterName, parsedSbURL, nil, sbUpstreamClusterConnectTimeout)
+			clusters = append(clusters, sandboxCluster)
+			sbRouteHostRewrite = apiData.Upstream.Sandbox.HostRewrite
+		} else {
+			// Sandbox active via per-op only: inherit API-level main HostRewrite so per-op sandbox
+			// routes behave consistently with main routes.
+			sbRouteHostRewrite = apiData.Upstream.Main.HostRewrite
+		}
 
 		// Create sandbox routes. Mirrors main's useClusterHeader (dynamic cluster selection
-		// is on whenever upstreamDefinitions exist or a sandbox upstream is configured).
+		// is on whenever upstreamDefinitions exist or a sandbox upstream is configured);
+		// a per-op sandbox ref reuses its definition cluster.
 		sbRoutesList := make([]*route.Route, 0)
+		sbURLPath := ""
+		if parsedSbURL != nil {
+			sbURLPath = parsedSbURL.Path
+		}
 		for _, op := range apiData.Operations {
+			// Skip ops without per-op sandbox when there's no API-level sandbox
+			if !apiSandboxHasContent && (op.Upstream == nil || op.Upstream.Sandbox == nil) {
+				continue
+			}
+
 			opTimeout, opIdleTimeout, err := ResolveResilience(op.Resilience)
 			if err != nil {
 				return nil, nil, fmt.Errorf("invalid resilience for operation %s %s: %w", op.EffectiveMethod(), op.EffectivePath(), err)
 			}
-			opTimeoutCfg := combineRouteResilience(sbTimeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
+
+			params := routeParams{
+				clusterName:      sbClusterName,
+				urlPath:          sbURLPath,
+				timeout:          sbTimeout,
+				useClusterHeader: useClusterHeader,
+			}
+			if op.Upstream != nil && op.Upstream.Sandbox != nil {
+				if err := t.applyPerOpRef(&params, "sandbox", cfg.Kind, cfg.UUID, op.EffectiveMethod(), op.EffectivePath(), op.Upstream.Sandbox.Ref, apiData.UpstreamDefinitions); err != nil {
+					return nil, nil, err
+				}
+			}
+			opTimeoutCfg := combineRouteResilience(params.timeout, apiTimeout, apiIdleTimeout, opTimeout, opIdleTimeout)
 
 			r := t.createRoute(cfg.UUID, apiData.DisplayName, apiData.Version, apiData.Context, op.EffectiveMethod(), op.EffectivePath(),
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, apiData.Upstream.Sandbox.HostRewrite, apiProjectID, opTimeoutCfg, useClusterHeader, upstreamDefPaths)
+				params.clusterName, params.urlPath, effectiveSandboxVHost, cfg.Kind, templateHandle, providerName, sbRouteHostRewrite, apiProjectID, opTimeoutCfg, params.useClusterHeader, upstreamDefPaths)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
@@ -1068,13 +1118,9 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 				return nil, nil, fmt.Errorf("upstream definition '%s' has no URLs configured", def.Name)
 			}
 
-			// Sanitize definition name for use in Envoy cluster name
-			// Envoy cluster names must not contain dots or colons
-			sanitizedDefName := sanitizeUpstreamDefinitionName(def.Name)
-
 			// Use the definition name as cluster name, scoped by kind and API ID to avoid conflicts
 			// Format: upstream_<kind>_<apiId>_<sanitizedDefName>
-			defClusterName := constants.UpstreamDefinitionClusterPrefix + cfg.Kind + "_" + cfg.UUID + "_" + sanitizedDefName
+			defClusterName := clusterkey.DefinitionName(cfg.Kind, cfg.UUID, def.Name)
 
 			// Parse the first URL from the definition
 			rawURL := def.Upstreams[0].Url
@@ -1114,9 +1160,11 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*
 	return routesList, clusters, nil
 }
 
-// resolveUpstreamCluster validates an upstream (main or sandbox) and creates its cluster.
-// Returns clusterName, parsedURL, timeout (can be nil), and error.
-func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstream, upstreamDefinitions *[]api.UpstreamDefinition) (string, *url.URL, *resolvedTimeout, error) {
+// resolveUpstreamCluster validates an upstream (main or sandbox) and resolves the
+// inputs its caller needs to create the cluster: clusterName, parsedURL, and
+// timeout (can be nil). The cluster name is "<env>_<sha256(apiID) hex>",
+// URL-stable for the API's lifetime.
+func (t *Translator) resolveUpstreamCluster(apiID, upstreamName string, up *api.Upstream, upstreamDefinitions *[]api.UpstreamDefinition) (string, *url.URL, *resolvedTimeout, error) {
 	var rawURL string
 	var timeout *resolvedTimeout
 	var refBasePath *string
@@ -1176,10 +1224,63 @@ func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstrea
 		parsedURL.Path = *refBasePath
 	}
 
-	// Generate cluster name
-	clusterName := t.sanitizeClusterName(parsedURL.Host, parsedURL.Scheme)
+	// Generate cluster name from URL-stable hash (URL intentionally excluded).
+	clusterName := clusterkey.HashedName(upstreamName, apiID)
 
 	return clusterName, parsedURL, timeout, nil
+}
+
+// resolvePerOpDefinitionCluster resolves a per-op ref to the EXISTING
+// upstream-definition cluster (created for every definition) and its base path,
+// so a per-op route reuses that cluster instead of minting its own.
+func (t *Translator) resolvePerOpDefinitionCluster(kind, apiID, ref string, upstreamDefinitions *[]api.UpstreamDefinition) (string, string, *resolvedTimeout, error) {
+	refName := strings.TrimSpace(ref)
+	if refName == "" {
+		return "", "", nil, fmt.Errorf("per-op upstream ref is empty")
+	}
+	definition, err := resolveUpstreamDefinition(refName, upstreamDefinitions)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("failed to resolve per-op upstream ref: %w", err)
+	}
+	if len(definition.Upstreams) == 0 || definition.Upstreams[0].Url == "" {
+		return "", "", nil, fmt.Errorf("upstream definition '%s' has no URLs configured", refName)
+	}
+
+	timeout, err := resolveTimeoutFromDefinition(definition)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("invalid timeout in upstream definition '%s': %w", refName, err)
+	}
+
+	basePath := "/"
+	if definition.BasePath != nil && *definition.BasePath != "" {
+		basePath = *definition.BasePath
+	}
+	clusterName := clusterkey.DefinitionName(kind, apiID, definition.Name)
+	return clusterName, basePath, timeout, nil
+}
+
+// routeParams carries the per-route upstream settings for one operation.
+type routeParams struct {
+	clusterName      string
+	urlPath          string
+	timeout          *resolvedTimeout
+	useClusterHeader bool
+}
+
+// applyPerOpRef points the params at the referenced definition's cluster (urlPath
+// carries its base path) and keeps cluster_header on so a dynamic-endpoint policy
+// can still steer the operation; when no policy overrides it, the policy engine
+// falls back to this cluster.
+func (t *Translator) applyPerOpRef(p *routeParams, env, kind, apiID, method, path, ref string, upstreamDefinitions *[]api.UpstreamDefinition) error {
+	defClusterName, defBasePath, defTimeout, err := t.resolvePerOpDefinitionCluster(kind, apiID, ref, upstreamDefinitions)
+	if err != nil {
+		return fmt.Errorf("per-op %s upstream for %s %s: %w", env, method, path, err)
+	}
+	p.clusterName = defClusterName
+	p.urlPath = defBasePath
+	p.timeout = defTimeout
+	p.useClusterHeader = true
+	return nil
 }
 
 // SharedRouteConfigName is the name of the shared route configuration used by both HTTP and HTTPS listeners
@@ -2495,22 +2596,6 @@ func (t *Translator) pathToRegex(path string) string {
 	return "^" + regex + "$"
 }
 
-// sanitizeClusterName creates a valid cluster name from a hostname and scheme
-func (t *Translator) sanitizeClusterName(hostname, scheme string) string {
-	name := strings.ReplaceAll(hostname, ".", "_")
-	name = strings.ReplaceAll(name, ":", "_")
-	// Include scheme to differentiate HTTP and HTTPS clusters for the same host
-	return "cluster_" + scheme + "_" + name
-}
-
-// sanitizeUpstreamDefinitionName sanitizes an upstream definition name for use in Envoy cluster names.
-// Envoy cluster names cannot contain dots or colons.
-func sanitizeUpstreamDefinitionName(name string) string {
-	sanitized := strings.ReplaceAll(name, ".", "_")
-	sanitized = strings.ReplaceAll(sanitized, ":", "_")
-	return sanitized
-}
-
 // createAccessLogConfig creates access log configuration based on format (JSON or text) to stdout
 func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	var accessLogs []*accesslog.AccessLog
@@ -2879,39 +2964,16 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 	}, nil
 }
 
-// resolveUpstreamDefinition finds an upstream definition by its reference name
-// Returns the upstream definition and error if not found
+// resolveUpstreamDefinition finds an upstream definition by its reference name.
+// Thin wrapper over upstreamref.FindByName to keep callers in this file unchanged.
 func resolveUpstreamDefinition(ref string, definitions *[]api.UpstreamDefinition) (*api.UpstreamDefinition, error) {
-	if definitions == nil {
-		return nil, fmt.Errorf("upstream definition '%s' not found: no definitions provided", ref)
-	}
-
-	for _, def := range *definitions {
-		if def.Name == ref {
-			return &def, nil
-		}
-	}
-
-	return nil, fmt.Errorf("upstream definition '%s' not found", ref)
+	return upstreamref.FindByName(ref, definitions)
 }
 
-// parseTimeout parses a duration string (e.g., "30s", "1m", "500ms") and returns a time.Duration.
-// Returns nil if the input is nil or empty.
+// parseTimeout parses a duration string and returns a time.Duration. Thin wrapper
+// over upstreamref.ParseConnectTimeout so xDS timeout parsing uses the shared parser.
 func parseTimeout(timeoutStr *string) (*time.Duration, error) {
-	if timeoutStr == nil || strings.TrimSpace(*timeoutStr) == "" {
-		return nil, nil
-	}
-
-	duration, err := time.ParseDuration(strings.TrimSpace(*timeoutStr))
-	if err != nil {
-		return nil, fmt.Errorf("invalid timeout format: %w", err)
-	}
-
-	if duration <= 0 {
-		return nil, fmt.Errorf("timeout must be positive, got: %v", duration)
-	}
-
-	return &duration, nil
+	return upstreamref.ParseConnectTimeout(timeoutStr)
 }
 
 // parseDurationAllowZero parses a duration string (e.g. "15s", "0s") into a *time.Duration.
