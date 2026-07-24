@@ -46,7 +46,7 @@ global:
 enabled: true
 image:
   repository: ghcr.io/wso2/api-platform/platform-api
-  tag: 0.12.0
+  tag: 0.13.0
   pullPolicy: IfNotPresent
 # Pull secrets for THIS component only (merged with global.imagePullSecrets).
 imagePullSecrets: []
