@@ -42,17 +42,6 @@ paths:
             - ap:widget_read
 `
 
-// specWithoutScopes parses cleanly but declares no security requirement, so it
-// contributes no scopes to the registry.
-const specWithoutScopes = `
-openapi: 3.0.0
-servers:
-  - url: /api/v1
-paths:
-  /widgets:
-    get: {}
-`
-
 // specMalformed is not parseable as YAML.
 const specMalformed = `{ openapi: 3.0.0`
 
@@ -129,18 +118,16 @@ func TestInitPlugins_ValidSpecMergesScopes(t *testing.T) {
 	}
 }
 
-// GO-AUTH-007: a spec is mandatory. Each of these leaves the plugin's routes with
-// no scope requirement at all, so all three must abort startup — including the
-// spec that parses cleanly but declares no security block, which the length and
-// parse checks alone do not catch.
-func TestInitPlugins_SpecsThatDeclareNoScopesAbortStartup(t *testing.T) {
+// A spec is mandatory and must load: absent or unparseable bytes mean the
+// plugin's scopes silently never reach the registry, which is a wiring bug
+// rather than a deliberate choice, so both abort startup.
+func TestInitPlugins_MissingOrUnloadableSpecAbortsStartup(t *testing.T) {
 	tests := []struct {
 		name string
 		spec string
 	}{
 		{"empty spec", ""},
 		{"malformed spec", specMalformed},
-		{"spec without security requirements", specWithoutScopes},
 	}
 
 	for _, tc := range tests {

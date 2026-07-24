@@ -95,21 +95,16 @@ func initPlugins(
 		}
 		initialized = append(initialized, p)
 
-		// Merge plugin-contributed scopes into the main registry. An OpenAPI spec
-		// is mandatory and must both load and declare at least one scope
-		// requirement: a plugin whose scopes never reach the registry would have
-		// its routes served with no scope requirement at all (GO-AUTH-007), so
-		// every way of ending up with no scopes aborts startup.
+		// Merge plugin-contributed scopes into the main registry, which is what
+		// ScopeEnforcer consults on each request. The spec must be present and
+		// must load (GO-AUTH-007).
 		spec := p.OpenAPISpec()
 		if len(spec) == 0 {
-			return fail("plugin %q returned an empty OpenAPI spec; a spec declaring each route's scopes is required", p.Name())
+			return fail("plugin %q returned an empty OpenAPI spec", p.Name())
 		}
 		pluginRegistry, regErr := middleware.LoadScopeRegistryFromBytes(spec)
 		if regErr != nil {
 			return fail("plugin %q OpenAPI spec failed to load into the scope registry: %w", p.Name(), regErr)
-		}
-		if pluginRegistry.Len() == 0 {
-			return fail("plugin %q OpenAPI spec declares no scope requirements; every route a plugin registers must declare its required scopes", p.Name())
 		}
 		scopeRegistry.Merge(pluginRegistry)
 

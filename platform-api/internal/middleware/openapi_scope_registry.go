@@ -42,9 +42,7 @@ func (r *ScopeRegistry) Lookup(method, path string) ([]string, bool) {
 }
 
 // Len returns the number of (method, path) operations that carry a scope
-// requirement. A registry loaded from a plugin spec with Len() == 0 declares no
-// scope requirement for any route, which the server treats as a startup failure
-// (GO-AUTH-007) rather than serving those routes unguarded.
+// requirement. Operations with no security block contribute no entry.
 func (r *ScopeRegistry) Len() int {
 	return len(r.scopes)
 }

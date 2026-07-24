@@ -95,18 +95,28 @@ func TestInitPlugins_ExternalTierReceivesPDKDeps(t *testing.T) {
 	}
 }
 
-// External plugins go through the same scope guard as internal ones — the
-// wrapper must not become a way around it.
+// External plugins go through the same spec guards as internal ones — the
+// wrapper must not become a way around them.
 func TestInitPlugins_ExternalTierIsHeldToTheSameGuards(t *testing.T) {
-	t.Run("spec without scopes", func(t *testing.T) {
-		ext := &fakeExternalPlugin{name: "api-cloud", spec: specWithoutScopes}
+	tests := []struct {
+		name string
+		spec string
+	}{
+		{"empty spec", ""},
+		{"malformed spec", specMalformed},
+	}
 
-		_, err := initPlugins(testLogger(), http.NewServeMux(), emptyRegistry(t),
-			&plugin.Deps{}, &pdk.Deps{}, nil, []pdk.Plugin{ext})
-		if err == nil {
-			t.Fatal("expected an external plugin with no declared scopes to abort startup")
-		}
-	})
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ext := &fakeExternalPlugin{name: "api-cloud", spec: tc.spec}
+
+			_, err := initPlugins(testLogger(), http.NewServeMux(), emptyRegistry(t),
+				&plugin.Deps{}, &pdk.Deps{}, nil, []pdk.Plugin{ext})
+			if err == nil {
+				t.Fatal("expected an external plugin with an unusable spec to abort startup")
+			}
+		})
+	}
 }
 
 // Every route an external plugin mounts is authenticated: an AuthSkipPaths

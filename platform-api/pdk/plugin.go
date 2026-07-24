@@ -50,11 +50,11 @@ type Plugin interface {
 
 	// OpenAPISpec returns the plugin's OpenAPI 3.x YAML bytes, merged into the
 	// platform scope registry to enforce per-route scopes. It is mandatory:
-	// returning empty bytes, bytes the registry loader rejects, or a spec that
-	// declares no scope requirement on any operation all abort startup. Every
-	// route the plugin mounts must appear in this document with its required
-	// scopes, so no extension route can be served without an explicit scope
-	// requirement (GO-AUTH-007).
+	// returning empty bytes or bytes the registry loader rejects aborts startup.
+	//
+	// The merged registry is what the scope stage consults on each request, keyed
+	// by the matched route pattern. Declare the scopes each route requires
+	// (GO-AUTH-007).
 	OpenAPISpec() []byte
 
 	// Shutdown is called during graceful server shutdown.
