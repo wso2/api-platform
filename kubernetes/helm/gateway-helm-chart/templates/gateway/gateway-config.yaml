@@ -324,7 +324,7 @@ data:
     {{- $analyticsEnabled := and (kindIs "bool" .Values.gateway.config.analytics.enabled) .Values.gateway.config.analytics.enabled }}
     [analytics]
     enabled = {{ $analyticsEnabled }}
-    {{- if .Values.gateway.config.analytics.enabled_publishers }}
+    {{- if hasKey .Values.gateway.config.analytics "enabled_publishers" }}
     enabled_publishers = [{{- range $i, $p := .Values.gateway.config.analytics.enabled_publishers }}{{- if gt $i 0 }}, {{ end }}{{ $p | quote }}{{- end }}]
     {{- end }}
     {{- if .Values.gateway.config.analytics.publishers }}
