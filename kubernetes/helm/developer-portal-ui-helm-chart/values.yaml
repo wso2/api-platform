@@ -89,7 +89,10 @@ config:
 
   # --- Security ---
   security:
-    roleValidation: false        # enforce role checks on incoming tokens
+    # Enforce per-operation role checks on incoming tokens. Secure by default;
+    # override to false locally (values-local.yaml) only if a deployment
+    # genuinely cannot supply role claims yet.
+    roleValidation: true
     # A shared API key some server-to-server callers present in a header.
     serviceApiKey:
       enabled: true

@@ -15,3 +15,6 @@ config:
     level: debug
   platformApi:
     insecure: true
+  security:
+    # Relax role checks for local dev only (secure default is true).
+    roleValidation: false
