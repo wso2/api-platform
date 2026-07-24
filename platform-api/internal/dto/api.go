@@ -143,7 +143,7 @@ type APIYAMLData struct {
 	SubscriptionPlans   []string               `yaml:"subscriptionPlans,omitempty"`
 	Vhosts              *Vhosts                `yaml:"vhosts,omitempty"`
 	Upstream            *UpstreamYAML          `yaml:"upstream,omitempty"`
-	UpstreamDefinitions []ReusableUpstreamYAML `yaml:"upstreamDefinitions,omitempty"`
+	UpstreamDefinitions []ReusableUpstream     `yaml:"upstreamDefinitions,omitempty"`
 	Policies            []Policy               `yaml:"policies,omitempty"`
 	Operations          []api.OperationRequest `yaml:"operations,omitempty"`
 	Channels            []api.ChannelRequest   `yaml:"channels,omitempty"`
@@ -161,22 +161,22 @@ type UpstreamTarget struct {
 	Ref string `yaml:"ref,omitempty"`
 }
 
-// ReusableUpstreamYAML represents a named entry in the deployment YAML's upstreamDefinitions pool.
-type ReusableUpstreamYAML struct {
-	Name      string                `yaml:"name"`
-	BasePath  string                `yaml:"basePath,omitempty"`
-	Timeout   *UpstreamTimeoutYAML  `yaml:"timeout,omitempty"`
-	Upstreams []UpstreamBackendYAML `yaml:"upstreams"`
+// ReusableUpstream represents a named entry in the deployment YAML's upstreamDefinitions pool.
+type ReusableUpstream struct {
+	Name      string            `yaml:"name"`
+	BasePath  string            `yaml:"basePath,omitempty"`
+	Timeout   *UpstreamTimeout  `yaml:"timeout,omitempty"`
+	Upstreams []UpstreamBackend `yaml:"upstreams"`
 }
 
-// UpstreamBackendYAML represents a weighted backend target within a reusable upstream.
-type UpstreamBackendYAML struct {
+// UpstreamBackend represents a weighted backend target within a reusable upstream.
+type UpstreamBackend struct {
 	URL    string `yaml:"url"`
 	Weight *int   `yaml:"weight,omitempty"`
 }
 
-// UpstreamTimeoutYAML represents the timeout configuration for a reusable upstream.
-type UpstreamTimeoutYAML struct {
+// UpstreamTimeout represents the timeout configuration for a reusable upstream.
+type UpstreamTimeout struct {
 	Connect string `yaml:"connect,omitempty"`
 }
 
