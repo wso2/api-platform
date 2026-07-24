@@ -20,6 +20,7 @@ const router = express.Router();
 const orgController = require('../../controllers/orgContentController');
 const registerPartials = require('../../middlewares/registerPartials');
 const authController = require('../../controllers/authController');
+const constants = require('../../utils/constants');
 
 router.get('/:orgName/views/:viewName', (req, res, next) => {
     if (req.params.orgName === 'favicon.ico' || req.params.orgName === 'images' || req.params.orgName === 'portal' || req.params.orgName === '__dev_reload') {
@@ -36,10 +37,16 @@ router.get('/:orgName', (req, res, next) => {
 }, authController.handleSilentSSO, registerPartials, orgController.loadOrganizationContent);
 
 router.get('/', (req, res, next) => {
-    if (req.params.orgName === 'favicon.ico' || req.params.orgName === 'images' || req.params.orgName === 'portal' || req.params.orgName === '__dev_reload') {
-        return res.status(404).send('Not Found');
+    // Instead of showing an org selector, send visitors straight into the
+    // configured default organization's portal.
+    const defaultOrg = config.organization?.defaultName;
+    const failedOrg = req.query.error === 'org_not_found' ? req.query.org : null;
+    if (defaultOrg && failedOrg !== defaultOrg) {
+        return res.redirect(`/${defaultOrg}${constants.ROUTE.VIEWS_PATH}default`);
     }
-    next();
-}, orgController.loadDefaultLandingPage);
+    // No default org configured (auto-seeding disabled): fall back to the
+    // legacy selector so multi-org deployments without a default still work.
+    return orgController.loadDefaultLandingPage(req, res, next);
+});
 
 module.exports = router;
