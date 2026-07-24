@@ -43,10 +43,17 @@ func TestTranslatorToProtoSharedContextPreservesStructuredAuth(t *testing.T) {
 			TokenId:       "tok-abc",
 			Scopes:        map[string]bool{"read:pets": true},
 			Properties:    map[string]string{"tenant": "demo"},
+			TypedProperties: map[string]interface{}{
+				"roles": []interface{}{"admin", "dev"},
+				"dept":  "platform",
+			},
 			Previous: &policy.AuthContext{
 				Authenticated: true,
 				AuthType:      "apikey",
 				Subject:       "legacy-client",
+				TypedProperties: map[string]interface{}{
+					"legacy": []interface{}{"x"},
+				},
 			},
 		},
 	}
@@ -62,6 +69,21 @@ func TestTranslatorToProtoSharedContextPreservesStructuredAuth(t *testing.T) {
 	assert.Equal(t, true, result.GetAuthContext().GetScopes()["read:pets"])
 	require.NotNil(t, result.GetAuthContext().GetPrevious())
 	assert.Equal(t, "apikey", result.GetAuthContext().GetPrevious().GetAuthType())
+
+	// TypedProperties must cross the boundary with structure preserved: the array-valued
+	// "roles" claim stays a list, and the scalar "dept" stays a string.
+	tp := result.GetAuthContext().GetTypedProperties()
+	require.NotNil(t, tp)
+	assert.Equal(t, "platform", tp.GetFields()["dept"].GetStringValue())
+	roles := tp.GetFields()["roles"].GetListValue().GetValues()
+	require.Len(t, roles, 2)
+	assert.Equal(t, "admin", roles[0].GetStringValue())
+	assert.Equal(t, "dev", roles[1].GetStringValue())
+
+	// Nested Previous contexts must also carry TypedProperties.
+	prevTP := result.GetAuthContext().GetPrevious().GetTypedProperties()
+	require.NotNil(t, prevTP)
+	require.Len(t, prevTP.GetFields()["legacy"].GetListValue().GetValues(), 1)
 }
 
 func TestTranslatorToGoRequestHeaderActionTranslatesCurrentFields(t *testing.T) {

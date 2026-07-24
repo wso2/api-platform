@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
+from typing import Any
 from datetime import datetime
 from enum import Enum
 from typing import Any, Callable
@@ -98,6 +99,7 @@ class AuthContext:
     scopes: dict[str, bool] = field(default_factory=dict)
     credential_id: str = ""
     properties: dict[str, str] = field(default_factory=dict)
+    typed_properties: dict[str, Any] = field(default_factory=dict)
     previous: "AuthContext | None" = None
 
 
