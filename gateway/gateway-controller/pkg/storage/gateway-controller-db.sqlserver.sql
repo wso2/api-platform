@@ -11,6 +11,22 @@
 --   BOOLEAN           -> BIT
 --   INTEGER           -> INT
 -- Every object is guarded by IF NOT EXISTS so the batch is idempotent.
+--
+-- The filtered indexes below (CREATE INDEX ... WHERE ...) require the seven
+-- SET options SQL Server mandates for filtered indexes to be correct. The Go
+-- database/sql driver connects with them correct, so the old in-controller
+-- ExecContext path applied this script cleanly; sqlcmd/ODBC connects with
+-- QUOTED_IDENTIFIER OFF, so applying via sqlcmd fails with
+-- "Msg 1934 ... CREATE INDEX failed ... 'QUOTED_IDENTIFIER'" and aborts the batch.
+-- Set all seven explicitly so the script applies identically regardless of the
+-- client's session defaults (see MS docs: SET options required for filtered indexes).
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
+SET ARITHABORT ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
+SET NUMERIC_ROUNDABORT OFF;
 
 -- Base table for all artifact types
 IF OBJECT_ID(N'dbo.artifacts', N'U') IS NULL

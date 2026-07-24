@@ -14,8 +14,7 @@ CREATE DATABASE devportal;
 -- platform-api only auto-runs schema DDL for SQLite; against an external
 -- database it expects the schema to be pre-provisioned by the operator. Apply
 -- the platform-api schema to its database here so the file-based org seeding at
--- startup finds its tables. (gateway-controller still auto-migrates its own
--- gateway_test / gateway_test2 schema.)
+-- startup finds its tables.
 \connect platform_api
 \i /schema/schema.postgres.sql
 
@@ -23,3 +22,12 @@ CREATE DATABASE devportal;
 -- an external postgres — its own postgres compose loads this dump at init too).
 \connect devportal
 \i /devportal-schema/schema.postgres.sql
+
+-- The gateway-controller likewise no longer auto-migrates its schema on external
+-- databases, so pre-provision it into both gateway-controller stores here
+-- (gateway_test, plus gateway_test2 for the multi-gateway scenario).
+\connect gateway_test
+\i /gw-schema/schema.postgres.sql
+
+\connect gateway_test2
+\i /gw-schema/schema.postgres.sql

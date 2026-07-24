@@ -17,9 +17,10 @@ services:
     networks: [e2e]
 
   # Creates both databases via sqlcmd (the server images do not auto-create them)
-  # and pre-provisions the platform_api schema: platform-api only auto-runs DDL
-  # for SQLite, so against SQL Server the operator must provision it. The
-  # gateway-controller still auto-migrates its own gateway_test schema.
+  # and pre-provisions both schemas: neither platform-api nor the gateway-controller
+  # auto-runs DDL against an external SQL Server, so the operator must provision
+  # them. platform_api gets the platform-api schema; gateway_test gets the
+  # gateway-controller schema.
   mssql-init:
     image: mcr.microsoft.com/mssql-tools:latest
     depends_on:
@@ -34,11 +35,13 @@ services:
         done;
         /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -Q
         "IF DB_ID('platform_api') IS NULL CREATE DATABASE [platform_api]; IF DB_ID('gateway_test') IS NULL CREATE DATABASE [gateway_test];" &&
-        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -I -d platform_api -i /schema/schema.sqlserver.sql
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -I -d platform_api -i /schema/schema.sqlserver.sql &&
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -I -d gateway_test -i /gw-schema/schema.sqlserver.sql
     environment:
       - MSSQL_SA_PASSWORD=${MSSQL_PASSWORD:-Strong!Passw0rd}
     volumes:
       - ../../platform-api/internal/database/schema.sqlserver.sql:/schema/schema.sqlserver.sql:ro
+      - ../../gateway/gateway-controller/pkg/storage/gateway-controller-db.sqlserver.sql:/gw-schema/schema.sqlserver.sql:ro
     networks: [e2e]
 
   # One-shot init container: generates the TLS pair the platform-api HTTPS

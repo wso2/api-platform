@@ -57,11 +57,28 @@ services:
     environment:
       - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:-EGW_Strong!Pass123}
       - MSSQL_DB=gateway_test
+    volumes:
+      # event-gateway-controller reuses gateway-controller's storage package,
+      # which no longer auto-applies schema DDL to external databases — and the
+      # event-gateway controller likewise no longer auto-applies its own DDL for
+      # external backends. Both the core schema and the event-gateway-specific
+      # tables (websub_apis, webbroker_apis, webhook_secrets) must therefore be
+      # pre-provisioned by the operator. Apply both shipped scripts here after
+      # creating the database, so the IT suite exercises the same
+      # pre-provisioned-DB path operators use.
+      - ../gateway/gateway-controller/pkg/storage/gateway-controller-db.sqlserver.sql:/schema/gateway-controller-schema.sql:ro
+      - ./gateway-controller/pkg/dbschema/eventgateway-db.sqlserver.sql:/schema/eventgateway-schema.sql:ro
     entrypoint: ["/bin/bash", "-c"]
     command:
       - >
-        /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
+        /opt/mssql-tools18/bin/sqlcmd -b -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
         -Q "IF DB_ID('$$MSSQL_DB') IS NULL CREATE DATABASE [$$MSSQL_DB]"
+        &&
+        /opt/mssql-tools18/bin/sqlcmd -b -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
+        -d "$$MSSQL_DB" -i /schema/gateway-controller-schema.sql
+        &&
+        /opt/mssql-tools18/bin/sqlcmd -b -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
+        -d "$$MSSQL_DB" -i /schema/eventgateway-schema.sql
     restart: "no"
     networks:
       - egw-network

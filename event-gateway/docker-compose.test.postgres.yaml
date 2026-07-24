@@ -32,6 +32,17 @@ services:
       - POSTGRES_DB=gateway_test
       - POSTGRES_USER=gateway
       - POSTGRES_PASSWORD=gateway
+    volumes:
+      # event-gateway-controller reuses gateway-controller's storage package,
+      # which no longer auto-applies schema DDL to external databases — and the
+      # event-gateway controller likewise no longer auto-applies its own DDL for
+      # external backends. Both the core schema and the event-gateway-specific
+      # tables (websub_apis, webbroker_apis, webhook_secrets) must therefore be
+      # pre-provisioned by the operator. Apply both here via Postgres's first-boot
+      # init hooks (01 core, then 02 event-gateway), so the IT suite exercises the
+      # same pre-provisioned-DB path operators use.
+      - ../gateway/gateway-controller/pkg/storage/gateway-controller-db.postgres.sql:/docker-entrypoint-initdb.d/01-gateway-controller-schema.sql:ro
+      - ./gateway-controller/pkg/dbschema/eventgateway-db.postgres.sql:/docker-entrypoint-initdb.d/02-eventgateway-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U gateway -d gateway_test"]
       interval: 5s
