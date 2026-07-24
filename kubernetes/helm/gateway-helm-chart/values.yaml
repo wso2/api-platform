@@ -73,6 +73,11 @@ gateway:
         # Unique identifier for the gateway instance
         gateway_id: "platform-gateway-id"
 
+        # Skip API deployments that fail to load at startup (log and continue)
+        # instead of blocking gateway startup entirely. Off by default: an invalid
+        # deployment fails startup loudly so the issue can't go unnoticed.
+        skip_invalid_deployments_on_startup: false
+
       # Dedicated admin/debug HTTP server (config dump, xDS sync status). Already
       # effectively active today even though this block was previously absent from
       # config.toml — see defaultConfig() in pkg/config/config.go. Adding it here
@@ -370,6 +375,8 @@ gateway:
         server_header_transformation: OVERWRITE
         # Value written for the Server response header
         server_header_value: "WSO2 API Platform"
+        # Downstream per-connection buffer limit in bytes
+        per_connection_buffer_limit_bytes: 1048576
 
         # Downstream (client-facing) timeouts. A value of "0s" disables the timeout.
         timeouts:
@@ -427,6 +434,9 @@ gateway:
           skip_verify: false
 
     policy_engine:
+      # Service name reported to the tracing backend (see gateway.config.tracing below)
+      tracing_service_name: policy-engine
+
       server:
         # ext_proc port for gRPC server
         extproc_port: 9001
@@ -560,7 +570,11 @@ gateway:
     #     - moesif
     #   publishers:
     #     moesif:
-    #       application_id: "<MOESIF_APPLICATION_ID>"
+    #       # The gateway resolves `{{ env "NAME" "default" }}` tokens found in any
+    #       # config value at load time, so pasting this literal token here — rather
+    #       # than a plaintext application ID — resolves it from a Secret-backed
+    #       # env var at startup instead of storing it in the ConfigMap.
+    #       application_id: '{{ env "APIP_GW_ANALYTICS_PUBLISHERS_MOESIF_APPLICATION_ID" "" }}'
     #       publish_interval: 5
     #       event_queue_size: 10000
     #       batch_size: 50
@@ -588,6 +602,53 @@ gateway:
     #     als_plain_text: true
     #     max_message_size: 1000000000
     #     max_header_limit: 8192
+
+    # Traffic logging: writes each collected event (API/application/AI/latency
+    # metadata, plus headers/bodies when the collector captures them) to stdout
+    # as a JSON line — useful for log-scraping pipelines (Fluent Bit/Loki/ELK),
+    # no external SaaS needed. Like analytics, it's a consumer of the collector
+    # above and implicitly activates it. No policy required: enabling this emits
+    # a line for every request to every API, including ones an auth policy
+    # denied. Absent by default. Uncomment (together with collector above) to enable:
+    # traffic_logging:
+    #   enabled: true
+    #   # Header names (case-insensitive) redacted as "****" in the logged line
+    #   masked_headers:
+    #     - authorization
+    #     - x-api-key
+    #     - x-jwt-assertion
+    #   # Max bytes of request/response payload written per line (0 = no limit).
+    #   # Applied output-side only — the collector still captures full bodies.
+    #   max_payload_size: 0
+    #   # Each toggle below only selects among what `collector` above already
+    #   # captures — e.g. request_body here is a no-op while collector.request_body
+    #   # is false.
+    #   request_headers: false
+    #   request_body: false
+    #   response_headers: false
+    #   response_body: false
+    #   # Drop the named fields from the emitted line, keeping everything else.
+    #   # Top-level keys (e.g. "latencies") or dotted paths into nested objects
+    #   # (e.g. "requestHeaders.authorization").
+    #   exclude_fields: []
+    #   # Extra key -> value pairs added to the emitted line's "properties" object.
+    #   # A "$ctx:" prefixed value is evaluated as a CEL expression against the
+    #   # collected event; other values are emitted as literal strings.
+    #   properties:
+    #     env: prod
+    #     apiName: "$ctx:api.name"
+    #     status: "$ctx:response.status"
+
+    # OpenTelemetry tracing, shared by the controller and policy-engine. Absent
+    # by default. Uncomment to enable:
+    # tracing:
+    #   enabled: true
+    #   endpoint: "otel-collector:4317"
+    #   insecure: true
+    #   service_version: "1.0.0"
+    #   batch_timeout: 1s
+    #   max_export_batch_size: 512
+    #   sampling_rate: 1.0
 
   # Raw TOML string to append to the generated config.toml
   # Use this for additional configuration not covered by the structured values above
