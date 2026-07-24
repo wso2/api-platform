@@ -611,17 +611,17 @@ func (u *APIUtil) BuildAPIDeploymentYAML(apiModel *model.API) (*dto.APIDeploymen
 
 	// Convert reusable upstream definitions (the named pool that API-level and
 	// operation-level upstream refs resolve against on the gateway).
-	var upstreamDefsYAML []dto.ReusableUpstreamYAML
+	var upstreamDefsYAML []dto.ReusableUpstream
 	for _, def := range apiModel.Configuration.UpstreamDefinitions {
-		defYAML := dto.ReusableUpstreamYAML{
+		defYAML := dto.ReusableUpstream{
 			Name:     def.Name,
 			BasePath: def.BasePath,
 		}
 		if def.Timeout != nil {
-			defYAML.Timeout = &dto.UpstreamTimeoutYAML{Connect: def.Timeout.Connect}
+			defYAML.Timeout = &dto.UpstreamTimeout{Connect: def.Timeout.Connect}
 		}
 		for _, b := range def.Upstreams {
-			defYAML.Upstreams = append(defYAML.Upstreams, dto.UpstreamBackendYAML{
+			defYAML.Upstreams = append(defYAML.Upstreams, dto.UpstreamBackend{
 				URL:    b.URL,
 				Weight: b.Weight,
 			})
