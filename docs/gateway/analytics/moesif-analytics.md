@@ -94,9 +94,11 @@ The collector is the shared capture pipeline feeding analytics (and, independent
 
 ## Configuration Examples
 
-#### Integrate Moesif Publisher
+### Integrate Moesif Publisher
 
 For Moesif analytics integration, configure the following publisher-specific attributes under `[analytics.publishers.moesif]`. These parameters control authentication, batching behavior, and publish intervals for efficient analytics delivery.
+
+`[collector]`'s capture flags are off by default, matching the gateway's own shipped default — enable them deliberately. There is no redaction at the collector layer
 
 ```toml
 [analytics]
@@ -104,17 +106,17 @@ enabled = true
 enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]
-application_id = "<MOESIF_APPLICATION_ID>"
+application_id = '{{ env "APIP_GW_ANALYTICS_PUBLISHERS_MOESIF_APPLICATION_ID" "" }}'
 publish_interval = 5
 event_queue_size = 10000
 batch_size = 50
 timer_wakeup_seconds = 3
 
 [collector]
-request_body = true
-response_body = true
-request_headers = true
-response_headers = true
+request_body = false
+response_body = false
+request_headers = false
+response_headers = false
 
 [collector.server]
 mode = "uds"
