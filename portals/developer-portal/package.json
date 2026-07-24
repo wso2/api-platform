@@ -1,6 +1,6 @@
 {
   "name": "devportal-webapp",
-  "version": "1.0.0-beta-SNAPSHOT",
+  "version": "1.0.0-rc1-SNAPSHOT",
   "description": "WSO2 API Platform Developer Portal",
   "main": "src/server.js",
   "scripts": {
