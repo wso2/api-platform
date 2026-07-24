@@ -1,6 +1,7 @@
 {{- $dp := .Values -}}
 {{- $deployment := $dp.deployment -}}
 {{- $cfg := $dp.config -}}
+{{- $auth := $cfg.auth -}}
 {{- $secrets := $dp.secrets -}}
 {{- $tls := $dp.tls -}}
 {{- $selfSigned := eq $tls.certificateProvider "selfSigned" -}}
@@ -8,10 +9,7 @@
 {{- $secretName := include "apip.developerPortal.secretName" . -}}
 {{- $imageTag := default .Chart.AppVersion $dp.image.tag -}}
 {{- $certDir := $tls.mountPath -}}
-{{- $baseUrl := default (printf "https://localhost:%d" (int $dp.containerPort)) $cfg.server.baseUrl -}}
-{{- $platformApiUrl := default (include "apip.platformApi.internalURL" .) $cfg.platformApi.baseUrl -}}
-{{- $demo := $cfg.demoEnabled -}}
-{{- if kindIs "invalid" $demo }}{{- $demo = .Values.global.developmentMode -}}{{- end }}
+{{- $jwtKeyDir := regexReplaceAll "/[^/]+$" $auth.publicKeyPath "" -}}
 {{- if $deployment.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -94,105 +92,39 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           env:
-            # ── Server / TLS ──────────────────────────────────────────────
-            - name: APIP_DP_SERVER_PORT
-              value: {{ $dp.containerPort | toString | quote }}
-            - name: APIP_DP_SERVER_BASEURL
-              value: {{ $baseUrl | quote }}
-            - name: APIP_DP_TLS_ENABLED
-              value: "true"
-            - name: APIP_DP_TLS_CERTFILE
-              value: {{ printf "%s/server.crt" $certDir | quote }}
-            - name: APIP_DP_TLS_KEYFILE
-              value: {{ printf "%s/server.key" $certDir | quote }}
-            - name: APIP_DP_TLS_CAFILE
-              value: {{ printf "%s/server.crt" $certDir | quote }}
-            # ── Database ──────────────────────────────────────────────────
-            - name: APIP_DP_DATABASE_TYPE
-              value: {{ $cfg.database.type | quote }}
-            {{- if eq $cfg.database.type "postgres" }}
-            - name: APIP_DP_DATABASE_HOST
-              value: {{ $cfg.database.host | quote }}
-            - name: APIP_DP_DATABASE_PORT
-              value: {{ $cfg.database.port | toString | quote }}
-            - name: APIP_DP_DATABASE_NAME
-              value: {{ $cfg.database.database | quote }}
-            - name: APIP_DP_DATABASE_USERNAME
-              value: {{ $cfg.database.user | quote }}
-            - name: APIP_DP_DATABASE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $secretName }}
-                  key: {{ $secrets.keys.databasePassword | default "APIP_DP_DATABASE_PASSWORD" }}
-            {{- else }}
-            - name: APIP_DP_DATABASE_FILE
-              value: {{ $cfg.database.file | quote }}
-            {{- end }}
-            # ── Behaviour ─────────────────────────────────────────────────
-            - name: APIP_DP_DEMO_ENABLED
-              value: {{ $demo | toString | quote }}
-            - name: APIP_DP_LOGGING_CONSOLEONLY
-              value: {{ $cfg.logging.consoleOnly | toString | quote }}
-            - name: APIP_DP_SECURITY_ROLEVALIDATION
-              value: {{ $cfg.security.roleValidation | toString | quote }}
-            - name: APIP_DP_SECURITY_SERVICEAPIKEY_ENABLED
-              value: {{ $cfg.security.serviceApiKey.enabled | toString | quote }}
-            - name: APIP_DP_SECURITY_SERVICEAPIKEY_HEADERNAME
-              value: {{ $cfg.security.serviceApiKey.headerName | quote }}
-            - name: APIP_DP_ORGANIZATION_DEFAULTNAME
-              value: {{ $cfg.organization.defaultName | quote }}
-            # ── Platform API connectivity ────────────────────────────────
-            - name: APIP_DP_PLATFORMAPI_BASEURL
-              value: {{ $platformApiUrl | quote }}
-            - name: APIP_DP_PLATFORMAPI_INSECURE
-              value: {{ $cfg.platformApi.insecure | toString | quote }}
-            # ── Secrets (from the external Secret) ────────────────────────
-            - name: APIP_DP_SECURITY_ENCRYPTIONKEY
+            # Config is delivered via the mounted config.toml (see configmap.yaml);
+            # only secrets are injected here, resolved into that config by its
+            # {{ "{{ env \"APIP_DP_*\" }}" }} tokens.
+            - name: APIP_DP_SECURITY_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: {{ $secrets.keys.encryptionKey }}
-            - name: APIP_DP_PLATFORMAPI_JWTSECRET
+            - name: APIP_DP_SECURITY_SESSION_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
-                  key: {{ $secrets.keys.platformApiJwtSecret }}
+                  key: {{ $secrets.keys.sessionSecret }}
+            {{- if eq $cfg.database.type "postgres" }}
+            - name: APIP_DP_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $secrets.keys.databasePassword }}
+            {{- end }}
             {{- if $secrets.hasServiceApiKeyValue }}
-            - name: APIP_DP_SECURITY_SERVICEAPIKEY_VALUE
+            - name: APIP_DP_SECURITY_SERVICE_API_KEY_VALUE
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: {{ $secrets.keys.serviceApiKeyValue }}
             {{- end }}
-            # ── OIDC IDP (active when clientId is set) ────────────────────
-            {{- if $cfg.idp.clientId }}
-            - name: APIP_DP_IDP_NAME
-              value: {{ $cfg.idp.name | quote }}
-            - name: APIP_DP_IDP_ISSUER
-              value: {{ $cfg.idp.issuer | quote }}
-            - name: APIP_DP_IDP_AUTHORIZATIONURL
-              value: {{ $cfg.idp.authorizationUrl | quote }}
-            - name: APIP_DP_IDP_TOKENURL
-              value: {{ $cfg.idp.tokenUrl | quote }}
-            - name: APIP_DP_IDP_USERINFOURL
-              value: {{ $cfg.idp.userInfoUrl | quote }}
-            - name: APIP_DP_IDP_JWKSURL
-              value: {{ $cfg.idp.jwksUrl | quote }}
-            - name: APIP_DP_IDP_CLIENTID
-              value: {{ $cfg.idp.clientId | quote }}
-            - name: APIP_DP_IDP_CALLBACKURL
-              value: {{ $cfg.idp.callbackUrl | quote }}
-            - name: APIP_DP_IDP_LOGOUTURL
-              value: {{ $cfg.idp.logoutUrl | quote }}
-            - name: APIP_DP_IDP_SCOPE
-              value: {{ $cfg.idp.scope | quote }}
-            {{- if $secrets.hasIdpClientSecret }}
-            - name: APIP_DP_IDP_CLIENTSECRET
+            {{- if and (ne $auth.idp.clientId "") $secrets.hasIdpClientSecret }}
+            - name: APIP_DP_AUTH_IDP_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: {{ $secrets.keys.idpClientSecret }}
-            {{- end }}
             {{- end }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
@@ -223,10 +155,13 @@ spec:
               {{- if $tlsFromSecret }}
               readOnly: true
               {{- end }}
-            {{- if $dp.configToml }}
             - name: config
               mountPath: /app/configs/config.toml
               subPath: config.toml
+            {{- if $secrets.hasPublicKey }}
+            - name: platform-api-key
+              mountPath: {{ $jwtKeyDir }}
+              readOnly: true
             {{- end }}
             {{- with $deployment.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -256,13 +191,22 @@ spec:
           # selfSigned: writable dir where the entrypoint generates server.crt/server.key.
           emptyDir: {}
           {{- end }}
-        {{- if $dp.configToml }}
         - name: config
           configMap:
             name: {{ include "apip.developerPortal.fullname" . }}-config
             items:
               - key: config.toml
                 path: config.toml
+        {{- if $secrets.hasPublicKey }}
+        # Platform API RS256 public key (PEM) mounted for auth.local.public_key_path,
+        # used to verify Platform API-issued tokens. Tokens are asymmetric — there
+        # is no shared HMAC secret.
+        - name: platform-api-key
+          secret:
+            secretName: {{ $secretName }}
+            items:
+              - key: {{ $secrets.keys.publicKey }}
+                path: {{ base $auth.publicKeyPath }}
         {{- end }}
         {{- with $deployment.extraVolumes }}
         {{- toYaml . | nindent 8 }}

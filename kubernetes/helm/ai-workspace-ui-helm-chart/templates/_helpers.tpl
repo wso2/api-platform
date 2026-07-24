@@ -2,11 +2,11 @@
 {{/*
 Shared helpers for the api-platform-portals suite.
 
-Cross-cutting configuration (developmentMode, labels/annotations, image pull
-secrets, service account, subscription registry, and the shared Platform API
-service coordinates) is read from `.Values.global.*` so every component subchart
-resolves it identically. Component-specific config is read from the subchart's
-own `.Values` by the calling templates, not here.
+Cross-cutting configuration (labels/annotations, image pull secrets, service
+account, subscription registry, and the shared Platform API service coordinates)
+is read from `.Values.global.*` so every component subchart resolves it
+identically. Component-specific config is read from the subchart's own `.Values`
+by the calling templates, not here.
 
 Component resource names are derived from the release name with a fixed suffix
 (NOT from .Chart.Name), so a portal subchart can compute the Platform API's
@@ -24,14 +24,17 @@ in-cluster Service name even though it lives in a different subchart.
 {{- end -}}
 
 {{/* Component full names — fixed suffixes, release-derived, cross-subchart stable. */}}
+{{/* Trunc the base first to reserve room for the suffix — otherwise a long
+     release name is truncated AFTER the suffix is appended, chopping the suffix
+     and risking cross-component name collisions. */}}
 {{- define "apip.platformApi.fullname" -}}
-{{- printf "%s-platform-api" (include "apip.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- printf "%s-platform-api" (include "apip.fullname" . | trunc 50 | trimSuffix "-") | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 {{- define "apip.aiWorkspace.fullname" -}}
-{{- printf "%s-ai-workspace" (include "apip.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- printf "%s-ai-workspace" (include "apip.fullname" . | trunc 50 | trimSuffix "-") | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 {{- define "apip.developerPortal.fullname" -}}
-{{- printf "%s-developer-portal" (include "apip.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- printf "%s-developer-portal" (include "apip.fullname" . | trunc 45 | trimSuffix "-") | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{- define "apip.chart" -}}
@@ -137,7 +140,9 @@ subchart's own values.
 {{- define "apip.platformApi.internalURL" -}}
 {{- $g := default (dict) .Values.global -}}
 {{- $pa := default (dict) $g.platformApi -}}
-{{- $scheme := ternary "https" "http" (default true $pa.tlsEnabled) -}}
+{{- $tlsEnabled := true -}}
+{{- if hasKey $pa "tlsEnabled" -}}{{- $tlsEnabled = $pa.tlsEnabled -}}{{- end -}}
+{{- $scheme := ternary "https" "http" $tlsEnabled -}}
 {{- printf "%s://%s:%d" $scheme (include "apip.platformApi.fullname" .) (int (default 9243 $pa.port)) -}}
 {{- end -}}
 

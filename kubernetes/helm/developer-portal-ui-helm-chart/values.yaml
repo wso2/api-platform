@@ -17,7 +17,6 @@
 # global — STANDALONE defaults only (an umbrella's global.* overrides these)
 # ----------------------------------------------------------------------------
 global:
-  developmentMode: true
   nameOverride: ""
   fullnameOverride: ""
   commonLabels: {}
@@ -50,7 +49,9 @@ image:
 imagePullSecrets: []
 
 # ----------------------------------------------------------------------------
-# config — becomes APIP_DP_* env vars on the container
+# config — rendered into /app/configs/config.toml under [developer_portal.*]
+# (portals/developer-portal/configs/config-template.toml). Non-secret values are
+# literals; secrets come from the referenced Secret via APIP_DP_* env tokens.
 # ----------------------------------------------------------------------------
 config:
   server:
@@ -58,15 +59,14 @@ config:
     # Leave "" to derive it from the service + TLS; set it when fronting with a
     # real hostname so login redirects and asset URLs are correct.
     baseUrl: ""
-  # Demo features (sample-API seeding, onboarding prompts). null → follow
-  # global.developmentMode; set true/false to force.
-  demoEnabled: null
   logging:
+    level: info                  # debug | info | warn | error
+    format: text                 # text | json
     consoleOnly: true            # log to stdout only (no file)
 
   # --- Database (the portal's OWN store, separate from the Platform API's) ---
   database:
-    # sqlite   → file on the PVC; single replica; HPA unavailable. Good for demos.
+    # sqlite   → file on the PVC; single replica; HPA unavailable.
     # postgres → external server (configured below); enables multi-replica + HPA.
     type: sqlite
     # SQLite file (type=sqlite). Must sit under the mounted data volume.
@@ -76,9 +76,16 @@ config:
     # for sqlite.
     host: ""
     port: 5432
-    database: devportal          # database (schema) name (gateway-convention key)
+    database: devportal          # database (schema) name → rendered as `name`
     user: postgres               # login role; password from the Secret
     sslmode: disable             # disable | require | verify-ca | verify-full
+    sslRootCert: ""              # CA cert — used by verify-ca / verify-full
+    # Connection-pool tuning (postgres only).
+    maxOpenConns: 50
+    minOpenConns: 2
+    poolIdleTimeoutMs: 10000
+    poolConnectionTimeoutMs: 30000
+    poolRequestTimeoutMs: 30000
 
   # --- Security ---
   security:
@@ -95,28 +102,75 @@ config:
     # Leave "" to derive the in-cluster Platform API URL automatically. Set to
     # target an external Platform API.
     baseUrl: ""
-    # Skip TLS verification on the portal → Platform API hop (needed while the
-    # Platform API uses a self-signed cert). Forced false when developmentMode
-    # is false.
-    insecure: true
+    # Skip TLS verification on the portal → Platform API hop. Secure by default;
+    # enable only for local dev against a self-signed Platform API cert
+    # (values-local.yaml sets this true). In production supply a real/trusted cert.
+    insecure: false
 
-  # --- OIDC login (optional) ---
-  # Used when idp.clientId is set. The client secret comes from the Secret
-  # (secrets.keys.idpClientSecret), wired only when secrets.hasIdpClientSecret=true.
-  idp:
-    name: ""
-    issuer: ""
-    authorizationUrl: ""
-    tokenUrl: ""
-    userInfoUrl: ""
-    jwksUrl: ""
-    clientId: ""
-    callbackUrl: ""
-    logoutUrl: ""
-    scope: "openid profile email"
+  # --- Authentication ---
+  auth:
+    # Filesystem path where the Platform API's RS256 public key PEM is mounted;
+    # used (auth.local mode) to verify Platform API-issued tokens. The key is
+    # supplied via the Secret (secrets.keys.publicKey) when secrets.hasPublicKey
+    # is true, and mounted at this path.
+    publicKeyPath: /etc/devportal/keys/jwt_public.pem
+    # JWT claim-name mappings — which token claim carries each field.
+    claimMappings:
+      organization: org_name     # claim carrying the org ID
+      roles: roles               # claim carrying the user's roles
+      groups: groups
+    # OIDC login (optional). Rendered as auth.mode=idp when idp.clientId is set;
+    # otherwise the portal uses local (Platform API) login. The client secret
+    # comes from the Secret (secrets.keys.idpClientSecret), wired only when
+    # secrets.hasIdpClientSecret=true.
+    idp:
+      name: ""
+      issuer: ""
+      authorizationUrl: ""
+      tokenUrl: ""
+      userInfoUrl: ""
+      jwksUrl: ""
+      clientId: ""
+      callbackUrl: ""
+      logoutUrl: ""
+      scope: "openid profile email"
+      audience: ""
+      certificate: ""            # PEM to pin the IDP's signing cert (optional)
+      signUpUrl: ""
+      logoutRedirectUri: ""
+      orgCallback: false         # redirect to the org's own landing page after login
+      silentSso: true
+      tokenRefreshTimeoutMs: 10000
+      # Map IDP role names to the portal's internal roles (idp mode).
+      roles:
+        admin: admin
+        subscriber: Internal/subscriber
+        superAdmin: superAdmin
 
   organization:
-    defaultName: default         # default organization name
+    defaultName: default                    # default organization name; "" disables auto-seeding
+    autoCreateSubscriptionPlans: true       # auto-create Bronze/Silver/Gold/Unlimited/AsyncUnlimited
+
+  # --- Webhook delivery tuning (global) ---
+  webhooksDelivery:
+    pollIntervalMs: 2000
+    batchSize: 50
+    signatureToleranceSec: 300
+
+  # --- "Try It" console (calls user-supplied endpoints; SSRF-sensitive) ---
+  tryout:
+    enabled: true
+    # false → only https:// endpoints may be called.
+    allowHttpEndpoints: true
+    # Deny-by-default: allow the portal to call private/internal addresses only
+    # when the gateway legitimately sits on a private address, after confirming
+    # only intended services are reachable. Link-local/cloud-metadata addresses
+    # are refused regardless.
+    allowPrivateEndpoints: false
+    tlsSkipVerify: false         # development only
+    timeoutMs: 15000
+    maxRequestBytes: 1048576     # 1 MiB
+    maxResponseBytes: 5242880    # 5 MiB
 
 # Escape hatch: raw config.toml appended verbatim (env vars still override it).
 configToml: ""
@@ -126,21 +180,25 @@ configToml: ""
 # ----------------------------------------------------------------------------
 # The chart never creates or embeds secret values. Point existingSecret at a
 # Secret made by ./generate-secrets.sh. Render FAILS if it's unset. Required keys:
-# APIP_DP_SECURITY_ENCRYPTIONKEY and APIP_DP_PLATFORMAPI_JWTSECRET (the latter =
-# the Platform API's AUTH_JWT_SECRET_KEY, so the portal can verify its tokens).
-# The optional keys (OIDC client secret, service API key, DB password) are only
-# wired when the matching has* flag below is true.
+# ENCRYPTION_KEY and SESSION_SECRET (both 64-char hex; the portal fails closed at
+# startup without them). Optional keys — DB password (postgres), OIDC client
+# secret, service API key value, and the Platform API RS256 public key PEM (to
+# verify Platform API-issued tokens; tokens are asymmetric, so there is no shared
+# HMAC secret) — are wired only when the matching has* flag below is true.
+# `keys` maps each logical name to the key inside that Secret.
 secrets:
   existingSecret: ""
   keys:
-    encryptionKey: APIP_DP_SECURITY_ENCRYPTIONKEY
-    platformApiJwtSecret: APIP_DP_PLATFORMAPI_JWTSECRET
-    idpClientSecret: APIP_DP_IDP_CLIENTSECRET
-    serviceApiKeyValue: APIP_DP_SECURITY_SERVICEAPIKEY_VALUE
-    databasePassword: APIP_DP_DATABASE_PASSWORD   # used only when database.type=postgres
+    encryptionKey: ENCRYPTION_KEY          # → APIP_DP_SECURITY_ENCRYPTION_KEY
+    sessionSecret: SESSION_SECRET          # → APIP_DP_SECURITY_SESSION_SECRET
+    databasePassword: DATABASE_PASSWORD    # → APIP_DP_DATABASE_PASSWORD (postgres)
+    idpClientSecret: IDP_CLIENT_SECRET     # → APIP_DP_AUTH_IDP_CLIENT_SECRET (idp mode)
+    serviceApiKeyValue: SERVICE_API_KEY_VALUE  # → APIP_DP_SECURITY_SERVICE_API_KEY_VALUE
+    publicKey: jwt_public.pem              # mounted file → config.auth.publicKeyPath
   # Flip to true ONLY if the referenced Secret actually carries that optional key,
-  # so the deployment wires it as an env var. generate-secrets.sh sets these for
-  # you in the values-secrets.yaml it writes.
+  # so the deployment wires it. generate-secrets.sh sets these for you in the
+  # values-secrets.yaml it writes.
+  hasPublicKey: true
   hasIdpClientSecret: false
   hasServiceApiKeyValue: false
 

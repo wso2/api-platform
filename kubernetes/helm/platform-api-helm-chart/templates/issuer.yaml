@@ -1,6 +1,6 @@
 {{- $pa := .Values -}}
 {{- $tls := $pa.tls -}}
-{{- if and $pa.deployment.enabled $pa.config.tls.enabled (eq $tls.certificateProvider "cert-manager") }}
+{{- if and $pa.deployment.enabled $pa.config.server.https.enabled (eq $tls.certificateProvider "cert-manager") }}
 {{- if and (eq $tls.certManager.issuerRef.kind "Issuer") $tls.certManager.createIssuer }}
 ---
 # Self-signed Issuer for development/testing. In production replace this with a

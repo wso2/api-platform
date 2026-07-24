@@ -1,6 +1,11 @@
 {{- $pa := .Values -}}
 {{- $tls := $pa.tls -}}
-{{- if and $pa.deployment.enabled $pa.config.tls.enabled (eq $tls.certificateProvider "cert-manager") $tls.certManager.create }}
+{{- if and $pa.deployment.enabled $pa.config.server.https.enabled (eq $tls.certificateProvider "cert-manager") }}
+{{- if and $tls.certManager.createIssuer (ne $tls.certManager.issuerRef.kind "Issuer") }}
+{{- fail "platform-api: tls.certManager.createIssuer=true only creates a namespaced Issuer, but issuerRef.kind is not \"Issuer\". Set issuerRef.kind: Issuer, or set createIssuer=false and reference your own ClusterIssuer." }}
+{{- end }}
+{{- end }}
+{{- if and $pa.deployment.enabled $pa.config.server.https.enabled (eq $tls.certificateProvider "cert-manager") $tls.certManager.create }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

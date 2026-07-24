@@ -16,7 +16,6 @@
 # global — STANDALONE defaults only (an umbrella's global.* overrides these)
 # ----------------------------------------------------------------------------
 global:
-  developmentMode: true
   nameOverride: ""
   fullnameOverride: ""
   commonLabels: {}
@@ -49,63 +48,82 @@ image:
 imagePullSecrets: []
 
 # ----------------------------------------------------------------------------
-# config — rendered into /etc/ai-workspace/config.toml
+# config — rendered into /etc/ai-workspace/config.toml under [ai_workspace.*]
+# (portals/ai-workspace/configs/config-template.toml). Non-secret values are
+# literals; the OIDC client secret comes from the referenced Secret via an
+# APIP_AIW_* env token.
 # ----------------------------------------------------------------------------
 config:
-  # Hostname (or host:port) the browser uses to reach the UI. Shown in the address
-  # bar and used to build redirect URLs.
-  domain: ai-workspace.localhost
   # Region assigned to a new organization the first time someone logs in.
   defaultOrgRegion: us
-  # How users sign in:
-  #   basic → the Platform API's file-based login (admin/admin in dev)
-  #   oidc  → an external OIDC provider (fill in config.oidc below + the secret)
-  authMode: basic
-  # Public address of the control plane that GATEWAYS dial to reach the Platform
-  # API. Shown verbatim in the in-UI "add a gateway" instructions.
-  controlplaneHost: ""
-  # Gateway build options offered in the create-gateway dropdown (a JSON string).
-  platformGatewayVersions: '[{"version":"1.2","latestVersion":"v1.2.0-M1","channel":"STS"}]'
-  # OIDC settings — used only when authMode=oidc. The client secret is NOT here;
-  # it comes from the Secret (secrets.keys.oidcClientSecret).
-  oidc:
-    authority: ""               # issuer / discovery base URL
-    clientId: ""
-    redirectUrl: ""             # login callback URL
-    postLogoutRedirectUrl: ""
-    scope: ""                   # e.g. "openid profile email"
-    # Map the IDP's token claims to what the UI expects:
-    usernameClaim: username
-    orgIdClaim: org_id
-    orgNameClaim: org_name
-    orgHandleClaim: org_handle
+
+  server:
+    # Public host (or host:port) the browser uses to reach the UI; shown in the
+    # SPA and used to build redirect URLs. Leave "" to derive from the service.
+    domain: ""
+
+  logging:
+    level: info                 # debug | info | warn | error
+    format: text                # text | json
+    browserDebug: false         # verbose console logging in the SPA
+
+  # How the BFF reaches the Platform API (server-to-server hop). The scheme in
+  # `url` decides whether the hop uses TLS.
+  controlPlane:
+    # Leave "" to auto-derive the in-cluster Service URL from global.platformApi.
+    # Set only to point at an external Platform API.
+    url: ""
+    # Skip TLS verification on the BFF → Platform API hop (needed while the
+    # Platform API uses a self-signed cert). Prefer caFile in production.
+    tlsSkipVerify: false
+    # CA file to verify the Platform API's certificate instead of skipping
+    # verification (mount it via deployment.extraVolumes/extraVolumeMounts).
+    caFile: ""
+    # Browser-facing proxy prefix and the Platform API portal base path — the
+    # SPA never talks to the Platform API directly; the BFF proxies under these.
+    proxyPrefix: /proxy
+    portalBasePath: /api/portal/v0.9
+
+  gateway:
+    # Public host:port that DEPLOYED GATEWAYS dial to reach the Platform API.
+    # Shown verbatim in the in-UI "add a gateway" instructions (must be
+    # externally reachable, not a proxy path).
+    controlplaneHost: ""
+    # Gateway build options offered in the create-gateway dropdown (JSON string).
+    platformGatewayVersions: '[{"version":"1.2","latestVersion":"v1.2.0-M1","channel":"STS"}]'
+
+  session:
+    # Server-side session store. Only "memory" is supported today.
+    store: memory
+    idleTimeout: 30m            # sliding inactivity window
+    absoluteTtl: 8h             # hard session lifetime regardless of activity
+
+  auth:
+    # How users sign in:
+    #   basic → the Platform API's file-based login
+    #   oidc  → an external OIDC provider (fill in auth.oidc below + the secret)
+    mode: basic
+    # Token claim-name mappings — must agree with the Platform API's own
+    # claim_mappings (basic mode signs tokens using these names).
+    claimMappings:
+      organization: organization
+      orgName: org_name
+      orgHandle: org_handle
+      username: username
+      email: email
+      scope: scope
+      roles: roles
+    # OIDC settings — used only when mode=oidc. The client secret is NOT here;
+    # it comes from the Secret (secrets.keys.oidcClientSecret).
+    oidc:
+      authority: ""             # issuer / discovery base URL
+      clientId: ""
+      redirectUrl: ""           # login callback URL
+      postLogoutRedirectUrl: ""
+      scope: ""                 # e.g. "openid profile email"
 
 # Escape hatch: raw TOML appended verbatim to the generated config.toml.
 configToml: ""
-
-# ----------------------------------------------------------------------------
-# platformApi — how the BFF reaches the Platform API (server-to-server)
-# ----------------------------------------------------------------------------
-platformApi:
-  # Leave "" to auto-derive the in-cluster Service URL from global.platformApi.
-  # Set only to point at an external Platform API.
-  url: ""
-  # Skip TLS verification on the BFF → Platform API hop. Needed while the Platform
-  # API uses a self-signed cert. Forced to false when developmentMode is false.
-  tlsSkipVerify: true
-  # Instead of skipping verification, mount a CA file (via extraVolumes/Mounts)
-  # and point to it here to properly verify the Platform API's certificate.
-  caFile: ""
-
-# ----------------------------------------------------------------------------
-# Session cookie & store
-# ----------------------------------------------------------------------------
-cookie:
-  secure: true                  # keep true when served over HTTPS
-  sameSite: lax                 # lax | strict | none
-# Where server-side sessions live: "memory" works for a single replica; use an
-# external store if you scale the UI to multiple replicas.
-sessionStore: memory
 
 # ----------------------------------------------------------------------------
 # secrets — OIDC client secret (REQUIRED only in OIDC mode)

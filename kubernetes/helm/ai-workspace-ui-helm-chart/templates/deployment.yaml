@@ -1,11 +1,10 @@
 {{- $ui := .Values -}}
 {{- $deployment := $ui.deployment -}}
+{{- $cfg := $ui.config -}}
 {{- $secrets := $ui.secrets -}}
 {{- $tls := $ui.tls -}}
 {{- $selfSigned := eq $tls.certificateProvider "selfSigned" -}}
 {{- $tlsMounted := or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret") -}}
-{{- $platformApiUrl := default (include "apip.platformApi.internalURL" .) $ui.platformApi.url -}}
-{{- $skipVerify := and $ui.platformApi.tlsSkipVerify .Values.global.developmentMode -}}
 {{- $imageTag := default .Chart.AppVersion $ui.image.tag -}}
 {{- if $deployment.enabled }}
 apiVersion: apps/v1
@@ -90,41 +89,27 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- if eq $cfg.auth.mode "oidc" }}
           env:
-            - name: BFF_ADDR
-              value: {{ printf ":%d" (int $ui.containerPort) | quote }}
-            - name: BFF_CONFIG_FILE
-              value: /etc/ai-workspace/config.toml
-            - name: PLATFORM_API_URL
-              value: {{ $platformApiUrl | quote }}
-            - name: PLATFORM_API_TLS_SKIP_VERIFY
-              value: {{ $skipVerify | toString | quote }}
-            {{- with $ui.platformApi.caFile }}
-            - name: PLATFORM_API_CA_FILE
-              value: {{ . | quote }}
-            {{- end }}
-            - name: SESSION_STORE
-              value: {{ $ui.sessionStore | quote }}
-            - name: COOKIE_SECURE
-              value: {{ $ui.cookie.secure | toString | quote }}
-            - name: COOKIE_SAMESITE
-              value: {{ $ui.cookie.sameSite | quote }}
-            - name: BFF_TLS_SELF_SIGNED
-              value: {{ $selfSigned | toString | quote }}
-            - name: VITE_AUTH_MODE
-              value: {{ $ui.config.authMode | quote }}
-            {{- if eq $ui.config.authMode "oidc" }}
-            # OIDC client secret from the external UI Secret (generate-secrets.sh).
-            # The secretName helper fails the render if ui.secrets.existingSecret is unset.
-            - name: OIDC_CLIENT_SECRET
+            # Config is delivered via the mounted config.toml (see configmap.yaml);
+            # only the OIDC client secret is injected here, resolved into that
+            # config by its {{ "{{ env \"APIP_AIW_AUTH_OIDC_CLIENT_SECRET\" }}" }}
+            # token. The secretName helper fails the render if secrets.existingSecret
+            # is unset.
+            - name: APIP_AIW_AUTH_OIDC_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "apip.aiWorkspace.secretName" . }}
                   key: {{ $secrets.keys.oidcClientSecret }}
-            {{- end }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
             {{- end }}
+          {{- else if $deployment.extraEnv }}
+          env:
+            {{- range $deployment.extraEnv }}
+            - {{- toYaml . | nindent 14 }}
+            {{- end }}
+          {{- end }}
           {{- with $deployment.extraEnvFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}

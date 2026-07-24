@@ -1,13 +1,15 @@
 # Local development values for the platform-api chart.
-# Usage (standalone):
-#   helm install platform-api ./platform-api-helm-chart -f values-local.yaml
+# Usage (standalone, from kubernetes/helm/):
+#   helm install platform-api ./platform-api-helm-chart \
+#     -f platform-api-helm-chart/values.yaml -f platform-api-helm-chart/values-local.yaml
 #
 # Overrides the defaults for local development:
-# - developmentMode on (self-signed TLS, relaxed auth/CORS, file-based login)
 # - locally-built image (latest tag, IfNotPresent pull policy)
-global:
-  developmentMode: true
-
+# - debug logging
 image:
   tag: "latest"
   pullPolicy: IfNotPresent
+
+config:
+  logging:
+    level: debug

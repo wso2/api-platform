@@ -2,7 +2,13 @@
 {{- $deployment := $pa.deployment -}}
 {{- $secrets := $pa.secrets -}}
 {{- $tls := $pa.tls -}}
-{{- $tlsMounted := and $pa.config.tls.enabled (or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret")) -}}
+{{- $https := $pa.config.server.https -}}
+{{- $jwt := $pa.config.auth.jwt -}}
+{{- $jwtKeyDir := regexReplaceAll "/[^/]+$" $jwt.publicKeyFile "" -}}
+{{- $tlsMounted := and $https.enabled (or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret")) -}}
+{{- if and $deployment.enabled $https.enabled (not (or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret"))) }}
+{{- fail "platform-api: config.server.https.enabled=true requires tls.certificateProvider to be \"cert-manager\" or \"secret\" — the Platform API has no self-signed fallback." }}
+{{- end }}
 {{- $secretName := include "apip.platformApi.secretName" . -}}
 {{- if $deployment.enabled }}
 apiVersion: apps/v1
@@ -91,27 +97,40 @@ spec:
             - "-config"
             - "/etc/platform-api/config-platform-api.toml"
           env:
-            - name: APIP_DEMO_MODE
-              value: {{ .Values.global.developmentMode | toString | quote }}
-            # Secrets sourced from the external Secret (created by generate-secrets.sh).
-            - name: ENCRYPTION_KEY
+            # Secrets sourced from the external Secret (created by generate-secrets.sh);
+            # resolved into the config file via its {{ "{{ env \"APIP_CP_*\" }}" }} tokens.
+            - name: APIP_CP_ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: {{ $secrets.keys.encryptionKey }}
-            {{- if $pa.config.auth.jwt.enabled }}
-            - name: AUTH_JWT_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $secretName }}
-                  key: {{ $secrets.keys.authJwtSecretKey }}
-            {{- end }}
-            {{- if eq $pa.config.database.driver "postgres" }}
-            - name: DATABASE_PASSWORD
+            {{- if ne $pa.config.database.driver "sqlite3" }}
+            - name: APIP_CP_DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: {{ $secrets.keys.databasePassword }}
+            {{- end }}
+            {{- if $pa.config.webhook.enabled }}
+            - name: APIP_CP_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $secrets.keys.webhookSecret }}
+            {{- end }}
+            {{- if eq $pa.config.auth.mode "file" }}
+            # file-mode admin credentials — generated username + bcrypt hash from
+            # the Secret; no admin/admin default (the config token fails closed).
+            - name: APIP_CP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $secrets.keys.adminUsername }}
+            - name: APIP_CP_ADMIN_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $secrets.keys.adminPasswordHash }}
             {{- end }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
@@ -140,9 +159,12 @@ spec:
             - name: config
               mountPath: /etc/platform-api/config-platform-api.toml
               subPath: config-platform-api.toml
+            - name: jwt-keys
+              mountPath: {{ $jwtKeyDir }}
+              readOnly: true
             {{- if $tlsMounted }}
             - name: tls-certs
-              mountPath: {{ $pa.config.tls.certDir }}
+              mountPath: {{ $https.certDir }}
               readOnly: true
             {{- end }}
             {{- with $deployment.extraVolumeMounts }}
@@ -162,6 +184,19 @@ spec:
             items:
               - key: config-platform-api.toml
                 path: config-platform-api.toml
+        # RS256 JWT keys mounted as PEM files from the external Secret. The
+        # public key verifies tokens (every mode); the private key signs
+        # file-mode login tokens (mounted only in file mode).
+        - name: jwt-keys
+          secret:
+            secretName: {{ $secretName }}
+            items:
+              - key: {{ $secrets.keys.jwtPublicKey }}
+                path: {{ base $jwt.publicKeyFile }}
+              {{- if eq $pa.config.auth.mode "file" }}
+              - key: {{ $secrets.keys.jwtPrivateKey }}
+                path: {{ base $jwt.privateKeyFile }}
+              {{- end }}
         {{- if $tlsMounted }}
         - name: tls-certs
           secret:

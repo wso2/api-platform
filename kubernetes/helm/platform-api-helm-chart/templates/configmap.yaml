@@ -2,6 +2,8 @@
 {{- $cfg := $pa.config -}}
 {{- $db := $cfg.database -}}
 {{- $auth := $cfg.auth -}}
+{{- $srv := $cfg.server -}}
+{{- $https := $srv.https -}}
 {{- if $pa.deployment.enabled }}
 apiVersion: v1
 kind: ConfigMap
@@ -14,86 +16,160 @@ metadata:
     {{- . | nindent 4 }}
   {{- end }}
 data:
+  # Rendered under the [platform_api] table the binary unmarshals (config.go).
+  # Non-secret values are literals from values.yaml; secrets are emitted as the
+  # Platform API's own {{ "{{ env \"APIP_CP_*\" }}" }} interpolation tokens and
+  # supplied to the container as env vars from the referenced Secret — the secret
+  # value flows Secret -> env -> config interpolation and never lands here.
   config-platform-api.toml: |
-    log_level = {{ $cfg.logLevel | quote }}
-    log_format = {{ $cfg.logFormat | quote }}
-    port = {{ $pa.containerPort | toString | quote }}
-    enable_scope_validation = {{ $cfg.enableScopeValidation }}
+    [platform_api]
+    db_schema_path = {{ $cfg.resources.dbSchemaPath | quote }}
+    openapi_spec_path = {{ $cfg.resources.openapiSpecPath | quote }}
+    llm_template_definitions_path = {{ $cfg.resources.llmTemplateDefinitionsPath | quote }}
+    openapi_spec_max_fetch_bytes = {{ $cfg.resources.openapiSpecMaxFetchBytes | int }}
 
-    [database]
+    [platform_api.logging]
+    level = {{ $cfg.logging.level | quote }}
+    format = {{ $cfg.logging.format | quote }}
+
+    [platform_api.security]
+    encryption_key = {{ `'{{ env "APIP_CP_ENCRYPTION_KEY" }}'` }}
+
+    [platform_api.security.api_key]
+    hashing_algorithms = {{ $cfg.security.apiKey.hashingAlgorithms | quote }}
+
+    [platform_api.database]
     driver = {{ $db.driver | quote }}
-    {{- if eq $db.driver "postgres" }}
-    host = {{ $db.postgres.host | quote }}
-    port = {{ $db.postgres.port }}
-    name = {{ $db.postgres.database | quote }}
-    user = {{ $db.postgres.user | quote }}
-    ssl_mode = {{ $db.postgres.sslmode | quote }}
-    max_open_conns = {{ $db.postgres.max_open_conns }}
-    max_idle_conns = {{ $db.postgres.max_idle_conns }}
-    conn_max_lifetime = {{ $db.postgres.conn_max_lifetime }}
-    {{- else }}
+    {{- if eq $db.driver "sqlite3" }}
     path = {{ $db.path | quote }}
+    {{- else }}
+    host = {{ required "config.database.postgres.host is required when database.driver is not sqlite3" $db.postgres.host | quote }}
+    port = {{ $db.postgres.port | int }}
+    name = {{ $db.postgres.name | quote }}
+    user = {{ $db.postgres.user | quote }}
+    password = {{ `'{{ env "APIP_CP_DATABASE_PASSWORD" }}'` }}
+    ssl_mode = {{ $db.postgres.sslMode | quote }}
+    {{- with $db.postgres.sslRootCert }}
+    ssl_root_cert = {{ . | quote }}
+    {{- end }}
+    {{- with $db.postgres.sslCert }}
+    ssl_cert = {{ . | quote }}
+    {{- end }}
+    {{- with $db.postgres.sslKey }}
+    ssl_key = {{ . | quote }}
+    {{- end }}
+    max_open_conns = {{ $db.postgres.maxOpenConns | int }}
+    max_idle_conns = {{ $db.postgres.maxIdleConns | int }}
+    conn_max_lifetime = {{ $db.postgres.connMaxLifetime | int }}
     {{- end }}
 
-    [auth.jwt]
-    enabled = {{ $auth.jwt.enabled }}
+    [platform_api.auth]
+    mode = {{ $auth.mode | quote }}
+    scope_validation = {{ $auth.scopeValidation }}
+    {{- with $auth.skipPaths }}
+    skip_paths = {{ toJson . }}
+    {{- end }}
+
+    [platform_api.auth.claim_mappings]
+    organization = {{ $auth.claimMappings.organization | quote }}
+    org_name = {{ $auth.claimMappings.orgName | quote }}
+    org_handle = {{ $auth.claimMappings.orgHandle | quote }}
+    user_id = {{ $auth.claimMappings.userId | quote }}
+    username = {{ $auth.claimMappings.username | quote }}
+    email = {{ $auth.claimMappings.email | quote }}
+    scope = {{ $auth.claimMappings.scope | quote }}
+    roles = {{ $auth.claimMappings.roles | quote }}
+
+    [platform_api.auth.jwt]
     issuer = {{ $auth.jwt.issuer | quote }}
-    skip_validation = {{ if .Values.global.developmentMode }}{{ $auth.jwt.skipValidation }}{{ else }}false{{ end }}
+    public_key_file = {{ $auth.jwt.publicKeyFile | quote }}
+    private_key_file = {{ $auth.jwt.privateKeyFile | quote }}
+    token_ttl = {{ $auth.jwt.tokenTtl | quote }}
 
-    [auth.idp]
-    enabled = {{ $auth.idp.enabled }}
-    {{- if $auth.idp.enabled }}
-    {{- with $auth.idp.name }}
-    name = {{ . | quote }}
-    {{- end }}
-    jwks_url = {{ $auth.idp.jwksUrl | quote }}
+    {{- if eq $auth.mode "idp" }}
+
+    [platform_api.auth.idp]
+    name = {{ $auth.idp.name | quote }}
+    jwks_url = {{ required "config.auth.idp.jwksUrl is required when auth.mode is \"idp\"" $auth.idp.jwksUrl | quote }}
     issuer = {{ toJson $auth.idp.issuer }}
     audience = {{ toJson $auth.idp.audience }}
     validation_mode = {{ $auth.idp.validationMode | quote }}
-
-    [auth.idp.claim_mappings]
-    organization_claim_name = {{ $auth.idp.claimMappings.organizationClaimName | quote }}
-    org_name_claim_name = {{ $auth.idp.claimMappings.orgNameClaimName | quote }}
-    org_handle_claim_name = {{ $auth.idp.claimMappings.orgHandleClaimName | quote }}
-    user_id_claim_name = {{ $auth.idp.claimMappings.userIdClaimName | quote }}
-    username_claim_name = {{ $auth.idp.claimMappings.usernameClaimName | quote }}
-    email_claim_name = {{ $auth.idp.claimMappings.emailClaimName | quote }}
-    scope_claim_name = {{ $auth.idp.claimMappings.scopeClaimName | quote }}
-    roles_claim_path = {{ $auth.idp.claimMappings.rolesClaimPath | quote }}
+    role_mappings = {{ $auth.idp.roleMappings | quote }}
     {{- end }}
 
-    [auth.file_based]
-    enabled = {{ $auth.fileBased.enabled }}
-    {{- if $auth.fileBased.enabled }}
+    {{- if eq $auth.mode "file" }}
 
-    [auth.file_based.organization]
-    id = {{ $auth.fileBased.organization.id | quote }}
-    display_name = {{ $auth.fileBased.organization.displayName | quote }}
-    region = {{ $auth.fileBased.organization.region | quote }}
-    {{- range $auth.fileBased.users }}
+    [platform_api.auth.file.organization]
+    id = {{ $auth.file.organization.id | quote }}
+    display_name = {{ $auth.file.organization.displayName | quote }}
+    region = {{ $auth.file.organization.region | quote }}
+    uuid = {{ $auth.file.organization.uuid | quote }}
 
-    [[auth.file_based.users]]
-    username = {{ .username | quote }}
-    password_hash = {{ .passwordHash | quote }}
-    scopes = {{ .scopes | quote }}
-    {{- end }}
-    {{- end }}
-
-    [tls]
-    enabled = {{ $cfg.tls.enabled }}
-    cert_dir = {{ $cfg.tls.certDir | quote }}
-
-    {{- if $cfg.cors.allowedOrigins }}
-
-    [cors]
-    allowed_origins = {{ toJson $cfg.cors.allowedOrigins }}
+    [[platform_api.auth.file.users]]
+    # username/password_hash come from the Secret via env interpolation — never
+    # a baked-in default. The 1-arg {{ "{{ env }}" }} form fails closed if the env
+    # var is unset, so there is no admin/admin fallback. generate-secrets.sh
+    # provisions a generated username and a bcrypt password hash.
+    username = {{ `'{{ env "APIP_CP_ADMIN_USERNAME" }}'` }}
+    password_hash = {{ `'{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'` }}
+    scopes = {{ $auth.file.admin.scopes | quote }}
     {{- end }}
 
-    [default_devportal]
-    enabled = {{ $cfg.defaultDevportal.enabled }}
+    [platform_api.server.http]
+    enabled = {{ $srv.http.enabled }}
+    port = {{ $srv.http.port | int }}
+
+    [platform_api.server.https]
+    enabled = {{ $https.enabled }}
+    port = {{ $pa.containerPort | int }}
+    cert_file = {{ printf "%s/cert.pem" $https.certDir | quote }}
+    key_file = {{ printf "%s/key.pem" $https.certDir | quote }}
+
+    [platform_api.server.timeouts]
+    read_header = {{ $srv.timeouts.readHeader | quote }}
+    read = {{ $srv.timeouts.read | quote }}
+    write = {{ $srv.timeouts.write | quote }}
+    idle = {{ $srv.timeouts.idle | quote }}
+
+    [platform_api.server.cors]
+    allowed_origins = {{ toJson $srv.cors.allowedOrigins }}
+
+    [platform_api.server.websocket]
+    max_connections = {{ $srv.websocket.maxConnections | int }}
+    connection_timeout = {{ $srv.websocket.connectionTimeout | int }}
+    rate_limit_per_min = {{ $srv.websocket.rateLimitPerMin | int }}
+    metrics_log_enabled = {{ $srv.websocket.metricsLogEnabled }}
+    metrics_log_interval = {{ $srv.websocket.metricsLogInterval | int }}
+
+    [platform_api.gateway]
+    enable_version_verification = {{ $cfg.gateway.enableVersionVerification }}
+    enable_functionality_type_verification = {{ $cfg.gateway.enableFunctionalityTypeVerification }}
+
+    [platform_api.deployments]
+    max_per_api_gateway = {{ $cfg.deployments.maxPerApiGateway | int }}
+    transitional_status_enabled = {{ $cfg.deployments.transitionalStatusEnabled }}
+    timeout_enabled = {{ $cfg.deployments.timeoutEnabled }}
+    timeout_interval = {{ $cfg.deployments.timeoutInterval | int }}
+    timeout_duration = {{ $cfg.deployments.timeoutDuration | int }}
+
+    [platform_api.event_hub]
+    poll_interval = {{ $cfg.eventHub.pollInterval | quote }}
+    cleanup_interval = {{ $cfg.eventHub.cleanupInterval | quote }}
+    retention_period = {{ $cfg.eventHub.retentionPeriod | quote }}
+
+    [platform_api.webhook]
+    enabled = {{ $cfg.webhook.enabled }}
+    {{- if $cfg.webhook.enabled }}
+    secret = {{ `'{{ env "APIP_CP_WEBHOOK_SECRET" }}'` }}
+    {{- with $cfg.webhook.privateKeyPath }}
+    private_key_path = {{ . | quote }}
+    {{- end }}
+    signature_tolerance = {{ $cfg.webhook.signatureTolerance | quote }}
+    max_body_size = {{ $cfg.webhook.maxBodySize | int }}
+    signature_header = {{ $cfg.webhook.signatureHeader | quote }}
+    {{- end }}
     {{- with $pa.configToml }}
 
     {{ . | nindent 4 | trim }}
     {{- end }}
 {{- end }}
-
