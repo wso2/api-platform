@@ -143,6 +143,22 @@ interface PolicyParameterEditorProps {
   readOnly?: boolean;
 }
 
+function isDisabledByAnyOf(
+  schema: ParameterSchema,
+  values: ParameterValues,
+  path: string
+): boolean {
+  const supportsDisabled = schema.anyOf?.some(
+    (entry) =>
+      entry.required?.includes('enabled') &&
+      entry.properties?.enabled?.const === false
+  );
+  return (
+    supportsDisabled === true &&
+    getValueByPath(values, `${path}.enabled`) === false
+  );
+}
+
 /**
  * Validates required fields in the schema
  */
@@ -170,8 +186,11 @@ function validateRequiredFields(
         }
       }
 
-      // Recursively validate nested objects
-      if (propSchema.type === 'object' && propSchema.properties) {
+      if (
+        propSchema.type === 'object' &&
+        propSchema.properties &&
+        !isDisabledByAnyOf(propSchema, values, path)
+      ) {
         const nestedErrors = validateRequiredFields(propSchema, values, path);
         errors.push(...nestedErrors);
       }
@@ -261,9 +280,7 @@ function validateValueConstraints(
 }
 
 /**
- * Recursively validates format constraints (pattern, length, numeric bounds,
- * and simple-array size) declared anywhere in the schema against the current
- * values. Complements validateRequiredFields, which only checks presence.
+ * Recursively validates format constraints declared anywhere in the schema.
  *
  * Only constraints on fields that render an inline error (leaf fields and
  * simple string/number arrays) are reported, so every returned error is
@@ -280,11 +297,38 @@ function validateConstraints(
     return errors;
   }
 
+  const minSchema = schema.properties.min;
+  const maxSchema = schema.properties.max;
+  if (
+    ['number', 'integer'].includes(minSchema?.type) &&
+    ['number', 'integer'].includes(maxSchema?.type)
+  ) {
+    const minPath = parentPath ? `${parentPath}.min` : 'min';
+    const maxPath = parentPath ? `${parentPath}.max` : 'max';
+    const minValue = getValueByPath(values, minPath);
+    const maxValue = getValueByPath(values, maxPath);
+    const min = Number(minValue);
+    const max = Number(maxValue);
+    if (
+      minValue != null &&
+      minValue !== '' &&
+      maxValue != null &&
+      maxValue !== '' &&
+      Number.isFinite(min) &&
+      Number.isFinite(max) &&
+      min > max
+    ) {
+      errors.push({
+        path: maxPath,
+        message: 'Maximum value must be greater than or equal to minimum value',
+      });
+    }
+  }
+
   Object.entries(schema.properties).forEach(([key, propSchema]) => {
     const path = parentPath ? `${parentPath}.${key}` : key;
     const value = getValueByPath(values, path);
 
-    // Recurse into nested objects
     if (propSchema.type === 'object' && propSchema.properties) {
       errors.push(...validateConstraints(propSchema, values, path));
       return;
