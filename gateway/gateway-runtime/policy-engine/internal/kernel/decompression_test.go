@@ -259,6 +259,53 @@ func TestStreamDecompressor_Close_DoesNotHang(t *testing.T) {
 	}
 }
 
+// TestStreamDecompressor_Close_ReleasesParkedDecoder is the regression test for the
+// goroutine leak that occurred when a policy terminated a compressed response stream
+// mid-flight: the decoder had consumed a non-final chunk and parked waiting for input
+// that never arrived (EndOfStream never reached it). Close() must release that parked
+// goroutine — otherwise every early-terminated compressed stream leaks one goroutine.
+func TestStreamDecompressor_Close_ReleasesParkedDecoder(t *testing.T) {
+	// Build a gzip stream flushed after the first event so a leading, non-terminal
+	// slice is independently decodable — mimicking a mid-stream chunk.
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, err := zw.Write([]byte("event: message_start\n\n"))
+	require.NoError(t, err)
+	require.NoError(t, zw.Flush())
+	midStreamBytes := append([]byte{}, buf.Bytes()...)
+
+	sd := newStreamDecompressor("gzip")
+
+	// Feed the mid-stream chunk WITHOUT EndOfStream. FeedChunk returns once the
+	// decoder has consumed it and parked waiting for more input.
+	_, err = sd.FeedChunk(midStreamBytes, false)
+	require.NoError(t, err)
+
+	// Sanity-check the decoder is parked (not done) — this is the leak state.
+	sd.mu.Lock()
+	require.True(t, sd.feederBlocked, "decoder should be parked waiting for more input")
+	require.False(t, sd.done, "decoder should not have exited before Close")
+	sd.mu.Unlock()
+
+	// The stream is terminated early; Close() must release the parked goroutine.
+	sd.Close()
+
+	deadline := time.After(2 * time.Second)
+	for {
+		sd.mu.Lock()
+		done := sd.done
+		sd.mu.Unlock()
+		if done {
+			return // goroutine exited — no leak
+		}
+		select {
+		case <-deadline:
+			t.Fatal("decoder goroutine was not released after Close() — leak on mid-stream termination")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
 // TestStreamDecompressor_RoundTrip verifies the full cycle the streaming path
 // performs: incoming compressed bytes → decompress → policy modifies → recompress.
 // The final recompressed bytes must decompress back to the (modified) original.

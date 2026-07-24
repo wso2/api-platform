@@ -861,6 +861,17 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		if execResult.StreamTerminated {
 			ec.streamTerminated = true
 		}
+
+		// Release the decompressor goroutine on the terminal chunk. On a normal
+		// EndOfStream the decoder already exited on its own after the feeder returned
+		// io.EOF; but when a policy terminates the stream early, EndOfStream never
+		// reaches the decoder, so it stays parked waiting for input that will never
+		// arrive — a goroutine leak. Close() releases it and is idempotent/safe on an
+		// already-finished decoder.
+		if ec.responseStreamDecomp != nil && (chunk.EndOfStream || execResult.StreamTerminated) {
+			ec.responseStreamDecomp.Close()
+			ec.responseStreamDecomp = nil
+		}
 		return TranslateStreamingResponseChunkAction(execResult, chunk, ec)
 	}
 
