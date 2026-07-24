@@ -8,14 +8,14 @@ spec:
   type: REST
   displayName: Catalog API
   version: v1.0
-  description: Sample product catalog API. Requires API key authentication. Subscribe to a Gold or Bronze plan — no subscription token header required in requests.
+  description: Sample product catalog API demonstrating token-based subscription access. Subscribe to a Gold or Bronze plan to receive a subscription token, then send both the API key (X-API-Key) and the subscription token (X-Subscription-Token) headers on every request.
   status: PUBLISHED
   referenceID: catalog-api-v1.0
 
   tags:
     - catalog
     - api-key
-    - subscription
+    - subscription-token
 
   labels:
     - default
