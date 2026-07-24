@@ -81,12 +81,16 @@ jobs:
 
           docker compose -p "$PROJECT" -f docker-compose.test.sqlserver.yaml up -d sqlserver mssql-init gateway-controller
 
+          # The controller no longer applies schema DDL (the core schema is
+          # pre-provisioned via the mssql-init one-shot); wait instead for it to
+          # report a successful DB connection, which gates the connection check
+          # below. Schema presence is asserted separately via the table check.
           timeout 120 bash -c '
-            until docker logs egw-it-gateway-controller 2>&1 | grep -qE "Initializing SQLServer schema|SQLServer schema initialized"; do
+            until docker logs egw-it-gateway-controller 2>&1 | grep -qE "SQLServer storage initialized"; do
               sleep 2
             done
           ' || {
-            echo "=== Schema init timed out — gateway-controller logs ==="
+            echo "=== Controller startup timed out — gateway-controller logs ==="
             docker logs egw-it-gateway-controller 2>&1 || true
             exit 1
           }

@@ -78,12 +78,16 @@ jobs:
 
           docker compose -p "$PROJECT" -f docker-compose.test.postgres.yaml up -d postgres gateway-controller
 
+          # The controller no longer applies schema DDL (the core schema is
+          # pre-provisioned via Postgres's init hook); wait instead for it to
+          # report a successful DB connection, which gates the connection check
+          # below. Schema presence is asserted separately via the table check.
           timeout 90 bash -c '
-            until docker logs egw-it-gateway-controller 2>&1 | grep -qE "Initializing PostgreSQL schema|PostgreSQL schema initialized"; do
+            until docker logs egw-it-gateway-controller 2>&1 | grep -qE "PostgreSQL storage initialized"; do
               sleep 2
             done
           ' || {
-            echo "=== Schema init timed out — gateway-controller logs ==="
+            echo "=== Controller startup timed out — gateway-controller logs ==="
             docker logs egw-it-gateway-controller 2>&1 || true
             exit 1
           }
