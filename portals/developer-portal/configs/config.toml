@@ -82,6 +82,12 @@ port     = '{{ env "APIP_DP_DATABASE_PORT" "5432" }}'
 name     = '{{ env "APIP_DP_DATABASE_NAME" "devportal" }}'
 user     = '{{ env "APIP_DP_DATABASE_USER" "postgres" }}'
 password = '{{ env "APIP_DP_DATABASE_PASSWORD" "" }}'
+# Connection pool — PostgreSQL / MSSQL only (pool_request_timeout_ms is MSSQL-only).
+max_open_conns             = '{{ env "APIP_DP_DATABASE_MAX_OPEN_CONNS" "50" }}'
+min_open_conns             = '{{ env "APIP_DP_DATABASE_MIN_OPEN_CONNS" "2" }}'
+pool_idle_timeout_ms       = '{{ env "APIP_DP_DATABASE_POOL_IDLE_TIMEOUT_MS" "10000" }}'
+pool_connection_timeout_ms = '{{ env "APIP_DP_DATABASE_POOL_CONNECTION_TIMEOUT_MS" "30000" }}'
+pool_request_timeout_ms    = '{{ env "APIP_DP_DATABASE_POOL_REQUEST_TIMEOUT_MS" "30000" }}'
 
 [developer_portal.security]
 # Required — devportal fails closed at startup if either doesn't resolve to a

@@ -72,6 +72,11 @@ user = "postgres"             # PostgreSQL / MSSQL only
 password = ""                 # PostgreSQL / MSSQL only
 ssl_mode = "disable"          # PostgreSQL / MSSQL only: disable | verify-full
 ssl_root_cert = "./resources/security/ca.pem"   # CA cert - used by verify-full
+max_open_conns = 50           # PostgreSQL / MSSQL only (matches platform-api's max_open_conns)
+min_open_conns = 2            # PostgreSQL / MSSQL only
+pool_idle_timeout_ms = 10000            # PostgreSQL / MSSQL only
+pool_connection_timeout_ms = 30000      # PostgreSQL / MSSQL only
+pool_request_timeout_ms = 30000         # MSSQL only - per-query execution timeout
 
 # =============================================================================
 # SECURITY CONFIGURATION
