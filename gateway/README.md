@@ -35,7 +35,8 @@ make build-gateway-builder
 
 ### Run
 
-Run the one-time setup (generates `api-platform.env` and the router listener TLS certificate), then start the stack:
+Run the one-time setup (generates `api-platform.env`, the router listener TLS certificate, the AES-256
+encryption key, and the gateway-controller admin credentials), then start the stack:
 
 ```bash
 ./scripts/setup.sh
@@ -43,7 +44,13 @@ docker compose up -d
 curl http://localhost:9092/api/admin/v0.9/health
 ```
 
-`setup.sh` is idempotent (rerun with `--force` to rotate certs and rewrite `api-platform.env`).
+`setup.sh` prints the admin password **once** — copy it. The username defaults to `admin`; set
+`ADMIN_USERNAME`/`ADMIN_PASSWORD` up front for non-interactive runs. Only the bcrypt hash is stored (in
+`api-platform.env`), and — because basic auth is enabled in the shipped config — the controller refuses
+to start if the credential is missing.
+
+`setup.sh` is idempotent (rerun with `--force` to rotate certs, the encryption key, and the admin
+password, and rewrite `api-platform.env`).
 
 For the full setup reference — flags (`--force`, `--certs-only`, `--with-encryption`), control-plane
 connection, at-rest encryption, and how configuration is delivered — see

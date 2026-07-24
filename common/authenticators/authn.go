@@ -79,6 +79,8 @@ func AuthMiddleware(config models.AuthConfig, logger *slog.Logger) (func(http.Ha
 	// No authenticators configured => run in no-auth mode.
 	// This disables both authentication and authorization (via authzSkipKey).
 	if len(authenticators) == 0 {
+		logger.Warn("no authentication method is configured — running with authentication and authorization DISABLED; " +
+			"every request is treated as an authenticated admin. Enable basic auth or an IDP to secure this service.")
 		return func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				authCtx := models.AuthContext{

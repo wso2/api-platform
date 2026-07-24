@@ -11,7 +11,7 @@ DIST_URL="https://github.com/wso2/api-platform/releases/download/gateway/v${DIST
 
 GATEWAY_MGMT_URL="http://localhost:9090/api/management/v0.9"
 GATEWAY_HEALTH_URL="http://localhost:9094/health"
-AUTH_HEADER="Authorization: Basic YWRtaW46YWRtaW4="   # admin:admin
+AUTH_HEADER="Authorization: Basic $(printf %s "${ADMIN_USERNAME:-admin}:${ADMIN_PASSWORD:-admin}" | base64 | tr -d '\r\n')"   # default admin/admin; override with ADMIN_USERNAME/ADMIN_PASSWORD
 
 API_NAME="reading-list-api"
 API_KEY_NAME="claude-code-key"
@@ -70,6 +70,10 @@ fi
 info "Starting Docker Compose stack in ${DIST_NAME}/ ..."
 # Bring down any previous instance to avoid stale network/port conflicts.
 (cd "${SCRIPT_DIR}/${DIST_NAME}" && docker compose down -v --remove-orphans 2>/dev/null || true)
+# Provision the gateway's listener cert, encryption key, api-platform.env, and admin credentials.
+# The gateway no longer ships a default admin:admin and fails closed without a credential; this
+# provisions admin/admin (matching AUTH_HEADER above). Override via ADMIN_USERNAME/ADMIN_PASSWORD.
+(cd "${SCRIPT_DIR}/${DIST_NAME}" && ADMIN_USERNAME="${ADMIN_USERNAME:-admin}" ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}" ./scripts/setup.sh)
 (cd "${SCRIPT_DIR}/${DIST_NAME}" && docker compose up -d)
 success "Docker Compose stack started."
 

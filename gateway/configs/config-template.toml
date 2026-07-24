@@ -120,10 +120,10 @@ definitions_path = '{{ env "APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH" "./def
 enabled = true
 
 [[controller.auth.basic.users]]
-username = "admin"
-password = "admin"
-password_hashed = false
-roles = ["admin"]
+username        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME" "" }}'
+password        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH" "" }}'
+password_hashed = true
+roles           = ["admin"]
 
 [controller.auth.idp]
 enabled = false

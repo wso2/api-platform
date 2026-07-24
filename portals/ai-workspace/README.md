@@ -475,7 +475,7 @@ credentials, and self-signed certificates); for production, provide real values:
 
 | Requirement | Quickstart (`setup.sh`) | Production |
 |---|---|---|
-| **Platform API** — `APIP_CP_ENCRYPTION_KEY` | Generated into `api-platform.env` | Manage as real secrets; prefer mounting files and referencing them with `{{ file "..." }}` in the config TOML |
+| **Platform API** — at-rest encryption key | Generated into `resources/keys/encryption.key` (mounted at `/etc/platform-api/keys`) and read by `config.toml` via `{{ file "..." }}` | Manage as a real secret; a stable value must persist across restarts/replicas |
 | **Platform API** — RS256 JWT signing keypair | Generated as PEM files in `resources/keys/` (`jwt_private.pem` / `jwt_public.pem`), read by `config.toml` via `{{ file }}` | Mount your own RSA keypair at the same paths; rotate as real signing keys |
 | **Platform API** — admin credentials | Generated into `api-platform.env` (bcrypt hash); password printed once | Use OIDC (`auth.idp`) instead of file-based auth |
 | **TLS certificates (both services)** | One self-signed pair in `resources/certificates/`, shared by both services | Certificates from your CA (same file names), or terminate TLS at an ingress and disable the listeners' TLS |

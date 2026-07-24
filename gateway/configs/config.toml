@@ -66,9 +66,10 @@ definitions_path = '{{ env "APIP_GW_CONTROLLER_POLICIES_DEFINITIONS_PATH" "./def
 enabled = true
 
 [[controller.auth.basic.users]]
-username = "admin"
-password = "admin"
-roles = ["admin"]
+username        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME" "" }}'
+password        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH" "" }}'
+password_hashed = true
+roles           = ["admin"]
 
 [policy_configurations.llm_cost_v1]
 pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"

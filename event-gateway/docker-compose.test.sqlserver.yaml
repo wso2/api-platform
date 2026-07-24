@@ -94,6 +94,8 @@ services:
       - APIP_GW_CONTROLLER_STORAGE_TYPE=sqlserver
       - APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN=sqlserver://sa:${MSSQL_SA_PASSWORD:-EGW_Strong!Pass123}@sqlserver:1433?database=gateway_test&encrypt=disable&TrustServerCertificate=true&app+name=gateway-controller
       - APIP_GW_CONTROLLER_LOGGING_LEVEL=info
+      - APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME=admin
+      - APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH=$$2y$$10$$KZx7AodnpgOthAweR/k2P.xu4kLY7UiFY8Lt2D76mpzzEA6wv7qUO
       - APIP_GW_ROUTER_EVENT__GATEWAY_ENABLED=true
       - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_URL=http://event-gateway:8080
       - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_PORT=8080

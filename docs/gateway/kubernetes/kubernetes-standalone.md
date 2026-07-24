@@ -203,9 +203,18 @@ curl http://localhost:9094/api/admin/v0.9/health
 
 ### Deploy an API configuration
 
+The management API uses basic auth with the credentials from your Helm values
+(`controller.auth.basic.users`; the chart default is `admin` / `admin`). Export them for the calls below,
+changing them if you overrode the chart defaults:
+
+```bash
+export ADMIN_USERNAME=admin
+export ADMIN_PASSWORD=admin
+```
+
 ```bash
 curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
-  -u admin:admin \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1
