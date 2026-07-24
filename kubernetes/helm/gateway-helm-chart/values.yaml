@@ -548,6 +548,47 @@ gateway:
       # Default (false) forwards to exactly the configured upstream path.
       append_resource_path_to_backend: false
 
+    # Analytics: captures and publishes API request/response data to an external
+    # analytics platform (see docs/gateway/analytics/moesif-analytics.md). Analytics
+    # is a consumer of the shared collector pipeline below — enabling it here also
+    # implicitly activates the collector, since the collector has no on/off flag of
+    # its own. Absent by default. Uncomment (together with collector below) to enable:
+    # analytics:
+    #   enabled: true
+    #   # Which configured publishers below are active. Defaults to ["moesif"] when omitted.
+    #   enabled_publishers:
+    #     - moesif
+    #   publishers:
+    #     moesif:
+    #       application_id: "<MOESIF_APPLICATION_ID>"
+    #       publish_interval: 5
+    #       event_queue_size: 10000
+    #       batch_size: 50
+    #       timer_wakeup_seconds: 3
+
+    # Collector: the shared request/response capture pipeline feeding analytics
+    # and/or traffic_logging. It has no on/off flag of its own — it activates
+    # implicitly whenever analytics.enabled or traffic_logging.enabled is true.
+    # `server` tunes the Envoy -> policy-engine access-log (ALS) transport shared
+    # by both components. Absent by default. Uncomment (together with analytics
+    # and/or traffic_logging) to enable:
+    # collector:
+    #   request_body: true
+    #   response_body: true
+    #   request_headers: true
+    #   response_headers: true
+    #   ignore_path_prefixes:
+    #     - "/health"
+    #   server:
+    #     mode: uds
+    #     buffer_flush_interval: 1000000000
+    #     buffer_size_bytes: 16384
+    #     grpc_request_timeout: 20000000000
+    #     shutdown_timeout: 600s
+    #     als_plain_text: true
+    #     max_message_size: 1000000000
+    #     max_header_limit: 8192
+
   # Raw TOML string to append to the generated config.toml
   # Use this for additional configuration not covered by the structured values above
   # Example:

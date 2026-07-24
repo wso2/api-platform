@@ -32,33 +32,55 @@ This capability allows platform administrators and business stakeholders to gain
 
 Analytics is configured entirely through the gateway `config.toml` file and is enabled at a system level.
 
+Analytics is a *consumer* of the shared `[collector]` capture pipeline: enabling `analytics.enabled` implicitly activates the collector too, since the collector has no on/off flag of its own. The collector captures request/response headers and bodies and ships them over an internal Envoy → policy-engine gRPC access-log (ALS) stream; the publisher(s) configured under `[analytics]` then deliver that data to the external analytics platform. Configure *what* gets captured and *how it's transported* under `[collector]` / `[collector.server]` (below); configure *where it's published* under `[analytics]`.
+
 ### System Parameters (`config.toml`)
 
 #### Analytics
 
-| Parameter | Type    | Required | Default | Description                            |
-| --------- | ------- | -------- |-------- | -------------------------------------- |
-| `enabled` | boolean | Yes      | false   | Enables or disables analytics globally |
+| Parameter            | Type    | Required | Default      | Description                                                                    |
+| --------------------- | ------- | -------- | ------------ | -------------------------------------------------------------------------------- |
+| `enabled`             | boolean | Yes      | `false`      | Enables or disables analytics globally                                          |
+| `enabled_publishers`  | list    | No       | `["moesif"]` | Names of the publishers (configured under `publishers` below) that are active   |
 
 #### Publishers
 
-| Parameter              | Type    | Required | Description                               |
-| ---------------------- | ------- | -------- | ----------------------------------------- |
-| `type`                 | string  | Yes      | Analytics publisher type (Currently limited only to ```moesif``` )                  |
-| `enabled`              | boolean | Yes      | Enables the publisher                     |
-| `settings`             | object | Yes       | Map of Publisher specific attributes required for configuring the publisher client                     |
+`publishers` is a table keyed by publisher name — currently only `moesif` is supported. A publisher's own settings are set directly under `[analytics.publishers.<name>]`; there is no separate `type`/`enabled`/`settings` wrapper.
 
-#### gRPC Event Server
+For Moesif, the following attributes are supported under `[analytics.publishers.moesif]`:
 
-This section configures both the Envoy access log streaming settings and the ALS (Access Log Service) server that receives those logs. The ALS server runs within the policy-engine component.
+| Parameter              | Type    | Required | Description                                |
+| ---------------------- | ------- | -------- | ------------------------------------------- |
+| `application_id`       | string  | Yes      | Moesif application/collector identifier    |
+| `moesif_base_url`      | string  | No       | Override the Moesif API base URL           |
+| `publish_interval`     | int     | Yes      | Interval (seconds) between publish cycles  |
+| `event_queue_size`     | int     | Yes      | Maximum events held in memory              |
+| `batch_size`           | int     | Yes      | Maximum events per batch                   |
+| `timer_wakeup_seconds` | int     | Yes      | Publisher timer resolution                 |
+
+#### Collector
+
+The collector is the shared capture pipeline feeding analytics (and, independently, the stdout traffic-logging feature). It has no `enabled` flag of its own — it activates automatically whenever `analytics.enabled` (or `traffic_logging.enabled`) is `true`.
+
+| Parameter              | Type    | Required | Default | Description                                                                |
+| ----------------------- | ------- | -------- | ------- | ---------------------------------------------------------------------------- |
+| `request_body`          | boolean | No       | `false` | Capture request bodies into the collected event                             |
+| `response_body`         | boolean | No       | `false` | Capture response bodies into the collected event                            |
+| `request_headers`       | boolean | No       | `false` | Capture all request headers into the collected event                        |
+| `response_headers`      | boolean | No       | `false` | Capture all response headers into the collected event                       |
+| `ignore_path_prefixes`  | list    | No       | `[]`    | Path prefixes for which no analytics/traffic-log event is produced at all   |
+
+#### Collector Server (ALS transport)
+
+`[collector.server]` tunes the Envoy → policy-engine gRPC access-log (ALS) stream that carries captured events. Both the Envoy-side sender configuration and the policy-engine's receiving ALS server read this same section.
 
 | Parameter               | Type     | Required | Default | Description                      |
 | ----------------------- | -------- | -------- |---- | -------------------------------- |
-| `buffer_flush_interval` | duration | No       | `1000000000`| Maximum time Envoy waits(in nanoseconds) before flushing buffered access log entries.|
-| `buffer_size_bytes`     | int      | No       | `16384` | Maximum size of the in-memory buffer used to batch access log entries before sending them to ALS server.                  |
-| `grpc_request_timeout`  | duration | No       | `20000000000` | Timeout duration Envoy waits(in nanoseconds) for a response from the ALS server before considering the log delivery attempt failed.            |
-| `server_port`           | int     | Yes      | - | gRPC port on which the ALS server listens for incoming access log streams from Envoy.      |
-| `shutdown_timeout`      | int     | No       | `600` | Maximum time allowed for the ALS server to gracefully shut down while completing in-flight log processing(in seconds). |
+| `mode`                  | string   | No       | `uds`         | Connection mode: `uds` or `tcp` |
+| `buffer_flush_interval` | int (ns) | No       | `1000000000` | Maximum time Envoy waits(in nanoseconds) before flushing buffered access log entries.|
+| `buffer_size_bytes`     | int      | No       | `16384` | Maximum size of the in-memory buffer used to batch access log entries before sending them to the ALS server.                  |
+| `grpc_request_timeout`  | int (ns) | No       | `20000000000` | Timeout duration Envoy waits(in nanoseconds) for a response from the ALS server before considering the log delivery attempt failed.            |
+| `shutdown_timeout`      | duration | No       | `600s` | Maximum time allowed for the ALS server to gracefully shut down while completing in-flight log processing. |
 | `als_plain_text`        | boolean | No       | `true` | Use plaintext gRPC        |
 | `public_key_path`       | string | No       | - | Path to the public key used for securing ALS communication when transport-level encryption or authentication is enabled.        |
 | `private_key_path`      | string | No       | - | Path to the private key used for securing ALS communication when transport-level encryption or authentication is enabled.        |
@@ -67,43 +89,39 @@ This section configures both the Envoy access log streaming settings and the ALS
 
 **Note:** The hostname for the ALS connection is automatically derived from the policy-engine configuration. The internal log name identifier is set to `"envoy_access_log"` and is not configurable.
 
+> **Deprecated:** `[analytics.grpc_event_server]` / `[analytics.access_logs_service]` and `analytics.allow_payloads` / `analytics.send_request_body` / `analytics.send_response_body` are older aliases for the settings above. They still work today (migrated onto `[collector]` / `[collector.server]` at startup, with a warning logged), but new configuration should use `[collector]` / `[collector.server]` directly. Setting both a deprecated alias and `[collector.server]` causes the deprecated block — including any TLS settings it configured — to be silently dropped in favor of `[collector.server]` as configured.
+
 
 ## Configuration Examples
 
 #### Integrate Moesif Publisher
 
-For Moesif analytics integration, the following publisher-specific attributes must be configured under the `settings` section. These parameters control authentication, batching behavior, and publish intervals for efficient analytics delivery. The required attributes are as follows.
-
-| Parameter              | Type    | Required | Description                               |
-| ---------------------- | ------- | -------- | ----------------------------------------- |
-| `application_id`       | string  | Yes      | Analytics platform application identifier |
-| `publish_interval`     | int     | Yes       | Interval (seconds) between publish cycles |
-| `event_queue_size`     | int     | Yes       | Maximum events held in memory             |
-| `batch_size`           | int     | Yes       | Maximum events per batch                  |
-| `timer_wakeup_seconds` | int     | Yes       | Publisher timer resolution                |
-
+For Moesif analytics integration, configure the following publisher-specific attributes under `[analytics.publishers.moesif]`. These parameters control authentication, batching behavior, and publish intervals for efficient analytics delivery.
 
 ```toml
 [analytics]
 enabled = true
+enabled_publishers = ["moesif"]
 
-[[analytics.publishers]]
-type = "moesif"
-enabled = true
-
-[analytics.publishers.settings]
+[analytics.publishers.moesif]
 application_id = "<MOESIF_APPLICATION_ID>"
 publish_interval = 5
 event_queue_size = 10000
 batch_size = 50
 timer_wakeup_seconds = 3
 
-[analytics.grpc_event_server]
+[collector]
+request_body = true
+response_body = true
+request_headers = true
+response_headers = true
+
+[collector.server]
+mode = "uds"
 buffer_flush_interval = 1000000000
 buffer_size_bytes = 16384
 grpc_request_timeout = 20000000000
-server_port = 18090
-shutdown_timeout = 600
+shutdown_timeout = "600s"
 als_plain_text = true
 max_message_size = 1000000000
 max_header_limit = 8192
@@ -116,5 +134,4 @@ max_header_limit = 8192
 * **Operational Insights** – Observe traffic volume, response behavior, and latency trends.
 * **Business Intelligence** – Support product and business decisions using API analytics data.
 * **Platform Monitoring** – Gain observability into API behavior without impacting performance.
-
 
