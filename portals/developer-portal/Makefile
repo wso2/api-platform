@@ -266,9 +266,7 @@ dist: clean-dist ## Build standalone developer portal distribution zip
 	@mkdir -p $(DIST_DIR)/resources/samples
 	@cp -R samples/apis $(DIST_DIR)/resources/samples/
 	@cp -R samples/mcps $(DIST_DIR)/resources/samples/
-	# Stage the Platform API source configs (active + template) and db-scripts into
-	# the staging dir so the merge below can fold them into the unified config files.
-	# Both the tag and working-tree branches produce the same two temp configs.
+# Stage platform-api configs + db-scripts (from tag or working tree) for the merge below.
 ifeq ($(PLATFORM_API_FROM_TAG),true)
 	@echo "Fetching platform-api configs and db-scripts from tag $(PLATFORM_API_TAG)..."
 	@tag="$(PLATFORM_API_TAG)"; dest="$(DIST_DIR)/resources/platform-api/db-scripts"; \
@@ -291,27 +289,16 @@ else
 	@cp ../../platform-api/config/config.toml $(DIST_DIR)/configs/.pa-config.toml
 	@cp ../../platform-api/config/config-template.toml $(DIST_DIR)/configs/.pa-config-template.toml
 endif
-	# The merge below assumes each component's config is namespaced under its own
-	# root table. Platform API versions predating the unified config ship
-	# un-namespaced tables ([database] rather than [platform_api.database]), which
-	# would merge into a silently broken file — fail loudly on that instead.
+# Require a [platform_api] root table — pre-unified configs would merge into a broken file.
 	@if ! grep -q '^\[platform_api' $(DIST_DIR)/configs/.pa-config.toml; then \
 		echo "Error: the platform-api config for $(PLATFORM_API_VERSION) has no [platform_api] root table." >&2; \
 		echo "That version predates the unified multi-component config and cannot be bundled — pick a newer PLATFORM_API_VERSION." >&2; \
 		exit 1; \
 	fi
-	# Unified config: the standalone zip ships ONE config.toml carrying both the
-	# [developer_portal] and [platform_api] sections (portal on top, platform-api
-	# below). Each service reads only its own root table and ignores the other's,
-	# so the same file is mounted into both containers. Merged from the monorepo's
-	# two per-component source configs — the zip has no platform-api/ sibling.
+# Merge both components into one config.toml — each service reads only its own root table.
 	$(call merge_config,configs/config.toml,$(DIST_DIR)/configs/.pa-config.toml,$(DIST_DIR)/configs/config.toml)
 	$(call merge_config,configs/config-template.toml,$(DIST_DIR)/configs/.pa-config-template.toml,$(DIST_DIR)/configs/config-template.toml)
-	# AI Workspace is an opt-in Compose profile (see README) — its section is NOT
-	# added to the active config.toml, but its template is appended at the bottom
-	# of config-template.toml so a user enabling the profile has the [ai_workspace]
-	# settings documented to copy. Sourced from the ai-workspace release tag when a
-	# version was supplied, so the documented settings match the pinned image.
+# AI Workspace is opt-in: append its template to config-template.toml only, not the active config.
 ifeq ($(AIW_FROM_TAG),true)
 	$(call stage_optional_template,$(AIW_TAG),portals/ai-workspace/configs/config-template.toml,../ai-workspace/configs/config-template.toml,$(DIST_DIR)/configs/.aiw-config-template.toml)
 else
@@ -319,11 +306,7 @@ else
 endif
 	$(call append_section,AI WORKSPACE (optional),$(DIST_DIR)/configs/.aiw-config-template.toml,$(DIST_DIR)/configs/config-template.toml)
 	@rm -f $(DIST_DIR)/configs/.pa-config.toml $(DIST_DIR)/configs/.pa-config-template.toml $(DIST_DIR)/configs/.aiw-config-template.toml
-	# Repoint the platform-api mount at the single merged file (the source compose
-	# mounts the monorepo's ../../platform-api/config/config.toml); the devportal
-	# mount already points at ./configs/config.toml, so both now share one file.
-	# The trailing ':' anchors the match to the volume mapping so comments that
-	# mention the source path are left untouched.
+# Point the platform-api mount at the merged config so both containers share one file.
 	@sed 's#\.\./\.\./platform-api/config/config\.toml:#./configs/config.toml:#' \
 		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md

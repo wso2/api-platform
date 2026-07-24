@@ -43,6 +43,7 @@ const { verifyPlatformJwtClaims, decodePlatformJwtClaims } = require('../utils/p
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
 const orgDao = require('../dao/organizationDao');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
+const { getNestedClaim } = require('./passportConfig');
 const { NotFoundError } = require('../utils/errors/customErrors');
 const userOrganizationMappingDao = require('../dao/userOrganizationMappingDao');
 
@@ -256,17 +257,21 @@ async function authResolver(req, res, next) {
         // dp:* scopes in the OIDC scope config. Set preauthorized to bypass the per-operation
         // scope check for session users (same as API key and mTLS paths).
         if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.auth.mode === 'idp') {
-            const orgIDClaim = config.auth.idp?.claims?.orgId;
-            if (orgIDClaim) {
-                const sessionOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
-                if (!sessionOrgClaim) {
-                    const err = new Error('Missing organization claim in session');
-                    err.status = 403;
-                    return next(err);
-                }
-                const orgErr = await resolveOrgFromClaim(req, sessionOrgClaim);
-                if (orgErr) return next(orgErr);
+            // The session's org claim is populated at login from
+            // config.auth.claimMappings.organization (see passportConfig) and stored
+            // under ORGANIZATION_CLAIM. Resolve req.orgId from it directly — do NOT
+            // gate on config.auth.idp.claims.orgId, which has no default and is unset
+            // in typical IDP configs, which would leave req.orgId empty and break every
+            // tenant-scoped operation (reads return the wrong scope; writes fail the
+            // org_uuid foreign key). Fail closed when no org claim is present.
+            const sessionOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
+            if (!sessionOrgClaim) {
+                const err = new Error('Missing organization claim in session');
+                err.status = 403;
+                return next(err);
             }
+            const orgErr = await resolveOrgFromClaim(req, sessionOrgClaim);
+            if (orgErr) return next(orgErr);
             const rawSub = req.user[constants.USER_ID];
             const userUuid = await resolveUserUuid(req, rawSub);
             req[constants.USER_ID] = userUuid;
@@ -290,11 +295,15 @@ async function authResolver(req, res, next) {
                 return next(err);
             }
             const decoded = safeDecodeJwt(req.user?.[constants.ACCESS_TOKEN] || token) || {};
-            // Resolve org UUID from the token's org claim (IDP_REF_ID).
-            // Only in IDP mode — local-auth and platform-JWT tokens carry no org claim.
-            const orgIDClaim = config.auth.idp?.claims?.orgId;
-            if (config.auth.mode === 'idp' && orgIDClaim) {
-                const tokenOrgClaim = decoded[orgIDClaim];
+            // Resolve org UUID from the token's org claim. Use the same claim
+            // mapping login uses (config.auth.claimMappings.organization) rather
+            // than config.auth.idp.claims.orgId, which has no default and is
+            // typically unset — gating on it left req.orgId empty and broke every
+            // tenant-scoped operation. Only in IDP mode — local-auth and
+            // platform-JWT tokens carry no org claim.
+            if (config.auth.mode === 'idp') {
+                const orgClaimKey = config.auth.claimMappings?.organization;
+                const tokenOrgClaim = (orgClaimKey ? getNestedClaim(decoded, orgClaimKey) : undefined) || decoded.org_handle;
                 if (!tokenOrgClaim) {
                     const err = new Error('Missing organization claim in token');
                     err.status = 403;

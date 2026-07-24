@@ -299,9 +299,7 @@ dist: clean-dist ## Build standalone AI Workspace + Platform API distribution zi
 	@echo "Building distribution $(DIST_NAME)..."
 	@echo "  optional developer-portal image pinned to $(DOCKER_REGISTRY)/developer-portal:$(DEVPORTAL_VERSION)"
 	@mkdir -p $(DIST_DIR)/configs $(DIST_DIR)/scripts $(DIST_DIR)/resources/certificates $(DIST_DIR)/resources/platform-api/db-scripts
-	# Stage the Platform API source configs (active + template) into temp files so
-	# the merge below can fold them into the unified config.toml/config-template.toml.
-	# Both the tag and working-tree branches produce the same two temp files.
+# Stage platform-api configs + db-scripts (from tag or working tree) for the merge below.
 ifeq ($(PLATFORM_API_FROM_TAG),true)
 	@echo "Fetching platform-api db-scripts from tag $(PLATFORM_API_TAG)..."
 	@tag="$(PLATFORM_API_TAG)"; dest="$(DIST_DIR)/resources/platform-api/db-scripts"; \
@@ -327,27 +325,16 @@ else
 	@cp ../../platform-api/config/config.toml $(DIST_DIR)/configs/.pa-config.toml
 	@cp ../../platform-api/resources/roles.yaml $(DIST_DIR)/resources/roles.yaml
 endif
-	# The merge below assumes each component's config is namespaced under its own
-	# root table. Platform API versions predating the unified config ship
-	# un-namespaced tables ([database] rather than [platform_api.database]), which
-	# would merge into a silently broken file — fail loudly on that instead.
+# Require a [platform_api] root table — pre-unified configs would merge into a broken file.
 	@if ! grep -q '^\[platform_api' $(DIST_DIR)/configs/.pa-config.toml; then \
 		echo "Error: the platform-api config for $(PLATFORM_API_VERSION) has no [platform_api] root table." >&2; \
 		echo "That version predates the unified multi-component config and cannot be bundled — pick a newer PLATFORM_API_VERSION." >&2; \
 		exit 1; \
 	fi
-	# Unified active config.toml: two sections ([ai_workspace] + [platform_api]),
-	# the same file mounted into both services (each reads only its own table).
-	# The optional Developer Portal is opt-in (see README), so its section is NOT
-	# added here — a user enabling that profile appends [developer_portal] itself,
-	# copying it from the template below.
+# Merge ai-workspace + platform-api into one config.toml — each service reads only its own root table.
 	$(call merge_config,configs/config.toml,$(DIST_DIR)/configs/.pa-config.toml,$(DIST_DIR)/configs/config.toml)
-	# Unified config-template.toml (the full reference): the same two sections PLUS
-	# the optional Developer Portal template appended at the bottom, so a user
-	# enabling that profile has its [developer_portal] settings documented to copy.
 	$(call merge_config,configs/config-template.toml,$(DIST_DIR)/configs/.pa-config-template.toml,$(DIST_DIR)/configs/config-template.toml)
-	# Sourced from the developer-portal release tag when a version was supplied, so
-	# the documented settings match the pinned image.
+# Developer Portal is opt-in: append its template to config-template.toml only, not the active config.
 ifeq ($(DEVPORTAL_FROM_TAG),true)
 	$(call stage_optional_template,$(DEVPORTAL_TAG),portals/developer-portal/configs/config-template.toml,../developer-portal/configs/config-template.toml,$(DIST_DIR)/configs/.dp-config-template.toml)
 else
@@ -362,11 +349,7 @@ endif
 		> $(DIST_DIR)/.gitignore
 	@cp setup.sh $(DIST_DIR)/scripts/setup.sh
 	@chmod +x $(DIST_DIR)/scripts/setup.sh
-	# Repoint the platform-api mount at the single merged file (the source compose
-	# mounts the monorepo's ../../platform-api/config/config.toml); the ai-workspace
-	# mount already points at ./configs/config.toml, so both now share one file.
-	# The trailing ':' anchors the match to the volume mapping so comments that
-	# mention the source path are left untouched.
+# Point the platform-api mount at the merged config so both containers share one file.
 	@sed 's#\.\./\.\./platform-api/config/config\.toml:#./configs/config.toml:#' \
 		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md
