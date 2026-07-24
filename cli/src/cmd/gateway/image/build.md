@@ -10,7 +10,8 @@ ap gateway image build \
   [--push] \
   [--no-cache] \
   [--platform <platform>] \
-  [--output-dir <output_dir>]
+  [--output-dir <output_dir>] \
+  [--go-toolchain <gotoolchain>]
 ```
 
 ### Optional Flags & Defaults
@@ -21,6 +22,7 @@ ap gateway image build \
 - `--push`: `false` - Push image to registry after build
 - `--no-cache`: `false` - Build without using cache
 - `--output-dir`: No output (empty) - Output directory for build artifacts
+- `--go-toolchain`: `auto` - `GOTOOLCHAIN` for the gateway-builder container (e.g. `auto`, `go1.26.5`, `go1.26.2+auto`). Overrides `gateway.goToolchain` in `build.yaml`. Precedence: flag > `build.yaml` > `auto`.
 
 ### Directory Structure Requirements
 The `--path` flag must point to a directory containing:
@@ -47,6 +49,7 @@ policies:
 version: v1
 gateway:
   version: "1.0.4"    # Required: Gateway version
+  goToolchain: auto   # Optional: GOTOOLCHAIN for the builder (default: auto)
   images:             # Optional: Custom image paths
     builder: "internal-registry.company.com/wso2/gateway-builder:1.0.4"
     controller: "internal-registry.company.com/wso2/gateway-controller:1.0.4"
@@ -60,6 +63,7 @@ policies:
 - `gateway.version`: Gateway version for the build
 
 ### Optional Fields
+- `gateway.goToolchain`: `GOTOOLCHAIN` for the gateway-builder container (defaults to `auto`). Controls which Go toolchain compiles the policies; `auto` downloads a newer toolchain when a policy's `go.mod` requires one. Accepts any Go `GOTOOLCHAIN` value, e.g. `auto`, `go1.26.5` (pin), or `go1.26.2+auto` (minimum, upgrade if needed). The `--go-toolchain` flag overrides this value.
 - `gateway.images.builder`: Custom gateway builder image (defaults to `ghcr.io/wso2/api-platform/gateway-builder:<version>`)
 - `gateway.images.controller`: Custom gateway controller base image (defaults to `ghcr.io/wso2/api-platform/gateway-controller:<version>`)
 - `gateway.images.runtime`: Custom gateway runtime base image (defaults to `ghcr.io/wso2/api-platform/gateway-runtime:<version>`)
