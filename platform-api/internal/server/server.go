@@ -371,12 +371,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	}
 	slogger.Info("Loaded OpenAPI scope registry", "path", cfg.OpenAPISpecPath)
 
-	// Load and validate the role-to-scope map when roles.yaml is configured.
-	roleScopeMap, err := loadRoleScopeMap(cfg, scopeRegistry, slogger)
-	if err != nil {
-		return nil, err
-	}
-
 	if !cfg.Auth.ScopeValidation {
 		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
 	}
@@ -454,6 +448,14 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			shutdownPlugins(slogger, plugins)
 		}
 	}()
+
+	// Load and validate the role-to-scope map when roles.yaml is configured.
+	// Runs after initPlugins so a role may map to a plugin-declared scope, and
+	// after the defer above so a bad roles.yaml still stops the plugins.
+	roleScopeMap, err := loadRoleScopeMap(cfg, scopeRegistry, slogger)
+	if err != nil {
+		return nil, err
+	}
 
 	// Declared public paths are appended before the auth middleware is built
 	// below, so the skip-path list is complete when the chain is assembled.
