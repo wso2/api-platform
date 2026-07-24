@@ -19,7 +19,6 @@ package pythonbridge
 
 import (
 	"fmt"
-	"log/slog"
 
 	"google.golang.org/protobuf/types/known/structpb"
 	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
@@ -47,6 +46,11 @@ func (t *Translator) ToProtoSharedContext(shared *policy.SharedContext) (*proto.
 		return nil, fmt.Errorf("convert shared metadata: %w", err)
 	}
 
+	authContext, err := t.toProtoAuthContext(shared.AuthContext)
+	if err != nil {
+		return nil, fmt.Errorf("convert auth context: %w", err)
+	}
+
 	return &proto.SharedContext{
 		ProjectId:     shared.ProjectID,
 		RequestId:     shared.RequestID,
@@ -57,7 +61,7 @@ func (t *Translator) ToProtoSharedContext(shared *policy.SharedContext) (*proto.
 		ApiKind:       string(shared.APIKind),
 		ApiContext:    shared.APIContext,
 		OperationPath: shared.OperationPath,
-		AuthContext:   t.toProtoAuthContext(shared.AuthContext),
+		AuthContext:   authContext,
 	}, nil
 }
 
@@ -287,9 +291,9 @@ func (t *Translator) ToGoStreamingResponseAction(resp *proto.StreamResponse) (po
 	}
 }
 
-func (t *Translator) toProtoAuthContext(ctx *policy.AuthContext) *proto.AuthContext {
+func (t *Translator) toProtoAuthContext(ctx *policy.AuthContext) (*proto.AuthContext, error) {
 	if ctx == nil {
-		return nil
+		return nil, nil
 	}
 
 	scopes := make(map[string]bool, len(ctx.Scopes))
@@ -302,14 +306,24 @@ func (t *Translator) toProtoAuthContext(ctx *policy.AuthContext) *proto.AuthCont
 		properties[key] = value
 	}
 
+	// Fail closed: if the structured claims cannot be serialized (e.g. an unsupported nested
+	// value type), surface the error rather than dropping TypedProperties. Silently omitting it
+	// would make downstream policies see the claim as absent and could change an authorization
+	// decision. Numeric note: google.protobuf.Struct carries numbers as IEEE-754 doubles, so
+	// integer-valued claims lose exactness beyond 2^53 — this matches how JSON/JWT claims are
+	// already decoded (float64) and introduces no additional loss.
 	var typedProperties *structpb.Struct
 	if len(ctx.TypedProperties) > 0 {
-		if s, err := structpb.NewStruct(ctx.TypedProperties); err == nil {
-			typedProperties = s
-		} else {
-			slog.Warn("pythonbridge: dropping AuthContext.TypedProperties; could not convert to protobuf struct",
-				"error", err)
+		s, err := structpb.NewStruct(ctx.TypedProperties)
+		if err != nil {
+			return nil, fmt.Errorf("convert auth context typed properties: %w", err)
 		}
+		typedProperties = s
+	}
+
+	previous, err := t.toProtoAuthContext(ctx.Previous)
+	if err != nil {
+		return nil, err
 	}
 
 	return &proto.AuthContext{
@@ -324,8 +338,8 @@ func (t *Translator) toProtoAuthContext(ctx *policy.AuthContext) *proto.AuthCont
 		CredentialId:    ctx.CredentialID,
 		Properties:      properties,
 		TypedProperties: typedProperties,
-		Previous:        t.toProtoAuthContext(ctx.Previous),
-	}
+		Previous:        previous,
+	}, nil
 }
 
 func (t *Translator) toGoImmediateResponse(resp *proto.ImmediateResponse) policy.ImmediateResponse {

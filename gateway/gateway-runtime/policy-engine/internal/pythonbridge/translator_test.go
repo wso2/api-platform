@@ -205,3 +205,52 @@ func TestTranslatorToGoStreamingResponseAction(t *testing.T) {
 		t.Fatalf("expected analytics metadata, got %#v", term.AnalyticsMetadata)
 	}
 }
+
+// Fail-closed: if TypedProperties holds a value that google.protobuf.Struct cannot represent,
+// translation must return an error (so the request is rejected) rather than silently dropping the
+// claims — dropping them would make downstream policies see the claim as absent and could change an
+// authorization decision. The unsupported value is nested (and also tested inside Previous) to
+// exercise the recursive path.
+func TestTranslatorToProtoSharedContextFailsClosedOnUnserializableTypedProperties(t *testing.T) {
+	unserializable := map[string]interface{}{
+		"nested": map[string]interface{}{"bad": make(chan int)}, // channels aren't representable in Struct
+	}
+	cases := map[string]*policy.AuthContext{
+		"top-level": {Authenticated: true, AuthType: "jwt", TypedProperties: unserializable},
+		"previous": {
+			Authenticated: true, AuthType: "jwt",
+			Previous: &policy.AuthContext{Authenticated: true, AuthType: "apikey", TypedProperties: unserializable},
+		},
+	}
+	for name, authCtx := range cases {
+		t.Run(name, func(t *testing.T) {
+			result, err := NewTranslator().ToProtoSharedContext(&policy.SharedContext{AuthContext: authCtx})
+			require.Error(t, err)
+			require.Nil(t, result)
+		})
+	}
+}
+
+// Documented numeric regression: google.protobuf.Struct has a single numeric kind (number_value /
+// double). Numeric claims — which arrive as float64 from JSON/JWT decoding — are carried as a
+// NumberValue; integer values beyond 2^53 are subject to double rounding. This pins the double-typed
+// round-trip so a future change to the numeric representation is caught.
+func TestTranslatorToProtoAuthContextCarriesNumbersAsDouble(t *testing.T) {
+	shared := &policy.SharedContext{
+		AuthContext: &policy.AuthContext{
+			Authenticated:   true,
+			AuthType:        "jwt",
+			TypedProperties: map[string]interface{}{"level": float64(42), "big": float64(1 << 53)},
+		},
+	}
+	result, err := NewTranslator().ToProtoSharedContext(shared)
+	require.NoError(t, err)
+
+	fields := result.GetAuthContext().GetTypedProperties().GetFields()
+	require.NotNil(t, fields["level"])
+	assert.Equal(t, float64(42), fields["level"].GetNumberValue())
+	assert.Equal(t, float64(1<<53), fields["big"].GetNumberValue())
+	// Stored under the number kind — never string or other.
+	_, isNumber := fields["level"].GetKind().(*structpb.Value_NumberValue)
+	assert.True(t, isNumber)
+}
