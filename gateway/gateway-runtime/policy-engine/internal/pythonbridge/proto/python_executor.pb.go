@@ -1826,7 +1826,9 @@ type AuthContext struct {
 	Properties    map[string]string      `protobuf:"bytes,9,rep,name=properties,proto3" json:"properties,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Previous      *AuthContext           `protobuf:"bytes,10,opt,name=previous,proto3" json:"previous,omitempty"`
 	TokenId       string                 `protobuf:"bytes,11,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
-	TypedProperties *structpb.Struct 	 `protobuf:"bytes,12,opt,name=typed_properties,json=typedProperties,proto3" json:"typed_properties,omitempty"`
+	// typed_properties preserves structured values; numbers use float64, so large integers (>2^53)
+	// should be encoded as strings if exact precision is required.
+	TypedProperties *structpb.Struct `protobuf:"bytes,12,opt,name=typed_properties,json=typedProperties,proto3" json:"typed_properties,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }

@@ -99,8 +99,8 @@ class AuthContext:
     scopes: dict[str, bool] = field(default_factory=dict)
     credential_id: str = ""
     properties: dict[str, str] = field(default_factory=dict)
-    typed_properties: dict[str, Any] = field(default_factory=dict)
     previous: "AuthContext | None" = None
+    typed_properties: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

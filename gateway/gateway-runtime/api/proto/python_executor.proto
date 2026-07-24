@@ -242,6 +242,10 @@ message AuthContext {
   map<string, string> properties = 9;
   AuthContext previous = 10;
   string token_id = 11;
+  // typed_properties preserves structured claim values (arrays/objects) that the flat
+  // `properties` map flattens to strings. Numbers are stored as float64 (per
+  // google.protobuf.Struct/JSON), so integers larger than 2^53 should be represented as strings
+  // if exact precision is required.
   google.protobuf.Struct typed_properties = 12;
 }
 
