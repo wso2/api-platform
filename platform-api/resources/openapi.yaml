@@ -5413,6 +5413,11 @@ components:
           example: false
         upstream:
           $ref: "#/components/schemas/Upstream"
+        upstreamDefinitions:
+          type: array
+          description: List of reusable named upstream definitions, referenced by `ref` from both API-level and operation-level upstreams.
+          items:
+            $ref: '#/components/schemas/ReusableUpstream'
         lifeCycleStatus:
           type: string
           description: Current lifecycle status of the API
@@ -5564,6 +5569,8 @@ components:
           description: List of policies to be applied on the operation
           items:
             $ref: "#/components/schemas/Policy"
+        upstream:
+          $ref: "#/components/schemas/OperationUpstream"
 
     ChannelRequest:
       title: Channel Request
@@ -6713,8 +6720,7 @@ components:
           description: Direct backend URL to route traffic to
           example: http://prod-backend:5000/api/v2
         ref:
-          type: string
-          description: Reference to a predefined upstreamDefinition
+          $ref: '#/components/schemas/UpstreamReference'
         auth:
           $ref: '#/components/schemas/UpstreamAuth'
 
@@ -6737,6 +6743,89 @@ components:
           format: password
           description: Authentication value (API key, Bearer token, or Base64 encoded credentials for basic auth)
           example: my-api-key-value
+
+    OperationUpstream:
+      title: Operation Upstream
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      description: Per-operation upstream override. Each sub-field must reference a named entry in upstreamDefinitions. Missing sub-fields fall back to the API-level upstream. At least one of main or sandbox must be set.
+      properties:
+        main:
+          type: object
+          additionalProperties: false
+          required:
+            - ref
+          properties:
+            ref:
+              $ref: '#/components/schemas/UpstreamReference'
+        sandbox:
+          type: object
+          additionalProperties: false
+          required:
+            - ref
+          properties:
+            ref:
+              $ref: '#/components/schemas/UpstreamReference'
+
+    UpstreamReference:
+      title: Upstream Reference
+      type: string
+      description: Name of a ReusableUpstream entry in the API's upstreamDefinitions pool. Used by both API-level and operation-level upstream refs.
+      minLength: 1
+      maxLength: 100
+      pattern: '^[a-zA-Z0-9\-_]+$'
+      example: my-upstream-1
+
+    ReusableUpstream:
+      title: Reusable Upstream
+      type: object
+      required:
+        - name
+        - upstreams
+      description: A reusable named upstream definition. Referenced by name from API-level and operation-level upstream refs.
+      properties:
+        name:
+          $ref: '#/components/schemas/UpstreamReference'
+        basePath:
+          type: string
+          description: Base path prefix prepended to all requests routed to this upstream (e.g., /api/v2)
+          pattern: '^/[a-zA-Z0-9\-._~!$&''()*+,;=:@%/]*[^/]$'
+          example: /api/v2
+        timeout:
+          $ref: '#/components/schemas/UpstreamTimeout'
+        upstreams:
+          type: array
+          description: List of backend targets with optional weights for load balancing
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              - url
+            properties:
+              url:
+                type: string
+                format: uri
+                description: Backend URL (host and port only; path comes from basePath)
+                example: http://prod-backend-1:5000
+              weight:
+                type: integer
+                description: Relative weight for load balancing across the definition's targets; when omitted, the gateway applies its default endpoint weight
+                minimum: 0
+                maximum: 100
+                example: 80
+
+    UpstreamTimeout:
+      title: Upstream Timeout
+      type: object
+      description: Timeout configuration for upstream requests
+      properties:
+        connect:
+          type: string
+          description: Connection timeout duration (e.g., "5s", "500ms")
+          pattern: '^\d+(\.\d+)?(ms|s|m|h)$'
+          example: 5s
 
     ExtractionIdentifier:
       type: object
