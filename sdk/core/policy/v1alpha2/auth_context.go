@@ -35,8 +35,14 @@ type AuthContext struct {
 	CredentialID string
 
 	// Properties holds additional claims or data that do not fit into the typed
-	// fields above (e.g., custom JWT claims).
+	// fields above (e.g., custom JWT claims). Values are flattened to a single string,
+	// so a multi-valued (array) claim is serialized (e.g., JSON) into one entry.
 	Properties map[string]string
+
+	// TypedProperties stores additional properties which has complex structures which
+	// needs to be preserved in their original typed form (e.g. arrays or objects) 
+	// preserving structure that Properties flattens to strings.
+	TypedProperties map[string]interface{}
 
 	// TokenId holds the unique identifier of a token (e.g. for a jwt it can be jti)
 	TokenId string
