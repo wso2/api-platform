@@ -284,7 +284,7 @@ To create an LLM provider using any of the out-of-the-box templates:
 ```bash
 curl -X POST http://localhost:9090/api/management/v0.9/llm-providers \
   -H "Content-Type: application/yaml" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProvider
@@ -333,7 +333,7 @@ To list all available LLM provider templates:
 
 ```bash
 curl -X GET http://localhost:9090/api/management/v0.9/llm-provider-templates \
-  -H "Authorization: Basic YWRtaW46YWRtaW4="
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD"
 ```
 
 ### Retrieving a Specific Template
@@ -342,7 +342,7 @@ To retrieve details of a specific template:
 
 ```bash
 curl -X GET http://localhost:9090/api/management/v0.9/llm-provider-templates/openai \
-  -H "Authorization: Basic YWRtaW46YWRtaW4="
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD"
 ```
 
 ### Creating Custom Templates
@@ -352,7 +352,7 @@ Platform administrators can create custom templates for LLM providers not covere
 ```bash
 curl -X POST http://localhost:9090/api/management/v0.9/llm-provider-templates \
   -H "Content-Type: application/yaml" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProviderTemplate
@@ -373,7 +373,7 @@ To update an existing custom template:
 ```bash
 curl -X PUT http://localhost:9090/api/management/v0.9/llm-provider-templates/custom-provider \
   -H "Content-Type: application/yaml" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProviderTemplate
@@ -394,7 +394,7 @@ To delete a custom template:
 
 ```bash
 curl -X DELETE http://localhost:9090/api/management/v0.9/llm-provider-templates/custom-provider \
-  -H "Authorization: Basic YWRtaW46YWRtaW4="
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD"
 ```
 
 **Note**: Out-of-the-box templates cannot be deleted or modified. Only custom templates created by platform administrators can be updated or deleted.

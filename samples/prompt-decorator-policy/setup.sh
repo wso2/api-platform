@@ -11,7 +11,7 @@ DIST_URL="https://github.com/wso2/api-platform/releases/download/ai-gateway/v${D
 
 GATEWAY_MGMT_URL="http://localhost:9090/api/management/v0.9"
 GATEWAY_HEALTH_URL="http://localhost:9094/health"
-AUTH_HEADER="Authorization: Basic YWRtaW46YWRtaW4="   # admin:admin
+AUTH_HEADER="Authorization: Basic $(printf %s "${ADMIN_USERNAME:-admin}:${ADMIN_PASSWORD:-admin}" | base64)"   # default admin/admin; override with ADMIN_USERNAME/ADMIN_PASSWORD
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROVIDER_YAML="${SCRIPT_DIR}/llm-provider.yaml"
@@ -77,6 +77,10 @@ fi
 # Step 3 — Start the stack
 # ---------------------------------------------------------------------------
 info "Starting Docker Compose stack in ${DIST_NAME}/ ..."
+# Provision the gateway's listener cert, encryption key, api-platform.env, and admin credentials.
+# The gateway no longer ships a default admin:admin and fails closed without a credential; this
+# provisions admin/admin (matching AUTH_HEADER above). Override via ADMIN_USERNAME/ADMIN_PASSWORD.
+(cd "${DIST_NAME}" && ADMIN_USERNAME="${ADMIN_USERNAME:-admin}" ADMIN_PASSWORD="${ADMIN_PASSWORD:-admin}" ./scripts/setup.sh)
 (cd "${DIST_NAME}" && docker compose up -d)
 success "Docker Compose stack started."
 

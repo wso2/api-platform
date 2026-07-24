@@ -709,9 +709,18 @@ curl -X GET "https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main
 
 ### 2. Add Certificate to Gateway
 
+The management API uses basic auth with the credentials from your Helm values
+(`controller.auth.basic.users`; the chart default is `admin` / `admin`). Export them, changing them if
+you overrode the chart defaults:
+
+```sh
+export ADMIN_USERNAME=admin
+export ADMIN_PASSWORD=admin
+```
+
 ```sh
 cert_path="/tmp/test-backend.crt"
-curl -X POST http://localhost:9090/api/management/v0.9/certificates -u "admin:admin" \
+curl -X POST http://localhost:9090/api/management/v0.9/certificates -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   -H "Content-Type: application/json" \
   -d "{\"certificate\":$(jq -Rs . < $cert_path),\"filename\":\"my-cert.pem\", \"name\":\"test\"}"
 ```

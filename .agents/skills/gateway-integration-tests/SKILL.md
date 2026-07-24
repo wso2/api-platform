@@ -140,8 +140,10 @@ grep -iE '<api-or-policy-name>' "$latest" | grep -iE 'error|warn|fail|panic|reje
 
 ### 4. Reproduce manually for assertion failures
 Bring up only the services you need, deploy the artifact by hand, and inspect.
-The controller exposes two REST APIs (basic auth `admin:admin`); the router is
-`http://localhost:8080`; Envoy admin is `http://localhost:9901`.
+The controller exposes two REST APIs (basic auth `admin:admin` — the plaintext credential hardcoded in
+the IT fixture `gateway/it/test-config.toml`, distinct from the shipped `config.toml`, which provisions
+its admin credential via `setup.sh`); the router is `http://localhost:8080`; Envoy admin is
+`http://localhost:9901`.
 
 - Management API — `http://localhost:9090/api/management/v0.9` — data-plane
   artifacts: REST APIs, LLM providers, LLM proxies, MCP servers, …

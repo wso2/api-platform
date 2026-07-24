@@ -30,8 +30,15 @@ unzip wso2apip-api-gateway-1.2.0-beta.zip
 
 cd wso2apip-api-gateway-v1.2.0-beta/
 
-# One-time setup: provision the HTTPS listener certificate and api-platform.env.
+# One-time setup: provision the HTTPS listener certificate, the encryption key,
+# api-platform.env, and the gateway-controller admin credentials. setup.sh prints
+# the admin password once — copy it now.
 ./scripts/setup.sh
+
+# Export the admin credentials so the management-API calls below can authenticate.
+# The username defaults to "admin"; use the password setup.sh just printed.
+export ADMIN_USERNAME=admin
+export ADMIN_PASSWORD='<the password scripts/setup.sh printed>'
 
 # Start the complete stack
 docker compose up -d
@@ -41,7 +48,7 @@ curl http://localhost:9094/api/admin/v0.9/health
 
 # Deploy an API configuration
 curl -X POST http://localhost:9090/api/management/v0.9/rest-apis \
-  -u admin:admin \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1
@@ -103,14 +110,39 @@ It provisions, idempotently (existing files are kept unless `--force`):
 |---|---|
 | `listener-certs/default-listener.crt` / `.key` | Self-signed certificate for the router's HTTPS ingress listener (`:8443`). |
 | `aesgcm-keys/default-aesgcm256-v1.bin` | AES-256 key for at-rest encryption of stored secrets (bind-mounted into the controller). |
-| `api-platform.env` | Required runtime settings, loaded into both containers via docker-compose `env_file:` — `GATEWAY_CONTROLLER_HOST` and `LOG_LEVEL`. |
+| `api-platform.env` | Required runtime settings, loaded into both containers via docker-compose `env_file:` — `GATEWAY_CONTROLLER_HOST`, `LOG_LEVEL`, and the gateway-controller admin credentials (`APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME` and the bcrypt `APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH`). |
+
+**Admin credentials.** The gateway-controller REST/management API is protected by basic auth.
+Two sets of variables are involved, and `setup.sh` bridges them:
+
+- **What you provide** — the plaintext inputs to `setup.sh` (also what you pass to `curl -u`):
+  - `ADMIN_USERNAME` — defaults to `admin` (override via the environment or the interactive prompt).
+  - `ADMIN_PASSWORD` — used if set; otherwise you are prompted; otherwise a strong random one is generated.
+- **What `setup.sh` writes** into `api-platform.env` — the variables `config.toml` actually reads via its
+  `{{ env }}` tokens (you normally never set these by hand):
+  - `APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME` ← your `ADMIN_USERNAME`.
+  - `APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH` ← the **bcrypt hash** of your `ADMIN_PASSWORD`.
+
+The plaintext password is printed to the console **once** and never stored — copy it, and use it with the
+username for `curl -u "$ADMIN_USERNAME:$ADMIN_PASSWORD"` against the management API.
+
+For non-interactive use (CI), set the plaintext inputs up front:
+
+```bash
+ADMIN_USERNAME=admin ADMIN_PASSWORD='choose-a-strong-password' ./scripts/setup.sh
+```
+
+If the controller starts with the shipped `config.toml` while `APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME`
+/ `..._PASSWORD_HASH` are unset (i.e. you never ran `setup.sh`), it **refuses to start** rather than coming
+up on an empty credential — so always run `setup.sh` first. To populate those two config variables by hand
+instead, set the username and a **bcrypt hash** of the password (never the plaintext).
 
 **Options:**
 
 | Flag | Effect |
 |---|---|
-| `--force` | Regenerate the certificate and encryption key, and rewrite `api-platform.env` (rotates them). |
-| `--certs-only` | Generate only the listener TLS certificate (skip the encryption key and `api-platform.env`). |
+| `--force` | Regenerate the certificate and encryption key, and rewrite `api-platform.env` — this **rotates the admin password** too (a new one is generated/prompted and printed). |
+| `--certs-only` | Generate only the listener TLS certificate (skip the encryption key, admin credentials, and `api-platform.env`). |
 | `--help` | Print usage. |
 
 Then start the stack:

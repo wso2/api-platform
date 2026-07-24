@@ -117,12 +117,20 @@ cd "$REPO_ROOT/gateway" && docker compose down
 
 ## Step 2: Prepare the environment
 
-> **One-time provisioning (required before the first `docker compose up`).** Run `./scripts/setup.sh`
-> once from `<REPO_ROOT>/gateway` — it generates `api-platform.env` (required runtime defaults), the
-> router's HTTPS listener certificate, and the AES-256 at-rest encryption key. The gateway never
-> auto-generates keys/certs and has no demo mode: the compose `env_file:` is now `required: true`
-> (a missing `api-platform.env` fails `docker compose up`), and the controller exits at startup if the
-> encryption key is missing. Full reference: [Gateway Quick Start](../../../docs/gateway/quick-start-guide.md).
+> **One-time provisioning (required before the first `docker compose up`).** Run setup once from
+> `<REPO_ROOT>/gateway`. It generates `api-platform.env` (required runtime defaults), the router's HTTPS
+> listener certificate, the AES-256 at-rest encryption key, and the gateway-controller **admin
+> credentials**. Startup fails if basic auth is enabled with no credential, so run it non-interactively
+> with fixed credentials to keep the `-u admin:admin` examples in this skill valid:
+>
+> ```bash
+> ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./scripts/setup.sh
+> ```
+>
+> The gateway never auto-generates keys/certs and has no demo mode: the compose `env_file:` is now
+> `required: true` (a missing `api-platform.env` fails `docker compose up`), and the controller exits at
+> startup if the encryption key is missing. Full reference:
+> [Gateway Quick Start](../../../docs/gateway/quick-start-guide.md).
 
 > **Compose target — pick one before editing anything.** Step 2 (and Step 8
 > cleanup) operates on **one** compose file. Subsequent substeps reference
@@ -372,7 +380,7 @@ is Go-only. This skill's `dlv` flow does not cover Python; see the
 ## Step 4: Reproduce the issue against the management REST API
 
 The management API runs on `http://localhost:9090/api/management/v0.9`
-(basic auth `admin:admin`). Full endpoint list:
+(basic auth — `admin:admin` if you provisioned it as recommended in Step 2). Full endpoint list:
 `<REPO_ROOT>/gateway/gateway-controller/api/management-openapi.yaml`. Most common:
 
 | Resource | Method + path | Example YAML / response |

@@ -117,9 +117,10 @@ gateway_name = "onprem-gw"
 enabled = true
 
 [[controller.auth.basic.users]]
-username = "admin"
-password = "admin"
-roles = ["admin"]
+username        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME" "" }}'
+password        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH" "" }}'
+password_hashed = true
+roles           = ["admin"]
 ```
 
 ---
@@ -359,10 +360,18 @@ Save the API definition as `petstore-api.json`:
 
 **Step 2: Deploy to Gateway**
 
+The management API uses basic auth. Export the admin credentials `scripts/setup.sh` provisioned (the
+username defaults to `admin`; use the password it printed) so the calls below can authenticate:
+
+```bash
+export ADMIN_USERNAME=admin
+export ADMIN_PASSWORD='<the password scripts/setup.sh printed>'
+```
+
 ```bash
 curl -X POST http://localhost:9090/rest-apis \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   -d @petstore-api.json
 ```
 
@@ -384,7 +393,7 @@ curl -X POST http://localhost:9090/rest-apis \
 ```bash
 # Check if API synced to on-prem APIM
 curl -X GET http://localhost:9090/rest-apis/PetStoreAPI \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" | jq '{origin, cpSyncStatus}'
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" | jq '{origin, cpSyncStatus}'
 ```
 
 **Response (before sync):**
@@ -409,7 +418,7 @@ curl -X GET http://localhost:9090/rest-apis/PetStoreAPI \
 # Get API key
 curl -X POST http://localhost:9090/rest-apis/PetStoreAPI/api-keys \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   -d '{"name": "test-key"}'
 
 # Invoke API
@@ -488,7 +497,7 @@ Update your API definition to add a rate limit policy:
 ```bash
 curl -X PUT http://localhost:9090/rest-apis/PetStoreAPI \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   -d @petstore-api-updated.json
 ```
 
@@ -503,7 +512,7 @@ curl -X PUT http://localhost:9090/rest-apis/PetStoreAPI \
 
 ```bash
 curl -X GET http://localhost:9090/rest-apis/PetStoreAPI \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" | jq '{cpSyncStatus, policies}'
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" | jq '{cpSyncStatus, policies}'
 ```
 
 ---
@@ -546,7 +555,7 @@ To undeploy an API, set `desiredState: undeployed` and update:
 ```bash
 curl -X PUT http://localhost:9090/rest-apis/PetStoreAPI \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   -d @petstore-api-undeploy.json
 ```
 
@@ -561,7 +570,7 @@ curl -X PUT http://localhost:9090/rest-apis/PetStoreAPI \
 ```bash
 # Check API state
 curl -X GET http://localhost:9090/rest-apis/PetStoreAPI \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" | jq '{desiredState, cpSyncStatus}'
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" | jq '{desiredState, cpSyncStatus}'
 ```
 
 **Response:**
@@ -583,7 +592,7 @@ curl -X GET http://localhost:9090/rest-apis/PetStoreAPI \
 ```bash
 curl -X POST http://localhost:9090/rest-apis/PetStoreAPI/api-keys \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   -d '{
     "name": "my-api-key"
   }'
@@ -610,14 +619,14 @@ curl http://localhost:8080/petstore/pet/1 \
 
 ```bash
 curl -X GET http://localhost:9090/rest-apis/PetStoreAPI/api-keys \
-  -H "Authorization: Basic YWRtaW46YWRtaW4="
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD"
 ```
 
 ### Revoke API Key
 
 ```bash
 curl -X DELETE http://localhost:9090/rest-apis/PetStoreAPI/api-keys/key-uuid-12345 \
-  -H "Authorization: Basic YWRtaW46YWRtaW4="
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD"
 ```
 
 ---
@@ -642,7 +651,7 @@ If sync fails, the gateway automatically retries up to 3 times. To manually trig
 ```bash
 curl -X PUT http://localhost:9090/rest-apis/PetStoreAPI \
   -H "Content-Type: application/json" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   -d @petstore-api.json
 ```
 
@@ -711,7 +720,7 @@ curl -k https://192.168.0.102:9443/internal/gateway/.well-known
 
 ```bash
 curl -X GET http://localhost:9090/rest-apis/PetStoreAPI \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" | jq '.spec.upstream'
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" | jq '.spec.upstream'
 ```
 
 **Fix:** Ensure `upstream.main.url` is set to a valid backend service
@@ -734,7 +743,7 @@ APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
    ```bash
    curl -X PUT http://localhost:9090/rest-apis/PetStoreAPI \
      -H "Content-Type: application/json" \
-     -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+     -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
      -d @api-definition.json
    ```
 
