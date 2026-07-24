@@ -22,6 +22,7 @@ data:
     xds_port = {{ $gc.server.xds_port }}
     shutdown_timeout = {{ $gc.server.shutdown_timeout | quote }}
     gateway_id = {{ $gc.server.gateway_id | quote }}
+    skip_invalid_deployments_on_startup = {{ $gc.server.skip_invalid_deployments_on_startup }}
 
     [controller.admin_server]
     enabled = {{ $gc.admin_server.enabled }}
@@ -202,6 +203,7 @@ data:
     [router.http_listener]
     server_header_transformation = {{ $router.http_listener.server_header_transformation | quote }}
     server_header_value = {{ $router.http_listener.server_header_value | quote }}
+    per_connection_buffer_limit_bytes = {{ $router.http_listener.per_connection_buffer_limit_bytes | int64 }}
 
     [router.http_listener.timeouts]
     request_timeout = {{ $router.http_listener.timeouts.request_timeout | quote }}
@@ -269,6 +271,9 @@ data:
     [controller.metrics]
     enabled = {{ .Values.gateway.controller.metrics.enabled }}
     port = {{ .Values.gateway.controller.metrics.port }}
+
+    [policy_engine]
+    tracing_service_name = {{ $pe.tracing_service_name | default "" | quote }}
 
     [policy_engine.server]
     extproc_port = {{ $pe.server.extproc_port }}
@@ -423,6 +428,13 @@ data:
     {{- end }}
     {{- if .Values.gateway.config.traffic_logging.exclude_fields }}
     exclude_fields = [{{- range $i, $f := .Values.gateway.config.traffic_logging.exclude_fields }}{{- if gt $i 0 }}, {{ end }}{{ $f | quote }}{{- end }}]
+    {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.properties }}
+
+    [traffic_logging.properties]
+    {{- range $key, $value := .Values.gateway.config.traffic_logging.properties }}
+    {{ $key }} = {{ $value | quote }}
+    {{- end }}
     {{- end }}
     {{- end }}
 
