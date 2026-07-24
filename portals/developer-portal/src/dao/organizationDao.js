@@ -19,7 +19,7 @@
 
 const crypto = require('crypto');
 const db = require('../db/driver');
-const { toBlobBuffer } = require('../db/rows');
+const { toBlobBuffer, parseJsonColumn } = require('../db/rows');
 const { NotFoundError } = require('../utils/errors/customErrors');
 const viewDao = require('./viewDao');
 const constants = require('../utils/constants');
@@ -58,15 +58,32 @@ const create = async (orgData, t) => {
     };
 };
 
+/**
+ * Normalizes an organization row. `configuration` is a JSON column: postgres
+ * returns it already parsed, but sqlite (TEXT) and mssql (NVARCHAR) return a
+ * string. Without this, `org.configuration?.devportalMode` is silently
+ * undefined on those dialects, so every caller falls back to
+ * DEVPORTAL_MODE.DEFAULT and the configured portal mode never takes effect.
+ * The API contract also declares `configuration` as an object.
+ */
+const normalizeOrgRow = (row) => {
+    if (!row) {
+        return row;
+    }
+    return { ...row, configuration: parseJsonColumn(row.configuration) };
+};
+
 // Matches by handle, then name, then idp_ref_id, in that priority order — deterministic
 // even if one org's handle happens to equal another org's name or idp_ref_id, unlike a
 // single Op.or query (which returns whichever row the DB orders first).
 const findOrgByIdentifier = async (param, t) => {
     const exec = t || db;
     const handle = typeof param === 'string' ? param.toLowerCase() : param;
-    return (await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE handle = ?`, [handle])) ||
+    return normalizeOrgRow(
+        (await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE handle = ?`, [handle])) ||
         (await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE display_name = ?`, [param])) ||
-        (await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE idp_ref_id = ?`, [param]));
+        (await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE idp_ref_id = ?`, [param]))
+    );
 };
 
 const get = async (param, t) => {
@@ -97,7 +114,7 @@ const getId = async (orgName) => {
 };
 
 const list = async () => {
-    return db.query(`SELECT * FROM ${ORG_TABLE}`);
+    return (await db.query(`SELECT * FROM ${ORG_TABLE}`)).map(normalizeOrgRow);
 };
 
 const update = async (orgData, t) => {
@@ -133,7 +150,7 @@ const update = async (orgData, t) => {
     }
     // Some dialects don't support RETURNING on UPDATE — re-fetch explicitly instead
     // (same pattern as applicationDao.update).
-    const updatedOrg = await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE uuid = ?`, [existing.uuid]);
+    const updatedOrg = normalizeOrgRow(await exec.queryOne(`SELECT * FROM ${ORG_TABLE} WHERE uuid = ?`, [existing.uuid]));
     return [rowCount, [updatedOrg]];
 };
 
