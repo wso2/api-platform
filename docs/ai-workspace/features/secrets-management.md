@@ -347,7 +347,8 @@ Generate a stable key with:
 openssl rand -hex 32
 ```
 
-For Docker Compose deployments, set the key in a `api-platform.env` file next to `docker-compose.yaml`. First generate a key:
+For Docker Compose deployments, the shipped config reads the key from a mounted file
+(`resources/keys/encryption.key`) provisioned by `setup.sh`. To generate a key value manually:
 
 ```sh
 openssl rand -hex 32
@@ -363,10 +364,11 @@ preferably, from a mounted file:
 
 ```toml
 # config-platform-api.toml
-encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'                   # from an environment variable
+# From a mounted file provisioned by setup.sh:
+encryption_key = '{{ file "/etc/platform-api/keys/encryption.key" }}'
 
-# or (preferred) — from a mounted secret file:
-encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
+# or — from an environment variable supplied via a git-ignored env file:
+encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 ```
 
 Resolution fails closed: if a referenced env var is unset/empty or a referenced file is

@@ -118,6 +118,32 @@ func TestLoadConfig_ValidKeys_Succeeds(t *testing.T) {
 	assert.Equal(t, validInlineKey, cfg.Security.EncryptionKey)
 }
 
+// Issue #2835: the at-rest encryption key loads from a mounted file via a {{ file }}
+// token — the mechanism the shipped config.toml now uses (setup.sh writes the key to
+// /etc/platform-api/keys/encryption.key instead of an env var). The file is written
+// with a trailing newline (as `openssl rand -hex 32 > file` produces); {{ file }} trims it.
+func TestLoadConfig_EncryptionKeyFromFile_Succeeds(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "encryption.key")
+	require.NoError(t, os.WriteFile(keyPath, []byte(validInlineKey+"\n"), 0o600))
+
+	// Permit {{ file }} reads from the temp dir (default allowlist is /etc/platform-api,
+	// /secrets/platform-api). Constant: configinterpolate.EnvFileSourceAllowlist.
+	t.Setenv("APIP_CONFIG_FILE_SOURCE_ALLOWLIST", dir)
+	// The JWT public-key path is an {{ env }} token (unaffected by the {{ file }} allowlist).
+	t.Setenv("APIP_CP_AUTH_JWT_PUBLIC_KEY_FILE", validJWTPublicKeyFile)
+
+	cfg, err := loadTOML(t, `
+[platform_api.security]
+encryption_key = '{{ file "`+keyPath+`" }}'
+
+[platform_api.auth.jwt]
+public_key_file = '{{ env "APIP_CP_AUTH_JWT_PUBLIC_KEY_FILE" }}'
+`)
+	require.NoError(t, err)
+	assert.Equal(t, validInlineKey, cfg.Security.EncryptionKey)
+}
+
 // A merged multi-component config file also carries a foreign [developer_portal]
 // section with its own interpolation tokens — here deliberately poisonous ones: an
 // {{ env }} with no default that is left unset, and a {{ file }} path outside

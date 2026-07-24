@@ -41,11 +41,11 @@ docker compose up -d
 
 `setup.sh` generates everything the stack needs — nothing is auto-generated at runtime:
 
-| Output | Contents |
-|---|---|
-| `api-platform.env` (git-ignored) | `APIP_DP_SECURITY_ENCRYPTION_KEY` / `APIP_DP_SECURITY_SESSION_SECRET` (Developer Portal), `APIP_CP_ENCRYPTION_KEY` (Platform API at-rest encryption), `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt). No JWT signing key — the RS256 keypair is written to `resources/keys/` as PEM files, since a multi-line PEM cannot live in an env file. |
-| `resources/certificates/cert.pem` + `key.pem` | Self-signed TLS pair shared by both services |
-| `resources/keys/jwt_private.pem` + `jwt_public.pem` | RS256 JWT keypair — the Platform API signs with the private key, the Developer Portal verifies with the public one |
+| Output | Contents                                                                                                                                                                                                                                                                                                                                      |
+|---|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `api-platform.env` (git-ignored) | `APIP_DP_SECURITY_ENCRYPTION_KEY` / `APIP_DP_SECURITY_SESSION_SECRET` (Developer Portal), `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt). No JWT signing key or Platform API encryption key — the RS256 keypair and the Platform API's `encryption.key` are written to `resources/keys/` as files (read via `{{ file }}`). |
+| `resources/certificates/cert.pem` + `key.pem` | Self-signed TLS pair shared by both services                                                                                                                                                                                                                                                                                                  |
+| `resources/keys/jwt_private.pem` + `jwt_public.pem` | RS256 JWT keypair — the Platform API signs with the private key, the Developer Portal verifies with the public one                                                                                                                                                                                                                            |
 
 The admin password is generated and printed once by `setup.sh` — it is not stored anywhere; only its bcrypt hash lands in `api-platform.env`. Re-running `setup.sh` is safe: it only fills in what's missing and never overwrites an existing value — to rotate a value, delete it from `api-platform.env` (or delete `resources/certificates` for the TLS cert) and re-run. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables skip the interactive prompts (used by CI to pin known test credentials).
 

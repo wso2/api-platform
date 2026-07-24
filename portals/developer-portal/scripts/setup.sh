@@ -23,7 +23,8 @@
 # Provisions, in order:
 #   - a self-signed TLS certificate for devportal
 #   - devportal's own encryption/session keys      (APIP_DP_SECURITY_*)
-#   - the Platform API's at-rest encryption key     (APIP_CP_ENCRYPTION_KEY)
+#   - the Platform API's at-rest encryption key, written to resources/keys/encryption.key
+#     and read by config.toml via {{ file }}
 #   - an RS256 JWT signing keypair for the Platform API, written as PEM files
 #     under resources/keys (jwt_private.pem / jwt_public.pem) and read by
 #     config.toml via {{ file }} — tokens are signed asymmetrically, so there is
@@ -128,9 +129,6 @@ log "Generating devportal secrets into api-platform.env ..."
 set_env_var "APIP_DP_SECURITY_ENCRYPTION_KEY" "$(openssl rand -hex 32)"
 set_env_var "APIP_DP_SECURITY_SESSION_SECRET" "$(openssl rand -hex 32)"
 
-log "Generating Platform API encryption key into api-platform.env ..."
-set_env_var "APIP_CP_ENCRYPTION_KEY" "$(openssl rand -hex 32)"
-
 log "Provisioning Platform API JWT signing keypair (RS256) ..."
 # Tokens are signed asymmetrically now (RS256), not with a shared HMAC secret.
 # The Platform API mints login tokens with the RSA private key and verifies every
@@ -152,6 +150,19 @@ else
         -out "$JWT_KEY_DIR/jwt_public.pem" 2>/dev/null
     chmod "$CERT_FILE_MODE" "$JWT_KEY_DIR/jwt_private.pem" "$JWT_KEY_DIR/jwt_public.pem"
     log "  - RS256 JWT keypair generated at $JWT_KEY_DIR"
+fi
+
+log "Provisioning Platform API at-rest encryption key ..."
+# Written to a file (not api-platform.env) and read by config.toml via
+# {{ file "/etc/platform-api/keys/encryption.key" }} — the same mounted keys dir as
+# the JWT keypair. 32-byte key as 64 hex chars.
+if [ -f "$JWT_KEY_DIR/encryption.key" ]; then
+    log "  - $JWT_KEY_DIR/encryption.key already exists, leaving as-is"
+else
+    mkdir -p "$JWT_KEY_DIR"
+    openssl rand -hex 32 > "$JWT_KEY_DIR/encryption.key"
+    chmod "$CERT_FILE_MODE" "$JWT_KEY_DIR/encryption.key"
+    log "  - at-rest encryption key generated at $JWT_KEY_DIR/encryption.key"
 fi
 
 log "Provisioning Platform API admin credentials ..."

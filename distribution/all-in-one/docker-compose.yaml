@@ -94,7 +94,8 @@ services:
       - platform-api-certs:/certs
 
   # One-shot init container: generates the RS256 keypair platform-api's
-  # auth.jwt config requires (config.toml reads it via {{ file }}). Tokens are
+  # auth.jwt config requires AND the 32-byte at-rest encryption key its
+  # security config requires — config.toml reads both via {{ file }}. Tokens are
   # signed asymmetrically — there is no shared HMAC secret anymore.
   platform-api-jwtkeygen:
     image: alpine/openssl
@@ -102,15 +103,18 @@ services:
     command:
       - |
         set -e
-        [ -f /keys/jwt_private.pem ] && [ -f /keys/jwt_public.pem ] && exit 0
+        [ -f /keys/jwt_private.pem ] && [ -f /keys/jwt_public.pem ] && [ -f /keys/encryption.key ] && exit 0
         openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
           -out /keys/jwt_private.pem 2>/dev/null
         openssl rsa -in /keys/jwt_private.pem -pubout \
           -out /keys/jwt_public.pem 2>/dev/null
+        # At-rest encryption key: 32 bytes as 64 hex chars, read by config.toml
+        # via {{ file "/etc/platform-api/keys/encryption.key" }}.
+        openssl rand -hex 32 > /keys/encryption.key
         # jwtkeygen runs as root; platform-api runs as uid 10001, so the private
-        # key must be owned by that uid, not made world-readable.
-        chown 10001 /keys/jwt_private.pem
-        chmod 0600 /keys/jwt_private.pem
+        # key and encryption key must be owned by that uid, not world-readable.
+        chown 10001 /keys/jwt_private.pem /keys/encryption.key
+        chmod 0600 /keys/jwt_private.pem /keys/encryption.key
         chmod 0644 /keys/jwt_public.pem
     volumes:
       - platform-api-jwt-keys:/keys
@@ -148,9 +152,6 @@ services:
       - APIP_CP_DATABASE_MAX_IDLE_CONNS=10
       - APIP_CP_DATABASE_CONN_MAX_LIFETIME=300
       - APIP_CP_DATABASE_EXECUTE_SCHEMA_DDL=true
-      # Required — set before `docker compose up`, e.g.:
-      #   export APIP_CP_ENCRYPTION_KEY=$(openssl rand -hex 32)
-      - APIP_CP_ENCRYPTION_KEY=${APIP_CP_ENCRYPTION_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy

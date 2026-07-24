@@ -36,9 +36,9 @@
 # QUICK START (file auth mode — no external IDP needed):
 #   1. Copy this file to config.toml (standalone), or merge its [platform_api]
 #      section into the unified config.toml alongside other components.
-#   2. Generate APIP_CP_ENCRYPTION_KEY: openssl rand -hex 32, put it in
-#      `api-platform.env`. The field below reads it via a {{ env "..." }} token
-#      — never paste raw key values into this file.
+#   2. Generate the at-rest encryption key into a mounted file: openssl rand -hex 32
+#      > /etc/platform-api/keys/encryption.key. The field below reads it via a
+#      {{ file "..." }} token — never paste raw key values into this file.
 #   3. Generate an RS256 JWT keypair and mount it at the paths named by
 #      auth.jwt.public_key_file / private_key_file below:
 #        openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \

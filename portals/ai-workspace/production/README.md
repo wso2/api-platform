@@ -238,8 +238,8 @@ There is no demo mode: startup checks are always on for **both** the `platform-a
 `ai-workspace` services and fail fast when a requirement is missing. For production, replace
 the quickstart's `setup.sh` outputs with real values: use OIDC (sections 1–3) instead of the
 generated file-based admin user, mount TLS certificates from your CA instead of the generated
-self-signed pairs, and manage `APIP_CP_ENCRYPTION_KEY` and the RS256 JWT signing keypair
-(`resources/keys/jwt_private.pem` / `jwt_public.pem`, read via `{{ file }}`) as stable, real
+self-signed pairs, and manage the at-rest encryption key and the RS256 JWT signing keypair
+(`resources/keys/encryption.key`, `resources/keys/jwt_private.pem` / `jwt_public.pem`, all read via `{{ file }}`) as stable, real
 secrets (prefer `{{ file }}` tokens over environment variables).
 
 See [Production hardening](../README.md#production-hardening) in the main README for the
