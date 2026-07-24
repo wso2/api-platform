@@ -651,23 +651,11 @@ export default function ServiceProviderGuardrailsTab() {
       } else if (drawerContext.scope === 'global') {
         // Add mode — global scope → globalPolicies
         const globalPolicies = [...(provider.globalPolicies ?? [])];
-        const existingIndex = globalPolicies.findIndex(
-          (p) =>
-            p.name === selectedGuardrailPolicy.name &&
-            p.version === selectedGuardrailVersion
-        );
-        if (existingIndex === -1) {
-          globalPolicies.push({
-            name: selectedGuardrailPolicy.name,
-            version: selectedGuardrailVersion,
-            params,
-          });
-        } else {
-          globalPolicies[existingIndex] = {
-            ...globalPolicies[existingIndex],
-            params,
-          };
-        }
+        globalPolicies.push({
+          name: selectedGuardrailPolicy.name,
+          version: selectedGuardrailVersion,
+          params,
+        });
         await updateProvider({ ...updatePayload, globalPolicies });
       } else {
         // Add mode — resource scope → operationPolicies
@@ -688,19 +676,10 @@ export default function ServiceProviderGuardrailsTab() {
           });
         } else {
           const existing = operationPolicies[existingPolicyIndex];
-          const alreadyHasPath = existing.paths.some(
-            (p) =>
-              p.path === resourcePath &&
-              p.methods
-                .map((m) => m.toUpperCase())
-                .includes(resourceMethod.toUpperCase())
-          );
-          if (!alreadyHasPath) {
-            operationPolicies[existingPolicyIndex] = {
-              ...existing,
-              paths: [...existing.paths, newPathEntry],
-            };
-          }
+          operationPolicies[existingPolicyIndex] = {
+            ...existing,
+            paths: [...existing.paths, newPathEntry],
+          };
         }
         await updateProvider({ ...updatePayload, operationPolicies });
       }

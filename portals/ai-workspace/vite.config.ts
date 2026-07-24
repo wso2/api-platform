@@ -121,6 +121,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,          // accept the BFF self-signed cert in dev
       },
+      '/proxy': {
+        target: process.env.BFF_DEV_TARGET || 'https://localhost:8081',
+        changeOrigin: true,
+        secure: false,
+      },
       '/runtime-config.js': {
         target: process.env.BFF_DEV_TARGET || 'https://localhost:8081',
         changeOrigin: true,
