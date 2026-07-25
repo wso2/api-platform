@@ -10,6 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
+    env:
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: perf-admin
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,6 +34,15 @@ jobs:
           ls -la gateway/configs
           test -f gateway/configs/config.toml
           echo "✅ gateway/configs/config.toml exists and is a file"
+
+      - name: Provision gateway secrets + admin credentials
+        run: |
+          cd gateway
+          # Non-interactive: ADMIN_USERNAME/ADMIN_PASSWORD come from the job env.
+          # setup.sh writes api-platform.env (listener cert, AES-256 encryption key,
+          # and the bcrypt-hashed admin credential the controller reads via the
+          # {{ env }} tokens in config.toml). Required now that config.toml
+          ./scripts/setup.sh
 
       - name: Start gateway stack
         run: |

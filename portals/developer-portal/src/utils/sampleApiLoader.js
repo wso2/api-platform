@@ -31,6 +31,29 @@ function resolveDir(samplesDir) {
 }
 
 /**
+ * Join user-supplied path segments (apiHandle, docName, docType) onto a trusted root and
+ * assert the result stays inside that root. Route params reach these loaders unsanitized
+ * (e.g. /mock/:apiHandle, /views/:viewName/api/:apiHandle/docs/:docType/:docName), and
+ * path.join normalizes "../" — so without this check a value like "../../../../etc/passwd"
+ * escapes the samples/ sandbox. Returns null on any traversal/null-byte violation; callers
+ * already treat null as "not found", so this fails closed with a clean 404 instead of a leak.
+ */
+// Percent-encoded traversal and separator sequences never occur in a legitimate
+// sample path. path.resolve does not decode them, so they survive as literal
+// directory names rather than being normalised — meaning the containment check
+// below sees them as ordinary segments and any later decode would reopen the
+// traversal. Reject them outright (js-file-access.md directive 1).
+const ENCODED_TRAVERSAL_RE = /%2e|%2f|%5c|%00/i;
+
+function safeResolve(rootDir, ...segments) {
+    if (segments.some(s => typeof s !== 'string' || s.includes('\0') || ENCODED_TRAVERSAL_RE.test(s))) return null;
+    const root = path.resolve(rootDir);
+    const resolved = path.resolve(rootDir, ...segments);
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
+    return resolved;
+}
+
+/**
  * Load subscription plan details from subscriptionPlans.yaml in samplesDir.
  * Returns a map of planName → plan object. Missing file → empty map.
  */
@@ -57,7 +80,9 @@ function normalizeSampleApiType(rawType) {
 }
 
 function parseApiYaml(apiHandle, samplesDir) {
-    const apiYamlPath = path.join(resolveDir(samplesDir), apiHandle, 'api.yaml');
+    const apiHandleDir = safeResolve(resolveDir(samplesDir), apiHandle);
+    if (!apiHandleDir) return null;
+    const apiYamlPath = path.join(apiHandleDir, 'api.yaml');
     if (!fs.existsSync(apiYamlPath)) return null;
     let doc;
     try {
@@ -85,7 +110,7 @@ function parseApiYaml(apiHandle, samplesDir) {
         };
     });
     // Collect images from web/ and expose them as /mock/{handle}/web/{filename} URLs
-    const webDir = path.join(resolveDir(samplesDir), apiHandle, constants.ARTIFACT_DIR.WEB);
+    const webDir = path.join(apiHandleDir, constants.ARTIFACT_DIR.WEB);
     const imageExtensions = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']);
     const apiImageMetadata = {};
     if (fs.existsSync(webDir)) {
@@ -126,9 +151,11 @@ function parseApiYaml(apiHandle, samplesDir) {
 function getApiDir(apiHandle, samplesDir) {
     const dir = resolveDir(samplesDir);
     if (!fs.existsSync(dir)) return null;
-    // First try: directory name matches apiHandle directly
-    const direct = path.join(dir, apiHandle);
-    if (fs.existsSync(path.join(direct, 'api.yaml'))) return direct;
+    // First try: directory name matches apiHandle directly. safeResolve rejects a handle
+    // that would escape the samples root; on rejection we skip the direct lookup and fall
+    // through to the metadata scan below, which only iterates real on-disk entries.
+    const direct = safeResolve(dir, apiHandle);
+    if (direct && fs.existsSync(path.join(direct, 'api.yaml'))) return direct;
     // Second try: scan all directories for one whose metadata.name matches
     const entries = fs.readdirSync(dir).filter(e => fs.statSync(path.join(dir, e)).isDirectory());
     for (const entry of entries) {
@@ -199,7 +226,10 @@ function loadOne(apiHandle, samplesDir = './samples/apis/') {
 function getDefinition(apiHandle, samplesDir = './samples/apis/') {
     const apiDir = getApiDir(apiHandle, samplesDir);
     if (!apiDir) return null;
-    for (const name of ['definition.graphql', 'definition.yml']) {
+    // Both YAML extensions are accepted: samples have been authored with each,
+    // and a sample whose definition file simply isn't found renders as an API
+    // with no specification rather than as an error, so the mismatch is silent.
+    for (const name of ['definition.graphql', 'definition.yml', 'definition.yaml']) {
         const candidate = path.join(apiDir, name);
         if (fs.existsSync(candidate)) return fs.readFileSync(candidate, 'utf-8');
     }
@@ -249,10 +279,12 @@ function getDocMarkdown(apiHandle, docName, samplesDir = './samples/apis/', docT
     // Try the name as-is then with .md appended (nav strips the extension from URLs).
     const candidates = [docName, docName + '.md'];
     const docsDir = path.join(apiDir, constants.ARTIFACT_DIR.DOCS);
-    // When docType is provided, prefer docs/{docType}/ before falling back to the rest.
+    // docType and docName are user-controlled route params — contain every join within
+    // docsDir so a traversal sequence can't reach outside the API's docs directory.
     const searchDirs = [];
-    if (docType && fs.existsSync(path.join(docsDir, docType))) {
-        searchDirs.push(path.join(docsDir, docType));
+    const typeDir = docType ? safeResolve(docsDir, docType) : null;
+    if (typeDir && fs.existsSync(typeDir)) {
+        searchDirs.push(typeDir);
     }
     searchDirs.push(docsDir);
     if (fs.existsSync(docsDir)) {
@@ -262,8 +294,8 @@ function getDocMarkdown(apiHandle, docName, samplesDir = './samples/apis/', docT
     }
     for (const dir of searchDirs) {
         for (const name of candidates) {
-            const docPath = path.join(dir, name);
-            if (fs.existsSync(docPath)) return fs.readFileSync(docPath, 'utf-8');
+            const docPath = safeResolve(dir, name);
+            if (docPath && fs.existsSync(docPath)) return fs.readFileSync(docPath, 'utf-8');
         }
     }
     return null;

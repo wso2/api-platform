@@ -15,7 +15,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { Sequelize } = require('sequelize');
+const db = require('../db/driver');
+const { NotFoundError } = require('../utils/errors/customErrors');
 const whDao = require('../dao/webhookSubscriberDao');
 const eventDao = require('../dao/eventDao');
 const { WebhookSubscriberDTO } = require('../dto/webhookSubscriberDto');
@@ -35,15 +36,13 @@ function _validateRequiredFields(payload) {
 
 /**
  * Build a specific conflict message for the handle unique constraint.
+ * dp_webhook_subscribers has exactly one unique constraint — (org_uuid, handle) —
+ * so any duplicate-key error from this table is always a handle collision. The raw
+ * driver error (unlike the previous Sequelize.UniqueConstraintError) doesn't carry
+ * a structured `fields` list, so there's nothing left to branch on here.
  */
-function _uniqueConstraintMessage(error, payload) {
-    const fields = Array.isArray(error.fields)
-        ? error.fields
-        : error.fields ? Object.keys(error.fields) : (error.errors || []).map(e => e.path);
-    if (fields.includes('handle')) {
-        return `A webhook subscriber with id "${payload?.id}" already exists in this organization.`;
-    }
-    return 'A webhook subscriber with that id already exists in this organization.';
+function _uniqueConstraintMessage(payload) {
+    return `A webhook subscriber with id "${payload?.id}" already exists in this organization.`;
 }
 
 const createWebhookSubscriber = async (req, res) => {
@@ -67,8 +66,8 @@ const createWebhookSubscriber = async (req, res) => {
         const dto = new WebhookSubscriberDTO(record, audit);
         return res.status(201).json(dto);
     } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            return util.sendError(res, 409, _uniqueConstraintMessage(error, req.body));
+        if (db.isDuplicateKeyError(error)) {
+            return util.sendError(res, 409, _uniqueConstraintMessage(req.body));
         }
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_CREATE_ERROR, { error });
         return util.sendError(res, 500, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_CREATE_ERROR);
@@ -91,11 +90,11 @@ const updateWebhookSubscriber = async (req, res) => {
         const dto = new WebhookSubscriberDTO(updatedRows[0], audit);
         return res.status(200).json(dto);
     } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
+        if (error instanceof NotFoundError) {
             return util.sendError(res, 404, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND);
         }
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            return util.sendError(res, 409, _uniqueConstraintMessage(error, req.body));
+        if (db.isDuplicateKeyError(error)) {
+            return util.sendError(res, 409, _uniqueConstraintMessage(req.body));
         }
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_UPDATE_ERROR, { error });
         return util.sendError(res, 500, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_UPDATE_ERROR);
@@ -124,7 +123,7 @@ const getWebhookSubscriber = async (req, res) => {
         const dto = new WebhookSubscriberDTO(record, audit);
         return res.status(200).json(dto);
     } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
+        if (error instanceof NotFoundError) {
             return util.sendError(res, 404, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND);
         }
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_RETRIEVE_ERROR, { error });
@@ -154,7 +153,7 @@ const getWebhookSubscriberDeliveries = async (req, res) => {
         const deliveries = await eventDao.listDeliveriesForSubscriber(orgId, sub.uuid, 20);
         return res.status(200).json(util.toPaginatedList(deliveries.map(_formatDeliverySummary), req));
     } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
+        if (error instanceof NotFoundError) {
             return util.sendError(res, 404, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND);
         }
         logger.error('Error fetching webhook subscriber deliveries', { error });
@@ -171,7 +170,7 @@ const deleteWebhookSubscriber = async (req, res) => {
         logUserAction('WEBHOOK_SUBSCRIBER_DELETED', req, { orgId, subscriberId, resourceUuid: sub.uuid, resourceType: 'webhook_subscriber' });
         return res.status(204).send();
     } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
+        if (error instanceof NotFoundError) {
             return util.sendError(res, 404, constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_NOT_FOUND);
         }
         logger.error(constants.ERROR_MESSAGE.WEBHOOK_SUBSCRIBER_DELETE_ERROR, { error });

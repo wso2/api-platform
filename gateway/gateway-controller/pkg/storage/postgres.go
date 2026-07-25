@@ -21,7 +21,6 @@ package storage
 import (
 	"context"
 	"database/sql"
-	_ "embed"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -35,11 +34,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-//go:embed gateway-controller-db.postgres.sql
-var postgresSchemaSQL string
-
 const (
-	postgresSchemaLockID  = int64(749251473)
 	pgUniqueViolationCode = "23505"
 )
 
@@ -100,11 +95,6 @@ func newPostgresStorage(cfg PostgresConnectionConfig, logger *slog.Logger) (*Pos
 		return nil, fmt.Errorf("failed to ping postgres database: %w", err)
 	}
 
-	if err := storage.initSchema(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("failed to initialize schema: %w", err)
-	}
-
 	logger.Info("PostgreSQL storage initialized",
 		slog.String("host", cfg.Host),
 		slog.Int("port", cfg.Port),
@@ -117,53 +107,6 @@ func newPostgresStorage(cfg PostgresConnectionConfig, logger *slog.Logger) (*Pos
 		slog.String("dsn", sanitizePostgresDSN(dsn)))
 
 	return storage, nil
-}
-
-// initSchema creates the database schema if it doesn't exist.
-func (s *PostgresStorage) initSchema() (retErr error) {
-	ctx := context.Background()
-
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to acquire postgres connection for schema init: %w", err)
-	}
-	defer func() {
-		if closeErr := conn.Close(); closeErr != nil {
-			if retErr != nil {
-				retErr = fmt.Errorf("%w; failed to close schema init connection: %v", retErr, closeErr)
-			} else {
-				retErr = fmt.Errorf("failed to close schema init connection: %w", closeErr)
-			}
-		}
-	}()
-
-	if _, err := conn.ExecContext(ctx, s.rebind(`SELECT pg_advisory_lock(?)`), postgresSchemaLockID); err != nil {
-		return fmt.Errorf("failed to acquire schema init lock: %w", err)
-	}
-	defer func() {
-		if _, unlockErr := conn.ExecContext(ctx, s.rebind(`SELECT pg_advisory_unlock(?)`), postgresSchemaLockID); unlockErr != nil {
-			if retErr != nil {
-				retErr = fmt.Errorf("%w; failed to release schema init lock: %v", retErr, unlockErr)
-			} else {
-				retErr = fmt.Errorf("failed to release schema init lock: %w", unlockErr)
-			}
-		}
-	}()
-
-	s.logger.Info("Initializing PostgreSQL schema")
-	if err := s.execSchemaStatements(ctx, conn, postgresSchemaSQL); err != nil {
-		return fmt.Errorf("failed to execute postgres schema: %w", err)
-	}
-
-	s.logger.Info("PostgreSQL schema initialized")
-	return nil
-}
-
-func (s *PostgresStorage) execSchemaStatements(ctx context.Context, conn *sql.Conn, schema string) error {
-	if _, err := conn.ExecContext(ctx, schema); err != nil {
-		return err
-	}
-	return nil
 }
 
 func withDefaultPostgresConfig(cfg PostgresConnectionConfig) PostgresConnectionConfig {

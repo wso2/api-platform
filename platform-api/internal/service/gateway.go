@@ -102,21 +102,18 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 	}
 }
 
-// GetStoredManifest returns the latest gateway manifest. Called by APIM to retrieve
-// the manifest that was pushed by the gateway controller on connect.
-func (s *GatewayService) GetStoredManifest(gatewayID, orgID string) (*Manifest, error) {
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+// GetStoredManifest returns the latest gateway manifest. Public gateway routes
+// identify a gateway by its handle, while the manifest is stored by gateway UUID.
+func (s *GatewayService) GetStoredManifest(gatewayHandle, orgID string) (*Manifest, error) {
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway == nil {
 		return nil, apperror.GatewayNotFound.New()
 	}
-	if gateway.OrganizationID != orgID {
-		return nil, apperror.GatewayNotFound.New()
-	}
 
-	raw, err := s.gatewayRepo.GetGatewayManifest(gatewayID)
+	raw, err := s.gatewayRepo.GetGatewayManifest(gateway.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway manifest: %w", err)
 	}
@@ -328,29 +325,27 @@ func parseVersion(v string) (parsedVersion, error) {
 }
 
 // SyncCustomPolicy upserts a custom policy from the gateway manifest into the gateway_custom_policies table.
-// The gateway must belong to the caller's organization. The policy must exist in the manifest and it should be a custom policy.
-func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version string) (*model.CustomPolicy, error) {
+// The gateway is identified by its handle and must belong to the caller's organization. The policy must
+// exist in the manifest and it should be a custom policy.
+func (s *GatewayService) SyncCustomPolicy(gatewayHandle, orgID, policyName, version string) (*model.CustomPolicy, error) {
 	policyName = strings.ToLower(policyName)
 
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	gateway, err := s.gatewayRepo.GetByHandleAndOrgID(gatewayHandle, orgID)
 	if err != nil {
-		s.slogger.Error("failed to get gateway", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID), slog.String("error", err.Error()))
+		s.slogger.Error("failed to get gateway", slog.String("gateway_handle", gatewayHandle), slog.String("org_id", orgID), slog.String("error", err.Error()))
 		return nil, apperror.GatewayNotFound.New()
 	}
 	if gateway == nil {
 		return nil, apperror.GatewayNotFound.New()
 	}
-	if gateway.OrganizationID != orgID {
-		return nil, apperror.GatewayNotFound.New().WithLogMessage("gateway belongs to a different organization")
-	}
 
-	raw, err := s.gatewayRepo.GetGatewayManifest(gatewayID)
+	raw, err := s.gatewayRepo.GetGatewayManifest(gateway.ID)
 	if err != nil {
-		s.slogger.Error("failed to read gateway manifest", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID))
+		s.slogger.Error("failed to read gateway manifest", slog.String("gateway_id", gateway.ID), slog.String("org_id", orgID))
 		return nil, fmt.Errorf("failed to read gateway manifest: %w", err)
 	}
 	if len(raw) == 0 {
-		s.slogger.Error("gateway manifest is not available", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID))
+		s.slogger.Error("gateway manifest is not available", slog.String("gateway_id", gateway.ID), slog.String("org_id", orgID))
 		return nil, apperror.PolicyInvalidState.New().WithLogMessage("gateway manifest is not available")
 	}
 
@@ -367,12 +362,12 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 		}
 	}
 	if found == nil {
-		s.slogger.Error("policy not found in gateway manifest", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("version", version))
+		s.slogger.Error("policy not found in gateway manifest", slog.String("gateway_id", gateway.ID), slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("version", version))
 		return nil, apperror.CustomPolicyVersionNotFnd.New().
 			WithLogMessage(fmt.Sprintf("policy '%s' version '%s' not found in gateway manifest", policyName, version))
 	}
 	if found.ManagedBy != constants.PolicyManagedByOrganization {
-		s.slogger.Error("policy is not a custom policy", slog.String("gateway_id", gatewayID), slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("version", version))
+		s.slogger.Error("policy is not a custom policy", slog.String("gateway_id", gateway.ID), slog.String("org_id", orgID), slog.String("policy_name", policyName), slog.String("version", version))
 		return nil, apperror.PolicyInvalidState.New().
 			WithLogMessage(fmt.Sprintf("policy '%s' version '%s' is not a custom policy", policyName, version))
 	}
@@ -418,8 +413,8 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 		Version:          version,
 		Description:      found.Description,
 		PolicyDefinition: policyDefJSON,
-		CreatedBy:        gatewayID,
-		UpdatedBy:        gatewayID,
+		CreatedBy:        gateway.ID,
+		UpdatedBy:        gateway.ID,
 	}
 
 	if sameMajorVersionedPolicy != nil {
@@ -450,7 +445,7 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 			return nil, fmt.Errorf("failed to update custom policy: %w", err)
 		}
 		s.slogger.Info("Custom policy updated (minor version bump)",
-			slog.String("gateway_id", gatewayID),
+			slog.String("gateway_id", gateway.ID),
 			slog.String("org_id", orgID),
 			slog.String("policy_name", policyName),
 			slog.String("old_version", sameMajorVersionedPolicy.Version),
@@ -467,7 +462,7 @@ func (s *GatewayService) SyncCustomPolicy(gatewayID, orgID, policyName, version 
 			return nil, fmt.Errorf("failed to insert custom policy: %w", err)
 		}
 		s.slogger.Info("Custom policy created",
-			slog.String("gateway_id", gatewayID),
+			slog.String("gateway_id", gateway.ID),
 			slog.String("org_id", orgID),
 			slog.String("policy_name", policyName),
 			slog.String("version", version),

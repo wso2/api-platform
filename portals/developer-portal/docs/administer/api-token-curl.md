@@ -118,7 +118,7 @@ echo "TOKEN=$TOKEN"
 ```bash
 # The org is resolved from the token's org claim (set via ORGANIZATION_IDENTIFIER
 # during login in Step 3) — no org identifier needed in the request itself.
-BASE="https://localhost:3000/api/v0.9"
+BASE="https://localhost:9543/api/v0.9"
 
 # List APIs
 curl -sk "${BASE}/apis" -H "Authorization: Bearer $TOKEN" | jq .

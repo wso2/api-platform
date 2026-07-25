@@ -223,6 +223,7 @@ type SubscriptionRepository interface {
 type LLMProviderTemplateRepository interface {
 	Create(t *model.LLMProviderTemplate) error
 	CreateNewVersion(t *model.LLMProviderTemplate) error
+	CreateImportedVersion(t *model.LLMProviderTemplate) (bool, error)
 	GetByID(templateID, orgUUID string) (*model.LLMProviderTemplate, error)
 	GetByUUID(uuid, orgUUID string) (*model.LLMProviderTemplate, error)
 	GetByVersion(templateID, orgUUID, version string) (*model.LLMProviderTemplate, error)
@@ -246,10 +247,12 @@ type LLMProviderTemplateRepository interface {
 // LLMProviderRepository defines the interface for LLM provider persistence
 type LLMProviderRepository interface {
 	Create(p *model.LLMProvider) error
+	CreateWithCustomPolicyUsages(p *model.LLMProvider, policyUUIDs []string) error
 	GetByID(providerID, orgUUID string) (*model.LLMProvider, error)
 	List(orgUUID string, limit, offset int) ([]*model.LLMProvider, error)
 	Count(orgUUID string) (int, error)
 	Update(p *model.LLMProvider) error
+	UpdateWithCustomPolicyUsages(p *model.LLMProvider, policyUUIDs []string) error
 	Delete(providerID, orgUUID string) error
 	Exists(providerID, orgUUID string) (bool, error)
 	// EnsureGatewayAssociation creates a gateway association for the provider if one

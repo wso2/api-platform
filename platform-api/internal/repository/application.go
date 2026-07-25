@@ -351,13 +351,13 @@ func (r *ApplicationRepo) DeleteApplication(appID, orgID string) error {
 
 func (r *ApplicationRepo) GetAPIKeyByNameAndArtifactHandle(keyName, artifactHandle, orgID string) (*model.ApplicationAPIKey, error) {
 	row := r.db.QueryRow(r.db.Rebind(`
-		SELECT ak.uuid, ak.display_name, ak.artifact_uuid, src.handle, art.type, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
+		SELECT ak.uuid, ak.handle, ak.artifact_uuid, src.handle, art.type, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
 		FROM api_keys ak
 		INNER JOIN artifacts art ON art.uuid = ak.artifact_uuid
 		INNER JOIN (
 			`+r.reg.UnionAllSelect("uuid", "handle")+`
 		) src ON src.uuid = ak.artifact_uuid
-		WHERE art.organization_uuid = ? AND ak.display_name = ? AND src.handle = ?
+		WHERE art.organization_uuid = ? AND ak.handle = ? AND src.handle = ?
 	`), orgID, keyName, artifactHandle)
 
 	key, err := scanApplicationAPIKey(row)
@@ -392,7 +392,7 @@ func (r *ApplicationRepo) GetDeployedGatewayIDsByArtifactUUID(artifactUUID, orgI
 
 func (r *ApplicationRepo) ListMappedAPIKeys(applicationUUID string) ([]*model.ApplicationAPIKey, error) {
 	rows, err := r.db.Query(r.db.Rebind(`
-		SELECT ak.uuid, ak.display_name, ak.artifact_uuid, src.handle, art.type, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
+		SELECT ak.uuid, ak.handle, ak.artifact_uuid, src.handle, art.type, ak.status, ak.created_by, ak.created_at, ak.updated_at, ak.expires_at
 		FROM application_api_key_mappings aak
 		INNER JOIN api_keys ak ON ak.uuid = aak.api_key_id
 		INNER JOIN artifacts art ON art.uuid = ak.artifact_uuid

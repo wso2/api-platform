@@ -378,16 +378,13 @@ func (h *GatewayHandler) GetGatewayManifest(w http.ResponseWriter, r *http.Reque
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
 
-	gatewayId := r.PathValue("gatewayId")
-	if gatewayId == "" {
+	gatewayHandle := r.PathValue("gatewayId")
+	if gatewayHandle == "" {
 		return apperror.ValidationFailed.New("Gateway ID is required")
 	}
 
-	dataFromDb, err := h.gatewayService.GetStoredManifest(gatewayId, orgId)
+	dataFromDb, err := h.gatewayService.GetStoredManifest(gatewayHandle, orgId)
 	if err != nil {
-		if strings.Contains(err.Error(), "invalid UUID") {
-			return apperror.ValidationFailed.Wrap(err, "Invalid gateway ID format")
-		}
 		return serviceError(err, "failed to retrieve gateway manifest")
 	}
 
@@ -405,15 +402,15 @@ func (h *GatewayHandler) SyncCustomPolicy(w http.ResponseWriter, r *http.Request
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
 
-	gatewayId := r.URL.Query().Get("gatewayId")
+	gatewayHandle := r.URL.Query().Get("gatewayId")
 	policyName := r.URL.Query().Get("policyName")
 	version := r.URL.Query().Get("policyVersion")
 
-	if gatewayId == "" || policyName == "" || version == "" {
+	if gatewayHandle == "" || policyName == "" || version == "" {
 		return apperror.ValidationFailed.New("gatewayId, policyName and policyVersion are required")
 	}
 
-	policy, err := h.gatewayService.SyncCustomPolicy(gatewayId, orgId, policyName, version)
+	policy, err := h.gatewayService.SyncCustomPolicy(gatewayHandle, orgId, policyName, version)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {

@@ -42,16 +42,31 @@ type mockGatewayRepoForPolicy struct {
 	manifestErr error
 
 	// call tracking
-	getByUUIDCalled      bool
-	getManifestCalled    bool
-	lastGatewayID        string
-	storedManifest       []byte
-	updatedVersion       string
+	getByHandleCalled bool
+	getManifestCalled bool
+	lastGatewayHandle string
+	storedManifest    []byte
+	updatedVersion    string
 }
 
+// GetByHandleAndOrgID mimics the repository's org-scoped lookup: a gateway is only
+// returned when its OrganizationID matches the requested orgID, exactly like the
+// real `WHERE g.handle = ? AND g.organization_uuid = ?` query.
+func (m *mockGatewayRepoForPolicy) GetByHandleAndOrgID(handle, orgID string) (*model.Gateway, error) {
+	m.getByHandleCalled = true
+	m.lastGatewayHandle = handle
+	if m.gatewayErr != nil {
+		return nil, m.gatewayErr
+	}
+	if m.gateway != nil && m.gateway.OrganizationID != orgID {
+		return nil, nil
+	}
+	return m.gateway, nil
+}
+
+// GetByUUID backs ReceiveGatewayManifest, which is called by the gateway controller
+// with its own UUID and is unrelated to the handle-based SyncCustomPolicy lookup above.
 func (m *mockGatewayRepoForPolicy) GetByUUID(gatewayID string) (*model.Gateway, error) {
-	m.getByUUIDCalled = true
-	m.lastGatewayID = gatewayID
 	return m.gateway, m.gatewayErr
 }
 

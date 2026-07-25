@@ -56,13 +56,17 @@ function snakeToCamelDeep(value) {
  * Load configs/config.toml (snake_case), converted to camelCase.
  * Returns an empty object if the file does not exist, so DEFAULTS alone can
  * drive the app.
+ *
+ * Every key lives under the single [developer_portal] table. That wrapper is
+ * unwrapped here so the in-code config tree stays flat (config.server,
+ * config.security, …); anything outside the [developer_portal] table is ignored.
  */
 function loadTomlConfig() {
     const tomlPath = path.join(process.cwd(), 'configs', 'config.toml');
 
     if (fs.existsSync(tomlPath)) {
         const raw = fs.readFileSync(tomlPath, 'utf8');
-        return snakeToCamelDeep(toml.parse(raw));
+        return snakeToCamelDeep(toml.parse(raw)).developerPortal || {};
     }
     return {};
 }
@@ -321,7 +325,7 @@ function requireHexSecret(value, fieldName) {
             `[FATAL] security.${fieldName} did not resolve to a 64-character hex string. ` +
             'Refusing to start with a missing or malformed secret. ' +
             'Generate one with: openssl rand -hex 32 — then reference it from configs/config.toml, ' +
-            `e.g. ${fieldName === 'encryptionKey' ? 'encryption_key' : 'session_secret'} = '{{ env "APIP_DP_SECURITY_${fieldName === 'encryptionKey' ? 'ENCRYPTIONKEY' : 'SESSIONSECRET'}" }}'.\n`
+            `e.g. ${fieldName === 'encryptionKey' ? 'encryption_key' : 'session_secret'} = '{{ env "APIP_DP_SECURITY_${fieldName === 'encryptionKey' ? 'ENCRYPTION_KEY' : 'SESSION_SECRET'}" }}'.\n`
         );
         process.exit(1);
     }
@@ -329,5 +333,50 @@ function requireHexSecret(value, fieldName) {
 
 requireHexSecret(config.security.encryptionKey, 'encryptionKey');
 requireHexSecret(config.security.sessionSecret, 'sessionSecret');
+
+/**
+ * Fail-closed startup check: database connection-pool settings must resolve to
+ * sane numbers before the application is allowed to start. coerceValue() only
+ * converts a leaf to a Number when the *entire* string is numeric — a
+ * malformed override (e.g. APIP_DP_DATABASE_MAX_OPEN_CONNS="abc") is left as
+ * that raw string rather than becoming NaN, and would otherwise reach
+ * pg.Pool()/mssql.ConnectionPool() unvalidated (see postgresAdapter.js /
+ * mssqlAdapter.js), producing a silently broken or uncapped pool.
+ */
+function validateDatabasePoolConfig(database) {
+    if (database.driver !== 'postgres' && database.driver !== 'mssql') return;
+
+    const nonNegativeFields = [
+        'poolIdleTimeoutMs', 'poolConnectionTimeoutMs', 'poolRequestTimeoutMs', 'minOpenConns',
+    ];
+    for (const field of nonNegativeFields) {
+        const value = database[field];
+        if (!Number.isInteger(value) || value < 0) {
+            process.stderr.write(
+                `[FATAL] database.${field} must resolve to a non-negative integer, got ${JSON.stringify(value)}. ` +
+                'Refusing to start with an invalid database connection-pool setting.\n'
+            );
+            process.exit(1);
+        }
+    }
+
+    const maxOpenConns = database.maxOpenConns;
+    if (!Number.isInteger(maxOpenConns) || maxOpenConns < 1) {
+        process.stderr.write(
+            `[FATAL] database.maxOpenConns must resolve to an integer >= 1, got ${JSON.stringify(maxOpenConns)}. ` +
+            'Refusing to start with an invalid database connection-pool setting.\n'
+        );
+        process.exit(1);
+    }
+
+    if (database.minOpenConns > maxOpenConns) {
+        process.stderr.write(
+            `[FATAL] database.minOpenConns (${database.minOpenConns}) must not exceed database.maxOpenConns (${maxOpenConns}).\n`
+        );
+        process.exit(1);
+    }
+}
+
+validateDatabasePoolConfig(config.database);
 
 module.exports = { config };

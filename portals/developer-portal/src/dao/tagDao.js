@@ -15,84 +15,69 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const Tags = require('../models/tag');
-const { APITags } = require('../models/apiMetadata');
-const { Sequelize } = require('sequelize');
+'use strict';
+
+const crypto = require('crypto');
+const db = require('../db/driver');
+const { findOrCreateSafe } = require('./findOrCreateHelper');
+
+const TAGS_TABLE = 'dp_tags';
+const API_TAGS_TABLE = 'dp_api_tag_mappings';
+
+// Built once at module load — buildUpsert only depends on the (fixed) dialect
+// and column list, not on any per-call data.
+const UPSERT_API_TAG_SQL = db.buildUpsert(
+    API_TAGS_TABLE,
+    ['uuid', 'tag_uuid', 'api_uuid', 'created_by'],
+    ['tag_uuid', 'api_uuid'],
+    [] // ignoreDuplicates semantics — leave the existing mapping row untouched on conflict
+);
 
 /**
  * Tags are freeform — unlike labels, an unknown tag name is created on the fly
  * rather than rejected, so existing free-text tagging behavior is preserved.
  */
 const getOrCreateIds = async (orgId, tagNames, createdBy, t) => {
-
-    const IDList = [];
-    try {
-        for (const name of tagNames) {
-            const trimmed = String(name).trim();
-            if (!trimmed) continue;
-            const [tag] = await Tags.findOrCreate({
-                where: {
-                    name: trimmed,
-                    org_uuid: orgId
-                },
-                defaults: {
-                    name: trimmed,
-                    org_uuid: orgId,
-                    created_by: createdBy,
-                    updated_by: createdBy
-                },
-                transaction: t
-            });
-            IDList.push(tag.uuid);
-        }
-        return IDList;
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    const exec = t || db;
+    const idList = [];
+    for (const name of tagNames) {
+        const trimmed = String(name).trim();
+        if (!trimmed) continue;
+        const tag = await findOrCreateSafe(
+            TAGS_TABLE,
+            { name: trimmed, org_uuid: orgId },
+            {
+                uuid: crypto.randomUUID(),
+                name: trimmed,
+                org_uuid: orgId,
+                created_by: createdBy,
+                updated_by: createdBy,
+            },
+            exec
+        );
+        idList.push(tag.uuid);
     }
-}
+    return idList;
+};
 
 const createApiMapping = async (orgId, apiId, tagNames, createdBy, t) => {
-
-    const IDList = await getOrCreateIds(orgId, tagNames || [], createdBy, t);
-    try {
-        const tagList = IDList.map(tagId => ({
-            tag_uuid: tagId,
-            api_uuid: apiId,
-            created_by: createdBy,
-        }));
-        return await APITags.bulkCreate(tagList, { transaction: t, ignoreDuplicates: true });
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
+    const exec = t || db;
+    const idList = await getOrCreateIds(orgId, tagNames || [], createdBy, t);
+    for (const tagId of idList) {
+        await exec.execute(UPSERT_API_TAG_SQL, [crypto.randomUUID(), tagId, apiId, createdBy]);
     }
-}
+    return idList;
+};
 
 /**
  * Full replace — mirrors the previous TAGS column's overwrite-on-update semantics
  * (no incremental add/remove diffing like labels).
  */
 const replaceApiMapping = async (orgId, apiId, tagNames, createdBy, t) => {
-
-    try {
-        await APITags.destroy({
-            where: {
-                api_uuid: apiId,
-            },
-            transaction: t
-        });
-        return await createApiMapping(orgId, apiId, tagNames || [], createdBy, t);
-    } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
-        }
-        throw new Sequelize.DatabaseError(error);
-    }
-}
+    const exec = t || db;
+    await exec.execute(`DELETE FROM ${API_TAGS_TABLE} WHERE api_uuid = ?`, [apiId]);
+    return createApiMapping(orgId, apiId, tagNames || [], createdBy, t);
+};
 
 module.exports = {
     getOrCreateIds,

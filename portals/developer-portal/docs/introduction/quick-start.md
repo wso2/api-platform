@@ -6,7 +6,7 @@ Get the Developer Portal running locally in a few minutes using Docker Compose.
 
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/) installed
 - `openssl` on your `PATH` (used by the setup script to generate certs and secrets)
-- Ports 3000 (Developer Portal) and 9243 (Platform API) available
+- Ports 9543 (Developer Portal) and 9243 (Platform API) available
 
 ## Steps
 
@@ -48,7 +48,7 @@ This starts the Developer Portal (SQLite by default). On first boot the database
 Navigate to:
 
 ```
-https://localhost:3000/default/views/default
+https://localhost:9543/default/views/default
 ```
 
 Sign in with the admin username and password you set when running `./scripts/setup.sh`.
@@ -65,7 +65,7 @@ The fastest way to see a populated catalog is to deploy the bundled sample APIs 
 
 This deploys everything under `samples/` into the `default` organization through the public REST API (the portal has no built-in seeding logic). It prompts for the admin username and password you set in step 2 — or set `ADMIN_USERNAME` / `ADMIN_PASSWORD` to skip the prompt. Safe to re-run: samples that already exist (matched by name and version) are skipped.
 
-> Requires `curl`, `jq`, and `zip` on your `PATH`. The portal must be running (step 3). Set `DEVPORTAL_URL` / `PLATFORM_API_URL` to override the defaults (`https://localhost:3000` / `https://localhost:9243`).
+> Requires `curl`, `jq`, and `zip` on your `PATH`. The portal must be running (step 3). Set `DEVPORTAL_URL` / `PLATFORM_API_URL` to override the defaults (`https://localhost:9543` / `https://localhost:9243`).
 
 Refresh the catalog page and the sample APIs appear. To publish an API of your own instead, continue below.
 
@@ -79,19 +79,19 @@ apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: RestApi
 
 metadata:
-  name: ping-api-v1.0
+  name: reading-list-api-v1.0
 
 spec:
   type: REST
-  displayName: Ping API
+  displayName: Reading-List-API
   version: v1.0
-  description: Sample HTTP echo/probe API. Requires API key authentication. No subscription plans.
+  description: Sample reading-list API for tracking books and their reading status. Open access — no API key or subscription required.
   status: PUBLISHED
-  referenceID: ping-api-v1.0
+  referenceID: reading-list-api-v1.0
 
   tags:
-    - ping
-    - api-key
+    - reading-list
+    - books
 
   labels:
     - default
@@ -108,86 +108,131 @@ spec:
     technicalOwnerEmail: architecture@example.com
 
   endpoints:
-    sandboxUrl: http://localhost:8080/ping
-    productionUrl: http://localhost:8080/ping
+    sandboxUrl: http://localhost:8080/reading-list/v1.0
+    productionUrl: http://localhost:8080/reading-list/v1.0
 ```
 
 ```yaml
 # openapi.yaml
 openapi: 3.0.1
 info:
-  title: Ping API
-  version: 1.0.0
+  title: Reading-List-API
+  version: v1.0
   description: |
-    HTTP echo/probe API secured with an API key (`X-API-Key` header).
-    Use this API to inspect requests, test connectivity, and probe status codes.
-    No subscription plans are required — just an API key.
+    Track a personal reading list — add books, update their reading status,
+    and remove them when you are done.
+    Open access: no API key or subscription token is required.
 servers:
-  - url: /ping
-security:
-  - ApiKeyHeader: []
+  - url: /reading-list/v1.0
 components:
-  securitySchemes:
-    ApiKeyHeader:
-      type: apiKey
-      in: header
-      name: X-API-Key
   schemas:
-    PingResponse:
+    Book:
       type: object
-      description: Response returned by the ping/echo service
-      additionalProperties: true
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+          example: The Great Gatsby
+        author:
+          type: string
+          example: F. Scott Fitzgerald
+        status:
+          type: string
+          enum: [to_read, reading, read]
+      required: [title, author, status]
+    BookList:
+      type: object
+      properties:
+        books:
+          type: array
+          items:
+            $ref: '#/components/schemas/Book'
+      required: [books]
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
 
 paths:
-  /get:
+  /books:
     get:
-      summary: Echo a GET request
-      description: Returns the query parameters and headers sent with the request.
+      summary: List books
+      description: Returns every book on the reading list.
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PingResponse'
-
-  /post:
+                $ref: '#/components/schemas/BookList'
     post:
-      summary: Echo a POST request
-      description: Echoes the posted JSON body back in the response.
+      summary: Add a book
+      description: Adds a book to the reading list and returns it with its assigned id.
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
+              $ref: '#/components/schemas/Book'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+
+  /books/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get a book
+      description: Returns a single book by id.
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PingResponse'
-
-  /status/{code}:
-    get:
-      summary: Return a specific HTTP status code
-      description: Returns the given HTTP status code — useful for testing error handling.
-      parameters:
-        - name: code
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int32
-      responses:
-        '200':
-          description: Proxy response (actual status depends on the `code` path parameter)
+                $ref: '#/components/schemas/Book'
+        '404':
+          description: Not Found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PingResponse'
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Update a book
+      description: Replaces a book's details — commonly used to move it between reading statuses.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Book'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+    delete:
+      summary: Remove a book
+      description: Removes a book from the reading list.
+      responses:
+        '204':
+          description: No Content
 
 ```
 
@@ -200,13 +245,13 @@ TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
 # Publish the API (the token's org_handle claim scopes this to the "default" org)
-curl -sk -X POST "https://localhost:3000/api/v0.9/apis" \
+curl -sk -X POST "https://localhost:9543/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "metadata=@api.yaml;type=application/yaml" \
   -F "definition=@openapi.yaml;type=application/yaml"
 ```
 
-Refresh the portal — the Ping API now appears in the catalog. Click it to view the documentation and try-out console.
+Refresh the portal — the Reading-List-API now appears in the catalog. Click it to view the documentation and try-out console.
 
 ## What was just created?
 
@@ -214,9 +259,9 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 |---|---|
 | Organization | `default` |
 | Default view | `default` |
-| Portal URL | `https://localhost:3000/default/views/default` |
+| Portal URL | `https://localhost:9543/default/views/default` |
 | Admin credentials | Set when you ran `./scripts/setup.sh` (stored bcrypt-hashed in `api-platform.env`) |
-| Sample API | `Ping API` visible in the catalog |
+| Sample API | `Reading-List-API` visible in the catalog |
 
 ## Next steps
 

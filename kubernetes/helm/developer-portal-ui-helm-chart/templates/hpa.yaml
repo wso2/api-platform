@@ -1,0 +1,51 @@
+{{- $dp := .Values -}}
+{{- $hpa := $dp.hpa -}}
+{{- if and $dp.deployment.enabled $hpa.enabled }}
+{{- if ne $dp.config.database.type "postgres" }}
+{{- fail "developer-portal.hpa requires developer-portal.config.database.type=postgres — SQLite does not support multiple replicas." }}
+{{- end }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "apip.developerPortal.fullname" . }}
+  labels:
+    {{- include "apip.componentLabels" (list . "developer-portal" dict) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . dict)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "apip.developerPortal.fullname" . }}
+  minReplicas: {{ $hpa.minReplicas }}
+  maxReplicas: {{ $hpa.maxReplicas }}
+  {{- if or $hpa.targetCPUUtilizationPercentage $hpa.targetMemoryUtilizationPercentage $hpa.customMetrics }}
+  metrics:
+    {{- if $hpa.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $hpa.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if $hpa.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $hpa.targetMemoryUtilizationPercentage }}
+    {{- end }}
+    {{- with $hpa.customMetrics }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  {{- with $hpa.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+

@@ -1,12 +1,11 @@
 [ai_workspace]
 
 default_org_region = "us"
+domain = '{{ env "APIP_AIW_DOMAIN" "localhost:9643" }}'
 
+[ai_workspace.server.https]
 
-[ai_workspace.server]
-
-domain    = '{{ env "APIP_AIW_SERVER_DOMAIN" "localhost:5380" }}'
-port      = 5380
+port      = '{{ env "APIP_AIW_SERVER_HTTPS_PORT" "9643" }}'
 cert_file = "/etc/ai-workspace/tls/cert.pem"
 key_file  = "/etc/ai-workspace/tls/key.pem"
 
@@ -26,7 +25,7 @@ ca_file = "/etc/ai-workspace/tls/cert.pem"
 [ai_workspace.gateway]
 
 controlplane_host = '{{ env "APIP_AIW_GATEWAY_CONTROLPLANE_HOST" "host.docker.internal:9243" }}'
-platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-alpha2\",\"channel\":\"STS\"}]"
+platform_gateway_versions = "[{\"version\":\"1.2\",\"latestVersion\":\"v1.2.0-beta\",\"channel\":\"STS\"}]"
 
 
 [ai_workspace.auth]

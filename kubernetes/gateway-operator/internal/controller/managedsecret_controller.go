@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	"go.uber.org/zap"
+	"log/slog"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,7 +42,7 @@ type ManagedSecretReconciler struct {
 }
 
 // NewManagedSecretReconciler constructs a fully wired reconciler.
-func NewManagedSecretReconciler(c client.Client, cfg *config.OperatorConfig, logger *zap.Logger, tracker *ResourceTracker) *ManagedSecretReconciler {
+func NewManagedSecretReconciler(c client.Client, cfg *config.OperatorConfig, logger *slog.Logger, tracker *ResourceTracker) *ManagedSecretReconciler {
 	r := &ManagedSecretReconciler{}
 	r.Client = c
 	r.Config = cfg

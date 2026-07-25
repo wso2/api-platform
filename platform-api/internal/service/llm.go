@@ -57,6 +57,7 @@ type LLMProviderService struct {
 	deploymentRepo       repository.DeploymentRepository
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
+	customPolicyRepo     repository.CustomPolicyRepository
 	secretService        *SecretService
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
@@ -130,6 +131,12 @@ func NewLLMProviderService(
 // Called after both services are constructed to avoid circular dependency.
 func (s *LLMProviderService) SetSecretService(ss *SecretService) {
 	s.secretService = ss
+}
+
+// SetCustomPolicyRepository injects the repository used to track custom-policy
+// references made by LLM providers.
+func (s *LLMProviderService) SetCustomPolicyRepository(repo repository.CustomPolicyRepository) {
+	s.customPolicyRepo = repo
 }
 
 // SetSecretService injects the SecretService used to clean up a rotated-away
@@ -954,7 +961,11 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		m.Configuration.Upstream.Sandbox.Auth = defaultUpstreamAuthToNone(m.Configuration.Upstream.Sandbox.Auth)
 	}
 
-	if err := s.repo.Create(m); err != nil {
+	policyUUIDs, err := s.resolveCustomPolicyUUIDs(orgUUID, &m.Configuration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve custom policy usages: %w", err)
+	}
+	if err := s.repo.CreateWithCustomPolicyUsages(m, policyUUIDs); err != nil {
 		if isSQLiteUniqueConstraint(err) {
 			return nil, apperror.LLMProviderExists.New()
 		}
@@ -968,7 +979,6 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	if created == nil {
 		return nil, apperror.LLMProviderNotFound.New()
 	}
-
 	_ = s.auditRepo.Record("CREATE", created.UUID, "llm_provider", orgUUID, createdBy)
 
 	return s.toProviderAPI(created, tpl.ID)
@@ -1177,7 +1187,11 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		m.ReplaceAssociatedGateways = true
 	}
 
-	if err := s.repo.Update(m); err != nil {
+	policyUUIDs, err := s.resolveCustomPolicyUUIDs(orgUUID, &m.Configuration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve custom policy usages: %w", err)
+	}
+	if err := s.repo.UpdateWithCustomPolicyUsages(m, policyUUIDs); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, apperror.LLMProviderNotFound.New()
 		}
@@ -1207,7 +1221,6 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	if updated == nil {
 		return nil, apperror.LLMProviderNotFound.New()
 	}
-
 	_ = s.auditRepo.Record("UPDATE", updated.UUID, "llm_provider", orgUUID, updatedBy)
 
 	return s.toProviderAPI(updated, tpl.ID)
@@ -1271,6 +1284,54 @@ func (s *LLMProviderService) Delete(orgUUID, handle, deletedBy string) error {
 	}
 
 	return nil
+}
+
+// resolveCustomPolicyUUIDs resolves all custom policies referenced by an LLM
+// provider before persistence. Any lookup failure aborts the provider write, so
+// existing deletion guards remain intact.
+func (s *LLMProviderService) resolveCustomPolicyUUIDs(orgUUID string, config *model.LLMProviderConfig) ([]string, error) {
+	if s.customPolicyRepo == nil || config == nil {
+		return nil, nil
+	}
+
+	type policyRef struct{ name, version string }
+	refs := make(map[policyRef]struct{})
+	for _, p := range config.GlobalPolicies {
+		refs[policyRef{p.Name, p.Version}] = struct{}{}
+	}
+	for _, p := range config.OperationPolicies {
+		refs[policyRef{p.Name, p.Version}] = struct{}{}
+	}
+	for _, p := range config.Policies {
+		refs[policyRef{p.Name, p.Version}] = struct{}{}
+	}
+
+	newSet := make(map[string]bool)
+	for ref := range refs {
+		policies, err := s.customPolicyRepo.GetCustomPoliciesByName(orgUUID, strings.ToLower(ref.name))
+		if err != nil {
+			return nil, fmt.Errorf("lookup custom policy %q version %q: %w", ref.name, ref.version, err)
+		}
+		refMajor := strings.TrimPrefix(ref.version, "v")
+		if parsed, err := parseVersion(ref.version); err == nil {
+			refMajor = strconv.Itoa(parsed.Major)
+		}
+		for _, policy := range policies {
+			parsed, err := parseVersion(policy.Version)
+			if err != nil {
+				return nil, fmt.Errorf("parse stored custom policy %q version %q: %w", policy.Name, policy.Version, err)
+			}
+			if strconv.Itoa(parsed.Major) == refMajor {
+				newSet[policy.UUID] = true
+				break
+			}
+		}
+	}
+	policyUUIDs := make([]string, 0, len(newSet))
+	for uuid := range newSet {
+		policyUUIDs = append(policyUUIDs, uuid)
+	}
+	return policyUUIDs, nil
 }
 
 // validateAdditionalProviders eagerly validates a proxy's additional providers

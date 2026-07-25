@@ -512,7 +512,7 @@ func TestLLMDeploymentService_UpdateLLMProviderTemplate_NotFound(t *testing.T) {
 	}
 
 	_, err := service.UpdateLLMProviderTemplate("0000-non-existent-0000-000000000000", params)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
 
@@ -553,8 +553,140 @@ spec:
 	}
 
 	_, err := service.UpdateLLMProviderTemplate("original-handle", params)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot change template handle")
+}
+
+func TestLLMDeploymentService_UpdateLLMProviderTemplate_GroupIDChange(t *testing.T) {
+	store := storage.NewConfigStore()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	db := newTestMockDB()
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "original-handle"},
+			Spec: api.LLMProviderTemplateData{
+				DisplayName: "Original Template",
+				GroupId:     stringPtr("group-a"),
+				Version:     stringPtr("v1.0"),
+			},
+		},
+	}
+	db.SaveLLMProviderTemplate(template)
+	store.AddTemplate(template)
+
+	// Same handle and version, but a changed groupId — must be rejected.
+	yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProviderTemplate
+metadata:
+  name: original-handle
+spec:
+  displayName: Updated Template
+  groupId: group-b
+  version: v1.0
+`
+	params := LLMTemplateParams{
+		Spec:        []byte(yamlData),
+		ContentType: "application/yaml",
+		Logger:      logger,
+	}
+
+	_, err := service.UpdateLLMProviderTemplate("original-handle", params)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot change template groupId")
+}
+
+func TestLLMDeploymentService_UpdateLLMProviderTemplate_VersionChange(t *testing.T) {
+	store := storage.NewConfigStore()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	db := newTestMockDB()
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "original-handle"},
+			Spec: api.LLMProviderTemplateData{
+				DisplayName: "Original Template",
+				GroupId:     stringPtr("group-a"),
+				Version:     stringPtr("v1.0"),
+			},
+		},
+	}
+	db.SaveLLMProviderTemplate(template)
+	store.AddTemplate(template)
+
+	// Same handle and groupId, but a changed version — must be rejected.
+	yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProviderTemplate
+metadata:
+  name: original-handle
+spec:
+  displayName: Updated Template
+  groupId: group-a
+  version: v2.0
+`
+	params := LLMTemplateParams{
+		Spec:        []byte(yamlData),
+		ContentType: "application/yaml",
+		Logger:      logger,
+	}
+
+	_, err := service.UpdateLLMProviderTemplate("original-handle", params)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot change template version")
+}
+
+func TestLLMDeploymentService_UpdateLLMProviderTemplate_SameGroupIDAndVersionSucceeds(t *testing.T) {
+	store := storage.NewConfigStore()
+	routerConfig := &config.RouterConfig{ListenerPort: 8080}
+	db := newTestMockDB()
+	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	template := &models.StoredLLMProviderTemplate{
+		UUID: "0000-template-1-0000-000000000000",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "original-handle"},
+			Spec: api.LLMProviderTemplateData{
+				DisplayName: "Original Template",
+				GroupId:     stringPtr("group-a"),
+				Version:     stringPtr("v1.0"),
+			},
+		},
+	}
+	db.SaveLLMProviderTemplate(template)
+	store.AddTemplate(template)
+
+	// Unchanged identity fields, only the display name edited — must succeed.
+	yamlData := `
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProviderTemplate
+metadata:
+  name: original-handle
+spec:
+  displayName: Updated Template
+  groupId: group-a
+  version: v1.0
+`
+	params := LLMTemplateParams{
+		Spec:        []byte(yamlData),
+		ContentType: "application/yaml",
+		Logger:      logger,
+	}
+
+	updated, err := service.UpdateLLMProviderTemplate("original-handle", params)
+	require.NoError(t, err)
+	assert.Equal(t, "Updated Template", updated.Configuration.Spec.DisplayName)
 }
 
 func TestLLMDeploymentService_DeleteLLMProviderTemplate_NotFound(t *testing.T) {

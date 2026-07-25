@@ -15,7 +15,6 @@
             <thead>
               <tr>
                 <th>Display name</th>
-                <th>Type</th>
                 <th>Token endpoint</th>
                 <th>Status</th>
                 <th style="width:90px;"></th>
@@ -28,7 +27,6 @@
                   <button type="button" class="cfg-km-edit-btn" data-id="{{id}}"
                     style="border:none;background:none;padding:0;cursor:pointer;font-size:.875rem;font-weight:600;color:#1a2433;text-decoration:none;">{{displayName}}</button>
                 </td>
-                <td><span class="cfg-name-chip">{{type}}</span></td>
                 <td>
                   <span class="cfg-name-chip" title="{{tokenEndpoint}}"
                     style="display:inline-block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{tokenEndpoint}}</span>
@@ -58,7 +56,7 @@
               </tr>
               {{/keyManagers}}
               {{#unless keyManagers.length}}
-              <tr><td colspan="5" class="cfg-tbl-empty">No key managers yet. Add one to get started.</td></tr>
+              <tr><td colspan="4" class="cfg-tbl-empty">No key managers yet. Add one to get started.</td></tr>
               {{/unless}}
             </tbody>
           </table>

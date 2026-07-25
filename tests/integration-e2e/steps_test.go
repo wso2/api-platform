@@ -56,6 +56,27 @@ type world struct {
 	secretHandle  string // handle of the secret created for the provider
 	llmProviderID string // id of the created LLM provider
 	llmDepID      string // deploymentId returned when the provider is deployed
+
+	// LLM proxy scenario state (see llm_proxy_steps_test.go).
+	llmProxyBaseProviderID string // id of the plain LLM provider the proxy references
+	llmProxySecretHandle   string // handle of the secret backing the proxy's auth override
+	llmProxyID             string // id of the created LLM proxy
+
+	// MCP proxy scenario state (see mcp_proxy_steps_test.go).
+	mcpProxySecretHandle string // handle of the secret backing the proxy's upstream auth
+	mcpProxyID           string // id of the created MCP proxy
+
+	// REST API secret-reference scenario state (see rest_api_secret_steps_test.go).
+	restAPISecretHandle  string // handle of the secret backing the REST API's upstream auth
+	restAPISecretApiID   string // id of the created REST API
+	restAPISecretContext string // e.g. /e2e-secret-ab12cd34
+	restAPISecretDepID   string // deploymentId returned when the API is deployed
+
+	// Policy secret-reference scenario state (see policy_secret_steps_test.go).
+	policySecretHandle  string // handle of the secret backing the policy's header value
+	policySecretApiID   string // id of the created REST API
+	policySecretContext string // e.g. /e2e-policy-ab12cd34
+	policySecretDepID   string // deploymentId returned when the API is deployed
 }
 
 // initializeScenario is invoked by godog for each scenario; it binds a fresh
@@ -92,6 +113,31 @@ func initializeScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^an LLM provider that references the secret$`, w.anLLMProviderReferencingSecret)
 	sc.Step(`^I deploy the LLM provider to the gateway$`, w.deployLLMProviderToGateway)
 	sc.Step(`^the gateway has the LLM provider configured$`, w.gatewayHasLLMProviderConfigured)
+
+	// LLM proxy steps (llm_proxy.feature).
+	sc.Step(`^an LLM provider deployed to the gateway for the proxy to reference$`, w.aBaseLLMProviderForProxy)
+	sc.Step(`^a secret containing an LLM proxy API key$`, w.aSecretForLLMProxy)
+	sc.Step(`^an LLM proxy that references the provider and the secret$`, w.anLLMProxyReferencingProviderAndSecret)
+	sc.Step(`^I deploy the LLM proxy to the gateway$`, w.deployLLMProxyToGateway)
+	sc.Step(`^the gateway has the LLM proxy configured$`, w.gatewayHasLLMProxyConfigured)
+
+	// MCP proxy steps (mcp_proxy.feature).
+	sc.Step(`^a secret containing an MCP proxy upstream API key$`, w.aSecretForMCPProxy)
+	sc.Step(`^an MCP proxy that references the secret$`, w.anMCPProxyReferencingSecret)
+	sc.Step(`^I deploy the MCP proxy to the gateway$`, w.deployMCPProxyToGateway)
+	sc.Step(`^the gateway has the MCP proxy configured$`, w.gatewayHasMCPProxyConfigured)
+
+	// REST API secret-reference steps (rest_api_secret.feature).
+	sc.Step(`^a secret containing a REST API upstream credential$`, w.aSecretForRestAPI)
+	sc.Step(`^a REST API whose upstream auth references the secret$`, w.aRestAPIReferencingSecret)
+	sc.Step(`^I deploy the secret-backed REST API to the gateway$`, w.deploySecretBackedRestAPI)
+	sc.Step(`^the gateway has the secret-backed REST API configured$`, w.gatewayHasSecretBackedRestAPIConfigured)
+
+	// Policy secret-reference steps (policy_secret.feature).
+	sc.Step(`^a secret containing a header value$`, w.aSecretForPolicy)
+	sc.Step(`^a REST API with a set-headers policy referencing the secret$`, w.aRestAPIWithPolicyReferencingSecret)
+	sc.Step(`^I deploy the policy-secret REST API to the gateway$`, w.deployPolicySecretRestAPI)
+	sc.Step(`^the gateway has the policy-secret REST API configured$`, w.gatewayHasPolicySecretRestAPIConfigured)
 }
 
 // --- Background steps ------------------------------------------------------

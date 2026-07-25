@@ -17,7 +17,6 @@
  */
 'use strict';
 
-const { Sequelize } = require('sequelize');
 const orgDao = require('../dao/organizationDao');
 const labelDao = require('../dao/labelDao');
 const viewDao = require('../dao/viewDao');
@@ -25,6 +24,8 @@ const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 const logger = require('../config/logger');
+const db = require('../db/driver');
+const { NotFoundError } = require('../utils/errors/customErrors');
 
 /**
  * Seeds the default organization and its dependent resources on startup.
@@ -48,7 +49,7 @@ async function seedDefaultOrg() {
         const existing = await orgDao.get(orgName);
         orgId = existing.uuid;
     } catch (notFound) {
-        if (!(notFound instanceof Sequelize.EmptyResultError)) {
+        if (!(notFound instanceof NotFoundError)) {
             logger.error('Failed to look up default organization', {
                 error: notFound.message,
                 operation: 'seedDefaultOrg',
@@ -71,7 +72,7 @@ async function seedDefaultOrg() {
     let labelId;
     try {
         const label = await labelDao.update(orgId, { handle: 'default', displayName: 'default' }, constants.SYSTEM_ACTOR);
-        labelId = label.dataValues.uuid;
+        labelId = label.uuid;
     } catch (error) {
         logger.error('Failed to seed default label', {
             error: error.message,
@@ -83,7 +84,7 @@ async function seedDefaultOrg() {
     let viewId;
     try {
         const view = await viewDao.update(orgId, 'default', 'default', constants.SYSTEM_ACTOR);
-        viewId = view.dataValues.uuid;
+        viewId = view.uuid;
     } catch (error) {
         logger.error('Failed to seed default view', {
             error: error.message,
@@ -95,7 +96,7 @@ async function seedDefaultOrg() {
     try {
         await labelDao.addToView(orgId, labelId, viewId, constants.SYSTEM_ACTOR);
     } catch (error) {
-        if (!(error instanceof Sequelize.UniqueConstraintError)) {
+        if (!db.isDuplicateKeyError(error)) {
             logger.error('Failed to seed label-view link', {
                 error: error.message,
                 operation: 'seedDefaultOrg',
@@ -109,7 +110,7 @@ async function seedDefaultOrg() {
             try {
                 await subscriptionPlanDao.createMany(orgId, [plan], constants.SYSTEM_ACTOR);
             } catch (error) {
-                if (!(error instanceof Sequelize.UniqueConstraintError)) {
+                if (!db.isDuplicateKeyError(error)) {
                     logger.error('Failed to seed subscription plan', {
                         error: error.message,
                         operation: 'seedDefaultOrg',

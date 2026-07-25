@@ -15,8 +15,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
- 
-const { CustomError } = require('../utils/errors/customErrors');
+/* eslint-disable no-undef */
+const { CustomError, ValidationError } = require('../utils/errors/customErrors');
 const orgDao = require('../dao/organizationDao');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const appDao = require('../dao/applicationDao');
@@ -30,11 +30,11 @@ const crypto = require('crypto');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
 const constants = require('../utils/constants');
-const sequelize = require('../db/sequelizeConfig');
+const db = require('../db/driver');
 const { ApplicationDTO } = require('../dto/applicationDto');
 const { config } = require('../config/configLoader');
 const yaml = require('../utils/yaml');
-const { Sequelize } = require("sequelize");
+const kmDao = require('../dao/keyManagerDao');
 
 function mapYamlToOrganization(parsed) {
     const { metadata = {}, spec = {} } = parsed;
@@ -57,25 +57,25 @@ function parseOrganizationFromYamlFile(fileBuffer) {
     try {
         parsed = yaml.load(fileBuffer.toString(constants.CHARSET_UTF8));
     } catch (e) {
-        throw new Sequelize.ValidationError(`Invalid organization YAML file: ${e.message}`);
+        throw new ValidationError(`Invalid organization YAML file: ${e.message}`);
     }
     if (!parsed || typeof parsed !== 'object') {
-        throw new Sequelize.ValidationError('Organization YAML file is empty or invalid');
+        throw new ValidationError('Organization YAML file is empty or invalid');
     }
     if (parsed.kind !== 'Organization') {
-        throw new Sequelize.ValidationError(
+        throw new ValidationError(
             `Unknown organization YAML kind '${parsed.kind}'. Expected 'Organization'`
         );
     }
     const { spec = {} } = parsed;
     if (spec.labels !== undefined && spec.labels !== null) {
         if (!Array.isArray(spec.labels) || spec.labels.some(l => typeof l !== 'object' || !l.id)) {
-            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.labels' must be an array of objects with an 'id' field");
+            throw new ValidationError("Invalid organization YAML: 'spec.labels' must be an array of objects with an 'id' field");
         }
     }
     if (spec.views !== undefined && spec.views !== null) {
         if (!Array.isArray(spec.views) || spec.views.some(v => typeof v !== 'object' || typeof v.id !== 'string' || !v.id.trim())) {
-            throw new Sequelize.ValidationError("Invalid organization YAML: 'spec.views' must be an array of objects with a non-empty 'id' field");
+            throw new ValidationError("Invalid organization YAML: 'spec.views' must be an array of objects with a non-empty 'id' field");
         }
     }
     const organization = mapYamlToOrganization(parsed);
@@ -86,7 +86,7 @@ function parseOrganizationFromYamlFile(fileBuffer) {
     const requiredFields = ['displayName', 'handle', 'idpRefId'];
     const missingFields = requiredFields.filter((field) => !organization[field]);
     if (missingFields.length > 0) {
-        throw new Sequelize.ValidationError(
+        throw new ValidationError(
             `Invalid organization YAML: missing required field(s): ${missingFields.join(', ')}`
         );
     }
@@ -116,9 +116,7 @@ const createOrganization = async (req, res) => {
 
     let organization = "";
     try {
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
+        await db.withTransaction(async (t) => {
             organization = await orgDao.create(payload, t);
             const orgId = organization.uuid;
             logger.info('Organization created successfully', {
@@ -136,13 +134,13 @@ const createOrganization = async (req, res) => {
 
             // Build handle→UUID map for view→label linking
             const labelMap = {};
-            createdLabels.forEach(l => { labelMap[l.dataValues.handle] = l.dataValues.uuid; });
+            createdLabels.forEach(l => { labelMap[l.handle] = l.uuid; });
 
             // Views: use YAML-defined if provided, else fall back to default
             if (payload.views?.length) {
                 for (const viewDef of payload.views) {
                     if (!viewDef.id || typeof viewDef.id !== 'string') {
-                        throw new Sequelize.ValidationError(
+                        throw new ValidationError(
                             "Invalid organization payload: each entry in 'views' must have a non-empty 'id'"
                         );
                     }
@@ -155,11 +153,11 @@ const createOrganization = async (req, res) => {
 
             for (const viewDef of viewDefs) {
                 const viewResponse = await viewDao.create(orgId, viewDef, userId, t);
-                const viewId = viewResponse.dataValues.uuid;
+                const viewId = viewResponse.uuid;
                 for (const lName of (viewDef.labels || [])) {
                     const labelId = labelMap[lName];
                     if (!labelId) {
-                        throw new Sequelize.ValidationError(
+                        throw new ValidationError(
                             `Invalid organization YAML: view '${viewDef.id}' references unknown label '${lName}'`
                         );
                     }
@@ -180,13 +178,13 @@ const createOrganization = async (req, res) => {
 
         let orgAudit;
         try {
-            orgAudit = await userIdpReferenceDao.buildSingleAuditFields(organization.dataValues);
+            orgAudit = await userIdpReferenceDao.buildSingleAuditFields(organization);
         } catch (auditError) {
             logger.error('Audit field resolution failed after organization creation', {
                 error: auditError.message,
                 orgId: organization.handle
             });
-            orgAudit = { createdAt: organization.dataValues.created_at, updatedAt: organization.dataValues.updated_at };
+            orgAudit = { createdAt: organization.created_at, updatedAt: organization.updated_at };
         }
         const orgCreationResponse = {
             id: organization.handle,
@@ -196,7 +194,7 @@ const createOrganization = async (req, res) => {
             businessOwnerEmail: organization.business_owner_email,
             idpRefId: organization.idp_ref_id,
             cpRefId: organization.cp_ref_id,
-            configuration: organization.dataValues.configuration,
+            configuration: organization.configuration,
             ...orgAudit,
         };
         logger.info('Organization creation flow completed successfully', {
@@ -233,17 +231,17 @@ const getAllOrganizations = async () => {
     const organizations = await orgDao.list();
     const orgList = [];
     if (organizations.length > 0) {
-        const auditList = await userIdpReferenceDao.buildListAuditFields(organizations.map(o => o.dataValues));
+        const auditList = await userIdpReferenceDao.buildListAuditFields(organizations);
         organizations.forEach((organization, i) => {
             orgList.push({
-                displayName: organization.dataValues.display_name,
-                id: organization.dataValues.handle,
-                businessOwner: organization.dataValues.business_owner,
-                businessOwnerContact: organization.dataValues.business_owner_contact,
-                businessOwnerEmail: organization.dataValues.business_owner_email,
+                displayName: organization.display_name,
+                id: organization.handle,
+                businessOwner: organization.business_owner,
+                businessOwnerContact: organization.business_owner_contact,
+                businessOwnerEmail: organization.business_owner_email,
                 idpRefId: organization.idp_ref_id,
                 cpRefId: organization.cp_ref_id,
-                configuration: organization.dataValues.configuration,
+                configuration: organization.configuration,
                 ...auditList[i],
             });
         });
@@ -279,7 +277,7 @@ const updateOrganization = async (req, res) => {
         }
 
         let updatedOrg;
-        await sequelize.transaction({ timeout: 60000 }, async (t) => {
+        await db.withTransaction(async (t) => {
             const existingOrg = await orgDao.get(orgId, t);
             const resolvedOrgId = existingOrg.uuid;
             [, updatedOrg] = await orgDao.update(payload, t);
@@ -297,13 +295,13 @@ const updateOrganization = async (req, res) => {
             if (payload.views?.length) {
                 for (const viewDef of payload.views) {
                     if (!viewDef.id || typeof viewDef.id !== 'string') {
-                        throw new Sequelize.ValidationError(
+                        throw new ValidationError(
                             "Invalid organization payload: each entry in 'views' must have a non-empty 'id'"
                         );
                     }
                     const view = await viewDao.update(resolvedOrgId, viewDef.id, viewDef.displayName, userId, t);
                     if (Array.isArray(viewDef.labels)) {
-                        await viewDao.replaceLabels(resolvedOrgId, view.dataValues.uuid, viewDef.labels, userId, t);
+                        await viewDao.replaceLabels(resolvedOrgId, view.uuid, viewDef.labels, userId, t);
                     }
                 }
                 logger.info('Views upserted successfully', { orgId });
@@ -312,23 +310,23 @@ const updateOrganization = async (req, res) => {
 
         let updatedOrgAudit;
         try {
-            updatedOrgAudit = await userIdpReferenceDao.buildSingleAuditFields(updatedOrg[0].dataValues);
+            updatedOrgAudit = await userIdpReferenceDao.buildSingleAuditFields(updatedOrg[0]);
         } catch (auditError) {
             logger.error('Audit field resolution failed after organization update', {
                 error: auditError.message,
                 orgId
             });
-            updatedOrgAudit = { createdAt: updatedOrg[0].dataValues.created_at, updatedAt: updatedOrg[0].dataValues.updated_at };
+            updatedOrgAudit = { createdAt: updatedOrg[0].created_at, updatedAt: updatedOrg[0].updated_at };
         }
         res.status(200).json({
-            id: updatedOrg[0].dataValues.handle,
-            displayName: updatedOrg[0].dataValues.display_name,
-            businessOwner: updatedOrg[0].dataValues.business_owner,
-            businessOwnerContact: updatedOrg[0].dataValues.business_owner_contact,
-            businessOwnerEmail: updatedOrg[0].dataValues.business_owner_email,
-            idpRefId: updatedOrg[0].dataValues.idp_ref_id,
-            cpRefId: updatedOrg[0].dataValues.cp_ref_id,
-            configuration: updatedOrg[0].dataValues.configuration,
+            id: updatedOrg[0].handle,
+            displayName: updatedOrg[0].display_name,
+            businessOwner: updatedOrg[0].business_owner,
+            businessOwnerContact: updatedOrg[0].business_owner_contact,
+            businessOwnerEmail: updatedOrg[0].business_owner_email,
+            idpRefId: updatedOrg[0].idp_ref_id,
+            cpRefId: updatedOrg[0].cp_ref_id,
+            configuration: updatedOrg[0].configuration,
             ...updatedOrgAudit,
         });
     } catch (error) {
@@ -352,7 +350,7 @@ const deleteOrganization = async (req, res) => {
         // insert below will be dropped (caught, logged, non-fatal), same limitation
         // platform-api's own audit table has for its own org-delete cascade.
         const orgUuid = await orgDao.getId(orgId);
-        const deletedRowsCount = await sequelize.transaction({ timeout: 60000 }, (t) => orgDao.delete(orgId, t));
+        const deletedRowsCount = await db.withTransaction((t) => orgDao.delete(orgId, t));
         if (deletedRowsCount > 0) {
             logger.info('Organization deletion successful', {
                 orgId
@@ -429,7 +427,7 @@ const getApplicationKeyMap = async (orgId, appId, userId) => {
         return appMappingDTO;
     } else {
         const application = await appDao.get(orgId, appId, userId);
-        return new ApplicationDTO(application.dataValues);
+        return new ApplicationDTO(application);
     }
 
 }
@@ -457,7 +455,7 @@ const applyTheme = async (req, res) => {
         }
         await util.unzipDirectory(zipPath, extractPath);
         const files = await util.readFilesInDirectory(extractPath, orgId, req.protocol, req.get('host'), viewName);
-        await sequelize.transaction(async (t) => {
+        await db.withTransaction(async (t) => {
             await orgDao.deleteThemeContent(orgId, viewName, t);
             for (const { filePath, fileName, fileContent, fileType } of files) {
                 await createContent(filePath, fileName, fileContent, fileType, orgId, viewName, userId, t);

@@ -105,7 +105,7 @@ Send the manifest and definition together as a multipart upload:
 
 ```bash
 # REST API with OpenAPI definition
-curl -k -X POST "https://localhost:3000/api/v0.9/apis" \
+curl -k -X POST "https://localhost:9543/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "metadata=@api.yaml" \
   -F "definition=@openapi.yaml;type=application/yaml"
@@ -113,7 +113,7 @@ curl -k -X POST "https://localhost:3000/api/v0.9/apis" \
 
 ```bash
 # GraphQL API
-curl -k -X POST "https://localhost:3000/api/v0.9/apis" \
+curl -k -X POST "https://localhost:9543/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
   -F "metadata=@api.yaml" \
   -F "definition=@schema.graphql;type=application/graphql"
@@ -122,7 +122,7 @@ curl -k -X POST "https://localhost:3000/api/v0.9/apis" \
 ```bash
 # MCP server (note: MCP servers are created under /mcp-servers, not /apis).
 # An MCP server's contract is its tools schema (schemaDefinition) — it has no apiDefinition.
-curl -k -X POST "https://localhost:3000/api/v0.9/mcp-servers" \
+curl -k -X POST "https://localhost:9543/api/v0.9/mcp-servers" \
   -H "Authorization: Bearer $TOKEN" \
   -F "metadata=@mcp.yaml" \
   -F "definition=@schemaDefinition.yaml;type=application/yaml"
@@ -154,7 +154,7 @@ The response includes the `apiId` needed for subsequent steps.
 ```bash
 # OpenAPI YAML
 curl -k -X PUT \
-  "https://localhost:3000/api/v0.9/apis/{apiId}" \
+  "https://localhost:9543/api/v0.9/apis/{apiId}" \
   -H "Authorization: Bearer $TOKEN" \
   -F 'metadata={"id":"{apiId}","name":"Order API","endPoints":{"productionURL":"https://api.example.com/orders","sandboxURL":"https://sandbox.example.com/orders"}}' \
   -F "definition=@openapi.yaml;type=application/yaml"
@@ -163,7 +163,7 @@ curl -k -X PUT \
 ```bash
 # AsyncAPI YAML
 curl -k -X PUT \
-  "https://localhost:3000/api/v0.9/apis/{apiId}" \
+  "https://localhost:9543/api/v0.9/apis/{apiId}" \
   -H "Authorization: Bearer $TOKEN" \
   -F 'metadata={"id":"{apiId}","name":"Order API","endPoints":{"productionURL":"https://api.example.com/orders","sandboxURL":"https://sandbox.example.com/orders"}}' \
   -F "definition=@asyncapi.yaml;type=application/yaml"
@@ -303,7 +303,7 @@ spec:
 ```
 
 ```bash
-curl -k -X PUT https://localhost:3000/api/v0.9/apis/{apiId} \
+curl -k -X PUT https://localhost:9543/api/v0.9/apis/{apiId} \
   -H "Authorization: Bearer $TOKEN" \
   -F "metadata=@api-update.yaml"
 ```
@@ -311,7 +311,7 @@ curl -k -X PUT https://localhost:3000/api/v0.9/apis/{apiId} \
 ## Delete an API
 
 ```bash
-curl -k -X DELETE https://localhost:3000/api/v0.9/apis/{apiId} \
+curl -k -X DELETE https://localhost:9543/api/v0.9/apis/{apiId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -320,13 +320,13 @@ curl -k -X DELETE https://localhost:3000/api/v0.9/apis/{apiId} \
 ## List APIs
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/apis -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:9543/api/v0.9/apis -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get an API
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/apis/{apiId} -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:9543/api/v0.9/apis/{apiId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Related

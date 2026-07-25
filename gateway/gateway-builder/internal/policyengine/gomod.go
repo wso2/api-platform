@@ -30,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/goenv"
 	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 	"golang.org/x/mod/modfile"
 )
@@ -49,6 +50,7 @@ var (
 var runGoGet = func(ctx context.Context, dir, target string) (stderr []byte, err error) {
 	cmd := exec.CommandContext(ctx, "go", "get", target)
 	cmd.Dir = dir
+	cmd.Env = goenv.WithToolchain(cmd.Environ())
 	var buf bytes.Buffer
 	cmd.Stderr = &buf
 	err = cmd.Run()

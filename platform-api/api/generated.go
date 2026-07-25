@@ -2784,8 +2784,8 @@ type ListGatewayCustomPoliciesParams struct {
 
 // SyncCustomPolicyParams defines parameters for SyncCustomPolicy.
 type SyncCustomPolicyParams struct {
-	// GatewayId UUID of the gateway whose manifest contains the policy
-	GatewayId openapi_types.UUID `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
+	// GatewayId Handle (URL-friendly slug) of the gateway whose manifest contains the policy
+	GatewayId string `form:"gatewayId" json:"gatewayId" yaml:"gatewayId"`
 
 	// PolicyName Name of the custom policy (case-insensitive)
 	PolicyName string `form:"policyName" json:"policyName" yaml:"policyName"`

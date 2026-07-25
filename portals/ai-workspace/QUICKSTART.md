@@ -7,7 +7,7 @@ Get the AI Workspace running locally in under 5 minutes using Docker Compose.
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) with the Compose plugin (`docker compose version`)
-- Ports **5380** and **9243** available on your machine
+- Ports **9643** and **9243** available on your machine
 - `curl` and `unzip` installed
 
 ---
@@ -43,7 +43,7 @@ docker compose up -d
 
 ### 4. Open the workspace
 
-Navigate to **https://localhost:5380** and sign in with the admin credentials
+Navigate to **https://localhost:9643** and sign in with the admin credentials
 printed by `setup.sh`.
 
 > **Browser trust warning?** The generated TLS certificates are self-signed. Click **Advanced → Proceed** to continue, then return to the workspace. See [Custom TLS certificates](README.md#custom-tls-certificates) to remove the warning permanently.

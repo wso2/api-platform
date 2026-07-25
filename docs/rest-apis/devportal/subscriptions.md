@@ -10,7 +10,7 @@
 
 ```shell
 
-curl -X POST https://localhost:3000/api/v0.9/subscriptions \
+curl -X POST https://localhost:9543/api/v0.9/subscriptions \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -139,7 +139,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X GET https://localhost:3000/api/v0.9/subscriptions \
+curl -X GET https://localhost:9543/api/v0.9/subscriptions \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -257,7 +257,7 @@ Status Code **200**
 
 ```shell
 
-curl -X GET https://localhost:3000/api/v0.9/subscriptions/{subId} \
+curl -X GET https://localhost:9543/api/v0.9/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -335,7 +335,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X PUT https://localhost:3000/api/v0.9/subscriptions/{subId} \
+curl -X PUT https://localhost:9543/api/v0.9/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -449,7 +449,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X DELETE https://localhost:3000/api/v0.9/subscriptions/{subId} \
+curl -X DELETE https://localhost:9543/api/v0.9/subscriptions/{subId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'
@@ -519,7 +519,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST https://localhost:3000/api/v0.9/subscriptions/{subId}/change-plan \
+curl -X POST https://localhost:9543/api/v0.9/subscriptions/{subId}/change-plan \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -634,7 +634,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST https://localhost:3000/api/v0.9/subscriptions/{subId}/regenerate-token \
+curl -X POST https://localhost:9543/api/v0.9/subscriptions/{subId}/regenerate-token \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

@@ -34,7 +34,7 @@ spec:
 ```
 
 ```bash
-curl -k -X POST https://localhost:3000/api/v0.9/organizations \
+curl -k -X POST https://localhost:9543/api/v0.9/organizations \
   -H "Authorization: Bearer $TOKEN" \
   -F "organization=@org.yaml"
 ```
@@ -56,7 +56,7 @@ After creation, the organization is accessible at `/<orgHandle>/views/<viewName>
 ## List Organizations
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/organizations -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:9543/api/v0.9/organizations -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Update an Organization
@@ -76,7 +76,7 @@ spec:
 ```
 
 ```bash
-curl -k -X PUT https://localhost:3000/api/v0.9/organizations/{orgId} \
+curl -k -X PUT https://localhost:9543/api/v0.9/organizations/{orgId} \
   -H "Authorization: Bearer $TOKEN" \
   -F "organization=@org-update.yaml"
 ```
@@ -84,7 +84,7 @@ curl -k -X PUT https://localhost:3000/api/v0.9/organizations/{orgId} \
 ## Delete an Organization
 
 ```bash
-curl -k -X DELETE https://localhost:3000/api/v0.9/organizations/{orgId} -H "Authorization: Bearer $TOKEN"
+curl -k -X DELETE https://localhost:9543/api/v0.9/organizations/{orgId} -H "Authorization: Bearer $TOKEN"
 ```
 
 > **Warning:** Deleting an organization removes all of its views, APIs, subscriptions, and applications. This action is irreversible.
@@ -144,11 +144,13 @@ See `configs/config-platform-api-template.toml` for the complete scope list used
 
 ### Session persistence and scripted access
 
-`auth.jwt.secret_key` is **mandatory**: the Platform API requires it at startup and never generates one — it fails to start if the key is missing. Configure the **same value** in both services so the devportal can verify Platform API-issued JWTs locally without a network round-trip (and so sessions survive restarts):
+`auth.jwt.private_key`/`public_key` are **mandatory**: the Platform API requires the RS256 keypair at startup and never generates one — it fails to start if either is missing. `scripts/setup.sh` provisions the pair into `resources/keys/`. The Platform API signs with the private key; the devportal is pointed at only the public half via `auth.local.public_key_path` so it can verify Platform API-issued JWTs locally without a network round-trip (and so sessions survive restarts):
 
 ```bash
-# In .env (read by both services via docker-compose env_file / APIP_DP_* override)
-APIP_CP_AUTH_JWT_SECRET_KEY=<64-hex-char-string>   # openssl rand -hex 32
+# Generated once by scripts/setup.sh — PEM files, not env vars (a multi-line PEM
+# cannot live in an env file). Both config.tomls read them via {{ file "..." }}.
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out resources/keys/jwt_private.pem
+openssl rsa -in resources/keys/jwt_private.pem -pubout -out resources/keys/jwt_public.pem
 ```
 
 For scripts and CLI tools, get a Bearer token directly from the Platform API and pass it on each request — no session cookie required:
@@ -157,12 +159,12 @@ For scripts and CLI tools, get a Bearer token directly from the Platform API and
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
-curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:3000/api/v0.9/organizations
+curl -sk -H "Authorization: Bearer $TOKEN" https://localhost:9543/api/v0.9/organizations
 ```
 
-The token is verified locally by the Developer Portal using the shared `APIP_CP_AUTH_JWT_SECRET_KEY` with no extra call to the Platform API per request.
+The token is verified locally by the Developer Portal against the Platform API's RS256 public key (`auth.local.public_key_path`), with no extra call to the Platform API per request.
 
-> **Note:** Local auth is for development only. For production, configure the global OIDC identity provider via `APIP_DP_IDP_*` environment variables.
+> **Note:** Local auth is for development only. For production, set `auth.mode = "idp"` and configure the OIDC identity provider under `[developer_portal.auth.idp]`.
 
 ---
 

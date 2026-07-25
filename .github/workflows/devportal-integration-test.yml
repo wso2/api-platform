@@ -84,7 +84,7 @@ jobs:
       - name: Run Cypress integration tests
         env:
           PLATFORM_API_IMAGE: platform-api:it-devportal
-        run: make -C portals/developer-portal it
+        run: make -C portals/developer-portal/it test
 
       - name: Upload Cypress reports
         uses: actions/upload-artifact@v4

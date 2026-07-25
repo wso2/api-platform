@@ -52,30 +52,29 @@ Apply this rule whenever writing, refactoring, or reviewing JavaScript (`.js`) c
 ### ❌ Anti-Pattern (What to Reject)
 
 ```js
-// BAD: Path traversal — user controls the path completely
+// BAD: Path traversal — user input concatenated directly into a path
 app.get('/files', (req, res) => {
-  const filePath = './uploads/' + req.query.name;  // ../../etc/passwd bypasses root
+  const filePath = './uploads/' + req.query.name; // No containment check
   res.sendFile(path.resolve(filePath));
 });
 
-// BAD: Storing full path in DB
-await FileModel.create({ filePath: req.file.originalname }); // may contain /path/evil
+// BAD: Persisting the client-controlled filename as-is (no path.basename()) instead of a sanitized bare filename
+await FileModel.create({ filePath: req.file.originalname });
 
 // BAD: Writing upload buffer to disk with a user-supplied name
 fs.writeFile(`/tmp/${req.file.originalname}`, req.file.buffer, callback);
 
-// BAD: ZIP extraction with no zip-slip protection, hardcoded limit
+// BAD: ZIP extraction with no zip-slip protection or entry limit
 const zip = await unzipper.Open.buffer(req.file.buffer);
 for (const entry of zip.files) {
-  const outPath = path.join('/var/app/content', entry.path); // Zip slip
-  entry.stream().pipe(fs.createWriteStream(outPath));         // Unbounded decompression
+  const outPath = path.join('/var/app/content', entry.path); // Unvalidated entry path
+  entry.stream().pipe(fs.createWriteStream(outPath));        // Unbounded decompression
 }
 
-// BAD: multer with hardcoded 50 MB limit
+// BAD: multer with a hardcoded size limit instead of config-sourced
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
-// BAD: Trusts the client-declared mimetype with no byte-level check, and stores/serves
-// an SVG unmodified — the stored-XSS-via-SVG-upload pattern.
+// BAD: Trusts the client-declared mimetype and stores/serves an upload unmodified
 app.post('/apis/:id/icon', upload.single('icon'), async (req, res) => {
   await ApiIcon.create({ apiId: req.params.id, data: req.file.buffer, mimeType: req.file.mimetype });
   res.status(201).send();
@@ -84,8 +83,7 @@ app.post('/apis/:id/icon', upload.single('icon'), async (req, res) => {
 // BAD: Renders user-uploaded content as a template — Server-Side Template Injection.
 const ejs = require('ejs');
 app.post('/docs/preview', upload.single('doc'), (req, res) => {
-  const rendered = ejs.render(req.file.buffer.toString('utf8')); // Arbitrary code execution
-  res.send(rendered);
+  res.send(ejs.render(req.file.buffer.toString('utf8'))); // Compiles untrusted input as code
 });
 ```
 

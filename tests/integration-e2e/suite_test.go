@@ -72,7 +72,7 @@ var (
 	platformAPI  = "https://localhost:" + envOr("PA_HOST_PORT", "9243")
 	ingressGw1   = "http://localhost:" + envOr("GW_HTTP_PORT", "18080")
 	ingressGw2   = "http://localhost:" + envOr("GW2_HTTP_PORT", "18081")
-	devportalAPI = "http://localhost:" + envOr("DP_HOST_PORT", "3000")
+	devportalAPI = "http://localhost:" + envOr("DP_HOST_PORT", "9543")
 	// gwMgmtAPI is the gateway-controller management REST API (port 9090 in the
 	// e2e compose, overridable via GW_MGMT_PORT). Used to verify that resources
 	// deployed via platform-api are visible on the data plane.

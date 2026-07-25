@@ -1,0 +1,9 @@
+# Vendored subchart archives + lockfiles fetched by `helm dependency update`.
+# Build artifacts (the umbrellas pull their components in) — never commit them.
+# Generic so they cover every chart (component and umbrella), regardless of path.
+**/charts/
+**/Chart.lock
+
+# Generated secret references (created by generate-secrets.sh; no secret values,
+# but environment-specific).
+**/values-secrets.yaml

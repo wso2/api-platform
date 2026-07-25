@@ -10,7 +10,7 @@
 
 ```shell
 
-curl -X POST https://localhost:3000/api/v0.9/apis/{apiId}/assets \
+curl -X POST https://localhost:9543/api/v0.9/apis/{apiId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -139,7 +139,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 ```shell
 
-curl -X PUT https://localhost:3000/api/v0.9/apis/{apiId}/assets \
+curl -X PUT https://localhost:9543/api/v0.9/apis/{apiId}/assets \
   -u {username}:{password} \
   -H 'Content-Type: multipart/form-data' \
   -H 'Accept: application/json' \
@@ -265,7 +265,7 @@ At least one of `web/` or `docs/` must exist at the ZIP root.
 
 ```shell
 
-curl -X GET https://localhost:3000/api/v0.9/apis/{apiId}/assets?type=document&fileName=getting-started.md \
+curl -X GET https://localhost:9543/api/v0.9/apis/{apiId}/assets?type=document&fileName=getting-started.md \
   -u {username}:{password} \
   -H 'Accept: text/css'
 
@@ -368,7 +368,7 @@ an anonymous request for a non-image type is rejected.
 
 ```shell
 
-curl -X DELETE https://localhost:3000/api/v0.9/apis/{apiId}/assets?type=document \
+curl -X DELETE https://localhost:9543/api/v0.9/apis/{apiId}/assets?type=document \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

@@ -8,7 +8,7 @@ For end-user documentation, see [docs/](docs/).
 
 | Port | Protocol | Description |
 |------|----------|-------------|
-| `3000` | HTTPS (default) / HTTP | Developer Portal UI and Admin REST API |
+| `9543` | HTTPS (default) / HTTP | Developer Portal UI and Admin REST API |
 
 ## Prerequisites
 
@@ -33,7 +33,7 @@ docker compose up
 
 `./scripts/setup.sh` is a one-time step: it generates devportal's and the Platform API's encryption/JWT secrets, a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build devportal from source instead of using the published image, run `docker compose up --build`.
 
-Then open **https://localhost:3000/default/views/default** and log in with the admin credentials `./scripts/setup.sh` printed.
+Then open **https://localhost:9543/default/views/default** and log in with the admin credentials `./scripts/setup.sh` printed.
 
 > **Browser warning:** the TLS certificate is self-signed. Click **Advanced → Proceed** (Chrome) or **Accept the Risk** (Firefox) to continue.
 
@@ -113,9 +113,8 @@ See [it/README.md](it/README.md) for the full list of test commands and suite de
 
 ### Database
 
-| Target | Description |
-|--------|-------------|
-| `make generate-ddl` | Generate DDL schema files from Sequelize models for all supported dialects |
+Schema is maintained per dialect in `database/schema.{sqlite,postgres,sqlserver}.sql` — see
+[src/db/driver.js](src/db/driver.js) for the query layer that targets these files.
 
 ### Docs
 
@@ -141,21 +140,24 @@ Use this for active development, custom IdP configuration, or when you prefer to
 
 ### 2. Use `npm run start:local`, not `npm start`
 
-`configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `platform_api.base_url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off, `http://localhost:3000`, and `platform_api.base_url` pointed at `localhost` (see [Local auth](#local-auth) if you're running the Platform API sidecar).
+`configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `auth.local.platform_api_url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off, `auth.local.platform_api_url` pointed at `localhost`, and `auth.local.public_key_path` pointed at the host-side `resources/keys/` that `scripts/setup.sh` writes rather than the container mount path (see [Local auth](#local-auth) if you're running the Platform API sidecar).
 
 ### 3. Configure the Identity Provider (optional)
 
-The portal's login flow requires a valid OAuth2/OIDC provider. Update the `[idp]` block in `configs/config.toml`:
+The portal's login flow requires a valid OAuth2/OIDC provider. Set `[developer_portal.auth]` `mode = "idp"` and fill in the `[developer_portal.auth.idp]` block in `configs/config.toml`:
 
 ```toml
-[idp]
+[developer_portal.auth]
+mode = "idp"
+
+[developer_portal.auth.idp]
 issuer = "https://<your-idp>/oauth2/token"
 authorization_url = "https://<your-idp>/oauth2/authorize"
 token_url = "https://<your-idp>/oauth2/token"
 user_info_url = "https://<your-idp>/oauth2/userinfo"
 jwks_url = "https://<your-idp>/oauth2/jwks"
 client_id = "<your-client-id>"
-callback_url = "http://localhost:3000/<handle>/callback"
+callback_url = "http://localhost:9543/<handle>/callback"
 ```
 
 For local exploration you can skip IdP setup by using the Platform API sidecar instead (see [Local auth](#local-auth)).
@@ -164,7 +166,7 @@ For local exploration you can skip IdP setup by using the Platform API sidecar i
 
 #### SQLite (default — no setup required)
 
-The portal uses SQLite out of the box. The database file is created automatically at the path configured by `database.file` (default: `./devportal.db`). No installation or schema migration step is needed.
+The portal uses SQLite out of the box. The database file is created automatically at the path configured by `database.path` (default: `./devportal.db`). No installation or schema migration step is needed.
 
 #### PostgreSQL (optional)
 
@@ -179,15 +181,15 @@ docker run --name devportal-postgres \
   -d postgres:16
 ```
 
-Then update the `[database]` block in `configs/config.toml`:
+Then update the `[developer_portal.database]` block in `configs/config.toml`:
 
 ```toml
-[database]
-type = "postgres"
+[developer_portal.database]
+driver = "postgres"
 host = "localhost"
 port = 5432
 name = "devportal"
-username = "postgres"
+user = "postgres"
 password = "postgres"
 ```
 
@@ -195,7 +197,7 @@ In production, set the password via the `APIP_DP_DATABASE_PASSWORD` environment 
 
 ### 5. Seed default organization
 
-The default organization is seeded automatically on startup when `organization.default_name` is set in config (or via `APIP_DP_ORGANIZATION_DEFAULTNAME` env var).
+The default organization is seeded automatically on startup when `organization.default_name` is set in config (or via `APIP_DP_ORGANIZATION_DEFAULT_NAME` env var).
 No manual step is required.
 
 ### 6. Install and run
@@ -205,7 +207,7 @@ npm install
 npm run start:local
 ```
 
-Open **http://localhost:3000/default/views/default**
+Open **http://localhost:9543/default/views/default**
 
 ---
 
@@ -217,7 +219,7 @@ Deploys the sample APIs and MCP servers under `samples/` into the default organi
 ./scripts/seed-samples.sh
 ```
 
-Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD` to skip the prompt, e.g. in CI). Safe to re-run — entries that already exist are skipped. Set `DEVPORTAL_URL`/`PLATFORM_API_URL` to override the defaults (`https://localhost:3000` / `https://localhost:9243`) — e.g. `DEVPORTAL_URL=http://localhost:3000` when running against `npm run start:local`.
+Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD` to skip the prompt, e.g. in CI). Safe to re-run — entries that already exist are skipped. Set `DEVPORTAL_URL`/`PLATFORM_API_URL` to override the defaults (`https://localhost:9543` / `https://localhost:9243`) — e.g. `DEVPORTAL_URL=http://localhost:9543` when running against `npm run start:local`.
 
 ---
 
@@ -238,16 +240,16 @@ password_hash = "$2y$10$..."   # bcrypt hash — generate with: htpasswd -bnBC 1
 scopes        = "dp:org_manage dp:api_manage ..."
 ```
 
-The portal config (or `APIP_DP_PLATFORMAPI_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `base_url` to `https://localhost:9243` (the sidecar's port published to the host) and `insecure = true` (self-signed cert), so no manual edit is needed for that flow:
+The portal config (or `APIP_DP_AUTH_LOCAL_*` env vars) must point to the Platform API. `config.toml`'s own defaults assume Docker Compose, where `platform-api` is a resolvable hostname on the compose network — `npm run start:local` already overrides `platform_api_url` to `https://localhost:9243` (the sidecar's port published to the host) and `tls_skip_verify = true` (self-signed cert), so no manual edit is needed for that flow:
 
 ```toml
-[platform_api]
-base_url = "https://localhost:9243"      # env: APIP_DP_PLATFORMAPI_BASEURL
-jwt_private_key = ""                       # PEM RSA private key that signs portal-minted tokens; must match the Platform API's auth.jwt.public_key — env: APIP_DP_PLATFORMAPI_JWTPRIVATEKEY
-insecure = true                           # Platform API uses a self-signed cert
+[developer_portal.auth.local]
+platform_api_url = "https://localhost:9243"  # env: APIP_DP_AUTH_LOCAL_PLATFORM_API_URL
+public_key_path = "/etc/devportal/keys/jwt_public.pem"  # path to the Platform API's auth.jwt.public_key PEM — env: APIP_DP_AUTH_LOCAL_PUBLIC_KEY_PATH
+tls_skip_verify = true                    # Platform API uses a self-signed cert
 ```
 
-Tokens are signed asymmetrically (RS256): the portal signs with the RSA private key above and the Platform API verifies against its `auth.jwt.public_key`. There is no shared HMAC secret — the two sides never exchange signing material.
+Tokens are signed asymmetrically (RS256): the Platform API mints them with its `auth.jwt.private_key` and the portal verifies them against the matching public key above. There is no shared HMAC secret, and the private key never leaves the Platform API — `scripts/setup.sh` generates the keypair into `resources/keys/`, and `docker-compose.yaml` mounts only `jwt_public.pem`'s directory into the portal (at `/etc/devportal/keys`).
 
 For production, configure an OIDC identity provider per organization instead of local auth.
 
@@ -265,12 +267,12 @@ Every config key can be overridden with an `APIP_DP_*` environment variable. You
 |---------|-------------|
 | `APIP_DP_DATABASE_HOST` | `config.database.host` |
 | `APIP_DP_DATABASE_PORT` | `config.database.port` |
-| `APIP_DP_TLS_ENABLED` | `config.tls.enabled` |
-| `APIP_DP_IDP_CLIENTID` | `config.idp.clientId` |
-| `APIP_DP_IDP_ISSUER` | `config.idp.issuer` |
-| `APIP_DP_SERVER_BASEURL` | `config.server.baseUrl` |
+| `APIP_DP_SERVER_HTTPS_ENABLED` | `config.server.https.enabled` |
+| `APIP_DP_IDP_CLIENTID` | `config.auth.idp.clientId` |
+| `APIP_DP_IDP_ISSUER` | `config.auth.idp.issuer` |
 | `APIP_DP_SERVER_PORT` | `config.server.port` |
-| `APIP_DP_DATABASE_SSL_ENABLED` | `config.database.ssl.enabled` |
+| `APIP_DP_SERVER_BASE_URL` | `config.server.baseUrl` |
+| `APIP_DP_DATABASE_SSL_MODE` | `config.database.sslMode` |
 
 `.env` example:
 ```dotenv
@@ -291,19 +293,19 @@ apiVersion: devportal.api-platform.wso2.com/v1alpha2
 kind: RestApi
 
 metadata:
-  name: ping-api-v1.0
+  name: reading-list-api-v1.0
 
 spec:
   type: REST
-  displayName: Ping API
+  displayName: Reading-List-API
   version: v1.0
-  description: Sample HTTP echo/probe API. Requires API key authentication. No subscription plans.
+  description: Sample reading-list API for tracking books and their reading status. Open access — no API key or subscription required.
   status: PUBLISHED
-  referenceID: ping-api-v1.0
+  referenceID: reading-list-api-v1.0
 
   tags:
-    - ping
-    - api-key
+    - reading-list
+    - books
 
   labels:
     - default
@@ -320,106 +322,148 @@ spec:
     technicalOwnerEmail: architecture@example.com
 
   endpoints:
-    sandboxUrl: http://localhost:8080/ping
-    productionUrl: http://localhost:8080/ping
+    sandboxUrl: http://localhost:8080/reading-list/v1.0
+    productionUrl: http://localhost:8080/reading-list/v1.0
 ```
 
 ```yaml
 # openapi.yaml
 openapi: 3.0.1
 info:
-  title: Ping API
-  version: 1.0.0
+  title: Reading-List-API
+  version: v1.0
   description: |
-    HTTP echo/probe API secured with an API key (`X-API-Key` header).
-    Use this API to inspect requests, test connectivity, and probe status codes.
-    No subscription plans are required — just an API key.
+    Track a personal reading list — add books, update their reading status,
+    and remove them when you are done.
+    Open access: no API key or subscription token is required.
 servers:
-  - url: /ping
-security:
-  - ApiKeyHeader: []
+  - url: /reading-list/v1.0
 components:
-  securitySchemes:
-    ApiKeyHeader:
-      type: apiKey
-      in: header
-      name: X-API-Key
   schemas:
-    PingResponse:
+    Book:
       type: object
-      description: Response returned by the ping/echo service
-      additionalProperties: true
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        title:
+          type: string
+          example: The Great Gatsby
+        author:
+          type: string
+          example: F. Scott Fitzgerald
+        status:
+          type: string
+          enum: [to_read, reading, read]
+      required: [title, author, status]
+    BookList:
+      type: object
+      properties:
+        books:
+          type: array
+          items:
+            $ref: '#/components/schemas/Book'
+      required: [books]
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
 
 paths:
-  /get:
+  /books:
     get:
-      summary: Echo a GET request
-      description: Returns the query parameters and headers sent with the request.
+      summary: List books
+      description: Returns every book on the reading list.
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PingResponse'
-
-  /post:
+                $ref: '#/components/schemas/BookList'
     post:
-      summary: Echo a POST request
-      description: Echoes the posted JSON body back in the response.
+      summary: Add a book
+      description: Adds a book to the reading list and returns it with its assigned id.
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
+              $ref: '#/components/schemas/Book'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+
+  /books/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get a book
+      description: Returns a single book by id.
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PingResponse'
-
-  /status/{code}:
-    get:
-      summary: Return a specific HTTP status code
-      description: Returns the given HTTP status code — useful for testing error handling.
-      parameters:
-        - name: code
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int32
-      responses:
-        '200':
-          description: Proxy response (actual status depends on the `code` path parameter)
+                $ref: '#/components/schemas/Book'
+        '404':
+          description: Not Found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PingResponse'
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Update a book
+      description: Replaces a book's details — commonly used to move it between reading statuses.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Book'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+    delete:
+      summary: Remove a book
+      description: Removes a book from the reading list.
+      responses:
+        '204':
+          description: No Content
 
 ```
 
 ```bash
-# Get a Bearer token (substitute the credentials ./scripts/setup.sh printed)
+# Get a Bearer token from the Platform API (substitute the credentials
+# ./scripts/setup.sh printed)
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
-# Get the default org UUID
-ORG_ID=$(curl -sk -H "Authorization: Bearer $TOKEN" \
-  https://localhost:3000/organizations | jq -r '.[0].id')
-
 # Create the API
-curl -sk -X POST "https://localhost:3000/api/v0.9/apis" \
+curl -sk -X POST "https://localhost:9543/api/v0.9/apis" \
   -H "Authorization: Bearer $TOKEN" \
-  -F "api=@api.yaml;type=application/yaml" \
-  -F "apiDefinition=@openapi.yaml;type=application/yaml"
+  -F "metadata=@api.yaml;type=application/yaml" \
+  -F "definition=@openapi.yaml;type=application/yaml"
 ```
 
-Refresh the portal — the Ping API now appears in the catalog. Click it to view the documentation and try-out console.
+Refresh the portal — the Reading-List-API now appears in the catalog. Click it to view the documentation and try-out console.
 
 ## What was just created?
 
@@ -427,6 +471,6 @@ Refresh the portal — the Ping API now appears in the catalog. Click it to view
 |---|---|
 | Organization | `default` |
 | Default view | `default` |
-| Portal URL | `https://localhost:3000/default/views/default` |
+| Portal URL | `https://localhost:9543/default/views/default` |
 | Admin credentials | printed by `./scripts/setup.sh` (local auth) |
-| Sample API | `Ping API` visible in the catalog |
+| Sample API | `Reading-List-API` visible in the catalog |

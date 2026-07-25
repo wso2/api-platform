@@ -483,17 +483,13 @@ spec/impls/gateway-websocket-events/
 ## Examples
 
 ### Good
-> Package Thunder OAuth server and Gate App UI in a single Docker container.
+> Package the gateway controller and runtime in a single Docker image.
 
 ### Bad
-> This feature provides a comprehensive and robust solution for packaging the powerful Thunder OAuth server along with our custom-built Gate App authentication UI into a single, deployable Docker container that simplifies the deployment process.
+> This feature provides a comprehensive and robust solution for packaging the powerful gateway controller along with our custom-built runtime into a single, deployable Docker image that simplifies the deployment process.
 
 ### Good
 > - **Single container**: Simplifies deployment
 
 ### Bad
 > - **Single container deployment**: We chose to use a single container approach because it provides numerous benefits including simplified deployment, reduced operational overhead, easier version management, and a more streamlined developer experience.
-
-## Reference
-
-See [sts/spec/](../sts/spec/) for a complete example implementation.

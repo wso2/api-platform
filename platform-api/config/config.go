@@ -422,6 +422,16 @@ func LoadConfig(configPath string) (*Server, error) {
 		}
 	}
 
+	// Narrow to this component's own subtree BEFORE interpolating, so a shared
+	// multi-component config file (one that also carries [developer_portal] or
+	// [ai_workspace] sections) does not force platform-api to resolve another
+	// component's {{ env }}/{{ file }} tokens — those reference env vars and
+	// allowlisted paths that only exist in that other component's container, and
+	// resolving them here would fail closed. Cut promotes the platform_api.*
+	// children to the top level; an absent section yields an empty tree that
+	// leaves cfg at its defaults, matching the pre-merge behavior.
+	k = k.Cut(platformAPIConfigKey)
+
 	// Resolve {{ env }} / {{ file }} interpolation tokens after the env+file merge
 	// and before unmarshal, so any config field may pull its value from an
 	// environment variable or an allowlisted file. String leaves without a "{{"
@@ -431,7 +441,9 @@ func LoadConfig(configPath string) (*Server, error) {
 		return nil, err
 	}
 
-	if err := k.UnmarshalWithConf(platformAPIConfigKey, cfg, koanf.UnmarshalConf{
+	// Subtree is already promoted to the top level by Cut, so unmarshal from the
+	// root ("") rather than re-descending through platformAPIConfigKey.
+	if err := k.UnmarshalWithConf("", cfg, koanf.UnmarshalConf{
 		DecoderConfig: &mapstructure.DecoderConfig{
 			TagName:          "koanf",
 			WeaklyTypedInput: true,

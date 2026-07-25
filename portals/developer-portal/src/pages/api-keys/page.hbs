@@ -27,7 +27,6 @@
 <div id="api-keys-config" style="display:none"
     data-org-id="{{orgId}}"
     data-api-id="{{apiMetadata.id}}"
-    data-read-only="{{#if isReadOnlyMode}}true{{else}}false{{/if}}"
     data-load-error="{{#if apiKeysLoadError}}true{{else}}false{{/if}}"
     data-applications="{{json applications}}"
     data-selected-app-id="{{selectedAppId}}"
@@ -48,12 +47,10 @@
     <p class="page-desc">API keys authenticate requests to the {{or apiMetadata.title apiMetadata.name}}. Generate a key, then use it as a bearer token or <code class="ak-inline-code">apikey</code> header.</p>
   </div>
   {{#if apiKeys.length}}
-  {{#unless isReadOnlyMode}}
   {{#unless apiKeysLoadError}}
   <button type="button" class="dp-btn dp-btn--primary" id="btn-open-generate-api-key">
     <i class="bi bi-plus"></i> Generate API key
   </button>
-  {{/unless}}
   {{/unless}}
   {{/if}}
 </div>

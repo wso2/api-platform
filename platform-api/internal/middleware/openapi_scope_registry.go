@@ -41,6 +41,12 @@ func (r *ScopeRegistry) Lookup(method, path string) ([]string, bool) {
 	return scopes, ok
 }
 
+// Len returns the number of (method, path) operations that carry a scope
+// requirement. Operations with no security block contribute no entry.
+func (r *ScopeRegistry) Len() int {
+	return len(r.scopes)
+}
+
 // AllScopes returns the set of every scope name declared across all operations.
 // Used at startup to validate that roles.yaml only references known scopes.
 func (r *ScopeRegistry) AllScopes() map[string]struct{} {

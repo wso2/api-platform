@@ -64,7 +64,7 @@ const loadSettingsPage = async (req, res) => {
         templateContent.orgId = orgId;
 
         // The Organization tab manages only the current org (no listing/add/delete).
-        const cur = orgDetails.dataValues || orgDetails;
+        const cur = orgDetails;
         templateContent.currentOrg = {
             id: cur.handle,
             displayName: cur.display_name,
@@ -73,7 +73,17 @@ const loadSettingsPage = async (req, res) => {
             businessOwnerEmail: cur.business_owner_email || '',
             idpRefId: orgDetails.idp_ref_id || '',
             cpRefId: orgDetails.cp_ref_id || '',
+            devportalMode: templateContent.devportalMode,
+            // Whole configuration object so the save can merge rather than
+            // replace — orgDao.update overwrites the column wholesale, and the
+            // API contract allows additional free-form keys alongside devportalMode.
+            configuration: cur.configuration || {},
         };
+        templateContent.devportalModeOptions = [
+            { value: constants.DEVPORTAL_MODE.DEFAULT, label: 'APIs and MCP servers' },
+            { value: constants.DEVPORTAL_MODE.APIS_ONLY, label: 'APIs only' },
+            { value: constants.DEVPORTAL_MODE.MCP_SERVERS_ONLY, label: 'MCP servers only' },
+        ].map(o => ({ ...o, selected: o.value === templateContent.devportalMode }));
 
         // Views for the selector and the merged Views management tab. The in-page
         // view selector picks which view the LLM + API Workflow panels edit via the
@@ -100,7 +110,7 @@ const loadSettingsPage = async (req, res) => {
         const apiWorkflows = await apiWorkflowService.getAllAPIWorkflowsFromDB(orgId, viewId);
         templateContent.apiWorkflows = apiWorkflows;
 
-        const allAPIs = await apiDao.getByCondition({ org_uuid: orgId });
+        const allAPIs = await apiDao.getByCondition({ orgId });
         const docNamesByApiId = await apiFileDao.listDocNamesForApis(orgId, allAPIs.map(api => api.uuid));
         const mappedAPIs = allAPIs.map(api => ({
             apiId: api.handle,

@@ -1,0 +1,168 @@
+openapi: 3.0.1
+info:
+  title: Reading-List-API
+  version: v1.0
+  description: |
+    Track a personal reading list — add books, update their reading status, and
+    remove them when you are done.
+
+    Open access: no API key or subscription token is required.
+servers:
+  - url: /reading-list/v1.0
+
+components:
+  schemas:
+    Book:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Server-assigned identifier. Ignored on create.
+          readOnly: true
+          example: 1d4c9647-5e62-4f1d-9c30-e1f25c6d0e73
+        title:
+          type: string
+          example: The Great Gatsby
+        author:
+          type: string
+          example: F. Scott Fitzgerald
+        status:
+          type: string
+          description: Where the book sits in the reading list.
+          enum:
+            - to_read
+            - reading
+            - read
+          example: read
+      required:
+        - title
+        - author
+        - status
+    BookList:
+      type: object
+      properties:
+        books:
+          type: array
+          items:
+            $ref: '#/components/schemas/Book'
+      required:
+        - books
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: UUID does not exist
+      required:
+        - error
+
+paths:
+  /books:
+    get:
+      summary: List books
+      description: Returns every book on the reading list.
+      operationId: listBooks
+      tags:
+        - books
+      responses:
+        '200':
+          description: OK. The reading list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookList'
+    post:
+      summary: Add a book
+      description: Adds a book to the reading list and returns it with its assigned id.
+      operationId: addBook
+      tags:
+        - books
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Book'
+      responses:
+        '201':
+          description: Created. The newly added book.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '400':
+          description: Bad Request. Invalid request body.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /books/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Unique identifier of the book.
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get a book
+      description: Returns a single book by id.
+      operationId: getBook
+      tags:
+        - books
+      responses:
+        '200':
+          description: OK. The requested book.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '404':
+          description: Not Found. No book with that id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Update a book
+      description: Replaces a book's details — commonly used to move it between reading statuses.
+      operationId: updateBook
+      tags:
+        - books
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Book'
+      responses:
+        '200':
+          description: OK. The updated book.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '404':
+          description: Not Found. No book with that id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      summary: Remove a book
+      description: Removes a book from the reading list.
+      operationId: deleteBook
+      tags:
+        - books
+      responses:
+        '204':
+          description: No Content. The book was removed.
+        '404':
+          description: Not Found. No book with that id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

@@ -23,7 +23,16 @@ describe('Developer Portal — Smoke', () => {
         cy.on('uncaught:exception', () => false);
     });
 
-    it('root serves a landing page', () => {
+    it('root redirects to the default organization view', () => {
+        const orgHandle = Cypress.env('ORG_HANDLE');
+        const viewName = Cypress.env('VIEW_NAME');
+        // The org selector was removed — `/` no longer serves a selector page;
+        // it redirects straight into the default organization's portal view.
+        cy.request({ url: '/', followRedirect: false, failOnStatusCode: false }).then((resp) => {
+            expect(resp.status).to.eq(302);
+            expect(resp.redirectedToUrl).to.contain(`/${orgHandle}/views/${viewName}`);
+        });
+        // Following the redirect lands on a rendered page, not an error.
         cy.request({ url: '/', failOnStatusCode: false }).then((resp) => {
             expect(resp.status).to.eq(200);
         });

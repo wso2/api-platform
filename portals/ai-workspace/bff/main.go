@@ -68,13 +68,18 @@ func printStartedMarker(url string) {
 		"\n\n")
 }
 
-// portalURL renders the browser-visitable address of the portal. A wildcard or
-// empty listen host is reported as localhost, since "https://:8081" and
-// "https://0.0.0.0:8081" are not addresses a human can click.
-func portalURL(addr string, tlsEnabled bool) string {
+// portalURL renders the browser-visitable address of the portal. When cfg.Domain is
+// set, it is used as-is: the BFF's own listen address is not what an operator should
+// visit when a reverse proxy (e.g. nginx) in front of it exposes a different host or
+// port. Otherwise a wildcard or empty listen host falls back to localhost, since
+// "https://:8081" and "https://0.0.0.0:8081" are not addresses a human can click.
+func portalURL(addr, domain string, tlsEnabled bool) string {
 	scheme := "http"
 	if tlsEnabled {
 		scheme = "https"
+	}
+	if domain != "" {
+		return scheme + "://" + domain
 	}
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -120,77 +125,125 @@ func main() {
 	}
 	defer srv.Close()
 
-	httpServer := &http.Server{
-		Addr:              cfg.Addr(),
-		Handler:           srv.Handler(),
+	if err := runListeners(cfg, srv.Handler()); err != nil {
+		slog.Error("server error", "err", err)
+		os.Exit(1)
+	}
+}
+
+// newListenerServer builds an *http.Server bound to port, sharing the same handler
+// and connection-lifetime timeouts across both the HTTP and HTTPS listeners.
+func newListenerServer(port int, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              fmt.Sprintf(":%d", port),
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
 		WriteTimeout:      0, // 0 = no write timeout; needed for SSE / streamed responses
 		IdleTimeout:       120 * time.Second,
 	}
+}
 
-	tlsConfig, err := buildTLS(cfg.Server)
-	if err != nil {
-		slog.Error("failed to set up TLS", "err", err)
-		os.Exit(1)
+// runListeners brings up the enabled HTTP/HTTPS listeners and blocks until either one
+// exits unexpectedly or an interrupt signal arrives, then gracefully shuts down
+// whichever listeners are running. The two listeners are independent — either or both
+// may be enabled, each on its own port — mirroring the Platform API's listener split
+// so a deployment can serve plain HTTP internally, HTTPS externally, or both at once.
+// Config.validate has already rejected the case where neither is enabled.
+func runListeners(cfg *config.Config, handler http.Handler) error {
+	httpCfg := cfg.Server.HTTP
+	httpsCfg := cfg.Server.HTTPS
+
+	var tlsConfig *tls.Config
+	if httpsCfg.Enabled {
+		var err error
+		if tlsConfig, err = buildTLS(httpsCfg); err != nil {
+			return fmt.Errorf("failed to set up TLS: %w", err)
+		}
 	}
-	httpServer.TLSConfig = tlsConfig
 
-	go func() {
-		url := portalURL(cfg.Addr(), tlsConfig != nil)
-		slog.Info("AI Workspace BFF started",
-			"addr", cfg.Addr(),
-			"url", url,
-			"auth_mode", cfg.Auth.Mode,
-			"control_plane", cfg.ControlPlane.URL,
-			"oidc_enabled", cfg.Auth.OIDC.Enabled,
+	errCh := make(chan error, 2)
+	var servers []*http.Server
+	// The startup banner is purely decorative for a human watching the console, so
+	// print it once for the primary listener (HTTPS when available) rather than once
+	// per listener.
+	bannerPrinted := false
+
+	if httpCfg.Enabled {
+		slog.Warn("Plain-HTTP listener is enabled ([server.http] enabled = true); " +
+			"terminate TLS at an ingress or service-mesh sidecar and never expose this " +
+			"listener directly to untrusted networks.")
+		s := newListenerServer(httpCfg.Port, handler)
+		servers = append(servers, s)
+		url := portalURL(s.Addr, cfg.Domain, false)
+		slog.Info("AI Workspace BFF: starting HTTP listener",
+			"addr", s.Addr, "url", url, "auth_mode", cfg.Auth.Mode,
+			"control_plane", cfg.ControlPlane.URL, "oidc_enabled", cfg.Auth.OIDC.Enabled,
 		)
-		printStartedMarker(url)
-		var serveErr error
-		if tlsConfig != nil {
-			serveErr = httpServer.ListenAndServeTLS("", "")
-		} else {
-			serveErr = httpServer.ListenAndServe()
+		if !httpsCfg.Enabled {
+			printStartedMarker(url)
+			bannerPrinted = true
 		}
-		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			slog.Error("server error", "err", serveErr)
-			os.Exit(1)
+		go func() {
+			errCh <- s.ListenAndServe()
+		}()
+	}
+
+	if httpsCfg.Enabled {
+		s := newListenerServer(httpsCfg.Port, handler)
+		s.TLSConfig = tlsConfig
+		servers = append(servers, s)
+		url := portalURL(s.Addr, cfg.Domain, true)
+		slog.Info("AI Workspace BFF: starting HTTPS listener",
+			"addr", s.Addr, "url", url, "auth_mode", cfg.Auth.Mode,
+			"control_plane", cfg.ControlPlane.URL, "oidc_enabled", cfg.Auth.OIDC.Enabled,
+		)
+		if !bannerPrinted {
+			printStartedMarker(url)
 		}
-	}()
+		go func() {
+			errCh <- s.ListenAndServeTLS("", "")
+		}()
+	}
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-	<-sig
-	slog.Info("shutting down")
+	defer signal.Stop(sig)
+
+	var serveErr error
+	select {
+	case serveErr = <-errCh:
+		if serveErr != nil && errors.Is(serveErr, http.ErrServerClosed) {
+			serveErr = nil
+		}
+	case <-sig:
+		slog.Info("shutting down")
+	}
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer shutdownCancel()
-	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		slog.Error("graceful shutdown failed", "err", err)
+	for _, s := range servers {
+		if err := s.Shutdown(shutdownCtx); err != nil {
+			slog.Error("graceful shutdown failed", "addr", s.Addr, "err", err)
+		}
 	}
+
+	return serveErr
 }
 
-// buildTLS returns the listener TLS config, or nil for plain HTTP. When TLS is
-// disabled no certificate is read or required. Otherwise a mounted cert/key pair
-// is required — there is no self-signed fallback; use the quickstart setup
-// script (or your own tooling) to generate a pair and mount it.
-func buildTLS(c config.ServerConfig) (*tls.Config, error) {
-	if !c.Enabled {
-		// Plain HTTP is only safe when something upstream terminates TLS.
-		slog.Warn("TLS: disabled ([server] enabled = false) — serving plain HTTP. " +
-			"Terminate TLS at an ingress or service-mesh sidecar and " +
-			"never expose this listener directly to untrusted networks.")
-		return nil, nil
-	}
-	// A partial mount (exactly one of cert/key present) is a misconfiguration, not
-	// a request for plain HTTP — fail loudly instead of silently downgrading.
+// buildTLS returns the HTTPS listener's TLS config. A mounted cert/key pair is
+// required — there is no self-signed fallback; use the quickstart setup script (or
+// your own tooling) to generate a pair and mount it.
+func buildTLS(c config.HTTPSListener) (*tls.Config, error) {
+	// A partial mount (exactly one of cert/key present) is a misconfiguration — fail
+	// loudly instead of silently continuing with an incomplete pair.
 	if fileExists(c.CertFile) != fileExists(c.KeyFile) {
 		return nil, fmt.Errorf("incomplete TLS mount: exactly one of cert (%q) and key (%q) is present", c.CertFile, c.KeyFile)
 	}
 	if !fileExists(c.CertFile) {
-		return nil, fmt.Errorf("TLS is enabled but no certificate is mounted: "+
-			"set [server] cert_file (%q) and key_file (%q) to existing files, "+
-			"or set [server] enabled = false to serve plain HTTP behind a TLS-terminating proxy", c.CertFile, c.KeyFile)
+		return nil, fmt.Errorf("[server.https] enabled = true but no certificate is mounted: "+
+			"set cert_file (%q) and key_file (%q) to existing files, or set "+
+			"[server.https] enabled = false", c.CertFile, c.KeyFile)
 	}
 	cert, err := tlsutil.CertFromFiles(c.CertFile, c.KeyFile)
 	if err != nil {

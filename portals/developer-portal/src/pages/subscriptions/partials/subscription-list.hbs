@@ -40,10 +40,9 @@
           </td>
           <td>
             <div class="sub-actions">
-              <button class="sub-action-btn sub-action-btn--manage {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+              <button class="sub-action-btn sub-action-btn--manage"
                 title="Manage subscription"
-                {{#unless @root.isReadOnlyMode}}onclick="openSubManage('{{this.id}}')"{{/unless}}
-                {{#if @root.isReadOnlyMode}}disabled{{/if}}>
+                onclick="openSubManage('{{this.id}}')">
                 <i class="bi bi-sliders"></i>
               </button>
             </div>
@@ -64,7 +63,6 @@
 </div>
 {{/if}}
 
-{{#unless @root.isReadOnlyMode}}
 <!-- Manage subscription modal -->
 <div id="subManageModal" class="mc-overlay" style="display:none;" role="dialog" aria-modal="true">
   <div class="mc-manage-modal">
@@ -146,4 +144,3 @@
     </div>
   </div>
 </div>
-{{/unless}}

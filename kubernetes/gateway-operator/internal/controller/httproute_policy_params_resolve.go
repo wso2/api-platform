@@ -22,11 +22,11 @@ import (
 	"encoding/json"
 	"strings"
 
-	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"log/slog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
@@ -53,7 +53,7 @@ const (
 // resolveAPIConfigPolicyParamsValueFrom replaces policy params `valueFrom` objects with
 // string values read from either a Secret or a ConfigMap, so gateway-controller receives
 // the same JSON shape as inline RestApi policies.
-func resolveAPIConfigPolicyParamsValueFrom(ctx context.Context, c client.Client, routeNS string, spec *apiv1.APIConfigData, log *zap.Logger) (string, error) {
+func resolveAPIConfigPolicyParamsValueFrom(ctx context.Context, c client.Client, routeNS string, spec *apiv1.APIConfigData, log *slog.Logger) (string, error) {
 	fp, err := computeRestApiPolicyValueFromFingerprint(ctx, c, routeNS, spec)
 	if err != nil {
 		return "", err
@@ -74,7 +74,7 @@ func resolveAPIConfigPolicyParamsValueFrom(ctx context.Context, c client.Client,
 	return fp, nil
 }
 
-func resolvePolicyParamsValueFrom(ctx context.Context, c client.Client, defaultNS string, p *apiv1.Policy, scope string, log *zap.Logger) error {
+func resolvePolicyParamsValueFrom(ctx context.Context, c client.Client, defaultNS string, p *apiv1.Policy, scope string, log *slog.Logger) error {
 	if p.Params == nil || len(p.Params.Raw) == 0 {
 		return nil
 	}
@@ -94,7 +94,7 @@ func resolvePolicyParamsValueFrom(ctx context.Context, c client.Client, defaultN
 	return nil
 }
 
-func resolveValueFromInJSON(ctx context.Context, c client.Client, defaultNS string, v interface{}, policyName, scope string, log *zap.Logger) (interface{}, error) {
+func resolveValueFromInJSON(ctx context.Context, c client.Client, defaultNS string, v interface{}, policyName, scope string, log *slog.Logger) (interface{}, error) {
 	switch x := v.(type) {
 	case map[string]interface{}:
 		if s, ok, err := tryResolveValueFromMap(ctx, c, defaultNS, x, policyName, scope, log); ok || err != nil {
@@ -132,7 +132,7 @@ func resolveValueFromInJSON(ctx context.Context, c client.Client, defaultNS stri
 // Returns (value, true, nil) when the map was consumed as a value-from reference,
 // (_, false, nil) when it should be treated as a regular nested object and recursed
 // into, or (_, true, err) when the shape is malformed or the resource/key is missing.
-func tryResolveValueFromMap(ctx context.Context, c client.Client, defaultNS string, m map[string]interface{}, policyName, scope string, log *zap.Logger) (string, bool, error) {
+func tryResolveValueFromMap(ctx context.Context, c client.Client, defaultNS string, m map[string]interface{}, policyName, scope string, log *slog.Logger) (string, bool, error) {
 	if len(m) != 1 {
 		return "", false, nil
 	}
@@ -240,7 +240,7 @@ func readKeyRef(ref map[string]interface{}, defaultNS, policyName, kind string) 
 	return name, key, ns, nil
 }
 
-func resolveSecretKeyRef(ctx context.Context, c client.Client, ns, name, key, policyName, scope string, log *zap.Logger) (string, bool, error) {
+func resolveSecretKeyRef(ctx context.Context, c client.Client, ns, name, key, policyName, scope string, log *slog.Logger) (string, bool, error) {
 	sec := &corev1.Secret{}
 	if err := c.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, sec); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -254,17 +254,17 @@ func resolveSecretKeyRef(ctx context.Context, c client.Client, ns, name, key, po
 	}
 	if log != nil {
 		log.Debug("resolved policy param from Secret (valueFrom.secretKeyRef)",
-			zap.String("policy", policyName),
-			zap.String("scope", scope),
-			zap.String("secretNamespace", ns),
-			zap.String("secret", name),
-			zap.String("key", key),
-			zap.Int("valueLength", len(data)))
+			slog.String("policy", policyName),
+			slog.String("scope", scope),
+			slog.String("secretNamespace", ns),
+			slog.String("secret", name),
+			slog.String("key", key),
+			slog.Int("valueLength", len(data)))
 	}
 	return string(data), true, nil
 }
 
-func resolveConfigMapKeyRef(ctx context.Context, c client.Client, ns, name, key, policyName, scope string, log *zap.Logger) (string, bool, error) {
+func resolveConfigMapKeyRef(ctx context.Context, c client.Client, ns, name, key, policyName, scope string, log *slog.Logger) (string, bool, error) {
 	cm := &corev1.ConfigMap{}
 	if err := c.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, cm); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -278,13 +278,13 @@ func resolveConfigMapKeyRef(ctx context.Context, c client.Client, ns, name, key,
 		}
 		if log != nil {
 			log.Debug("resolved policy param from ConfigMap (valueFrom.configMapKeyRef)",
-				zap.String("policy", policyName),
-				zap.String("scope", scope),
-				zap.String("configMapNamespace", ns),
-				zap.String("configMap", name),
-				zap.String("key", key),
-				zap.String("source", "data"),
-				zap.Int("valueLength", len(v)))
+				slog.String("policy", policyName),
+				slog.String("scope", scope),
+				slog.String("configMapNamespace", ns),
+				slog.String("configMap", name),
+				slog.String("key", key),
+				slog.String("source", "data"),
+				slog.Int("valueLength", len(v)))
 		}
 		return v, true, nil
 	}
@@ -294,13 +294,13 @@ func resolveConfigMapKeyRef(ctx context.Context, c client.Client, ns, name, key,
 		}
 		if log != nil {
 			log.Debug("resolved policy param from ConfigMap (valueFrom.configMapKeyRef)",
-				zap.String("policy", policyName),
-				zap.String("scope", scope),
-				zap.String("configMapNamespace", ns),
-				zap.String("configMap", name),
-				zap.String("key", key),
-				zap.String("source", "binaryData"),
-				zap.Int("valueLength", len(v)))
+				slog.String("policy", policyName),
+				slog.String("scope", scope),
+				slog.String("configMapNamespace", ns),
+				slog.String("configMap", name),
+				slog.String("key", key),
+				slog.String("source", "binaryData"),
+				slog.Int("valueLength", len(v)))
 		}
 		return string(v), true, nil
 	}

@@ -47,6 +47,8 @@ import {
 } from '@wso2/oxygen-ui-icons-react';
 import YAML from 'yaml';
 import { getGuardrails } from '../../../../apis/policyHubApis';
+import { getGatewayCustomPolicies } from '../../../../apis/gatewayPolicyApis';
+import type { GatewayCustomPolicy } from '../../../../apis/gatewayPolicyApis';
 import { useProxy } from '../../../../contexts/proxy';
 import { useGuardrails } from '../../../../contexts/GuardrailsContext';
 import { logger } from '../../../../utils/logger';
@@ -55,9 +57,11 @@ import { GuardrailPill, PolicyCategorySelector } from '../../../../Components/Gu
 import { ResourceRow } from '../../../../Components/ResourceView';
 import PolicyParameterEditor from '../../PolicyParameterEditor/PolicyParameterEditor';
 import type {
+  ParameterSchema,
   PolicyDefinition,
   ParameterValues,
 } from '../../PolicyParameterEditor/types';
+import type { PolicyHubPolicy } from '../../../../utils/types';
 import { parsePolicyYaml } from '../../PolicyParameterEditor/yamlParser';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../Components/common/ErrorAlert';
@@ -136,6 +140,56 @@ const parseOpenApiText = (text: string): ResourceItem[] => {
   }
 };
 
+/** A drawer list entry — either a Policy Hub guardrail or a synced gateway
+ * custom policy, rendered and clicked through the same UI. */
+type DrawerGuardrailItem = PolicyHubPolicy & {
+  isCustomPolicy?: boolean;
+  customPolicyUuid?: string;
+  customPolicyDefinition?: Record<string, unknown>;
+};
+
+/** Custom policy versions come back as full semver with a "v" prefix (e.g.
+ * "v1.0.0"), unlike Policy Hub guardrails which are already display-formatted
+ * (e.g. "1.0"). Reformat to major.minor so both render the same way. */
+const formatPolicyVersion = (version?: string): string => {
+  if (!version) return '0';
+  const [major = '0', minor = '0'] = version.replace(/^v/i, '').split('.');
+  return `${major}.${minor}`;
+};
+
+const toDrawerItem = (policy: GatewayCustomPolicy): DrawerGuardrailItem => ({
+  name: policy.name,
+  version: formatPolicyVersion(policy.version),
+  displayName: policy.displayName || policy.name,
+  description: policy.description,
+  provider: policy.provider,
+  isCustomPolicy: true,
+  customPolicyUuid: policy.uuid,
+  customPolicyDefinition: policy.policyDefinition,
+});
+
+/** Custom policies already carry their full definition inline (no policy-hub
+ * YAML fetch needed) — just reshape it into a PolicyDefinition. */
+const buildPolicyDefinitionFromCustomPolicy = (item: {
+  name: string;
+  version: string;
+  description?: string;
+  policyDefinition?: Record<string, unknown>;
+}): PolicyDefinition => {
+  const def = (item.policyDefinition ?? {}) as {
+    description?: string;
+    parameters?: ParameterSchema;
+    systemParameters?: ParameterSchema;
+  };
+  return {
+    name: item.name,
+    version: item.version,
+    description: item.description || def.description || '',
+    parameters: def.parameters ?? { type: 'object', properties: {} },
+    systemParameters: def.systemParameters,
+  };
+};
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 /**
@@ -180,6 +234,8 @@ export default function LLMProxyGuardrailsTab() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['AI']);
   const [drawerGuardrails, setDrawerGuardrails] = useState<typeof availableGuardrails>([]);
   const [drawerGuardrailsLoading, setDrawerGuardrailsLoading] = useState(false);
+  const [customPolicies, setCustomPolicies] = useState<GatewayCustomPolicy[]>([]);
+  const [customPoliciesLoading, setCustomPoliciesLoading] = useState(false);
 
   const fetchDrawerGuardrails = useCallback(async (categories: string[]) => {
     if (categories.length === 0) {
@@ -197,9 +253,46 @@ export default function LLMProxyGuardrailsTab() {
     }
   }, []);
 
+  const fetchCustomPolicies = useCallback(async () => {
+    setCustomPoliciesLoading(true);
+    try {
+      const response = await getGatewayCustomPolicies();
+      setCustomPolicies(response.list || []);
+    } catch (e) {
+      logger.error('Failed to load custom policies:', e);
+      setCustomPolicies([]);
+    } finally {
+      setCustomPoliciesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void fetchDrawerGuardrails(selectedCategories);
   }, [selectedCategories, fetchDrawerGuardrails]);
+
+  useEffect(() => {
+    void fetchCustomPolicies();
+  }, [fetchCustomPolicies]);
+
+  // Drawer list = Policy Hub guardrails for the selected categories, plus all
+  // synced gateway custom policies (always shown, independent of category
+  // filtering) — merged and sorted alphabetically by display name.
+  const drawerItems: DrawerGuardrailItem[] = useMemo(() => {
+    const customItems = customPolicies.map(toDrawerItem);
+    return [...drawerGuardrails, ...customItems].sort((a, b) =>
+      (a.displayName || a.name).localeCompare(b.displayName || b.name)
+    );
+  }, [drawerGuardrails, customPolicies]);
+
+  const drawerItemsLoading = drawerGuardrailsLoading || customPoliciesLoading;
+
+  // Custom policies applied to the proxy are indistinguishable from hub
+  // policies once saved, so pill-edit needs its own name-keyed lookup.
+  const customPolicyByName = useMemo(() => {
+    const map = new Map<string, GatewayCustomPolicy>();
+    customPolicies.forEach((p) => map.set(p.name, p));
+    return map;
+  }, [customPolicies]);
 
   // Reset drawer state on close
   useEffect(() => {
@@ -325,10 +418,10 @@ export default function LLMProxyGuardrailsTab() {
   }, [proxy?.openapi, proxy?.operationPolicies, policies]);
 
   const selectedGuardrailPolicy =
-    drawerGuardrails.find((p) => p.name === selectedGuardrail) ??
+    drawerItems.find((p) => p.name === selectedGuardrail) ??
     availableGuardrails.find((p) => p.name === selectedGuardrail);
   const selectedGuardrailVersion = selectedGuardrailPolicy?.version
-    ? `v${selectedGuardrailPolicy.version.split('.')[0]}`
+    ? `v${selectedGuardrailPolicy.version.replace(/^v/i, '').split('.')[0]}`
     : 'v0';
 
   // ── Drawer openers ──────────────────────────────────────────────────────
@@ -392,6 +485,13 @@ export default function LLMProxyGuardrailsTab() {
     setDefinitionError(null);
     setDrawerOpen(true);
 
+    // Custom policies carry their definition inline — no policy-hub lookup.
+    const customPolicy = customPolicyByName.get(policyName);
+    if (customPolicy) {
+      setPolicyDefinition(buildPolicyDefinitionFromCustomPolicy(customPolicy));
+      return;
+    }
+
     // Prefer the policy-hub version, but fall back to the applied policy's own
     // version so non-guardrail policies shown as pills (e.g. rate-limit policies,
     // which the guardrails hub list doesn't include) can still load their
@@ -423,16 +523,29 @@ export default function LLMProxyGuardrailsTab() {
 
   // ── Guardrail selection & definition loading ────────────────────────────
 
-  const handleGuardrailClick = async (guardrail: {
-    name: string;
-    version?: string;
-  }) => {
+  const handleGuardrailClick = async (guardrail: DrawerGuardrailItem) => {
     if (isReadOnlyProxy) return;
     setSelectedGuardrail(guardrail.name);
     setIsDetailView(true);
     setPolicyDefinition(null);
     setGuardrailSettings({});
     setDefinitionError(null);
+
+    if (guardrail.isCustomPolicy) {
+      if (!guardrail.customPolicyDefinition) {
+        setDefinitionError('No definition available for this custom policy.');
+        return;
+      }
+      setPolicyDefinition(
+        buildPolicyDefinitionFromCustomPolicy({
+          name: guardrail.name,
+          version: guardrail.version,
+          description: guardrail.description,
+          policyDefinition: guardrail.customPolicyDefinition,
+        })
+      );
+      return;
+    }
 
     if (!guardrail.version) {
       setDefinitionError('No version available for this guardrail.');
@@ -457,10 +570,7 @@ export default function LLMProxyGuardrailsTab() {
   const handleRetryDefinition = () => {
     if (!selectedGuardrailPolicy) return;
 
-    void handleGuardrailClick({
-      name: selectedGuardrailPolicy.name,
-      version: selectedGuardrailPolicy.version,
-    });
+    void handleGuardrailClick(selectedGuardrailPolicy);
   };
 
   // ── Build path & submit ─────────────────────────────────────────────────
@@ -1158,12 +1268,12 @@ export default function LLMProxyGuardrailsTab() {
                         }}
                       />
                       <Stack spacing={1.25} sx={{ mt: 1 }}>
-                        {drawerGuardrailsLoading ? (
+                        {drawerItemsLoading ? (
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 2 }}>
                             <CircularProgress size={16} />
                             <Typography variant="body2" color="text.secondary">Loading...</Typography>
                           </Box>
-                        ) : drawerGuardrails
+                        ) : drawerItems
                           .filter((g) => {
                             if (!guardrailSearchQuery.trim()) return true;
                             const query = guardrailSearchQuery.toLowerCase();
@@ -1190,12 +1300,7 @@ export default function LLMProxyGuardrailsTab() {
                                 <Box sx={{ p: 1 }}>
                                   <ListItemButton
                                     selected={isSelected}
-                                    onClick={() =>
-                                      handleGuardrailClick({
-                                        name: guardrail.name,
-                                        version: guardrail.version,
-                                      })
-                                    }
+                                    onClick={() => handleGuardrailClick(guardrail)}
                                     sx={{
                                       p: 0.75,
                                       borderRadius: 1,
@@ -1219,12 +1324,22 @@ export default function LLMProxyGuardrailsTab() {
                                         {guardrail.displayName ||
                                           guardrail.name}
                                       </Typography>
-                                      <Chip
-                                        label={guardrail.version || 'v0'}
-                                        size="small"
-                                        variant="outlined"
-                                        color="default"
-                                      />
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        {guardrail.provider && (
+                                          <Chip
+                                            label={guardrail.provider}
+                                            size="small"
+                                            variant="outlined"
+                                            color="default"
+                                          />
+                                        )}
+                                        <Chip
+                                          label={guardrail.version || 'v0'}
+                                          size="small"
+                                          variant="outlined"
+                                          color="default"
+                                        />
+                                      </Box>
                                     </Box>
                                   </ListItemButton>
                                 </Box>
@@ -1237,10 +1352,15 @@ export default function LLMProxyGuardrailsTab() {
                   ) : (
                     <Stack spacing={1.5} sx={{ mt: 1 }}>
                       <Box>
-                        <Typography variant="subtitle2">
-                          {selectedGuardrailPolicy?.displayName ||
-                            selectedGuardrailPolicy?.name}
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          <Typography variant="subtitle2">
+                            {selectedGuardrailPolicy?.displayName ||
+                              selectedGuardrailPolicy?.name}
+                          </Typography>
+                          {Boolean(selectedGuardrailPolicy?.isCustomPolicy) && (
+                            <Chip label="Custom" size="small" variant="outlined" color="primary" />
+                          )}
+                        </Box>
                         <Typography variant="caption" color="text.secondary">
                           {selectedGuardrailPolicy?.version}
                         </Typography>

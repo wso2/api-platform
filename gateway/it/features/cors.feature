@@ -46,7 +46,7 @@ Feature: CORS Policy
             params:
               allowedOrigins:
                 - "http://example.com"
-                - '^https://[^.]+\.example\.com$'
+                - "https://*.example.com"
                 - "http://localhost:5000"
               allowedMethods:
                 - "GET"
@@ -72,17 +72,6 @@ Feature: CORS Policy
     And I send an OPTIONS request to "http://localhost:8080/cors-preflight/v1.0/us/seattle"
     Then the response status code should be 204
     And the response header "Access-Control-Allow-Origin" should be "http://example.com"
-    And the response header "Access-Control-Allow-Methods" should contain "GET"
-    And the response header "Access-Control-Allow-Methods" should contain "POST"
-    And the response header "Access-Control-Allow-Headers" should contain "Content-Type"
-
-  Scenario: Preflight request allows configured origin based on regex
-    When I set header "Origin" to "https://app.example.com"
-    And I set header "Access-Control-Request-Method" to "GET"
-    And I set header "Access-Control-Request-Headers" to "Content-Type"
-    And I send an OPTIONS request to "http://localhost:8080/cors-preflight/v1.0/us/seattle"
-    Then the response status code should be 204
-    And the response header "Access-Control-Allow-Origin" should be "https://app.example.com"
     And the response header "Access-Control-Allow-Methods" should contain "GET"
     And the response header "Access-Control-Allow-Methods" should contain "POST"
     And the response header "Access-Control-Allow-Headers" should contain "Content-Type"
@@ -142,7 +131,7 @@ Feature: CORS Policy
             params:
               allowedOrigins:
                 - "http://example.com"
-                - '^https://[^.]+\.example\.com$'
+                - "https://*.example.com"
               allowedMethods:
                 - "GET"
                 - "POST"
@@ -193,16 +182,6 @@ Feature: CORS Policy
     And I send a GET request to "http://localhost:8080/cors-simple/v1.0/us/seattle"
     Then the response status code should be 200
     And the response header "Access-Control-Expose-Headers" should be "X-Custom-Header"
-
-  Scenario: Simple GET matching regex origin gets CORS headers
-    When I set header "Origin" to "https://app.example.com"
-    And I send a GET request to "http://localhost:8080/cors-simple/v1.0/us/seattle"
-    Then the response status code should be 200
-    And the response header "Access-Control-Allow-Origin" should be "https://app.example.com"
-
-    Given I authenticate using basic auth as "admin"
-    When I delete the API "cors-simple-api"
-    Then the response should be successful
 
   Scenario: Simple GET with wildcard origin gets CORS headers
     Given I authenticate using basic auth as "admin"

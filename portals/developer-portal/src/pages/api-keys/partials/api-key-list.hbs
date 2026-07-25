@@ -24,11 +24,9 @@
   {{else}}
   <h2 class="dp-empty-title">No API keys yet</h2>
   <p class="dp-empty-desc">Generate a key to authenticate requests to this API. You can revoke or regenerate it at any time.</p>
-  {{#unless isReadOnlyMode}}
   <button type="button" class="dp-btn dp-btn--primary dp-btn--lg" id="btn-open-generate-api-key-empty" style="margin-top:1.5rem;">
     <i class="bi bi-plus"></i> Generate API key
   </button>
-  {{/unless}}
   {{/if}}
 </div>
 
@@ -58,7 +56,6 @@
         <td class="ak-expires">{{#if this.expiresAt}}{{formatExpiresAt this.expiresAt}}{{else}}Never{{/if}}</td>
         <td class="ak-app">{{#if this.appDisplayName}}{{this.appDisplayName}}{{else}}-{{/if}}</td>
         <td>
-          {{#unless @root.isReadOnlyMode}}
           <div class="ak-actions">
             <button type="button" class="ak-btn-app btn-app-key"
               data-key-id="{{this.id}}" data-key-name="{{this.displayName}}"
@@ -77,9 +74,6 @@
               <i class="bi bi-slash-circle"></i> Revoke
             </button>
           </div>
-          {{else}}
-          <span style="font-size:0.8125rem;color:#8a98a6;text-align:right;display:block;">Read only</span>
-          {{/unless}}
         </td>
       </tr>
       {{/each}}
@@ -88,7 +82,6 @@
 </div>
 {{/if}}
 
-{{#unless isReadOnlyMode}}
 
 <!-- Generate modal -->
 <div class="ak-overlay" id="generateApiKeyModal">
@@ -209,5 +202,4 @@
   </div>
 </div>
 
-{{/unless}}
 {{/if}}

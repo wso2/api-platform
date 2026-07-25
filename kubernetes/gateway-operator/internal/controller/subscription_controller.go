@@ -25,10 +25,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"log/slog"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -56,7 +56,7 @@ type SubscriptionReconciler struct {
 }
 
 // NewSubscriptionReconciler constructs a fully wired Subscription reconciler.
-func NewSubscriptionReconciler(c client.Client, cfg *config.OperatorConfig, logger *zap.Logger, tracker *ResourceTracker) *SubscriptionReconciler {
+func NewSubscriptionReconciler(c client.Client, cfg *config.OperatorConfig, logger *slog.Logger, tracker *ResourceTracker) *SubscriptionReconciler {
 	r := &SubscriptionReconciler{}
 	r.Client = c
 	r.Config = cfg
@@ -87,7 +87,7 @@ func (r *SubscriptionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 // enqueueSubscriptionsReferencingSecret maps Secret events to Subscriptions in the
 // same namespace that source spec.subscriptionToken from that Secret.
-func enqueueSubscriptionsReferencingSecret(c client.Client, zapLog *zap.Logger) handlerMapFunc {
+func enqueueSubscriptionsReferencingSecret(c client.Client, log *slog.Logger) handlerMapFunc {
 	return func(ctx context.Context, obj client.Object) []reconcile.Request {
 		s, ok := obj.(*corev1.Secret)
 		if !ok || s == nil {
@@ -99,11 +99,11 @@ func enqueueSubscriptionsReferencingSecret(c client.Client, zapLog *zap.Logger) 
 		}
 		var list apiv1.SubscriptionList
 		if err := c.List(ctx, &list, client.InNamespace(ns)); err != nil {
-			if zapLog != nil {
-				zapLog.Error("Secret watch: listing Subscriptions in namespace failed, fail-open to full Subscription reconcile",
-					zap.Error(err),
-					zap.String("secretNamespace", ns),
-					zap.String("secretName", s.GetName()))
+			if log != nil {
+				log.Error("Secret watch: listing Subscriptions in namespace failed, fail-open to full Subscription reconcile",
+					slog.Any("error", err),
+					slog.String("secretNamespace", ns),
+					slog.String("secretName", s.GetName()))
 			}
 			return enqueueAllOfKind(c, &apiv1.SubscriptionList{})(ctx, obj)
 		}

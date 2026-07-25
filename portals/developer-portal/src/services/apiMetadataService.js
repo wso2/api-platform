@@ -16,8 +16,7 @@
  * under the License.
  */
 /* eslint-disable no-undef */
-const { Sequelize } = require("sequelize");
-const sequelize = require('../db/sequelizeConfig');
+const db = require('../db/driver');
 const apiDao = require("../dao/apiDao");
 const subDao = require('../dao/subscriptionDao');
 const labelDao = require('../dao/labelDao');
@@ -41,7 +40,7 @@ const constants = require("../utils/constants");
 const subscriptionPlanDTO = require("../dto/subscriptionPlanDto");
 const userIdpReferenceDao = require("../dao/userIdpReferenceDao");
 const { logUserAction } = require('../middlewares/auditLogger');
-const { CustomError } = require("../utils/errors/customErrors");
+const { CustomError, ValidationError, NotFoundError } = require("../utils/errors/customErrors");
 const LabelDTO = require("../dto/labelDto");
 
 const createAPIMetadata = async (req, res) => {
@@ -85,7 +84,7 @@ const createAPIMetadata = async (req, res) => {
             apiMetadata = parseApiMetadataFromYamlRequest(req);
         } else {
             if (!req.body.metadata) {
-                throw new Sequelize.ValidationError("Missing or invalid fields in the request payload");
+                throw new ValidationError("Missing or invalid fields in the request payload");
             }
             apiMetadata = JSON.parse(req.body.metadata);
             // Type is resolved centrally below, using this raw (possibly omitted) value —
@@ -117,18 +116,18 @@ const createAPIMetadata = async (req, res) => {
             (definitionUpload || fullApiBundle?.schemaDefinitionFile);
         const hasContract = isMcp ? hasMcpSchema : (apiDefinitionFile || hasGraphQLSchema);
         if (!apiMetadata.name || !hasContract || !apiMetadata.endPoints) {
-            throw new Sequelize.ValidationError(
+            throw new ValidationError(
                 "Missing or Invalid fields in the request payload"
             );
         }
         const { status: apiStatus, agentVisibility } = apiMetadata;
         if (apiStatus && !Object.values(constants.API_STATUS).includes(apiStatus)) {
-            throw new Sequelize.ValidationError(`Invalid status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
+            throw new ValidationError(`Invalid status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
         }
         if (agentVisibility) {
             const normalizedAgentVisibility = agentVisibility.toUpperCase();
             if (!Object.values(constants.AGENT_VISIBILITY).includes(normalizedAgentVisibility)) {
-                throw new Sequelize.ValidationError(`Invalid agentVisibility '${agentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
+                throw new ValidationError(`Invalid agentVisibility '${agentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
             }
             apiMetadata.agentVisibility = normalizedAgentVisibility;
         }
@@ -136,26 +135,24 @@ const createAPIMetadata = async (req, res) => {
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
         normalizeGraphQLEndpoints(apiMetadata);
         let createdAPIRecord;
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
+        await db.withTransaction(async (t) => {
             // Create apimetadata record
             const createdAPI = await apiDao.create(orgId, apiMetadata, userId, t);
-            createdAPIRecord = createdAPI.dataValues;
-            const apiId = createdAPI.dataValues.uuid;
-            apiMetadata.handle = createdAPI.dataValues.handle;
+            createdAPIRecord = createdAPI;
+            const apiId = createdAPI.uuid;
+            apiMetadata.handle = createdAPI.handle;
             if (apiMetadata.subscriptionPlans) {
                 const subscriptionPlans = [];
                 const apiSubscriptionPlans = apiMetadata.subscriptionPlans;
                 if (!Array.isArray(apiSubscriptionPlans)) {
-                    throw new Sequelize.ValidationError(
+                    throw new ValidationError(
                         "Missing or Invalid fields in the request payload"
                     );
                 } else {
                     for (const plan of apiSubscriptionPlans) {
                         const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.id);
                         if (!subscriptionPlan) {
-                            throw new Sequelize.EmptyResultError("Subscription plan not found");
+                            throw new NotFoundError("Subscription plan not found");
                         } else {
                             subscriptionPlans.push({ apiId: apiId, planId: subscriptionPlan.uuid });
                         }
@@ -167,7 +164,7 @@ const createAPIMetadata = async (req, res) => {
             if (apiMetadata.labels) {
                 const labels = apiMetadata.labels;
                 if (!Array.isArray(labels)) {
-                    throw new Sequelize.ValidationError(
+                    throw new ValidationError(
                         "Missing or Invalid fields in the request payload"
                     );
                 }
@@ -179,7 +176,7 @@ const createAPIMetadata = async (req, res) => {
             if (apiMetadata.tags) {
                 const tags = apiMetadata.tags;
                 if (!Array.isArray(tags)) {
-                    throw new Sequelize.ValidationError(
+                    throw new ValidationError(
                         "Missing or Invalid fields in the request payload"
                     );
                 }
@@ -342,19 +339,19 @@ async function resolveScopedApiId(req, orgId, apiHandle) {
  */
 function resolveTypeOrReject(rawType, forceType) {
     if (!rawType) {
-        throw new Sequelize.ValidationError("Missing required field 'type'");
+        throw new ValidationError("Missing required field 'type'");
     }
     const resolved = util.resolveApiType(rawType);
     if (forceType) {
         if (resolved !== forceType) {
-            throw new Sequelize.ValidationError(
+            throw new ValidationError(
                 `Only type '${forceType}' is allowed via this endpoint — use /api/v0.9/apis for other API types`
             );
         }
         return forceType;
     }
     if (resolved === constants.API_TYPE.MCP) {
-        throw new Sequelize.ValidationError(
+        throw new ValidationError(
             "MCP servers must be created via /api/v0.9/mcp-servers"
         );
     }
@@ -387,10 +384,8 @@ const getAPIMetadata = async (req, res) => {
 
 const getMetadataFromDB = async (orgId, apiId) => {
 
-    return await sequelize.transaction({
-        timeout: 60000,
-    }, async (t) => {
-        const retrievedAPI = await apiDao.getByCondition({ org_uuid: orgId, uuid: apiId }, t);
+    return await db.withTransaction(async (t) => {
+        const retrievedAPI = await apiDao.getByCondition({ orgId, uuid: apiId }, t);
         if (retrievedAPI.length > 0) {
             const audit = await userIdpReferenceDao.buildSingleAuditFields(retrievedAPI[0]);
             return new APIDTO(retrievedAPI[0], audit);
@@ -426,18 +421,19 @@ const getAllAPIMetadata = async (req, res) => {
 };
 
 const getMetadataListFromDB = async (orgId, searchTerm, tags, apiName, apiVersion, viewName, typeFilter) => {
-    return await sequelize.transaction({
-        timeout: 60000,
-    }, async (t) => {
+    return await db.withTransaction(async (t) => {
         let retrievedAPIs;
         if (apiName || apiVersion || tags) {
-            const condition = {};
-            if (apiName) condition.name = apiName;
-            if (apiVersion) condition.version = apiVersion;
-            condition.org_uuid = orgId;
-            if (typeFilter?.include) condition.type = typeFilter.include;
-            if (typeFilter?.exclude) condition.type = { [Sequelize.Op.ne]: typeFilter.exclude };
-            retrievedAPIs = await apiDao.getByCondition(condition, t, tags);
+            // getByCondition only supports {orgId, uuid, typeFilter} — name/version are no
+            // longer arbitrary Sequelize `where` keys, so they're applied as an in-memory
+            // post-filter here to keep the exact-match `name`/`version` query params working.
+            retrievedAPIs = await apiDao.getByCondition({ orgId, typeFilter }, t, tags);
+            if (apiName) {
+                retrievedAPIs = retrievedAPIs.filter((api) => api.name === apiName);
+            }
+            if (apiVersion) {
+                retrievedAPIs = retrievedAPIs.filter((api) => api.version === apiVersion);
+            }
         } else if (searchTerm) {
             retrievedAPIs = await apiDao.search(orgId, searchTerm, viewName, t, typeFilter);
         } else if (viewName) {
@@ -479,7 +475,7 @@ const updateAPIMetadata = async (req, res) => {
         // `type` is immutable after creation — resolveTypeOrReject below only enforces the
         // /apis-vs-/mcp-servers family boundary, not that the value matches this specific
         // record's existing type, so that has to be checked separately once it's resolved.
-        const [existingRecord] = await apiDao.getByCondition({ uuid: apiId, org_uuid: orgId });
+        const [existingRecord] = await apiDao.getByCondition({ orgId, uuid: apiId });
         const existingType = existingRecord ? existingRecord.type : undefined;
         logger.debug('MCP API Definition file', {
             apiFileName,
@@ -514,7 +510,7 @@ const updateAPIMetadata = async (req, res) => {
             apiMetadata = parseApiMetadataFromYamlRequest(req);
         } else {
             if (!req.body.metadata) {
-                throw new Sequelize.ValidationError("Missing or invalid fields in the request payload");
+                throw new ValidationError("Missing or invalid fields in the request payload");
             }
             apiMetadata = JSON.parse(req.body.metadata);
             // Type is resolved centrally below, using this raw (possibly omitted) value —
@@ -542,18 +538,18 @@ const updateAPIMetadata = async (req, res) => {
 
         // Validate input — spec file is optional on update (already stored from create)
         if (!apiMetadata.name || !apiMetadata.endPoints) {
-            throw new Sequelize.ValidationError(
+            throw new ValidationError(
                 "Missing or Invalid fields in the request payload"
             );
         }
         const { status: updateApiStatus, agentVisibility: updateAgentVisibility } = apiMetadata;
         if (updateApiStatus && !Object.values(constants.API_STATUS).includes(updateApiStatus)) {
-            throw new Sequelize.ValidationError(`Invalid status '${updateApiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
+            throw new ValidationError(`Invalid status '${updateApiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
         }
         if (updateAgentVisibility) {
             const normalizedUpdateAgentVisibility = updateAgentVisibility.toUpperCase();
             if (!Object.values(constants.AGENT_VISIBILITY).includes(normalizedUpdateAgentVisibility)) {
-                throw new Sequelize.ValidationError(`Invalid agentVisibility '${updateAgentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
+                throw new ValidationError(`Invalid agentVisibility '${updateAgentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
             }
             apiMetadata.agentVisibility = normalizedUpdateAgentVisibility;
         }
@@ -581,9 +577,7 @@ const updateAPIMetadata = async (req, res) => {
         if (!allowStatusChange) {
             throw new CustomError(409, constants.ERROR_MESSAGE.ERR_SUB_EXIST, "API has subscriptions.");
         }
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
+        await db.withTransaction(async (t) => {
             // Create apimetadata record
             logger.info('Updating API metadata in database', {
                 orgId,
@@ -591,7 +585,7 @@ const updateAPIMetadata = async (req, res) => {
             });
             let [updatedRows, updatedAPI] = await apiDao.update(orgId, apiId, apiMetadata, userId, t);
             if (!updatedRows) {
-                throw new Sequelize.EmptyResultError("No record found to update");
+                throw new NotFoundError("No record found to update");
             }
             // An empty array is a valid "no labels to add/remove" diff result (e.g. the
             // same labels were resent) — `if (apiMetadata.addedLabels)` alone is truthy
@@ -600,25 +594,25 @@ const updateAPIMetadata = async (req, res) => {
             if (apiMetadata.addedLabels?.length) {
                 const labels = apiMetadata.addedLabels;
                 if (!Array.isArray(labels)) {
-                    throw new Sequelize.ValidationError(
+                    throw new ValidationError(
                         "Missing or Invalid fields in the request payload"
                     );
                 }
                 await labelDao.createApiMapping(orgId, apiId, labels, userId, t);
-                updatedAPI[0].dataValues.addedLabels = apiMetadata.addedLabels;
+                updatedAPI[0].addedLabels = apiMetadata.addedLabels;
             }
             if (apiMetadata.removedLabels?.length) {
                 const labels = apiMetadata.removedLabels;
                 if (!Array.isArray(labels)) {
-                    throw new Sequelize.ValidationError(
+                    throw new ValidationError(
                         "Missing or Invalid fields in the request payload"
                     );
                 }
                 const labelDelete = await labelDao.deleteApiMapping(orgId, apiId, labels, t);
                 if (labelDelete === 0) {
-                    throw new Sequelize.EmptyResultError("API Labels not found to delete");
+                    throw new NotFoundError("API Labels not found to delete");
                 }
-                updatedAPI[0].dataValues.removedLabels = apiMetadata.removedLabels;
+                updatedAPI[0].removedLabels = apiMetadata.removedLabels;
             }
             // Tags are fully replaced on every update, matching the previous TAGS column's overwrite semantics
             await tagDao.replaceApiMapping(orgId, apiId, apiMetadata.tags || [], userId, t);
@@ -626,14 +620,14 @@ const updateAPIMetadata = async (req, res) => {
                 const subscriptionPlans = [];
                 const apiSubscriptionPlans = apiMetadata.subscriptionPlans;
                 if (!Array.isArray(apiSubscriptionPlans)) {
-                    throw new Sequelize.ValidationError(
+                    throw new ValidationError(
                         "Missing or Invalid fields in the request payload"
                     );
                 } else {
                     for (const plan of apiSubscriptionPlans) {
                         const subscriptionPlan = await subscriptionPlanDao.getByName(orgId, plan.id);
                         if (!subscriptionPlan) {
-                            throw new Sequelize.EmptyResultError("Subscription plan not found");
+                            throw new NotFoundError("Subscription plan not found");
                         } else {
                             subscriptionPlans.push({ apiId: apiId, planId: subscriptionPlan.uuid });
                         }
@@ -641,7 +635,7 @@ const updateAPIMetadata = async (req, res) => {
                 }
                 // Get subscription plan IDs and fail if any plan is not found
                 await subscriptionPlanDao.updateApiMapping(subscriptionPlans, apiId, userId, t);
-                updatedAPI[0].dataValues["dp_subscription_plans"] = await subscriptionPlanDao.listByApi(apiId, t);
+                updatedAPI[0]["dp_subscription_plans"] = await subscriptionPlanDao.listByApi(apiId, t);
             }
             // update api definition file (only when a new file was uploaded; never for MCP,
             // whose contract is its schemaDefinition rather than an apiDefinition)
@@ -649,7 +643,7 @@ const updateAPIMetadata = async (req, res) => {
                 const updatedFileCount = await apiFileDao.update(apiDefinitionFile, apiFileName, apiId, orgId,
                     constants.DOC_TYPES.API_DEFINITION, userId, t);
                 if (!updatedFileCount) {
-                    throw new Sequelize.EmptyResultError("No record found to update");
+                    throw new NotFoundError("No record found to update");
                 }
             }
             // remove docs the user deleted in the wizard
@@ -719,8 +713,8 @@ const updateAPIMetadata = async (req, res) => {
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
                 await apiFileDao.upsertMany(artifactApiContent, apiId, orgId, userId, t);
             }
-            const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedAPI[0].dataValues);
-            res.status(200).send(new APIDTO(updatedAPI[0].dataValues, audit));
+            const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedAPI[0]);
+            res.status(200).send(new APIDTO(updatedAPI[0], audit));
         });
         // Fired only after the transaction above has committed and released its
         // connection — logUserAction's DB write is fire-and-forget on the shared
@@ -744,9 +738,7 @@ const deleteAPIMetadata = async (req, res) => {
     const { apiId: apiHandle } = req.params;
     let apiId;
     let deleted = false;
-    await sequelize.transaction({
-        timeout: 60000,
-    }, async (t) => {
+    await db.withTransaction(async (t) => {
         try {
             apiId = await resolveScopedApiId(req, orgId, apiHandle);
             if (!apiId) {
@@ -762,7 +754,7 @@ const deleteAPIMetadata = async (req, res) => {
             }
             const apiDeleteResponse = await apiDao.delete(orgId, apiId, t);
             if (apiDeleteResponse === 0) {
-                throw new Sequelize.EmptyResultError("Resource not found to delete");
+                throw new NotFoundError("Resource not found to delete");
             } else {
                 deleted = true;
                 res.status(200).send("Resouce Deleted Successfully");
@@ -870,9 +862,7 @@ const createAPITemplate = async (req, res) => {
                 file.key = filenameToKey[file.fileName];
             }
         });
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
+        await db.withTransaction(async (t) => {
             //check whether api belongs to given org
             let apiMetadata = await apiDao.get(orgId, apiId, t);
 
@@ -881,7 +871,7 @@ const createAPITemplate = async (req, res) => {
                 await apiFileDao.deleteAllByType(constants.DOC_TYPES.IMAGES, apiId, t);
                 await apiFileDao.storeMany(apiContent, apiId, userId, t);
             } else {
-                throw new Sequelize.ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
+                throw new ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
             }
         });
         await fs.rm(extractPath, { recursive: true, force: true });
@@ -931,9 +921,7 @@ const createAPIContent = async (req, res) => {
                 file.key = filenameToKey[file.fileName];
             }
         });
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
+        await db.withTransaction(async (t) => {
             //check whether api belongs to given org
             let apiMetadata = await apiDao.get(orgId, apiId, t);
 
@@ -942,7 +930,7 @@ const createAPIContent = async (req, res) => {
                 await apiFileDao.deleteAllByType(constants.DOC_TYPES.IMAGES, apiId, t);
                 await apiFileDao.storeMany(apiContent, apiId, userId, t);
             } else {
-                throw new Sequelize.ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
+                throw new ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
             }
         });
         res.status(201).type("application/json").send({ message: "API content updated successfully" });
@@ -1040,16 +1028,14 @@ const updateAPITemplate = async (req, res) => {
                 file.key = filenameToKey[file.fileName];
             }
         });
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
+        await db.withTransaction(async (t) => {
             //check whether api belongs to given org
             const apiMetadata = await apiDao.get(orgId, apiId, t);
             if (apiMetadata) {
                 // Update API files (including images, keyed by their named slot)
                 await apiFileDao.upsertMany(apiContent, apiId, orgId, userId, t);
             } else {
-                throw new Sequelize.ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
+                throw new ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
             }
         });
         await fs.rm(extractPath, { recursive: true, force: true });
@@ -1099,16 +1085,14 @@ const updateAPIContent = async (req, res) => {
                 file.key = filenameToKey[file.fileName];
             }
         });
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
+        await db.withTransaction(async (t) => {
             //check whether api belongs to given org
             const apiMetadata = await apiDao.get(orgId, apiId, t);
             if (apiMetadata) {
                 // Update API files (including images, keyed by their named slot)
                 await apiFileDao.upsertMany(apiContent, apiId, orgId, userId, t);
             } else {
-                throw new Sequelize.ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
+                throw new ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
             }
         });
         res.status(201).send({ message: "API Files updated successfully" });
@@ -1184,7 +1168,7 @@ const getAPIDocTypes = async (orgId, apiId) => {
 
     try {
         const docTypeResponse = await apiFileDao.getDocTypes(orgId, apiId);
-        const apiCreationResponse = docTypeResponse.map((doc) => new APIDocDTO(doc.dataValues));
+        const apiCreationResponse = docTypeResponse.map((doc) => new APIDocDTO(doc));
         return apiCreationResponse;
     } catch (error) {
         logger.error('API doc types retrieval failed', {
@@ -1290,9 +1274,7 @@ const createSubscriptionPlan = async (req, res) => {
     }
 
     try {
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
+        await db.withTransaction(async (t) => {
             const subscriptionPlanResponse = await subscriptionPlanDao.create(orgId, subscriptionPlan, userId, t);
             if (subscriptionPlanResponse) {
                 logger.info('Created subscription plan', {
@@ -1333,9 +1315,7 @@ const createSubscriptionPlans = async (req, res) => {
 
             const createdRecords = [];
 
-            await sequelize.transaction({
-                timeout: 60000,
-            }, async (t) => {
+            await db.withTransaction(async (t) => {
                 for (const plan of subscriptionPlans) {
                     normalizePlanHandle(plan);
                     const created = await subscriptionPlanDao.create(orgId, plan, userId, t);
@@ -1379,9 +1359,7 @@ const updateSubscriptionPlan = async (req, res) => {
     }
 
     try {
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
+        await db.withTransaction(async (t) => {
             const { subscriptionPlanResponse, statusCode } =  await subscriptionPlanDao.put(orgId, subscriptionPlan, userId, t);
             if (subscriptionPlanResponse) {
                 const audit = await userIdpReferenceDao.buildSingleAuditFields(subscriptionPlanResponse);
@@ -1419,9 +1397,7 @@ const updateSubscriptionPlans = async (req, res) => {
 
             const updatedRecords = [];
 
-            await sequelize.transaction({
-                timeout: 60000,
-            }, async (t) => {
+            await db.withTransaction(async (t) => {
                 for (const plan of subscriptionPlans) {
                     normalizePlanHandle(plan);
                     const result = await subscriptionPlanDao.put(orgId, plan, userId, t);
@@ -1458,9 +1434,7 @@ const deleteSubscriptionPlan = async (req, res) => {
         planId
     });
     try {
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
+        await db.withTransaction(async (t) => {
             const deleteCount = await subscriptionPlanDao.delete(orgId, planId, t);
             if (deleteCount === 0) {
                 throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
@@ -1636,12 +1610,10 @@ const addView = async (req, res) => {
     if (req.body.id) {
         req.body.handle = req.body.id;
     }
-    await sequelize.transaction({
-        timeout: 60000,
-    }, async (t) => {
+    await db.withTransaction(async (t) => {
         try {
             const viewResponse = await viewDao.create(orgId, req.body, userId, t);
-            const viewId = viewResponse.dataValues.uuid;
+            const viewId = viewResponse.uuid;
             await viewDao.addLabels(orgId, viewId, labels, userId, t);
             res.status(201).send({ message: "View added successfully" });
         } catch (error) {
@@ -1663,14 +1635,12 @@ const updateView = async (req, res) => {
     const userId = util.resolveActor(req);
     let updatedViewId;
     try {
-        await sequelize.transaction({
-            timeout: 60000,
-        }, async (t) => {
+        await db.withTransaction(async (t) => {
 
             let viewId = "";
             if (req.body.displayName) {
                 let viewResponse = await viewDao.update(orgId, viewHandle, req.body.displayName, userId, t);
-                viewId = viewResponse.dataValues.uuid;
+                viewId = viewResponse.uuid;
             }
             if (Array.isArray(labels)) {
                 viewId = viewId ? viewId : await viewDao.getId(orgId, viewHandle, t);
@@ -1711,7 +1681,7 @@ const deleteView = async (req, res) => {
         }
         const viewDelete = await viewDao.delete(orgId, name);
         if (viewDelete === 0) {
-            throw new Sequelize.EmptyResultError("Resource not found to delete");
+            throw new NotFoundError("Resource not found to delete");
         } else {
             logUserAction('VIEW_DELETED', req, { orgId, viewId: name, resourceUuid: viewUuid, resourceType: 'view' });
             res.status(204).send("View Deleted Successfully");
@@ -1750,9 +1720,9 @@ const getView = async (req, res) => {
 const getViewInfo = async (orgId, name) => {
 
     const view = await viewDao.get(orgId, name);
-    if (view?.dataValues) {
-        const audit = await userIdpReferenceDao.buildSingleAuditFields(view.dataValues);
-        return new ViewDTO(view.dataValues, audit);
+    if (view) {
+        const audit = await userIdpReferenceDao.buildSingleAuditFields(view);
+        return new ViewDTO(view, audit);
     } else {
         return null;
     }
@@ -1832,12 +1802,12 @@ async function resolveZipRootPath(extractPath) {
 
 async function extractApiContentFromUploadedZip(zipFile, orgId, apiId, mode = 'classic') {
     if (!zipFile) {
-        throw new Sequelize.ValidationError("Missing required zip file");
+        throw new ValidationError("Missing required zip file");
     }
 
     const zipFileName = path.basename(String(zipFile.originalname || ''));
     if (!zipFileName?.toLowerCase().endsWith('.zip')) {
-        throw new Sequelize.ValidationError('Invalid zip file. Expected a .zip file');
+        throw new ValidationError('Invalid zip file. Expected a .zip file');
     }
 
     const extractionKey = `${orgId || 'org'}-${apiId || 'api'}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -1854,7 +1824,7 @@ async function extractApiContentFromUploadedZip(zipFile, orgId, apiId, mode = 'c
             await fs.writeFile(tempZipPath, zipFile.buffer);
             await util.unzipDirectory(tempZipPath, extractPath);
         } else {
-            throw new Sequelize.ValidationError('Invalid zip input. Missing file path or buffer');
+            throw new ValidationError('Invalid zip input. Missing file path or buffer');
         }
 
         const rootPath = await resolveZipRootPath(extractPath);
@@ -1868,7 +1838,7 @@ async function extractApiContentFromUploadedZip(zipFile, orgId, apiId, mode = 'c
             if (mode === 'artifact') {
                 return [];
             }
-            throw new Sequelize.ValidationError('Missing required directories in uploaded zip. At least one of web or docs is required at root level');
+            throw new ValidationError('Missing required directories in uploaded zip. At least one of web or docs is required at root level');
         }
 
         const apiContent = [];
@@ -1885,10 +1855,10 @@ async function extractApiContentFromUploadedZip(zipFile, orgId, apiId, mode = 'c
 
         return apiContent;
     } catch (error) {
-        if (error instanceof Sequelize.ValidationError) {
+        if (error instanceof ValidationError) {
             throw error;
         }
-        throw new Sequelize.ValidationError(`Invalid zip file: ${error.message}`);
+        throw new ValidationError(`Invalid zip file: ${error.message}`);
     } finally {
         await fs.rm(tempBasePath, { recursive: true, force: true });
         // Clean up the original upload file when multer saved it to disk (zipFile.path)
@@ -1900,11 +1870,11 @@ async function extractApiContentFromUploadedZip(zipFile, orgId, apiId, mode = 'c
 
 async function extractFullApiBundleFromUploadedZip(zipFile, orgId, apiId) {
     if (!zipFile?.buffer) {
-        throw new Sequelize.ValidationError("Missing required multipart file field: 'artifact'");
+        throw new ValidationError("Missing required multipart file field: 'artifact'");
     }
 
     if (!zipFile.originalname?.toLowerCase().endsWith('.zip')) {
-        throw new Sequelize.ValidationError("Invalid artifact file. Expected a .zip file");
+        throw new ValidationError("Invalid artifact file. Expected a .zip file");
     }
 
     const extractionKey = `${orgId || 'org'}-${apiId || 'api'}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -1920,7 +1890,7 @@ async function extractFullApiBundleFromUploadedZip(zipFile, orgId, apiId) {
         const rootPath = await resolveZipRootPath(extractPath);
         const metadataFilePath = await util.findFileByNameRecursive(rootPath, ['api.yaml', 'mcp.yaml', 'devportal.yaml']);
         if (!metadataFilePath) {
-            throw new Sequelize.ValidationError("Invalid full API zip: missing api.yaml, mcp.yaml or devportal.yaml");
+            throw new ValidationError("Invalid full API zip: missing api.yaml, mcp.yaml or devportal.yaml");
         }
 
         const apiMetadataBuffer = await fs.readFile(metadataFilePath);
@@ -1944,14 +1914,14 @@ async function extractFullApiBundleFromUploadedZip(zipFile, orgId, apiId) {
         if (isMcp) {
             const schemaDefinitionFilePath = await util.findFileByNameRecursive(rootPath, definitionCandidates);
             if (!schemaDefinitionFilePath) {
-                throw new Sequelize.ValidationError("Invalid MCP server zip: missing definition file (definition.yaml/yml/json)");
+                throw new ValidationError("Invalid MCP server zip: missing definition file (definition.yaml/yml/json)");
             }
             schemaDefinitionFile = await fs.readFile(schemaDefinitionFilePath);
             schemaDefinitionFileName = path.basename(schemaDefinitionFilePath);
         } else {
             const definitionFilePath = await util.findFileByNameRecursive(rootPath, definitionCandidates);
             if (!definitionFilePath) {
-                throw new Sequelize.ValidationError("Invalid full API zip: missing definition file (definition.yaml/yml/json)");
+                throw new ValidationError("Invalid full API zip: missing definition file (definition.yaml/yml/json)");
             }
             apiDefinitionFile = await fs.readFile(definitionFilePath);
             apiDefinitionFileName = path.basename(definitionFilePath);
@@ -1965,10 +1935,10 @@ async function extractFullApiBundleFromUploadedZip(zipFile, orgId, apiId) {
             schemaDefinitionFileName,
         };
     } catch (error) {
-        if (error instanceof Sequelize.ValidationError) {
+        if (error instanceof ValidationError) {
             throw error;
         }
-        throw new Sequelize.ValidationError(`Invalid artifact zip file: ${error.message}`);
+        throw new ValidationError(`Invalid artifact zip file: ${error.message}`);
     } finally {
         await fs.rm(tempBasePath, { recursive: true, force: true });
     }
@@ -1976,18 +1946,18 @@ async function extractFullApiBundleFromUploadedZip(zipFile, orgId, apiId) {
 
 function mapDevportalYamlToApiMetadata(parsedYaml) {
     if (!parsedYaml || typeof parsedYaml !== 'object') {
-        throw new Sequelize.ValidationError('Invalid API YAML content');
+        throw new ValidationError('Invalid API YAML content');
     }
     const metadata = parsedYaml.metadata || {};
     const spec = parsedYaml.spec || {};
     const apiType = util.resolveApiType(spec.type);
     const apiStatus = spec.status || constants.API_STATUS.PUBLISHED;
     if (!Object.values(constants.API_STATUS).includes(apiStatus)) {
-        throw new Sequelize.ValidationError(`Invalid API status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
+        throw new ValidationError(`Invalid API status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
     }
     const agentVisibility = (spec.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase();
     if (!Object.values(constants.AGENT_VISIBILITY).includes(agentVisibility)) {
-        throw new Sequelize.ValidationError(`Invalid agentVisibility '${spec.agentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
+        throw new ValidationError(`Invalid agentVisibility '${spec.agentVisibility}'. Must be one of: ${Object.values(constants.AGENT_VISIBILITY).join(', ')}.`);
     }
     const endpoints = spec.endpoints || {};
     const businessInformation = spec.businessInformation || {};
@@ -2034,14 +2004,14 @@ function parseApiMetadataFromYamlFile(fileName, fileBuffer) {
         'api.yaml', 'mcp.yaml', 'devportal.yaml',
     ]);
     if (!allowedMetadataFileNames.has(String(fileName).toLowerCase())) {
-        throw new Sequelize.ValidationError("Invalid metadata file name. Expected 'metadata.yaml', 'metadata.yml', 'metadata.json', 'api.yaml', 'mcp.yaml' or 'devportal.yaml'");
+        throw new ValidationError("Invalid metadata file name. Expected 'metadata.yaml', 'metadata.yml', 'metadata.json', 'api.yaml', 'mcp.yaml' or 'devportal.yaml'");
     }
 
     let parsedYaml;
     try {
         parsedYaml = yaml.load(fileBuffer.toString(constants.CHARSET_UTF8));
     } catch (e) {
-        throw new Sequelize.ValidationError(`Invalid API YAML file: ${e.message}`);
+        throw new ValidationError(`Invalid API YAML file: ${e.message}`);
     }
 
     return mapDevportalYamlToApiMetadata(parsedYaml);
@@ -2050,7 +2020,7 @@ function parseApiMetadataFromYamlFile(fileName, fileBuffer) {
 function parseApiMetadataFromYamlRequest(req) {
     const metadataFile = req.files?.metadata?.[0];
     if (!metadataFile?.buffer) {
-        throw new Sequelize.ValidationError(
+        throw new ValidationError(
             "Missing required multipart file field: 'metadata'"
         );
     }
@@ -2083,11 +2053,11 @@ function parseSubscriptionPlansFromYamlFile(fileBuffer) {
     try {
         parsed = yaml.load(fileBuffer.toString(constants.CHARSET_UTF8));
     } catch (e) {
-        throw new Sequelize.ValidationError(`Invalid subscription plan YAML file: ${e.message}`);
+        throw new ValidationError(`Invalid subscription plan YAML file: ${e.message}`);
     }
 
     if (!parsed || typeof parsed !== 'object') {
-        throw new Sequelize.ValidationError('Subscription plan YAML file is empty or invalid');
+        throw new ValidationError('Subscription plan YAML file is empty or invalid');
     }
 
     const kind = parsed.kind;
@@ -2095,11 +2065,11 @@ function parseSubscriptionPlansFromYamlFile(fileBuffer) {
         return [mapYamlToSubscriptionPlan(parsed)];
     } else if (kind === 'SubscriptionPlanList') {
         if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
-            throw new Sequelize.ValidationError("SubscriptionPlanList must have a non-empty 'items' array");
+            throw new ValidationError("SubscriptionPlanList must have a non-empty 'items' array");
         }
         return parsed.items.map(mapYamlToSubscriptionPlan);
     } else {
-        throw new Sequelize.ValidationError(
+        throw new ValidationError(
             `Unknown subscription plan YAML kind '${kind}'. Expected 'SubscriptionPlan' or 'SubscriptionPlanList'`
         );
     }
@@ -2110,33 +2080,33 @@ function prepareApiDefinitionForStorage(fileName, fileBuffer) {
     const extension = path.extname(String(fileName || '')).toLowerCase();
     const fileContent = fileBuffer.toString(constants.CHARSET_UTF8);
     if (!sanitizedFileName) {
-        throw new Sequelize.ValidationError('Invalid API definition file name');
+        throw new ValidationError('Invalid API definition file name');
     }
 
     if (extension === '.json') {
         try {
             JSON.parse(fileContent);
         } catch (e) {
-            throw new Sequelize.ValidationError(`Invalid API definition JSON file: ${e.message}`);
+            throw new ValidationError(`Invalid API definition JSON file: ${e.message}`);
         }
     } else if (extension === '.yaml' || extension === '.yml') {
         try {
             const parsedDefinition = yaml.load(fileContent);
             if (parsedDefinition === undefined) {
-                throw new Sequelize.ValidationError('Invalid API definition YAML file: empty content');
+                throw new ValidationError('Invalid API definition YAML file: empty content');
             }
         } catch (e) {
-            if (e instanceof Sequelize.ValidationError) {
+            if (e instanceof ValidationError) {
                 throw e;
             }
-            throw new Sequelize.ValidationError(`Invalid API definition YAML file: ${e.message}`);
+            throw new ValidationError(`Invalid API definition YAML file: ${e.message}`);
         }
     } else if (extension === '.xml' || extension === '.wsdl') {
         if (!fileContent || fileContent.trim() === '') {
-            throw new Sequelize.ValidationError('Invalid API definition XML file: empty content');
+            throw new ValidationError('Invalid API definition XML file: empty content');
         }
     } else {
-        throw new Sequelize.ValidationError("Invalid API definition file type. Expected '.json', '.yaml', '.yml', '.xml', or '.wsdl'");
+        throw new ValidationError("Invalid API definition file type. Expected '.json', '.yaml', '.yml', '.xml', or '.wsdl'");
     }
 
     return {
@@ -2149,7 +2119,7 @@ function validateSchemaDefinitionFileName(fileName) {
     const sanitizedFileName = path.basename(String(fileName || ''));
     const extension = path.extname(sanitizedFileName).toLowerCase();
     if (extension !== '.json' && extension !== '.yaml') {
-        throw new Sequelize.ValidationError("Invalid schema definition file type. Expected '.json' or '.yaml'");
+        throw new ValidationError("Invalid schema definition file type. Expected '.json' or '.yaml'");
     }
     return sanitizedFileName;
 }
@@ -2161,19 +2131,19 @@ function prepareSchemaDefinitionForStorage(fileName, fileBuffer) {
         try {
             JSON.parse(fileContent);
         } catch (e) {
-            throw new Sequelize.ValidationError(`Invalid schema definition JSON file: ${e.message}`);
+            throw new ValidationError(`Invalid schema definition JSON file: ${e.message}`);
         }
     } else {
         try {
             const parsedDefinition = yaml.load(fileContent);
             if (parsedDefinition === undefined) {
-                throw new Sequelize.ValidationError('Invalid schema definition YAML file: empty content');
+                throw new ValidationError('Invalid schema definition YAML file: empty content');
             }
         } catch (e) {
-            if (e instanceof Sequelize.ValidationError) {
+            if (e instanceof ValidationError) {
                 throw e;
             }
-            throw new Sequelize.ValidationError(`Invalid schema definition YAML file: ${e.message}`);
+            throw new ValidationError(`Invalid schema definition YAML file: ${e.message}`);
         }
     }
 

@@ -247,7 +247,7 @@ export function initializeDefaultValues(
           propSchema.type === 'number' ||
           propSchema.type === 'integer'
         ) {
-          result[key] = propSchema.default ?? 0;
+          result[key] = propSchema.default ?? '';
         } else {
           result[key] = '';
         }

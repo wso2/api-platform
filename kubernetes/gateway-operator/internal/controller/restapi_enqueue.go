@@ -21,9 +21,9 @@ import (
 	"encoding/json"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
-	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"log/slog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -57,10 +57,10 @@ func (r *RestApiReconciler) enqueueRestApisForValueFrom(
 				names = append(names, q.NamespacedName.String())
 			}
 			r.Logger.Info("watch: valueFrom source changed; enqueue RestApis",
-				zap.String("controller", "RestApi"),
-				zap.String("kind", kind),
-				zap.String("source", sourceKey),
-				zap.Strings("restApis", names))
+				slog.String("controller", "RestApi"),
+				slog.String("kind", kind),
+				slog.String("source", sourceKey),
+				slog.Any("restApis", names))
 		}
 		return indexedReqs
 	}
@@ -69,9 +69,9 @@ func (r *RestApiReconciler) enqueueRestApisForValueFrom(
 	if err := r.List(ctx, list); err != nil {
 		if r.Logger != nil {
 			r.Logger.Error("watch: list RestApis for valueFrom enqueue",
-				zap.Error(err),
-				zap.String("kind", kind),
-				zap.String("source", sourceKey))
+				slog.Any("error", err),
+				slog.String("kind", kind),
+				slog.String("source", sourceKey))
 		}
 		return nil
 	}
@@ -96,10 +96,10 @@ func (r *RestApiReconciler) enqueueRestApisForValueFrom(
 			names = append(names, q.NamespacedName.String())
 		}
 		r.Logger.Info("watch: valueFrom source changed; enqueue RestApis",
-			zap.String("controller", "RestApi"),
-			zap.String("kind", kind),
-			zap.String("source", sourceKey),
-			zap.Strings("restApis", names))
+			slog.String("controller", "RestApi"),
+			slog.String("kind", kind),
+			slog.String("source", sourceKey),
+			slog.Any("restApis", names))
 	}
 	return reqs
 }

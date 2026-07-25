@@ -71,7 +71,7 @@ API workflow requests are JSON. The `apiWorkflowDefinition` field contains the A
 
 ```bash
 curl -k -X POST \
-  "https://localhost:3000/api/v0.9/views/{viewId}/api-workflows" \
+  "https://localhost:9543/api/v0.9/views/{viewId}/api-workflows" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @workflow.json
@@ -91,14 +91,14 @@ curl -k -X POST \
 ## List Workflows
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/views/{viewId}/api-workflows \
+curl -k https://localhost:9543/api/v0.9/views/{viewId}/api-workflows \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a Workflow
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
+curl -k https://localhost:9543/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -115,7 +115,7 @@ curl -k https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/{apiWorkflo
 
 ```bash
 curl -k -X PUT \
-  "https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}" \
+  "https://localhost:9543/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @workflow-update.json
@@ -125,7 +125,7 @@ curl -k -X PUT \
 
 ```bash
 curl -k -X DELETE \
-  "https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}" \
+  "https://localhost:9543/api/v0.9/views/{viewId}/api-workflows/{apiWorkflowId}" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -149,7 +149,7 @@ The portal can generate a suggested agent prompt for a workflow using AI:
 
 ```bash
 curl -k -X POST \
-  "https://localhost:3000/api/v0.9/views/{viewId}/api-workflows/generate-prompt" \
+  "https://localhost:9543/api/v0.9/views/{viewId}/api-workflows/generate-prompt" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @generate-prompt.json

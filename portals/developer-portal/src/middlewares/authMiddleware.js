@@ -43,6 +43,8 @@ const { verifyPlatformJwtClaims, decodePlatformJwtClaims } = require('../utils/p
 const { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp } = require('../utils/tokenUtil');
 const orgDao = require('../dao/organizationDao');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
+const { getNestedClaim } = require('./passportConfig');
+const { NotFoundError } = require('../utils/errors/customErrors');
 const userOrganizationMappingDao = require('../dao/userOrganizationMappingDao');
 
 // In-process cache so an already-known (sub, org) pair doesn't re-hit the DB on
@@ -126,8 +128,8 @@ async function verifyJwksWithRefresh(token, jwksURL, req) {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
         const jwtVerifyOptions = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
-        if (config.idp?.issuer) jwtVerifyOptions.issuer = config.idp.issuer;
-        if (config.idp?.audience) jwtVerifyOptions.audience = config.idp.audience;
+        if (config.auth.idp?.issuer) jwtVerifyOptions.issuer = config.auth.idp.issuer;
+        if (config.auth.idp?.audience) jwtVerifyOptions.audience = config.auth.idp.audience;
         const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);
         const rawScope = payload.scope ?? payload.scp;
         const scopes = Array.isArray(rawScope) ? rawScope.join(' ') : (rawScope || '');
@@ -159,23 +161,12 @@ async function verifyJwksWithRefresh(token, jwksURL, req) {
 
 async function verifyBearerToken(token, req) {
     const idp = resolveOrgIdp();
-    if (!idp || !idp.clientId) {
-        // Local auth mode: verify the Platform API JWT with the shared secret.
-        const jwtSecret = config.platformApi?.jwtSecret;
-        if (jwtSecret) {
-            const claims = await verifyPlatformJwtClaims(token, jwtSecret);
-            if (!claims) return { valid: false, scopes: '' };
-            return { valid: true, scopes: claims.scopes?.join(' ') ?? '' };
-        }
-        // Platform API now signs its admin tokens with RS256 (asymmetric), so there
-        // is no shared HMAC secret to verify against. When platformApi.insecure is
-        // explicitly enabled, decode the payload without verifying its signature,
-        // trusting the direct HTTPS connection to Platform API instead (mirrors the
-        // session-based local-auth branch above, which already does this via
-        // decodePlatformJwtClaims). Fail closed otherwise — never accept an
-        // unverified token by default.
-        if (!config.platformApi?.insecure) return { valid: false, scopes: '' };
-        const claims = decodePlatformJwtClaims(token);
+    if (config.auth.mode !== 'idp') {
+        // Local auth mode: verify the Platform API JWT against its RS256 public key.
+        // Fail closed if no key path is configured — never accept an unverified token.
+        const publicKeyPath = config.auth.local?.publicKeyPath;
+        if (!publicKeyPath) return { valid: false, scopes: '' };
+        const claims = await verifyPlatformJwtClaims(token, publicKeyPath);
         if (!claims) return { valid: false, scopes: '' };
         return { valid: true, scopes: claims.scopes?.join(' ') ?? '' };
     }
@@ -198,7 +189,7 @@ async function resolveOrgFromClaim(req, orgClaim) {
         req.orgId = await orgDao.getId(orgClaim);
         return null;
     } catch (e) {
-        if (e.name === 'SequelizeEmptyResultError') {
+        if (e instanceof NotFoundError) {
             const err = new Error('Organization not found');
             err.status = 404;
             return err;
@@ -222,7 +213,7 @@ async function resolveOrgFromHeader(req) {
         req.orgId = await orgDao.getId(orgHeader);
         return null;
     } catch (e) {
-        if (e.name === 'SequelizeEmptyResultError') {
+        if (e instanceof NotFoundError) {
             const err = new Error('Organization not found');
             err.status = 404;
             return err;
@@ -244,7 +235,7 @@ async function authResolver(req, res, next) {
         // The session stores the org handle in the same ORGANIZATION_CLAIM slot used by IDP
         // sessions, so resolveOrgFromClaim works via the HANDLE lookup in orgDao.getId.
         if (req.isAuthenticated && req.isAuthenticated() &&
-            req.user?.isLocalAuth && !config.idp?.clientId) {
+            req.user?.isLocalAuth && config.auth.mode !== 'idp') {
             const platformToken = req.user[constants.ACCESS_TOKEN];
             const claims = platformToken ? decodePlatformJwtClaims(platformToken) : null;
             const orgHandle = req.user[constants.ROLES.ORGANIZATION_CLAIM];
@@ -265,18 +256,22 @@ async function authResolver(req, res, next) {
         // on page routes, so scope enforcement here is redundant and would require listing all
         // dp:* scopes in the OIDC scope config. Set preauthorized to bypass the per-operation
         // scope check for session users (same as API key and mTLS paths).
-        if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.idp?.clientId) {
-            const orgIDClaim = config.idp?.claims?.orgId;
-            if (orgIDClaim) {
-                const sessionOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
-                if (!sessionOrgClaim) {
-                    const err = new Error('Missing organization claim in session');
-                    err.status = 403;
-                    return next(err);
-                }
-                const orgErr = await resolveOrgFromClaim(req, sessionOrgClaim);
-                if (orgErr) return next(orgErr);
+        if (req.isAuthenticated && req.isAuthenticated() && req.user?.grantedScopes !== undefined && config.auth.mode === 'idp') {
+            // The session's org claim is populated at login from
+            // config.auth.claimMappings.organization (see passportConfig) and stored
+            // under ORGANIZATION_CLAIM. Resolve req.orgId from it directly — do NOT
+            // gate on config.auth.idp.claims.orgId, which has no default and is unset
+            // in typical IDP configs, which would leave req.orgId empty and break every
+            // tenant-scoped operation (reads return the wrong scope; writes fail the
+            // org_uuid foreign key). Fail closed when no org claim is present.
+            const sessionOrgClaim = req.user[constants.ROLES.ORGANIZATION_CLAIM];
+            if (!sessionOrgClaim) {
+                const err = new Error('Missing organization claim in session');
+                err.status = 403;
+                return next(err);
             }
+            const orgErr = await resolveOrgFromClaim(req, sessionOrgClaim);
+            if (orgErr) return next(orgErr);
             const rawSub = req.user[constants.USER_ID];
             const userUuid = await resolveUserUuid(req, rawSub);
             req[constants.USER_ID] = userUuid;
@@ -300,11 +295,15 @@ async function authResolver(req, res, next) {
                 return next(err);
             }
             const decoded = safeDecodeJwt(req.user?.[constants.ACCESS_TOKEN] || token) || {};
-            // Resolve org UUID from the token's org claim (IDP_REF_ID).
-            // Only in IDP mode — local-auth and platform-JWT tokens carry no org claim.
-            const orgIDClaim = config.idp?.claims?.orgId;
-            if (config.idp?.clientId && orgIDClaim) {
-                const tokenOrgClaim = decoded[orgIDClaim];
+            // Resolve org UUID from the token's org claim. Use the same claim
+            // mapping login uses (config.auth.claimMappings.organization) rather
+            // than config.auth.idp.claims.orgId, which has no default and is
+            // typically unset — gating on it left req.orgId empty and broke every
+            // tenant-scoped operation. Only in IDP mode — local-auth and
+            // platform-JWT tokens carry no org claim.
+            if (config.auth.mode === 'idp') {
+                const orgClaimKey = config.auth.claimMappings?.organization;
+                const tokenOrgClaim = (orgClaimKey ? getNestedClaim(decoded, orgClaimKey) : undefined) || decoded.org_handle;
                 if (!tokenOrgClaim) {
                     const err = new Error('Missing organization claim in token');
                     err.status = 403;

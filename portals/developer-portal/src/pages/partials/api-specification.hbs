@@ -6,7 +6,11 @@
 {{/pageHead}}
 <main>
   <div class="p-4">
-    <elements-api apiDescriptionDocument='{{swagger}}' router="hash" layout="sidebar" />
+    {{!-- tryItCorsProxy routes the try-it call through the portal instead of
+          straight at the API endpoint, which the browser would otherwise block
+          on CORS. Elements appends the full target URL to this prefix. --}}
+    <elements-api apiDescriptionDocument='{{swagger}}' router="hash" layout="sidebar"
+      {{#if tryoutProxyBase}}tryItCorsProxy="{{tryoutProxyBase}}"{{/if}} />
   </div>
   <style>
     .sl-py-16 {

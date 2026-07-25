@@ -74,10 +74,7 @@ const loadApplicationData = async (req, orgName, applicationHandle, viewName) =>
     if (Array.isArray(applicationList.appKeyMappings) && applicationList.appKeyMappings.length > 0) {
         applicationReference = applicationList.appKeyMappings[0].asClientId;
         try {
-            const { ApplicationKeyMapping } = require('../models/application');
-            const localMappings = await ApplicationKeyMapping.findAll({
-                where: { app_uuid: applicationId }
-            });
+            const localMappings = await appDao.getKeyMappings(orgId, applicationId);
             const keyList = [];
             for (const mapping of localMappings) {
                 if (mapping.as_client_id && mapping.km_uuid) {
@@ -188,7 +185,7 @@ const loadApplications = async (req, res, next) => {
     if (config.designMode?.enabled) {
         const templateContent = {
             applicationsMetadata: sampleApiLoader.loadApplications(),
-            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.VIEWS_PATH + viewName,
             devMode: true,
         };
         const html = renderTemplate('../pages/applications/page.hbs', config.designMode.pathToLayout + 'layout/main.hbs', templateContent, true);
@@ -221,7 +218,6 @@ const loadApplications = async (req, res, next) => {
             baseUrl: '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName,
             profile: req.isAuthenticated() ? profile : null,
             devportalMode: devportalMode,
-            isReadOnlyMode: config.server.readOnlyMode,
         }
         const templateResponse = await templateResponseValue('applications');
         const layoutResponse = await loadLayoutFromAPI(orgId, viewName);
@@ -278,7 +274,6 @@ const loadApplication = async (req, res, next) => {
             subscriptionScopes: data.subscriptionScopes,
             profile: req.isAuthenticated() ? data.profile : null,
             devportalMode: devportalMode,
-            isReadOnlyMode: config.server.readOnlyMode,
             associatedApiKeys,
             availableKeysByApi
         }
@@ -339,7 +334,6 @@ const loadApplicationKeys = async (req, res, next) => {
             subscriptionScopes: data.subscriptionScopes,
             profile: req.isAuthenticated() ? data.profile : null,
             devportalMode: devportalMode,
-            isReadOnlyMode: config.server.readOnlyMode
         }
         const templateResponse = await templateResponseValue('manage-keys');
         const layoutResponse = await loadLayoutFromAPI(data.orgId, viewName);

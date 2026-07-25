@@ -1,0 +1,91 @@
+{{- $ui := .Values -}}
+{{- $cfg := $ui.config -}}
+{{- $tls := $ui.tls -}}
+{{- $controlPlaneUrl := default (include "apip.platformApi.internalURL" .) $cfg.controlPlane.url -}}
+{{- $domain := default (printf "localhost:%d" (int $ui.containerPort)) $cfg.server.domain -}}
+{{- if $ui.deployment.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "apip.aiWorkspace.fullname" . }}-config
+  labels:
+    {{- include "apip.componentLabels" (list . "ai-workspace" $ui.configMap.labels) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . $ui.configMap.annotations)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+data:
+  # Full [ai_workspace.*] config, mounted at /etc/ai-workspace/config.toml. The
+  # BFF reads it via its own {{ "{{ env \"APIP_AIW_*\" }}" }} tokens. Non-secret
+  # values are literals from values.yaml; the OIDC client secret is a token,
+  # supplied as an env var from the referenced Secret (Secret -> env -> config).
+  config.toml: |
+    [ai_workspace]
+    default_org_region = {{ $cfg.defaultOrgRegion | quote }}
+    domain = {{ $domain | quote }}
+
+    [ai_workspace.server.http]
+    enabled = {{ $cfg.server.http.enabled }}
+    port = {{ $cfg.server.http.port | int }}
+
+    [ai_workspace.server.https]
+    enabled = true
+    port = {{ $ui.containerPort | int }}
+    cert_file = "/etc/ai-workspace/tls/cert.pem"
+    key_file = "/etc/ai-workspace/tls/key.pem"
+
+    [ai_workspace.logging]
+    level = {{ $cfg.logging.level | quote }}
+    format = {{ $cfg.logging.format | quote }}
+    browser_debug = {{ $cfg.logging.browserDebug | toString | quote }}
+
+    [ai_workspace.control_plane]
+    url = {{ $controlPlaneUrl | quote }}
+    tls_skip_verify = {{ $cfg.controlPlane.tlsSkipVerify | toString | quote }}
+    ca_file = {{ $cfg.controlPlane.caFile | quote }}
+    proxy_prefix = {{ $cfg.controlPlane.proxyPrefix | quote }}
+    portal_base_path = {{ $cfg.controlPlane.portalBasePath | quote }}
+
+    [ai_workspace.gateway]
+    controlplane_host = {{ $cfg.gateway.controlplaneHost | quote }}
+    platform_gateway_versions = {{ $cfg.gateway.platformGatewayVersions | quote }}
+
+    [ai_workspace.session]
+    store = {{ $cfg.session.store | quote }}
+    idle_timeout = {{ $cfg.session.idleTimeout | quote }}
+    absolute_ttl = {{ $cfg.session.absoluteTtl | quote }}
+
+    [ai_workspace.auth]
+    mode = {{ $cfg.auth.mode | quote }}
+
+    [ai_workspace.auth.claim_mappings]
+    organization = {{ $cfg.auth.claimMappings.organization | quote }}
+    org_name = {{ $cfg.auth.claimMappings.orgName | quote }}
+    org_handle = {{ $cfg.auth.claimMappings.orgHandle | quote }}
+    username = {{ $cfg.auth.claimMappings.username | quote }}
+    email = {{ $cfg.auth.claimMappings.email | quote }}
+    scope = {{ $cfg.auth.claimMappings.scope | quote }}
+    roles = {{ $cfg.auth.claimMappings.roles | quote }}
+
+    {{- if eq $cfg.auth.mode "oidc" }}
+
+    [ai_workspace.auth.oidc]
+    enabled = "true"
+    authority = {{ required "config.auth.oidc.authority is required when auth.mode is \"oidc\"" $cfg.auth.oidc.authority | quote }}
+    client_id = {{ required "config.auth.oidc.clientId is required when auth.mode is \"oidc\"" $cfg.auth.oidc.clientId | quote }}
+    client_secret = {{ `'{{ env "APIP_AIW_AUTH_OIDC_CLIENT_SECRET" }}'` }}
+    {{- with $cfg.auth.oidc.redirectUrl }}
+    redirect_url = {{ . | quote }}
+    {{- end }}
+    {{- with $cfg.auth.oidc.postLogoutRedirectUrl }}
+    post_logout_redirect_url = {{ . | quote }}
+    {{- end }}
+    {{- with $cfg.auth.oidc.scope }}
+    scope = {{ . | quote }}
+    {{- end }}
+    {{- end }}
+    {{- with $ui.configToml }}
+
+    {{ . | nindent 4 | trim }}
+    {{- end }}
+{{- end }}

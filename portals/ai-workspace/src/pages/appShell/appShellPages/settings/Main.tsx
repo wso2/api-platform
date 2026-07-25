@@ -24,7 +24,7 @@
 // ---------------------------------------------------------------------------
 
 import { type ReactNode } from 'react';
-import { Navigate, Outlet, useNavigate } from 'react-router-dom';
+import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
   Divider,
@@ -35,7 +35,7 @@ import {
   PageTitle,
   Stack,
 } from '@wso2/oxygen-ui';
-import { LayoutTemplate } from '@wso2/oxygen-ui-icons-react';
+import { LayoutTemplate, ShieldCheck } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
@@ -48,6 +48,8 @@ interface NavItem {
   icon: ReactNode;
   // Settings-relative path the item navigates to.
   path: string;
+  // Permission required to see/use this item.
+  scope: string;
 }
 
 // Settings navigation. LLM Provider Templates is first/default.
@@ -57,18 +59,30 @@ const NAV_ITEMS: NavItem[] = [
     label: 'LLM Provider Templates',
     icon: <LayoutTemplate size={18} />,
     path: '/settings/llm-provider-templates',
+    scope: SCOPES.LLM_TEMPLATE_MANAGE,
+  },
+  {
+    key: 'customPolicies',
+    label: 'Custom Policies',
+    icon: <ShieldCheck size={18} />,
+    path: '/settings/custom-policies',
+    scope: SCOPES.GATEWAY_CUSTOM_POLICY_READ,
   },
 ];
 
 export default function Settings() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { currentOrganization } = useAppShell();
   const { hasPermission } = useAppAuth();
-  // Only one area today; it stays selected across all its sub-pages.
-  const selectedKey = 'templates';
 
-  // Settings requires template-manage permission; send others to org home.
-  if (!hasPermission(SCOPES.LLM_TEMPLATE_MANAGE)) {
+  const visibleNavItems = NAV_ITEMS.filter((item) => hasPermission(item.scope));
+  const selectedKey = visibleNavItems.find((item) =>
+    location.pathname.includes(item.path)
+  )?.key;
+
+  // Settings requires at least one visible section; send others to org home.
+  if (visibleNavItems.length === 0) {
     return (
       <Navigate
         to={buildOrgPath(currentOrganization, '/home')}
@@ -91,7 +105,7 @@ export default function Settings() {
             </PageTitle.Header>
           </PageTitle>
           <List dense disablePadding>
-            {NAV_ITEMS.map((item) => (
+            {visibleNavItems.map((item) => (
               <ListItemButton
                 key={item.key}
                 selected={item.key === selectedKey}
@@ -122,4 +136,13 @@ export default function Settings() {
       </Box>
     </Box>
   );
+}
+
+export function SettingsIndexRedirect() {
+  const { currentOrganization } = useAppShell();
+  const { hasPermission } = useAppAuth();
+  const firstVisibleItem = NAV_ITEMS.find((item) => hasPermission(item.scope));
+  const target = firstVisibleItem ? firstVisibleItem.path : '/home';
+
+  return <Navigate to={buildOrgPath(currentOrganization, target)} replace />;
 }

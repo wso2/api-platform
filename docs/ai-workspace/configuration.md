@@ -2,7 +2,7 @@
 
 AI Workspace is configured through a `config.toml` file mounted into the container at `/etc/ai-workspace/config.toml`.
 
-All AI Workspace settings live under a single top-level `[ai_workspace]` table — the same namespacing convention the Platform API uses for its own `[platform_api]` table — so one `config.toml` can hold both services' sections side by side without their keys colliding. Keys are grouped into TOML tables (`[ai_workspace.logging]`, `[ai_workspace.control_plane]`, `[ai_workspace.server.https]`, `[ai_workspace.session]`, `[ai_workspace.auth]`, `[ai_workspace.auth.oidc]`); deployment-identity keys such as `domain` sit directly under `[ai_workspace]`. The session cookie's name, `Secure`, and `SameSite` attributes are not configurable — they are internal details of the BFF's session mechanism.
+All AI Workspace settings live under a single top-level `[ai_workspace]` table — the same namespacing convention the Platform API uses for its own `[platform_api]` table — so one `config.toml` can hold both services' sections side by side without their keys colliding. Keys are grouped into TOML tables (`[ai_workspace.logging]`, `[ai_workspace.control_plane]`, `[ai_workspace.server.http]`, `[ai_workspace.server.https]`, `[ai_workspace.session]`, `[ai_workspace.auth]`, `[ai_workspace.auth.oidc]`); deployment-identity keys such as `default_org_region` sit directly under `[ai_workspace]`. The session cookie's name, `Secure`, and `SameSite` attributes are not configurable — they are internal details of the BFF's session mechanism.
 
 The file is the **only** source of configuration. Each value in it is written as an interpolation token that is resolved once at startup, so where the value comes from is visible in place:
 
@@ -51,7 +51,6 @@ map of what each table is for.
 
 | Key | Description |
 |-----|-------------|
-| `domain` | Host (and optional port) shown in the browser address bar. |
 | `default_org_region` | Default region label assigned to new organizations on first login. |
 
 ### `[ai_workspace.logging]`
@@ -114,15 +113,12 @@ A sibling of `[ai_workspace.auth.oidc]`, not nested inside it: this table applie
 URLs in your IDP application. The sign-in redirect is the **BFF callback** `/api/auth/callback`
 (the BFF, not the browser, completes the code exchange) — not a `/signin` route.
 
-The remaining tables (`[ai_workspace.server.https]`, `[ai_workspace.session]`) and the `[ai_workspace]` listener keys are documented inline in
+The remaining tables (`[ai_workspace.server.http]`, `[ai_workspace.server.https]`, `[ai_workspace.session]`) are documented inline in
 [`configs/config-template.toml`](../../portals/ai-workspace/configs/config-template.toml).
 
 ## Minimal Quick-Start Config (basic auth)
 
 ```toml
-[ai_workspace]
-domain = "localhost:8080"
-
 [ai_workspace.control_plane]
 url = "https://localhost:9243"
 
@@ -137,7 +133,6 @@ mode = "basic"
 
 ```toml
 [ai_workspace]
-domain             = "app.example.com"
 default_org_region = "us"
 
 [ai_workspace.control_plane]
@@ -189,8 +184,8 @@ Instead, reference each in the TOML with an interpolation token that is resolved
 startup — from an environment variable, or preferably from a mounted secret file:
 
 ```toml
-encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'            # from an env var
-secret_key     = '{{ file "/secrets/platform-api/jwt_secret" }}' # from a file (preferred)
+encryption_key = '{{ file "/etc/platform-api/keys/encryption.key" }}' # shipped default — from a mounted file
+# encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'               # alternatively, from an env var
 ```
 
 Supply the env values from a git-ignored `api-platform.env` and start with `docker compose up`

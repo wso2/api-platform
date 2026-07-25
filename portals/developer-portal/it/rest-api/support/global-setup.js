@@ -22,7 +22,7 @@
 const http = require('http');
 const https = require('https');
 
-const BASE_URL = process.env.DEVPORTAL_BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.DEVPORTAL_BASE_URL || 'http://localhost:9543';
 const TIMEOUT_MS = 60000;
 
 module.exports = async function globalSetup() {

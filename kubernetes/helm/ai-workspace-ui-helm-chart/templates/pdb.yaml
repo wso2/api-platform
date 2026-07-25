@@ -1,0 +1,30 @@
+{{- $ui := .Values -}}
+{{- $pdb := $ui.podDisruptionBudget -}}
+{{- if and $ui.deployment.enabled $pdb.enabled }}
+{{- if and $pdb.minAvailable $pdb.maxUnavailable }}
+{{- fail "ui.podDisruptionBudget: only one of minAvailable or maxUnavailable may be set" }}
+{{- end }}
+{{- if not (or $pdb.minAvailable $pdb.maxUnavailable) }}
+{{- fail "ui.podDisruptionBudget: one of minAvailable or maxUnavailable must be set" }}
+{{- end }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "apip.aiWorkspace.fullname" . }}
+  labels:
+    {{- include "apip.componentLabels" (list . "ai-workspace" dict) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . dict)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "apip.componentSelectorLabels" (list . "ai-workspace") | nindent 6 }}
+  {{- if $pdb.minAvailable }}
+  minAvailable: {{ $pdb.minAvailable }}
+  {{- else if $pdb.maxUnavailable }}
+  maxUnavailable: {{ $pdb.maxUnavailable }}
+  {{- end }}
+{{- end }}
+

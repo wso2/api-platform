@@ -10,7 +10,7 @@
 
 ```shell
 
-curl -X POST https://localhost:3000/api/v0.9/applications/{applicationId}/generate-keys \
+curl -X POST https://localhost:9543/api/v0.9/applications/{applicationId}/generate-keys \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -133,7 +133,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X POST https://localhost:3000/api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token \
+curl -X POST https://localhost:9543/api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId}/generate-token \
   -u {username}:{password} \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
@@ -248,7 +248,7 @@ This operation requires <strong>Basic Auth</strong> authentication.
 
 ```shell
 
-curl -X DELETE https://localhost:3000/api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId} \
+curl -X DELETE https://localhost:9543/api/v0.9/applications/{applicationId}/oauth-keys/{keyMappingId} \
   -u {username}:{password} \
   -H 'Accept: application/json' \
   -H 'Authorization: Bearer {access-token}'

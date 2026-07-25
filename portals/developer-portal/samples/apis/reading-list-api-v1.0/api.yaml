@@ -1,0 +1,37 @@
+apiVersion: devportal.api-platform.wso2.com/v1alpha2
+kind: RestApi
+
+metadata:
+  name: reading-list-api-v1.0
+
+spec:
+  type: REST
+  displayName: Reading List API
+  version: v1.0
+  description: Sample reading-list API for tracking books and their reading status. Open access — no API key or subscription required.
+  status: PUBLISHED
+  referenceID: reading-list-api-v1.0
+
+  tags:
+    - reading-list
+    - books
+
+  labels:
+    - default
+
+  subscriptionPlans: []
+
+  agentVisibility: VISIBLE
+
+  businessInformation:
+    businessOwner: Platform Owner
+    businessOwnerEmail: support@example.com
+    technicalOwner: API Team
+    technicalOwnerEmail: architecture@example.com
+
+  # Gateway ingress (Envoy, port 8080) fronting the RestApi registered with
+  # context /reading-list/$version. The gateway forwards to the upstream at
+  # https://apis.bijira.dev/samples/reading-list-api-service/v1.0.
+  endpoints:
+    sandboxUrl: http://localhost:8080/reading-list/v1.0
+    productionUrl: http://localhost:8080/reading-list/v1.0

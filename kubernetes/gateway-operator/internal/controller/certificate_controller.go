@@ -19,7 +19,7 @@ package controller
 import (
 	"context"
 
-	"go.uber.org/zap"
+	"log/slog"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,7 +42,7 @@ type CertificateReconciler struct {
 }
 
 // NewCertificateReconciler constructs a fully wired Certificate reconciler.
-func NewCertificateReconciler(c client.Client, cfg *config.OperatorConfig, logger *zap.Logger, tracker *ResourceTracker) *CertificateReconciler {
+func NewCertificateReconciler(c client.Client, cfg *config.OperatorConfig, logger *slog.Logger, tracker *ResourceTracker) *CertificateReconciler {
 	r := &CertificateReconciler{}
 	r.Client = c
 	r.Config = cfg

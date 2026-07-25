@@ -59,30 +59,27 @@ Use security level `-768` / `dilithium3` (NIST Level 3) as minimum. Escalate to 
 ### ❌ Anti-Pattern (What to Reject)
 
 ```js
-// BAD: ECDH key exchange — quantum-vulnerable
+// BAD: quantum-vulnerable key exchange and signing, no PQC migration
 const ecdh = crypto.createECDH('prime256v1');
-ecdh.generateKeys();
-const sharedSecret = ecdh.computeSecret(peerPublicKey); // Broken by Shor's algorithm
+const sharedSecret = ecdh.computeSecret(peerPublicKey); // quantum-vulnerable, no TODO(pqc)
 
-// BAD: RSA encryption — quantum-vulnerable
-const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 4096 });
-const ciphertext = crypto.publicEncrypt(publicKey, plaintext);
-
-// BAD: PQC KEM used without classical hybrid
-const { cipherText, sharedSecret } = kyber768.encapsulate(recipientPub);
-// No X25519 leg — no fallback if ML-KEM is broken
-
-// BAD: AES-128 for long-lived keys
-const key = crypto.randomBytes(16); // AES-128 — only ~80-bit post-quantum security
-
-// BAD: Nonce reuse
-const FIXED_NONCE = Buffer.alloc(12, 0); // Never reuse — nonce collision breaks AES-GCM
-const cipher = crypto.createCipheriv('aes-256-gcm', key, FIXED_NONCE);
-
-// BAD: Undocumented legacy algorithm
-function signLegacy(data, privateKey) {
-    return crypto.sign('SHA256', data, privateKey); // No TODO(pqc) — silently quantum-vulnerable
+// privateKey here is an RSA private key — RSA-SHA256 (RSASSA-PKCS1-v1_5) is
+// the quantum-vulnerable signing scheme Directive 1 prohibits for new code.
+function signLegacy(data, rsaPrivateKey) {
+    return crypto.sign('RSA-SHA256', data, rsaPrivateKey); // undocumented legacy algorithm
 }
+
+// BAD: PQC used without classical hybrid, and nonce reuse
+const { sharedSecret: pqcOnly } = kyber768.encapsulate(recipientPub); // no X25519 hybrid leg
+
+const key = crypto.randomBytes(32); // AES-256 key size, matches 'aes-256-gcm'
+const staticNonce = crypto.randomBytes(12); // Generated once, then reused below — breaks GCM
+
+const cipher1 = crypto.createCipheriv('aes-256-gcm', key, staticNonce);
+const ciphertext1 = Buffer.concat([cipher1.update(Buffer.from('message one')), cipher1.final()]);
+
+const cipher2 = crypto.createCipheriv('aes-256-gcm', key, staticNonce); // Same key + nonce reused — GCM keystream repeats
+const ciphertext2 = Buffer.concat([cipher2.update(Buffer.from('message two')), cipher2.final()]);
 ```
 
 ### Best Practice (What to Generate)

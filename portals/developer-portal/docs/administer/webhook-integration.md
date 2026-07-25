@@ -54,7 +54,7 @@ signature_tolerance_sec = 300
 ### Create a subscriber
 
 ```bash
-curl -k -X POST "https://localhost:3000/api/v0.9/webhook-subscribers" \
+curl -k -X POST "https://localhost:9543/api/v0.9/webhook-subscribers" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -84,18 +84,18 @@ The response never includes the secret. To set a public key for envelope-encrypt
 
 ```bash
 # List
-curl -k "https://localhost:3000/api/v0.9/webhook-subscribers" -H "Authorization: Bearer $TOKEN"
+curl -k "https://localhost:9543/api/v0.9/webhook-subscribers" -H "Authorization: Bearer $TOKEN"
 
 # Get one
-curl -k "https://localhost:3000/api/v0.9/webhook-subscribers/{subscriberId}" -H "Authorization: Bearer $TOKEN"
+curl -k "https://localhost:9543/api/v0.9/webhook-subscribers/{subscriberId}" -H "Authorization: Bearer $TOKEN"
 
 # Update (only supplied fields are changed; omitted fields keep their stored values)
-curl -k -X PUT "https://localhost:3000/api/v0.9/webhook-subscribers/{subscriberId}" \
+curl -k -X PUT "https://localhost:9543/api/v0.9/webhook-subscribers/{subscriberId}" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"enabled": false}'
 
 # Delete
-curl -k -X DELETE "https://localhost:3000/api/v0.9/webhook-subscribers/{subscriberId}" \
+curl -k -X DELETE "https://localhost:9543/api/v0.9/webhook-subscribers/{subscriberId}" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -601,11 +601,11 @@ Each delivery is attempted exactly once. If your subscriber endpoint is unavaila
 ### List recent events
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/webhook-events -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:9543/api/v0.9/webhook-events -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Get event details
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/webhook-events/{eventId} -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:9543/api/v0.9/webhook-events/{eventId} -H "Authorization: Bearer $TOKEN"
 ```

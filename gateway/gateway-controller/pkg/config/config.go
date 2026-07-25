@@ -594,10 +594,10 @@ type VHostEntry struct {
 
 // HTTPListenerConfig holds HTTP listener related configuration of an API
 type HTTPListenerConfig struct {
-	ServerHeaderTransformation 		string      `koanf:"server_header_transformation"` 		// Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
-	ServerHeaderValue          		string      `koanf:"server_header_value"`          		// Custom value for the Server header
-	Timeouts                   		HCMTimeouts `koanf:"timeouts"`                     		// HTTP Connection Manager (downstream) timeouts
-	PerConnectionBufferLimitBytes 	uint32 		`koanf:"per_connection_buffer_limit_bytes"` // Downstream per-connection buffer limit in bytes
+	ServerHeaderTransformation    string      `koanf:"server_header_transformation"`      // Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
+	ServerHeaderValue             string      `koanf:"server_header_value"`               // Custom value for the Server header
+	Timeouts                      HCMTimeouts `koanf:"timeouts"`                          // HTTP Connection Manager (downstream) timeouts
+	PerConnectionBufferLimitBytes uint32      `koanf:"per_connection_buffer_limit_bytes"` // Downstream per-connection buffer limit in bytes
 }
 
 // HCMTimeouts holds HTTP Connection Manager (downstream/connection) timeouts.
@@ -1891,6 +1891,18 @@ func validateGRPCEventServerConfig(cfg GRPCEventServerConfig) error {
 
 // validateAuthConfig validates the authentication configuration
 func (c *Config) validateAuthConfig() error {
+	if c.Controller.Auth.Basic.Enabled {
+		for i := range c.Controller.Auth.Basic.Users {
+			u := &c.Controller.Auth.Basic.Users[i]
+			if strings.TrimSpace(u.Username) == "" || strings.TrimSpace(u.Password) == "" {
+				return fmt.Errorf("auth.basic user #%d has an empty username or password — "+
+					"refusing to start with an unenforceable basic-auth config; "+
+					"run scripts/setup.sh to provision admin credentials "+
+					"(sets APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME and APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH)", i+1)
+			}
+		}
+	}
+
 	// Validate IDP role mapping for multiple wildcards
 	if c.Controller.Auth.IDP.Enabled && len(c.Controller.Auth.IDP.RoleMapping) > 0 {
 		wildcardRoles := []string{}

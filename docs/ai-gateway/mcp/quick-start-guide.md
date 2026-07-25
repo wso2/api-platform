@@ -23,14 +23,14 @@ Replace `${version}` with the API Platform AI Gateway release version you want t
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/ai-gateway/v1.2.0-alpha2/wso2apip-ai-gateway-1.2.0-alpha2.zip
+wget https://github.com/wso2/api-platform/releases/download/ai-gateway/v1.2.0-beta/wso2apip-ai-gateway-1.2.0-beta.zip
 
 # Unzip the downloaded distribution.
-unzip wso2apip-ai-gateway-1.2.0-alpha2.zip
+unzip wso2apip-ai-gateway-1.2.0-beta.zip
 
 
 # Start the complete stack
-cd wso2apip-ai-gateway-v1.2.0-alpha2/
+cd wso2apip-ai-gateway-v1.2.0-beta/
 docker compose -p ai-gateway up -d
 
 # Verify gateway controller admin endpoint is running
@@ -47,10 +47,18 @@ docker run -p 3001:3001 --name everything --network ai-gateway_gateway-network r
 
 Run the following command to deploy the MCP proxy.
 
+> The management API uses basic auth. Export the admin credentials `scripts/setup.sh` provisioned — the
+> username defaults to `admin`; use the password it printed:
+>
+> ```bash
+> export ADMIN_USERNAME=admin
+> export ADMIN_PASSWORD='<the password scripts/setup.sh printed>'
+> ```
+
 ```bash
 curl -X POST http://localhost:9090/api/management/v0.9/mcp-proxies \
   -H "Content-Type: application/yaml" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: Mcp

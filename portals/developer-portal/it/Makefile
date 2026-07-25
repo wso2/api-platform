@@ -119,7 +119,7 @@ test-rest-api-postgres: ensure-test-tag ensure-certs
 # Open Cypress interactive UI — runs against a LOCALLY running devportal (not in Docker).
 # Start your devportal with `docker compose up` in portals/developer-portal/ first.
 open: deps
-	cd ui && CYPRESS_BASE_URL=https://localhost:3000 npx cypress open --e2e --config-file cypress.config.js
+	cd ui && CYPRESS_BASE_URL=https://localhost:9543 npx cypress open --e2e --config-file cypress.config.js
 
 # Install Node dependencies (only needed for `make open`).
 deps:

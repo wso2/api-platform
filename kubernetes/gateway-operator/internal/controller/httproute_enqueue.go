@@ -23,9 +23,9 @@ import (
 	"strings"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
-	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"log/slog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -138,8 +138,8 @@ func (r *HTTPRouteReconciler) enqueueHTTPRoutesReferencingAPIPolicy(ctx context.
 	if err := r.List(ctx, routes, client.InNamespace(ap.Namespace)); err != nil {
 		if r.Logger != nil {
 			r.Logger.Error("watch: list HTTPRoutes for APIPolicy ExtensionRef enqueue",
-				zap.Error(err),
-				zap.String("apiPolicy", client.ObjectKeyFromObject(ap).String()))
+				slog.Any("error", err),
+				slog.String("apiPolicy", client.ObjectKeyFromObject(ap).String()))
 		}
 		return nil
 	}
@@ -163,9 +163,9 @@ func (r *HTTPRouteReconciler) enqueueHTTPRoutesReferencingAPIPolicy(ctx context.
 			names = append(names, q.NamespacedName.String())
 		}
 		r.Logger.Info("watch: APIPolicy changed; enqueue HTTPRoutes referencing ExtensionRef",
-			zap.String("controller", "HTTPRoute"),
-			zap.String("apiPolicy", client.ObjectKeyFromObject(ap).String()),
-			zap.Strings("httpRoutes", names))
+			slog.String("controller", "HTTPRoute"),
+			slog.String("apiPolicy", client.ObjectKeyFromObject(ap).String()),
+			slog.Any("httpRoutes", names))
 	}
 	return reqs
 }
@@ -180,9 +180,9 @@ func (r *HTTPRouteReconciler) enqueueHTTPRouteForAPIPolicy(ctx context.Context, 
 	if req, ok := httpRouteRequestForAPIPolicyTarget(ap); ok {
 		if r.Logger != nil {
 			r.Logger.Info("watch: APIPolicy changed; enqueue HTTPRoute",
-				zap.String("controller", "HTTPRoute"),
-				zap.String("apiPolicy", client.ObjectKeyFromObject(ap).String()),
-				zap.String("targetHTTPRoute", req.NamespacedName.String()))
+				slog.String("controller", "HTTPRoute"),
+				slog.String("apiPolicy", client.ObjectKeyFromObject(ap).String()),
+				slog.String("targetHTTPRoute", req.NamespacedName.String()))
 		}
 		return []reconcile.Request{req}
 	}
@@ -222,9 +222,9 @@ func (r *HTTPRouteReconciler) enqueueHTTPRoutesForValueFrom(ctx context.Context,
 	if err := r.List(ctx, list); err != nil {
 		if r.Logger != nil {
 			r.Logger.Error("watch: list APIPolicies for valueFrom enqueue",
-				zap.Error(err),
-				zap.String("kind", kind),
-				zap.String("source", sourceKey))
+				slog.Any("error", err),
+				slog.String("kind", kind),
+				slog.String("source", sourceKey))
 		}
 		return nil
 	}
@@ -255,10 +255,10 @@ func (r *HTTPRouteReconciler) enqueueHTTPRoutesForValueFrom(ctx context.Context,
 			ns = append(ns, q.NamespacedName.String())
 		}
 		r.Logger.Info("watch: valueFrom source changed; enqueue HTTPRoutes",
-			zap.String("controller", "HTTPRoute"),
-			zap.String("kind", kind),
-			zap.String("source", sourceKey),
-			zap.Strings("httpRoutes", ns))
+			slog.String("controller", "HTTPRoute"),
+			slog.String("kind", kind),
+			slog.String("source", sourceKey),
+			slog.Any("httpRoutes", ns))
 	}
 	return reqs
 }
@@ -331,8 +331,8 @@ func (r *HTTPRouteReconciler) enqueueHTTPRoutesForService(ctx context.Context, o
 	if err := r.List(ctx, routes); err != nil {
 		if r.Logger != nil {
 			r.Logger.Error("watch: list HTTPRoutes for Service enqueue",
-				zap.Error(err),
-				zap.String("service", client.ObjectKeyFromObject(svc).String()))
+				slog.Any("error", err),
+				slog.String("service", client.ObjectKeyFromObject(svc).String()))
 		}
 		return nil
 	}
@@ -351,9 +351,9 @@ func (r *HTTPRouteReconciler) enqueueHTTPRoutesForService(ctx context.Context, o
 			ns = append(ns, q.NamespacedName.String())
 		}
 		r.Logger.Info("watch: Service changed; enqueue HTTPRoutes",
-			zap.String("controller", "HTTPRoute"),
-			zap.String("service", client.ObjectKeyFromObject(svc).String()),
-			zap.Strings("httpRoutes", ns))
+			slog.String("controller", "HTTPRoute"),
+			slog.String("service", client.ObjectKeyFromObject(svc).String()),
+			slog.Any("httpRoutes", ns))
 	}
 	return requests
 }
@@ -375,7 +375,7 @@ func (r *HTTPRouteReconciler) enqueueHTTPRoutesForReferenceGrant(ctx context.Con
 	routes := &gatewayv1.HTTPRouteList{}
 	if err := r.List(ctx, routes); err != nil {
 		if r.Logger != nil {
-			r.Logger.Error("watch: list HTTPRoutes for ReferenceGrant enqueue", zap.Error(err))
+			r.Logger.Error("watch: list HTTPRoutes for ReferenceGrant enqueue", slog.Any("error", err))
 		}
 		return nil
 	}
@@ -442,7 +442,7 @@ func (r *HTTPRouteReconciler) enqueueHTTPRoutesForGateway(ctx context.Context, o
 	routes := &gatewayv1.HTTPRouteList{}
 	if err := r.List(ctx, routes); err != nil {
 		if r.Logger != nil {
-			r.Logger.Error("watch: list HTTPRoutes for Gateway enqueue", zap.Error(err))
+			r.Logger.Error("watch: list HTTPRoutes for Gateway enqueue", slog.Any("error", err))
 		}
 		return nil
 	}

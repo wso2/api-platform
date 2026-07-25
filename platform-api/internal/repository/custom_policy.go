@@ -232,6 +232,26 @@ func (r *CustomPolicyRepo) DeleteCustomPolicyUsage(policyUUID, apiUUID string) e
 	return err
 }
 
+// replaceCustomPolicyUsagesTx atomically replaces every custom-policy usage for
+// an artifact. It is used from artifact persistence transactions so the artifact
+// configuration and its deletion guards cannot diverge.
+func replaceCustomPolicyUsagesTx(tx *sql.Tx, db *database.DB, artifactUUID string, policyUUIDs []string) error {
+	if _, err := tx.Exec(db.Rebind(`DELETE FROM gateway_custom_policy_usages WHERE artifact_uuid = ?`), artifactUUID); err != nil {
+		return err
+	}
+	seen := make(map[string]struct{}, len(policyUUIDs))
+	for _, policyUUID := range policyUUIDs {
+		if _, exists := seen[policyUUID]; exists {
+			continue
+		}
+		seen[policyUUID] = struct{}{}
+		if _, err := tx.Exec(db.Rebind(`INSERT INTO gateway_custom_policy_usages (policy_uuid, artifact_uuid) VALUES (?, ?)`), policyUUID, artifactUUID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // DeleteCustomPolicyIfUnused atomically deletes the policy only when it has no active usages.
 func (r *CustomPolicyRepo) DeleteCustomPolicyIfUnused(orgUUID, policyUUID string) error {
 	deleteQuery := `

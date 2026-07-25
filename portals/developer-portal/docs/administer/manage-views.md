@@ -26,7 +26,7 @@ https://<host>/<orgHandle>/views/<viewName>
 ```
 
 ```bash
-curl -k -X POST https://localhost:3000/api/v0.9/views \
+curl -k -X POST https://localhost:9543/api/v0.9/views \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @view.json
@@ -41,13 +41,13 @@ curl -k -X POST https://localhost:3000/api/v0.9/views \
 ## List Views
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/views -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:9543/api/v0.9/views -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a View
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/views/{viewId} -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:9543/api/v0.9/views/{viewId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Update a View
@@ -63,7 +63,7 @@ The update request takes the full desired label set via `labels` — labels pres
 ```
 
 ```bash
-curl -k -X PUT https://localhost:3000/api/v0.9/views/{viewId} \
+curl -k -X PUT https://localhost:9543/api/v0.9/views/{viewId} \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @view-update.json
@@ -72,7 +72,7 @@ curl -k -X PUT https://localhost:3000/api/v0.9/views/{viewId} \
 ## Delete a View
 
 ```bash
-curl -k -X DELETE https://localhost:3000/api/v0.9/views/{viewId} -H "Authorization: Bearer $TOKEN"
+curl -k -X DELETE https://localhost:9543/api/v0.9/views/{viewId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
@@ -94,7 +94,7 @@ Labels are created one at a time as a JSON object:
 ```
 
 ```bash
-curl -k -X POST https://localhost:3000/api/v0.9/labels \
+curl -k -X POST https://localhost:9543/api/v0.9/labels \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @label.json
@@ -108,13 +108,13 @@ curl -k -X POST https://localhost:3000/api/v0.9/labels \
 ### List Labels
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/labels -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:9543/api/v0.9/labels -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Get a Label
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/labels/{labelId} -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:9543/api/v0.9/labels/{labelId} -H "Authorization: Bearer $TOKEN"
 ```
 
 ### Update a Label
@@ -128,7 +128,7 @@ curl -k https://localhost:3000/api/v0.9/labels/{labelId} -H "Authorization: Bear
 ```
 
 ```bash
-curl -k -X PUT https://localhost:3000/api/v0.9/labels/{labelId} \
+curl -k -X PUT https://localhost:9543/api/v0.9/labels/{labelId} \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   --data-binary @label-update.json
@@ -137,7 +137,7 @@ curl -k -X PUT https://localhost:3000/api/v0.9/labels/{labelId} \
 ### Delete a Label
 
 ```bash
-curl -k -X DELETE "https://localhost:3000/api/v0.9/labels/{labelId}" \
+curl -k -X DELETE "https://localhost:9543/api/v0.9/labels/{labelId}" \
   -H "Authorization: Bearer $TOKEN"
 ```
 

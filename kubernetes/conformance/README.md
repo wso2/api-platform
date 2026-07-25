@@ -40,7 +40,7 @@ This produces:
 
 - `ghcr.io/wso2/api-platform/gateway-controller:1.2.0-M2-SNAPSHOT`
 - `ghcr.io/wso2/api-platform/gateway-runtime:1.2.0-M2-SNAPSHOT`
-- `ghcr.io/wso2/api-platform/gateway-operator:0.8.1-SNAPSHOT`
+- `ghcr.io/wso2/api-platform/gateway-operator:0.10.0-SNAPSHOT`
 
 The controller/runtime tag comes from `gateway/VERSION` and the operator tag from the
 operator `Makefile`; `load-images.sh` (step 3) derives the same values automatically.

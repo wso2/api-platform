@@ -1,5 +1,11 @@
 /* Manage Keys Page Styles — scoped to .keys-section */
 
+/* Sandbox accent — derived from the theme so it follows the active palette
+   instead of a hardcoded blue. */
+.keys-section {
+    --mk-sandbox: var(--info);
+}
+
 /* ── Page header ── */
 .keys-section .mk-header {
     margin-bottom: 1.5rem;
@@ -32,7 +38,7 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.9rem 1.1rem;
-    border: 1.5px solid var(--bs-gray-200);
+    border: 1.5px solid var(--border);
     border-radius: 12px;
     background: var(--surface);
     cursor: pointer;
@@ -41,8 +47,8 @@
 }
 
 .keys-section .mk-env-card.active {
-    border-color: #4a90d9;
-    box-shadow: 0 0 0 2px color-mix(in srgb, #4a90d9 18%, transparent);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .keys-section .mk-env-card:focus {
@@ -57,7 +63,7 @@
 }
 
 .keys-section .mk-env-dot-prod { background: var(--accent); }
-.keys-section .mk-env-dot-sandbox { background: #5c9fcf; }
+.keys-section .mk-env-dot-sandbox { background: var(--mk-sandbox); }
 
 .keys-section .mk-env-text {
     display: flex;
@@ -101,16 +107,16 @@
 }
 
 .keys-section .mk-context-banner-sandbox {
-    background: color-mix(in srgb, #5c9fcf 10%, transparent);
+    background: color-mix(in srgb, var(--mk-sandbox) 10%, transparent);
     color: var(--text);
 }
 
 .keys-section .mk-env-dot-prod-icon { color: var(--accent); font-size: 0.55rem; }
-.keys-section .mk-env-dot-sandbox-icon { color: #5c9fcf; font-size: 0.55rem; }
+.keys-section .mk-env-dot-sandbox-icon { color: var(--mk-sandbox); font-size: 0.55rem; }
 
 /* ── Key manager card ── */
 .keys-section .mk-km-card {
-    border: 1px solid var(--bs-gray-200);
+    border: 1px solid var(--border);
     border-radius: 14px;
     background: var(--surface);
     overflow: hidden;
@@ -123,7 +129,7 @@
     align-items: center;
     gap: 0.85rem;
     padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--bs-gray-100);
+    border-bottom: 1px solid var(--border);
 }
 
 .keys-section .mk-km-icon {
@@ -139,10 +145,6 @@
     flex-shrink: 0;
 }
 
-.keys-section .mk-km-icon-sandbox {
-    background: #5c9fcf;
-}
-
 .keys-section .mk-km-info {
     flex: 1;
     display: flex;
@@ -155,23 +157,20 @@
     color: var(--text);
 }
 
+/* Status badge — same shape and success semantics as .cfg-status-badge /
+   .cfg-status-published in settings. "Active" is a status, not an
+   environment, so it is identical in Production and Sandbox. */
 .keys-section .mk-km-badge {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.3rem 0.75rem;
-    font-size: 0.775rem;
+    gap: 6px;
+    padding: 5px 11px;
+    font-size: 0.75rem;
     font-weight: 600;
-    border-radius: 999px;
-    border: 1.5px solid var(--accent);
-    color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 8%, transparent);
-}
-
-.keys-section .mk-km-badge-sandbox {
-    border-color: #5c9fcf;
-    color: #5c9fcf;
-    background: color-mix(in srgb, #5c9fcf 8%, transparent);
+    border-radius: 20px;
+    border: none;
+    color: var(--success);
+    background: var(--success-surface);
 }
 
 .keys-section .mk-km-badge-dot {
@@ -185,7 +184,7 @@
 /* ── Inner card tab nav ── */
 .keys-section .mk-km-tabnav {
     display: flex;
-    border-bottom: 1px solid var(--bs-gray-200);
+    border-bottom: 1px solid var(--border);
     padding: 0 1.25rem;
     gap: 0;
     background: var(--surface);
@@ -261,7 +260,7 @@
 .keys-section .mk-input-row {
     display: flex;
     align-items: center;
-    border: 1px solid var(--bs-gray-300);
+    border: 1px solid var(--border-strong);
     border-radius: 8px;
     overflow: hidden;
     background: var(--surface);
@@ -301,7 +300,7 @@
 .keys-section .mk-icon-btn {
     background: none;
     border: none;
-    border-left: 1px solid var(--bs-gray-200);
+    border-left: 1px solid var(--border);
     padding: 0.55rem 0.65rem;
     color: var(--text);
     opacity: 0.55;
@@ -320,7 +319,7 @@
 /* ── Grant types metadata row ── */
 .keys-section .mk-cred-meta {
     padding-top: 1rem;
-    border-top: 1px dashed var(--bs-gray-200);
+    border-top: 1px dashed var(--border);
     display: flex;
     flex-wrap: wrap;
     gap: 1.25rem;
@@ -366,8 +365,8 @@
     justify-content: space-between;
     gap: 1rem;
     padding: 0.9rem 1.25rem;
-    border-top: 1px solid var(--bs-gray-100);
-    background: color-mix(in srgb, var(--bs-gray-100) 40%, transparent);
+    border-top: 1px solid var(--border);
+    background: var(--surface-sunken);
     flex-wrap: wrap;
 }
 
@@ -394,55 +393,71 @@
     flex-shrink: 0;
 }
 
-/* Buttons */
+/* ── Buttons ──
+   Same language as .dp-btn (api-keys page) and .cfg-btn-* (settings):
+   pill radius, 600 weight, --cta-gradient primary, outline on --border-strong.
+   Deliberately identical in Production and Sandbox — the environment is
+   signalled by the env selector, context banner and dot, never by button
+   colour. */
 .keys-section .mk-btn-primary,
 .keys-section .mk-btn-outline,
 .keys-section .mk-btn-danger {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.5rem 1.05rem;
-    font-size: 0.845rem;
-    font-weight: 500;
-    border-radius: 8px;
+    gap: 0.5rem;
+    padding: 0.6875rem 1.375rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    border-radius: 1.25rem;
     cursor: pointer;
-    transition: background 0.15s, box-shadow 0.15s, opacity 0.15s;
-    border: 1.5px solid transparent;
-    line-height: 1.4;
+    transition: background 0.15s, opacity 0.15s;
+    border: 1px solid transparent;
+    line-height: 1;
     white-space: nowrap;
+    font-family: inherit;
 }
 
 .keys-section .mk-btn-primary {
-    background: var(--primary);
+    background: var(--cta-gradient);
     color: var(--white);
-    border-color: var(--primary);
-}
-
-.keys-section .mk-btn-primary:hover {
-    background: color-mix(in srgb, var(--primary) 85%, black);
-}
-
-.keys-section .mk-btn-outline {
-    background: var(--surface);
-    color: var(--text);
-    border-color: var(--bs-gray-300);
-}
-
-.keys-section .mk-btn-outline:hover {
-    background: var(--primary-light);
-    border-color: var(--primary);
-    color: var(--primary);
-}
-
-.keys-section .mk-btn-danger {
-    background: transparent;
-    color: var(--danger);
     border-color: transparent;
 }
 
+.keys-section .mk-btn-primary:hover {
+    opacity: 0.9;
+    color: var(--white);
+}
+
+.keys-section .mk-btn-primary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.keys-section .mk-btn-outline {
+    background: var(--white);
+    color: var(--primary);
+    border-color: var(--border-strong);
+}
+
+.keys-section .mk-btn-outline:hover {
+    background: var(--surface-sunken);
+    color: var(--primary);
+}
+
+/* Matches .ak-btn-revoke on the API keys page — the sibling section on this
+   same application page. */
+.keys-section .mk-btn-danger {
+    background: var(--white);
+    color: var(--danger);
+    border-color: color-mix(in srgb, var(--danger) 30%, var(--surface));
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    gap: 0.4375rem;
+}
+
 .keys-section .mk-btn-danger:hover {
-    background: color-mix(in srgb, var(--danger) 8%, transparent);
-    border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+    background: var(--danger-surface);
 }
 
 /* ── Empty state ── */
@@ -459,18 +474,13 @@
     width: 52px;
     height: 52px;
     border-radius: 14px;
-    background: var(--primary-light);
-    color: var(--primary);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
     font-size: 1.5rem;
     display: flex;
     align-items: center;
     justify-content: center;
     margin-bottom: 0.5rem;
-}
-
-.keys-section .mk-empty-icon-sandbox {
-    background: color-mix(in srgb, #5c9fcf 12%, transparent);
-    color: #5c9fcf;
 }
 
 .keys-section .mk-empty-title {
@@ -498,6 +508,15 @@
 
 .keys-section .mk-add-clientid-row .mk-input {
     flex: 1;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.keys-section .mk-add-clientid-row .mk-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 /* ── Error container ── */
@@ -516,27 +535,16 @@
     gap: 0.6rem;
     padding: 1rem 1.25rem;
     border-radius: 10px;
-    border: 1px solid var(--bs-gray-200);
+    border: 1px solid var(--border);
     background: var(--surface-sunken);
     color: var(--text);
     opacity: 0.7;
     font-size: 0.875rem;
 }
 
-/* ── Sandbox tint ── */
-.keys-section .mk-km-card-sandbox .mk-km-tab.active {
-    border-bottom-color: #5c9fcf;
-    color: #5c9fcf;
-}
-
-.keys-section .mk-btn-sandbox {
-    background: #5c9fcf;
-    border-color: #5c9fcf;
-}
-
-.keys-section .mk-btn-sandbox:hover {
-    background: color-mix(in srgb, #5c9fcf 85%, black);
-}
+/* Sandbox cards deliberately carry no colour tint of their own — tabs,
+   buttons, icons and badges are identical to Production. The environment is
+   communicated by the env selector, the context banner and the env dot. */
 
 /* ── Credential grid single-column variant ── */
 .keys-section .mk-cred-grid-single {
@@ -558,7 +566,7 @@
     align-items: center;
     gap: 1.5rem;
     padding: 0.9rem 0;
-    border-bottom: 1px solid var(--bs-gray-100);
+    border-bottom: 1px solid var(--border);
 }
 
 .keys-section .mk-config-row:last-child {
@@ -596,8 +604,8 @@
     justify-content: space-between;
     gap: 1rem;
     padding: 0.9rem 1.25rem;
-    border-top: 1px solid var(--bs-gray-100);
-    background: color-mix(in srgb, var(--bs-gray-100) 40%, transparent);
+    border-top: 1px solid var(--border);
+    background: var(--surface-sunken);
     flex-wrap: wrap;
 }
 
@@ -632,7 +640,7 @@
 .keys-section .mk-inline-input {
     width: 100%;
     max-width: 420px;
-    border: 1px solid var(--bs-gray-300);
+    border: 1px solid var(--border-strong);
     border-radius: 8px;
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
@@ -687,7 +695,7 @@
 
 .keys-section .mk-edit-input {
     width: 100%;
-    border: 1.5px solid var(--bs-gray-300);
+    border: 1.5px solid var(--border-strong);
     border-radius: 8px;
     padding: 0.55rem 0.8rem;
     font-size: 0.875rem;
@@ -714,7 +722,7 @@
     align-items: center;
     gap: 0.6rem;
     padding: 0.6rem 0.9rem;
-    border: 1.5px solid var(--bs-gray-200);
+    border: 1.5px solid var(--border);
     border-radius: 10px;
     cursor: pointer;
     font-size: 0.855rem;
@@ -726,7 +734,7 @@
 }
 
 .keys-section .mk-grant-card:hover {
-    border-color: var(--bs-gray-400);
+    border-color: var(--border-strong);
 }
 
 .keys-section .mk-grant-card input[type="checkbox"] {
@@ -734,7 +742,7 @@
     -webkit-appearance: none;
     width: 17px;
     height: 17px;
-    border: 1.5px solid var(--bs-gray-400);
+    border: 1.5px solid var(--border-strong);
     border-radius: 4px;
     flex-shrink: 0;
     cursor: pointer;
@@ -793,7 +801,7 @@
 }
 
 .keys-section .mk-scope-input {
-    border: 1px solid var(--bs-gray-300);
+    border: 1px solid var(--border-strong);
     border-radius: 8px;
     padding: 0.45rem 0.65rem;
     display: flex;
@@ -871,7 +879,7 @@
 }
 
 .keys-section .mk-curl-details {
-    border: 1px solid var(--bs-gray-200);
+    border: 1px solid var(--border);
     border-radius: 10px;
     overflow: hidden;
 }
@@ -881,7 +889,7 @@
     align-items: flex-start;
     gap: 1rem;
     padding: 0.7rem 1rem;
-    border-bottom: 1px solid var(--bs-gray-100);
+    border-bottom: 1px solid var(--border);
 }
 
 .keys-section .mk-curl-row:last-child {
@@ -908,7 +916,7 @@
 .keys-section .mk-code-block {
     position: relative;
     background: color-mix(in srgb, var(--text) 4%, var(--surface));
-    border: 1px solid var(--bs-gray-200);
+    border: 1px solid var(--border);
     border-radius: 10px;
     padding: 1rem 1rem 1rem 1.1rem;
     overflow-x: auto;
@@ -929,7 +937,7 @@
     top: 0.6rem;
     right: 0.6rem;
     background: var(--surface);
-    border: 1px solid var(--bs-gray-200);
+    border: 1px solid var(--border);
     border-radius: 6px;
     padding: 0.3rem 0.5rem;
     cursor: pointer;
@@ -958,7 +966,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.7rem 1.1rem;
-    border: 1.5px dashed var(--bs-gray-300);
+    border: 1.5px dashed var(--border-strong);
     border-radius: 10px;
     background: transparent;
     color: var(--text);
@@ -988,7 +996,7 @@
     min-width: 240px;
     max-width: 360px;
     background: var(--white);
-    border: 1px solid var(--bs-gray-200);
+    border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
     padding: 0.35rem 0;
@@ -1067,7 +1075,7 @@
     text-align: center;
     font-weight: 500;
     background: var(--surface-sunken);
-    border: 1px solid var(--bs-gray-200);
+    border: 1px solid var(--border);
     border-bottom: none;
     color: var(--text);
     border-radius: 0;
@@ -1093,25 +1101,25 @@
     z-index: 3;
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
-    border: 1px solid var(--bs-gray-200);
+    border: 1px solid var(--border);
     border-bottom: none;
     color: var(--primary);
     font-weight: 600;
     opacity: 1;
     box-shadow:
-      -4px -4px 8px var(--bs-gray-200),
-       4px -4px 8px var(--bs-gray-200);
+      -4px -4px 8px var(--border),
+       4px -4px 8px var(--border);
   }
 
   .keys-section #keysTabContent {
     background: var(--surface);
     padding: 24px;
-    border: 1px solid var(--bs-gray-200);
+    border: 1px solid var(--border);
     border-radius: 0 0 12px 12px;
     box-shadow:
-      -4px 0 8px var(--bs-gray-200),
-       4px 0 8px var(--bs-gray-200),
-       0 4px 8px var(--bs-gray-200);
+      -4px 0 8px var(--border),
+       4px 0 8px var(--border),
+       0 4px 8px var(--border);
   }
 
 .keys-section .key-action-buttons-row {
@@ -1146,7 +1154,7 @@
 .keys-section .accordion-header {
     background-color: var(--surface);
     color: var(--text);
-    border: 1px solid var(--bs-gray-300);
+    border: 1px solid var(--border-strong);
     border-radius: var(--bs-accordion-border-radius);
     padding: 0;
 }
@@ -1196,7 +1204,7 @@
 .keys-section .app-table-container {
     border-radius: 8px;
     overflow: hidden;
-    border: 1px solid var(--bs-gray-300);
+    border: 1px solid var(--border-strong);
     background: var(--surface-sunken);
 }
 
@@ -1279,7 +1287,7 @@
 
 .api-key-name-modal .form-control {
     border-radius: var(--bs-border-radius);
-    border: 1px solid var(--bs-gray-300);
+    border: 1px solid var(--border-strong);
     padding: 0.675rem;
     margin-top: 1rem;
 }
@@ -1357,14 +1365,14 @@
 
 /* Improved spacing and visual hierarchy */
 .keys-section .accordion-item {
-    border: 1px solid var(--bs-gray-300);
+    border: 1px solid var(--border-strong);
     border-radius: 8px;
     overflow: hidden;
     transition: border-color 0.2s ease;
 }
 
 .keys-section .accordion-item:hover {
-    border-color: var(--bs-gray-400);
+    border-color: var(--border-strong);
 }
 
 /* Table row hover effect */

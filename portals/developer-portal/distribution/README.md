@@ -12,13 +12,13 @@ wso2apip-developer-portal-<version>/
 │   ├── setup.sh                                 # One-time TLS + secrets provisioning
 │   └── seed-samples.sh                          # Optional: deploy the bundled sample APIs/MCPs
 ├── configs/
-│   ├── config.toml                              # Developer Portal active configuration
-│   ├── config-template.toml                     # Developer Portal full configuration reference
-│   ├── config-platform-api.toml                 # Platform API active configuration
-│   └── config-platform-api-template.toml        # Platform API full configuration reference
+│   ├── config.toml                              # Unified active config — [developer_portal] + [platform_api] sections
+│   └── config-template.toml                     # Config reference — both active components, plus optional [ai_workspace] at the bottom
 └── resources/
     ├── developer-portal/
     │   └── db-scripts/                          # Developer Portal PostgreSQL schema (reference copy)
+    ├── platform-api/
+    │   └── db-scripts/                          # Platform API database schemas (reference copy)
     └── samples/
         ├── apis/                                # Sample REST/GraphQL/SOAP APIs
         └── mcps/                                # Sample MCP servers
@@ -41,10 +41,11 @@ docker compose up -d
 
 `setup.sh` generates everything the stack needs — nothing is auto-generated at runtime:
 
-| Output | Contents |
-|---|---|
-| `api-platform.env` (git-ignored) | `APIP_DP_SECURITY_ENCRYPTIONKEY` / `APIP_DP_SECURITY_SESSIONSECRET` (Developer Portal), `APIP_CP_ENCRYPTION_KEY` (Platform API at-rest encryption), `APIP_CP_AUTH_JWT_SECRET_KEY` + `APIP_DP_PLATFORMAPI_JWTSECRET` (same JWT signing key, one name per service), `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt) |
-| `resources/certificates/cert.pem` + `key.pem` | Self-signed TLS pair shared by both services |
+| Output | Contents                                                                                                                                                                                                                                                                                                                                      |
+|---|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `api-platform.env` (git-ignored) | `APIP_DP_SECURITY_ENCRYPTION_KEY` / `APIP_DP_SECURITY_SESSION_SECRET` (Developer Portal), `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt). No JWT signing key or Platform API encryption key — the RS256 keypair and the Platform API's `encryption.key` are written to `resources/keys/` as files (read via `{{ file }}`). |
+| `resources/certificates/cert.pem` + `key.pem` | Self-signed TLS pair shared by both services                                                                                                                                                                                                                                                                                                  |
+| `resources/keys/jwt_private.pem` + `jwt_public.pem` | RS256 JWT keypair — the Platform API signs with the private key, the Developer Portal verifies with the public one                                                                                                                                                                                                                            |
 
 The admin password is generated and printed once by `setup.sh` — it is not stored anywhere; only its bcrypt hash lands in `api-platform.env`. Re-running `setup.sh` is safe: it only fills in what's missing and never overwrites an existing value — to rotate a value, delete it from `api-platform.env` (or delete `resources/certificates` for the TLS cert) and re-run. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables skip the interactive prompts (used by CI to pin known test credentials).
 
@@ -54,7 +55,7 @@ Verify the Platform API is healthy:
 curl -fk https://localhost:9243/health
 ```
 
-Open the Developer Portal in a browser at `https://localhost:3000/default/views/default` and log in with the admin credentials printed by `setup.sh`.
+Open the Developer Portal in a browser at `https://localhost:9543/default/views/default` and log in with the admin credentials printed by `setup.sh`.
 
 > **Browser trust warning?** Both services use a self-signed TLS certificate by default. Click **Advanced → Proceed** to continue. See [Custom TLS Certificates](#custom-tls-certificates) to remove the warning permanently.
 
@@ -72,41 +73,57 @@ Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD
 
 | Port | Service | Description |
 |------|---------|-------------|
-| `3000` | Developer Portal | HTTPS — browser entry point |
+| `9543` | Developer Portal | HTTPS — browser entry point |
 | `9243` | Platform API | HTTPS — local-auth backend |
+| `9643` | AI Workspace | HTTPS — only when the `with-ai-workspace` profile is enabled (see below) |
+
+## AI Workspace (optional)
+
+This package runs the Developer Portal and the Platform API by default. **AI Workspace** ships in the same `docker-compose.yaml` as an optional component behind the `with-ai-workspace` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/), sharing the one Platform API — so you can add it without standing up a second Platform API.
+
+AI Workspace mounts the **same** `configs/config.toml` the other services do and reads only its own `[ai_workspace]` section (it ignores `[developer_portal]`/`[platform_api]`). It is **off by default**: a plain `docker compose up -d` never starts it. Enabling it takes one one-time step, because that shipped `config.toml` does **not** carry an `[ai_workspace]` section:
+
+1. **Add the `[ai_workspace]` section to `configs/config.toml`.** Copy the `[ai_workspace.*]` tables from the bottom of the shipped `configs/config-template.toml` (the "AI Workspace (optional)" section) and append them to this stack's `configs/config.toml`. The defaults already point at the shared `https://platform-api:9243`.
+
+Then start the stack with the profile enabled:
+
+```bash
+docker compose --profile with-ai-workspace up -d
+```
+
+AI Workspace comes up at `https://localhost:9643`, backed by the same Platform API. Omit `--profile with-ai-workspace` on any later `docker compose` command to leave it stopped.
 
 ## Configuration
 
-Edit `configs/config.toml` for Developer Portal settings and `configs/config-platform-api.toml` for Platform API settings. Both are read directly by the running containers — no rebuild required, just restart the affected service.
+All settings live in the single `configs/config.toml`. It carries two sections — `[developer_portal.*]` and `[platform_api.*]` — and the **same file is mounted into both containers**; each service reads only its own section and ignores the other's. Edit it in place — no rebuild required, just restart the affected service.
 
-Each config TOML writes secrets as `'{{ env "..." }}'` tokens, so a key can be set from the environment without editing the file — the token names the variable, by convention the key uppercased and prefixed with `APIP_DP_` (Developer Portal) or `APIP_CP_` (Platform API), e.g. `APIP_DP_TLS_ENABLED`, `APIP_CP_DATABASE_HOST`. A key with no token is not settable from the environment: uncomment or add it in the TOML first. To source a value from a mounted file instead — the right choice for secrets — swap the token for `'{{ file "/secrets/..." }}'`. Never write a secret as a raw literal in either file.
+Each section writes secrets as `'{{ env "..." }}'` tokens, so a key can be set from the environment without editing the file — the token names the variable, by convention the key uppercased and prefixed with `APIP_DP_` (Developer Portal) or `APIP_CP_` (Platform API), e.g. `APIP_DP_SERVER_HTTPS_ENABLED`, `APIP_CP_DATABASE_HOST`. A key with no token is not settable from the environment: uncomment or add it in the TOML first. To source a value from a mounted file instead — the right choice for secrets — swap the token for `'{{ file "/secrets/..." }}'`. Never write a secret as a raw literal.
 
 Environment overrides go in `api-platform.env` (git-ignored; loaded into both containers via `env_file`, format `raw`, since the bcrypt password hash contains `$`, which must not be treated as a compose interpolation variable).
 
-### Developer Portal (`configs/config.toml`)
+### Developer Portal (`[developer_portal.*]`)
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `[server].base_url` | Public URL shown in links and callbacks | `https://localhost:3000` |
-| `[tls].enabled` | Terminate TLS in the portal itself (vs. behind a proxy) | `true` |
-| `[database].type` | `sqlite` (default) or `postgres` | `sqlite` |
-| `[idp].client_id` | Set to delegate login to an external OIDC provider — leave empty for local auth via `[platform_api]` | _(empty)_ |
-| `[platform_api].base_url` | Address of the Platform API local-auth sidecar | `https://platform-api:9243` |
-| `[organization].default_name` | Organization bootstrapped automatically on first start | `default` |
+| `[developer_portal.server.https].enabled` | Terminate TLS in the portal itself (vs. behind a proxy) | `true` |
+| `[developer_portal.database].driver` | `sqlite` (default) or `postgres` | `sqlite` |
+| `[developer_portal.auth].mode` | `local` (Platform API sidecar) or `idp` (external OIDC IDP via `[developer_portal.auth.idp]`) | `local` |
+| `[developer_portal.auth.local].platform_api_url` | Address of the Platform API local-auth sidecar | `https://platform-api:9243` |
+| `[developer_portal.auth.local].public_key_path` | Path to the Platform API RS256 public key PEM used to verify login tokens | `/etc/devportal/keys/jwt_public.pem` |
+| `[developer_portal.organization].default_name` | Organization bootstrapped automatically on first start | `default` |
 
-### Platform API (`configs/config-platform-api.toml`)
+### Platform API (`[platform_api.*]`)
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `log_level` | Log level (`DEBUG`, `INFO`, `WARN`, `ERROR`) | `INFO` |
-| `encryption_key` | Single 32-byte key (64 hex chars or base64) used for all at-rest encryption. Generate with `openssl rand -hex 32` | _(from `setup.sh`)_ |
-| `[database].driver` | `sqlite3` or `postgres` | `sqlite3` |
-| `[auth.jwt].secret_key` | 32-byte HMAC key signing login JWTs | _(from `setup.sh`)_ |
-| `[auth.idp]` | JWKS-based IDP auth — disabled in quickstart mode | disabled |
-| `[[auth.file_based.users]]` | Local user credentials — `username`/`password_hash` resolved from `setup.sh`'s env vars, `scopes` is a plain literal | admin, generated by `setup.sh` |
-| `[https].cert_dir` | Listener certificate directory | `/etc/platform-api/tls` |
+| `[platform_api.logging].level` | Log level (`DEBUG`, `INFO`, `WARN`, `ERROR`) | `INFO` |
+| `[platform_api.security].encryption_key` | Single 32-byte key (64 hex chars or base64) used for all at-rest encryption. Generate with `openssl rand -hex 32` | _(from `setup.sh`)_ |
+| `[platform_api.database].driver` | `sqlite3` or `postgres` | `sqlite3` |
+| `[platform_api.auth.jwt].public_key_file` / `.private_key_file` | RS256 keypair — platform-api signs login JWTs with the private key; the portal verifies with the public one | _(from `setup.sh`)_ |
+| `[platform_api.auth.idp]` | JWKS-based IDP auth — disabled in quickstart mode | disabled |
+| `[[platform_api.auth.file.users]]` | Local user credentials — `username`/`password_hash` resolved from `setup.sh`'s env vars, `scopes` is a plain literal | admin, generated by `setup.sh` |
 
-See `configs/config-template.toml` and `configs/config-platform-api-template.toml` for a fully-commented reference of every available setting.
+See `configs/config-template.toml` for a fully-commented reference of every available setting across both active components (plus the optional `[ai_workspace]` section at the bottom).
 
 ## Authentication Modes
 
@@ -125,8 +142,8 @@ Put the hash in `api-platform.env` as `APIP_CP_ADMIN_PASSWORD_HASH` (and the use
 To delegate login to an external OIDC-compliant provider instead of file-based auth:
 
 1. Register an OIDC application in your IDP with redirect URL `https://<your-domain>/<org>/callback`, and enable the **Authorization Code** grant.
-2. In `configs/config.toml`, fill in the `[idp]` block — `client_id`, `client_secret`, `issuer`, `authorization_url`, `token_url`, `jwks_url`, `callback_url`, etc. Setting `client_id` is what switches the portal from local auth to OIDC.
-3. Adjust `[idp.claims]` and `[idp.roles]` to match what your IDP puts in the issued token.
+2. In `configs/config.toml`, set `[developer_portal.auth]` `mode = "idp"` and fill in the `[developer_portal.auth.idp]` block — `client_id`, `client_secret`, `issuer`, `authorization_url`, `token_url`, `jwks_url`, `callback_url`, etc.
+3. Adjust `[developer_portal.auth.claim_mappings]` and `[developer_portal.auth.idp.roles]` to match what your IDP puts in the issued token.
 
 See `configs/config-template.toml` for the full, per-field reference.
 
@@ -140,9 +157,11 @@ docker compose up -d
 
 ## Database
 
-The Developer Portal uses **SQLite** by default (data persisted in a Docker volume) — tables are created automatically on first start. To switch to PostgreSQL, update `configs/config.toml`'s `[database]` block with `type = "postgres"` and your connection details.
+The Developer Portal uses **SQLite** by default (data persisted in a Docker volume) — tables are created automatically on first start. To switch to PostgreSQL, update `configs/config.toml`'s `[developer_portal.database]` block with `driver = "postgres"` and your connection details.
 
-`resources/developer-portal/db-scripts/` contains a reference copy of the Developer Portal's PostgreSQL schema and query files (also bundled inside the image) — provided for inspection; no manual SQL execution is required.
+The Platform API likewise defaults to SQLite; switch it with `configs/config.toml`'s `[platform_api.database]` block.
+
+`resources/developer-portal/db-scripts/` and `resources/platform-api/db-scripts/` contain reference copies of each component's schema and query files (also bundled inside the images) — provided for inspection; no manual SQL execution is required.
 
 ## License
 

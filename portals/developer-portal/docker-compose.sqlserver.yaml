@@ -1,0 +1,94 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# SQL Server override for the development variant.
+#
+# Usage:
+#   docker compose -f docker-compose.yaml -f docker-compose.sqlserver.yaml up
+#
+# This file merges with docker-compose.yaml:
+#   - Adds the sqlserver service plus a one-shot mssql-init container that
+#     creates the devportal database and applies schema.sqlserver.sql — SQL
+#     Server has no docker-entrypoint-initdb.d equivalent, and its image
+#     doesn't auto-create a named database from an env var the way
+#     POSTGRES_DB does (see docker-compose.postgres.yaml).
+#   - Overrides devportal DB env vars to point at sqlserver.
+#   - Adds an mssql-init depends_on condition to devportal, gated on the
+#     schema having actually been applied, not just the server being up.
+#
+# CI (amd64) uses the default mcr.microsoft.com/mssql/server image. On Apple
+# Silicon that image fails under emulation, so override with Azure SQL Edge:
+#   MSSQL_IMAGE=mcr.microsoft.com/azure-sql-edge:latest docker compose -f docker-compose.yaml -f docker-compose.sqlserver.yaml up
+#
+# Same image/init pattern platform-api and the cross-service e2e suite use —
+# see platform-api/it/docker-compose.sqlserver.yaml and
+# tests/integration-e2e/docker-compose.sqlserver.yaml.
+
+services:
+  sqlserver:
+    image: ${MSSQL_IMAGE:-mcr.microsoft.com/mssql/server:2022-latest}
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-Strong!Passw0rd}"
+      MSSQL_PID: "Developer"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    networks:
+      - devportal-network
+
+  # Creates the devportal database and applies schema.sqlserver.sql. Polls
+  # with sqlcmd until the server actually accepts connections (the container
+  # accepting a TCP connection doesn't mean SQL Server is ready yet) before
+  # running any DDL.
+  mssql-init:
+    image: mcr.microsoft.com/mssql-tools:latest
+    depends_on:
+      sqlserver:
+        condition: service_started
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >
+        for i in $$(seq 1 90); do
+          /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -Q "SELECT 1" && break;
+          sleep 2;
+        done;
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -Q
+        "IF DB_ID('devportal') IS NULL CREATE DATABASE [devportal];" &&
+        /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P "$${MSSQL_SA_PASSWORD}" -b -I -d devportal -i /schema/schema.sqlserver.sql
+    environment:
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-Strong!Passw0rd}"
+    volumes:
+      - ./database/schema.sqlserver.sql:/schema/schema.sqlserver.sql:ro
+    networks:
+      - devportal-network
+
+  devportal:
+    depends_on:
+      mssql-init:
+        condition: service_completed_successfully
+    environment:
+      APIP_DP_DATABASE_DRIVER: mssql
+      APIP_DP_DATABASE_HOST: sqlserver
+      APIP_DP_DATABASE_PORT: 1433
+      APIP_DP_DATABASE_USER: sa
+      APIP_DP_DATABASE_PASSWORD: "${MSSQL_SA_PASSWORD:-Strong!Passw0rd}"
+      APIP_DP_DATABASE_NAME: devportal
+      APIP_DP_DATABASE_PATH: ""
+
+volumes:
+  sqlserver_data:

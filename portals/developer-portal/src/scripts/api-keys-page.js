@@ -22,7 +22,6 @@
 
     const orgId = cfg.dataset.orgId;
     const apiId = cfg.dataset.apiId;
-    const readOnly = cfg.dataset.readOnly === 'true';
     const csrfToken = cfg.dataset.csrfToken || '';
     let applications = [];
     try {
@@ -177,7 +176,6 @@
 
     document.querySelectorAll('.btn-app-key').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            if (readOnly) return;
             const keyId = btn.getAttribute('data-key-id') || '';
             const currentAppId = btn.getAttribute('data-app-id') || '';
             const keyIdInput = document.getElementById('ak-app-key-id');
@@ -324,7 +322,6 @@
 
     document.querySelectorAll('.btn-regenerate-key').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            if (readOnly) return;
             const keyId = btn.getAttribute('data-key-id') || '';
             const keyName = btn.getAttribute('data-key-name') || keyId;
             const keyIdInput = document.getElementById('regenerate-key-id');
@@ -376,7 +373,6 @@
 
     document.querySelectorAll('.btn-revoke-key').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            if (readOnly) return;
             const keyId = btn.getAttribute('data-key-id') || '';
             const keyName = btn.getAttribute('data-key-name') || keyId;
             if (!keyId) return;

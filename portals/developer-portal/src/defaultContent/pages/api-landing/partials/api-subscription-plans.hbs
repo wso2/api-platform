@@ -45,14 +45,14 @@
         </button>
         {{else}}
         <button id="subscribe-btn-{{id}}" type="button"
-          class="dp-btn dp-btn--outline dp-btn--block subscribe-btn {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+          class="dp-btn dp-btn--outline dp-btn--block subscribe-btn"
           data-org-id="{{@root.orgId}}"
           data-api-id="{{../apiMetadata.id}}"
           data-plan-id="{{id}}"
           data-plan-name="{{id}}"
           data-display-name="{{displayName}}"
           onclick="handlePlanSubscription(this)"
-          {{#if @root.isReadOnlyMode}}disabled{{/if}}><span class="aov-plan-spinner"></span>Subscribe</button>
+          ><span class="aov-plan-spinner"></span>Subscribe</button>
         {{/if}}
       {{else}}
       <a class="dp-btn dp-btn--outline dp-btn--block" href="{{@root.baseUrl}}/login">Subscribe</a>

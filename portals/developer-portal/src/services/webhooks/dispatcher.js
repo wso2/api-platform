@@ -19,8 +19,14 @@ const { config } = require('../../config/configLoader');
 const eventDao = require('../../dao/eventDao');
 const { matchSubscribers } = require('./subscriberRegistry');
 const { onPublished } = require('./eventPublisher');
-const DPEvent = require('../../models/event');
+const db = require('../../db/driver');
 const logger = require('../../config/logger');
+
+// dp_events table name — mirrors eventDao.js's EVENTS_TABLE. Kept as a raw
+// db.execute() call here (rather than a new DAO export) because this is the
+// only caller that needs a bare status flip outside of any of eventDao's
+// existing higher-level operations.
+const EVENTS_TABLE = 'dp_events';
 
 let running = false;
 let intervalHandle = null;
@@ -40,7 +46,7 @@ async function runBatch() {
             const subscribers = await matchSubscribers(event.org_uuid, event.type);
             if (subscribers.length === 0) {
                 // No matching subscribers — mark as delivered immediately.
-                await DPEvent.update({ status: 'ALL_DELIVERED' }, { where: { uuid: event.uuid } });
+                await db.execute(`UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ?`, ['ALL_DELIVERED', event.uuid]);
                 continue;
             }
             await eventDao.createDeliveries(event.uuid, subscribers, null, null);
@@ -49,7 +55,7 @@ async function runBatch() {
                 eventId: event.uuid, error: err.message
             });
             try {
-                await DPEvent.update({ status: 'PENDING' }, { where: { uuid: event.uuid } });
+                await db.execute(`UPDATE ${EVENTS_TABLE} SET status = ? WHERE uuid = ?`, ['PENDING', event.uuid]);
                 logger.info('Restored event eligibility after delivery creation failure', {
                     eventId: event.uuid
                 });

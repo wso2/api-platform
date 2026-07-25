@@ -2,7 +2,7 @@
 
 ## Context & Scope
 
-Apply this rule whenever writing, refactoring, or reviewing Go (`.go`) code that causes the server to make an outbound network request whose destination, in whole or in part, is derived from user or tenant input. This includes WebSub/webhook callback delivery (`event-gateway/gateway-runtime/internal/subscription`, `event-gateway/gateway-runtime/internal/connectors/receiver/websub`), backend/upstream target resolution in the gateway, "try it" / test-invoke style features, URL-based import of specs (OpenAPI/WSDL), and any header-driven request redirection (e.g. WS-Addressing `ReplyTo`/`FaultTo`-style headers). The goal is to prevent an attacker from using the server as a proxy to reach internal-only network resources, cloud metadata endpoints, or other services the attacker could not otherwise reach directly.
+Apply this rule whenever writing, refactoring, or reviewing Go (`.go`) code that causes the server to make an outbound network request whose destination, in whole or in part, is derived from user or tenant input. This includes WebSub/webhook callback delivery (`event-gateway/gateway-runtime/internal/subscription`, `event-gateway/gateway-runtime/internal/connectors/receiver/websub`), backend/upstream target resolution in the gateway — including the **RestApi, Mcp, and LlmProvider/LlmProxy** upstream validators (`gateway-controller/pkg/config/api_validator.go`, `mcp_validator.go`, `llm_validator.go`) — "try it" / test-invoke style features, URL-based import of specs (OpenAPI/WSDL), any header-driven request redirection (e.g. WS-Addressing `ReplyTo`/`FaultTo`-style headers), and **URLs extracted from proxied or LLM-generated/LLM-request content** (e.g. a `url-guardrail`-style policy that dereferences links found inside model input/output). The goal is to prevent an attacker from using the server as a proxy to reach internal-only network resources, cloud metadata endpoints, or other services the attacker could not otherwise reach directly.
 
 ---
 
@@ -36,6 +36,12 @@ Apply this rule whenever writing, refactoring, or reviewing Go (`.go`) code that
 * **Externalize the Allowlist/Denylist:** Source the private-range denylist defaults from code (safe built-in defaults per directive 2), but allow operators to extend it via configuration for environment-specific ranges (e.g. an internal VPC CIDR). Never allow per-tenant configuration to *widen* the denylist exceptions without an explicit administrative opt-in flag that is off by default.
 * **Log and Reject, Don't Silently Drop:** On rejection, return a generic `400 Bad Request` / `422 Unprocessable Entity` to the caller (never reveal *why* — i.e. don't echo back "resolved to private IP" which helps an attacker map internal topology) while logging the actual resolved IP internally for audit.
 
+### 6. One Shared Validation Helper Across Every Upstream/Backend Validator
+
+* **No Duplicate, Drifting Implementations:** When more than one code path validates an upstream/backend URL — a REST API backend, an MCP upstream, an LLM provider/proxy upstream, a WebSub callback — implement the private-IP/metadata/scheme checks exactly **once** in a shared helper (e.g. a `netguard`-style package) and call it from every validator. Independent, per-feature reimplementations reliably drift: the first path built gets the full private-IP/metadata denylist, and a similar validator added later for a newer feature (MCP, LLM proxy) performs only a syntactic `url.Parse` check because the shared logic wasn't extracted or reused.
+* **Audit Every Validator When Adding a New Upstream Kind:** Before shipping a new kind of user/tenant-configurable upstream (a new connector type, a new proxy mode), grep for every existing `validateUpstream*`/`*_validator.go` function and confirm the new one calls the same shared helper — do not write a new bespoke check "because this one is simpler."
+* **Test Every Validator, Not Just the First:** Add a validator unit test per upstream kind (REST, MCP, LLM, WebSub) asserting a rejection (400/422) for loopback, RFC 1918, link-local, and cloud-metadata targets. The presence of a passing test for one validator is not evidence that sibling validators enforce the same policy.
+
 ---
 
 ## Code Examples for Enforcement
@@ -60,7 +66,7 @@ func ValidateCallbackURL(raw string) error {
     if err != nil {
         return err
     }
-    if strings.Contains(u.Host, "localhost") || strings.HasPrefix(u.Host, "127.") {
+    if strings.Contains(u.Host, "localhost") { // String-only check, no IP-level validation
         return fmt.Errorf("invalid host")
     }
     return nil // No IP-level check, no re-check at dial time
@@ -207,3 +213,5 @@ func DeliverWebhook(ctx context.Context, client *http.Client, sub *Subscription,
 > * Does any code path honor a header- or body-supplied "reply to" / "callback" / "redirect to" address to make a second outbound request without validation? (If yes, validate it identically to directive 1–2, or reject the field outright.)
 > * Are webhook/callback deliveries bounded by a timeout and a response-size limit? (If not, add both — an unbounded read/hang is a resource-exhaustion vector on top of SSRF.)
 > * Does an error response to the caller reveal the resolved internal IP or *why* a destination was rejected? (If yes, generalize the client-facing message and log the specific reason internally only.)
+> * Is there more than one upstream/backend validator (REST, MCP, LLM, WebSub) in this codebase, and do they all call the same shared private-IP/metadata-denylist helper? (If a new validator performs only a syntactic `url.Parse` check while an existing sibling validator does full IP-level validation, that is the exact drift this rule exists to prevent — see directive 6.)
+> * Does a feature dereference URLs extracted from proxied or model-generated content (not just from a request field/header)? (Apply the same dial-time validation — content-derived URLs are exactly as untrusted as a request parameter.)

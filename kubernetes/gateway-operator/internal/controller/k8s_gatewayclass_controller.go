@@ -21,11 +21,11 @@ import (
 	"context"
 	"fmt"
 
-	"go.uber.org/zap"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"log/slog"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	contctrl "sigs.k8s.io/controller-runtime/pkg/controller"
@@ -40,11 +40,11 @@ type K8sGatewayClassReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Config *config.OperatorConfig
-	Logger *zap.Logger
+	Logger *slog.Logger
 }
 
 // NewK8sGatewayClassReconciler creates a reconciler for gateway.networking.k8s.io GatewayClass.
-func NewK8sGatewayClassReconciler(cl client.Client, scheme *runtime.Scheme, cfg *config.OperatorConfig, logger *zap.Logger) *K8sGatewayClassReconciler {
+func NewK8sGatewayClassReconciler(cl client.Client, scheme *runtime.Scheme, cfg *config.OperatorConfig, logger *slog.Logger) *K8sGatewayClassReconciler {
 	return &K8sGatewayClassReconciler{
 		Client: cl,
 		Scheme: scheme,
@@ -71,9 +71,9 @@ func (r *K8sGatewayClassReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	log := r.Logger.With(
-		zap.String("controller", "K8sGatewayClass"),
-		zap.String("name", gc.Name),
-		zap.Int64("generation", gc.Generation),
+		slog.String("controller", "K8sGatewayClass"),
+		slog.String("name", gc.Name),
+		slog.Int64("generation", gc.Generation),
 	)
 
 	var cond metav1.Condition
@@ -113,8 +113,8 @@ func (r *K8sGatewayClassReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, err
 	}
 	log.Info("updated GatewayClass Accepted status",
-		zap.String("accepted", string(cond.Status)),
-		zap.String("reason", cond.Reason))
+		slog.String("accepted", string(cond.Status)),
+		slog.String("reason", cond.Reason))
 	return ctrl.Result{}, nil
 }
 

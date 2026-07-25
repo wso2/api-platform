@@ -53,7 +53,7 @@ function enforceSecurity(scope) {
                 return res.status(400).json(util.getErrors(errors));
             }
             // Local auth users: validate dp:* scope from platform JWT
-            if (req.isAuthenticated() && req.user && req.user.isLocalAuth && !config.idp?.clientId) {
+            if (req.isAuthenticated() && req.user && req.user.isLocalAuth && config.auth.mode !== 'idp') {
                 const platformToken = req.user[constants.ACCESS_TOKEN];
                 if (!platformToken) return util.handleError(res, new CustomError(401, constants.ERROR_CODE[401], constants.ERROR_MESSAGE.UNAUTHENTICATED));
                 const tokenScopes = decodePlatformJwtClaims(platformToken)?.scopes ?? [];
@@ -78,7 +78,7 @@ function enforceSecurity(scope) {
             } else if (typeof req.socket?.getPeerCertificate === 'function' && req.socket.getPeerCertificate(true)) {
                 enforceMTLS(req, res, next);
             } else {
-                req.session.returnTo = req.originalUrl || `/${req.params.orgName}`;
+                req.session.returnTo = accessControlUrl(req) || `/${req.params.orgName}`;
                 if (req.params.orgName) {
                     res.redirect(`/${req.params.orgName}/views/${req.session.view}/login`);
                 }
@@ -154,14 +154,26 @@ function hasTraversalSequence(originalUrl) {
     return decodedPath.includes('..') || decodedPath.includes('\\') || decodedPath.includes('\0');
 }
 
+// The URL this request's access rules are evaluated against.
+//
+// Normally that is the request URL itself. A route whose URL carries data that
+// is not part of the page's identity sets req.accessControlPath to the page path
+// it acts on — the try-it proxy appends a whole target URL to its path, which is
+// neither what the page-access globs are written against nor safe to run the
+// encoded-separator check over. Declaring the page path explicitly is what lets
+// such a route go through this gate unchanged instead of around it.
+function accessControlUrl(req) {
+    return req.accessControlPath || req.originalUrl;
+}
+
 const ensureAuthenticated = async (req, res, next) => {
-    if (hasTraversalSequence(req.originalUrl)) {
+    if (hasTraversalSequence(accessControlUrl(req))) {
         logger.warn('Rejected request with path-traversal sequence', { operation: 'ensureAuthenticated' });
         return res.status(400).json({ error: 'bad_request', message: 'Invalid request path.' });
     }
-    let adminRole = config.idp?.roles?.admin;
-    let superAdminRole = config.idp?.roles?.superAdmin;
-    let subscriberRole = config.idp?.roles?.subscriber;
+    let adminRole = config.auth.idp?.roles?.admin;
+    let superAdminRole = config.auth.idp?.roles?.superAdmin;
+    let subscriberRole = config.auth.idp?.roles?.subscriber;
     const rules = util.validateRequestParameters();
     for (let validation of rules) {
         await validation.run(req);
@@ -180,7 +192,7 @@ const ensureAuthenticated = async (req, res, next) => {
     // audit columns and "my resources" filters like subscriptions) must return the same
     // identity here as it does on /api/v0.9 REST routes, where authResolver always resolves it.
     if (req.isAuthenticated() && req.user && !req[constants.USER_ID]) {
-        if (req.user.isLocalAuth && !config.idp?.clientId) {
+        if (req.user.isLocalAuth && config.auth.mode !== 'idp') {
             req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
         } else {
             const earlyToken = accessTokenPresent(req);
@@ -195,7 +207,7 @@ const ensureAuthenticated = async (req, res, next) => {
     // "?...") would silently fail to match any pattern lacking an explicit "?**" suffix —
     // e.g. "/*/settings" never matches "/org/settings?view=x", which would skip this entire
     // auth block. Match against the query-stripped pathname instead.
-    const pathname = req.originalUrl.split('?')[0];
+    const pathname = accessControlUrl(req).split('?')[0];
     if (pathname !== '/favicon.ico' && pathname !== '/images' &&
         AUTHENTICATED_PAGES.some(pattern => minimatch.minimatch(pathname, pattern))) {
         const orgId = req.params.orgName;
@@ -207,7 +219,7 @@ const ensureAuthenticated = async (req, res, next) => {
         logger.debug("Request authentication status", { isAuthenticated: req.isAuthenticated() });
         if (req.isAuthenticated()) {
             // Config-auth: skip all token/exchange checks; roles already in session
-            if (req.user && req.user.isLocalAuth && !config.idp?.clientId) {
+            if (req.user && req.user.isLocalAuth && config.auth.mode !== 'idp') {
                 req.orgId = req.orgId || orgDetails?.uuid;
                 req[constants.USER_ID] = await resolveUserUuid(req, req.user[constants.USER_ID]);
                 if (AUTHORIZED_PAGES.some(pattern => minimatch.minimatch(pathname, pattern))) {
@@ -229,7 +241,7 @@ const ensureAuthenticated = async (req, res, next) => {
                             req.user[constants.ORG_IDENTIFIER] = orgDetails.idp_ref_id;
                         }
                     }
-                    if (config.security.roleValidation) {
+                    if (config.auth.roleValidation) {
                         role = req.user[constants.ROLES.ROLE_CLAIM];
                         if (ensurePermission(pathname, role, req)) {
                             return next();
@@ -265,7 +277,7 @@ const ensureAuthenticated = async (req, res, next) => {
                     err.status = 403;
                     return next(err);
                 }
-                if (config.security.roleValidation) {
+                if (config.auth.roleValidation) {
                     if (ensurePermission(pathname, role, req)) {
                         return next();
                     } else {
@@ -277,7 +289,7 @@ const ensureAuthenticated = async (req, res, next) => {
             }
             return next();
         } else {
-            req.session.returnTo = req.originalUrl || `/${req.params.orgName}`;
+            req.session.returnTo = accessControlUrl(req) || `/${req.params.orgName}`;
             req.session.save((err) => {
                 if (err) {
                     logger.error('Session save failed before login redirect', { error: err.message });
@@ -305,7 +317,7 @@ function validateAuthentication(scope) {
             return res.status(400).json(util.getErrors(errors));
         }
         let IDP, valid, scopes;
-        IDP = config.idp || {};
+        IDP = config.auth.idp || {};
 
         let accessToken;
         if (req.isAuthenticated() && req.user) {
@@ -339,8 +351,8 @@ const validateWithJwks = async (token, jwksURL, req) => {
     try {
         const jwks = await createRemoteJWKSet(new URL(jwksURL));
         const jwtVerifyOptions = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
-        if (config.idp?.issuer) jwtVerifyOptions.issuer = config.idp.issuer;
-        if (config.idp?.audience) jwtVerifyOptions.audience = config.idp.audience;
+        if (config.auth.idp?.issuer) jwtVerifyOptions.issuer = config.auth.idp.issuer;
+        if (config.auth.idp?.audience) jwtVerifyOptions.audience = config.auth.idp.audience;
         const { payload } = await jwtVerify(token, jwks, jwtVerifyOptions);
         return { valid: true, scopes: payload.scope || '' };
     } catch (err) {

@@ -43,7 +43,14 @@ Apply this rule whenever writing, refactoring, or reviewing Go (`.go`) code that
 * **Content-Sniff Before Trusting an Extension or Declared MIME Type:** Validate an uploaded file's actual byte content (magic-byte/structure sniffing) against an explicit allowlist of accepted types before storing or processing it — never trust the client-declared `Content-Type` header or the filename extension alone.
 * **Never Feed User Input to a Script/Expression/Template Engine Without a Sandbox:** If a feature accepts a script, expression, or template body from a request (a policy mediator, a transformation rule, an "execute this snippet" feature), never `eval`-equivalent it against the full language runtime. Execute it only inside an engine configured with an explicit allowlist of reachable classes/methods/built-ins — a blocklist of "dangerous" symbols is not sufficient, because the reachable surface of a general-purpose runtime is too large to enumerate exhaustively.
 * **Allowlist, Not Blocklist, for Reflective/Class Access:** Where a scripting or mediation feature must expose part of the Go runtime or a plugin API to user-supplied code, gate it with an explicit allowlist of permitted symbols. A blocklist approach only stops the specific bypasses already known at the time it was written.
+* **Built-in Template Functions That Access Secrets or Environment Are Not Exempt:** A template-engine builtin such as `{{ secret "handle" }}` or `{{ env "NAME" }}` is itself a reflective-access primitive under this directive, even when the surrounding engine is otherwise sandboxed against arbitrary code execution. Scope `env`-style functions to an explicit allowlist of permitted variable names (reject and log any name not on the list — never return an unlisted environment variable's value). Scope `secret`-style functions to check the requesting resource's own owner/tenant handle against the secret's recorded owner *before* resolving it — never resolve any secret reachable within the same tenant purely because the caller is authenticated within that tenant; require an explicit per-resource or per-grant ACL, not tenant-wide reachability.
 * **Treat "Admin-Only" Script Features the Same as Any Other Untrusted Input:** A feature reachable only by an authenticated administrator is still processing untrusted input from this rule's perspective — the authorization boundary controls *who* can reach the feature, not whether the feature itself is safe to execute arbitrary code.
+
+### 7. Streaming Decompression-Bomb Protection (Not Just ZIP Archives)
+
+* **Cap Decompressed Output Size for Any Streamed Content-Encoding:** Any code that decompresses a `Content-Encoding: gzip`/`br`/`deflate` body passing through the service — a proxy body-transformation step, an `ext_proc`-style body phase, a request/response rewriting policy — must bound the *decompressed* output, not just the compressed input. Wrap the decompressing reader with `io.LimitReader` (or an equivalent running byte counter) sized from configuration, and reject with a `413`-equivalent response once the ceiling is exceeded, rather than accumulating an unbounded `io.ReadAll` of the decompressed stream.
+* **Guard the Ratio Before Committing to Full Decompression:** Compare the compressed size (`Content-Length` or observed byte count) against the configured decompressed ceiling using a maximum allowed ratio, and reject before decompression begins if the theoretical worst case would exceed it — the same ratio-guard principle directive 4 requires for ZIP entries, applied to any streaming decompressor a request or response body passes through.
+* **Streaming (Chunked) Decompression Needs the Same Ceiling as Buffered:** A streaming decompression path (a goroutine emitting decompressed chunks as they arrive) must track *cumulative* emitted bytes across the entire stream and abort the instant the cap is hit. A cap checked only once, at the start of the stream, does not protect a streaming path — the bomb is in the bytes emitted over the stream's lifetime, not in its first chunk.
 
 ---
 
@@ -55,14 +62,13 @@ Apply this rule whenever writing, refactoring, or reviewing Go (`.go`) code that
 // BAD: Path traversal, storing full path, unbounded read, zip slip, hardcoded limit.
 func ServeUserFile(w http.ResponseWriter, r *http.Request) {
     name := r.URL.Query().Get("file")
-    path := "/var/app/uploads/" + name          // No path cleaning — traversal possible
-
-    data, _ := os.ReadFile(path)                // Reads /etc/passwd if name = "../../etc/passwd"
+    path := "/var/app/uploads/" + name // No path cleaning or containment check
+    data, _ := os.ReadFile(path)
     w.Write(data)
 }
 
 func SaveFileMeta(db *sql.DB, uploadPath string) {
-    db.Exec("INSERT INTO files (path) VALUES (?)", uploadPath) // Stores full path
+    db.Exec("INSERT INTO files (path) VALUES (?)", uploadPath) // Stores full path, not just filename
 }
 
 func ProcessUpload(r *http.Request) {
@@ -73,17 +79,15 @@ func ProcessUpload(r *http.Request) {
 func ExtractZip(src, destDir string) {
     zr, _ := zip.OpenReader(src)
     for _, f := range zr.File {
-        outPath := filepath.Join(destDir, f.Name) // Zip slip: f.Name may be "../../evil"
-        os.MkdirAll(filepath.Dir(outPath), 0755)
+        outPath := filepath.Join(destDir, f.Name) // No entry-path validation — zip slip possible
         rc, _ := f.Open()
         out, _ := os.Create(outPath)
-        io.Copy(out, rc)                          // No decompression ratio guard
+        io.Copy(out, rc) // No decompression ratio guard
     }
 }
 
 func AcceptUpload(w http.ResponseWriter, r *http.Request, upload []byte, declaredType string) {
-    // Trusts the client-declared Content-Type / extension with no byte-level check —
-    // a ".png" upload containing SVG/HTML/script content is stored and later served as-is.
+    // Trusts the client-declared Content-Type / extension with no byte-level check.
     saveUploadedFile(upload, declaredType)
 }
 
@@ -276,6 +280,103 @@ func RunScriptMediator(userScript string, ctx *MessageContext) error {
     engine := scripting.NewSandboxedEngine(allowedScriptSymbols) // Allowlist enforced by the engine itself
     return engine.Eval(userScript, ctx)
 }
+
+// GOOD: streaming decompression of a proxied request/response body, bounded on
+// the *decompressed* side with a running byte counter, a ratio guard, and a
+// hard reject rather than an unbounded io.ReadAll of the inflated stream.
+type DecompressionConfig struct {
+    MaxDecompressedBytes int64
+    MaxRatio             float64
+}
+
+func DecompressBoundedGzip(cfg DecompressionConfig, compressedSize int64, r io.Reader) ([]byte, error) {
+    if cfg.MaxDecompressedBytes <= 0 {
+        return nil, fmt.Errorf("invalid decompression config: MaxDecompressedBytes must be positive")
+    }
+    if cfg.MaxRatio <= 0 {
+        return nil, fmt.Errorf("invalid decompression config: MaxRatio must be positive")
+    }
+    if compressedSize < 0 {
+        return nil, fmt.Errorf("invalid compressed size: must not be negative")
+    }
+
+    // Ratio guard before committing to decompression at all. Computed in
+    // float64 and range-checked before converting to int64 — compressedSize *
+    // MaxRatio can exceed math.MaxInt64, and an out-of-range float-to-int64
+    // conversion is undefined by the Go spec, not merely clamped.
+    ceiling := cfg.MaxDecompressedBytes
+    if compressedSize > 0 {
+        ratioLimitFloat := float64(compressedSize) * cfg.MaxRatio
+        if ratioLimitFloat > 0 && ratioLimitFloat < float64(ceiling) {
+            if ratioLimitFloat > float64(math.MaxInt64) {
+                return nil, fmt.Errorf("ratio limit overflow for compressed size %d", compressedSize)
+            }
+            ceiling = int64(ratioLimitFloat)
+        }
+    }
+    if ceiling >= math.MaxInt64 {
+        return nil, fmt.Errorf("invalid decompression ceiling: too large")
+    }
+
+    gz, err := gzip.NewReader(r)
+    if err != nil {
+        return nil, fmt.Errorf("invalid gzip stream: %w", err)
+    }
+    defer gz.Close()
+
+    limited := io.LimitReader(gz, ceiling+1) // Bounds the DECOMPRESSED side; safe from overflow since ceiling < math.MaxInt64 is checked above
+    data, err := io.ReadAll(limited)
+    if err != nil {
+        return nil, err
+    }
+    if int64(len(data)) > ceiling {
+        return nil, fmt.Errorf("decompressed body exceeds allowed size") // 413-equivalent to the caller
+    }
+    return data, nil
+}
+
+// GOOD: a streaming (chunked) decompression path tracks cumulative emitted
+// bytes across the whole stream — a cap checked only at stream start would
+// not catch a bomb that expands gradually over many chunks. It also takes
+// compressedSize and applies the SAME ratio guard as DecompressBoundedGzip —
+// per directive 7, a streaming path needs the identical ceiling as a buffered
+// one, not merely the flat MaxDecompressedBytes cap on its own.
+func StreamDecompressBounded(cfg DecompressionConfig, compressedSize int64, r io.Reader, emit func([]byte) error) error {
+    // Ratio guard before committing to decompression at all — identical to
+    // DecompressBoundedGzip's guard, just applied to the streaming path too.
+    ratioLimit := int64(float64(compressedSize) * cfg.MaxRatio)
+    ceiling := cfg.MaxDecompressedBytes
+    if ratioLimit > 0 && ratioLimit < ceiling {
+        ceiling = ratioLimit
+    }
+
+    gz, err := gzip.NewReader(r)
+    if err != nil {
+        return fmt.Errorf("invalid gzip stream: %w", err)
+    }
+    defer gz.Close()
+
+    var totalEmitted int64
+    buf := make([]byte, 32*1024)
+    for {
+        n, readErr := gz.Read(buf)
+        if n > 0 {
+            totalEmitted += int64(n)
+            if totalEmitted > ceiling {
+                return fmt.Errorf("decompressed stream exceeds allowed size") // Abort mid-stream
+            }
+            if err := emit(buf[:n]); err != nil {
+                return err
+            }
+        }
+        if readErr == io.EOF {
+            return nil
+        }
+        if readErr != nil {
+            return readErr
+        }
+    }
+}
 ```
 
 ---
@@ -285,6 +386,7 @@ func RunScriptMediator(userScript string, ctx *MessageContext) error {
 > * Is only the bare filename (`filepath.Base`) stored in the database or any external storage? (If the full path is stored, strip it).
 > * Is file processing done via `io.Reader` pipelines without intermediate `os.WriteFile` / `os.TempFile`? (If disk writes exist, remove them unless a third-party library strictly requires a path).
 > * Are all archive entries validated against the destination root before extraction? (If not, apply `safeJoin` on every entry).
+> * Does any code path decompress a `gzip`/`br`/`deflate` body (proxy transformation, `ext_proc` body phase, response rewriting) with `io.ReadAll` on the decompressed reader and no size ceiling? (If yes, wrap it per directive 7 — bound the decompressed side, not just the compressed input, and apply the same bound to streaming/chunked decompression paths.)
 > * Is every inbound `io.Reader` wrapped in `io.LimitReader` with a limit sourced from configuration? (If hardcoded or absent, externalize to config with a safe default).
 > * Is an uploaded file's actual content sniffed (`http.DetectContentType`) against an allowlist, rather than trusting the declared `Content-Type` header or filename extension? (If trusted as-is, add content-sniffing.)
 > * Does any feature evaluate user-supplied script/expression/template text against the full scripting-engine runtime, or against a blocklist of "dangerous" symbols? (Both are insufficient — require an explicit allowlist of reachable classes/methods enforced by the engine itself.)

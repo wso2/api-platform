@@ -1031,6 +1031,10 @@ func (m *mockLLMProviderRepo) Create(p *model.LLMProvider) error {
 	return nil
 }
 
+func (m *mockLLMProviderRepo) CreateWithCustomPolicyUsages(p *model.LLMProvider, _ []string) error {
+	return m.Create(p)
+}
+
 func (m *mockLLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMProvider, error) {
 	if m.getByIDFunc != nil {
 		return m.getByIDFunc(providerID, orgUUID)
@@ -1041,6 +1045,10 @@ func (m *mockLLMProviderRepo) GetByID(providerID, orgUUID string) (*model.LLMPro
 func (m *mockLLMProviderRepo) Update(p *model.LLMProvider) error {
 	m.updated = p
 	return nil
+}
+
+func (m *mockLLMProviderRepo) UpdateWithCustomPolicyUsages(p *model.LLMProvider, _ []string) error {
+	return m.Update(p)
 }
 
 type mockLLMTemplateRepo struct {

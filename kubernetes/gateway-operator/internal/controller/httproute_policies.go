@@ -25,11 +25,11 @@ import (
 	"sort"
 	"strings"
 
-	"go.uber.org/zap"
 	yamlv3 "gopkg.in/yaml.v3"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"log/slog"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 
@@ -61,11 +61,11 @@ func HTTPRouteOperationPolicyKey(method apiv1.OperationMethod, path string) stri
 	return fmt.Sprintf("%s:%s", string(method), p)
 }
 
-func loadHTTPRouteAPIPolicies(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, log *zap.Logger) ([]apiv1.Policy, error) {
+func loadHTTPRouteAPIPolicies(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, log *slog.Logger) ([]apiv1.Policy, error) {
 	return apiPoliciesFromTargetRef(ctx, c, route, log)
 }
 
-func apiPoliciesFromTargetRef(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, log *zap.Logger) ([]apiv1.Policy, error) {
+func apiPoliciesFromTargetRef(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, log *slog.Logger) ([]apiv1.Policy, error) {
 	list := &apiv1.APIPolicyList{}
 	if err := c.List(ctx, list, client.InNamespace(route.Namespace)); err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func apiPoliciesFromTargetRef(ctx context.Context, c client.Client, route *gatew
 	if len(crNames) == 0 {
 		if log != nil {
 			log.Debug("no APIPolicy CRs with spec.targetRef for this HTTPRoute",
-				zap.String("httpRoute", route.Namespace+"/"+route.Name))
+				slog.String("httpRoute", route.Namespace+"/"+route.Name))
 		}
 		return nil, nil
 	}
@@ -101,8 +101,8 @@ func apiPoliciesFromTargetRef(ctx context.Context, c client.Client, route *gatew
 	}
 	if log != nil {
 		log.Info("API-level policies from APIPolicy CRs (spec.targetRef)",
-			zap.Strings("apiPolicies", crNames),
-			zap.Int("embeddedPolicyCount", len(out)))
+			slog.Any("apiPolicies", crNames),
+			slog.Int("embeddedPolicyCount", len(out)))
 	}
 	return out, nil
 }
@@ -144,7 +144,7 @@ func embeddedPoliciesFromAPIPolicySpec(spec *apiv1.APIPolicySpec) ([]apiv1.Polic
 
 // policiesFromHTTPRouteRuleExtensionRefs loads policies from rule.filters where type is ExtensionRef.
 // Only APIPolicy ExtensionRefs are supported for Gateway API integration.
-func policiesFromHTTPRouteRuleExtensionRefs(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, rule gatewayv1.HTTPRouteRule, ruleIdx int, log *zap.Logger) ([]apiv1.Policy, error) {
+func policiesFromHTTPRouteRuleExtensionRefs(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, rule gatewayv1.HTTPRouteRule, ruleIdx int, log *slog.Logger) ([]apiv1.Policy, error) {
 	var merged []apiv1.Policy
 	for _, f := range rule.Filters {
 		if f.Type != gatewayv1.HTTPRouteFilterExtensionRef || f.ExtensionRef == nil {
@@ -166,10 +166,10 @@ func policiesFromHTTPRouteRuleExtensionRefs(ctx context.Context, c client.Client
 			}
 			if log != nil {
 				log.Debug("rule ExtensionRef merged policies",
-					zap.Int("ruleIndex", ruleIdx),
-					zap.String("refKind", "APIPolicy"),
-					zap.String("refName", name),
-					zap.Int("policyCount", len(pl)))
+					slog.Int("ruleIndex", ruleIdx),
+					slog.String("refKind", "APIPolicy"),
+					slog.String("refName", name),
+					slog.Int("policyCount", len(pl)))
 			}
 			merged = append(merged, pl...)
 		default:
@@ -179,7 +179,7 @@ func policiesFromHTTPRouteRuleExtensionRefs(ctx context.Context, c client.Client
 	return merged, nil
 }
 
-func policiesFromAPIPolicyRef(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, policyName string, log *zap.Logger) ([]apiv1.Policy, error) {
+func policiesFromAPIPolicyRef(ctx context.Context, c client.Client, route *gatewayv1.HTTPRoute, policyName string, log *slog.Logger) ([]apiv1.Policy, error) {
 	ap := &apiv1.APIPolicy{}
 	if err := c.Get(ctx, types.NamespacedName{Namespace: route.Namespace, Name: policyName}, ap); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -201,9 +201,9 @@ func policiesFromAPIPolicyRef(ctx context.Context, c client.Client, route *gatew
 	}
 	if log != nil {
 		log.Debug("loaded policies from APIPolicy for HTTPRoute rule scope",
-			zap.String("namespace", route.Namespace),
-			zap.String("apiPolicy", policyName),
-			zap.Int("policyCount", len(pols)))
+			slog.String("namespace", route.Namespace),
+			slog.String("apiPolicy", policyName),
+			slog.Int("policyCount", len(pols)))
 	}
 	return pols, nil
 }

@@ -16,7 +16,7 @@
  * under the License.
  */
 const crypto = require('crypto');
-const sequelize = require('../db/sequelizeConfig');
+const db = require('../db/driver');
 const apiKeyDao = require('../dao/apiKeyDao');
 const apiDao = require('../dao/apiDao');
 const applicationDao = require('../dao/applicationDao');
@@ -24,7 +24,6 @@ const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
 const { publish } = require('./webhooks/eventPublisher');
 const subDao = require('../dao/subscriptionDao');
 const logger = require('../config/logger');
-const { config } = require('../config/configLoader');
 const constants = require('../utils/constants');
 
 const KEY_HANDLE_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/;
@@ -73,25 +72,24 @@ async function resolveApi(orgId, apiId) {
         return { error: { status: 404, message: 'API not found' } };
     }
     const row = rows[0];
-    const dv = row.dataValues || row;
     return {
-        id: dv.uuid,
-        name: dv.name || null,
-        version: dv.version || null,
-        refId: dv.ref_id || '',
-        type: dv.type || null
+        id: row.uuid,
+        name: row.name || null,
+        version: row.version || null,
+        refId: row.ref_id || '',
+        type: row.type || null
     };
 }
 
 async function resolveApiDirect(orgId, apiId) {
-    const rows = await apiDao.getByCondition({ uuid: apiId, org_uuid: orgId });
+    const rows = await apiDao.getByCondition({ orgId, uuid: apiId });
     if (!rows || rows.length === 0) return null;
-    const dv = rows[0].dataValues || rows[0];
+    const row = rows[0];
     return {
-        name: dv.name || null,
-        version: dv.version || null,
-        refId: dv.ref_id || '',
-        type: dv.type || null
+        name: row.name || null,
+        version: row.version || null,
+        refId: row.ref_id || '',
+        type: row.type || null
     };
 }
 
@@ -139,7 +137,6 @@ async function publishKeyApplicationUpdated(orgId, keyId, handle, displayName, a
  * The plaintext is shown to the caller exactly once and never persisted.
  */
 async function generate({ orgId, apiId, subscriptionId, appId, handle, displayName, expiresAt, actor }) {
-    if (config.server.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const normalizedHandle = parseAndValidateHandle(handle);
     if (!normalizedHandle) throw Object.assign(new Error('id must match ^[a-z0-9][a-z0-9_-]{0,127}$'), { status: 400 });
@@ -159,7 +156,7 @@ async function generate({ orgId, apiId, subscriptionId, appId, handle, displayNa
     let audit;
 
     try {
-        await sequelize.transaction(async (t) => {
+        await db.withTransaction(async (t) => {
             const key = await apiKeyDao.create(
                 { apiId: api.id, subscriptionId, appId: application ? application.id : null, orgId,
                   handle: normalizedHandle, displayName: normalizedDisplayName, expiresAt: expiry.date, createdBy: actor },
@@ -202,7 +199,6 @@ async function generate({ orgId, apiId, subscriptionId, appId, handle, displayNa
  * The old secret is silently invalidated by whatever consumes the webhook event.
  */
 async function regenerate({ orgId, apiId, keyId, expiresAt, actor }) {
-    if (config.server.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
@@ -219,7 +215,7 @@ async function regenerate({ orgId, apiId, keyId, expiresAt, actor }) {
     const application = applicationOf(existing);
 
     try {
-        await sequelize.transaction(async (t) => {
+        await db.withTransaction(async (t) => {
             if (expiresAt !== undefined) {
                 const updated = await apiKeyDao.updateExpiry(orgId, keyId, newExpiresAt, actor, t);
                 if (!updated) throw Object.assign(new Error('Cannot regenerate a revoked key'), { status: 409 });
@@ -252,7 +248,6 @@ async function regenerate({ orgId, apiId, keyId, expiresAt, actor }) {
  * Revoke a key. Fires apikey.revoked so webhook subscribers can reject it immediately.
  */
 async function revoke({ orgId, apiId, keyId, actor }) {
-    if (config.server.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
@@ -261,7 +256,7 @@ async function revoke({ orgId, apiId, keyId, actor }) {
     const revokeApiInfo = await resolveApiDirect(orgId, existing.api_uuid);
     const subscription = await resolveSubscription(orgId, existing.subscription_uuid);
 
-    await sequelize.transaction(async (t) => {
+    await db.withTransaction(async (t) => {
         const revoked = await apiKeyDao.revoke(orgId, keyId, actor, t);
         if (!revoked) throw Object.assign(new Error('Key already revoked or not found'), { status: 409 });
 
@@ -292,7 +287,6 @@ async function list(orgId, filters, transaction) {
  * none of its other keys are affected.
  */
 async function associateApplication({ orgId, apiId, keyId, appId, actor }) {
-    if (config.server.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
@@ -302,7 +296,7 @@ async function associateApplication({ orgId, apiId, keyId, appId, actor }) {
     const application = await resolveApp(orgId, appId, actor);
     if (!application) throw Object.assign(new Error('appId is required'), { status: 400 });
 
-    await sequelize.transaction(async (t) => {
+    await db.withTransaction(async (t) => {
         const updated = await apiKeyDao.setApplication(orgId, keyId, application.id, actor, t, { activeOnly: true });
         if (!updated) throw Object.assign(new Error('API key not found'), { status: 404 });
 
@@ -320,7 +314,6 @@ async function associateApplication({ orgId, apiId, keyId, appId, actor }) {
  * had no app associated.
  */
 async function removeApplicationAssociation({ orgId, apiId, keyId, actor }) {
-    if (config.server.readOnlyMode) throw Object.assign(new Error('Read-only mode'), { status: 403 });
 
     const existing = await apiKeyDao.get(orgId, keyId);
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
@@ -328,7 +321,7 @@ async function removeApplicationAssociation({ orgId, apiId, keyId, actor }) {
 
     if (!existing.dp_api_key_app_mapping) return { keyId, application: null };
 
-    await sequelize.transaction(async (t) => {
+    await db.withTransaction(async (t) => {
         await apiKeyDao.setApplication(orgId, keyId, null, actor, t);
         const meta = existing.dp_api_metadata;
         const api = { name: meta.name || null, version: meta.version || null, ref_id: meta.ref_id || '', type: meta.type || null };

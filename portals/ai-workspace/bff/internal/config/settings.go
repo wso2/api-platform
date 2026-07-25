@@ -45,8 +45,9 @@ const EnvPrefix = "APIP_AIW_"
 // under (e.g. [ai_workspace], [ai_workspace.control_plane]). It mirrors the Platform
 // API's platformAPIConfigKey: this namespacing lets an AI Workspace config file
 // coexist with sibling services' sections ([platform_api], ...) in a shared
-// deployment config. loadConfigKoanf cuts to this table, so every key is resolved
-// relative to [ai_workspace] and sibling tables are ignored.
+// deployment config. loadConfigKoanf cuts to this table before interpolating, so every
+// key is resolved relative to [ai_workspace] and sibling tables — including their
+// {{ env }}/{{ file }} tokens — are ignored entirely.
 const aiWorkspaceConfigKey = "ai_workspace"
 
 // defaultFileSourceAllowlist is the AI Workspace's default set of directories a
@@ -82,8 +83,19 @@ func loadConfigKoanf(tomlPath string) (*koanf.Koanf, error) {
 		return nil, fmt.Errorf("failed to read config file %q: %w", tomlPath, statErr)
 	}
 
-	// Expand tokens across the whole tree, so a token works at any depth. Shared with
-	// the Platform API via configinterpolate, operating on koanf's raw nested map.
+	// Narrow to this component's own subtree BEFORE interpolating, so a shared
+	// multi-component config file (one that also carries [platform_api] or
+	// [developer_portal] sections) does not force the AI Workspace to resolve
+	// another component's {{ env }}/{{ file }} tokens — those reference env vars
+	// and allowlisted paths that only exist in that other component's container,
+	// and resolving them here would fail closed. Cut promotes the ai_workspace.*
+	// children to the top level; an absent section yields an empty tree that
+	// leaves every key at its default.
+	k = k.Cut(aiWorkspaceConfigKey)
+
+	// Expand tokens across the (now ai_workspace-only) tree, so a token works at any
+	// depth. Shared with the Platform API via configinterpolate, operating on koanf's
+	// raw nested map.
 	expanded, stats, err := configinterpolate.Expand(k.Raw(), configinterpolate.Options{
 		FileAllowlist: configinterpolate.ResolveAllowlist(defaultFileSourceAllowlist),
 	})
@@ -98,11 +110,11 @@ func loadConfigKoanf(tomlPath string) (*koanf.Koanf, error) {
 			slog.Int("fields", stats.Fields))
 	}
 
-	// Reload the expanded map into a fresh instance so no un-interpolated leaf survives,
-	// then cut to the [ai_workspace] subtree.
+	// Reload the expanded map into a fresh instance so no un-interpolated leaf survives.
+	// The subtree is already promoted to the top level by the Cut above.
 	out := koanf.New(".")
 	if err := out.Load(confmap.Provider(expanded, "."), nil); err != nil {
 		return nil, fmt.Errorf("failed to reload interpolated config: %w", err)
 	}
-	return out.Cut(aiWorkspaceConfigKey), nil
+	return out, nil
 }

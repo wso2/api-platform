@@ -7,7 +7,7 @@ Get the AI Workspace running locally in under 5 minutes using Docker Compose.
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) with the Compose plugin (`docker compose version`)
-- Ports **5380** and **9243** available on your machine
+- Ports **9643** and **9243** available on your machine
 - `curl` and `unzip` installed
 
 ---
@@ -30,7 +30,7 @@ docker compose up -d
 
 ### 3. Open the workspace
 
-Navigate to **https://localhost:5380** and sign in:
+Navigate to **https://localhost:9643** and sign in:
 
 | Field    | Value   |
 |----------|---------|

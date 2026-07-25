@@ -23,6 +23,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -299,4 +301,34 @@ func RevisionMetadata(revision string) map[string]any {
 		return nil
 	}
 	return map[string]any{"gatewayRevision": revision}
+}
+
+// TemplateVersionNewer reports whether template version a is strictly higher than b.
+// versions are v<major>.<minor> (e.g. v1.0, v2.3)
+func TemplateVersionNewer(a, b string) bool {
+	aMaj, aMin, aOK := parseTemplateVersion(a)
+	bMaj, bMin, bOK := parseTemplateVersion(b)
+	if aOK && bOK {
+		if aMaj != bMaj {
+			return aMaj > bMaj
+		}
+		return aMin > bMin
+	}
+	return a > b
+}
+
+func parseTemplateVersion(v string) (major, minor int, ok bool) {
+	v = strings.TrimSpace(v)
+	v = strings.TrimPrefix(v, "v")
+	v = strings.TrimPrefix(v, "V")
+	majStr, minStr, found := strings.Cut(v, ".")
+	if !found {
+		return 0, 0, false
+	}
+	major, err1 := strconv.Atoi(majStr)
+	minor, err2 := strconv.Atoi(minStr)
+	if err1 != nil || err2 != nil {
+		return 0, 0, false
+	}
+	return major, minor, true
 }

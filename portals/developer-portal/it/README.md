@@ -24,7 +24,7 @@ Each suite can run against either **SQLite** (default, no external DB) or **Post
 │                      Docker Compose Environment                     │
 │  ┌──────────────┐   ┌──────────────────────┐   ┌────────────────┐   │
 │  │ platform-api │◄──│  developer-portal    │──►│  postgres      │   │
-│  │  :9243       │   │    :3000 (HTTP)      │   │  :5432         │   │
+│  │  :9243       │   │    :9543 (HTTP)      │   │  :5432         │   │
 │  │  (auth/IdP)  │   │    /health           │   │  (postgres     │   │
 │  └──────────────┘   └──────────────────────┘   │   profile only)│   │
 │                                                 └────────────────┘   │

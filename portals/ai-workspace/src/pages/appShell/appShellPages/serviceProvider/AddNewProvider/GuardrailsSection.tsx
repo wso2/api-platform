@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -36,9 +36,13 @@ import {
 } from '@wso2/oxygen-ui';
 import { Plus, Search, X } from '@wso2/oxygen-ui-icons-react';
 import { useGuardrails } from '../../../../../contexts/GuardrailsContext';
-import { GuardrailPill } from '../../../../../Components/GuardrailPill';
+import { getGuardrails } from '../../../../../apis/policyHubApis';
+import { getGatewayCustomPolicies } from '../../../../../apis/gatewayPolicyApis';
+import type { GatewayCustomPolicy } from '../../../../../apis/gatewayPolicyApis';
+import { GuardrailPill, PolicyCategorySelector } from '../../../../../Components/GuardrailPill';
 import PolicyParameterEditor from '../../../PolicyParameterEditor/PolicyParameterEditor';
 import type {
+  ParameterSchema,
   PolicyDefinition,
   ParameterValues,
 } from '../../../PolicyParameterEditor/types';
@@ -47,6 +51,60 @@ import type { GuardrailSelection } from './serviceProviderTypes';
 import { FormattedMessage } from 'react-intl';
 import ErrorAlert from '../../../../../Components/common/ErrorAlert';
 import { familyHandle } from '../../../../../utils/providerTemplateDisplay';
+import type { PolicyHubPolicy } from '../../../../../utils/types';
+import { logger } from '../../../../../utils/logger';
+
+const GUARDRAILS_PAGE_SIZE = 40;
+
+/** A drawer list entry — either a Policy Hub guardrail or a synced gateway
+ * custom policy, rendered and clicked through the same UI. */
+type DrawerGuardrailItem = PolicyHubPolicy & {
+  isCustomPolicy?: boolean;
+  customPolicyUuid?: string;
+  customPolicyDefinition?: Record<string, unknown>;
+};
+
+/** Custom policy versions come back as full semver with a "v" prefix (e.g.
+ * "v1.0.0"), unlike Policy Hub guardrails which are already display-formatted
+ * (e.g. "1.0"). Reformat to major.minor so both render the same way. */
+const formatPolicyVersion = (version?: string): string => {
+  if (!version) return '0';
+  const [major = '0', minor = '0'] = version.replace(/^v/i, '').split('.');
+  return `${major}.${minor}`;
+};
+
+const toDrawerItem = (policy: GatewayCustomPolicy): DrawerGuardrailItem => ({
+  name: policy.name,
+  version: formatPolicyVersion(policy.version),
+  displayName: policy.displayName || policy.name,
+  description: policy.description,
+  provider: policy.provider,
+  isCustomPolicy: true,
+  customPolicyUuid: policy.uuid,
+  customPolicyDefinition: policy.policyDefinition,
+});
+
+/** Custom policies already carry their full definition inline (no policy-hub
+ * YAML fetch needed) — just reshape it into a PolicyDefinition. */
+const buildPolicyDefinitionFromCustomPolicy = (item: {
+  name: string;
+  version: string;
+  description?: string;
+  policyDefinition?: Record<string, unknown>;
+}): PolicyDefinition => {
+  const def = (item.policyDefinition ?? {}) as {
+    description?: string;
+    parameters?: ParameterSchema;
+    systemParameters?: ParameterSchema;
+  };
+  return {
+    name: item.name,
+    version: item.version,
+    description: item.description || def.description || '',
+    parameters: def.parameters ?? { type: 'object', properties: {} },
+    systemParameters: def.systemParameters,
+  };
+};
 
 type GuardrailsSectionProps = {
   guardrails: GuardrailSelection[];
@@ -57,7 +115,10 @@ type GuardrailsSectionProps = {
   onOpenDrawer: () => void;
   onCloseDrawer: () => void;
   onSelectGuardrail: (guardrail: string) => void;
-  onAddGuardrail: (values: ParameterValues) => void;
+  onAddGuardrail: (
+    guardrail: { name: string; version: string },
+    values: ParameterValues
+  ) => void;
   onRemoveGuardrail: (guardrailName: string) => void;
 };
 
@@ -78,9 +139,6 @@ export default function GuardrailsSection({
     familyHandle(selectedTemplateId) !== 'azureai-foundry';
   const {
     guardrails: availableGuardrails = [],
-    isLoading: isLoadingGuardrails,
-    error: guardrailsError,
-    refreshGuardrails,
     getGuardrailDefinition,
   } = useGuardrails();
 
@@ -91,9 +149,122 @@ export default function GuardrailsSection({
   const [definitionError, setDefinitionError] = useState<string | null>(null);
   const [guardrailSearchQuery, setGuardrailSearchQuery] = useState('');
 
-  const selectedGuardrailPolicy = availableGuardrails.find(
-    (policy) => policy.name === selectedGuardrail
+  // Drawer-local guardrail list — fetched by selected category with its own
+  // pagination, independent of the GuardrailsContext (which only loads the
+  // default 'Guardrails,AI' category, capped at one page).
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(['AI']);
+  const [drawerGuardrails, setDrawerGuardrails] = useState<PolicyHubPolicy[]>([]);
+  const [drawerGuardrailsLoading, setDrawerGuardrailsLoading] = useState(false);
+  const [drawerGuardrailsError, setDrawerGuardrailsError] =
+    useState<Error | null>(null);
+  const [guardrailsOffset, setGuardrailsOffset] = useState(0);
+  const [hasMoreGuardrails, setHasMoreGuardrails] = useState(false);
+  const [isLoadingMoreGuardrails, setIsLoadingMoreGuardrails] = useState(false);
+  const [customPolicies, setCustomPolicies] = useState<GatewayCustomPolicy[]>([]);
+  const [customPoliciesLoading, setCustomPoliciesLoading] = useState(false);
+
+  // Drawer list = Policy Hub guardrails for the selected categories, plus all
+  // synced gateway custom policies (always shown, independent of category
+  // filtering) — merged and sorted alphabetically by display name.
+  const drawerItems: DrawerGuardrailItem[] = useMemo(() => {
+    const customItems = customPolicies.map(toDrawerItem);
+    return [...drawerGuardrails, ...customItems].sort((a, b) =>
+      (a.displayName || a.name).localeCompare(b.displayName || b.name)
+    );
+  }, [drawerGuardrails, customPolicies]);
+
+  const drawerItemsLoading = drawerGuardrailsLoading || customPoliciesLoading;
+
+  const selectedGuardrailPolicy =
+    drawerItems.find((policy) => policy.name === selectedGuardrail) ??
+    availableGuardrails.find((policy) => policy.name === selectedGuardrail);
+
+  const fetchDrawerGuardrails = useCallback(
+    async (categories: string[], offset: number, append: boolean) => {
+      if (categories.length === 0) {
+        setDrawerGuardrails([]);
+        setHasMoreGuardrails(false);
+        return;
+      }
+      if (append) {
+        setIsLoadingMoreGuardrails(true);
+      } else {
+        setDrawerGuardrailsLoading(true);
+      }
+      setDrawerGuardrailsError(null);
+      try {
+        const response = await getGuardrails(
+          categories.join(','),
+          GUARDRAILS_PAGE_SIZE,
+          offset
+        );
+        setDrawerGuardrails((prev) =>
+          append ? [...prev, ...response.data] : response.data
+        );
+        const total =
+          response.pagination?.total ?? response.count ?? response.data.length;
+        setHasMoreGuardrails(offset + response.data.length < total);
+      } catch (err) {
+        if (!append) setDrawerGuardrails([]);
+        setDrawerGuardrailsError(
+          err instanceof Error ? err : new Error('Failed to load guardrails')
+        );
+      } finally {
+        setDrawerGuardrailsLoading(false);
+        setIsLoadingMoreGuardrails(false);
+      }
+    },
+    []
   );
+
+  useEffect(() => {
+    if (!guardrailDrawerOpen) return;
+    setGuardrailsOffset(0);
+    void fetchDrawerGuardrails(selectedCategories, 0, false);
+  }, [guardrailDrawerOpen, selectedCategories, fetchDrawerGuardrails]);
+
+  const fetchCustomPolicies = useCallback(async () => {
+    setCustomPoliciesLoading(true);
+    try {
+      const response = await getGatewayCustomPolicies();
+      setCustomPolicies(response.list || []);
+    } catch (e) {
+      logger.error('Failed to load custom policies:', e);
+      setCustomPolicies([]);
+    } finally {
+      setCustomPoliciesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!guardrailDrawerOpen) return;
+    void fetchCustomPolicies();
+  }, [guardrailDrawerOpen, fetchCustomPolicies]);
+
+  const handleLoadMoreGuardrails = useCallback(() => {
+    if (isLoadingMoreGuardrails || drawerGuardrailsLoading || !hasMoreGuardrails) {
+      return;
+    }
+    const nextOffset = guardrailsOffset + GUARDRAILS_PAGE_SIZE;
+    setGuardrailsOffset(nextOffset);
+    void fetchDrawerGuardrails(selectedCategories, nextOffset, true);
+  }, [
+    isLoadingMoreGuardrails,
+    drawerGuardrailsLoading,
+    hasMoreGuardrails,
+    guardrailsOffset,
+    selectedCategories,
+    fetchDrawerGuardrails,
+  ]);
+
+  const handleGuardrailListScroll = (
+    event: React.UIEvent<HTMLDivElement>
+  ) => {
+    const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+    if (scrollHeight - scrollTop - clientHeight < 80) {
+      handleLoadMoreGuardrails();
+    }
+  };
 
   useEffect(() => {
     if (!guardrailDrawerOpen) {
@@ -104,14 +275,27 @@ export default function GuardrailsSection({
     }
   }, [guardrailDrawerOpen]);
 
-  const handleGuardrailClick = async (guardrail: {
-    name: string;
-    version?: string;
-  }) => {
+  const handleGuardrailClick = async (guardrail: DrawerGuardrailItem) => {
     onSelectGuardrail(guardrail.name);
     setIsDetailView(true);
     setPolicyDefinition(null);
     setDefinitionError(null);
+
+    if (guardrail.isCustomPolicy) {
+      if (!guardrail.customPolicyDefinition) {
+        setDefinitionError('No definition available for this custom policy.');
+        return;
+      }
+      setPolicyDefinition(
+        buildPolicyDefinitionFromCustomPolicy({
+          name: guardrail.name,
+          version: guardrail.version,
+          description: guardrail.description,
+          policyDefinition: guardrail.customPolicyDefinition,
+        })
+      );
+      return;
+    }
 
     if (!guardrail.version) {
       setDefinitionError('No version available for this guardrail.');
@@ -134,17 +318,21 @@ export default function GuardrailsSection({
   };
 
   const handlePolicySubmit = (values: ParameterValues) => {
-    onAddGuardrail(values);
+    if (!selectedGuardrailPolicy) return;
+    onAddGuardrail(
+      {
+        name: selectedGuardrailPolicy.name,
+        version: selectedGuardrailPolicy.version || '1.0.0',
+      },
+      values
+    );
     setIsDetailView(false);
   };
 
   const handleRetryDefinition = () => {
     if (!selectedGuardrailPolicy) return;
 
-    void handleGuardrailClick({
-      name: selectedGuardrailPolicy.name,
-      version: selectedGuardrailPolicy.version,
-    });
+    void handleGuardrailClick(selectedGuardrailPolicy);
   };
 
   return (
@@ -256,53 +444,65 @@ export default function GuardrailsSection({
 
           <Stack spacing={3}>
             <Box>
-              {isLoadingGuardrails ? (
-                <Box
-                  sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 2 }}
-                >
-                  <CircularProgress size={20} />
-                  <Typography variant="body2" color="text.secondary">
-                    <FormattedMessage
-                      id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.AddNewProvider.GuardrailsSection.loading.guardrails"
-                      defaultMessage={'Loading guardrails...'}
+              {!isDetailView ? (
+                <>
+                  <Box sx={{ my: 1 }}>
+                    <PolicyCategorySelector
+                      value={selectedCategories}
+                      onChange={setSelectedCategories}
                     />
-                  </Typography>
-                </Box>
-              ) : guardrailsError ? (
-                <Box sx={{ mt: 1 }}>
-                  <ErrorAlert
-                    error={guardrailsError}
-                    onRetry={() => {
-                      void refreshGuardrails();
+                  </Box>
+
+                  <TextField
+                    size="small"
+                    fullWidth
+                    placeholder="Search guardrails"
+                    value={guardrailSearchQuery}
+                    onChange={(e) => setGuardrailSearchQuery(e.target.value)}
+                    sx={{ mt: 1 }}
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Search size={16} />
+                          </InputAdornment>
+                        ),
+                      },
                     }}
                   />
-                </Box>
-              ) : (
-                <>
-                  {!isDetailView ? (
-                    <>
-                      <TextField
-                        size="small"
-                        fullWidth
-                        placeholder="Search guardrails"
-                        value={guardrailSearchQuery}
-                        onChange={(e) =>
-                          setGuardrailSearchQuery(e.target.value)
-                        }
-                        sx={{ mt: 1 }}
-                        slotProps={{
-                          input: {
-                            startAdornment: (
-                              <InputAdornment position="start">
-                                <Search size={16} />
-                              </InputAdornment>
-                            ),
-                          },
+
+                  {drawerItemsLoading ? (
+                    <Box
+                      sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 2 }}
+                    >
+                      <CircularProgress size={20} />
+                      <Typography variant="body2" color="text.secondary">
+                        <FormattedMessage
+                          id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.AddNewProvider.GuardrailsSection.loading.guardrails"
+                          defaultMessage={'Loading guardrails...'}
+                        />
+                      </Typography>
+                    </Box>
+                  ) : drawerGuardrailsError ? (
+                    <Box sx={{ mt: 1 }}>
+                      <ErrorAlert
+                        error={drawerGuardrailsError}
+                        onRetry={() => {
+                          void fetchDrawerGuardrails(selectedCategories, 0, false);
                         }}
                       />
-                      <Stack spacing={1.25} sx={{ mt: 1 }}>
-                        {availableGuardrails
-                          .filter((g) => !g.categories?.includes('MCP'))
+                    </Box>
+                  ) : (
+                    <Box
+                      onScroll={handleGuardrailListScroll}
+                      sx={{
+                        mt: 1,
+                        overflowY: 'auto',
+                        pr: 0.5,
+                      }}
+                    >
+                      <Stack spacing={1.25}>
+                        {drawerItems
                           .filter((g) => {
                             if (!guardrailSearchQuery.trim()) return true;
                             const query = guardrailSearchQuery.toLowerCase();
@@ -329,12 +529,7 @@ export default function GuardrailsSection({
                                 <Box sx={{ p: 1 }}>
                                   <ListItemButton
                                     selected={isSelected}
-                                    onClick={() =>
-                                      handleGuardrailClick({
-                                        name: guardrail.name,
-                                        version: guardrail.version,
-                                      })
-                                    }
+                                    onClick={() => handleGuardrailClick(guardrail)}
                                     sx={{
                                       p: 0.75,
                                       borderRadius: 1,
@@ -358,20 +553,47 @@ export default function GuardrailsSection({
                                         {guardrail.displayName ||
                                           guardrail.name}
                                       </Typography>
-                                      <Chip
-                                        label={guardrail.version || 'v0'}
-                                        size="small"
-                                        variant="outlined"
-                                      />
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                        {guardrail.provider && (
+                                          <Chip
+                                            label={guardrail.provider}
+                                            size="small"
+                                            variant="outlined"
+                                          />
+                                        )}
+                                        <Chip
+                                          label={guardrail.version || 'v0'}
+                                          size="small"
+                                          variant="outlined"
+                                        />
+                                      </Box>
                                     </Box>
                                   </ListItemButton>
                                 </Box>
                               </Card>
                             );
                           })}
+                        {isLoadingMoreGuardrails && (
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: 1,
+                              py: 1.5,
+                            }}
+                          >
+                            <CircularProgress size={16} />
+                            <Typography variant="body2" color="text.secondary">
+                              Loading more...
+                            </Typography>
+                          </Box>
+                        )}
                       </Stack>
-                    </>
-                  ) : (
+                    </Box>
+                  )}
+                </>
+              ) : (
                     <Stack spacing={1.5} sx={{ mt: 1 }}>
                       {/* <Box>
                         <Typography variant="subtitle2">
@@ -429,8 +651,6 @@ export default function GuardrailsSection({
                         </CardContent>
                       </Card>
                     </Stack>
-                  )}
-                </>
               )}
             </Box>
 

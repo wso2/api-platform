@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -32,13 +33,12 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gatewayv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
 
-	"github.com/go-logr/zapr"
+	"github.com/go-logr/logr"
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
 	apiv1alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
@@ -80,36 +80,26 @@ func main() {
 		"If set the metrics endpoint is served securely")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	opts := zap.Options{
-		Development: true,
-	}
-	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
 	// Load operator configuration first to get logging config
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
-		// Use default logger for config loading failure
-		ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+		// Use a plain fallback logger for config loading failure
+		ctrl.SetLogger(logr.FromSlogHandler(slog.NewTextHandler(os.Stderr, nil)))
 		setupLog.Error(err, "unable to load configuration")
 		os.Exit(1)
 	}
 
-	// Initialize new Zap logger with config
-	zapLog, err := logger.NewLogger(logger.Config{
+	// Build one shared slog handler/logger for both the controller-runtime
+	// setup logger and the application/reconciler logger, so both produce
+	// the same output shape.
+	handler := logger.NewSlogHandler(logger.Config{
 		Level:  cfg.Logging.Level,
 		Format: cfg.Logging.Format,
 	})
-	if err != nil {
-		// Use default logger for logger initialization failure
-		ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
-		setupLog.Error(err, "unable to initialize logger")
-		os.Exit(1)
-	}
-	defer zapLog.Sync()
-
-	// Set controller-runtime logger using zapr adapter
-	ctrl.SetLogger(zapr.NewLogger(zapLog))
+	appLog := slog.New(handler)
+	ctrl.SetLogger(logr.FromSlogHandler(handler))
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -180,7 +170,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		cfg,
-		zapLog,
+		appLog,
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "APIGateway")
 		os.Exit(1)
@@ -189,7 +179,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		cfg,
-		zapLog,
+		appLog,
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RestApi")
 		os.Exit(1)
@@ -198,7 +188,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		cfg,
-		zapLog,
+		appLog,
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "K8sGateway")
 		os.Exit(1)
@@ -207,7 +197,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		cfg,
-		zapLog,
+		appLog,
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "K8sGatewayClass")
 		os.Exit(1)
@@ -216,7 +206,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		cfg,
-		zapLog,
+		appLog,
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "HTTPRoute")
 		os.Exit(1)
@@ -229,15 +219,15 @@ func main() {
 		name  string
 		setup func(ctrl.Manager) error
 	}{
-		{"LlmProviderTemplate", controller.NewLlmProviderTemplateReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
-		{"LlmProvider", controller.NewLlmProviderReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
-		{"LlmProxy", controller.NewLlmProxyReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
-		{"Mcp", controller.NewMcpReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
-		{"ManagedSecret", controller.NewManagedSecretReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
-		{"Certificate", controller.NewCertificateReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
-		{"ApiKey", controller.NewApiKeyReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
-		{"SubscriptionPlan", controller.NewSubscriptionPlanReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
-		{"Subscription", controller.NewSubscriptionReconciler(mgr.GetClient(), cfg, zapLog, resourceTracker).SetupWithManager},
+		{"LlmProviderTemplate", controller.NewLlmProviderTemplateReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
+		{"LlmProvider", controller.NewLlmProviderReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
+		{"LlmProxy", controller.NewLlmProxyReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
+		{"Mcp", controller.NewMcpReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
+		{"ManagedSecret", controller.NewManagedSecretReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
+		{"Certificate", controller.NewCertificateReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
+		{"ApiKey", controller.NewApiKeyReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
+		{"SubscriptionPlan", controller.NewSubscriptionPlanReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
+		{"Subscription", controller.NewSubscriptionReconciler(mgr.GetClient(), cfg, appLog, resourceTracker).SetupWithManager},
 	}
 	for _, mc := range managementControllers {
 		if err := mc.setup(mgr); err != nil {

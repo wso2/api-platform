@@ -25,7 +25,6 @@ import (
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/storage/driver"
 	corev1 "k8s.io/api/core/v1"
@@ -34,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"log/slog"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -62,11 +62,11 @@ type K8sGatewayReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Config *config.OperatorConfig
-	Logger *zap.Logger
+	Logger *slog.Logger
 }
 
 // NewK8sGatewayReconciler creates a reconciler for gateway.networking.k8s.io Gateway.
-func NewK8sGatewayReconciler(cl client.Client, scheme *runtime.Scheme, cfg *config.OperatorConfig, logger *zap.Logger) *K8sGatewayReconciler {
+func NewK8sGatewayReconciler(cl client.Client, scheme *runtime.Scheme, cfg *config.OperatorConfig, logger *slog.Logger) *K8sGatewayReconciler {
 	return &K8sGatewayReconciler{
 		Client: cl,
 		Scheme: scheme,
@@ -88,20 +88,20 @@ func (r *K8sGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if apierrors.IsNotFound(err) {
 			if r.Logger != nil {
 				r.Logger.Debug("Gateway not found; likely deleted",
-					zap.String("controller", "K8sGateway"),
-					zap.String("namespace", req.Namespace),
-					zap.String("name", req.Name))
+					slog.String("controller", "K8sGateway"),
+					slog.String("namespace", req.Namespace),
+					slog.String("name", req.Name))
 			}
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
-	log := r.Logger.With(zap.String("controller", "K8sGateway"), zap.String("namespace", req.Namespace), zap.String("name", req.Name))
+	log := r.Logger.With(slog.String("controller", "K8sGateway"), slog.String("namespace", req.Namespace), slog.String("name", req.Name))
 	log.Info("reconcile Gateway",
-		zap.Int64("generation", gw.Generation),
-		zap.String("resourceVersion", gw.ResourceVersion),
-		zap.String("gatewayClass", string(gw.Spec.GatewayClassName)))
+		slog.Int64("generation", gw.Generation),
+		slog.String("resourceVersion", gw.ResourceVersion),
+		slog.String("gatewayClass", string(gw.Spec.GatewayClassName)))
 
 	if !gw.DeletionTimestamp.IsZero() {
 		return r.reconcileDeletion(ctx, gw, log)
@@ -109,7 +109,7 @@ func (r *K8sGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	if !r.Config.ManagedGatewayClass(string(gw.Spec.GatewayClassName)) {
 		log.Debug("skip Gateway: class not managed by operator",
-			zap.String("gatewayClass", string(gw.Spec.GatewayClassName)))
+			slog.String("gatewayClass", string(gw.Spec.GatewayClassName)))
 		return ctrl.Result{}, nil
 	}
 
@@ -123,7 +123,7 @@ func (r *K8sGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	if err := r.syncGateway(ctx, gw, log); err != nil {
-		log.Error("sync gateway", zap.Error(err))
+		log.Error("sync gateway", slog.Any("error", err))
 		_ = r.patchGatewayStatus(ctx, gw, nil, nil, metav1.Condition{
 			Type:               string(gatewayv1.GatewayConditionProgrammed),
 			Status:             metav1.ConditionFalse,
@@ -136,17 +136,17 @@ func (r *K8sGatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	log.Info("Gateway reconcile complete (synced and status updated)",
-		zap.String("gatewayClass", string(gw.Spec.GatewayClassName)))
+		slog.String("gatewayClass", string(gw.Spec.GatewayClassName)))
 	return ctrl.Result{}, nil
 }
 
-func (r *K8sGatewayReconciler) reconcileDeletion(ctx context.Context, gw *gatewayv1.Gateway, log *zap.Logger) (ctrl.Result, error) {
+func (r *K8sGatewayReconciler) reconcileDeletion(ctx context.Context, gw *gatewayv1.Gateway, log *slog.Logger) (ctrl.Result, error) {
 	if !controllerutil.ContainsFinalizer(gw, k8sGatewayFinalizer) {
 		return ctrl.Result{}, nil
 	}
 
 	log.Info("reconcile Gateway deletion",
-		zap.String("gatewayClass", string(gw.Spec.GatewayClassName)))
+		slog.String("gatewayClass", string(gw.Spec.GatewayClassName)))
 
 	ns := gw.Namespace
 	if ns == "" {
@@ -155,23 +155,23 @@ func (r *K8sGatewayReconciler) reconcileDeletion(ctx context.Context, gw *gatewa
 
 	registry.GetGatewayRegistry().Unregister(ns, gw.Name)
 	log.Info("unregistered Gateway from operator registry",
-		zap.String("namespace", ns),
-		zap.String("name", gw.Name))
+		slog.String("namespace", ns),
+		slog.String("name", gw.Name))
 
 	log.Info("attempting Helm uninstall for Gateway deletion",
-		zap.String("namespace", ns),
-		zap.String("name", gw.Name))
+		slog.String("namespace", ns),
+		slog.String("name", gw.Name))
 	if err := helmgateway.Uninstall(ctx, log, r.Config, gw.Name, ns); err != nil {
 		if isHelmReleaseNotFoundError(err) {
 			log.Info("Helm release not found during Gateway deletion; continuing finalizer removal",
-				zap.String("namespace", ns),
-				zap.String("name", gw.Name),
-				zap.Error(err))
+				slog.String("namespace", ns),
+				slog.String("name", gw.Name),
+				slog.Any("error", err))
 		} else {
 			log.Error("helm uninstall failed; will retry",
-				zap.String("namespace", ns),
-				zap.String("name", gw.Name),
-				zap.Error(err))
+				slog.String("namespace", ns),
+				slog.String("name", gw.Name),
+				slog.Any("error", err))
 			return ctrl.Result{}, err
 		}
 	}
@@ -223,7 +223,7 @@ func buildK8sGatewayInfraOverlay(gw *gatewayv1.Gateway) (string, error) {
 	return string(out), nil
 }
 
-func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Gateway, log *zap.Logger) error {
+func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Gateway, log *slog.Logger) error {
 	ns := gw.Namespace
 	if ns == "" {
 		ns = "default"
@@ -236,7 +236,7 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 	}
 	if !paramsValid {
 		log.Info("Gateway has invalid parametersRef; setting Accepted=False",
-			zap.String("reason", paramsReason))
+			slog.String("reason", paramsReason))
 		return r.patchGatewayStatus(ctx, gw, nil, nil,
 			metav1.Condition{
 				Type:               string(gatewayv1.GatewayConditionAccepted),
@@ -266,7 +266,7 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 	if !hasAnyAccepted {
 		// No supported listeners at all - Gateway must not be Accepted or Programmed
 		log.Info("Gateway has no accepted listeners; setting Accepted=False and Programmed=False",
-			zap.String("reason", string(gatewayv1.GatewayReasonListenersNotValid)))
+			slog.String("reason", string(gatewayv1.GatewayReasonListenersNotValid)))
 		return r.patchGatewayStatus(ctx, gw, listenerStatuses, nil,
 			metav1.Condition{
 				Type:               string(gatewayv1.GatewayConditionAccepted),
@@ -371,11 +371,11 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 			valuesYAML = cmValues
 		}
 		log.Info("Merging Helm values: operator base file + infra overlay + ConfigMap overlay",
-			zap.String("configMap", cmName),
-			zap.String("valuesFile", valuesFile))
+			slog.String("configMap", cmName),
+			slog.String("valuesFile", valuesFile))
 	} else {
 		valuesYAML = infraOverlay
-		log.Info("Using default Helm values file with infra overlay", zap.String("path", valuesFile))
+		log.Info("Using default Helm values file with infra overlay", slog.String("path", valuesFile))
 	}
 
 	if overlayYAML, overlayErr := applyListenerOverlayToValues(gw, valuesYAML); overlayErr != nil {
@@ -383,9 +383,9 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 	} else if overlayYAML != valuesYAML {
 		httpPort, httpsPort, hasHTTPS := listenerPortsFromGateway(gw)
 		log.Info("Derived router ports from Gateway.spec.listeners",
-			zap.Int32("httpPort", httpPort),
-			zap.Int32("httpsPort", httpsPort),
-			zap.Bool("httpsEnabled", hasHTTPS))
+			slog.Int("httpPort", int(httpPort)),
+			slog.Int("httpsPort", int(httpsPort)),
+			slog.Bool("httpsEnabled", hasHTTPS))
 		valuesYAML = overlayYAML
 	}
 
@@ -394,7 +394,7 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 	} else if overlayYAML != valuesYAML {
 		secretName, _ := listenerTLSSecretFromGateway(gw)
 		log.Info("Sourcing gateway-runtime HTTPS listener certificate from Gateway listener certificateRef",
-			zap.String("secret", secretName))
+			slog.String("secret", secretName))
 		valuesYAML = overlayYAML
 	}
 
@@ -402,9 +402,9 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 		return fmt.Errorf("apply gateway infrastructure overlay: %w", overlayErr)
 	} else if overlayYAML != valuesYAML {
 		log.Info("Applied Gateway.spec.infrastructure overlay to gateway-runtime Service",
-			zap.String("serviceType", serviceTypeFromGateway(gw)),
-			zap.Int("annotationCount", len(infrastructureAnnotationsFromGateway(gw))),
-			zap.Int("labelCount", len(infrastructureLabelsFromGateway(gw))))
+			slog.String("serviceType", serviceTypeFromGateway(gw)),
+			slog.Int("annotationCount", len(infrastructureAnnotationsFromGateway(gw))),
+			slog.Int("labelCount", len(infrastructureLabelsFromGateway(gw))))
 		valuesYAML = overlayYAML
 	}
 
@@ -435,10 +435,10 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 	if !skipHelm {
 		if hashMatches {
 			log.Info("Helm install/upgrade required; release or expected cluster resources missing or unhealthy",
-				zap.String("valuesHash", sig),
-				zap.Bool("releaseDeployed", releaseDeployed),
-				zap.Bool("expectedResourcesPresent", resourcesOK),
-				zap.String("resourceDetail", resDetail))
+				slog.String("valuesHash", sig),
+				slog.Bool("releaseDeployed", releaseDeployed),
+				slog.Bool("expectedResourcesPresent", resourcesOK),
+				slog.String("resourceDetail", resDetail))
 		}
 		if err := helmgateway.InstallOrUpgrade(ctx, helmgateway.DeployInput{
 			Logger:         r.Logger,
@@ -458,9 +458,9 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 		if err := r.Get(ctx, client.ObjectKeyFromObject(gw), gw); err != nil {
 			return err
 		}
-		log.Info("Helm install/upgrade applied", zap.String("valuesHash", sig))
+		log.Info("Helm install/upgrade applied", slog.String("valuesHash", sig))
 	} else {
-		log.Info("Skipping Helm install/upgrade; values signature unchanged", zap.String("valuesHash", sig))
+		log.Info("Skipping Helm install/upgrade; values signature unchanged", slog.String("valuesHash", sig))
 	}
 
 	cpHost := gw.Annotations[AnnK8sGatewayControlPlaneHost]

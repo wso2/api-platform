@@ -52,7 +52,7 @@ const loadAPIs = async (req, res, next) => {
         }
         const templateContent = {
             apiMetadata: metaDataList,
-            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.VIEWS_PATH + viewName,
             devMode: true,
         }
         const listingPage = isMcpListing ? 'pages/mcp' : 'pages/apis';
@@ -125,7 +125,6 @@ const loadAPIs = async (req, res, next) => {
                 orgId: orgId,
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
-                isReadOnlyMode: config.server.readOnlyMode,
                 applications: []
             };
 
@@ -209,7 +208,7 @@ const loadAPIContent = async (req, res, next) => {
             schemaDefinition,
             apiMetadata: metaData,
             subscriptionPlans: metaData.subscriptionPlans,
-            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName,
+            baseUrl: constants.ROUTE.VIEWS_PATH + viewName,
             schemaUrl: `/mock/${apiHandle}/definition.yml`,
             showApiKeysNav: await resolveShowApiKeysNav(null, null, apiType, metaData, definitionResponse.swagger ?? null),
             showSubscriptionsNav: (metaData.subscriptionPlans || []).length > 0,
@@ -417,7 +416,6 @@ const loadAPIContent = async (req, res, next) => {
                 scopes: [],
                 devportalMode: devportalMode,
                 profile: req.isAuthenticated() ? profile : null,
-                isReadOnlyMode: config.server.readOnlyMode,
             };
             templateContent.showApiKeysNav = await resolveShowApiKeysNav(orgId, apiId, metaData.type, metaData, apiDefinitionForNav);
             templateContent.showSubscriptionsNav = (metaData?.subscriptionPlans || []).length > 0;
@@ -515,8 +513,8 @@ const loadDocsPage = async (req, res, next) => {
         const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         const templateContent = {
             apiMD: '',
-            baseUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
-            baseDocUrl: config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
+            baseUrl: constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
+            baseDocUrl: constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
             docTypes: docNames,
             apiType: apiMetadata.type,
             apiName: apiMetadata.name || '',
@@ -545,9 +543,9 @@ const loadDocsPage = async (req, res, next) => {
             }
 
             const apiMetadata = await apiDao.get(orgId, apiId);
-            let apiType = apiMetadata[0].dataValues.type;
+            let apiType = apiMetadata[0].type;
             const metaForNav = {
-                refId: apiMetadata[0].dataValues.ref_id,
+                refId: apiMetadata[0].ref_id,
             };
 
             const templateContent = {
@@ -555,7 +553,7 @@ const loadDocsPage = async (req, res, next) => {
                 baseDocUrl: '/' + orgName + '/views/' + viewName + "/api/" + apiHandle,
                 docTypes: docNames,
                 apiType: apiType,
-                apiName: apiMetadata[0].dataValues.name || '',
+                apiName: apiMetadata[0].name || '',
                 profile: req.isAuthenticated() ? profile : null,
                 devportalMode: devportalMode,
                 // resolveShowApiKeysNav returns false early for GraphQL/MCP/SOAP and lazily
@@ -574,6 +572,21 @@ const loadDocsPage = async (req, res, next) => {
         }
     }
     res.send(html);
+}
+
+// Origin (scheme + host) the browser used for this request, for the rare case a
+// rendered page needs an absolute self-referencing URL rather than a path.
+//
+// X-Forwarded-Proto is honoured explicitly because the app does not enable
+// Express's `trust proxy`, so req.protocol otherwise reports the scheme of the
+// connection reaching this process — 'http' for any deployment where TLS is
+// terminated upstream, which would render an unusable mixed-content URL. A
+// spoofed header only affects the scheme in the spoofer's own page render;
+// nothing server-side is authorized off this value.
+function requestOrigin(req) {
+    const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+    const protocol = forwardedProto || req.protocol;
+    return `${protocol}://${req.get('host')}`;
 }
 
 const loadDocument = async (req, res, next) => {
@@ -617,8 +630,8 @@ const loadDocument = async (req, res, next) => {
             const raw = sampleApiLoader.getDocMarkdown(apiHandle, docName, resolveSamplesPath(apiHandle), docType) || '';
             templateContent.apiMD = raw ? require('marked').parse(raw) : '';
         }
-        templateContent.baseUrl = config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName;
-        templateContent.baseDocUrl = config.server.baseUrl + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
+        templateContent.baseUrl = constants.ROUTE.VIEWS_PATH + viewName;
+        templateContent.baseDocUrl = constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle;
         templateContent.docTypes = metaData.docTypes;
         templateContent.currentDocName = docName || null;
         templateContent.currentDocType = docType || null;
@@ -744,17 +757,33 @@ const loadDocument = async (req, res, next) => {
             const viewName = req.params.viewName;
             let docNames = await apiMetadataService.getAPIDocTypes(orgId, apiId);
             const apiMetadata = await apiDao.get(orgId, apiId);
-            let apiType = apiMetadata[0].dataValues.type;
+            let apiType = apiMetadata[0].type;
+            const referenceId = apiMetadata[0].ref_id;
             // All MCPs (registry and CP) need a Specification entry in the sidebar
             if (apiType === constants.API_TYPE.MCP && !docNames.some(d => d.type === constants.DOC_TYPES.DOCS.API_DEFINITION)) {
                 docNames = [{ type: constants.DOC_TYPES.DOCS.API_DEFINITION }, ...docNames];
             }
             templateContent.baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + viewName;
             templateContent.baseDocUrl = baseDocUrl;
+            // Base for Stoplight Elements' `tryItCorsProxy`: Elements appends the
+            // full target URL to this prefix, and the resulting same-origin request
+            // is served by tryoutProxyRoute. Left undefined when the proxy is off,
+            // in which case the try-it panel calls the endpoint directly (and works
+            // only for endpoints that return CORS headers for this portal).
+            //
+            // This has to be an ABSOLUTE URL. Elements builds the request as
+            // `new URL(corsProxy + serverUrl + path)` — the single-argument form,
+            // which has no base to resolve against, so a root-relative prefix
+            // throws "Failed to construct 'URL': Invalid URL" before any request
+            // is made. The origin is taken from the request so the proxy call
+            // stays same-origin with whatever host the browser actually used.
+            if (config.tryout?.enabled !== false && !config.designMode?.enabled) {
+                templateContent.tryoutProxyBase = `${requestOrigin(req)}${baseDocUrl}/tryout-proxy/`;
+            }
             templateContent.docTypes = docNames;
             templateContent.currentDocName = docName || null;
             templateContent.currentDocType = docType || null;
-            templateContent.apiName = apiMetadata[0].dataValues.name || '';
+            templateContent.apiName = apiMetadata[0].name || '';
             let profile = null;
             if (req.user) {
                 profile = {
@@ -767,7 +796,7 @@ const loadDocument = async (req, res, next) => {
             templateContent.profile = req.isAuthenticated() ? profile : null;
             templateContent.apiType = apiType;
             templateContent.devportalMode = devportalMode;
-            const row = apiMetadata[0].dataValues;
+            const row = apiMetadata[0];
             const metaForNav = {
                 refId: row.ref_id,
             };

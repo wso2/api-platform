@@ -46,7 +46,7 @@ spec:
 ```
 
 ```bash
-curl -k -X POST https://localhost:3000/api/v0.9/subscription-plans \
+curl -k -X POST https://localhost:9543/api/v0.9/subscription-plans \
   -H "Authorization: Bearer $TOKEN" \
   -F "subscriptionPlan=@plan.yaml"
 ```
@@ -89,7 +89,7 @@ items:
 ```
 
 ```bash
-curl -k -X POST https://localhost:3000/api/v0.9/subscription-plans \
+curl -k -X POST https://localhost:9543/api/v0.9/subscription-plans \
   -H "Authorization: Bearer $TOKEN" \
   -F "subscriptionPlan=@plans.yaml"
 ```
@@ -97,13 +97,13 @@ curl -k -X POST https://localhost:3000/api/v0.9/subscription-plans \
 ## List Subscription Plans
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/subscription-plans -H "Authorization: Bearer $TOKEN"
+curl -k https://localhost:9543/api/v0.9/subscription-plans -H "Authorization: Bearer $TOKEN"
 ```
 
 ## Get a Subscription Plan
 
 ```bash
-curl -k https://localhost:3000/api/v0.9/subscription-plans/{planId} \
+curl -k https://localhost:9543/api/v0.9/subscription-plans/{planId} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -125,7 +125,7 @@ spec:
 ```
 
 ```bash
-curl -k -X PUT https://localhost:3000/api/v0.9/subscription-plans \
+curl -k -X PUT https://localhost:9543/api/v0.9/subscription-plans \
   -H "Authorization: Bearer $TOKEN" \
   -F "subscriptionPlan=@plan-update.yaml"
 ```
@@ -133,7 +133,7 @@ curl -k -X PUT https://localhost:3000/api/v0.9/subscription-plans \
 ## Delete a Subscription Plan
 
 ```bash
-curl -k -X DELETE "https://localhost:3000/api/v0.9/subscription-plans/{planId}" \
+curl -k -X DELETE "https://localhost:9543/api/v0.9/subscription-plans/{planId}" \
   -H "Authorization: Bearer $TOKEN"
 ```
 

@@ -34,8 +34,14 @@
 /* ── Left sub-nav ────────────────────────────────────────── */
 
 .cfg-nav {
-  width: 252px;
+  /* 285 = 252 nav items + 32 padding + 1 border (border-box), so the items keep
+     their original 252px and the content column starts in the same place as
+     before. The divider lives here rather than on .cfg-content so it ends with
+     the tabs instead of running the height of the panel. */
+  width: 285px;
   flex: none;
+  padding-right: 32px;
+  border-right: 1px solid var(--border);
 }
 
 .cfg-nav-section {
@@ -91,8 +97,8 @@
 .cfg-content {
   flex: 1;
   min-width: 0;
-  border-left: 1px solid var(--border);
-  padding-left: 32px;
+  /* Divider moved to .cfg-nav's border-right; .cfg-layout's 32px gap supplies
+     the separation that padding-left used to. */
 }
 
 .cfg-panel {
@@ -396,10 +402,13 @@
     flex-wrap: wrap;
     gap: 8px;
     margin-bottom: 20px;
+    /* Stacked layout: the divider becomes .cfg-content's border-top below. */
+    padding-right: 0;
+    border-right: none;
   }
   .cfg-nav-section { display: none; }
   .cfg-nav-items { flex-direction: row; flex-wrap: wrap; margin-bottom: 0; }
-  .cfg-content { border-left: none; padding-left: 0; border-top: 1px solid var(--border); padding-top: 20px; }
+  .cfg-content { border-top: 1px solid var(--border); padding-top: 20px; }
 }
 
 /* ── Table extras (version / context cells) ──────────────── */

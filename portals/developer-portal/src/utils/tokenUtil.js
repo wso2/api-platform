@@ -36,18 +36,18 @@ function accessTokenPresent(req) {
 }
 
 async function refreshAccessToken(refreshToken) {
-    const timeout = Number(config.idp?.tokenRefreshTimeoutMs);
+    const timeout = Number(config.auth.idp?.tokenRefreshTimeoutMs);
     const timeoutMs = (Number.isFinite(timeout) && timeout > 0) ? timeout : DEFAULT_TOKEN_REFRESH_TIMEOUT_MS;
     const params = {
         grant_type: 'refresh_token',
         refresh_token: refreshToken,
-        client_id: config.idp.clientId,
+        client_id: config.auth.idp.clientId,
     };
-    if (config.idp.clientSecret) {
-        params.client_secret = config.idp.clientSecret;
+    if (config.auth.idp.clientSecret) {
+        params.client_secret = config.auth.idp.clientSecret;
     }
     const data = qs.stringify(params);
-    const response = await axios.post(config.idp.tokenUrl, data, {
+    const response = await axios.post(config.auth.idp.tokenUrl, data, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         timeout: timeoutMs,
     });
@@ -58,8 +58,8 @@ async function verifyWithCertificate(token, pemCertificate) {
     try {
         const publicKey = await importX509(pemCertificate, 'RS256');
         const jwtVerifyOptions = { algorithms: constants.JWT_ASYMMETRIC_ALGORITHMS };
-        if (config.idp?.issuer) jwtVerifyOptions.issuer = config.idp.issuer;
-        if (config.idp?.audience) jwtVerifyOptions.audience = config.idp.audience;
+        if (config.auth.idp?.issuer) jwtVerifyOptions.issuer = config.auth.idp.issuer;
+        if (config.auth.idp?.audience) jwtVerifyOptions.audience = config.auth.idp.audience;
         const { payload } = await jwtVerify(token, publicKey, jwtVerifyOptions);
         return { valid: true, scopes: payload.scope || '' };
     } catch (err) {
@@ -69,7 +69,7 @@ async function verifyWithCertificate(token, pemCertificate) {
 }
 
 function resolveOrgIdp() {
-    return config.idp || {};
+    return config.auth.idp || {};
 }
 
 module.exports = { accessTokenPresent, refreshAccessToken, verifyWithCertificate, resolveOrgIdp };

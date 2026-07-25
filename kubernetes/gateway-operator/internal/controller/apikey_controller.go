@@ -21,9 +21,9 @@ import (
 	"fmt"
 	"time"
 
-	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"log/slog"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -52,7 +52,7 @@ type ApiKeyReconciler struct {
 }
 
 // NewApiKeyReconciler constructs a fully wired ApiKey reconciler.
-func NewApiKeyReconciler(c client.Client, cfg *config.OperatorConfig, logger *zap.Logger, tracker *ResourceTracker) *ApiKeyReconciler {
+func NewApiKeyReconciler(c client.Client, cfg *config.OperatorConfig, logger *slog.Logger, tracker *ResourceTracker) *ApiKeyReconciler {
 	r := &ApiKeyReconciler{}
 	r.Client = c
 	r.Config = cfg
@@ -85,7 +85,7 @@ func (r *ApiKeyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // for ApiKeys in the same namespace whose spec.apiKey.valueFrom names that Secret.
 // On list failure, logs and fails open by enqueueing every ApiKey in the cluster so
 // a transient cache/RBAC/List error cannot drop Secret-driven reconciliation.
-func enqueueApiKeysReferencingSecret(c client.Client, zapLog *zap.Logger) handlerMapFunc {
+func enqueueApiKeysReferencingSecret(c client.Client, log *slog.Logger) handlerMapFunc {
 	return func(ctx context.Context, obj client.Object) []reconcile.Request {
 		s, ok := obj.(*corev1.Secret)
 		if !ok || s == nil {
@@ -97,11 +97,11 @@ func enqueueApiKeysReferencingSecret(c client.Client, zapLog *zap.Logger) handle
 		}
 		var list apiv1.ApiKeyList
 		if err := c.List(ctx, &list, client.InNamespace(ns)); err != nil {
-			if zapLog != nil {
-				zapLog.Error("Secret watch: listing ApiKeys in namespace failed, fail-open to full ApiKey reconcile",
-					zap.Error(err),
-					zap.String("secretNamespace", ns),
-					zap.String("secretName", s.GetName()))
+			if log != nil {
+				log.Error("Secret watch: listing ApiKeys in namespace failed, fail-open to full ApiKey reconcile",
+					slog.Any("error", err),
+					slog.String("secretNamespace", ns),
+					slog.String("secretName", s.GetName()))
 			}
 			return enqueueAllOfKind(c, &apiv1.ApiKeyList{})(ctx, obj)
 		}

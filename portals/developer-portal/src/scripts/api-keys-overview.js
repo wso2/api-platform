@@ -26,7 +26,6 @@
 (function () {
     var root = document.getElementById('api-keys-overview-root');
     if (!root) return;
-    var readOnly = root.dataset.readOnly === 'true';
 
     var _manageKey = null; // key whose row action is currently in progress
     var _apps = null;      // cached applications list (fetched lazily on first associate)
@@ -254,7 +253,6 @@
     }
 
     function wire() {
-        if (readOnly) return;
 
         // Row action buttons (server-rendered).
         document.querySelectorAll('.ak-row-app').forEach(function (btn) {

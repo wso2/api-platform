@@ -23,7 +23,7 @@ const logger = require('./config/logger');
 const { config } = require('./config/configLoader');
 const webhookDispatcher = require('./services/webhooks/dispatcher');
 const webhookDeliveryWorker = require('./services/webhooks/deliveryWorker');
-const sequelize = require('./db/sequelizeConfig');
+const db = require('./db/driver');
 const { seedDefaultOrg } = require('./services/seederService');
 const app = require('./app');
 
@@ -74,8 +74,39 @@ function logStartupBanner() {
     const orgSegment = config.designMode?.enabled ? '' : `/${config.organization.defaultName || '<organization>'}`;
     // The bare org URL redirects server-side to /views/default (orgContentRoute.js) —
     // shorter and avoids baking view-naming details into the banner.
-    const visitUrl = `${config.server.baseUrl}${orgSegment}`;
+    const scheme = config.server.https.enabled && !config.designMode?.enabled ? 'https' : 'http';
+    const visitUrl = `${scheme}://localhost:${PORT}${orgSegment}`;
     printBanner(visitUrl);
+}
+
+// Strips full-line `--` comments, then splits on `;` into individual statements.
+// Comments are stripped whole-line-first (not just filtered post-split) because a
+// naive split(';') would otherwise fracture on a semicolon that appears inside
+// comment prose (e.g. this file's own license header) and hand a comment fragment
+// to db.execute() as if it were SQL.
+function splitSchemaStatements(schemaSql) {
+    const withoutComments = schemaSql
+        .split('\n')
+        .filter((line) => !line.trim().startsWith('--'))
+        .join('\n');
+    return withoutComments
+        .split(';')
+        .map((statement) => statement.trim())
+        .filter((statement) => statement.length > 0);
+}
+
+// Applies database/schema.sqlite.sql at startup — SQLite has no separate migration
+// step in this deployment model, so the schema is ensured in-process. Postgres/MSSQL
+// schemas are applied out-of-band (ops/CI step), matching the previous behavior where
+// sequelize.sync() only ever ran for the sqlite dialect.
+async function ensureSchema() {
+    if (config.designMode?.enabled || db.getDialect() !== 'sqlite') return;
+    const schemaPath = path.join(__dirname, '../database/schema.sqlite.sql');
+    const schemaSql = fs.readFileSync(schemaPath, 'utf8');
+    for (const statement of splitSchemaStatements(schemaSql)) {
+        await db.execute(statement);
+    }
+    logger.info('Database: SQLite schema ensured ✓');
 }
 
 async function onListening() {
@@ -90,29 +121,21 @@ let server;
 
 async function startServer() {
     logger.info('Developer Portal starting...');
-    // Sync database schema for SQLite in production mode
-    if (config.database.type === 'sqlite' && !config.designMode?.enabled) {
-        await sequelize.sync();
-        logger.info('Database: SQLite schema synced ✓');
-    }
+    await ensureSchema();
 
-    if (!config.tls.enabled || config.designMode?.enabled) {
+    if (!config.server.https.enabled || config.designMode?.enabled) {
         server = http.createServer(app).listen(PORT, '0.0.0.0', onListening);
     } else {
     try {
-        const certPath = path.resolve(config.tls.certFile);
-        const keyPath = path.resolve(config.tls.keyFile);
+        const certPath = path.resolve(config.server.https.certFile);
+        const keyPath = path.resolve(config.server.https.keyFile);
 
         const serverCert = fs.readFileSync(certPath);
         const serverKey = fs.readFileSync(keyPath);
-        const caCert = fs.readFileSync(path.resolve(config.tls.caFile));
 
         server = https.createServer({
             key: serverKey,
             cert: serverCert,
-            ca: caCert,
-            requestCert: true,
-            rejectUnauthorized: false,
         }, app).listen(PORT, onListening);
 
     } catch (err) {

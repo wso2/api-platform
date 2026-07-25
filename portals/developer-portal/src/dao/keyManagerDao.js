@@ -15,64 +15,85 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const { Sequelize } = require('sequelize');
-const { KeyManager } = require('../models/keyManager');
+'use strict';
+
+const crypto = require('crypto');
+const db = require('../db/driver');
+const { NotFoundError } = require('../utils/errors/customErrors');
 const logger = require('../config/logger');
+
+const TABLE = 'dp_key_managers';
 
 /**
  * Create a new key manager for an organization.
  */
 const create = async (orgId, kmData, createdBy) => {
+    const uuid = crypto.randomUUID();
+    const now = new Date();
+    // Mirrors the previous conditional spread: an omitted `enabled` falls back to
+    // the column's own default (1) rather than being written explicitly.
+    const enabled = kmData.enabled !== undefined ? (kmData.enabled ? 1 : 0) : 1;
+
     try {
-        const record = await KeyManager.create({
-            org_uuid: orgId,
-            handle: kmData.handle,
-            display_name: kmData.displayName,
-            ...(kmData.enabled !== undefined && { enabled: kmData.enabled ? 1 : 0 }),
-            token_endpoint: kmData.tokenEndpoint,
-            created_by: createdBy,
-            updated_by: createdBy,
-        });
-        return record;
+        await db.execute(
+            `INSERT INTO ${TABLE} (uuid, org_uuid, handle, display_name, enabled, token_endpoint, created_by, created_at, updated_by, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [uuid, orgId, kmData.handle, kmData.displayName, enabled, kmData.tokenEndpoint, createdBy, now, createdBy, now]
+        );
     } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError) {
-            throw error;
+        // Let the raw driver error (pg 23505 / sqlite UNIQUE / mssql 2601-2627) propagate
+        // unchanged — callers classify it with db.isDuplicateKeyError(error), which inspects
+        // those driver-specific fields directly and would not recognize a wrapped error.
+        if (!db.isDuplicateKeyError(error)) {
+            logger.error('Error creating key manager', { error });
         }
-        logger.error('Error creating key manager', { error });
-        throw new Sequelize.DatabaseError(error);
+        throw error;
     }
+
+    return {
+        uuid,
+        org_uuid: orgId,
+        handle: kmData.handle,
+        display_name: kmData.displayName,
+        enabled,
+        token_endpoint: kmData.tokenEndpoint,
+        created_by: createdBy,
+        created_at: now,
+        updated_by: createdBy,
+        updated_at: now,
+    };
 };
 
 /**
  * Update an existing key manager.
  */
 const update = async (kmId, kmData, updatedBy) => {
-    try {
-        const updatePayload = {
-            ...(kmData.handle && { handle: kmData.handle }),
-            ...(kmData.displayName && { display_name: kmData.displayName }),
-            ...(kmData.enabled !== undefined && { enabled: kmData.enabled ? 1 : 0 }),
-            ...(kmData.tokenEndpoint && { token_endpoint: kmData.tokenEndpoint }),
-            updated_by: updatedBy,
-            updated_at: new Date(),
-        };
+    const now = new Date();
+    const setClauses = ['updated_by = ?', 'updated_at = ?'];
+    const params = [updatedBy, now];
+    if (kmData.handle) { setClauses.push('handle = ?'); params.push(kmData.handle); }
+    if (kmData.displayName) { setClauses.push('display_name = ?'); params.push(kmData.displayName); }
+    if (kmData.enabled !== undefined) { setClauses.push('enabled = ?'); params.push(kmData.enabled ? 1 : 0); }
+    if (kmData.tokenEndpoint) { setClauses.push('token_endpoint = ?'); params.push(kmData.tokenEndpoint); }
+    params.push(kmId);
 
-        const [updatedRowsCount] = await KeyManager.update(updatePayload, {
-            where: { uuid: kmId }
-        });
+    try {
+        const { rowCount: updatedRowsCount } = await db.execute(
+            `UPDATE ${TABLE} SET ${setClauses.join(', ')} WHERE uuid = ?`,
+            params
+        );
         if (updatedRowsCount < 1) {
-            throw new Sequelize.EmptyResultError('Key manager not found');
+            throw new NotFoundError('Key manager not found');
         }
-        // `returning: true` only yields row instances on Postgres; re-fetch
-        // explicitly so the result is reliable on SQLite too.
-        const updated = await KeyManager.findByPk(kmId);
+        // Re-fetch explicitly so the result is reliable across every dialect.
+        const updated = await db.queryOne(`SELECT * FROM ${TABLE} WHERE uuid = ?`, [kmId]);
         return [updatedRowsCount, [updated]];
     } catch (error) {
-        if (error instanceof Sequelize.UniqueConstraintError || error instanceof Sequelize.EmptyResultError) {
+        if (error instanceof NotFoundError || db.isDuplicateKeyError(error)) {
             throw error;
         }
         logger.error('Error updating key manager', { error });
-        throw new Sequelize.DatabaseError(error);
+        throw error;
     }
 };
 
@@ -81,12 +102,10 @@ const update = async (kmId, kmData, updatedBy) => {
  */
 const list = async (orgId) => {
     try {
-        return await KeyManager.findAll({
-            where: { org_uuid: orgId }
-        });
+        return await db.query(`SELECT * FROM ${TABLE} WHERE org_uuid = ?`, [orgId]);
     } catch (error) {
         logger.error('Error fetching key managers', { error });
-        throw new Sequelize.DatabaseError(error);
+        throw error;
     }
 };
 
@@ -95,12 +114,10 @@ const list = async (orgId) => {
  */
 const listEnabled = async (orgId) => {
     try {
-        return await KeyManager.findAll({
-            where: { org_uuid: orgId, enabled: 1 }
-        });
+        return await db.query(`SELECT * FROM ${TABLE} WHERE org_uuid = ? AND enabled = ?`, [orgId, 1]);
     } catch (error) {
         logger.error('Error fetching enabled key managers', { error });
-        throw new Sequelize.DatabaseError(error);
+        throw error;
     }
 };
 
@@ -109,17 +126,17 @@ const listEnabled = async (orgId) => {
  */
 const get = async (kmId) => {
     try {
-        const km = await KeyManager.findByPk(kmId);
+        const km = await db.queryOne(`SELECT * FROM ${TABLE} WHERE uuid = ?`, [kmId]);
         if (!km) {
-            throw new Sequelize.EmptyResultError('Key manager not found');
+            throw new NotFoundError('Key manager not found');
         }
         return km;
     } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
+        if (error instanceof NotFoundError) {
             throw error;
         }
         logger.error('Error fetching key manager', { error });
-        throw new Sequelize.DatabaseError(error);
+        throw error;
     }
 };
 
@@ -128,19 +145,17 @@ const get = async (kmId) => {
  */
 const getByHandle = async (orgId, handle) => {
     try {
-        const km = await KeyManager.findOne({
-            where: { org_uuid: orgId, handle }
-        });
+        const km = await db.queryOne(`SELECT * FROM ${TABLE} WHERE org_uuid = ? AND handle = ?`, [orgId, handle]);
         if (!km) {
-            throw new Sequelize.EmptyResultError('Key manager not found');
+            throw new NotFoundError('Key manager not found');
         }
         return km;
     } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
+        if (error instanceof NotFoundError) {
             throw error;
         }
         logger.error('Error fetching key manager by handle', { error });
-        throw new Sequelize.DatabaseError(error);
+        throw error;
     }
 };
 
@@ -148,7 +163,7 @@ const getByHandle = async (orgId, handle) => {
  * Resolve a key manager's handle to its internal uuid, or null if not found.
  */
 const getIdByHandle = async (orgId, handle) => {
-    const km = await KeyManager.findOne({ where: { org_uuid: orgId, handle }, attributes: ['uuid'] });
+    const km = await db.queryOne(`SELECT uuid FROM ${TABLE} WHERE org_uuid = ? AND handle = ?`, [orgId, handle]);
     return km ? km.uuid : null;
 };
 
@@ -157,19 +172,17 @@ const getIdByHandle = async (orgId, handle) => {
  */
 const deleteKm = async (kmId) => {
     try {
-        const deleted = await KeyManager.destroy({
-            where: { uuid: kmId }
-        });
+        const { rowCount: deleted } = await db.execute(`DELETE FROM ${TABLE} WHERE uuid = ?`, [kmId]);
         if (deleted < 1) {
-            throw new Sequelize.EmptyResultError('Key manager not found');
+            throw new NotFoundError('Key manager not found');
         }
         return deleted;
     } catch (error) {
-        if (error instanceof Sequelize.EmptyResultError) {
+        if (error instanceof NotFoundError) {
             throw error;
         }
         logger.error('Error deleting key manager', { error });
-        throw new Sequelize.DatabaseError(error);
+        throw error;
     }
 };
 

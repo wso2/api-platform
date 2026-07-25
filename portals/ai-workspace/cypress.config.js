@@ -18,7 +18,7 @@
 
 export default {
   e2e: {
-    baseUrl: process.env.CYPRESS_BASE_URL || 'https://localhost:5380',
+    baseUrl: process.env.CYPRESS_BASE_URL || 'https://localhost:9643',
     specPattern: 'cypress/e2e/**/*.cy.js',
     supportFile: 'cypress/support/e2e.js',
     videosFolder: 'reports/videos',

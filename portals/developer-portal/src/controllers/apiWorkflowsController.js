@@ -20,11 +20,11 @@ const orgDao = require('../dao/organizationDao');
 const apiDao = require('../dao/apiDao');
 const viewDao = require('../dao/viewDao');
 const apiWorkflowService = require('../services/apiWorkflowService');
+const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const util = require('../utils/util');
 const { loadLayoutFromAPI, renderGivenTemplate, renderTemplateFromAPI, rewriteViewStyles, isAiDisabledForPortal } = require('../utils/util');
 const constants = require('../utils/constants');
-const { config } = require('../config/configLoader');
 const fs = require('fs');
 const path = require('path');
 const Handlebars = require('handlebars');
@@ -427,7 +427,9 @@ const getAllPublishedFlowsMD = async (req, res) => {
 const generatePrompt = async (req, res) => {
     const { displayName, description, apis, orgName, viewName, handle } = req.body;
     try {
-        const baseUrl = config.server.baseUrl || `${req.protocol}://${req.get('host')}`;
+        // Use only the configured canonical origin — never the request Host header
+        // (forgeable). If unset, generateAgentPrompt omits the absolute URLs.
+        const baseUrl = config.server?.baseUrl;
         const prompt = apiWorkflowService.generateAgentPrompt(displayName, description, apis || [], orgName || '', viewName || 'default', baseUrl, handle || '');
         res.status(200).json({ agentPrompt: prompt });
     } catch (error) {

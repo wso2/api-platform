@@ -48,9 +48,8 @@ app.post('/api/specs/import-from-url', async (req, res) => {
   res.json(response.data);
 });
 
-// BAD: String-only hostname check — bypassable via DNS rebinding or IP-literal encoding
-// (e.g. "http://0177.0.0.1/", decimal "http://2130706433/", or a domain that later
-// re-resolves to 169.254.169.254 after this check has already passed).
+// BAD: String-only hostname check — bypassable via DNS rebinding or an
+// alternate IP-literal encoding of a denied address.
 function isSafeUrl(raw) {
   const { hostname } = new URL(raw);
   return hostname !== 'localhost' && !hostname.startsWith('127.');

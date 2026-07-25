@@ -48,11 +48,11 @@ app.post('/api/specs/wsdl-import', upload.single('wsdl'), async (req, res) => {
   res.json(result); // No DOCTYPE check, no depth limit, no parse timeout
 });
 
-// BAD: schema location taken from the document itself and fetched — XXE and SSRF
-// in the same code path.
+// BAD: schema location taken from the untrusted document itself and fetched —
+// XXE and SSRF in the same code path.
 async function validateAgainstDeclaredSchema(xmlString) {
   const schemaLocation = extractSchemaLocation(xmlString);
-  const schemaResp = await axios.get(schemaLocation); // Fetches an attacker-chosen URI
+  const schemaResp = await axios.get(schemaLocation);
   return validateAgainstSchema(xmlString, schemaResp.data);
 }
 ```

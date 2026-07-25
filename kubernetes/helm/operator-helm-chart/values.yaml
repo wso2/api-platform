@@ -70,7 +70,7 @@ gateway:
   controlPlaneHost: "http://platform-api:3001"
   helm:
     chartName: "oci://ghcr.io/wso2/api-platform/helm-charts/gateway"
-    chartVersion: "1.1.0"
+    chartVersion: "1.2.0-alpha"
     valuesFilePath: "/config/gateway_values.yaml"
     # Allow insecure connections to OCI registries (skips TLS verification, still uses HTTPS)
     insecureRegistry: false
@@ -437,7 +437,7 @@ gateway:
       controller:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-controller
-          tag: "1.1.0"
+          tag: "1.2.0-beta"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -581,7 +581,7 @@ gateway:
       gatewayRuntime:
         image:
           repository: ghcr.io/wso2/api-platform/gateway-runtime
-          tag: "1.1.0"
+          tag: "1.2.0-beta"
           pullPolicy: Always
         imagePullSecrets: []
         service:

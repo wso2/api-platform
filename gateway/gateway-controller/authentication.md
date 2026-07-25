@@ -22,6 +22,24 @@ Gateway Controller routes are protected using **local roles** (for example `admi
 ## Configuration
 In the umbrella gateway config, these settings live under `controller.auth`. (If you run the controller standalone, the same structure applies under the controller's config root.)
 
+> **Shipped default admin user.** The bundled `config.toml` defines a single basic-auth admin user whose
+> username and password (bcrypt-hashed) are **not hardcoded** — they are interpolated from environment
+> variables provisioned by `scripts/setup.sh`:
+> ```toml
+> [[controller.auth.basic.users]]
+> username        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME" "" }}'
+> password        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH" "" }}'
+> password_hashed = true
+> roles           = ["admin"]
+> ```
+> You provide the plaintext credential to `setup.sh` as `ADMIN_USERNAME` / `ADMIN_PASSWORD` (prompted, or
+> randomly generated if omitted); it then writes `APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME` and the
+> bcrypt `APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH` into `api-platform.env` (the two tokens above),
+> and prints the plaintext password once. If basic auth is enabled but a configured user has an empty
+> username or password (e.g. those tokens are unset), the controller **fails startup** rather than running
+> on an unenforceable credential. To add more users or run standalone, configure them explicitly as shown
+> below. See the [Gateway Quick Start](../../docs/gateway/quick-start-guide.md) for the full credential flow.
+
 ### Option A: Basic Auth (local users)
 ```yaml
 controller:

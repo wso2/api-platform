@@ -17,7 +17,6 @@
  */
  
 const { renderTemplateWithView, resolveActor } = require('../utils/util');
-const { config } = require('../config/configLoader');
 const logger = require('../config/logger');
 const constants = require('../utils/constants');
 const orgDao = require('../dao/organizationDao');
@@ -82,7 +81,6 @@ const loadApiKeysOverview = async (req, res, next) => {
             apiKeys: apiKeys,
             apiKeysCount: apiKeys.length,
             apiKeysLoadError,
-            isReadOnlyMode: config.server.readOnlyMode,
         };
 
         html = await renderTemplateWithView('../pages/api-keys-overview/page.hbs', './src/defaultContent/layout/main.hbs', templateContent, true, orgId, viewName);
