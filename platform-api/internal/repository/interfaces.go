@@ -47,6 +47,7 @@ type ProjectRepository interface {
 	GetProjectByHandleAndOrgID(handle, orgID string) (*model.Project, error)
 	GetProjectsByOrganizationID(orgID string) ([]*model.Project, error)
 	UpdateProject(project *model.Project) error
+	SetProjectActive(projectId string, isActive bool) error
 	DeleteProject(projectId string) error
 	ListProjects(orgID string, opts ListOptions) ([]*model.Project, error)
 	CountProjects(orgID, search string) (int, error)

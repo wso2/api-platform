@@ -28,6 +28,7 @@ type Project struct {
 	Name           string    `json:"displayName" db:"display_name"`
 	OrganizationID string    `json:"organizationId" db:"organization_uuid"` // FK to Organization.ID
 	Description    string    `json:"description" db:"description"`
+	IsActive       bool      `json:"isActive" db:"is_active"`
 	CreatedBy      string    `json:"createdBy,omitempty" db:"created_by"`
 	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
 	UpdatedBy      string    `json:"updatedBy,omitempty" db:"updated_by"`

@@ -38,6 +38,7 @@ CREATE TABLE dbo.projects (
     display_name VARCHAR(255) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     description VARCHAR(1023),
+    is_active SMALLINT NOT NULL DEFAULT 1,
     data_version VARCHAR(20) NOT NULL DEFAULT '1.0',
     created_by VARCHAR(200),
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),

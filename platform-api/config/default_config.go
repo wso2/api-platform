@@ -152,5 +152,11 @@ func defaultConfig() *Server {
 			MaxBodySize:        1 << 20, // 1 MiB
 			SignatureHeader:    "X-Devportal-Signature",
 		},
+		Projects: Projects{
+			// Projects are usable the moment they are created. Cloud deployments
+			// that mirror projects to an external system set this false so a
+			// project stays inactive until its counterpart is provisioned.
+			ActivateOnCreate: true,
+		},
 	}
 }

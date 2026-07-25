@@ -124,6 +124,9 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 	if project == nil {
 		return nil, apperror.ProjectNotFound.New()
 	}
+	if !project.IsActive {
+		return nil, apperror.ProjectNotActive.New()
+	}
 
 	// Handle the API handle (user-facing identifier)
 	var handle string

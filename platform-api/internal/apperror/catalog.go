@@ -140,6 +140,7 @@ var (
 	ProjectNotFound      = def(CodeProjectNotFound, http.StatusNotFound, "The specified project could not be found.")
 	ProjectRefNotFound   = def(CodeProjectRefNotFound, http.StatusBadRequest, "The referenced project could not be found.")
 	ProjectExists        = def(CodeProjectExists, http.StatusConflict, "A project with this name already exists in the organization.")
+	ProjectNotActive     = def(CodeProjectNotActive, http.StatusConflict, "The project is not active yet; its provisioning has not completed.")
 	ApplicationNotFound  = def(CodeApplicationNotFound, http.StatusNotFound, "The specified application could not be found.")
 	ApplicationExists    = def(CodeApplicationExists, http.StatusConflict, "An application with this name already exists.")
 )

@@ -162,6 +162,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		Name:           "default",
 		OrganizationID: id,
 		Description:    "Default project",
+		IsActive:       s.config.Projects.ActivateOnCreate,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}

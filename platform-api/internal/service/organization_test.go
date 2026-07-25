@@ -26,6 +26,7 @@ import (
 
 	"database/sql"
 
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -63,6 +64,7 @@ func setupOrganizationTestEnv(t *testing.T) (*OrganizationService, *database.DB,
 		auditRepo:          &noopAuditRepo{},
 		userOrgMappingRepo: repository.NewUserOrganizationMappingRepo(db),
 		identity:           NewIdentityService(repository.NewUserIdentityMappingRepo(db)),
+		config:             &config.Server{Projects: config.Projects{ActivateOnCreate: true}},
 		slogger:            slog.Default(),
 	}
 

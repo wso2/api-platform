@@ -99,6 +99,19 @@ type Server struct {
 	Gateway     Gateway         `koanf:"gateway"`
 	EventHub    EventHub        `koanf:"event_hub"`
 	Webhook     Webhook         `koanf:"webhook"`
+	Projects    Projects        `koanf:"projects"`
+}
+
+// Projects groups project-lifecycle configuration.
+type Projects struct {
+	// ActivateOnCreate controls the initial state of newly created projects,
+	// including the organization's default project. When true (the default)
+	// projects are created active and immediately usable. Set it false in
+	// deployments that provision projects asynchronously against an external
+	// system (e.g. the cloud counterpart): the project is then created inactive
+	// and stays unusable until it is explicitly activated once provisioning
+	// completes.
+	ActivateOnCreate bool `koanf:"activate_on_create"`
 }
 
 // Authentication modes selectable via auth.mode. Exactly one mode is active;

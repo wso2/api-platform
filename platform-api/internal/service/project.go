@@ -40,25 +40,27 @@ type ProjectService struct {
 	apiRepo        repository.APIRepository
 	mcpProxyRepo   repository.MCPProxyRepository
 	appRepo        repository.ApplicationRepository
-	deletionGuards []ProjectDeletionGuard
-	auditRepo      repository.AuditRepository
-	identity       *IdentityService
-	slogger        *slog.Logger
+	deletionGuards   []ProjectDeletionGuard
+	auditRepo        repository.AuditRepository
+	identity         *IdentityService
+	activateOnCreate bool
+	slogger          *slog.Logger
 }
 
 func NewProjectService(projectRepo repository.ProjectRepository, orgRepo repository.OrganizationRepository,
 	apiRepo repository.APIRepository, mcpProxyRepo repository.MCPProxyRepository,
 	appRepo repository.ApplicationRepository, auditRepo repository.AuditRepository,
-	identity *IdentityService, slogger *slog.Logger) *ProjectService {
+	identity *IdentityService, activateOnCreate bool, slogger *slog.Logger) *ProjectService {
 	return &ProjectService{
-		projectRepo:  projectRepo,
-		orgRepo:      orgRepo,
-		apiRepo:      apiRepo,
-		mcpProxyRepo: mcpProxyRepo,
-		appRepo:      appRepo,
-		auditRepo:    auditRepo,
-		identity:     identity,
-		slogger:      slogger,
+		projectRepo:      projectRepo,
+		orgRepo:          orgRepo,
+		apiRepo:          apiRepo,
+		mcpProxyRepo:     mcpProxyRepo,
+		appRepo:          appRepo,
+		auditRepo:        auditRepo,
+		identity:         identity,
+		activateOnCreate: activateOnCreate,
+		slogger:          slogger,
 	}
 }
 
@@ -135,6 +137,7 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 	projectModel.ID = projectID
 	projectModel.Handle = handle
 	projectModel.OrganizationID = organizationID
+	projectModel.IsActive = s.activateOnCreate
 	projectModel.CreatedBy = actor
 	projectModel.UpdatedBy = actor
 
@@ -308,6 +311,39 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 	}
 	_ = s.auditRepo.Record("DELETE", project.ID, "project", orgId, actor)
 	return nil
+}
+
+// SetProjectActive flips a project's active state. It exists so an external
+// provisioning flow (e.g. the cloud integrator, once the Platform API is made
+// extensible) can mark a project ready after its counterpart has been created.
+// In the OSS build projects are always created active, so this is unused there.
+func (s *ProjectService) SetProjectActive(handle, orgId, actor string, isActive bool) (*api.Project, error) {
+	project, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, orgId)
+	if err != nil {
+		return nil, err
+	}
+	if project == nil {
+		return nil, apperror.ProjectNotFound.New()
+	}
+
+	if project.IsActive != isActive {
+		if err := s.projectRepo.SetProjectActive(project.ID, isActive); err != nil {
+			return nil, err
+		}
+		project.IsActive = isActive
+		_ = s.auditRepo.Record("UPDATE", project.ID, "project", orgId, actor)
+	}
+
+	org, err := s.orgRepo.GetOrganizationByUUID(orgId)
+	if err != nil {
+		return nil, err
+	}
+	orgHandle := ""
+	if org != nil {
+		orgHandle = org.Handle
+	}
+
+	return s.modelToAPI(project, orgHandle)
 }
 
 func (s *ProjectService) apiToModel(project *api.Project) *model.Project {

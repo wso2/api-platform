@@ -1416,12 +1416,30 @@ func TestLLMProxyServiceCreateFailsWhenProviderNotFound(t *testing.T) {
 			return nil, nil
 		},
 	}
-	projectRepo := &mockProjectRepo{project: &model.Project{ID: "project-1", OrganizationID: "org-1"}}
+	projectRepo := &mockProjectRepo{project: &model.Project{ID: "project-1", OrganizationID: "org-1", IsActive: true}}
 	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 
 	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
 	if !apperror.LLMProviderNotFound.Is(err) {
 		t.Fatalf("expected ErrLLMProviderNotFound, got: %v", err)
+	}
+}
+
+func TestLLMProxyServiceCreateFailsWhenProjectInactive(t *testing.T) {
+	proxyRepo := &mockLLMProxyRepo{}
+	// The provider lookup would succeed, so a PROJECT_NOT_ACTIVE result proves the
+	// inactive-project guard runs before (and independently of) provider validation.
+	providerRepo := &mockLLMProviderRepo{
+		getByIDFunc: func(providerID, orgUUID string) (*model.LLMProvider, error) {
+			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
+		},
+	}
+	projectRepo := &mockProjectRepo{project: &model.Project{ID: "project-1", OrganizationID: "org-1", IsActive: false}}
+	service := NewLLMProxyService(proxyRepo, providerRepo, projectRepo, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
+
+	_, err := service.Create("org-1", "alice", validProxyRequest("provider-1", "project-1"))
+	if !apperror.ProjectNotActive.Is(err) {
+		t.Fatalf("expected ProjectNotActive, got: %v", err)
 	}
 }
 

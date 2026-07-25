@@ -1397,6 +1397,9 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		if project == nil || project.OrganizationID != orgUUID {
 			return nil, apperror.ProjectNotFound.New()
 		}
+		if !project.IsActive {
+			return nil, apperror.ProjectNotActive.New()
+		}
 		projectUUID = project.ID
 	}
 

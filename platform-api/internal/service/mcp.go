@@ -126,6 +126,9 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		if project == nil || project.OrganizationID != orgUUID {
 			return nil, apperror.ProjectRefNotFound.New()
 		}
+		if !project.IsActive {
+			return nil, apperror.ProjectNotActive.New()
+		}
 		projectUUID = &project.ID
 	}
 

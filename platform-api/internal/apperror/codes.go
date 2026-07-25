@@ -118,6 +118,7 @@ const (
 	CodeProjectNotFound    = "PROJECT_NOT_FOUND"
 	CodeProjectRefNotFound = "PROJECT_REF_NOT_FOUND"
 	CodeProjectExists      = "PROJECT_EXISTS"
+	CodeProjectNotActive   = "PROJECT_NOT_ACTIVE"
 )
 
 // Application domain codes.

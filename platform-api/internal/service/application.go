@@ -119,6 +119,9 @@ func (s *ApplicationService) CreateApplication(req *api.CreateApplicationRequest
 		if project == nil {
 			return nil, apperror.ProjectNotFound.New()
 		}
+		if !project.IsActive {
+			return nil, apperror.ProjectNotActive.New()
+		}
 		projectID = project.ID
 
 		existingByName, err := s.appRepo.GetApplicationByNameInProject(strings.TrimSpace(req.DisplayName), projectID, orgID)

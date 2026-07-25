@@ -37,8 +37,9 @@ import (
 // signature drifts, the server stops building.
 type Deps struct {
 	Gateways Gateways
+	Projects Projects
 	// add more capability groups as external plugins need them
-	// (APIs, Subscriptions, Applications, Projects, Organizations, LLM, MCP, …)
+	// (APIs, Subscriptions, Applications, Organizations, LLM, MCP, …)
 
 	Config *config.Server
 	Logger *slog.Logger
@@ -61,4 +62,28 @@ type Gateways interface {
 
 	// DeleteGateway removes a gateway within an organization (Delete).
 	DeleteGateway(gatewayID, orgID, deletedBy string) error
+}
+
+// Projects exposes project access scoped by organization. Every method mirrors an
+// existing ProjectService method verbatim and takes the organization id explicitly
+// — handlers MUST pass the org resolved from the request context, never one from
+// request input (GO-AUTH-005).
+//
+// SetProjectActive is the capability the cloud extension uses to flip a project to
+// active once its external counterpart (e.g. the OpenChoreo project) has been
+// provisioned; create/get/delete let the extension mirror projects created on the
+// external side. The is_active flag and the create-time default live in the core;
+// the provisioning workflow that drives them lives entirely in the external plugin.
+type Projects interface {
+	// CreateProject creates a project in an organization (Create).
+	CreateProject(req *api.CreateProjectRequest, organizationID, actor string) (*api.Project, error)
+
+	// GetProjectByHandle returns a single project by handle within an organization (Read).
+	GetProjectByHandle(handle, orgID string) (*api.Project, error)
+
+	// SetProjectActive flips a project's active state within an organization.
+	SetProjectActive(handle, orgID, actor string, isActive bool) (*api.Project, error)
+
+	// DeleteProject removes a project within an organization (Delete).
+	DeleteProject(handle, orgID, actor string) error
 }

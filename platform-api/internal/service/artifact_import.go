@@ -275,6 +275,9 @@ func (s *ArtifactImportService) importValidated(orgID, gatewayID string, req dto
 			return nil, apperror.ProjectNotFound.New().WithLogMessage(
 				fmt.Sprintf("project with handle %q does not exist in org %q", ictx.ProjectHandle, orgID))
 		}
+		if !project.IsActive {
+			return nil, apperror.ProjectNotActive.New()
+		}
 		ictx.ProjectID = project.ID
 	}
 

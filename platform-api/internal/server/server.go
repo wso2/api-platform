@@ -243,7 +243,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		cfg,
 		slogger,
 	)
-	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, appRepo, auditRepo, identityService, slogger)
+	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, appRepo, auditRepo, identityService, cfg.Projects.ActivateOnCreate, slogger)
 	gatewayEventsService := service.NewGatewayEventsService(eventHub, identityService, slogger)
 	appService := service.NewApplicationService(appRepo, projectRepo, orgRepo, apiRepo, gatewayEventsService, auditRepo, identityService, slogger)
 	apiService := service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo,
@@ -429,6 +429,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// signature drifts from the pdk interface, this stops building.
 	pdkDeps := &pdk.Deps{
 		Gateways: gatewayService,
+		Projects: projectService,
 		Config:   cfg,
 		Logger:   slogger,
 	}
