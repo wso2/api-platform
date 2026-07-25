@@ -1,0 +1,158 @@
+name: Release AI Workspace UI Helm Chart
+
+# Publishes the `ai-workspace-ui` component chart (from the packaging model) to
+# GHCR as an OCI artifact. Self-contained — embeds the shared apip.* helpers, no
+# chart dependencies.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Chart version (e.g., 0.1.0)'
+        required: true
+        type: string
+      appVersion:
+        description: 'App version (e.g., 1.0.0-alpha2)'
+        required: true
+        type: string
+
+env:
+  CHART_NAME: ai-workspace-ui
+  CHART_PATH: kubernetes/helm/ai-workspace-ui-helm-chart
+  REGISTRY: ghcr.io
+  REGISTRY_USERNAME: api-platform-bot
+  ORGANIZATION: wso2
+  REGISTRY_PATH: api-platform/helm-charts
+  CHART_VERSION: ${{ inputs.version }}
+  APP_VERSION: ${{ inputs.appVersion }}
+
+jobs:
+  release-helm-chart:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate input formats
+        run: |
+          if ! echo "${CHART_VERSION}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9._-]+)?$'; then
+            echo "::error::Invalid version '${CHART_VERSION}'. Expected semver (e.g. 0.1.0 or 0.1.0-rc.1)."
+            exit 1
+          fi
+          if ! echo "${APP_VERSION}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9._-]+)?$'; then
+            echo "::error::Invalid appVersion '${APP_VERSION}'. Expected semver (e.g. 1.0.0-alpha2)."
+            exit 1
+          fi
+
+      - name: Check tag does not already exist
+        run: |
+          TAG="helm-${CHART_NAME}-${CHART_VERSION}"
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
+            echo "::error::Tag '$TAG' already exists. Bump the version or delete the tag first."
+            exit 1
+          fi
+          echo "Tag '$TAG' is free. Proceeding."
+
+      - name: Validate image tag matches appVersion
+        working-directory: ${{ env.CHART_PATH }}
+        run: |
+          IMAGE_TAG=$(yq '.image.tag' values.yaml)
+
+          echo "App Version: ${APP_VERSION}"
+          echo "Image tag: $IMAGE_TAG"
+
+          if [ "$IMAGE_TAG" != "${APP_VERSION}" ]; then
+            echo "::error::image tag '$IMAGE_TAG' does not match appVersion '${APP_VERSION}' in values.yaml"
+            echo "::error::Please update image.tag in ${{ env.CHART_PATH }}/values.yaml to match the appVersion '${APP_VERSION}' before releasing."
+            exit 1
+          fi
+
+          echo "✅ Image tag matches appVersion '${APP_VERSION}'"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'latest'
+
+      - name: Update Chart version
+        working-directory: ${{ env.CHART_PATH }}
+        run: |
+          sed -i "s/^version:.*/version: ${CHART_VERSION}/" Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${APP_VERSION}\"/" Chart.yaml
+          echo "Updated Chart.yaml:"
+          cat Chart.yaml
+
+      - name: Package Helm chart
+        working-directory: ${{ env.CHART_PATH }}
+        run: |
+          helm package .
+          echo "Packaged chart:"
+          ls -la *.tgz
+
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.API_PLATFORM_BOT_TOKEN }}" | helm registry login ${{ env.REGISTRY }} --username ${{ env.REGISTRY_USERNAME }} --password-stdin
+
+      - name: Push Helm chart
+        working-directory: ${{ env.CHART_PATH }}
+        run: |
+          helm push "${CHART_NAME}-${CHART_VERSION}.tgz" "oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}"
+
+      - name: Commit and push version changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ${{ env.CHART_PATH }}/Chart.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: bump helm-${CHART_NAME} chart version to ${CHART_VERSION}"
+            git push
+          else
+            echo "No changes to commit"
+          fi
+
+      - name: Create and push git tag
+        run: |
+          TAG="helm-${CHART_NAME}-${CHART_VERSION}"
+          git tag "$TAG"
+          git push origin "refs/tags/$TAG"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: helm-${{ env.CHART_NAME }}-${{ inputs.version }}
+          name: AI Workspace UI Helm Chart ${{ inputs.version }}
+          body: |
+            ## AI Workspace UI Helm Chart Release ${{ inputs.version }}
+
+            **App Version:** `${{ inputs.appVersion }}`
+
+            ### Installation
+            ```bash
+            helm install ${{ env.CHART_NAME }} oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }} --version ${{ inputs.version }}
+            ```
+
+            ### OCI Registry
+            `oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }}:${{ inputs.version }}`
+          draft: true
+          prerelease: ${{ contains(inputs.version, '-') }}
+          token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+
+
+      - name: Chart Summary
+        run: |
+          echo "### AI Workspace UI Helm Chart Released :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Chart Name:** \`${CHART_NAME}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Chart Version:** \`${CHART_VERSION}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**App Version:** \`${APP_VERSION}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Git Tag:** \`helm-${CHART_NAME}-${CHART_VERSION}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** \`oci://${REGISTRY}/${ORGANIZATION}/${REGISTRY_PATH}/${CHART_NAME}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Install Command" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "helm install ${CHART_NAME} oci://${REGISTRY}/${ORGANIZATION}/${REGISTRY_PATH}/${CHART_NAME} --version ${CHART_VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,218 @@
+{{- $pa := .Values -}}
+{{- $deployment := $pa.deployment -}}
+{{- $secrets := $pa.secrets -}}
+{{- $tls := $pa.tls -}}
+{{- $https := $pa.config.server.https -}}
+{{- $jwt := $pa.config.auth.jwt -}}
+{{- $jwtKeyDir := regexReplaceAll "/[^/]+$" $jwt.publicKeyFile "" -}}
+{{- $tlsMounted := and $https.enabled (or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret")) -}}
+{{- if and $deployment.enabled $https.enabled (not (or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret"))) }}
+{{- fail "platform-api: config.server.https.enabled=true requires tls.certificateProvider to be \"cert-manager\" or \"secret\" — the Platform API has no self-signed fallback." }}
+{{- end }}
+{{- $secretName := include "apip.platformApi.secretName" . -}}
+{{- if $deployment.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "apip.platformApi.fullname" . }}
+  labels:
+    {{- include "apip.componentLabels" (list . "platform-api" $deployment.labels) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . $deployment.annotations)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ $deployment.replicaCount }}
+  {{- with $deployment.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "apip.componentSelectorLabels" (list . "platform-api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "apip.componentPodLabels" (list . "platform-api" $deployment.podLabels) | nindent 8 }}
+      {{- $podAnnotations := omit (merge (dict) (default (dict) $deployment.podAnnotations) (default (dict) .Values.global.commonAnnotations)) "checksum/config" }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with $podAnnotations }}
+        {{- include "apip.renderStringMap" . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "apip.serviceAccountName" . }}
+      {{- with (include "apip.componentImagePullSecretsBlock" (dict "root" . "componentPullSecrets" $pa.imagePullSecrets)) }}
+      {{- . | nindent 6 }}
+      {{- end }}
+      {{- with $deployment.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      {{- with $deployment.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if hasKey $deployment "terminationGracePeriodSeconds" }}
+      terminationGracePeriodSeconds: {{ $deployment.terminationGracePeriodSeconds }}
+      {{- end }}
+      {{- with $deployment.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.dnsPolicy }}
+      dnsPolicy: {{ . }}
+      {{- end }}
+      {{- with $deployment.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if hasKey $deployment "automountServiceAccountToken" }}
+      automountServiceAccountToken: {{ $deployment.automountServiceAccountToken }}
+      {{- end }}
+      containers:
+        - name: platform-api
+          image: {{ include "apip.componentImage" (dict "root" . "repository" $pa.image.repository "defaultRepository" "ghcr.io/wso2/api-platform/platform-api" "tag" $pa.image.tag) | quote }}
+          imagePullPolicy: {{ $pa.image.pullPolicy }}
+          {{- with $deployment.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          args:
+            - "-config"
+            - "/etc/platform-api/config-platform-api.toml"
+          env:
+            # Secrets sourced from the external Secret (created by generate-secrets.sh);
+            # resolved into the config file via its {{ "{{ env \"APIP_CP_*\" }}" }} tokens.
+            - name: APIP_CP_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $secrets.keys.encryptionKey }}
+            {{- if ne $pa.config.database.driver "sqlite3" }}
+            - name: APIP_CP_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $secrets.keys.databasePassword }}
+            {{- end }}
+            {{- if $pa.config.webhook.enabled }}
+            - name: APIP_CP_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $secrets.keys.webhookSecret }}
+            {{- end }}
+            {{- if eq $pa.config.auth.mode "file" }}
+            # file-mode admin credentials — generated username + bcrypt hash from
+            # the Secret; no admin/admin default (the config token fails closed).
+            - name: APIP_CP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $secrets.keys.adminUsername }}
+            - name: APIP_CP_ADMIN_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ $secrets.keys.adminPasswordHash }}
+            {{- end }}
+            {{- range $deployment.extraEnv }}
+            - {{- toYaml . | nindent 14 }}
+            {{- end }}
+          {{- with $deployment.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $pa.containerPort }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml $deployment.livenessProbe | nindent 12 }}
+          {{- with $deployment.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          readinessProbe:
+            {{- toYaml $deployment.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml ($deployment.resources | default dict) | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ $deployment.volumeMountPath }}
+            - name: config
+              mountPath: /etc/platform-api/config-platform-api.toml
+              subPath: config-platform-api.toml
+            - name: jwt-keys
+              mountPath: {{ $jwtKeyDir }}
+              readOnly: true
+            {{- if $tlsMounted }}
+            - name: tls-certs
+              mountPath: {{ $https.certDir }}
+              readOnly: true
+            {{- end }}
+            {{- with $deployment.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: data
+          {{- if $pa.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ if $pa.persistence.existingClaim }}{{ $pa.persistence.existingClaim }}{{ else }}{{ include "apip.platformApi.fullname" . }}-data{{ end }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: config
+          configMap:
+            name: {{ include "apip.platformApi.fullname" . }}-config
+            items:
+              - key: config-platform-api.toml
+                path: config-platform-api.toml
+        # RS256 JWT keys mounted as PEM files from the external Secret. The
+        # public key verifies tokens (every mode); the private key signs
+        # file-mode login tokens (mounted only in file mode).
+        - name: jwt-keys
+          secret:
+            secretName: {{ $secretName }}
+            items:
+              - key: {{ $secrets.keys.jwtPublicKey }}
+                path: {{ base $jwt.publicKeyFile }}
+              {{- if eq $pa.config.auth.mode "file" }}
+              - key: {{ $secrets.keys.jwtPrivateKey }}
+                path: {{ base $jwt.privateKeyFile }}
+              {{- end }}
+        {{- if $tlsMounted }}
+        - name: tls-certs
+          secret:
+            {{- if eq $tls.certificateProvider "cert-manager" }}
+            secretName: {{ include "apip.platformApi.fullname" . }}-tls
+            {{- else if eq $tls.certificateProvider "secret" }}
+            secretName: {{ $tls.secret.name }}
+            {{- end }}
+            items:
+              - key: {{ if eq $tls.certificateProvider "cert-manager" }}tls.crt{{ else }}{{ $tls.secret.certKey }}{{ end }}
+                path: cert.pem
+              - key: {{ if eq $tls.certificateProvider "cert-manager" }}tls.key{{ else }}{{ $tls.secret.keyKey }}{{ end }}
+                path: key.pem
+        {{- end }}
+        {{- with $deployment.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}
+

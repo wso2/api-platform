@@ -1,0 +1,30 @@
+{{- $dp := .Values -}}
+{{- $pdb := $dp.podDisruptionBudget -}}
+{{- if and $dp.deployment.enabled $pdb.enabled }}
+{{- if and $pdb.minAvailable $pdb.maxUnavailable }}
+{{- fail "developer-portal.podDisruptionBudget: only one of minAvailable or maxUnavailable may be set" }}
+{{- end }}
+{{- if not (or $pdb.minAvailable $pdb.maxUnavailable) }}
+{{- fail "developer-portal.podDisruptionBudget: one of minAvailable or maxUnavailable must be set" }}
+{{- end }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "apip.developerPortal.fullname" . }}
+  labels:
+    {{- include "apip.componentLabels" (list . "developer-portal" dict) | nindent 4 }}
+  {{- with (include "apip.annotations" (list . dict)) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "apip.componentSelectorLabels" (list . "developer-portal") | nindent 6 }}
+  {{- if $pdb.minAvailable }}
+  minAvailable: {{ $pdb.minAvailable }}
+  {{- else if $pdb.maxUnavailable }}
+  maxUnavailable: {{ $pdb.maxUnavailable }}
+  {{- end }}
+{{- end }}
+
