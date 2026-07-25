@@ -119,7 +119,7 @@ type GuardrailsSectionProps = {
     guardrail: { name: string; version: string },
     values: ParameterValues
   ) => void;
-  onRemoveGuardrail: (guardrailName: string) => void;
+  onRemoveGuardrail: (guardrailId: string) => void;
 };
 
 export default function GuardrailsSection({
@@ -382,10 +382,10 @@ export default function GuardrailsSection({
                     </Box>
                   )}
                   {guardrails.map((guardrail) => (
-                    <Box key={guardrail.name} sx={{ mr: 1.5, mb: 1.5 }}>
+                    <Box key={guardrail.id} sx={{ mr: 1.5, mb: 1.5 }}>
                       <GuardrailPill
                         label={`${guardrail.name} (${guardrail.version})`}
-                        onRemove={() => onRemoveGuardrail(guardrail.name)}
+                        onRemove={() => onRemoveGuardrail(guardrail.id)}
                       />
                       {/* {guardrail.configuration ? (
                         <Typography
