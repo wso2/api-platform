@@ -45,6 +45,17 @@ import {
   getProjectSlug,
   buildOrgPath,
 } from '../../utils/projectRouting';
+import { cloudExtensions } from '@cloud-extensions';
+
+// Maps a URL segment contributed by a cloud nav item (first segment of its path) to
+// the sidebar item id, so the active-item sync highlights cloud routes too. Empty in
+// the standalone (stub) build.
+const cloudSegmentToId = new Map(
+  cloudExtensions.navItems.map((item) => [
+    item.path.replace(/^\/+/, '').split('/')[0],
+    item.id,
+  ])
+);
 import { logger } from '../../utils/logger';
 import { FormattedMessage } from 'react-intl';
 import OoopsImage from '../../assets/images/Ooops.svg';
@@ -200,6 +211,10 @@ export default function AppLayout(): JSX.Element {
         shellActions.setActiveMenuItem('quick-start');
         return;
       }
+      if (cloudSegmentToId.has(tertiarySegment)) {
+        shellActions.setActiveMenuItem(cloudSegmentToId.get(tertiarySegment)!);
+        return;
+      }
       if (tertiarySegment === 'settings') {
         shellActions.setActiveMenuItem('settings');
       }
@@ -235,6 +250,10 @@ export default function AppLayout(): JSX.Element {
     }
     if (primarySegment === 'insights') {
       shellActions.setActiveMenuItem('insights');
+      return;
+    }
+    if (cloudSegmentToId.has(primarySegment)) {
+      shellActions.setActiveMenuItem(cloudSegmentToId.get(primarySegment)!);
       return;
     }
     if (primarySegment === 'settings') {

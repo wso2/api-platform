@@ -37,6 +37,7 @@ var browserSafeKeys = []string{
 	"gateway.controlplane_host",
 	"gateway.platform_gateway_versions",
 	"logging.browser_debug",
+	"cloud_features",
 
 	// Claim names the SPA displays user/org identity from. The keys mirror the
 	// Platform API's [auth.claim_mappings] exactly — same claim, same name. Shared

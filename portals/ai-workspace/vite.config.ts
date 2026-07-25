@@ -80,6 +80,7 @@ const browserSafeEnvVars = [
   'APIP_AIW_MOESIF_APP_API_KEY',     // Moesif publishable Application Id
   'APIP_AIW_PLATFORM_API_BASE_URL',
   'APIP_AIW_PORTAL_API_BASE_URL',
+  'APIP_AIW_CLOUD_FEATURES',          // runtime gate for cloud-only extensions
 ]
 
 const plugins: PluginOption[] = [
@@ -98,6 +99,18 @@ export default defineConfig({
   envPrefix: browserSafeEnvVars,
   resolve: {
     dedupe: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
+    alias: {
+      // Cloud extension seam. Defaults to a no-op stub so the standalone/OSS build
+      // contributes nothing; a cloud build sets APIP_AIW_CLOUD_EXTENSIONS (a path
+      // relative to this portal, e.g. src/cloud/extensions.tsx supplied by the SaaS
+      // overlay) to swap in the real module. `@cloud-ui` is where the reusable
+      // feature components live (always in this repo; only imported when a real
+      // extensions module references them).
+      '@cloud-extensions': process.env.APIP_AIW_CLOUD_EXTENSIONS
+        ? path.resolve(__dirname, process.env.APIP_AIW_CLOUD_EXTENSIONS)
+        : path.resolve(__dirname, 'src/cloud/extensions.stub.ts'),
+      '@cloud-ui': path.resolve(__dirname, 'src/cloud/ui'),
+    },
   },
   server: {
     port: 9643,

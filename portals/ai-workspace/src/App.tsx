@@ -85,6 +85,12 @@ import { ChoreoUserProvider } from './contexts/ChoreoUserContext';
 import { useAppAuth } from './contexts/AppAuthContext';
 import { Box, Button, Stack, Typography } from '@wso2/oxygen-ui';
 import OoopsImage from './assets/images/Ooops.svg';
+import { cloudExtensions } from '@cloud-extensions';
+
+// Provider(s) contributed by a cloud extension, wrapped around the app shell. Falls
+// back to a pass-through so the standalone (stub) build adds no wrapper.
+const CloudProviders =
+  cloudExtensions.Providers ?? (({ children }: { children: React.ReactNode }) => <>{children}</>);
 
 /**
  * Only allow same-origin relative paths as return URLs to prevent open redirects.
@@ -253,7 +259,9 @@ function ProtectedAppShell() {
       <RoleProvider>
         <AIWorkspaceSnackbarProvider>
           <AppShellProvider userName={userName} userEmail={userEmail}>
-            <AppShellMain />
+            <CloudProviders>
+              <AppShellMain />
+            </CloudProviders>
           </AppShellProvider>
         </AIWorkspaceSnackbarProvider>
       </RoleProvider>
@@ -592,6 +600,16 @@ export default function App() {
                 />
               </Route>
             </Route>
+            {/* Cloud extension routes (org scope) */}
+            {cloudExtensions.routes
+              .filter((r) => r.scope === 'org' || r.scope === 'both')
+              .map((r) => (
+                <Route
+                  key={`cloud-org-${r.path}`}
+                  path={r.path}
+                  element={<WithPageBoundary>{r.element}</WithPageBoundary>}
+                />
+              ))}
             <Route path="projects/:projectSlug" element={<ProjectShell />}>
               <Route index element={<Navigate to="home" replace />} />
               <Route
@@ -803,6 +821,16 @@ export default function App() {
                   />
                 </Route>
               </Route>
+              {/* Cloud extension routes (project scope) */}
+              {cloudExtensions.routes
+                .filter((r) => r.scope === 'project' || r.scope === 'both')
+                .map((r) => (
+                  <Route
+                    key={`cloud-project-${r.path}`}
+                    path={r.path}
+                    element={<WithPageBoundary>{r.element}</WithPageBoundary>}
+                  />
+                ))}
             </Route>
           </Route>
         </Route>
