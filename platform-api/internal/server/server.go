@@ -45,6 +45,7 @@ import (
 	internalvault "github.com/wso2/api-platform/platform-api/internal/vault"
 	"github.com/wso2/api-platform/platform-api/internal/webhook"
 	"github.com/wso2/api-platform/platform-api/internal/websocket"
+	"github.com/wso2/api-platform/platform-api/pdk"
 
 	"github.com/wso2/api-platform/common/authenticators"
 	"github.com/wso2/api-platform/common/eventhub"
@@ -65,6 +66,7 @@ type Server struct {
 	dispatcher     *service.EventDispatcher
 	eventHub       eventhub.EventHub
 	logger         *slog.Logger
+	plugins        []plugin.Plugin // internal plugins + wrapped external plugins
 }
 
 // validateServerConfig enforces request-security requirements at startup that
@@ -77,8 +79,19 @@ func validateServerConfig(cfg *config.Server) error {
 	return nil
 }
 
-// StartPlatformAPIServer creates a new server instance with all dependencies initialized
-func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, error) {
+// StartPlatformAPIServer creates a new server instance with all dependencies
+// initialized. It accepts extensions in two tiers:
+//
+//   - internalPlugins — in-tree modules (e.g. eventgateway) that receive the full
+//     plugin.Deps (raw repos, services, DB, event hub). Supplied by cmd/main.go
+//     via internal/builtins.Plugins().
+//   - externalPlugins — external/wrapper modules that receive only the
+//     capabilities in pdk.Deps. Supplied by the platform façade from WithPlugin.
+//
+// Both tiers run through one startup loop and are shut down the same way; they
+// differ only in the Deps each receives.
+func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
+	internalPlugins []plugin.Plugin, externalPlugins []pdk.Plugin) (*Server, error) {
 	if err := validateServerConfig(cfg); err != nil {
 		slogger.Error("Invalid server configuration", "error", err)
 		return nil, err
@@ -358,12 +371,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	}
 	slogger.Info("Loaded OpenAPI scope registry", "path", cfg.OpenAPISpecPath)
 
-	// Load and validate the role-to-scope map when roles.yaml is configured.
-	roleScopeMap, err := loadRoleScopeMap(cfg, scopeRegistry, slogger)
-	if err != nil {
-		return nil, err
-	}
-
 	if !cfg.Auth.ScopeValidation {
 		slogger.Warn("scope validation is disabled — all authenticated requests will be allowed regardless of scope")
 	}
@@ -414,22 +421,53 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		IdentityService:       identityService,
 		DBEncryptionKey:       dbEncryptionKey,
 	}
-	for _, p := range plugin.All() {
-		if err := p.Init(pluginDeps); err != nil {
-			return nil, fmt.Errorf("plugin %q failed to initialize: %w", p.Name(), err)
+
+	// pdkDeps is the external tier's view: platform capabilities as public
+	// interfaces only, never raw repositories. Assigning the concrete services
+	// here works because they satisfy the pdk interfaces by shape, and the
+	// assignment itself is the compile-time contract check: if a service method
+	// signature drifts from the pdk interface, this stops building.
+	pdkDeps := &pdk.Deps{
+		Gateways: gatewayService,
+		Config:   cfg,
+		Logger:   slogger,
+	}
+
+	wiring, err := initPlugins(slogger, mux, scopeRegistry, pluginDeps, pdkDeps, internalPlugins, externalPlugins)
+	if err != nil {
+		return nil, err
+	}
+	plugins := wiring.plugins
+
+	// From here on the plugins are running. Every remaining failure path in this
+	// function must stop them again, so the cleanup is deferred rather than
+	// repeated at each return — startupOK is set only on the success path.
+	startupOK := false
+	defer func() {
+		if !startupOK {
+			shutdownPlugins(slogger, plugins)
 		}
-		// Merge plugin-contributed scopes into the main registry.
-		if spec := p.OpenAPISpec(); len(spec) > 0 {
-			pluginRegistry, regErr := middleware.LoadScopeRegistryFromBytes(spec)
-			if regErr != nil {
-				slogger.Warn("plugin scope registry load failed", "plugin", p.Name(), "error", regErr)
-			} else {
-				scopeRegistry.Merge(pluginRegistry)
-			}
-		}
-		p.RegisterRoutes(mux)
-		slogger.Info("Plugin initialized", "name", p.Name())
-		// Wire plugin-owned repos/services into core services.
+	}()
+
+	// Load and validate the role-to-scope map when roles.yaml is configured.
+	// Runs after initPlugins so a role may map to a plugin-declared scope, and
+	// after the defer above so a bad roles.yaml still stops the plugins.
+	roleScopeMap, err := loadRoleScopeMap(cfg, scopeRegistry, slogger)
+	if err != nil {
+		return nil, err
+	}
+
+	// Declared public paths are appended before the auth middleware is built
+	// below, so the skip-path list is complete when the chain is assembled.
+	cfg.Auth.SkipPaths = append(cfg.Auth.SkipPaths, wiring.authSkipPaths...)
+
+	// Plugin-contributed middleware, spliced into the chain when it is built:
+	// preChain outermost (before CORS/auth), postChain innermost (after scope
+	// enforcement, before the mux).
+	preChain, postChain := wiring.preChain, wiring.postChain
+
+	// Wire plugin-owned repos/services into core services.
+	for _, p := range plugins {
 		if ep, ok := p.(plugin.EventArtifactPlugin); ok {
 			internalGatewayService.SetEventArtifactRepos(ep.GetWebSubAPIRepo(), ep.GetWebBrokerAPIRepo())
 			internalGatewayHandler.SetHmacSecretService(ep.GetHmacSecretService())
@@ -438,7 +476,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 			projectService.RegisterDeletionGuard(guard)
 		}
 	}
-	slogger.Info("Registered API routes successfully")
 
 	// Register the control-plane webhook receiver (Developer Portal -> Platform API) when enabled.
 	// Authenticity is established by HMAC signature; the route is excluded from JWT/IDP auth via
@@ -464,9 +501,18 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 	slogger.Info("Registered API routes successfully")
 
 	// Build the middleware chain that wraps the mux.
-	// Order: CORS → auth → scope enforcer → mux
+	// Order: [plugin preChain] → CORS → auth → org resolver → scope enforcer →
+	//        [plugin postChain] → mux
 	var chain []func(http.Handler) http.Handler
 
+	// Plugin "before" middleware — outermost, before CORS/auth. No authenticated
+	// identity is in the context here. pdk.Middleware shares
+	// its underlying type with the chain element type, so each is assignable.
+	for _, mw := range preChain {
+		chain = append(chain, mw)
+	}
+
+	// validateServerConfig already rejected a wildcard allowlist.
 	// Cross-origin access is disabled by default (empty AllowedOrigins fails closed in the
 	// CORS middleware); operators must opt in explicitly via CORS.AllowedOrigins in config.
 	corsOrigins := cfg.Listeners.CORS.AllowedOrigins
@@ -526,12 +572,20 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		Enabled:        cfg.Auth.ScopeValidation,
 	}))
 
+	// Plugin "after" middleware — innermost, after auth + scope enforcement, just
+	// before the mux. The authenticated org/identity are in the context here and
+	// must be read from it, never from request input (GO-AUTH-005).
+	for _, mw := range postChain {
+		chain = append(chain, mw)
+	}
+
 	slogger.Info("WebSocket manager initialized",
 		slog.Int("maxConnections", cfg.Listeners.WebSocket.MaxConnections),
 		slog.Int("heartbeatTimeout", cfg.Listeners.WebSocket.ConnectionTimeout),
 		slog.Int("rateLimitPerMin", cfg.Listeners.WebSocket.RateLimitPerMin),
 	)
 
+	startupOK = true
 	return &Server{
 		mux:            mux,
 		handler:        gohttpkit.Chain(chain...)(mux),
@@ -544,6 +598,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger) (*Server, 
 		dispatcher:     dispatcher,
 		eventHub:       eventHub,
 		logger:         slogger,
+		plugins:        plugins,
 	}, nil
 }
 
@@ -776,7 +831,7 @@ func (s *Server) Start(listeners config.ServerListeners, timeouts config.Timeout
 				s.logger.Error("HTTP server shutdown error", "addr", srv.Addr, "error", err)
 			}
 		}
-		for _, p := range plugin.All() {
+		for _, p := range s.plugins {
 			if err := p.Shutdown(shutdownCtx); err != nil {
 				s.logger.Error("Plugin shutdown error", "plugin", p.Name(), "error", err)
 			}
