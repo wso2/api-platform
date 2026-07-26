@@ -235,21 +235,21 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage" +
 	" ap:git:read"
 
-// DefaultConfigFile is where the container mounts config.toml. It is the path used
-// unless -config names another one.
-const DefaultConfigFile = "/etc/ai-workspace/config.toml"
-
-// Load resolves configuration from the config.toml at path, or from the mounted
-// DefaultConfigFile when path is empty. It loads defaults, overlays the file (with its
-// {{ env }} / {{ file }} tokens expanded), normalizes derived fields, then validates —
-// so any key, the OIDC client secret in particular, can be pulled from an environment
-// variable or a mounted secret file instead of being written in the clear, and a key
-// not present in the file falls back to its default.
-func Load(path string) (*Config, error) {
-	if path == "" {
-		path = DefaultConfigFile
+// Load resolves configuration from one or more config.toml files. At least one path
+// is required and each must exist and parse — there is no default path and no
+// silent fallback to built-in defaults (the container ENTRYPOINT and `make bff-run`
+// both pass -config explicitly). Files are merged in the order given with last-wins
+// precedence: nested tables deep-merge, arrays replace, and a type-mismatched
+// override across files fails loudly under StrictMerge. It loads defaults, overlays
+// the merged file(s) (with their {{ env }} / {{ file }} tokens expanded), normalizes
+// derived fields, then validates — so any key, the OIDC client secret in particular,
+// can be pulled from an environment variable or a mounted secret file instead of
+// being written in the clear, and a key not present in any file keeps its default.
+func Load(paths ...string) (*Config, error) {
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("at least one config file path is required")
 	}
-	k, err := loadConfigKoanf(path)
+	k, err := loadConfigKoanf(paths...)
 	if err != nil {
 		return nil, err
 	}

@@ -19,7 +19,6 @@ package config
 import (
 	"fmt"
 	"log/slog"
-	"os"
 
 	tomlparser "github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/providers/confmap"
@@ -70,17 +69,19 @@ var defaultFileSourceAllowlist = []string{
 //
 // A missing config.toml is not an error: the returned instance is empty, so every key
 // falls back to defaultConfig() and Load fails only on the required ones.
-func loadConfigKoanf(tomlPath string) (*koanf.Koanf, error) {
-	k := koanf.New(".")
+func loadConfigKoanf(tomlPaths ...string) (*koanf.Koanf, error) {
+	// StrictMerge: when two files set the same key with different value types, fail
+	// loudly instead of silently coercing the later value into the earlier's type.
+	k := koanf.NewWithConf(koanf.Conf{Delim: ".", StrictMerge: true})
 
-	// Stat first so a missing file stays a no-op (defaults apply) rather than a koanf
-	// load error; anything else (e.g. a permission problem) is surfaced.
-	if _, statErr := os.Stat(tomlPath); statErr == nil {
+	// Load each config file in order. Successive loads deep-merge maps and replace
+	// arrays, giving last-wins precedence for keys set in more than one file. Each
+	// path is explicitly requested (there is no default), so a missing file is a hard
+	// error rather than a silent no-op.
+	for _, tomlPath := range tomlPaths {
 		if err := k.Load(file.Provider(tomlPath), tomlparser.Parser()); err != nil {
 			return nil, fmt.Errorf("failed to parse config file %q: %w", tomlPath, err)
 		}
-	} else if !os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("failed to read config file %q: %w", tomlPath, statErr)
 	}
 
 	// Narrow to this component's own subtree BEFORE interpolating, so a shared
