@@ -2,6 +2,11 @@ name: Gateway Release
 
 on:
   workflow_dispatch:
+    inputs:
+      next_dev_version:
+        description: 'Next development version (with -SNAPSHOT suffix, e.g. 1.3.0-SNAPSHOT)'
+        required: true
+        type: string
 
 env:
   DOCKER_REGISTRY: ghcr.io/wso2/api-platform
@@ -69,8 +74,15 @@ jobs:
           git push origin ai-gateway/v${{ steps.version.outputs.version }}
 
 
-      - name: Bump to next dev version
-        run: make -C gateway version-bump-next-dev
+      - name: Set next dev version
+        run: |
+          NEXT_DEV_VERSION="${{ inputs.next_dev_version }}"
+          if [ -z "${NEXT_DEV_VERSION}" ]; then
+            echo "Error: next_dev_version input is required"
+            exit 1
+          fi
+          echo "Setting gateway to next dev version: ${NEXT_DEV_VERSION}"
+          make -C gateway version-set VERSION=${NEXT_DEV_VERSION}
 
       - name: Commit version bump
         run: |
@@ -89,7 +101,7 @@ jobs:
           body: |
             Automated version bump after release `gateway/v${{ steps.version.outputs.version }}`
 
-            This PR bumps the gateway version to the next development version.
+            This PR bumps the gateway version to the next development version `${{ inputs.next_dev_version }}`.
           branch: version-bump-${{ github.run_id }}
           base: main
           delete-branch: true
