@@ -43,6 +43,18 @@ func WithConfigPath(path string) Option {
 	}
 }
 
+// WithConfigPaths loads platform-api config from one or more TOML files, merged in
+// order with last-wins precedence (a key set in a later file overrides the same
+// key from an earlier file). It is the repeatable form of WithConfigPath; the
+// config is materialized in New. WithConfig takes precedence over this.
+func WithConfigPaths(paths ...string) Option {
+	return func(a *App) {
+		if len(paths) > 0 {
+			config.SetConfigPaths(paths...)
+		}
+	}
+}
+
 // WithConfig supplies an already-built config, taking precedence over
 // WithConfigPath.
 func WithConfig(cfg *config.Server) Option {
