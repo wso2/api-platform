@@ -58,7 +58,7 @@ helm install cert-manager jetstack/cert-manager \
 ### 2. Install Gateway Operator
 
 ```sh
-helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.10.0 --set image.tag=0.10.0
+helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.10.1 --set image.tag=0.10.1
 ```
 
 ## Deploying an API Gateway
