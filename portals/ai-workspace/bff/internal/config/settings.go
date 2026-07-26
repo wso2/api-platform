@@ -70,9 +70,13 @@ var defaultFileSourceAllowlist = []string{
 // A missing config.toml is not an error: the returned instance is empty, so every key
 // falls back to defaultConfig() and Load fails only on the required ones.
 func loadConfigKoanf(tomlPaths ...string) (*koanf.Koanf, error) {
-	// StrictMerge: when two files set the same key with different value types, fail
-	// loudly instead of silently coercing the later value into the earlier's type.
-	k := koanf.NewWithConf(koanf.Conf{Delim: ".", StrictMerge: true})
+	// Deliberately NOT koanf StrictMerge: strict merging compares the raw parsed
+	// types across files, but an {{ env }} / {{ file }} interpolation token is a
+	// string until it is resolved after the merge — so strict merging would reject a
+	// numeric/bool field that one file sets natively and another overrides with a
+	// token. Cross-file type errors are instead caught downstream by the weakly-typed
+	// unmarshal and validation.
+	k := koanf.New(".")
 
 	// Load each config file in order. Successive loads deep-merge maps and replace
 	// arrays, giving last-wins precedence for keys set in more than one file. Each

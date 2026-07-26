@@ -423,9 +423,10 @@ const platformAPIConfigKey = "platform_api"
 // configPaths is repeatable: files are merged in the order given with last-wins
 // precedence (a key set in a later file overrides the same key from an earlier
 // file). Merge semantics follow koanf — nested tables (maps) deep-merge, while
-// list/array values are replaced wholesale, not appended. StrictMerge is enabled,
-// so a type-mismatched override of the same key across files fails loudly rather
-// than being silently coerced.
+// list/array values are replaced wholesale, not appended. A field may be overridden
+// across files with a different representation — e.g. a numeric value in the base and
+// an {{ env }} token (a string) in an overlay — and still resolve, because types are
+// only checked after interpolation by the weakly-typed unmarshal.
 //
 // Zero paths is permitted (the embeddable library API and callers supplying an
 // already-built config via the platform façade rely on this) — with no files,
@@ -434,9 +435,13 @@ const platformAPIConfigKey = "platform_api"
 // silently boots on defaults. Any path that is given must exist and parse.
 func LoadConfig(configPaths ...string) (*Server, error) {
 	cfg := defaultConfig()
-	// StrictMerge: when two files set the same key with different value types, fail
-	// loudly instead of silently coercing the later value into the earlier's type.
-	k := koanf.NewWithConf(koanf.Conf{Delim: ".", StrictMerge: true})
+	// Deliberately NOT koanf StrictMerge: strict merging compares the raw parsed
+	// types across files, but an {{ env }} / {{ file }} interpolation token is a
+	// string until it is resolved after the merge — so strict merging would reject a
+	// numeric/bool field that one file sets natively and another overrides with a
+	// token. Cross-file type errors are instead caught downstream by the weakly-typed
+	// unmarshal and Validate.
+	k := koanf.New(".")
 
 	// Load each config file in order. Successive loads deep-merge maps and replace
 	// arrays, giving last-wins precedence for keys set in more than one file.

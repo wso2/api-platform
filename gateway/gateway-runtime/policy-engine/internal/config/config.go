@@ -342,8 +342,10 @@ type AccessLogsServiceConfig struct {
 // Files are merged in the order given with last-wins precedence: a key set in a
 // later file overrides the same key from an earlier file. Merge semantics follow
 // koanf — nested tables (maps) deep-merge, while list/array values are replaced
-// wholesale, not appended. StrictMerge is enabled, so a type-mismatched override
-// of the same key across files fails loudly rather than being silently coerced.
+// wholesale, not appended. A field may be overridden across files with a different
+// representation — e.g. a numeric value in the base and an {{ env }} token (a string)
+// in an overlay — and still resolve, because types are only checked after
+// interpolation by the weakly-typed unmarshal (a non-coercible value still fails there).
 //
 // At least one config file path is required; each must exist and parse. The loader
 // fails closed rather than silently running on built-in defaults when no file is
@@ -360,9 +362,13 @@ func Load(configPaths ...string) (*Config, error) {
 		return nil, fmt.Errorf("at least one config file path is required")
 	}
 
-	// StrictMerge: when two files set the same key with different value types, fail
-	// loudly instead of silently coercing the later value into the earlier's type.
-	k := koanf.NewWithConf(koanf.Conf{Delim: ".", StrictMerge: true})
+	// Deliberately NOT koanf StrictMerge: strict merging compares the raw parsed
+	// types across files, but an {{ env }} / {{ file }} interpolation token is a
+	// string until it is resolved after the merge — so strict merging would reject a
+	// numeric/bool field that one file sets natively and another overrides with a
+	// token. Cross-file type errors are instead caught downstream by the weakly-typed
+	// unmarshal and Validate.
+	k := koanf.New(".")
 
 	// Load each config file in order. Successive loads deep-merge maps and replace
 	// arrays, giving last-wins precedence for keys set in more than one file.

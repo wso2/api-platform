@@ -239,8 +239,10 @@ const defaultOIDCScopes = "openid profile email offline_access" +
 // is required and each must exist and parse — there is no default path and no
 // silent fallback to built-in defaults (the container ENTRYPOINT and `make bff-run`
 // both pass -config explicitly). Files are merged in the order given with last-wins
-// precedence: nested tables deep-merge, arrays replace, and a type-mismatched
-// override across files fails loudly under StrictMerge. It loads defaults, overlays
+// precedence: nested tables deep-merge and arrays replace. A field may be overridden
+// across files with a different representation — e.g. a numeric value in the base and
+// an {{ env }} token (a string) in an overlay — and still resolve, because types are
+// only checked after interpolation by the weakly-typed unmarshal. It loads defaults, overlays
 // the merged file(s) (with their {{ env }} / {{ file }} tokens expanded), normalizes
 // derived fields, then validates — so any key, the OIDC client secret in particular,
 // can be pulled from an environment variable or a mounted secret file instead of

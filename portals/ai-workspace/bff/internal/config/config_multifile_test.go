@@ -23,8 +23,9 @@ import "testing"
 // The AI Workspace config has no list/array-typed keys, so koanf's array-replace
 // semantics are exercised by the gateway-controller, policy-engine, and platform-api
 // suites instead. These tests cover the merge behaviour that does apply here:
-// deep-merge/last-wins on nested tables, StrictMerge type-mismatch, interpolation
-// after merge, argument-order precedence, and the fail-closed no-files contract.
+// deep-merge/last-wins on nested tables, cross-file type-mismatch (caught at
+// unmarshal), a numeric field overridden by an {{ env }} token, interpolation after
+// merge, argument-order precedence, and the fail-closed no-files contract.
 
 const cpURL = "\n[ai_workspace.control_plane]\nurl = \"https://platform-api:9243\"\n"
 
@@ -47,15 +48,50 @@ func TestLoad_MultiFile_DeepMergeLastWins(t *testing.T) {
 	}
 }
 
-// TestLoad_MultiFile_StrictMergeTypeMismatchFails verifies that StrictMerge makes a
-// type-mismatched override of the same key across files fail loudly. The merge fails
-// before validation, so no otherwise-valid config is required here.
-func TestLoad_MultiFile_StrictMergeTypeMismatchFails(t *testing.T) {
+// TestLoad_MultiFile_TypeMismatchFails verifies that a genuinely invalid cross-file
+// override — a non-numeric string for a numeric field — still fails. The loader does
+// not use koanf StrictMerge (see loadConfigKoanf), so this is caught by the
+// weakly-typed unmarshal after the merge rather than at merge time.
+func TestLoad_MultiFile_TypeMismatchFails(t *testing.T) {
 	base := writeConfig(t, "[ai_workspace.server.http]\nport = 9643\n")
 	overlay := writeConfig(t, "[ai_workspace.server.http]\nport = \"not-a-number\"\n")
 
 	if _, err := Load(base, overlay); err == nil {
-		t.Fatal("Load() succeeded, want an error for a type-mismatched override under StrictMerge")
+		t.Fatal("Load() succeeded, want an error for a non-coercible cross-file override")
+	}
+}
+
+// TestLoad_MultiFile_NumericOverriddenByEnvToken verifies that a numeric field set
+// natively in the base can be overridden by an {{ env }} interpolation token (a TOML
+// string) in an overlay — the token resolves and coerces to the numeric field. This
+// is the reason the loader does not use koanf StrictMerge: a strict type check would
+// reject the int-vs-string collision before interpolation runs.
+func TestLoad_MultiFile_NumericOverriddenByEnvToken(t *testing.T) {
+	t.Setenv("APIP_TEST_AIW_PORT", "9644")
+	base := writeConfig(t, "[ai_workspace.server.http]\nport = 9643\n"+cpURL)
+	overlay := writeConfig(t, "[ai_workspace.server.http]\nport = '{{ env \"APIP_TEST_AIW_PORT\" \"9643\" }}'\n")
+
+	cfg, err := Load(base, overlay)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Server.HTTP.Port != 9644 {
+		t.Errorf("Server.HTTP.Port = %d, want 9644 (an {{ env }} token in an overlay must override a native numeric base value)", cfg.Server.HTTP.Port)
+	}
+}
+
+// TestLoad_MultiFile_EnvTokenResolvingToNonNumberFails verifies that interpolation
+// does not bypass the type check: a numeric field whose {{ env }} token resolves to
+// a non-numeric value still fails loudly, at the weakly-typed unmarshal after the
+// token is expanded. (An unset/empty required token is a separate fail-closed path,
+// covered by config_test.go.)
+func TestLoad_MultiFile_EnvTokenResolvingToNonNumberFails(t *testing.T) {
+	t.Setenv("APIP_TEST_AIW_PORT", "bar")
+	base := writeConfig(t, "[ai_workspace.server.http]\nport = 9643\n"+cpURL)
+	overlay := writeConfig(t, "[ai_workspace.server.http]\nport = '{{ env \"APIP_TEST_AIW_PORT\" }}'\n")
+
+	if _, err := Load(base, overlay); err == nil {
+		t.Fatal("Load() succeeded, want an error for an env token resolving to a non-number")
 	}
 }
 

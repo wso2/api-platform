@@ -75,16 +75,48 @@ func TestLoadConfig_MultiFile_ArrayReplaceNotAppend(t *testing.T) {
 		"array value must be replaced by the later file, not appended")
 }
 
-// TestLoadConfig_MultiFile_StrictMergeTypeMismatchFails verifies that StrictMerge
-// makes a type-mismatched override of the same key across files fail loudly. The
-// merge fails before validation, so no valid-keys base is required here.
-func TestLoadConfig_MultiFile_StrictMergeTypeMismatchFails(t *testing.T) {
+// TestLoadConfig_MultiFile_TypeMismatchFails verifies that a genuinely invalid
+// cross-file override — a non-boolean string for a boolean field — still fails. The
+// loader does not use koanf StrictMerge (see LoadConfig), so this is caught by the
+// weakly-typed unmarshal after the merge rather than at merge time.
+func TestLoadConfig_MultiFile_TypeMismatchFails(t *testing.T) {
 	dir := t.TempDir()
 	base := writeMultiTOML(t, dir, "base.toml", "[platform_api.auth]\nscope_validation = true\n")
 	over := writeMultiTOML(t, dir, "overlay.toml", "[platform_api.auth]\nscope_validation = \"maybe\"\n")
 
 	_, err := LoadConfig(base, over)
-	require.Error(t, err, "a type-mismatched override across files must fail loudly under StrictMerge")
+	require.Error(t, err, "a non-coercible cross-file override must still fail (at unmarshal)")
+}
+
+// TestLoadConfig_MultiFile_NumericOverriddenByEnvToken verifies that a numeric field
+// set natively in the base can be overridden by an {{ env }} interpolation token (a
+// TOML string) in an overlay — the token resolves and coerces to the numeric field.
+// This is the reason the loader does not use koanf StrictMerge: a strict type check
+// would reject the int-vs-string collision before interpolation runs.
+func TestLoadConfig_MultiFile_NumericOverriddenByEnvToken(t *testing.T) {
+	t.Setenv("APIP_TEST_HTTP_PORT", "9250")
+	cfg, err := loadTwoWithKeys(t,
+		"\n[platform_api.server.http]\nport = 9243\n",
+		"\n[platform_api.server.http]\nport = '{{ env \"APIP_TEST_HTTP_PORT\" \"9243\" }}'\n",
+	)
+	require.NoError(t, err)
+
+	assert.Equal(t, 9250, cfg.Listeners.HTTP.Port,
+		"an {{ env }} token in an overlay must override a native numeric base value")
+}
+
+// TestLoadConfig_MultiFile_EnvTokenResolvingToNonNumberFails verifies that
+// interpolation does not bypass the type check: a numeric field whose {{ env }}
+// token resolves to a non-numeric value still fails loudly, at the weakly-typed
+// unmarshal after the token is expanded. (An unset/empty required token is a
+// separate fail-closed interpolation path.)
+func TestLoadConfig_MultiFile_EnvTokenResolvingToNonNumberFails(t *testing.T) {
+	t.Setenv("APIP_TEST_HTTP_PORT", "bar")
+	_, err := loadTwoWithKeys(t,
+		"\n[platform_api.server.http]\nport = 9243\n",
+		"\n[platform_api.server.http]\nport = '{{ env \"APIP_TEST_HTTP_PORT\" }}'\n",
+	)
+	require.Error(t, err, "an env token resolving to a non-number must still fail (at unmarshal)")
 }
 
 // TestLoadConfig_MultiFile_InterpolationAfterMerge verifies that {{ env }}
