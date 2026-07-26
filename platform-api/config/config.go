@@ -284,6 +284,15 @@ type JWT struct {
 	PrivateKeyFile string        `koanf:"private_key_file"`
 	Issuer         string        `koanf:"issuer"`
 	TokenTTL       time.Duration `koanf:"token_ttl"`
+	// SkipValidation disables JWT signature verification in "external_token" mode:
+	// tokens are parsed for their claims but neither the signature nor the issuer
+	// is checked, so unsigned ("none") tokens are accepted. This exists ONLY for
+	// deployments where a trusted mediation layer on a private network has already
+	// authenticated the caller and forwards an unsigned internal token carrying the
+	// org context (e.g. WSO2 Cloud's BML). It is DANGEROUS to enable on any
+	// internet-facing listener — anyone can then forge claims. Defaults to false;
+	// ignored in "file" and "idp" modes.
+	SkipValidation bool `koanf:"skip_validation"`
 }
 
 // LoadPublicKey reads and parses the PEM-encoded RSA public key from

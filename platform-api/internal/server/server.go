@@ -624,6 +624,21 @@ func buildClaimMappings(cm config.ClaimMappings, roleScopeMap map[string][]strin
 // its own local-JWT middleware).
 func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap map[string][]string) (middleware.Authenticator, error) {
 	if cfg.Auth.Mode != config.AuthModeIDP {
+		// Signature-validation bypass: only for deployments fronted by a trusted
+		// mediation layer on a private network that has already authenticated the
+		// caller and forwards an unsigned internal token (see JWT.SkipValidation).
+		// No public key is needed or loaded; claims are still read from the token.
+		if cfg.Auth.JWT.SkipValidation {
+			slogger.Warn("Auth mode: jwt with signature validation DISABLED (auth.jwt.skip_validation=true) — accept unsigned tokens ONLY behind a trusted mediation layer on a private network")
+			return middleware.NewJWTAuthenticator(
+				middleware.LocalJWTAuthMiddleware(middleware.AuthConfig{
+					TokenIssuer:    cfg.Auth.JWT.Issuer,
+					SkipPaths:      cfg.Auth.SkipPaths,
+					SkipValidation: true,
+					ClaimMappings:  buildClaimMappings(cfg.Auth.ClaimMappings, roleScopeMap),
+				}),
+			), nil
+		}
 		slogger.Info("Auth mode: jwt (asymmetric RS256 signature validation enabled)")
 		publicKey, err := cfg.Auth.JWT.LoadPublicKey()
 		if err != nil {
