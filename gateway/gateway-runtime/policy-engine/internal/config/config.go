@@ -336,21 +336,39 @@ type AccessLogsServiceConfig struct {
 	ExtProcMaxHeaderLimit int           `koanf:"max_header_limit"`
 }
 
-// Load loads configuration from a file layered over built-in defaults.
-// Priority: Config file > Defaults.
+// Load loads configuration from one or more files layered over built-in defaults.
+// Priority: Config files > Defaults.
+//
+// Files are merged in the order given with last-wins precedence: a key set in a
+// later file overrides the same key from an earlier file. Merge semantics follow
+// koanf — nested tables (maps) deep-merge, while list/array values are replaced
+// wholesale, not appended. StrictMerge is enabled, so a type-mismatched override
+// of the same key across files fails loudly rather than being silently coerced.
+//
+// At least one config file path is required; each must exist and parse. The loader
+// fails closed rather than silently running on built-in defaults when no file is
+// supplied. {{ env }} / {{ file }} interpolation runs once, after all files are
+// merged, so a token declared in an earlier file can be resolved by a later overlay.
 //
 // The configuration supports Go-style duration strings (e.g., "10s", "5m", "1h")
 // for all duration fields. The DecodeHook automatically converts string durations
 // to time.Duration values before assignment.
-func Load(configPath string) (*Config, error) {
+func Load(configPaths ...string) (*Config, error) {
 	cfg := defaultConfig()
 
-	k := koanf.New(".")
+	if len(configPaths) == 0 {
+		return nil, fmt.Errorf("at least one config file path is required")
+	}
 
-	// Load config file if path is provided
-	if configPath != "" {
+	// StrictMerge: when two files set the same key with different value types, fail
+	// loudly instead of silently coercing the later value into the earlier's type.
+	k := koanf.NewWithConf(koanf.Conf{Delim: ".", StrictMerge: true})
+
+	// Load each config file in order. Successive loads deep-merge maps and replace
+	// arrays, giving last-wins precedence for keys set in more than one file.
+	for _, configPath := range configPaths {
 		if err := k.Load(file.Provider(configPath), toml.Parser()); err != nil {
-			return nil, fmt.Errorf("failed to load config file: %w", err)
+			return nil, fmt.Errorf("failed to load config file %q: %w", configPath, err)
 		}
 	}
 
