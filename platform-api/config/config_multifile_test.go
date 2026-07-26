@@ -103,6 +103,17 @@ func TestLoadConfig_MultiFile_InterpolationAfterMerge(t *testing.T) {
 	assert.Equal(t, "text", cfg.Logging.Format, "overlay override must apply alongside interpolation")
 }
 
+// TestLoadConfig_EmptyPathFails verifies that an explicit empty-string path (e.g.
+// the binary invoked with `-config=`) is rejected at the path check with a clear
+// error, rather than being skipped and surfacing a confusing downstream validation
+// error (or, if defaults were ever valid, silently booting on them).
+func TestLoadConfig_EmptyPathFails(t *testing.T) {
+	_, err := LoadConfig("")
+	require.Error(t, err, `LoadConfig("") must reject an empty config path, not skip it`)
+	assert.Contains(t, err.Error(), "config path must not be empty",
+		"the failure must be the explicit empty-path check, not an unrelated downstream error")
+}
+
 // TestLoadConfig_MultiFile_OrderMatters verifies precedence follows argument order:
 // swapping the two files flips which value wins. The secret tokens live in file a,
 // so both orderings still validate because a is present in both.

@@ -442,7 +442,12 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 	// arrays, giving last-wins precedence for keys set in more than one file.
 	for _, configPath := range configPaths {
 		if configPath == "" {
-			continue
+			// A zero-length variadic call (no files) is the legitimate "defaults
+			// only" path for embedders; an explicit empty-string path (e.g. the
+			// binary invoked with `-config=`) is a malformed input that must fail
+			// fast rather than silently degrade to defaults — matching the other
+			// loaders, which reject "" via file.Provider.
+			return nil, fmt.Errorf("config path must not be empty")
 		}
 		if err := k.Load(file.Provider(configPath), toml.Parser()); err != nil {
 			return nil, fmt.Errorf("failed to load config file %q: %w", configPath, err)
