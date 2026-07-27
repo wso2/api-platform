@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net"
 	"strconv"
 	"time"
 
@@ -144,10 +145,47 @@ func (c *Analytics) Process(event *v3.HTTPAccessLogEntry) {
 	}
 
 	analyticEvent := c.prepareAnalyticEvent(event)
+
+	// Suppress internal loopback provider events to avoid double-counting in analytics.
+	if c.isInternalLoopbackProviderEvent(analyticEvent) {
+		correlationID := ""
+		if analyticEvent.MetaInfo != nil {
+			correlationID = analyticEvent.MetaInfo.CorrelationID
+		}
+		slog.Debug("Suppressing internal loopback provider analytics event",
+			"apiType", analyticEvent.API.APIType,
+			"correlationId", correlationID,
+		)
+		return
+	}
+
 	for _, publisher := range c.publishers {
 		publisher.Publish(analyticEvent)
 	}
 
+}
+
+// isInternalLoopbackProviderEvent checks if the event is an internal loopback provider event.
+
+func (c *Analytics) isInternalLoopbackProviderEvent(event *dto.Event) bool {
+	if event == nil || event.API == nil {
+		return false
+	}
+	if event.API.APIType != "LlmProvider" {
+		return false
+	}
+	return isLoopbackAddress(event.UserIP)
+}
+
+// isLoopbackAddress reports whether ip is an IPv4/IPv6 loopback address.
+func isLoopbackAddress(ip string) bool {
+	if ip == "127.0.0.1" || ip == "::1" {
+		return true
+	}
+	if parsed := net.ParseIP(ip); parsed != nil {
+		return parsed.IsLoopback()
+	}
+	return false
 }
 
 // isInvalid checks if the log entry is invalid.

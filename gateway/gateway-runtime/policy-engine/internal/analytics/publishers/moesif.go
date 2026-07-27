@@ -196,8 +196,9 @@ func (m *Moesif) Publish(event *dto.Event) {
 	metadataMap["apiId"] = event.API.APIID
 	metadataMap["projectId"] = event.API.ProjectID
 
-	// AI Metadata
-	if event.API.APIType == "LlmProvider" {
+	// AI Metadata.
+	// Only include aiMetadata and aiTokenUsage for LlmProvider and LlmProxy events.
+	if event.API.APIType == "LlmProvider" || event.API.APIType == "LlmProxy" {
 		// Safely extract aiMetadata with nil check
 		if aiMetadataVal, exists := event.Properties["aiMetadata"]; exists && aiMetadataVal != nil {
 			if aiMetadata, ok := aiMetadataVal.(dto.AIMetadata); ok {

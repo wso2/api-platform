@@ -283,6 +283,62 @@ func TestProcess_PublishesEvent(t *testing.T) {
 	assert.True(t, mockPub.called, "publisher must be called")
 }
 
+// createLogEntryWithAPITypeAndAddr builds an access-log entry with the given api-kind
+// (analytics_data metadata) and downstream remote address, for loopback-suppression tests.
+func createLogEntryWithAPITypeAndAddr(apiType, downstreamAddr string) *v3.HTTPAccessLogEntry {
+	entry := createLogEntryWithMetadata(map[string]string{APITypeKey: apiType})
+	entry.CommonProperties.DownstreamRemoteAddress = &corev3.Address{
+		Address: &corev3.Address_SocketAddress{
+			SocketAddress: &corev3.SocketAddress{Address: downstreamAddr},
+		},
+	}
+	return entry
+}
+
+func TestProcess_SuppressesLoopbackProviderEvent(t *testing.T) {
+	// An LlmProvider hop reached over the internal loopback (downstream 127.0.0.1) is the
+	// duplicate of the proxy's own event and must not be published.
+	analytics := NewAnalytics(&config.Config{})
+	mockPub := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers, mockPub)
+
+	analytics.Process(createLogEntryWithAPITypeAndAddr("LlmProvider", "127.0.0.1"))
+
+	assert.False(t, mockPub.called, "loopback provider event must be suppressed")
+}
+
+func TestProcess_DirectProviderNotSuppressed(t *testing.T) {
+	// A directly-invoked provider (real client address) must still be published.
+	analytics := NewAnalytics(&config.Config{})
+	mockPub := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers, mockPub)
+
+	analytics.Process(createLogEntryWithAPITypeAndAddr("LlmProvider", "192.168.1.1"))
+
+	assert.True(t, mockPub.called, "direct provider event must be published")
+}
+
+func TestProcess_ProxyEventNotSuppressed(t *testing.T) {
+	// Only LlmProvider events are candidates for suppression; a proxy event is never dropped.
+	analytics := NewAnalytics(&config.Config{})
+	mockPub := &mockPublisher{}
+	analytics.publishers = append(analytics.publishers, mockPub)
+
+	analytics.Process(createLogEntryWithAPITypeAndAddr("LlmProxy", "127.0.0.1"))
+
+	assert.True(t, mockPub.called, "proxy event must always be published")
+}
+
+func TestIsLoopbackAddress(t *testing.T) {
+	assert.True(t, isLoopbackAddress("127.0.0.1"))
+	assert.True(t, isLoopbackAddress("::1"))
+	assert.True(t, isLoopbackAddress("127.0.0.5"))
+	assert.False(t, isLoopbackAddress("192.168.1.1"))
+	assert.False(t, isLoopbackAddress("10.0.0.1"))
+	assert.False(t, isLoopbackAddress(""))
+	assert.False(t, isLoopbackAddress("not-an-ip"))
+}
+
 func TestProcess_PanicRecovery(t *testing.T) {
 	cfg := &config.Config{}
 	analytics := NewAnalytics(cfg)
