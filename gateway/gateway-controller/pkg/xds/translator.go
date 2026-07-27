@@ -52,6 +52,7 @@ import (
 	luav3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/lua/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
@@ -2738,7 +2739,14 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 	}
 	samplingPercentage := samplingRate * 100.0
 
-	// Create OpenTelemetry tracing configuration
+	envResourceDetector, err := createOTelEnvironmentResourceDetector()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create environment resource detector: %w", err)
+	}
+
+	// Create OpenTelemetry tracing configuration.
+	// The environment resource detector reads OTEL_RESOURCE_ATTRIBUTES from the Envoy
+	// process. When the variable is unset, the detector contributes no attributes.
 	otelConfig := &tracev3.OpenTelemetryConfig{
 		GrpcService: &core.GrpcService{
 			TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
@@ -2748,6 +2756,9 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 			},
 		},
 		ServiceName: serviceName,
+		ResourceDetectors: []*core.TypedExtensionConfig{
+			envResourceDetector,
+		},
 	}
 
 	// Marshal to Any
@@ -2776,6 +2787,19 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 		slog.String("collector_cluster", OTELCollectorClusterName))
 
 	return tracingConfig, nil
+}
+
+func createOTelEnvironmentResourceDetector() (*core.TypedExtensionConfig, error) {
+	envDetectorConfig := &otelresourcedetectorsv3.EnvironmentResourceDetectorConfig{}
+	envDetectorAny, err := anypb.New(envDetectorConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal environment resource detector config: %w", err)
+	}
+
+	return &core.TypedExtensionConfig{
+		Name:        "envoy.tracers.opentelemetry.resource_detectors.environment",
+		TypedConfig: envDetectorAny,
+	}, nil
 }
 
 // convertToInterface converts map[string]string to map[string]interface{} for structpb
