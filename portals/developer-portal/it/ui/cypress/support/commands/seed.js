@@ -182,3 +182,39 @@ Cypress.Commands.add('deleteMcp', (handle) => {
         failOnStatusCode: false,
     });
 });
+
+// ---------------------------------------------------------------------------
+// cy.seedKeyManager(overrides) / cy.deleteKeyManager(id)
+//   Key managers are org-level config (not user-scoped), so — unlike
+//   applications — they can be created through the service-API-key path.
+//   Seeding one makes the application detail page's "Manage Keys" section render
+//   a key-manager card instead of the "no key manager" empty state. Returns the
+//   key manager's id.
+// ---------------------------------------------------------------------------
+Cypress.Commands.add('seedKeyManager', (overrides = {}) => {
+    const id = overrides.id || `it-km-${Date.now()}`;
+    return cy
+        .apiRequest('POST', '/api/v0.9/key-managers', {
+            headers: { organization: Cypress.env('ORG_HANDLE') },
+            body: {
+                id,
+                displayName: overrides.displayName || 'IT Key Manager',
+                // Only the token endpoint is required; OAuth apps live in the key
+                // manager itself, so an unreachable placeholder is fine for the UI.
+                tokenEndpoint: overrides.tokenEndpoint || 'https://km.example.invalid/oauth2/token',
+                enabled: overrides.enabled !== false,
+            },
+        })
+        .then((resp) => {
+            expect(resp.status, 'seed key manager').to.eq(201);
+            return id;
+        });
+});
+
+Cypress.Commands.add('deleteKeyManager', (id) => {
+    if (!id) return;
+    cy.apiRequest('DELETE', `/api/v0.9/key-managers/${id}`, {
+        headers: { organization: Cypress.env('ORG_HANDLE') },
+        failOnStatusCode: false,
+    });
+});

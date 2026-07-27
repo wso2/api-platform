@@ -17,6 +17,7 @@
 // --------------------------------------------------------------------
 
 const { defineConfig } = require('cypress');
+const { startMockTokenServer, stopMockTokenServer } = require('./mock-token-server');
 
 module.exports = defineConfig({
     e2e: {
@@ -33,7 +34,7 @@ module.exports = defineConfig({
         responseTimeout: 15000,
         // Accept self-signed certs from the devportal
         chromeWebSecurity: false,
-        setupNodeEvents(on) {
+        setupNodeEvents(on, config) {
             // Pass required flags to Chrome/Chromium in Docker (no sandbox, no GPU)
             on('before:browser:launch', (browser, launchOptions) => {
                 if (browser.family === 'chromium') {
@@ -43,6 +44,17 @@ module.exports = defineConfig({
                 }
                 return launchOptions;
             });
+
+            // On-demand mock OAuth2 token endpoint for the application key/token
+            // round-trip test. Registered as tasks (not started here) so it only
+            // listens while a test that needs it is running — the test starts it in
+            // its before() and stops it in after(); it returns { endpoint, secret,
+            // accessToken } for the seeded key manager to point at.
+            on('task', {
+                startMockTokenServer: () => startMockTokenServer(),
+                stopMockTokenServer: () => stopMockTokenServer(),
+            });
+            return config;
         },
     },
     env: {

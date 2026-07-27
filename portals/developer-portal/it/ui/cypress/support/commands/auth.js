@@ -26,13 +26,20 @@ Cypress.Commands.add('login', (username, password) => {
     const pwd  = password || Cypress.env('ADMIN_PASSWORD');
 
     cy.visitPortal();
-    cy.get('.login-btn').click();
-    cy.get('#username').type(user);
-    cy.get('#password').type(pwd);
-    cy.get('.ln-signin-btn').click();
-
-    // Wait until redirected back to the portal home and profile link is visible.
-    cy.get('.profile-link', { timeout: 15000 }).should('be.visible');
+    // Idempotent: if a session is already active (e.g. carried over from a
+    // before() hook into the first test), the home page shows the profile link
+    // rather than the login button — skip the form in that case.
+    cy.get('body').then(($body) => {
+        if ($body.find('.profile-link').length > 0) {
+            return;
+        }
+        cy.get('.login-btn').click();
+        cy.get('#username').type(user);
+        cy.get('#password').type(pwd);
+        cy.get('.ln-signin-btn').click();
+        // Wait until redirected back to the portal home and profile link is visible.
+        cy.get('.profile-link', { timeout: 15000 }).should('be.visible');
+    });
 });
 
 // ---------------------------------------------------------------------------

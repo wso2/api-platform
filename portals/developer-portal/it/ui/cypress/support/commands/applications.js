@@ -16,24 +16,46 @@
 // under the License.
 // --------------------------------------------------------------------
 
+// Applications are user-scoped (created_by), so they must be created through the
+// UI as the logged-in user — a resource seeded via the service API key would be
+// owned by a different actor and never appear on the user's Applications page.
+// Call these only after cy.login().
+
 // ---------------------------------------------------------------------------
-// cy.createApplication(name)
-//   Navigate to the Applications page and create an application by name.
-//   Waits until the new application card is visible before resolving.
+// cy.createApplication(name, description)
+//   Create an application via the Applications page create modal. Waits for the
+//   new card and yields the created application's handle (the card's data-id).
 // ---------------------------------------------------------------------------
-Cypress.Commands.add('createApplication', (name) => {
-    cy.get('#sidebar #applications').click();
-    cy.get('#applicationCreateCard').click();
-    cy.get('#applicationName').clear().type(name);
-    cy.get('#createAppButton').click();
-    cy.contains('.application-name-link', name, { timeout: 15000 }).should('be.visible');
+Cypress.Commands.add('createApplication', (name, description = '') => {
+    cy.visitPortal('/applications');
+    // Header button (apps exist) or empty-state button (zero apps) — only one renders.
+    cy.get('#apps-create-btn, #apps-create-btn-empty').first().click();
+    cy.get('#app-create-modal').should('be.visible');
+    cy.get('#app-name-input').clear().type(name);
+    if (description) {
+        cy.get('#app-desc-input').clear().type(description);
+    }
+    cy.get('#app-create-confirm').should('not.be.disabled').click();
+    // The create request reloads the page; wait for the new card, then yield its handle.
+    cy.contains('.app-card', name, { timeout: 15000 }).should('be.visible');
+    return cy.contains('.app-card', name).invoke('attr', 'data-id');
 });
 
 // ---------------------------------------------------------------------------
 // cy.deleteApplication(name)
-//   Delete the named application and confirm it is no longer listed.
+//   Best-effort delete via the Applications page — a no-op if the app is already
+//   gone, so it is safe to call from an after() hook.
 // ---------------------------------------------------------------------------
 Cypress.Commands.add('deleteApplication', (name) => {
-    cy.get(`div[data-name="${name}"] .delete-button`).click();
-    cy.contains('.application-name-link', name, { timeout: 15000 }).should('not.exist');
+    cy.visitPortal('/applications');
+    cy.get('body').then(($body) => {
+        const card = $body.find('.app-card').filter((_, el) => el.textContent.includes(name));
+        if (!card.length) {
+            return; // Already deleted.
+        }
+        cy.contains('.app-card', name).find('.app-delete-btn').click();
+        cy.get('#app-delete-modal').should('be.visible');
+        cy.get('#app-delete-confirm').click();
+        cy.contains('.app-card-name', name).should('not.exist');
+    });
 });
