@@ -822,6 +822,10 @@ export default function ServiceProviderDeploymentsCard({
           <Typography variant="body2" sx={{ mt: 1, fontWeight: 600 }}>
             {deleteTargetKeyName}
           </Typography>
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            Deleting this API key will cause any LLM Proxy configured to use
+            it to fail.
+          </Alert>
         </DialogContent>
         <DialogActions>
           <Button
