@@ -28,6 +28,9 @@ services:
       # The developer portal likewise pre-loads its schema on postgres (it does
       # not sequelize.sync() on external DBs); init-db.sql applies it too.
       - ../../portals/developer-portal/database/schema.postgres.sql:/devportal-schema/schema.postgres.sql:ro
+      # The gateway-controller no longer auto-migrates its schema on external
+      # databases either; init-db.sql applies it to gateway_test / gateway_test2.
+      - ../../gateway/gateway-controller/pkg/storage/gateway-controller-db.postgres.sql:/gw-schema/schema.postgres.sql:ro
     ports:
       - "55433:5432"
     healthcheck:

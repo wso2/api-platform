@@ -9,7 +9,7 @@ DIST_NAME="wso2apip-api-gateway-${DIST_VERSION}"
 DIST_ZIP="${DIST_NAME}.zip"
 
 GATEWAY_MGMT_URL="http://localhost:9090/api/management/v0.9"
-AUTH_HEADER="Authorization: Basic YWRtaW46YWRtaW4="   # admin:admin
+AUTH_HEADER="Authorization: Basic $(printf %s "${ADMIN_USERNAME:-admin}:${ADMIN_PASSWORD:-admin}" | base64 | tr -d '\r\n')"   # default admin/admin; override with ADMIN_USERNAME/ADMIN_PASSWORD
 
 API_NAME="reading-list-api"
 

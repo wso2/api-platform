@@ -23,10 +23,10 @@
 
 services:
   gateway-controller:
-    image: ghcr.io/wso2/api-platform/gateway-controller:1.2.0-beta-SNAPSHOT
-    mem_limit: 60m
-    mem_reservation: 60m
-    cpus: 0.025
+    image: ghcr.io/wso2/api-platform/gateway-controller:1.2.0-rc-SNAPSHOT
+    mem_limit: 600m
+    mem_reservation: 600m
+    cpus: 0.25
     command: ["-config", "/etc/gateway-controller/config.toml"]
     ports:
       - "9090:9090"   # REST API
@@ -48,10 +48,10 @@ services:
       - gateway-network
 
   gateway-runtime:
-    image: ghcr.io/wso2/api-platform/gateway-runtime:1.2.0-beta-SNAPSHOT
-    mem_limit: 180m
-    mem_reservation: 180m
-    cpus: 0.175
+    image: ghcr.io/wso2/api-platform/gateway-runtime:1.2.0-rc-SNAPSHOT
+    mem_limit: 1800m
+    mem_reservation: 1800m
+    cpus: 1.75
     command: ["--pol.config", "/etc/policy-engine/config.toml"]
     ports:
       # Router (Envoy)

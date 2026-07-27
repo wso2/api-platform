@@ -56,8 +56,9 @@ jobs:
         run: echo "127.0.0.1 host.docker.internal" | sudo tee -a /etc/hosts
 
       - name: Generate quickstart keys, credentials and certificates
-        # setup.sh writes api-platform.env (encryption/JWT keys + admin credentials) and
-        # the TLS certs both services now require. Credentials are pinned to the
+        # setup.sh writes the admin credentials into api-platform.env, and provisions the
+        # at-rest encryption key + RS256 JWT keypair as files under resources/keys (read via
+        # {{ file }}) plus the TLS certs both services require. Credentials are pinned to the
         # Cypress defaults (admin/admin) for the E2E suite.
         run: ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./setup.sh
         working-directory: portals/ai-workspace

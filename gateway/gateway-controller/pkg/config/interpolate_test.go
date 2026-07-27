@@ -86,3 +86,51 @@ token = "{{ file \"`+secret+`\" }}"
 	require.NoError(t, err)
 	assert.Equal(t, "file-token", cfg.Controller.ControlPlane.Token)
 }
+
+// TestLoadConfig_Interpolation_BasicAuthAdminCreds exercises the full path the
+// shipped config.toml uses for its admin credentials: {{ env }} tokens resolved
+// from the environment (as scripts/setup.sh writes them into api-platform.env).
+func TestLoadConfig_Interpolation_BasicAuthAdminCreds(t *testing.T) {
+	t.Setenv("APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME", "gwadmin")
+	t.Setenv("APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH", "$2y$10$C6UzMDM.H6dfI/f/IKcEeO3JxpH3nZ0z8oJ0kQ1yQ2wRxYzAbCdEe")
+	path := writeCtlInterpConfig(t, `
+[controller.auth.basic]
+enabled = true
+
+[[controller.auth.basic.users]]
+username        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME" "" }}'
+password        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH" "" }}'
+password_hashed = true
+roles           = ["admin"]
+`)
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	require.Len(t, cfg.Controller.Auth.Basic.Users, 1)
+	u := cfg.Controller.Auth.Basic.Users[0]
+	assert.Equal(t, "gwadmin", u.Username)
+	assert.Equal(t, "$2y$10$C6UzMDM.H6dfI/f/IKcEeO3JxpH3nZ0z8oJ0kQ1yQ2wRxYzAbCdEe", u.Password)
+	assert.True(t, u.PasswordHashed)
+}
+
+// TestLoadConfig_Interpolation_BasicAuthAdminCredsUnset_FailsClosed verifies the
+// shipped-config scenario with the credential env vars unset: the {{ env }}
+// tokens resolve to their empty defaults, leaving a user present but empty-valued,
+// which validateAuthConfig rejects so the controller refuses to start.
+func TestLoadConfig_Interpolation_BasicAuthAdminCredsUnset_FailsClosed(t *testing.T) {
+	os.Unsetenv("APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME")
+	os.Unsetenv("APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH")
+	path := writeCtlInterpConfig(t, `
+[controller.auth.basic]
+enabled = true
+
+[[controller.auth.basic.users]]
+username        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME" "" }}'
+password        = '{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH" "" }}'
+password_hashed = true
+roles           = ["admin"]
+`)
+	cfg, err := LoadConfig(path)
+	require.Error(t, err)
+	assert.Nil(t, cfg)
+	assert.Contains(t, err.Error(), "empty username or password")
+}

@@ -21,7 +21,6 @@ package storage
 import (
 	"context"
 	"database/sql"
-	_ "embed"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -34,13 +33,7 @@ import (
 	mssql "github.com/microsoft/go-mssqldb"
 )
 
-//go:embed gateway-controller-db.sqlserver.sql
-var sqlserverSchemaSQL string
-
 const (
-	// sqlserverSchemaLockResource names the application lock used to serialize
-	// concurrent schema initialization across controller replicas.
-	sqlserverSchemaLockResource = "gateway-controller-schema-init"
 	// SQL Server error numbers for unique-constraint / duplicate-key violations.
 	sqlserverUniqueConstraintErr = 2627 // PRIMARY KEY / UNIQUE constraint violation
 	sqlserverDuplicateKeyErr     = 2601 // unique index violation
@@ -49,10 +42,6 @@ const (
 	// in tests). The config layer normalizes/validates the value before this for
 	// config-driven startup; this keeps the storage layer self-sufficient.
 	defaultSQLServerEncrypt = "true"
-	// schemaInitTimeout bounds the schema-initialization path (connection,
-	// application lock and DDL) so a stalled server cannot hang startup forever.
-	// It must exceed the 30s app-lock wait used in initSchema.
-	schemaInitTimeout = 2 * time.Minute
 )
 
 // SQLServerConnectionConfig holds SQL Server-specific connection settings.
@@ -113,11 +102,6 @@ func newSQLServerStorage(cfg SQLServerConnectionConfig, logger *slog.Logger) (*S
 		return nil, fmt.Errorf("failed to ping sqlserver database: %w", err)
 	}
 
-	if err := storage.initSchema(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("failed to initialize schema: %w", err)
-	}
-
 	logger.Info("SQLServer storage initialized",
 		slog.String("host", cfg.Host),
 		slog.Int("port", cfg.Port),
@@ -131,64 +115,6 @@ func newSQLServerStorage(cfg SQLServerConnectionConfig, logger *slog.Logger) (*S
 		slog.String("dsn", sanitizeSQLServerDSN(dsn)))
 
 	return storage, nil
-}
-
-// initSchema creates the database schema if it doesn't exist. The embedded
-// schema is idempotent (every object is guarded by IF NOT EXISTS); an
-// application lock serializes concurrent initialization across replicas.
-func (s *SQLServerStorage) initSchema() (retErr error) {
-	// Bound the whole init path (connection acquisition, app-lock wait and DDL)
-	// so startup cannot hang indefinitely if SQL Server stalls after the ping.
-	ctx, cancel := context.WithTimeout(context.Background(), schemaInitTimeout)
-	defer cancel()
-
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to acquire sqlserver connection for schema init: %w", err)
-	}
-	defer func() {
-		if closeErr := conn.Close(); closeErr != nil {
-			if retErr != nil {
-				retErr = fmt.Errorf("%w; failed to close schema init connection: %v", retErr, closeErr)
-			} else {
-				retErr = fmt.Errorf("failed to close schema init connection: %w", closeErr)
-			}
-		}
-	}()
-
-	// Serialize schema init across replicas with a session-scoped application lock.
-	// sp_getapplock reports failure (e.g. a lock-wait timeout) only through its
-	// integer return code, not via a driver error, so capture and inspect it.
-	// Non-negative means granted (0 = granted, 1 = granted after waiting);
-	// negative codes (-1 timeout, -2 cancelled, -3 deadlock, -999 other) are failures.
-	var lockStatus mssql.ReturnStatus
-	if _, err := conn.ExecContext(ctx,
-		"EXEC sp_getapplock @Resource = @p1, @LockMode = 'Exclusive', @LockOwner = 'Session', @LockTimeout = 30000",
-		sqlserverSchemaLockResource, &lockStatus); err != nil {
-		return fmt.Errorf("failed to acquire schema init lock: %w", err)
-	}
-	if lockStatus < 0 {
-		return fmt.Errorf("failed to acquire schema init lock: sp_getapplock returned %d", int(lockStatus))
-	}
-	defer func() {
-		if _, unlockErr := conn.ExecContext(ctx,
-			"EXEC sp_releaseapplock @Resource = @p1, @LockOwner = 'Session'",
-			sqlserverSchemaLockResource); unlockErr != nil {
-			if retErr != nil {
-				retErr = fmt.Errorf("%w; failed to release schema init lock: %v", retErr, unlockErr)
-			} else {
-				retErr = fmt.Errorf("failed to release schema init lock: %w", unlockErr)
-			}
-		}
-	}()
-
-	s.logger.Info("Initializing SQLServer schema")
-	if _, err := conn.ExecContext(ctx, sqlserverSchemaSQL); err != nil {
-		return fmt.Errorf("failed to execute sqlserver schema: %w", err)
-	}
-
-	s.logger.Info("SQLServer schema initialized")
-	return nil
 }
 
 func withDefaultSQLServerConfig(cfg SQLServerConnectionConfig) SQLServerConnectionConfig {

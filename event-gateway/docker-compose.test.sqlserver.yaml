@@ -57,11 +57,28 @@ services:
     environment:
       - MSSQL_SA_PASSWORD=${MSSQL_SA_PASSWORD:-EGW_Strong!Pass123}
       - MSSQL_DB=gateway_test
+    volumes:
+      # event-gateway-controller reuses gateway-controller's storage package,
+      # which no longer auto-applies schema DDL to external databases — and the
+      # event-gateway controller likewise no longer auto-applies its own DDL for
+      # external backends. Both the core schema and the event-gateway-specific
+      # tables (websub_apis, webbroker_apis, webhook_secrets) must therefore be
+      # pre-provisioned by the operator. Apply both shipped scripts here after
+      # creating the database, so the IT suite exercises the same
+      # pre-provisioned-DB path operators use.
+      - ../gateway/gateway-controller/pkg/storage/gateway-controller-db.sqlserver.sql:/schema/gateway-controller-schema.sql:ro
+      - ./gateway-controller/pkg/dbschema/eventgateway-db.sqlserver.sql:/schema/eventgateway-schema.sql:ro
     entrypoint: ["/bin/bash", "-c"]
     command:
       - >
-        /opt/mssql-tools18/bin/sqlcmd -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
+        /opt/mssql-tools18/bin/sqlcmd -b -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
         -Q "IF DB_ID('$$MSSQL_DB') IS NULL CREATE DATABASE [$$MSSQL_DB]"
+        &&
+        /opt/mssql-tools18/bin/sqlcmd -b -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
+        -d "$$MSSQL_DB" -i /schema/gateway-controller-schema.sql
+        &&
+        /opt/mssql-tools18/bin/sqlcmd -b -C -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD"
+        -d "$$MSSQL_DB" -i /schema/eventgateway-schema.sql
     restart: "no"
     networks:
       - egw-network
@@ -77,6 +94,8 @@ services:
       - APIP_GW_CONTROLLER_STORAGE_TYPE=sqlserver
       - APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN=sqlserver://sa:${MSSQL_SA_PASSWORD:-EGW_Strong!Pass123}@sqlserver:1433?database=gateway_test&encrypt=disable&TrustServerCertificate=true&app+name=gateway-controller
       - APIP_GW_CONTROLLER_LOGGING_LEVEL=info
+      - APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME=admin
+      - APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH=$$2y$$10$$KZx7AodnpgOthAweR/k2P.xu4kLY7UiFY8Lt2D76mpzzEA6wv7qUO
       - APIP_GW_ROUTER_EVENT__GATEWAY_ENABLED=true
       - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_URL=http://event-gateway:8080
       - APIP_GW_ROUTER_EVENT__GATEWAY_WEBSUB__HUB_PORT=8080

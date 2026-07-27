@@ -168,7 +168,7 @@ Each scenario has its own script and can be run independently. No API key is nee
 | `setup.sh` fails at health check | Docker images are still pulling — wait and retry |
 | Scenario 1: persona not detected | The model paraphrased away the hotel name — re-run; or verify the `prompt-decorator` policy in `llm-proxy-persona.yaml` |
 | Scenario 2: tag not detected | The model dropped the tag — re-run; or verify the `prompt-decorator` policy in `llm-proxy-suffix.yaml` |
-| HTTP 401 on management API | Basic auth header mismatch; default credentials are `admin:admin` |
+| HTTP 401 on management API | Basic auth header mismatch. `setup.sh` provisions the gateway admin credential (defaults to `admin`/`admin`); if you set `ADMIN_USERNAME`/`ADMIN_PASSWORD`, use the same values here. |
 | Request errors with auth failure | Check that your Anthropic API key is valid |
 | `HTTP 400` — `credit balance is too low` | The Anthropic account has no credits — add credits in the Anthropic console |
 | Proxy returns `HTTP 500` — `Internal Server Error` | The `prompt-decorator` config is invalid; its `promptDecoratorConfig` must use `text` or `messages` (check the gateway-runtime logs) |

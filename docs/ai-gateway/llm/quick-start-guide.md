@@ -40,10 +40,18 @@ curl http://localhost:9094/health
 
 The API Platform Gateway currently includes first-class support for the OpenAI LLM provider. As a platform administrator, replace `<openai-apikey>` with your openai API key and run the following command to deploy a sample OpenAI LLM provider.
 
+> The management API uses basic auth. Export the admin credentials `scripts/setup.sh` provisioned — the
+> username defaults to `admin`; use the password it printed:
+>
+> ```bash
+> export ADMIN_USERNAME=admin
+> export ADMIN_PASSWORD='<the password scripts/setup.sh printed>'
+> ```
+
 ```bash
 curl -X POST http://localhost:9090/api/management/v0.9/llm-providers \
   -H "Content-Type: application/yaml" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProvider
@@ -95,7 +103,7 @@ The API Platform Gateway provides first-class support for configuring and deploy
 ```bash
 curl -X POST http://localhost:9090/api/management/v0.9/llm-proxies \
   -H "Content-Type: application/yaml" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProxy

@@ -13,6 +13,10 @@ on:
         required: true
         type: string
         default: ''
+      next_dev_version:
+        description: 'Next development version (with -SNAPSHOT suffix, e.g. 1.1.0-SNAPSHOT)'
+        required: true
+        type: string
 
 env:
   DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}/api-platform
@@ -135,8 +139,20 @@ jobs:
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}
           token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
-      - name: Bump to next dev version
-        run: make -C portals/ai-workspace version-bump-next-dev
+      - name: Set next dev version
+        env:
+          NEXT_DEV_VERSION: ${{ inputs.next_dev_version }}
+        run: |
+          if [ -z "${NEXT_DEV_VERSION}" ]; then
+            echo "Error: next_dev_version input is required"
+            exit 1
+          fi
+          if [[ "${NEXT_DEV_VERSION}" != *-SNAPSHOT ]]; then
+            echo "Error: next_dev_version must end with -SNAPSHOT (e.g. 1.1.0-SNAPSHOT)"
+            exit 1
+          fi
+          echo "Setting ai-workspace to next dev version: ${NEXT_DEV_VERSION}"
+          make -C portals/ai-workspace version-set "VERSION=${NEXT_DEV_VERSION}"
 
       - name: Commit version bump
         run: |
@@ -159,7 +175,7 @@ jobs:
           body: |
             Automated version bump after release `portals/ai-workspace/v${{ steps.version.outputs.version }}`
 
-            This PR bumps the ai-workspace version to the next development version.
+            This PR bumps the ai-workspace version to the next development version `${{ inputs.next_dev_version }}`.
           branch: ai-workspace-version-bump-${{ github.run_id }}
           base: main
           delete-branch: true

@@ -125,7 +125,11 @@ app.use(passport.session());
 const { getSessionCsrfToken } = require('./middlewares/csrfProtection');
 app.use((req, res, next) => {
     if (req.session) {
-        res.cookie('XSRF-TOKEN', getSessionCsrfToken(req), { sameSite: 'lax', path: '/' });
+        res.cookie('XSRF-TOKEN', getSessionCsrfToken(req), {
+            sameSite: 'lax',
+            secure: config.server.https.enabled && !config.designMode?.enabled,
+            path: '/',
+        });
     }
     next();
 });

@@ -47,6 +47,7 @@ services:
       # default cert_file/key_file paths (./data/certs/{cert,key}.pem,
       # resolved against WORKDIR /app) — no cert path override needed.
       - ./resources/certificates:/app/data/certs:ro
+      - ./resources/keys:/etc/platform-api/keys:ro
     ports:
       - "9243:9243"
     healthcheck:

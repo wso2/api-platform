@@ -233,6 +233,56 @@ func TestValidateAuthConfig_BothAuthEnabled(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestValidateAuthConfig_BasicAuthEnabledNoUsers_AllowsNoAuthMode(t *testing.T) {
+	// Basic auth enabled with an empty user list is allowed: it degrades to the
+	// auth middleware's no-auth passthrough (which logs its own warning). Only a
+	// user that is present but empty-valued is rejected — see the empty-credential
+	// test below. The shipped config always defines a user, so its unset-env case
+	// hits that check, not this one.
+	config := &Config{
+		Controller: Controller{
+			Auth: AuthConfig{
+				Basic: BasicAuth{
+					Enabled: true,
+					Users:   []AuthUser{},
+				},
+			},
+		},
+	}
+
+	err := config.validateAuthConfig()
+	assert.NoError(t, err)
+}
+
+func TestValidateAuthConfig_BasicAuthEnabledEmptyCredential_FailsClosed(t *testing.T) {
+	// A user present but with an empty username or password (e.g. an unset
+	// {{ env }} token) is just as unenforceable as no user at all.
+	for _, tc := range []struct {
+		name string
+		user AuthUser
+	}{
+		{"empty password", AuthUser{Username: "admin", Password: "", Roles: []string{"admin"}}},
+		{"empty username", AuthUser{Username: "", Password: "hash", Roles: []string{"admin"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := &Config{
+				Controller: Controller{
+					Auth: AuthConfig{
+						Basic: BasicAuth{
+							Enabled: true,
+							Users:   []AuthUser{tc.user},
+						},
+					},
+				},
+			}
+
+			err := config.validateAuthConfig()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "empty username or password")
+		})
+	}
+}
+
 func TestValidator_LabelsValidation(t *testing.T) {
 	validator := NewAPIValidator()
 

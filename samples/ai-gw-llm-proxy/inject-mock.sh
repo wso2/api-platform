@@ -24,7 +24,7 @@ fi
 MGMT_PORT="${MGMT_PORT:-9090}"
 INBOUND_API_KEY="${INBOUND_API_KEY:-demo-api-key}"
 MGMT_BASE="http://localhost:${MGMT_PORT}/api/management/v1"
-AUTH="Authorization: Basic YWRtaW46YWRtaW4="
+AUTH="Authorization: Basic $(printf %s "${ADMIN_USERNAME:-admin}:${ADMIN_PASSWORD:-admin}" | base64 | tr -d '\r\n')"
 
 print_info "Registering LLM Provider (upstream: mock-llm-openai, policy: token-based-ratelimit)..."
 curl -sf -X POST "${MGMT_BASE}/llm-providers" \

@@ -13,6 +13,12 @@ API_MGR_URL="http://localhost:9090/api/management/v1/rest-apis"
 TOTAL="${1:-50}"
 OUT="${2:-stats.csv}"
 
+# ---------------- admin credentials ----------------
+# Gateway-controller admin credentials (provisioned by scripts/setup.sh). No hardcoded
+# default password: set ADMIN_PASSWORD (and optionally ADMIN_USERNAME) before running.
+ADMIN_USERNAME="${ADMIN_USERNAME:-admin}"
+: "${ADMIN_PASSWORD:?set ADMIN_PASSWORD to the gateway admin password (see scripts/setup.sh output)}"
+
 # ---------------- CSV header ----------------
 echo "api_count,router_cpu_pct,router_mem_used,controller_cpu_pct,controller_mem_used,http_code" > "$OUT"
 
@@ -40,7 +46,7 @@ for i in $(seq 1 "$TOTAL"); do
   http_code=$(
     curl -s -o "$resp_file" -w "%{http_code}" \
       -X POST "$API_MGR_URL" \
-      -u admin:admin \
+      -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
       -H "Content-Type: application/yaml" \
       --data-binary @- <<EOF
 apiVersion: gateway.api-platform.wso2.com/v1alpha2

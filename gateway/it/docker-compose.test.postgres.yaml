@@ -60,6 +60,12 @@ services:
       - POSTGRES_DB=gateway_test
       - POSTGRES_USER=gateway
       - POSTGRES_PASSWORD=gateway
+    volumes:
+      # gateway-controller no longer auto-applies schema DDL against external
+      # databases on startup (schema must be pre-provisioned by the operator) —
+      # apply it here via Postgres's first-boot init hook instead, so the IT
+      # suite exercises the same pre-provisioned-DB path operators use.
+      - ../gateway-controller/pkg/storage/gateway-controller-db.postgres.sql:/docker-entrypoint-initdb.d/01-gateway-controller-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U gateway -d gateway_test"]
       interval: 5s

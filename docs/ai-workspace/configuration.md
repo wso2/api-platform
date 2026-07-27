@@ -184,8 +184,8 @@ Instead, reference each in the TOML with an interpolation token that is resolved
 startup — from an environment variable, or preferably from a mounted secret file:
 
 ```toml
-encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'            # from an env var
-secret_key     = '{{ file "/secrets/platform-api/jwt_secret" }}' # from a file (preferred)
+encryption_key = '{{ file "/etc/platform-api/keys/encryption.key" }}' # shipped default — from a mounted file
+# encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'               # alternatively, from an env var
 ```
 
 Supply the env values from a git-ignored `api-platform.env` and start with `docker compose up`

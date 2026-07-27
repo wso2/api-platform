@@ -175,7 +175,12 @@ APIP_GW_CONTROLLER_STORAGE_DATABASE_DSN=sqlserver://sa:secret@sqlserver:1433?dat
 APIP_GW_CONTROLLER_CONTROLPLANE_HOST=connect.example.com:9243
 APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=<registration-token>
 APIP_GW_CONTROLLER_LOGGING_LEVEL=debug
+APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME=admin
+APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH=<bcrypt-hash-of-the-admin-password>
 ```
+
+> When delivering the bcrypt hash through docker-compose, use `env_file` with `format: raw` (as the
+> shipped composes do) so the `$` characters in the hash are not treated as compose interpolation.
 
 To configure a key that has no token in the shipped config, add the `{{ env }}` token to your
 config file for that key, or set the value in the file directly.
@@ -307,6 +312,21 @@ Admin API:      http://localhost:9092/api/admin/v0.9
 ```
 
 The paths shown in the examples below are relative to these base URLs.
+
+### Authentication
+
+The Management API is protected by HTTP basic auth (see [authentication.md](./authentication.md)). Use the
+admin credential provisioned by `scripts/setup.sh` — the username defaults to `admin` and the password is
+the one setup.sh printed. Export them once and pass with `curl -u`:
+
+```bash
+export ADMIN_USERNAME=admin
+export ADMIN_PASSWORD='<the password scripts/setup.sh printed>'
+# then, on each management call:
+#   curl -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" ...
+```
+
+The Admin API (health, config dump) is reached on its own port and is governed separately.
 
 ### Endpoints
 

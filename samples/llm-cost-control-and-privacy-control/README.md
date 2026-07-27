@@ -203,4 +203,4 @@ TEST_EMAIL="you@example.com" TEST_PHONE="+15551234567" ./test-pii-masking.sh
 | `setup.sh` fails at health check | Docker images are still pulling — wait and retry |
 | Scenario 1: no cache hit detected | `embedding_provider_api_key` is empty in `additional-config.toml`, or Redis is not reachable |
 | Scenario 2: original values appear in response | PII regex did not match — verify the regex patterns in `llm-proxy.yaml` |
-| HTTP 401 on management API | Basic auth header mismatch; default credentials are `admin:admin` |
+| HTTP 401 on management API | Basic auth header mismatch. `setup.sh` provisions the gateway admin credential (defaults to `admin`/`admin`); if you set `ADMIN_USERNAME`/`ADMIN_PASSWORD`, use the same values here. |

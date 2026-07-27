@@ -47,10 +47,18 @@ docker run -p 3001:3001 --name everything --network ai-gateway_gateway-network r
 
 Run the following command to deploy the MCP proxy.
 
+> The management API uses basic auth. Export the admin credentials `scripts/setup.sh` provisioned — the
+> username defaults to `admin`; use the password it printed:
+>
+> ```bash
+> export ADMIN_USERNAME=admin
+> export ADMIN_PASSWORD='<the password scripts/setup.sh printed>'
+> ```
+
 ```bash
 curl -X POST http://localhost:9090/api/management/v0.9/mcp-proxies \
   -H "Content-Type: application/yaml" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: Mcp

@@ -204,11 +204,21 @@ func main() {
 	defer db.Close()
 
 	// websub_apis, webbroker_apis, and webhook_secrets are event-gateway-specific
-	// tables that core's own schema scripts do not define. Apply them against the
-	// same database connection core just opened.
-	if err := dbschema.Apply(context.Background(), db.GetDB(), cfg.Controller.Storage.Type); err != nil {
-		log.Error("Failed to initialize event-gateway database schema", slog.Any("error", err))
-		os.Exit(1)
+	// tables that core's own schema scripts do not define. Core storage auto-creates
+	// its schema only for the embedded sqlite backend; for operator-owned external
+	// databases (postgres, sqlserver) the schema — including these event-gateway
+	// tables — must be pre-provisioned by the operator, matching gateway-controller's
+	// policy of never running DDL against an external database at startup. So only
+	// auto-apply for sqlite; for external backends the tables are expected to already
+	// exist (see the shipped eventgateway-db.*.sql scripts).
+	if strings.EqualFold(cfg.Controller.Storage.Type, "sqlite") {
+		if err := dbschema.Apply(context.Background(), db.GetDB(), cfg.Controller.Storage.Type); err != nil {
+			log.Error("Failed to initialize event-gateway database schema", slog.Any("error", err))
+			os.Exit(1)
+		}
+	} else {
+		log.Info("Skipping event-gateway schema auto-apply for external database; schema must be pre-provisioned",
+			slog.String("storage_type", cfg.Controller.Storage.Type))
 	}
 
 	var eventHubInstance eventhub.EventHub

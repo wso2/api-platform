@@ -104,7 +104,7 @@ Deploy an LLM provider with Azure Content Safety validation:
 ```bash
 curl -X POST http://localhost:9090/api/management/v0.9/llm-providers \
   -H "Content-Type: application/yaml" \
-  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1
 kind: LlmProvider

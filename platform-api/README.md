@@ -326,9 +326,10 @@ over an env var:
 
 ```toml
 [platform_api.security]
-encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'            # from an env var
-# preferred — from a mounted secret file:
-# encryption_key = '{{ file "/secrets/platform-api/encryption_key" }}'
+# Read from a mounted key file provisioned by scripts/setup.sh:
+encryption_key = '{{ file "/etc/platform-api/keys/encryption.key" }}'
+# Alternatively, from an env var supplied via a git-ignored env file:
+# encryption_key = '{{ env "APIP_CP_ENCRYPTION_KEY" }}'
 ```
 
 For the `{{ env }}` form, supply the value from a git-ignored env file rather than the shell or
