@@ -101,7 +101,7 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsCondition
 				},
 			}},
 			Policies: &[]api.LLMPolicy{{
-				Name:    "openai-header-router",
+				Name:    "llm-header-router",
 				Version: "v1",
 				Paths: []api.LLMPolicyPath{{
 					Path:    "/chat/completions",
