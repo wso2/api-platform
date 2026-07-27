@@ -16,7 +16,11 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["vite/client", "node"]
+    "types": ["vite/client", "node"],
+    "paths": {
+      "@cloud-extensions": ["./src/cloud/extensions.stub.ts"],
+      "@cloud-ui/*": ["./src/cloud/ui/*"]
+    }
   },
   "include": ["src"]
 }

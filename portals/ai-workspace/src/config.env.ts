@@ -56,6 +56,11 @@ export const ORG_HANDLE_CLAIM = getEnvOrDefault('APIP_AIW_AUTH_CLAIM_MAPPINGS_OR
 export const USERNAME_CLAIM = getEnvOrDefault('APIP_AIW_AUTH_CLAIM_MAPPINGS_USERNAME', 'username');
 export const EMAIL_CLAIM = getEnvOrDefault('APIP_AIW_AUTH_CLAIM_MAPPINGS_EMAIL', 'email');
 
+// Runtime gate for cloud-only extensions contributed via the extension seam. The
+// standalone build ships the no-op stub and never sets this; a cloud build may flip
+// it via window.__RUNTIME_CONFIG__ to turn the bundled cloud feature on/off without
+// a rebuild. The real extensions module reads this to self-gate.
+export const CLOUD_FEATURES = getEnvOrDefault('APIP_AIW_CLOUD_FEATURES', false);
 //Static OIDC configuration — set these to match the root-org OIDC app in your IDP.
 // Authority is the issuer URL; the OIDC client will auto-discover endpoints from {authority}/.well-known/openid-configuration.
 export const OIDC_AUTHORITY  = getEnvOrDefault('APIP_AIW_OIDC_AUTHORITY', '');

@@ -7,3 +7,7 @@ target
 api-platform.env
 resources/certificates/
 resources/keys/
+
+# Cloud extension overlay/vendor targets (SaaS-provided; extensions.stub.ts is the OSS default)
+src/cloud/ui/
+src/cloud/extensions.tsx

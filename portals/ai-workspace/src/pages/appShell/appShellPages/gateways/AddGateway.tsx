@@ -41,6 +41,7 @@ import { setRegistrationToken } from "./registrationTokenStore";
 import { useAIWorkspaceSnackbar } from "../../../../hooks/aiWorkspaceSnackbar";
 import { PLATFORM_GATEWAY_VERSIONS } from "../../../../config.env";
 import type { GatewayVersionEntry } from "../../../../config.env";
+import { cloudExtensions } from "@cloud-extensions";
 
 // Validation constants
 const MAX_NAME_LENGTH = 255;
@@ -104,6 +105,11 @@ export default function AddGateway() {
     () => PLATFORM_GATEWAY_VERSIONS[0] ?? null,
   );
 
+  // Optional cloud-only field contributed via the extension seam. Absent in the
+  // standalone build.
+  const gatewayCreate = cloudExtensions.gatewayCreate;
+  const [cloudFieldValue, setCloudFieldValue] = useState("");
+
   // Always use AI gateway type
   const functionalityType = "ai";
 
@@ -119,6 +125,7 @@ export default function AddGateway() {
     if (description.length > MAX_DESCRIPTION_LENGTH) return false;
     const normalizedVhost = normalizeVhost(vhost || "");
     if (!normalizedVhost || normalizedVhost.length === 0) return false;
+    if (gatewayCreate?.required && !cloudFieldValue) return false;
     return true;
   };
 
@@ -139,6 +146,16 @@ export default function AddGateway() {
         description: description || undefined,
         version: selectedVersion!.version,
       });
+
+      // Persist any cloud-only association tied to the new gateway. No-op in the
+      // standalone build.
+      if (gatewayCreate) {
+        await gatewayCreate.onGatewayCreated({
+          orgId: currentOrganization?.uuid ?? "",
+          gatewayId: createdGateway.id,
+          value: cloudFieldValue,
+        });
+      }
 
       showSnackbar("AI Gateway registered successfully", "success");
 
@@ -319,6 +336,15 @@ export default function AddGateway() {
                 />
               </FormControl>
             </Grid>
+
+            {gatewayCreate && (
+              <Grid size={{ xs: 12 }}>
+                <gatewayCreate.Field
+                  value={cloudFieldValue}
+                  onChange={setCloudFieldValue}
+                />
+              </Grid>
+            )}
           </Grid>
 
           <Box

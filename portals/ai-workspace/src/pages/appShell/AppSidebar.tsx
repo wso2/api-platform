@@ -35,6 +35,7 @@ import { useAppShell } from '../../contexts/AppShellContext';
 import { useAppAuth } from '../../contexts/AppAuthContext';
 import { SCOPES } from '../../auth/permissions';
 import { buildOrgPath, buildProjectPath } from '../../utils/projectRouting';
+import { cloudExtensions } from '@cloud-extensions';
 import QuickStartIntroPopup, {
   QS_INTRO_STORAGE_KEY,
 } from './QuickStartIntroPopup';
@@ -127,6 +128,19 @@ export default function AppSidebar({
   const settingsPath = currentProject
     ? buildProjectPath(currentOrganization, currentProject, '/settings')
     : orgSettingsPath;
+
+  // Cloud extension nav items, filtered to the current scope and the caller's
+  // permissions. Empty in the standalone (stub) build.
+  const cloudNavItems = cloudExtensions.navItems.filter((item) => {
+    const scopeOk = currentProject
+      ? item.scope === 'project' || item.scope === 'both'
+      : item.scope === 'org' || item.scope === 'both';
+    return scopeOk && (!item.requiredScope || hasPermission(item.requiredScope));
+  });
+  const cloudNavPath = (path: string) =>
+    currentProject
+      ? buildProjectPath(currentOrganization, currentProject, path)
+      : buildOrgPath(currentOrganization, path);
   return (
     <Sidebar
       collapsed={shellState.sidebarCollapsed}
@@ -300,6 +314,28 @@ export default function AppSidebar({
               </NavLink>
             )}
           </Sidebar.Category>
+
+          {cloudNavItems.length > 0 && (
+            <Sidebar.Category>
+              {cloudNavItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.id}
+                    to={cloudNavPath(item.path)}
+                    style={navLinkStyle}
+                  >
+                    <Sidebar.Item id={item.id}>
+                      <Sidebar.ItemIcon>
+                        <Icon size={20} />
+                      </Sidebar.ItemIcon>
+                      <Sidebar.ItemLabel>{item.label}</Sidebar.ItemLabel>
+                    </Sidebar.Item>
+                  </NavLink>
+                );
+              })}
+            </Sidebar.Category>
+          )}
         </Box>
       </Sidebar.Nav>
 
