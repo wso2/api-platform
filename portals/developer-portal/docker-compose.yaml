@@ -7,16 +7,25 @@
 # License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
 # Developer Portal + Platform API - standalone release compose file. See README.md.
-# e.g. `docker compose --profile developer-portal --profile ai-workspace up -d`
+# `docker compose up -d` on its own starts Developer Portal + Platform API —
+# the default profiles are set via COMPOSE_PROFILES in ./.env. Override on the
+# command line, e.g.:
+#   docker compose --profile developer-portal --profile ai-workspace up -d
 # Already running platform-api elsewhere and only want devportal? Use --no-deps
 #   docker compose --profile developer-portal up -d --no-deps devportal
+#
+# Each service's `profiles:` list names only itself (plus "all") — never a
+# sibling pack's profile — so every profile can be enabled independently.
+# Combinations (e.g. developer-portal + platform-api together) come from
+# COMPOSE_PROFILES / --profile listing multiple names, not from one service
+# pulling in another's profile.
 
 services:
   platform-api:
     image: ghcr.io/wso2/api-platform/platform-api:0.13.0-SNAPSHOT
     container_name: platform-api
     restart: unless-stopped
-    profiles: ["platform-api", "developer-portal", "all"]
+    profiles: ["platform-api", "all"]
     command: ["-config", "/etc/platform-api/config.toml"]
     env_file:
       - path: api-platform.env
@@ -57,6 +66,8 @@ services:
       - sqlite_data:/app/data
       - ./resources/certificates:/etc/devportal/tls:ro
       - ./resources/keys/jwt_public.pem:/etc/devportal/keys/jwt_public.pem:ro
+      - ./resources/keys/devportal-encryption.key:/etc/devportal/keys/encryption.key:ro
+      - ./resources/keys/devportal-session-secret:/etc/devportal/keys/session-secret:ro
     ports:
       - "${APIP_DP_SERVER_PORT:-9543}:${APIP_DP_SERVER_PORT:-9543}"
     networks:

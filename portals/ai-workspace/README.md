@@ -124,7 +124,7 @@ cd portals/ai-workspace && make build
 # cd platform-api && make build --> Update docker-compose file in portals/ai-workspace folder, with the new build tag
 
 # Start the stack
-docker compose --profile ai-workspace up -d
+docker compose up -d
 ```
 
 The stack exposes:
@@ -141,7 +141,7 @@ the external instance:
 
 ```bash
 export APIP_AIW_CONTROL_PLANE_URL=https://<external-platform-api-host>:9243
-docker compose --profile ai-workspace up -d --no-deps ai-workspace
+docker compose up -d --no-deps ai-workspace
 ```
 
 Since `--no-deps` skips the `service_healthy` wait too, confirm the external platform-api is
@@ -304,7 +304,7 @@ APIP_CP_AUTH_IDP_AUDIENCE=<your-client-id>   # optional; omit to skip the aud ch
 Then start the stack:
 
 ```bash
-docker compose --profile ai-workspace up -d
+docker compose up -d
 ```
 
 In production, prefer mounting the secret as a file and referencing it with
@@ -426,7 +426,7 @@ The repository includes Cypress E2E coverage for the local quickstart stack, inc
 
 ```bash
 cd portals/ai-workspace
-docker compose --profile ai-workspace up -d
+docker compose up -d
 npm install
 ```
 
@@ -472,7 +472,7 @@ docker-compose mounts this directory read-only into both containers
 the BFF trusts for the upstream platform-api hop, referenced by `[ai_workspace.control_plane] ca_file` in
 `configs/config.toml`.
 
-Then restart the stack: `docker compose --profile ai-workspace up -d --force-recreate` (a plain `docker
+Then restart the stack: `docker compose up -d --force-recreate` (a plain `docker
 compose up -d` won't recreate already-running containers, so they'd keep the
 old certificates loaded)
 

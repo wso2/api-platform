@@ -373,6 +373,15 @@ endif
 		> $(DIST_DIR)/.gitignore
 	@cp ../scripts/setup.sh $(DIST_DIR)/scripts/setup.sh
 	@chmod +x $(DIST_DIR)/scripts/setup.sh
+# Bake this pack's default COMPOSE_PROFILES into setup.sh so `docker compose
+# up -d` (no --profile flag) starts AI Workspace + Platform API out of the
+# box once setup.sh has run. setup.sh writes it to .env at setup time — .env
+# is not shipped in the zip itself, only this pack's default value for it.
+	@sed -i.bak \
+	    -e 's|^DEFAULT_COMPOSE_PROFILES=.*|DEFAULT_COMPOSE_PROFILES="ai-workspace,platform-api"|' \
+	    -e 's|^DEFAULT_PACK_NAME=.*|DEFAULT_PACK_NAME="ai-workspace"|' \
+	    $(DIST_DIR)/scripts/setup.sh
+	@rm -f $(DIST_DIR)/scripts/setup.sh.bak
 # Point the platform-api mount at the merged config so both containers share one file.
 	@sed 's#\.\./\.\./platform-api/config/config\.toml:#./configs/config.toml:#' \
 		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml

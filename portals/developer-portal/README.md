@@ -28,10 +28,10 @@ The fastest way to get the portal running — no local Node install required. Re
 
 ```bash
 ../scripts/setup.sh
-docker compose --profile developer-portal up
+docker compose up
 ```
 
-`../scripts/setup.sh` is a one-time step: it generates devportal's and the Platform API's encryption/JWT secrets, a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build devportal from source instead of using the published image, run `docker compose --profile developer-portal up --build`.
+`../scripts/setup.sh` is a one-time step: it generates devportal's and the Platform API's encryption/session/JWT secrets (written to `resources/keys/` as files, read via `{{ file }}` — never as env vars), a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build devportal from source instead of using the published image, run `docker compose up --build`.
 
 Then open **https://localhost:9543/default/views/default** and log in with the admin credentials `../scripts/setup.sh` printed.
 

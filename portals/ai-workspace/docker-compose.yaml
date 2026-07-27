@@ -7,9 +7,18 @@
 # License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
 # AI Workspace + Platform API — standalone release compose file. See README.md.
-# e.g. `docker compose --profile ai-workspace --profile developer-portal up -d`
+# `docker compose up -d` on its own starts AI Workspace + Platform API — the
+# default profiles are set via COMPOSE_PROFILES in ./.env. Override on the
+# command line, e.g.:
+#   docker compose --profile ai-workspace --profile developer-portal up -d
 # Already running platform-api elsewhere and only want ai-workspace?
 #   docker compose --profile ai-workspace up -d --no-deps ai-workspace
+#
+# Each service's `profiles:` list names only itself (plus "all") — never a
+# sibling pack's profile — so every profile can be enabled independently.
+# Combinations (e.g. ai-workspace + platform-api together) come from
+# COMPOSE_PROFILES / --profile listing multiple names, not from one service
+# pulling in another's profile.
 
 services:
 
@@ -17,7 +26,7 @@ services:
     image: ghcr.io/wso2/api-platform/platform-api:0.14.0-SNAPSHOT
     container_name: platform-api
     restart: unless-stopped
-    profiles: ["platform-api", "ai-workspace", "all"]
+    profiles: ["platform-api", "all"]
     command: ["-config", "/etc/platform-api/config.toml"]
     env_file:
       - path: api-platform.env
@@ -80,6 +89,8 @@ services:
       - developer-portal-data:/app/data
       - ./resources/certificates:/etc/devportal/tls:ro
       - ./resources/keys/jwt_public.pem:/etc/devportal/keys/jwt_public.pem:ro
+      - ./resources/keys/devportal-encryption.key:/etc/devportal/keys/encryption.key:ro
+      - ./resources/keys/devportal-session-secret:/etc/devportal/keys/session-secret:ro
     ports:
       - "9543:9543"
     healthcheck:

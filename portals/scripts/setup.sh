@@ -15,7 +15,9 @@
 # either stack (or both at once) might need:
 #
 #   - a self-signed TLS certificate shared by all three services
-#   - devportal's own encryption/session keys      (APIP_DP_SECURITY_*)
+#   - devportal's own encryption key and session secret, written to
+#     resources/keys/devportal-encryption.key and devportal-session-secret and
+#     read by config.toml via {{ file }} — never stored as an env var
 #   - the Platform API's at-rest encryption key, written to resources/keys/encryption.key
 #     and read by config.toml via {{ file }} — like the JWT keypair below, never stored
 #     as an env var
@@ -38,7 +40,8 @@
 # from the root of a standalone distribution zip — same script, same layout):
 #   ../scripts/setup.sh          # inside the repo checkout
 #   ./scripts/setup.sh     # inside a distribution zip (copied there by `make dist`)
-#   docker compose --profile <ai-workspace|developer-portal|all> up -d
+#   docker compose up -d   # uses this pack's default profiles, set via COMPOSE_PROFILES in ./.env
+#   docker compose --profile <ai-workspace|developer-portal|all> up -d  # override
 #
 # Flags:
 #   --force                   regenerate TLS cert, JWT signing keypair, and
@@ -48,6 +51,9 @@
 #   --rotate-encryption-key   DESTRUCTIVE: replace an existing at-rest
 #                              encryption key. Anything encrypted under the
 #                              old key becomes permanently unreadable.
+#   --profiles=<a,b,...>      override the default COMPOSE_PROFILES this
+#                              script writes to .env (see DEFAULT_COMPOSE_PROFILES
+#                              below)
 #
 # ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the interactive
 # prompts and pin the credentials (used by CI). If ADMIN_PASSWORD is left
@@ -63,14 +69,32 @@ FORCE=false
 CERTS_ONLY=false
 ROTATE_ENCRYPTION_KEY=false
 
+# The comma-separated COMPOSE_PROFILES value this script writes to .env, so
+# that a plain `docker compose up -d` (no --profile flag) starts the right
+# services for this pack. Each pack's `make dist` target bakes in its own
+# value here via sed when it copies this shared script into the distribution
+# zip (see the `dist` target in portals/ai-workspace/Makefile and
+# portals/developer-portal/Makefile). Left at this placeholder, it falls back
+# to detect_pack()'s topology-based detection below, which is what happens
+# when this script runs straight out of a repo checkout (not a dist zip).
+DEFAULT_COMPOSE_PROFILES="__DEFAULT_COMPOSE_PROFILES__"
+# Which pack this is ("developer-portal" or "ai-workspace") — `make dist`
+# bakes this in the same way as DEFAULT_COMPOSE_PROFILES above, so a shipped
+# distribution zip never needs to detect it at runtime. Left at this
+# placeholder, detect_pack() below determines it from docker-compose.yaml's
+# actual service topology instead.
+DEFAULT_PACK_NAME="__DEFAULT_PACK_NAME__"
+PROFILES_OVERRIDE=""
+
 for arg in "$@"; do
   case "$arg" in
     --force) FORCE=true ;;
     --certs-only) CERTS_ONLY=true ;;
     --rotate-encryption-key) ROTATE_ENCRYPTION_KEY=true ;;
+    --profiles=*) PROFILES_OVERRIDE="${arg#*=}" ;;
     -h|--help)
       cat <<'EOF'
-Usage: ./setup.sh [--force] [--certs-only] [--rotate-encryption-key]
+Usage: ./setup.sh [--force] [--certs-only] [--rotate-encryption-key] [--profiles=<a,b,...>]
 
   --force                   regenerate TLS cert, JWT signing keypair, and
                              admin credentials. Never rotates the at-rest
@@ -79,12 +103,16 @@ Usage: ./setup.sh [--force] [--certs-only] [--rotate-encryption-key]
   --certs-only              generate only the TLS certificate (used by
                              `make bff-run`)
   --rotate-encryption-key   DESTRUCTIVE: replace resources/keys/encryption.key
-                             even if one already exists. Any data encrypted
-                             under the old key (e.g. stored secrets) becomes
+                             and resources/keys/devportal-encryption.key even if
+                             they already exist. Any data encrypted
+                             under the old key(s) (e.g. stored secrets) becomes
                              permanently unreadable. Requires interactive
                              confirmation unless ADMIN_USERNAME/ADMIN_PASSWORD
                              are set (CI), in which case passing this flag is
                              itself treated as confirmation.
+  --profiles=<a,b,...>      override the default COMPOSE_PROFILES value this
+                             script writes to .env, e.g. --profiles=all or
+                             --profiles=platform-api
 
 ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the interactive
 prompts and pin the credentials (used by CI).
@@ -119,6 +147,11 @@ fi
 cd "$ROOT_DIR"
 
 ENV_FILE="$ROOT_DIR/api-platform.env"
+# Project-level env file — Docker Compose reads COMPOSE_PROFILES from here
+# automatically (unlike api-platform.env above, which is only ever passed to
+# containers explicitly via each service's own env_file: entry), so this is
+# what makes a plain `docker compose up -d` resolve the right services.
+COMPOSE_ENV_FILE="$ROOT_DIR/.env"
 CERTS_DIR="$ROOT_DIR/resources/certificates"
 # RS256 JWT keypair (PEM). Mounted into the platform-api container at
 # /etc/platform-api/keys and read by config.toml via {{ file }}.
@@ -154,6 +187,29 @@ restrict_secret_file() {
     chmod "$FILE_MODE" "$file"
 }
 
+# One-time confirmation gate for --rotate-encryption-key, shared by both the
+# devportal and Platform API at-rest encryption keys (rotating either makes
+# data encrypted under it permanently unreadable) — prompts at most once per
+# run even though both keys are provisioned separately below.
+ROTATION_CONFIRMED=false
+confirm_rotation_once() {
+    local key_path="$1"
+    if [[ "$ROTATION_CONFIRMED" == true ]]; then
+        return
+    fi
+    if [[ -t 0 && -z "${ADMIN_USERNAME:-}" && -z "${ADMIN_PASSWORD:-}" ]]; then
+        echo
+        echo "  WARNING: --rotate-encryption-key will make any data encrypted"
+        echo "  under the current at-rest encryption key(s) (starting with"
+        echo "  $key_path) permanently unreadable."
+        read -r -p "  Type 'rotate' to proceed: " CONFIRM_ROTATE
+        [[ "$CONFIRM_ROTATE" == "rotate" ]] || fail "encryption key rotation not confirmed; aborting."
+    else
+        log "  - non-interactive/CI invocation: --rotate-encryption-key passed, treating that as confirmation"
+    fi
+    ROTATION_CONFIRMED=true
+}
+
 command -v openssl >/dev/null 2>&1 || fail "openssl is required but not found on PATH."
 
 # bcrypt isn't in openssl; use htpasswd when available, else a throwaway
@@ -170,22 +226,68 @@ bcrypt_hash() {
   fi
 }
 
-# Sets KEY=VALUE in api-platform.env. Idempotent by default — never
+# Sets KEY=VALUE in the given env file. Idempotent by default — never
 # overwrites a value the user or a previous run already set — unless --force
 # was passed, in which case any existing line for KEY is replaced.
 set_env_var() {
-    local key="$1" value="$2"
-    if [[ "$FORCE" == false ]] && grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
-        log "  - ${key} already set in api-platform.env, leaving as-is"
+    local file="$1" key="$2" value="$3"
+    if [[ "$FORCE" == false ]] && grep -q "^${key}=" "$file" 2>/dev/null; then
+        log "  - ${key} already set in $(basename "$file"), leaving as-is"
         return
     fi
-    if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+    if grep -q "^${key}=" "$file" 2>/dev/null; then
         # macOS/BSD sed and GNU sed both accept -i.bak with an explicit suffix.
-        sed -i.bak "/^${key}=/d" "$ENV_FILE" && rm -f "$ENV_FILE.bak"
+        sed -i.bak "/^${key}=/d" "$file" && rm -f "$file.bak"
     fi
-    printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
-    log "  - ${key} generated"
+    printf '%s=%s\n' "$key" "$value" >> "$file"
+    log "  - ${key} set in $(basename "$file")"
 }
+
+# Which pack's docker-compose.yaml this is — a single source of truth reused
+# both to resolve the default COMPOSE_PROFILES value below and to print the
+# right profile combinations at the end of this script. Prefers the value
+# `make dist` baked into DEFAULT_PACK_NAME; falls back to the compose file's
+# own service topology — each pack's mandatory service is uniquely named
+# ("devportal" vs "ai-workspace"/"developer-portal"), which is a far more
+# stable signal than matching a comment's exact wording.
+detect_pack() {
+    if [[ "$DEFAULT_PACK_NAME" != "__DEFAULT_PACK_NAME__" ]]; then
+        echo "$DEFAULT_PACK_NAME"
+        return
+    fi
+    if grep -q '^  devportal:' "$ROOT_DIR/docker-compose.yaml" 2>/dev/null; then
+        echo "developer-portal"
+    elif grep -q '^  developer-portal:' "$ROOT_DIR/docker-compose.yaml" 2>/dev/null; then
+        echo "ai-workspace"
+    else
+        echo "unknown"
+    fi
+}
+PACK="$(detect_pack)"
+
+log "Setting default docker compose profiles ..."
+# Resolution order: an explicit --profiles=<...> flag always wins; otherwise
+# use the value `make dist` baked into DEFAULT_COMPOSE_PROFILES for a
+# distribution zip; otherwise auto-detect from docker-compose.yaml, which is
+# what happens when this script runs straight out of a repo checkout.
+if [[ -n "$PROFILES_OVERRIDE" ]]; then
+    COMPOSE_PROFILES_VALUE="$PROFILES_OVERRIDE"
+elif [[ "$DEFAULT_COMPOSE_PROFILES" != "__DEFAULT_COMPOSE_PROFILES__" ]]; then
+    COMPOSE_PROFILES_VALUE="$DEFAULT_COMPOSE_PROFILES"
+else
+    case "$PACK" in
+        ai-workspace) COMPOSE_PROFILES_VALUE="ai-workspace,platform-api" ;;
+        developer-portal) COMPOSE_PROFILES_VALUE="developer-portal,platform-api" ;;
+        *) COMPOSE_PROFILES_VALUE="" ;;
+    esac
+fi
+
+if [[ -n "$COMPOSE_PROFILES_VALUE" ]]; then
+    touch "$COMPOSE_ENV_FILE"
+    set_env_var "$COMPOSE_ENV_FILE" "COMPOSE_PROFILES" "$COMPOSE_PROFILES_VALUE"
+else
+    log "  - could not detect this pack's default profiles; pass --profiles=<a,b,...> or always use --profile explicitly with docker compose"
+fi
 
 log "Provisioning TLS certificate ..."
 mkdir -p "$CERTS_DIR"
@@ -215,9 +317,44 @@ touch "$ENV_FILE"
 # protection, not container-UID read access via restrict_secret_file.
 chmod 600 "$ENV_FILE"
 
-log "Generating devportal secrets into api-platform.env ..."
-set_env_var "APIP_DP_SECURITY_ENCRYPTION_KEY" "$(openssl rand -hex 32)"
-set_env_var "APIP_DP_SECURITY_SESSION_SECRET" "$(openssl rand -hex 32)"
+log "Provisioning devportal encryption key and session secret ..."
+# Written to files (not api-platform.env) and read by config.toml via
+# {{ file "/etc/devportal/keys/encryption.key" }} / {{ file ".../session-secret" }}
+# — the same pattern as the Platform API's at-rest encryption key below, and
+# for the same reason: a value that never appears in `docker inspect`, a
+# process environment dump, or api-platform.env is materially harder to
+# exfiltrate than an env var. resources/keys is mounted into the devportal
+# container at /etc/devportal/keys (see docker-compose.yaml), which is on
+# devportal's {{ file }} allowlist.
+#
+# devportal-encryption.key encrypts subscription/webhook secrets at rest
+# (see src/dao/subscriptionDao.js, webhookSubscriberDao.js) — exactly like
+# the Platform API's encryption.key below, so it is preserved across reruns
+# and rotated ONLY via --rotate-encryption-key, never by the generic --force.
+# devportal-session-secret only signs session cookies — rotating it merely
+# invalidates existing sessions, so it follows --force like the TLS cert/JWT
+# keypair.
+if [[ -f "$KEYS_DIR/devportal-encryption.key" && "$ROTATE_ENCRYPTION_KEY" == true ]]; then
+    confirm_rotation_once "$KEYS_DIR/devportal-encryption.key"
+    openssl rand -hex 32 > "$KEYS_DIR/devportal-encryption.key"
+    restrict_secret_file "$KEYS_DIR/devportal-encryption.key"
+    log "  - devportal encryption key ROTATED at $KEYS_DIR/devportal-encryption.key"
+elif [[ -f "$KEYS_DIR/devportal-encryption.key" ]]; then
+    log "  - $KEYS_DIR/devportal-encryption.key already exists, leaving as-is (pass --rotate-encryption-key to replace it)"
+else
+    mkdir -p "$KEYS_DIR"
+    openssl rand -hex 32 > "$KEYS_DIR/devportal-encryption.key"
+    restrict_secret_file "$KEYS_DIR/devportal-encryption.key"
+    log "  - devportal encryption key generated at $KEYS_DIR/devportal-encryption.key"
+fi
+if [[ "$FORCE" == false && -f "$KEYS_DIR/devportal-session-secret" ]]; then
+    log "  - $KEYS_DIR/devportal-session-secret already exists, leaving as-is"
+else
+    mkdir -p "$KEYS_DIR"
+    openssl rand -hex 32 > "$KEYS_DIR/devportal-session-secret"
+    restrict_secret_file "$KEYS_DIR/devportal-session-secret"
+    log "  - devportal session secret generated at $KEYS_DIR/devportal-session-secret"
+fi
 
 log "Provisioning Platform API JWT signing keypair (RS256) ..."
 # Tokens are signed asymmetrically (RS256), not with a shared HMAC secret. The
@@ -254,15 +391,7 @@ log "Provisioning Platform API at-rest encryption key ..."
 # rotates the TLS cert / JWT keypair / admin credentials, none of which risk
 # data loss the way rotating this key does).
 if [[ -f "$KEYS_DIR/encryption.key" && "$ROTATE_ENCRYPTION_KEY" == true ]]; then
-    if [[ -t 0 && -z "${ADMIN_USERNAME:-}" && -z "${ADMIN_PASSWORD:-}" ]]; then
-        echo
-        echo "  WARNING: rotating $KEYS_DIR/encryption.key will make any data"
-        echo "  encrypted under the current key permanently unreadable."
-        read -r -p "  Type 'rotate' to proceed: " CONFIRM_ROTATE
-        [[ "$CONFIRM_ROTATE" == "rotate" ]] || fail "encryption key rotation not confirmed; aborting."
-    else
-        log "  - non-interactive/CI invocation: --rotate-encryption-key passed, treating that as confirmation"
-    fi
+    confirm_rotation_once "$KEYS_DIR/encryption.key"
     openssl rand -hex 32 > "$KEYS_DIR/encryption.key"
     restrict_secret_file "$KEYS_DIR/encryption.key"
     log "  - at-rest encryption key ROTATED at $KEYS_DIR/encryption.key"
@@ -310,8 +439,8 @@ else
     # `format: raw`, which passes file content through byte-for-byte with no
     # ${VAR} interpolation, so a literal bcrypt hash ("$2y$12$...") survives
     # into the container as-is. Escaping "$" as "$$" here would corrupt it.
-    set_env_var "APIP_CP_ADMIN_USERNAME" "$ADMIN_USERNAME"
-    set_env_var "APIP_CP_ADMIN_PASSWORD_HASH" "$ADMIN_HASH"
+    set_env_var "$ENV_FILE" "APIP_CP_ADMIN_USERNAME" "$ADMIN_USERNAME"
+    set_env_var "$ENV_FILE" "APIP_CP_ADMIN_PASSWORD_HASH" "$ADMIN_HASH"
 
     CREDENTIALS_PROVISIONED=true
 fi
@@ -329,20 +458,23 @@ if [[ "$CREDENTIALS_PROVISIONED" == true ]]; then
 fi
 echo "  Next step — choose which components:"
 echo
-# Each pack's docker-compose.yaml marks its optional sibling service with a
-# distinct, stable comment — used here to print every profile combination for
-# whichever pack this script is running in, with the pack's own default
-# listed first, rather than a generic placeholder the reader has to decode.
-if grep -q '^  # Optional: enable AI Workspace' "$ROOT_DIR/docker-compose.yaml" 2>/dev/null; then
-    echo "    docker compose --profile developer-portal up -d                         # Developer Portal + Platform API (default)"
-    echo "    docker compose --profile developer-portal --profile ai-workspace up -d  # + AI Workspace"
-    echo "    docker compose --profile all up -d                                      # AI Workspace + Developer Portal + Platform API"
-    echo "    docker compose --profile platform-api up -d                             # Platform API only"
-elif grep -q '^  # Optional: enable the developer portal' "$ROOT_DIR/docker-compose.yaml" 2>/dev/null; then
-    echo "    docker compose --profile ai-workspace up -d                             # AI Workspace + Platform API (default)"
-    echo "    docker compose --profile ai-workspace --profile developer-portal up -d  # + Developer Portal"
-    echo "    docker compose --profile all up -d                                      # AI Workspace + Developer Portal + Platform API"
-    echo "    docker compose --profile platform-api up -d                             # Platform API only"
+# The first line always reflects $COMPOSE_PROFILES_VALUE — the value actually
+# just written to .env — rather than assuming $PACK's usual default. Those
+# can differ: --profiles=<...> or a dist-baked DEFAULT_COMPOSE_PROFILES can
+# set .env to something other than this pack's normal two-service combo.
+if [[ -n "$COMPOSE_PROFILES_VALUE" ]]; then
+    echo "    docker compose up -d                                                    # ${COMPOSE_PROFILES_VALUE} (current .env default)"
+else
+    echo "    docker compose up -d                                                    # no default set — pass --profile explicitly"
+fi
+if [[ "$PACK" == "developer-portal" ]]; then
+    echo "    docker compose --profile developer-portal --profile ai-workspace --profile platform-api up -d  # Developer Portal + AI Workspace + Platform API"
+    echo "    docker compose --profile all up -d                                                              # AI Workspace + Developer Portal + Platform API"
+    echo "    docker compose --profile platform-api up -d                                                     # Platform API only"
+elif [[ "$PACK" == "ai-workspace" ]]; then
+    echo "    docker compose --profile ai-workspace --profile developer-portal --profile platform-api up -d  # AI Workspace + Developer Portal + Platform API"
+    echo "    docker compose --profile all up -d                                                             # AI Workspace + Developer Portal + Platform API"
+    echo "    docker compose --profile platform-api up -d                                                    # Platform API only"
 else
     echo "    docker compose --profile <ai-workspace|developer-portal|all|platform-api> up -d"
 fi

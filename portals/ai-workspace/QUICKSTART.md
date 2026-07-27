@@ -38,7 +38,7 @@ TLS certificate shared by both services (written to `resources/certificates/`).
 ### 3. Start the stack
 
 ```bash
-docker compose --profile ai-workspace up -d
+docker compose up -d
 ```
 
 ### 4. Open the workspace
