@@ -1,4 +1,4 @@
-name: Release AI Workspace Umbrella Helm Chart
+name: Release AI Workspace Helm Chart
 
 # Publishes the AI Workspace product umbrella (Platform API + AI Workspace UI) to
 # GHCR as an OCI artifact. Its component dependencies reference the OCI registry
