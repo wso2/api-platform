@@ -327,7 +327,7 @@ if [[ "$CREDENTIALS_PROVISIONED" == true ]]; then
     echo "  ------------------------------------------------------------------"
     echo
 fi
-echo "  Next step — choose how much to start:"
+echo "  Next step — choose which components:"
 echo
 # Each pack's docker-compose.yaml marks its optional sibling service with a
 # distinct, stable comment — used here to print every profile combination for
