@@ -537,11 +537,14 @@ export default function ExternalServersOverview(): JSX.Element {
     // delete the old secret once the update succeeds. Mirrors MCPServerProvider.updateMCPServer.
     const isRotatingCredential = !isCredentialMasked && hasCredentialChanged;
     let upstreamPayload = server.upstream;
+    // Tracks the handle created below (rotation flow only), so a subsequent failed
+    // updateMCPServer call can clean it up instead of leaking an orphaned secret.
+    let newlyCreatedSecretHandle: string | null = null;
 
     if (hasBackendConnectionChanges) {
       const trimmedUrl = endpointUrl.trim();
       const trimmedHeaderName = authHeaderName.trim();
-      let resolvedAuthValue = server.upstream?.main?.auth?.value ?? '';
+      let authPayload = server.upstream?.main?.auth;
 
       if (isRotatingCredential) {
         const trimmedValue = authHeaderValue.trim();
@@ -555,29 +558,37 @@ export default function ExternalServersOverview(): JSX.Element {
               value: trimmedValue,
               type: 'GENERIC',
             });
-            resolvedAuthValue = buildSecretPlaceholder(secretResponse.id);
+            newlyCreatedSecretHandle = secretResponse.id;
+            authPayload = {
+              type: 'header',
+              header: trimmedHeaderName,
+              value: buildSecretPlaceholder(secretResponse.id),
+            };
           } catch {
             showSnackbar('Failed to encrypt upstream auth credential', 'error');
             return;
           }
         } else {
-          resolvedAuthValue = '';
+          // Rotated to an empty header/value — the user is explicitly clearing auth.
+          authPayload = undefined;
         }
+      } else if (trimmedHeaderName) {
+        // Not rotating: preserve the existing credential. auth.value is writeOnly and
+        // never present on the cached server object, so omitting it here (rather than
+        // reconstructing it) relies on the backend's preserveMCPUpstreamAuthValue to
+        // keep the stored value — the same fallback the Policies-only save path
+        // already depends on. Only the header name (URL-only/header-only edits) changes.
+        authPayload = { ...server.upstream?.main?.auth, type: 'header', header: trimmedHeaderName };
+      } else {
+        // Header name cleared — no credential to attach, so drop auth entirely.
+        authPayload = undefined;
       }
 
       upstreamPayload = {
         main: {
           ...server.upstream?.main,
           url: trimmedUrl,
-          ...(trimmedHeaderName && resolvedAuthValue
-            ? {
-                auth: {
-                  type: 'header',
-                  header: trimmedHeaderName,
-                  value: resolvedAuthValue,
-                },
-              }
-            : { auth: undefined }),
+          auth: authPayload,
         },
       };
     }
@@ -604,6 +615,14 @@ export default function ExternalServersOverview(): JSX.Element {
 
       showSnackbar('Changes saved successfully.', 'success');
     } catch {
+      // The MCP proxy update failed after a new secret was already created for the
+      // rotation — clean it up (best-effort) so it doesn't leak as an orphaned,
+      // unreferenced credential. Only the newly created handle, never the old one.
+      if (newlyCreatedSecretHandle) {
+        deleteSecret(newlyCreatedSecretHandle).catch((err) => {
+          logger.warn('Could not clean up newly created secret after failed MCP proxy update', err);
+        });
+      }
       showSnackbar('Failed to save changes.', 'error');
     } finally {
       setIsSavingChanges(false);

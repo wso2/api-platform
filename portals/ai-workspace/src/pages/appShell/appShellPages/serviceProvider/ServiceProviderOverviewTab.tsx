@@ -1139,8 +1139,10 @@ export default function ServiceProviderOverviewTab({
             {deleteTargetKeyName}
           </Typography>
           <Alert severity="warning" sx={{ mt: 2 }}>
-            Deleting this API key will cause any LLM Proxy configured to use
-            it to fail.
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderDeploymentsCard.deleting.this.api.key.will.cause.any.llm.proxy.configured.to.use.it.to.fail"
+              defaultMessage="Deleting this API key will cause any LLM Proxy configured to use it to fail."
+            />
           </Alert>
         </DialogContent>
         <DialogActions>

@@ -40,6 +40,10 @@
  *   TC-100 Saving the edited connection → PUT stores a NEW secret placeholder
  *          (never the plaintext); a subsequent refetch (now unedited again)
  *          goes back to proxyId mode
+ *   TC-101 Saving a URL-only edit (credential left untouched/masked) → PUT
+ *          preserves the existing auth header/type, omits value (relying on
+ *          the backend's preserveMCPUpstreamAuthValue fallback, same as the
+ *          Policies-only save path), and creates no new secret
  */
 describe('AI Workspace — MCP proxy Backend Connection tab (Refetch Server Info)', () => {
   const suffix = Date.now().toString().slice(-8);
@@ -295,6 +299,45 @@ describe('AI Workspace — MCP proxy Backend Connection tab (Refetch Server Info
       expect(body.proxyId, 'refetch after save uses proxyId again').to.equal(createdServerId);
       expect(body.url, 'refetch after save uses the newly saved url').to.equal(newUrl);
       expect(body.auth, 'no auth override needed post-save').to.be.undefined;
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // TC-101
+  // ---------------------------------------------------------------------------
+  it('TC-101: saving a URL-only edit preserves the existing auth header/type without creating a new secret', () => {
+    const newUrl = 'https://url-only-edit.mcp.example.com/mcp';
+
+    let secretCallCount = 0;
+    cy.intercept('POST', '**/secrets', (req) => { secretCallCount += 1; req.continue(); });
+    cy.intercept('PUT', /\/mcp-proxies\/[^/?]+(\?|$)/).as('updateServer');
+
+    // Only the endpoint URL changes — the auth header/value fields are left exactly
+    // as populated at load (value stays masked, never focused).
+    cy.get('[data-testid="backend-connection-endpoint-url"]')
+      .clear()
+      .type(newUrl);
+
+    cy.contains('button', 'Save', { timeout: 15000 }).should('not.be.disabled').click();
+
+    cy.wait('@updateServer', { timeout: 20000 }).then((pi) => {
+      expect(pi.response.statusCode, 'PUT /mcp-proxies status').to.be.oneOf([200, 201]);
+      const body = pi.request.body;
+      const auth = body?.upstream?.main?.auth;
+      expect(body?.upstream?.main?.url, 'PUT carries the new url').to.equal(newUrl);
+      // The existing credential must survive an unrelated (URL-only) edit — this is
+      // the bug: auth was previously dropped (auth: undefined) whenever the save
+      // path didn't rotate the credential, because resolvedAuthValue was seeded from
+      // the never-populated (writeOnly) server.upstream.main.auth.value.
+      expect(auth, 'auth block is preserved, not dropped, for a URL-only edit').to.exist;
+      expect(auth?.header, 'existing auth header survives the save').to.equal(ORIGINAL_HEADER);
+      expect(auth?.type, 'existing auth type survives the save').to.equal('header');
+      // value is writeOnly and never cached client-side, so it's correctly omitted —
+      // the backend's preserveMCPUpstreamAuthValue restores the stored value.
+      expect(auth?.value, 'value omitted, not stripped (backend preserves it)').to.be.undefined;
+      cy.wrap(null).then(() => {
+        expect(secretCallCount, 'no new secret created for a non-credential edit').to.equal(0);
+      });
     });
   });
 });
