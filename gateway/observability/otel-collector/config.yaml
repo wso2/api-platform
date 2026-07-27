@@ -16,8 +16,12 @@ processors:
       - key: cluster
         value: poc-cluster
         action: upsert
-      - key: environment
-        value: development
+      # NOTE: this MUST be "deployment.environment" (the OTel semantic-convention
+      # key), not a bare "environment" key — Datadog's OTLP intake/exporter maps
+      # deployment.environment to its `env` tag. The previous non-conventional
+      # key name is exactly why DD_ENV wasn't showing up in Datadog (issue #18124).
+      - key: deployment.environment
+        value: ${env:DD_ENV:-development}
         action: upsert
 
   # Memory limiter to prevent OOM
@@ -43,13 +47,25 @@ exporters:
   #   headers:
   #     X-Moesif-Application-Id: Your_Moesif_Application_Id_Here
 
+  # Uncomment the following (and start the `datadog-agent` service via
+  # `docker compose --profile tracing --profile datadog up -d`) to export
+  # traces to a local Datadog Agent. NOTE: the `datadog` exporter itself lives
+  # in otel-collector-contrib, not the core image this compose file uses —
+  # routing OTLP to the Agent's own OTLP intake (via the plain `otlp` exporter,
+  # already in the core image) avoids needing to switch container images.
+  # otlp/datadog:
+  #   endpoint: datadog-agent:4317
+  #   tls:
+  #     insecure: true
+
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource]
-      exporters: [otlp, debug] 
+      exporters: [otlp, debug]
       # exporters: [otlp, debug, otlphttp] #uncomment this to use moesif
+      # exporters: [otlp, debug, otlp/datadog] #uncomment this (and the exporter above) to use datadog
 
   telemetry:
     logs:

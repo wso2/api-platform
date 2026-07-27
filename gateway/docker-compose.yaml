@@ -97,6 +97,10 @@ services:
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./observability/otel-collector/config.yaml:/etc/otel-collector-config.yaml
+    environment:
+      # Used by the resource processor's ${env:DD_ENV:-development} expansion —
+      # sets the deployment.environment resource attribute (Datadog's `env` tag).
+      - DD_ENV=${DD_ENV:-development}
     ports:
       - "4317:4317"   # OTLP gRPC receiver
       - "4318:4318"   # OTLP HTTP receiver
@@ -105,6 +109,31 @@ services:
     depends_on:
       - jaeger
     profiles: ["tracing"]
+
+  # Local Datadog Agent with OTLP intake enabled — opt-in via a dedicated
+  # profile so plain `--profile tracing` users (Jaeger only) don't pick up an
+  # extra container. Also uncomment the `otlp/datadog` exporter in
+  # observability/otel-collector/config.yaml's traces pipeline to use it.
+  # Requires DD_API_KEY (and optionally DD_SITE, e.g. "ap1.datadoghq.com") set
+  # in the host environment before starting:
+  #   DD_API_KEY=... docker compose --profile tracing --profile datadog up -d
+  datadog-agent:
+    image: datadog/agent:latest
+    environment:
+      - DD_API_KEY=${DD_API_KEY}
+      - DD_SITE=${DD_SITE:-datadoghq.com}
+      - DD_ENV=${DD_ENV:-development}
+      - DD_APM_ENABLED=true
+      - DD_APM_NON_LOCAL_TRAFFIC=true
+      - DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT=0.0.0.0:4317
+      - DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT=0.0.0.0:4318
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+    networks:
+      - gateway-network
+    profiles: ["datadog"]
 
   opensearch:
     image: opensearchproject/opensearch:3.4.0
