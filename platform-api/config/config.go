@@ -373,22 +373,30 @@ type Security struct {
 
 // package-level singleton.
 var (
-	configFilePath  string
+	configFilePaths []string
 	processOnce     sync.Once
 	settingInstance *Server
 )
 
-// SetConfigPath configures the path to a config.toml file.
-// Must be called before the first GetConfig() if a config file is used.
+// SetConfigPath configures a single config.toml path. Retained for backward
+// compatibility; SetConfigPaths is the repeatable form. Must be called before the
+// first GetConfig() if a config file is used.
 func SetConfigPath(path string) {
-	configFilePath = path
+	configFilePaths = []string{path}
+}
+
+// SetConfigPaths configures one or more config.toml paths, merged in order with
+// last-wins precedence. Must be called before the first GetConfig() if config
+// files are used.
+func SetConfigPaths(paths ...string) {
+	configFilePaths = paths
 }
 
 // GetConfig returns the singleton config instance, loading it on first call.
 func GetConfig() *Server {
 	var err error
 	processOnce.Do(func() {
-		settingInstance, err = LoadConfig(configFilePath)
+		settingInstance, err = LoadConfig(configFilePaths...)
 	})
 	if err != nil {
 		panic(err)
@@ -410,13 +418,42 @@ var defaultFileSourceAllowlist = []string{
 // sections in a shared deployment config.
 const platformAPIConfigKey = "platform_api"
 
-// LoadConfig loads configuration with priority: config file > defaults.
-// configPath may be empty — when omitted only env vars and defaults are used.
-func LoadConfig(configPath string) (*Server, error) {
+// LoadConfig loads configuration with priority: config files > defaults.
+//
+// configPaths is repeatable: files are merged in the order given with last-wins
+// precedence (a key set in a later file overrides the same key from an earlier
+// file). Merge semantics follow koanf — nested tables (maps) deep-merge, while
+// list/array values are replaced wholesale, not appended. A field may be overridden
+// across files with a different representation — e.g. a numeric value in the base and
+// an {{ env }} token (a string) in an overlay — and still resolve, because types are
+// only checked after interpolation by the weakly-typed unmarshal.
+//
+// Zero paths is permitted (the embeddable library API and callers supplying an
+// already-built config via the platform façade rely on this) — with no files,
+// only the {{ env }}-resolved defaults apply. The `platform-api` binary itself
+// requires at least one -config file (enforced in cmd/main.go), so it never
+// silently boots on defaults. Any path that is given must exist and parse.
+func LoadConfig(configPaths ...string) (*Server, error) {
 	cfg := defaultConfig()
+	// Deliberately NOT koanf StrictMerge: strict merging compares the raw parsed
+	// types across files, but an {{ env }} / {{ file }} interpolation token is a
+	// string until it is resolved after the merge — so strict merging would reject a
+	// numeric/bool field that one file sets natively and another overrides with a
+	// token. Cross-file type errors are instead caught downstream by the weakly-typed
+	// unmarshal and Validate.
 	k := koanf.New(".")
 
-	if configPath != "" {
+	// Load each config file in order. Successive loads deep-merge maps and replace
+	// arrays, giving last-wins precedence for keys set in more than one file.
+	for _, configPath := range configPaths {
+		if configPath == "" {
+			// A zero-length variadic call (no files) is the legitimate "defaults
+			// only" path for embedders; an explicit empty-string path (e.g. the
+			// binary invoked with `-config=`) is a malformed input that must fail
+			// fast rather than silently degrade to defaults — matching the other
+			// loaders, which reject "" via file.Provider.
+			return nil, fmt.Errorf("config path must not be empty")
+		}
 		if err := k.Load(file.Provider(configPath), toml.Parser()); err != nil {
 			return nil, fmt.Errorf("failed to load config file %q: %w", configPath, err)
 		}

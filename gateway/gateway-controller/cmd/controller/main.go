@@ -95,22 +95,37 @@ func toBackendConfig(cfg *config.Config) storage.BackendConfig {
 	}
 }
 
+// stringSliceFlag collects a repeatable string flag into a slice, preserving the
+// order in which the flags were supplied on the command line.
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string { return strings.Join(*s, ", ") }
+
+func (s *stringSliceFlag) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
 func main() {
-	// Parse command-line flags
-	configPath := flag.String("config", "", "Path to configuration file (required)")
+	// Parse command-line flags. -config is repeatable: files are merged in the
+	// order given with last-wins precedence (a key set in a later file overrides
+	// the same key from an earlier file).
+	var configPaths stringSliceFlag
+	flag.Var(&configPaths, "config",
+		"Path to a configuration file (required; repeatable, merged in order with last-wins precedence)")
 	flag.Parse()
 
-	// Validate that config file is provided
-	if *configPath == "" {
+	// Validate that at least one config file is provided
+	if len(configPaths) == 0 {
 		fmt.Fprintf(os.Stderr, "Error: -config flag is required\n")
-		fmt.Fprintf(os.Stderr, "Usage: %s -config <path-to-config.toml>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s -config <path-to-config.toml> [-config <overlay.toml> ...]\n", os.Args[0])
 		os.Exit(1)
 	}
 
 	// Load configuration
-	cfg, err := config.LoadConfig(*configPath)
+	cfg, err := config.LoadConfig(configPaths...)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load configuration from %s: %v\n", *configPath, err)
+		fmt.Fprintf(os.Stderr, "Failed to load configuration from %s: %v\n", strings.Join(configPaths, ", "), err)
 		os.Exit(1)
 	}
 
@@ -129,7 +144,7 @@ func main() {
 		slog.String("version", version.Version),
 		slog.String("git_commit", version.GitCommit),
 		slog.String("build_date", version.BuildDate),
-		slog.String("config_file", *configPath),
+		slog.Any("config_files", []string(configPaths)),
 		slog.String("storage_type", cfg.Controller.Storage.Type),
 		slog.Bool("access_logs_enabled", cfg.Router.AccessLogs.Enabled),
 		slog.String("control_plane_host", cfg.Controller.ControlPlane.Host),
