@@ -57,7 +57,7 @@ type ExternalProcessorServer struct {
 	tracer   trace.Tracer
 
 	// Per-direction caps on decompressed bytes buffered per body (buffered mode)
-	// or per chunk (streaming), from policy_engine.request/.response config.
+	// or per chunk (streaming), from policy_engine.request_body/.response_body config.
 	// A value <= 0 disables the cap.
 	maxRequestDecompressedBytes  int64
 	maxResponseDecompressedBytes int64

@@ -168,11 +168,10 @@ type PolicyEngine struct {
 	// Tracing holds OpenTelemetry exporter configuration
 	TracingServiceName string `koanf:"tracing_service_name"`
 
-	// TODO: (decompress-fix) Body Config variable name should be changed. Generic to include header specific data as well.
-	// Request and Response hold body-processing limits per direction, so request
-	// bodies can be bounded differently from response bodies.
-	Request  BodyConfig `koanf:"request"`
-	Response BodyConfig `koanf:"response"`
+	// RequestBody and ResponseBody hold body-processing limits per direction, so
+	// request bodies can be bounded differently from response bodies.
+	RequestBody  BodyConfig `koanf:"request_body"`
+	ResponseBody BodyConfig `koanf:"response_body"`
 
 	// RawConfig holds the complete raw configuration map including custom fields
 	// This is used for resolving ${config} CEL expressions in policy systemParameters
@@ -181,7 +180,7 @@ type PolicyEngine struct {
 }
 
 // BodyConfig holds body-processing limits for one direction
-// ([policy_engine.request] or [policy_engine.response]).
+// ([policy_engine.request_body] or [policy_engine.response_body]).
 type BodyConfig struct {
 	// MaxDecompressedBytes caps decompressed bytes buffered per body (buffered mode)
 	// or per chunk (streaming) — not cumulative, so long-lived streams such as SSE
@@ -557,10 +556,10 @@ func defaultConfig() *Config {
 				Timeout: 30 * time.Second,
 			},
 			TracingServiceName: "policy-engine",
-			Request: BodyConfig{
+			RequestBody: BodyConfig{
 				MaxDecompressedBytes: DefaultMaxDecompressedBytes,
 			},
-			Response: BodyConfig{
+			ResponseBody: BodyConfig{
 				MaxDecompressedBytes: DefaultMaxDecompressedBytes,
 			},
 		},
@@ -676,11 +675,11 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	if c.PolicyEngine.Request.MaxDecompressedBytes <= 0 {
-		return fmt.Errorf("policy_engine.request.max_decompressed_bytes must be positive, got %d", c.PolicyEngine.Request.MaxDecompressedBytes)
+	if c.PolicyEngine.RequestBody.MaxDecompressedBytes <= 0 {
+		return fmt.Errorf("policy_engine.request_body.max_decompressed_bytes must be positive, got %d", c.PolicyEngine.RequestBody.MaxDecompressedBytes)
 	}
-	if c.PolicyEngine.Response.MaxDecompressedBytes <= 0 {
-		return fmt.Errorf("policy_engine.response.max_decompressed_bytes must be positive, got %d", c.PolicyEngine.Response.MaxDecompressedBytes)
+	if c.PolicyEngine.ResponseBody.MaxDecompressedBytes <= 0 {
+		return fmt.Errorf("policy_engine.response_body.max_decompressed_bytes must be positive, got %d", c.PolicyEngine.ResponseBody.MaxDecompressedBytes)
 	}
 
 	// Validate config mode

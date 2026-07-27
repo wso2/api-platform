@@ -68,10 +68,10 @@ func validConfig() *Config {
 				},
 				Timeout: 30 * time.Second,
 			},
-			Request: BodyConfig{
+			RequestBody: BodyConfig{
 				MaxDecompressedBytes: DefaultMaxDecompressedBytes,
 			},
-			Response: BodyConfig{
+			ResponseBody: BodyConfig{
 				MaxDecompressedBytes: DefaultMaxDecompressedBytes,
 			},
 		},
@@ -116,8 +116,8 @@ func TestValidate_MaxDecompressedBytes(t *testing.T) {
 		name string
 		set  func(cfg *Config, v int64)
 	}{
-		{name: "request", set: func(cfg *Config, v int64) { cfg.PolicyEngine.Request.MaxDecompressedBytes = v }},
-		{name: "response", set: func(cfg *Config, v int64) { cfg.PolicyEngine.Response.MaxDecompressedBytes = v }},
+		{name: "request", set: func(cfg *Config, v int64) { cfg.PolicyEngine.RequestBody.MaxDecompressedBytes = v }},
+		{name: "response", set: func(cfg *Config, v int64) { cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes = v }},
 	}
 
 	for _, dir := range directions {
@@ -142,10 +142,10 @@ func TestValidate_MaxDecompressedBytes(t *testing.T) {
 // directions so the decompression guard is active out of the box.
 func TestDefaultConfig_MaxDecompressedBytes(t *testing.T) {
 	cfg := defaultConfig()
-	assert.Equal(t, DefaultMaxDecompressedBytes, cfg.PolicyEngine.Request.MaxDecompressedBytes)
-	assert.Positive(t, cfg.PolicyEngine.Request.MaxDecompressedBytes)
-	assert.Equal(t, DefaultMaxDecompressedBytes, cfg.PolicyEngine.Response.MaxDecompressedBytes)
-	assert.Positive(t, cfg.PolicyEngine.Response.MaxDecompressedBytes)
+	assert.Equal(t, DefaultMaxDecompressedBytes, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes)
+	assert.Positive(t, cfg.PolicyEngine.RequestBody.MaxDecompressedBytes)
+	assert.Equal(t, DefaultMaxDecompressedBytes, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes)
+	assert.Positive(t, cfg.PolicyEngine.ResponseBody.MaxDecompressedBytes)
 }
 
 // TestValidate_ExtProcPort tests extproc port validation (TCP mode only)
