@@ -42,7 +42,7 @@ const buildUrl = (baseUrl: string, path: string, params?: Record<string, unknown
     return fullUrl;
   }
   
-  const url = new URL(fullUrl);
+  const url = new URL(fullUrl, window.location.origin);
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
       url.searchParams.append(key, String(value));
