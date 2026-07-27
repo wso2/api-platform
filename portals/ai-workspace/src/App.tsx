@@ -73,6 +73,10 @@ import Insights from './pages/appShell/appShellPages/insights/Main';
 import QuickStart from './pages/appShell/appShellPages/quickStart/Main';
 import Settings, { SettingsIndexRedirect } from './pages/appShell/appShellPages/settings/Main';
 import ProviderTemplatesList from './pages/appShell/appShellPages/providerTemplate/ProviderTemplatesList';
+import SecretsList from './pages/appShell/appShellPages/secret/SecretsList';
+import CreateSecret from './pages/appShell/appShellPages/secret/CreateSecret';
+import SecretOverview from './pages/appShell/appShellPages/secret/SecretOverview';
+import RotateSecret from './pages/appShell/appShellPages/secret/RotateSecret';
 import ExternalServersList from './pages/appShell/appShellPages/externalServers/ExternalServersList';
 import ExternalServersNew from './pages/appShell/appShellPages/externalServers/ExternalServersNew';
 import ExternalServersOverview from './pages/appShell/appShellPages/externalServers/ExternalServersOverview';
@@ -587,6 +591,38 @@ export default function App() {
                   element={
                     <WithPageBoundary>
                       <CustomPoliciesList />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="secrets"
+                  element={
+                    <WithPageBoundary>
+                      <SecretsList />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="secrets/new"
+                  element={
+                    <WithPageBoundary>
+                      <CreateSecret />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="secrets/:handle"
+                  element={
+                    <WithPageBoundary>
+                      <SecretOverview />
+                    </WithPageBoundary>
+                  }
+                />
+                <Route
+                  path="secrets/:handle/rotate"
+                  element={
+                    <WithPageBoundary>
+                      <RotateSecret />
                     </WithPageBoundary>
                   }
                 />

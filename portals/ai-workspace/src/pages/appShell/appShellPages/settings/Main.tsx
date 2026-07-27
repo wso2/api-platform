@@ -35,7 +35,7 @@ import {
   PageTitle,
   Stack,
 } from '@wso2/oxygen-ui';
-import { LayoutTemplate, ShieldCheck } from '@wso2/oxygen-ui-icons-react';
+import { KeyRound, LayoutTemplate, ShieldCheck } from '@wso2/oxygen-ui-icons-react';
 import { FormattedMessage } from 'react-intl';
 import { useAppShell } from '../../../../contexts/AppShellContext';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
@@ -68,6 +68,13 @@ const NAV_ITEMS: NavItem[] = [
     path: '/settings/custom-policies',
     scope: SCOPES.GATEWAY_CUSTOM_POLICY_READ,
   },
+  {
+    key: 'secrets',
+    label: 'Secrets',
+    icon: <KeyRound size={18} />,
+    path: '/settings/secrets',
+    scope: SCOPES.SECRET_READ,
+  },
 ];
 
 export default function Settings() {
@@ -77,9 +84,8 @@ export default function Settings() {
   const { hasPermission } = useAppAuth();
 
   const visibleNavItems = NAV_ITEMS.filter((item) => hasPermission(item.scope));
-  const selectedKey = visibleNavItems.find((item) =>
-    location.pathname.includes(item.path)
-  )?.key;
+  const selectedKey = visibleNavItems.find((item) => location.pathname.includes(item.path))?.key
+    ?? visibleNavItems[0]?.key;
 
   // Settings requires at least one visible section; send others to org home.
   if (visibleNavItems.length === 0) {
