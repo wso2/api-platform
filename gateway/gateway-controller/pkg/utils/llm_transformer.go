@@ -149,6 +149,11 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		Url: &upstream,
 	}
 
+	// valuePrefix of each additional provider's downstream api-key-auth, keyed by
+	// provider id, captured while resolving them below and reused when attaching the
+	// per-provider loopback upstream auth (Step 3.5).
+	additionalValuePrefixByID := map[string]string{}
+
 	// Step 3.1: Resolve additional providers (multi-provider proxies). Each is
 	// exposed as a named UpstreamDefinition so policies can route to it via
 	// the loopback context. The primary provider above remains the default.
@@ -178,6 +183,10 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			addCtx, err := addCfg.GetContext()
 			if err != nil {
 				return nil, fmt.Errorf("failed to get context for additional provider '%s': %w", ap.Id, err)
+			}
+
+			if addProviderConfig, ok := addCfg.SourceConfiguration.(api.LLMProviderConfiguration); ok {
+				additionalValuePrefixByID[ap.Id] = apiKeyAuthValuePrefix(addProviderConfig.Spec.GlobalPolicies)
 			}
 			// Named upstream definition URLs are host-only. Keep the provider context
 			// in basePath so dynamic provider routing does not drop it and send the
@@ -238,7 +247,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	var upstreamAuthPolicies []api.Policy
 	var transformerPolicies []api.Policy
 	if proxy.Spec.Provider.Auth != nil {
-		pol, err := t.proxyUpstreamAuthPolicy(proxy.Spec.Provider.Auth, "provider.auth")
+		pol, err := t.proxyUpstreamAuthPolicy(proxy.Spec.Provider.Auth, apiKeyAuthValuePrefix(providerConfig.Spec.GlobalPolicies), "provider.auth")
 		if err != nil {
 			return nil, err
 		}
@@ -257,7 +266,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			}
 
 			if ap.Auth != nil {
-				pol, err := t.proxyUpstreamAuthPolicy(ap.Auth, fmt.Sprintf("additionalProviders[%s].auth", name))
+				pol, err := t.proxyUpstreamAuthPolicy(ap.Auth, additionalValuePrefixByID[ap.Id], fmt.Sprintf("additionalProviders[%s].auth", name))
 				if err != nil {
 					return nil, err
 				}
