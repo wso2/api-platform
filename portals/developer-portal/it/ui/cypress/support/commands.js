@@ -16,6 +16,10 @@
 // under the License.
 // --------------------------------------------------------------------
 
+// Register command modules split out into ./commands/*.
+import './commands/auth';
+import './commands/seed';
+
 // ---------------------------------------------------------------------------
 // cy.portalUrl(path)
 //   Build a URL under the ACME/default view without hardcoding the base path.

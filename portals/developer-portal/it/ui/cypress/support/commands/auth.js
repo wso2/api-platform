@@ -29,10 +29,28 @@ Cypress.Commands.add('login', (username, password) => {
     cy.get('.login-btn').click();
     cy.get('#username').type(user);
     cy.get('#password').type(pwd);
-    cy.get('#local-login-form button').click();
+    cy.get('.ln-signin-btn').click();
 
     // Wait until redirected back to the portal home and profile link is visible.
     cy.get('.profile-link', { timeout: 15000 }).should('be.visible');
+});
+
+// ---------------------------------------------------------------------------
+// cy.completeLoginForm(username, password)
+//   Fill in and submit the local login form on the CURRENT page. Unlike
+//   cy.login (which starts from the portal home), this assumes the browser is
+//   already sitting on the login page — e.g. after an auth-gated page redirected
+//   an anonymous visitor there — so the server-side `returnTo` set by that
+//   redirect survives and sends the user back to the originally requested page.
+// ---------------------------------------------------------------------------
+Cypress.Commands.add('completeLoginForm', (username, password) => {
+    const user = username || Cypress.env('ADMIN_USER');
+    const pwd  = password || Cypress.env('ADMIN_PASSWORD');
+
+    cy.get('#local-login-form').should('be.visible');
+    cy.get('#username').type(user);
+    cy.get('#password').type(pwd);
+    cy.get('.ln-signin-btn').click();
 });
 
 // ---------------------------------------------------------------------------
