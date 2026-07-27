@@ -248,6 +248,11 @@ function Get-BcryptHash([string]$password) {
     }
     # htpasswd emits "<user>:<hash>"; user is empty here. Take everything after the first colon.
     $line = ($out -split "`n" | Where-Object { $_ -match ':' } | Select-Object -First 1)
+    if ($null -eq $line) {
+        [Console]::Error.WriteLine('error: could not parse a bcrypt hash from the password-hashing tool output.')
+        [Console]::Error.WriteLine('       Ensure htpasswd (from Apache httpd) or a working Docker daemon is available, then re-run.')
+        exit 1
+    }
     $hash = $line.Substring($line.IndexOf(':') + 1)
     return $hash.Trim()
 }
