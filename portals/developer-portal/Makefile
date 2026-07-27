@@ -311,7 +311,7 @@ endif
 		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md
 	@mkdir -p $(DIST_DIR)/scripts
-	@cp scripts/setup.sh $(DIST_DIR)/scripts/setup.sh
+	@cp ../scripts/setup.sh $(DIST_DIR)/scripts/setup.sh
 	@chmod +x $(DIST_DIR)/scripts/setup.sh
 	@cp scripts/seed-samples.sh $(DIST_DIR)/scripts/seed-samples.sh
 	@chmod +x $(DIST_DIR)/scripts/seed-samples.sh

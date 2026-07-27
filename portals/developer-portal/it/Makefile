@@ -29,7 +29,7 @@ CERT_DIR        := .certs
 CYPRESS_PLATFORM ?= $(shell [ "$$(uname -m)" = "arm64" ] && echo "linux/arm64" || echo "linux/amd64")
 
 # One-time, idempotent TLS cert generation for platform-api's HTTPS listener —
-# mirrors ../scripts/setup.sh's openssl step, scoped to this test fixture and run
+# mirrors ../../scripts/setup.sh's openssl step, scoped to this test fixture and run
 # automatically as a `make test`/`test-postgres`/`test-rest-api*` prerequisite
 # (unlike setup.sh, which a person runs by hand before `docker compose up`) so CI
 # and a fresh checkout need no manual pre-step. Bind-mounted read-only into

@@ -59,7 +59,7 @@ services:
       - ./configs/config-platform-api-it.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
       # TLS pair + RS256 JWT keypair generated once, host-side, by `make
-      # ensure-certs` (mirrors ../scripts/setup.sh's approach for the production
+      # ensure-certs` (mirrors ../../scripts/setup.sh's approach for the production
       # compose) — read-only, 644-mode so the container's non-root user can read
       # a host-owned file. Same host dir, two mount points: TLS cert/key.pem
       # under /app/data/certs, jwt_{public,private}.pem under

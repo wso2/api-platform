@@ -56,7 +56,7 @@ bff-build: ## Build the BFF binary
 # cannot be set here. To test against an IDP, add APIP_AIW_AUTH_MODE=oidc and the
 # APIP_AIW_OIDC_* variables the [oidc] tokens name — see README.md.
 bff-run: ## Run the BFF locally (proxies to CONTROL_PLANE_URL; pair with `make run`)
-	./setup.sh --certs-only
+	../scripts/setup.sh --certs-only
 	cd $(BFF_DIR) && \
 		APIP_AIW_CONTROL_PLANE_URL=$(CONTROL_PLANE_URL) \
 		APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY=true \
@@ -119,7 +119,7 @@ e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
 	echo "Pinning ai-workspace compose to platform-api:$${platform_api_version}"; \
 	sed -i.bak -E "s#image: .*/platform-api:.*#image: $(DOCKER_REGISTRY)/platform-api:$${platform_api_version}#" docker-compose.yaml; \
 	rm -f docker-compose.yaml.bak; \
-	ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./setup.sh --force; \
+	ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ../scripts/setup.sh --force; \
 	docker compose up -d --wait --wait-timeout 300; \
 	$(MAKE) e2e-test
 
@@ -347,7 +347,7 @@ endif
 		'*.env' \
 		'resources/certificates/*' \
 		> $(DIST_DIR)/.gitignore
-	@cp setup.sh $(DIST_DIR)/scripts/setup.sh
+	@cp ../scripts/setup.sh $(DIST_DIR)/scripts/setup.sh
 	@chmod +x $(DIST_DIR)/scripts/setup.sh
 # Point the platform-api mount at the merged config so both containers share one file.
 	@sed 's#\.\./\.\./platform-api/config/config\.toml:#./configs/config.toml:#' \

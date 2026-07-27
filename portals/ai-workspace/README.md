@@ -124,7 +124,7 @@ cd portals/ai-workspace && make build
 # cd platform-api && make build --> Update docker-compose file in portals/ai-workspace folder, with the new build tag
 
 # Start the stack
-docker compose up -d
+docker compose --profile ai-workspace up -d
 ```
 
 The stack exposes:
@@ -134,6 +134,18 @@ The stack exposes:
 | AI Workspace (Go BFF) | `9643` | HTTPS |
 | Platform API | `9243` | HTTPS |
 
+**Already have a platform-api running elsewhere** (another host, or a container you started
+separately) and only want to bring up ai-workspace? The `ai-workspace` service normally waits on
+its own `platform-api` container via `depends_on`, so skip that with `--no-deps` and point it at
+the external instance:
+
+```bash
+export APIP_AIW_CONTROL_PLANE_URL=https://<external-platform-api-host>:9243
+docker compose --profile ai-workspace up -d --no-deps ai-workspace
+```
+
+Since `--no-deps` skips the `service_healthy` wait too, confirm the external platform-api is
+already up and reachable before running this.
 
 ### Option 2
 
@@ -292,7 +304,7 @@ APIP_CP_AUTH_IDP_AUDIENCE=<your-client-id>   # optional; omit to skip the aud ch
 Then start the stack:
 
 ```bash
-docker compose up -d
+docker compose --profile ai-workspace up -d
 ```
 
 In production, prefer mounting the secret as a file and referencing it with
@@ -414,7 +426,7 @@ The repository includes Cypress E2E coverage for the local quickstart stack, inc
 
 ```bash
 cd portals/ai-workspace
-docker compose up -d
+docker compose --profile ai-workspace up -d
 npm install
 ```
 
@@ -436,8 +448,8 @@ Use the following commands after the stack is up:
 `npm run test:e2e` runs against `https://host.docker.internal:9643`, which maps back to your local quickstart stack from inside the Cypress container. The command adds an explicit `host-gateway` mapping so it also works on Linux Docker hosts. `npm run test:e2e:open` runs locally against `https://localhost:9643`.
 
 The tests default to `admin` / `admin`; pin the quickstart credentials to match
-(`ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./setup.sh --force`) or export
-`CYPRESS_ADMIN_USER` / `CYPRESS_ADMIN_PASSWORD` with the credentials `setup.sh`
+(`ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ../scripts/setup.sh --force`) or export
+`CYPRESS_ADMIN_USER` / `CYPRESS_ADMIN_PASSWORD` with the credentials `../scripts/setup.sh`
 generated.
 
 ---
@@ -460,7 +472,7 @@ docker-compose mounts this directory read-only into both containers
 the BFF trusts for the upstream platform-api hop, referenced by `[ai_workspace.control_plane] ca_file` in
 `configs/config.toml`.
 
-Then restart the stack: `docker compose up -d --force-recreate` (a plain `docker
+Then restart the stack: `docker compose --profile ai-workspace up -d --force-recreate` (a plain `docker
 compose up -d` won't recreate already-running containers, so they'd keep the
 old certificates loaded)
 
