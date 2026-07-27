@@ -149,9 +149,7 @@ function isDisabledByAnyOf(
   path: string
 ): boolean {
   const supportsDisabled = schema.anyOf?.some(
-    (entry) =>
-      entry.required?.includes('enabled') &&
-      entry.properties?.enabled?.const === false
+    (entry) => entry.properties?.enabled?.const === false
   );
   return (
     supportsDisabled === true &&
@@ -203,7 +201,10 @@ function validateRequiredFields(
       ) {
         value.forEach((_, index) => {
           const itemPath = `${path}.${index}`;
-          if (propSchema.items!.type === 'object') {
+          if (
+            propSchema.items!.type === 'object' &&
+            !isDisabledByAnyOf(propSchema.items!, values, itemPath)
+          ) {
             const itemErrors = validateRequiredFields(
               propSchema.items!,
               values,
