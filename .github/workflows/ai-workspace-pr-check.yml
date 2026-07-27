@@ -60,7 +60,7 @@ jobs:
         # at-rest encryption key + RS256 JWT keypair as files under resources/keys (read via
         # {{ file }}) plus the TLS certs both services require. Credentials are pinned to the
         # Cypress defaults (admin/admin) for the E2E suite.
-        run: ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./setup.sh
+        run: ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./scripts/setup.sh
         working-directory: portals/ai-workspace
 
       - name: Export quickstart credentials as environment variables
