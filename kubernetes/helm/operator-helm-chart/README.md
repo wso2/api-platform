@@ -32,7 +32,7 @@ helm install apip-operator ./operator-helm-chart --namespace gateway-operator-sy
 ```bash
 helm install apip-operator ./operator-helm-chart \
   --namespace gateway-operator-system --create-namespace \
-  --set image.tag=0.10.0 \
+  --set image.tag=0.10.1 \
   --set gateway.controlPlaneHost=http://my-control-plane:3001
 ```
 
@@ -52,7 +52,7 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 | `replicaCount` | Number of operator replicas | `1` |
 | `watchNamespaces` | Namespaces to watch (cluster-wide if empty) | `[]` |
 | `image.repository` | Operator image repository | `ghcr.io/wso2/api-platform/gateway-operator` |
-| `image.tag` | Operator image tag | `0.10.0` |
+| `image.tag` | Operator image tag | `0.10.1` |
 | `image.pullPolicy` | Image pull policy | `Always` |
 | `serviceAccount.create` | Create service account | `true` |
 | `serviceAccount.name` | Service account name | `controller-manager` |
@@ -276,7 +276,7 @@ Debug mode runs the operator under the Delve debugger for remote debugging:
 debug:
   enabled: true
   port: 2345
-  debugImage: "ghcr.io/wso2/api-platform/gateway-operator:0.10.0-debug"
+  debugImage: "ghcr.io/wso2/api-platform/gateway-operator:0.10.1-debug"
 ```
 
 Connect your debugger to the debug port:

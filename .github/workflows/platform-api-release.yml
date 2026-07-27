@@ -7,6 +7,10 @@ on:
         description: 'Version to release (e.g., 0.1.0)'
         required: true
         type: string
+      next_dev_version:
+        description: 'Next development version (with -SNAPSHOT suffix, e.g. 0.15.0-SNAPSHOT)'
+        required: true
+        type: string
 
 env:
   DOCKER_REGISTRY: ghcr.io/wso2/api-platform
@@ -19,9 +23,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set version
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          VERSION=${{ inputs.version }}
-          make -C platform-api version-set VERSION=${VERSION}
+          make -C platform-api version-set "VERSION=${VERSION}"
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -50,16 +55,30 @@ jobs:
         run: make build-and-push-platform-api-multiarch
 
       - name: Create and push tag
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "Release platform-api version ${{ inputs.version }}"
-          git tag -a platform-api/v${{ inputs.version }} -m "Platform API ${{ inputs.version }}"
-          git push origin platform-api/v${{ inputs.version }}
+          git commit -am "Release platform-api version ${VERSION}"
+          git tag -a "platform-api/v${VERSION}" -m "Platform API ${VERSION}"
+          git push origin "platform-api/v${VERSION}"
 
 
-      - name: Bump to next dev version
-        run: make -C platform-api version-bump-next-dev
+      - name: Set next dev version
+        env:
+          NEXT_DEV_VERSION: ${{ inputs.next_dev_version }}
+        run: |
+          if [ -z "${NEXT_DEV_VERSION}" ]; then
+            echo "Error: next_dev_version input is required"
+            exit 1
+          fi
+          if [[ "${NEXT_DEV_VERSION}" != *-SNAPSHOT ]]; then
+            echo "Error: next_dev_version must end with -SNAPSHOT (e.g. 0.15.0-SNAPSHOT)"
+            exit 1
+          fi
+          echo "Setting platform-api to next dev version: ${NEXT_DEV_VERSION}"
+          make -C platform-api version-set "VERSION=${NEXT_DEV_VERSION}"
 
       - name: Commit version bump
         run: |
@@ -78,7 +97,7 @@ jobs:
           body: |
             Automated version bump after release `platform-api/v${{ inputs.version }}`
 
-            This PR bumps the platform-api version to the next development version.
+            This PR bumps the platform-api version to the next development version `${{ inputs.next_dev_version }}`.
           branch: platform-api-version-bump-${{ github.run_id }}
           base: main
           delete-branch: true

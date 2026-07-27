@@ -866,6 +866,14 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params L
 		return nil, fmt.Errorf("%w: cannot change template handle from '%s' to '%s'; use create/delete instead", ErrLLMTemplateValidation, oldHandle, newHandle)
 	}
 
+	proposed := &models.StoredLLMProviderTemplate{Configuration: *tmpl}
+	if oldGroupID, newGroupID := existing.GetGroupID(), proposed.GetGroupID(); oldGroupID != newGroupID {
+		return nil, fmt.Errorf("%w: cannot change template groupId from '%s' to '%s'; groupId is immutable", ErrLLMTemplateValidation, oldGroupID, newGroupID)
+	}
+	if oldVersion, newVersion := existing.GetVersion(), proposed.GetVersion(); oldVersion != newVersion {
+		return nil, fmt.Errorf("%w: cannot change template version from '%s' to '%s'; version is immutable", ErrLLMTemplateValidation, oldVersion, newVersion)
+	}
+
 	updated := &models.StoredLLMProviderTemplate{
 		UUID:          existing.UUID,
 		Configuration: *tmpl,
