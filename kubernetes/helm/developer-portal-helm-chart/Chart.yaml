@@ -6,8 +6,8 @@ description: >-
   default profile is the shared Platform API control plane plus the Developer
   Portal. Each component is a separately-released chart pulled as an OCI
   dependency; add other components (e.g. AI Workspace) later by appending a dependency.
-version: 1.0.0-alpha2
-appVersion: "1.0.0-alpha2"
+version: 1.0.0-alpha
+appVersion: "1.0.0-alpha"
 type: application
 home: https://github.com/wso2/api-platform
 sources:

@@ -1,4 +1,4 @@
-name: Release Developer Portal Umbrella Helm Chart
+name: Release Developer Portal Helm Chart
 
 # Publishes the Developer Portal product umbrella (Platform API + Developer Portal
 # UI) to GHCR as an OCI artifact. Its component dependencies reference the OCI
