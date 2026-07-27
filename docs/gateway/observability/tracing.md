@@ -224,7 +224,7 @@ still works and no extra resource attributes are added.
 Set attributes on the **gateway-runtime** container (not the controller), for example:
 
 ```bash
-OTEL_RESOURCE_ATTRIBUTES=deployment.environment=prod,service.namespace=api-gw
+export OTEL_RESOURCE_ATTRIBUTES=deployment.environment=prod,service.namespace=api-gw
 ```
 
 With the Helm chart:
