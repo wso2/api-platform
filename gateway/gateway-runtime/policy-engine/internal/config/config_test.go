@@ -98,7 +98,6 @@ func TestValidate_ValidConfig(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TestValidate_MaxDecompressedBytes tests the decompression ceiling validation.
 func TestValidate_MaxDecompressedBytes(t *testing.T) {
 	tests := []struct {
 		name      string

@@ -305,7 +305,6 @@ func TestDecompressBody_Gzip_ExceedsLimit_ReturnsError(t *testing.T) {
 	require.ErrorIs(t, err, ErrDecompressedTooLarge)
 }
 
-// TestDecompressBody_Brotli_ExceedsLimit_ReturnsError is the brotli counterpart.
 func TestDecompressBody_Brotli_ExceedsLimit_ReturnsError(t *testing.T) {
 	original := make([]byte, 1024*1024)
 	compressed := brotliCompress(original)
@@ -382,8 +381,8 @@ func TestStreamDecompressor_SingleBombChunk_ReturnsError(t *testing.T) {
 }
 
 // TestStreamDecompressor_NonEOSChunkExceedsLimitImmediately verifies that an
-// oversized non-terminal chunk is charged to its own FeedChunk call. The former
-// scheduler-based drain could leave part of this output queued for a later call.
+// oversized non-terminal chunk is charged to its own FeedChunk call, rather than
+// leaving part of its output queued for a later call.
 func TestStreamDecompressor_NonEOSChunkExceedsLimitImmediately(t *testing.T) {
 	const limit int64 = 64 * 1024
 	chunk := make([]byte, limit+1)

@@ -169,9 +169,8 @@ type PolicyEngine struct {
 	TracingServiceName string `koanf:"tracing_service_name"`
 
 	// TODO: (decompress-fix) Body Config variable name should be changed. Generic to include header specific data as well.
-	// Request and Response hold direction-specific body-processing limits (e.g. the
-	// decompression ceiling), letting an operator set a different ceiling for request
-	// bodies than for response bodies. See BodyConfig.
+	// Request and Response hold body-processing limits per direction, so request
+	// bodies can be bounded differently from response bodies.
 	Request  BodyConfig `koanf:"request"`
 	Response BodyConfig `koanf:"response"`
 
@@ -677,7 +676,6 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// Validate decompression ceilings (independent per direction)
 	if c.PolicyEngine.Request.MaxDecompressedBytes <= 0 {
 		return fmt.Errorf("policy_engine.request.max_decompressed_bytes must be positive, got %d", c.PolicyEngine.Request.MaxDecompressedBytes)
 	}

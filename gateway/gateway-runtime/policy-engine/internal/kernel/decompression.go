@@ -263,9 +263,9 @@ func (sd *streamDecompressor) FeedChunk(chunk []byte, endOfStream bool) ([]byte,
 			return nil, sd.decoderError()
 		}
 
-		// Wait until the decoder requests input beyond this chunk. This boundary
-		// replaces the former scheduler yield: once consumed closes, every output
-		// block the decoder could produce from the available input is already queued.
+		// Wait until the decoder requests input beyond this chunk: once consumed
+		// closes, every output block the decoder could produce from the available
+		// input is already queued.
 		for consumed != nil {
 			select {
 			case data, ok := <-sd.outChan:
@@ -295,7 +295,7 @@ func (sd *streamDecompressor) FeedChunk(chunk []byte, endOfStream bool) ([]byte,
 	}
 
 	// The consumed boundary guarantees no more output can be queued until the next
-	// input chunk arrives, so this drain is deterministic rather than scheduler-based.
+	// input chunk arrives, so this non-blocking drain sees everything available.
 	for {
 		select {
 		case data, ok := <-sd.outChan:
@@ -327,7 +327,6 @@ func (sd *streamDecompressor) appendOutput(result *[]byte, data []byte) error {
 	return nil
 }
 
-// decoderError returns an error reported by the decoder, if any.
 func (sd *streamDecompressor) decoderError() error {
 	select {
 	case err := <-sd.errChan:

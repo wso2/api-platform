@@ -583,8 +583,6 @@ func (ec *PolicyExecutionContext) processStreamingRequestBody(
 		if err != nil {
 			ec.requestStreamDecomp.Close()
 			ec.requestStreamDecomp = nil
-			// Full-duplex request chunks may already be upstream, so fail closed
-			// instead of promising a late HTTP 413 that Envoy may have to reset.
 			if errors.Is(err, ErrDecompressedTooLarge) {
 				return nil, ec.requestPayloadTooLargeError(ctx, err, "request_body_streaming")
 			}
@@ -814,9 +812,6 @@ func (ec *PolicyExecutionContext) processResponseBody(
 		if ec.responseContentEncoding != "" {
 			decompressed, err := decompressBody(body.Body, ec.responseContentEncoding, ec.server.maxResponseDecompressedBytes)
 			if err != nil {
-				// Response headers may already be committed by the time Envoy sends the
-				// buffered body. Fail the ext_proc stream closed instead of returning a
-				// late ImmediateResponse whose status cannot reliably replace them.
 				if errors.Is(err, ErrDecompressedTooLarge) {
 					return nil, ec.responsePayloadTooLargeError(ctx, err, "response_body")
 				}
@@ -908,7 +903,6 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 		}
 		decompressed, err := ec.responseStreamDecomp.FeedChunk(chunk.Chunk, chunk.EndOfStream)
 		if err != nil {
-			// Response headers and prior chunks may already be committed downstream.
 			// Failing the ext_proc stream makes Envoy reset the response; suppressing
 			// until upstream EOS would turn the failure into a successful truncated body.
 			slog.Warn("[streaming] per-chunk response decompression error; failing stream closed",
