@@ -68,6 +68,8 @@ docker compose down -v
 make clean
 ```
 
+`docker compose down` only tears down services matching the profiles currently active for the project (from `COMPOSE_PROFILES` in `.env`, or an explicit `--profile` flag) — it does not remember what was passed to `docker compose up` earlier. If you separately started the optional `ai-workspace` profile (`docker compose --profile ai-workspace up -d`), a bare `docker compose down` leaves it running. Either tear that down explicitly first (`docker compose --profile ai-workspace down`, or `docker compose stop ai-workspace` to stop without removing), or use `docker compose --profile all down -v` to remove every service regardless of which profiles are currently set — every service in this file carries the `all` profile for exactly this case.
+
 ---
 
 ## Makefile Targets
