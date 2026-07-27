@@ -142,6 +142,16 @@ Use this for active development, custom IdP configuration, or when you prefer to
 
 `configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `auth.local.platform_api_url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off, `auth.local.platform_api_url` pointed at `localhost`, and `auth.local.public_key_path` pointed at the host-side `resources/keys/` that `../scripts/setup.sh` writes rather than the container mount path (see [Local auth](#local-auth) if you're running the Platform API sidecar).
 
+`security.encryption_key`/`security.session_secret`, unlike `public_key_path`, are read via `{{ file "/etc/devportal/keys/..." }}` directly in `config.toml` — there's no env-var override for that path, so it always looks under `/etc/devportal/keys` even for `npm run start:local`, which doesn't exist outside the containers. For local (non-Docker) runs, point `configs/config.toml` at the host-side files `../scripts/setup.sh` already generated instead:
+
+```toml
+[developer_portal.security]
+encryption_key = '{{ file "resources/keys/devportal-encryption.key" }}'
+session_secret = '{{ file "resources/keys/devportal-session-secret" }}'
+```
+
+`{{ file }}` only reads from an allowlisted directory (`/etc/devportal`, `/secrets/devportal` by default), so also set `APIP_CONFIG_FILE_SOURCE_ALLOWLIST=resources/keys` when running `npm run start:local` (or add it to the `start:local` script in `package.json`). Don't commit the `config.toml` path change — it's a local-only edit for the Docker-free flow.
+
 ### 3. Configure the Identity Provider (optional)
 
 The portal's login flow requires a valid OAuth2/OIDC provider. Set `[developer_portal.auth]` `mode = "idp"` and fill in the `[developer_portal.auth.idp]` block in `configs/config.toml`:
@@ -249,7 +259,7 @@ public_key_path = "/etc/devportal/keys/jwt_public.pem"  # path to the Platform A
 tls_skip_verify = true                    # Platform API uses a self-signed cert
 ```
 
-Tokens are signed asymmetrically (RS256): the Platform API mints them with its `auth.jwt.private_key` and the portal verifies them against the matching public key above. There is no shared HMAC secret, and the private key never leaves the Platform API — `../scripts/setup.sh` generates the keypair into `resources/keys/`, and `docker-compose.yaml` mounts only the `jwt_public.pem` file into the portal (at `/etc/devportal/keys/jwt_public.pem`); `jwt_private.pem` and `encryption.key` are never mounted into the portal container.
+Tokens are signed asymmetrically (RS256): the Platform API mints them with its `auth.jwt.private_key` and the portal verifies them against the matching public key above. There is no shared HMAC secret, and the private key never leaves the Platform API — `../scripts/setup.sh` generates the keypair into `resources/keys/`, and `docker-compose.yaml` mounts only the `jwt_public.pem` file into the portal (at `/etc/devportal/keys/jwt_public.pem`); the Platform API's own `jwt_private.pem` and `encryption.key` (its at-rest encryption key, `resources/keys/encryption.key`) are never mounted into the portal container. The portal has its own, separate secrets — `resources/keys/devportal-encryption.key` and `resources/keys/devportal-session-secret` — which `docker-compose.yaml` mounts into the portal container at `/etc/devportal/keys/encryption.key` and `/etc/devportal/keys/session-secret` respectively; these never leave the portal container either way.
 
 For production, configure an OIDC identity provider per organization instead of local auth.
 

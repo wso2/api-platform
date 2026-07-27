@@ -56,11 +56,21 @@ jobs:
         run: echo "127.0.0.1 host.docker.internal" | sudo tee -a /etc/hosts
 
       - name: Generate quickstart keys, credentials and certificates
-        # setup.sh writes the admin credentials into api-platform.env, and provisions the
-        # at-rest encryption key + RS256 JWT keypair as files under resources/keys (read via
-        # {{ file }}) plus the TLS certs both services require. Credentials are pinned to the
-        # Cypress defaults (admin/admin) for the E2E suite.
-        run: ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ../scripts/setup.sh
+        # setup.sh writes the admin username and the credential's bcrypt hash into
+        # api-platform.env, and provisions the at-rest encryption key + RS256 JWT
+        # keypair as files under resources/keys (read via {{ file }}) plus the TLS
+        # certs both services require. The plaintext password itself is never
+        # persisted by setup.sh, so a unique one is generated per run here and
+        # exported directly to GITHUB_ENV — CYPRESS_ADMIN_USER/CYPRESS_ADMIN_PASSWORD
+        # override cypress.config.js's admin/admin defaults (see cypress/support and
+        # package.json's test:e2e script) so the E2E suite authenticates with the
+        # same per-run credentials setup.sh just provisioned, not a fixed password.
+        run: |
+          GENERATED_ADMIN_PASSWORD="$(openssl rand -base64 24)"
+          echo "::add-mask::${GENERATED_ADMIN_PASSWORD}"
+          ADMIN_USERNAME=admin ADMIN_PASSWORD="${GENERATED_ADMIN_PASSWORD}" ../scripts/setup.sh
+          echo "CYPRESS_ADMIN_USER=admin" >> "$GITHUB_ENV"
+          echo "CYPRESS_ADMIN_PASSWORD=${GENERATED_ADMIN_PASSWORD}" >> "$GITHUB_ENV"
         working-directory: portals/ai-workspace
 
       - name: Export quickstart credentials as environment variables

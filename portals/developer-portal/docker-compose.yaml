@@ -6,19 +6,11 @@
 # in compliance with the License. You may obtain a copy of the
 # License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
-# Developer Portal + Platform API - standalone release compose file. See README.md.
-# `docker compose up -d` on its own starts Developer Portal + Platform API —
-# the default profiles are set via COMPOSE_PROFILES in ./.env. Override on the
-# command line, e.g.:
-#   docker compose --profile developer-portal --profile ai-workspace up -d
-# Already running platform-api elsewhere and only want devportal? Use --no-deps
-#   docker compose --profile developer-portal up -d --no-deps devportal
-#
-# Each service's `profiles:` list names only itself (plus "all") — never a
-# sibling pack's profile — so every profile can be enabled independently.
-# Combinations (e.g. developer-portal + platform-api together) come from
-# COMPOSE_PROFILES / --profile listing multiple names, not from one service
-# pulling in another's profile.
+# Developer Portal + Platform API - standalone release compose file. See README.md
+# for usage. Each service's `profiles:` list names only itself (plus "all") —
+# never a sibling pack's profile — so every profile can be enabled
+# independently; combinations come from COMPOSE_PROFILES/--profile listing
+# multiple names, not from one service pulling in another's profile.
 
 services:
   platform-api:
@@ -73,7 +65,6 @@ services:
     networks:
       - devportal-network
 
-  # Optional: enable AI Workspace with --profile ai-workspace
   ai-workspace:
     image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-beta-SNAPSHOT
     container_name: ai-workspace
