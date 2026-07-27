@@ -356,6 +356,14 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 		return nil, apperror.ValidationFailed.New("The template version cannot be changed via update; use the versions endpoint.")
 	}
 
+	if req.Metadata != nil {
+		if endpointURL := strings.TrimSpace(utils.ValueOrEmpty(req.Metadata.EndpointUrl)); endpointURL != "" {
+			if err := utils.ValidateURL(endpointURL); err != nil {
+				return nil, apperror.ValidationFailed.New("The metadata endpointUrl must be a valid URL.")
+			}
+		}
+	}
+
 	managedBy := existing.ManagedBy
 	if req.ManagedBy != nil {
 		managedBy = defaultTemplateManagedBy(req.ManagedBy)

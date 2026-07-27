@@ -40,6 +40,7 @@ import {
 } from '../../../../../apis/llmProviderApis';
 import { useAppShell } from '../../../../../contexts/AppShellContext';
 import { useAIEntity } from '../../../../../contexts/AIEntitiesContext';
+import { useLLMProvider } from '../../../../../contexts/llmProvider';
 import { PLATFORM_API_BASE_URL } from '../../../../../config.env';
 import type { LLMProvider } from '../../../../../utils/types';
 
@@ -66,6 +67,7 @@ type LLLMStepBannerProps = {
 };
 
 const DEFAULT_TOTAL_STEPS = 4;
+const DEFAULT_TRACKING_POLICY_NAME = 'llm-cost';
 
 export default function LLLMStepBanner({
   providerName,
@@ -80,15 +82,23 @@ export default function LLLMStepBanner({
     hasConsumptions: false,
   });
   const { entityType, entity } = useAIEntity();
+  const { provider: liveProvider } = useLLMProvider();
   const { currentOrganization } = useAppShell();
-  const selectedProvider =
+  const entityProvider =
     entityType === 'llm-provider' ? (entity as LLMProvider | null) : null;
+  const selectedProvider = liveProvider ?? entityProvider;
   const selectedProviderId = selectedProvider?.id ?? '';
   const organizationId = currentOrganization?.uuid ?? '';
-  const hasGuardrails =
-    (selectedProvider?.policies?.filter(
-      (p) => !(p.name === 'llm-cost' && p.version === 'v1')
-    ).length ?? 0) > 0;
+  
+  const hasGuardrails = useMemo(
+    () =>
+      [
+        ...(selectedProvider?.globalPolicies ?? []),
+        ...(selectedProvider?.operationPolicies ?? []),
+        ...(selectedProvider?.policies ?? []),
+      ].some((policy) => policy.name !== DEFAULT_TRACKING_POLICY_NAME),
+    [selectedProvider]
+  );
   const resolvedProviderName = providerName?.trim() || 'LLM Provider';
 
   useEffect(() => {
