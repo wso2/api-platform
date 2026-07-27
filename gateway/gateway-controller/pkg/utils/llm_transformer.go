@@ -149,11 +149,6 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		Url: &upstream,
 	}
 
-	// valuePrefix of each additional provider's downstream api-key-auth, keyed by
-	// provider id, captured while resolving them below and reused when attaching the
-	// per-provider loopback upstream auth (Step 3.5).
-	additionalValuePrefixByID := map[string]string{}
-
 	// Step 3.1: Resolve additional providers (multi-provider proxies). Each is
 	// exposed as a named UpstreamDefinition so policies can route to it via
 	// the loopback context. The primary provider above remains the default.
@@ -184,12 +179,9 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			if err != nil {
 				return nil, fmt.Errorf("failed to get context for additional provider '%s': %w", ap.Id, err)
 			}
-			if addProviderConfig, ok := addCfg.SourceConfiguration.(api.LLMProviderConfiguration); ok {
-				additionalValuePrefixByID[ap.Id] = apiKeyAuthValuePrefix(addProviderConfig.Spec.GlobalPolicies)
-			}
-			// UpstreamDefinition URLs are host[:port] only. Keep the provider's
-			// loopback context in BasePath so the router rewrites requests to the
-			// additional provider route instead of dropping the context.
+			// Named upstream definition URLs are host-only. Keep the provider context
+			// in basePath so dynamic provider routing does not drop it and send the
+			// loopback request to the proxy listener root.
 			addURL := fmt.Sprintf("%s://%s:%d",
 				constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort)
 			def := api.UpstreamDefinition{
@@ -246,7 +238,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	var upstreamAuthPolicies []api.Policy
 	var transformerPolicies []api.Policy
 	if proxy.Spec.Provider.Auth != nil {
-		pol, err := t.proxyUpstreamAuthPolicy(proxy.Spec.Provider.Auth, apiKeyAuthValuePrefix(providerConfig.Spec.GlobalPolicies), "provider.auth")
+		pol, err := t.proxyUpstreamAuthPolicy(proxy.Spec.Provider.Auth, "provider.auth")
 		if err != nil {
 			return nil, err
 		}
@@ -262,7 +254,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			}
 
 			if ap.Auth != nil {
-				pol, err := t.proxyUpstreamAuthPolicy(ap.Auth, additionalValuePrefixByID[ap.Id], fmt.Sprintf("additionalProviders[%s].auth", name))
+				pol, err := t.proxyUpstreamAuthPolicy(ap.Auth, fmt.Sprintf("additionalProviders[%s].auth", name))
 				if err != nil {
 					return nil, err
 				}
@@ -782,26 +774,7 @@ func GetUpstreamAuthApikeyPolicyParams(header, value string) (map[string]interfa
 	return m, nil
 }
 
-// apiKeyAuthValuePrefix returns the valuePrefix configured on a provider's downstream
-// api-key-auth global policy (empty when absent). A proxy loops back into the provider's
-// own context, so the credential it injects on that hop must carry the same prefix the
-// provider's api-key-auth expects, otherwise the loopback request is rejected with 401.
-func apiKeyAuthValuePrefix(globalPolicies *[]api.Policy) string {
-	if globalPolicies == nil {
-		return ""
-	}
-	for _, p := range *globalPolicies {
-		if p.Name != "api-key-auth" || p.Params == nil {
-			continue
-		}
-		if v, ok := (*p.Params)["valuePrefix"].(string); ok {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
-}
-
-func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAuth, valuePrefix, field string) (*api.Policy, error) {
+func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAuth, field string) (*api.Policy, error) {
 	if auth == nil {
 		return nil, nil
 	}
@@ -813,11 +786,7 @@ func (t *LLMProviderTransformer) proxyUpstreamAuthPolicy(auth *api.LLMUpstreamAu
 		if auth.Value == nil || *auth.Value == "" {
 			return nil, fmt.Errorf("%s.value is required", field)
 		}
-		value := *auth.Value
-		if valuePrefix != "" {
-			value = valuePrefix + " " + value
-		}
-		params, err := GetUpstreamAuthApikeyPolicyParams(*auth.Header, value)
+		params, err := GetUpstreamAuthApikeyPolicyParams(*auth.Header, *auth.Value)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
 		}
