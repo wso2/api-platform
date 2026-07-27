@@ -71,14 +71,6 @@ func (v *SecretValidator) Validate(config any) []ValidationError {
 func (v *SecretValidator) validateSecretConfiguration(config *api.SecretConfigurationRequest) []ValidationError {
 	var errors []ValidationError
 
-	// Validate apiVersion
-	if config.ApiVersion != api.SecretConfigurationRequestApiVersionGatewayApiPlatformWso2Comv1 {
-		errors = append(errors, ValidationError{
-			Field:   "version",
-			Message: "Unsupported configuration version (must be 'gateway.api-platform.wso2.com/v1')",
-		})
-	}
-
 	// Validate kind
 	if config.Kind != "Secret" {
 		errors = append(errors, ValidationError{

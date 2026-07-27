@@ -90,14 +90,6 @@ func (v *LLMValidator) validateLLMProviderTemplate(template *api.LLMProviderTemp
 		}}
 	}
 
-	// Validate version
-	if template.ApiVersion != api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1 {
-		errors = append(errors, ValidationError{
-			Field:   "version",
-			Message: "Version must be 'gateway.api-platform.wso2.com/v1'",
-		})
-	}
-
 	// Validate kind
 	if template.Kind != api.LLMProviderTemplateKindLlmProviderTemplate {
 		errors = append(errors, ValidationError{
@@ -290,14 +282,6 @@ func (v *LLMValidator) validateLLMProvider(provider *api.LLMProviderConfiguratio
 			Field:   "provider",
 			Message: "provider cannot be nil",
 		}}
-	}
-
-	// Validate version
-	if provider.ApiVersion != api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1 {
-		errors = append(errors, ValidationError{
-			Field:   "version",
-			Message: "Version must be 'gateway.api-platform.wso2.com/v1'",
-		})
 	}
 
 	// Validate kind
@@ -523,14 +507,6 @@ func (v *LLMValidator) validateLLMProxy(proxy *api.LLMProxyConfiguration) []Vali
 			Field:   "proxy",
 			Message: "proxy cannot be nil",
 		}}
-	}
-
-	// Validate version
-	if proxy.ApiVersion != api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1 {
-		errors = append(errors, ValidationError{
-			Field:   "version",
-			Message: "Version must be 'gateway.api-platform.wso2.com/v1'",
-		})
 	}
 
 	// Validate kind

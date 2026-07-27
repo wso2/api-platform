@@ -83,49 +83,6 @@ func TestAPIValidator_Validate_PointerAndValue(t *testing.T) {
 	}
 }
 
-func TestAPIValidator_ValidateAPIVersion(t *testing.T) {
-	v := NewAPIValidator()
-
-	tests := []struct {
-		name       string
-		apiVersion api.RestAPIApiVersion
-		wantError  bool
-	}{
-		{
-			name:       "Valid API version",
-			apiVersion: api.RestAPIApiVersionGatewayApiPlatformWso2Comv1,
-			wantError:  false,
-		},
-		{
-			name:       "Invalid API version",
-			apiVersion: "invalid-version",
-			wantError:  true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			config := createValidRestAPIConfig()
-			config.ApiVersion = tt.apiVersion
-
-			errors := v.Validate(config)
-			hasVersionError := false
-			for _, e := range errors {
-				if e.Field == "version" {
-					hasVersionError = true
-					break
-				}
-			}
-			if tt.wantError && !hasVersionError {
-				t.Error("expected version error, got none")
-			}
-			if !tt.wantError && hasVersionError {
-				t.Error("unexpected version error")
-			}
-		})
-	}
-}
-
 func TestAPIValidator_ValidateKind(t *testing.T) {
 	v := NewAPIValidator()
 
