@@ -1,0 +1,48 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Optional overlay: a local Datadog Agent with OTLP intake enabled, for
+# exporting the demo tracing stack's traces to Datadog. Not part of
+# docker-compose.yaml itself — like the other alternative backends documented
+# in docs/gateway/observability/tracing.md (Zipkin, Tempo, X-Ray, ...), this is
+# bring-your-own and applied only when explicitly requested via `-f`:
+#
+#   DD_API_KEY=... DD_SITE=ap1.datadoghq.com \
+#     docker compose -f docker-compose.yaml -f docker-compose.datadog.yaml --profile tracing up -d
+#
+# Also uncomment the `otlp/datadog` exporter in
+# observability/otel-collector/config.yaml's traces pipeline to actually route
+# traces to it.
+services:
+  datadog-agent:
+    image: datadog/agent:latest
+    environment:
+      - DD_API_KEY=${DD_API_KEY}
+      - DD_SITE=${DD_SITE:-datadoghq.com}
+      - DD_ENV=${DD_ENV:-development}
+      - DD_APM_ENABLED=true
+      - DD_APM_NON_LOCAL_TRAFFIC=true
+      - DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT=0.0.0.0:4317
+      - DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT=0.0.0.0:4318
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+    networks:
+      - gateway-network
+    profiles: ["tracing"]

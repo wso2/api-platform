@@ -47,8 +47,8 @@ exporters:
   #   headers:
   #     X-Moesif-Application-Id: Your_Moesif_Application_Id_Here
 
-  # Uncomment the following (and start the `datadog-agent` service via
-  # `docker compose --profile tracing --profile datadog up -d`) to export
+  # Uncomment the following (and start the `datadog-agent` service via the
+  # docker-compose.datadog.yaml overlay — see that file for usage) to export
   # traces to a local Datadog Agent. NOTE: the `datadog` exporter itself lives
   # in otel-collector-contrib, not the core image this compose file uses —
   # routing OTLP to the Agent's own OTLP intake (via the plain `otlp` exporter,
