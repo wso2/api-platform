@@ -138,7 +138,7 @@ func TestAPIKeyRepo_UpdateAndRevoke_SetUpdatedByWithoutTouchingCreatedBy(t *test
 	}
 
 	// Revoke by yet another actor.
-	if err := repo.Revoke(artifactUUID, "key-2", "revoker-user"); err != nil {
+	if err := repo.Revoke(artifactUUID, "key-2", "creator-user", "revoker-user"); err != nil {
 		t.Fatalf("Revoke failed: %v", err)
 	}
 

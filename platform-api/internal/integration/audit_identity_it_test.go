@@ -333,7 +333,7 @@ func TestAuditColumns_APIKeyCreateUpdateRevoke_SetUpdatedBy(t *testing.T) {
 		t.Fatalf("[%s] Update must not touch created_by, got %q", it.driver, afterUpdate.CreatedBy)
 	}
 
-	if err := keyRepo.Revoke(api.ID, "it-key", "it-revoker"); err != nil {
+	if err := keyRepo.Revoke(api.ID, "it-key", "it-creator", "it-revoker"); err != nil {
 		t.Fatalf("[%s] APIKey Revoke failed: %v", it.driver, err)
 	}
 

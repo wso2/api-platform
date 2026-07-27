@@ -264,7 +264,7 @@ type LLMProviderRepository interface {
 type APIKeyRepository interface {
 	Create(key *model.APIKey) error
 	Update(key *model.APIKey) error
-	Revoke(artifactUUID, name, updatedBy string) error
+	Revoke(artifactUUID, name, createdBy, updatedBy string) error
 	GetByArtifactAndName(artifactUUID, name string) (*model.APIKey, error)
 	ListByArtifact(artifactUUID string) ([]*model.APIKey, error)
 	ListByGatewayAndKind(gatewayID, orgID, kind, issuer string) ([]*model.APIKey, error)

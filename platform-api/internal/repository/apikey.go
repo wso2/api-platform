@@ -57,18 +57,23 @@ func (r *APIKeyRepo) Create(key *model.APIKey) error {
 	return err
 }
 
-// Update modifies an existing API key record identified by (artifact_uuid, name)
+// Update modifies an existing API key record identified by (artifact_uuid, name), and
+// additionally requires the caller-supplied created_by to still match the stored creator.
+// This closes a delete/recreate race: the service layer checks ownership against a key
+// fetched moments earlier, but without this clause a concurrent delete+recreate of the
+// same (artifact_uuid, handle) by a different creator could let this UPDATE silently
+// apply to that other key instead of failing.
 func (r *APIKeyRepo) Update(key *model.APIKey) error {
 	key.UpdatedAt = time.Now().UTC()
 
 	query := `
 		UPDATE api_keys
 		SET masked_api_key = ?, api_key_hashes = ?, status = ?, updated_at = ?, updated_by = ?, expires_at = ?, issuer = ?
-		WHERE artifact_uuid = ? AND handle = ?
+		WHERE artifact_uuid = ? AND handle = ? AND created_by = ?
 	`
 	result, err := r.db.Exec(r.db.Rebind(query),
 		key.MaskedAPIKey, []byte(key.APIKeyHashes), key.Status, key.UpdatedAt, key.UpdatedBy, key.ExpiresAt, key.Issuer,
-		key.ArtifactUUID, key.Name,
+		key.ArtifactUUID, key.Name, key.CreatedBy,
 	)
 	if err != nil {
 		return err
@@ -83,14 +88,16 @@ func (r *APIKeyRepo) Update(key *model.APIKey) error {
 	return nil
 }
 
-// Revoke marks an API key as revoked, recording the revoking actor in updated_by
-func (r *APIKeyRepo) Revoke(artifactUUID, name, updatedBy string) error {
+// Revoke marks an API key as revoked, recording the revoking actor in updated_by.
+// createdBy must match the stored creator for the same delete/recreate race protection
+// documented on Update.
+func (r *APIKeyRepo) Revoke(artifactUUID, name, createdBy, updatedBy string) error {
 	query := `
 		UPDATE api_keys
 		SET status = 'revoked', updated_at = ?, updated_by = ?
-		WHERE artifact_uuid = ? AND handle = ?
+		WHERE artifact_uuid = ? AND handle = ? AND created_by = ?
 	`
-	result, err := r.db.Exec(r.db.Rebind(query), time.Now().UTC(), updatedBy, artifactUUID, name)
+	result, err := r.db.Exec(r.db.Rebind(query), time.Now().UTC(), updatedBy, artifactUUID, name, createdBy)
 	if err != nil {
 		return err
 	}

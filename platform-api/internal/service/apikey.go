@@ -533,6 +533,24 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	apiId := apiMetadata.ID
 
+	// Ownership check — only the key's creator may update it. Enforced up front, right
+	// after resolving the API handle, and before resolving gateway deployments, hashing
+	// the new key material, or broadcasting — an unauthorized caller must not be able to
+	// trigger any of that work (deny-by-default; authentication_authorization.md GO-AUTH-007).
+	existingKey, err := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
+	if err != nil {
+		s.slogger.Error("Failed to look up API key for update", "apiHandle", apiHandle, "error", err)
+		return fmt.Errorf("failed to look up API key: %w", err)
+	}
+	if existingKey == nil {
+		return apperror.RESTAPIKeyNotFound.New()
+	}
+	// Fail closed: an empty caller identity must never match, rather than skipping the
+	// ownership comparison entirely.
+	if userId == "" || existingKey.CreatedBy != userId {
+		return apperror.RESTAPIKeyForbidden.New()
+	}
+
 	// Get all deployments for this API to find target gateways
 	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
 	if err != nil {
@@ -558,20 +576,6 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		s.slogger.Error("Invalid expiration for API key update", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("invalid expiration: %w", err)
 	}
-	// Fetch UUID before update for consistent audit record (CREATE uses UUID, not name)
-	existingKey, existingKeyErr := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
-
-	// Ownership check — only the key's creator may update it.
-	if existingKeyErr != nil {
-		s.slogger.Error("Failed to look up API key for update", "apiHandle", apiHandle, "keyName", keyName, "error", existingKeyErr)
-		return fmt.Errorf("failed to look up API key: %w", existingKeyErr)
-	}
-	if existingKey == nil {
-		return apperror.RESTAPIKeyNotFound.New()
-	}
-	if userId != "" && existingKey.CreatedBy != userId {
-		return apperror.RESTAPIKeyForbidden.New()
-	}
 
 	dbKey := &model.APIKey{
 		ArtifactUUID: apiId,
@@ -579,20 +583,20 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 		MaskedAPIKey: maskedAPIKey,
 		APIKeyHashes: apiKeyHashesJSON,
 		Status:       constants.APIKeyStatusActive,
-		UpdatedBy:    userId,
-		ExpiresAt:    expiresAt,
-		Issuer:       req.Issuer,
+		// CreatedBy is required so the repository can re-verify the creator in its WHERE
+		// clause, guarding against a delete/recreate race between the check above and this
+		// write (see APIKeyRepo.Update).
+		CreatedBy: existingKey.CreatedBy,
+		UpdatedBy: userId,
+		ExpiresAt: expiresAt,
+		Issuer:    req.Issuer,
 	}
 	if err := s.apiKeyRepo.Update(dbKey); err != nil {
 		s.slogger.Error("Failed to update API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to update API key in database: %w", err)
 	}
 	if s.auditRepo != nil {
-		auditUUID := keyName
-		if existingKeyErr == nil && existingKey != nil {
-			auditUUID = existingKey.UUID
-		}
-		_ = s.auditRepo.Record("UPDATE", auditUUID, "api_key", orgId, userId)
+		_ = s.auditRepo.Record("UPDATE", existingKey.UUID, "api_key", orgId, userId)
 	}
 
 	// Build the API key updated event — send the hash JSON and masked key, not the plain key
@@ -659,6 +663,24 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	apiId := apiMetadata.ID
 
+	// Ownership check — only the key's creator may revoke it. Enforced up front, right
+	// after resolving the API handle, and before resolving gateway deployments or
+	// broadcasting — an unauthorized caller must not be able to trigger any of that work
+	// (deny-by-default; authentication_authorization.md GO-AUTH-007).
+	revokeKey, err := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
+	if err != nil {
+		s.slogger.Error("Failed to look up API key for revocation", "apiHandle", apiHandle, "error", err)
+		return fmt.Errorf("failed to look up API key: %w", err)
+	}
+	if revokeKey == nil {
+		return apperror.RESTAPIKeyNotFound.New()
+	}
+	// Fail closed: an empty caller identity must never match, rather than skipping the
+	// ownership comparison entirely.
+	if userId == "" || revokeKey.CreatedBy != userId {
+		return apperror.RESTAPIKeyForbidden.New()
+	}
+
 	// Get all deployments for this API to find target gateways
 	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
 	if err != nil {
@@ -668,32 +690,15 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 		return apperror.GatewayConnectionUnavailable.New()
 	}
 
-	// Fetch UUID before revoke for consistent audit record (CREATE uses UUID, not name)
-	revokeKey, revokeKeyErr := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
-
-	// Ownership check — only the key's creator may revoke it.
-	if revokeKeyErr != nil {
-		s.slogger.Error("Failed to look up API key for revocation", "apiHandle", apiHandle, "keyName", keyName, "error", revokeKeyErr)
-		return fmt.Errorf("failed to look up API key: %w", revokeKeyErr)
-	}
-	if revokeKey == nil {
-		return apperror.RESTAPIKeyNotFound.New()
-	}
-	if userId != "" && revokeKey.CreatedBy != userId {
-		return apperror.RESTAPIKeyForbidden.New()
-	}
-
-	// Revoke the API key in the database before broadcasting
-	if err := s.apiKeyRepo.Revoke(apiId, keyName, userId); err != nil {
+	// Revoke the API key in the database before broadcasting. createdBy is re-verified in
+	// the repository's WHERE clause, guarding against a delete/recreate race between the
+	// check above and this write (see APIKeyRepo.Revoke).
+	if err := s.apiKeyRepo.Revoke(apiId, keyName, revokeKey.CreatedBy, userId); err != nil {
 		s.slogger.Error("Failed to revoke API key in database", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to revoke API key in database: %w", err)
 	}
 	if s.auditRepo != nil {
-		auditUUID := keyName
-		if revokeKeyErr == nil && revokeKey != nil {
-			auditUUID = revokeKey.UUID
-		}
-		_ = s.auditRepo.Record("REVOKE", auditUUID, "api_key", orgId, userId)
+		_ = s.auditRepo.Record("REVOKE", revokeKey.UUID, "api_key", orgId, userId)
 	}
 
 	// Build the API key revoked event
