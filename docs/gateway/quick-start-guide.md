@@ -18,6 +18,13 @@ docker --version
 docker compose version
 ```
 
+The one-time setup script additionally needs:
+
+- **`openssl`** on the `PATH` — preinstalled on macOS/Linux; on **Windows** it ships with Git for Windows and Docker Desktop.
+- **`htpasswd` or `docker`** — to bcrypt-hash the admin password (`docker` is already present from the runtime above, so no extra install is typically needed).
+
+The setup script verifies these before doing any work, and on Windows use `scripts\setup.ps1` in place of `scripts/setup.sh` (see the **Setup Script** section below).
+
 Replace `${version}` with the API Platform Gateway release version you want to run.
 
 ```bash
@@ -93,16 +100,26 @@ curl -i http://localhost:8080/reading-list/v1.0/books
 curl -ik https://localhost:8443/reading-list/v1.0/books
 ```
 
-### Setup Script (`scripts/setup.sh`)
+### Setup Script (`scripts/setup.sh` / `scripts/setup.ps1`)
 
 The gateway **never auto-generates keys or certificates**.
-Instead, `scripts/setup.sh` provisions everything the gateway needs before first start, and the server fails
+Instead, the setup script provisions everything the gateway needs before first start, and the server fails
 closed with a descriptive error if a required key or certificate is missing. Run it once from the
-distribution (or repo) root:
+distribution (or repo) root — `setup.sh` on macOS/Linux, or the identical `setup.ps1` on Windows:
 
 ```bash
+# macOS / Linux
 ./scripts/setup.sh
 ```
+
+```powershell
+# Windows (PowerShell)
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+```
+
+Both variants accept the same flags and produce the same files. They require `openssl` on the `PATH` and
+either `htpasswd` or `docker` for bcrypt hashing (see [Prerequisites](#prerequisites)), and verify those
+tools before doing anything.
 
 It provisions, idempotently (existing files are kept unless `--force`):
 
@@ -111,6 +128,11 @@ It provisions, idempotently (existing files are kept unless `--force`):
 | `listener-certs/default-listener.crt` / `.key` | Self-signed certificate for the router's HTTPS ingress listener (`:8443`). |
 | `aesgcm-keys/default-aesgcm256-v1.bin` | AES-256 key for at-rest encryption of stored secrets (bind-mounted into the controller). |
 | `api-platform.env` | Required runtime settings, loaded into both containers via docker-compose `env_file:` — `GATEWAY_CONTROLLER_HOST`, `LOG_LEVEL`, and the gateway-controller admin credentials (`APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME` and the bcrypt `APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH`). |
+
+On a re-run where `api-platform.env` already exists, the script keeps it and then verifies it still defines
+the settings the gateway requires — `GATEWAY_CONTROLLER_HOST`, `LOG_LEVEL`, and, when basic auth is enabled,
+the two admin variables. If any are missing or empty it reports that setup is **not complete** and exits
+non-zero; fill in the flagged values, or re-run with `--force` to regenerate the file from scratch.
 
 **Admin credentials.** The gateway-controller REST/management API is protected by basic auth.
 Two sets of variables are involved, and `setup.sh` bridges them:
@@ -129,7 +151,14 @@ username for `curl -u "$ADMIN_USERNAME:$ADMIN_PASSWORD"` against the management 
 For non-interactive use (CI), set the plaintext inputs up front:
 
 ```bash
+# macOS / Linux
 ADMIN_USERNAME=admin ADMIN_PASSWORD='choose-a-strong-password' ./scripts/setup.sh
+```
+
+```powershell
+# Windows (PowerShell)
+$env:ADMIN_USERNAME = 'admin'; $env:ADMIN_PASSWORD = 'choose-a-strong-password'
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 ```
 
 If the controller starts with the shipped `config.toml` while `APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME`
