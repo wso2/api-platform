@@ -517,6 +517,8 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 
 // UpdateAPIKey updates/regenerates an API key and broadcasts it to all gateways where the API is deployed.
 // This method is used when external platforms rotates/regenerates API keys on hybrid gateways.
+// Only the key's creator may update it. This is shared by every kind that uses this service
+// (REST, WebSub, WebBroker API keys) via their own handlers.
 func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string, req *api.UpdateAPIKeyRequest) error {
 	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
 	// kinds resolves to exactly one artifact.
@@ -558,6 +560,18 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	// Fetch UUID before update for consistent audit record (CREATE uses UUID, not name)
 	existingKey, existingKeyErr := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
+
+	// Ownership check — only the key's creator may update it.
+	if existingKeyErr != nil {
+		s.slogger.Error("Failed to look up API key for update", "apiHandle", apiHandle, "keyName", keyName, "error", existingKeyErr)
+		return fmt.Errorf("failed to look up API key: %w", existingKeyErr)
+	}
+	if existingKey == nil {
+		return apperror.RESTAPIKeyNotFound.New()
+	}
+	if userId != "" && existingKey.CreatedBy != userId {
+		return apperror.RESTAPIKeyForbidden.New()
+	}
 
 	dbKey := &model.APIKey{
 		ArtifactUUID: apiId,
@@ -628,7 +642,9 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	return nil
 }
 
-// RevokeAPIKey broadcasts API key revocation to all gateways where the API is deployed
+// RevokeAPIKey broadcasts API key revocation to all gateways where the API is deployed.
+// Only the key's creator may revoke it. This is shared by every kind that uses this service
+// (REST, WebSub, WebBroker API keys) via their own handlers.
 func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string) error {
 	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
 	// kinds resolves to exactly one artifact.
@@ -654,6 +670,18 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 
 	// Fetch UUID before revoke for consistent audit record (CREATE uses UUID, not name)
 	revokeKey, revokeKeyErr := s.apiKeyRepo.GetByArtifactAndName(apiId, keyName)
+
+	// Ownership check — only the key's creator may revoke it.
+	if revokeKeyErr != nil {
+		s.slogger.Error("Failed to look up API key for revocation", "apiHandle", apiHandle, "keyName", keyName, "error", revokeKeyErr)
+		return fmt.Errorf("failed to look up API key: %w", revokeKeyErr)
+	}
+	if revokeKey == nil {
+		return apperror.RESTAPIKeyNotFound.New()
+	}
+	if userId != "" && revokeKey.CreatedBy != userId {
+		return apperror.RESTAPIKeyForbidden.New()
+	}
 
 	// Revoke the API key in the database before broadcasting
 	if err := s.apiKeyRepo.Revoke(apiId, keyName, userId); err != nil {
