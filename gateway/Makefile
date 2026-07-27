@@ -246,6 +246,7 @@ dist: clean-dist ## Build standalone gateway distribution zip
 	@cp distribution/docker-compose.yaml $(DIST_DIR)/docker-compose.yaml
 	@mkdir -p $(DIST_DIR)/scripts
 	@cp scripts/setup.sh $(DIST_DIR)/scripts/setup.sh
+	@cp scripts/setup.ps1 $(DIST_DIR)/scripts/setup.ps1
 	@cp distribution/README.md $(DIST_DIR)/README.md
 	@sed -i.bak \
 	    -e 's|/gateway-controller:[^[:space:]]*|/gateway-controller:$(DIST_VERSION)|g' \

@@ -42,6 +42,10 @@ else
   ENC_KEY_FILE="resources/aesgcm-keys/default-aesgcm256-v1.bin"
 fi
 
+# Controller config file — read only to detect whether basic auth is enabled,
+# which determines whether admin credentials are required in api-platform.env.
+CONFIG_FILE="configs/config.toml"
+
 FORCE=false
 CERTS_ONLY=false
 
@@ -127,7 +131,55 @@ gen_encryption_key
 
 if [[ "$FORCE" == false && -f "$ENV_FILE" ]]; then
   log "$ENV_FILE already exists — keeping it (rerun with --force to rewrite it)"
+
+  # Since the env file is kept as-is (not regenerated), it may predate the
+  # current gateway and be missing settings the runtime now requires. Check
+  # each required key and refuse to report success if any are absent/empty.
+  missing=0
+  check_env_key() {
+    local key="$1" line
+    line="$(grep -E "^[[:space:]]*${key}=" "$ENV_FILE" | tail -n1 || true)"
+    if [[ -z "$line" ]]; then
+      echo "    [MISSING] $key"; missing=$((missing + 1))
+    elif [[ -z "${line#*=}" ]]; then
+      echo "    [empty]   $key (defined but has no value)"; missing=$((missing + 1))
+    else
+      echo "    [ok]      $key"
+    fi
+  }
+
+  # Admin credentials are required only when controller.auth.basic is enabled.
+  # Detect that from config.toml so we don't demand them when basic auth is off.
+  basic_auth_enabled() {
+    [[ -f "$CONFIG_FILE" ]] || return 1
+    awk '
+      /^\[controller\.auth\.basic\][[:space:]]*$/ { in_sec = 1; next }
+      /^\[/                                        { in_sec = 0 }
+      in_sec && /^[[:space:]]*enabled[[:space:]]*=[[:space:]]*true/ { found = 1 }
+      END { exit(found ? 0 : 1) }
+    ' "$CONFIG_FILE"
+  }
+
   echo
+  log "Verify $ENV_FILE still defines the settings the gateway requires:"
+  check_env_key GATEWAY_CONTROLLER_HOST
+  check_env_key LOG_LEVEL
+  if basic_auth_enabled; then
+    echo "  Required because controller.auth.basic is enabled in $CONFIG_FILE:"
+    check_env_key APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_USERNAME
+    check_env_key APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH
+  fi
+
+  echo
+  if [[ "$missing" -gt 0 ]]; then
+    log "$missing required setting(s) are missing or empty — setup is NOT complete."
+    echo
+    echo "  Before starting the gateway, either:"
+    echo "    - edit $ENV_FILE and fill in the value(s) flagged above, or"
+    echo "    - rerun to regenerate it from scratch:  ./scripts/setup.sh --force"
+    exit 1
+  fi
+
   log "Setup complete."
   echo
   echo "  Next step:"
