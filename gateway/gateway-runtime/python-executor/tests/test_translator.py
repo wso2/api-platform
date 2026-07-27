@@ -46,6 +46,9 @@ class TranslatorTest(unittest.TestCase):
         shared_proto.metadata.CopyFrom(Translator.dict_to_struct({"flag": True}))
         shared_proto.auth_context.scopes["read:pets"] = True
         shared_proto.auth_context.properties["tenant"] = "demo"
+        shared_proto.auth_context.typed_properties.CopyFrom(
+            Translator.dict_to_struct({"roles": ["admin", "dev"], "dept": "platform"})
+        )
 
         shared = self.translator.to_python_shared_context(shared_proto)
 
@@ -63,6 +66,9 @@ class TranslatorTest(unittest.TestCase):
 
         self.assertTrue(shared.auth_context.authenticated)
         self.assertEqual("apikey", shared.auth_context.previous.auth_type)
+        # typed_properties must arrive with structure intact: the array claim stays a list.
+        self.assertEqual(["admin", "dev"], shared.auth_context.typed_properties["roles"])
+        self.assertEqual("platform", shared.auth_context.typed_properties["dept"])
         self.assertEqual(["one", "two"], request_ctx.headers.get("X-Trace"))
         self.assertEqual("public.example.com", request_ctx.vhost)
         self.assertEqual(b"payload", request_ctx.body.content)
