@@ -90,6 +90,16 @@ e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
 		env_backup_file="$$(mktemp)"; \
 		cp api-platform.env "$$env_backup_file"; \
 	fi; \
+	keys_backup_dir=""; \
+	if [ -d resources/keys ]; then \
+		keys_backup_dir="$$(mktemp -d)"; \
+		cp -a resources/keys "$$keys_backup_dir/keys"; \
+	fi; \
+	certs_backup_dir=""; \
+	if [ -d resources/certificates ]; then \
+		certs_backup_dir="$$(mktemp -d)"; \
+		cp -a resources/certificates "$$certs_backup_dir/certificates"; \
+	fi; \
 	cleanup() { \
 		status=$$?; \
 		if [ $$status -ne 0 ]; then \
@@ -101,6 +111,20 @@ e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
 			mv "$$env_backup_file" api-platform.env; \
 		else \
 			rm -f api-platform.env; \
+		fi; \
+		if [ -n "$$keys_backup_dir" ]; then \
+			rm -rf resources/keys; \
+			mv "$$keys_backup_dir/keys" resources/keys; \
+			rm -rf "$$keys_backup_dir"; \
+		else \
+			rm -rf resources/keys; \
+		fi; \
+		if [ -n "$$certs_backup_dir" ]; then \
+			rm -rf resources/certificates; \
+			mv "$$certs_backup_dir/certificates" resources/certificates; \
+			rm -rf "$$certs_backup_dir"; \
+		else \
+			rm -rf resources/certificates; \
 		fi; \
 		exit $$status; \
 	}; \

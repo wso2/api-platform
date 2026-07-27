@@ -249,7 +249,7 @@ public_key_path = "/etc/devportal/keys/jwt_public.pem"  # path to the Platform A
 tls_skip_verify = true                    # Platform API uses a self-signed cert
 ```
 
-Tokens are signed asymmetrically (RS256): the Platform API mints them with its `auth.jwt.private_key` and the portal verifies them against the matching public key above. There is no shared HMAC secret, and the private key never leaves the Platform API — `../scripts/setup.sh` generates the keypair into `resources/keys/`, and `docker-compose.yaml` mounts only `jwt_public.pem`'s directory into the portal (at `/etc/devportal/keys`).
+Tokens are signed asymmetrically (RS256): the Platform API mints them with its `auth.jwt.private_key` and the portal verifies them against the matching public key above. There is no shared HMAC secret, and the private key never leaves the Platform API — `../scripts/setup.sh` generates the keypair into `resources/keys/`, and `docker-compose.yaml` mounts only the `jwt_public.pem` file into the portal (at `/etc/devportal/keys/jwt_public.pem`); `jwt_private.pem` and `encryption.key` are never mounted into the portal container.
 
 For production, configure an OIDC identity provider per organization instead of local auth.
 

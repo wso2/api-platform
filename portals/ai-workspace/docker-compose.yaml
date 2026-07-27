@@ -79,7 +79,7 @@ services:
       - ./configs/config.toml:/app/configs/config.toml:ro
       - developer-portal-data:/app/data
       - ./resources/certificates:/etc/devportal/tls:ro
-      - ./resources/keys:/etc/devportal/keys:ro
+      - ./resources/keys/jwt_public.pem:/etc/devportal/keys/jwt_public.pem:ro
     ports:
       - "9543:9543"
     healthcheck:

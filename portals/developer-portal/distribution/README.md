@@ -91,7 +91,7 @@ Then start the stack with the profile enabled:
 docker compose --profile ai-workspace up -d
 ```
 
-AI Workspace comes up at `https://localhost:9643`, backed by the same Platform API. Omit `--profile ai-workspace` on any later `docker compose` command to leave it stopped.
+AI Workspace comes up at `https://localhost:9643`, backed by the same Platform API. Omitting `--profile ai-workspace` on a later `docker compose` command neither starts nor stops it — an already-running instance keeps running. To stop it explicitly, run `docker compose stop ai-workspace`, or `docker compose --profile ai-workspace down` to remove it.
 
 ## Configuration
 

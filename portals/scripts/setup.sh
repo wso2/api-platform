@@ -30,7 +30,9 @@
 # service fails closed at startup if a required secret is missing, rather
 # than silently generating or accepting a weaker one. Re-running this script
 # is safe: by default it only fills in what's missing and never overwrites an
-# existing value; pass --force to rotate everything instead.
+# existing value; pass --force to rotate the TLS cert, JWT signing keypair,
+# and admin credentials. --force deliberately does NOT touch the at-rest
+# encryption key — see --rotate-encryption-key below.
 #
 # Usage (run from either portals/ai-workspace or portals/developer-portal, or
 # from the root of a standalone distribution zip — same script, same layout):
@@ -39,8 +41,13 @@
 #   docker compose --profile <ai-workspace|developer-portal|all> up -d
 #
 # Flags:
-#   --force         regenerate everything (rotates keys and credentials)
-#   --certs-only    generate only the TLS certificate (used by `make bff-run`)
+#   --force                   regenerate TLS cert, JWT signing keypair, and
+#                              admin credentials (never the encryption key)
+#   --certs-only              generate only the TLS certificate (used by
+#                              `make bff-run`)
+#   --rotate-encryption-key   DESTRUCTIVE: replace an existing at-rest
+#                              encryption key. Anything encrypted under the
+#                              old key becomes permanently unreadable.
 #
 # ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the interactive
 # prompts and pin the credentials (used by CI). If ADMIN_PASSWORD is left
@@ -54,17 +61,30 @@ set -euo pipefail
 
 FORCE=false
 CERTS_ONLY=false
+ROTATE_ENCRYPTION_KEY=false
 
 for arg in "$@"; do
   case "$arg" in
     --force) FORCE=true ;;
     --certs-only) CERTS_ONLY=true ;;
+    --rotate-encryption-key) ROTATE_ENCRYPTION_KEY=true ;;
     -h|--help)
       cat <<'EOF'
-Usage: ./setup.sh [--force] [--certs-only]
+Usage: ./setup.sh [--force] [--certs-only] [--rotate-encryption-key]
 
-  --force         regenerate everything (rotates keys and credentials)
-  --certs-only    generate only the TLS certificate (used by `make bff-run`)
+  --force                   regenerate TLS cert, JWT signing keypair, and
+                             admin credentials. Never rotates the at-rest
+                             encryption key on its own — see
+                             --rotate-encryption-key.
+  --certs-only              generate only the TLS certificate (used by
+                             `make bff-run`)
+  --rotate-encryption-key   DESTRUCTIVE: replace resources/keys/encryption.key
+                             even if one already exists. Any data encrypted
+                             under the old key (e.g. stored secrets) becomes
+                             permanently unreadable. Requires interactive
+                             confirmation unless ADMIN_USERNAME/ADMIN_PASSWORD
+                             are set (CI), in which case passing this flag is
+                             itself treated as confirmation.
 
 ADMIN_USERNAME / ADMIN_PASSWORD environment variables skip the interactive
 prompts and pin the credentials (used by CI).
@@ -104,10 +124,35 @@ CERTS_DIR="$ROOT_DIR/resources/certificates"
 # /etc/platform-api/keys and read by config.toml via {{ file }}.
 KEYS_DIR="$ROOT_DIR/resources/keys"
 
-# Bind-mounted into a container running as a non-root UID: 644 (not 600) so
-# the container user can read a file owned by the host user. Local
-# single-user quick-start tradeoff.
+# Every service image runs as this fixed non-root UID (see platform-api,
+# ai-workspace, and developer-portal Dockerfiles).
+CONTAINER_UID=10001
+
+# Non-sensitive files (public cert, public key) — safe to leave world-readable
+# so the bind-mounted container UID above can read them.
 FILE_MODE=644
+
+# Sensitive files (private keys, the at-rest encryption key) are locked to
+# 600 (owner-only, unreadable to other host users) and, where an ACL
+# mechanism actually works, get an explicit entry granting read access to the
+# fixed container UID instead of opening the file to every host user via 644.
+# `setfacl` (Linux `acl` package) supports targeting a bare numeric UID
+# directly. macOS's `chmod +a` cannot target a numeric UID that has no
+# resolvable local account (the container's UID 10001 never exists on the
+# host), so there is no working ACL path there — fall back to the previous
+# world-readable 644 rather than silently leaving the container unable to
+# read a file it needs at startup.
+restrict_secret_file() {
+    local file="$1"
+    if command -v setfacl >/dev/null 2>&1; then
+        chmod 600 "$file"
+        if setfacl -m "u:${CONTAINER_UID}:r" "$file" 2>/dev/null; then
+            return
+        fi
+        log "  - WARNING: setfacl failed on $file; falling back to world-readable so the container (UID ${CONTAINER_UID}) can still read it"
+    fi
+    chmod "$FILE_MODE" "$file"
+}
 
 command -v openssl >/dev/null 2>&1 || fail "openssl is required but not found on PATH."
 
@@ -155,7 +200,8 @@ else
         -subj "/O=WSO2 API Platform/CN=localhost" \
         -addext "subjectAltName=DNS:localhost,DNS:*.localhost,DNS:platform-api,DNS:ai-workspace,DNS:developer-portal,DNS:devportal,DNS:host.docker.internal,IP:127.0.0.1" \
         >/dev/null 2>&1
-    chmod "$FILE_MODE" "$CERTS_DIR/key.pem" "$CERTS_DIR/cert.pem"
+    chmod "$FILE_MODE" "$CERTS_DIR/cert.pem"
+    restrict_secret_file "$CERTS_DIR/key.pem"
     log "  - self-signed certificate generated at $CERTS_DIR"
 fi
 
@@ -164,6 +210,10 @@ if [[ "$CERTS_ONLY" == true ]]; then
 fi
 
 touch "$ENV_FILE"
+# api-platform.env is read directly by the Docker CLI/daemon via env_file: —
+# never bind-mounted into a container — so it only needs host-level
+# protection, not container-UID read access via restrict_secret_file.
+chmod 600 "$ENV_FILE"
 
 log "Generating devportal secrets into api-platform.env ..."
 set_env_var "APIP_DP_SECURITY_ENCRYPTION_KEY" "$(openssl rand -hex 32)"
@@ -189,7 +239,8 @@ else
         -out "$KEYS_DIR/jwt_private.pem" 2>/dev/null
     openssl rsa -in "$KEYS_DIR/jwt_private.pem" -pubout \
         -out "$KEYS_DIR/jwt_public.pem" 2>/dev/null
-    chmod "$FILE_MODE" "$KEYS_DIR/jwt_private.pem" "$KEYS_DIR/jwt_public.pem"
+    chmod "$FILE_MODE" "$KEYS_DIR/jwt_public.pem"
+    restrict_secret_file "$KEYS_DIR/jwt_private.pem"
     log "  - RS256 JWT keypair generated at $KEYS_DIR"
 fi
 
@@ -198,20 +249,44 @@ log "Provisioning Platform API at-rest encryption key ..."
 # {{ file "/etc/platform-api/keys/encryption.key" }} — the same mounted keys
 # dir as the JWT keypair above. 32-byte key as 64 hex chars. Preserve an
 # existing key across reruns — regenerating it makes previously-encrypted
-# data unreadable — so only create it when absent or when --force rotation
-# is requested.
-if [[ "$FORCE" == false && -f "$KEYS_DIR/encryption.key" ]]; then
-    log "  - $KEYS_DIR/encryption.key already exists, leaving as-is"
+# data permanently unreadable — so this key is rotated ONLY via the explicit,
+# separate --rotate-encryption-key flag, never by the generic --force (which
+# rotates the TLS cert / JWT keypair / admin credentials, none of which risk
+# data loss the way rotating this key does).
+if [[ -f "$KEYS_DIR/encryption.key" && "$ROTATE_ENCRYPTION_KEY" == true ]]; then
+    if [[ -t 0 && -z "${ADMIN_USERNAME:-}" && -z "${ADMIN_PASSWORD:-}" ]]; then
+        echo
+        echo "  WARNING: rotating $KEYS_DIR/encryption.key will make any data"
+        echo "  encrypted under the current key permanently unreadable."
+        read -r -p "  Type 'rotate' to proceed: " CONFIRM_ROTATE
+        [[ "$CONFIRM_ROTATE" == "rotate" ]] || fail "encryption key rotation not confirmed; aborting."
+    else
+        log "  - non-interactive/CI invocation: --rotate-encryption-key passed, treating that as confirmation"
+    fi
+    openssl rand -hex 32 > "$KEYS_DIR/encryption.key"
+    restrict_secret_file "$KEYS_DIR/encryption.key"
+    log "  - at-rest encryption key ROTATED at $KEYS_DIR/encryption.key"
+elif [[ -f "$KEYS_DIR/encryption.key" ]]; then
+    log "  - $KEYS_DIR/encryption.key already exists, leaving as-is (pass --rotate-encryption-key to replace it)"
 else
     mkdir -p "$KEYS_DIR"
     openssl rand -hex 32 > "$KEYS_DIR/encryption.key"
-    chmod "$FILE_MODE" "$KEYS_DIR/encryption.key"
+    restrict_secret_file "$KEYS_DIR/encryption.key"
     log "  - at-rest encryption key generated at $KEYS_DIR/encryption.key"
 fi
 
 log "Provisioning Platform API admin credentials ..."
 CREDENTIALS_PROVISIONED=false
-if [[ "$FORCE" == false ]] && grep -q "^APIP_CP_ADMIN_USERNAME=" "$ENV_FILE" 2>/dev/null; then
+HAS_ADMIN_USERNAME=false
+HAS_ADMIN_HASH=false
+grep -q "^APIP_CP_ADMIN_USERNAME=" "$ENV_FILE" 2>/dev/null && HAS_ADMIN_USERNAME=true
+grep -q "^APIP_CP_ADMIN_PASSWORD_HASH=" "$ENV_FILE" 2>/dev/null && HAS_ADMIN_HASH=true
+
+if [[ "$FORCE" == false && "$HAS_ADMIN_USERNAME" == true && "$HAS_ADMIN_HASH" != true ]]; then
+    fail "api-platform.env has APIP_CP_ADMIN_USERNAME set but no APIP_CP_ADMIN_PASSWORD_HASH — a username paired with no hash (or a mismatched one) can never authenticate. Either delete APIP_CP_ADMIN_USERNAME from api-platform.env and re-run this script to regenerate both together, or re-run with --force to rotate both credentials at once."
+elif [[ "$FORCE" == false && "$HAS_ADMIN_HASH" == true && "$HAS_ADMIN_USERNAME" != true ]]; then
+    fail "api-platform.env has APIP_CP_ADMIN_PASSWORD_HASH set but no APIP_CP_ADMIN_USERNAME — a hash with no matching username can never authenticate. Either delete APIP_CP_ADMIN_PASSWORD_HASH from api-platform.env and re-run this script to regenerate both together, or re-run with --force to rotate both credentials at once."
+elif [[ "$FORCE" == false && "$HAS_ADMIN_USERNAME" == true && "$HAS_ADMIN_HASH" == true ]]; then
     log "  - APIP_CP_ADMIN_USERNAME already set in api-platform.env, leaving admin credentials as-is"
 else
     GENERATED_PASSWORD="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | cut -c1-20)"
