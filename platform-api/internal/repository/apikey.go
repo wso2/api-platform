@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -54,6 +55,12 @@ func (r *APIKeyRepo) Create(key *model.APIKey) error {
 		key.Status, key.CreatedAt, key.CreatedBy, key.UpdatedAt, key.UpdatedBy, key.ExpiresAt,
 		key.Issuer, key.AllowedTargets,
 	)
+	if err != nil && r.db.IsDuplicateKeyError(err) {
+		// A collision on UNIQUE(artifact_uuid, handle) means a key with this
+		// name already exists for the artifact. Classify it as a 409 so the
+		// caller gets an actionable message instead of a generic 500.
+		return apperror.APIKeyExists.New()
+	}
 	return err
 }
 
