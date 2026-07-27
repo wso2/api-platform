@@ -77,7 +77,10 @@ Cypress.Commands.add('seedApi', (overrides = {}) => {
         id: handle,
         name: overrides.name || 'IT Portal Access API',
         version: overrides.version || 'v1.0',
-        type: 'REST',
+        // 'REST' (default), 'GRAPHQL', 'SOAP', etc. — normalized server-side
+        // (e.g. 'REST' → 'RestApi'). For a non-REST type pass a matching
+        // `definition` (e.g. a GraphQL SDL for type 'GRAPHQL').
+        type: overrides.type || 'REST',
         status: 'PUBLISHED',
         // Maps the API into the default view so it appears on the /apis listing.
         labels: ['default'],
@@ -103,7 +106,12 @@ Cypress.Commands.add('seedApi', (overrides = {}) => {
 
     const parts = [
         { name: 'metadata', value: JSON.stringify(metadata) },
-        { name: 'definition', value: definition, filename: 'definition.json', contentType: 'application/json' },
+        {
+            name: 'definition',
+            value: definition,
+            filename: overrides.definitionFileName || 'definition.json',
+            contentType: overrides.definitionContentType || 'application/json',
+        },
     ];
     // Each `docs` file is stored as an "Other" document (req.files.docs in
     // apiMetadataService.createAPIMetadata).
