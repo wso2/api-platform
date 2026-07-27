@@ -214,6 +214,31 @@ max_export_batch_size = 1024    # Export up to 1024 spans per batch
 **Lower timeout**: Faster trace visibility, more network overhead
 **Higher timeout**: Better batching efficiency, slower trace visibility
 
+### OpenTelemetry Resource Attributes
+
+When tracing is enabled, the Envoy OpenTelemetry tracer is configured with the environment
+resource detector. It reads `OTEL_RESOURCE_ATTRIBUTES` from the Envoy (`gateway-runtime`)
+process and attaches those attributes to exported spans. If the variable is unset, tracing
+still works and no extra resource attributes are added.
+
+Set attributes on the **gateway-runtime** container (not the controller), for example:
+
+```bash
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment=prod,service.namespace=api-gw
+```
+
+With the Helm chart:
+
+```yaml
+gateway:
+  gatewayRuntime:
+    deployment:
+      env:
+        otelResourceAttributes: "deployment.environment=prod,service.namespace=api-gw"
+```
+
+`OTEL_RESOURCE_ATTRIBUTES` is injected only when `otelResourceAttributes` is non-empty.
+
 ## Alternative Tracing Backends
 
 While the default setup uses Jaeger, the gateway components use OpenTelemetry and can export to any OTLP-compatible backend.

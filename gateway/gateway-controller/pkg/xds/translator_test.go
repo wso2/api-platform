@@ -31,7 +31,9 @@ import (
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	tracev3 "github.com/envoyproxy/go-control-plane/envoy/config/trace/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
@@ -1642,7 +1644,20 @@ func TestTranslator_CreateTracingConfig_Enabled(t *testing.T) {
 
 	tracingCfg, err := translator.createTracingConfig()
 	assert.NoError(t, err)
-	assert.NotNil(t, tracingCfg)
+	require.NotNil(t, tracingCfg)
+	assert.True(t, tracingCfg.GetSpawnUpstreamSpan().GetValue())
+
+	otelConfig := &tracev3.OpenTelemetryConfig{}
+	err = tracingCfg.GetProvider().GetTypedConfig().UnmarshalTo(otelConfig)
+	require.NoError(t, err)
+	assert.Equal(t, "test-service", otelConfig.GetServiceName())
+	require.Len(t, otelConfig.GetResourceDetectors(), 1)
+	assert.Equal(t, "envoy.tracers.opentelemetry.resource_detectors.environment",
+		otelConfig.GetResourceDetectors()[0].GetName())
+
+	envDetector := &otelresourcedetectorsv3.EnvironmentResourceDetectorConfig{}
+	err = otelConfig.GetResourceDetectors()[0].GetTypedConfig().UnmarshalTo(envDetector)
+	require.NoError(t, err)
 }
 
 func TestTranslator_CreateOTELCollectorCluster(t *testing.T) {

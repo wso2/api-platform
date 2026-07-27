@@ -97,6 +97,10 @@ spec:
             - name: MOESIF_KEY
               value: {{ $deployment.env.moesifKey | quote }}
             {{- end }}
+            {{- if $deployment.env.otelResourceAttributes }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ $deployment.env.otelResourceAttributes | quote }}
+            {{- end }}
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
             {{- end }}
