@@ -6,6 +6,9 @@
 {{- $selfSigned := eq $tls.certificateProvider "selfSigned" -}}
 {{- $tlsMounted := or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret") -}}
 {{- $imageTag := default .Chart.AppVersion $ui.image.tag -}}
+{{- if and $deployment.enabled (not $tlsMounted) }}
+{{- fail "ai-workspace-ui: tls.certificateProvider must be \"cert-manager\" or \"secret\" — the AI Workspace UI has no self-signed fallback (the BFF does not generate a certificate at startup, it only reads an existing cert_file/key_file). Provide a TLS Secret (certificateProvider=secret) or use cert-manager." }}
+{{- end }}
 {{- if $deployment.enabled }}
 apiVersion: apps/v1
 kind: Deployment

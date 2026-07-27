@@ -1,0 +1,28 @@
+# Local development values for the ai-workspace umbrella chart.
+# Usage:
+#   helm install ai-workspace ./ai-workspace-helm-chart -f values-secrets.yaml -f values-local.yaml
+#
+# Overrides the defaults for local development, per component:
+# - locally-built images (latest tag, IfNotPresent pull policy)
+# - debug logging
+# - the UI skips TLS verification to the Platform API's self-signed cert
+#
+# NOTE: the components have no self-signed TLS fallback. For a local install,
+# provide a TLS Secret (tls.certificateProvider=secret) or install cert-manager.
+platform-api:
+  image:
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  config:
+    logging:
+      level: debug
+
+ai-workspace-ui:
+  image:
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  config:
+    logging:
+      level: debug
+    controlPlane:
+      tlsSkipVerify: true

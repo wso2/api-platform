@@ -1,0 +1,39 @@
+apiVersion: v2
+name: developer-portal
+kubeVersion: ">=1.24.0-0"
+description: >-
+  WSO2 API Platform — Developer Portal product package. Chart whose
+  default profile is the shared Platform API control plane plus the Developer
+  Portal. Each component is a separately-released chart pulled as an OCI
+  dependency; add other components (e.g. AI Workspace) later by appending a dependency.
+version: 1.0.0-alpha2
+appVersion: "1.0.0-alpha2"
+type: application
+home: https://github.com/wso2/api-platform
+sources:
+  - https://github.com/wso2/api-platform
+keywords:
+  - api-platform
+  - developer-portal
+  - platform-api
+  - wso2
+maintainers:
+  - name: ap-portals-maintainers
+    email: contact@wso2.com
+dependencies:
+  # NOTE: repositories below reference the OCI registry (the release default), so
+  # `helm dependency update` pulls the components from ghcr (requires them to be
+  # published + `helm registry login ghcr.io`). For local development WITHOUT
+  # publishing, temporarily switch each to repository: "file://../<name>-helm-chart"
+  # and re-run `helm dependency update`.
+  #
+  # Shared control plane. On by default; the portal reaches it in-cluster.
+  - name: platform-api
+    version: "0.13.0"
+    repository: "oci://ghcr.io/wso2/api-platform/helm-charts"
+    condition: platform-api.enabled
+  # Developer Portal — this package's headline component.
+  - name: developer-portal-ui
+    version: "1.0.0-alpha"
+    repository: "oci://ghcr.io/wso2/api-platform/helm-charts"
+    condition: developer-portal-ui.enabled

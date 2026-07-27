@@ -164,10 +164,13 @@ containerPort: 9643
 # tls — certificate for the BFF's HTTPS listener
 # ----------------------------------------------------------------------------
 tls:
-  # selfSigned   → BFF generates a self-signed pair at startup (demo).
-  # secret       → mount an existing Secret's tls.crt / tls.key.
-  # cert-manager → provision a Certificate via cert-manager and mount it.
-  certificateProvider: selfSigned
+  # How the BFF's HTTPS listener gets its certificate. The BFF does NOT
+  # self-generate one, so a working certificate must be supplied:
+  #   secret       → mount an existing Secret's tls.crt / tls.key.
+  #   cert-manager → provision a Certificate via cert-manager and mount it.
+  # NOTE: "selfSigned" is NOT supported — the image has no in-container cert
+  # generation, so the chart rejects it at render time (fail-fast, similar to platform-api).
+  certificateProvider: cert-manager
   certManager:
     create: true
     createIssuer: true
