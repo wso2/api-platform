@@ -2,6 +2,11 @@ name: CLI Release
 
 on:
   workflow_dispatch:
+    inputs:
+      next_dev_version:
+        description: 'Next development version (with -SNAPSHOT suffix, e.g. 0.10.0-SNAPSHOT)'
+        required: true
+        type: string
 
 jobs:
   release:
@@ -169,8 +174,20 @@ jobs:
           name: ap-release-zips-${{ steps.version.outputs.version }}
           path: release-artifacts/*.zip
 
-      - name: Bump to next dev version
-        run: make -C cli/src version-bump-next-dev
+      - name: Set next dev version
+        env:
+          NEXT_DEV_VERSION: ${{ inputs.next_dev_version }}
+        run: |
+          if [ -z "${NEXT_DEV_VERSION}" ]; then
+            echo "Error: next_dev_version input is required"
+            exit 1
+          fi
+          if [[ "${NEXT_DEV_VERSION}" != *-SNAPSHOT ]]; then
+            echo "Error: next_dev_version must end with -SNAPSHOT (e.g. 0.10.0-SNAPSHOT)"
+            exit 1
+          fi
+          echo "Setting CLI to next dev version: ${NEXT_DEV_VERSION}"
+          make -C cli/src version-set "VERSION=${NEXT_DEV_VERSION}"
 
       - name: Commit version bump
         run: |
@@ -189,7 +206,7 @@ jobs:
           body: |
             Automated version bump after release `ap/v${{ steps.version.outputs.version }}`
 
-            This PR bumps the CLI version to the next development version.
+            This PR bumps the CLI version to the next development version `${{ inputs.next_dev_version }}`.
           branch: cli-version-bump-${{ github.run_id }}
           base: main
           delete-branch: true
