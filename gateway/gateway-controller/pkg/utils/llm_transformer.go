@@ -187,9 +187,9 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			if addProviderConfig, ok := addCfg.SourceConfiguration.(api.LLMProviderConfiguration); ok {
 				additionalValuePrefixByID[ap.Id] = apiKeyAuthValuePrefix(addProviderConfig.Spec.GlobalPolicies)
 			}
-			// Named upstream definition URLs are host-only. Keep the provider context
-			// in basePath so dynamic provider routing does not drop it and send the
-			// loopback request to the proxy listener root.
+			// UpstreamDefinition URLs are host[:port] only. Keep the provider's
+			// loopback context in BasePath so the router rewrites requests to the
+			// additional provider route instead of dropping the context.
 			normalizedAddCtx := strings.TrimRight(addCtx, "/")
 			if normalizedAddCtx != "" && !strings.HasPrefix(normalizedAddCtx, "/") {
 				normalizedAddCtx = "/" + normalizedAddCtx
