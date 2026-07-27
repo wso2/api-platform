@@ -16,9 +16,7 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// Register command modules split out into ./commands/*.
-import './commands/auth';
-import './commands/seed';
+// Generic portal navigation and management-API helpers shared across specs.
 
 // ---------------------------------------------------------------------------
 // cy.portalUrl(path)
