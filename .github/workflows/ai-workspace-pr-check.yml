@@ -76,7 +76,10 @@ jobs:
         # --wait blocks until all healthchecks pass. The ai-workspace healthcheck
         # now verifies the nginx→platform-api proxy route (not just the static
         # frontend), so this returns only when the API is ready to serve requests.
-        run: docker compose up -d --wait --wait-timeout 300
+        # Every service in docker-compose.yaml is gated behind a profile, so
+        # --profile ai-workspace must be passed explicitly — without it, Compose
+        # selects zero services and fails with "no service selected".
+        run: docker compose --profile ai-workspace up -d --wait --wait-timeout 300
         working-directory: portals/ai-workspace
 
       - name: Verify API proxy is reachable via host.docker.internal
