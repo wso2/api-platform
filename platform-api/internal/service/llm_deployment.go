@@ -1048,9 +1048,18 @@ func generateLLMProviderDeploymentYAML(provider *model.LLMProvider, templateHand
 		}
 	}
 
-	// Carry through user-set globalPolicies from the model (e.g. guardrails set via UI/API)
+	// Carry through user-set globalPolicies from the model (e.g. guardrails set via UI/API).
+	// Snapshot the system-generated api-level policy names added above (rate limiting, llm-cost,
+	// etc.) BEFORE this loop: a user policy that collides with one of those defers to the system
+	// policy, but duplicates *among* user-set policies (e.g. two set-headers guardrails) must all
+	// be preserved. Checking hasGlobalPolicy against the growing accumulator would drop the second
+	// user duplicate, since the first was just appended to it.
+	systemGlobalNames := make(map[string]bool, len(globalPolicies))
+	for _, p := range globalPolicies {
+		systemGlobalNames[p.Name] = true
+	}
 	for _, p := range provider.Configuration.GlobalPolicies {
-		if hasGlobalPolicy(globalPolicies, p.Name) {
+		if systemGlobalNames[p.Name] {
 			continue
 		}
 		params := p.Params
@@ -1807,9 +1816,16 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 		}
 	}
 
-	// Carry through user-set globalPolicies from the model
+	// Carry through user-set globalPolicies from the model. Snapshot the system-generated
+	// api-level policy names added above BEFORE this loop so a user policy only defers to a
+	// system policy of the same name — duplicates among user-set policies (e.g. two set-headers
+	// guardrails) must all be preserved. See the provider path above for the full rationale.
+	systemProxyGlobalNames := make(map[string]bool, len(proxyGlobalPolicies))
+	for _, p := range proxyGlobalPolicies {
+		systemProxyGlobalNames[p.Name] = true
+	}
 	for _, p := range proxy.Configuration.GlobalPolicies {
-		if hasGlobalPolicy(proxyGlobalPolicies, p.Name) {
+		if systemProxyGlobalNames[p.Name] {
 			continue
 		}
 		params := p.Params

@@ -230,7 +230,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			rdc.Routes[routeKey] = rdcRoute
 
 			// Build policy chain: API-level + operation-level + system policies
-			chain := t.buildPolicyChain(apiPolicies, apiData.Policies, op.Policies)
+			chain := t.buildPolicyChain(apiPolicies, op.Policies)
 			injected := utils.InjectSystemPolicies(chain, t.systemConfig, nil)
 			rdc.PolicyChains[routeKey] = sdkChainToModel(injected)
 		}
@@ -398,8 +398,12 @@ func buildRouteTimeout(opTimeout, apiTimeout, opIdle, apiIdle *time.Duration) *m
 	return &models.RouteTimeout{Timeout: timeout, IdleTimeout: idle}
 }
 
-func (t *RestAPITransformer) collectAPIPolicies(policies *[]api.Policy) map[string]policyenginev1.PolicyInstance {
-	result := make(map[string]policyenginev1.PolicyInstance)
+// collectAPIPolicies returns the resolved API-level policies as a slice in spec order.
+// A slice (not a name-keyed map) is used deliberately: the same policy name may legitimately
+// appear more than once at the API level (e.g. an LLM provider attaching two set-headers
+// guardrails), and each occurrence must be preserved rather than collapsed to the last one.
+func (t *RestAPITransformer) collectAPIPolicies(policies *[]api.Policy) []policyenginev1.PolicyInstance {
+	var result []policyenginev1.PolicyInstance
 	if policies == nil {
 		return result
 	}
@@ -409,27 +413,20 @@ func (t *RestAPITransformer) collectAPIPolicies(policies *[]api.Policy) map[stri
 			slog.Error("Failed to resolve policy version for API-level policy", "policy_name", p.Name, "error", err)
 			continue
 		}
-		result[p.Name] = convertAPIPolicyToSDK(p, policyv1alpha.LevelAPI, versionutil.MajorVersion(resolved))
+		result = append(result, convertAPIPolicyToSDK(p, policyv1alpha.LevelAPI, versionutil.MajorVersion(resolved)))
 	}
 	return result
 }
 
 // buildPolicyChain builds a merged list: API-level + operation-level policies (SDK format).
 func (t *RestAPITransformer) buildPolicyChain(
-	apiPolicies map[string]policyenginev1.PolicyInstance,
-	specPolicies *[]api.Policy,
+	apiPolicies []policyenginev1.PolicyInstance,
 	opPolicies *[]api.Policy,
 ) []policyenginev1.PolicyInstance {
 	var result []policyenginev1.PolicyInstance
 
-	// API-level policies (in spec order, validated via apiPolicies map)
-	if specPolicies != nil {
-		for _, p := range *specPolicies {
-			if v, ok := apiPolicies[p.Name]; ok {
-				result = append(result, v)
-			}
-		}
-	}
+	// API-level policies (already resolved, in spec order, evaluated before operation-level).
+	result = append(result, apiPolicies...)
 
 	// Operation-level policies
 	if opPolicies != nil {

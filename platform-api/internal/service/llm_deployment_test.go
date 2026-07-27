@@ -859,3 +859,32 @@ func TestGenerateYAML_OtherCustomPoliciesNotDeduplicated(t *testing.T) {
 	}
 	t.Logf("Generated YAML:\n%s", yamlStr)
 }
+
+// TestGenerateYAML_DuplicateGlobalPoliciesPreserved verifies that two user-set globalPolicies
+// with the same name (e.g. two set-headers guardrails) are BOTH carried into the deployment
+// YAML. Regression test: the carry-through loop previously checked hasGlobalPolicy against the
+// accumulator it was appending to, so the second duplicate was dropped and only one policy
+// reached the gateway over the WebSocket channel.
+func TestGenerateYAML_DuplicateGlobalPoliciesPreserved(t *testing.T) {
+	p := providerWithConsumerLimits(nil)
+	p.Configuration.GlobalPolicies = []model.GlobalPolicy{
+		{Name: "set-headers", Version: "v1", Params: map[string]interface{}{"header": "X-First"}},
+		{Name: "set-headers", Version: "v1", Params: map[string]interface{}{"header": "X-Second"}},
+	}
+
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(p, "anthropic")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := 0
+	for _, gp := range yamlArtifact.Spec.GlobalPolicies {
+		if gp.Name == "set-headers" {
+			got++
+		}
+	}
+	if got != 2 {
+		yamlBytes, _ := yaml.Marshal(yamlArtifact)
+		t.Errorf("expected both set-headers globalPolicies to survive, got %d:\n%s", got, string(yamlBytes))
+	}
+}
