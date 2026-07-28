@@ -519,7 +519,13 @@ func (h *HTTPSteps) SendMcpRequest(url string, body *godog.DocString) error {
 			}
 		}
 	}
-	h.headers["mcp-session-id"] = resp.Header.Get("mcp-session-id")
+	// Only overwrite the stored session ID when this response actually carries one — a
+	// notification response (e.g. notifications/initialized) has no mcp-session-id header,
+	// and an unconditional assignment here would clobber the session ID captured from the
+	// preceding initialize response before it's used by a later request.
+	if sessionID := resp.Header.Get("mcp-session-id"); sessionID != "" {
+		h.headers["mcp-session-id"] = sessionID
+	}
 	return nil
 }
 

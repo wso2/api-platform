@@ -227,6 +227,18 @@ services:
     networks:
       - it-gateway-runtime-network
 
+  # Official MCP reference server (streamableHttp transport) — see docker-compose.test.yaml
+  mcp-streamable-backend:
+    container_name: mcp-streamable-backend
+    image: ghcr.io/wso2/api-platform/mock-mcp-everything-streamable:test
+    build:
+      context: ../../tests/mock-servers/mcp-everything-streamable
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3001"
+    networks:
+      - it-gateway-runtime-network
+
   # Echo backend for testing cost extraction - returns request body in response JSON
   echo-backend:
     container_name: it-echo-backend

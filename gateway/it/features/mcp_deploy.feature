@@ -96,6 +96,52 @@ Feature: Test MCP CRUD and connectivity
         And the JSON response field "status" should be "success"
         And the JSON response field "count" should be 0
 
+    # Regression test: an MCP proxy with no policies attached fronting a Streamable-HTTP
+    # MCP server returned HTTP 500
+    # from Envoy ("mismatch_between_content_length_and_the_length_of_the_mutated_body")
+    # on messages around initialize. mcp-streamable-backend (the official MCP reference
+    # server) reproduces it because its responses carry a content-length header on a
+    # chunked text/event-stream body — unlike mcp-server-backend used elsewhere in this
+    # file, which does not trigger it.
+    Scenario: Deploy an MCP Proxy fronting a Streamable-HTTP server with no policies attached
+        Given I authenticate using basic auth as "admin"
+        When I deploy this MCP configuration:
+            """
+            apiVersion: gateway.api-platform.wso2.com/v1
+            kind: Mcp
+            metadata:
+              name: everything-streamable-mcp-v1.0
+            spec:
+              displayName: Everything Streamable
+              version: v1.0
+              context: /everything-streamable
+              specVersion: "2025-06-18"
+              upstream:
+                url: http://mcp-streamable-backend:3001/mcp
+              tools: []
+              resources: []
+              prompts: []
+            """
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response field "status" should be "success"
+        And I wait for 2 seconds
+
+        When I use the MCP Client to send an initialize request to "http://127.0.0.1:8080/everything-streamable/mcp"
+        Then the response should be successful
+        When I use the MCP Client to send a notifications/initialized notification to "http://127.0.0.1:8080/everything-streamable/mcp"
+        Then the response should be successful
+        When I use the MCP Client to send a tools/list request to "http://127.0.0.1:8080/everything-streamable/mcp"
+        Then the response should be successful
+        And the response should be valid JSON
+        And the JSON response should have field "result.tools"
+
+        # Cleanup
+        And I clear all headers
+        Given I authenticate using basic auth as "admin"
+        When I delete the MCP proxy "everything-streamable-mcp-v1.0"
+        Then the response should be successful
+
     Scenario: Deploy an MCP Proxy and send an invalid tools/call request
         Given I authenticate using basic auth as "admin"
         When I deploy this MCP configuration:
