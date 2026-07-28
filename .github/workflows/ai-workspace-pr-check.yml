@@ -28,13 +28,7 @@ jobs:
           node-version: '20'
 
       - name: Build AI Workspace image
-        run: |
-          AI_WORKSPACE_VERSION="$(tr -d '[:space:]' < VERSION)"
-          make build VERSION="${AI_WORKSPACE_VERSION}"
-          echo "Pinning ai-workspace compose to ai-workspace:${AI_WORKSPACE_VERSION}"
-          sed -i.bak -E "s#image: .*/ai-workspace:.*#image: ghcr.io/wso2/api-platform/ai-workspace:${AI_WORKSPACE_VERSION}#" \
-            docker-compose.yaml
-          rm -f docker-compose.yaml.bak
+        run: make build
         working-directory: portals/ai-workspace
 
       # AI Workspace E2E depends on platform-api changes that ship in this PR but
