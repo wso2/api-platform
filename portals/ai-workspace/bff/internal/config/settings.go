@@ -19,7 +19,6 @@ package config
 import (
 	"fmt"
 	"log/slog"
-	"os"
 
 	tomlparser "github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/providers/confmap"
@@ -70,17 +69,23 @@ var defaultFileSourceAllowlist = []string{
 //
 // A missing config.toml is not an error: the returned instance is empty, so every key
 // falls back to defaultConfig() and Load fails only on the required ones.
-func loadConfigKoanf(tomlPath string) (*koanf.Koanf, error) {
+func loadConfigKoanf(tomlPaths ...string) (*koanf.Koanf, error) {
+	// Deliberately NOT koanf StrictMerge: strict merging compares the raw parsed
+	// types across files, but an {{ env }} / {{ file }} interpolation token is a
+	// string until it is resolved after the merge — so strict merging would reject a
+	// numeric/bool field that one file sets natively and another overrides with a
+	// token. Cross-file type errors are instead caught downstream by the weakly-typed
+	// unmarshal and validation.
 	k := koanf.New(".")
 
-	// Stat first so a missing file stays a no-op (defaults apply) rather than a koanf
-	// load error; anything else (e.g. a permission problem) is surfaced.
-	if _, statErr := os.Stat(tomlPath); statErr == nil {
+	// Load each config file in order. Successive loads deep-merge maps and replace
+	// arrays, giving last-wins precedence for keys set in more than one file. Each
+	// path is explicitly requested (there is no default), so a missing file is a hard
+	// error rather than a silent no-op.
+	for _, tomlPath := range tomlPaths {
 		if err := k.Load(file.Provider(tomlPath), tomlparser.Parser()); err != nil {
 			return nil, fmt.Errorf("failed to parse config file %q: %w", tomlPath, err)
 		}
-	} else if !os.IsNotExist(statErr) {
-		return nil, fmt.Errorf("failed to read config file %q: %w", tomlPath, statErr)
 	}
 
 	// Narrow to this component's own subtree BEFORE interpolating, so a shared

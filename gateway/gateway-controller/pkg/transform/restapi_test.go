@@ -199,6 +199,44 @@ func TestRestAPITransformer_APILevelEmptyVersionResolvesToLatest(t *testing.T) {
 		"expected header-mutate to be in policy chain when empty version is specified")
 }
 
+// TestRestAPITransformer_DuplicateAPILevelPoliciesPreserved verifies that the same policy
+// name attached more than once at the API level (e.g. an LLM provider attaching two
+// set-headers guardrails via GlobalPolicies) is preserved as distinct instances in spec
+// order, rather than being collapsed to the last one. Regression test for the name-keyed
+// map that previously deduplicated API-level policies by name.
+func TestRestAPITransformer_DuplicateAPILevelPoliciesPreserved(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{
+		"set-headers|v1.0.0": {Name: "set-headers", Version: "v1.0.0"},
+	}
+
+	transformer := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+	cfg := makeRestAPIStoredConfig(
+		[]api.Policy{
+			{Name: "set-headers", Version: "v1", Params: &map[string]interface{}{"header": "X-First"}},
+			{Name: "set-headers", Version: "v1", Params: &map[string]interface{}{"header": "X-Second"}},
+		},
+		nil,
+	)
+
+	rdc, err := transformer.Transform(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, rdc)
+
+	routeKey := "GET|/test/hello|main.local"
+	chain, ok := rdc.PolicyChains[routeKey]
+	require.True(t, ok, "expected a policy chain for %s", routeKey)
+
+	var setHeaders []models.Policy
+	for _, p := range chain.Policies {
+		if p.Name == "set-headers" {
+			setHeaders = append(setHeaders, p)
+		}
+	}
+	require.Len(t, setHeaders, 2, "both duplicate-named API-level policies must survive, not just the latest")
+	assert.Equal(t, "X-First", setHeaders[0].Params["header"], "first instance must keep its own params, in spec order")
+	assert.Equal(t, "X-Second", setHeaders[1].Params["header"], "second instance must keep its own params, in spec order")
+}
+
 // TestRestAPITransformer_OperationLevelEmptyVersionResolvesToLatest verifies that an
 // operation-level policy with an empty version is resolved via the pre-computed index
 // and included in the policy chain.

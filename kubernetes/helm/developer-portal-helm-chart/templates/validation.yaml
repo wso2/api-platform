@@ -1,0 +1,18 @@
+{{/*
+Render-time guardrails for the umbrella. Renders no Kubernetes objects; only
+fails the install early with an actionable message on misconfiguration.
+*/}}
+{{- $pa := index .Values "platform-api" -}}
+{{- $aiw := index .Values "ai-workspace-ui" -}}
+{{- $dp := index .Values "developer-portal-ui" -}}
+{{- if not (or $aiw.enabled $dp.enabled) }}
+{{- fail "No portal component is enabled. Set ai-workspace-ui.enabled=true and/or developer-portal-ui.enabled=true (the shared platform-api alone serves no UI)." }}
+{{- end }}
+{{- if not $pa.enabled }}
+{{- if and $aiw.enabled (not (dig "config" "controlPlane" "url" "" (default (dict) $aiw))) }}
+{{- fail "ai-workspace-ui.enabled=true but platform-api.enabled=false and no external Platform API URL is set. Set platform-api.enabled=true, or set ai-workspace-ui.config.controlPlane.url to an external control plane." }}
+{{- end }}
+{{- if and $dp.enabled (not (dig "config" "platformApi" "baseUrl" "" (default (dict) $dp))) }}
+{{- fail "developer-portal-ui.enabled=true but platform-api.enabled=false and no external Platform API URL is set. Set platform-api.enabled=true, or set developer-portal-ui.config.platformApi.baseUrl to an external control plane." }}
+{{- end }}
+{{- end }}

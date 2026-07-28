@@ -263,9 +263,6 @@ export default function ServiceProviderNew() {
   ) => {
     setGuardrailSettings(settings);
     setGuardrails((prev) => {
-      const existingIndex = prev.findIndex(
-        (item) => item.name === guardrail.name
-      );
       const configurationSummary = Object.entries(settings)
         .filter(([, value]) => Boolean(value))
         .map(([key, value]) => {
@@ -282,34 +279,38 @@ export default function ServiceProviderNew() {
           return `${key}: ${JSON.stringify(value)}`;
         })
         .join(', ');
-      if (existingIndex === -1) {
-        return [
-          ...prev,
-          {
-            name: guardrail.name,
-            version: guardrail.version || '1.0.0',
-            configuration: configurationSummary,
-            settings,
-          },
-        ];
-      }
-      const next = [...prev];
-      next[existingIndex] = {
-        name: guardrail.name,
-        version: guardrail.version || '1.0.0',
-        configuration: configurationSummary,
-        settings,
-      };
-      return next;
+      // Always append a new entry rather than merging by name, so a second
+      // same-named guardrail (e.g. two set-headers) can be attached — mirroring
+      // the duplicate-policy fix in the provider/proxy guardrails edit tabs.
+      return [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          name: guardrail.name,
+          version: guardrail.version || '1.0.0',
+          configuration: configurationSummary,
+          settings,
+        },
+      ];
     });
   };
 
-  const handleRemoveGuardrail = (guardrailName: string) => {
-    setGuardrails((prev) => prev.filter((item) => item.name !== guardrailName));
-    if (selectedGuardrail === guardrailName) {
-      setSelectedGuardrail(null);
-      setGuardrailSettings({});
-    }
+  const handleRemoveGuardrail = (guardrailId: string) => {
+    setGuardrails((prev) => {
+      const removed = prev.find((item) => item.id === guardrailId);
+      // Only clear the drawer selection if no other staged entry still shares
+      // the removed guardrail's name (duplicates may remain after removing one).
+      const next = prev.filter((item) => item.id !== guardrailId);
+      if (
+        removed &&
+        selectedGuardrail === removed.name &&
+        !next.some((item) => item.name === removed.name)
+      ) {
+        setSelectedGuardrail(null);
+        setGuardrailSettings({});
+      }
+      return next;
+    });
   };
 
   const isFormValid = Boolean(

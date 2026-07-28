@@ -1478,15 +1478,20 @@ level = "info"
 	assert.Equal(t, "info", cfg.PolicyEngine.Logging.Level, "APIP_GW_ env must not override a token-free key")
 }
 
-// TestLoad_EmptyPath tests loading with empty path (defaults only)
+// TestLoad_NoFiles verifies the fail-closed contract: with no config file path,
+// Load must error rather than silently run on built-in defaults.
+func TestLoad_NoFiles(t *testing.T) {
+	cfg, err := Load()
+	require.Error(t, err, "Load must require at least one config file path")
+	assert.Nil(t, cfg)
+}
+
+// TestLoad_EmptyPath verifies that an empty-string path is treated as an invalid
+// file (fail closed), not as a request to run on defaults.
 func TestLoad_EmptyPath(t *testing.T) {
 	cfg, err := Load("")
-	require.NoError(t, err)
-	assert.NotNil(t, cfg)
-	// Should have default values
-	assert.Equal(t, 9001, cfg.PolicyEngine.Server.ExtProcPort)
-	assert.Equal(t, 9002, cfg.PolicyEngine.Admin.Port)
-	assert.Equal(t, "xds", cfg.PolicyEngine.ConfigMode.Mode)
+	assert.Error(t, err)
+	assert.Nil(t, cfg)
 }
 
 // TestLoad_NonExistentFile tests loading a non-existent file
