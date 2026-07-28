@@ -1703,6 +1703,13 @@
   .wh-toggle-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: var(--white); border-radius: 50%; transition: .2s; }
   .wh-toggle input:checked + .wh-toggle-slider { background-color: #1f6feb; }
   .wh-toggle input:checked + .wh-toggle-slider:before { transform: translateX(16px); }
+  /* The input is collapsed to 0x0 with opacity 0, so it can still take focus but shows
+     nothing when it does. Paint the focus ring onto the slider instead, or the switch is
+     unreachable-looking for keyboard users. */
+  .wh-toggle input:focus-visible + .wh-toggle-slider {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
 
   /* Categorised event picker. Hidden by default — settings-webhooks.js flips display
      to flex when "Select events" is active, so the column direction lives here. */

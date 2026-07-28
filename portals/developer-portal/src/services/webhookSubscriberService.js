@@ -74,7 +74,6 @@ const createWebhookSubscriber = async (req, res) => {
         if (callerSuppliedId) {
             payload.handle = payload.id;
         }
-        payload.displayName = payload.displayName || payload.handle;
 
         const validationError = _validateRequiredFields(payload);
         if (validationError) {
