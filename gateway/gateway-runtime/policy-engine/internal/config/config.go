@@ -378,6 +378,10 @@ func Load(configPaths ...string) (*Config, error) {
 	// unmarshal and Validate.
 	k := koanf.New(".")
 
+	if err := k.Load(confmap.Provider(defaultResolvableConfig(), "."), nil); err != nil {
+		return nil, fmt.Errorf("failed to seed resolvable config defaults: %w", err)
+	}
+
 	// Load each config file in order. Successive loads deep-merge maps and replace
 	// arrays, giving last-wins precedence for keys set in more than one file.
 	for _, configPath := range configPaths {
@@ -448,6 +452,22 @@ func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
 			slog.Int("fields", stats.Fields))
 	}
 	return out, nil
+}
+
+// DefaultLLMCostPricingFile is the model-pricing file the llm-cost policy fallback
+const DefaultLLMCostPricingFile = "/etc/policy-engine/llm-pricing/model_prices.json"
+
+// defaultResolvableConfig returns defaults for config keys that policy definitions
+// reference via ${config...} system-parameter markers
+func defaultResolvableConfig() map[string]interface{} {
+	return map[string]interface{}{
+		"policy_configurations.llm_cost_v1.pricing_file": DefaultLLMCostPricingFile,
+	}
+}
+
+// defaultMaskedHeaders returns the header names whose values traffic logging redacts
+func defaultMaskedHeaders() []string {
+	return []string{"authorization", "x-api-key", "x-jwt-assertion"}
 }
 
 // defaultAccessLogsServiceConfig returns the default policy-engine ALS receiver tuning.
@@ -523,7 +543,7 @@ func defaultConfig() *Config {
 		},
 		TrafficLogging: TrafficLoggingConfig{
 			Enabled:         false,
-			MaskedHeaders:   []string{},
+			MaskedHeaders:   defaultMaskedHeaders(),
 			MaxPayloadSize:  0,
 			RequestHeaders:  false,
 			RequestBody:     false,
