@@ -27,6 +27,7 @@ import {
   deleteValueByPath,
   coerceValuesToSchemaTypes,
   omitOptionalEmptyValues,
+  isTemplateExpression,
 } from './schemaUtils';
 import SchemaTree from './SchemaTree';
 import { useStyles } from './styles';
@@ -226,8 +227,8 @@ function validateRequiredFields(
  * message, or null when the value satisfies every constraint.
  *
  * Empty/absent values are treated as valid here — presence is the concern of
- * validateRequiredFields. Template variables (e.g. ${var}) are also skipped,
- * consistent with coerceValuesToSchemaTypes.
+ * validateRequiredFields. Template expressions (e.g. {{ env "LIMIT" }}) are
+ * also skipped, consistent with coerceValuesToSchemaTypes.
  */
 function validateValueConstraints(
   schema: ParameterSchema,
@@ -237,11 +238,13 @@ function validateValueConstraints(
     return null;
   }
 
+  // Template expressions are resolved by the gateway at deploy time, so their
+  // runtime values cannot be checked against literal-value constraints here.
+  if (isTemplateExpression(value)) {
+    return null;
+  }
+
   if (schema.type === 'string' && typeof value === 'string') {
-    // Leave template references untouched — they are resolved at runtime.
-    if (/\$\{.+\}/.test(value)) {
-      return null;
-    }
     if (schema.minLength !== undefined && value.length < schema.minLength) {
       return `Must be at least ${schema.minLength} character(s)`;
     }
@@ -266,8 +269,13 @@ function validateValueConstraints(
 
   if (schema.type === 'number' || schema.type === 'integer') {
     const num = typeof value === 'number' ? value : Number(value);
-    if (Number.isNaN(num)) {
-      return null;
+    if (
+      !Number.isFinite(num) ||
+      (schema.type === 'integer' && !Number.isInteger(num))
+    ) {
+      return schema.type === 'integer'
+        ? 'Must be a valid integer'
+        : 'Must be a valid number';
     }
     if (schema.minimum !== undefined && num < schema.minimum) {
       return `Must be at least ${schema.minimum}`;
