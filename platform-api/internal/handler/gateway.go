@@ -31,6 +31,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 
@@ -502,7 +503,7 @@ func (h *GatewayHandler) ListCustomPolicies(w http.ResponseWriter, r *http.Reque
 }
 
 // RegisterRoutes registers gateway routes with the router
-func (h *GatewayHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *GatewayHandler) RegisterRoutes(mux router.Router) {
 	h.slogger.Debug("Registering gateway routes")
 	mux.HandleFunc("POST "+constants.APIBasePath+"/gateways", middleware.MapErrors(h.slogger, h.CreateGateway))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/gateways", middleware.MapErrors(h.slogger, h.ListGateways))

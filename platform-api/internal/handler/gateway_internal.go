@@ -32,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 
 	"github.com/wso2/api-platform/platform-api/internal/service"
@@ -1003,7 +1004,7 @@ func (h *GatewayInternalAPIHandler) GetGatewaySecretValue(w http.ResponseWriter,
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"value": plaintext})
 }
 
-func (h *GatewayInternalAPIHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *GatewayInternalAPIHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET /api/internal/v1/apis/api-keys", h.GetRestAPIAPIKeys)
 	mux.HandleFunc("GET /api/internal/v1/apis/{apiId}", h.GetAPI)
 	mux.HandleFunc("GET /api/internal/v1/apis/{apiId}/subscriptions", h.GetSubscriptions)

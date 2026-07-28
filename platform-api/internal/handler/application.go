@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 
 	"github.com/wso2/go-httpkit/httputil"
@@ -368,7 +369,7 @@ func (h *ApplicationHandler) RemoveApplicationAPIKey(w http.ResponseWriter, r *h
 	return nil
 }
 
-func (h *ApplicationHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *ApplicationHandler) RegisterRoutes(mux router.Router) {
 	base := constants.APIBasePath + "/applications"
 	mux.HandleFunc("GET "+base, middleware.MapErrors(h.slogger, h.ListApplications))
 	mux.HandleFunc("POST "+base, middleware.MapErrors(h.slogger, h.CreateApplication))

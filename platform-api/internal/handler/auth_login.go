@@ -25,6 +25,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/wso2/go-httpkit/httputil"
@@ -51,7 +52,7 @@ func NewAuthLoginHandler(cfg *config.Server) *AuthLoginHandler {
 	return &AuthLoginHandler{cfg: cfg, slogger: slog.Default()}
 }
 
-func (h *AuthLoginHandler) RegisterPublicRoutes(mux *http.ServeMux) {
+func (h *AuthLoginHandler) RegisterPublicRoutes(mux router.Router) {
 	mux.HandleFunc("POST /api/portal/v0.9/auth/login", middleware.MapErrors(h.slogger, h.Login))
 }
 

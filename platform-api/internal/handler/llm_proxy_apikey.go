@@ -29,6 +29,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 
 	"github.com/wso2/go-httpkit/httputil"
@@ -163,7 +164,7 @@ func (h *LLMProxyAPIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Requ
 }
 
 // RegisterRoutes registers LLM proxy API key routes with the router
-func (h *LLMProxyAPIKeyHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *LLMProxyAPIKeyHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/llm-proxies/{llmProxyId}/api-keys", middleware.MapErrors(h.slogger, h.CreateAPIKey))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/llm-proxies/{llmProxyId}/api-keys", middleware.MapErrors(h.slogger, h.ListAPIKeys))
 	mux.HandleFunc("DELETE "+constants.APIBasePath+"/llm-proxies/{llmProxyId}/api-keys/{apiKeyId}", middleware.MapErrors(h.slogger, h.DeleteAPIKey))

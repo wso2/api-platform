@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 
@@ -213,7 +214,7 @@ func (h *ProjectHandler) DeleteProject(w http.ResponseWriter, r *http.Request) e
 	return nil
 }
 
-func (h *ProjectHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *ProjectHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("GET "+constants.APIBasePath+"/projects", middleware.MapErrors(h.slogger, h.ListProjects))
 	mux.HandleFunc("POST "+constants.APIBasePath+"/projects", middleware.MapErrors(h.slogger, h.CreateProject))
 	mux.HandleFunc("GET "+constants.APIBasePath+"/projects/{projectId}", middleware.MapErrors(h.slogger, h.GetProject))

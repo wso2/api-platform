@@ -26,6 +26,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 
 	"github.com/wso2/go-httpkit/httputil"
@@ -41,7 +42,7 @@ func NewSecretHandler(secretService *service.SecretService, identity *service.Id
 	return &SecretHandler{secretService: secretService, identity: identity, slogger: slogger}
 }
 
-func (h *SecretHandler) RegisterRoutes(mux *http.ServeMux) {
+func (h *SecretHandler) RegisterRoutes(mux router.Router) {
 	for _, version := range []string{"/api/v0.9", "/api/v1"} {
 		mux.HandleFunc("POST "+version+"/secrets", middleware.MapErrors(h.slogger, h.CreateSecret))
 		mux.HandleFunc("GET "+version+"/secrets", middleware.MapErrors(h.slogger, h.ListSecrets))
