@@ -352,6 +352,8 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	if userIP == "" {
 		userIP = Unknown
 	}
+
+	directRemoteIP := logEntry.GetCommonProperties().GetDownstreamDirectRemoteAddress().GetSocketAddress().GetAddress()
 	if userAgent == "" {
 		userAgent = Unknown
 	}
@@ -378,10 +380,11 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	// can drop it (one counted event per client call) while the traffic log keeps it. The
 	// primary signal is the x-wso2-internal-loopback marker the proxy stamps on its loopback
 	// forward — a direct provider call never carries it, so it is never suppressed regardless
-	// of network topology. The loopback downstream address is a secondary spoof guard.
+	// of network topology. The loopback guard uses directRemoteIP (the physical TCP peer),
+	// NOT userIP, so a forged "X-Forwarded-For: 127.0.0.1" cannot fake an internal source.
 	if extendedAPI.APIType == "LlmProvider" &&
 		keyValuePairsFromMetadata[InternalLoopbackMetadataKey] == "true" &&
-		isLoopbackAddress(userIP) {
+		isLoopbackAddress(directRemoteIP) {
 		event.Properties[PropInternalLoopbackProvider] = true
 	}
 

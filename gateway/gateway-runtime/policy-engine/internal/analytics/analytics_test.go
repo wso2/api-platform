@@ -283,31 +283,36 @@ func TestProcess_PublishesEvent(t *testing.T) {
 	assert.True(t, mockPub.called, "publisher must be called")
 }
 
+func setDownstreamAddrs(entry *v3.HTTPAccessLogEntry, remoteAddr, directAddr string) {
+	entry.CommonProperties.DownstreamRemoteAddress = &corev3.Address{
+		Address: &corev3.Address_SocketAddress{SocketAddress: &corev3.SocketAddress{Address: remoteAddr}},
+	}
+	entry.CommonProperties.DownstreamDirectRemoteAddress = &corev3.Address{
+		Address: &corev3.Address_SocketAddress{SocketAddress: &corev3.SocketAddress{Address: directAddr}},
+	}
+}
+
 // createLogEntryWithAPITypeAndAddr builds an access-log entry with the given api-kind
-// (analytics_data metadata) and downstream remote address, for loopback-suppression tests.
+// (analytics_data metadata) and downstream addresses (remote==direct), for suppression tests.
 func createLogEntryWithAPITypeAndAddr(apiType, downstreamAddr string) *v3.HTTPAccessLogEntry {
 	entry := createLogEntryWithMetadata(map[string]string{APITypeKey: apiType})
-	entry.CommonProperties.DownstreamRemoteAddress = &corev3.Address{
-		Address: &corev3.Address_SocketAddress{
-			SocketAddress: &corev3.SocketAddress{Address: downstreamAddr},
-		},
-	}
+	setDownstreamAddrs(entry, downstreamAddr, downstreamAddr)
 	return entry
 }
 
-// buildProviderEvent runs prepareAnalyticEvent for the given api-kind, downstream address, and
-// optional internal-loopback marker, returning the built event so its Properties can be asserted.
+// buildProviderEvent runs prepareAnalyticEvent for the given api-kind, downstream address
+// (remote==direct), and optional internal-loopback marker.
 func buildProviderEvent(apiType, downstreamAddr string, marker bool) *dto.Event {
+	return buildProviderEventAddrs(apiType, downstreamAddr, downstreamAddr, marker)
+}
+
+func buildProviderEventAddrs(apiType, remoteAddr, directAddr string, marker bool) *dto.Event {
 	md := map[string]string{APITypeKey: apiType}
 	if marker {
 		md[InternalLoopbackMetadataKey] = "true"
 	}
 	entry := createLogEntryWithMetadata(md)
-	entry.CommonProperties.DownstreamRemoteAddress = &corev3.Address{
-		Address: &corev3.Address_SocketAddress{
-			SocketAddress: &corev3.SocketAddress{Address: downstreamAddr},
-		},
-	}
+	setDownstreamAddrs(entry, remoteAddr, directAddr)
 	return NewAnalytics(&config.Config{}).prepareAnalyticEvent(entry)
 }
 
@@ -336,6 +341,20 @@ func TestPrepareEvent_ProxyNotFlagged(t *testing.T) {
 	assert.Nil(t, e.Properties[PropInternalLoopbackProvider])
 }
 
+func TestPrepareEvent_ForgedXFFLoopbackNotFlagged(t *testing.T) {
+	// The internal-loopback marker is only applied by the proxy, so a forged X-Forwarded-For header (remote=spoofed) must not cause suppression.
+	e := buildProviderEventAddrs("LlmProvider", "127.0.0.1" /*remote=forged XFF*/, "172.18.0.9" /*direct=real peer*/, true /*forged marker*/)
+	assert.Nil(t, e.Properties[PropInternalLoopbackProvider],
+		"forged X-Forwarded-For + marker must not cause suppression")
+}
+
+func TestPrepareEvent_GenuineLoopbackWithForgedXFFStillFlagged(t *testing.T) {
+	// The legitimate proxy loopback hop: physical peer IS loopback (gateway self-call) and the
+	// marker is set by the controller. Still flagged regardless of the remote (XFF) value.
+	e := buildProviderEventAddrs("LlmProvider", "203.0.113.7" /*remote*/, "127.0.0.1" /*direct=loopback*/, true)
+	assert.Equal(t, true, e.Properties[PropInternalLoopbackProvider])
+}
+
 // loopbackEntry builds an access-log entry for an LlmProvider/LlmProxy over loopback, with or
 // without the internal-loopback marker, for Process-level suppression tests.
 func loopbackEntry(apiType string, marker bool) *v3.HTTPAccessLogEntry {
@@ -344,9 +363,7 @@ func loopbackEntry(apiType string, marker bool) *v3.HTTPAccessLogEntry {
 		md[InternalLoopbackMetadataKey] = "true"
 	}
 	e := createLogEntryWithMetadata(md)
-	e.CommonProperties.DownstreamRemoteAddress = &corev3.Address{
-		Address: &corev3.Address_SocketAddress{SocketAddress: &corev3.SocketAddress{Address: "127.0.0.1"}},
-	}
+	setDownstreamAddrs(e, "127.0.0.1", "127.0.0.1")
 	return e
 }
 
