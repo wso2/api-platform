@@ -267,7 +267,12 @@ function Test-Prerequisites {
     Write-Host "    [ok]      PowerShell $($PSVersionTable.PSVersion)"
 
     if (Test-CommandExists 'openssl') {
-        Write-Host "    [ok]      openssl - $(& openssl version 2>$null)"
+        # Routed through Invoke-OpenSslQuiet like every other openssl call: with
+        # $ErrorActionPreference = 'Stop', a build that writes a benign warning
+        # to stderr (e.g. "can't open config file") would otherwise abort the
+        # whole script on this version check.
+        $opensslVersion = (Invoke-OpenSslQuiet { & openssl version } 'openssl is installed but failed to run')
+        Write-Host "    [ok]      openssl - $(([string]$opensslVersion).Trim())"
     } else {
         Write-Host '    [MISSING] openssl'
         Invoke-Fail 'openssl is required (install it, or use Git for Windows / Docker Desktop, which ship it)'
