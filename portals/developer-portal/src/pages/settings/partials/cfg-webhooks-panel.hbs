@@ -1,5 +1,9 @@
       <!-- ══ Webhooks ══ -->
       <div class="cfg-panel" id="cfg-webhooks">
+        <!-- Two sibling views, one visible at a time (see settings-webhooks.js): the list
+             below, and the add/edit form in cfg-webhook-form. Deleting still uses a modal
+             (#cfg-delete-webhook-modal), as elsewhere in settings. -->
+        <div id="wh-list-view">
         <div class="cfg-panel-header">
           <div>
             <h2 class="cfg-panel-title">Webhooks</h2>
@@ -61,4 +65,7 @@
             </tbody>
           </table>
         </div>
+        </div><!-- /#wh-list-view -->
+
+{{> cfg-webhook-form}}
       </div><!-- /#cfg-webhooks -->

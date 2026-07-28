@@ -52,6 +52,37 @@
   allEventsBtn.addEventListener('click', function() { setEventsMode(true); });
   selectEventsBtn.addEventListener('click', function() { setEventsMode(false); });
 
+  function eventChecksIn(group) {
+    return document.querySelectorAll('.wh-event-check[data-group="' + group + '"]');
+  }
+
+  function allCheckedIn(group) {
+    var members = eventChecksIn(group);
+    if (members.length === 0) return false;
+    return Array.prototype.every.call(members, function(m) { return m.checked; });
+  }
+
+  /* Each category's control flips between "Select all" and "Clear" to match its current
+     state. The ticks themselves already show a partial selection, so the label only has
+     to say what clicking will do. Called after any change so it can't go stale. */
+  function syncEventGroupToggles() {
+    document.querySelectorAll('.wh-event-group-toggle').forEach(function(btn) {
+      btn.textContent = allCheckedIn(btn.dataset.group) ? 'Clear' : 'Select all';
+    });
+  }
+
+  document.querySelectorAll('.wh-event-group-toggle').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var select = !allCheckedIn(this.dataset.group);
+      eventChecksIn(this.dataset.group).forEach(function(m) { m.checked = select; });
+      syncEventGroupToggles();
+    });
+  });
+
+  document.querySelectorAll('.wh-event-check').forEach(function(c) {
+    c.addEventListener('change', syncEventGroupToggles);
+  });
+
   function selectedEvents() {
     if (allEventsBtn.classList.contains('active')) return [];
     return Array.prototype.slice.call(document.querySelectorAll('.wh-event-check:checked')).map(function(c){ return c.value; });
@@ -62,47 +93,55 @@
     setEventsMode(everything);
     if (!everything) {
       events.forEach(function(name) {
+        // Stored patterns may be wildcards ("apikey.*"), which match no single checkbox —
+        // tick the whole category instead so an existing subscriber renders faithfully.
+        if (name.slice(-2) === '.*') {
+          eventChecksIn(name.slice(0, -2)).forEach(function(m) { m.checked = true; });
+          return;
+        }
         var cb = document.querySelector('.wh-event-check[value="'+name+'"]');
         if (cb) cb.checked = true;
       });
     }
+    syncEventGroupToggles();
   }
 
-  /* ── open modal ── */
-  function openWebhookModal(mode, data) {
+  /* ── list / form view swap (in-panel, not a modal — mirrors the API Workflows panel) ── */
+  var listView = document.getElementById('wh-list-view');
+  var formView = document.getElementById('wh-form-view');
+
+  function showWebhookForm(mode, data) {
     editWebhookId = mode === 'edit' ? data.id : null;
     editHasSecret = mode === 'edit' && !!data.hasSecret;
-    document.getElementById('cfg-webhook-modal-title').textContent = mode === 'edit' ? 'Edit webhook' : 'Add webhook';
-    document.getElementById('cfg-webhook-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add webhook';
+    document.getElementById('wh-form-title').textContent = mode === 'edit' ? 'Edit webhook' : 'Add webhook';
+    document.getElementById('wh-form-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add webhook';
     document.getElementById('wh-display').value   = mode === 'edit' ? (data.displayName || '') : '';
-    document.getElementById('wh-handle').value    = mode === 'edit' ? (data.id || '')          : '';
     document.getElementById('wh-url').value       = mode === 'edit' ? (data.targetUrl || '')       : '';
     document.getElementById('wh-secret').value    = '';
     document.getElementById('wh-timeout').value   = mode === 'edit' ? (data.timeoutMs || 5000) : 5000;
     document.getElementById('wh-enabled').checked = mode === 'edit' ? !!data.enabled : true;
     document.getElementById('wh-secret-hint').style.display = editHasSecret ? 'block' : 'none';
     setSelectedEvents(mode === 'edit' ? data.events : []);
-    document.getElementById('cfg-webhook-modal').style.display = 'flex';
+    listView.style.display = 'none';
+    formView.style.display = 'block';
+    // The panel scrolls, so returning from a long list would otherwise open the form
+    // scrolled halfway down it.
+    formView.scrollIntoView({ block: 'start' });
     document.getElementById('wh-display').focus();
   }
-  function closeWebhookModal() {
-    document.getElementById('cfg-webhook-modal').style.display = 'none';
+
+  function showWebhookList() {
+    formView.style.display = 'none';
+    listView.style.display = 'block';
     editWebhookId = null;
     editHasSecret = false;
   }
 
-  /* ── auto-slug display → handle ── */
-  document.getElementById('wh-display').addEventListener('input', function() {
-    if (editWebhookId) return;
-    document.getElementById('wh-handle').value = this.value.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-  });
-
   /* ── save ── */
-  document.getElementById('cfg-webhook-modal-save').addEventListener('click', async function() {
+  document.getElementById('wh-form-save').addEventListener('click', async function() {
     var displayName = v('wh-display');
-    var handle      = v('wh-handle');
     var url         = v('wh-url');
-    if (!displayName || !handle || !url) { await showAlert('Display name, handle and target URL are required.', 'error'); return; }
+    if (!displayName || !url) { await showAlert('Display name and target URL are required.', 'error'); return; }
 
     // The secret both signs deliveries and encrypts sensitive event fields, so a
     // subscriber without one silently loses the API key / token payloads entirely.
@@ -133,8 +172,10 @@
       return;
     }
 
+    // No `id`: the server derives the handle from displayName on create, and omitting
+    // it on update leaves the existing handle untouched (the DAO patches sparsely).
+    // Sending one here would silently rename the subscriber on every save.
     var body = {
-      id: handle,
       displayName: displayName,
       targetUrl: url,
       events: events,
@@ -165,11 +206,13 @@
     } catch(e) { await showAlert('Error: ' + e.message, 'error'); }
   });
 
-  document.getElementById('cfg-webhook-modal-close').addEventListener('click', closeWebhookModal);
-  document.getElementById('cfg-webhook-modal-cancel').addEventListener('click', closeWebhookModal);
-  document.getElementById('cfg-webhook-modal').addEventListener('click', function(e){ if(e.target===this) closeWebhookModal(); });
+  document.getElementById('wh-form-cancel').addEventListener('click', showWebhookList);
+  document.getElementById('wh-form-back').addEventListener('click', function(e) {
+    e.preventDefault();
+    showWebhookList();
+  });
 
-  document.getElementById('cfg-add-webhook-btn').addEventListener('click', function() { openWebhookModal('add'); });
+  document.getElementById('cfg-add-webhook-btn').addEventListener('click', function() { showWebhookForm('add'); });
 
   /* ── edit / delete via event delegation ── */
   var pendingDelWebhookId = null;
@@ -177,7 +220,7 @@
     if (e.target.closest('.cfg-webhook-edit-btn')) {
       var btn = e.target.closest('.cfg-webhook-edit-btn');
       var data = webhookMap[btn.dataset.id];
-      if (data) openWebhookModal('edit', data);
+      if (data) showWebhookForm('edit', data);
       return;
     }
     if (e.target.closest('.cfg-webhook-delete-btn')) {

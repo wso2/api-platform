@@ -58,7 +58,7 @@ curl -k -X POST "https://localhost:9543/api/v0.9/webhook-subscribers" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "id": "production-listener",
+    "displayName": "Production listener",
     "targetUrl": "https://your-service.example.com/devportal/events",
     "secret": "change-me-minimum-32-chars",
     "events": ["apikey.*", "subscription.*"],
@@ -66,13 +66,18 @@ curl -k -X POST "https://localhost:9543/api/v0.9/webhook-subscribers" \
   }'
 ```
 
+The response carries the assigned `id` (here `production-listener`, slugified from
+`displayName`) — that is the identifier every later request uses, so capture it. Pass
+your own `id` instead if you need a specific, stable value.
+
 The response never includes the secret. That one `secret` value does double duty: it signs every delivery (see [Signature verification](#signature-verification)) **and** it encrypts sensitive fields (see [Field encryption](#field-encryption)) — so set it even if you don't intend to verify signatures, or sensitive fields will not be delivered at all.
 
 ### Subscriber fields
 
 | Field | Required | Description |
 |---|---|---|
-| `id` | Yes | Desired handle for the webhook subscriber (unique per org), stored as-is |
+| `id` | No | Handle for the webhook subscriber (unique per org), stored as-is. Generated from `displayName` when omitted — a numeric suffix (`-2`, `-3`) if that handle is taken, then a random one — so reusing a display name never fails. Supply it only when you need a specific, stable identifier: it is the id used in the resource path, and a collision on a handle you supplied is returned as `409` rather than silently renamed |
+| `displayName` | Yes | Human-readable name, and the basis for the generated handle |
 | `targetUrl` | Yes | HTTPS endpoint that receives webhook POSTs (e.g. a handler in front of your gateway). Must be unique within the organization |
 | `secret` | Recommended | Minimum 32-character string, used for **both** signing each event with HMAC-SHA256 and deriving the AES-256-GCM key that encrypts sensitive fields in `apikey.generated`, `apikey.regenerated`, `subscription.created`, and `subscription.token_regenerated` events. Stored encrypted; never returned in API responses. If omitted, deliveries are sent unsigned (no `X-Devportal-Signature` header) **and** sensitive fields are omitted from `data` entirely |
 | `events` | No | Event type allowlist. Wildcards supported (`apikey.*`). Omit or leave empty to receive all events |
@@ -553,7 +558,7 @@ Events that carry sensitive fields include them directly in `data` under their f
 
 **Decryption steps:**
 
-1. Derive the AES key: `HKDF-SHA256(ikm = secret, salt = "" (empty), info = "devportal-webhook-field-encryption-v1", length = 32)`
+1. Derive the AES key: `HKDF-SHA3-256(ikm = secret, salt = "" (empty), info = "devportal-webhook-field-encryption-v1", length = 32)`
 2. AES-256-GCM decrypt `ciphertext` using that key, `iv`, and `tag` → plaintext secret
 
 The key is derived rather than using the secret's raw bytes so that the encryption key is domain-separated from the HMAC signing key, even though both come from the same secret. The empty salt is intentional — HKDF substitutes 32 zero bytes (RFC 5869), which is what makes the derivation reproducible on your side without any extra shared state.
@@ -567,7 +572,7 @@ const FIELD_KEY_INFO = 'devportal-webhook-field-encryption-v1';
 
 function deriveFieldKey(secret) {
     return Buffer.from(
-        crypto.hkdfSync('sha256', secret, Buffer.alloc(0), FIELD_KEY_INFO, 32)
+        crypto.hkdfSync('sha3-256', secret, Buffer.alloc(0), FIELD_KEY_INFO, 32)
     );
 }
 

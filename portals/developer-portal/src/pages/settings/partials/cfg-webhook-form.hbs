@@ -1,0 +1,87 @@
+      <!-- ══ Add / Edit webhook (inline view) ══ -->
+      <!-- Sibling of #wh-list-view inside the Webhooks panel; settings-webhooks.js swaps
+           which of the two is displayed. Mirrors the API Workflows panel, which shows its
+           create/edit form in-place rather than in a modal. -->
+      <div id="wh-form-view" style="display:none;">
+        <a href="#" class="cfg-wizard-back" id="wh-form-back">
+          <i class="bi bi-arrow-left"></i> Back to webhooks
+        </a>
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title" id="wh-form-title">Add webhook</h2>
+            <p class="cfg-panel-desc">Choose which events are sent to your endpoint, and the secret used to sign and encrypt them.</p>
+          </div>
+        </div>
+
+        <div class="cfg-webhook-form">
+          <div class="cfg-form-group" style="margin-bottom:16px;">
+            <label for="wh-display">Display name <span class="required">*</span></label>
+            <input type="text" id="wh-display" class="cfg-form-input" placeholder="e.g. Production listener" />
+          </div>
+          <div class="cfg-form-group" style="margin-bottom:16px;">
+            <label for="wh-url">Target URL <span class="required">*</span></label>
+            <input type="text" id="wh-url" class="cfg-form-input cfg-form-input--mono" placeholder="https://example.com/webhook" />
+          </div>
+          <div class="cfg-form-group" style="margin-bottom:16px;">
+            <label for="wh-secret">Secret <span class="required">*</span> <span style="color:#9aa3af;font-weight:400;">(signing &amp; encryption)</span></label>
+            <input type="password" id="wh-secret" class="cfg-form-input" autocomplete="new-password"
+              placeholder="Signs payloads and encrypts secrets" />
+            <p class="cfg-field-hint">
+              Used for both: signing every payload (HMAC) so you can verify it came from us, and
+              encrypting the plaintext API key or token delivered with apikey.* / subscription.* events
+              so only you can read it.
+            </p>
+            <p class="cfg-field-hint" id="wh-secret-hint" style="display:none;">
+              A secret is already set. Leave blank to keep it, or enter a new value to replace it.
+            </p>
+          </div>
+          <div class="cfg-form-grid" style="margin-bottom:16px;">
+            <div class="cfg-form-group">
+              <label for="wh-timeout">Timeout (ms)</label>
+              <input type="number" id="wh-timeout" class="cfg-form-input" min="1" value="5000" />
+            </div>
+          </div>
+          <div class="cfg-form-group" style="margin-bottom:16px;">
+            <label>Events</label>
+            <div class="cfg-vis-toggle" style="margin-bottom:12px;">
+              <button type="button" class="cfg-vis-btn active" id="wh-events-all-btn">
+                <i class="bi bi-broadcast"></i> All events
+              </button>
+              <button type="button" class="cfg-vis-btn" id="wh-events-select-btn">
+                <i class="bi bi-check2-square"></i> Select events
+              </button>
+            </div>
+            <div id="wh-event-list">
+              {{#each webhookEventGroups}}
+              <div class="wh-event-group">
+                <div class="wh-event-group-head">
+                  <span class="wh-event-group-title">{{label}}</span>
+                  <button type="button" class="wh-event-group-toggle" data-group="{{key}}">Select all</button>
+                </div>
+                <div class="wh-event-group-items">
+                  {{#each events}}
+                  <label class="wh-event-item" title="{{type}}">
+                    <input type="checkbox" class="wh-event-check" value="{{type}}" data-group="{{../key}}" />
+                    {{text}}
+                  </label>
+                  {{/each}}
+                </div>
+              </div>
+              {{/each}}
+            </div>
+          </div>
+          <div class="cfg-form-group" style="margin-bottom:24px;">
+            <label style="display:flex;align-items:center;gap:10px;font-size:.844rem;color:#1a2433;font-weight:500;cursor:pointer;">
+              <span class="wh-toggle">
+                <input type="checkbox" id="wh-enabled" checked />
+                <span class="wh-toggle-slider"></span>
+              </span>
+              Enabled
+            </label>
+          </div>
+          <div class="cfg-form-actions">
+            <button type="button" class="cfg-btn-secondary" id="wh-form-cancel">Cancel</button>
+            <button type="button" class="cfg-btn-primary" id="wh-form-save">Add webhook</button>
+          </div>
+        </div>
+      </div><!-- /#wh-form-view -->

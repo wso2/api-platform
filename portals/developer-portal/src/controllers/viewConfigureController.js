@@ -29,6 +29,7 @@ const { WebhookSubscriberDTO } = require('../dto/webhookSubscriberDto');
 const kmDao = require('../dao/keyManagerDao');
 const { KeyManagerDTO } = require('../dto/keyManagerDto');
 const { VALID_EVENT_TYPES } = require('../services/webhooks/eventPublisher');
+const { groupWebhookEventTypes } = require('../utils/webhookEventGroups');
 const apiWorkflowService = require('../services/apiWorkflowService');
 const apiMetadataService = require('../services/apiMetadataService');
 const util = require('../utils/util');
@@ -171,7 +172,10 @@ const loadSettingsPage = async (req, res) => {
             logger.warn('Failed to load webhook subscribers for settings page', { error: err.message });
         }
         templateContent.webhookSubscribers = webhookSubscribers;
-        templateContent.webhookEventTypes = [...VALID_EVENT_TYPES];
+        // Grouped by event-type prefix so the picker renders as categories rather than a
+        // flat list of 12 checkboxes. Derived from VALID_EVENT_TYPES, so a new event type
+        // shows up without editing the template.
+        templateContent.webhookEventGroups = groupWebhookEventTypes(VALID_EVENT_TYPES);
 
         let keyManagers = [];
         try {
