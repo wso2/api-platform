@@ -96,10 +96,11 @@ describe('webhook subscribers', () => {
         // NOTE: docs/devportal-openapi-spec-v0.9.yaml's WebhookSubscriberUpdateBody
         // description says "all fields are optional; only supplied fields are
         // updated", but it references the base WebhookSubscriberRequest schema,
-        // which requires `id` and `targetUrl` — the server enforces the schema,
-        // rejecting a PUT that omits `id` with a 400. Doc/implementation mismatch.
+        // which requires `displayName` and `targetUrl` — the server enforces the
+        // schema, rejecting a PUT that omits either with a 400. Doc/implementation
+        // mismatch, so we resend displayName (unchanged) alongside the updates.
         const res = await client.as('admin').put(`/webhook-subscribers/${subscriber.id}`, {
-            id: subscriber.id,
+            displayName: subscriber.displayName,
             targetUrl: 'https://updated.example.invalid/webhook',
             events: ['subscription.*'],
             enabled: false,
@@ -146,6 +147,7 @@ describe('webhook subscribers', () => {
         // at creation time but will simply never match any real event type.
         const res = await client.as('admin').post('/webhook-subscribers', {
             id: uniqueHandle('literal-pattern-subscriber'),
+            displayName: 'Literal Pattern Subscriber',
             targetUrl: 'https://example.invalid/webhook',
             events: ['*.created'],
         });
