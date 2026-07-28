@@ -1651,6 +1651,10 @@ func TestTranslator_CreateTracingConfig_Enabled(t *testing.T) {
 	err = tracingCfg.GetProvider().GetTypedConfig().UnmarshalTo(otelConfig)
 	require.NoError(t, err)
 	assert.Equal(t, "test-service", otelConfig.GetServiceName())
+
+	// With no [tracing.resource_attributes] configured, only the environment
+	// detector is attached — it contributes nothing when OTEL_RESOURCE_ATTRIBUTES
+	// is unset, so tracing still works without any resource attributes.
 	require.Len(t, otelConfig.GetResourceDetectors(), 1)
 	assert.Equal(t, "envoy.tracers.opentelemetry.resource_detectors.environment",
 		otelConfig.GetResourceDetectors()[0].GetName())
@@ -1658,6 +1662,43 @@ func TestTranslator_CreateTracingConfig_Enabled(t *testing.T) {
 	envDetector := &otelresourcedetectorsv3.EnvironmentResourceDetectorConfig{}
 	err = otelConfig.GetResourceDetectors()[0].GetTypedConfig().UnmarshalTo(envDetector)
 	require.NoError(t, err)
+}
+
+func TestTranslator_CreateTracingConfig_ResourceAttributes(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.TracingConfig.Enabled = true
+	cfg.TracingConfig.Endpoint = "otel-collector:4317"
+	cfg.TracingConfig.ResourceAttributes = map[string]string{
+		"deployment.environment": "prod",
+		"service.namespace":      "api-gw",
+	}
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tracingCfg, err := translator.createTracingConfig()
+	require.NoError(t, err)
+	require.NotNil(t, tracingCfg)
+
+	otelConfig := &tracev3.OpenTelemetryConfig{}
+	err = tracingCfg.GetProvider().GetTypedConfig().UnmarshalTo(otelConfig)
+	require.NoError(t, err)
+
+	// Order is load-bearing: Envoy merges detectors in sequence and later ones win,
+	// so the static detector must come after the environment detector for
+	// [tracing.resource_attributes] to override OTEL_RESOURCE_ATTRIBUTES.
+	detectors := otelConfig.GetResourceDetectors()
+	require.Len(t, detectors, 2)
+	assert.Equal(t, "envoy.tracers.opentelemetry.resource_detectors.environment", detectors[0].GetName())
+	assert.Equal(t, "envoy.tracers.opentelemetry.resource_detectors.static_config", detectors[1].GetName())
+
+	staticDetector := &otelresourcedetectorsv3.StaticConfigResourceDetectorConfig{}
+	err = detectors[1].GetTypedConfig().UnmarshalTo(staticDetector)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{
+		"deployment.environment": "prod",
+		"service.namespace":      "api-gw",
+	}, staticDetector.GetAttributes())
 }
 
 func TestTranslator_CreateOTELCollectorCluster(t *testing.T) {

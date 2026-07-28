@@ -655,6 +655,13 @@ gateway:
     #   batch_timeout: 1s
     #   max_export_batch_size: 512
     #   sampling_rate: 1.0
+    #   # Resource attributes attached to every exported span, by both the router
+    #   # (Envoy) and the policy-engine. Datadog derives its `env` tag from
+    #   # deployment.environment. Do not set service.name here — each component
+    #   # gets its own from tracing_service_name.
+    #   resource_attributes:
+    #     deployment.environment: prod
+    #     service.namespace: api-gw
 
   # Raw TOML string to append to the generated config.toml
   # Use this for additional configuration not covered by the structured values above
@@ -995,10 +1002,6 @@ gateway:
         gatewayControllerHost: ""
         logLevel: info
         moesifKey: ""
-        # OpenTelemetry resource attributes read by Envoy's environment resource detector
-        # when tracing is enabled. Only injected when non-empty.
-        # Example: "deployment.environment=prod,service.namespace=api-gw"
-        otelResourceAttributes: ""
       extraEnv: []
       # extraEnvFrom:
       #   - configMapRef:

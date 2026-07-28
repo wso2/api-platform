@@ -16,9 +16,11 @@ processors:
       - key: cluster
         value: poc-cluster
         action: upsert
-      - key: deployment.environment
-        value: development
-        action: upsert
+      # Span-level resource attributes (deployment.environment, service.namespace,
+      # ...) are set by the gateway itself under [tracing.resource_attributes] in
+      # config.toml, so they are deliberately not set here. If you do add one as a
+      # collector-side default, use `action: insert` rather than `upsert` — upsert
+      # overwrites unconditionally and would discard what the gateway sent.
 
   # Memory limiter to prevent OOM
   memory_limiter:

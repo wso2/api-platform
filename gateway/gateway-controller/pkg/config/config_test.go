@@ -1780,6 +1780,39 @@ idle_timeout = "30m"
 	})
 }
 
+func TestLoadConfig_TracingResourceAttributes(t *testing.T) {
+	t.Run("inline table parses into a string map", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		// Matches the inline-table form the Helm chart renders, including the
+		// dotted keys that have to stay quoted so TOML doesn't read them as
+		// nested tables.
+		toml := `
+[tracing]
+enabled = true
+resource_attributes = {"deployment.environment" = "prod", "service.namespace" = "api-gw" }
+`
+		require.NoError(t, os.WriteFile(configPath, []byte(toml), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		assert.Equal(t, map[string]string{
+			"deployment.environment": "prod",
+			"service.namespace":      "api-gw",
+		}, cfg.TracingConfig.ResourceAttributes)
+	})
+
+	t.Run("omitted attributes leave the map empty", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte("[tracing]\nenabled = true\n"), 0o644))
+
+		cfg, err := LoadConfig(configPath)
+		require.NoError(t, err)
+		assert.Empty(t, cfg.TracingConfig.ResourceAttributes)
+	})
+}
+
 func TestConfig_CaseInsensitiveAlgorithm(t *testing.T) {
 	cfg := validConfig()
 	cfg.APIKey.Algorithm = strings.ToUpper(constants.HashingAlgorithmSHA256)

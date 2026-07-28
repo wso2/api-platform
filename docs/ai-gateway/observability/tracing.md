@@ -447,7 +447,7 @@ exporters:
   datadog:
     api:
       key: ${env:DD_API_KEY}
-      site: datadoghq.com   # match your Datadog org's region, e.g. ap1.datadoghq.com
+      site: ${env:DD_SITE:-datadoghq.com}   # match your Datadog org's region, e.g. ap1.datadoghq.com
 
 connectors:
   # Computes APM stats (trace metrics) from spans. Without this the Datadog APM Service
@@ -469,11 +469,14 @@ service:
       exporters: [datadog]
 ```
 
-Note that `DD_API_KEY`/`DD_ENV`-style variables only have meaning for the Datadog *Agent* —
-the exporter above derives the `env` tag from the `deployment.environment` OTel resource
-attribute on each span, not from an env var of its own. See the gateway tracing guide's
-[Datadog APM](../../gateway/observability/tracing.md#datadog-apm) section for the
-`deployment.environment` fallback pattern and the `insert` vs `upsert` distinction.
+`${env:...}` resolves against the collector's own environment, and the `otel-collector`
+service in `docker-compose.yaml` passes no Datadog variables through — you have to add
+`DD_API_KEY`/`DD_SITE` to that service yourself. `DD_ENV`, by contrast, has meaning only for
+the Datadog *Agent*: the exporter derives the `env` tag from the `deployment.environment`
+OTel resource attribute on each span, which the gateway sets via `[tracing]
+resource_attributes` in `config.toml`. See the gateway tracing guide's
+[Datadog APM](../../gateway/observability/tracing.md#datadog-apm) section for the collector
+wiring, the resource-attribute configuration, and the `insert` vs `upsert` distinction.
 
 Or use Datadog Agent directly:
 

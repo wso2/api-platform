@@ -49,6 +49,10 @@ service_version = "0.2.0"               # Service version
 batch_timeout = "1s"                    # Batch timeout for exporting spans
 max_export_batch_size = 512             # Maximum spans per batch
 sampling_rate = 1.0                     # Sample rate (1.0 = 100%, 0.5 = 50%)
+
+# Resource attributes attached to every exported span — see
+# "OpenTelemetry Resource Attributes" below
+resource_attributes = { "deployment.environment" = "prod" }
 ```
 
 This same file is mounted into both the `gateway-controller` and `gateway-runtime`
@@ -222,75 +226,53 @@ max_export_batch_size = 1024    # Export up to 1024 spans per batch
 
 ### OpenTelemetry Resource Attributes
 
-When tracing is enabled, the Envoy OpenTelemetry tracer is configured with the environment
-resource detector. It reads `OTEL_RESOURCE_ATTRIBUTES` from the Envoy (`gateway-runtime`)
-process and attaches those attributes to exported spans. If the variable is unset, tracing
-still works and no extra resource attributes are added. **The router (Envoy) requires
-v1.30 or later** — the detector doesn't exist before v1.29, and v1.29 raises an error on an
-empty variable that fails tracer creation and gets the entire listener rejected, not just
-tracing. The bundled `gateway-runtime` image already meets this.
+Resource attributes describe *where a span came from* rather than what it did —
+`deployment.environment`, `service.namespace`, `cloud.region`. Backends key their own
+concepts off them; Datadog, for one, derives its `env` tag from `deployment.environment`
+(see [Datadog APM](#datadog-apm)).
 
-`OTEL_RESOURCE_ATTRIBUTES` is read once at Envoy startup — changing it requires recreating
-the `gateway-runtime` container (or a pod rollout), not just editing a file.
+Set them in the shared `[tracing]` block, as an inline table:
 
-The `gateway-runtime` container runs both the router (Envoy) and the policy-engine, so
-**setting this one variable covers both components**: Envoy picks it up via the resource
-detector described above, and the policy-engine's OpenTelemetry SDK reads it independently
-via its own environment-variable resource detection.
+```toml
+[tracing]
+enabled = true
+endpoint = "otel-collector:4317"
+insecure = true
 
-#### Docker Compose
-
-Add the line to `gateway/api-platform.env` (git-ignored; loaded into both the
-`gateway-controller` and `gateway-runtime` containers via `env_file`), **unquoted**:
-
-```
-OTEL_RESOURCE_ATTRIBUTES=deployment.environment=prod,service.namespace=api-gw
+resource_attributes = { "deployment.environment" = "prod", "service.namespace" = "api-gw" }
 ```
 
-Then recreate the runtime container so Envoy re-reads it:
+Because `config.toml` is read by both the gateway-controller and the `gateway-runtime`
+container, **one block covers both components that emit spans**: the controller translates
+it into a resource detector on the router's (Envoy's) OpenTelemetry tracer and pushes it
+over xDS, and the policy-engine applies the same attributes to its own spans. Keys are
+quoted so TOML reads `deployment.environment` as a single dotted key rather than a nested
+table.
 
-```bash
-docker compose --profile tracing up -d --force-recreate gateway-runtime
-```
+Omitting `resource_attributes` is fine — tracing works and no extra attributes are attached.
 
-**Quoting:** the `env_file` entries for this service use `format: raw`, so the value is
-passed through byte-for-byte, quotes included. Wrapping the value in quotes —
-`OTEL_RESOURCE_ATTRIBUTES="deployment.environment=prod"` — makes the literal quote character
-part of the attribute key. Do not quote the value.
+**The router (Envoy) requires v1.30 or later** for the resource-detector support this uses.
+The bundled `gateway-runtime` image already meets this.
 
-**`scripts/setup.sh --force`** rewrites `api-platform.env` (and rotates the admin password),
-which discards this edit. A plain re-run without `--force` leaves an existing file alone.
+#### Don't set `service.name`
 
-#### Helm / Kubernetes
+Each component derives its own service name from `config.toml` —
+`router.tracing_service_name` for the router and `policy_engine.tracing_service_name` for
+the policy-engine — so that spans from the two are distinguishable in the backend. A
+`service.name` in `resource_attributes` is shared by both and would collapse that
+distinction.
 
-```yaml
-gateway:
-  gatewayRuntime:
-    deployment:
-      env:
-        otelResourceAttributes: "deployment.environment=prod,service.namespace=api-gw"
-```
+#### `OTEL_RESOURCE_ATTRIBUTES`
 
-`OTEL_RESOURCE_ATTRIBUTES` is injected only when `otelResourceAttributes` is non-empty.
+The standard OTel environment variable is still honoured on the `gateway-runtime` container
+by both the router and the policy-engine, so an existing deployment that sets it keeps
+working. `resource_attributes` takes precedence on any key set in both places.
 
-#### Format Rules
-
-Envoy's environment resource detector parses the value more strictly than the general OTel
-spec: it splits on `,` then `=`, without trimming whitespace or percent-decoding.
-
-- **No spaces after commas.** `a=1, b=2` produces a key of `" b"` (leading space), not `b`.
-  Write `a=1,b=2`.
-- **No `=` inside a value.** A pair that doesn't split into exactly two pieces on `=` is
-  silently dropped — only a warning is logged, the request/response is unaffected.
-- **Don't set `service.name` here.** Envoy's resource-detector merge lets a detected
-  `service.name` override the tracing service name configured in `config.toml`
-  (`router.tracing_service_name`) — but the policy-engine's Go SDK gives its own
-  explicit configuration precedence over the environment variable instead. Setting
-  `service.name` in `OTEL_RESOURCE_ATTRIBUTES` would therefore rename Envoy's spans but
-  leave the policy-engine's unchanged, so the two components would disagree.
-- The policy-engine's OpenTelemetry SDK, unlike Envoy, percent-decodes the value — so an
-  attribute value containing `%`-encoded characters can resolve differently between router
-  and policy-engine spans. Avoid percent-encoding in this variable.
+Prefer `resource_attributes` for new configuration: it is reloadable rather than read once
+at process start, it avoids the environment variable's `key=value,key=value` encoding (Envoy
+splits it on `,` then `=` without trimming whitespace, so `a=1, b=2` yields a key of
+`" b"`), and in Docker Compose it isn't discarded by `scripts/setup.sh --force`, which
+rewrites `api-platform.env`.
 
 ## Alternative Tracing Backends
 
@@ -516,6 +498,10 @@ exporters:
 
 #### Datadog APM
 
+This section describes the demonstration collector shipped with `docker-compose.yaml`. On
+Kubernetes the chart deploys no collector of its own — point `[tracing].endpoint` at your
+own collector and manage the Datadog credential with your own `Secret`.
+
 Requires the `otel/opentelemetry-collector-contrib` collector image since the
 `datadog` exporter and connector are not part of the core `otel/opentelemetry-collector`
 image included in the docker-compose.yaml. Configure the `gateway/observability/otel-collector/config.yaml` to export to `datadog` as follows:
@@ -525,7 +511,7 @@ exporters:
   datadog:
     api:
       key: ${env:DD_API_KEY}
-      site: datadoghq.com   # match your Datadog org's region, e.g. ap1.datadoghq.com
+      site: ${env:DD_SITE:-datadoghq.com}   # match your Datadog org's region, e.g. ap1.datadoghq.com
 
 connectors:
   # Computes APM stats (trace metrics) from spans. Without this the Datadog APM Service
@@ -547,13 +533,39 @@ service:
       exporters: [datadog]
 ```
 
+`${env:...}` is resolved by the collector against **its own** environment, and the
+`otel-collector` service in `docker-compose.yaml` doesn't pass any Datadog variables
+through. Add them to the service, alongside the config mount — an unset `DD_API_KEY`
+expands to an empty string and the exporter fails on an empty key:
+
+```yaml
+otel-collector:
+  image: otel/opentelemetry-collector-contrib:0.112.0
+  environment:
+    - DD_API_KEY=${DD_API_KEY}
+    - DD_SITE=${DD_SITE:-datadoghq.com}
+  # ... rest of configuration
+```
+
+Docker Compose substitutes `${DD_API_KEY}` from your shell or from `gateway/.env`
+(git-ignored). Keep it out of `api-platform.env`: that file is mounted into the gateway
+containers and holds the admin credential hash, and the collector has no business reading it
+— nor the gateway the Datadog key.
+
 **`DD_ENV` alone does nothing here** — that variable only has meaning for the Datadog
 *Agent*. The exporter instead derives the `env` tag from the `deployment.environment` (or
-`deployment.environment.name`) OTel resource attribute on each span. To set a default value
-for spans that don't already carry one, use the `resource` processor with `action: insert`
-(not `upsert`) — `upsert` unconditionally overwrites the attribute, discarding whatever a
-gateway component already set via
-[`OTEL_RESOURCE_ATTRIBUTES`](#opentelemetry-resource-attributes):
+`deployment.environment.name`) OTel resource attribute on each span, which the gateway sets
+via [`resource_attributes`](#opentelemetry-resource-attributes):
+
+```toml
+[tracing]
+resource_attributes = { "deployment.environment" = "prod" }
+```
+
+Setting it on the gateway is preferable to setting it at the collector, since one collector
+usually fronts several senders. If you do want a collector-side default for spans that
+arrive without one, use `action: insert` — never `upsert`, which overwrites unconditionally
+and would discard what the gateway already sent:
 
 ```yaml
 processors:
@@ -698,10 +710,10 @@ processors:
 
 **A note on `action`:** `upsert` always overwrites the attribute, even if a gateway
 component already set it (e.g. `deployment.environment` via
-[`OTEL_RESOURCE_ATTRIBUTES`](#opentelemetry-resource-attributes)). Use `upsert` only when
-this collector attribute is meant to be authoritative; use `insert` when it should only fill
-in a value the span doesn't already carry. See [Datadog APM](#datadog-apm) for a case where
-this distinction matters.
+[`resource_attributes`](#opentelemetry-resource-attributes)). Use `upsert` only when this
+collector attribute is meant to be authoritative; use `insert` when it should only fill in a
+value the span doesn't already carry. See [Datadog APM](#datadog-apm) for a case where this
+distinction matters.
 
 #### Exporters
 Define where traces are sent:

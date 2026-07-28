@@ -447,6 +447,9 @@ data:
     batch_timeout = {{ .Values.gateway.config.tracing.batch_timeout | quote }}
     max_export_batch_size = {{ .Values.gateway.config.tracing.max_export_batch_size }}
     sampling_rate = {{ .Values.gateway.config.tracing.sampling_rate }}
+    {{- if .Values.gateway.config.tracing.resource_attributes }}
+    resource_attributes = { {{- $first := true }}{{- range $key, $value := .Values.gateway.config.tracing.resource_attributes }}{{- if not $first }}, {{ end }}{{- $first = false }}{{ $key | quote }} = {{ $value | quote }}{{- end }} }
+    {{- end }}
     {{- end }}
 
     {{- if .Values.gateway.config.subscriptions }}

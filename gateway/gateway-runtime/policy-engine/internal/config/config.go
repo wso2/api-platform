@@ -200,6 +200,14 @@ type TracingConfig struct {
 	// 1.0 = sample all requests, 0.1 = sample 10% of requests
 	// If set to 0 or not specified, defaults to 1.0 (sample all)
 	SamplingRate float64 `koanf:"sampling_rate"`
+
+	// ResourceAttributes are OpenTelemetry resource attributes attached to every
+	// exported span, e.g. {"deployment.environment": "prod"}. The same block is
+	// read by the gateway-controller to configure the router's (Envoy's) resource
+	// detector, so one setting covers both components. Attributes discovered from
+	// the environment (OTEL_RESOURCE_ATTRIBUTES) are still honoured, but these
+	// take precedence.
+	ResourceAttributes map[string]string `koanf:"resource_attributes"`
 }
 
 // ServerConfig holds ext_proc server configuration
