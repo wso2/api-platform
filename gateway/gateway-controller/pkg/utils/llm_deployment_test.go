@@ -1035,7 +1035,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_ConflictValidation(t *
 		}))
 
 		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
-		service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+		service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, newTestPolicyVersionResolver(), nil)
 
 		_, err := service.DeployLLMProxyConfiguration(LLMDeploymentParams{
 			Data:          testLLMProxyYAML(t, "new-proxy", "Assistant Proxy", "provider-a"),
@@ -1065,7 +1065,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_ConflictValidation(t *
 		}))
 
 		apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
-		service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, nil)
+		service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, newTestPolicyVersionResolver(), nil)
 
 		_, err := service.DeployLLMProxyConfiguration(LLMDeploymentParams{
 			Data:          testLLMProxyYAML(t, "assistant-proxy", "Another Proxy", "provider-a"),

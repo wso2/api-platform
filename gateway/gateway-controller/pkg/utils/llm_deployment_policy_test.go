@@ -111,7 +111,7 @@ func TestLLMDeploymentService_DeployLLMProxyConfiguration_RejectsUnresolvablePol
 	}))
 
 	apiDeploymentService := newTestAPIDeploymentService(store, db, nil, nil, nil)
-	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, nil, ratelimitPolicyValidator())
+	service := NewLLMDeploymentService(store, db, nil, nil, nil, apiDeploymentService, routerConfig, newTestPolicyVersionResolver(), ratelimitPolicyValidator())
 
 	proxyCfg := api.LLMProxyConfiguration{
 		ApiVersion: api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,

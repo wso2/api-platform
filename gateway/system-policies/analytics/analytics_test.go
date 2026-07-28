@@ -30,6 +30,39 @@ func TestDeriveMCPCapability(t *testing.T) {
 	}
 }
 
+// OnRequestHeaders stamps the internal loopback marker into analytics metadata when the
+// proxy's loopback forward carries the x-wso2-internal-loopback header, so the policy-engine
+// can drop the duplicate provider event from Moesif. A request without the header does not.
+func TestOnRequestHeaders_StampsInternalLoopbackMarker(t *testing.T) {
+	t.Run("marker present", func(t *testing.T) {
+		reqCtx := &policy.RequestHeaderContext{
+			SharedContext: &policy.SharedContext{APIKind: policy.APIKindLlmProvider},
+			Headers:       policy.NewHeaders(map[string][]string{InternalLoopbackMetadataKey: {"1"}}),
+		}
+		action := (&AnalyticsPolicy{}).OnRequestHeaders(context.Background(), reqCtx, nil)
+		mods, ok := action.(policy.UpstreamRequestHeaderModifications)
+		if !ok {
+			t.Fatalf("expected UpstreamRequestHeaderModifications, got %T", action)
+		}
+		if got := mods.AnalyticsMetadata[InternalLoopbackMetadataKey]; got != "true" {
+			t.Errorf("%s = %v, want true", InternalLoopbackMetadataKey, got)
+		}
+	})
+
+	t.Run("marker absent", func(t *testing.T) {
+		reqCtx := &policy.RequestHeaderContext{
+			SharedContext: &policy.SharedContext{APIKind: policy.APIKindLlmProvider},
+			Headers:       policy.NewHeaders(map[string][]string{}),
+		}
+		action := (&AnalyticsPolicy{}).OnRequestHeaders(context.Background(), reqCtx, nil)
+		if mods, ok := action.(policy.UpstreamRequestHeaderModifications); ok {
+			if _, exists := mods.AnalyticsMetadata[InternalLoopbackMetadataKey]; exists {
+				t.Errorf("marker must not be stamped when the header is absent")
+			}
+		}
+	})
+}
+
 // OnResponseHeaders must capture the response content type for every API kind (not just
 // MCP), since the Envoy access log carries no response headers. It reads it from the live
 // response headers and emits it as response_content_type analytics metadata.

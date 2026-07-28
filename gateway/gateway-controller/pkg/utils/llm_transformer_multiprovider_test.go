@@ -133,7 +133,8 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsCondition
 
 	var authPolicies []api.Policy
 	for _, pol := range *chatOp.Policies {
-		if pol.Name == constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME {
+		// The unconditional internal loopback marker is also a set-headers policy; exclude it.
+		if pol.Name == constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME && !hasInternalLoopbackMarkerPolicy([]api.Policy{pol}) {
 			authPolicies = append(authPolicies, pol)
 		}
 	}
