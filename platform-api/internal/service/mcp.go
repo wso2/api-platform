@@ -526,10 +526,25 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 			url = proxy.Configuration.Upstream.Main.URL
 		}
 
-		// Use stored auth from proxy configuration
+		// Use stored auth from proxy configuration. The stored value is a
+		// {{ secret "handle" }} placeholder, not the plaintext credential — resolve it
+		// through the secret store before using it as the actual upstream header value.
 		if proxy.Configuration.Upstream.Main != nil && proxy.Configuration.Upstream.Main.Auth != nil {
 			headerName = proxy.Configuration.Upstream.Main.Auth.Header
-			headerValue = proxy.Configuration.Upstream.Main.Auth.Value
+			storedValue := proxy.Configuration.Upstream.Main.Auth.Value
+			if handle := extractSecretHandle(storedValue); handle != "" {
+				decrypted, err := s.secretService.Decrypt(orgUUID, handle)
+				if err != nil {
+					// Generic client-facing error (apperror.Internal's fixed message) with the
+					// handle and cause confined to the internal-only log line — never echo a
+					// secret handle back to the caller, per error-handling.md.
+					return nil, apperror.Internal.Wrap(err).
+						WithLogMessage("failed to resolve stored MCP upstream auth secret")
+				}
+				headerValue = decrypted
+			} else {
+				headerValue = storedValue
+			}
 		}
 	} else {
 		// No proxyId - initial creation flow, url is required

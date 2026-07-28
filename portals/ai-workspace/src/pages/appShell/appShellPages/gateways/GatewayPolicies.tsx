@@ -117,7 +117,7 @@ export default function GatewayPolicies() {
               </TableCell>
               <TableCell>
                 <Chip
-                  label={`v${policy.displayVersion}`}
+                  label={policy.version}
                   size="small"
                   variant="outlined"
                   sx={{ minWidth: 72 }}

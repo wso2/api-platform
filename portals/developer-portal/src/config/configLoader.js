@@ -325,7 +325,7 @@ function requireHexSecret(value, fieldName) {
             `[FATAL] security.${fieldName} did not resolve to a 64-character hex string. ` +
             'Refusing to start with a missing or malformed secret. ' +
             'Generate one with: openssl rand -hex 32 — then reference it from configs/config.toml, ' +
-            `e.g. ${fieldName === 'encryptionKey' ? 'encryption_key' : 'session_secret'} = '{{ env "APIP_DP_SECURITY_${fieldName === 'encryptionKey' ? 'ENCRYPTION_KEY' : 'SESSION_SECRET'}" }}'.\n`
+            `e.g. ${fieldName === 'encryptionKey' ? 'encryption_key' : 'session_secret'} = '{{ file "/etc/devportal/keys/${fieldName === 'encryptionKey' ? 'encryption.key' : 'session-secret'}" }}'.\n`
         );
         process.exit(1);
     }

@@ -65,7 +65,8 @@ USER $USER_UID
 # match what this image needs (static dir /app, listener :9643, self-signed TLS,
 # in-memory sessions, Secure/Lax cookies). Configure a deployment by mounting a
 # config.toml at /etc/ai-workspace/config.toml; its '{{ env "APIP_AIW_..." }}' tokens
-# are what pull values in from the environment.
+# are what pull values in from the environment. The -config flag is required (there is
+# no default path), so the ENTRYPOINT passes the mounted path explicitly.
 
 EXPOSE 9643 9680
 
@@ -75,4 +76,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -fk https://localhost:9643/healthz || curl -f http://localhost:9643/healthz || exit 1
 
 STOPSIGNAL SIGTERM
-ENTRYPOINT ["/usr/local/bin/bff"]
+ENTRYPOINT ["/usr/local/bin/bff", "-config", "/etc/ai-workspace/config.toml"]

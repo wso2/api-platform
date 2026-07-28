@@ -27,6 +27,7 @@ import {
   deleteValueByPath,
   coerceValuesToSchemaTypes,
   omitOptionalEmptyValues,
+  isTemplateExpression,
 } from './schemaUtils';
 import SchemaTree from './SchemaTree';
 import { useStyles } from './styles';
@@ -143,6 +144,20 @@ interface PolicyParameterEditorProps {
   readOnly?: boolean;
 }
 
+function isDisabledByAnyOf(
+  schema: ParameterSchema,
+  values: ParameterValues,
+  path: string
+): boolean {
+  const supportsDisabled = schema.anyOf?.some(
+    (entry) => entry.properties?.enabled?.const === false
+  );
+  return (
+    supportsDisabled === true &&
+    getValueByPath(values, `${path}.enabled`) === false
+  );
+}
+
 /**
  * Validates required fields in the schema
  */
@@ -170,8 +185,11 @@ function validateRequiredFields(
         }
       }
 
-      // Recursively validate nested objects
-      if (propSchema.type === 'object' && propSchema.properties) {
+      if (
+        propSchema.type === 'object' &&
+        propSchema.properties &&
+        !isDisabledByAnyOf(propSchema, values, path)
+      ) {
         const nestedErrors = validateRequiredFields(propSchema, values, path);
         errors.push(...nestedErrors);
       }
@@ -184,7 +202,10 @@ function validateRequiredFields(
       ) {
         value.forEach((_, index) => {
           const itemPath = `${path}.${index}`;
-          if (propSchema.items!.type === 'object') {
+          if (
+            propSchema.items!.type === 'object' &&
+            !isDisabledByAnyOf(propSchema.items!, values, itemPath)
+          ) {
             const itemErrors = validateRequiredFields(
               propSchema.items!,
               values,
@@ -206,8 +227,8 @@ function validateRequiredFields(
  * message, or null when the value satisfies every constraint.
  *
  * Empty/absent values are treated as valid here — presence is the concern of
- * validateRequiredFields. Template variables (e.g. ${var}) are also skipped,
- * consistent with coerceValuesToSchemaTypes.
+ * validateRequiredFields. Template expressions (e.g. {{ env "LIMIT" }}) are
+ * also skipped, consistent with coerceValuesToSchemaTypes.
  */
 function validateValueConstraints(
   schema: ParameterSchema,
@@ -217,11 +238,13 @@ function validateValueConstraints(
     return null;
   }
 
+  // Template expressions are resolved by the gateway at deploy time, so their
+  // runtime values cannot be checked against literal-value constraints here.
+  if (isTemplateExpression(value)) {
+    return null;
+  }
+
   if (schema.type === 'string' && typeof value === 'string') {
-    // Leave template references untouched — they are resolved at runtime.
-    if (/\$\{.+\}/.test(value)) {
-      return null;
-    }
     if (schema.minLength !== undefined && value.length < schema.minLength) {
       return `Must be at least ${schema.minLength} character(s)`;
     }
@@ -245,9 +268,19 @@ function validateValueConstraints(
   }
 
   if (schema.type === 'number' || schema.type === 'integer') {
-    const num = typeof value === 'number' ? value : Number(value);
-    if (Number.isNaN(num)) {
-      return null;
+    const num =
+      typeof value === 'number'
+        ? value
+        : typeof value === 'string' && value.trim() !== ''
+          ? Number(value)
+          : Number.NaN;
+    if (
+      !Number.isFinite(num) ||
+      (schema.type === 'integer' && !Number.isInteger(num))
+    ) {
+      return schema.type === 'integer'
+        ? 'Must be a valid integer'
+        : 'Must be a valid number';
     }
     if (schema.minimum !== undefined && num < schema.minimum) {
       return `Must be at least ${schema.minimum}`;
@@ -261,9 +294,7 @@ function validateValueConstraints(
 }
 
 /**
- * Recursively validates format constraints (pattern, length, numeric bounds,
- * and simple-array size) declared anywhere in the schema against the current
- * values. Complements validateRequiredFields, which only checks presence.
+ * Recursively validates format constraints declared anywhere in the schema.
  *
  * Only constraints on fields that render an inline error (leaf fields and
  * simple string/number arrays) are reported, so every returned error is
@@ -280,11 +311,38 @@ function validateConstraints(
     return errors;
   }
 
+  const minSchema = schema.properties.min;
+  const maxSchema = schema.properties.max;
+  if (
+    ['number', 'integer'].includes(minSchema?.type) &&
+    ['number', 'integer'].includes(maxSchema?.type)
+  ) {
+    const minPath = parentPath ? `${parentPath}.min` : 'min';
+    const maxPath = parentPath ? `${parentPath}.max` : 'max';
+    const minValue = getValueByPath(values, minPath);
+    const maxValue = getValueByPath(values, maxPath);
+    const min = Number(minValue);
+    const max = Number(maxValue);
+    if (
+      minValue != null &&
+      minValue !== '' &&
+      maxValue != null &&
+      maxValue !== '' &&
+      Number.isFinite(min) &&
+      Number.isFinite(max) &&
+      min > max
+    ) {
+      errors.push({
+        path: maxPath,
+        message: 'Maximum value must be greater than or equal to minimum value',
+      });
+    }
+  }
+
   Object.entries(schema.properties).forEach(([key, propSchema]) => {
     const path = parentPath ? `${parentPath}.${key}` : key;
     const value = getValueByPath(values, path);
 
-    // Recurse into nested objects
     if (propSchema.type === 'object' && propSchema.properties) {
       errors.push(...validateConstraints(propSchema, values, path));
       return;

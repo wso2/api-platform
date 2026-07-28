@@ -6,6 +6,9 @@
 {{- $tls := $dp.tls -}}
 {{- $selfSigned := eq $tls.certificateProvider "selfSigned" -}}
 {{- $tlsFromSecret := or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret") -}}
+{{- if and $dp.deployment.enabled (not (or $tlsFromSecret (eq $tls.certificateProvider "none"))) }}
+{{- fail "developer-portal-ui: tls.certificateProvider must be \"cert-manager\", \"secret\", or \"none\" (plain HTTP) — there is no self-signed fallback (the image does not generate a certificate at startup). Provide a TLS Secret (certificateProvider=secret), use cert-manager, or set certificateProvider=none to serve plain HTTP behind a TLS-terminating proxy." }}
+{{- end }}
 {{- $secretName := include "apip.developerPortal.secretName" . -}}
 {{- $imageTag := default .Chart.AppVersion $dp.image.tag -}}
 {{- $certDir := $tls.mountPath -}}

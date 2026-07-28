@@ -311,10 +311,19 @@ endif
 		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml
 	@cp distribution/README.md $(DIST_DIR)/README.md
 	@mkdir -p $(DIST_DIR)/scripts
-	@cp scripts/setup.sh $(DIST_DIR)/scripts/setup.sh
+	@cp ../scripts/setup.sh $(DIST_DIR)/scripts/setup.sh
 	@chmod +x $(DIST_DIR)/scripts/setup.sh
 	@cp scripts/seed-samples.sh $(DIST_DIR)/scripts/seed-samples.sh
 	@chmod +x $(DIST_DIR)/scripts/seed-samples.sh
+# Bake this pack's default COMPOSE_PROFILES into setup.sh so `docker compose
+# up -d` (no --profile flag) starts Developer Portal + Platform API out of
+# the box once setup.sh has run. setup.sh writes it to .env at setup time —
+# .env is not shipped in the zip itself, only this pack's default value for it.
+	@sed -i.bak \
+	    -e 's|^DEFAULT_COMPOSE_PROFILES=.*|DEFAULT_COMPOSE_PROFILES="developer-portal,platform-api"|' \
+	    -e 's|^DEFAULT_PACK_NAME=.*|DEFAULT_PACK_NAME="developer-portal"|' \
+	    $(DIST_DIR)/scripts/setup.sh
+	@rm -f $(DIST_DIR)/scripts/setup.sh.bak
 	@sed -i.bak \
 	    -e 's|image: .*/developer-portal:[^[:space:]]*|image: $(DEVPORTAL_IMAGE):$(DIST_VERSION)|g' \
 	    -e 's|image: .*/platform-api:[^[:space:]]*|image: $(PLATFORM_API_IMAGE):$(PLATFORM_API_VERSION)|g' \

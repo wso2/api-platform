@@ -228,10 +228,14 @@ containerPort: 3000
 # tls — certificate for the portal's HTTPS listener (APIP_DP_TLS_*)
 # ----------------------------------------------------------------------------
 tls:
-  # selfSigned   → the app auto-generates a self-signed pair at startup (demo).
-  # secret       → mount an existing Secret's tls.crt / tls.key.
-  # cert-manager → provision a Certificate via cert-manager and mount it.
-  certificateProvider: selfSigned
+  # How the portal's HTTPS listener gets its certificate. The image does NOT
+  # self-generate one, so supply a working certificate (or disable TLS):
+  #   secret       → mount an existing Secret's tls.crt / tls.key.
+  #   cert-manager → provision a Certificate via cert-manager and mount it.
+  #   none         → serve plain HTTP (no TLS) — only behind a TLS-terminating proxy.
+  # NOTE: "selfSigned" is NOT supported — the image has no in-container cert
+  # generation, so the chart rejects it at render time (fail-fast, like platform-api).
+  certificateProvider: cert-manager
   # Where certs are mounted / read from (matches APIP_DP_TLS_CERTFILE etc.).
   mountPath: /app/certs
   certManager:

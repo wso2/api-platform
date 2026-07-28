@@ -460,7 +460,7 @@
     </script>
     <script src="https://unpkg.com/react@17.0.2/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@17.0.2/umd/react-dom.development.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/thisaltennakoon/mcp-inspector@main11/dist/mcp-inspector.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@wso2-org/mcp-playground@1.3.0/dist/mcp-playground.umd.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
 {{/pageHead}}
 <main>
@@ -487,10 +487,10 @@
             const rootElement = document.getElementById('root');
 
             // Show loading message first
-            rootElement.innerHTML = '<div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: montserrat;">Loading MCP Inspector...</div>';
+            rootElement.innerHTML = '<div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: montserrat;">Loading MCP Playground...</div>';
 
             // Then render the actual component
-            ReactDOM.render(React.createElement(MCPInspector.default, {
+            ReactDOM.render(React.createElement(MCPPlayground.default, {
                 url: serverUrl,
                 tokenPlaceholder: 'Bearer <your-token-here>',
             }), rootElement);

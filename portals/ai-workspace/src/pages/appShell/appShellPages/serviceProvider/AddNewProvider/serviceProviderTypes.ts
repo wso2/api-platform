@@ -30,6 +30,9 @@ export type FormState = {
 };
 
 export type GuardrailSelection = {
+  // Unique per staged entry so the same guardrail (e.g. two set-headers) can be
+  // added more than once — name is not unique and must not be used as the key.
+  id: string;
   name: string;
   version: string;
   configuration: string;

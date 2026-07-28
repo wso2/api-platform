@@ -879,7 +879,7 @@ paths:
       summary: Upload a new certificate
       description: Upload a new TLS certificate (PEM format) to the Gateway. The certificate is loaded dynamically without restarting the Gateway.
       operationId: uploadCertificate
-      x-basicauth-roles: [admin, developer]
+      x-basicauth-roles: [admin]
       tags:
         - Certificate Management
       requestBody:

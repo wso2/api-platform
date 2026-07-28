@@ -22,7 +22,6 @@ export type GatewayPolicyRow = {
   policyName: string;
   name: string;
   version: string;
-  displayVersion: string;
   description: string;
   policyType: "Policy Hub" | "Custom";
   syncStatus: "N/A" | "Synced" | "Not synced";
@@ -41,7 +40,6 @@ type GatewayPoliciesContextValue = {
 const GatewayPoliciesContext = createContext<GatewayPoliciesContextValue | null>(null);
 
 const normalizedVersion = (version: string) => version.replace(/^v/i, "");
-const displayVersion = (version: string) => normalizedVersion(version).split(".")[0];
 const policyKey = (name: string, version: string) =>
   `${name.trim().toLowerCase()}@${normalizedVersion(version)}`;
 const isCustomManifestPolicy = (policy: GatewayManifestPolicy) => {
@@ -75,7 +73,6 @@ function mergePolicies(
       // Keep the controller-reported value (for example, "v1.0.0") for API
       // calls because SyncCustomPolicy matches the stored manifest version.
       version: policy.version,
-      displayVersion: displayVersion(policy.version),
       description: policy.description || hubPolicy?.description || "—",
       policyType: isCustomPolicy ? "Custom" : "Policy Hub",
       syncStatus: isCustomPolicy ? (syncedPolicy ? "Synced" : "Not synced") : "N/A",

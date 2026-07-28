@@ -748,7 +748,8 @@ export type APIKeyListResponse = ApiListResponse<UserAPIKey>;
 export interface MCPServerUpstreamAuth {
   type: string;
   header: string;
-  value: string;
+  // writeOnly server-side — never present on a GET response, only ever sent on write.
+  value?: string;
 }
 
 /**

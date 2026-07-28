@@ -6,13 +6,18 @@
 # in compliance with the License. You may obtain a copy of the
 # License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------
-# Developer Portal + Platform API - standalone release compose file. See README.md.
+# Developer Portal + Platform API - standalone release compose file. See README.md
+# for usage. Each service's `profiles:` list names only itself (plus "all") —
+# never a sibling pack's profile — so every profile can be enabled
+# independently; combinations come from COMPOSE_PROFILES/--profile listing
+# multiple names, not from one service pulling in another's profile.
 
 services:
   platform-api:
     image: ghcr.io/wso2/api-platform/platform-api:0.13.0-SNAPSHOT
     container_name: platform-api
     restart: unless-stopped
+    profiles: ["platform-api", "all"]
     command: ["-config", "/etc/platform-api/config.toml"]
     env_file:
       - path: api-platform.env
@@ -35,9 +40,10 @@ services:
       - devportal-network
 
   devportal:
-    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-beta-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/developer-portal:1.0.0-rc1-SNAPSHOT
     container_name: devportal
     restart: unless-stopped
+    profiles: ["developer-portal", "all"]
     depends_on:
       platform-api:
         condition: service_healthy
@@ -51,18 +57,19 @@ services:
       - ./configs/config.toml:/app/configs/config.toml:ro
       - sqlite_data:/app/data
       - ./resources/certificates:/etc/devportal/tls:ro
-      - ./resources/keys:/etc/devportal/keys:ro
+      - ./resources/keys/jwt_public.pem:/etc/devportal/keys/jwt_public.pem:ro
+      - ./resources/keys/devportal-encryption.key:/etc/devportal/keys/encryption.key:ro
+      - ./resources/keys/devportal-session-secret:/etc/devportal/keys/session-secret:ro
     ports:
       - "${APIP_DP_SERVER_PORT:-9543}:${APIP_DP_SERVER_PORT:-9543}"
     networks:
       - devportal-network
 
-  # Optional: enable AI Workspace with --profile with-ai-workspace
   ai-workspace:
     image: ghcr.io/wso2/api-platform/ai-workspace:1.0.0-beta-SNAPSHOT
     container_name: ai-workspace
     restart: unless-stopped
-    profiles: ["with-ai-workspace"]
+    profiles: ["ai-workspace", "all"]
     depends_on:
       platform-api:
         condition: service_healthy

@@ -92,10 +92,24 @@ func portalURL(addr, domain string, tlsEnabled bool) string {
 	return scheme + "://" + net.JoinHostPort(host, port)
 }
 
+// stringSliceFlag collects a repeatable string flag into a slice, preserving the
+// order in which the flags were supplied on the command line.
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string { return strings.Join(*s, ", ") }
+
+func (s *stringSliceFlag) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
 func main() {
-	// The container reads its mounted config.toml, so -config is only needed to run
-	// the BFF outside one (see `make bff-run`).
-	configFile := flag.String("config", config.DefaultConfigFile, "path to config.toml")
+	// -config is repeatable and required: files are merged in the order given with
+	// last-wins precedence. There is no default path — the container and `make
+	// bff-run` both pass -config explicitly (see the image ENTRYPOINT and Makefile).
+	var configFiles stringSliceFlag
+	flag.Var(&configFiles, "config",
+		"Path to a configuration file (required; repeatable, merged in order with last-wins precedence)")
 	// The shipped config.toml has no {{ env }} token for static_dir — the container
 	// always serves the SPA baked in at /app, so there's nothing for an operator to
 	// override. `make bff-run` is the one caller that needs a different directory
@@ -104,7 +118,13 @@ func main() {
 	staticDir := flag.String("static-dir", "", "override the directory serving the built SPA (local dev only, e.g. `make bff-run`)")
 	flag.Parse()
 
-	cfg, err := config.Load(*configFile)
+	if len(configFiles) == 0 {
+		slog.SetDefault(logger.NewLogger(logger.Config{Level: "info", Format: "text"}))
+		slog.Error("configuration error", "err", "the -config flag is required (repeatable; e.g. -config base.toml -config overlay.toml)")
+		os.Exit(1)
+	}
+
+	cfg, err := config.Load(configFiles...)
 	if err != nil {
 		slog.SetDefault(logger.NewLogger(logger.Config{Level: "info", Format: "text"}))
 		slog.Error("configuration error", "err", err)

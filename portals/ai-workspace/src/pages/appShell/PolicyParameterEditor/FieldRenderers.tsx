@@ -28,6 +28,7 @@ import {
 import { Plus, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { FieldRendererProps } from './types';
 import { useStyles } from './styles';
+import { isTemplateExpression } from './schemaUtils';
 
 type SimpleTagInputProps = {
   value: string[];
@@ -234,22 +235,30 @@ export const NumberFieldRenderer: React.FC<FieldRendererProps> = ({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputValue = e.target.value;
     setDisplayValue(inputValue);
-    if (inputValue === '') {
+    if (inputValue.trim() === '') {
       onChange(node.path, '');
       return;
     }
-    const parsed = isInteger
-      ? parseInt(inputValue, 10)
-      : parseFloat(inputValue);
-    if (!Number.isNaN(parsed)) {
-      onChange(node.path, parsed);
+    if (isTemplateExpression(inputValue)) {
+      onChange(node.path, inputValue);
+      return;
     }
+    const parsed = Number(inputValue);
+    const isValidNumber =
+      Number.isFinite(parsed) && (!isInteger || Number.isInteger(parsed));
+    if (isValidNumber) {
+      onChange(node.path, parsed);
+      return;
+    }
+    // Keep invalid text in form state so existing constraint validation can
+    // report it instead of silently submitting the previous numeric value.
+    onChange(node.path, inputValue);
   };
 
   return (
     <Box sx={classes.fieldContainer}>
       <TextField
-        type="number"
+        type="text"
         value={displayValue}
         onChange={handleChange}
         disabled={disabled}
@@ -266,6 +275,7 @@ export const NumberFieldRenderer: React.FC<FieldRendererProps> = ({
           min: node.schema.minimum,
           max: node.schema.maximum,
           step: isInteger ? 1 : 'any',
+          inputMode: 'decimal',
         }}
       />
     </Box>

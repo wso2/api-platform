@@ -19,20 +19,44 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
+	"strings"
+
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/builtins"
 	"github.com/wso2/api-platform/platform-api/internal/logger"
 	"github.com/wso2/api-platform/platform-api/internal/server"
 )
 
+// stringSliceFlag collects a repeatable string flag into a slice, preserving the
+// order in which the flags were supplied on the command line.
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string { return strings.Join(*s, ", ") }
+
+func (s *stringSliceFlag) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
 func main() {
-	configFile := flag.String("config", "", "path to config.toml file (optional; env vars take priority over the file)")
+	// -config is repeatable: files are merged in the order given with last-wins
+	// precedence. Env values reach config only through explicit {{ env }}
+	// interpolation tokens in the file(s) — there is no independent env provider —
+	// so at least one config file is required and there is no default path.
+	var configFiles stringSliceFlag
+	flag.Var(&configFiles, "config",
+		"Path to a configuration file (required; repeatable, merged in order with last-wins precedence)")
 	flag.Parse()
 
-	if *configFile != "" {
-		config.SetConfigPath(*configFile)
+	if len(configFiles) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: -config flag is required\n")
+		fmt.Fprintf(os.Stderr, "Usage: %s -config <path-to-config.toml> [-config <overlay.toml> ...]\n", os.Args[0])
+		os.Exit(1)
 	}
+
+	config.SetConfigPaths(configFiles...)
 
 	cfg := config.GetConfig()
 

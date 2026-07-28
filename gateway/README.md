@@ -44,7 +44,15 @@ docker compose up -d
 curl http://localhost:9092/api/admin/v0.9/health
 ```
 
-`setup.sh` prints the admin password **once** — copy it. The username defaults to `admin`; set
+On Windows, use the PowerShell counterpart (same flags and generated files; requires `openssl`
+and either `htpasswd` or `docker`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+docker compose up -d
+```
+
+The setup script prints the admin password **once** — copy it. The username defaults to `admin`; set
 `ADMIN_USERNAME`/`ADMIN_PASSWORD` up front for non-interactive runs. Only the bcrypt hash is stored (in
 `api-platform.env`), and — because basic auth is enabled in the shipped config — the controller refuses
 to start if the credential is missing.
@@ -52,7 +60,7 @@ to start if the credential is missing.
 `setup.sh` is idempotent (rerun with `--force` to rotate certs, the encryption key, and the admin
 password, and rewrite `api-platform.env`).
 
-For the full setup reference — flags (`--force`, `--certs-only`, `--with-encryption`), control-plane
+For the full setup reference — flags (`--force`, `--certs-only`), control-plane
 connection, at-rest encryption, and how configuration is delivered — see
 [docs/gateway/quick-start-guide.md](../docs/gateway/quick-start-guide.md).
 
