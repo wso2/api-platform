@@ -83,6 +83,7 @@ import { getErrorMessage } from '../../../../utils/apiError';
 import type {
   DeploymentResponse,
   MCPServer,
+  MCPServerCapabilities,
   MCPServerInfoFetchRequest,
 } from '../../../../utils/types';
 import type { ParameterValues } from '../../PolicyParameterEditor/types';
@@ -105,6 +106,18 @@ function getInitials(name: string): string {
 
 function isNonArrayObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+// Normalizes possibly-undefined capability arrays to `[]` so a stored server's
+// capabilities and a freshly refetched result can be compared like-for-like.
+function normalizeCapabilities(
+  capabilities: MCPServerCapabilities | undefined
+): MCPServerCapabilities {
+  return {
+    tools: capabilities?.tools ?? [],
+    resources: capabilities?.resources ?? [],
+    prompts: capabilities?.prompts ?? [],
+  };
 }
 
 function pruneEmptyPolicyParamValues(value: unknown): unknown {
@@ -233,6 +246,11 @@ export default function ExternalServersOverview(): JSX.Element {
   const [isCredentialMasked, setIsCredentialMasked] = useState(false);
   const [hasCredentialChanged, setHasCredentialChanged] = useState(false);
   const [isRefetching, setIsRefetching] = useState(false);
+  // Staged tools/resources/prompts from the last successful Refetch Server Info,
+  // pending Save. Cleared whenever `server` is (re)loaded — including right after a
+  // successful save, since the newly saved server's own capabilities are then current.
+  const [refetchedCapabilities, setRefetchedCapabilities] =
+    useState<MCPServerCapabilities | null>(null);
 
   const selectedPoliciesRef = useRef<SelectedPolicy[]>([]);
   const [initialPolicies, setInitialPolicies] = useState<SelectedPolicy[]>([]);
@@ -468,6 +486,7 @@ export default function ExternalServersOverview(): JSX.Element {
     setAuthHeaderValue(hasExistingAuth ? MASKED_CREDENTIAL_VALUE : '');
     setIsCredentialMasked(hasExistingAuth);
     setHasCredentialChanged(false);
+    setRefetchedCapabilities(null);
   }, [server]);
 
   const hasPolicyChanges = useMemo(() => {
@@ -498,7 +517,19 @@ export default function ExternalServersOverview(): JSX.Element {
     hasCredentialChanged,
   ]);
 
-  const hasUnsavedChanges = hasPolicyChanges || hasBackendConnectionChanges;
+  // A staged refetch only actually counts as a change if it discovered something
+  // different from what's currently stored — an unedited refetch that finds the
+  // exact same tools/resources/prompts shouldn't flip Save on for no reason.
+  const hasCapabilitiesChanges = useMemo(() => {
+    if (!refetchedCapabilities) return false;
+    return (
+      JSON.stringify(refetchedCapabilities) !==
+      JSON.stringify(normalizeCapabilities(server?.capabilities))
+    );
+  }, [refetchedCapabilities, server]);
+
+  const hasUnsavedChanges =
+    hasPolicyChanges || hasBackendConnectionChanges || hasCapabilitiesChanges;
 
   const handleCancelChanges = () => {
     if (isReadOnlyServer) return;
@@ -511,6 +542,7 @@ export default function ExternalServersOverview(): JSX.Element {
       setIsCredentialMasked(hasExistingAuth);
       setHasCredentialChanged(false);
     }
+    setRefetchedCapabilities(null);
   };
 
   const handleSaveChanges = async () => {
@@ -593,11 +625,23 @@ export default function ExternalServersOverview(): JSX.Element {
       };
     }
 
+    // A staged refetch result (if any, and if it actually differs from what's
+    // stored) replaces the proxy's capabilities; otherwise the existing stored
+    // capabilities are resent as-is, same as before this field was ever staged.
+    const capabilitiesPayload = hasCapabilitiesChanges
+      ? (refetchedCapabilities ?? undefined)
+      : updatePayload.capabilities;
+
     try {
       setIsSavingChanges(true);
       const updated = await mcpProxiesApis.updateMCPServer(
         server.id,
-        { ...updatePayload, policies: policiesPayload, upstream: upstreamPayload },
+        {
+          ...updatePayload,
+          policies: policiesPayload,
+          upstream: upstreamPayload,
+          capabilities: capabilitiesPayload,
+        },
         apimBaseUrl
       );
       setServer(updated);
@@ -677,10 +721,27 @@ export default function ExternalServersOverview(): JSX.Element {
         request,
         apimBaseUrl
       );
+      // Stage the discovered tools/resources/prompts so the user can Save them —
+      // the fetch-server-info response already uses the same MCPServerTool/
+      // MCPServerResource/MCPServerPrompt shapes as MCPServerCapabilities, so no
+      // remapping is needed here (unlike the creation flow's EndpointValidationResponse).
+      const discoveredCapabilities = {
+        tools: response.tools ?? [],
+        resources: response.resources ?? [],
+        prompts: response.prompts ?? [],
+      };
+      setRefetchedCapabilities(discoveredCapabilities);
+      // Only prompt to Save when the refetch actually found something different —
+      // hasCapabilitiesChanges won't reflect the state just set above until the next
+      // render, so this mirrors that same comparison directly against the response.
+      const capabilitiesChanged =
+        JSON.stringify(discoveredCapabilities) !==
+        JSON.stringify(normalizeCapabilities(server.capabilities));
       showSnackbar(
-        `Connection verified — ${response.tools?.length ?? 0} tools, ${
-          response.resources?.length ?? 0
-        } resources, ${response.prompts?.length ?? 0} prompts found.`,
+        `Connection verified — ${discoveredCapabilities.tools.length} tools, ${discoveredCapabilities.resources.length} resources, ${discoveredCapabilities.prompts.length} prompts found.` +
+          (capabilitiesChanged
+            ? " Click Save to update the proxy's stored capabilities."
+            : ''),
         'success'
       );
     } catch (err) {
