@@ -40,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/plugin"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
+	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 	internalvault "github.com/wso2/api-platform/platform-api/internal/vault"
@@ -360,8 +361,15 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	slogger.Info("Initialized all services and handlers successfully")
 
-	// Setup mux and register all routes.
+	// Setup mux and record all core routes.
+	//
+	// Core handlers register on a recorder rather than the mux directly, so a
+	// plugin can claim a core pattern with a route override and the wrapped
+	// handler is what gets installed. installCoreRoutes below moves every
+	// recorded route onto this mux, in registration order, once the plugins have
+	// declared what they decorate. Nothing serves traffic in between.
 	mux := http.NewServeMux()
+	core := router.NewRecorder()
 
 	// Load the OpenAPI scope registry — source of truth for required scopes per route.
 	scopeRegistry, err := middleware.LoadScopeRegistry(cfg.OpenAPISpecPath)
@@ -377,27 +385,35 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// Register all routes on the mux. Public routes (login) are accessible
 	// because the auth middleware uses cfg.Auth.SkipPaths to bypass them.
-	handler.NewAuthLoginHandler(cfg).RegisterPublicRoutes(mux)
-	orgHandler.RegisterRoutes(mux)
-	projectHandler.RegisterRoutes(mux)
-	appHandler.RegisterRoutes(mux)
-	apiHandler.RegisterRoutes(mux)
-	gatewayHandler.RegisterRoutes(mux)
-	subscriptionHandler.RegisterRoutes(mux)
-	subscriptionPlanHandler.RegisterRoutes(mux)
-	wsHandler.RegisterRoutes(mux)
-	internalGatewayHandler.RegisterRoutes(mux)
-	apiKeyHandler.RegisterRoutes(mux)
-	deploymentHandler.RegisterRoutes(mux)
-	llmHandler.RegisterRoutes(mux)
-	llmDeploymentHandler.RegisterRoutes(mux)
-	llmProviderAPIKeyHandler.RegisterRoutes(mux)
-	llmProxyAPIKeyHandler.RegisterRoutes(mux)
-	apiKeyUserHandler.RegisterRoutes(mux)
-	llmProxyDeploymentHandler.RegisterRoutes(mux)
-	mcpProxyHandler.RegisterRoutes(mux)
-	mcpProxyDeploymentHandler.RegisterRoutes(mux)
-	secretHandler.RegisterRoutes(mux)
+	handler.NewAuthLoginHandler(cfg).RegisterPublicRoutes(core)
+	orgHandler.RegisterRoutes(core)
+	projectHandler.RegisterRoutes(core)
+	appHandler.RegisterRoutes(core)
+	apiHandler.RegisterRoutes(core)
+	gatewayHandler.RegisterRoutes(core)
+	subscriptionHandler.RegisterRoutes(core)
+	subscriptionPlanHandler.RegisterRoutes(core)
+	wsHandler.RegisterRoutes(core)
+	internalGatewayHandler.RegisterRoutes(core)
+	apiKeyHandler.RegisterRoutes(core)
+	deploymentHandler.RegisterRoutes(core)
+	llmHandler.RegisterRoutes(core)
+	llmDeploymentHandler.RegisterRoutes(core)
+	llmProviderAPIKeyHandler.RegisterRoutes(core)
+	llmProxyAPIKeyHandler.RegisterRoutes(core)
+	apiKeyUserHandler.RegisterRoutes(core)
+	llmProxyDeploymentHandler.RegisterRoutes(core)
+	mcpProxyHandler.RegisterRoutes(core)
+	mcpProxyDeploymentHandler.RegisterRoutes(core)
+	secretHandler.RegisterRoutes(core)
+
+	// The recorder defers registration errors (a duplicate or empty pattern, a
+	// nil handler) instead of panicking, so they are reported here, once, before
+	// anything is installed.
+	if err := core.Err(); err != nil {
+		slogger.Error("Core route registration failed", "error", err)
+		return nil, fmt.Errorf("core route registration failed: %w", err)
+	}
 
 	// Initialize plugins and register their routes.
 	// Plugins contribute routes, DB schema, and OpenAPI scopes at startup.
@@ -448,6 +464,14 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			shutdownPlugins(slogger, plugins)
 		}
 	}()
+
+	// Install the recorded core routes on the mux, wrapping each pattern a plugin
+	// claimed with its decorator. Runs after initPlugins so the claims are known,
+	// and after the defer above so a bad override still stops the plugins.
+	if err := installCoreRoutes(slogger, mux, core, wiring.overrides); err != nil {
+		slogger.Error("Failed to install core routes", "error", err)
+		return nil, err
+	}
 
 	// Load and validate the role-to-scope map when roles.yaml is configured.
 	// Runs after initPlugins so a role may map to a plugin-declared scope, and
