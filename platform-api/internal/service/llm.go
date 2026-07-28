@@ -214,8 +214,8 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	if req.Metadata == nil {
 		return nil, apperror.ValidationFailed.New("The metadata field is required.")
 	}
-	if err := utils.ValidateURL(strings.TrimSpace(utils.ValueOrEmpty(req.Metadata.EndpointUrl))); err != nil {
-		return nil, apperror.ValidationFailed.New("The metadata endpointUrl must be a valid URL.")
+	if err := utils.ValidateExternalURL(context.Background(), strings.TrimSpace(utils.ValueOrEmpty(req.Metadata.EndpointUrl))); err != nil {
+		return nil, apperror.ValidationFailed.New("The metadata endpointUrl must be a valid, publicly reachable URL.")
 	}
 
 	baseHandle, err := utils.GenerateHandle(req.DisplayName, nil)
@@ -354,6 +354,14 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 
 	if req.Version != "" && req.Version != existing.Version {
 		return nil, apperror.ValidationFailed.New("The template version cannot be changed via update; use the versions endpoint.")
+	}
+
+	if req.Metadata != nil {
+		if endpointURL := strings.TrimSpace(utils.ValueOrEmpty(req.Metadata.EndpointUrl)); endpointURL != "" {
+			if err := utils.ValidateExternalURL(context.Background(), endpointURL); err != nil {
+				return nil, apperror.ValidationFailed.New("The metadata endpointUrl must be a valid, publicly reachable URL.")
+			}
+		}
 	}
 
 	managedBy := existing.ManagedBy
@@ -926,7 +934,13 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		return nil, err
 	}
 
-	contextValue := utils.DefaultStringPtr(req.Context, "/")
+	contextValue := strings.TrimSpace(utils.DefaultStringPtr(req.Context, "/"))
+	if contextValue == "" {
+		contextValue = "/"
+	}
+	if err := utils.ValidateContext(contextValue); err != nil {
+		return nil, apperror.ValidationFailed.New("The context must be a valid path (e.g. /my-provider).")
+	}
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
@@ -1124,7 +1138,13 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		}
 	}
 
-	contextValue := utils.DefaultStringPtr(req.Context, "/")
+	contextValue := strings.TrimSpace(utils.DefaultStringPtr(req.Context, "/"))
+	if contextValue == "" {
+		contextValue = "/"
+	}
+	if err := utils.ValidateContext(contextValue); err != nil {
+		return nil, apperror.ValidationFailed.New("The context must be a valid path (e.g. /my-provider).")
+	}
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
 		ID:               handle,

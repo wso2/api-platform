@@ -42,6 +42,7 @@ import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 const MAX_NAME_LENGTH = 255;
 const MAX_DESCRIPTION_LENGTH = 1023;
 const MAX_CONTEXT_LENGTH = 255;
+const CONTEXT_PATTERN = /^\/([a-zA-Z0-9_\-/]*[^/])?$/;
 
 function EditServiceProviderForm() {
   const navigate = useNavigate();
@@ -59,6 +60,10 @@ function EditServiceProviderForm() {
   const isContextChanged =
     provider !== null && context !== (provider.context || '');
 
+  const contextTooLong = context.length > MAX_CONTEXT_LENGTH;
+  const contextFormatInvalid =
+    !isReadOnlyProvider && !CONTEXT_PATTERN.test(context.trim());
+
   useEffect(() => {
     if (provider) {
       setName(provider.displayName || '');
@@ -71,7 +76,8 @@ function EditServiceProviderForm() {
     if (!name || name.trim().length === 0) return false;
     if (name.length > MAX_NAME_LENGTH) return false;
     if (description.length > MAX_DESCRIPTION_LENGTH) return false;
-    if (context.length > MAX_CONTEXT_LENGTH) return false;
+    if (contextTooLong) return false;
+    if (contextFormatInvalid) return false;
     return true;
   };
 
@@ -85,9 +91,9 @@ function EditServiceProviderForm() {
     try {
       const fullPayload = {
         ...provider,
-        displayName: name,
-        description: description || undefined,
-        context: context || undefined,
+        displayName: name.trim(),
+        description: description.trim() || undefined,
+        context: context.trim() || undefined,
       };
       // Remove read-only fields before sending
       delete (fullPayload as any).status;
@@ -245,11 +251,13 @@ function EditServiceProviderForm() {
                 disabled={isReadOnlyProvider}
                 onChange={(e) => setContext(e.target.value)}
                 placeholder="Enter context path"
-                error={context.length > MAX_CONTEXT_LENGTH}
+                error={contextTooLong || contextFormatInvalid}
                 helperText={
-                  context.length > MAX_CONTEXT_LENGTH
+                  contextTooLong
                     ? `Context must not exceed ${MAX_CONTEXT_LENGTH} characters (${context.length}/${MAX_CONTEXT_LENGTH})`
-                    : ''
+                    : contextFormatInvalid
+                      ? 'Invalid context path (e.g., /mycontext).'
+                      : ''
                 }
               />
             </FormControl>

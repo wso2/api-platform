@@ -98,12 +98,37 @@ export async function getProviderTemplates(
     const query = latestOnly
       ? `?query=${encodeURIComponent('latest:true')}`
       : '';
-    const response = await get<ProviderTemplatesResponse>(
-      `/llm-provider-templates${query}`,
-      undefined,
-      baseUrl
-    );
-    return response;
+
+    // The backend caps the default response (limit=20). A single unpaginated
+    // fetch therefore silently drops templates once there are more than 20
+    // rows — which, for latestOnly=false, is every version across all
+    // families. Page through every result and aggregate so the UI always sees
+    // the complete set instead of a truncated first page.
+    const PAGE_SIZE = 100;
+    const aggregated: ProviderTemplate[] = [];
+    let offset = 0;
+    let total = 0;
+
+    do {
+      const response = await get<ProviderTemplatesResponse>(
+        `/llm-provider-templates${query}`,
+        { limit: PAGE_SIZE, offset },
+        baseUrl
+      );
+      const batch = response.list ?? [];
+      aggregated.push(...batch);
+      total = response.pagination?.total ?? aggregated.length;
+      offset += batch.length;
+      // Stop if the server returns nothing further, so a server that ignores
+      // paging (or reports a stale total) can never spin this loop forever.
+      if (batch.length === 0) break;
+    } while (aggregated.length < total);
+
+    return {
+      count: aggregated.length,
+      list: aggregated,
+      pagination: { total, offset: 0, limit: aggregated.length },
+    };
   } catch (error) {
     logger.error('Failed to fetch provider templates:', error);
     throw error;

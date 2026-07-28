@@ -58,6 +58,7 @@ import {
 } from '../../../../utils/projectRouting';
 import {
   resolveTemplateDisplayName,
+  resolveTemplateLogo,
   truncateProviderDisplayName,
 } from '../../../../utils/providerTemplateDisplay';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
@@ -538,7 +539,12 @@ export default function ServiceProviders() {
                 provider.displayName
               );
               const templateKey = (provider.template ?? '').toLowerCase();
-              const templateLogo = PROVIDER_LOGO_MAP[templateKey];
+              // The "Template: …" label logo uses the template's own logo (so a
+              // custom template shows its uploaded logo), falling back to the
+              // built-in vendor map. The provider avatar above is unaffected.
+              const templateLogo =
+                resolveTemplateLogo(provider.template, templatesResponse.list) ??
+                PROVIDER_LOGO_MAP[templateKey];
               const hasTemplateLogo = Boolean(templateLogo);
 
               return (

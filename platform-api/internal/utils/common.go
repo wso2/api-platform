@@ -28,8 +28,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -430,6 +432,30 @@ func ValidateURL(rawURL string) error {
 		return errors.New("URL path must not contain traversal segments")
 	}
 
+	return nil
+}
+
+var contextPathPattern = regexp.MustCompile(`^/([a-zA-Z0-9_\-/]*[^/])?$`)
+
+func ValidateContext(ctx string) error {
+	if !contextPathPattern.MatchString(ctx) {
+		return errors.New("context must be a valid path starting with '/'")
+	}
+	return nil
+}
+
+
+func ValidateExternalURL(_ context.Context, rawURL string) error {
+	if err := ValidateURL(rawURL); err != nil {
+		return err
+	}
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(rawURL))
+	if err != nil {
+		return errors.New("Invalid URL format")
+	}
+	if ip := net.ParseIP(parsed.Hostname()); ip != nil && !isPublicIP(ip) {
+		return errors.New("URL host is not allowed")
+	}
 	return nil
 }
 
