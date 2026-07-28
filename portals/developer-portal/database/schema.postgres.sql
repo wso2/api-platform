@@ -462,7 +462,6 @@ CREATE TABLE IF NOT EXISTS dp_webhook_subscribers (
     display_name VARCHAR(255) NOT NULL,
     target_url VARCHAR(1023) NOT NULL,
     secret_enc BYTEA,
-    public_key BYTEA,
     event_patterns JSONB DEFAULT '[]',
     enabled SMALLINT NOT NULL DEFAULT 1,
     timeout_ms INTEGER NOT NULL DEFAULT 5000,

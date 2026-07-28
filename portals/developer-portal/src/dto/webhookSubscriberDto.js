@@ -31,7 +31,6 @@ class WebhookSubscriberDTO {
         this.events = sub.event_patterns || [];
         this.timeoutMs = sub.timeout_ms;
         this.hasSecret = !!sub.secret_enc;
-        this.hasPublicKey = !!sub.public_key;
         applyAudit(this, audit);
     }
 }

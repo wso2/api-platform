@@ -17,7 +17,8 @@
 // --------------------------------------------------------------------
 
 // POST/GET/PUT/DELETE /webhook-subscribers, GET /webhook-subscribers/{id}/deliveries.
-// Request shape: { id, displayName?, targetUrl, secret?, publicKey?, events?, enabled? }
+// Request shape: { displayName, targetUrl, id?, secret?, events?, enabled? }
+// `id` is optional — omit it and the handle is generated from displayName.
 // — see docs/devportal-openapi-spec-v0.9.yaml WebhookSubscriberRequest.
 // `events` is a glob allowlist (trailing `*` only, e.g. "apikey.*"); empty/omitted
 // means all event types. `admin` manages org-level integration config.
@@ -43,6 +44,49 @@ describe('webhook subscribers', () => {
         expect(res.body.secret).toBeUndefined();
     });
 
+    // The settings UI no longer collects a handle, so the common path is now a create
+    // with no `id` at all. The generated handle is what every later request addresses,
+    // so it has to come back in the response.
+    it('generates the handle from displayName when id is omitted', async () => {
+        const displayName = `Prod Listener ${uniqueHandle('x')}`;
+        const res = await client.as('admin').post('/webhook-subscribers', {
+            displayName,
+            targetUrl: 'https://example.invalid/webhook',
+            secret: 'it-webhook-secret-value-0123456789',
+            events: ['apikey.*'],
+        });
+        expect(res.status).toBe(201);
+
+        const expected = displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        expect(res.body.id).toBe(expected);
+
+        // The generated id must actually address the resource.
+        const fetched = await client.as('admin').get(`/webhook-subscribers/${res.body.id}`);
+        expect(fetched.status).toBe(200);
+        expect(fetched.body.displayName).toBe(displayName);
+
+        await client.as('admin').del(`/webhook-subscribers/${res.body.id}`);
+    });
+
+    it('suffixes the generated handle when the slug is already taken', async () => {
+        const displayName = `Dup Listener ${uniqueHandle('y')}`;
+        const body = {
+            displayName,
+            targetUrl: 'https://example.invalid/webhook',
+            secret: 'it-webhook-secret-value-0123456789',
+        };
+        const first = await client.as('admin').post('/webhook-subscribers', body);
+        const second = await client.as('admin').post('/webhook-subscribers', body);
+
+        expect(first.status).toBe(201);
+        // Same displayName must not 409 — the second one takes the next suffix.
+        expect(second.status).toBe(201);
+        expect(second.body.id).toBe(`${first.body.id}-2`);
+
+        await client.as('admin').del(`/webhook-subscribers/${first.body.id}`);
+        await client.as('admin').del(`/webhook-subscribers/${second.body.id}`);
+    });
+
     it('updates a webhook subscriber (target URL, events, enabled)', async () => {
         const subscriber = await createWebhookSubscriber({
             targetUrl: 'https://example.invalid/webhook',
@@ -52,10 +96,11 @@ describe('webhook subscribers', () => {
         // NOTE: docs/devportal-openapi-spec-v0.9.yaml's WebhookSubscriberUpdateBody
         // description says "all fields are optional; only supplied fields are
         // updated", but it references the base WebhookSubscriberRequest schema,
-        // which requires `id` and `targetUrl` — the server enforces the schema,
-        // rejecting a PUT that omits `id` with a 400. Doc/implementation mismatch.
+        // which requires `displayName` and `targetUrl` — the server enforces the
+        // schema, rejecting a PUT that omits either with a 400. Doc/implementation
+        // mismatch, so we resend displayName (unchanged) alongside the updates.
         const res = await client.as('admin').put(`/webhook-subscribers/${subscriber.id}`, {
-            id: subscriber.id,
+            displayName: subscriber.displayName,
             targetUrl: 'https://updated.example.invalid/webhook',
             events: ['subscription.*'],
             enabled: false,
@@ -102,6 +147,7 @@ describe('webhook subscribers', () => {
         // at creation time but will simply never match any real event type.
         const res = await client.as('admin').post('/webhook-subscribers', {
             id: uniqueHandle('literal-pattern-subscriber'),
+            displayName: 'Literal Pattern Subscriber',
             targetUrl: 'https://example.invalid/webhook',
             events: ['*.created'],
         });

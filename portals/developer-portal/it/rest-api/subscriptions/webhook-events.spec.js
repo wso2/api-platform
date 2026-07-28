@@ -27,7 +27,7 @@ const db = require('../support/db');
 const { waitForEvent, waitForDelivery, poll } = require('../support/wait-for');
 const { createApi, createWebhookSubscriber } = require('../support/fixtures');
 const { createWebhookSink, resolveSinkUrl } = require('../support/webhook-sink');
-const { decryptFromEnvelope } = require('../support/envelopeCrypto');
+const { decryptField } = require('../support/envelopeCrypto');
 
 describe('subscriptions webhook events', () => {
     let api;
@@ -126,7 +126,7 @@ describe('subscriptions webhook events', () => {
         const received = sink.findDeliveryFor('subscription.token_regenerated');
         expect(received).toBeDefined();
         // `token` is passed as a secretField (subscriptionService.regenerateToken) —
-        // this subscriber has no publicKey, so it's delivered without any encrypted
+        // this subscriber has no secret, so it's delivered without any encrypted
         // fields and the plaintext token never appears in `data`.
         expect(received.body.encrypted_fields).toEqual([]);
         expect(received.body.data).toEqual({
@@ -163,18 +163,12 @@ describe('subscriptions webhook events', () => {
         });
     });
 
-    it('encrypts secret fields to the subscriber public key when configured', async () => {
-        // TODO(pqc): migrate — RSA keypair mirrors the app's quantum-vulnerable
-        // envelope crypto (src/services/webhooks/envelopeCrypto.js); migrate together.
-        const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
-            modulusLength: 2048,
-            publicKeyEncoding: { type: 'spki', format: 'pem' },
-            privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-        });
+    it('encrypts secret fields with the subscriber secret when configured', async () => {
+        const secret = crypto.randomBytes(32).toString('hex');
         const encryptedSubscriber = await createWebhookSubscriber({
             targetUrl: sinkUrl.href,
             events: ['subscription.*'],
-            publicKey,
+            secret,
         });
 
         const create = await client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: 'Gold' });
@@ -193,13 +187,12 @@ describe('subscriptions webhook events', () => {
         expect(received).toBeDefined();
         expect(received.body.encrypted_fields).toEqual(['token']);
         expect(received.body.data.token).toEqual({
-            wrappedKey: expect.any(String),
             iv: expect.any(String),
             tag: expect.any(String),
             ciphertext: expect.any(String),
         });
 
-        const decrypted = decryptFromEnvelope(privateKey, received.body.data.token);
+        const decrypted = decryptField(secret, received.body.data.token);
         expect(decrypted).toBe(regen.body.subscriptionToken);
 
         await client.as('admin').del(`/webhook-subscribers/${encryptedSubscriber.id}`);
