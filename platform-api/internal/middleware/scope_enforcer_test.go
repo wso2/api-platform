@@ -299,6 +299,34 @@ func TestScopeEnforcer_AllowsSkipPaths(t *testing.T) {
 	}
 }
 
+// TestHasPathPrefix_MatchesOnSegmentBoundary asserts the skip-list bypass only
+// covers a skip path itself and paths nested under it — a route that merely
+// starts with the same characters ("/health-probe-fake") must stay enforced.
+func TestHasPathPrefix_MatchesOnSegmentBoundary(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/health", true},
+		{"/health/", true},
+		{"/health/live", true},
+		{"/health-probe-fake", false},
+		{"/healthz", false},
+		{"/api/internal/v1/secrets", true},
+		{"/api/internal/v1/secrets/abc", true},
+		{"/api/internal/v1/secrets-admin", false},
+		{"/api/v0.9/organizations", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.path, func(t *testing.T) {
+			if got := hasPathPrefix(tc.path, testSkipPaths); got != tc.want {
+				t.Errorf("hasPathPrefix(%q) = %v, want %v", tc.path, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestScopeEnforcer_UnroutedRequestFallsThrough asserts a request matching no
 // route still gets the router's own 404/405 rather than a 403 — a blanket
 // Forbidden would turn every typo into an authorization signal.

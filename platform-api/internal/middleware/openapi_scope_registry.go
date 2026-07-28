@@ -36,7 +36,9 @@ type ScopeRegistry struct {
 
 // pathParamName matches a "{name}" path-parameter placeholder, excluding the
 // "{name...}" wildcard form, which matches a different set of paths and so must
-// stay distinct.
+// stay distinct. The "{$}" exact-path anchor is excluded too — it is a ServeMux
+// end-of-path marker rather than a parameter, and normalizing it would make
+// "/gateways/{$}" (exact "/gateways/" only) collide with "/gateways/{id}".
 var pathParamName = regexp.MustCompile(`\{[^/{}.]+\}`)
 
 // normalizePathParams strips path parameter names from a route pattern, so
@@ -49,7 +51,12 @@ var pathParamName = regexp.MustCompile(`\{[^/{}.]+\}`)
 // lookup — the same shape of failure as looking up an unmatched route, and just
 // as invisible.
 func normalizePathParams(path string) string {
-	return pathParamName.ReplaceAllString(path, "{}")
+	return pathParamName.ReplaceAllStringFunc(path, func(match string) string {
+		if match == "{$}" {
+			return match // Exact-path anchor, not a parameter name.
+		}
+		return "{}"
+	})
 }
 
 // Lookup returns the required scopes for the given HTTP method and path pattern

@@ -20,6 +20,7 @@ package middleware
 import (
 	"errors"
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/wso2/api-platform/common/authenticators"
@@ -157,12 +158,22 @@ func ScopeEnforcer(registry *ScopeRegistry, cfg ScopeEnforcerConfig) (func(http.
 	}, nil
 }
 
-// hasPathPrefix reports whether path starts with any of the given prefixes,
-// matching the prefix semantics the authentication middleware uses for its own
-// skip list so both bypass exactly the same set of requests.
-func hasPathPrefix(path string, prefixes []string) bool {
+// hasPathPrefix reports whether reqPath is, or is nested under, any of the given
+// path prefixes. The comparison is made on the cleaned path and only at segment
+// boundaries: "/health" covers "/health" and "/health/live" but not
+// "/health-probe-fake", and "/api/internal/v1/secrets" does not cover
+// "/api/internal/v1/secrets-admin". A plain strings.HasPrefix here would let any
+// route whose path merely starts with a skip prefix bypass scope enforcement.
+func hasPathPrefix(reqPath string, prefixes []string) bool {
+	cleaned := path.Clean("/" + reqPath)
 	for _, prefix := range prefixes {
-		if strings.HasPrefix(path, prefix) {
+		p := path.Clean("/" + prefix)
+		if p == "/" {
+			// A root prefix skips everything — preserved from the previous
+			// behaviour rather than silently narrowed here.
+			return true
+		}
+		if cleaned == p || strings.HasPrefix(cleaned, p+"/") {
 			return true
 		}
 	}
