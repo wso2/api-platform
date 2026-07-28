@@ -36,6 +36,8 @@ import (
 	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
+	metadatav3 "github.com/envoyproxy/go-control-plane/envoy/type/metadata/v3"
+	tracingv3 "github.com/envoyproxy/go-control-plane/envoy/type/tracing/v3"
 	resource "github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1701,6 +1703,44 @@ func TestTranslator_CreateTracingConfig_ResourceAttributes(t *testing.T) {
 	}, staticDetector.GetAttributes())
 }
 
+// TestTranslator_CreateTracingConfig_PeerServiceCustomTag guards the fix for GH issue #2883:
+// with tracing enabled, the HCM tracing config must carry exactly one custom tag, "peer.service",
+// sourced from host metadata under the envoy.lb/hostname key set by setEndpointPeerHostname —
+// without this, Datadog APM has no peer attribute on upstream CLIENT spans to build the
+// Dependencies view / service map from. This pins the wire shape so a go-control-plane version
+// bump can't silently reshape it without a test failure.
+func TestTranslator_CreateTracingConfig_PeerServiceCustomTag(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.TracingConfig.Enabled = true
+	cfg.TracingConfig.Endpoint = "otel-collector:4317"
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	tracingCfg, err := translator.createTracingConfig()
+	require.NoError(t, err)
+	require.NotNil(t, tracingCfg)
+
+	customTags := tracingCfg.GetCustomTags()
+	require.Len(t, customTags, 1, "exactly one custom tag (peer.service) is expected")
+
+	tag := customTags[0]
+	assert.Equal(t, "peer.service", tag.GetTag())
+
+	metaTag, ok := tag.GetType().(*tracingv3.CustomTag_Metadata_)
+	require.True(t, ok, "peer.service must be sourced from metadata, got %T", tag.GetType())
+
+	hostKind, ok := metaTag.Metadata.GetKind().GetKind().(*metadatav3.MetadataKind_Host_)
+	require.True(t, ok, "peer.service must read HOST metadata (the selected upstream endpoint), got %T",
+		metaTag.Metadata.GetKind().GetKind())
+	assert.NotNil(t, hostKind)
+
+	key := metaTag.Metadata.GetMetadataKey()
+	assert.Equal(t, "envoy.lb", key.GetKey())
+	require.Len(t, key.GetPath(), 1)
+	assert.Equal(t, "hostname", key.GetPath()[0].GetKey())
+}
+
 func TestTranslator_CreateOTELCollectorCluster(t *testing.T) {
 	logger := createTestLogger()
 	routerCfg := testRouterConfig()
@@ -2411,6 +2451,46 @@ func createTestTranslator() *Translator {
 	return NewTranslator(logger, routerCfg, nil, cfg)
 }
 
+// TestProcessEndpoint_PeerHostnameMetadata guards the fix for GH issue #2883 (Datadog
+// Dependencies view needs a peer.service tag on upstream CLIENT spans). processEndpoint must
+// stamp the upstream hostname under the envoy.lb/hostname metadata key so the peer.service
+// custom tag (createTracingUpstreamPeerCustomTags) can read it, for both plaintext and HTTPS
+// endpoints — and, for HTTPS, alongside (not instead of) the existing
+// envoy.transport_socket_match/lb_id metadata that TLS transport-socket matching depends on.
+func TestProcessEndpoint_PeerHostnameMetadata(t *testing.T) {
+	translator := createTestTranslator()
+
+	t.Run("http endpoint gets peer hostname metadata, no transport socket metadata", func(t *testing.T) {
+		u, err := url.Parse("http://backend.default.svc.cluster.local:8080/v1")
+		require.NoError(t, err)
+
+		endpoints, tsm := translator.processEndpoint(u, nil)
+		require.Len(t, endpoints, 1)
+		lb := endpoints[0].GetLbEndpoints()[0]
+
+		assert.Nil(t, tsm, "plaintext endpoint must not produce a transport socket match")
+		md := lb.GetMetadata().GetFilterMetadata()
+		assert.Equal(t, "backend.default.svc.cluster.local", md["envoy.lb"].GetFields()["hostname"].GetStringValue())
+		assert.Nil(t, md["envoy.transport_socket_match"], "plaintext endpoint must not carry transport-socket metadata")
+	})
+
+	t.Run("https endpoint gets peer hostname metadata alongside transport socket metadata", func(t *testing.T) {
+		u, err := url.Parse("https://api.example.com/v1")
+		require.NoError(t, err)
+
+		endpoints, tsm := translator.processEndpoint(u, nil)
+		require.Len(t, endpoints, 1)
+		lb := endpoints[0].GetLbEndpoints()[0]
+
+		require.NotNil(t, tsm, "https endpoint must produce a transport socket match")
+		md := lb.GetMetadata().GetFilterMetadata()
+		assert.Equal(t, "api.example.com", md["envoy.lb"].GetFields()["hostname"].GetStringValue())
+		require.NotNil(t, md["envoy.transport_socket_match"],
+			"https endpoint must still carry transport-socket metadata alongside peer hostname metadata")
+		assert.Equal(t, constants.DefaultMatchID, md["envoy.transport_socket_match"].GetFields()["lb_id"].GetStringValue())
+	})
+}
+
 // TestCreateWeightedCluster_TLS guards the fix for the reviewer concern
 // "Configure TLS for weighted HTTPS upstreams." A multi-endpoint (weighted) upstream
 // definition whose endpoints are HTTPS must be dialed over TLS, mirroring the single-endpoint
@@ -2469,9 +2549,55 @@ func TestCreateWeightedCluster_TLS(t *testing.T) {
 			require.NotNil(t, c)
 			assert.Empty(t, c.GetTransportSocketMatches(),
 				"plaintext weighted upstream must not get transport socket matches")
-			for _, lb := range c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints() {
-				assert.Nil(t, lb.GetMetadata(), "plaintext endpoint must not carry transport-socket metadata")
+			for i, lb := range c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints() {
+				assert.Nil(t, lb.GetMetadata().GetFilterMetadata()["envoy.transport_socket_match"],
+					"plaintext endpoint must not carry transport-socket metadata")
+				// peer.service hostname metadata is independent of TLS and must still be present.
+				assert.Equal(t, plain[i].Host,
+					lb.GetMetadata().GetFilterMetadata()["envoy.lb"].GetFields()["hostname"].GetStringValue())
 			}
+		}
+	})
+}
+
+// TestCreateWeightedCluster_PeerHostnameMetadata guards the multi-endpoint half of the fix for
+// GH issue #2883: a weighted (multi-endpoint) upstream cluster is exactly as common as a
+// single-endpoint one (round-robin/failover across distinct backends), so every LbEndpoint
+// createWeightedCluster produces must carry its own envoy.lb/hostname metadata — not just the
+// single-endpoint processEndpoint path. Before this fix, any upstream with more than one
+// endpoint had no peer.service tracing tag whatsoever.
+func TestCreateWeightedCluster_PeerHostnameMetadata(t *testing.T) {
+	translator := createTestTranslator()
+	w := func(n int) *int { return &n }
+	endpoints := []models.Endpoint{
+		{Host: "a.example.com", Port: 443, Weight: w(70)},
+		{Host: "b.example.com", Port: 443, Weight: w(30)},
+	}
+
+	t.Run("each endpoint carries its own hostname, distinct from its siblings", func(t *testing.T) {
+		c := translator.createWeightedCluster("upstream_secure", endpoints, &models.UpstreamTLS{Enabled: true}, nil)
+		require.NotNil(t, c)
+
+		lbs := c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints()
+		require.Len(t, lbs, len(endpoints))
+		for i, lb := range lbs {
+			md := lb.GetMetadata().GetFilterMetadata()
+			assert.Equal(t, endpoints[i].Host, md["envoy.lb"].GetFields()["hostname"].GetStringValue(),
+				"endpoint %d must carry its own hostname as peer.service metadata", i)
+			require.NotNil(t, md["envoy.transport_socket_match"])
+			assert.Equal(t, strconv.Itoa(i), md["envoy.transport_socket_match"].GetFields()["lb_id"].GetStringValue())
+		}
+	})
+
+	t.Run("plaintext weighted endpoints still get hostname metadata", func(t *testing.T) {
+		c := translator.createWeightedCluster("upstream_plain", endpoints, nil, nil)
+		require.NotNil(t, c)
+
+		lbs := c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints()
+		require.Len(t, lbs, len(endpoints))
+		for i, lb := range lbs {
+			assert.Equal(t, endpoints[i].Host,
+				lb.GetMetadata().GetFilterMetadata()["envoy.lb"].GetFields()["hostname"].GetStringValue())
 		}
 	})
 }
@@ -2592,4 +2718,51 @@ func TestTranslator_TranslateRuntimeConfig_AppliesConnectTimeout(t *testing.T) {
 		"an explicit per-upstream connect timeout must be applied to the Envoy cluster")
 	assert.Equal(t, 5*time.Second, got["without_timeout"],
 		"a nil connect timeout must fall back to the router global default (5s), not be dropped to zero")
+}
+
+// TestTranslateRuntimeConfig_PeerHostnameOnEveryEndpoint is the end-to-end invariant guard for
+// GH issue #2883: translateRuntimeConfig builds clusters via two different endpoint-construction
+// paths depending on endpoint count (createCluster/processEndpoint for one endpoint,
+// createWeightedCluster for more than one) — every LbEndpoint produced by either path must carry
+// non-empty envoy.lb/hostname metadata. This is the test that keeps gap #1 (multi-endpoint
+// upstreams silently getting no peer.service tag) from being reintroduced if a third
+// endpoint-building path is ever added without also calling setEndpointPeerHostname.
+func TestTranslateRuntimeConfig_PeerHostnameOnEveryEndpoint(t *testing.T) {
+	translator := createTestTranslator()
+	w := func(n int) *int { return &n }
+	rdc := &models.RuntimeDeployConfig{
+		Metadata: models.Metadata{UUID: "u", Kind: "RestApi"},
+		Routes:   map[string]*models.Route{},
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"single": {
+				BasePath:  "/",
+				Endpoints: []models.Endpoint{{Host: "solo.example.com", Port: 8080}},
+			},
+			"weighted": {
+				BasePath: "/",
+				Endpoints: []models.Endpoint{
+					{Host: "primary.example.com", Port: 8080, Weight: w(80)},
+					{Host: "secondary.example.com", Port: 8080, Weight: w(15)},
+					{Host: "tertiary.example.com", Port: 8080, Weight: w(5)},
+				},
+			},
+		},
+	}
+
+	_, clusters, err := translator.translateRuntimeConfig(rdc)
+	require.NoError(t, err)
+	require.Len(t, clusters, 2)
+
+	checked := 0
+	for _, c := range clusters {
+		for _, localityLb := range c.GetLoadAssignment().GetEndpoints() {
+			for _, lb := range localityLb.GetLbEndpoints() {
+				hostname := lb.GetMetadata().GetFilterMetadata()["envoy.lb"].GetFields()["hostname"].GetStringValue()
+				assert.NotEmpty(t, hostname,
+					"cluster %q: every LbEndpoint must carry a non-empty peer.service hostname", c.GetName())
+				checked++
+			}
+		}
+	}
+	assert.Equal(t, 4, checked, "expected to have checked all 4 endpoints across both clusters (1 + 3)")
 }
