@@ -19,6 +19,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -291,6 +292,9 @@ func (s *LLMProviderAPIKeyService) CreateLLMProviderAPIKey(
 		AllowedTargets: allowedTargets,
 	}
 	if err := s.apiKeyRepo.Create(dbKey); err != nil {
+		if errors.Is(err, repository.ErrAPIKeyNameConflict) {
+			return nil, apperror.LLMProviderAPIKeyConflict.New()
+		}
 		s.slogger.Error("Failed to persist LLM provider API key to database", "providerId", providerID, "keyName", name, "error", err)
 		return nil, fmt.Errorf("failed to persist API key: %w", err)
 	}

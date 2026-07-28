@@ -19,6 +19,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -252,6 +253,9 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		AllowedTargets: allowedTargets,
 	}
 	if err := s.apiKeyRepo.Create(dbKey); err != nil {
+		if errors.Is(err, repository.ErrAPIKeyNameConflict) {
+			return nil, apperror.LLMProxyAPIKeyConflict.New()
+		}
 		s.slogger.Error("Failed to persist LLM proxy API key to database", "proxyId", proxyID, "keyName", name, "error", err)
 		return nil, fmt.Errorf("failed to persist API key: %w", err)
 	}
