@@ -81,7 +81,6 @@ function startMockTokenServer() {
                     aborted = true;
                     res.writeHead(413, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ error: 'payload_too_large' }));
-                    req.destroy();
                 }
             });
             req.on('end', () => {
