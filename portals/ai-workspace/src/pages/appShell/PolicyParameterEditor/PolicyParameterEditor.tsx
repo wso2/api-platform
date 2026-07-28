@@ -268,7 +268,12 @@ function validateValueConstraints(
   }
 
   if (schema.type === 'number' || schema.type === 'integer') {
-    const num = typeof value === 'number' ? value : Number(value);
+    const num =
+      typeof value === 'number'
+        ? value
+        : typeof value === 'string' && value.trim() !== ''
+          ? Number(value)
+          : Number.NaN;
     if (
       !Number.isFinite(num) ||
       (schema.type === 'integer' && !Number.isInteger(num))

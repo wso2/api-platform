@@ -235,7 +235,7 @@ export const NumberFieldRenderer: React.FC<FieldRendererProps> = ({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputValue = e.target.value;
     setDisplayValue(inputValue);
-    if (inputValue === '') {
+    if (inputValue.trim() === '') {
       onChange(node.path, '');
       return;
     }
