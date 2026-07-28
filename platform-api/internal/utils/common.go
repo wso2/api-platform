@@ -27,6 +27,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -443,6 +444,16 @@ func CheckURLReachability(rawURL string, timeout time.Duration) error {
 			}
 			return nil
 		},
+		// This is a one-off diagnostic probe with nothing to gain from keep-alive —
+		// and everything to lose: some servers send a Transfer-Encoding: chunked
+		// response to a HEAD request without properly terminating it, and Go's
+		// transport can still decide the connection is safe to pool for reuse even
+		// when the body is drained (see the drain below). Disabling keep-alives here
+		// guarantees this connection is always closed after use, so a malformed
+		// response to this probe can never leak into and corrupt a later, unrelated
+		// request (e.g. the MCP initialize/tools/list calls FetchServerInfo makes
+		// right after this) that happens to reuse the same pooled connection.
+		Transport: &http.Transport{DisableKeepAlives: true},
 	}
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodHead, rawURL, nil)
@@ -455,6 +466,9 @@ func CheckURLReachability(rawURL string, timeout time.Duration) error {
 		return fmt.Errorf("URL is not reachable")
 	}
 	defer resp.Body.Close() //nolint:errcheck
+	// Still drain before close as good practice, even though DisableKeepAlives
+	// above is what actually guarantees this connection is never reused.
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	return nil
 }
