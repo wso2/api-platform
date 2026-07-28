@@ -78,7 +78,7 @@ The response never includes the secret. That one `secret` value does double duty
 |---|---|---|
 | `id` | No | Handle for the webhook subscriber (unique per org), stored as-is. Generated from `displayName` when omitted — a numeric suffix (`-2`, `-3`) if that handle is taken, then a random one — so reusing a display name never fails. Supply it only when you need a specific, stable identifier: it is the id used in the resource path, and a collision on a handle you supplied is returned as `409` rather than silently renamed |
 | `displayName` | Yes | Human-readable name, and the basis for the generated handle |
-| `targetUrl` | Yes | HTTPS endpoint that receives webhook POSTs (e.g. a handler in front of your gateway). Must be unique within the organization |
+| `targetUrl` | Yes | HTTPS endpoint that receives webhook POSTs (e.g. a handler in front of your gateway). |
 | `secret` | Recommended | Minimum 32-character string, used for **both** signing each event with HMAC-SHA256 and deriving the AES-256-GCM key that encrypts sensitive fields in `apikey.generated`, `apikey.regenerated`, `subscription.created`, and `subscription.token_regenerated` events. Stored encrypted; never returned in API responses. If omitted, deliveries are sent unsigned (no `X-Devportal-Signature` header) **and** sensitive fields are omitted from `data` entirely |
 | `events` | No | Event type allowlist. Wildcards supported (`apikey.*`). Omit or leave empty to receive all events |
 | `enabled` | No | Defaults to `true`. Disable a subscriber without deleting it |

@@ -5200,7 +5200,8 @@ components:
         targetUrl:
           type: string
           format: uri
-          description: Target URL events are POSTed to. Must be unique within the organization.
+          description: >-
+            Target URL events are POSTed to.
           example: https://gateway.example.com/devportal-webhook
         secret:
           type: string
