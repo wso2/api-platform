@@ -59,7 +59,7 @@ services:
       - ./configs/config-platform-api-it.toml:/etc/platform-api/config-platform-api.toml:ro
       - platform-api-data:/app/data
       # TLS pair + RS256 JWT keypair generated once, host-side, by `make
-      # ensure-certs` (mirrors ../scripts/setup.sh's approach for the production
+      # ensure-certs` (mirrors ../../scripts/setup.sh's approach for the production
       # compose) — read-only, 644-mode so the container's non-root user can read
       # a host-owned file. Same host dir, two mount points: TLS cert/key.pem
       # under /app/data/certs, jwt_{public,private}.pem under
@@ -87,7 +87,9 @@ services:
       # Public half of the RS256 JWT keypair from `make ensure-certs` — the
       # devportal verifies Platform API tokens with it (test-config.toml reads it
       # via {{ file }}). /etc/devportal is on the devportal's file allowlist.
-      - ./.certs:/etc/devportal/keys:ro
+      # Mount only jwt_public.pem, not the whole .certs dir, so the private key
+      # (also in .certs, for platform-api) is never exposed to the devportal.
+      - ./.certs/jwt_public.pem:/etc/devportal/keys/jwt_public.pem:ro
     environment:
       # DB-agnostic settings (tls/logging/api-key/org/platform-api) live in ./test-config.toml.
       APIP_DP_DATABASE_HOST: postgres

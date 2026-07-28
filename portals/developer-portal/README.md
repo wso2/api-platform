@@ -22,18 +22,18 @@ For end-user documentation, see [docs/](docs/).
 
 ## Quick Start (Docker Compose)
 
-The fastest way to get the portal running — no local Node install required. Requires `openssl` and Docker (used by `./scripts/setup.sh` to bcrypt-hash the admin password).
+The fastest way to get the portal running — no local Node install required. Requires `openssl` and Docker (used by `../scripts/setup.sh` to bcrypt-hash the admin password).
 
 ### Run
 
 ```bash
-./scripts/setup.sh
+../scripts/setup.sh
 docker compose up
 ```
 
-`./scripts/setup.sh` is a one-time step: it generates devportal's and the Platform API's encryption/JWT secrets, a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build devportal from source instead of using the published image, run `docker compose up --build`.
+`../scripts/setup.sh` is a one-time step: it generates devportal's and the Platform API's encryption/session/JWT secrets (written to `resources/keys/` as files, read via `{{ file }}` — never as env vars), a self-signed TLS certificate, and an admin user into `api-platform.env` (git-ignored). It prompts for an admin username/password interactively, or generates a random password if you press Enter; set `ADMIN_USERNAME`/`ADMIN_PASSWORD` env vars to skip the prompts (e.g. in CI). Safe to re-run — it only fills in what's missing and never overwrites an existing value; to build devportal from source instead of using the published image, run `docker compose up --build`.
 
-Then open **https://localhost:9543/default/views/default** and log in with the admin credentials `./scripts/setup.sh` printed.
+Then open **https://localhost:9543/default/views/default** and log in with the admin credentials `../scripts/setup.sh` printed.
 
 > **Browser warning:** the TLS certificate is self-signed. Click **Advanced → Proceed** (Chrome) or **Accept the Risk** (Firefox) to continue.
 
@@ -67,6 +67,8 @@ docker compose down -v
 # Remove build artifacts and distribution zips
 make clean
 ```
+
+`docker compose down` only tears down services matching the profiles currently active for the project (from `COMPOSE_PROFILES` in `.env`, or an explicit `--profile` flag) — it does not remember what was passed to `docker compose up` earlier. If you separately started the optional `ai-workspace` profile (`docker compose --profile ai-workspace up -d`), a bare `docker compose down` leaves it running. Either tear that down explicitly first (`docker compose --profile ai-workspace down`, or `docker compose stop ai-workspace` to stop without removing), or use `docker compose --profile all down -v` to remove every service regardless of which profiles are currently set — every service in this file carries the `all` profile for exactly this case.
 
 ---
 
@@ -140,7 +142,17 @@ Use this for active development, custom IdP configuration, or when you prefer to
 
 ### 2. Use `npm run start:local`, not `npm start`
 
-`configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `auth.local.platform_api_url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off, `auth.local.platform_api_url` pointed at `localhost`, and `auth.local.public_key_path` pointed at the host-side `resources/keys/` that `scripts/setup.sh` writes rather than the container mount path (see [Local auth](#local-auth) if you're running the Platform API sidecar).
+`configs/config.toml`'s own defaults are wired for the Docker Compose topology (TLS on, pointing at a cert only the containers have, `auth.local.platform_api_url` pointing at the `platform-api` hostname that only resolves inside the compose network). Plain `npm start` inherits those as-is and will fail — there's no `/app` filesystem or bind-mounted cert here. `npm run start:local` (`package.json`) overrides all of it in one place: TLS off, `auth.local.platform_api_url` pointed at `localhost`, and `auth.local.public_key_path` pointed at the host-side `resources/keys/` that `../scripts/setup.sh` writes rather than the container mount path (see [Local auth](#local-auth) if you're running the Platform API sidecar).
+
+`security.encryption_key`/`security.session_secret`, unlike `public_key_path`, are read via `{{ file "/etc/devportal/keys/..." }}` directly in `config.toml` — there's no env-var override for that path, so it always looks under `/etc/devportal/keys` even for `npm run start:local`, which doesn't exist outside the containers. For local (non-Docker) runs, point `configs/config.toml` at the host-side files `../scripts/setup.sh` already generated instead:
+
+```toml
+[developer_portal.security]
+encryption_key = '{{ file "resources/keys/devportal-encryption.key" }}'
+session_secret = '{{ file "resources/keys/devportal-session-secret" }}'
+```
+
+`{{ file }}` only reads from an allowlisted directory (`/etc/devportal`, `/secrets/devportal` by default), so also set `APIP_CONFIG_FILE_SOURCE_ALLOWLIST=resources/keys` when running `npm run start:local` (or add it to the `start:local` script in `package.json`). Don't commit the `config.toml` path change — it's a local-only edit for the Docker-free flow.
 
 ### 3. Configure the Identity Provider (optional)
 
@@ -249,7 +261,7 @@ public_key_path = "/etc/devportal/keys/jwt_public.pem"  # path to the Platform A
 tls_skip_verify = true                    # Platform API uses a self-signed cert
 ```
 
-Tokens are signed asymmetrically (RS256): the Platform API mints them with its `auth.jwt.private_key` and the portal verifies them against the matching public key above. There is no shared HMAC secret, and the private key never leaves the Platform API — `scripts/setup.sh` generates the keypair into `resources/keys/`, and `docker-compose.yaml` mounts only `jwt_public.pem`'s directory into the portal (at `/etc/devportal/keys`).
+Tokens are signed asymmetrically (RS256): the Platform API mints them with its `auth.jwt.private_key` and the portal verifies them against the matching public key above. There is no shared HMAC secret, and the private key never leaves the Platform API — `../scripts/setup.sh` generates the keypair into `resources/keys/`, and `docker-compose.yaml` mounts only the `jwt_public.pem` file into the portal (at `/etc/devportal/keys/jwt_public.pem`); the Platform API's own `jwt_private.pem` and `encryption.key` (its at-rest encryption key, `resources/keys/encryption.key`) are never mounted into the portal container. The portal has its own, separate secrets — `resources/keys/devportal-encryption.key` and `resources/keys/devportal-session-secret` — which `docker-compose.yaml` mounts into the portal container at `/etc/devportal/keys/encryption.key` and `/etc/devportal/keys/session-secret` respectively; these never leave the portal container either way.
 
 For production, configure an OIDC identity provider per organization instead of local auth.
 
@@ -452,7 +464,7 @@ paths:
 
 ```bash
 # Get a Bearer token from the Platform API (substitute the credentials
-# ./scripts/setup.sh printed)
+# ../scripts/setup.sh printed)
 TOKEN=$(curl -sk -X POST "https://localhost:9243/api/portal/v0.9/auth/login" \
   -d "username=<admin-username>&password=<admin-password>" | jq -r .token)
 
@@ -472,5 +484,5 @@ Refresh the portal — the Reading-List-API now appears in the catalog. Click it
 | Organization | `default` |
 | Default view | `default` |
 | Portal URL | `https://localhost:9543/default/views/default` |
-| Admin credentials | printed by `./scripts/setup.sh` (local auth) |
+| Admin credentials | printed by `../scripts/setup.sh` (local auth) |
 | Sample API | `Reading-List-API` visible in the catalog |

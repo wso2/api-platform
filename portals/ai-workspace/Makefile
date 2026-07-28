@@ -56,7 +56,7 @@ bff-build: ## Build the BFF binary
 # cannot be set here. To test against an IDP, add APIP_AIW_AUTH_MODE=oidc and the
 # APIP_AIW_OIDC_* variables the [oidc] tokens name — see README.md.
 bff-run: ## Run the BFF locally (proxies to CONTROL_PLANE_URL; pair with `make run`)
-	./setup.sh --certs-only
+	../scripts/setup.sh --certs-only
 	cd $(BFF_DIR) && \
 		APIP_AIW_CONTROL_PLANE_URL=$(CONTROL_PLANE_URL) \
 		APIP_AIW_CONTROL_PLANE_TLS_SKIP_VERIFY=true \
@@ -90,6 +90,16 @@ e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
 		env_backup_file="$$(mktemp)"; \
 		cp api-platform.env "$$env_backup_file"; \
 	fi; \
+	keys_backup_dir=""; \
+	if [ -d resources/keys ]; then \
+		keys_backup_dir="$$(mktemp -d)"; \
+		cp -a resources/keys "$$keys_backup_dir/keys"; \
+	fi; \
+	certs_backup_dir=""; \
+	if [ -d resources/certificates ]; then \
+		certs_backup_dir="$$(mktemp -d)"; \
+		cp -a resources/certificates "$$certs_backup_dir/certificates"; \
+	fi; \
 	cleanup() { \
 		status=$$?; \
 		if [ $$status -ne 0 ]; then \
@@ -101,6 +111,20 @@ e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
 			mv "$$env_backup_file" api-platform.env; \
 		else \
 			rm -f api-platform.env; \
+		fi; \
+		if [ -n "$$keys_backup_dir" ]; then \
+			rm -rf resources/keys; \
+			mv "$$keys_backup_dir/keys" resources/keys; \
+			rm -rf "$$keys_backup_dir"; \
+		else \
+			rm -rf resources/keys; \
+		fi; \
+		if [ -n "$$certs_backup_dir" ]; then \
+			rm -rf resources/certificates; \
+			mv "$$certs_backup_dir/certificates" resources/certificates; \
+			rm -rf "$$certs_backup_dir"; \
+		else \
+			rm -rf resources/certificates; \
 		fi; \
 		exit $$status; \
 	}; \
@@ -119,7 +143,7 @@ e2e-ci: ## Run AI Workspace E2E against a local quickstart stack
 	echo "Pinning ai-workspace compose to platform-api:$${platform_api_version}"; \
 	sed -i.bak -E "s#image: .*/platform-api:.*#image: $(DOCKER_REGISTRY)/platform-api:$${platform_api_version}#" docker-compose.yaml; \
 	rm -f docker-compose.yaml.bak; \
-	ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./setup.sh --force; \
+	ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ../scripts/setup.sh --force; \
 	docker compose up -d --wait --wait-timeout 300; \
 	$(MAKE) e2e-test
 
@@ -347,8 +371,17 @@ endif
 		'*.env' \
 		'resources/certificates/*' \
 		> $(DIST_DIR)/.gitignore
-	@cp setup.sh $(DIST_DIR)/scripts/setup.sh
+	@cp ../scripts/setup.sh $(DIST_DIR)/scripts/setup.sh
 	@chmod +x $(DIST_DIR)/scripts/setup.sh
+# Bake this pack's default COMPOSE_PROFILES into setup.sh so `docker compose
+# up -d` (no --profile flag) starts AI Workspace + Platform API out of the
+# box once setup.sh has run. setup.sh writes it to .env at setup time — .env
+# is not shipped in the zip itself, only this pack's default value for it.
+	@sed -i.bak \
+	    -e 's|^DEFAULT_COMPOSE_PROFILES=.*|DEFAULT_COMPOSE_PROFILES="ai-workspace,platform-api"|' \
+	    -e 's|^DEFAULT_PACK_NAME=.*|DEFAULT_PACK_NAME="ai-workspace"|' \
+	    $(DIST_DIR)/scripts/setup.sh
+	@rm -f $(DIST_DIR)/scripts/setup.sh.bak
 # Point the platform-api mount at the merged config so both containers share one file.
 	@sed 's#\.\./\.\./platform-api/config/config\.toml:#./configs/config.toml:#' \
 		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml
