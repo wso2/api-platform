@@ -129,7 +129,7 @@ Feature: Model Round-Robin Multi-Provider Routing
                   suspendDuration: 60
       """
     Then the response status should be 201
-    And I wait for policy snapshot sync
+    And I wait for 3 seconds
 
     # Request 1 -> primary provider (no provider on target), model gpt-4o
     When I set header "Content-Type" to "application/json"
@@ -252,7 +252,7 @@ Feature: Model Round-Robin Multi-Provider Routing
                   suspendDuration: 30
       """
     Then the response status should be 201
-    And I wait for policy snapshot sync
+    And I wait for 3 seconds
 
     # Request 1 -> primary/shared-model, healthy
     When I set header "Content-Type" to "application/json"
@@ -365,7 +365,7 @@ Feature: Model Round-Robin Multi-Provider Routing
                     - model: model-two
       """
     Then the response status should be 201
-    And I wait for policy snapshot sync
+    And I wait for 3 seconds
 
     When I set header "Content-Type" to "application/json"
     And I send a POST request to "http://localhost:8080/mp-default-proxy/chat/completions" with body:
