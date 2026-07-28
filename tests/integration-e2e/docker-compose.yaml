@@ -114,11 +114,11 @@ services:
       - APIP_CP_AUTH_FILE_BASED_USERS=${AUTH_FILE_BASED_USERS:-}
       # Developer Portal webhook receiver (only the postgres stack runs the devportal).
       # Enabled via env so the sqlite/sqlserver stacks — which have no devportal —
-      # leave it off. The secret below both verifies request signatures and decrypts
-      # the encrypted key/token fields, so the suite registers the devportal
-      # subscriber with this exact same value (see registerWebhookSubscriber).
+      # leave it off. The secret both verifies request signatures and decrypts the
+      # encrypted key/token fields, so the suite registers the devportal subscriber
+      # with this exact same value (see registerWebhookSubscriber).
       - APIP_CP_WEBHOOK_ENABLED=true
-      - APIP_CP_WEBHOOK_SECRET=5bd108b058ac9b318faf771c82a3f88bf6d3be5cc51c221e7ee213dabdbdee22
+      - APIP_CP_WEBHOOK_SECRET=${E2E_WEBHOOK_SECRET:?set E2E_WEBHOOK_SECRET (the suite sets it automatically; export one to run compose by hand)}
       - APIP_CP_WEBHOOK_GATEWAY_TYPE=wso2/api-platform
     volumes:
       - ./platform-api-config.toml:/etc/platform-api/config.toml:ro

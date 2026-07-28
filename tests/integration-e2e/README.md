@@ -83,6 +83,13 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
 
 - `E2E_DB` = `postgres` (default) | `sqlite` | `sqlserver`.
 - `E2E_KEEP=1` leaves the stack up after the run for inspection.
+- `E2E_WEBHOOK_SECRET` is the secret shared between the developer portal subscriber and
+  platform-api. **The suite generates a fresh one per run and exports it, so you normally
+  set nothing.** There is no committed default: compose declares the variable required, so
+  a manual `docker compose up` without it fails immediately rather than running on a
+  well-known secret. Export your own value to pin it — worth doing across repeated
+  `E2E_KEEP=1` runs, though the suite also re-syncs a kept subscriber's stored secret on
+  each run, so a rotating secret works either way.
 - `E2E_TAGS=@smoke` runs a tag subset (other tags: `@secured`, `@multigateway`,
   `@devportal`, `@lifecycle` for the credential-lifecycle scenario — run it alone
   with `E2E_TAGS="@devportal && @lifecycle"` —, and the on-demand secret fetch
@@ -154,11 +161,14 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
      `AUTH_FILE_BASED_USERS` env var (a mounted config's users are ignored; only
      that env override wins). Bearer auth (not API-key mode) is used because the
      write paths need a resolved user for `created_by`.
-   - `BeforeSuite` links the portal org (`cpRefId = "default"`, the platform-api org
-     handle) and registers a webhook subscriber pointing at
-     `…/api/internal/v0.9/webhook/events` with the shared secret (`webhookSecret` in
-     `suite_test.go`, which must equal `APIP_CP_WEBHOOK_SECRET` in the compose file —
-     that one value both signs and encrypts, so a mismatch breaks both).
+   - `BeforeSuite` generates the shared webhook secret (`prepareWebhookSecret`, exported
+     as `E2E_WEBHOOK_SECRET` before the stack starts so compose interpolates the same
+     value into `APIP_CP_WEBHOOK_SECRET`), links the portal org (`cpRefId = "default"`,
+     the platform-api org handle), and registers a webhook subscriber pointing at
+     `…/api/internal/v0.9/webhook/events` with that secret. That one value both signs and
+     encrypts, so the portal and platform-api holding different values breaks both — which
+     is why a subscriber left over from an `E2E_KEEP=1` run is updated (PUT) rather than
+     skipped on conflict.
    - The delivery worker POSTs over raw https with the default agent, so the
      devportal container sets `NODE_TLS_REJECT_UNAUTHORIZED=0` to accept
      platform-api's self-signed cert.

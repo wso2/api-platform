@@ -23,7 +23,9 @@ package e2e
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -45,12 +47,6 @@ const (
 	// run (postgres + two gateways + devportal, with controller restarts) tolerates
 	// slower Envoy config propagation under load on constrained hosts.
 	pollTimeout = 120 * time.Second
-
-	// Webhook secret shared with the developer portal — must match
-	// APIP_CP_WEBHOOK_SECRET in docker-compose.yaml. It both signs deliveries
-	// (HMAC-SHA256) and derives the AES key for the encrypted key/token fields, so a
-	// mismatch here breaks signature verification and field decryption together.
-	webhookSecret = "5bd108b058ac9b318faf771c82a3f88bf6d3be5cc51c221e7ee213dabdbdee22"
 
 	// Admin user injected via AUTH_FILE_BASED_USERS on the @devportal stack. It
 	// carries both the platform-api ap:* scopes and the dp:*_manage scopes the
@@ -172,6 +168,12 @@ func bringUpStack() error {
 		return fmt.Errorf("unsupported E2E_DB %q", suite.db)
 	}
 	fmt.Printf("E2E database backend: %s (%s)\n", suite.db, suite.composeFile)
+
+	// The webhook secret has to exist before the stack comes up, because compose
+	// interpolates it into platform-api's environment (and refuses to start without it).
+	if err := prepareWebhookSecret(); err != nil {
+		return err
+	}
 
 	if suite.db == "postgres" {
 		// Give the admin JWT the dp:* scopes the developer portal enforces.
@@ -373,6 +375,36 @@ func devportalSelected() bool {
 	return strings.Contains(tags, "@devportal") && !strings.Contains(tags, "~@devportal")
 }
 
+// webhookSecret is the secret shared between the developer portal subscriber and
+// platform-api's APIP_CP_WEBHOOK_SECRET. It both signs deliveries (HMAC-SHA256) and
+// derives the AES key for the encrypted key/token fields, so the two sides holding
+// different values breaks signature verification and field decryption together.
+//
+// Generated per run rather than committed: a checked-in value is a functional credential
+// in a public repository, and one that is easy to copy into a real deployment by mistake.
+var webhookSecret string
+
+// prepareWebhookSecret populates webhookSecret and exports it as E2E_WEBHOOK_SECRET for
+// docker-compose to interpolate, before the stack is brought up.
+//
+// An already-set E2E_WEBHOOK_SECRET is honoured rather than overwritten, so a developer
+// can pin one value across repeated `E2E_KEEP=1` runs (or a CI job can inject its own).
+// Otherwise a fresh 32-byte random value is generated for this run. There is deliberately
+// no committed fallback: compose declares the variable required, so a stack started
+// without it fails immediately instead of running on a well-known secret.
+func prepareWebhookSecret() error {
+	if existing := os.Getenv("E2E_WEBHOOK_SECRET"); existing != "" {
+		webhookSecret = existing
+		return nil
+	}
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Errorf("generate webhook secret: %w", err)
+	}
+	webhookSecret = hex.EncodeToString(buf)
+	return os.Setenv("E2E_WEBHOOK_SECRET", webhookSecret)
+}
+
 // --- small helpers ---------------------------------------------------------
 
 func envOr(k, def string) string {
@@ -395,4 +427,3 @@ func jsonField(body []byte, keys ...string) string {
 	}
 	return ""
 }
-
