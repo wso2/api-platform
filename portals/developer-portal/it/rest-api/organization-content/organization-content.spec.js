@@ -44,11 +44,18 @@ const PNG_BYTES = Buffer.from(
     'hex',
 );
 
+// A minimal ICO header and one directory entry. The importer treats images as
+// opaque binary assets, so this is sufficient to verify acceptance and serving.
+const ICO_BYTES = Buffer.from(
+    '00000100010010100000010020002801000016000000',
+    'hex',
+);
+
 const CSS_BODY = 'body { color: #123456; }';
 
 // A valid theme ZIP wrapped in a top-level folder (readFilesInDirectory strips the
 // first path segment on import, mirroring what export-theme produces). Only file
-// types the importer recognises are included: .css → style, .png → image.
+// types the importer recognises are included: .css → style, image extensions → image.
 function buildThemeZip({ imageName = 'brand-mark.png', css = CSS_BODY, image = PNG_BYTES } = {}) {
     return createZip([
         { name: `theme/styles/main.css`, content: css },
@@ -84,6 +91,22 @@ describe('Organization theming (view theme assets)', () => {
             expect(img.status).toBe(200);
             expect(img.headers['content-type']).toContain('image/png');
             expect(Buffer.compare(img.body, PNG_BYTES)).toBe(0);
+        });
+
+        it('applies a theme containing favicon.ico and serves it as an icon', async () => {
+            const { id: viewId } = await createView();
+            const apply = await applyThemeAs('admin', viewId, buildThemeZip({
+                imageName: 'favicon.ico',
+                image: ICO_BYTES,
+            }));
+            expect(apply.status).toBe(200);
+
+            const favicon = await client.as('admin')
+                .get(`/views/${viewId}/asset?fileType=image&fileName=favicon.ico`)
+                .responseType('blob');
+            expect(favicon.status).toBe(200);
+            expect(favicon.headers['content-type']).toContain('image/x-icon');
+            expect(Buffer.compare(favicon.body, ICO_BYTES)).toBe(0);
         });
 
         it('serves back the style asset as CSS', async () => {
