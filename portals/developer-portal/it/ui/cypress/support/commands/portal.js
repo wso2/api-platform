@@ -16,6 +16,8 @@
 // under the License.
 // --------------------------------------------------------------------
 
+// Generic portal navigation and management-API helpers shared across specs.
+
 // ---------------------------------------------------------------------------
 // cy.portalUrl(path)
 //   Build a URL under the ACME/default view without hardcoding the base path.

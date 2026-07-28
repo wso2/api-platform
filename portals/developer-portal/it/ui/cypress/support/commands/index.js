@@ -16,17 +16,10 @@
 // under the License.
 // --------------------------------------------------------------------
 
-describe('Developer Portal — API Listing', () => {
-    beforeEach(() => {
-        cy.on('uncaught:exception', () => false);
-    });
-
-    context('UI — API browse page', () => {
-        it('loads the API list page without errors', () => {
-            cy.visitPortal('/apis');
-            cy.get('body').should('be.visible');
-            cy.get('body').should('not.contain.text', 'Cannot GET');
-            cy.get('body').should('not.contain.text', '500');
-        });
-    });
-});
+// Barrel for all custom Cypress commands. support/e2e.js imports this once
+// (`import './commands'`), so every module below registers its commands before
+// any spec runs. Add a new command module here to make it available globally.
+import './portal';       // cy.portalUrl, cy.apiRequest, cy.visitPortal
+import './auth';         // cy.login, cy.completeLoginForm, cy.logout
+import './seed';         // cy.seedApi, cy.seedMcp, cy.deleteApi, cy.deleteMcp, cy.seedKeyManager, cy.deleteKeyManager
+import './applications'; // cy.createApplication, cy.deleteApplication
