@@ -40,6 +40,8 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/llm-cost@v1
   - name: llm-cost-based-ratelimit
     gomodule: github.com/wso2/gateway-controllers/policies/llm-cost-based-ratelimit@v1
+  - name: llm-header-router
+    gomodule: github.com/wso2/gateway-controllers/policies/llm-header-router@v0
   - name: log-message
     gomodule: github.com/wso2/gateway-controllers/policies/log-message@v1
   - name: mcp-acl-list
@@ -58,8 +60,16 @@ policies:
     gomodule: github.com/wso2/gateway-controllers/policies/model-weighted-round-robin@v1
   - name: opaque-token-auth
     gomodule: github.com/wso2/gateway-controllers/policies/opaque-token-auth@v1
+  - name: openai-to-anthropic-transformer
+    gomodule: github.com/wso2/gateway-controllers/policies/openai-to-anthropic-transformer@v0
+  - name: openai-to-azure-openai-transformer
+    gomodule: github.com/wso2/gateway-controllers/policies/openai-to-azure-openai-transformer@v0
   - name: openai-to-bedrock-transformer
     gomodule: github.com/wso2/gateway-controllers/policies/openai-to-bedrock-transformer@v0
+  - name: openai-to-gemini-transformer
+    gomodule: github.com/wso2/gateway-controllers/policies/openai-to-gemini-transformer@v0
+  - name: openai-to-mistral-transformer
+    gomodule: github.com/wso2/gateway-controllers/policies/openai-to-mistral-transformer@v0
   - name: pii-masking-regex
     gomodule: github.com/wso2/gateway-controllers/policies/pii-masking-regex@v1
   - name: prompt-compressor

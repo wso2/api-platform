@@ -187,15 +187,26 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 			if addProviderConfig, ok := addCfg.SourceConfiguration.(api.LLMProviderConfiguration); ok {
 				additionalValuePrefixByID[ap.Id] = apiKeyAuthValuePrefix(addProviderConfig.Spec.GlobalPolicies)
 			}
-			addURL := fmt.Sprintf("%s://%s:%d%s",
-				constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort, addCtx)
-			defs = append(defs, api.UpstreamDefinition{
+			// UpstreamDefinition URLs are host[:port] only. Keep the provider's
+			// loopback context in BasePath so the router rewrites requests to the
+			// additional provider route instead of dropping the context.
+			normalizedAddCtx := strings.TrimRight(addCtx, "/")
+			if normalizedAddCtx != "" && !strings.HasPrefix(normalizedAddCtx, "/") {
+				normalizedAddCtx = "/" + normalizedAddCtx
+			}
+			addURL := fmt.Sprintf("%s://%s:%d",
+				constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort)
+			def := api.UpstreamDefinition{
 				Name: name,
 				Upstreams: []struct {
 					Url    string `json:"url" yaml:"url"`
 					Weight *int   `json:"weight,omitempty" yaml:"weight,omitempty"`
 				}{{Url: addURL}},
-			})
+			}
+			if normalizedAddCtx != "" && normalizedAddCtx != constants.BASE_PATH {
+				def.BasePath = &normalizedAddCtx
+			}
+			defs = append(defs, def)
 		}
 		spec.UpstreamDefinitions = &defs
 	}
