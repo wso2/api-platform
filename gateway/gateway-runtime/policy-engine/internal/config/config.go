@@ -446,16 +446,11 @@ func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
 	return out, nil
 }
 
-// DefaultLLMCostPricingFile is the model-pricing file the llm-cost policy falls back
-// to when the operator has not set [policy_configurations.llm_cost_v1].pricing_file.
-// It is the path the gateway image mounts the shipped model_prices.json at.
+// DefaultLLMCostPricingFile is the model-pricing file the llm-cost policy fallback
 const DefaultLLMCostPricingFile = "/etc/policy-engine/llm-pricing/model_prices.json"
 
 // defaultResolvableConfig returns defaults for config keys that policy definitions
-// reference via ${config...} system-parameter markers, as flat delimited keys for
-// koanf's confmap provider. A policy whose marker is required (the default) fails to
-// resolve — and so fails to load — if its key is absent from the config entirely, so
-// these must be present even when no config file mentions the section.
+// reference via ${config...} system-parameter markers
 func defaultResolvableConfig() map[string]interface{} {
 	return map[string]interface{}{
 		"policy_configurations.llm_cost_v1.pricing_file": DefaultLLMCostPricingFile,
@@ -463,12 +458,6 @@ func defaultResolvableConfig() map[string]interface{} {
 }
 
 // defaultMaskedHeaders returns the header names whose values traffic logging redacts
-// when the operator has not configured traffic_logging.masked_headers. These carry
-// credentials, so they are masked by default rather than requiring opt-in — an
-// operator can widen the list, and setting it explicitly replaces this default
-// wholesale (koanf replaces arrays rather than merging them).
-// Returns a fresh slice per call so a caller mutating the result cannot alter the
-// default for a later Load.
 func defaultMaskedHeaders() []string {
 	return []string{"authorization", "x-api-key", "x-jwt-assertion"}
 }
@@ -559,9 +548,6 @@ func defaultConfig() *Config {
 			Enabled:           false,
 			EnabledPublishers: []string{"moesif"},
 			Publishers: AnalyticsPublishersConfig{
-				// ApplicationID has no default on purpose: it is operator-specific and
-				// validateAnalyticsConfig rejects an empty value while moesif is an
-				// enabled publisher, so a config that turns analytics on must supply one.
 				Moesif: MoesifPublisherConfig{
 					ApplicationID:      "",
 					BaseURL:            "https://api.moesif.net",

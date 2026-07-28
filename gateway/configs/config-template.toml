@@ -144,7 +144,7 @@ level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
 format = "text"
 
 [controller.metrics]
-enabled = true
+enabled = false
 port = '{{ env "APIP_GW_CONTROLLER_METRICS_PORT" "9091" }}'
 
 [controller.event_hub]
