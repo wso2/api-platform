@@ -11,13 +11,17 @@
  * associated services.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Box, Button, IconButton, Typography } from '@wso2/oxygen-ui';
 import { SquarePen } from 'lucide-react';
 import { useGatewayDeploy } from '../../contexts/GatewayDeployContext';
 import GatewayDeploymentSelector from './GatewayDeploymentSelector';
 import { HybridGateway } from '../../apis/gateway/types';
 import NoData from '../../assets/images/NoData.svg';
+import {
+  getActiveColorScheme,
+  subscribeToColorSchemeChanges,
+} from '../../utils/colorScheme';
 
 const STATUS_REASON_MESSAGES: Record<string, string> = {
   GATEWAY_PROCESSING_ERROR: 'Failed to process deployment. Please check gateway logs.',
@@ -50,6 +54,13 @@ export default function GatewayDeployEnvCard({
   const isThisGatewayDeploying = deployingGatewayId === gateway.id;
   const isPolling = isPollingGateway(gateway.id);
   const [selectorOpen, setSelectorOpen] = useState(false);
+  const [activeColorScheme, setActiveColorScheme] = useState(
+    getActiveColorScheme,
+  );
+
+  useEffect(() => {
+    return subscribeToColorSchemeChanges(setActiveColorScheme);
+  }, []);
 
   // Compute current deployment for this gateway
   const { currentDeployment, deploymentStatus } = useMemo(() => {
@@ -236,17 +247,29 @@ export default function GatewayDeployEnvCard({
           py: 1.5,
           mb: (isFailed && currentDeployment?.statusReason) ? 0 : 2,
           borderRadius: 1,
-          bgcolor: isNotActive
-            ? 'grey.100'
-            : isDeployed
-              ? 'rgba(46, 125, 50, 0.08)'
-              : isUndeployed
-                ? 'grey.100'
-                : (isDeploying || isUndeploying)
-                  ? 'rgba(237, 108, 2, 0.08)'
-                  : isFailed
-                    ? 'rgba(211, 47, 47, 0.08)'
-                    : 'action.hover',
+          bgcolor: (theme) => {
+            const isDarkMode = activeColorScheme === 'dark';
+
+            if (isNotActive || isUndeployed) {
+              return isDarkMode ? 'rgba(255, 255, 255, 0.12)' : theme.palette.grey[100];
+            }
+            if (isDeployed) {
+              return isDarkMode
+                ? 'rgba(46, 125, 50, 0.24)'
+                : 'rgba(46, 125, 50, 0.08)';
+            }
+            if (isDeploying || isUndeploying) {
+              return isDarkMode
+                ? 'rgba(237, 108, 2, 0.20)'
+                : 'rgba(237, 108, 2, 0.08)';
+            }
+            if (isFailed) {
+              return isDarkMode
+                ? 'rgba(211, 47, 47, 0.20)'
+                : 'rgba(211, 47, 47, 0.08)';
+            }
+            return theme.palette.action.hover;
+          },
         }}
       >
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -257,11 +280,11 @@ export default function GatewayDeployEnvCard({
           sx={{
             fontWeight: 600,
             color: isNotActive
-              ? '#7E7E7E'
+              ? 'text.secondary'
               : isDeployed
                 ? 'success.main'
                 : isUndeployed
-                  ? '#7E7E7E'
+                  ? 'text.secondary'
                   : (isDeploying || isUndeploying)
                     ? 'warning.main'
                     : isFailed
