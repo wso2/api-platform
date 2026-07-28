@@ -175,7 +175,7 @@ func (h *APIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) err
 	}
 
 	// Update the API key and broadcast to gateways
-	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, keyName, userId, h.isKeyAdmin(r), &req); err != nil {
+	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, keyName, userId, h.isKeyAdmin(r), false, &req); err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err
@@ -222,7 +222,7 @@ func (h *APIKeyHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) err
 	}
 
 	// Revoke the API key and broadcast to gateways
-	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, keyName, userId, h.isKeyAdmin(r)); err != nil {
+	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.RestApi, orgId, keyName, userId, h.isKeyAdmin(r), false); err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) {
 			return err

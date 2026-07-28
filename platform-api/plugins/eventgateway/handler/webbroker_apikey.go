@@ -190,7 +190,7 @@ func (h *WebBrokerAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, constants.WebBrokerApi, orgID, keyName, userId, h.isKeyAdmin(r), &req); err != nil {
+	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, constants.WebBrokerApi, orgID, keyName, userId, h.isKeyAdmin(r), false, &req); err != nil {
 		if apperror.ArtifactNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
 			return
@@ -242,7 +242,7 @@ func (h *WebBrokerAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.WebBrokerApi, orgID, keyName, userId, h.isKeyAdmin(r)); err != nil {
+	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.WebBrokerApi, orgID, keyName, userId, h.isKeyAdmin(r), false); err != nil {
 		if apperror.ArtifactNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
 			return

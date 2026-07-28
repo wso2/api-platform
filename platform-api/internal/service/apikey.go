@@ -537,7 +537,10 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 // Only the key's creator may update it, unless keyAdmin is true — the caller holds
 // constants.ScopeAPIKeyAllManage and may act on any user's key. This is shared by every kind
 // that uses this service (REST, WebSub, WebBroker API keys) via their own handlers.
-func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string, keyAdmin bool, req *api.UpdateAPIKeyRequest) error {
+// authorizedUpstream must be false for every directly-authenticated caller; it is set only by
+// the signature-verified webhook event path, which carries no end-user identity to match against
+// the key's creator (authentication_authorization.md GO-AUTH-019).
+func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string, keyAdmin, authorizedUpstream bool, req *api.UpdateAPIKeyRequest) error {
 	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
 	// kinds resolves to exactly one artifact.
 	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiHandle, kind, orgId)
@@ -564,7 +567,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	if existingKey == nil {
 		return apperror.RESTAPIKeyNotFound.New()
 	}
-	if !canManageAPIKey(existingKey.CreatedBy, userId, keyAdmin) {
+	if !authorizedUpstream && !canManageAPIKey(existingKey.CreatedBy, userId, keyAdmin) {
 		return apperror.RESTAPIKeyForbidden.New()
 	}
 
@@ -667,7 +670,9 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 // Only the key's creator may revoke it, unless keyAdmin is true — the caller holds
 // constants.ScopeAPIKeyAllManage and may act on any user's key. This is shared by every kind
 // that uses this service (REST, WebSub, WebBroker API keys) via their own handlers.
-func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string, keyAdmin bool) error {
+// authorizedUpstream carries the same meaning as in UpdateAPIKey: false for every
+// directly-authenticated caller, true only on the signature-verified webhook event path.
+func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string, keyAdmin, authorizedUpstream bool) error {
 	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
 	// kinds resolves to exactly one artifact.
 	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiHandle, kind, orgId)
@@ -694,7 +699,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 	if revokeKey == nil {
 		return apperror.RESTAPIKeyNotFound.New()
 	}
-	if !canManageAPIKey(revokeKey.CreatedBy, userId, keyAdmin) {
+	if !authorizedUpstream && !canManageAPIKey(revokeKey.CreatedBy, userId, keyAdmin) {
 		return apperror.RESTAPIKeyForbidden.New()
 	}
 
