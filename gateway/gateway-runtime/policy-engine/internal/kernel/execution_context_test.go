@@ -20,6 +20,7 @@ package kernel
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -196,6 +197,74 @@ func TestGetModeOverride_ResponseHeaderProcessing(t *testing.T) {
 
 	// Response header mode should still be SEND (optimization not implemented yet)
 	assert.Equal(t, extprocconfigv3.ProcessingMode_SEND, mode.ResponseHeaderMode)
+}
+
+// =============================================================================
+// responseStreamingEnabled / getModeOverride streaming-decision Tests
+//
+// Regression coverage: getModeOverride must derive ResponseBodyMode purely from ec.isStreamingResponse
+// (set once by responseStreamingEnabled in processResponseHeaders), never re-derive
+// its own decision — otherwise Envoy's negotiated body mode can disagree with which
+// body-phase handler the kernel actually runs, which Envoy rejects as a
+// content-length/mutated-body mismatch.
+// =============================================================================
+
+func TestGetModeOverride_MCPStreamingUpstreamStaysBuffered(t *testing.T) {
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, executor.NewChainExecutor(nil, nil, nil), config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{
+		RequiresResponseBody:      true,
+		SupportsResponseStreaming: true,
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{APIKind: string(policy.APIKindMCP)})
+	execCtx.buildResponseContexts(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+				{Key: "content-type", RawValue: []byte("text/event-stream")},
+			},
+		},
+		EndOfStream: false,
+	})
+
+	execCtx.isStreamingResponse = execCtx.responseStreamingEnabled(false)
+	require.False(t, execCtx.isStreamingResponse, "MCP responses must never be upgraded to streaming")
+
+	execCtx.phase = phaseResponseHeaders
+	mode := execCtx.getModeOverride()
+	assert.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, mode.ResponseBodyMode)
+}
+
+func TestGetModeOverride_NonMCPStreamingUpstreamUpgrades(t *testing.T) {
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, executor.NewChainExecutor(nil, nil, nil), config.TracingConfig{}, "")
+
+	chain := &registry.PolicyChain{
+		RequiresResponseBody:      true,
+		SupportsResponseStreaming: true,
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{Headers: &corev3.HeaderMap{}}, RouteMetadata{APIKind: string(policy.APIKindRestApi)})
+	execCtx.buildResponseContexts(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+				{Key: "content-type", RawValue: []byte("text/event-stream")},
+			},
+		},
+		EndOfStream: false,
+	})
+
+	execCtx.isStreamingResponse = execCtx.responseStreamingEnabled(false)
+	require.True(t, execCtx.isStreamingResponse, "non-MCP streaming upstream responses should still upgrade")
+
+	execCtx.phase = phaseResponseHeaders
+	mode := execCtx.getModeOverride()
+	assert.Equal(t, extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED, mode.ResponseBodyMode)
 }
 
 // =============================================================================
@@ -820,4 +889,93 @@ func TestProcessRequestBody_NoEncoding_PassesThrough(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, execCtx.requestBodyCtx.Body)
 	assert.Equal(t, plainJSON, execCtx.requestBodyCtx.Body.Content)
+}
+
+// =============================================================================
+// MCP SSE response body-mutation regression Tests
+//
+// Reproduces the exact configuration that triggered the HTTP 500
+// ("mismatch_between_content_length_and_the_length_of_the_mutated_body"): an MCP
+// proxy chain whose only response-body policy is streaming-capable (mirroring the
+// always-injected analytics system policy with no user policies attached), fronting
+// an upstream that replies with a chunked text/event-stream body. Before the fix,
+// isStreamingResponse was set to true independently of the MCP-only BUFFERED
+// ModeOverride, so processResponseBody dispatched to the streaming handler and
+// emitted a BodyMutation_StreamedResponse while Envoy was in a buffered body
+// callback — which Envoy rejects. After the fix, both decisions come from the same
+// responseStreamingEnabled() predicate, so a body-mutating policy's output always
+// arrives as a BodyMutation_Body with a matching content-length.
+// =============================================================================
+
+func TestProcessResponseBody_MCPSSEEmitsBufferedBodyMutation(t *testing.T) {
+	kernel := NewKernel()
+	server := NewExternalProcessorServer(kernel, newTestExecutor(), config.TracingConfig{}, "")
+
+	rewrittenBody := []byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}\n\n")
+	mockPolicy := &testutils.ConfigurableMockPolicy{
+		MockMode: policy.ProcessingMode{
+			ResponseBodyMode: policy.BodyModeBuffer,
+		},
+		OnRespFn: func(_ *policy.ResponseContext, _ map[string]interface{}) policy.ResponseAction {
+			return policy.DownstreamResponseModifications{Body: rewrittenBody}
+		},
+	}
+
+	chain := &registry.PolicyChain{
+		RequiresResponseBody: true,
+		// Mirrors a chain with no user MCP policies attached: the only response-body
+		// policy is the always-injected, streaming-capable analytics system policy.
+		SupportsResponseStreaming: true,
+		Policies:                  []policy.Policy{mockPolicy},
+		PolicySpecs:               []policy.PolicySpec{{Enabled: true}},
+	}
+	execCtx := newPolicyExecutionContext(server, "test-route", chain)
+
+	execCtx.buildRequestContexts(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/everything/mcp")},
+				{Key: ":method", RawValue: []byte("POST")},
+			},
+		},
+	}, RouteMetadata{APIKind: string(policy.APIKindMCP)})
+
+	headersResp, err := execCtx.processResponseHeaders(context.Background(), &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+				{Key: "content-type", RawValue: []byte("text/event-stream")},
+				{Key: "transfer-encoding", RawValue: []byte("chunked")},
+			},
+		},
+		EndOfStream: false,
+	})
+	require.NoError(t, err)
+	require.False(t, execCtx.isStreamingResponse, "MCP responses must stay buffered end-to-end")
+	require.Equal(t, extprocconfigv3.ProcessingMode_BUFFERED, headersResp.ModeOverride.ResponseBodyMode)
+
+	upstreamBody := []byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[{\"name\":\"add\"}]}}\n\n")
+	bodyResp, err := execCtx.processResponseBody(context.Background(), &extprocv3.HttpBody{
+		Body:        upstreamBody,
+		EndOfStream: true,
+	})
+	require.NoError(t, err)
+
+	respBody := bodyResp.GetResponseBody()
+	require.NotNil(t, respBody)
+	mutation := respBody.GetResponse().GetBodyMutation()
+	require.NotNil(t, mutation, "a body-mutating policy must produce a body mutation")
+
+	// The critical assertion: never a StreamedResponse mutation while Envoy is running
+	// this response in a buffered body callback (see processor_state.cc validateContentLength).
+	assert.Nil(t, mutation.GetStreamedResponse())
+	assert.Equal(t, rewrittenBody, mutation.GetBody())
+
+	contentLength := ""
+	for _, h := range respBody.GetResponse().GetHeaderMutation().GetSetHeaders() {
+		if h.GetHeader().GetKey() == "content-length" {
+			contentLength = string(h.GetHeader().GetRawValue())
+		}
+	}
+	assert.Equal(t, fmt.Sprintf("%d", len(rewrittenBody)), contentLength)
 }

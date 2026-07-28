@@ -196,9 +196,11 @@ func (ec *PolicyExecutionContext) handlePolicyError(
 }
 
 // getModeOverride returns the ProcessingMode override for this execution context.
-// Response body is always set to BUFFERED here (never FULL_DUPLEX_STREAMED).
-// The upgrade to streaming happens at response-headers phase via
-// getStreamingResponseModeOverride when a streaming upstream response is detected.
+// ec.isStreamingResponse is the single source of truth for whether the response body is
+// processed in streaming mode — it is set once in processResponseHeaders via
+// responseStreamingEnabled(), and this function must not re-derive that decision, or the
+// ModeOverride sent to Envoy could disagree with which body-phase handler actually runs
+// (see processResponseBody), which Envoy rejects as a content-length/body mismatch.
 func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingMode {
 	mode := &extprocconfigv3.ProcessingMode{
 		ResponseHeaderMode: extprocconfigv3.ProcessingMode_SEND,
@@ -218,11 +220,7 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 	}
 
 	if ec.policyChain.RequiresResponseBody {
-		mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_BUFFERED
-		if ec.isStreamingResponse && (ec.sharedCtx == nil || ec.sharedCtx.APIKind != policy.APIKindMCP) {
-			// Disable streaming for MCP APIs, as there is an issue with Envoy, when Upstream MCP server sends a Transfer Encoding Chunk
-			// response with empty body, Envoy is not sending a request to the Policy Engine.
-			// Hence skip MCP.
+		if ec.isStreamingResponse {
 			mode.ResponseBodyMode = extprocconfigv3.ProcessingMode_FULL_DUPLEX_STREAMED
 			slog.Debug("[mode] upgraded response body mode to FULL_DUPLEX_STREAMED",
 				"route", ec.routeKey,
@@ -640,18 +638,15 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 
 	// Detect streaming response: upgrade when chain supports streaming AND
 	// upstream signals chunked/SSE AND body is coming (not EndOfStream).
-	hasStreamingHeaders := isStreamingUpstreamResponse(ec.responseHeaderCtx.ResponseHeaders)
 	slog.Debug("[mode] response headers received — streaming detection",
 		"route", ec.routeKey,
 		"supports_response_streaming", ec.policyChain.SupportsResponseStreaming,
 		"headers_end_of_stream", headers.EndOfStream,
-		"streaming_headers_detected", hasStreamingHeaders,
+		"streaming_headers_detected", isStreamingUpstreamResponse(ec.responseHeaderCtx.ResponseHeaders),
 		"content_type", ec.responseHeaderCtx.ResponseHeaders.Get("content-type"),
 		"transfer_encoding", ec.responseHeaderCtx.ResponseHeaders.Get("transfer-encoding"),
 	)
-	if ec.policyChain.SupportsResponseStreaming && !headers.EndOfStream && hasStreamingHeaders {
-		ec.isStreamingResponse = true
-	}
+	ec.isStreamingResponse = ec.responseStreamingEnabled(headers.EndOfStream)
 	slog.Debug("[mode] streaming response decision",
 		"route", ec.routeKey,
 		"is_streaming_response", ec.isStreamingResponse,
@@ -1177,6 +1172,27 @@ func isStreamingUpstreamResponse(headers *policy.Headers) bool {
 		}
 	}
 	return false
+}
+
+// responseStreamingEnabled reports whether the response body should be processed in
+// streaming (FULL_DUPLEX_STREAMED) mode. This is the single source of truth: it decides
+// both the ModeOverride sent to Envoy (getModeOverride) and which body-phase handler runs
+// (processResponseBody), so the two can never disagree. Callable only once
+// responseHeaderCtx has been populated (i.e. from processResponseHeaders).
+func (ec *PolicyExecutionContext) responseStreamingEnabled(endOfStream bool) bool {
+	if !ec.policyChain.SupportsResponseStreaming || endOfStream {
+		return false
+	}
+	if !isStreamingUpstreamResponse(ec.responseHeaderCtx.ResponseHeaders) {
+		return false
+	}
+	// MCP is kept buffered: when an upstream MCP server sends a Transfer-Encoding: chunked
+	// response with an empty body, Envoy does not deliver the body phase to the policy
+	// engine in FULL_DUPLEX_STREAMED mode.
+	if ec.sharedCtx != nil && ec.sharedCtx.APIKind == policy.APIKindMCP {
+		return false
+	}
+	return true
 }
 
 // cloneHeaders returns an independent copy of h — both the map and every
