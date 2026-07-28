@@ -35,7 +35,7 @@ import (
 const CurrentSchemaVersion = "1.0"
 
 // EncryptedKey is the AES-256-GCM encrypted representation of a sensitive value (an API key
-// secret, etc.). The key is derived from the shared webhook secret via HKDF-SHA256, so no
+// secret, etc.). The key is derived from the shared webhook secret via HKDF-SHA3-256, so no
 // asymmetric key material is involved; iv/tag/ciphertext are the AES-GCM parts. See Decryptor.
 type EncryptedKey struct {
 	IV         string `json:"iv"`

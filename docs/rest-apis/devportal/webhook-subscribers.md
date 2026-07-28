@@ -19,7 +19,7 @@ curl -X POST https://localhost:9543/api/v0.9/webhook-subscribers \
 
 ```
 
-Registers a webhook subscriber for the organization. Event deliveries (apikey.*, subscription.*, etc.) matching the subscriber's events filter are fanned out to its target URL. The `secret`, if provided, is encrypted at rest using AES-256-GCM.
+Registers a webhook subscriber for the organization. Event deliveries (apikey.*, subscription.*, etc.) matching the subscriber's events filter are fanned out to its target URL. The `secret`, if provided, is encrypted at rest using AES-256-GCM. When `id` is omitted, the subscriber's handle is generated from `displayName`; the assigned handle is returned as `id` in the response and is what later requests address.
 
 > Payload
 

@@ -19,7 +19,7 @@
 // Test-side mirror of src/services/webhooks/envelopeCrypto.js's decryptField.
 // Can't require the app source directly: the rest-api-tests container only has
 // `it/rest-api` mounted (docker-compose.test*.yaml), not the rest of the repo. Kept in
-// lockstep with the app's encryptField — AES-256-GCM under an HKDF-SHA256 key derived
+// lockstep with the app's encryptField — AES-256-GCM under an HKDF-SHA3-256 key derived
 // from the subscriber's shared secret, base64-encoded fields.
 //
 // FIELD_KEY_INFO must stay byte-identical to the app's label and to platform-api's
@@ -31,7 +31,7 @@ const FIELD_KEY_INFO = 'devportal-webhook-field-encryption-v1';
 
 function deriveFieldKey(secret) {
     return Buffer.from(
-        crypto.hkdfSync('sha256', secret, Buffer.alloc(0), FIELD_KEY_INFO, 32)
+        crypto.hkdfSync('sha3-256', secret, Buffer.alloc(0), FIELD_KEY_INFO, 32)
     );
 }
 

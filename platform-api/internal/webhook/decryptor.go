@@ -21,7 +21,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hkdf"
-	"crypto/sha256"
+	"crypto/sha3"
 	"encoding/base64"
 	"fmt"
 )
@@ -40,12 +40,12 @@ const fieldKeyBytes = 32
 // The producer (Developer Portal) and this receiver share one per-subscriber secret, which
 // serves two purposes: HMAC request signing (see Verifier) and field encryption. Rather than
 // using that secret's bytes directly for both, each side derives a separate AES-256 key from it
-// with HKDF-SHA256 under fieldKeyInfo, so the encryption key is domain-separated from the
+// with HKDF-SHA3-256 under fieldKeyInfo, so the encryption key is domain-separated from the
 // signing key. Decryption is therefore a single stage: AES-256-GCM open with the derived key.
 //
-// Interop note: this assumes HKDF-SHA256 with an empty salt (RFC 5869 falls back to HashLen zero
-// bytes), a 12-byte GCM nonce in `iv`, and a separate 16-byte GCM tag in `tag`. These must match
-// the producer.
+// Interop note: this assumes HKDF-SHA3-256 with an empty salt (RFC 5869 falls back to HashLen
+// zero bytes), a 12-byte GCM nonce in `iv`, and a separate 16-byte GCM tag in `tag`. These must
+// match the producer.
 type Decryptor struct {
 	key []byte
 }
@@ -57,7 +57,10 @@ func NewDecryptor(secret string) (*Decryptor, error) {
 	if secret == "" {
 		return nil, nil
 	}
-	key, err := hkdf.Key(sha256.New, []byte(secret), nil, fieldKeyInfo, fieldKeyBytes)
+	// SHA-3 rather than SHA-2 per the repository's post-quantum hashing standard
+	// (.claude/rules/post-quantum-cryptography.md); the producer's derivation must use
+	// the same hash, so these two are only ever changed together.
+	key, err := hkdf.Key(sha3.New256, []byte(secret), nil, fieldKeyInfo, fieldKeyBytes)
 	if err != nil {
 		// Deliberately does not wrap the secret or any derivative of it into the error.
 		return nil, fmt.Errorf("failed to derive webhook field-encryption key: %w", err)

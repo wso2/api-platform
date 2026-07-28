@@ -164,7 +164,7 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
      platform-api's self-signed cert.
    - Webhooks are signed `t=<unix>,v1=<hmac>` over `"<t>.<body>"` and the key /
      token fields are encrypted with AES-256-GCM under a key both sides derive from
-     that same shared secret via HKDF-SHA256. platform-api re-encrypts the
+     that same shared secret via HKDF-SHA3-256. platform-api re-encrypts the
      subscription token at rest, so `APIP_CP_ENCRYPTION_KEY` must be 32 bytes
      (64 hex chars).
    - platform-api resolves the event's **org, API and plan by handle**, so the

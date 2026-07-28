@@ -24,6 +24,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/sha3"
 	"encoding/base64"
 	"encoding/hex"
 	"strconv"
@@ -36,7 +37,7 @@ import (
 // field key, with the nonce and tag carried separately from the ciphertext.
 func encryptFieldForTest(t *testing.T, secret, plaintext string) *EncryptedKey {
 	t.Helper()
-	key, err := hkdf.Key(sha256.New, []byte(secret), nil, fieldKeyInfo, fieldKeyBytes)
+	key, err := hkdf.Key(sha3.New256, []byte(secret), nil, fieldKeyInfo, fieldKeyBytes)
 	if err != nil {
 		t.Fatalf("hkdf: %v", err)
 	}
@@ -66,9 +67,9 @@ func encryptFieldForTest(t *testing.T, secret, plaintext string) *EncryptedKey {
 //	require('./src/services/webhooks/envelopeCrypto').deriveFieldKey('shared-secret').toString('hex')
 //
 // If this fails, the two sides no longer derive the same key and every field decryption breaks —
-// check that fieldKeyInfo, the salt (empty), the hash (SHA-256) and the length still agree.
+// check that fieldKeyInfo, the salt (empty), the hash (SHA3-256) and the length still agree.
 func TestDeriveFieldKey_MatchesProducer(t *testing.T) {
-	const wantHex = "23dbd0f1958f9edc4de4707933ae922d19d29066eb8ba252b903b5eb6be89ecd"
+	const wantHex = "8b06507843576be069ac6fc90d88f9c9646ea1909fcea7583092c9ec546fa109"
 
 	d, err := NewDecryptor("shared-secret")
 	if err != nil {
@@ -88,9 +89,9 @@ func TestDecryptor_DecryptsProducerEnvelope(t *testing.T) {
 		t.Fatalf("NewDecryptor: %v", err)
 	}
 	enc := &EncryptedKey{
-		IV:         "M02mP6twkPWSL+AY",
-		Tag:        "Va/vgWk4pzPtR9mdpHM0aQ==",
-		Ciphertext: "A3nkbaQF8rrRuQmpxbeWzAwcHU4W60TZ4Qk6",
+		IV:         "usehnt1KbkvltWrp",
+		Tag:        "xRCJjvhjE25UL3mrZbeSXQ==",
+		Ciphertext: "1twIl7zU1DgV91w7OAqzF54rARiP2b5PnL9C",
 	}
 
 	got, err := d.Decrypt(enc)

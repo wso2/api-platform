@@ -181,7 +181,7 @@ type Webhook struct {
 	// Enabled controls whether the webhook endpoint is registered.
 	Enabled bool `koanf:"enabled"`
 	// Secret is the shared secret with the Developer Portal. It serves two purposes: verifying
-	// the HMAC-SHA256 request signature, and deriving (via HKDF-SHA256) the AES key that decrypts
+	// the HMAC-SHA256 request signature, and deriving (via HKDF-SHA3-256) the AES key that decrypts
 	// encrypted payload fields such as an API key secret.
 	Secret string `koanf:"secret"`
 	// SignatureTolerance bounds how old a signed request may be (replay protection).

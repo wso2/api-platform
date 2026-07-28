@@ -32,10 +32,15 @@ const IV_BYTES = 12; // 96-bit GCM nonce
  * Derive the AES-256 field-encryption key from a subscriber's shared secret.
  *
  * The secret is an operator-supplied free-form string, not key material, so it
- * is stretched through HKDF-SHA256 rather than hashed or truncated. An empty
- * salt is intentional and RFC 5869 compliant (extract falls back to HashLen
- * zero bytes) — it keeps derivation reproducible on the receiving side, which
- * holds the same secret but shares no other state with this process.
+ * is stretched through HKDF-SHA3-256 rather than hashed or truncated. SHA-3 (not
+ * SHA-2) per the repository's post-quantum hashing standard — see
+ * .claude/rules/js-post-quantum-cryptography.md. An empty salt is intentional and
+ * RFC 5869 compliant (extract falls back to HashLen zero bytes) — it keeps
+ * derivation reproducible on the receiving side, which holds the same secret but
+ * shares no other state with this process.
+ *
+ * The hash must match the receiver's (platform-api internal/webhook/decryptor.go),
+ * so the two are only ever changed together.
  *
  * @param {string} secret — the subscriber's shared HMAC/encryption secret
  * @returns {Buffer} 32-byte AES key
@@ -45,7 +50,7 @@ function deriveFieldKey(secret) {
         throw new Error('A subscriber secret is required to derive the field-encryption key');
     }
     return Buffer.from(
-        crypto.hkdfSync('sha256', secret, Buffer.alloc(0), FIELD_KEY_INFO, KEY_BYTES)
+        crypto.hkdfSync('sha3-256', secret, Buffer.alloc(0), FIELD_KEY_INFO, KEY_BYTES)
     );
 }
 
@@ -61,7 +66,7 @@ function deriveFieldKey(secret) {
  * }
  *
  * Subscribers decrypt with:
- *   1. HKDF-SHA256(secret, info="devportal-webhook-field-encryption-v1") → aesKey
+ *   1. HKDF-SHA3-256(secret, info="devportal-webhook-field-encryption-v1") → aesKey
  *   2. AES-256-GCM decrypt ciphertext with aesKey + iv + tag → plaintext
  *
  * @param {string} secret    — the subscriber's shared secret
