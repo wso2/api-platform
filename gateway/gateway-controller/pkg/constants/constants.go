@@ -106,6 +106,14 @@ const (
 	PolicyEngineClusterName       = "api-platform/policy-engine"
 	DefaultPolicyEngineSocketPath = "/var/run/api-platform/policy-engine.sock"
 
+	// GatewayHealthPathPrefix is reserved for the gateway's own readiness/liveness
+	// direct-response routes (see GatewayReadyPath/GatewayHealthyPath). No API,
+	// LLMProvider, or LLMProxy resource may register a path under this prefix —
+	// path validation for those resource kinds must reject it.
+	GatewayHealthPathPrefix = "/_gateway-health"
+	GatewayReadyPath        = GatewayHealthPathPrefix + "/ready"
+	GatewayHealthyPath      = GatewayHealthPathPrefix + "/healthy"
+
 	// gRPC Access Log Service
 	GRPCAccessLogClusterName = "apip_als_cluster"
 	DefaultALSSocketPath     = "/var/run/api-platform/gateway-analytics.sock"

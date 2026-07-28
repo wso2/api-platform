@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
 func TestNewAPIValidator(t *testing.T) {
@@ -398,6 +399,52 @@ func TestAPIValidator_ValidateOperations(t *testing.T) {
 						t.Errorf("unexpected operations error: %v", e)
 					}
 				}
+			}
+		})
+	}
+}
+
+// The reserved gateway health-check namespace (constants.GatewayHealthPathPrefix)
+// must be checked against the combined context+operation path, not either half
+// in isolation — a context that merely contains the reserved prefix as a
+// substring elsewhere in the path must not be flagged.
+func TestAPIValidator_ValidateOperations_ReservedHealthPath(t *testing.T) {
+	v := NewAPIValidator()
+
+	tests := []struct {
+		name    string
+		context string
+		path    string
+		wantErr bool
+	}{
+		{"context+path exactly matches reserved ready route", constants.GatewayHealthPathPrefix, "/ready", true},
+		{"context+path exactly matches reserved healthy route", constants.GatewayHealthPathPrefix, "/healthy", true},
+		{"context alone is the reserved prefix", constants.GatewayHealthPathPrefix, "/anything", true},
+		{"reserved prefix appears only nested under an unrelated context", "/foo", constants.GatewayHealthPathPrefix + "/ready", false},
+		{"unrelated path is unaffected", "/test", "/items", false},
+		{"dot-segment context resolves into the reserved namespace", "/foo/..", constants.GatewayHealthPathPrefix + "/ready", true},
+		{"dot-segment path resolves into the reserved namespace", "/foo", "/../" + constants.GatewayHealthPathPrefix[1:] + "/ready", true},
+		{"dot-segment path resolves to an unrelated namespace", "/foo", "/../bar/ready", false},
+		{"sibling context sharing the reserved prefix as a substring is unaffected", constants.GatewayHealthPathPrefix + "y", "/anything", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := createValidRestAPIConfig()
+			config.Spec.Context = tt.context
+			config.Spec.Operations = []api.Operation{
+				{Method: api.Ptr(api.OperationMethodGET), Path: api.Ptr(tt.path)},
+			}
+
+			errors := v.Validate(config)
+			hasReservedErr := false
+			for _, e := range errors {
+				if strings.Contains(e.Message, constants.GatewayHealthPathPrefix) {
+					hasReservedErr = true
+				}
+			}
+			if hasReservedErr != tt.wantErr {
+				t.Errorf("reserved-health-path error presence = %v, want %v (errors: %v)", hasReservedErr, tt.wantErr, errors)
 			}
 		})
 	}

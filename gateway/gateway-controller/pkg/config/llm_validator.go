@@ -362,6 +362,10 @@ func (v *LLMValidator) validateProviderSpec(spec *api.LLMProviderConfigData) []V
 		})
 	}
 
+	if spec.Context != nil {
+		errors = append(errors, validateNotReservedHealthPath("spec.context", strings.TrimSpace(*spec.Context))...)
+	}
+
 	// Validate upstream definitions (name/url/connect timeout), then the upstream itself (which
 	// may reference one of them via `ref`).
 	errors = append(errors, validateUpstreamDefinitionsList("spec.upstreamDefinitions", spec.UpstreamDefinitions)...)
@@ -577,6 +581,10 @@ func (v *LLMValidator) validateProxyData(spec *api.LLMProxyConfigData) []Validat
 			Field:   "spec.version",
 			Message: "Proxy version format is invalid (expected vX.Y.Z)",
 		})
+	}
+
+	if spec.Context != nil {
+		errors = append(errors, validateNotReservedHealthPath("spec.context", strings.TrimSpace(*spec.Context))...)
 	}
 
 	// Validate provider id

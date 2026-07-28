@@ -1319,6 +1319,30 @@ func TestTranslator_CreateListener_HCMTimeouts(t *testing.T) {
 	}
 }
 
+// The generated HttpConnectionManager must canonicalize the request path
+// (NormalizePath, MergeSlashes) before routing/policy/authz matching — an
+// un-normalized path could desynchronize the route Envoy selects from what
+// validateNotReservedHealthPath (pkg/config/validator.go) reasoned about at
+// config time. See go-control-plane-xds-security.md directive 6.
+func TestTranslator_CreateListener_HCMPathNormalization(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.Router = *routerCfg
+	translator := NewTranslator(logger, routerCfg, nil, cfg)
+
+	lis, _, err := translator.createListener(nil, false)
+	require.NoError(t, err)
+
+	manager := extractHCM(t, lis)
+	require.NotNil(t, manager.GetNormalizePath(), "normalize_path must be explicitly set")
+	assert.True(t, manager.GetNormalizePath().GetValue(), "normalize_path")
+	assert.True(t, manager.GetMergeSlashes(), "merge_slashes")
+	// PathWithEscapedSlashesAction is fully config-driven — see
+	// TestTranslator_CreateListener_PathWithEscapedSlashesAction for its default
+	// and every configurable value.
+}
+
 func TestTranslator_CreateListener_PathNormalization(t *testing.T) {
 	tests := []struct {
 		name                     string
@@ -1638,6 +1662,89 @@ func TestTranslator_TranslateConfigs_StripsClientOriginalPathHeader(t *testing.T
 		}
 	}
 	assert.True(t, found, "expected at least one virtual host in the shared route config")
+}
+
+// The gateway's own /ready and /healthy direct-response routes must be present in
+// every virtual host — including the pre-seeded "*" wildcard vhost when zero
+// APIs/LLMProviders/LLMProxies are deployed, and every API-specific vhost once
+// resources are deployed — and must always be evaluated before the "no-api-found"
+// catch-all, which matches Prefix "/" and would otherwise shadow them.
+func TestTranslator_TranslateConfigs_GatewayHealthRoutes(t *testing.T) {
+	assertHealthRoutes := func(t *testing.T, vh *route.VirtualHost) {
+		t.Helper()
+		require.GreaterOrEqual(t, len(vh.Routes), 3,
+			"virtual host %q must contain at least the 2 health routes plus the catch-all", vh.Name)
+
+		byName := make(map[string]*route.Route, len(vh.Routes))
+		var readyIdx, healthyIdx, catchAllIdx = -1, -1, -1
+		for i, r := range vh.Routes {
+			byName[r.Name] = r
+			switch r.Name {
+			case "gateway-ready":
+				readyIdx = i
+			case "gateway-healthy":
+				healthyIdx = i
+			case "no-api-found":
+				catchAllIdx = i
+			}
+		}
+
+		readyRoute, ok := byName["gateway-ready"]
+		require.True(t, ok, "virtual host %q missing gateway-ready route", vh.Name)
+		assert.Equal(t, constants.GatewayReadyPath, readyRoute.GetMatch().GetPath())
+		assert.Equal(t, uint32(200), readyRoute.GetDirectResponse().GetStatus())
+
+		healthyRoute, ok := byName["gateway-healthy"]
+		require.True(t, ok, "virtual host %q missing gateway-healthy route", vh.Name)
+		assert.Equal(t, constants.GatewayHealthyPath, healthyRoute.GetMatch().GetPath())
+		assert.Equal(t, uint32(200), healthyRoute.GetDirectResponse().GetStatus())
+
+		require.NotEqual(t, -1, catchAllIdx, "virtual host %q missing no-api-found catch-all", vh.Name)
+		assert.Less(t, readyIdx, catchAllIdx,
+			"gateway-ready must be evaluated before the Prefix:\"/\" catch-all or it will be shadowed")
+		assert.Less(t, healthyIdx, catchAllIdx,
+			"gateway-healthy must be evaluated before the Prefix:\"/\" catch-all or it will be shadowed")
+	}
+
+	t.Run("present on the wildcard vhost with zero deployed artifacts", func(t *testing.T) {
+		logger := createTestLogger()
+		translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+		resources, err := translator.TranslateConfigs([]*models.StoredConfig{}, "test-correlation-id")
+		require.NoError(t, err)
+
+		found := false
+		for _, res := range resources[resource.RouteType] {
+			rc, ok := res.(*route.RouteConfiguration)
+			require.True(t, ok)
+			for _, vh := range rc.VirtualHosts {
+				found = true
+				assertHealthRoutes(t, vh)
+			}
+		}
+		require.True(t, found, "expected the wildcard vhost even with zero deployed artifacts")
+	})
+
+	t.Run("present on every vhost once APIs are deployed", func(t *testing.T) {
+		logger := createTestLogger()
+		translator := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+
+		configs := []*models.StoredConfig{makeRestAPI("uuid-api-1", "api-one", "/api-one")}
+		resources, err := translator.TranslateConfigs(configs, "test-correlation-id")
+		require.NoError(t, err)
+
+		vhostsSeen := map[string]bool{}
+		for _, res := range resources[resource.RouteType] {
+			rc, ok := res.(*route.RouteConfiguration)
+			require.True(t, ok)
+			for _, vh := range rc.VirtualHosts {
+				vhostsSeen[vh.Name] = true
+				assertHealthRoutes(t, vh)
+			}
+		}
+		require.True(t, vhostsSeen["localhost"], "expected the API's own vhost to carry the health routes too")
+		require.True(t, vhostsSeen["*"], "expected the wildcard vhost to still be present")
+	})
 }
 
 func TestTranslator_GetVHostDomains(t *testing.T) {
