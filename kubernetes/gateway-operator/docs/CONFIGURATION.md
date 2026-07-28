@@ -58,7 +58,7 @@ spec:
         - name: GATEWAY_DEFAULT_IMAGE
           value: "wso2/gateway-controller:latest"
         - name: GATEWAY_ROUTER_IMAGE
-          value: "envoyproxy/envoy:v1.28-latest"
+          value: "envoyproxy/envoy:v1.38-latest"
         - name: LOG_LEVEL
           value: "info"
 ```
@@ -98,7 +98,7 @@ spec:
 | `GATEWAY_CONTROLPLANE_HOST` | - | `host.docker.internal:8443` | Gateway control plane host address |
 | `GATEWAY_CONTROLPLANE_TOKEN` | - | `""` | Authentication token for control plane |
 | `GATEWAY_DEFAULT_IMAGE` | - | `wso2/gateway-controller:latest` | Default gateway controller image |
-| `GATEWAY_ROUTER_IMAGE` | - | `envoyproxy/envoy:v1.28-latest` | Default router/proxy image |
+| `GATEWAY_ROUTER_IMAGE` | - | `envoyproxy/envoy:v1.38-latest` | Default router/proxy image |
 
 > **Gateway-internal configuration** (storage, control-plane sync, logging, encryption,
 > policies, etc.) is **not** set via operator environment variables. It is configured through

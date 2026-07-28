@@ -32,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -89,13 +90,23 @@ func InitTracer(cfg *config.Config) (func(), error) {
 		serviceVersion = "1.0.0"
 	}
 
-	// Create resource with service information
-	res, err := resource.New(ctx,
-		resource.WithAttributes(
-			semconv.ServiceName(serviceName),
-			semconv.ServiceVersion(serviceVersion),
-		),
+	// Create resource with service information and the configured resource
+	// attributes. OTEL_RESOURCE_ATTRIBUTES is not read here: sdktrace.WithResource
+	// below merges this resource over resource.Environment(), so environment
+	// attributes are picked up automatically and anything set explicitly here wins
+	// on a key collision. The gateway-controller gives the same precedence to the
+	// router's Envoy resource detectors, so both components in the gateway-runtime
+	// container report the same resource attributes.
+	attrs := make([]attribute.KeyValue, 0, len(cfg.TracingConfig.ResourceAttributes)+2)
+	for k, v := range cfg.TracingConfig.ResourceAttributes {
+		attrs = append(attrs, attribute.String(k, v))
+	}
+	attrs = append(attrs,
+		semconv.ServiceName(serviceName),
+		semconv.ServiceVersion(serviceVersion),
 	)
+
+	res, err := resource.New(ctx, resource.WithAttributes(attrs...))
 	if err != nil {
 		return nil, err
 	}

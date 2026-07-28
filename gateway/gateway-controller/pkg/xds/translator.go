@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"net"
 	"net/url"
@@ -52,6 +53,7 @@ import (
 	luav3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/lua/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	otelresourcedetectorsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/tracers/opentelemetry/resource_detectors/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
@@ -2738,6 +2740,11 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 	}
 	samplingPercentage := samplingRate * 100.0
 
+	resourceDetectors, err := t.createOTelResourceDetectors()
+	if err != nil {
+		return nil, err
+	}
+
 	// Create OpenTelemetry tracing configuration
 	otelConfig := &tracev3.OpenTelemetryConfig{
 		GrpcService: &core.GrpcService{
@@ -2747,7 +2754,8 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 				},
 			},
 		},
-		ServiceName: serviceName,
+		ServiceName:       serviceName,
+		ResourceDetectors: resourceDetectors,
 	}
 
 	// Marshal to Any
@@ -2776,6 +2784,62 @@ func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, 
 		slog.String("collector_cluster", OTELCollectorClusterName))
 
 	return tracingConfig, nil
+}
+
+// createOTelResourceDetectors builds the resource detectors attached to Envoy's
+// OpenTelemetry tracer, in the order Envoy merges them (later detectors win).
+//
+// The environment detector comes first: it reads OTEL_RESOURCE_ATTRIBUTES from the
+// Envoy process and contributes nothing when the variable is unset. The static
+// detector comes second, so attributes configured explicitly under
+// [tracing.resource_attributes] take precedence over ambient environment values.
+// The policy-engine applies the same precedence to its own spans, keeping the two
+// components' resource attributes consistent.
+func (t *Translator) createOTelResourceDetectors() ([]*core.TypedExtensionConfig, error) {
+	envDetector, err := createOTelEnvironmentResourceDetector()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create environment resource detector: %w", err)
+	}
+	detectors := []*core.TypedExtensionConfig{envDetector}
+
+	attributes := t.config.TracingConfig.ResourceAttributes
+	if len(attributes) == 0 {
+		return detectors, nil
+	}
+
+	staticDetector, err := createOTelStaticResourceDetector(attributes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create static resource detector: %w", err)
+	}
+	return append(detectors, staticDetector), nil
+}
+
+func createOTelEnvironmentResourceDetector() (*core.TypedExtensionConfig, error) {
+	envDetectorConfig := &otelresourcedetectorsv3.EnvironmentResourceDetectorConfig{}
+	envDetectorAny, err := anypb.New(envDetectorConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal environment resource detector config: %w", err)
+	}
+
+	return &core.TypedExtensionConfig{
+		Name:        "envoy.tracers.opentelemetry.resource_detectors.environment",
+		TypedConfig: envDetectorAny,
+	}, nil
+}
+
+func createOTelStaticResourceDetector(attributes map[string]string) (*core.TypedExtensionConfig, error) {
+	staticDetectorConfig := &otelresourcedetectorsv3.StaticConfigResourceDetectorConfig{
+		Attributes: maps.Clone(attributes),
+	}
+	staticDetectorAny, err := anypb.New(staticDetectorConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal static resource detector config: %w", err)
+	}
+
+	return &core.TypedExtensionConfig{
+		Name:        "envoy.tracers.opentelemetry.resource_detectors.static_config",
+		TypedConfig: staticDetectorAny,
+	}, nil
 }
 
 // convertToInterface converts map[string]string to map[string]interface{} for structpb
