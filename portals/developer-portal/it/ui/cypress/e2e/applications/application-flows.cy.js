@@ -44,10 +44,6 @@ describe('Applications', () => {
         }).its('status').should('be.oneOf', [200, 404]); // 200 = deleted; 404 = already gone (idempotent). Any other status is a real failure.
     });
 
-    beforeEach(() => {
-        cy.on('uncaught:exception', () => false);
-    });
-
     it('creates, edits, and deletes an application', () => {
         const NAME = 'IT CRUD App';
         const RENAMED = 'IT CRUD App Renamed';

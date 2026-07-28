@@ -21,9 +21,6 @@
 // backend/auth/file-based-login.spec.js — this spec is for the actual form UX.
 
 describe('file-based login UI', () => {
-    beforeEach(() => {
-        cy.on('uncaught:exception', () => false);
-    });
 
     it('logs in through the local login form, shows the profile, and logs back out', () => {
         // Home → Log In → admin/admin → submit → lands back on the portal home
