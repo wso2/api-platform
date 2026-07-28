@@ -57,6 +57,28 @@ polling_interval = "15m"
 insecure_skip_verify = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY" "true" }}'
 # Enable two-way artifact/deployment sync with the control plane (default: true)
 deployment_sync_enabled = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_DEPLOYMENT_SYNC_ENABLED" "true" }}'
+# Number of deployment artifacts fetched and processed per batch during the
+# CP->DP sync (startup and periodic). Must be positive — the controller refuses
+# to start on 0 or a negative value.
+sync_batch_size = 50
+# Concurrency caps for the two background DP->CP sync worker pools. Both default
+# to unlimited/unbounded, which exactly preserves the historical "one goroutine
+# per operation" behaviour; set a positive pool size only when the upstream needs
+# protecting from a large artifact burst (e.g. an on-prem APIM that stalls under
+# many concurrent publishes).
+#   *_pool_size  = 0 (or unset) -> unlimited: a goroutine per task, no bound on
+#                  concurrency or backlog. > 0 -> exactly that many workers.
+#   *_queue_size = 0 (or unset) -> unbounded pending queue (work is never
+#                  rejected). > 0 caps the backlog and rejects submissions once
+#                  full; only meaningful when the matching pool size is > 0.
+# Workers for the on-prem APIM bottom-up sync
+apim_sync_pool_size = 0
+# Max pending on-prem APIM sync tasks
+apim_sync_queue_size = 0
+# Workers for the platform-API (AI Workspace) artifact push
+ai_workspace_sync_pool_size = 0
+# Max pending artifact push tasks
+ai_workspace_sync_queue_size = 0
 # Option 1: Client Credentials Flow (OAuth2) — APIM OAuth2 Client ID
 apim_oauth2_client_id = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_ID" "" }}'
 # APIM OAuth2 Client secret
