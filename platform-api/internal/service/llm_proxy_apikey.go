@@ -189,6 +189,14 @@ func (s *LLMProxyAPIKeyService) CreateLLMProxyAPIKey(
 		return nil, apperror.ArtifactNotFound.New()
 	}
 
+	// Reject an already-expired expiry before generating/hashing key material, so an
+	// invalid request never costs that work (same rule the REST key path applies via
+	// resolveExpiresAt).
+	if err := validateExpiryInFuture(req.ExpiresAt); err != nil {
+		s.slogger.Warn("Invalid expiration for LLM proxy API key creation", "proxyId", proxyID)
+		return nil, err
+	}
+
 	apiKey, err := utils.GenerateAPIKey()
 	if err != nil {
 		s.slogger.Error("Failed to generate API key for LLM proxy", "proxyId", proxyID, "error", err)

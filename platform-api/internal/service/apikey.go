@@ -128,6 +128,22 @@ func buildAPIKeyHashesJSON(plainAPIKey string, algorithms []string) (string, err
 	return "{" + strings.Join(pairs, ", ") + "}", nil
 }
 
+// validateExpiryInFuture rejects an absolute expiration that is not strictly in the
+// future. Every API-key create/update path funnels through this (directly, or via
+// resolveExpiresAt) so a caller-supplied expiresAt can never persist a key that is
+// already expired the moment it is stored — the gateway would receive, and
+// immediately discard, a key the caller was told was created successfully.
+// A nil expiry means "never expires" and is left alone.
+func validateExpiryInFuture(expiresAt *time.Time) error {
+	if expiresAt == nil {
+		return nil
+	}
+	if !expiresAt.After(time.Now()) {
+		return apperror.ValidationFailed.New("API key expiration time must be in the future.")
+	}
+	return nil
+}
+
 // resolveExpiresAt returns the absolute expiration time to persist.
 // If expiresAt is set it takes precedence; otherwise expiresIn is converted to an
 // absolute timestamp using the same unit mapping as the gateway controller
@@ -135,6 +151,9 @@ func buildAPIKeyHashesJSON(plainAPIKey string, algorithms []string) (string, err
 // the past or the unit is unrecognised.
 func resolveExpiresAt(expiresAt *time.Time, expiresIn *api.ExpirationDuration) (*time.Time, error) {
 	if expiresAt != nil {
+		if err := validateExpiryInFuture(expiresAt); err != nil {
+			return nil, err
+		}
 		return expiresAt, nil
 	}
 	if expiresIn == nil {
@@ -157,12 +176,13 @@ func resolveExpiresAt(expiresAt *time.Time, expiresIn *api.ExpirationDuration) (
 	case api.Months:
 		d *= 30 * 24 * time.Hour // approximate month as 30 days
 	default:
-		return nil, fmt.Errorf("unsupported expiration unit: %s", expiresIn.Unit)
+		return nil, apperror.ValidationFailed.New("Unsupported API key expiration unit.").
+			WithLogMessage(fmt.Sprintf("unsupported expiration unit: %s", expiresIn.Unit))
 	}
 
 	expiry := now.Add(d)
-	if expiry.Before(now) {
-		return nil, fmt.Errorf("API key expiration time must be in the future")
+	if err := validateExpiryInFuture(&expiry); err != nil {
+		return nil, err
 	}
 	return &expiry, nil
 }
