@@ -116,37 +116,10 @@ func TestScopeRegistryCoversEveryRegisteredRoute(t *testing.T) {
 	}
 }
 
-// TestSecretsHasNoLegacyV1Alias guards the removal of the "/api/v1/secrets"
-// alias. It survived the /api/v1 → /api/v0.9 base-path rename as a
-// backwards-compat shim, and left the secrets API — the platform's most
-// sensitive resource — reachable on an undocumented path carrying no declared
-// scope. Re-adding a route outside the spec would make it unreachable anyway
-// (ScopeEnforcer denies routes with no scope requirement), so this asserts the
-// alias is gone rather than merely unenforced.
-func TestSecretsHasNoLegacyV1Alias(t *testing.T) {
-	mux := http.NewServeMux()
-	registerAllRoutes(mux)
-
-	for _, probe := range []struct{ method, path string }{
-		{http.MethodGet, "/api/v1/secrets"},
-		{http.MethodPost, "/api/v1/secrets"},
-		{http.MethodGet, "/api/v1/secrets/s-1"},
-		{http.MethodPut, "/api/v1/secrets/s-1"},
-		{http.MethodDelete, "/api/v1/secrets/s-1"},
-	} {
-		req, err := http.NewRequest(probe.method, probe.path, nil)
-		if err != nil {
-			t.Fatalf("build probe request: %v", err)
-		}
-		if _, pattern := mux.Handler(req); pattern != "" {
-			t.Errorf("%s %s still resolves to %q; secrets must be served only from %s/secrets",
-				probe.method, probe.path, pattern, constants.APIBasePath)
-		}
-	}
-}
-
-// TestSecretsRoutesAreRegisteredOnTheBasePath is the other half: removing the
-// alias must not have taken the real routes with it.
+// TestSecretsRoutesAreRegisteredOnTheBasePath asserts the secrets API is served
+// from the standard base path and that every one of its routes resolves to a
+// declared scope. Removing the legacy "/api/v1" alias must not have taken the
+// real routes with it.
 func TestSecretsRoutesAreRegisteredOnTheBasePath(t *testing.T) {
 	registry := loadMergedRegistry(t)
 

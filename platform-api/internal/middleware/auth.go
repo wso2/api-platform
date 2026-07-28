@@ -634,4 +634,11 @@ func WithUserID(r *http.Request, id string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), keyUserID, id))
 }
 
+// WithScope is a helper for tests to inject a space-separated scope claim into
+// the request context, as the authentication middleware does after validating a
+// token. Lets packages outside this one exercise ScopeEnforcer end to end.
+func WithScope(r *http.Request, scope string) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), keyScope, scope))
+}
+
 // --- Compatibility shims for common/authenticators ---
