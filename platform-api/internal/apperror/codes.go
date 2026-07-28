@@ -48,7 +48,7 @@ const (
 	CodeLLMProxyDeploymentValidationFailed    = "LLM_PROXY_DEPLOYMENT_VALIDATION_FAILED"
 	CodeLLMProviderAPIKeyForbidden            = "LLM_PROVIDER_API_KEY_FORBIDDEN"
 	CodeLLMProxyAPIKeyForbidden               = "LLM_PROXY_API_KEY_FORBIDDEN"
-	CodeAPIKeyExists                          = "API_KEY_EXISTS"
+	CodeLLMAPIKeyConflict                     = "LLM_API_KEY_CONFLICT"
 )
 
 // LLM provider template domain codes. The *_VERSION_* and *_REF_* codes keep

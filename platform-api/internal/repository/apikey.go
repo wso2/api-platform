@@ -58,7 +58,7 @@ func (r *APIKeyRepo) Create(key *model.APIKey) error {
 	if err != nil {
 		if r.db.IsDuplicateKeyError(err) {
 			if existing, lookupErr := r.GetByArtifactAndName(key.ArtifactUUID, key.Name); lookupErr == nil && existing != nil {
-				return apperror.APIKeyExists.New()
+				return apperror.LLMAPIKeyConflict.New()
 			}
 		}
 		return err

@@ -79,7 +79,7 @@ var (
 	LLMProviderExists                     = def(CodeLLMProviderExists, http.StatusConflict, "An LLM provider with this ID already exists.")
 	LLMProviderAPIKeyNotFound             = def(CodeLLMProviderAPIKeyNotFound, http.StatusNotFound, "The specified API key could not be found.")
 	LLMProviderAPIKeyForbidden            = def(CodeLLMProviderAPIKeyForbidden, http.StatusForbidden, "You do not have permission to access this API key.")
-	APIKeyExists                          = def(CodeAPIKeyExists, http.StatusConflict, "An API key with this name already exists.")
+	LLMAPIKeyConflict                     = def(CodeLLMAPIKeyConflict, http.StatusConflict, "An API key with this name already exists.")
 	LLMProviderDeploymentValidationFailed = def(CodeLLMProviderDeploymentValidationFailed, http.StatusBadRequest, "%s")
 
 	LLMProxyNotFound                   = def(CodeLLMProxyNotFound, http.StatusNotFound, "The specified LLM proxy could not be found.")
