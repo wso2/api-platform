@@ -899,10 +899,10 @@ Feature: Per-Operation Upstream
     And the JSON response field "status" should be "error"
     And the response body should contain "must match pattern"
 
-  # The management validator deliberately accepts a zero connect timeout; only the
-  # duration format is enforced here. Runtime timeout semantics are the translator's
-  # concern, so deployment must succeed.
-  Scenario: Zero connect timeout in an upstreamDefinition is accepted
+  # Zero does not disable a connect timeout: the transformer requires a positive value, so
+  # the validator rejects it at deploy time rather than accepting a definition that cannot
+  # be translated afterwards.
+  Scenario: Zero connect timeout in an upstreamDefinition is rejected
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
@@ -932,8 +932,10 @@ Feature: Per-Operation Upstream
               main:
                 ref: slow-svc
       """
-    Then the response status code should be 201
+    Then the response status code should be 400
     And the response should be valid JSON
+    And the JSON response field "status" should be "error"
+    And the response body should contain "must be positive"
 
   # ===== from api-level-url-stable.feature =====
   Scenario: API-level main upstream URL update (host and path change) routes to new backend (URL-stable cluster naming)
