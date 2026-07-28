@@ -1943,7 +1943,10 @@ func generateLLMProxyDeploymentYAML(proxy *model.LLMProxy) (dto.LLMProxyDeployme
 // mapModelAuthToAPI converts a stored model.UpstreamAuth into the api.UpstreamAuth
 // The gateway accepts an explicit type of "api-key", "other", or "none"
 // absent/empty auth defaults to "none", and the credential-less types ("none"/"other") carry only
-// the type - no header/value. "api-key" (and legacy basic/bearer) carry the header and value.
+// the type - no header/value. An api-key auth configuration without a credential also represents
+// disabled authentication: provider creation permits the credential to be omitted, so emitting an
+// incomplete api-key block would make the gateway reject an otherwise deployable provider.
+// Configured "api-key" (and legacy basic/bearer) auth carries the header and value.
 func mapModelAuthToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth {
 	if auth == nil {
 		t := api.None
@@ -1955,6 +1958,10 @@ func mapModelAuthToAPI(auth *model.UpstreamAuth) *api.UpstreamAuth {
 	}
 	t := api.UpstreamAuthType(authType)
 	if isCredentialLessUpstreamAuthType(authType) {
+		return &api.UpstreamAuth{Type: &t}
+	}
+	if authType == string(api.ApiKey) && strings.TrimSpace(auth.Value) == "" {
+		t = api.None
 		return &api.UpstreamAuth{Type: &t}
 	}
 	return &api.UpstreamAuth{

@@ -85,6 +85,42 @@ func TestGenerateLLMProviderDeploymentYAML_NoAuthDefaultsToNone(t *testing.T) {
 	}
 }
 
+// TestGenerateLLMProviderDeploymentYAML_EmptyAPIKeyAuthDefaultsToNone verifies that disabling
+// authentication on a provider created from an API-key template does not emit an invalid
+// api-key auth block with no value.
+func TestGenerateLLMProviderDeploymentYAML_EmptyAPIKeyAuthDefaultsToNone(t *testing.T) {
+	provider := &model.LLMProvider{
+		ID:      "test-provider",
+		Name:    "Test Provider",
+		Version: "v1.0",
+		Configuration: model.LLMProviderConfig{
+			Context: strPtr("/test"),
+			Upstream: &model.UpstreamConfig{
+				Main: &model.UpstreamEndpoint{
+					URL: "https://api.anthropic.com",
+					Auth: &model.UpstreamAuth{
+						Type:   "api-key",
+						Header: "Authorization",
+					},
+				},
+			},
+			AccessControl: &model.LLMAccessControl{Mode: "allow_all"},
+		},
+	}
+
+	yamlArtifact, err := generateLLMProviderDeploymentYAML(provider, "anthropic")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	auth := yamlArtifact.Spec.Upstream.Auth
+	if auth == nil || auth.Type == nil || *auth.Type != "none" {
+		t.Fatalf("expected empty api-key auth to deploy as type 'none', got %+v", auth)
+	}
+	if auth.Header != nil || auth.Value != nil {
+		t.Fatalf("expected no header/value for 'none', got header=%v value=%v", auth.Header, auth.Value)
+	}
+}
+
 // TestGenerateLLMProxyDeploymentYAML_OtherAndNoneEmitTypeOnly is the LLM Proxy counterpart:
 // "other" and absent auth (=> "none") both emit an explicit, credential-less type.
 func TestGenerateLLMProxyDeploymentYAML_OtherAndNoneEmitTypeOnly(t *testing.T) {
