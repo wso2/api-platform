@@ -382,6 +382,15 @@ endif
 	    -e 's|^DEFAULT_PACK_NAME=.*|DEFAULT_PACK_NAME="ai-workspace"|' \
 	    $(DIST_DIR)/scripts/setup.sh
 	@rm -f $(DIST_DIR)/scripts/setup.sh.bak
+# Windows counterpart of setup.sh — same flags, same generated files. The same
+# two values are baked in the same way (the PowerShell assignment spells them
+# `$VAR = '...'`).
+	@cp ../scripts/setup.ps1 $(DIST_DIR)/scripts/setup.ps1
+	@sed -i.bak \
+	    -e "s|^\$$DEFAULT_COMPOSE_PROFILES = .*|\$$DEFAULT_COMPOSE_PROFILES = 'ai-workspace,platform-api'|" \
+	    -e "s|^\$$DEFAULT_PACK_NAME = .*|\$$DEFAULT_PACK_NAME = 'ai-workspace'|" \
+	    $(DIST_DIR)/scripts/setup.ps1
+	@rm -f $(DIST_DIR)/scripts/setup.ps1.bak
 # Point the platform-api mount at the merged config so both containers share one file.
 	@sed 's#\.\./\.\./platform-api/config/config\.toml:#./configs/config.toml:#' \
 		docker-compose.yaml > $(DIST_DIR)/docker-compose.yaml

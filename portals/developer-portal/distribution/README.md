@@ -10,6 +10,7 @@ wso2apip-developer-portal-<version>/
 ├── docker-compose.yaml                          # Developer Portal + Platform API
 ├── scripts/
 │   ├── setup.sh                                 # One-time TLS + secrets provisioning
+│   ├── setup.ps1                                # Same, for Windows (PowerShell)
 │   └── seed-samples.sh                          # Optional: deploy the bundled sample APIs/MCPs
 ├── configs/
 │   ├── config.toml                              # Unified active config — [developer_portal] + [platform_api] sections
