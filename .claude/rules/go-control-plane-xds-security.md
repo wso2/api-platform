@@ -14,6 +14,7 @@ xDS is itself a security control plane, not just config distribution: a spoofed 
 4. **Harden the Envoy admin interface independently of the xDS channel.** Bind the admin listener (`:9901`-style) to `127.0.0.1` only, never `0.0.0.0` — it exposes TLS keys, full runtime config, and `/runtime_modify`. Point `flags_path` at a read-only mount so `/runtime_modify` is inert even if reached via another path (compromised sidecar, debug shell). Ship a default-deny NetworkPolicy for the admin port and never provision a `Service`/`Ingress`/`NodePort` exposing it.
 5. **Resource-limit every xDS gRPC server.** Set `grpc.MaxRecvMsgSize`, `grpc.MaxSendMsgSize`, and `grpc.MaxConcurrentStreams` explicitly on every construction (see `go-network-service-hardening.md` directive 2) — unbounded defaults let one client exhaust memory or the stream-slot budget other clients depend on.
 6. **Canonicalize request paths before any route/policy/authz match downstream.** Every generated `HttpConnectionManager` must set `NormalizePath: true`, `MergeSlashes: true`, and an explicit `PathWithEscapedSlashesAction` (`UNESCAPE_AND_REDIRECT` or `REJECT_REQUEST`). Unset, Envoy matches routes/policy/authz against an un-normalized path (`//`, `/./`, `/../`, `%2F`), desynchronizing the selected route from what the operator's policy was written against — the same bypass class as GO-AUTH-004, applied to generated Envoy config. Apply identically across the main listener, any WebSub-internal listener, and any dynamic-forward-proxy HCM; test that a new listener type can't silently omit it.
+7. **No deferring a violation behind a code comment.** Never resolve a gap in xDS auth, admin-interface hardening, or path canonicalization by adding a `// TODO`/`FIXME`-style comment and shipping it anyway — a comment does not authenticate a stream or bind an admin port to loopback. Fix it before merging, or raise the gap explicitly for an approved exception rather than leaving it annotated in the source.
 
 ## Example
 
@@ -74,3 +75,4 @@ layered_runtime:
 > * Does the Envoy admin interface bind `0.0.0.0`, or is `/runtime_modify` reachable without a read-only `flags_path`/NetworkPolicy?
 > * Does an xDS gRPC server construction omit `MaxRecvMsgSize`/`MaxSendMsgSize`/`MaxConcurrentStreams`?
 > * Does the xDS translator generate an HCM without `NormalizePath`/`MergeSlashes`/`PathWithEscapedSlashesAction` set, on every listener type?
+> * Is a gap in this rule "resolved" by a `// TODO`/`FIXME`-style comment instead of an actual fix or an explicitly raised, approved exception?

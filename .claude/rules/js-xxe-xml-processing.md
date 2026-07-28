@@ -10,6 +10,7 @@ Apply whenever writing, refactoring, or reviewing JavaScript (`.js`) code in `po
 2. **Bound resource consumption.** Enforce a byte ceiling (config-sourced, e.g. `DP_MAX_XML_BYTES`) on the buffer *before* it reaches the parser — not just multer's `limits.fileSize`, since a fetched-by-URL or chunk-assembled document bypasses that. Cap nesting depth where the parser exposes it. Offload parsing to a worker thread with its own timeout so a pathological document can't block the Node.js event loop. Reject any `<!DOCTYPE` declaration outright before parsing, as defense-in-depth independent of parser config.
 3. **Validate only against a server-bundled schema.** Never resolve `xsi:schemaLocation` or any in-document schema hint — load the expected schema from a local file at startup. Resolving a document-supplied location is both an XXE and an SSRF vector (see `js-ssrf-prevention.md`).
 4. **Treat every XML source, and every caller, identically.** An "import from URL" feature carries the fetch's SSRF risk on top of the response's XXE risk — harden both. Apply parser hardening the same regardless of caller privilege; XXE is exploitable by authenticated publishers/admins uploading documents, not just unauthenticated callers.
+5. **No deferring a violation behind a code comment.** Never resolve a missing size ceiling, DOCTYPE check, or schema-location validation by adding a `// TODO`/`FIXME`-style comment and shipping the parser anyway — a comment does not bound a parse or block a schema fetch. Fix it before merging, or raise the gap explicitly for an approved exception rather than leaving it annotated in the source.
 
 ## Example
 
@@ -43,3 +44,4 @@ function parseUntrustedXml(buffer) {
 > * Is the XML size-checked before parsing, independent of multer's `limits.fileSize`?
 > * Is a DOCTYPE-rejection check applied before parsing, and is parsing offloaded to a worker thread with its own timeout?
 > * Does schema validation ever resolve a document-supplied `xsi:schemaLocation` instead of a bundled schema?
+> * Is a gap in this rule "resolved" by a `// TODO`/`FIXME`-style comment instead of an actual fix or an explicitly raised, approved exception?
