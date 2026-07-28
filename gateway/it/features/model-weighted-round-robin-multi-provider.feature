@@ -125,7 +125,7 @@ Feature: Model Weighted Round-Robin Multi-Provider Routing
                   suspendDuration: 60
       """
     Then the response status should be 201
-    And I wait for 3 seconds
+    And I wait for policy snapshot sync
 
     # Request 1 -> gpt-4o on the primary provider (weight slot 1 of 2)
     When I set header "Content-Type" to "application/json"
@@ -258,7 +258,7 @@ Feature: Model Weighted Round-Robin Multi-Provider Routing
                   suspendDuration: 30
       """
     Then the response status should be 201
-    And I wait for 3 seconds
+    And I wait for policy snapshot sync
 
     # Request 1 -> primary/shared-model, healthy
     When I set header "Content-Type" to "application/json"
@@ -372,7 +372,7 @@ Feature: Model Weighted Round-Robin Multi-Provider Routing
                       weight: 1
       """
     Then the response status should be 201
-    And I wait for 3 seconds
+    And I wait for policy snapshot sync
 
     When I set header "Content-Type" to "application/json"
     And I send a POST request to "http://localhost:8080/mpw-default-proxy/chat/completions" with body:
