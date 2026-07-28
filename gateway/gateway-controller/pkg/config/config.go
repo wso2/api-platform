@@ -877,7 +877,7 @@ func defaultConfig() *Config {
 				ReconnectInitial:      1 * time.Second,
 				ReconnectMax:          5 * time.Minute,
 				PollingInterval:       15 * time.Minute,
-				InsecureSkipVerify:    false,
+				InsecureSkipVerify:    true,
 				DeploymentSyncEnabled: true,
 				SyncBatchSize:         50,
 			},

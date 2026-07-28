@@ -54,13 +54,17 @@ reconnect_max = "5m"
 # Polling interval for periodic sync
 polling_interval = "15m"
 # Skip TLS certificate verification for control plane connections
-insecure_skip_verify = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY" "false" }}'
+insecure_skip_verify = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY" "true" }}'
 # Enable two-way artifact/deployment sync with the control plane (default: true)
 deployment_sync_enabled = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_DEPLOYMENT_SYNC_ENABLED" "true" }}'
-# APIM OAuth2 Client ID
+# Option 1: Client Credentials Flow (OAuth2) — APIM OAuth2 Client ID
 apim_oauth2_client_id = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_ID" "" }}'
 # APIM OAuth2 Client secret
 apim_oauth2_client_secret = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2_CLIENT_SECRET" "" }}'
+# Option 2: Resource Owner Password Credentials Flow (OAuth2). Set these instead of
+# the client id/secret pair above; both default to empty.
+# apim_oauth2_username = "your-username"
+# apim_oauth2_password = "your-password"
 # Gateway name
 gateway_name = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_GATEWAY_NAME" "default" }}'
 
@@ -385,7 +389,7 @@ max_header_limit = 8192
 # ANALYTICS CONFIGURATION (consumer — enabling it activates the collector)
 # =============================================================================
 [analytics]
-enabled = false
+enabled = true
 # Deprecated: allow_payloads is preserved for backward compatibility. When true
 # and both send_request_body and send_response_body are false, both directions
 # are enabled (bool fields cannot distinguish "unset" from explicitly false).
@@ -400,7 +404,7 @@ send_response_body = false
 enabled_publishers = ["moesif"]
 
 [analytics.publishers.moesif]
-application_id = '{{ env "APIP_GW_ANALYTICS_PUBLISHERS_MOESIF_APPLICATION_ID" "" }}'
+application_id = '{{ env "APIP_GW_ANALYTICS_PUBLISHERS_MOESIF_APPLICATION_ID" "<your-moesif-application-id>" }}'
 moesif_base_url = "https://api.moesif.net"
 publish_interval = 5
 event_queue_size = 10000
