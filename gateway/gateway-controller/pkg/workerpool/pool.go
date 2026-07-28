@@ -31,7 +31,6 @@ package workerpool
 import (
 	"log/slog"
 	"sync"
-	"sync/atomic"
 )
 
 // Pool is a worker pool. In unlimited mode it spawns a goroutine per task; in
@@ -46,13 +45,12 @@ type Pool struct {
 	mu      sync.Mutex
 	cond    *sync.Cond
 	queue   []func()
-	head    int // index of the next task to run in queue
-	stopped bool
+	head    int  // index of the next task to run in queue
+	stopped bool // guarded by mu; set by Stop for both modes
 	wg      sync.WaitGroup
 
 	// unlimitedActive tracks the number of in-flight goroutines in unlimited mode so Stop can wait for them to drain.
 	unlimitedActive sync.WaitGroup
-	unlimitedStop   atomic.Bool
 }
 
 // New creates and starts a worker pool identified by name.
@@ -89,7 +87,7 @@ func New(name string, workers, queueSize int, logger *slog.Logger) *Pool {
 	}
 	queueLabel := "unbounded"
 	if queueSize > 0 {
-		queueLabel = ""
+		queueLabel = "bounded"
 	}
 	logger.Info("Started worker pool",
 		slog.String("pool", name),
@@ -153,12 +151,17 @@ func (p *Pool) Submit(task func()) bool {
 	}
 
 	if p.unlimited {
-		if p.unlimitedStop.Load() {
+		p.mu.Lock()
+		if p.stopped {
+			p.mu.Unlock()
 			return false
 		}
-		p.unlimitedActive.Go(func() {
+		p.unlimitedActive.Add(1)
+		p.mu.Unlock()
+		go func() {
+			defer p.unlimitedActive.Done()
 			p.runSafely(task)
-		})
+		}()
 		return true
 	}
 
@@ -185,23 +188,21 @@ func (p *Pool) Submit(task func()) bool {
 // mode, queued) tasks have finished and every worker goroutine has exited. It is
 // idempotent.
 func (p *Pool) Stop() {
-	if p.unlimited {
-		if p.unlimitedStop.Swap(true) {
-			return
-		}
-		p.unlimitedActive.Wait()
-		p.logger.Info("Stopped worker pool", slog.String("pool", p.name))
-		return
-	}
-
 	p.mu.Lock()
 	if p.stopped {
 		p.mu.Unlock()
 		return
 	}
 	p.stopped = true
-	p.cond.Broadcast()
+	if !p.unlimited {
+		p.cond.Broadcast()
+	}
 	p.mu.Unlock()
-	p.wg.Wait()
+
+	if p.unlimited {
+		p.unlimitedActive.Wait()
+	} else {
+		p.wg.Wait()
+	}
 	p.logger.Info("Stopped worker pool", slog.String("pool", p.name))
 }

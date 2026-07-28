@@ -167,6 +167,30 @@ func TestPool_RejectsWhenQueueFull(t *testing.T) {
 	close(release)
 }
 
+// TestPool_UnlimitedSubmitStopRace exercises concurrent Submit and Stop on an
+// unlimited pool: the stopped-check and WaitGroup increment must be synchronized
+// so no task is admitted after Stop begins (no Add-after-Wait). Run under -race.
+func TestPool_UnlimitedSubmitStopRace(t *testing.T) {
+	p := New("test", 0, 0, testLogger()) // unlimited
+
+	var ran atomic.Int64
+	var submitters sync.WaitGroup
+	for range 8 {
+		submitters.Go(func() {
+			for range 50 {
+				p.Submit(func() { ran.Add(1) })
+			}
+		})
+	}
+
+	p.Stop() // races with the in-flight Submits; must not panic or leak a task past Stop
+	submitters.Wait()
+	// Any further submits after Stop must be rejected.
+	if p.Submit(func() { ran.Add(1) }) {
+		t.Fatal("submit after Stop must be rejected")
+	}
+}
+
 // TestPool_SubmitAfterStopRejects verifies a stopped pool accepts no new work.
 func TestPool_SubmitAfterStopRejects(t *testing.T) {
 	p := New("test", 2, 8, testLogger())

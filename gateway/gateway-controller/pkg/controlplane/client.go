@@ -583,15 +583,14 @@ func (c *Client) SubmitAPIMSyncAndWait(task func()) {
 		return
 	}
 	done := make(chan struct{})
-	if c.apimSyncPool.Submit(func() {
+	if !c.apimSyncPool.Submit(func() {
 		defer close(done)
 		task()
 	}) {
-		<-done
+		c.logger.Warn("APIM sync (blocking) not scheduled: worker pool queue full; skipping (will retry on next resync)")
 		return
 	}
-	c.logger.Warn("APIM sync (blocking) not scheduled on pool (queue full); running inline")
-	task()
+	<-done
 }
 
 // SubmitArtifactPush schedules a platform-API (AI Workspace) artifact push task on the bounded artifact-push worker pool.
