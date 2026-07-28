@@ -934,7 +934,13 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		return nil, err
 	}
 
-	contextValue := utils.DefaultStringPtr(req.Context, "/")
+	contextValue := strings.TrimSpace(utils.DefaultStringPtr(req.Context, "/"))
+	if contextValue == "" {
+		contextValue = "/"
+	}
+	if err := utils.ValidateContext(contextValue); err != nil {
+		return nil, apperror.ValidationFailed.New("The context must be a valid path (e.g. /my-provider).")
+	}
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
@@ -1132,7 +1138,13 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		}
 	}
 
-	contextValue := utils.DefaultStringPtr(req.Context, "/")
+	contextValue := strings.TrimSpace(utils.DefaultStringPtr(req.Context, "/"))
+	if contextValue == "" {
+		contextValue = "/"
+	}
+	if err := utils.ValidateContext(contextValue); err != nil {
+		return nil, apperror.ValidationFailed.New("The context must be a valid path (e.g. /my-provider).")
+	}
 	m := &model.LLMProvider{
 		OrganizationUUID: orgUUID,
 		ID:               handle,
