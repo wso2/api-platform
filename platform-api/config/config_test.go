@@ -501,15 +501,28 @@ scopes        = "ap:api_key:all:manage"
 `
 		require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
 
-		os.Unsetenv("APIP_CP_ADMIN_USERNAME")
-		os.Unsetenv("APIP_CP_ADMIN_PASSWORD_HASH")
+		// Capture before unsetting: t.Setenv below would otherwise "restore" to
+		// the already-cleared value, leaking the change to later tests.
+		for _, key := range []string{"APIP_CP_ADMIN_USERNAME", "APIP_CP_ADMIN_PASSWORD_HASH"} {
+			original, wasSet := os.LookupEnv(key)
+			t.Cleanup(func() {
+				if wasSet {
+					os.Setenv(key, original)
+				} else {
+					os.Unsetenv(key)
+				}
+			})
+			require.NoError(t, os.Unsetenv(key))
+		}
 		_, err := LoadConfig(path)
 		require.Error(t, err, "unset admin credentials must abort startup, never fall back to a default")
 		assert.Contains(t, err.Error(), "APIP_CP_ADMIN")
 
 		// Provisioned (as portals/scripts/setup.sh does) the same config loads cleanly.
 		t.Setenv("APIP_CP_ADMIN_USERNAME", "generated-admin")
-		t.Setenv("APIP_CP_ADMIN_PASSWORD_HASH", "$2a$12$hash")
+		// A real bcrypt digest (cost 12) so the fixture stays valid if the
+		// password_hash check ever tightens beyond "non-empty".
+		t.Setenv("APIP_CP_ADMIN_PASSWORD_HASH", "$2a$12$Ex32Q7Xl2pyyimAtsZUDaeoXkuUBhs5yDiEZsPRIafxSJYRncelz6")
 		cfg, err := LoadConfig(path)
 		require.NoError(t, err)
 		require.Len(t, cfg.Auth.File.Users, 1)

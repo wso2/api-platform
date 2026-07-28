@@ -29,7 +29,9 @@ quickstart (both docker-compose setups mount it directly), so its admin user's s
 There is no default admin credential: `APIP_CP_ADMIN_USERNAME` and `APIP_CP_ADMIN_PASSWORD_HASH` are
 **required** in this mode, and startup fails closed if either is unset or empty. `portals/scripts/setup.sh`
 provisions both for the quickstarts, printing the generated password once. To set them yourself,
-generate a hash with `htpasswd -bnBC 12 "" <password> | tr -d ':\n'`. Alternatively set
+generate a hash with `htpasswd -nBC 12 "" | tr -d ':\n'`, which prompts for the password instead of
+taking it as an argument — a password on the command line lands in shell history, `ps` output, and CI
+logs. Alternatively set
 `platform_api.auth.mode = "external_token"`
 for locally-signed HMAC tokens with no local users — see
 [`config/config-template.toml`](config/config-template.toml) for the full reference.
