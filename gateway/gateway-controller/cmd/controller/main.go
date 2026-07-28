@@ -30,20 +30,20 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
-	gohttpkit "github.com/wso2/go-httpkit/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/immutable"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
+	gohttpkit "github.com/wso2/go-httpkit/middleware"
 )
 
 // API base paths for the gateway-controller HTTP surfaces.
@@ -826,80 +826,80 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 	}
 
 	relativeRoles := map[string][]string{
-		"POST /rest-apis":         {"admin", "developer"},
-		"GET /rest-apis":          {"admin", "developer"},
-		"GET /rest-apis/{id}":     {"admin", "developer"},
-		"PUT /rest-apis/{id}":     {"admin", "developer"},
-		"DELETE /rest-apis/{id}":  {"admin", "developer"},
+		"POST /rest-apis":        {"admin", "developer"},
+		"GET /rest-apis":         {"admin", "developer"},
+		"GET /rest-apis/{id}":    {"admin", "developer"},
+		"PUT /rest-apis/{id}":    {"admin", "developer"},
+		"DELETE /rest-apis/{id}": {"admin", "developer"},
 
-		"GET /certificates":          {"admin", "developer"},
-		"POST /certificates":         {"admin", "developer"},
-		"DELETE /certificates/{id}":  {"admin"},
-		"POST /certificates/reload":  {"admin"},
+		"GET /certificates":         {"admin", "developer"},
+		"POST /certificates":        {"admin"},
+		"DELETE /certificates/{id}": {"admin"},
+		"POST /certificates/reload": {"admin"},
 
 		"GET /policies": {"admin", "developer"},
 
-		"POST /mcp-proxies":         {"admin", "developer"},
-		"GET /mcp-proxies":          {"admin", "developer"},
-		"GET /mcp-proxies/{id}":     {"admin", "developer"},
-		"PUT /mcp-proxies/{id}":     {"admin", "developer"},
-		"DELETE /mcp-proxies/{id}":  {"admin", "developer"},
+		"POST /mcp-proxies":        {"admin", "developer"},
+		"GET /mcp-proxies":         {"admin", "developer"},
+		"GET /mcp-proxies/{id}":    {"admin", "developer"},
+		"PUT /mcp-proxies/{id}":    {"admin", "developer"},
+		"DELETE /mcp-proxies/{id}": {"admin", "developer"},
 
-		"POST /llm-provider-templates":         {"admin"},
-		"GET /llm-provider-templates":          {"admin"},
-		"GET /llm-provider-templates/{id}":     {"admin"},
-		"PUT /llm-provider-templates/{id}":     {"admin"},
-		"DELETE /llm-provider-templates/{id}":  {"admin"},
+		"POST /llm-provider-templates":        {"admin"},
+		"GET /llm-provider-templates":         {"admin"},
+		"GET /llm-provider-templates/{id}":    {"admin"},
+		"PUT /llm-provider-templates/{id}":    {"admin"},
+		"DELETE /llm-provider-templates/{id}": {"admin"},
 
-		"POST /llm-providers":         {"admin"},
-		"GET /llm-providers":          {"admin", "developer"},
-		"GET /llm-providers/{id}":     {"admin", "developer"},
-		"PUT /llm-providers/{id}":     {"admin"},
-		"DELETE /llm-providers/{id}":  {"admin"},
+		"POST /llm-providers":        {"admin"},
+		"GET /llm-providers":         {"admin", "developer"},
+		"GET /llm-providers/{id}":    {"admin", "developer"},
+		"PUT /llm-providers/{id}":    {"admin"},
+		"DELETE /llm-providers/{id}": {"admin"},
 
-		"POST /llm-proxies":         {"admin", "developer"},
-		"GET /llm-proxies":          {"admin", "developer"},
-		"GET /llm-proxies/{id}":     {"admin", "developer"},
-		"PUT /llm-proxies/{id}":     {"admin", "developer"},
-		"DELETE /llm-proxies/{id}":  {"admin", "developer"},
+		"POST /llm-proxies":        {"admin", "developer"},
+		"GET /llm-proxies":         {"admin", "developer"},
+		"GET /llm-proxies/{id}":    {"admin", "developer"},
+		"PUT /llm-proxies/{id}":    {"admin", "developer"},
+		"DELETE /llm-proxies/{id}": {"admin", "developer"},
 
-		"POST /rest-apis/{id}/api-keys":                          {"admin", "consumer"},
-		"GET /rest-apis/{id}/api-keys":                           {"admin", "consumer"},
-		"PUT /rest-apis/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
-		"POST /rest-apis/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
-		"DELETE /rest-apis/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
+		"POST /rest-apis/{id}/api-keys":                         {"admin", "consumer"},
+		"GET /rest-apis/{id}/api-keys":                          {"admin", "consumer"},
+		"PUT /rest-apis/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
+		"POST /rest-apis/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
+		"DELETE /rest-apis/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
 
-		"POST /llm-providers/{id}/api-keys":                          {"admin", "consumer"},
-		"GET /llm-providers/{id}/api-keys":                           {"admin", "consumer"},
-		"PUT /llm-providers/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
-		"POST /llm-providers/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
-		"DELETE /llm-providers/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
+		"POST /llm-providers/{id}/api-keys":                         {"admin", "consumer"},
+		"GET /llm-providers/{id}/api-keys":                          {"admin", "consumer"},
+		"PUT /llm-providers/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
+		"POST /llm-providers/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
+		"DELETE /llm-providers/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
 
-		"POST /llm-proxies/{id}/api-keys":                          {"admin", "consumer"},
-		"GET /llm-proxies/{id}/api-keys":                           {"admin", "consumer"},
-		"PUT /llm-proxies/{id}/api-keys/{apiKeyName}":              {"admin", "consumer"},
-		"POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate":  {"admin", "consumer"},
-		"DELETE /llm-proxies/{id}/api-keys/{apiKeyName}":           {"admin", "consumer"},
+		"POST /llm-proxies/{id}/api-keys":                         {"admin", "consumer"},
+		"GET /llm-proxies/{id}/api-keys":                          {"admin", "consumer"},
+		"PUT /llm-proxies/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
+		"POST /llm-proxies/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
+		"DELETE /llm-proxies/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
 
 		// Root-level subscription endpoints
-		"POST /subscriptions":                        {"admin", "developer"},
-		"GET /subscriptions":                         {"admin", "developer"},
-		"GET /subscriptions/{subscriptionId}":        {"admin", "developer"},
-		"PUT /subscriptions/{subscriptionId}":        {"admin", "developer"},
-		"DELETE /subscriptions/{subscriptionId}":     {"admin", "developer"},
+		"POST /subscriptions":                    {"admin", "developer"},
+		"GET /subscriptions":                     {"admin", "developer"},
+		"GET /subscriptions/{subscriptionId}":    {"admin", "developer"},
+		"PUT /subscriptions/{subscriptionId}":    {"admin", "developer"},
+		"DELETE /subscriptions/{subscriptionId}": {"admin", "developer"},
 
 		// Subscription plan endpoints
-		"POST /subscription-plans":             {"admin", "developer"},
-		"GET /subscription-plans":              {"admin", "developer"},
-		"GET /subscription-plans/{planId}":     {"admin", "developer"},
-		"PUT /subscription-plans/{planId}":     {"admin", "developer"},
-		"DELETE /subscription-plans/{planId}":  {"admin", "developer"},
+		"POST /subscription-plans":            {"admin", "developer"},
+		"GET /subscription-plans":             {"admin", "developer"},
+		"GET /subscription-plans/{planId}":    {"admin", "developer"},
+		"PUT /subscription-plans/{planId}":    {"admin", "developer"},
+		"DELETE /subscription-plans/{planId}": {"admin", "developer"},
 
-		"POST /secrets":          {"admin"},
-		"GET /secrets":           {"admin"},
-		"GET /secrets/{id}":      {"admin"},
-		"PUT /secrets/{id}":      {"admin"},
-		"DELETE /secrets/{id}":   {"admin"},
+		"POST /secrets":        {"admin"},
+		"GET /secrets":         {"admin"},
+		"GET /secrets/{id}":    {"admin"},
+		"PUT /secrets/{id}":    {"admin"},
+		"DELETE /secrets/{id}": {"admin"},
 	}
 
 	// Populate both the versioned and legacy (unprefixed) keys so the auth
