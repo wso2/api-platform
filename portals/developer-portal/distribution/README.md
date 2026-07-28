@@ -40,6 +40,15 @@ Run the setup script once, from the distribution root, before the first start:
 docker compose up -d
 ```
 
+On **Windows**, use the PowerShell script instead — same flags, same generated files
+(Git for Windows and Docker Desktop both ship the `openssl` it needs):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+# PowerShell 7+ is also fine:  pwsh -File .\scripts\setup.ps1
+docker compose up -d
+```
+
 `setup.sh` generates everything the stack needs — nothing is auto-generated at runtime:
 
 | Output | Contents                                                                                                                                                                                                                                                                                                                                      |
