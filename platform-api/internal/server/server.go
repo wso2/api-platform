@@ -566,11 +566,29 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	))
 
 	// Apply the OpenAPI-driven scope enforcer after authentication so identity
-	// values are already in the context when scope checks run.
-	chain = append(chain, middleware.ScopeEnforcer(scopeRegistry, middleware.ScopeEnforcerConfig{
+	// values are already in the context when scope checks run. It sits outside
+	// the mux, so it is handed the mux itself to resolve the route pattern a
+	// request will match — r.Pattern is not populated until the mux matches,
+	// which happens after this middleware has already run.
+	// Every route the spec declares a scope for must actually be registered under
+	// that same pattern — otherwise the enforcer's deny-by-default would reject a
+	// live endpoint at runtime. Catch the drift at startup instead.
+	if cfg.Auth.ScopeValidation {
+		if err := middleware.ValidateScopeRegistryRoutes(mux, scopeRegistry); err != nil {
+			return nil, err
+		}
+	}
+
+	scopeEnforcer, err := middleware.ScopeEnforcer(scopeRegistry, middleware.ScopeEnforcerConfig{
 		ValidationMode: cfg.Auth.IDP.ValidationMode,
 		Enabled:        cfg.Auth.ScopeValidation,
-	}))
+		Routes:         mux,
+		SkipPaths:      cfg.Auth.SkipPaths,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to build scope enforcer: %w", err)
+	}
+	chain = append(chain, scopeEnforcer)
 
 	// Plugin "after" middleware — innermost, after auth + scope enforcement, just
 	// before the mux. The authenticated org/identity are in the context here and

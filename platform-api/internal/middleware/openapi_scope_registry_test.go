@@ -79,3 +79,77 @@ func TestLoadScopeRegistry(t *testing.T) {
 		}
 	}
 }
+
+// TestLoadScopeRegistry_TolerantOfPathItemMetadata covers a path item that
+// carries fields other than operations. "parameters" is a sequence, and
+// decoding it as an operation used to fail the whole document — taking every
+// scope in the spec with it, so nothing in that spec was ever enforced.
+func TestLoadScopeRegistry_TolerantOfPathItemMetadata(t *testing.T) {
+	const spec = `
+openapi: 3.0.3
+paths:
+  /api/v0.9/websub-apis/{apiId}:
+    summary: A WebSub API
+    parameters:
+      - name: apiId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:manage
+`
+	registry, err := LoadScopeRegistryFromBytes([]byte(spec))
+	if err != nil {
+		t.Fatalf("LoadScopeRegistryFromBytes: %v", err)
+	}
+
+	scopes, found := registry.Lookup("DELETE", "/api/v0.9/websub-apis/{apiId}")
+	if !found {
+		t.Fatal("operation alongside path-item metadata was not registered")
+	}
+	if len(scopes) != 1 || scopes[0] != "ap:websub_api:manage" {
+		t.Errorf("scopes = %v, want [ap:websub_api:manage]", scopes)
+	}
+
+	// "parameters" and "summary" are metadata, never operations.
+	if _, found := registry.Lookup("PARAMETERS", "/api/v0.9/websub-apis/{apiId}"); found {
+		t.Error("path-item metadata was registered as an operation")
+	}
+}
+
+// TestScopeRegistryLookup_IgnoresPathParameterNames asserts a spec documenting
+// one parameter name and a route registering another still resolve to the same
+// entry — the names are not part of the route's identity.
+func TestScopeRegistryLookup_IgnoresPathParameterNames(t *testing.T) {
+	const spec = `
+openapi: 3.0.3
+paths:
+  /api/v0.9/websub-apis/{apiId}/deployments/{deploymentId}:
+    get:
+      security:
+        - OAuth2Security:
+            - ap:websub_api:read
+`
+	registry, err := LoadScopeRegistryFromBytes([]byte(spec))
+	if err != nil {
+		t.Fatalf("LoadScopeRegistryFromBytes: %v", err)
+	}
+
+	for _, path := range []string{
+		"/api/v0.9/websub-apis/{apiId}/deployments/{deploymentId}",
+		"/api/v0.9/websub-apis/{webSubApiId}/deployments/{deploymentId}",
+		"/api/v0.9/websub-apis/{id}/deployments/{depId}",
+	} {
+		if _, found := registry.Lookup("GET", path); !found {
+			t.Errorf("Lookup(GET, %q) did not find the declared operation", path)
+		}
+	}
+
+	// A structurally different path must still miss.
+	if _, found := registry.Lookup("GET", "/api/v0.9/websub-apis/{apiId}/deployments"); found {
+		t.Error("a structurally different path matched")
+	}
+}
