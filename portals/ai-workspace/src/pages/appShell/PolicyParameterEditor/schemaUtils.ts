@@ -14,6 +14,13 @@
 import { ParameterSchema, SchemaTreeNode, ParameterValues } from './types';
 
 /**
+ * Whether a value contains a Go-template expression resolved by the gateway.
+ */
+export function isTemplateExpression(value: unknown): value is string {
+  return typeof value === 'string' && /\{\{[\s\S]+?\}\}/.test(value);
+}
+
+/**
  * Generate a unique ID for tree nodes
  */
 let nodeIdCounter = 0;
@@ -269,13 +276,12 @@ export function initializeDefaultValues(
 
 /**
  * Coerce a single value to its declared schema type.
- * Template variables (e.g. ${var}) are left as strings.
+ * Template expressions (e.g. {{ env "LIMIT" }}) are left as strings.
  */
 function coerceValue(value: unknown, schema: ParameterSchema): unknown {
   if (value === null || value === undefined) return value;
 
-  // Template variable pattern
-  if (typeof value === 'string' && /\$\{.+\}/.test(value)) return value;
+  if (isTemplateExpression(value)) return value;
 
   switch (schema.type) {
     case 'boolean': {
