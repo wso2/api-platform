@@ -82,6 +82,11 @@ type APIKeyRevocationParams struct {
 	User          *commonmodels.AuthContext // User who initiated the request
 	CorrelationID string                    // Correlation ID for tracking
 	Logger        *slog.Logger              // Logger instance
+	// AuthorizedUpstream marks this operation as already authorized by the platform API
+	// before it was broadcast, so the gateway must not re-run its own creator check.
+	// Set only on the platform-api event path (see RevokeExternalAPIKeyFromEvent); it is
+	// always false for requests arriving on the gateway's own REST API.
+	AuthorizedUpstream bool
 }
 
 // APIKeyRevocationResult contains the result of API key revocation
@@ -121,6 +126,11 @@ type APIKeyUpdateParams struct {
 	// UpdatedAt is the last-updated timestamp from the platform API. When set (external
 	// event path), this value is used instead of time.Now().
 	UpdatedAt *time.Time
+	// AuthorizedUpstream marks this operation as already authorized by the platform API
+	// before it was broadcast, so the gateway must not re-run its own creator check.
+	// Set only on the platform-api event path (see UpdateExternalAPIKeyFromEvent); it is
+	// always false for requests arriving on the gateway's own REST API.
+	AuthorizedUpstream bool
 }
 
 // APIKeyUpdateResult contains the result of API key update
@@ -470,12 +480,18 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 			return result, nil
 		}
 
-		err := s.canRevokeAPIKey(user, apiKey, logger)
-		if err != nil {
-			logger.Debug("User not authorized to revoke API key",
-				slog.String("creator", apiKey.CreatedBy),
-				slog.String("requesting_user", user.UserID))
-			return nil, fmt.Errorf("API key revocation failed for API: '%s'", params.Handle)
+		// Skipped when the platform API already authorized the operation upstream —
+		// see the equivalent note in UpdateAPIKey: an apikey.revoked event cannot
+		// convey that the actor holds ap:api_key:all:manage rather than being the
+		// key's creator.
+		if !params.AuthorizedUpstream {
+			err := s.canRevokeAPIKey(user, apiKey, logger)
+			if err != nil {
+				logger.Debug("User not authorized to revoke API key",
+					slog.String("creator", apiKey.CreatedBy),
+					slog.String("requesting_user", user.UserID))
+				return nil, fmt.Errorf("API key revocation failed for API: '%s'", params.Handle)
+			}
 		}
 
 		// Check if the API key is already revoked
@@ -621,13 +637,21 @@ func (s *APIKeyService) UpdateAPIKey(params APIKeyUpdateParams) (*APIKeyUpdateRe
 		return nil, fmt.Errorf("%w: updates are only allowed for externally generated API keys. For locally generated keys, please use the regenerate endpoint to create a new key", storage.ErrOperationNotAllowed)
 	}
 
-	// Check authorization - only creator can update their own key (unless admin)
-	err = s.canRegenerateAPIKey(user, existingKey, logger)
-	if err != nil {
-		logger.Warn("User not authorized to update API key",
-			slog.String("creator", existingKey.CreatedBy),
-			slog.String("requesting_user", user.UserID))
-		return nil, fmt.Errorf("not authorized to update API key '%s'", params.APIKeyName)
+	// Check authorization - only creator can update their own key.
+	// Skipped when the platform API already authorized the operation upstream: an
+	// apikey.updated event carries only the acting user's id, and that actor may
+	// legitimately be an org API key admin (ap:api_key:all:manage) rather than the
+	// key's creator. The gateway has no way to distinguish the two from the event
+	// payload, so re-checking here would reject every admin-initiated rotation. The
+	// event channel itself is the authorization boundary in that direction.
+	if !params.AuthorizedUpstream {
+		err = s.canRegenerateAPIKey(user, existingKey, logger)
+		if err != nil {
+			logger.Warn("User not authorized to update API key",
+				slog.String("creator", existingKey.CreatedBy),
+				slog.String("requesting_user", user.UserID))
+			return nil, fmt.Errorf("not authorized to update API key '%s'", params.APIKeyName)
+		}
 	}
 
 	updatedKey, err := s.updateAPIKeyFromRequest(existingKey, params.Request, user.UserID, logger, params.ApiKeyHashes, params.UpdatedAt)
@@ -1805,8 +1829,9 @@ func (s *APIKeyService) RevokeExternalAPIKeyFromEvent(
 		User: &commonmodels.AuthContext{
 			UserID: user,
 		},
-		Logger:        logger,
-		CorrelationID: correlationID,
+		Logger:             logger,
+		CorrelationID:      correlationID,
+		AuthorizedUpstream: true, // Platform API enforced ownership/admin-scope before broadcasting
 	}
 
 	_, err = s.RevokeAPIKey(apiKeyRevocationParams)
@@ -1860,9 +1885,10 @@ func (s *APIKeyService) UpdateExternalAPIKeyFromEvent(
 		User: &commonmodels.AuthContext{
 			UserID: user,
 		},
-		Logger:        logger,
-		CorrelationID: correlationID,
-		UpdatedAt:     updatedAt,
+		Logger:             logger,
+		CorrelationID:      correlationID,
+		UpdatedAt:          updatedAt,
+		AuthorizedUpstream: true, // Platform API enforced ownership/admin-scope before broadcasting
 	}
 	_, err = s.UpdateAPIKey(apiKeyUpdateParams)
 	if err != nil {

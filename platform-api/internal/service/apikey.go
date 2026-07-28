@@ -79,6 +79,23 @@ func NewAPIKeyService(apiRepo repository.APIRepository, artifactRepo repository.
 	}
 }
 
+// canManageAPIKey reports whether callerUserID may read or mutate an API key created by
+// createdBy. The creator always may; any other caller must hold constants.ScopeAPIKeyAllManage
+// (keyAdmin), which is an organization-wide, admin-like grant checked at the handler layer.
+//
+// This is the single ownership predicate shared by every API key CRUD path (REST/WebSub/
+// WebBroker, LLM provider, LLM proxy, application key binding) so the rule cannot drift
+// between them.
+//
+// It fails closed on an empty caller identity: an unidentified caller is never treated as
+// the creator, even if createdBy happens to be empty too.
+func canManageAPIKey(createdBy, callerUserID string, keyAdmin bool) bool {
+	if keyAdmin {
+		return true
+	}
+	return callerUserID != "" && createdBy == callerUserID
+}
+
 // hashAPIKey hashes a plain API key using the given algorithm.
 // Currently only "sha256" is supported. Returns a hex-encoded hash string.
 func hashAPIKey(plainAPIKey, algorithm string) (string, error) {
@@ -517,9 +534,10 @@ func (s *APIKeyService) CreateAPIKey(ctx context.Context, apiHandle, kind, orgId
 
 // UpdateAPIKey updates/regenerates an API key and broadcasts it to all gateways where the API is deployed.
 // This method is used when external platforms rotates/regenerates API keys on hybrid gateways.
-// Only the key's creator may update it. This is shared by every kind that uses this service
-// (REST, WebSub, WebBroker API keys) via their own handlers.
-func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string, req *api.UpdateAPIKeyRequest) error {
+// Only the key's creator may update it, unless keyAdmin is true — the caller holds
+// constants.ScopeAPIKeyAllManage and may act on any user's key. This is shared by every kind
+// that uses this service (REST, WebSub, WebBroker API keys) via their own handlers.
+func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string, keyAdmin bool, req *api.UpdateAPIKeyRequest) error {
 	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
 	// kinds resolves to exactly one artifact.
 	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiHandle, kind, orgId)
@@ -533,7 +551,8 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	apiId := apiMetadata.ID
 
-	// Ownership check — only the key's creator may update it. Enforced up front, right
+	// Ownership check — only the key's creator, or a caller holding
+	// constants.ScopeAPIKeyAllManage, may update it. Enforced up front, right
 	// after resolving the API handle, and before resolving gateway deployments, hashing
 	// the new key material, or broadcasting — an unauthorized caller must not be able to
 	// trigger any of that work (deny-by-default; authentication_authorization.md GO-AUTH-007).
@@ -545,9 +564,7 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 	if existingKey == nil {
 		return apperror.RESTAPIKeyNotFound.New()
 	}
-	// Fail closed: an empty caller identity must never match, rather than skipping the
-	// ownership comparison entirely.
-	if userId == "" || existingKey.CreatedBy != userId {
+	if !canManageAPIKey(existingKey.CreatedBy, userId, keyAdmin) {
 		return apperror.RESTAPIKeyForbidden.New()
 	}
 
@@ -647,9 +664,10 @@ func (s *APIKeyService) UpdateAPIKey(ctx context.Context, apiHandle, kind, orgId
 }
 
 // RevokeAPIKey broadcasts API key revocation to all gateways where the API is deployed.
-// Only the key's creator may revoke it. This is shared by every kind that uses this service
-// (REST, WebSub, WebBroker API keys) via their own handlers.
-func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string) error {
+// Only the key's creator may revoke it, unless keyAdmin is true — the caller holds
+// constants.ScopeAPIKeyAllManage and may act on any user's key. This is shared by every kind
+// that uses this service (REST, WebSub, WebBroker API keys) via their own handlers.
+func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId, keyName, userId string, keyAdmin bool) error {
 	// Resolve API handle to UUID within the artifact table backing kind, so a handle shared across
 	// kinds resolves to exactly one artifact.
 	apiMetadata, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(apiHandle, kind, orgId)
@@ -663,7 +681,8 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 	}
 	apiId := apiMetadata.ID
 
-	// Ownership check — only the key's creator may revoke it. Enforced up front, right
+	// Ownership check — only the key's creator, or a caller holding
+	// constants.ScopeAPIKeyAllManage, may revoke it. Enforced up front, right
 	// after resolving the API handle, and before resolving gateway deployments or
 	// broadcasting — an unauthorized caller must not be able to trigger any of that work
 	// (deny-by-default; authentication_authorization.md GO-AUTH-007).
@@ -675,9 +694,7 @@ func (s *APIKeyService) RevokeAPIKey(ctx context.Context, apiHandle, kind, orgId
 	if revokeKey == nil {
 		return apperror.RESTAPIKeyNotFound.New()
 	}
-	// Fail closed: an empty caller identity must never match, rather than skipping the
-	// ownership comparison entirely.
-	if userId == "" || revokeKey.CreatedBy != userId {
+	if !canManageAPIKey(revokeKey.CreatedBy, userId, keyAdmin) {
 		return apperror.RESTAPIKeyForbidden.New()
 	}
 

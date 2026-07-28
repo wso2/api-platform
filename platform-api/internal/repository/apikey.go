@@ -217,15 +217,37 @@ func (r *APIKeyRepo) Delete(artifactUUID, name string) error {
 	return nil
 }
 
-// ListAPIKeysByUser retrieves API keys created by a given user within an org, optionally filtered by artifact kinds.
+// ListAPIKeysByUser retrieves API keys within an org, optionally filtered by artifact kinds.
 // If kinds is empty, all supported kinds (RestApi, LlmProvider, LlmProxy) are returned.
-func (r *APIKeyRepo) ListAPIKeysByUser(orgUUID, username string, kinds []string) ([]*model.UserAPIKey, error) {
+//
+// allUsers selects the scope of the listing and must be set deliberately by the caller:
+// false restricts results to keys created by username; true drops the creator filter and
+// returns every user's keys in the org, and is reserved for callers the service layer has
+// verified hold constants.ScopeAPIKeyAllManage.
+//
+// It fails closed rather than widening by omission: an empty username with allUsers false
+// is an error, never a silent org-wide listing (GO-AUTH-019). A blank caller identity must
+// not be one forgotten assignment away from disclosing every key in the organization.
+func (r *APIKeyRepo) ListAPIKeysByUser(orgUUID, username string, allUsers bool, kinds []string) ([]*model.UserAPIKey, error) {
+	if !allUsers && username == "" {
+		return nil, errors.New("refusing to list API keys: no creator specified and org-wide listing not requested")
+	}
+
 	if len(kinds) == 0 {
 		kinds = []string{constants.RestApi, constants.LLMProvider, constants.LLMProxy}
 	}
 
+	// creatorFilter is one of two fixed, code-controlled literals — never built from input.
+	// The username itself is always bound through the ? placeholder below (GO-AUTH-008).
+	creatorFilter := ""
+	args := make([]any, 0, len(kinds)+2)
+	if !allUsers {
+		creatorFilter = "ak.created_by = ?\n\t\t  AND "
+		args = append(args, username)
+	}
+	args = append(args, orgUUID)
+
 	placeholders := make([]string, len(kinds))
-	args := []any{username, orgUUID}
 	for i, k := range kinds {
 		placeholders[i] = "?"
 		args = append(args, k)
@@ -241,11 +263,10 @@ func (r *APIKeyRepo) ListAPIKeysByUser(orgUUID, username string, kinds []string)
 		JOIN (
 			`+r.reg.UnionAllSelect("uuid", "handle")+`
 		) src ON src.uuid = ak.artifact_uuid
-		WHERE ak.created_by = ?
-		  AND a.organization_uuid = ?
+		WHERE %sa.organization_uuid = ?
 		  AND a.type IN (%s)
 		ORDER BY ak.created_at DESC
-	`, strings.Join(placeholders, ", "))
+	`, creatorFilter, strings.Join(placeholders, ", "))
 
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {

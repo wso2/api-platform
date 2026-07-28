@@ -41,17 +41,25 @@ type WebBrokerAPIKeyHandler struct {
 	webbrokerAPIService *egservice.WebBrokerAPIService
 	apiKeyService       *service.APIKeyService
 	identity            *service.IdentityService
+	authzMode           string
 	slogger             *slog.Logger
 }
 
 // NewWebBrokerAPIKeyHandler creates a new WebBrokerAPIKeyHandler instance
-func NewWebBrokerAPIKeyHandler(webbrokerAPIService *egservice.WebBrokerAPIService, apiKeyService *service.APIKeyService, identity *service.IdentityService, slogger *slog.Logger) *WebBrokerAPIKeyHandler {
+func NewWebBrokerAPIKeyHandler(webbrokerAPIService *egservice.WebBrokerAPIService, apiKeyService *service.APIKeyService, identity *service.IdentityService, authzMode string, slogger *slog.Logger) *WebBrokerAPIKeyHandler {
 	return &WebBrokerAPIKeyHandler{
 		webbrokerAPIService: webbrokerAPIService,
 		apiKeyService:       apiKeyService,
 		identity:            identity,
+		authzMode:           authzMode,
 		slogger:             slogger,
 	}
+}
+
+// isKeyAdmin reports whether the caller holds constants.ScopeAPIKeyAllManage and may
+// therefore act on API keys created by other users, not only their own.
+func (h *WebBrokerAPIKeyHandler) isKeyAdmin(r *http.Request) bool {
+	return middleware.HasEffectiveScope(r, h.authzMode, constants.ScopeAPIKeyAllManage)
 }
 
 // RegisterRoutes registers WebBroker API key routes
@@ -182,7 +190,7 @@ func (h *WebBrokerAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, constants.WebBrokerApi, orgID, keyName, userId, &req); err != nil {
+	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, constants.WebBrokerApi, orgID, keyName, userId, h.isKeyAdmin(r), &req); err != nil {
 		if apperror.ArtifactNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
 			return
@@ -229,7 +237,7 @@ func (h *WebBrokerAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.WebBrokerApi, orgID, keyName, userId); err != nil {
+	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.WebBrokerApi, orgID, keyName, userId, h.isKeyAdmin(r)); err != nil {
 		if apperror.ArtifactNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "WebBroker API not found"))
 			return

@@ -20,6 +20,7 @@ roles:
   - name: platform-admin
     scopes:
       - ap:api_key:read
+      - ap:api_key:all:manage
       - ap:organization:manage
       - ap:project:manage
       - ap:gateway:manage

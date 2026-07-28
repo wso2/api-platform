@@ -41,17 +41,25 @@ type WebSubAPIKeyHandler struct {
 	websubAPIService *egservice.WebSubAPIService
 	apiKeyService    *service.APIKeyService
 	identity         *service.IdentityService
+	authzMode        string
 	slogger          *slog.Logger
 }
 
 // NewWebSubAPIKeyHandler creates a new WebSubAPIKeyHandler instance
-func NewWebSubAPIKeyHandler(websubAPIService *egservice.WebSubAPIService, apiKeyService *service.APIKeyService, identity *service.IdentityService, slogger *slog.Logger) *WebSubAPIKeyHandler {
+func NewWebSubAPIKeyHandler(websubAPIService *egservice.WebSubAPIService, apiKeyService *service.APIKeyService, identity *service.IdentityService, authzMode string, slogger *slog.Logger) *WebSubAPIKeyHandler {
 	return &WebSubAPIKeyHandler{
 		websubAPIService: websubAPIService,
 		apiKeyService:    apiKeyService,
 		identity:         identity,
+		authzMode:        authzMode,
 		slogger:          slogger,
 	}
+}
+
+// isKeyAdmin reports whether the caller holds constants.ScopeAPIKeyAllManage and may
+// therefore act on API keys created by other users, not only their own.
+func (h *WebSubAPIKeyHandler) isKeyAdmin(r *http.Request) bool {
+	return middleware.HasEffectiveScope(r, h.authzMode, constants.ScopeAPIKeyAllManage)
 }
 
 // RegisterRoutes registers WebSub API key routes
@@ -182,7 +190,7 @@ func (h *WebSubAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, constants.WebSubApi, orgID, keyName, userId, &req); err != nil {
+	if err := h.apiKeyService.UpdateAPIKey(r.Context(), apiHandle, constants.WebSubApi, orgID, keyName, userId, h.isKeyAdmin(r), &req); err != nil {
 		if apperror.ArtifactNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "WebSub API not found"))
 			return
@@ -230,7 +238,7 @@ func (h *WebSubAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.WebSubApi, orgID, keyName, userId); err != nil {
+	if err := h.apiKeyService.RevokeAPIKey(r.Context(), apiHandle, constants.WebSubApi, orgID, keyName, userId, h.isKeyAdmin(r)); err != nil {
 		if apperror.ArtifactNotFound.Is(err) {
 			httputil.WriteJSON(w, http.StatusNotFound, apperror.NewErrorResponse(404, "Not Found", "WebSub API not found"))
 			return

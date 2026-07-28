@@ -61,10 +61,13 @@ func NewLLMProxyAPIKeyService(
 	}
 }
 
-// ListLLMProxyAPIKeys returns API keys for an LLM proxy, filtered to those created by userID.
+// ListLLMProxyAPIKeys returns API keys for an LLM proxy, filtered to those created by userID —
+// or every key on the proxy when keyAdmin is true (the caller holds
+// constants.ScopeAPIKeyAllManage).
 func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 	ctx context.Context,
 	proxyID, orgID, userID string,
+	keyAdmin bool,
 	limit, offset int,
 ) (*api.LLMProxyAPIKeyListResponse, error) {
 
@@ -83,7 +86,7 @@ func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 		return nil, fmt.Errorf("failed to list API keys: %w", err)
 	}
 
-	items, err := ownedAPIKeyItems(keys, userID, s.identity)
+	items, err := ownedAPIKeyItems(keys, userID, keyAdmin, s.identity)
 	if err != nil {
 		return nil, err
 	}
@@ -100,10 +103,13 @@ func (s *LLMProxyAPIKeyService) ListLLMProxyAPIKeys(
 	}, nil
 }
 
-// DeleteLLMProxyAPIKey deletes the API key from the database and broadcasts a revoke event to gateways.
+// DeleteLLMProxyAPIKey deletes the API key from the database and broadcasts a revoke event to
+// gateways. Only the key's creator may delete it, unless keyAdmin is true (the caller holds
+// constants.ScopeAPIKeyAllManage).
 func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 	ctx context.Context,
 	proxyID, orgID, userID, keyName string,
+	keyAdmin bool,
 ) error {
 
 	proxy, err := s.llmProxyRepo.GetByID(proxyID, orgID)
@@ -124,8 +130,7 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 		return apperror.LLMProxyAPIKeyNotFound.New()
 	}
 
-	// Non-admin callers (userID != "") must be the key creator.
-	if userID != "" && existingKey.CreatedBy != userID {
+	if !canManageAPIKey(existingKey.CreatedBy, userID, keyAdmin) {
 		return apperror.LLMProxyAPIKeyForbidden.New()
 	}
 

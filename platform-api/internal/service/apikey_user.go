@@ -47,15 +47,22 @@ func NewAPIKeyUserService(
 	}
 }
 
-// ListAPIKeysByUser returns API keys created by the given user within the org, optionally filtered by artifact types.
+// ListAPIKeysByUser returns API keys created by the given user within the org, optionally
+// filtered by artifact types. When keyAdmin is true the caller holds
+// constants.ScopeAPIKeyAllManage and every user's keys in the org are returned instead.
 func (s *APIKeyUserService) ListAPIKeysByUser(
 	ctx context.Context,
 	orgID, username string,
+	keyAdmin bool,
 	types []string,
 	limit, offset int,
 ) (*api.UserAPIKeyListResponse, error) {
 
-	keys, err := s.apiKeyRepo.ListAPIKeysByUser(orgID, username, types)
+	// keyAdmin is passed straight through as the org-wide flag: the widening is an explicit
+	// argument derived from the caller's verified scope, not an empty username standing in
+	// for "no filter". The repository rejects an empty username unless the flag is set, so a
+	// caller that fails to resolve an actor cannot accidentally list the whole org.
+	keys, err := s.apiKeyRepo.ListAPIKeysByUser(orgID, username, keyAdmin, types)
 	if err != nil {
 		s.slogger.Error("Failed to list API keys for user", "username", username, "orgId", orgID, "error", err)
 		return nil, fmt.Errorf("failed to list API keys: %w", err)

@@ -62,7 +62,7 @@ const (
 	// developer portal requires, so the same admin JWT authorizes both products.
 	// (A mounted config's users are ignored — the built-in default admin wins —
 	// but the AUTH_FILE_BASED_USERS env var does override it.)
-	fileBasedAdminUsers = `[{"username":"admin","password_hash":"$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ.","scopes":"ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:secret:manage dp:org_manage dp:api_manage dp:sub_plan_manage dp:app_manage dp:subscription_manage dp:api_key_manage dp:webhook_subscriber_manage"}]`
+	fileBasedAdminUsers = `[{"username":"admin","password_hash":"$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ.","scopes":"ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:api_key:all:manage ap:secret:manage dp:org_manage dp:api_manage dp:sub_plan_manage dp:app_manage dp:subscription_manage dp:api_key_manage dp:webhook_subscriber_manage"}]`
 )
 
 // Host-side endpoints. Ports are overridable so the suite can run alongside

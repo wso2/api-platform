@@ -614,6 +614,7 @@ paths:
             - ap:rest_api:api_key:create
             - ap:rest_api:api_key:manage
             - ap:rest_api:manage
+            - ap:api_key:all:manage
       tags:
         - REST APIs
         - API Keys
@@ -662,6 +663,7 @@ paths:
             - ap:rest_api:api_key:update
             - ap:rest_api:api_key:manage
             - ap:rest_api:manage
+            - ap:api_key:all:manage
       tags:
         - REST APIs
         - API Keys
@@ -713,6 +715,7 @@ paths:
             - ap:rest_api:api_key:delete
             - ap:rest_api:api_key:manage
             - ap:rest_api:manage
+            - ap:api_key:all:manage
       tags:
         - REST APIs
         - API Keys
@@ -1910,6 +1913,7 @@ paths:
             - ap:llm_provider:api_key:create
             - ap:llm_provider:api_key:manage
             - ap:llm_provider:manage
+            - ap:api_key:all:manage
       tags:
         - LLM Providers
         - API Keys
@@ -1957,6 +1961,7 @@ paths:
             - ap:llm_provider:api_key:read
             - ap:llm_provider:api_key:manage
             - ap:llm_provider:manage
+            - ap:api_key:all:manage
       tags:
         - LLM Providers
         - API Keys
@@ -1995,6 +2000,7 @@ paths:
             - ap:llm_provider:api_key:delete
             - ap:llm_provider:api_key:manage
             - ap:llm_provider:manage
+            - ap:api_key:all:manage
       tags:
         - LLM Providers
         - API Keys
@@ -2493,6 +2499,7 @@ paths:
             - ap:llm_proxy:api_key:create
             - ap:llm_proxy:api_key:manage
             - ap:llm_proxy:manage
+            - ap:api_key:all:manage
       tags:
         - LLM Proxies
       parameters:
@@ -2539,6 +2546,7 @@ paths:
             - ap:llm_proxy:api_key:read
             - ap:llm_proxy:api_key:manage
             - ap:llm_proxy:manage
+            - ap:api_key:all:manage
       tags:
         - LLM Proxies
         - API Keys
@@ -2577,6 +2585,7 @@ paths:
             - ap:llm_proxy:api_key:delete
             - ap:llm_proxy:api_key:manage
             - ap:llm_proxy:manage
+            - ap:api_key:all:manage
       tags:
         - LLM Proxies
         - API Keys
@@ -3770,6 +3779,7 @@ paths:
             - ap:application:api_key:read
             - ap:application:api_key:manage
             - ap:application:manage
+            - ap:api_key:all:manage
       tags:
         - Applications
         - API Keys
@@ -3805,6 +3815,7 @@ paths:
             - ap:application:api_key:create
             - ap:application:api_key:manage
             - ap:application:manage
+            - ap:api_key:all:manage
       tags:
         - Applications
         - API Keys
@@ -3845,6 +3856,7 @@ paths:
             - ap:application:api_key:delete
             - ap:application:api_key:manage
             - ap:application:manage
+            - ap:api_key:all:manage
       tags:
         - Applications
         - API Keys
@@ -3978,6 +3990,7 @@ paths:
             - ap:application:association:api_key:read
             - ap:application:association:manage
             - ap:application:manage
+            - ap:api_key:all:manage
       tags:
         - Applications
         - API Keys
@@ -4402,6 +4415,7 @@ paths:
       security:
         - OAuth2Security:
             - ap:api_key:read
+            - ap:api_key:all:manage
       tags:
         - API Keys
       parameters:
@@ -4663,6 +4677,7 @@ components:
         clientCredentials:
           tokenUrl: https://localhost:9243/oauth2/token
           scopes:
+            ap:api_key:all:manage: Manage API keys created by any user in the organization
             ap:api_key:read: Read API keys owned by the current user
             ap:application:api_key:create: Create an application API key
             ap:application:api_key:delete: Delete an application API key

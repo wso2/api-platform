@@ -1406,3 +1406,166 @@ server.start()
 > * Does a permission check on a security-critical file or socket log a warning but still proceed when the check fails? (If yes, make it a hard failure, with at most a narrowly-scoped, off-by-default dev opt-out.)
 > * Is a newly created Unix domain socket's restrictive mode established AT CREATION TIME (via a narrowed `umask` around the bind call and/or a `0o700` parent directory), not merely `chmod`'d after the fact? (A `chmod` issued only after `add_insecure_port`/`bind` leaves a real TOCTOU window — the socket exists under default umask permissions from the moment it's created until the `chmod` call lands.)
 > * Is the permission check re-verified periodically at runtime for long-lived processes, or only once at startup? (A file's permissions can change after a process has already loaded it — consider a periodic re-check for high-value key material.)
+
+---
+
+## GO-AUTH-019: Ownership-Override Scopes Must Be Named, Service-Layer Enforced, and Never Silently Assumed
+
+### Severity
+
+High
+
+### Description
+
+Most resource CRUD in this platform is *creator-scoped*: a user may act only on rows they created (API keys are the canonical case — `api_keys.created_by`). Where an operator genuinely needs cross-user administration of such a resource, express it as **one explicitly named, organization-wide scope** (`ap:api_key:all:manage`), and enforce it through **a single shared predicate at the service layer** that every entry point funnels through. Never approximate it with an implicit signal — an empty caller id, a role name inferred at the handler, a "this call came from an internal path so it must be trusted" assumption.
+
+An ownership-override scope is a deliberate, documented exception to the creator-scoped default. It does **not** relax GO-AUTH-005: the override widens *which rows within the caller's organization* are reachable, never which organization. The org filter stays sourced from token claims in every query.
+
+### Rationale
+
+Creator-scoped CRUD has a recurring failure mode in both directions. Tighten it without an override and legitimate administration becomes impossible, which pressures developers into ad-hoc bypasses — the most common being "treat an empty user id as an admin" (`if userID != "" && key.CreatedBy != userID`), which fails *open* for any code path that simply forgot to populate the actor. Add an override without naming it and the grant becomes invisible: it can't be audited, can't be withheld from a self-service role, and can't be reasoned about at review time.
+
+Concentrating the decision in one predicate matters because the same ownership rule is duplicated across every artifact kind (REST/WebSub/WebBroker, LLM provider, LLM proxy, application key binding). Independent re-implementations reliably drift — the same drift GO-AUTH-006 and `ssrf-prevention.md` directive 6 describe for method normalization and upstream validators.
+
+### Non-Compliant Code
+
+```go
+// ERROR: an empty caller identity is treated as an implicit admin. Any code path
+// that fails to populate userID — a new internal caller, a refactored handler, a
+// background job — silently gains cross-user write access. This fails OPEN.
+func (s *LLMProviderAPIKeyService) DeleteAPIKey(ctx context.Context, providerID, orgID, userID, keyName string) error {
+    existingKey, err := s.apiKeyRepo.GetByArtifactAndName(providerID, keyName)
+    if err != nil {
+        return err
+    }
+    if userID != "" && existingKey.CreatedBy != userID { // "" == implicit admin
+        return apperror.LLMProviderAPIKeyForbidden.New()
+    }
+    return s.apiKeyRepo.Delete(providerID, keyName)
+}
+
+// ERROR: the override is granted purely by adding the scope to the route's security
+// list, with no service-layer check. Reaching the endpoint is not the same as being
+// allowed to touch another user's row (GO-AUTH-007 governs the former, this rule the latter).
+//   security:
+//     - OAuth2Security: [ap:rest_api:api_key:manage, ap:api_key:all:manage]
+func (s *APIKeyService) RevokeAPIKey(ctx context.Context, handle, kind, orgID, keyName, userID string) error {
+    return s.apiKeyRepo.Revoke(handle, keyName, userID) // no ownership check at all
+}
+
+// ERROR: each service re-implements the ownership rule slightly differently, so a fix
+// or a new override applied to one silently misses the others.
+if key.CreatedBy != userID { /* REST */ }
+if userID != "" && key.CreatedBy != userID { /* LLM provider — different! */ }
+if strings.TrimSpace(key.CreatedBy) != strings.TrimSpace(userID) { /* application binding — different again! */ }
+```
+
+### Compliant Code
+
+```go
+// CORRECT: one predicate, shared by every API key CRUD path, so the rule cannot drift
+// between artifact kinds. It fails CLOSED on an unidentified caller — an empty caller id
+// is never treated as matching, not even against a row whose created_by is also empty.
+func canManageAPIKey(createdBy, callerUserID string, keyAdmin bool) bool {
+    if keyAdmin { // Caller holds constants.ScopeAPIKeyAllManage, verified at the handler
+        return true
+    }
+    return callerUserID != "" && createdBy == callerUserID
+}
+
+// CORRECT: the scope is resolved once at the handler from the request's verified claims
+// (never from request input), then passed down as an explicit parameter. An authorization
+// input travels as a visible argument, not as an implicit context value a future refactor
+// can drop without a compile error.
+const ScopeAPIKeyAllManage = "ap:api_key:all:manage"
+
+func (h *APIKeyHandler) isKeyAdmin(r *http.Request) bool {
+    return middleware.HasEffectiveScope(r, h.authzMode, constants.ScopeAPIKeyAllManage)
+}
+
+func (h *APIKeyHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) error {
+    orgID, ok := middleware.GetOrganizationFromRequest(r) // GO-AUTH-005: org always from claims
+    if !ok {
+        return apperror.Unauthorized.New()
+    }
+    userID, err := resolveActorErr(r, h.identity, "revoke API key")
+    if err != nil {
+        return err
+    }
+    return h.apiKeyService.RevokeAPIKey(r.Context(), r.PathValue("restApiId"),
+        constants.RestApi, orgID, r.PathValue("apiKeyId"), userID, h.isKeyAdmin(r))
+}
+
+// CORRECT: the service enforces the predicate up front, before doing any work an
+// unauthorized caller must not be able to trigger (GO-AUTH-007), and the org scope is
+// still applied independently of the override.
+func (s *APIKeyService) RevokeAPIKey(ctx context.Context, handle, kind, orgID, keyName, userID string, keyAdmin bool) error {
+    key, err := s.apiKeyRepo.GetByArtifactAndName(artifactID, keyName)
+    if err != nil {
+        return err
+    }
+    if key == nil {
+        return apperror.RESTAPIKeyNotFound.New()
+    }
+    if !canManageAPIKey(key.CreatedBy, userID, keyAdmin) {
+        return apperror.RESTAPIKeyForbidden.New() // Generic 403 — never name the missing scope
+    }
+    // The row-level created_by re-check in the repository's WHERE clause still applies, so an
+    // admin-initiated write keeps the delete/recreate race guard (GO-AUTH-009's atomicity principle).
+    return s.apiKeyRepo.Revoke(artifactID, keyName, key.CreatedBy, userID)
+}
+```
+
+```go
+// CORRECT: an override scope is granted only to genuinely administrative roles. A
+// self-service/developer role keeps the creator-scoped default.
+// resources/roles.yaml:
+//   - name: platform-admin
+//     scopes:
+//       - ap:api_key:all:manage   # Org-wide: manage any user's API keys
+//   - name: platform-developer
+//     scopes: []                  # Deliberately absent — creator-scoped only
+```
+
+### Downstream Components Cannot Re-Derive an Override — Gate the Skip Explicitly
+
+A scope decision made by the authorizing service does not survive a broadcast to a downstream component: an event carries the *acting user's id*, not their scopes, so a downstream re-check of `created_by` rejects every legitimate admin-initiated change. Do not respond by deleting the downstream check — that would also disable it for the component's own directly-authenticated API. Instead, carry an explicit "already authorized upstream" flag that **only** the event path sets.
+
+```go
+// CORRECT: the ownership check remains fully in force for the gateway's own REST API;
+// it is skipped only on the platform-api event path, via a flag that path alone sets.
+type APIKeyRevocationParams struct {
+    Handle     string
+    APIKeyName string
+    User       *commonmodels.AuthContext
+    // AuthorizedUpstream marks this operation as already authorized by the platform API
+    // before it was broadcast. Set ONLY by RevokeExternalAPIKeyFromEvent; always false
+    // for requests arriving on this service's own REST API.
+    AuthorizedUpstream bool
+}
+
+func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevocationResult, error) {
+    // ...
+    // An apikey.revoked event conveys only the actor's id, and that actor may legitimately
+    // hold ap:api_key:all:manage rather than be the key's creator. The gateway cannot tell
+    // the two apart from the payload, so the authenticated event channel is the authorization
+    // boundary in that direction — but only in that direction.
+    if !params.AuthorizedUpstream {
+        if err := s.canRevokeAPIKey(params.User, apiKey, logger); err != nil {
+            return nil, fmt.Errorf("API key revocation failed for API: '%s'", params.Handle)
+        }
+    }
+    // ...
+}
+```
+
+The same applies to a signed control-plane webhook whose payload carries no user identity at all. Setting the flag there is legitimate, but document precisely what the flag does and does not narrow — in particular, that it bypasses ownership for *whatever* row matches the supplied identity, not only rows that channel originally created.
+
+> **Verification Checklist before outputting code:**
+> * Does an ownership check treat an empty/missing caller identity as permission to proceed (`if userID != "" && ...`)? (If yes, invert it to fail closed — an unidentified caller must never match, even against an empty `created_by`.)
+> * Is the same creator-scoped rule written out separately in more than one service? (If yes, extract one shared predicate and call it from every path, per `ssrf-prevention.md` directive 6's anti-drift principle.)
+> * Is an override granted only by adding a scope to a route's security list, with no corresponding service-layer check? (Route access is GO-AUTH-007; row-level ownership is this rule — both are required, and the service-layer check is the authoritative one per GO-AUTH-015.)
+> * Does the override widen anything beyond row ownership within the caller's own organization? (It must not — the `organization_uuid` filter still comes from token claims, per GO-AUTH-005.)
+> * Is the override scope granted to a self-service, developer, or viewer role in `roles.yaml`? (An org-wide cross-user grant belongs to administrative roles only.)
+> * When a downstream component re-checks ownership on a broadcast event, was the check deleted outright rather than gated behind an explicit upstream-authorized flag? (Deleting it also disables the check for that component's own directly-authenticated API — gate it instead, and set the flag only on the event path.)
+> * Does the 403 returned on an ownership failure name the scope that was missing? (It must not — a generic `Forbidden` avoids handing an attacker a scope-probing oracle, per GO-AUTH-007.)
