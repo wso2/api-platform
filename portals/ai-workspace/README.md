@@ -134,6 +134,18 @@ The stack exposes:
 | AI Workspace (Go BFF) | `9643` | HTTPS |
 | Platform API | `9243` | HTTPS |
 
+**Already have a platform-api running elsewhere** (another host, or a container you started
+separately) and only want to bring up ai-workspace? The `ai-workspace` service normally waits on
+its own `platform-api` container via `depends_on`, so skip that with `--no-deps` and point it at
+the external instance:
+
+```bash
+export APIP_AIW_CONTROL_PLANE_URL=https://<external-platform-api-host>:9243
+docker compose up -d --no-deps ai-workspace
+```
+
+Since `--no-deps` skips the `service_healthy` wait too, confirm the external platform-api is
+already up and reachable before running this.
 
 ### Option 2
 
@@ -436,8 +448,8 @@ Use the following commands after the stack is up:
 `npm run test:e2e` runs against `https://host.docker.internal:9643`, which maps back to your local quickstart stack from inside the Cypress container. The command adds an explicit `host-gateway` mapping so it also works on Linux Docker hosts. `npm run test:e2e:open` runs locally against `https://localhost:9643`.
 
 The tests default to `admin` / `admin`; pin the quickstart credentials to match
-(`ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ./setup.sh --force`) or export
-`CYPRESS_ADMIN_USER` / `CYPRESS_ADMIN_PASSWORD` with the credentials `setup.sh`
+(`ADMIN_USERNAME=admin ADMIN_PASSWORD=admin ../scripts/setup.sh --force`) or export
+`CYPRESS_ADMIN_USER` / `CYPRESS_ADMIN_PASSWORD` with the credentials `../scripts/setup.sh`
 generated.
 
 ---

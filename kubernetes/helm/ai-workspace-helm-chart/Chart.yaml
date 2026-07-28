@@ -1,0 +1,39 @@
+apiVersion: v2
+name: ai-workspace
+kubeVersion: ">=1.24.0-0"
+description: >-
+  WSO2 API Platform — AI Workspace product package. Chart whose default
+  profile is the shared Platform API control plane plus the AI Workspace UI. Each
+  component is a separately-released chart pulled as an OCI dependency; add other
+  components (e.g. the Developer Portal) later by appending a dependency.
+version: 1.0.0-alpha
+appVersion: "1.0.0-alpha"
+type: application
+home: https://github.com/wso2/api-platform
+sources:
+  - https://github.com/wso2/api-platform
+keywords:
+  - api-platform
+  - ai-workspace
+  - platform-api
+  - wso2
+maintainers:
+  - name: ap-portals-maintainers
+    email: contact@wso2.com
+dependencies:
+  # NOTE: repositories below reference the OCI registry (the release default), so
+  # `helm dependency update` pulls the components from ghcr (requires them to be
+  # published + `helm registry login ghcr.io`). For local development WITHOUT
+  # publishing, temporarily switch each to repository: "file://../<name>-helm-chart"
+  # and re-run `helm dependency update`.
+  #
+  # Shared control plane. On by default; the UI reaches it in-cluster.
+  - name: platform-api
+    version: "0.13.0"
+    repository: "oci://ghcr.io/wso2/api-platform/helm-charts"
+    condition: platform-api.enabled
+  # AI Workspace UI — this package's headline component.
+  - name: ai-workspace-ui
+    version: "1.0.0-alpha"
+    repository: "oci://ghcr.io/wso2/api-platform/helm-charts"
+    condition: ai-workspace-ui.enabled

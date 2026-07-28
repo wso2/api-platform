@@ -16,7 +16,7 @@
 # (as below) so the inner double quotes need no backslash-escaping:
 #
 #   platform_api_url = '{{ env "APIP_DP_AUTH_LOCAL_PLATFORM_API_URL" }}'
-#   encryption_key = '{{ file "/secrets/devportal/encryption-key" }}'
+#   encryption_key = '{{ file "/etc/devportal/keys/encryption.key" }}'
 #
 #   {{ env "NAME" }}            -> NAME's value. FAILS CLOSED (aborts startup)
 #                                   if NAME is unset or empty — it does not

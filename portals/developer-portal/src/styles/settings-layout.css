@@ -1692,3 +1692,89 @@
 .cfg-label-toggle.selected .bi {
   opacity: 1;
 }
+
+/* ── Webhook form: enable toggle, inline view, event picker ─── */
+/* Moved here from cfg-modals.hbs's inline <style> when the webhook add/edit form became
+   an in-panel view instead of a modal. .wh-toggle is shared with the key-manager modal,
+   so it cannot live inside either partial. */
+  .wh-toggle { position: relative; display: inline-block; width: 38px; height: 22px; flex: none; }
+  .wh-toggle input { opacity: 0; width: 0; height: 0; }
+  .wh-toggle-slider { position: absolute; inset: 0; background-color: #d0d7de; border-radius: 34px; cursor: pointer; transition: .2s; }
+  .wh-toggle-slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: var(--white); border-radius: 50%; transition: .2s; }
+  .wh-toggle input:checked + .wh-toggle-slider { background-color: #1f6feb; }
+  .wh-toggle input:checked + .wh-toggle-slider:before { transform: translateX(16px); }
+  /* The input is collapsed to 0x0 with opacity 0, so it can still take focus but shows
+     nothing when it does. Paint the focus ring onto the slider instead, or the switch is
+     unreachable-looking for keyboard users. */
+  .wh-toggle input:focus-visible + .wh-toggle-slider {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
+  /* Categorised event picker. Hidden by default — settings-webhooks.js flips display
+     to flex when "Select events" is active, so the column direction lives here. */
+  #wh-event-list { display: none; flex-direction: column; gap: 14px; }
+
+  /* Caption styled like the settings table headers, so the groups read as sections
+     rather than as three nested cards competing with the modal's own card. */
+  .wh-event-group-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 7px;
+  }
+  .wh-event-group-title {
+    font-size: .688rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--text-subtle);
+  }
+  .wh-event-group-toggle {
+    border: none;
+    background: none;
+    padding: 0;
+    font-size: .75rem;
+    font-weight: 500;
+    color: var(--primary);
+    cursor: pointer;
+  }
+  .wh-event-group-toggle:hover { text-decoration: underline; }
+
+  /* A grid, not flex-wrap: fixed columns keep the ticks aligned down the page instead
+     of leaving ragged rows. auto-fill collapses to fewer columns on a narrow modal. */
+  .wh-event-group-items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1px 12px;
+  }
+  .wh-event-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 6px;
+    border-radius: 6px;
+    font-size: .8125rem;
+    color: var(--text-strong);
+    cursor: pointer;
+  }
+  .wh-event-item:hover { background: var(--surface-sunken); }
+  /* Same treatment as .cfg-plan-card's checkbox, the other tickable list on this page. */
+  .wh-event-item input[type=checkbox] {
+    accent-color: var(--primary);
+    width: 15px;
+    height: 15px;
+    flex: none;
+    margin: 0;
+    cursor: pointer;
+  }
+
+/* Inline (non-modal) form view inside a settings panel. */
+.cfg-webhook-form { max-width: 560px; }
+
+.cfg-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}

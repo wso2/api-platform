@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -55,11 +56,27 @@ var (
 	BuildDate = "unknown"
 )
 
+// stringSliceFlag collects a repeatable string flag into a slice, preserving the
+// order in which the flags were supplied on the command line.
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string { return strings.Join(*s, ", ") }
+
+func (s *stringSliceFlag) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
 var (
-	configFile       = flag.String("config", "", "Path to configuration file (required)")
+	configFiles      stringSliceFlag
 	policyChainsFile = flag.String("policy-chains-file", "", "Path to policy chains file (enables file mode)")
 	xdsServerAddr    = flag.String("xds-server", "", "xDS server address (e.g., localhost:18000)")
 )
+
+func init() {
+	flag.Var(&configFiles, "config",
+		"Path to a configuration file (required; repeatable, merged in order with last-wins precedence)")
+}
 
 type noOpXDSSyncStatusProvider struct{}
 
@@ -76,17 +93,17 @@ func (alwaysHealthyProvider) IsHealthy() bool {
 func main() {
 	flag.Parse()
 
-	// Validate that config file is provided
-	if *configFile == "" {
+	// Validate that at least one config file is provided
+	if len(configFiles) == 0 {
 		fmt.Fprintf(os.Stderr, "Error: -config flag is required\n")
-		fmt.Fprintf(os.Stderr, "Usage: %s -config <path-to-config.toml>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage: %s -config <path-to-config.toml> [-config <overlay.toml> ...]\n", os.Args[0])
 		os.Exit(1)
 	}
 
-	// Load configuration from file
-	cfg, err := config.Load(*configFile)
+	// Load configuration from the file(s), merged in order with last-wins precedence
+	cfg, err := config.Load(configFiles...)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load configuration from %s: %v\n", *configFile, err)
+		fmt.Fprintf(os.Stderr, "Failed to load configuration from %s: %v\n", strings.Join(configFiles, ", "), err)
 		os.Exit(1)
 	}
 
@@ -113,7 +130,7 @@ func main() {
 			"version", Version,
 			"git_commit", GitCommit,
 			"build_date", BuildDate,
-			"config_file", *configFile,
+			"config_files", []string(configFiles),
 			"config_mode", cfg.PolicyEngine.ConfigMode.Mode,
 			"server_mode", serverMode,
 			"extproc_socket", constants.DefaultPolicyEngineSocketPath)
@@ -122,7 +139,7 @@ func main() {
 			"version", Version,
 			"git_commit", GitCommit,
 			"build_date", BuildDate,
-			"config_file", *configFile,
+			"config_files", []string(configFiles),
 			"config_mode", cfg.PolicyEngine.ConfigMode.Mode,
 			"server_mode", serverMode,
 			"extproc_port", cfg.PolicyEngine.Server.ExtProcPort)

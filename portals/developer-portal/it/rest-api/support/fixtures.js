@@ -116,9 +116,8 @@ async function createApi(overrides = {}) {
 // `admin` manages org-level integration config; pass `role` to override.
 async function createWebhookSubscriber(overrides = {}) {
     const { role = 'admin', ...bodyOverrides } = overrides;
-    const id = overrides.id || uniqueHandle('subscriber');
     const res = await client.as(role).post('/webhook-subscribers', {
-        id,
+        displayName: overrides.displayName || uniqueHandle('subscriber'),
         targetUrl: overrides.targetUrl,
         events: overrides.events || [],
         enabled: overrides.enabled !== undefined ? overrides.enabled : true,

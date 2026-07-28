@@ -18,7 +18,7 @@
 const EventEmitter = require('events');
 const eventDao = require('../../dao/eventDao');
 const { matchSubscribers } = require('./subscriberRegistry');
-const { encryptToSubscriber } = require('./envelopeCrypto');
+const { encryptField } = require('./envelopeCrypto');
 const logger = require('../../config/logger');
 
 // Internal bus used to wake the dispatcher without waiting for the next poll tick.
@@ -44,7 +44,8 @@ const VALID_EVENT_TYPES = new Set([
  * Publish a domain event inside an existing db.withTransaction() transaction handle.
  *
  * Pass `opts.secretFields` ({ [fieldName]: plaintextValue }) whenever the event carries
- * sensitive values. Each field is encrypted per-subscriber (RSA+AES-256-GCM) and stored
+ * sensitive values. Each field is encrypted per-subscriber (AES-256-GCM under a key
+ * derived from that subscriber's shared secret) and stored
  * as { [fieldName]: envelope } in DP_EVENT_DELIVERY.ENCRYPTED_FIELDS — delivery rows are
  * created immediately inside the caller's TX so plaintext never leaves this call's stack.
  * Secret values are NOT written to DP_EVENT.PAYLOAD.
@@ -81,15 +82,15 @@ async function publish(eventType, payload, opts) {
     if (secretFields) {
         const subscribers = await matchSubscribers(orgId, eventType);
         const perSubscriberEncrypted = {};
-        // Subscribers without a publicKey (or where encryption fully fails) still get
+        // Subscribers without a secret (or where encryption fully fails) still get
         // delivered — just without the encrypted fields — per the warning logged below.
         // Only a *partial* encryption failure excludes a subscriber, since a half-encrypted
         // payload can't be trusted as either fully plaintext or fully sealed.
         const noEncryptedFieldsSubscriberIds = new Set();
 
         for (const sub of subscribers) {
-            if (!sub.publicKey) {
-                logger.warn('Subscriber has no publicKey — secret event will be delivered without encrypted fields', {
+            if (!sub.secret) {
+                logger.warn('Subscriber has no secret — secret event will be delivered without encrypted fields', {
                     subscriberId: sub.id, eventType
                 });
                 noEncryptedFieldsSubscriberIds.add(sub.id);
@@ -98,7 +99,7 @@ async function publish(eventType, payload, opts) {
             const encryptedForSub = {};
             for (const [fieldName, plaintextValue] of Object.entries(secretFields)) {
                 try {
-                    encryptedForSub[fieldName] = encryptToSubscriber(sub.publicKey, plaintextValue);
+                    encryptedForSub[fieldName] = encryptField(sub.secret, plaintextValue);
                 } catch (err) {
                     logger.error('Failed to encrypt field for subscriber', {
                         subscriberId: sub.id, fieldName, error: err.message

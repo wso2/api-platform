@@ -91,15 +91,22 @@ type Receiver struct {
 }
 
 // NewReceiver wires the receiver and its event-type dispatch table.
+//
+// The verifier and the decryptor are both built from cfg.Secret here rather than passed in
+// separately: the producer signs with that secret and derives its field-encryption key from the
+// same secret, so keying the two off one config value is what keeps them from drifting apart.
 func NewReceiver(
 	cfg config.Webhook,
-	decryptor *Decryptor,
 	apiKeys apiKeyService,
 	subs subscriptionService,
 	apps applicationService,
 	orgs organizationResolver,
 	slogger *slog.Logger,
-) *Receiver {
+) (*Receiver, error) {
+	decryptor, err := NewDecryptor(cfg.Secret)
+	if err != nil {
+		return nil, err
+	}
 	r := &Receiver{
 		cfg:       cfg,
 		verifier:  NewVerifier(cfg.Secret, cfg.SignatureTolerance),
@@ -124,7 +131,7 @@ func NewReceiver(
 		EventApplicationDeleted:           r.handleApplicationDeleted,
 		EventAPIKeyApplicationUpdated:     r.handleAPIKeyApplicationUpdated,
 	}
-	return r
+	return r, nil
 }
 
 // RegisterRoutes registers the webhook endpoint on the mux. Only called when the webhook is enabled.

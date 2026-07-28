@@ -43,9 +43,11 @@ docker compose up -d
 
 | Output | Contents                                                                                                                                                                                                                                                                                                                                      |
 |---|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `api-platform.env` (git-ignored) | `APIP_DP_SECURITY_ENCRYPTION_KEY` / `APIP_DP_SECURITY_SESSION_SECRET` (Developer Portal), `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt). No JWT signing key or Platform API encryption key — the RS256 keypair and the Platform API's `encryption.key` are written to `resources/keys/` as files (read via `{{ file }}`). |
+| `api-platform.env` (git-ignored) | `APIP_CP_ADMIN_USERNAME` / `APIP_CP_ADMIN_PASSWORD_HASH` (bcrypt) only. No JWT signing key, no Developer Portal or Platform API encryption/session secrets — those are all written to `resources/keys/` as files (read via `{{ file }}`) so they never appear in `docker inspect` or a process environment dump. |
 | `resources/certificates/cert.pem` + `key.pem` | Self-signed TLS pair shared by both services                                                                                                                                                                                                                                                                                                  |
 | `resources/keys/jwt_private.pem` + `jwt_public.pem` | RS256 JWT keypair — the Platform API signs with the private key, the Developer Portal verifies with the public one                                                                                                                                                                                                                            |
+| `resources/keys/encryption.key` | Platform API's at-rest encryption key                                                                                                                                                                                                                                                                                                          |
+| `resources/keys/devportal-encryption.key` + `devportal-session-secret` | Developer Portal's at-rest encryption key and session-signing secret                                                                                                                                                                                                                                                                           |
 
 The admin password is generated and printed once by `setup.sh` — it is not stored anywhere; only its bcrypt hash lands in `api-platform.env`. Re-running `setup.sh` is safe: it only fills in what's missing and never overwrites an existing value — to rotate a value, delete it from `api-platform.env` (or delete `resources/certificates` for the TLS cert) and re-run. `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables skip the interactive prompts (used by CI to pin known test credentials).
 
@@ -75,11 +77,11 @@ Prompts for the admin username/password (or set `ADMIN_USERNAME`/`ADMIN_PASSWORD
 |------|---------|-------------|
 | `9543` | Developer Portal | HTTPS — browser entry point |
 | `9243` | Platform API | HTTPS — local-auth backend |
-| `9643` | AI Workspace | HTTPS — only when the `with-ai-workspace` profile is enabled (see below) |
+| `9643` | AI Workspace | HTTPS — only when the `ai-workspace` profile is enabled (see below) |
 
 ## AI Workspace (optional)
 
-This package runs the Developer Portal and the Platform API by default. **AI Workspace** ships in the same `docker-compose.yaml` as an optional component behind the `with-ai-workspace` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/), sharing the one Platform API — so you can add it without standing up a second Platform API.
+This package runs the Developer Portal and the Platform API by default. **AI Workspace** ships in the same `docker-compose.yaml` as an optional component behind the `ai-workspace` [Compose profile](https://docs.docker.com/compose/how-tos/profiles/), sharing the one Platform API — so you can add it without standing up a second Platform API.
 
 AI Workspace mounts the **same** `configs/config.toml` the other services do and reads only its own `[ai_workspace]` section (it ignores `[developer_portal]`/`[platform_api]`). It is **off by default**: a plain `docker compose up -d` never starts it. Enabling it takes one one-time step, because that shipped `config.toml` does **not** carry an `[ai_workspace]` section:
 
@@ -88,10 +90,10 @@ AI Workspace mounts the **same** `configs/config.toml` the other services do and
 Then start the stack with the profile enabled:
 
 ```bash
-docker compose --profile with-ai-workspace up -d
+docker compose --profile ai-workspace up -d
 ```
 
-AI Workspace comes up at `https://localhost:9643`, backed by the same Platform API. Omit `--profile with-ai-workspace` on any later `docker compose` command to leave it stopped.
+AI Workspace comes up at `https://localhost:9643`, backed by the same Platform API. Omitting `--profile ai-workspace` on a later `docker compose` command neither starts nor stops it — an already-running instance keeps running. To stop it explicitly, run `docker compose stop ai-workspace`, or `docker compose --profile ai-workspace down` to remove it.
 
 ## Configuration
 
@@ -152,7 +154,7 @@ See `configs/config-template.toml` for the full, per-field reference.
 `resources/certificates/` holds the TLS pair shared by both services — `cert.pem` and `key.pem`, generated by `setup.sh`. This one directory is mounted read-only into both containers at their `/etc/<service>/tls` path. To remove the browser trust warning, replace both files with a certificate from your own CA (same file names), then restart:
 
 ```bash
-docker compose up -d
+docker compose up -d --force-recreate
 ```
 
 ## Database

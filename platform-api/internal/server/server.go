@@ -481,19 +481,17 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// Authenticity is established by HMAC signature; the route is excluded from JWT/IDP auth via
 	// cfg.Auth.SkipPaths (see config defaults).
 	if cfg.Webhook.Enabled {
-		webhookDecryptor, err := webhook.NewDecryptor(cfg.Webhook.PrivateKeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize webhook decryptor: %w", err)
-		}
-		webhookReceiver := webhook.NewReceiver(
+		webhookReceiver, err := webhook.NewReceiver(
 			cfg.Webhook,
-			webhookDecryptor,
 			apiKeyService,
 			subscriptionService,
 			appService,
 			orgRepo,
 			slogger,
 		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize webhook receiver: %w", err)
+		}
 		webhookReceiver.RegisterRoutes(mux)
 		slogger.Info("Webhook receiver enabled", "path", webhook.RoutePath)
 	}

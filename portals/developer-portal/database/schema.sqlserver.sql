@@ -551,7 +551,6 @@ CREATE TABLE dbo.dp_webhook_subscribers (
     display_name NVARCHAR(255) NOT NULL,
     target_url VARCHAR(1023) NOT NULL,
     secret_enc VARBINARY(MAX),
-    public_key VARBINARY(MAX),
     event_patterns NVARCHAR(MAX) DEFAULT '[]',
     enabled SMALLINT NOT NULL DEFAULT 1,
     timeout_ms INT NOT NULL DEFAULT 5000,

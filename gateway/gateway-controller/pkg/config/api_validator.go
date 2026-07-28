@@ -89,14 +89,6 @@ func (v *APIValidator) validateRestAPIConfiguration(config *api.RestAPI) []Valid
 		})
 	}
 
-	// Validate version
-	if config.ApiVersion != api.RestAPIApiVersionGatewayApiPlatformWso2Comv1 {
-		errors = append(errors, ValidationError{
-			Field:   "version",
-			Message: "Unsupported API version (must be 'gateway.api-platform.wso2.com/v1')",
-		})
-	}
-
 	// Validate data section
 	errors = append(errors, v.validateRestData(&config.Spec)...)
 

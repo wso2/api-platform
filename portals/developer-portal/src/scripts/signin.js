@@ -19,21 +19,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const localLoginForm = document.getElementById('local-login-form');
     if (!localLoginForm) return;
 
-    const baseUrl = localLoginForm.getAttribute('data-base-url');
-    localLoginForm.addEventListener('submit', function (e) {
-        e.preventDefault();
-        const params = new URLSearchParams();
-        params.append('username', document.getElementById('username').value);
-        params.append('password', document.getElementById('password').value);
-        fetch(`${baseUrl}/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: params.toString(),
-            redirect: 'follow',
-        }).then(res => {
-            window.location.href = res.url;
-        }).catch(() => {
-            window.location.href = `${baseUrl}/login?error=Login+failed%2C+please+try+again`;
-        });
+    localLoginForm.addEventListener('submit', function () {
+        const submitBtn = localLoginForm.querySelector('.ln-signin-btn');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Signing in…';
+        }
     });
 });

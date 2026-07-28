@@ -83,6 +83,13 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
 
 - `E2E_DB` = `postgres` (default) | `sqlite` | `sqlserver`.
 - `E2E_KEEP=1` leaves the stack up after the run for inspection.
+- `E2E_WEBHOOK_SECRET` is the secret shared between the developer portal subscriber and
+  platform-api. **The suite generates a fresh one per run and exports it, so you normally
+  set nothing.** There is no committed default: compose declares the variable required, so
+  a manual `docker compose up` without it fails immediately rather than running on a
+  well-known secret. Export your own value to pin it — worth doing across repeated
+  `E2E_KEEP=1` runs, though the suite also re-syncs a kept subscriber's stored secret on
+  each run, so a rotating secret works either way.
 - `E2E_TAGS=@smoke` runs a tag subset (other tags: `@secured`, `@multigateway`,
   `@devportal`, `@lifecycle` for the credential-lifecycle scenario — run it alone
   with `E2E_TAGS="@devportal && @lifecycle"` —, and the on-demand secret fetch
@@ -94,8 +101,7 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
   published host ports to avoid clashing with other local stacks (defaults 9243 /
   18080 / 18081 / 9543).
 - `DEVPORTAL_IMAGE` overrides the developer-portal image (default
-  `developer-portal:it-e2e`). `PA_WEBHOOK_KEY` is set automatically by the suite
-  (a container-readable copy of the webhook private key) — you don't normally set it.
+  `developer-portal:it-e2e`).
 - `PA_API_BASE` / `DP_API_BASE` override the REST resource-API base path for
   platform-api and the developer portal respectively (default `/api/v0.9` each) —
   set these when either product moves to a new API version, independently of the
@@ -155,21 +161,22 @@ Or via make (from `platform-api/`): `make e2e`, `make e2e-all-dbs`.
      `AUTH_FILE_BASED_USERS` env var (a mounted config's users are ignored; only
      that env override wins). Bearer auth (not API-key mode) is used because the
      write paths need a resolved user for `created_by`.
-   - `BeforeSuite` generates a fresh RSA key pair per run (`prepareWebhookKey`),
-     links the portal org (`cpRefId = "default"`, the platform-api org handle), and
-     registers a webhook subscriber pointing at `…/api/internal/v0.9/webhook/events`
-     with the shared HMAC secret and the generated **public** key. platform-api
-     decrypts with the matching private key, which is written 0644 under the compose
-     dir and mounted in via `PA_WEBHOOK_KEY` (the container runs as uid 10001, and
-     `/tmp` isn't shared into the container VM). The key is generated rather than read
-     from the repo because the private key is gitignored (and absent in CI).
+   - `BeforeSuite` generates the shared webhook secret (`prepareWebhookSecret`, exported
+     as `E2E_WEBHOOK_SECRET` before the stack starts so compose interpolates the same
+     value into `APIP_CP_WEBHOOK_SECRET`), links the portal org (`cpRefId = "default"`,
+     the platform-api org handle), and registers a webhook subscriber pointing at
+     `…/api/internal/v0.9/webhook/events` with that secret. That one value both signs and
+     encrypts, so the portal and platform-api holding different values breaks both — which
+     is why a subscriber left over from an `E2E_KEEP=1` run is updated (PUT) rather than
+     skipped on conflict.
    - The delivery worker POSTs over raw https with the default agent, so the
      devportal container sets `NODE_TLS_REJECT_UNAUTHORIZED=0` to accept
      platform-api's self-signed cert.
    - Webhooks are signed `t=<unix>,v1=<hmac>` over `"<t>.<body>"` and the key /
-     token fields are hybrid-encrypted (RSA-OAEP-SHA256 + AES-256-GCM). platform-api
-     re-encrypts the subscription token at rest, so
-     `APIP_CP_ENCRYPTION_KEY` must be 32 bytes (64 hex chars).
+     token fields are encrypted with AES-256-GCM under a key both sides derive from
+     that same shared secret via HKDF-SHA3-256. platform-api re-encrypts the
+     subscription token at rest, so `APIP_CP_ENCRYPTION_KEY` must be 32 bytes
+     (64 hex chars).
    - platform-api resolves the event's **org, API and plan by handle**, so the
      devportal org's `cpRefId`, the published API's `referenceId`, and the synced
      plan's `refId` are each set to the corresponding platform-api handle.

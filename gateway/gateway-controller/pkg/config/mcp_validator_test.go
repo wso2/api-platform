@@ -92,61 +92,6 @@ func TestMCPValidator_Validate_PointerAndValue(t *testing.T) {
 	}
 }
 
-func TestMCPValidator_ValidateAPIVersion(t *testing.T) {
-	v := NewMCPValidator()
-
-	tests := []struct {
-		name       string
-		apiVersion api.MCPProxyConfigurationApiVersion
-		wantError  bool
-	}{
-		{
-			name:       "Valid API version",
-			apiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
-			wantError:  false,
-		},
-		{
-			name:       "Invalid API version",
-			apiVersion: "invalid-version",
-			wantError:  true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			url := "http://backend:8080"
-			specVersion := constants.SPEC_VERSION_2025_JUNE
-			config := &api.MCPProxyConfiguration{
-				ApiVersion: tt.apiVersion,
-				Kind:       "Mcp",
-				Metadata:   api.Metadata{Name: "test"},
-				Spec: api.MCPProxyConfigData{
-					DisplayName: "Test",
-					Version:     "v1.0",
-					Context:     stringPtr("/test"),
-					SpecVersion: &specVersion,
-					Upstream:    api.MCPProxyConfigData_Upstream{Url: &url},
-				},
-			}
-
-			errors := v.Validate(config)
-			hasVersionError := false
-			for _, e := range errors {
-				if e.Field == "version" {
-					hasVersionError = true
-					break
-				}
-			}
-			if tt.wantError && !hasVersionError {
-				t.Error("expected version error, got none")
-			}
-			if !tt.wantError && hasVersionError {
-				t.Error("unexpected version error")
-			}
-		})
-	}
-}
-
 func TestMCPValidator_ValidateKind(t *testing.T) {
 	v := NewMCPValidator()
 

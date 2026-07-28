@@ -630,23 +630,11 @@ export default function LLMProxyGuardrailsTab() {
       setLocalProxy((prev) => {
         if (!prev) return prev;
         const globalPolicies = [...(prev.globalPolicies ?? [])];
-        const existingIndex = globalPolicies.findIndex(
-          (p) =>
-            p.name === selectedGuardrailPolicy.name &&
-            p.version === selectedGuardrailVersion
-        );
-        if (existingIndex === -1) {
-          globalPolicies.push({
-            name: selectedGuardrailPolicy.name,
-            version: selectedGuardrailVersion,
-            params,
-          });
-        } else {
-          globalPolicies[existingIndex] = {
-            ...globalPolicies[existingIndex],
-            params,
-          };
-        }
+        globalPolicies.push({
+          name: selectedGuardrailPolicy.name,
+          version: selectedGuardrailVersion,
+          params,
+        });
         return { ...prev, globalPolicies };
       });
     } else {
@@ -670,19 +658,10 @@ export default function LLMProxyGuardrailsTab() {
           });
         } else {
           const existing = operationPolicies[existingPolicyIndex];
-          const alreadyHasPath = existing.paths.some(
-            (p) =>
-              p.path === resourcePath &&
-              p.methods
-                .map((m) => m.toUpperCase())
-                .includes(resourceMethod.toUpperCase())
-          );
-          if (!alreadyHasPath) {
-            operationPolicies[existingPolicyIndex] = {
-              ...existing,
-              paths: [...existing.paths, newPathEntry],
-            };
-          }
+          operationPolicies[existingPolicyIndex] = {
+            ...existing,
+            paths: [...existing.paths, newPathEntry],
+          };
         }
         return { ...prev, operationPolicies };
       });

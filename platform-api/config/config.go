@@ -180,11 +180,10 @@ type EventHub struct {
 type Webhook struct {
 	// Enabled controls whether the webhook endpoint is registered.
 	Enabled bool `koanf:"enabled"`
-	// Secret is the HMAC-SHA256 shared secret used to verify request signatures.
+	// Secret is the shared secret with the Developer Portal. It serves two purposes: verifying
+	// the HMAC-SHA256 request signature, and deriving (via HKDF-SHA3-256) the AES key that decrypts
+	// encrypted payload fields such as an API key secret.
 	Secret string `koanf:"secret"`
-	// PrivateKeyPath points to the PEM RSA private key used to decrypt encrypted_key fields.
-	// Optional: required only for events that carry encrypted secrets (API key generate/regenerate).
-	PrivateKeyPath string `koanf:"private_key_path"`
 	// SignatureTolerance bounds how old a signed request may be (replay protection).
 	SignatureTolerance time.Duration `koanf:"signature_tolerance"`
 	// MaxBodySize caps the request body size in bytes.
@@ -373,22 +372,30 @@ type Security struct {
 
 // package-level singleton.
 var (
-	configFilePath  string
+	configFilePaths []string
 	processOnce     sync.Once
 	settingInstance *Server
 )
 
-// SetConfigPath configures the path to a config.toml file.
-// Must be called before the first GetConfig() if a config file is used.
+// SetConfigPath configures a single config.toml path. Retained for backward
+// compatibility; SetConfigPaths is the repeatable form. Must be called before the
+// first GetConfig() if a config file is used.
 func SetConfigPath(path string) {
-	configFilePath = path
+	configFilePaths = []string{path}
+}
+
+// SetConfigPaths configures one or more config.toml paths, merged in order with
+// last-wins precedence. Must be called before the first GetConfig() if config
+// files are used.
+func SetConfigPaths(paths ...string) {
+	configFilePaths = paths
 }
 
 // GetConfig returns the singleton config instance, loading it on first call.
 func GetConfig() *Server {
 	var err error
 	processOnce.Do(func() {
-		settingInstance, err = LoadConfig(configFilePath)
+		settingInstance, err = LoadConfig(configFilePaths...)
 	})
 	if err != nil {
 		panic(err)
@@ -410,13 +417,42 @@ var defaultFileSourceAllowlist = []string{
 // sections in a shared deployment config.
 const platformAPIConfigKey = "platform_api"
 
-// LoadConfig loads configuration with priority: config file > defaults.
-// configPath may be empty — when omitted only env vars and defaults are used.
-func LoadConfig(configPath string) (*Server, error) {
+// LoadConfig loads configuration with priority: config files > defaults.
+//
+// configPaths is repeatable: files are merged in the order given with last-wins
+// precedence (a key set in a later file overrides the same key from an earlier
+// file). Merge semantics follow koanf — nested tables (maps) deep-merge, while
+// list/array values are replaced wholesale, not appended. A field may be overridden
+// across files with a different representation — e.g. a numeric value in the base and
+// an {{ env }} token (a string) in an overlay — and still resolve, because types are
+// only checked after interpolation by the weakly-typed unmarshal.
+//
+// Zero paths is permitted (the embeddable library API and callers supplying an
+// already-built config via the platform façade rely on this) — with no files,
+// only the {{ env }}-resolved defaults apply. The `platform-api` binary itself
+// requires at least one -config file (enforced in cmd/main.go), so it never
+// silently boots on defaults. Any path that is given must exist and parse.
+func LoadConfig(configPaths ...string) (*Server, error) {
 	cfg := defaultConfig()
+	// Deliberately NOT koanf StrictMerge: strict merging compares the raw parsed
+	// types across files, but an {{ env }} / {{ file }} interpolation token is a
+	// string until it is resolved after the merge — so strict merging would reject a
+	// numeric/bool field that one file sets natively and another overrides with a
+	// token. Cross-file type errors are instead caught downstream by the weakly-typed
+	// unmarshal and Validate.
 	k := koanf.New(".")
 
-	if configPath != "" {
+	// Load each config file in order. Successive loads deep-merge maps and replace
+	// arrays, giving last-wins precedence for keys set in more than one file.
+	for _, configPath := range configPaths {
+		if configPath == "" {
+			// A zero-length variadic call (no files) is the legitimate "defaults
+			// only" path for embedders; an explicit empty-string path (e.g. the
+			// binary invoked with `-config=`) is a malformed input that must fail
+			// fast rather than silently degrade to defaults — matching the other
+			// loaders, which reject "" via file.Provider.
+			return nil, fmt.Errorf("config path must not be empty")
+		}
 		if err := k.Load(file.Provider(configPath), toml.Parser()); err != nil {
 			return nil, fmt.Errorf("failed to load config file %q: %w", configPath, err)
 		}
@@ -462,6 +498,12 @@ func LoadConfig(configPath string) (*Server, error) {
 	// emitted below (and any package-level slog.* call in this file) use the same
 	// format as the rest of the application, instead of slog's default handler.
 	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.Logging.Level, Format: cfg.Logging.Format}))
+
+	// Unknown keys are silently dropped by the unmarshal above (ErrorUnused is not
+	// set), so a config still carrying a removed setting starts cleanly with that
+	// setting having no effect at all. Warn explicitly instead of leaving the
+	// operator to infer it from behavior.
+	warnRemovedConfigKeys(k)
 
 	if err := validateLoggingConfig(cfg.Logging.Level, cfg.Logging.Format); err != nil {
 		return nil, err
@@ -796,6 +838,30 @@ func validateFileBasedConfig(cfg *FileBased) error {
 
 // validateWebhookConfig validates and fills defaults for the webhook receiver config.
 // It is a no-op when the webhook is disabled.
+// removedConfigKeys maps a config key that no longer exists to the guidance shown
+// when it is still present. Keys are relative to the platform_api subtree, matching
+// the koanf tree after Cut. Add an entry whenever a setting is dropped: the
+// unmarshal ignores unknown keys, so without this a stale setting is inert and
+// silent, and an operator has no way to tell it stopped doing anything.
+var removedConfigKeys = map[string]string{
+	"webhook.private_key_path": "webhook payload fields are now encrypted with a key derived from webhook.secret " +
+		"instead of an RSA key pair; this setting has no effect and the PEM file/mount it points to can be deleted",
+}
+
+// warnRemovedConfigKeys logs a warning for each removed key still present in the
+// loaded config. It deliberately warns rather than failing: the removed setting is
+// inert, the service is fully functional without it, and refusing to start would
+// break an otherwise-working deployment on upgrade.
+func warnRemovedConfigKeys(k *koanf.Koanf) {
+	for key, guidance := range removedConfigKeys {
+		if k.Exists(key) {
+			slog.Warn("ignoring removed configuration key",
+				"key", platformAPIConfigKey+"."+key,
+				"detail", guidance)
+		}
+	}
+}
+
 func validateWebhookConfig(w *Webhook) error {
 	if !w.Enabled {
 		return nil

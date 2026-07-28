@@ -19,7 +19,7 @@ curl -X POST https://localhost:9543/api/v0.9/webhook-subscribers \
 
 ```
 
-Registers a webhook subscriber for the organization. Event deliveries (apikey.*, subscription.*, etc.) matching the subscriber's events filter are fanned out to its target URL. The `secret`, if provided, is encrypted at rest using AES-256-GCM.
+Registers a webhook subscriber for the organization. Event deliveries (apikey.*, subscription.*, etc.) matching the subscriber's events filter are fanned out to its target URL. The `secret`, if provided, is encrypted at rest using AES-256-GCM. When `id` is omitted, the subscriber's handle is generated from `displayName`; the assigned handle is returned as `id` in the response and is what later requests address.
 
 > Payload
 
@@ -29,7 +29,6 @@ Registers a webhook subscriber for the organization. Event deliveries (apikey.*,
   "displayName": "Production Gateway",
   "targetUrl": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
-  "publicKey": "string",
   "events": [
     "apikey.*",
     "subscription.*"
@@ -69,7 +68,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   ],
   "timeoutMs": 5000,
   "hasSecret": true,
-  "hasPublicKey": false,
   "createdBy": "alice@example.com",
   "updatedBy": "alice@example.com",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -188,7 +186,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
       ],
       "timeoutMs": 5000,
       "hasSecret": true,
-      "hasPublicKey": false,
       "createdBy": "alice@example.com",
       "updatedBy": "alice@example.com",
       "createdAt": "2019-08-24T14:15:22Z",
@@ -235,8 +232,7 @@ Status Code **200**
 |»» enabled|boolean|false|none|none|
 |»» events|[string]|false|none|none|
 |»» timeoutMs|integer|false|none|none|
-|»» hasSecret|boolean|false|none|Whether a secret is configured for HMAC-signing outgoing payloads.|
-|»» hasPublicKey|boolean|false|none|Whether a public key is configured for envelope-encrypting secret event payloads.|
+|»» hasSecret|boolean|false|none|Whether a secret is configured. The same secret both HMAC-signs outgoing payloads and encrypts sensitive fields in secret event payloads.|
 |»» createdBy|string|false|none|Identity of the user who created this webhook subscriber, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses and list items.|
 |»» updatedBy|string|false|none|Identity of the user who last updated this webhook subscriber, or `deleted_user` if that user's IDP reference no longer exists. Present on single-resource GET responses only, omitted on list items.|
 |»» createdAt|string(date-time)|false|none|none|
@@ -296,7 +292,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   ],
   "timeoutMs": 5000,
   "hasSecret": true,
-  "hasPublicKey": false,
   "createdBy": "alice@example.com",
   "updatedBy": "alice@example.com",
   "createdAt": "2019-08-24T14:15:22Z",
@@ -361,7 +356,6 @@ Updates an existing webhook subscriber configuration. Only supplied fields are u
   "displayName": "Production Gateway",
   "targetUrl": "https://gateway.example.com/devportal-webhook",
   "secret": "<shared-secret>",
-  "publicKey": "string",
   "events": [
     "apikey.*",
     "subscription.*"
@@ -402,7 +396,6 @@ This operation requires <strong>Basic Auth</strong> authentication.
   ],
   "timeoutMs": 5000,
   "hasSecret": true,
-  "hasPublicKey": false,
   "createdBy": "alice@example.com",
   "updatedBy": "alice@example.com",
   "createdAt": "2019-08-24T14:15:22Z",

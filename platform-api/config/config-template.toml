@@ -354,12 +354,12 @@ retention_period = "1h"    # how long delivered events are retained
 # changes) to this endpoint.
 [platform_api.webhook]
 enabled = false
-# HMAC-SHA256 shared secret used to verify request signatures. REQUIRED when
-# enabled. The "" default below is only ever read while enabled = false.
+# Shared secret with the Developer Portal, used both to verify request
+# signatures (HMAC-SHA256) and to derive the AES key that decrypts encrypted
+# payload fields (API key generate/regenerate, subscription token). Must match
+# the secret configured on the Developer Portal's webhook subscriber. REQUIRED
+# when enabled. The "" default below is only ever read while enabled = false.
 secret = ""
-# PEM RSA private key used to decrypt encrypted_key fields. Required only
-# for events that carry encrypted secrets (API key generate/regenerate).
-private_key_path   = ""
 signature_tolerance = "5m"                       # max age of a signed request (replay protection)
 max_body_size       = 1048576                    # request body cap in bytes (1 MiB)
 signature_header    = "X-Devportal-Signature"     # header carrying the "t=...,v1=..." signature

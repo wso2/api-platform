@@ -141,28 +141,39 @@ func linkDevportalOrg() error {
 	return nil
 }
 
-// registerWebhookSubscriber points the portal at the platform-api receiver with
-// the shared HMAC secret and the run's generated RSA public key (see
-// prepareWebhookKey). Idempotent: a repeat registration (E2E_KEEP reruns) that
-// conflicts is treated as success.
+// registerWebhookSubscriber points the portal at the platform-api receiver with the shared
+// secret, which the portal uses both to sign deliveries and to encrypt sensitive key/token
+// fields. It must equal APIP_CP_WEBHOOK_SECRET in the compose file, or platform-api will
+// reject the signature and fail to decrypt those fields. Idempotent: a repeat registration
+// (E2E_KEEP reruns) that conflicts is treated as success.
 func registerWebhookSubscriber() error {
-	if webhookPublicKeyPEM == "" {
-		return fmt.Errorf("webhook public key not generated (prepareWebhookKey must run first)")
-	}
-	st, body, err := dpCall(http.MethodPost, "/webhook-subscribers", map[string]any{
+	payload := map[string]any{
 		"id":          "platform-api",
 		"displayName": "Platform API",
 		"targetUrl":   webhookReceiverURL,
 		"secret":      webhookSecret,
-		"publicKey":   webhookPublicKeyPEM,
 		"events":      []string{"apikey.*", "subscription.*"},
 		"enabled":     true,
-	})
+	}
+
+	st, body, err := dpCall(http.MethodPost, "/webhook-subscribers", payload)
 	if err != nil {
 		return err
 	}
 	if st == http.StatusConflict {
-		return nil // already registered on a kept stack
+		// Already registered by an earlier run on a kept stack (E2E_KEEP=1). Its stored
+		// secret is the *previous* run's, and webhookSecret is regenerated per run, so
+		// this cannot be treated as success: platform-api has already restarted with the
+		// new secret and would reject every delivery the portal signs with the old one.
+		// PUT to bring the stored subscriber back in sync.
+		st, body, err = dpCall(http.MethodPut, "/webhook-subscribers/platform-api", payload)
+		if err != nil {
+			return err
+		}
+		if st >= 300 {
+			return fmt.Errorf("re-sync webhook subscriber secret failed (%d): %s", st, body)
+		}
+		return nil
 	}
 	if st >= 300 {
 		return fmt.Errorf("register webhook subscriber failed (%d): %s", st, body)

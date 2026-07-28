@@ -14,7 +14,7 @@
 # literal strings (as below) so the inner double quotes need no escaping:
 #
 #   platform_api_url = '{{ env "APIP_DP_AUTH_LOCAL_PLATFORM_API_URL" }}'
-#   encryption_key = '{{ file "/secrets/devportal/encryption-key" }}'
+#   encryption_key = '{{ file "/etc/devportal/keys/encryption.key" }}'
 #
 #   {{ env "NAME" }}            -> NAME's value. FAILS CLOSED (aborts startup) if
 #                                   NAME is unset or empty — it does not fall
@@ -90,10 +90,8 @@ pool_connection_timeout_ms = '{{ env "APIP_DP_DATABASE_POOL_CONNECTION_TIMEOUT_M
 pool_request_timeout_ms    = '{{ env "APIP_DP_DATABASE_POOL_REQUEST_TIMEOUT_MS" "30000" }}'
 
 [developer_portal.security]
-# Required — devportal fails closed at startup if either doesn't resolve to a
-# 64-char hex string. Generate with: openssl rand -hex 32
-encryption_key = '{{ env "APIP_DP_SECURITY_ENCRYPTION_KEY" }}'
-session_secret = '{{ env "APIP_DP_SECURITY_SESSION_SECRET" }}'
+encryption_key = '{{ file "/etc/devportal/keys/encryption.key" }}'
+session_secret = '{{ file "/etc/devportal/keys/session-secret" }}'
 
 [developer_portal.auth.local]
 # The upstream Platform API. Used for local auth credential validation when

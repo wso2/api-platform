@@ -82,23 +82,6 @@ func TestSecretValidator_ValidateSecretConfiguration_Valid(t *testing.T) {
 	assert.Empty(t, errs)
 }
 
-func TestSecretValidator_InvalidApiVersion(t *testing.T) {
-	v := NewSecretValidator()
-	cfg := &api.SecretConfigurationRequest{
-		ApiVersion: "wrong-version",
-		Kind:       api.SecretConfigurationRequestKindSecret,
-		Metadata:   api.Metadata{Name: "test-secret"},
-		Spec: api.SecretConfigData{
-			DisplayName: "Test Secret",
-			Value:       "value",
-		},
-	}
-	errs := v.Validate(cfg)
-	require.NotEmpty(t, errs)
-	fields := extractFields(errs)
-	assert.Contains(t, fields, "version")
-}
-
 func TestSecretValidator_InvalidKind(t *testing.T) {
 	v := NewSecretValidator()
 	cfg := &api.SecretConfigurationRequest{

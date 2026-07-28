@@ -19,12 +19,12 @@
 # Platform API only — for local development with npm start
 #
 # Quick start:
-#   1. Run ./scripts/setup.sh once — generates the required secrets into
+#   1. Run ../scripts/setup.sh once — generates the required secrets into
 #      api-platform.env (also read directly by `npm start` below).
 #   2. docker compose -f docker-compose.platform-api.yaml up -d
 #   3. npm start
 #   4. Open http://localhost:9543
-#      Login with the admin credentials ./scripts/setup.sh printed.
+#      Login with the admin credentials ../scripts/setup.sh printed.
 
 services:
   platform-api:

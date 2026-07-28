@@ -214,9 +214,10 @@ config:
   # --- Webhook receiver (signed events from the Developer Portal) ---
   webhook:
     enabled: false
-    # HMAC secret (required when enabled) comes from the Secret via
-    # APIP_CP_WEBHOOK_SECRET (secrets.keys.webhookSecret).
-    privateKeyPath: ""           # PEM RSA key to decrypt encrypted_key fields
+    # Shared secret (required when enabled) comes from the Secret via
+    # APIP_CP_WEBHOOK_SECRET (secrets.keys.webhookSecret). It both verifies
+    # request signatures and decrypts encrypted payload fields, so it must match
+    # the secret set on the Developer Portal's webhook subscriber.
     signatureTolerance: 5m
     maxBodySize: 1048576
     signatureHeader: X-Devportal-Signature
