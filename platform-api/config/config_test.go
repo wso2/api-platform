@@ -456,3 +456,63 @@ read        = "10s"
 		assert.Contains(t, err.Error(), "must not exceed")
 	})
 }
+
+// The shipped config must never carry a functional default admin credential: a
+// baked-in username/password hash gives every fresh install a known-password admin,
+// which now also holds ap:api_key:all:manage over every user's API keys
+// (authentication_authorization.md GO-AUTH-014). The credential comes from the
+// environment via the 1-arg {{ env }} form, which fails closed when unset.
+func TestNoDefaultAdminCredential(t *testing.T) {
+	t.Run("config.toml ships fail-closed tokens, not a default credential", func(t *testing.T) {
+		shipped, err := os.ReadFile("config.toml")
+		require.NoError(t, err)
+		assert.Contains(t, string(shipped), `username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'`)
+		assert.Contains(t, string(shipped), `password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'`)
+		assert.NotContains(t, string(shipped), "$2y$10$U2yKMwG",
+			"config.toml must not ship a default admin password hash")
+	})
+
+	t.Run("defaults ship no built-in user", func(t *testing.T) {
+		assert.Empty(t, defaultConfig().Auth.File.Users,
+			"defaultConfig must not supply an admin user; auth.mode=file requires an operator-provided one")
+	})
+
+	t.Run("startup fails closed when the admin env vars are unset", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "c.toml")
+		body := `[platform_api.security]
+encryption_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+[platform_api.auth]
+mode = "file"
+
+[platform_api.auth.jwt]
+public_key_file = "` + validJWTPublicKeyFile + `"
+private_key_file = "` + validJWTPrivateKeyFile + `"
+token_ttl = "1h"
+
+[platform_api.auth.file.organization]
+id = "default"
+display_name = "Default"
+
+[[platform_api.auth.file.users]]
+username      = '{{ env "APIP_CP_ADMIN_USERNAME" }}'
+password_hash = '{{ env "APIP_CP_ADMIN_PASSWORD_HASH" }}'
+scopes        = "ap:api_key:all:manage"
+`
+		require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+
+		os.Unsetenv("APIP_CP_ADMIN_USERNAME")
+		os.Unsetenv("APIP_CP_ADMIN_PASSWORD_HASH")
+		_, err := LoadConfig(path)
+		require.Error(t, err, "unset admin credentials must abort startup, never fall back to a default")
+		assert.Contains(t, err.Error(), "APIP_CP_ADMIN")
+
+		// Provisioned (as portals/scripts/setup.sh does) the same config loads cleanly.
+		t.Setenv("APIP_CP_ADMIN_USERNAME", "generated-admin")
+		t.Setenv("APIP_CP_ADMIN_PASSWORD_HASH", "$2a$12$hash")
+		cfg, err := LoadConfig(path)
+		require.NoError(t, err)
+		require.Len(t, cfg.Auth.File.Users, 1)
+		assert.Equal(t, "generated-admin", cfg.Auth.File.Users[0].Username)
+	})
+}

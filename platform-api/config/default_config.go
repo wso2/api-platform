@@ -89,13 +89,13 @@ func defaultConfig() *Server {
 					// UUID left empty: seedFileBasedOrg generates one at startup
 					// unless an operator pins it via config/env for a stable org.
 				},
-				Users: FileBasedUsers{
-					{
-						Username:     "admin",
-						PasswordHash: "$2y$10$U2yKMwGamGwDoMu0hRPT7u8nCuP8z/qxHFOKV6dhIxkJN9NJ0eVQ.",
-						Scopes:       "ap:organization:manage ap:gateway:manage ap:gateway_custom_policy:manage ap:rest_api:manage ap:llm_provider:manage ap:llm_proxy:manage ap:mcp_proxy:manage ap:webbroker_api:manage ap:websub_api:manage ap:application:manage ap:subscription:manage ap:subscription_plan:manage ap:project:manage ap:llm_template:manage ap:devportal:manage ap:api_key:read ap:api_key:all:manage ap:secret:manage",
-					},
-				},
+				// No default user: shipping a functional username/password hash would give
+				// every fresh install a known-credential admin — one that now also holds
+				// ap:api_key:all:manage over every user's API keys. Operators supply the
+				// admin via config (see config.toml's fail-closed {{ env }} tokens), and
+				// validateFileBasedConfig refuses to start when auth.mode=file leaves this
+				// empty.
+				Users: FileBasedUsers{},
 			},
 		},
 		Deployments: Deployments{

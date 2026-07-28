@@ -200,10 +200,13 @@ func (r *APIKeyRepo) ListByGatewayAndKind(gatewayID, orgID, kind, issuer string)
 	return keys, rows.Err()
 }
 
-// Delete removes an API key record permanently
-func (r *APIKeyRepo) Delete(artifactUUID, name string) error {
-	query := `DELETE FROM api_keys WHERE artifact_uuid = ? AND handle = ?`
-	result, err := r.db.Exec(r.db.Rebind(query), artifactUUID, name)
+// Delete removes an API key record permanently. createdBy must match the stored creator
+// for the same delete/recreate race protection documented on Update: without it, a
+// concurrent delete+recreate of the same (artifact_uuid, handle) by a different creator
+// would let this DELETE remove that other key, which the service never authorized.
+func (r *APIKeyRepo) Delete(artifactUUID, name, createdBy string) error {
+	query := `DELETE FROM api_keys WHERE artifact_uuid = ? AND handle = ? AND created_by = ?`
+	result, err := r.db.Exec(r.db.Rebind(query), artifactUUID, name, createdBy)
 	if err != nil {
 		return err
 	}

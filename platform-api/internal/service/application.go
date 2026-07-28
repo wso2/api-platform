@@ -780,18 +780,12 @@ func (s *ApplicationService) validateAPIKeyBindingPermission(key *model.Applicat
 		return apperror.ApplicationAPIKeyNotFound.New()
 	}
 
-	if keyAdmin {
-		return nil
-	}
-
+	// Fails closed on an unidentified caller or an unattributed key: canManageAPIKey never
+	// treats an empty identity as the creator (authentication_authorization.md GO-AUTH-019).
 	creator := strings.TrimSpace(key.CreatedBy)
 	requester := strings.TrimSpace(userID)
 
-	if creator == "" || requester == "" {
-		return nil
-	}
-
-	if creator != requester {
+	if !canManageAPIKey(creator, requester, keyAdmin) {
 		return apperror.ApplicationAPIKeyForbidden.New()
 	}
 

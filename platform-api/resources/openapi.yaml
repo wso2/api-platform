@@ -4406,9 +4406,11 @@ paths:
 
   /me/api-keys:
     get:
-      summary: List API keys for the current user
+      summary: List API keys for the current user, or for all users with `ap:api_key:all:manage`
       description: |
         Returns API keys created by the caller within the organization.
+        Callers holding the `ap:api_key:all:manage` scope instead receive every user's API keys
+        in the organization; the `createdBy` field identifies each key's creator.
         Optionally filter by one or more artifact types using a comma-separated `type` query parameter.
         The plain key value is never returned.
       operationId: listUserAPIKeys

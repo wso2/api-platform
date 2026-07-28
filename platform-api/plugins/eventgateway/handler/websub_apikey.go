@@ -199,6 +199,11 @@ func (h *WebSubAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Reques
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, apperror.NewErrorResponse(503, "Service Unavailable", "No gateway connections available"))
 			return
 		}
+		// Ownership denial (RESTAPIKeyForbidden) and a missing key (RESTAPIKeyNotFound)
+		// already carry their 403/404 status and sterile message from the catalog.
+		if respondCatalogError(w, h.slogger, err) {
+			return
+		}
 		h.slogger.Error("Failed to update API key for WebSub API", "apiHandle", apiHandle, "keyName", keyName, "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, apperror.NewErrorResponse(500, "Internal Server Error", "Failed to update API key"))
 		return
@@ -249,6 +254,11 @@ func (h *WebSubAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Reques
 		}
 		if apperror.GatewayConnectionUnavailable.Is(err) {
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, apperror.NewErrorResponse(503, "Service Unavailable", "No gateway connections available"))
+			return
+		}
+		// Ownership denial (RESTAPIKeyForbidden) and a missing key (RESTAPIKeyNotFound)
+		// already carry their 403/404 status and sterile message from the catalog.
+		if respondCatalogError(w, h.slogger, err) {
 			return
 		}
 		h.slogger.Error("Failed to delete API key for WebSub API", "apiHandle", apiHandle, "keyName", keyName, "error", err)
