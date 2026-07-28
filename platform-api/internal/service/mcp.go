@@ -535,7 +535,11 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 			if handle := extractSecretHandle(storedValue); handle != "" {
 				decrypted, err := s.secretService.Decrypt(orgUUID, handle)
 				if err != nil {
-					return nil, fmt.Errorf("failed to resolve stored upstream auth secret: %w", err)
+					// Generic client-facing error (apperror.Internal's fixed message) with the
+					// handle and cause confined to the internal-only log line — never echo a
+					// secret handle back to the caller, per error-handling.md.
+					return nil, apperror.Internal.Wrap(err).
+						WithLogMessage("failed to resolve stored MCP upstream auth secret")
 				}
 				headerValue = decrypted
 			} else {
