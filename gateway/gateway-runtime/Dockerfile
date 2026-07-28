@@ -21,7 +21,7 @@
 
 # Envoy base image version — referenced by all stages that derive from envoyproxy/envoy.
 # Update here to bump Envoy across python-deps, debug, and production stages.
-ARG ENVOY_VERSION=v1.38.0
+ARG ENVOY_VERSION=v1.38.3
 
 # Stage 1: Builder Base
 FROM --platform=$BUILDPLATFORM golang:1.26.5-bookworm AS builder-base
