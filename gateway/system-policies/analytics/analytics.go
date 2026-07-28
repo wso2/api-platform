@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 	"github.com/wso2/api-platform/sdk/core/utils"
@@ -568,7 +570,7 @@ func (a *AnalyticsPolicy) OnResponseBodyChunk(_ context.Context, ctx *policy.Res
 				// Streaming responses are SSE; the last data event carries usage fields.
 				tokenInfo, err := extractLLMProviderAnalyticsInfoFromBytes(
 					template, ctx.RequestHeaders, ctx.ResponseHeaders,
-					requestBodyBytes, accumulated,
+					requestBodyBytes, accumulated, ctx.RequestPath,
 				)
 				if err != nil {
 					slog.Warn("Failed to extract LLM token info from streaming response", "error", err)
@@ -662,7 +664,7 @@ func extractLLMProviderAnalyticsInfo(template map[string]interface{}, ctx *polic
 
 	return extractLLMProviderAnalyticsInfoFromBytes(
 		template, ctx.RequestHeaders, ctx.ResponseHeaders,
-		requestBodyBytes, responseBodyBytes,
+		requestBodyBytes, responseBodyBytes, ctx.RequestPath,
 	)
 }
 
@@ -676,6 +678,7 @@ func extractLLMProviderAnalyticsInfoFromBytes(
 	template map[string]interface{},
 	requestHeaders, responseHeaders *policy.Headers,
 	requestBodyBytes, responseBodyBytes []byte,
+	requestPath string,
 ) (*LLMProviderAnalyticsInfo, error) {
 	var responseJSON map[string]interface{}
 	if len(responseBodyBytes) > 0 {
@@ -693,7 +696,7 @@ func extractLLMProviderAnalyticsInfoFromBytes(
 		_ = json.Unmarshal(requestBodyBytes, &requestJSON)
 	}
 
-	return extractLLMAnalyticsFromJSON(template, requestHeaders, responseHeaders, requestJSON, responseJSON)
+	return extractLLMAnalyticsFromJSON(template, requestHeaders, responseHeaders, requestJSON, responseJSON, requestPath)
 }
 
 // extractLLMAnalyticsFromJSON is the core extraction logic operating on pre-parsed JSON maps.
@@ -701,6 +704,7 @@ func extractLLMAnalyticsFromJSON(
 	template map[string]interface{},
 	requestHeaders, responseHeaders *policy.Headers,
 	requestJSON, responseJSON map[string]interface{},
+	requestPath string,
 ) (*LLMProviderAnalyticsInfo, error) {
 	if template == nil {
 		return nil, fmt.Errorf("template is nil")
@@ -754,6 +758,14 @@ func extractLLMAnalyticsFromJSON(
 				}
 			}
 			return nil, fmt.Errorf("header %s not found", identifier)
+		case "pathparam":
+			// Model ids for providers like AWS Bedrock and Gemini live in the
+			// request URL path (e.g. /model/{modelId}/converse), not the body or
+			// a header. The identifier is a regex whose first capture group (when
+			// present) is the value; otherwise the whole match is used. The path
+			// is available for both buffered and streaming responses, so this
+			// meters the model in either case.
+			return extractPathParam(requestPath, identifier)
 		default:
 			return nil, fmt.Errorf("unsupported location %s", location)
 		}
@@ -804,6 +816,48 @@ func extractLLMAnalyticsFromJSON(
 	}
 
 	return info, nil
+}
+
+// pathParamRegexCache memoises compiled pathParam identifiers so the response
+// data path does not recompile a provider template's regex on every request.
+var pathParamRegexCache sync.Map // map[string]*regexp.Regexp
+
+// extractPathParam applies a pathParam identifier (a regex) to the request URL
+// path and returns the first capture group when the pattern defines one,
+// otherwise the whole match. AWS Bedrock and Gemini carry the model id in the
+// path (e.g. /model/{modelId}/converse), which is why request/response model is
+// declared with `location: pathParam`. The path is present for both buffered
+// and streaming responses, so the model meters in either case. Go's regexp is
+// RE2 — identifiers must use a capture group, not lookaround.
+func extractPathParam(requestPath, pattern string) (string, error) {
+	if requestPath == "" {
+		return "", fmt.Errorf("request path not available")
+	}
+	re, err := compilePathParamRegex(pattern)
+	if err != nil {
+		return "", err
+	}
+	match := re.FindStringSubmatch(requestPath)
+	if match == nil {
+		return "", fmt.Errorf("pathParam identifier did not match request path")
+	}
+	if len(match) > 1 {
+		return match[1], nil
+	}
+	return match[0], nil
+}
+
+// compilePathParamRegex compiles (and caches) a pathParam identifier regex.
+func compilePathParamRegex(pattern string) (*regexp.Regexp, error) {
+	if cached, ok := pathParamRegexCache.Load(pattern); ok {
+		return cached.(*regexp.Regexp), nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("invalid pathParam identifier %q: %w", pattern, err)
+	}
+	pathParamRegexCache.Store(pattern, re)
+	return re, nil
 }
 
 // populateTokenAnalyticsMetadata copies LLM token fields into an analytics metadata map.
