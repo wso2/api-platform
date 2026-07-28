@@ -375,7 +375,32 @@ os.chmod(socket_path, 0o660)  # defense-in-depth only, not the primary guarantee
 
 ---
 
-## GO-AUTH-019: Ownership-Override Scopes Must Be Named and Service-Layer Enforced — High
+## GO-AUTH-019: No Deferring a Rule Violation Behind a Code Comment — Critical
+
+Resolving a finding from GO-AUTH-001 through GO-AUTH-018 by adding a `// TODO`/`FIXME`-style comment next to the non-compliant code, and shipping it anyway, is not compliance — a comment does not change what the code does at runtime. Treat an inline deferral comment as equivalent to leaving the violation undocumented and unfixed. An existing violation that genuinely can't be fixed immediately must be filed as a tracked issue (owner + deadline) in the team's issue tracker, and the vulnerable path must default deny/fail-closed in the meantime — never ship it open behind a comment "for now."
+
+```go
+// BAD: acknowledges the missing scope check but ships the endpoint reachable anyway
+// TODO(auth): add scope check before merging
+func SuspendTenant(w http.ResponseWriter, r *http.Request) {
+    deleteTenant(r.URL.Query().Get("tenant_id")) // any authenticated caller can reach this
+}
+
+// GOOD: fix it now — or, if truly blocked, deny by default and track the fix externally,
+// never leave the gap open behind a comment.
+func SuspendTenant(w http.ResponseWriter, r *http.Request) {
+    claims, ok := r.Context().Value(ClaimsContextKey).(*Claims)
+    if !ok || !claims.HasScope(ScopeAdminTenantSuspend) {
+        http.Error(w, "Forbidden", http.StatusForbidden)
+        return
+    }
+    deleteTenant(claims.OrganizationID)
+}
+```
+
+---
+
+## GO-AUTH-020: Ownership-Override Scopes Must Be Named and Service-Layer Enforced — High
 
 Most resources in this repo are *organization-scoped*: any caller in the org with the right resource scope may act on them, and GO-AUTH-005 alone governs access. A few are additionally *creator-scoped* — a caller may act only on rows they created — API keys (`api_keys.created_by`, enforced by `canManageAPIKey` in `platform-api/internal/service`) being the canonical case. This rule applies to those creator-scoped resources; note that a `created_by`/`CreatedBy` column is usually just an audit field and does not by itself make a resource creator-scoped. Where cross-user administration of a creator-scoped resource is genuinely needed, express it as an explicitly named override scope **for that one resource type** (`ap:api_key:all:manage` overrides creator-scoping on API keys and nothing else) — resolved from verified claims at the handler, passed down as an explicit argument, and enforced by a single shared predicate at the service layer that every entry point funnels through (GO-AUTH-015). Never approximate it with an implicit signal — an empty caller id, or "this call came from an internal path so it must be trusted". An empty identity treated as elevated fails *open* for any path that merely forgot to populate the actor. The override widens which rows within the caller's own organization are reachable, never which organization (GO-AUTH-005).
 
@@ -435,4 +460,5 @@ if !params.TrustedOrigin { // set only by RevokeExternalAPIKeyFromEvent
 > * GO-AUTH-016: Is a peer-asserted identity/config value compared against local expectation, with mismatch degrading the connection (never `os.Exit`)?
 > * GO-AUTH-017: Does a security gate match structurally against router/policy config rather than a method+path-substring heuristic?
 > * GO-AUTH-018: Does a permission check on a critical file/socket hard-fail when too permissive, with socket mode set at creation time?
-> * GO-AUTH-019: Is a cross-user override a named scope enforced by one service-layer predicate that fails closed on an empty caller, rather than an implicit empty-id/absent-filter bypass?
+> * GO-AUTH-019: Is a finding from any of the above "resolved" by a `// TODO`/`FIXME`-style comment, or by a tracked issue that lacks an assigned owner and deadline, or by a tracked issue not paired with deny-by-default/fail-closed behavior in the meantime — instead of an actual fix with all of: owner, deadline, and fail-closed behavior?
+> * GO-AUTH-020: Is a cross-user override a named scope enforced by one service-layer predicate that fails closed on an empty caller, rather than an implicit empty-id/absent-filter bypass?

@@ -12,6 +12,7 @@ Apply this rule whenever writing, refactoring, or reviewing Go (`.go`) code that
 4. **Jitter any fixed-interval poll against a shared upstream.** A poll loop replicated across instances (EventHub poll, control-plane heartbeat) must desynchronize with random jitter computed and waited *before* each fetch, not after — otherwise simultaneous restarts stampede the upstream on the very first call. Validate `interval > 0` (and large enough that `interval/2` isn't zero) before computing jitter.
 5. **Tune chained timeouts so the outer bound is tighter, never many multiples looser.** When an operation wraps a downstream call with its own shorter timeout (an `ext_proc` message timeout wrapping a policy-engine chain), set the outer timeout modestly above the inner one, not at a generic multiples-larger default — a stuck downstream call should be caught by the inner timeout, not hold the outer resource far longer than the chain could legitimately take.
 6. **Never let a remote control plane's instructions terminate your process.** Treat a "permanent failure" or similar terminal status from a remote peer as a signal to enter a degraded/backoff state (an internal circuit breaker surfaced via a local health endpoint) — never a direct `os.Exit` trigger. A compromised or buggy control plane must not be able to use its own protocol responses to take down every connected instance at once; reserve `os.Exit` for conditions verified locally at startup (per `authentication_authorization.md` GO-AUTH-011).
+7. **No deferring a violation behind a code comment.** Never resolve a missing timeout, size ceiling, queue bound, or jitter gap by adding a `// TODO`/`FIXME`-style comment and shipping the code anyway — a comment does not bound a request or desynchronize a poll loop. Fix it before merging, or raise the gap explicitly for an approved exception rather than leaving it annotated in the source.
 
 ## Example
 
@@ -69,3 +70,4 @@ func PollEventHub(interval time.Duration) error {
 > * Does a multi-replica poll loop sleep a bare fixed interval with no jitter computed before the fetch?
 > * Is an outer/wrapping timeout a generic default many multiples larger than the specific inner timeout it wraps?
 > * Does a terminal/permanent status from a remote control plane directly call `os.Exit` instead of entering a local degraded state?
+> * Is a gap in this rule "resolved" by a `// TODO`/`FIXME`-style comment instead of an actual fix or an explicitly raised, approved exception?

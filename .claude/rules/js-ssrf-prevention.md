@@ -12,6 +12,7 @@ Apply this rule whenever writing, refactoring, or reviewing JavaScript (`.js`) c
 4. **Bound every outbound request.** Set a short `timeout` (5-10s) and use `AbortController` for `fetch`; cap response size via `maxContentLength`/`maxBodyLength` on `axios` rather than buffering an unbounded body — a slow or malicious target must not hang a worker or exhaust memory.
 5. **Never let response data trigger a second unvalidated request.** If a fetched resource (e.g. an imported OpenAPI/WSDL spec) contains further URLs (server URLs, `$ref`s, external docs links), don't auto-dereference them server-side — return them to the client to open, where the browser's own origin policy applies. Don't forward upstream response headers verbatim when proxying back to the browser (see `js-error-handling.md`, Vendor Header Abstraction).
 6. **Config over hardcoding, generic rejection response.** Ship the denylist as a safe built-in default, extensible via config for internal ranges; never let a per-tenant setting widen it without an explicit, off-by-default admin flag. On rejection, respond with a generic `400`/`422` that doesn't reveal the resolved IP or reason (helps attackers map internal topology) — log the concrete reason server-side only.
+7. **No deferring a violation behind a code comment.** Never resolve a missing scheme/IP/redirect check by adding a `// TODO`/`FIXME`-style comment and shipping the request path anyway — a comment does not validate a destination. Fix it before merging, or raise the gap explicitly for an approved exception rather than leaving it annotated in the source.
 
 ## Example
 
@@ -91,3 +92,4 @@ app.post('/api/specs/import-from-url', async (req, res) => {
 > * Does the client auto-follow redirects (`maxRedirects` unset or `redirect: 'follow'`)?
 > * Is every such request bounded by both a timeout and a response-size cap?
 > * Does a fetched document's embedded URLs get auto-dereferenced server-side, or does the rejection response leak the resolved IP/reason?
+> * Is a gap in this rule "resolved" by a `// TODO`/`FIXME`-style comment instead of an actual fix or an explicitly raised, approved exception?

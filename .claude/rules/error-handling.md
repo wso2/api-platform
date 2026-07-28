@@ -11,6 +11,7 @@ Apply this rule whenever writing, refactoring, or reviewing Go (`.go`) code resp
 3. **No source-tagged dynamic IDs.** Tracking IDs, error tokens, and correlation keys must never embed source file, function name, environment, or developer identifiers. Generate them with a high-entropy random source (UUIDv4, `crypto/rand`, ULID) — never `"AUTH_FAILED_LINE_82_" + timestamp`.
 4. **Unified authentication failures.** Every auth failure — invalid, expired, missing, or revoked credential — must return the identical `HTTP 401` status and payload: `{"error": "unauthorized", "message": "Invalid or expired credentials."}`. Log the specific reason internally for debugging; the response writer itself must never branch on failure type.
 5. **Never disclose a secret/resource handle on resolution failure.** A failed secret/key/credential lookup must not echo the handle (or any substring) back in the client response — a handle alone can confirm a tenant resource's existence, an enumeration primitive. Don't log the raw handle in the standard internal log either (broad readership, often forwarded to third-party aggregation); log a keyed-hash form there and reserve the raw handle for a narrowly access-controlled audit sink. Where practical, make the response shape (and latency) identical whether the resource doesn't exist or exists but failed to resolve — the same unified-response principle as directive 4, applied to any existence-sensitive lookup.
+6. **No deferring a violation behind a code comment.** Never resolve a finding from this rule (a leaked internal error, a vendor header, a source-tagged ID, a branching auth response, an echoed handle) by adding a `// TODO`/`FIXME`-style comment and shipping the non-compliant code anyway — a comment does not change what the code does and is never a substitute for the fix. If it can't be fixed immediately, raise it explicitly for a decision rather than leaving it silently annotated in the source.
 
 ## Example
 
@@ -69,3 +70,4 @@ func hashHandle(handle string) string {
 > * Does a generated tracking ID/token embed a source file, function, or timestamp-only value?
 > * Do different auth-failure causes produce different status codes or payloads?
 > * Does an error response (or its internal log) include a secret/resource handle instead of a hashed, audit-only reference?
+> * Is a finding from this rule "resolved" by a `// TODO`/`FIXME`-style comment instead of an actual fix or an explicitly raised tradeoff?
