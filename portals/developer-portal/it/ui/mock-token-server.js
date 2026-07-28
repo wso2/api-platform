@@ -28,6 +28,9 @@ const os = require('node:os');
 const MOCK_TOKEN_PORT = 4599;
 const MOCK_TOKEN_SECRET = 'it-mock-consumer-secret';
 const MOCK_ACCESS_TOKEN = 'it-mock-access-token';
+// A client-credentials token request body is tiny; cap it so a runaway/hostile
+// caller can't force the mock to buffer an unbounded stream in memory.
+const MAX_TOKEN_BODY_BYTES = 8 * 1024;
 
 // This process's docker-network IPv4, so the devportal container (which makes
 // the token request server-side) can reach the mock. Using the address rather
@@ -55,17 +58,36 @@ let meta = null;
 // so a spec can seed a key manager against a reachable endpoint immediately.
 function startMockTokenServer() {
     if (server) {
+        // Already running — meta is the live endpoint's metadata, not stale.
         return Promise.resolve(meta);
     }
-    return new Promise((resolve) => {
-        server = http.createServer((req, res) => {
+    return new Promise((resolve, reject) => {
+        let listening = false;
+        const srv = http.createServer((req, res) => {
             if (req.method !== 'POST') {
                 res.writeHead(405);
                 return res.end();
             }
             let body = '';
-            req.on('data', (chunk) => { body += chunk; });
+            let aborted = false;
+            req.on('data', (chunk) => {
+                if (aborted) {
+                    return;
+                }
+                body += chunk;
+                if (body.length > MAX_TOKEN_BODY_BYTES) {
+                    // Stop accumulating and reject with a generic 413 rather than
+                    // buffering an unbounded body.
+                    aborted = true;
+                    res.writeHead(413, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'payload_too_large' }));
+                    req.destroy();
+                }
+            });
             req.on('end', () => {
+                if (aborted) {
+                    return;
+                }
                 const [, encoded] = (req.headers.authorization || '').split(' ');
                 const [, secret] = Buffer.from(encoded || '', 'base64').toString('utf8').split(':');
                 if (secret !== MOCK_TOKEN_SECRET) {
@@ -82,11 +104,19 @@ function startMockTokenServer() {
                 }));
             });
         });
-        server.on('error', (err) => {
-            console.error('[mock-token-server] failed to start:', err.message);
-            resolve(meta); // The round-trip test fails loudly on its own if unreachable.
+        srv.on('error', (err) => {
+            console.error('[mock-token-server] server error:', err.message);
+            // Only a pre-listen failure (e.g. EADDRINUSE) means startup failed —
+            // reject so the caller sees it instead of receiving stale/null metadata.
+            if (!listening) {
+                server = null;
+                meta = null;
+                reject(err);
+            }
         });
-        server.listen(MOCK_TOKEN_PORT, '0.0.0.0', () => {
+        srv.listen(MOCK_TOKEN_PORT, '0.0.0.0', () => {
+            listening = true;
+            server = srv;
             meta = {
                 endpoint: `http://${containerIpv4()}:${MOCK_TOKEN_PORT}/token`,
                 secret: MOCK_TOKEN_SECRET,
@@ -98,12 +128,19 @@ function startMockTokenServer() {
 }
 
 function stopMockTokenServer() {
-    if (server) {
-        server.close();
-        server = null;
-        meta = null;
+    if (!server) {
+        return Promise.resolve(null);
     }
-    return null;
+    const srv = server;
+    // Resolve only once the socket has actually closed, and clear state after
+    // shutdown completes so callers can await full termination.
+    return new Promise((resolve) => {
+        srv.close(() => {
+            server = null;
+            meta = null;
+            resolve(null);
+        });
+    });
 }
 
 module.exports = { startMockTokenServer, stopMockTokenServer };

@@ -119,12 +119,15 @@ describe('REST API — overview, documentation & try-out', () => {
 
         cy.contains('.page-title', 'Documentation').should('be.visible');
         // The OpenAPI spec is embedded in the Stoplight Elements web component,
-        // carrying the API document (server-modified but still containing paths).
+        // carrying the API document (server-modified but still containing the
+        // seeded paths and the OAuth2 scopes from its security scheme).
         cy.get('.adoc-file-badge--spec').should('contain', 'openapi');
         cy.get('elements-api').should('exist');
         cy.get('elements-api')
             .invoke('attr', 'apiDescriptionDocument')
-            .should('include', '/items');
+            .should('include', '/items')
+            .and('include', 'read:items')
+            .and('include', 'write:items');
     });
 
     it('lists the specification and the other document in the docs sidebar', () => {

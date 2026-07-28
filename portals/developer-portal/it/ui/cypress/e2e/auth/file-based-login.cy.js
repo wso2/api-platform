@@ -32,7 +32,7 @@ describe('file-based login UI', () => {
 
         // Redirected to the portal home, with the username shown top-right.
         cy.url().should('include', '/views/default');
-        cy.get('.profile-link').should('be.visible').and('contain', 'admin');
+        cy.get('.profile-link').should('be.visible').and('contain', Cypress.env('ADMIN_USER'));
 
         // Open the profile dropdown and log out.
         cy.get('.profile-link').click();
@@ -46,7 +46,7 @@ describe('file-based login UI', () => {
     it('shows an error for an incorrect password', () => {
         cy.visitPortal();
         cy.get('.login-btn').click();
-        cy.get('#username').type('admin');
+        cy.get('#username').type(Cypress.env('ADMIN_USER'));
         cy.get('#password').type('wrong-password');
         cy.get('.ln-signin-btn').click();
 

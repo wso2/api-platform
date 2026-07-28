@@ -36,9 +36,14 @@ Cypress.Commands.add('createApplication', (name, description = '') => {
         cy.get('#app-desc-input').clear().type(description);
     }
     cy.get('#app-create-confirm').should('not.be.disabled').click();
-    // The create request reloads the page; wait for the new card, then yield its handle.
-    cy.contains('.app-card', name, { timeout: 15000 }).should('be.visible');
-    return cy.contains('.app-card', name).invoke('attr', 'data-id');
+    // The create request reloads the page; wait for the new card, then yield its
+    // handle. Match the name exactly against .app-card-name (not a substring of the
+    // whole .app-card) so e.g. "IT CRUD App" doesn't also match "IT CRUD App Renamed".
+    return cy
+        .contains('.app-card-name', new RegExp(`^${Cypress._.escapeRegExp(name)}$`), { timeout: 15000 })
+        .should('be.visible')
+        .closest('.app-card')
+        .invoke('attr', 'data-id');
 });
 
 // ---------------------------------------------------------------------------
@@ -49,11 +54,16 @@ Cypress.Commands.add('createApplication', (name, description = '') => {
 Cypress.Commands.add('deleteApplication', (name) => {
     cy.visitPortal('/applications');
     cy.get('body').then(($body) => {
-        const card = $body.find('.app-card').filter((_, el) => el.textContent.includes(name));
-        if (!card.length) {
+        // Exact-match the card name, not a substring of the whole card, so a
+        // similarly-named app (e.g. "IT CRUD App" vs "IT CRUD App Renamed") is
+        // never picked by mistake.
+        const nameCard = $body
+            .find('.app-card-name')
+            .filter((_, el) => el.textContent.trim() === name);
+        if (!nameCard.length) {
             return; // Already deleted.
         }
-        cy.contains('.app-card', name).find('.app-delete-btn').click();
+        cy.wrap(nameCard).first().closest('.app-card').find('.app-delete-btn').click();
         cy.get('#app-delete-modal').should('be.visible');
         cy.get('#app-delete-confirm').click();
         cy.contains('.app-card-name', name).should('not.exist');

@@ -41,7 +41,7 @@ describe('Applications', () => {
             method: 'DELETE',
             url: `/api/v0.9/applications/${detailHandle}`,
             failOnStatusCode: false,
-        });
+        }).its('status').should('be.oneOf', [200, 404]); // 200 = deleted; 404 = already gone (idempotent). Any other status is a real failure.
     });
 
     beforeEach(() => {
