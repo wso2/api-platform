@@ -21,6 +21,7 @@ package config
 import (
 	"fmt"
 	"regexp"
+	"math"
 	"strconv"
 	"strings"
 
@@ -418,7 +419,7 @@ func coerceScalarByType(val interface{}, expectedType string) interface{} {
 	}
 	switch expectedType {
 	case "integer", "number":
-		if f, err := strconv.ParseFloat(s, 64); err == nil {
+		if f, err := strconv.ParseFloat(s, 64); err == nil && !math.IsNaN(f) && !math.IsInf(f, 0) {
 			return f
 		}
 	case "boolean":
