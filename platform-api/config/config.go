@@ -180,11 +180,10 @@ type EventHub struct {
 type Webhook struct {
 	// Enabled controls whether the webhook endpoint is registered.
 	Enabled bool `koanf:"enabled"`
-	// Secret is the HMAC-SHA256 shared secret used to verify request signatures.
+	// Secret is the shared secret with the Developer Portal. It serves two purposes: verifying
+	// the HMAC-SHA256 request signature, and deriving (via HKDF-SHA256) the AES key that decrypts
+	// encrypted payload fields such as an API key secret.
 	Secret string `koanf:"secret"`
-	// PrivateKeyPath points to the PEM RSA private key used to decrypt encrypted_key fields.
-	// Optional: required only for events that carry encrypted secrets (API key generate/regenerate).
-	PrivateKeyPath string `koanf:"private_key_path"`
 	// SignatureTolerance bounds how old a signed request may be (replay protection).
 	SignatureTolerance time.Duration `koanf:"signature_tolerance"`
 	// MaxBodySize caps the request body size in bytes.
@@ -462,6 +461,12 @@ func LoadConfig(configPath string) (*Server, error) {
 	// emitted below (and any package-level slog.* call in this file) use the same
 	// format as the rest of the application, instead of slog's default handler.
 	slog.SetDefault(logger.NewLogger(logger.Config{Level: cfg.Logging.Level, Format: cfg.Logging.Format}))
+
+	// Unknown keys are silently dropped by the unmarshal above (ErrorUnused is not
+	// set), so a config still carrying a removed setting starts cleanly with that
+	// setting having no effect at all. Warn explicitly instead of leaving the
+	// operator to infer it from behavior.
+	warnRemovedConfigKeys(k)
 
 	if err := validateLoggingConfig(cfg.Logging.Level, cfg.Logging.Format); err != nil {
 		return nil, err
@@ -796,6 +801,30 @@ func validateFileBasedConfig(cfg *FileBased) error {
 
 // validateWebhookConfig validates and fills defaults for the webhook receiver config.
 // It is a no-op when the webhook is disabled.
+// removedConfigKeys maps a config key that no longer exists to the guidance shown
+// when it is still present. Keys are relative to the platform_api subtree, matching
+// the koanf tree after Cut. Add an entry whenever a setting is dropped: the
+// unmarshal ignores unknown keys, so without this a stale setting is inert and
+// silent, and an operator has no way to tell it stopped doing anything.
+var removedConfigKeys = map[string]string{
+	"webhook.private_key_path": "webhook payload fields are now encrypted with a key derived from webhook.secret " +
+		"instead of an RSA key pair; this setting has no effect and the PEM file/mount it points to can be deleted",
+}
+
+// warnRemovedConfigKeys logs a warning for each removed key still present in the
+// loaded config. It deliberately warns rather than failing: the removed setting is
+// inert, the service is fully functional without it, and refusing to start would
+// break an otherwise-working deployment on upgrade.
+func warnRemovedConfigKeys(k *koanf.Koanf) {
+	for key, guidance := range removedConfigKeys {
+		if k.Exists(key) {
+			slog.Warn("ignoring removed configuration key",
+				"key", platformAPIConfigKey+"."+key,
+				"detail", guidance)
+		}
+	}
+}
+
 func validateWebhookConfig(w *Webhook) error {
 	if !w.Enabled {
 		return nil

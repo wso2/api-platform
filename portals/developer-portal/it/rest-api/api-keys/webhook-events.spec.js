@@ -26,7 +26,7 @@ const db = require('../support/db');
 const { waitForEvent, waitForDelivery, poll } = require('../support/wait-for');
 const { createApi, createWebhookSubscriber, uniqueHandle } = require('../support/fixtures');
 const { createWebhookSink, resolveSinkUrl } = require('../support/webhook-sink');
-const { decryptFromEnvelope } = require('../support/envelopeCrypto');
+const { decryptField } = require('../support/envelopeCrypto');
 
 describe('api-keys webhook events', () => {
     let api;
@@ -75,7 +75,7 @@ describe('api-keys webhook events', () => {
         const received = sink.findDeliveryFor('apikey.generated');
         expect(received).toBeDefined();
         // `key` is passed as a secretField (see apiKeyService.generate) — this
-        // subscriber has no publicKey, so it's delivered without any encrypted
+        // subscriber has no secret, so it's delivered without any encrypted
         // fields rather than the plaintext ever appearing in `data`.
         expect(received.body.encrypted_fields).toEqual([]);
         expect(received.body.data).toEqual({
@@ -175,18 +175,12 @@ describe('api-keys webhook events', () => {
         });
     });
 
-    it('encrypts the key value field to the subscriber public key when configured', async () => {
-        // TODO(pqc): migrate — RSA keypair mirrors the app's quantum-vulnerable
-        // envelope crypto (src/services/webhooks/envelopeCrypto.js); migrate together.
-        const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
-            modulusLength: 2048,
-            publicKeyEncoding: { type: 'spki', format: 'pem' },
-            privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-        });
+    it('encrypts the key value field with the subscriber secret when configured', async () => {
+        const secret = crypto.randomBytes(32).toString('hex');
         const encryptedSubscriber = await createWebhookSubscriber({
             targetUrl: sinkUrl.href,
             events: ['apikey.*'],
-            publicKey,
+            secret,
         });
 
         const keyId = uniqueHandle('key').toLowerCase();
@@ -205,13 +199,12 @@ describe('api-keys webhook events', () => {
         expect(received).toBeDefined();
         expect(received.body.encrypted_fields).toEqual(['key']);
         expect(received.body.data.key).toEqual({
-            wrappedKey: expect.any(String),
             iv: expect.any(String),
             tag: expect.any(String),
             ciphertext: expect.any(String),
         });
 
-        const decrypted = decryptFromEnvelope(privateKey, received.body.data.key);
+        const decrypted = decryptField(secret, received.body.data.key);
         expect(decrypted).toBe(res.body.key);
 
         await client.as('admin').del(`/webhook-subscribers/${encryptedSubscriber.id}`);

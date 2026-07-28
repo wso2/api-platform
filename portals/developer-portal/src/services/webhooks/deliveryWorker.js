@@ -39,7 +39,7 @@ let intervalHandle = null;
  *   encrypted_fields: [],     — names of fields in `data` that carry an encrypted envelope
  *   data: {
  *     ...event payload,
- *     [fieldName]: { wrappedKey, iv, tag, ciphertext }  — per encrypted field
+ *     [fieldName]: { iv, tag, ciphertext }  — per encrypted field
  *   }
  * }
  *

@@ -36,11 +36,11 @@ The portal fires events in the background via a delivery worker. Each delivery i
 | `application.updated` | An application was renamed or its details changed | — |
 | `application.deleted` | An application was deleted | — |
 
-For events that carry a sensitive field, the value is **envelope-encrypted** with the subscriber's RSA-2048 public key and placed directly in `data` under its field name (e.g. `data.key`, `data.token`). It is never included in plaintext. The top-level `encrypted_fields` array always lists which `data` fields are encrypted.
+For events that carry a sensitive field, the value is **encrypted with AES-256-GCM** under a key derived from the subscriber's shared secret, and placed directly in `data` under its field name (e.g. `data.key`, `data.token`). It is never included in plaintext. The top-level `encrypted_fields` array always lists which `data` fields are encrypted.
 
 ## Configure a Webhook Subscriber
 
-Webhook subscribers are **per-organization** and managed through the Webhook Subscribers API — not through `config.toml`. Each organization registers its own endpoint(s); secrets and public keys are stored encrypted at rest (AES-256-GCM) in the devportal database, keyed to the organization.
+Webhook subscribers are **per-organization** and managed through the Webhook Subscribers API — not through `config.toml`. Each organization registers its own endpoint(s); secrets are stored encrypted at rest (AES-256-GCM) in the devportal database, keyed to the organization.
 
 Only delivery tuning, which applies globally across all organizations, remains in `config.toml`. Each delivery is attempted exactly once — there is no retry:
 
@@ -66,7 +66,7 @@ curl -k -X POST "https://localhost:9543/api/v0.9/webhook-subscribers" \
   }'
 ```
 
-The response never includes the secret. To set a public key for envelope-encrypting sensitive fields (see [Envelope Encryption](#envelope-encryption)), pass its PEM contents in `publicKey`.
+The response never includes the secret. That one `secret` value does double duty: it signs every delivery (see [Signature verification](#signature-verification)) **and** it encrypts sensitive fields (see [Field encryption](#field-encryption)) — so set it even if you don't intend to verify signatures, or sensitive fields will not be delivered at all.
 
 ### Subscriber fields
 
@@ -74,8 +74,7 @@ The response never includes the secret. To set a public key for envelope-encrypt
 |---|---|---|
 | `id` | Yes | Desired handle for the webhook subscriber (unique per org), stored as-is |
 | `targetUrl` | Yes | HTTPS endpoint that receives webhook POSTs (e.g. a handler in front of your gateway). Must be unique within the organization |
-| `secret` | No | Minimum 32-character string used to sign each event with HMAC-SHA256. Stored encrypted; never returned in API responses. If omitted, deliveries are sent unsigned (no `X-Devportal-Signature` header) |
-| `publicKey` | Recommended | PEM-encoded RSA-2048 public key for envelope-encrypting sensitive fields in `apikey.generated`, `apikey.regenerated`, `subscription.created`, and `subscription.token_regenerated` events |
+| `secret` | Recommended | Minimum 32-character string, used for **both** signing each event with HMAC-SHA256 and deriving the AES-256-GCM key that encrypts sensitive fields in `apikey.generated`, `apikey.regenerated`, `subscription.created`, and `subscription.token_regenerated` events. Stored encrypted; never returned in API responses. If omitted, deliveries are sent unsigned (no `X-Devportal-Signature` header) **and** sensitive fields are omitted from `data` entirely |
 | `events` | No | Event type allowlist. Wildcards supported (`apikey.*`). Omit or leave empty to receive all events |
 | `enabled` | No | Defaults to `true`. Disable a subscriber without deleting it |
 | `timeoutMs` | No | HTTP request timeout in milliseconds (default: 5000) |
@@ -173,7 +172,6 @@ Fired when a developer generates a new API key for an API.
       "handle": "my-mobile-app"
     },
     "key": {
-      "wrappedKey": "<base64>",
       "iv": "<base64>",
       "tag": "<base64>",
       "ciphertext": "<base64>"
@@ -183,7 +181,7 @@ Fired when a developer generates a new API key for an API.
 ```
 
 - `subscription` and `application` are absent when the key is not bound to one
-- `key` and its entry in `encrypted_fields` are present only when a public key is configured for the subscriber (see [Envelope Encryption](#envelope-encryption)); if no public key is configured, the secret is not delivered
+- `key` and its entry in `encrypted_fields` are present only when a secret is configured for the subscriber (see [Field encryption](#field-encryption)); if no secret is configured, the secret is not delivered
 - `expires_at` is `null` for non-expiring keys
 
 ### `apikey.regenerated`
@@ -206,7 +204,6 @@ Fired when a developer rotates an existing key. The `key_id`, `handle`, and `dis
       "type": "RestApi"
     },
     "key": {
-      "wrappedKey": "<base64>",
       "iv": "<base64>",
       "tag": "<base64>",
       "ciphertext": "<base64>"
@@ -300,7 +297,6 @@ Fired when a developer subscribes to an API. The subscription token is delivered
       "type": "RestApi"
     },
     "token": {
-      "wrappedKey": "<base64>",
       "iv": "<base64>",
       "tag": "<base64>",
       "ciphertext": "<base64>"
@@ -312,7 +308,7 @@ Fired when a developer subscribes to an API. The subscription token is delivered
 - `subscriber_id` is the **IdP subject** (`sub` claim) of the user who created the subscription — the same identity the REST API returns as `createdBy`. Its exact format depends on your identity provider (e.g. an email like `user@example.com`, or an opaque subject such as `auth0|abc123`). For subscriptions created by a machine credential (API key / mTLS, which carry no user identity) the value is the literal string `"system"`
 - `status` is the subscription's current state (`ACTIVE` / `INACTIVE`) — present on every subscription event, not only `subscription.updated`
 - `token` decrypts to the subscription token — the value developers must include as `X-Subscription-Token` on APIs that use token-based subscription enforcement
-- `token` and its entry in `encrypted_fields` are present only when a public key is configured for the subscriber; if no public key is configured, the token is not delivered
+- `token` and its entry in `encrypted_fields` are present only when a secret is configured for the subscriber; if no secret is configured, the token is not delivered
 
 ### `subscription.updated`
 
@@ -375,7 +371,7 @@ Fired when a developer switches their subscription to a different plan. The subs
 
 ### `subscription.token_regenerated`
 
-Fired when a developer regenerates a subscription token. The old token is immediately invalidated; `token` carries the new value encrypted using the subscriber's RSA public key. Your subscriber must replace the stored credential for this `subscription_id` at the gateway before the next request arrives.
+Fired when a developer regenerates a subscription token. The old token is immediately invalidated; `token` carries the new value encrypted under the key derived from the subscriber's secret. Your subscriber must replace the stored credential for this `subscription_id` at the gateway before the next request arrives.
 
 ```json
 {
@@ -396,7 +392,6 @@ Fired when a developer regenerates a subscription token. The old token is immedi
       "type": "RestApi"
     },
     "token": {
-      "wrappedKey": "<base64>",
       "iv": "<base64>",
       "tag": "<base64>",
       "ciphertext": "<base64>"
@@ -406,7 +401,7 @@ Fired when a developer regenerates a subscription token. The old token is immedi
 ```
 
 - `token` decrypts to the new subscription token — use the same decryption steps as `subscription.created`
-- `token` and its entry in `encrypted_fields` are present only when a public key is configured for the subscriber; if no public key is configured, the new token is not delivered via webhook
+- `token` and its entry in `encrypted_fields` are present only when a secret is configured for the subscriber; if no secret is configured, the new token is not delivered via webhook
 - This is the only event that carries a new token secret after creation — if decryption fails, the developer must regenerate again
 
 ### `subscription.deleted`
@@ -542,16 +537,15 @@ function verifySignature(secret, rawBody, signatureHeader) {
 }
 ```
 
-### Envelope encryption
+### Field encryption
 
 Events that carry sensitive fields include them directly in `data` under their field name (e.g. `data.key`, `data.token`). The top-level `encrypted_fields` array lists which fields are encrypted — check it before processing `data` so you know which fields need decryption.
 
-**Encryption scheme:** hybrid RSA-OAEP + AES-256-GCM.
+**Encryption scheme:** AES-256-GCM, under a key derived from your subscriber's `secret` — the same secret that signs the request. No key pair is involved: because you already hold the secret, you can decrypt without registering or storing any additional key material.
 
 ```
 {
-  wrappedKey  — RSA-OAEP(SHA-256) encrypted 256-bit AES key (base64)
-  iv          — 12-byte AES-GCM IV (base64)
+  iv          — 12-byte AES-GCM nonce (base64)
   tag         — 16-byte AES-GCM authentication tag (base64)
   ciphertext  — AES-256-GCM encrypted secret value (base64)
 }
@@ -559,21 +553,27 @@ Events that carry sensitive fields include them directly in `data` under their f
 
 **Decryption steps:**
 
-1. RSA-decrypt `wrappedKey` with your private key using OAEP+SHA-256 → `aesKey`
-2. AES-256-GCM decrypt `ciphertext` using `aesKey`, `iv`, and `tag` → plaintext secret
+1. Derive the AES key: `HKDF-SHA256(ikm = secret, salt = "" (empty), info = "devportal-webhook-field-encryption-v1", length = 32)`
+2. AES-256-GCM decrypt `ciphertext` using that key, `iv`, and `tag` → plaintext secret
+
+The key is derived rather than using the secret's raw bytes so that the encryption key is domain-separated from the HMAC signing key, even though both come from the same secret. The empty salt is intentional — HKDF substitutes 32 zero bytes (RFC 5869), which is what makes the derivation reproducible on your side without any extra shared state.
 
 **Example (Node.js):**
 
 ```js
 const crypto = require('crypto');
 
-function decryptField(privateKeyPem, envelope) {
-    const aesKey = crypto.privateDecrypt(
-        { key: privateKeyPem, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
-        Buffer.from(envelope.wrappedKey, 'base64')
+const FIELD_KEY_INFO = 'devportal-webhook-field-encryption-v1';
+
+function deriveFieldKey(secret) {
+    return Buffer.from(
+        crypto.hkdfSync('sha256', secret, Buffer.alloc(0), FIELD_KEY_INFO, 32)
     );
+}
+
+function decryptField(secret, envelope) {
     const decipher = crypto.createDecipheriv(
-        'aes-256-gcm', aesKey, Buffer.from(envelope.iv, 'base64')
+        'aes-256-gcm', deriveFieldKey(secret), Buffer.from(envelope.iv, 'base64')
     );
     decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
     return Buffer.concat([
@@ -584,11 +584,11 @@ function decryptField(privateKeyPem, envelope) {
 
 // Usage — decrypt all encrypted fields from a webhook payload:
 for (const fieldName of payload.encrypted_fields) {
-    payload.data[fieldName] = decryptField(privateKeyPem, payload.data[fieldName]);
+    payload.data[fieldName] = decryptField(secret, payload.data[fieldName]);
 }
 ```
 
-If no public key is configured for the subscriber, encrypted fields are omitted from `data` and `encrypted_fields` is empty — configure a public key before going to production.
+If no secret is configured for the subscriber, sensitive fields are omitted from `data` and `encrypted_fields` is empty — the plaintext value is never sent unencrypted. Configure a secret before going to production.
 
 ## Delivery Attempts
 

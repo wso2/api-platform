@@ -19,14 +19,16 @@ const whDao = require('../../dao/webhookSubscriberDao');
 
 /**
  * Maps a DP_WEBHOOK_SUBSCRIBER record to the shape consumed by the dispatcher
- * and delivery worker: {id, url, secret, publicKey, events, timeoutMs}.
+ * and delivery worker: {id, url, secret, events, timeoutMs}.
+ *
+ * `secret` serves double duty: HMAC request signing (signer.js) and deriving the
+ * field-encryption key for sensitive event fields (envelopeCrypto.js).
  */
 function toRuntimeSubscriber(record) {
     return {
         id: record.uuid,
         url: record.target_url,
         secret: whDao.decryptSecret(record),
-        publicKey: record.public_key || null,
         events: record.event_patterns || [],
         timeoutMs: record.timeout_ms,
     };
@@ -38,7 +40,7 @@ function toRuntimeSubscriber(record) {
  *
  * @param {string} orgId
  * @param {string} eventType      — e.g. "apikey.generated"
- * @returns {Promise<Array<{id,url,secret,publicKey,events,timeoutMs}>>}
+ * @returns {Promise<Array<{id,url,secret,events,timeoutMs}>>}
  */
 async function matchSubscribers(orgId, eventType) {
     const records = await whDao.matchSubscribers(orgId, eventType);

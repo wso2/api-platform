@@ -20,68 +20,49 @@ package webhook
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
-	"crypto/rsa"
+	"crypto/hkdf"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
-	"encoding/pem"
 	"fmt"
-	"os"
 )
 
-// Decryptor recovers a plaintext secret from the hybrid-encrypted EncryptedKey field.
+// fieldKeyInfo is the HKDF info label used to derive the field-encryption key from the shared
+// webhook secret. It must stay byte-identical to the producer's label (Developer Portal
+// src/services/webhooks/envelopeCrypto.js, FIELD_KEY_INFO) — a mismatch yields a different key
+// and every decryption fails. The "-v1" suffix is the scheme version; bump both sides together.
+const fieldKeyInfo = "devportal-webhook-field-encryption-v1"
+
+// fieldKeyBytes is the derived AES key length (AES-256).
+const fieldKeyBytes = 32
+
+// Decryptor recovers a plaintext secret from an encrypted EncryptedKey field.
 //
-// The producer (Developer Portal) encrypts the secret with a one-time AES-256 content key,
-// then wraps that content key with this receiver's RSA public key (RSA-OAEP). Decryption is
-// therefore two stages:
-//  1. RSA-OAEP unwrap `wrappedKey` with the configured RSA private key -> AES content key.
-//  2. AES-256-GCM decrypt `ciphertext` (with `iv` as nonce and `tag` appended) -> plaintext.
+// The producer (Developer Portal) and this receiver share one per-subscriber secret, which
+// serves two purposes: HMAC request signing (see Verifier) and field encryption. Rather than
+// using that secret's bytes directly for both, each side derives a separate AES-256 key from it
+// with HKDF-SHA256 under fieldKeyInfo, so the encryption key is domain-separated from the
+// signing key. Decryption is therefore a single stage: AES-256-GCM open with the derived key.
 //
-// Interop note: this assumes RSA-OAEP with SHA-256 and no OAEP label, a 12-byte GCM nonce, and
-// a separate 16-byte GCM tag. These must match the producer; they are documented in
-// docs-local/platform-api-webhook.md as parameters to confirm with the Developer Portal team.
+// Interop note: this assumes HKDF-SHA256 with an empty salt (RFC 5869 falls back to HashLen zero
+// bytes), a 12-byte GCM nonce in `iv`, and a separate 16-byte GCM tag in `tag`. These must match
+// the producer.
 type Decryptor struct {
-	priv *rsa.PrivateKey
+	key []byte
 }
 
-// NewDecryptor loads a PEM-encoded RSA private key (PKCS#1 or PKCS#8) from pemPath.
-// A nil Decryptor is valid and means "no key configured"; Decrypt then returns
+// NewDecryptor derives the field-encryption key from the shared webhook secret.
+// A nil Decryptor is valid and means "no secret configured"; Decrypt then returns
 // ErrDecryptorUnavailable so events carrying encrypted fields fail loudly rather than silently.
-func NewDecryptor(pemPath string) (*Decryptor, error) {
-	if pemPath == "" {
+func NewDecryptor(secret string) (*Decryptor, error) {
+	if secret == "" {
 		return nil, nil
 	}
-	raw, err := os.ReadFile(pemPath)
+	key, err := hkdf.Key(sha256.New, []byte(secret), nil, fieldKeyInfo, fieldKeyBytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read webhook private key %q: %w", pemPath, err)
+		// Deliberately does not wrap the secret or any derivative of it into the error.
+		return nil, fmt.Errorf("failed to derive webhook field-encryption key: %w", err)
 	}
-	block, _ := pem.Decode(raw)
-	if block == nil {
-		return nil, fmt.Errorf("webhook private key %q is not valid PEM", pemPath)
-	}
-
-	priv, err := parseRSAPrivateKey(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse webhook private key %q: %w", pemPath, err)
-	}
-	return &Decryptor{priv: priv}, nil
-}
-
-// parseRSAPrivateKey accepts both PKCS#1 ("RSA PRIVATE KEY") and PKCS#8 ("PRIVATE KEY") DER.
-func parseRSAPrivateKey(der []byte) (*rsa.PrivateKey, error) {
-	if key, err := x509.ParsePKCS1PrivateKey(der); err == nil {
-		return key, nil
-	}
-	keyAny, err := x509.ParsePKCS8PrivateKey(der)
-	if err != nil {
-		return nil, err
-	}
-	rsaKey, ok := keyAny.(*rsa.PrivateKey)
-	if !ok {
-		return nil, fmt.Errorf("private key is not an RSA key")
-	}
-	return rsaKey, nil
+	return &Decryptor{key: key}, nil
 }
 
 // Decrypt returns the plaintext secret for the given encrypted field. The caller must clear the
@@ -90,14 +71,10 @@ func (d *Decryptor) Decrypt(ek *EncryptedKey) (string, error) {
 	if ek == nil || ek.Empty() {
 		return "", fmt.Errorf("%w: encrypted field is empty", ErrDecryptionFailed)
 	}
-	if d == nil || d.priv == nil {
+	if d == nil || len(d.key) == 0 {
 		return "", ErrDecryptorUnavailable
 	}
 
-	wrappedKey, err := base64.StdEncoding.DecodeString(ek.WrappedKey)
-	if err != nil {
-		return "", fmt.Errorf("%w: wrappedKey is not valid base64: %v", ErrDecryptionFailed, err)
-	}
 	iv, err := base64.StdEncoding.DecodeString(ek.IV)
 	if err != nil {
 		return "", fmt.Errorf("%w: iv is not valid base64: %v", ErrDecryptionFailed, err)
@@ -111,21 +88,19 @@ func (d *Decryptor) Decrypt(ek *EncryptedKey) (string, error) {
 		return "", fmt.Errorf("%w: tag is not valid base64: %v", ErrDecryptionFailed, err)
 	}
 
-	// Stage 1: RSA-OAEP unwrap the AES content key.
-	contentKey, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, d.priv, wrappedKey, nil)
+	block, err := aes.NewCipher(d.key)
 	if err != nil {
-		return "", fmt.Errorf("%w: RSA-OAEP unwrap failed: %v", ErrDecryptionFailed, err)
-	}
-
-	// Stage 2: AES-256-GCM decrypt the ciphertext. Go's GCM expects the tag appended to the ciphertext.
-	block, err := aes.NewCipher(contentKey)
-	if err != nil {
-		return "", fmt.Errorf("%w: invalid AES content key: %v", ErrDecryptionFailed, err)
+		return "", fmt.Errorf("%w: invalid AES key: %v", ErrDecryptionFailed, err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrDecryptionFailed, err)
 	}
+	if len(iv) != gcm.NonceSize() {
+		return "", fmt.Errorf("%w: iv must be %d bytes, got %d", ErrDecryptionFailed, gcm.NonceSize(), len(iv))
+	}
+
+	// Go's GCM expects the tag appended to the ciphertext; the producer sends them separately.
 	sealed := append(append([]byte{}, ciphertext...), tag...)
 	plaintext, err := gcm.Open(nil, iv, sealed, nil)
 	if err != nil {

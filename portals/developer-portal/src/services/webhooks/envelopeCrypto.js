@@ -17,42 +17,67 @@
  */
 const crypto = require('crypto');
 
+// Versioned HKDF info label. The subscriber's shared secret is used for two
+// distinct purposes — HMAC request signing (signer.js) and the field encryption
+// below — so each derives its own key from that secret rather than using the
+// secret material directly. Bump the version suffix if the scheme changes; the
+// label must stay byte-identical to the receiver's (platform-api
+// internal/webhook/decryptor.go).
+const FIELD_KEY_INFO = 'devportal-webhook-field-encryption-v1';
+
+const KEY_BYTES = 32; // AES-256
+const IV_BYTES = 12; // 96-bit GCM nonce
+
 /**
- * Hybrid encryption: AES-256-GCM data key, wrapped with the subscriber's RSA public key.
+ * Derive the AES-256 field-encryption key from a subscriber's shared secret.
+ *
+ * The secret is an operator-supplied free-form string, not key material, so it
+ * is stretched through HKDF-SHA256 rather than hashed or truncated. An empty
+ * salt is intentional and RFC 5869 compliant (extract falls back to HashLen
+ * zero bytes) — it keeps derivation reproducible on the receiving side, which
+ * holds the same secret but shares no other state with this process.
+ *
+ * @param {string} secret — the subscriber's shared HMAC/encryption secret
+ * @returns {Buffer} 32-byte AES key
+ */
+function deriveFieldKey(secret) {
+    if (!secret) {
+        throw new Error('A subscriber secret is required to derive the field-encryption key');
+    }
+    return Buffer.from(
+        crypto.hkdfSync('sha256', secret, Buffer.alloc(0), FIELD_KEY_INFO, KEY_BYTES)
+    );
+}
+
+/**
+ * Encrypt a sensitive event field with AES-256-GCM under a key derived from the
+ * subscriber's shared secret.
  *
  * Output structure (all base64):
  * {
- *   wrappedKey: <RSA-OAEP(SHA-256) encrypted AES key>,
- *   iv:         <12-byte GCM IV>,
+ *   iv:         <12-byte GCM nonce>,
  *   tag:        <16-byte GCM auth tag>,
- *   ciphertext: <AES-GCM encrypted plaintext>
+ *   ciphertext: <AES-256-GCM encrypted plaintext>
  * }
  *
  * Subscribers decrypt with:
- *   1. RSA-decrypt wrappedKey with their private key → aesKey
+ *   1. HKDF-SHA256(secret, info="devportal-webhook-field-encryption-v1") → aesKey
  *   2. AES-256-GCM decrypt ciphertext with aesKey + iv + tag → plaintext
  *
- * @param {string} publicKeyPem  — RSA public key in PEM format (PKCS#8 or PKCS#1)
- * @param {string} plaintext     — value to encrypt (the API key secret)
- * @returns {{ wrappedKey: string, iv: string, tag: string, ciphertext: string }}
+ * @param {string} secret    — the subscriber's shared secret
+ * @param {string} plaintext — value to encrypt (e.g. the API key secret)
+ * @returns {{ iv: string, tag: string, ciphertext: string }}
  */
-function encryptToSubscriber(publicKeyPem, plaintext) {
-    const aesKey = crypto.randomBytes(32);
-    const iv = crypto.randomBytes(12);
+function encryptField(secret, plaintext) {
+    const key = deriveFieldKey(secret);
+    // Fresh nonce per field per subscriber — never reused under the same derived key.
+    const iv = crypto.randomBytes(IV_BYTES);
 
-    const cipher = crypto.createCipheriv('aes-256-gcm', aesKey, iv);
+    const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
     const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
     const tag = cipher.getAuthTag();
 
-    // TODO(pqc): migrate — RSA-OAEP is quantum-vulnerable; move to a hybrid
-    // (e.g. X25519 + ML-KEM-768) key wrap once subscriber keys support it.
-    const wrappedKey = crypto.publicEncrypt(
-        { key: publicKeyPem, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
-        aesKey
-    );
-
     return {
-        wrappedKey: wrappedKey.toString('base64'),
         iv: iv.toString('base64'),
         tag: tag.toString('base64'),
         ciphertext: ciphertext.toString('base64')
@@ -60,21 +85,15 @@ function encryptToSubscriber(publicKeyPem, plaintext) {
 }
 
 /**
- * Decrypt a value encrypted by encryptToSubscriber (for testing / reference subscribers).
+ * Decrypt a value produced by encryptField (for testing / reference subscribers).
  *
- * @param {string} privateKeyPem
- * @param {{ wrappedKey: string, iv: string, tag: string, ciphertext: string }} envelope
+ * @param {string} secret
+ * @param {{ iv: string, tag: string, ciphertext: string }} envelope
  * @returns {string}
  */
-function decryptFromEnvelope(privateKeyPem, envelope) {
-    // TODO(pqc): migrate — RSA-OAEP is quantum-vulnerable (mirror of the wrap in
-    // encryptToSubscriber; migrate both together).
-    const aesKey = crypto.privateDecrypt(
-        { key: privateKeyPem, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
-        Buffer.from(envelope.wrappedKey, 'base64')
-    );
-
-    const decipher = crypto.createDecipheriv('aes-256-gcm', aesKey, Buffer.from(envelope.iv, 'base64'));
+function decryptField(secret, envelope) {
+    const key = deriveFieldKey(secret);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(envelope.iv, 'base64'));
     decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
     return Buffer.concat([
         decipher.update(Buffer.from(envelope.ciphertext, 'base64')),
@@ -82,4 +101,4 @@ function decryptFromEnvelope(privateKeyPem, envelope) {
     ]).toString('utf8');
 }
 
-module.exports = { encryptToSubscriber, decryptFromEnvelope };
+module.exports = { deriveFieldKey, encryptField, decryptField, FIELD_KEY_INFO };

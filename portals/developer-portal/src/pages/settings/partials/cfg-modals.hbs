@@ -253,9 +253,14 @@
     </div>
     <div class="cfg-form-grid" style="margin-bottom:16px;">
       <div class="cfg-form-group">
-        <label for="wh-secret">Secret <span style="color:#9aa3af;font-weight:400;">(optional)</span></label>
+        <label for="wh-secret">Secret <span class="required">*</span> <span style="color:#9aa3af;font-weight:400;">(signing &amp; encryption)</span></label>
         <input type="password" id="wh-secret" class="cfg-form-input" autocomplete="new-password"
-          placeholder="Used to sign payloads (HMAC)" />
+          placeholder="Signs payloads and encrypts secrets" />
+        <p class="cfg-field-hint">
+          Used for both: signing every payload (HMAC) so you can verify it came from us, and
+          encrypting the plaintext API key or token delivered with apikey.* / subscription.* events
+          so only you can read it.
+        </p>
         <p class="cfg-field-hint" id="wh-secret-hint" style="display:none;">
           A secret is already set. Leave blank to keep it, or enter a new value to replace it.
         </p>
@@ -264,16 +269,6 @@
         <label for="wh-timeout">Timeout (ms)</label>
         <input type="number" id="wh-timeout" class="cfg-form-input" min="1" value="5000" />
       </div>
-    </div>
-    <div class="cfg-form-group" style="margin-bottom:16px;">
-      <label for="wh-publickey">Public key <span style="color:#9aa3af;font-weight:400;">(optional)</span></label>
-      <textarea id="wh-publickey" class="cfg-form-input cfg-form-input--mono" rows="3" placeholder="PEM-encoded RSA public key"></textarea>
-      <p class="cfg-field-hint">
-        Used to encrypt the plaintext API key delivered with apikey.* / subscription.created events, so only you can read it.
-      </p>
-      <p class="cfg-field-hint" id="wh-publickey-hint" style="display:none;">
-        A public key is already set. Leave blank to keep it, or enter a new value to replace it.
-      </p>
     </div>
     <div class="cfg-form-group" style="margin-bottom:16px;">
       <label>Events</label>

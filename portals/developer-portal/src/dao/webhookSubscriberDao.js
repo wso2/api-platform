@@ -38,14 +38,14 @@ function toSubscriber(row) {
     return {
         ...row,
         secret_enc: bufferToUtf8(row.secret_enc),
-        public_key: bufferToUtf8(row.public_key),
         event_patterns: parseJsonColumn(row.event_patterns),
     };
 }
 
 /**
  * Create a new webhook subscriber for an organization.
- * The secret is encrypted before storage.
+ * The secret is encrypted before storage. It is used both to sign outgoing
+ * deliveries (HMAC) and to derive the encryption key for sensitive event fields.
  */
 const create = async (orgId, subData, createdBy) => {
     if (subData.secret && !whCrypto.enabled) {
@@ -61,7 +61,6 @@ const create = async (orgId, subData, createdBy) => {
         display_name: subData.displayName,
         target_url: subData.targetUrl,
         secret_enc: subData.secret ? whCrypto.encrypt(subData.secret) : null,
-        public_key: subData.publicKey ? subData.publicKey : null,
         event_patterns: subData.events ? subData.events : [],
         enabled: subData.enabled !== undefined ? (subData.enabled ? 1 : 0) : 1,
         timeout_ms: subData.timeoutMs ? subData.timeoutMs : 5000,
@@ -71,12 +70,11 @@ const create = async (orgId, subData, createdBy) => {
 
     await db.execute(
         `INSERT INTO ${TABLE}
-            (uuid, org_uuid, handle, display_name, target_url, secret_enc, public_key, event_patterns, enabled, timeout_ms, created_by, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (uuid, org_uuid, handle, display_name, target_url, secret_enc, event_patterns, enabled, timeout_ms, created_by, updated_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             row.uuid, row.org_uuid, row.handle, row.display_name, row.target_url,
             row.secret_enc !== null ? Buffer.from(row.secret_enc, 'utf8') : null,
-            row.public_key !== null ? Buffer.from(row.public_key, 'utf8') : null,
             JSON.stringify(row.event_patterns),
             row.enabled, row.timeout_ms, row.created_by, row.updated_by,
         ]
@@ -94,7 +92,6 @@ const update = async (orgId, subscriberHandle, subData, updatedBy) => {
         ...(subData.handle && { handle: subData.handle }),
         ...(subData.displayName && { display_name: subData.displayName }),
         ...(subData.targetUrl && { target_url: subData.targetUrl }),
-        ...(subData.publicKey !== undefined && { public_key: subData.publicKey }),
         ...(subData.events && { event_patterns: subData.events }),
         ...(subData.enabled !== undefined && { enabled: subData.enabled ? 1 : 0 }),
         ...(subData.timeoutMs && { timeout_ms: subData.timeoutMs }),
@@ -114,7 +111,7 @@ const update = async (orgId, subscriberHandle, subData, updatedBy) => {
     const values = columns.map((c) => {
         const value = updatePayload[c];
         if (c === 'event_patterns') return JSON.stringify(value);
-        if (c === 'secret_enc' || c === 'public_key') {
+        if (c === 'secret_enc') {
             return value === null || value === undefined ? null : Buffer.from(value, 'utf8');
         }
         return value;
@@ -213,7 +210,8 @@ const deleteSubscriber = async (orgId, subscriberHandle) => {
 
 /**
  * Decrypt the secret for a webhook subscriber record.
- * Used internally by the delivery worker to sign outgoing requests.
+ * Used internally by the delivery worker to sign outgoing requests, and by the
+ * event publisher to derive the field-encryption key for sensitive event fields.
  */
 const decryptSecret = (subRecord) => {
     if (!subRecord.secret_enc) return null;

@@ -17,7 +17,7 @@
 // --------------------------------------------------------------------
 
 // POST/GET/PUT/DELETE /webhook-subscribers, GET /webhook-subscribers/{id}/deliveries.
-// Request shape: { id, displayName?, targetUrl, secret?, publicKey?, events?, enabled? }
+// Request shape: { id, displayName?, targetUrl, secret?, events?, enabled? }
 // — see docs/devportal-openapi-spec-v0.9.yaml WebhookSubscriberRequest.
 // `events` is a glob allowlist (trailing `*` only, e.g. "apikey.*"); empty/omitted
 // means all event types. `admin` manages org-level integration config.

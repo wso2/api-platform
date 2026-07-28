@@ -34,11 +34,10 @@ import (
 // schema_version as forward-compat work, so a missing value must be tolerated (not rejected).
 const CurrentSchemaVersion = "1.0"
 
-// EncryptedKey is the hybrid-encrypted (AES-256-GCM + RSA-OAEP) representation of a sensitive
-// value (an API key secret, etc.). wrappedKey is the AES content key wrapped with the receiver's
-// RSA public key; iv/tag/ciphertext are the AES-GCM parts. See Decryptor.
+// EncryptedKey is the AES-256-GCM encrypted representation of a sensitive value (an API key
+// secret, etc.). The key is derived from the shared webhook secret via HKDF-SHA256, so no
+// asymmetric key material is involved; iv/tag/ciphertext are the AES-GCM parts. See Decryptor.
 type EncryptedKey struct {
-	WrappedKey string `json:"wrappedKey"`
 	IV         string `json:"iv"`
 	Tag        string `json:"tag"`
 	Ciphertext string `json:"ciphertext"`
@@ -46,7 +45,7 @@ type EncryptedKey struct {
 
 // Empty reports whether the encrypted field is unset.
 func (e *EncryptedKey) Empty() bool {
-	return e == nil || (e.WrappedKey == "" && e.Ciphertext == "")
+	return e == nil || e.Ciphertext == "" || e.IV == "" || e.Tag == ""
 }
 
 // orgRef identifies the organization an event targets. ref_id is the control-plane org

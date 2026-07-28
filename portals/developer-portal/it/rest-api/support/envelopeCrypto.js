@@ -16,23 +16,29 @@
 // under the License.
 // --------------------------------------------------------------------
 
-// Test-side mirror of src/services/webhooks/envelopeCrypto.js's decryptFromEnvelope.
+// Test-side mirror of src/services/webhooks/envelopeCrypto.js's decryptField.
 // Can't require the app source directly: the rest-api-tests container only has
 // `it/rest-api` mounted (docker-compose.test*.yaml), not the rest of the repo. Kept in
-// lockstep with the app's encryptToSubscriber — RSA-OAEP(SHA-256)-wrapped AES-256-GCM
-// key, base64-encoded fields.
+// lockstep with the app's encryptField — AES-256-GCM under an HKDF-SHA256 key derived
+// from the subscriber's shared secret, base64-encoded fields.
+//
+// FIELD_KEY_INFO must stay byte-identical to the app's label and to platform-api's
+// (internal/webhook/decryptor.go, fieldKeyInfo) — a mismatch yields a different key.
 
 const crypto = require('crypto');
 
-function decryptFromEnvelope(privateKeyPem, envelope) {
-    // TODO(pqc): migrate — mirrors the app's quantum-vulnerable RSA-OAEP unwrap
-    // (src/services/webhooks/envelopeCrypto.js); migrate together.
-    const aesKey = crypto.privateDecrypt(
-        { key: privateKeyPem, padding: crypto.constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' },
-        Buffer.from(envelope.wrappedKey, 'base64')
-    );
+const FIELD_KEY_INFO = 'devportal-webhook-field-encryption-v1';
 
-    const decipher = crypto.createDecipheriv('aes-256-gcm', aesKey, Buffer.from(envelope.iv, 'base64'));
+function deriveFieldKey(secret) {
+    return Buffer.from(
+        crypto.hkdfSync('sha256', secret, Buffer.alloc(0), FIELD_KEY_INFO, 32)
+    );
+}
+
+function decryptField(secret, envelope) {
+    const decipher = crypto.createDecipheriv(
+        'aes-256-gcm', deriveFieldKey(secret), Buffer.from(envelope.iv, 'base64')
+    );
     decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
     return Buffer.concat([
         decipher.update(Buffer.from(envelope.ciphertext, 'base64')),
@@ -40,4 +46,4 @@ function decryptFromEnvelope(privateKeyPem, envelope) {
     ]).toString('utf8');
 }
 
-module.exports = { decryptFromEnvelope };
+module.exports = { deriveFieldKey, decryptField, FIELD_KEY_INFO };

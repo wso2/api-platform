@@ -36,6 +36,6 @@ var (
 
 	// ErrDecryptionFailed indicates the encrypted field could not be decrypted. -> 400
 	ErrDecryptionFailed = errors.New("failed to decrypt webhook payload field")
-	// ErrDecryptorUnavailable indicates an encrypted field was received but no private key is configured. -> 500
+	// ErrDecryptorUnavailable indicates an encrypted field was received but no webhook secret is configured. -> 500
 	ErrDecryptorUnavailable = errors.New("webhook decryptor is not configured")
 )

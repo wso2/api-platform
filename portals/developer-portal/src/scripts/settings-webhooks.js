@@ -21,6 +21,10 @@
   var _cfg = document.getElementById('cfg-page-config') || { dataset: {} };
   var ORG_ID = _cfg.dataset.orgId || '';
   var editWebhookId = null;
+  // Whether the subscriber being edited already has a stored secret. A blank secret
+  // field means "keep the stored one", so the mandatory check below only applies when
+  // there is nothing stored to keep — on create, or on a legacy row saved without one.
+  var editHasSecret = false;
 
   function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }
 
@@ -67,22 +71,25 @@
   /* ── open modal ── */
   function openWebhookModal(mode, data) {
     editWebhookId = mode === 'edit' ? data.id : null;
+    editHasSecret = mode === 'edit' && !!data.hasSecret;
     document.getElementById('cfg-webhook-modal-title').textContent = mode === 'edit' ? 'Edit webhook' : 'Add webhook';
     document.getElementById('cfg-webhook-modal-save').textContent  = mode === 'edit' ? 'Save changes' : 'Add webhook';
     document.getElementById('wh-display').value   = mode === 'edit' ? (data.displayName || '') : '';
     document.getElementById('wh-handle').value    = mode === 'edit' ? (data.id || '')          : '';
     document.getElementById('wh-url').value       = mode === 'edit' ? (data.targetUrl || '')       : '';
     document.getElementById('wh-secret').value    = '';
-    document.getElementById('wh-publickey').value = '';
     document.getElementById('wh-timeout').value   = mode === 'edit' ? (data.timeoutMs || 5000) : 5000;
     document.getElementById('wh-enabled').checked = mode === 'edit' ? !!data.enabled : true;
-    document.getElementById('wh-secret-hint').style.display    = mode === 'edit' && data.hasSecret ? 'block' : 'none';
-    document.getElementById('wh-publickey-hint').style.display = mode === 'edit' && data.hasPublicKey ? 'block' : 'none';
+    document.getElementById('wh-secret-hint').style.display = editHasSecret ? 'block' : 'none';
     setSelectedEvents(mode === 'edit' ? data.events : []);
     document.getElementById('cfg-webhook-modal').style.display = 'flex';
     document.getElementById('wh-display').focus();
   }
-  function closeWebhookModal() { document.getElementById('cfg-webhook-modal').style.display = 'none'; editWebhookId = null; }
+  function closeWebhookModal() {
+    document.getElementById('cfg-webhook-modal').style.display = 'none';
+    editWebhookId = null;
+    editHasSecret = false;
+  }
 
   /* ── auto-slug display → handle ── */
   document.getElementById('wh-display').addEventListener('input', function() {
@@ -96,6 +103,15 @@
     var handle      = v('wh-handle');
     var url         = v('wh-url');
     if (!displayName || !handle || !url) { await showAlert('Display name, handle and target URL are required.', 'error'); return; }
+
+    // The secret both signs deliveries and encrypts sensitive event fields, so a
+    // subscriber without one silently loses the API key / token payloads entirely.
+    // On edit, a blank field keeps the stored secret — only require one when there
+    // is none stored.
+    if (!v('wh-secret') && !editHasSecret) {
+      await showAlert('A secret is required — it signs each delivery and encrypts the API key and token fields.', 'error');
+      return;
+    }
 
     var parsedUrl;
     try { parsedUrl = new URL(url); } catch (e) { parsedUrl = null; }
@@ -127,8 +143,6 @@
     };
     var secret = v('wh-secret');
     if (secret) body.secret = secret;
-    var publicKey = v('wh-publickey');
-    if (publicKey) body.publicKey = publicKey;
 
     var url2   = editWebhookId
       ? window.devportalApi.root('/webhook-subscribers/' + encodeURIComponent(editWebhookId))

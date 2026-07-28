@@ -18,7 +18,6 @@
                 <th>Target URL</th>
                 <th>Events</th>
                 <th>Secret</th>
-                <th>Public key</th>
                 <th>Enabled</th>
                 <th style="width:90px;"></th>
               </tr>
@@ -42,7 +41,6 @@
                   {{/if}}
                 </td>
                 <td>{{#if hasSecret}}••••••••{{else}}—{{/if}}</td>
-                <td>{{#if hasPublicKey}}Configured{{else}}—{{/if}}</td>
                 <td>{{#if enabled}}Yes{{else}}No{{/if}}</td>
                 <td>
                   <div class="cfg-row-actions">
@@ -58,7 +56,7 @@
               </tr>
               {{/webhookSubscribers}}
               {{#unless webhookSubscribers.length}}
-              <tr><td colspan="7" class="cfg-tbl-empty">No webhooks yet. Add one to get started.</td></tr>
+              <tr><td colspan="6" class="cfg-tbl-empty">No webhooks yet. Add one to get started.</td></tr>
               {{/unless}}
             </tbody>
           </table>
