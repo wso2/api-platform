@@ -17,7 +17,7 @@ data:
 
   # Default images
   GATEWAY_DEFAULT_IMAGE: "wso2/gateway-controller:latest"
-  GATEWAY_ROUTER_IMAGE: "envoyproxy/envoy:v1.28-latest"
-  
+  GATEWAY_ROUTER_IMAGE: "envoyproxy/envoy:v1.38-latest"
+
   # Logging configuration
   LOG_LEVEL: "info"

@@ -17,7 +17,8 @@ The default tracing stack consists of:
 
 ### How It Works
 
-1. Gateway components (gateway-controller, policy-engine, router) are configured to export traces via OTLP (OpenTelemetry Protocol)
+1. The policy-engine and router (Envoy) — both running inside the `gateway-runtime`
+   container — are configured to export traces via OTLP (OpenTelemetry Protocol)
 2. Components send trace spans to the OpenTelemetry Collector via gRPC (port 4317) or HTTP (port 4318)
 3. The OTLP Collector processes traces (batching, adding resource attributes, etc.)
 4. The OTLP Collector forwards traces to Jaeger for storage and visualization
@@ -36,7 +37,7 @@ Distributed tracing tracks a request as it flows through multiple components:
 
 You need to enable tracing in the gateway configuration file and point it to your OTLP collector endpoint.
 
-The tracing configuration is located in `gateway/configs/config.toml`:
+The tracing configuration should be added to the `gateway/configs/config.toml` file:
 
 #### Policy Engine Tracing Configuration
 
@@ -49,6 +50,11 @@ batch_timeout = "1s"                    # Batch timeout for exporting spans
 max_export_batch_size = 512             # Maximum spans per batch
 sampling_rate = 1.0                     # Sample rate (1.0 = 100%, 0.5 = 50%)
 ```
+
+This same file is mounted into both the `gateway-controller` and `gateway-runtime`
+containers, so one `[tracing]` block configures tracing for the whole gateway — the
+policy-engine reads it directly, and the gateway-controller uses it to generate the
+router's (Envoy's) tracing configuration.
 
 ### Demonstrated Tracing Services
 
@@ -219,15 +225,43 @@ max_export_batch_size = 1024    # Export up to 1024 spans per batch
 When tracing is enabled, the Envoy OpenTelemetry tracer is configured with the environment
 resource detector. It reads `OTEL_RESOURCE_ATTRIBUTES` from the Envoy (`gateway-runtime`)
 process and attaches those attributes to exported spans. If the variable is unset, tracing
-still works and no extra resource attributes are added.
+still works and no extra resource attributes are added. **The router (Envoy) requires
+v1.30 or later** — the detector doesn't exist before v1.29, and v1.29 raises an error on an
+empty variable that fails tracer creation and gets the entire listener rejected, not just
+tracing. The bundled `gateway-runtime` image already meets this.
 
-Set attributes on the **gateway-runtime** container (not the controller), for example:
+`OTEL_RESOURCE_ATTRIBUTES` is read once at Envoy startup — changing it requires recreating
+the `gateway-runtime` container (or a pod rollout), not just editing a file.
 
-```bash
-export OTEL_RESOURCE_ATTRIBUTES=deployment.environment=prod,service.namespace=api-gw
+The `gateway-runtime` container runs both the router (Envoy) and the policy-engine, so
+**setting this one variable covers both components**: Envoy picks it up via the resource
+detector described above, and the policy-engine's OpenTelemetry SDK reads it independently
+via its own environment-variable resource detection.
+
+#### Docker Compose
+
+Add the line to `gateway/api-platform.env` (git-ignored; loaded into both the
+`gateway-controller` and `gateway-runtime` containers via `env_file`), **unquoted**:
+
+```
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment=prod,service.namespace=api-gw
 ```
 
-With the Helm chart:
+Then recreate the runtime container so Envoy re-reads it:
+
+```bash
+docker compose --profile tracing up -d --force-recreate gateway-runtime
+```
+
+**Quoting:** the `env_file` entries for this service use `format: raw`, so the value is
+passed through byte-for-byte, quotes included. Wrapping the value in quotes —
+`OTEL_RESOURCE_ATTRIBUTES="deployment.environment=prod"` — makes the literal quote character
+part of the attribute key. Do not quote the value.
+
+**`scripts/setup.sh --force`** rewrites `api-platform.env` (and rotates the admin password),
+which discards this edit. A plain re-run without `--force` leaves an existing file alone.
+
+#### Helm / Kubernetes
 
 ```yaml
 gateway:
@@ -238,6 +272,25 @@ gateway:
 ```
 
 `OTEL_RESOURCE_ATTRIBUTES` is injected only when `otelResourceAttributes` is non-empty.
+
+#### Format Rules
+
+Envoy's environment resource detector parses the value more strictly than the general OTel
+spec: it splits on `,` then `=`, without trimming whitespace or percent-decoding.
+
+- **No spaces after commas.** `a=1, b=2` produces a key of `" b"` (leading space), not `b`.
+  Write `a=1,b=2`.
+- **No `=` inside a value.** A pair that doesn't split into exactly two pieces on `=` is
+  silently dropped — only a warning is logged, the request/response is unaffected.
+- **Don't set `service.name` here.** Envoy's resource-detector merge lets a detected
+  `service.name` override the tracing service name configured in `config.toml`
+  (`router.tracing_service_name`) — but the policy-engine's Go SDK gives its own
+  explicit configuration precedence over the environment variable instead. Setting
+  `service.name` in `OTEL_RESOURCE_ATTRIBUTES` would therefore rename Envoy's spans but
+  leave the policy-engine's unchanged, so the two components would disagree.
+- The policy-engine's OpenTelemetry SDK, unlike Envoy, percent-decodes the value — so an
+  attribute value containing `%`-encoded characters can resolve differently between router
+  and policy-engine spans. Avoid percent-encoding in this variable.
 
 ## Alternative Tracing Backends
 
@@ -463,14 +516,52 @@ exporters:
 
 #### Datadog APM
 
-Configure OTLP Collector to export to Datadog:
+Requires the `otel/opentelemetry-collector-contrib` collector image since the
+`datadog` exporter and connector are not part of the core `otel/opentelemetry-collector`
+image included in the docker-compose.yaml. Configure the `gateway/observability/otel-collector/config.yaml` to export to `datadog` as follows:
 
 ```yaml
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}
-      site: datadoghq.com
+      key: ${env:DD_API_KEY}
+      site: datadoghq.com   # match your Datadog org's region, e.g. ap1.datadoghq.com
+
+connectors:
+  # Computes APM stats (trace metrics) from spans. Without this the Datadog APM Service
+  # page shows no Requests/Latency/Resources and no env/operation/version facets, even
+  # though spans are arriving — the exporter no longer computes these by default.
+  datadog/connector:
+    traces:
+      compute_stats_by_span_kind: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource]
+      exporters: [otlp, debug, datadog, datadog/connector]
+    metrics:
+      receivers: [datadog/connector]
+      processors: [memory_limiter, batch]
+      exporters: [datadog]
+```
+
+**`DD_ENV` alone does nothing here** — that variable only has meaning for the Datadog
+*Agent*. The exporter instead derives the `env` tag from the `deployment.environment` (or
+`deployment.environment.name`) OTel resource attribute on each span. To set a default value
+for spans that don't already carry one, use the `resource` processor with `action: insert`
+(not `upsert`) — `upsert` unconditionally overwrites the attribute, discarding whatever a
+gateway component already set via
+[`OTEL_RESOURCE_ATTRIBUTES`](#opentelemetry-resource-attributes):
+
+```yaml
+processors:
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: ${env:DD_ENV:-development}
+        action: insert   # not upsert — a value already on the span must win
 ```
 
 Or use Datadog Agent directly:
@@ -605,6 +696,13 @@ processors:
     sampling_percentage: 10  # Sample 10% of traces
 ```
 
+**A note on `action`:** `upsert` always overwrites the attribute, even if a gateway
+component already set it (e.g. `deployment.environment` via
+[`OTEL_RESOURCE_ATTRIBUTES`](#opentelemetry-resource-attributes)). Use `upsert` only when
+this collector attribute is meant to be authoritative; use `insert` when it should only fill
+in a value the span doesn't already carry. See [Datadog APM](#datadog-apm) for a case where
+this distinction matters.
+
 #### Exporters
 Define where traces are sent:
 
@@ -653,7 +751,7 @@ exporters:
 
   datadog:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
 
 service:
   pipelines:

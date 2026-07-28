@@ -331,6 +331,10 @@ gateway:
         gatewayControllerHost: ""
         logLevel: info
         moesifKey: ""
+        # OpenTelemetry resource attributes read by Envoy's environment resource detector
+        # when tracing is enabled. Only injected when non-empty.
+        # Example: "deployment.environment=prod,service.namespace=api-gw"
+        otelResourceAttributes: ""
       extraEnv: []
       extraEnvFrom: []
       extraVolumeMounts: []

@@ -16,7 +16,7 @@ processors:
       - key: cluster
         value: poc-cluster
         action: upsert
-      - key: environment
+      - key: deployment.environment
         value: development
         action: upsert
 

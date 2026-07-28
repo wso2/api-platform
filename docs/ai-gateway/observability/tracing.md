@@ -438,15 +438,42 @@ exporters:
 
 #### Datadog APM
 
-Configure OTLP Collector to export to Datadog:
+Requires the `otel/opentelemetry-collector-contrib` collector image since the
+`datadog` exporter and connector are not part of the core `otel/opentelemetry-collector`
+image included in the docker-compose.yaml. Configure the `gateway/observability/otel-collector/config.yaml` to export to `datadog` as follows:
 
 ```yaml
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}
-      site: datadoghq.com
+      key: ${env:DD_API_KEY}
+      site: datadoghq.com   # match your Datadog org's region, e.g. ap1.datadoghq.com
+
+connectors:
+  # Computes APM stats (trace metrics) from spans. Without this the Datadog APM Service
+  # page shows no Requests/Latency/Resources and no env/operation/version facets, even
+  # though spans are arriving — the exporter no longer computes these by default
+  datadog/connector:
+    traces:
+      compute_stats_by_span_kind: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resource]
+      exporters: [otlp, debug, datadog, datadog/connector]
+    metrics:
+      receivers: [datadog/connector]
+      processors: [memory_limiter, batch]
+      exporters: [datadog]
 ```
+
+Note that `DD_API_KEY`/`DD_ENV`-style variables only have meaning for the Datadog *Agent* —
+the exporter above derives the `env` tag from the `deployment.environment` OTel resource
+attribute on each span, not from an env var of its own. See the gateway tracing guide's
+[Datadog APM](../../gateway/observability/tracing.md#datadog-apm) section for the
+`deployment.environment` fallback pattern and the `insert` vs `upsert` distinction.
 
 Or use Datadog Agent directly:
 
@@ -628,7 +655,7 @@ exporters:
 
   datadog:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
 
 service:
   pipelines:
