@@ -42,6 +42,10 @@ import { useAppShell } from '../../../../../contexts/AppShellContext';
 import { useAIEntity } from '../../../../../contexts/AIEntitiesContext';
 import { useLLMProvider } from '../../../../../contexts/llmProvider';
 import { PLATFORM_API_BASE_URL } from '../../../../../config.env';
+import {
+  COST_POLICY_NAME,
+  autoAttachesCostPolicy,
+} from '../../../../../utils/providerTemplateDisplay';
 import type { LLMProvider } from '../../../../../utils/types';
 
 export type LLLMStepBannerStepId =
@@ -67,7 +71,6 @@ type LLLMStepBannerProps = {
 };
 
 const DEFAULT_TOTAL_STEPS = 4;
-const DEFAULT_TRACKING_POLICY_NAME = 'llm-cost';
 
 export default function LLLMStepBanner({
   providerName,
@@ -90,15 +93,17 @@ export default function LLLMStepBanner({
   const selectedProviderId = selectedProvider?.id ?? '';
   const organizationId = currentOrganization?.uuid ?? '';
   
-  const hasGuardrails = useMemo(
-    () =>
-      [
-        ...(selectedProvider?.globalPolicies ?? []),
-        ...(selectedProvider?.operationPolicies ?? []),
-        ...(selectedProvider?.policies ?? []),
-      ].some((policy) => policy.name !== DEFAULT_TRACKING_POLICY_NAME),
-    [selectedProvider]
-  );
+  const hasGuardrails = useMemo(() => {
+    const ignoreCostPolicy = autoAttachesCostPolicy(selectedProvider?.template);
+    const isGuardrail = (policy: { name: string }) =>
+      !ignoreCostPolicy || policy.name !== COST_POLICY_NAME;
+
+    return (
+      (selectedProvider?.globalPolicies ?? []).some(isGuardrail) ||
+      (selectedProvider?.operationPolicies ?? []).length > 0 ||
+      (selectedProvider?.policies ?? []).some(isGuardrail)
+    );
+  }, [selectedProvider]);
   const resolvedProviderName = providerName?.trim() || 'LLM Provider';
 
   useEffect(() => {

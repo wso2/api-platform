@@ -89,6 +89,7 @@ import {
 import { API_BASE_URLS, PLATFORM_API_BASE_URL } from '../../../../config.env';
 import {
   resolveTemplateDisplayName,
+  resolveTemplateLogo,
   truncateProviderDisplayName,
 } from '../../../../utils/providerTemplateDisplay';
 import { useProviderTemplates } from '../../../../contexts/llmProvider/providerTemplate';
@@ -866,7 +867,9 @@ function ServiceProviderOverviewContent() {
     templatesResponse.list
   );
   const templateKey = (provider.template ?? '').toLowerCase();
-  const templateLogo = TEMPLATE_LOGO_MAP[templateKey];
+  const templateLogo =
+    resolveTemplateLogo(provider.template, templatesResponse.list) ??
+    TEMPLATE_LOGO_MAP[templateKey];
   const hasTemplateLogo = Boolean(templateLogo);
   const descriptionText = provider.description?.trim() || '';
   const truncatedDescription =

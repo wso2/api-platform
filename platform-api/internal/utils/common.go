@@ -28,6 +28,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -430,6 +431,39 @@ func ValidateURL(rawURL string) error {
 		return errors.New("URL path must not contain traversal segments")
 	}
 
+	return nil
+}
+
+const externalURLResolveTimeout = 5 * time.Second
+
+func ValidateExternalURL(ctx context.Context, rawURL string) error {
+	if err := ValidateURL(rawURL); err != nil {
+		return err
+	}
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(rawURL))
+	if err != nil {
+		return errors.New("Invalid URL format")
+	}
+	host := parsed.Hostname()
+
+	if ip := net.ParseIP(host); ip != nil {
+		if !isPublicIP(ip) {
+			return errors.New("URL host is not allowed")
+		}
+		return nil
+	}
+
+	lookupCtx, cancel := context.WithTimeout(ctx, externalURLResolveTimeout)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupIPAddr(lookupCtx, host)
+	if err != nil || len(ips) == 0 {
+		return errors.New("URL host could not be resolved")
+	}
+	for _, ip := range ips {
+		if !isPublicIP(ip.IP) {
+			return errors.New("URL host is not allowed")
+		}
+	}
 	return nil
 }
 

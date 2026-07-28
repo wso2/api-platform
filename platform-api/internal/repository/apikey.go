@@ -55,13 +55,15 @@ func (r *APIKeyRepo) Create(key *model.APIKey) error {
 		key.Status, key.CreatedAt, key.CreatedBy, key.UpdatedAt, key.UpdatedBy, key.ExpiresAt,
 		key.Issuer, key.AllowedTargets,
 	)
-	if err != nil && r.db.IsDuplicateKeyError(err) {
-		// A collision on UNIQUE(artifact_uuid, handle) means a key with this
-		// name already exists for the artifact. Classify it as a 409 so the
-		// caller gets an actionable message instead of a generic 500.
-		return apperror.APIKeyExists.New()
+	if err != nil {
+		if r.db.IsDuplicateKeyError(err) {
+			if existing, lookupErr := r.GetByArtifactAndName(key.ArtifactUUID, key.Name); lookupErr == nil && existing != nil {
+				return apperror.APIKeyExists.New()
+			}
+		}
+		return err
 	}
-	return err
+	return nil
 }
 
 // Update modifies an existing API key record identified by (artifact_uuid, name)

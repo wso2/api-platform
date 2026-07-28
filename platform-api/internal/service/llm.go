@@ -214,8 +214,8 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	if req.Metadata == nil {
 		return nil, apperror.ValidationFailed.New("The metadata field is required.")
 	}
-	if err := utils.ValidateURL(strings.TrimSpace(utils.ValueOrEmpty(req.Metadata.EndpointUrl))); err != nil {
-		return nil, apperror.ValidationFailed.New("The metadata endpointUrl must be a valid URL.")
+	if err := utils.ValidateExternalURL(context.Background(), strings.TrimSpace(utils.ValueOrEmpty(req.Metadata.EndpointUrl))); err != nil {
+		return nil, apperror.ValidationFailed.New("The metadata endpointUrl must be a valid, publicly reachable URL.")
 	}
 
 	baseHandle, err := utils.GenerateHandle(req.DisplayName, nil)
@@ -358,8 +358,8 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 
 	if req.Metadata != nil {
 		if endpointURL := strings.TrimSpace(utils.ValueOrEmpty(req.Metadata.EndpointUrl)); endpointURL != "" {
-			if err := utils.ValidateURL(endpointURL); err != nil {
-				return nil, apperror.ValidationFailed.New("The metadata endpointUrl must be a valid URL.")
+			if err := utils.ValidateExternalURL(context.Background(), endpointURL); err != nil {
+				return nil, apperror.ValidationFailed.New("The metadata endpointUrl must be a valid, publicly reachable URL.")
 			}
 		}
 	}
