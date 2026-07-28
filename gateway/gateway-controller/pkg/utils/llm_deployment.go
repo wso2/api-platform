@@ -268,6 +268,14 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		return nil, fmt.Errorf("unexpected configuration type %T after rendering LLM provider", renderHolder.Configuration)
 	}
 
+	// Coerce rendered-template strings in policy params before validation and
+	// transformation. text/template always produces strings, so {{ env "X" }} → "100"
+	// even for integer params; coercing here ensures the transformer also puts typed
+	// values into the derived RestAPI.
+	if s.policyValidator != nil {
+		s.policyValidator.CoerceLLMPolicies(renderedProvider.Spec.GlobalPolicies, renderedProvider.Spec.OperationPolicies, renderedProvider.Spec.Policies)
+	}
+
 	// Validate against rendered values
 	validationErrors := s.validator.Validate(&renderedProvider)
 	if len(validationErrors) > 0 {
@@ -439,6 +447,14 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 	renderedProxy, ok := renderHolder.Configuration.(api.LLMProxyConfiguration)
 	if !ok {
 		return nil, fmt.Errorf("unexpected configuration type %T after rendering LLM proxy", renderHolder.Configuration)
+	}
+
+	// Coerce rendered-template strings in policy params before validation and
+	// transformation. text/template always produces strings, so {{ env "X" }} → "100"
+	// even for integer params; coercing here ensures the transformer also puts typed
+	// values into the derived RestAPI.
+	if s.policyValidator != nil {
+		s.policyValidator.CoerceLLMPolicies(renderedProxy.Spec.GlobalPolicies, renderedProxy.Spec.OperationPolicies, renderedProxy.Spec.Policies)
 	}
 
 	// Validate against rendered values
