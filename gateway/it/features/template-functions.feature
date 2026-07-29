@@ -233,6 +233,11 @@ Feature: Template functions in RestApi spec
       """
       {{ secret "tpl-llm-provider-token" }}
       """
+    # and must not persist the resolved secret alongside it
+    And the stored LlmProvider configuration for "tpl-llm-provider" should not contain:
+      """
+      llm-prov-secret-789
+      """
 
     # Runtime: upstream must receive the resolved Authorization header value
     And I wait for the endpoint "http://localhost:8080/tpl-llm-provider/chat/completions" to be ready with method "POST" and body '{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}'

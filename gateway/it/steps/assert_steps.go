@@ -20,6 +20,7 @@ package steps
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -198,11 +199,21 @@ func (a *AssertSteps) headerShouldExist(name string) error {
 	return nil
 }
 
+// errJSONFieldMissing marks the one getJSONField failure meaning "this path is
+// genuinely absent", so absence assertions can tell it apart from a malformed or
+// unexpectedly-shaped response.
+var errJSONFieldMissing = errors.New("json field missing")
+
 // jsonFieldShouldNotExist asserts a JSON path is absent from the response body.
+// Only a missing key satisfies it; a parse failure or structural mismatch is
+// propagated so a malformed response cannot pass by resembling an absent field.
 func (a *AssertSteps) jsonFieldShouldNotExist(field string) error {
 	value, err := a.getJSONField(field)
+	if errors.Is(err, errJSONFieldMissing) {
+		return nil
+	}
 	if err != nil {
-		return nil // Path is absent, which is what we asserted.
+		return fmt.Errorf("cannot evaluate absence of JSON field %q: %w", field, err)
 	}
 	return fmt.Errorf("expected JSON field %q to be absent, but it is present with value %v", field, value)
 }
@@ -482,7 +493,7 @@ func (a *AssertSteps) getJSONField(field string) (interface{}, error) {
 				}
 				v, exists := m[key]
 				if !exists {
-					return nil, fmt.Errorf("key %q does not exist in JSON", key)
+					return nil, fmt.Errorf("key %q does not exist in JSON: %w", key, errJSONFieldMissing)
 				}
 				current = v
 			}
@@ -502,7 +513,7 @@ func (a *AssertSteps) getJSONField(field string) (interface{}, error) {
 			}
 			v, exists := m[part]
 			if !exists {
-				return nil, fmt.Errorf("key %q does not exist in JSON", part)
+				return nil, fmt.Errorf("key %q does not exist in JSON: %w", part, errJSONFieldMissing)
 			}
 			current = v
 		}
