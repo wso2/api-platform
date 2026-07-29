@@ -379,7 +379,7 @@ os.chmod(socket_path, 0o660)  # defense-in-depth only, not the primary guarantee
 
 Most resource CRUD here is *creator-scoped*: a caller may act only on rows they created (`api_keys.created_by`). Where cross-user administration is genuinely needed, express it as one explicitly named org-wide scope (`ap:api_key:all:manage`) resolved from verified claims at the handler, passed down as an explicit argument, and enforced by a single shared predicate at the service layer that every entry point funnels through (GO-AUTH-015). Never approximate it with an implicit signal — an empty caller id, or "this call came from an internal path so it must be trusted". An empty identity treated as elevated fails *open* for any path that merely forgot to populate the actor. The override widens which rows within the caller's own organization are reachable, never which organization (GO-AUTH-005).
 
-A scope decision does not survive a broadcast: an event carries the acting user's id, not their scopes, so a downstream `created_by` re-check rejects every legitimate admin-initiated change. Gate that check behind an explicit "already authorized upstream" flag set only by the event path — deleting it outright would also disable it for that component's own directly-authenticated API.
+A scope decision does not survive a broadcast: an event carries the acting user's id, not their scopes, so a downstream `created_by` re-check rejects every legitimate admin-initiated change. Gate that check behind an explicit "trusted origin" flag (the call came from a pre-validated origin) set only by the event path — deleting it outright would also disable it for that component's own directly-authenticated API.
 
 ```go
 // BAD: empty caller id is an implicit admin — fails OPEN for any caller that
@@ -405,7 +405,7 @@ func (r *APIKeyRepo) ListAPIKeysByUser(orgUUID, username string, allUsers bool, 
 }
 
 // GOOD: downstream check gated, not deleted — false for this service's own REST API
-if !params.AuthorizedUpstream { // set only by RevokeExternalAPIKeyFromEvent
+if !params.TrustedOrigin { // set only by RevokeExternalAPIKeyFromEvent
     if err := s.canRevokeAPIKey(params.User, apiKey, logger); err != nil {
         return nil, fmt.Errorf("API key revocation failed for API: '%s'", params.Handle)
     }

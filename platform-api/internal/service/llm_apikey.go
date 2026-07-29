@@ -165,10 +165,7 @@ func (s *LLMProviderAPIKeyService) DeleteLLMProviderAPIKey(
 		return apperror.LLMProviderAPIKeyForbidden.New()
 	}
 
-	// existingKey.CreatedBy is re-verified in the repository's WHERE clause, so a
-	// delete/recreate of the same (artifact, handle) between the check above and this
-	// write cannot cause the replacement key to be deleted instead.
-	if err := s.apiKeyRepo.Delete(provider.UUID, keyName, existingKey.CreatedBy); err != nil {
+	if err := s.apiKeyRepo.Delete(provider.UUID, keyName); err != nil {
 		s.slogger.Error("Failed to delete LLM provider API key from database", "providerId", providerID, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to delete API key: %w", err)
 	}

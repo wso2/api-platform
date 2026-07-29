@@ -199,7 +199,7 @@ func (h *WebSubAPIKeyHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Reques
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, apperror.NewErrorResponse(503, "Service Unavailable", "No gateway connections available"))
 			return
 		}
-		// Ownership denial (RESTAPIKeyForbidden) and a missing key (RESTAPIKeyNotFound)
+		// Ownership denial (RESTAPIAPIKeyForbidden) and a missing key (RESTAPIAPIKeyNotFound)
 		// already carry their 403/404 status and sterile message from the catalog.
 		if respondCatalogError(w, h.slogger, err) {
 			return
@@ -256,7 +256,7 @@ func (h *WebSubAPIKeyHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Reques
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, apperror.NewErrorResponse(503, "Service Unavailable", "No gateway connections available"))
 			return
 		}
-		// Ownership denial (RESTAPIKeyForbidden) and a missing key (RESTAPIKeyNotFound)
+		// Ownership denial (RESTAPIAPIKeyForbidden) and a missing key (RESTAPIAPIKeyNotFound)
 		// already carry their 403/404 status and sterile message from the catalog.
 		if respondCatalogError(w, h.slogger, err) {
 			return

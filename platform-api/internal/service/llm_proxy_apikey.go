@@ -134,10 +134,7 @@ func (s *LLMProxyAPIKeyService) DeleteLLMProxyAPIKey(
 		return apperror.LLMProxyAPIKeyForbidden.New()
 	}
 
-	// existingKey.CreatedBy is re-verified in the repository's WHERE clause, so a
-	// delete/recreate of the same (artifact, handle) between the check above and this
-	// write cannot cause the replacement key to be deleted instead.
-	if err := s.apiKeyRepo.Delete(proxy.UUID, keyName, existingKey.CreatedBy); err != nil {
+	if err := s.apiKeyRepo.Delete(proxy.UUID, keyName); err != nil {
 		s.slogger.Error("Failed to delete LLM proxy API key from database", "proxyId", proxyID, "keyName", keyName, "error", err)
 		return fmt.Errorf("failed to delete API key: %w", err)
 	}

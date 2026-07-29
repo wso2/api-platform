@@ -226,7 +226,7 @@ func (r *Receiver) handleAPIKeyRegenerated(ctx context.Context, env *Envelope) e
 		ExternalRefId: d.externalRefPtr(),
 		ExpiresAt:     expiresAt,
 	}
-	// authorizedUpstream is true — and keyAdmin stays false — because this event carries no
+	// trustedOrigin is true — and keyAdmin stays false — because this event carries no
 	// end-user identity to match against the key's creator: apiKeyData has no user field, and
 	// keys this receiver creates are recorded with an empty created_by (see handleAPIKeyGenerated).
 	// Authorization for the whole channel is the envelope's HMAC signature, verified in
@@ -252,7 +252,7 @@ func (r *Receiver) handleAPIKeyRevoked(ctx context.Context, env *Envelope) error
 	if d.handlePtr() == nil {
 		return fmt.Errorf("%w: data.handle is required to identify the key to revoke", ErrInvalidEnvelope)
 	}
-	// authorizedUpstream is true for the same reason as in handleAPIKeyRegenerated: the event
+	// trustedOrigin is true for the same reason as in handleAPIKeyRegenerated: the event
 	// carries no end-user identity, and the envelope's HMAC signature is what authorizes this
 	// channel. keyAdmin stays false — that flag means "caller holds ap:api_key:all:manage".
 	return r.apiKeys.RevokeAPIKey(ctx, d.API.RefID, d.API.kind(), env.OrgID, *d.handlePtr(), "", false, true)

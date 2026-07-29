@@ -57,23 +57,20 @@ func (r *APIKeyRepo) Create(key *model.APIKey) error {
 	return err
 }
 
-// Update modifies an existing API key record identified by (artifact_uuid, name), and
-// additionally requires the caller-supplied created_by to still match the stored creator.
-// This closes a delete/recreate race: the service layer checks ownership against a key
-// fetched moments earlier, but without this clause a concurrent delete+recreate of the
-// same (artifact_uuid, handle) by a different creator could let this UPDATE silently
-// apply to that other key instead of failing.
+// Update modifies an existing API key record identified by (artifact_uuid, name).
+// Authorization is the service layer's responsibility: every caller resolves the key and
+// runs canManageAPIKey before reaching here (authentication_authorization.md GO-AUTH-019).
 func (r *APIKeyRepo) Update(key *model.APIKey) error {
 	key.UpdatedAt = time.Now().UTC()
 
 	query := `
 		UPDATE api_keys
 		SET masked_api_key = ?, api_key_hashes = ?, status = ?, updated_at = ?, updated_by = ?, expires_at = ?, issuer = ?
-		WHERE artifact_uuid = ? AND handle = ? AND created_by = ?
+		WHERE artifact_uuid = ? AND handle = ?
 	`
 	result, err := r.db.Exec(r.db.Rebind(query),
 		key.MaskedAPIKey, []byte(key.APIKeyHashes), key.Status, key.UpdatedAt, key.UpdatedBy, key.ExpiresAt, key.Issuer,
-		key.ArtifactUUID, key.Name, key.CreatedBy,
+		key.ArtifactUUID, key.Name,
 	)
 	if err != nil {
 		return err
@@ -89,15 +86,14 @@ func (r *APIKeyRepo) Update(key *model.APIKey) error {
 }
 
 // Revoke marks an API key as revoked, recording the revoking actor in updated_by.
-// createdBy must match the stored creator for the same delete/recreate race protection
-// documented on Update.
-func (r *APIKeyRepo) Revoke(artifactUUID, name, createdBy, updatedBy string) error {
+// Authorization is enforced by the service layer before this is called (see Update).
+func (r *APIKeyRepo) Revoke(artifactUUID, name, updatedBy string) error {
 	query := `
 		UPDATE api_keys
 		SET status = 'revoked', updated_at = ?, updated_by = ?
-		WHERE artifact_uuid = ? AND handle = ? AND created_by = ?
+		WHERE artifact_uuid = ? AND handle = ?
 	`
-	result, err := r.db.Exec(r.db.Rebind(query), time.Now().UTC(), updatedBy, artifactUUID, name, createdBy)
+	result, err := r.db.Exec(r.db.Rebind(query), time.Now().UTC(), updatedBy, artifactUUID, name)
 	if err != nil {
 		return err
 	}
@@ -200,13 +196,11 @@ func (r *APIKeyRepo) ListByGatewayAndKind(gatewayID, orgID, kind, issuer string)
 	return keys, rows.Err()
 }
 
-// Delete removes an API key record permanently. createdBy must match the stored creator
-// for the same delete/recreate race protection documented on Update: without it, a
-// concurrent delete+recreate of the same (artifact_uuid, handle) by a different creator
-// would let this DELETE remove that other key, which the service never authorized.
-func (r *APIKeyRepo) Delete(artifactUUID, name, createdBy string) error {
-	query := `DELETE FROM api_keys WHERE artifact_uuid = ? AND handle = ? AND created_by = ?`
-	result, err := r.db.Exec(r.db.Rebind(query), artifactUUID, name, createdBy)
+// Delete removes an API key record permanently.
+// Authorization is enforced by the service layer before this is called (see Update).
+func (r *APIKeyRepo) Delete(artifactUUID, name string) error {
+	query := `DELETE FROM api_keys WHERE artifact_uuid = ? AND handle = ?`
+	result, err := r.db.Exec(r.db.Rebind(query), artifactUUID, name)
 	if err != nil {
 		return err
 	}

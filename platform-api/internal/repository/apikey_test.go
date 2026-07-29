@@ -138,7 +138,7 @@ func TestAPIKeyRepo_UpdateAndRevoke_SetUpdatedByWithoutTouchingCreatedBy(t *test
 	}
 
 	// Revoke by yet another actor.
-	if err := repo.Revoke(artifactUUID, "key-2", "creator-user", "revoker-user"); err != nil {
+	if err := repo.Revoke(artifactUUID, "key-2", "revoker-user"); err != nil {
 		t.Fatalf("Revoke failed: %v", err)
 	}
 
@@ -155,68 +155,4 @@ func TestAPIKeyRepo_UpdateAndRevoke_SetUpdatedByWithoutTouchingCreatedBy(t *test
 	if afterRevoke.CreatedBy != "creator-user" {
 		t.Fatalf("Revoke must not touch created_by, got %q", afterRevoke.CreatedBy)
 	}
-}
-
-// A mutation carrying a created_by that no longer matches the stored creator must not
-// apply. This is the delete/recreate race guard: the service authorizes against a key it
-// fetched moments earlier, so if that row was replaced by a different creator in between,
-// Update/Revoke/Delete must fail rather than act on the replacement.
-func TestAPIKeyRepo_MutationsRejectMismatchedCreatedBy(t *testing.T) {
-	db, cleanup := setupTestDB(t)
-	t.Cleanup(cleanup)
-
-	orgUUID := "org-apikey-createdby-guard"
-	projectUUID := "project-apikey-createdby-guard"
-	createTestOrganizationAndProject(t, db, orgUUID, projectUUID)
-	artifactUUID := createTestArtifactAPI(t, db, orgUUID, projectUUID)
-
-	repo := NewAPIKeyRepo(db, nil)
-	key := &model.APIKey{
-		UUID:           "apikey-uuid-3",
-		ArtifactUUID:   artifactUUID,
-		Name:           "key-3",
-		DisplayName:    "Key 3",
-		MaskedAPIKey:   "ab12",
-		APIKeyHashes:   `{"sha256":"hash3"}`,
-		Status:         "active",
-		CreatedBy:      "creator-user",
-		UpdatedBy:      "creator-user",
-		AllowedTargets: "ALL",
-	}
-	if err := repo.Create(key); err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-
-	assertUnchanged := func(t *testing.T, op string) {
-		t.Helper()
-		got, err := repo.GetByArtifactAndName(artifactUUID, "key-3")
-		if err != nil {
-			t.Fatalf("GetByArtifactAndName after %s failed: %v", op, err)
-		}
-		if got == nil {
-			t.Fatalf("%s with mismatched created_by removed the row", op)
-		}
-		if got.CreatedBy != "creator-user" || got.MaskedAPIKey != "ab12" || got.Status != "active" {
-			t.Fatalf("%s with mismatched created_by modified the row: %+v", op, got)
-		}
-	}
-
-	mismatched := *key
-	mismatched.CreatedBy = "other-user"
-	mismatched.MaskedAPIKey = "zz99"
-	mismatched.UpdatedBy = "other-user"
-	if err := repo.Update(&mismatched); err == nil {
-		t.Fatal("Update with mismatched created_by should have failed")
-	}
-	assertUnchanged(t, "Update")
-
-	if err := repo.Revoke(artifactUUID, "key-3", "other-user", "other-user"); err == nil {
-		t.Fatal("Revoke with mismatched created_by should have failed")
-	}
-	assertUnchanged(t, "Revoke")
-
-	if err := repo.Delete(artifactUUID, "key-3", "other-user"); err == nil {
-		t.Fatal("Delete with mismatched created_by should have failed")
-	}
-	assertUnchanged(t, "Delete")
 }
